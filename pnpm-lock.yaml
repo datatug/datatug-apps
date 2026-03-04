@@ -28,7 +28,7 @@ importers:
         version: 21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)
       '@angular/fire':
         specifier: 20.0.1
-        version: 20.0.1(93c3adc03c8fbdec2857f65d95e1eb78)
+        version: 20.0.1(1fd8375945d6843066697ddd011c30d2)
       '@angular/forms':
         specifier: 21.2.0
         version: 21.2.0(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(@angular/platform-browser@21.2.0(@angular/animations@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)))(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)))(rxjs@7.8.2)
@@ -76,16 +76,16 @@ importers:
         version: 10.41.0
       '@sneat/api':
         specifier: 0.1.4
-        version: 0.1.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(@angular/fire@20.0.1(93c3adc03c8fbdec2857f65d95e1eb78))(firebase@12.10.0)
+        version: 0.1.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(@angular/fire@20.0.1(1fd8375945d6843066697ddd011c30d2))(firebase@12.10.0)
       '@sneat/auth-core':
         specifier: 0.1.4
-        version: 0.1.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(@angular/fire@20.0.1(93c3adc03c8fbdec2857f65d95e1eb78))(@sneat/random@0.0.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)))(firebase@12.10.0)
+        version: 0.1.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(@angular/fire@20.0.1(1fd8375945d6843066697ddd011c30d2))(@sneat/random@0.0.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)))(firebase@12.10.0)
       '@sneat/auth-models':
         specifier: 0.1.4
         version: 0.1.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))
       '@sneat/auth-ui':
         specifier: 0.1.4
-        version: 0.1.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(@angular/fire@20.0.1(93c3adc03c8fbdec2857f65d95e1eb78))(@ionic/angular@8.7.18(77a787868c292a0880322232bcc32de0))(@sneat/random@0.0.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)))(firebase@12.10.0)
+        version: 0.1.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(@angular/fire@20.0.1(1fd8375945d6843066697ddd011c30d2))(@ionic/angular@8.7.18(77a787868c292a0880322232bcc32de0))(@sneat/random@0.0.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)))(firebase@12.10.0)
       '@sneat/components':
         specifier: 0.1.4
         version: 0.1.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(@ionic/angular@8.7.18(77a787868c292a0880322232bcc32de0))
@@ -109,7 +109,7 @@ importers:
         version: 0.1.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))
       '@sneat/logging':
         specifier: 0.1.4
-        version: 0.1.4(fa3b4cd5b76f819ee65ca9128e8bc848)
+        version: 0.1.4(83c6ac906321b298248a7318a7fa4193)
       '@sneat/random':
         specifier: 0.0.4
         version: 0.0.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))
@@ -118,10 +118,10 @@ importers:
         version: 0.1.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))
       '@sneat/space-services':
         specifier: 0.1.4
-        version: 0.1.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(@angular/fire@20.0.1(93c3adc03c8fbdec2857f65d95e1eb78))(@ionic/angular@8.7.18(77a787868c292a0880322232bcc32de0))(firebase@12.10.0)
+        version: 0.1.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(@angular/fire@20.0.1(1fd8375945d6843066697ddd011c30d2))(@ionic/angular@8.7.18(77a787868c292a0880322232bcc32de0))(firebase@12.10.0)
       '@sneat/ui':
         specifier: 0.1.4
-        version: 0.1.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(@ionic/angular@8.7.18(77a787868c292a0880322232bcc32de0))(@sneat/logging@0.1.4(fa3b4cd5b76f819ee65ca9128e8bc848))
+        version: 0.1.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(@ionic/angular@8.7.18(77a787868c292a0880322232bcc32de0))(@sneat/logging@0.1.4(83c6ac906321b298248a7318a7fa4193))
       '@sneat/wormhole':
         specifier: ^0.0.6
         version: 0.0.6(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2)
@@ -162,6 +162,12 @@ importers:
       '@angular-devkit/schematics':
         specifier: 21.2.0
         version: 21.2.0(chokidar@5.0.0)
+      '@angular-eslint/eslint-plugin':
+        specifier: 21.2.0
+        version: 21.2.0(@typescript-eslint/utils@8.56.1(eslint@9.39.3(jiti@2.4.2))(typescript@5.9.3))(eslint@9.39.3(jiti@2.4.2))(typescript@5.9.3)
+      '@angular-eslint/eslint-plugin-template':
+        specifier: 21.2.0
+        version: 21.2.0(@angular-eslint/template-parser@21.2.0(eslint@9.39.3(jiti@2.4.2))(typescript@5.9.3))(@typescript-eslint/types@8.56.1)(@typescript-eslint/utils@8.56.1(eslint@9.39.3(jiti@2.4.2))(typescript@5.9.3))(eslint@9.39.3(jiti@2.4.2))(typescript@5.9.3)
       '@angular/build':
         specifier: 21.2.0
         version: 21.2.0(@angular/compiler-cli@21.2.0(@angular/compiler@21.2.0)(typescript@5.9.3))(@angular/compiler@21.2.0)(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(@angular/platform-browser@21.2.0(@angular/animations@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)))(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)))(@types/node@24.11.0)(chokidar@5.0.0)(jiti@2.4.2)(less@4.5.1)(ng-packagr@21.2.0(@angular/compiler-cli@21.2.0(@angular/compiler@21.2.0)(typescript@5.9.3))(tslib@2.8.1)(typescript@5.9.3))(postcss@8.5.6)(sass-embedded@1.97.3)(terser@5.46.0)(tslib@2.8.1)(typescript@5.9.3)(vitest@4.0.18)(yaml@2.8.2)
@@ -174,6 +180,12 @@ importers:
       '@angular/language-service':
         specifier: 21.2.0
         version: 21.2.0
+      '@angular/platform-browser-dynamic':
+        specifier: 21.2.0
+        version: 21.2.0(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/compiler@21.2.0)(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(@angular/platform-browser@21.2.0(@angular/animations@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)))(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)))
+      '@eslint/eslintrc':
+        specifier: 3.3.4
+        version: 3.3.4
       '@eslint/js':
         specifier: 9.39.3
         version: 9.39.3
@@ -237,6 +249,9 @@ importers:
       eslint-config-prettier:
         specifier: 10.1.8
         version: 10.1.8(eslint@9.39.3(jiti@2.4.2))
+      eslint-plugin-json:
+        specifier: 4.0.1
+        version: 4.0.1
       happy-dom:
         specifier: ^20.5.0
         version: 20.8.3
@@ -615,14 +630,14 @@ packages:
     resolution: {integrity: sha512-tWG/8I9kMfSk1NYlS/PvvcVg+Jx1wy4mbZFYIKfcSOoOsVuW/QyHRsHNFtHUG7ZbgzDXoHIWblEk3ESSoPlkjw==}
     engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
 
-  '@angular/platform-browser-dynamic@20.3.17':
-    resolution: {integrity: sha512-yTxFuGQ+z0J9khNIhfFZ+kkT7TOFb8kFZKyUz0DxHOmE0q/TEvNZoy3jXOs8xCBFf1+6BY0NqFNlPna+uw36FQ==}
+  '@angular/platform-browser-dynamic@21.2.0':
+    resolution: {integrity: sha512-eTHNTnTEP25eCyu4MJdPAAc/7Ib5XtR/dqUlzZdNoAldREPNw95FF12QMunvnen66v3CvCYdND8rAlbz2LkK7g==}
     engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
     peerDependencies:
-      '@angular/common': 20.3.17
-      '@angular/compiler': 20.3.17
-      '@angular/core': 20.3.17
-      '@angular/platform-browser': 20.3.17
+      '@angular/common': 21.2.0
+      '@angular/compiler': 21.2.0
+      '@angular/core': 21.2.0
+      '@angular/platform-browser': 21.2.0
 
   '@angular/platform-browser@21.2.0':
     resolution: {integrity: sha512-IUGukpvvT2B5Dl76qzk6rY7UIHUT9u4BhT2AwVz+5JqcX9KwQtYD17Gt7wj6bvIgCXKWG+CfN8Zd9DECOCYWjg==}
@@ -5175,6 +5190,10 @@ packages:
     peerDependencies:
       eslint: '>=7.0.0'
 
+  eslint-plugin-json@4.0.1:
+    resolution: {integrity: sha512-3An5ISV5dq/kHfXdNyY5TUe2ONC3yXFSkLX2gu+W8xAhKhfvrRvkSAeKXCxZqZ0KJLX15ojBuLPyj+UikQMkOA==}
+    engines: {node: '>=18.0'}
+
   eslint-scope@5.1.1:
     resolution: {integrity: sha512-2NxwbF/hZ0KpepYN0cNbo+FN6XoK7GaHlQhgx/hIZl6Va0bF45RQOOwhLIy8lQDbuCiadSLCBnH2CFYquit5bw==}
     engines: {node: '>=8.0.0'}
@@ -6126,6 +6145,9 @@ packages:
 
   lodash.uniq@4.5.0:
     resolution: {integrity: sha512-xfBaXQd9ryd9dlSDvnvI0lvxfLJlYAZzXomUYzLKtUeOQvOP5piqAWuGtrhWeqaXK9hhoM/iyJc5AV+XfsX3HQ==}
+
+  lodash@4.17.23:
+    resolution: {integrity: sha512-LgVTMpQtIopCi79SJeDiP0TfWi5CNEc/L/aRdTh3yIvmZXTnheWpKjSZhnvMl8iXbC1tFg9gdHHDMLoV7CnG+w==}
 
   log-symbols@4.1.0:
     resolution: {integrity: sha512-8XPvpAA8uyhfteu8pIvQxpJZ7SYYdpUivZpGy6sFsBuKRY/7rQGavedeB8aK+Zkyq6upMFVL/9AW6vOYzfRyLg==}
@@ -8093,6 +8115,21 @@ packages:
       jsdom:
         optional: true
 
+  vscode-json-languageservice@4.2.1:
+    resolution: {integrity: sha512-xGmv9QIWs2H8obGbWg+sIPI/3/pFgj/5OWBhNzs00BkYQ9UaB2F6JJaGB/2/YOZJ3BvLXQTC4Q7muqU25QgAhA==}
+
+  vscode-languageserver-textdocument@1.0.12:
+    resolution: {integrity: sha512-cxWNPesCnQCcMPeenjKKsOCKQZ/L6Tv19DTRIGuLWe32lyzWhihGVJ/rcckZXJxfdKCFvRLS3fpBIsV/ZGX4zA==}
+
+  vscode-languageserver-types@3.17.5:
+    resolution: {integrity: sha512-Ld1VelNuX9pdF39h2Hgaeb5hEZM2Z3jUrrMgWQAu82jMtZp7p3vJT3BzToKtZI7NgQssZje5o0zryOrhQvzQAg==}
+
+  vscode-nls@5.2.0:
+    resolution: {integrity: sha512-RAaHx7B14ZU04EU31pT+rKz2/zSl7xMsfIZuo8pd+KZO6PXtQmpevpq3vxvWNcrGbdmhM/rr5Uw5Mz+NBfhVng==}
+
+  vscode-uri@3.1.0:
+    resolution: {integrity: sha512-/BpdSx+yCQGnCvecbyXdxHDkuk55/G3xwnC0GqY4gmQ3j+A+g8kzzgB4Nk/SINjqn6+waqw3EgbVF2QKExkRxQ==}
+
   w3c-keyname@2.2.8:
     resolution: {integrity: sha512-dpojBhNsCNN7T82Tm7k26A6G9ML3NkhDsnw9n/eoxSRlVBB4CEtIQ/KTCLI2Fwf3ataSXRhYFkQi3SlnFwPvPQ==}
 
@@ -8881,13 +8918,13 @@ snapshots:
       '@angular/compiler': 21.2.0
       zone.js: 0.16.1
 
-  '@angular/fire@20.0.1(93c3adc03c8fbdec2857f65d95e1eb78)':
+  '@angular/fire@20.0.1(1fd8375945d6843066697ddd011c30d2)':
     dependencies:
       '@angular-devkit/schematics': 20.3.18(chokidar@5.0.0)
       '@angular/common': 21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2)
       '@angular/core': 21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)
       '@angular/platform-browser': 21.2.0(@angular/animations@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)))(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))
-      '@angular/platform-browser-dynamic': 20.3.17(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/compiler@21.2.0)(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(@angular/platform-browser@21.2.0(@angular/animations@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)))(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)))
+      '@angular/platform-browser-dynamic': 21.2.0(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/compiler@21.2.0)(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(@angular/platform-browser@21.2.0(@angular/animations@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)))(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)))
       '@schematics/angular': 20.3.18(chokidar@5.0.0)
       firebase: 11.10.0
       rxfire: 6.1.0(firebase@11.10.0)(rxjs@7.8.2)
@@ -8908,7 +8945,7 @@ snapshots:
 
   '@angular/language-service@21.2.0': {}
 
-  '@angular/platform-browser-dynamic@20.3.17(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/compiler@21.2.0)(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(@angular/platform-browser@21.2.0(@angular/animations@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)))(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)))':
+  '@angular/platform-browser-dynamic@21.2.0(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/compiler@21.2.0)(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(@angular/platform-browser@21.2.0(@angular/animations@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)))(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)))':
     dependencies:
       '@angular/common': 21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2)
       '@angular/compiler': 21.2.0
@@ -12567,19 +12604,19 @@ snapshots:
 
   '@sinclair/typebox@0.34.48': {}
 
-  '@sneat/api@0.1.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(@angular/fire@20.0.1(93c3adc03c8fbdec2857f65d95e1eb78))(firebase@12.10.0)':
+  '@sneat/api@0.1.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(@angular/fire@20.0.1(1fd8375945d6843066697ddd011c30d2))(firebase@12.10.0)':
     dependencies:
       '@angular/common': 21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2)
       '@angular/core': 21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)
-      '@angular/fire': 20.0.1(93c3adc03c8fbdec2857f65d95e1eb78)
+      '@angular/fire': 20.0.1(1fd8375945d6843066697ddd011c30d2)
       firebase: 12.10.0
       tslib: 2.8.1
 
-  '@sneat/auth-core@0.1.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(@angular/fire@20.0.1(93c3adc03c8fbdec2857f65d95e1eb78))(@sneat/random@0.0.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)))(firebase@12.10.0)':
+  '@sneat/auth-core@0.1.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(@angular/fire@20.0.1(1fd8375945d6843066697ddd011c30d2))(@sneat/random@0.0.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)))(firebase@12.10.0)':
     dependencies:
       '@angular/common': 21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2)
       '@angular/core': 21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)
-      '@angular/fire': 20.0.1(93c3adc03c8fbdec2857f65d95e1eb78)
+      '@angular/fire': 20.0.1(1fd8375945d6843066697ddd011c30d2)
       '@sneat/random': 0.0.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))
       firebase: 12.10.0
       tslib: 2.8.1
@@ -12590,11 +12627,11 @@ snapshots:
       '@angular/core': 21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)
       tslib: 2.8.1
 
-  '@sneat/auth-ui@0.1.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(@angular/fire@20.0.1(93c3adc03c8fbdec2857f65d95e1eb78))(@ionic/angular@8.7.18(77a787868c292a0880322232bcc32de0))(@sneat/random@0.0.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)))(firebase@12.10.0)':
+  '@sneat/auth-ui@0.1.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(@angular/fire@20.0.1(1fd8375945d6843066697ddd011c30d2))(@ionic/angular@8.7.18(77a787868c292a0880322232bcc32de0))(@sneat/random@0.0.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)))(firebase@12.10.0)':
     dependencies:
       '@angular/common': 21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2)
       '@angular/core': 21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)
-      '@angular/fire': 20.0.1(93c3adc03c8fbdec2857f65d95e1eb78)
+      '@angular/fire': 20.0.1(1fd8375945d6843066697ddd011c30d2)
       '@ionic/angular': 8.7.18(77a787868c292a0880322232bcc32de0)
       '@sneat/random': 0.0.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))
       firebase: 12.10.0
@@ -12643,11 +12680,11 @@ snapshots:
       '@angular/core': 21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)
       tslib: 2.8.1
 
-  '@sneat/logging@0.1.4(fa3b4cd5b76f819ee65ca9128e8bc848)':
+  '@sneat/logging@0.1.4(83c6ac906321b298248a7318a7fa4193)':
     dependencies:
       '@angular/common': 21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2)
       '@angular/core': 21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)
-      '@angular/fire': 20.0.1(93c3adc03c8fbdec2857f65d95e1eb78)
+      '@angular/fire': 20.0.1(1fd8375945d6843066697ddd011c30d2)
       '@sentry/angular': 10.41.0(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(@angular/router@21.2.0(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(@angular/platform-browser@21.2.0(@angular/animations@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)))(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)))(rxjs@7.8.2))(rxjs@7.8.2)
       firebase: 12.10.0
       posthog-js: 1.357.0
@@ -12665,21 +12702,21 @@ snapshots:
       '@angular/core': 21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)
       tslib: 2.8.1
 
-  '@sneat/space-services@0.1.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(@angular/fire@20.0.1(93c3adc03c8fbdec2857f65d95e1eb78))(@ionic/angular@8.7.18(77a787868c292a0880322232bcc32de0))(firebase@12.10.0)':
+  '@sneat/space-services@0.1.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(@angular/fire@20.0.1(1fd8375945d6843066697ddd011c30d2))(@ionic/angular@8.7.18(77a787868c292a0880322232bcc32de0))(firebase@12.10.0)':
     dependencies:
       '@angular/common': 21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2)
       '@angular/core': 21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)
-      '@angular/fire': 20.0.1(93c3adc03c8fbdec2857f65d95e1eb78)
+      '@angular/fire': 20.0.1(1fd8375945d6843066697ddd011c30d2)
       '@ionic/angular': 8.7.18(77a787868c292a0880322232bcc32de0)
       firebase: 12.10.0
       tslib: 2.8.1
 
-  '@sneat/ui@0.1.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(@ionic/angular@8.7.18(77a787868c292a0880322232bcc32de0))(@sneat/logging@0.1.4(fa3b4cd5b76f819ee65ca9128e8bc848))':
+  '@sneat/ui@0.1.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(@ionic/angular@8.7.18(77a787868c292a0880322232bcc32de0))(@sneat/logging@0.1.4(83c6ac906321b298248a7318a7fa4193))':
     dependencies:
       '@angular/common': 21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2)
       '@angular/core': 21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1)
       '@ionic/angular': 8.7.18(77a787868c292a0880322232bcc32de0)
-      '@sneat/logging': 0.1.4(fa3b4cd5b76f819ee65ca9128e8bc848)
+      '@sneat/logging': 0.1.4(83c6ac906321b298248a7318a7fa4193)
       tslib: 2.8.1
 
   '@sneat/wormhole@0.0.6(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2)':
@@ -14257,6 +14294,11 @@ snapshots:
     dependencies:
       eslint: 9.39.3(jiti@2.4.2)
 
+  eslint-plugin-json@4.0.1:
+    dependencies:
+      lodash: 4.17.23
+      vscode-json-languageservice: 4.2.1
+
   eslint-scope@5.1.1:
     dependencies:
       esrecurse: 4.3.0
@@ -15411,6 +15453,8 @@ snapshots:
   lodash.merge@4.6.2: {}
 
   lodash.uniq@4.5.0: {}
+
+  lodash@4.17.23: {}
 
   log-symbols@4.1.0:
     dependencies:
@@ -17572,6 +17616,22 @@ snapshots:
       - terser
       - tsx
       - yaml
+
+  vscode-json-languageservice@4.2.1:
+    dependencies:
+      jsonc-parser: 3.3.1
+      vscode-languageserver-textdocument: 1.0.12
+      vscode-languageserver-types: 3.17.5
+      vscode-nls: 5.2.0
+      vscode-uri: 3.1.0
+
+  vscode-languageserver-textdocument@1.0.12: {}
+
+  vscode-languageserver-types@3.17.5: {}
+
+  vscode-nls@5.2.0: {}
+
+  vscode-uri@3.1.0: {}
 
   w3c-keyname@2.2.8: {}
 

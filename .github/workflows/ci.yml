@@ -4,38 +4,59 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - 'docs/**'
   pull_request:
+    paths-ignore:
+      - 'docs/**'
+  merge_group:
+    paths-ignore:
+      - 'docs/**'
 
 permissions:
   actions: read
-  contents: read
 
 jobs:
-  main:
+
+  build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
-          filter: tree:0
           fetch-depth: 0
 
-      # This enables task distribution via Nx Cloud
-      # Run this command as early as possible, before dependencies are installed
-      # Learn more at https://nx.dev/ci/reference/nx-cloud-cli#npx-nxcloud-startcirun
-      - run: npx nx start-ci-run --distribute-on="3 linux-medium-js" --stop-agents-after="e2e"
+      - uses: ./.github/actions/pnpm
 
-      # Cache node_modules
-      - uses: actions/setup-node@v4
+      - name: Derive appropriate SHAs for base and head for nx affected commands
+        uses: nrwl/nx-set-shas@v4
+
+      - name: nx lint affected
+        run: pnpm nx affected --target=lint --base=${{ env.NX_BASE }} --parallel=8
+
+      - name: nx build affected
+        run: pnpm nx affected --target=build --base=${{ env.NX_BASE }} --parallel=8
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
-          node-version: 20
-          cache: 'npm'
+          fetch-depth: 0
 
-      - run: npm ci
-      - run: npx playwright install --only-shell
+      - uses: ./.github/actions/pnpm
 
-      # Prepend any command with "nx record --" to record its logs to Nx Cloud
-      - run: npx nx record -- echo Hello World
-      - run: npx nx run-many -t lint test build typecheck e2e
-      # Nx Cloud recommends fixes for failures to help you get CI green faster. Learn more: https://nx.dev/ci/features/self-healing-ci
-      - run: npx nx fix-ci
-        if: always()
+      - name: Derive appropriate SHAs for base and head for nx affected commands
+        uses: nrwl/nx-set-shas@v4
+
+      - name: Cache Vite dependency pre-bundle
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.vite
+          key: vite-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            vite-${{ runner.os }}-
+
+      - name: nx test affected
+        run: pnpm nx affected --target=test --parallel=4 --base=${{ env.NX_BASE }}
