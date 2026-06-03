@@ -52,13 +52,94 @@
     <ion-card-header>
       <ion-card-title>Primary key</ion-card-title>
     </ion-card-header>
+    @if (table?.meta?.primaryKey; as pk) {
+    <ion-list>
+      <ion-item>
+        <ion-label>{{ pk.name }}</ion-label>
+        <ion-text slot="end" color="medium" style="font-size: smaller"
+          >({{ pk.columns.join(', ') }})</ion-text
+        >
+      </ion-item>
+    </ion-list>
+    } @else {
+    <ion-card-content>
+      <ion-text color="medium">No primary key.</ion-text>
+    </ion-card-content>
+    }
   </ion-card>
   <ion-card>
     <ion-card-header>
       <ion-card-title>Foreign keys</ion-card-title>
     </ion-card-header>
+    @if (table?.meta?.foreignKeys?.length) {
+    <ion-list>
+      @for (fk of table?.meta?.foreignKeys || []; track fk.name) {
+      <ion-item>
+        <ion-label>
+          {{ fk.name }}
+          <p>
+            <ion-text color="medium" style="font-size: smaller">
+              ({{ fk.columns.join(', ') }}) ⇒
+              <a
+                href="{{ fk.refTable.schema }}.{{ fk.refTable.name }}"
+                (click)="goTable(fk.refTable.schema, fk.refTable.name, $event)"
+                >{{ fk.refTable.schema }}.{{ fk.refTable.name }}</a
+              >
+            </ion-text>
+          </p>
+        </ion-label>
+      </ion-item>
+      }
+    </ion-list>
+    } @else {
+    <ion-card-content>
+      <ion-text color="medium">No foreign keys.</ion-text>
+    </ion-card-content>
+    }
   </ion-card>
-  } @if (tab === 'references') {
+  @if (table?.meta?.alternateKeys?.length) {
+  <ion-card>
+    <ion-card-header>
+      <ion-card-title>Unique keys</ion-card-title>
+    </ion-card-header>
+    <ion-list>
+      @for (ak of table?.meta?.alternateKeys || []; track ak.name) {
+      <ion-item>
+        <ion-label>{{ ak.name }}</ion-label>
+        <ion-text slot="end" color="medium" style="font-size: smaller"
+          >({{ ak.columns.join(', ') }})</ion-text
+        >
+      </ion-item>
+      }
+    </ion-list>
+  </ion-card>
+  } @if (table?.meta?.indexes?.length) {
+  <ion-card>
+    <ion-card-header>
+      <ion-card-title>Indexes</ion-card-title>
+    </ion-card-header>
+    <ion-list>
+      @for (ix of table?.meta?.indexes || []; track ix.name) {
+      <ion-item>
+        <ion-label>
+          {{ ix.name }}
+          <p>
+            <ion-text color="medium" style="font-size: smaller">
+              ({{ indexColumns(ix) }})
+              @if (ix.type) { &middot; {{ ix.type }} }
+            </ion-text>
+          </p>
+        </ion-label>
+        @if (ix.primaryKey) {
+        <ion-badge slot="end" color="primary">PK</ion-badge>
+        } @if (ix.unique) {
+        <ion-badge slot="end" color="medium">unique</ion-badge>
+        }
+      </ion-item>
+      }
+    </ion-list>
+  </ion-card>
+  } } @if (tab === 'references') {
   <ion-card>
     <ion-list>
       <ion-item-divider>

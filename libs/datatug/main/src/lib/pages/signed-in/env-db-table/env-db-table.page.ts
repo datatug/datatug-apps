@@ -37,7 +37,7 @@ import { CellPopoverComponent, DataGridComponent } from '@sneat/datagrid';
 import { ColumnComponent } from 'tabulator-tables';
 import { IExecuteResponse, IRecordsetResult } from '../../../dto/execute';
 import { ICommandResponseWithRecordset } from '../../../dto/response';
-import { IForeignKey } from '../../../models/definition/apis/database';
+import { IForeignKey, IIndex } from '../../../models/definition/apis/database';
 import { IEnvDbTableContext, IProjectContext } from '../../../nav/nav-models';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import {
@@ -241,6 +241,10 @@ from ${from}`;
 
   protected colValue(colName: string): string {
     return this.currentRow?.data ? '' + this.currentRow.data[colName] : '';
+  }
+
+  protected indexColumns(index: IIndex): string {
+    return (index.columns || []).map((c) => c.name).join(', ');
   }
 
   private cellFormatter = (

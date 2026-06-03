@@ -8,16 +8,22 @@ export interface IEnvDatabaseBase {
 export interface IColumn {
   name: string;
   dbType: string;
+  pkPosition?: number;
+  isNullable?: boolean;
 }
 
 export interface ITableFull {
   schema: string;
   name: string;
+  /** Object kind, e.g. 'table' or 'view' (additive field from DataTug CLI). */
+  type?: 'table' | 'view' | string;
   dbType: 'BASE TABLE' | 'VIEW' | string;
   columns?: IColumn[];
   primaryKey?: IPrimaryKey;
   foreignKeys?: IForeignKey[];
   referencedBy?: IReferencedBy[];
+  indexes?: IIndex[];
+  alternateKeys?: IAlternateKey[];
 }
 
 export interface IPrimaryKey {
@@ -25,15 +31,38 @@ export interface IPrimaryKey {
   columns: string[];
 }
 
+/** Unique/alternate key (additive field from DataTug CLI). */
+export interface IAlternateKey {
+  name: string;
+  columns: string[];
+}
+
+export interface IIndexColumn {
+  name: string;
+}
+
+/** Table index (additive field from DataTug CLI). */
+export interface IIndex {
+  name: string;
+  type?: 'BTREE' | string;
+  unique?: boolean;
+  primaryKey?: boolean;
+  columns: IIndexColumn[];
+}
+
 export interface IReferencedBy {
   name: string;
   schema: string;
+  /** Object kind of the referencing table (additive field from DataTug CLI). */
+  type?: 'table' | 'view' | string;
   foreignKeys: IForeignKey[];
 }
 
 export interface ITableRef {
   name: string;
   schema: string;
+  /** Object kind of the referenced table (additive field from DataTug CLI). */
+  type?: 'table' | 'view' | string;
   catalog?: string;
 }
 export interface IForeignKey {
