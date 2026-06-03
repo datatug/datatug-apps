@@ -22,14 +22,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - uses: ./.github/actions/pnpm
 
       - name: Derive appropriate SHAs for base and head for nx affected commands
-        uses: nrwl/nx-set-shas@v4
+        uses: nrwl/nx-set-shas@v5
 
       - name: nx lint affected
         run: pnpm nx affected --target=lint --base=${{ env.NX_BASE }} --parallel=8
@@ -41,17 +41,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - uses: ./.github/actions/pnpm
 
       - name: Derive appropriate SHAs for base and head for nx affected commands
-        uses: nrwl/nx-set-shas@v4
+        uses: nrwl/nx-set-shas@v5
 
       - name: Cache Vite dependency pre-bundle
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: node_modules/.vite
           key: vite-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
