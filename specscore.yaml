@@ -5,3 +5,13 @@ project:
     host: github.com
     org: datatug
     repo: datatug-apps
+
+# Reviewer gates (event-keyed per the reviewer-gates contract / loader).
+# specstudio:specify guards gates.feature.approved.
+gates:
+  feature.approved:
+    reviewers:
+      - type: ai
+        name: spec-reviewer
+        prompt: .specscore/reviewers/specify-reviewer.md
+      - type: human
