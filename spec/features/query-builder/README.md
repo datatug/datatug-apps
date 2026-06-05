@@ -1,7 +1,7 @@
 # Feature: Query Builder
 
 > [SpecScore.**Studio**](https://specscore.studio): | [Explore](https://specscore.studio/app/github.com/datatug/datatug-apps/spec/features/query-builder?op=explore) | [Edit](https://specscore.studio/app/github.com/datatug/datatug-apps/spec/features/query-builder?op=edit) | [Ask question](https://specscore.studio/app/github.com/datatug/datatug-apps/spec/features/query-builder?op=ask) | [Request change](https://specscore.studio/app/github.com/datatug/datatug-apps/spec/features/query-builder?op=request-change) |
-**Status:** Approved
+**Status:** Under Review
 **Date:** 2026-06-05
 **Owner:** alexander.trakhimenok
 **Source Ideas:** —
@@ -11,7 +11,7 @@
 
 ## Summary
 
-The **Web Implementation** of the Serve-Brokered AI Query Builder Capability (`specscore:feature/serve-brokered-query-builder@github.com/datatug/datatug`): the web screen where a user *views and deterministically edits* the current query that a terminal AI-agent is building, with results, history, and tabs. The screen reads and writes the query through the [`ai-terminal-query-builder`](../ai-terminal-query-builder/README.md) comms layer; it presents the live query and results, point-and-click edit controls, the change history with revert, candidate-option previews, an Auto-run/Run control, and tabs — and deliberately contains **no AI-chat/prose input**, because the conversation lives in the terminal. This Feature specifies the Web-specific surface; platform-agnostic behavior is inherited from the Capability it `**Implements:**`.
+The **Web Implementation** of the Serve-Brokered AI Query Builder Capability (`specscore:feature/serve-brokered-query-builder@github.com/datatug/datatug`): the web screen where a user *views and edits* the current query that a terminal AI-agent is building, with results, history, and tabs. The screen reads and writes the query through the [`ai-terminal-query-builder`](../ai-terminal-query-builder/README.md) comms layer and adapts to the tab's **mode**: in **DTQL mode** it offers point-and-click edit controls over the dalgo AST (viewable as DTQL-YAML or rendered native query); in **native mode** it shows the connection's native query text in an editable text area. It also presents the live results, change history with revert, candidate-option previews, parameter inputs, an Auto-run/Run control, and tabs — and deliberately contains **no AI-chat/prose input**, because the conversation lives in the terminal. This Feature specifies the Web-specific surface; platform-agnostic behavior is inherited from the Capability it `**Implements:**`.
 
 ## Problem
 
@@ -35,7 +35,7 @@ The view MUST NOT include an AI-chat or natural-language/prose request input. Al
 
 #### REQ: query-visible
 
-The view MUST show the current query's definition, viewable in dalgo form and in native (dialect SQL) form, kept in sync with the live current query each change.
+The view MUST show the current query's definition and indicate the tab's mode. In DTQL mode it MUST be viewable in DTQL-YAML (the dalgo form) and in the rendered native query form; in native mode it MUST show the native query text. The display MUST stay in sync with the live current query each change.
 
 #### REQ: results-grid
 
@@ -49,7 +49,15 @@ The view MUST present an **Auto-run** checkbox and an explicit **Run** button. W
 
 #### REQ: deterministic-controls
 
-The view MUST provide point-and-click controls to add/remove/select columns, add/remove row filters, and change ordering, each issued as a structured edit through the comms layer (never as prose).
+In DTQL mode the view MUST provide point-and-click controls to add/remove/select fields/columns, add/remove row filters, change ordering, and select nested/sub-collections, each issued as a structured edit through the comms layer (never as prose).
+
+#### REQ: native-text-editor
+
+In native mode the view MUST present the tab's native query text in an editable text area and submit the edited text verbatim through the comms layer. This is query-language text, not chat prose: no natural-language instruction is sent for interpretation.
+
+#### REQ: parameter-inputs
+
+The view MUST present inputs for the tab's named parameters in both modes and submit their values (bound at execution) through the comms layer.
 
 #### REQ: history-and-revert
 
@@ -91,9 +99,9 @@ The view MUST surface error states from the comms layer (daemon unreachable, inv
 
 ### AC: query-viewable-both-forms (verifies REQ:query-visible)
 
-**Given** a tab with a non-empty current query
+**Given** a `dtql`-mode tab with a non-empty current query
 **When** the user views the query panel
-**Then** the query is shown and can be viewed in dalgo and native (SQL) forms, in sync with the live current query.
+**Then** the panel indicates DTQL mode and the query can be viewed in DTQL-YAML and rendered native forms, in sync with the live current query; and for a `native`-mode tab the panel indicates native mode and shows the native query text.
 
 ### AC: results-grid-limited (verifies REQ:results-grid)
 
@@ -109,9 +117,21 @@ The view MUST surface error states from the comms layer (daemon unreachable, inv
 
 ### AC: deterministic-edit-issued (verifies REQ:deterministic-controls)
 
-**Given** a tab with a current query
+**Given** a `dtql`-mode tab with a current query
 **When** the user adds a filter via the controls
 **Then** a structured edit is issued through the comms layer and the current query updates — with no prose involved.
+
+### AC: native-text-edit-issued (verifies REQ:native-text-editor)
+
+**Given** a `native`-mode tab shown in the view
+**When** the user edits the native query text and submits it
+**Then** the edited text is sent verbatim through the comms layer and becomes the current query, with no natural-language interpretation.
+
+### AC: parameter-values-submitted (verifies REQ:parameter-inputs)
+
+**Given** a tab declaring a named parameter, in either mode
+**When** the user enters a parameter value and runs the query
+**Then** the value is submitted through the comms layer and bound at execution.
 
 ### AC: revert-from-history (verifies REQ:history-and-revert)
 
@@ -141,6 +161,7 @@ Every AC has a concrete UI surface (view route, panels, grid, controls, error st
 - An AI-chat/prose panel — explicitly excluded (REQ:no-chat-panel); the conversation is in the terminal.
 - The terminal agent and its query construction — owned by the `query-builder` skill in `datatug-ai-skills`.
 - Persisting history across reloads — in-page only; the comms layer rehydrates current state from the daemon.
+- Switching a tab's mode — `dtql`→`native` conversion is an agent/daemon operation; this screen reflects the tab's mode and never parses native text back into the AST.
 - Which refinement operations are guaranteed vs unsupported — an agent/skill concern; this screen renders and edits whatever valid read-only query the tab holds.
 
 ## Open Questions
