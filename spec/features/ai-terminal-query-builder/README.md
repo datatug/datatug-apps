@@ -10,7 +10,7 @@
 
 ## Summary
 
-The web-side **communication layer** between the DataTug Web UI and the local DataTug DAL backend daemon (`datatug serve` + the serve-brokered query-builder broker). It ingests the deep link the terminal AI-agent produces, exchanges the one-time code for a session token, connects to the local daemon over HTTP (commands) and WebSocket (live updates), and brokers the query-builder protocol for the [`query-builder`](../query-builder/README.md) screen: subscribing to the tab's live current query + results, maintaining the in-page change history, sending deterministic edits / revert / run, and transporting candidate options. This Feature owns the client/transport contract only; the screen and its controls are specified in `query-builder`.
+The web-side **communication layer** between the DataTug Web UI and the local DataTug DAL backend daemon (`datatug serve` + the serve-brokered query-builder broker). It ingests the deep link the terminal AI-agent produces, exchanges the one-time code for a session token, connects to the local daemon over HTTP (commands) and WebSocket (live updates), and brokers the query-builder protocol for the [`query-builder`](../query-builder/README.md) screen: subscribing to the tab's live current query + results + **mode**, maintaining the in-page change history, sending mode-appropriate edits (structured AST edits in DTQL mode, verbatim native text in native mode), parameter values, revert, and run, and transporting candidate options. This Feature owns the client/transport contract only; the screen and its controls are specified in `query-builder`.
 
 ## Problem
 
@@ -32,7 +32,7 @@ Using the host and token from the link, the layer MUST open an HTTP channel (for
 
 #### REQ: subscribe-live
 
-On connecting, the layer MUST subscribe over WebSocket to the tab and expose to the UI the tab's current query and latest results, applying every subsequent daemon-pushed update so the UI reflects the live state without manual refresh.
+On connecting, the layer MUST subscribe over WebSocket to the tab and expose to the UI the tab's current query, its mode (`dtql` or `native`), and latest results, applying every subsequent daemon-pushed update (including a mode change from a `dtql`→`native` conversion) so the UI reflects the live state without manual refresh.
 
 #### REQ: maintain-history
 
@@ -46,7 +46,15 @@ On a page reload, the layer MUST rehydrate the tab's current query and results f
 
 #### REQ: send-structured-edits
 
-The layer MUST send the user's deterministic edits (add/remove/select column, add filter, set ordering) to the daemon as structured operations on the tab — never as prose.
+For a `dtql`-mode tab the layer MUST send the user's deterministic edits (add/remove/select field-or-column, add filter, set ordering, select nested/sub-collection) to the daemon as structured operations on the tab — never as prose.
+
+#### REQ: send-native-text
+
+For a `native`-mode tab the layer MUST send the user's edited native query text to the daemon verbatim, without parsing or interpreting it as a natural-language instruction.
+
+#### REQ: send-parameters
+
+In both modes the layer MUST send the tab's parameter values to the daemon for binding at execution.
 
 #### REQ: send-revert
 
@@ -110,9 +118,21 @@ If the daemon is unreachable, the token/code is invalid, or the WebSocket drops,
 
 ### AC: edits-sent-structured (verifies REQ:send-structured-edits)
 
-**Given** a connected tab
+**Given** a connected `dtql`-mode tab
 **When** the user adds a filter through the UI
 **Then** the layer sends it to the daemon as a structured edit operation, not as prose.
+
+### AC: native-text-sent-verbatim (verifies REQ:send-native-text)
+
+**Given** a connected `native`-mode tab
+**When** the user edits the native query text and submits it
+**Then** the layer sends the text to the daemon verbatim, with no interpretation.
+
+### AC: parameters-sent (verifies REQ:send-parameters)
+
+**Given** a connected tab with a named parameter, in either mode
+**When** the user sets the parameter value
+**Then** the layer sends the value to the daemon for binding at execution.
 
 ### AC: revert-sent (verifies REQ:send-revert)
 
@@ -154,6 +174,7 @@ Every AC has a concrete client-surface (link parsing, token exchange, HTTP/WS ca
 
 - Transport specifics for the live channel — WebSocket vs SSE — must match whatever the daemon settles on.
 - Token lifetime and refresh: does a dropped connection re-exchange a fresh one-time code, or reuse the session token until the daemon session ends?
+- Parameter message shape (REQ:send-parameters): do parameter values ride with the `trigger-run` request, or travel as a standalone operation? The daemon Feature owns the wire schema; this must align with it.
 
 ---
 *This document follows the https://specscore.md/feature-specification*
