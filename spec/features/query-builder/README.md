@@ -1,7 +1,7 @@
 # Feature: Query Builder
 
 > [SpecScore.**Studio**](https://specscore.studio): | [Explore](https://specscore.studio/app/github.com/datatug/datatug-apps/spec/features/query-builder?op=explore) | [Edit](https://specscore.studio/app/github.com/datatug/datatug-apps/spec/features/query-builder?op=edit) | [Ask question](https://specscore.studio/app/github.com/datatug/datatug-apps/spec/features/query-builder?op=ask) | [Request change](https://specscore.studio/app/github.com/datatug/datatug-apps/spec/features/query-builder?op=request-change) |
-**Status:** Under Review
+**Status:** Approved
 **Date:** 2026-06-05
 **Owner:** alexander.trakhimenok
 **Source Ideas:** —
@@ -97,11 +97,17 @@ The view MUST surface error states from the comms layer (daemon unreachable, inv
 **When** the user inspects its controls
 **Then** there is no AI-chat or natural-language request input — only deterministic editing controls.
 
-### AC: query-viewable-both-forms (verifies REQ:query-visible)
+### AC: query-viewable-dtql-forms (verifies REQ:query-visible)
 
 **Given** a `dtql`-mode tab with a non-empty current query
 **When** the user views the query panel
-**Then** the panel indicates DTQL mode and the query can be viewed in DTQL-YAML and rendered native forms, in sync with the live current query; and for a `native`-mode tab the panel indicates native mode and shows the native query text.
+**Then** the panel indicates DTQL mode and the query can be viewed in DTQL-YAML and rendered native forms, in sync with the live current query.
+
+### AC: query-viewable-native-text (verifies REQ:query-visible)
+
+**Given** a `native`-mode tab with a non-empty current query
+**When** the user views the query panel
+**Then** the panel indicates native mode and shows the native query text, in sync with the live current query.
 
 ### AC: results-grid-limited (verifies REQ:results-grid)
 

@@ -1,7 +1,7 @@
 # Feature: AI-Terminal Query Builder
 
 > [SpecScore.**Studio**](https://specscore.studio): | [Explore](https://specscore.studio/app/github.com/datatug/datatug-apps/spec/features/ai-terminal-query-builder?op=explore) | [Edit](https://specscore.studio/app/github.com/datatug/datatug-apps/spec/features/ai-terminal-query-builder?op=edit) | [Ask question](https://specscore.studio/app/github.com/datatug/datatug-apps/spec/features/ai-terminal-query-builder?op=ask) | [Request change](https://specscore.studio/app/github.com/datatug/datatug-apps/spec/features/ai-terminal-query-builder?op=request-change) |
-**Status:** Under Review
+**Status:** Approved
 **Date:** 2026-06-05
 **Owner:** alexander.trakhimenok
 **Source Ideas:** —
@@ -174,6 +174,7 @@ Every AC has a concrete client-surface (link parsing, token exchange, HTTP/WS ca
 
 - Transport specifics for the live channel — WebSocket vs SSE — must match whatever the daemon settles on.
 - Token lifetime and refresh: does a dropped connection re-exchange a fresh one-time code, or reuse the session token until the daemon session ends?
+- Parameter message shape (REQ:send-parameters): do parameter values ride with the `trigger-run` request, or travel as a standalone operation? The daemon Feature owns the wire schema; this must align with it.
 
 ---
 *This document follows the https://specscore.md/feature-specification*
