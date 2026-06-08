@@ -1,3 +1,7 @@
+---
+format: https://specscore.md/ideas-index-specification
+---
+
 # Ideas
 
 Pre-spec one-pagers. Each Idea is a lint-clean problem-direction-MVP one-pager that may later promote into one or more SpecScore Features under [`features/`](../features/README.md).
