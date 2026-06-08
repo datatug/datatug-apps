@@ -87,6 +87,13 @@
       "options": {
         "reportsDirectory": "../../coverage/apps/datatug-app"
       }
+    },
+    "e2e": {
+      "executor": "nx:run-commands",
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-app-e2e"],
+      "options": {
+        "command": "playwright test -c apps/datatug-app/playwright.config.ts"
+      }
     }
   }
 }

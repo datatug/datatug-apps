@@ -15,6 +15,9 @@ import {
   IonToolbar,
 } from '@ionic/angular/standalone';
 import { CopyrightComponent } from '@sneat/components';
+import { NewProjectService } from '../../project/new-project/new-project.service';
+import { DatatugUserService } from '../../services/base/datatug-user-service';
+import { DatatugServicesNavModule } from '../../services/nav/datatug-services-nav.module';
 import { DatatugServicesStoreModule } from '../../services/repo/datatug-services-store.module';
 import { WormholeModule } from '@sneat/wormhole';
 import { MyDatatugProjectsComponent } from './my-projects/my-datatug-projects.component';
@@ -35,6 +38,7 @@ import { MyStoresComponent } from './my-stores/my-stores.component';
     FormsModule,
     // CoreModule,
     WormholeModule,
+    DatatugServicesNavModule,
     DatatugServicesStoreModule,
     // NewProjectFormComponent,
     // GuiGridModule,
@@ -54,6 +58,7 @@ import { MyStoresComponent } from './my-stores/my-stores.component';
     IonButton,
     IonIcon,
   ],
+  providers: [DatatugUserService, NewProjectService],
 })
 export class DatatugHomePageComponent {
   // infoPanel: GuiInfoPanel = {

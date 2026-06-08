@@ -17,7 +17,6 @@ permissions:
   actions: read
 
 jobs:
-
   build:
     runs-on: ubuntu-latest
     steps:
@@ -60,3 +59,23 @@ jobs:
 
       - name: nx test affected
         run: pnpm nx affected --target=test --parallel=4 --base=${{ env.NX_BASE }}
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/pnpm
+
+      - name: Derive appropriate SHAs for base and head for nx affected commands
+        uses: nrwl/nx-set-shas@v5
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: nx e2e affected
+        run: pnpm nx affected --target=e2e --parallel=1 --base=${{ env.NX_BASE }}
