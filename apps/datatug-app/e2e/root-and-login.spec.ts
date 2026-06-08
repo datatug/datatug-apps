@@ -49,6 +49,8 @@ test('renders the root page', async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByText('My projects')).toBeVisible();
   await expect(page.locator('sneat-datatug-home')).toBeVisible();
+  await expect(page.locator('sneat-datatug-menu')).toBeVisible();
+  await expect(page.locator('ion-menu')).toBeVisible();
   expect(clientErrors).toEqual([]);
 });
 

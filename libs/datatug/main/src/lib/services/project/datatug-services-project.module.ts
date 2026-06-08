@@ -1,10 +1,11 @@
 import { NgModule } from '@angular/core';
+import { ProjectContextService } from './project-context.service';
+import { ProjectService } from './project.service';
 
 @NgModule({
-  imports: [],
   providers: [
-    // ProjectService,
-    // ProjectContextService,
+    ProjectContextService,
+    ProjectService,
   ],
 })
 export class DatatugServicesProjectModule {}

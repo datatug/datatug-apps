@@ -1,6 +1,7 @@
 import { NgModule } from '@angular/core';
 import { SchemaService } from './schema.service';
 import { EntityService } from './entity.service';
+import { EnvironmentService } from './environment.service';
 import { DbServerService } from './db-server.service';
 import { RecordsetService } from './recordset.service';
 import { VariableService } from './variable.service';
@@ -12,7 +13,7 @@ import { HttpClientModule } from '@angular/common/http';
   providers: [
     DbServerService,
     EntityService,
-    // EnvironmentService,
+    EnvironmentService,
     RecordsetService,
     SchemaService,
     VariableService,

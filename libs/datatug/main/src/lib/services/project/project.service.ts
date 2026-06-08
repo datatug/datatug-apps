@@ -43,7 +43,6 @@ export class ProjectService {
   // private readonly projectsCollection: AngularFirestoreCollection;
 
   constructor() {
-    throw new Error('Not implemented');
     // this.projectsCollection =
     // 	db.collection<IProjectSummary>('datatug_projects');
   }

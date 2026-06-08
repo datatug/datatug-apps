@@ -23,13 +23,6 @@ import {
 } from '../services/base/datatug-user-service';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import { DatatugNavService } from '../services/nav/datatug-nav.service';
-import { AppContextService } from '../core/services/app-context.service';
-import { ProjectContextService } from '../services/project/project-context.service';
-import { ProjectService } from '../services/project/project.service';
-import { EnvironmentService } from '../services/unsorted/environment.service';
-import { DatatugStoreServiceFactory } from '../services/repo/datatug-store-service-factory.service';
-import { DatatugStoreFirestoreService } from '../services/repo/datatug-store.service.firestore';
-import { DatatugStoreGithubService } from '../services/repo/datatug-store.service.github';
 import { NewProjectService } from '../project/new-project/new-project.service';
 import { ProjectMenuComponent } from '../components/project/project-menu/project-menu.component';
 import { MenuStoreSelectorComponent } from './menu-store-selector.component';
@@ -56,15 +49,8 @@ import { MenuEnvSelectorComponent } from './menu-env-selector.component';
     ProjectMenuComponent,
   ],
   providers: [
-    AppContextService,
-    ProjectContextService,
-    ProjectService,
-    EnvironmentService,
     DatatugUserService,
     NewProjectService,
-    DatatugStoreServiceFactory,
-    DatatugStoreFirestoreService,
-    DatatugStoreGithubService,
   ],
 })
 export class DatatugMenuComponent implements OnDestroy {
