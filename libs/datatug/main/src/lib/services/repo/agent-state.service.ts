@@ -23,6 +23,10 @@ export class AgentStateService {
 
   private watchers: Record<string, Observable<IAgentState>> = {};
 
+  // Stores for which we already logged the "no agent detected" info, so the
+  // 10s polling watcher does not repeat it on every failed probe.
+  private readonly noAgentLoggedFor = new Set<string>();
+
   public getAgentInfo(storeId: string): Observable<IAgentState> {
     return this.watchAgentInfo(storeId).pipe(first());
   }
@@ -42,6 +46,19 @@ export class AgentStateService {
               err.ok === false &&
               err.status === 0
             ) {
+              // Connection refused / unreachable = no local agent running.
+              // This is an expected, normal situation. The browser still logs a
+              // "net::ERR_CONNECTION_REFUSED" error for the request itself, which
+              // cannot be suppressed from JS, so explain it once per store.
+              if (!this.noAgentLoggedFor.has(storeId)) {
+                this.noAgentLoggedFor.add(storeId);
+                console.info(
+                  `DataTug: no local agent detected at "${storeId}". This is ` +
+                    `normal if you are not running a local DataTug agent. The ` +
+                    `preceding "net::ERR_CONNECTION_REFUSED" console error for ` +
+                    `the agent-info request is expected and can be ignored.`,
+                );
+              }
               return of(undefined);
             }
             return throwError(err);
