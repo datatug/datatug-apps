@@ -1,0 +1,15 @@
+diff --git a/esm2022/lib/pages/login-page/login-with-telegram.component.js b/esm2022/lib/pages/login-page/login-with-telegram.component.js
+index b98cff8bd28dfa1629d09023e3eec70e35debb2a..b3deb26628c355f24c925ed92546de08fd65f948 100644
+--- a/esm2022/lib/pages/login-page/login-with-telegram.component.js
++++ b/esm2022/lib/pages/login-page/login-with-telegram.component.js
+@@ -12,7 +12,9 @@ export class LoginWithTelegramComponent {
+         this.isUserAuthenticated = false;
+         this.botID = location.hostname.startsWith('local')
+             ? 'AlextDevBot'
+-            : 'SneatBot';
++            : location.hostname.includes('datatug')
++                ? 'DataTugBot'
++                : 'SneatBot';
+         this.size = 'large';
+         this.requestAccess = 'write';
+         this.userPic = true;

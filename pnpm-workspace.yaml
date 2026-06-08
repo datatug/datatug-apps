@@ -13,3 +13,5 @@ allowBuilds:
   oxc-resolver: true
   protobufjs: true
   unrs-resolver: true
+patchedDependencies:
+  '@sneat/auth-ui@0.1.4': patches/@sneat__auth-ui@0.1.4.patch
