@@ -1,7 +1,8 @@
 import { Component, OnDestroy, inject } from '@angular/core';
+import { NavigationEnd, Router } from '@angular/router';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { Observable, Subject } from 'rxjs';
-import { takeUntil } from 'rxjs/operators';
+import { filter, takeUntil } from 'rxjs/operators';
 import {
   AuthStatus,
   AuthStatuses,
@@ -57,7 +58,9 @@ export class DatatugMenuComponent implements OnDestroy {
   private readonly datatugNavContextService = inject(DatatugNavContextService);
   private readonly nav = inject(DatatugNavService);
   private readonly datatugUserService = inject(DatatugUserService);
+  private readonly router = inject(Router);
 
+  public isLoginPage = false;
   public authStatus?: AuthStatus;
   public currentStoreId?: string;
   public currentProject?: IProjectContext;
@@ -72,6 +75,14 @@ export class DatatugMenuComponent implements OnDestroy {
   constructor() {
     const errorLogger = this.errorLogger;
     const datatugNavContextService = this.datatugNavContextService;
+
+    this.isLoginPage = this.isLoginUrl(this.router.url);
+    this.router.events
+      .pipe(
+        filter((e): e is NavigationEnd => e instanceof NavigationEnd),
+        takeUntil(this.destroyed),
+      )
+      .subscribe((e) => (this.isLoginPage = this.isLoginUrl(e.urlAfterRedirects)));
 
     this.sneatAuthStateService.authState
       .pipe(takeUntil(this.destroyed))
@@ -98,6 +109,10 @@ export class DatatugMenuComponent implements OnDestroy {
     } catch (e) {
       errorLogger.logError(e, 'Failed to setup context tracking');
     }
+  }
+
+  private isLoginUrl(url: string): boolean {
+    return url.split(/[?#]/)[0] === '/login';
   }
 
   private trackAuthState(): void {

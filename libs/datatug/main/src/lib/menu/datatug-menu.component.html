@@ -1,6 +1,8 @@
-<ion-card>
-  <sneat-auth-menu-item />
-</ion-card>
+@if (!isLoginPage) {
+  <ion-card>
+    <sneat-auth-menu-item />
+  </ion-card>
+}
 
 <ion-card>
   <sneat-datatug-menu-store-selector [datatugUser]="datatugUserState?.record" />
