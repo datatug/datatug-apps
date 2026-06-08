@@ -8,6 +8,14 @@ import {
   ISneatAuthState,
   SneatAuthStateService,
 } from '@sneat/auth-core';
+import { AuthMenuItemComponent } from '@sneat/auth-ui';
+import { WormholeModule } from '@sneat/wormhole';
+import { IonCard, IonCardContent } from '@ionic/angular/standalone';
+import { DatatugCoreModule } from '../core/datatug-core.module';
+import { DatatugServicesStoreModule } from '../services/repo/datatug-services-store.module';
+import { DatatugServicesProjectModule } from '../services/project/datatug-services-project.module';
+import { DatatugServicesNavModule } from '../services/nav/datatug-services-nav.module';
+import { DatatugServicesUnsortedModule } from '../services/unsorted/datatug-services-unsorted.module';
 import { IEnvDbTableContext, IProjectContext } from '../nav/nav-models';
 import {
   DatatugUserService,
@@ -15,11 +23,49 @@ import {
 } from '../services/base/datatug-user-service';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import { DatatugNavService } from '../services/nav/datatug-nav.service';
+import { AppContextService } from '../core/services/app-context.service';
+import { ProjectContextService } from '../services/project/project-context.service';
+import { ProjectService } from '../services/project/project.service';
+import { EnvironmentService } from '../services/unsorted/environment.service';
+import { DatatugStoreServiceFactory } from '../services/repo/datatug-store-service-factory.service';
+import { DatatugStoreFirestoreService } from '../services/repo/datatug-store.service.firestore';
+import { DatatugStoreGithubService } from '../services/repo/datatug-store.service.github';
+import { NewProjectService } from '../project/new-project/new-project.service';
+import { ProjectMenuComponent } from '../components/project/project-menu/project-menu.component';
+import { MenuStoreSelectorComponent } from './menu-store-selector.component';
+import { MenuProjectSelectorComponent } from './menu-project-selector.component';
+import { MenuEnvSelectorComponent } from './menu-env-selector.component';
 
 @Component({
   selector: 'sneat-datatug-menu',
   templateUrl: './datatug-menu.component.html',
   styleUrls: ['./datatug-menu.component.scss'],
+  imports: [
+    IonCard,
+    IonCardContent,
+    AuthMenuItemComponent,
+    WormholeModule,
+    DatatugCoreModule,
+    DatatugServicesStoreModule,
+    DatatugServicesProjectModule,
+    DatatugServicesNavModule,
+    DatatugServicesUnsortedModule,
+    MenuStoreSelectorComponent,
+    MenuProjectSelectorComponent,
+    MenuEnvSelectorComponent,
+    ProjectMenuComponent,
+  ],
+  providers: [
+    AppContextService,
+    ProjectContextService,
+    ProjectService,
+    EnvironmentService,
+    DatatugUserService,
+    NewProjectService,
+    DatatugStoreServiceFactory,
+    DatatugStoreFirestoreService,
+    DatatugStoreGithubService,
+  ],
 })
 export class DatatugMenuComponent implements OnDestroy {
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
@@ -33,7 +79,7 @@ export class DatatugMenuComponent implements OnDestroy {
   public currentProject?: IProjectContext;
 
   public table?: IEnvDbTableContext;
-  public currentFolder?: Observable<string>;
+  public currentFolder?: Observable<string | undefined>;
   public authState: ISneatAuthState = { status: AuthStatuses.authenticating };
   private readonly destroyed = new Subject<void>();
 
@@ -43,7 +89,6 @@ export class DatatugMenuComponent implements OnDestroy {
     const errorLogger = this.errorLogger;
     const datatugNavContextService = this.datatugNavContextService;
 
-    // console.log('DatatugMenuComponent.constructor()');
     this.sneatAuthStateService.authState
       .pipe(takeUntil(this.destroyed))
       .subscribe({
@@ -55,9 +100,6 @@ export class DatatugMenuComponent implements OnDestroy {
         ),
       });
 
-    // userService.userRecord.subscribe(user => {
-    // 	this.projects = user?.data?.dataTugProjects;
-    // });
     try {
       this.trackAuthState();
       this.trackCurrentUser();
@@ -73,10 +115,6 @@ export class DatatugMenuComponent implements OnDestroy {
       errorLogger.logError(e, 'Failed to setup context tracking');
     }
   }
-
-  // public get currentProjUrlId(): string | undefined {
-  // 	return projectRefToString(this.currentProject?.ref);
-  // }
 
   private trackAuthState(): void {
     if (!this.sneatAuthStateService) {
@@ -109,7 +147,6 @@ export class DatatugMenuComponent implements OnDestroy {
         .subscribe({
           next: (datatugUser) => {
             this.datatugUserState = datatugUser;
-            // console.log('trackCurrentUser() => datatugUser:', datatugUser);
           },
           error: this.errorLogger.logErrorHandler(
             'Failed to get user record for menu',

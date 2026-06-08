@@ -13,7 +13,7 @@
     @if (!currentEnvId && project?.summary?.environments) {
       <ion-badge color="light" class="ion-margin-start">
         <ion-text color="medium" style="font-weight: normal"
-          >{{ project?.summary?.environments.length }}
+          >{{ project?.summary?.environments?.length }}
         </ion-text>
       </ion-badge>
     }
@@ -24,7 +24,7 @@
       interface="popover"
       (ionChange)="switchEnv($event)"
     >
-      @for (env of project.summary.environments; track env) {
+      @for (env of project!.summary!.environments!; track env) {
         <ion-select-option [value]="env.id"
           >{{ env.title || env.id }}
         </ion-select-option>

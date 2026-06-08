@@ -7,6 +7,15 @@ import {
   SimpleChanges,
   inject,
 } from '@angular/core';
+import {
+  IonButton,
+  IonButtons,
+  IonIcon,
+  IonItem,
+  IonLabel,
+  IonSelect,
+  IonSelectOption,
+} from '@ionic/angular/standalone';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { parseStoreRef } from '@sneat/core';
 import { IProjectContext } from '../nav/nav-models';
@@ -22,6 +31,15 @@ import {
 @Component({
   selector: 'sneat-datatug-menu-project-selector',
   templateUrl: 'menu-project-selector.component.html',
+  imports: [
+    IonItem,
+    IonButtons,
+    IonButton,
+    IonIcon,
+    IonLabel,
+    IonSelect,
+    IonSelectOption,
+  ],
 })
 export class MenuProjectSelectorComponent implements OnChanges {
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
@@ -54,13 +72,13 @@ export class MenuProjectSelectorComponent implements OnChanges {
     });
   }
 
-  private setProject = (project: IProjectContext): void => {
+  private setProject = (project: IProjectContext | undefined): void => {
     this.project = project;
     this.currentProjectId = project?.ref?.projectId;
   };
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes.datatugUser) {
+    if (changes['datatugUser']) {
       if (this.datatugUser?.datatug?.stores && this.currentStoreId) {
         const projectsById =
           this.datatugUser?.datatug?.stores[this.currentStoreId]?.projects;

@@ -6,7 +6,17 @@ import {
   SimpleChanges,
   inject,
 } from '@angular/core';
-import { IErrorLogger } from '@sneat/core';
+import { RouterLink } from '@angular/router';
+import {
+  IonButton,
+  IonButtons,
+  IonIcon,
+  IonItem,
+  IonLabel,
+  IonSelect,
+  IonSelectOption,
+} from '@ionic/angular/standalone';
+import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { Subject } from 'rxjs';
 import { filter, takeUntil } from 'rxjs/operators';
 import {
@@ -20,9 +30,19 @@ import { DatatugNavService } from '../services/nav/datatug-nav.service';
 @Component({
   selector: 'sneat-datatug-menu-store-selector',
   templateUrl: 'menu-store-selector.component.html',
+  imports: [
+    RouterLink,
+    IonItem,
+    IonButtons,
+    IonButton,
+    IonIcon,
+    IonLabel,
+    IonSelect,
+    IonSelectOption,
+  ],
 })
 export class MenuStoreSelectorComponent implements OnDestroy, OnChanges {
-  private readonly errorLogger = inject(IErrorLogger);
+  private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly nav = inject(DatatugNavService);
   readonly datatugNavContextService = inject(DatatugNavContextService);
 
@@ -48,7 +68,7 @@ export class MenuStoreSelectorComponent implements OnDestroy, OnChanges {
             !(id === null && !this.currentStoreId),
         ),
       )
-      .subscribe((storeId: string) => {
+      .subscribe((storeId: string | undefined) => {
         console.log(
           'MenuStoreSelectorComponent => external store change:',
           storeId,
@@ -64,7 +84,7 @@ export class MenuStoreSelectorComponent implements OnDestroy, OnChanges {
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes.datatugUser) {
+    if (changes['datatugUser']) {
       this.stores = allUserStoresAsFlatList(this.datatugUser?.datatug?.stores);
     }
   }
@@ -82,18 +102,14 @@ export class MenuStoreSelectorComponent implements OnDestroy, OnChanges {
     try {
       const value: string = event.detail.value;
       if (value) {
-        // const store: IDatatugStoreContext = {
-        // 	ref: parseStoreRef(value),
-        // 	brief: this.stores?.find((store) => store.id === value),
-        // };
-        // this.nav.goStore(store);
+        // this.nav.goStore(...);
       }
-    } catch (e) {
+    } catch (e: unknown) {
       this.errorLogger.logError(e, 'Failed to handle store switch');
     }
   }
 
-  trackById(store: IDatatugStoreBriefWithId) {
+  trackById(_index: number, store: IDatatugStoreBriefWithId): string {
     return store.id;
   }
 }
