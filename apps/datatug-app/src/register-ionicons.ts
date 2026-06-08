@@ -68,6 +68,7 @@ import {
   listOutline,
   logOutOutline,
   logoGithub,
+  logoWindows,
   mailOutline,
   pauseCircleOutline,
   pauseOutline,
@@ -77,6 +78,7 @@ import {
   person,
   personAdd,
   personAddOutline,
+  personCircleOutline,
   personOutline,
   phonePortraitOutline,
   play,
@@ -92,8 +94,10 @@ import {
   removeCircleOutline,
   reorderTwoOutline,
   save,
+  saveOutline,
   searchOutline,
   serverOutline,
+  settings,
   settingsOutline,
   shareOutline,
   squareOutline,
@@ -111,6 +115,7 @@ import {
   trainOutline,
   trash,
   trashBinOutline,
+  trashOutline,
 } from 'ionicons/icons';
 
 export function registerIonicons() {
@@ -183,6 +188,7 @@ export function registerIonicons() {
     listOutline,
     logOutOutline,
     logoGithub,
+    logoWindows,
     mailOutline,
     pauseCircleOutline,
     pauseOutline,
@@ -192,6 +198,7 @@ export function registerIonicons() {
     person,
     personAdd,
     personAddOutline,
+    personCircleOutline,
     personOutline,
     phonePortraitOutline,
     play,
@@ -207,8 +214,10 @@ export function registerIonicons() {
     removeCircleOutline,
     reorderTwoOutline,
     save,
+    saveOutline,
     searchOutline,
     serverOutline,
+    settings,
     settingsOutline,
     shareOutline,
     squareOutline,
@@ -226,5 +235,6 @@ export function registerIonicons() {
     trainOutline,
     trash,
     trashBinOutline,
+    trashOutline,
   });
 }
