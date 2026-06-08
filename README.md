@@ -72,6 +72,18 @@ pnpm nx graph
 └── eslint.config.js        - ESLint config
 ```
 
+## Coding conventions
+
+### Change detection & state (zoneless-ready)
+
+The app is **not yet fully zoneless** — Zone.js is still shipped (`apps/datatug-app/project.json` → `polyfills: ["zone.js"]`) because Ionic does not yet support zoneless change detection. We will drop Zone.js once Ionic supports it.
+
+**All new code must follow the zoneless approach:**
+
+- Expose component state to templates via **signals** (`signal()`, `computed()`), not plain mutable fields. Read them in templates with `()` (e.g. `@if (!isLoginPage())`).
+- Never rely on Zone.js to notice async state changes — signal writes notify change detection directly, so components stay correct now and after the zoneless switch.
+- Prefer `OnPush` and signal-based patterns for new components.
+
 ## Continuous integration
 
 CI runs via GitHub Actions — see [`.github/workflows/ci.yml`](.github/workflows/ci.yml).

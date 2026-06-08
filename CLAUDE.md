@@ -21,3 +21,13 @@
 - The `nx-generate` skill handles generator discovery internally - don't call nx_docs just to look up generator syntax
 
 <!-- nx configuration end-->
+
+# Change detection & state (zoneless-ready)
+
+The app is **not yet fully zoneless** — Zone.js is still shipped (`apps/datatug-app/project.json` → `polyfills: ["zone.js"]`) because Ionic does not yet support zoneless change detection. We will drop Zone.js once Ionic supports it.
+
+**All new code and changes must follow the zoneless approach:**
+
+- Expose component state to templates via **signals** (`signal()`, `computed()`), not plain mutable fields. Read them in templates with `()` (e.g. `@if (!isLoginPage())`).
+- Never rely on Zone.js to notice async state changes — signal writes notify change detection directly, so components stay correct now and after the zoneless switch.
+- Prefer `OnPush` and signal-based patterns for new components.
