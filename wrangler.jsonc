@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "datatug-app",
+  "name": "datatug-apps",
   "compatibility_date": "2026-06-08",
   "assets": {
     "directory": "./dist/apps/datatug-app/browser",
