@@ -5,14 +5,14 @@
 }
 
 <ion-card>
-  <sneat-datatug-menu-store-selector [datatugUser]="datatugUserState?.record" />
-  @if (currentStoreId) {
+  <sneat-datatug-menu-store-selector [datatugUser]="datatugUserState()?.record" />
+  @if (currentStoreId()) {
     <sneat-datatug-menu-project-selector
-      [datatugUser]="datatugUserState?.record"
+      [datatugUser]="datatugUserState()?.record"
       (projectChanged)="onProjectChanged($event)"
     />
   }
-  @if (currentProject) {
+  @if (currentProject()) {
     <sneat-datatug-menu-env-selector />
   }
 </ion-card>
@@ -20,7 +20,7 @@
 <!--<sneat-datatug-context-card *ngIf="currentProjectId" [projectId]="currentProjectId"/>-->
 
 <!--<sneat-datatug-table-meta-card *ngIf="table" [meta]="table?.meta"/>-->
-@if (currentProject) {
+@if (currentProject()) {
   <sneat-datatug-project-menu />
 }
 

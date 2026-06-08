@@ -2,14 +2,8 @@ import { Component, OnDestroy, inject, signal } from '@angular/core';
 import { Analytics, logEvent } from '@angular/fire/analytics';
 import { NavigationEnd, Router } from '@angular/router';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
-import { Observable, Subject } from 'rxjs';
+import { Subject } from 'rxjs';
 import { filter, takeUntil } from 'rxjs/operators';
-import {
-  AuthStatus,
-  AuthStatuses,
-  ISneatAuthState,
-  SneatAuthStateService,
-} from '@sneat/auth-core';
 import { AuthMenuItemComponent } from '@sneat/auth-ui';
 import { IonCard, IonCardContent } from '@ionic/angular/standalone';
 import { DatatugCoreModule } from '../core/datatug-core.module';
@@ -23,7 +17,6 @@ import {
   IDatatugUserState,
 } from '../services/base/datatug-user-service';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
-import { DatatugNavService } from '../services/nav/datatug-nav.service';
 import { NewProjectService } from '../project/new-project/new-project.service';
 import { ProjectMenuComponent } from '../components/project/project-menu/project-menu.component';
 import { MenuStoreSelectorComponent } from './menu-store-selector.component';
@@ -55,26 +48,24 @@ import { MenuEnvSelectorComponent } from './menu-env-selector.component';
 })
 export class DatatugMenuComponent implements OnDestroy {
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
-  private readonly sneatAuthStateService = inject(SneatAuthStateService);
   private readonly datatugNavContextService = inject(DatatugNavContextService);
-  private readonly nav = inject(DatatugNavService);
   private readonly datatugUserService = inject(DatatugUserService);
   private readonly router = inject(Router);
   // Analytics is only provided in production (when a measurementId is set),
   // so inject it optionally and no-op when absent.
   private readonly analytics = inject(Analytics, { optional: true });
 
-  public readonly isLoginPage = signal(false);
-  public authStatus?: AuthStatus;
-  public currentStoreId?: string;
-  public currentProject?: IProjectContext;
+  protected readonly isLoginPage = signal(false);
+  protected readonly currentStoreId = signal<string | undefined>(undefined);
+  protected readonly currentProject = signal<IProjectContext | undefined>(
+    undefined,
+  );
+  protected readonly datatugUserState = signal<IDatatugUserState | undefined>(
+    undefined,
+  );
 
   public table?: IEnvDbTableContext;
-  public currentFolder?: Observable<string | undefined>;
-  public authState: ISneatAuthState = { status: AuthStatuses.authenticating };
   private readonly destroyed = new Subject<void>();
-
-  public datatugUserState?: IDatatugUserState;
 
   constructor() {
     const errorLogger = this.errorLogger;
@@ -90,21 +81,8 @@ export class DatatugMenuComponent implements OnDestroy {
         this.setIsLoginPage(this.isLoginUrl(e.urlAfterRedirects)),
       );
 
-    this.sneatAuthStateService.authState
-      .pipe(takeUntil(this.destroyed))
-      .subscribe({
-        next: (authState) => {
-          this.authState = authState;
-        },
-        error: errorLogger.logErrorHandler(
-          'failed to process sneat auth state',
-        ),
-      });
-
     try {
-      this.trackAuthState();
       this.trackCurrentUser();
-      this.currentFolder = datatugNavContextService?.currentFolder;
       if (datatugNavContextService) {
         this.trackCurrentStore();
         this.trackCurrentProject();
@@ -129,19 +107,6 @@ export class DatatugMenuComponent implements OnDestroy {
     }
   }
 
-  private trackAuthState(): void {
-    if (!this.sneatAuthStateService) {
-      console.error('this.sneatAuthStateService is not injected');
-      return;
-    }
-    this.sneatAuthStateService.authStatus
-      .pipe(takeUntil(this.destroyed))
-      .subscribe({
-        next: (authState) => (this.authStatus = authState),
-        error: this.errorLogger.logErrorHandler('failed to get auth stage'),
-      });
-  }
-
   ngOnDestroy(): void {
     if (this.destroyed) {
       this.destroyed.next();
@@ -159,7 +124,7 @@ export class DatatugMenuComponent implements OnDestroy {
         .pipe(takeUntil(this.destroyed))
         .subscribe({
           next: (datatugUser) => {
-            this.datatugUserState = datatugUser;
+            this.datatugUserState.set(datatugUser);
           },
           error: this.errorLogger.logErrorHandler(
             'Failed to get user record for menu',
@@ -188,15 +153,15 @@ export class DatatugMenuComponent implements OnDestroy {
   }
 
   private readonly onCurrentStoreChanged = (storeId?: string): void => {
-    if (storeId === this.currentStoreId) {
+    if (storeId === this.currentStoreId()) {
       return;
     }
     console.log(
       'DatatugMenuComponent => storeId changed:',
       storeId,
-      this.currentStoreId,
+      this.currentStoreId(),
     );
-    this.currentStoreId = storeId;
+    this.currentStoreId.set(storeId);
   };
 
   private trackCurrentProject(): void {
@@ -216,8 +181,8 @@ export class DatatugMenuComponent implements OnDestroy {
     }
   }
 
-  onProjectChanged = (project?: IProjectContext) => {
-    this.currentProject = project;
+  protected onProjectChanged = (project?: IProjectContext) => {
+    this.currentProject.set(project);
   };
 
   private trackCurrentEnvDbTable(): void {
