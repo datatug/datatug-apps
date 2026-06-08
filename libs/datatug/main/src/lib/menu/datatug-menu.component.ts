@@ -1,4 +1,4 @@
-import { Component, OnDestroy, inject } from '@angular/core';
+import { Component, OnDestroy, inject, signal } from '@angular/core';
 import { Analytics, logEvent } from '@angular/fire/analytics';
 import { NavigationEnd, Router } from '@angular/router';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
@@ -64,7 +64,7 @@ export class DatatugMenuComponent implements OnDestroy {
   // so inject it optionally and no-op when absent.
   private readonly analytics = inject(Analytics, { optional: true });
 
-  public isLoginPage = false;
+  public readonly isLoginPage = signal(false);
   public authStatus?: AuthStatus;
   public currentStoreId?: string;
   public currentProject?: IProjectContext;
@@ -122,8 +122,8 @@ export class DatatugMenuComponent implements OnDestroy {
   }
 
   private setIsLoginPage(isLoginPage: boolean): void {
-    const enteredLoginPage = isLoginPage && !this.isLoginPage;
-    this.isLoginPage = isLoginPage;
+    const enteredLoginPage = isLoginPage && !this.isLoginPage();
+    this.isLoginPage.set(isLoginPage);
     if (enteredLoginPage && this.analytics) {
       logEvent(this.analytics, 'login_page_viewed');
     }
