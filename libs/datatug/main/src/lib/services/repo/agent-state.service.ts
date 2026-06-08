@@ -55,7 +55,7 @@ export class AgentStateService {
                 console.info(
                   `DataTug: no local agent detected at "${storeId}". This is ` +
                     `normal if you are not running a local DataTug agent. The ` +
-                    `preceding "net::ERR_CONNECTION_REFUSED" console error for ` +
+                    `"net::ERR_CONNECTION_REFUSED" console error for ` +
                     `the agent-info request is expected and can be ignored.`,
                 );
               }
