@@ -1,4 +1,11 @@
-import { Component, Input, OnDestroy, OnInit, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  ChangeDetectorRef,
+  Component,
+  Input,
+  OnDestroy,
+  inject,
+} from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
   IonButton,
@@ -31,6 +38,7 @@ import { LoadingItemsComponent } from '../loading-items-component';
 @Component({
   selector: 'sneat-datatug-my-projects',
   templateUrl: './my-datatug-projects.component.html',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     LoadingItemsComponent,
     IonCard,
@@ -43,12 +51,13 @@ import { LoadingItemsComponent } from '../loading-items-component';
     IonItemDivider,
   ],
 })
-export class MyDatatugProjectsComponent implements OnInit, OnDestroy {
+export class MyDatatugProjectsComponent implements OnDestroy {
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly navService = inject(DatatugNavService);
   private readonly sneatAuthStateService = inject(SneatAuthStateService);
   private readonly datatugUserService = inject(DatatugUserService);
   private readonly newProjectService = inject(NewProjectService);
+  private readonly changeDetectorRef = inject(ChangeDetectorRef);
 
   @Input() title?: string;
 
@@ -75,12 +84,15 @@ export class MyDatatugProjectsComponent implements OnInit, OnDestroy {
     this.destroyed.complete();
   }
 
-  ngOnInit(): void {
+  constructor() {
+    // OnPush + markForCheck: state is driven by an observable, so the component
+    // is only re-checked when its own data emits (not when an unrelated change
+    // detection pass — e.g. the lazy menu activating — runs), which avoids
+    // ExpressionChangedAfterItHasBeenChecked (NG0100).
     this.datatugUserService.datatugUserState
       .pipe(takeUntil(this.destroyed))
       .subscribe({
         next: (datatugUserState) => {
-          // console.log('MyDatatugProjectsComponent.ngOnInit() => datatugUserState:', datatugUserState);
           this.authState = datatugUserState;
           this.userRecordLoaded =
             !!datatugUserState?.record || datatugUserState.record === null;
@@ -88,6 +100,7 @@ export class MyDatatugProjectsComponent implements OnInit, OnDestroy {
           if (record || record == null) {
             this.projects = allUserProjectsAsFlatList(record?.datatug?.stores);
           }
+          this.changeDetectorRef.markForCheck();
         },
         error: this.errorLogger.logErrorHandler(
           'Failed to get datatug user state',

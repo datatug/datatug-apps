@@ -34,7 +34,6 @@ describe('ProjectService', () => {
   });
 
   it('should be created', () => {
-    // ProjectService throws 'Not implemented' in constructor, so we expect an error
-    expect(() => TestBed.inject(ProjectService)).toThrow('Not implemented');
+    expect(TestBed.inject(ProjectService)).toBeTruthy();
   });
 });

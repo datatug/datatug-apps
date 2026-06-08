@@ -1,4 +1,5 @@
 import { Component } from '@angular/core';
+import { RouterOutlet } from '@angular/router';
 import {
   IonApp,
   IonContent,
@@ -9,7 +10,6 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/angular/standalone';
-import { DatatugMenuModule } from '@sneat/datatug-main';
 
 @Component({
   selector: 'sneat-datatug-root',
@@ -23,7 +23,7 @@ import { DatatugMenuModule } from '@sneat/datatug-main';
     IonTitle,
     IonContent,
     IonRouterOutlet,
-    DatatugMenuModule,
+    RouterOutlet,
   ],
 })
 export class DatatugAppComponent {}

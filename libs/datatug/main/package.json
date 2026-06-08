@@ -13,6 +13,7 @@
     "@acrodata/code-editor": "*",
     "@sneat/auth-core": "*",
     "@sneat/auth-models": "*",
+    "@sneat/auth-ui": "*",
     "@sneat/components": "*",
     "@sneat/core": "*",
     "@sneat/data": "*",
