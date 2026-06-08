@@ -9,16 +9,6 @@ export const routes: Routes = [
       ),
   },
   {
-    path: 'home',
-    loadChildren: () =>
-      import('@sneat/datatug-main').then((m) => m.DatatugHomePageComponent),
-  },
-  {
-    path: '',
-    redirectTo: 'home',
-    pathMatch: 'full',
-  },
-  {
     path: '',
     loadChildren: () =>
       import('@sneat/datatug-main').then((m) => m.DatatugRoutingModule),

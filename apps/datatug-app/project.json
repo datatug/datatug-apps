@@ -18,6 +18,7 @@
         "inlineStyleLanguage": "scss",
         "assets": [
           "apps/datatug-app/src/favicon.ico",
+          "apps/datatug-app/src/_redirects",
           "apps/datatug-app/src/assets",
           {
             "glob": "**/*.svg",
