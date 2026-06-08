@@ -9,6 +9,11 @@ export const routes: Routes = [
       ),
   },
   {
+    path: 'debug',
+    loadComponent: () =>
+      import('./debug-page.component').then((m) => m.DebugPageComponent),
+  },
+  {
     // The side menu is lazy-loaded into the named "menu" outlet in the app
     // shell, so it is code-split out of the initial bundle and the router (not
     // a static import) handles its loading.
