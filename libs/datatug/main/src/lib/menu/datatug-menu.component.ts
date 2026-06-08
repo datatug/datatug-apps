@@ -1,4 +1,5 @@
 import { Component, OnDestroy, inject } from '@angular/core';
+import { Analytics, logEvent } from '@angular/fire/analytics';
 import { NavigationEnd, Router } from '@angular/router';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { Observable, Subject } from 'rxjs';
@@ -59,6 +60,9 @@ export class DatatugMenuComponent implements OnDestroy {
   private readonly nav = inject(DatatugNavService);
   private readonly datatugUserService = inject(DatatugUserService);
   private readonly router = inject(Router);
+  // Analytics is only provided in production (when a measurementId is set),
+  // so inject it optionally and no-op when absent.
+  private readonly analytics = inject(Analytics, { optional: true });
 
   public isLoginPage = false;
   public authStatus?: AuthStatus;
@@ -76,13 +80,15 @@ export class DatatugMenuComponent implements OnDestroy {
     const errorLogger = this.errorLogger;
     const datatugNavContextService = this.datatugNavContextService;
 
-    this.isLoginPage = this.isLoginUrl(this.router.url);
+    this.setIsLoginPage(this.isLoginUrl(this.router.url));
     this.router.events
       .pipe(
         filter((e): e is NavigationEnd => e instanceof NavigationEnd),
         takeUntil(this.destroyed),
       )
-      .subscribe((e) => (this.isLoginPage = this.isLoginUrl(e.urlAfterRedirects)));
+      .subscribe((e) =>
+        this.setIsLoginPage(this.isLoginUrl(e.urlAfterRedirects)),
+      );
 
     this.sneatAuthStateService.authState
       .pipe(takeUntil(this.destroyed))
@@ -113,6 +119,14 @@ export class DatatugMenuComponent implements OnDestroy {
 
   private isLoginUrl(url: string): boolean {
     return url.split(/[?#]/)[0] === '/login';
+  }
+
+  private setIsLoginPage(isLoginPage: boolean): void {
+    const enteredLoginPage = isLoginPage && !this.isLoginPage;
+    this.isLoginPage = isLoginPage;
+    if (enteredLoginPage && this.analytics) {
+      logEvent(this.analytics, 'login_page_viewed');
+    }
   }
 
   private trackAuthState(): void {
