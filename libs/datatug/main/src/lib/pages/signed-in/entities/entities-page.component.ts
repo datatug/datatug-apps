@@ -17,7 +17,6 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/angular/standalone';
-import { WormholeModule } from '@sneat/wormhole';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import {
@@ -43,7 +42,6 @@ type Entities = IRecord<IEntity>[];
   templateUrl: './entities-page.component.html',
   imports: [
     FormsModule,
-    WormholeModule,
     RouterLink,
     IonHeader,
     IonToolbar,

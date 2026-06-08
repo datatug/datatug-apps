@@ -1,6 +1,5 @@
 import { Component, OnDestroy, ViewChild, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { WormholeModule } from '@sneat/wormhole';
 import { race, Subject } from 'rxjs';
 import { skip, takeUntil } from 'rxjs/operators';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
@@ -62,7 +61,6 @@ import { SchemaService } from '../../../services/unsorted/schema.service';
     DatatugServicesProjectModule,
     DatatugServicesStoreModule,
     DatatugServicesUnsortedModule,
-    WormholeModule,
     DatatugFolderComponent,
     IonHeader,
     IonToolbar,

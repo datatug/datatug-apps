@@ -9,7 +9,6 @@ import {
   SneatAuthStateService,
 } from '@sneat/auth-core';
 import { AuthMenuItemComponent } from '@sneat/auth-ui';
-import { WormholeModule } from '@sneat/wormhole';
 import { IonCard, IonCardContent } from '@ionic/angular/standalone';
 import { DatatugCoreModule } from '../core/datatug-core.module';
 import { DatatugServicesStoreModule } from '../services/repo/datatug-services-store.module';
@@ -37,7 +36,6 @@ import { MenuEnvSelectorComponent } from './menu-env-selector.component';
     IonCard,
     IonCardContent,
     AuthMenuItemComponent,
-    WormholeModule,
     DatatugCoreModule,
     DatatugServicesStoreModule,
     DatatugServicesProjectModule,

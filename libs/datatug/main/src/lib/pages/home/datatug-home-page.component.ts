@@ -19,7 +19,6 @@ import { NewProjectService } from '../../project/new-project/new-project.service
 import { DatatugUserService } from '../../services/base/datatug-user-service';
 import { DatatugServicesNavModule } from '../../services/nav/datatug-services-nav.module';
 import { DatatugServicesStoreModule } from '../../services/repo/datatug-services-store.module';
-import { WormholeModule } from '@sneat/wormhole';
 import { MyDatatugProjectsComponent } from './my-projects/my-datatug-projects.component';
 import { MyStoresComponent } from './my-stores/my-stores.component';
 // import {
@@ -37,7 +36,6 @@ import { MyStoresComponent } from './my-stores/my-stores.component';
   imports: [
     FormsModule,
     // CoreModule,
-    WormholeModule,
     DatatugServicesNavModule,
     DatatugServicesStoreModule,
     // NewProjectFormComponent,
