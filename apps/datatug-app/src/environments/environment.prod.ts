@@ -1,7 +1,9 @@
 import { IEnvironmentConfig } from '@sneat/core';
 
-// TODO: Replace with DataTug-specific Firebase project config when ready.
-// Currently sharing the sneat.app Firebase project (see datatug decoupling plan).
+// Shared Sneat identity pool — `sneat-eur3-1` — used by every Sneat product
+// (consumer + business). This is permanent per the 2026-06-09 single-identity
+// decision: datatug.app authenticates here, NOT against a separate project.
+// See sneat-apps/docs/superpowers/specs/2026-06-09-single-identity-addendum.md
 export const datatugAppEnvironmentConfig: IEnvironmentConfig = {
   production: true,
   agents: {},
