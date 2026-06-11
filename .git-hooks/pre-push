@@ -1,0 +1,24 @@
+#!/bin/sh
+# To setup git hooks run:
+#   git config core.hooksPath .git-hooks || echo 'Not in a git repo'
+
+set -eu
+
+echo "Running .git-hooks/pre-push..."
+
+remote_name="${1:-origin}"
+remote_ref="$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
+
+if [ -n "$remote_ref" ]; then
+  base="$remote_ref"
+else
+  base="$remote_name/main"
+fi
+
+if ! git rev-parse --verify "$base" >/dev/null 2>&1; then
+  echo "Base ref '$base' not found; running lint for all projects."
+  pnpm nx run-many --target=lint --all
+  exit $?
+fi
+
+pnpm nx affected --target=lint --base="$base" --head=HEAD

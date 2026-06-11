@@ -6,12 +6,15 @@ on:
       - main
     paths-ignore:
       - 'docs/**'
+      - '.git-hooks/**'
   pull_request:
     paths-ignore:
       - 'docs/**'
+      - '.git-hooks/**'
   merge_group:
     paths-ignore:
       - 'docs/**'
+      - '.git-hooks/**'
 
 permissions:
   actions: read
