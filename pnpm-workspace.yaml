@@ -14,5 +14,19 @@ allowBuilds:
   oxc-resolver: true
   protobufjs: true
   unrs-resolver: true
-patchedDependencies:
-  '@sneat/auth-ui@0.1.4': patches/@sneat__auth-ui@0.1.4.patch
+minimumReleaseAgeExclude:
+  - '@sneat/api@0.5.0'
+  - '@sneat/auth-core@0.5.0'
+  - '@sneat/auth-models@0.5.0'
+  - '@sneat/auth-ui@0.5.0'
+  - '@sneat/components@0.5.0'
+  - '@sneat/contactus-core@0.5.0'
+  - '@sneat/core@0.5.0'
+  - '@sneat/data@0.5.0'
+  - '@sneat/datagrid@0.5.0'
+  - '@sneat/dto@0.5.0'
+  - '@sneat/grid@0.5.0'
+  - '@sneat/logging@0.5.0'
+  - '@sneat/space-models@0.5.0'
+  - '@sneat/space-services@0.5.0'
+  - '@sneat/ui@0.5.0'

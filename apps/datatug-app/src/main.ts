@@ -5,7 +5,7 @@ import { provideRouter, RouteReuseStrategy } from '@angular/router';
 import { IonicRouteStrategy, provideIonicAngular } from '@ionic/angular/standalone';
 import { DefaultSneatAppApiBaseUrl, SneatApiBaseUrl } from '@sneat/api';
 import { TelegramAuthService } from '@sneat/auth-core';
-import { authRoutes } from '@sneat/auth-ui';
+import { authRoutes, TelegramLoginConfig } from '@sneat/auth-ui';
 import {
   APP_INFO,
   EnvConfigToken,
@@ -51,6 +51,10 @@ bootstrapApplication(DatatugAppComponent, {
     provideSneatAnalytics(datatugAppEnvironmentConfig),
     TopMenuService,
     TelegramAuthService,
+    {
+      provide: TelegramLoginConfig,
+      useValue: { botID: 'DataTugBot', localBotID: 'AlextDevBot' },
+    },
     // App-specific providers
     {
       provide: APP_INFO,
