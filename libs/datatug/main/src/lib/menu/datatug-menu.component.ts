@@ -4,7 +4,6 @@ import { NavigationEnd, Router } from '@angular/router';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { Subject } from 'rxjs';
 import { filter, takeUntil } from 'rxjs/operators';
-import { AuthMenuItemComponent } from '@sneat/auth-ui';
 import { IonCard, IonCardContent } from '@ionic/angular/standalone';
 import { DatatugCoreModule } from '../core/datatug-core.module';
 import { DatatugServicesStoreModule } from '../services/repo/datatug-services-store.module';
@@ -22,6 +21,7 @@ import { ProjectMenuComponent } from '../components/project/project-menu/project
 import { MenuStoreSelectorComponent } from './menu-store-selector.component';
 import { MenuProjectSelectorComponent } from './menu-project-selector.component';
 import { MenuEnvSelectorComponent } from './menu-env-selector.component';
+import { DatatugAuthMenuItemComponent } from './datatug-auth-menu-item.component';
 
 @Component({
   selector: 'sneat-datatug-menu',
@@ -30,7 +30,7 @@ import { MenuEnvSelectorComponent } from './menu-env-selector.component';
   imports: [
     IonCard,
     IonCardContent,
-    AuthMenuItemComponent,
+    DatatugAuthMenuItemComponent,
     DatatugCoreModule,
     DatatugServicesStoreModule,
     DatatugServicesProjectModule,

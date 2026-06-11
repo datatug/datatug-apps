@@ -53,7 +53,7 @@ bootstrapApplication(DatatugAppComponent, {
     TelegramAuthService,
     {
       provide: TelegramLoginConfig,
-      useValue: { botID: 'DataTugBot', localBotID: 'AlextDevBot' },
+      useValue: { botID: 'SneatBot', localBotID: 'AlextDevBot' },
     },
     // App-specific providers
     {

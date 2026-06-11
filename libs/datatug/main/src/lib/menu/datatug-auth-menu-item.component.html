@@ -1,0 +1,56 @@
+<ion-item-divider color="light">
+  @if (authStatus() === "authenticated") {
+    <ion-label>Signed in as</ion-label>
+  } @else {
+    <ion-label>Authentication</ion-label>
+  }
+</ion-item-divider>
+@if (!authState()) {
+  <ion-item>
+    <ion-label>Loading....</ion-label>
+  </ion-item>
+} @else if (isAuthenticating()) {
+  <ion-item routerLink="login">
+    <ion-label>Authenticating....</ion-label>
+  </ion-item>
+}
+@if (authStatus() === "notAuthenticated") {
+  <ion-item routerLink="/login" tappable="true">
+    <ion-icon slot="start" name="person-circle-outline" />
+    <ion-label color="primary"> Please sign in</ion-label>
+  </ion-item>
+}
+@if (authStatus() === "authenticated") {
+  <ion-item
+    tappable="true"
+    routerLink="/my"
+    routerDirection="forward"
+    (click)="closeMenu()"
+  >
+    <ion-icon slot="start" name="person-circle-outline" />
+
+    <ion-label color="medium">
+      @if (user()?.record?.names; as names) {
+        {{ names | personNames }}
+      } @else {
+        @if (authState()?.user; as authUser) {
+          {{
+            authUser.displayName ||
+              authUser.email ||
+              authUser.phoneNumber ||
+              authUser.uid
+          }}
+        }
+      }
+    </ion-label>
+
+    <ion-buttons slot="end">
+      <ion-button color="medium" title="Sign-out" (click)="logout($event)">
+        <ion-icon name="log-out-outline" />
+      </ion-button>
+    </ion-buttons>
+  </ion-item>
+}
+@if (error()) {
+  <ion-item> ERROR: {{ error() | json }}</ion-item>
+}

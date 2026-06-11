@@ -171,7 +171,7 @@ describe('DatatugMenuComponent', () => {
       const fixture = createComponent('/');
       fixture.detectChanges();
       expect(
-        fixture.nativeElement.querySelector('sneat-auth-menu-item'),
+        fixture.nativeElement.querySelector('sneat-datatug-auth-menu-item'),
       ).toBeTruthy();
     });
 
@@ -179,7 +179,7 @@ describe('DatatugMenuComponent', () => {
       const fixture = createComponent('/login');
       fixture.detectChanges();
       expect(
-        fixture.nativeElement.querySelector('sneat-auth-menu-item'),
+        fixture.nativeElement.querySelector('sneat-datatug-auth-menu-item'),
       ).toBeNull();
     });
   });
