@@ -20,7 +20,7 @@
     "@sneat/datagrid": "*",
     "@sneat/grid": "*",
     "@sneat/random": "*",
-    "@sneat/api": "0.1.4",
+    "@sneat/api": "*",
     "vitest": "^4.0.18"
   },
   "sideEffects": false
