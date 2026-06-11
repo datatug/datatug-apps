@@ -20,6 +20,11 @@ export const datatugRoutes: Routes = [
       ),
   },
   {
+    path: 'signed-out',
+    pathMatch: 'full',
+    redirectTo: '/',
+  },
+  {
     path: 'store/:' + routingParamStoreId,
     loadChildren: () =>
       import('./datatug-routing-store').then(
