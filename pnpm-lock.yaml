@@ -51,8 +51,8 @@ importers:
         specifier: 4.12.0
         version: 4.12.0(@firebase/app@0.14.9)
       '@firebase/firestore-types':
-        specifier: 3.0.3
-        version: 3.0.3(@firebase/app-types@0.9.3)(@firebase/util@1.14.0)
+        specifier: 3.0.4
+        version: 3.0.4(@firebase/app-types@0.9.3)(@firebase/util@1.14.0)
       '@ionic-native/core':
         specifier: 5.36.0
         version: 5.36.0(rxjs@7.8.2)
@@ -518,6 +518,7 @@ packages:
   '@angular/animations@21.2.0':
     resolution: {integrity: sha512-SzlLoMT/r5wKqPicx5okCAiN5UD5+VE7x/F1G6gSJCcnBfbK5PqHPUmDnMW4jw9Ode06KZDT7ntstn6fG+Ld8w==}
     engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
+    deprecated: '@angular/animations is deprecated. Use `animate.enter` and `animate.leave` instead. For more information see: https://v22.angular.dev/guide/animations.'
     peerDependencies:
       '@angular/core': 21.2.0
 
@@ -1644,6 +1645,12 @@ packages:
 
   '@firebase/firestore-types@3.0.3':
     resolution: {integrity: sha512-hD2jGdiWRxB/eZWF89xcK9gF8wvENDJkzpVFb4aGkzfEaKxVRD1kjz1t1Wj8VZEp2LCB53Yx1zD8mrhQu87R6Q==}
+    peerDependencies:
+      '@firebase/app-types': 0.x
+      '@firebase/util': 1.x
+
+  '@firebase/firestore-types@3.0.4':
+    resolution: {integrity: sha512-jGn+JSS4X9zZsrfu7Yw66v5YRdOLD1oyQh4USR0xWl4CUqV/DA6bNIXRPpxH/cUl3iVTNiP6MN7g+EL42A4qfA==}
     peerDependencies:
       '@firebase/app-types': 0.x
       '@firebase/util': 1.x
@@ -10186,6 +10193,11 @@ snapshots:
       '@firebase/util': 1.12.1
 
   '@firebase/firestore-types@3.0.3(@firebase/app-types@0.9.3)(@firebase/util@1.14.0)':
+    dependencies:
+      '@firebase/app-types': 0.9.3
+      '@firebase/util': 1.14.0
+
+  '@firebase/firestore-types@3.0.4(@firebase/app-types@0.9.3)(@firebase/util@1.14.0)':
     dependencies:
       '@firebase/app-types': 0.9.3
       '@firebase/util': 1.14.0
