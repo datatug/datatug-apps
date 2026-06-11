@@ -94,7 +94,7 @@
     "eslint-config-prettier": "10.1.8",
     "eslint-plugin-json": "4.0.1",
     "happy-dom": "^20.5.0",
-    "jiti": "2.4.2",
+    "jiti": "2.7.0",
     "jsonc-eslint-parser": "2.4.2",
     "ng-packagr": "21.2.0",
     "nx": "22.5.3",
