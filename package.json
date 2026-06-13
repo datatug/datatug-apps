@@ -2,7 +2,7 @@
   "name": "datatug-apps",
   "version": "0.0.0",
   "license": "MIT",
-  "packageManager": "pnpm@11.3.0",
+  "packageManager": "pnpm@11.6.0",
   "scripts": {
     "sentry:sourcemaps": "sentry-cli sourcemaps inject dist/apps/datatug-app/browser && sentry-cli sourcemaps upload --org sneat-eu --project datatug-app dist/apps/datatug-app/browser && find dist/apps/datatug-app/browser -name '*.js.map' -delete"
   },
