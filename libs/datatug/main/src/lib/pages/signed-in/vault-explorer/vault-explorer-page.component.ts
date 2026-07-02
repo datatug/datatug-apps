@@ -128,6 +128,11 @@ export class VaultExplorerPageComponent {
 
   protected readonly error = signal<string | undefined>(undefined);
 
+  /** Records-table load failure — distinct from `error` (the connect-level
+   * banner) so a failed load renders an error branch with Retry next to the
+   * table instead of masquerading as "No records in this collection." */
+  protected readonly recordsError = signal<string | undefined>(undefined);
+
   protected readonly currentSegment = computed<VaultSegment | undefined>(
     () => {
       const path = this.path();
@@ -173,7 +178,11 @@ export class VaultExplorerPageComponent {
       if (requestId !== this.lastRequestId) {
         return;
       }
-      this.collections.set([]);
+      // Fable refactoring: was `this.collections.set([]);` — setting [] made
+      // the failure render as the "(none)" empty state (error masquerading
+      // as empty per states.md). Leaving `collections` undefined + gating the
+      // spinner on !error() in the template shows only the danger banner; the
+      // ever-present Connect/Reconnect button is the retry affordance.
       this.error.set(`Failed to load vault config: ${vaultErrorMessage(err)}`);
     }
   }
@@ -276,7 +285,7 @@ export class VaultExplorerPageComponent {
     const requestId = ++this.lastRequestId;
     this.records.set(undefined);
     this.recordColumns.set([]);
-    this.error.set(undefined);
+    this.recordsError.set(undefined);
     try {
       let schema: IVaultCollectionSchema;
       let dataPath = seg.dataPath;
@@ -311,9 +320,18 @@ export class VaultExplorerPageComponent {
       if (requestId !== this.lastRequestId) {
         return;
       }
-      this.records.set([]);
-      this.error.set(`Failed to load records: ${vaultErrorMessage(err)}`);
+      // Fable refactoring: was `this.records.set([]); this.error.set(...)` —
+      // [] made a load failure render as "No records in this collection."
+      // (error masquerading as empty per states.md). Keep `records`
+      // undefined and set the dedicated recordsError, which renders as a
+      // danger item with a Retry button next to the table.
+      this.recordsError.set(`Failed to load records: ${vaultErrorMessage(err)}`);
     }
+  }
+
+  /** Template-facing retry for a failed records load. */
+  protected retryLoadRecords(): void {
+    void this.loadRecords();
   }
 
   /** Probes the current record's directory for nested subcollections. */
