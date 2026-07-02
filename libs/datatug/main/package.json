@@ -7,6 +7,8 @@
     "@angular/router": "^20.1.0 || ^21.0.0",
     "@angular/forms": "^20.1.0 || ^21.0.0",
     "@angular/fire": "^20.0.0",
+    "@ingitdb/client": "*",
+    "@ingitdb/client-github": "*",
     "@ionic/angular": "^8.0.0",
     "rxjs": "^7.8.0",
     "tabulator-tables": "^6.0.0",

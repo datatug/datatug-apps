@@ -1,0 +1,237 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/my" />
+    </ion-buttons>
+    <ion-title>Explore my GitHub vault</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  <ion-item lines="full" color="light">
+    <ion-icon name="eye-outline" slot="start" />
+    <ion-label class="ion-text-wrap">
+      <p>
+        <strong>Read-only.</strong> This is a raw view of an inGitDB vault
+        hosted in a GitHub repository — your browser talks straight to
+        <code>api.github.com</code> with your own token; there is no
+        Sneat/DataTug server in the read path. Nothing on this page can write
+        or delete anything.
+      </p>
+    </ion-label>
+  </ion-item>
+
+  <ion-list>
+    <ion-list-header>
+      <ion-label>GitHub repository</ion-label>
+      <ion-note class="ion-text-wrap"
+        >The token stays in your browser's memory and is sent only to
+        api.github.com. Use a fine-grained PAT with read-only "Contents" on
+        the one vault repo. Public repos need no token.</ion-note
+      >
+    </ion-list-header>
+    <ion-item>
+      <ion-input
+        label="GitHub repo"
+        label-placement="floating"
+        placeholder="owner/repo"
+        [ngModel]="repoInput()"
+        (ngModelChange)="repoInput.set($event)"
+        (keyup.enter)="connect()"
+      />
+    </ion-item>
+    <ion-item>
+      <ion-input
+        label="Branch"
+        label-placement="floating"
+        placeholder="main"
+        [ngModel]="branchInput()"
+        (ngModelChange)="branchInput.set($event)"
+        (keyup.enter)="connect()"
+      />
+    </ion-item>
+    <ion-item>
+      <ion-input
+        label="Token"
+        label-placement="floating"
+        type="password"
+        placeholder="optional — for private repos"
+        [ngModel]="tokenInput()"
+        (ngModelChange)="tokenInput.set($event)"
+        (keyup.enter)="connect()"
+      />
+      <ion-button slot="end" (click)="connect()">
+        {{ connection() ? "Reconnect" : "Connect" }}
+      </ion-button>
+    </ion-item>
+  </ion-list>
+
+  @if (error()) {
+    <ion-item color="danger" lines="none">
+      <ion-label class="ion-text-wrap">{{ error() }}</ion-label>
+    </ion-item>
+  }
+
+  @if (!connection()) {
+    <ion-item lines="none">
+      <ion-label color="medium" class="ion-text-wrap">
+        Enter a repository laid out as an inGitDB vault (with
+        <code>.ingitdb/root-collections.yaml</code>) and press Connect.
+      </ion-label>
+    </ion-item>
+  } @else {
+    @if (collections() === undefined) {
+      <ion-item lines="none">
+        <ion-spinner slot="start" />
+        <ion-label>Loading vault config…</ion-label>
+      </ion-item>
+    } @else {
+      <ion-list>
+        <ion-list-header>
+          <ion-label>Collections</ion-label>
+        </ion-list-header>
+        @for (collection of collections(); track collection.id) {
+          <ion-item
+            button
+            detail="true"
+            (click)="openRootCollection(collection)"
+          >
+            <ion-label>{{ collection.id }}</ion-label>
+            @if (collection.id === activeRootId()) {
+              <ion-badge slot="end" color="primary">active</ion-badge>
+            }
+          </ion-item>
+        } @empty {
+          <ion-item lines="none">
+            <ion-label color="medium">(none)</ion-label>
+          </ion-item>
+        }
+      </ion-list>
+
+      @if (path().length === 0) {
+        <ion-item lines="none">
+          <ion-label color="medium">Select a collection above.</ion-label>
+        </ion-item>
+      } @else {
+        <ion-list>
+          <ion-item lines="none">
+            <ion-button fill="clear" size="small" (click)="goToBreadcrumb(0)">
+              collections
+            </ion-button>
+            @for (segment of path(); track $index) {
+              <ion-note>/</ion-note>
+              <ion-button
+                fill="clear"
+                size="small"
+                (click)="goToBreadcrumb($index + 1)"
+              >
+                {{ segment.label }}
+              </ion-button>
+            }
+          </ion-item>
+        </ion-list>
+
+        @switch (currentSegment()?.kind) {
+          @case ("collection") {
+            @if (records() === undefined) {
+              <ion-item lines="none">
+                <ion-spinner slot="start" />
+                <ion-label>Loading records…</ion-label>
+              </ion-item>
+            } @else if (records()?.length === 0) {
+              <ion-item lines="none">
+                <ion-label color="medium"
+                  >No records in this collection.</ion-label
+                >
+              </ion-item>
+            } @else {
+              <ion-list>
+                <ion-list-header>
+                  <ion-label>{{ records()?.length }} record(s)</ion-label>
+                </ion-list-header>
+              </ion-list>
+              <table class="records">
+                <thead>
+                  <tr>
+                    <th>id (record key)</th>
+                    @for (column of recordColumns(); track column) {
+                      <th>{{ column }}</th>
+                    }
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (record of records(); track $index) {
+                    <tr class="row" (click)="openRecord(record)">
+                      <td class="key">{{ cellText(record["_id"]) }}</td>
+                      @for (column of recordColumns(); track column) {
+                        <td [title]="cellText(record[column])">
+                          {{ cellText(record[column]) }}
+                        </td>
+                      }
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            }
+          }
+          @case ("record") {
+            @if (currentSegment(); as segment) {
+              @if (segment.kind === "record") {
+                <ion-list>
+                  <ion-list-header>
+                    <ion-label>Record: {{ segment.id }}</ion-label>
+                  </ion-list-header>
+                  <ion-item lines="full">
+                    <pre class="raw-json">{{ jsonOf(segment.record) }}</pre>
+                  </ion-item>
+                  @if (filePathOf(segment.record); as filePath) {
+                    <ion-item lines="none">
+                      <ion-note>file: {{ filePath }}</ion-note>
+                    </ion-item>
+                  }
+                </ion-list>
+
+                <ion-list>
+                  <ion-list-header>
+                    <ion-label>Subcollections</ion-label>
+                  </ion-list-header>
+                  @if (subcollections() === undefined) {
+                    <ion-item lines="none">
+                      <ion-spinner slot="start" />
+                      <ion-label
+                        >Probing for nested subcollections…</ion-label
+                      >
+                    </ion-item>
+                  } @else if (subcollections()?.length === 0) {
+                    <ion-item lines="none">
+                      <ion-label color="medium">
+                        (no nested subcollections)
+                      </ion-label>
+                    </ion-item>
+                  } @else {
+                    <ion-item lines="none">
+                      @for (name of subcollections(); track name) {
+                        <ion-button
+                          fill="outline"
+                          size="small"
+                          (click)="openSubcollection(name)"
+                        >
+                          ▸ {{ name }}
+                        </ion-button>
+                      }
+                    </ion-item>
+                  }
+                  @if (subcollectionsNote()) {
+                    <ion-item lines="none">
+                      <ion-note>({{ subcollectionsNote() }})</ion-note>
+                    </ion-item>
+                  }
+                </ion-list>
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+</ion-content>
