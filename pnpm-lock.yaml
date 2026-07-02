@@ -53,6 +53,15 @@ importers:
       '@firebase/firestore-types':
         specifier: 3.0.3
         version: 3.0.3(@firebase/app-types@0.9.3)(@firebase/util@1.14.0)
+      '@ingitdb/client':
+        specifier: 0.1.0
+        version: 0.1.0
+      '@ingitdb/client-github':
+        specifier: 0.1.2
+        version: 0.1.2(@ingr/codec@0.0.1)(axios@1.13.6)(idb@8.0.3)
+      '@ingr/codec':
+        specifier: ^0.0.1
+        version: 0.0.1
       '@ionic-native/core':
         specifier: 5.36.0
         version: 5.36.0(rxjs@7.8.2)
@@ -128,9 +137,15 @@ importers:
       angularx-qrcode:
         specifier: ^21.0.0
         version: 21.0.4(@angular/common@21.2.0(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@21.2.0(@angular/compiler@21.2.0)(rxjs@7.8.2)(zone.js@0.16.1))
+      axios:
+        specifier: ^1.13.6
+        version: 1.13.6
       firebase:
         specifier: 12.10.0
         version: 12.10.0
+      idb:
+        specifier: ^8.0.3
+        version: 8.0.3
       ionicons:
         specifier: 8.0.13
         version: 8.0.13
@@ -518,6 +533,7 @@ packages:
   '@angular/animations@21.2.0':
     resolution: {integrity: sha512-SzlLoMT/r5wKqPicx5okCAiN5UD5+VE7x/F1G6gSJCcnBfbK5PqHPUmDnMW4jw9Ode06KZDT7ntstn6fG+Ld8w==}
     engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
+    deprecated: '@angular/animations is deprecated. Use `animate.enter` and `animate.leave` instead. For more information see: https://v22.angular.dev/guide/animations.'
     peerDependencies:
       '@angular/core': 21.2.0
 
@@ -639,6 +655,7 @@ packages:
   '@angular/platform-browser-dynamic@21.2.0':
     resolution: {integrity: sha512-eTHNTnTEP25eCyu4MJdPAAc/7Ib5XtR/dqUlzZdNoAldREPNw95FF12QMunvnen66v3CvCYdND8rAlbz2LkK7g==}
     engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
+    deprecated: '@angular/platform-browser-dynamic is deprecated. Use `@angular/platform-browser` instead.'
     peerDependencies:
       '@angular/common': 21.2.0
       '@angular/compiler': 21.2.0
@@ -1873,6 +1890,19 @@ packages:
   '@humanwhocodes/retry@0.4.3':
     resolution: {integrity: sha512-bV0Tgo9K4hfPCek+aMAn81RppFKv2ySDQeMoSZuvTASywNTnVJCArCZE2FWqpvIatKu7VMRLWlR1EazvVhDyhQ==}
     engines: {node: '>=18.18'}
+
+  '@ingitdb/client-github@0.1.2':
+    resolution: {integrity: sha512-LAVh5//dT8DTqoCV3Si3ASqrFz880VNP7wyB0zg6mlhszr24dwZDXoRhJbtbe9gNcAO1GXkEadBMHtrqbej3wg==}
+    peerDependencies:
+      '@ingr/codec': ^0.0.1
+      axios: ^1.8.4
+      idb: ^8.0.2
+
+  '@ingitdb/client@0.1.0':
+    resolution: {integrity: sha512-WZti2XMtvOvp3QbPBF02LcpOQCTaK5XAGx+VRI3YZ8r4+d8cfvEczgm5IW2st0/CMXo+S0cU0SngxwXAQY+F1A==}
+
+  '@ingr/codec@0.0.1':
+    resolution: {integrity: sha512-ZkbL0UafXe8XzMQGePZ78TH1bu30cNkGwF+K5nTJl90vR+45uaWU+/DLzPUy9AysNvuU6BCOCd4PcfdkjroOdg==}
 
   '@inquirer/ansi@1.0.2':
     resolution: {integrity: sha512-S8qNSZiYzFd0wAcyG5AXCvUHC5Sr7xpZ9wZ2py9XR88jUz8wooStVx5M6dRzczbBWjic9NP7+rY0Xi7qqK/aMQ==}
@@ -5734,6 +5764,9 @@ packages:
 
   idb@7.1.1:
     resolution: {integrity: sha512-gchesWBzyvGHRO9W8tzUWFDycow5gwjvFKfyV9FF32Y7F50yZMp7mP+T2mJIWFx49zicqyC4uefHM17o6xKIVQ==}
+
+  idb@8.0.3:
+    resolution: {integrity: sha512-LtwtVyVYO5BqRvcsKuB2iUMnHwPVByPCXFXOpuU96IZPPoPN6xjOGxZQ74pgSVVLQWtUOYgyeL4GE98BY5D3wg==}
 
   ieee754@1.2.1:
     resolution: {integrity: sha512-dcyqhDvX1C46lXZcVqCpK+FtMRQVdIMN6/Df5js2zouUsqG7I6sFxitIC+7KYK29KdXOLHdu9zL4sFnoVQnqaA==}
@@ -10536,6 +10569,19 @@ snapshots:
 
   '@humanwhocodes/retry@0.4.3': {}
 
+  '@ingitdb/client-github@0.1.2(@ingr/codec@0.0.1)(axios@1.13.6)(idb@8.0.3)':
+    dependencies:
+      '@ingitdb/client': 0.1.0
+      '@ingr/codec': 0.0.1
+      axios: 1.13.6
+      idb: 8.0.3
+
+  '@ingitdb/client@0.1.0':
+    dependencies:
+      js-yaml: 4.1.1
+
+  '@ingr/codec@0.0.1': {}
+
   '@inquirer/ansi@1.0.2': {}
 
   '@inquirer/checkbox@4.3.2(@types/node@24.11.0)':
@@ -14989,6 +15035,8 @@ snapshots:
       postcss: 8.5.8
 
   idb@7.1.1: {}
+
+  idb@8.0.3: {}
 
   ieee754@1.2.1: {}
 

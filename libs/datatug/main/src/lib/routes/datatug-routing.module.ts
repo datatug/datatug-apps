@@ -33,6 +33,18 @@ export const datatugRoutes: Routes = [
       ).then((m) => m.SpaceExplorerPageComponent),
   },
   {
+    // Read-only "explore my GitHub vault" transparency viewer — the
+    // inGitDB/GitHub sibling of the `explore/:spaceId` route above (see
+    // vault-explorer-page.component.ts). The repo/branch/token are entered
+    // on the page itself, so there are no route params.
+    path: 'explore-vault',
+    ...SNEAT_AUTH_GUARDS,
+    loadComponent: () =>
+      import(
+        '../pages/signed-in/vault-explorer/vault-explorer-page.component'
+      ).then((m) => m.VaultExplorerPageComponent),
+  },
+  {
     path: 'signed-out',
     pathMatch: 'full',
     redirectTo: '/',

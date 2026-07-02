@@ -29,4 +29,18 @@
       <ion-button slot="end" (click)="goExplore()">Explore</ion-button>
     </ion-item>
   </ion-list>
+
+  <ion-list>
+    <ion-list-header>
+      <ion-label>Explore my GitHub vault</ion-label>
+      <ion-note class="ion-text-wrap"
+        >Read-only view of an inGitDB vault hosted in a GitHub repository —
+        your browser reads straight from api.github.com; no DataTug server in
+        the path.</ion-note
+      >
+    </ion-list-header>
+    <ion-item button detail="true" (click)="goExploreVault()">
+      <ion-label>GitHub / inGitDB vault explorer (read-only)</ion-label>
+    </ion-item>
+  </ion-list>
 </ion-content>

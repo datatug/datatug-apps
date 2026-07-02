@@ -30,3 +30,4 @@ minimumReleaseAgeExclude:
   - '@sneat/space-models@0.5.0'
   - '@sneat/space-services@0.5.0'
   - '@sneat/ui@0.5.0'
+  - '@ingitdb/client-github@0.1.2'

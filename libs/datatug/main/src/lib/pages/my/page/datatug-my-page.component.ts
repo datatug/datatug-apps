@@ -56,4 +56,11 @@ export class DatatugMyPageComponent {
     }
     this.router.navigate(['/explore', spaceId]);
   }
+
+  // Entry point for the read-only GitHub/inGitDB vault variant of the
+  // explorer (see vault-explorer-page.component.ts) — the repo/branch/token
+  // are entered on that page itself, so no input is needed here.
+  protected goExploreVault(): void {
+    this.router.navigate(['/explore-vault']);
+  }
 }
