@@ -26,7 +26,7 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/angular/standalone';
-import { catchError, map, of, switchMap } from 'rxjs';
+import { catchError, defer, map, of, switchMap } from 'rxjs';
 import { routingParamSpaceId } from '../../../core/datatug-routing-params';
 import {
   IExploreCollectionItem,
@@ -134,7 +134,11 @@ export class SpaceExplorerPageComponent {
         if (segments.length % 2 !== 0 || !segments[1]) {
           return of(undefined);
         }
-        return this.explorer.watchDocument$(segments).pipe(
+        // `defer()` so a synchronous throw inside the SDK call (e.g. an
+        // invalid path segment) lands in `catchError` instead of killing the
+        // whole `toSignal` subscription (which would leave the page dead
+        // until a full reload).
+        return defer(() => this.explorer.watchDocument$(segments)).pipe(
           catchError((err) => {
             this.error.set(errorMessage(err));
             return of(undefined);
@@ -153,7 +157,8 @@ export class SpaceExplorerPageComponent {
         if (segments.length % 2 !== 1) {
           return of(undefined);
         }
-        return this.explorer.watchCollection$(segments).pipe(
+        // See the `defer()` comment on `currentDoc` above.
+        return defer(() => this.explorer.watchCollection$(segments)).pipe(
           catchError((err) => {
             this.error.set(errorMessage(err));
             return of(undefined);
@@ -174,6 +179,14 @@ export class SpaceExplorerPageComponent {
   protected openCollection(collectionName: string): void {
     const name = collectionName.trim();
     if (!name) {
+      return;
+    }
+    // A path segment must be a single Firestore segment: a pasted path like
+    // `ext/contactus` would throw synchronously inside the Firestore SDK.
+    if (name.includes('/')) {
+      this.error.set(
+        `"${name}" is not a valid collection name — enter one path segment at a time (no "/").`,
+      );
       return;
     }
     this.subPath.set([...this.subPath(), name]);

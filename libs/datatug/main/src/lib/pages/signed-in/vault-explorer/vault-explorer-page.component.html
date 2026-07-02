@@ -80,7 +80,12 @@
       </ion-label>
     </ion-item>
   } @else {
-    @if (collections() === undefined) {
+    <!-- Tri-state: on a connect/config failure only the danger banner above
+         shows (no perpetual spinner, no "(none)" empty state); the always
+         visible Connect/Reconnect button is the retry affordance. -->
+    @if (error()) {
+      <!-- Error shown in the danger banner above. -->
+    } @else if (collections() === undefined) {
       <ion-item lines="none">
         <ion-spinner slot="start" />
         <ion-label>Loading vault config…</ion-label>
@@ -133,7 +138,14 @@
 
         @switch (currentSegment()?.kind) {
           @case ("collection") {
-            @if (records() === undefined) {
+            @if (recordsError()) {
+              <ion-item color="danger" lines="none">
+                <ion-label class="ion-text-wrap">{{ recordsError() }}</ion-label>
+                <ion-button slot="end" fill="outline" (click)="retryLoadRecords()">
+                  Retry
+                </ion-button>
+              </ion-item>
+            } @else if (records() === undefined) {
               <ion-item lines="none">
                 <ion-spinner slot="start" />
                 <ion-label>Loading records…</ion-label>
@@ -161,7 +173,16 @@
                 </thead>
                 <tbody>
                   @for (record of records(); track $index) {
-                    <tr class="row" (click)="openRecord(record)">
+                    <!-- role/tabindex/keydown make the clickable row
+                         keyboard-focusable and operable, not mouse-only. -->
+                    <tr
+                      class="row"
+                      role="button"
+                      tabindex="0"
+                      (click)="openRecord(record)"
+                      (keydown.enter)="openRecord(record)"
+                      (keydown.space)="$event.preventDefault(); openRecord(record)"
+                    >
                       <td class="key">{{ cellText(record["_id"]) }}</td>
                       @for (column of recordColumns(); track column) {
                         <td [title]="cellText(record[column])">

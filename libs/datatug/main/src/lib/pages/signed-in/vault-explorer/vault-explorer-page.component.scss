@@ -33,6 +33,14 @@
     &:hover {
       background: var(--ion-color-light, #f4f5f8);
     }
+
+    // Rows are keyboard-focusable (tabindex="0" + role="button") — make the
+    // focused row visibly distinct.
+    &:focus-visible {
+      background: var(--ion-color-light, #f4f5f8);
+      outline: 2px solid var(--ion-color-primary, #3880ff);
+      outline-offset: -2px;
+    }
   }
 
   .key {

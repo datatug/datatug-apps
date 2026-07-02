@@ -45,7 +45,12 @@
 
   @switch (nodeKind()) {
     @case ("document") {
-      @if (currentDoc() === undefined) {
+      <!-- Gate loading/empty on !error() (tri-state): on a Firestore error
+           (e.g. permission-denied) only the danger banner above shows —
+           no perpetual spinner, no misleading "not found". -->
+      @if (error()) {
+        <!-- Error shown in the danger banner above. -->
+      } @else if (currentDoc() === undefined) {
         <ion-item lines="none">
           <ion-spinner slot="start" />
           <ion-label>Loading document…</ion-label>
@@ -95,7 +100,10 @@
       </ion-list>
     }
     @case ("collection") {
-      @if (currentCollection() === undefined) {
+      <!-- Same tri-state gating as the document branch above. -->
+      @if (error()) {
+        <!-- Error shown in the danger banner above. -->
+      } @else if (currentCollection() === undefined) {
         <ion-item lines="none">
           <ion-spinner slot="start" />
           <ion-label>Loading collection…</ion-label>
