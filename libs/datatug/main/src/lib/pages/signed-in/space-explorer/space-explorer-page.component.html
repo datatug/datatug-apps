@@ -1,0 +1,134 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/my" />
+    </ion-buttons>
+    <ion-title>Explore my raw data</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  <ion-item lines="full" color="light">
+    <ion-icon name="eye-outline" slot="start" />
+    <ion-label class="ion-text-wrap">
+      <p>
+        <strong>Read-only.</strong> This is a raw view of your own Firestore
+        data under <code>spaces/{{ spaceId() }}</code> — exactly as stored,
+        enforced by the same security rules as the rest of the app. Nothing
+        on this page can write or delete anything.
+      </p>
+    </ion-label>
+  </ion-item>
+
+  <ion-list>
+    <ion-item lines="none">
+      @for (crumb of breadcrumbs(); track crumb.depth; let last = $last) {
+        <ion-button
+          fill="clear"
+          size="small"
+          (click)="goToBreadcrumb(crumb.depth)"
+        >
+          {{ crumb.label }}
+        </ion-button>
+        @if (!last) {
+          <ion-note>/</ion-note>
+        }
+      }
+    </ion-item>
+  </ion-list>
+
+  @if (error()) {
+    <ion-item color="danger" lines="none">
+      <ion-label class="ion-text-wrap">{{ error() }}</ion-label>
+    </ion-item>
+  }
+
+  @switch (nodeKind()) {
+    @case ("document") {
+      @if (currentDoc() === undefined) {
+        <ion-item lines="none">
+          <ion-spinner slot="start" />
+          <ion-label>Loading document…</ion-label>
+        </ion-item>
+      } @else if (currentDoc()?.data === undefined) {
+        <ion-item lines="none">
+          <ion-label color="medium" class="ion-text-wrap">
+            No document found at <code>{{ currentDoc()?.path }}</code> (it
+            may not exist, or you may not have access).
+          </ion-label>
+        </ion-item>
+      } @else {
+        <ion-list>
+          <ion-list-header>
+            <ion-label>Document: {{ currentDoc()?.path }}</ion-label>
+          </ion-list-header>
+          <ion-item lines="full">
+            <pre class="raw-json">{{ jsonOf(currentDoc()?.data) }}</pre>
+          </ion-item>
+        </ion-list>
+      }
+
+      <ion-list>
+        <ion-list-header>
+          <ion-label>Browse a subcollection</ion-label>
+          <ion-note
+            >The Firestore client SDK can't list a document's
+            subcollections, so pick a known one or type a name.</ion-note
+          >
+        </ion-list-header>
+        <ion-item lines="none">
+          @for (name of suggestedCollections(); track name) {
+            <ion-button fill="outline" size="small" (click)="openCollection(name)">
+              {{ name }}
+            </ion-button>
+          }
+        </ion-item>
+        <ion-item lines="none">
+          <ion-input
+            placeholder="custom collection name"
+            [ngModel]="customSegment()"
+            (ngModelChange)="customSegment.set($event)"
+            (keyup.enter)="addCustomSegment()"
+          />
+          <ion-button slot="end" (click)="addCustomSegment()">Go</ion-button>
+        </ion-item>
+      </ion-list>
+    }
+    @case ("collection") {
+      @if (currentCollection() === undefined) {
+        <ion-item lines="none">
+          <ion-spinner slot="start" />
+          <ion-label>Loading collection…</ion-label>
+        </ion-item>
+      } @else if (currentCollection()?.length === 0) {
+        <ion-item lines="none">
+          <ion-label color="medium" class="ion-text-wrap">
+            No documents found in this collection (empty, or you may not have
+            access).
+          </ion-label>
+        </ion-item>
+      } @else {
+        <ion-list>
+          <ion-list-header>
+            <ion-label
+              >{{ currentCollection()?.length }} document(s)</ion-label
+            >
+          </ion-list-header>
+          @for (item of currentCollection(); track item.id) {
+            <ion-item button detail="true" (click)="openDoc(item.id)">
+              <ion-label>
+                <h3>{{ item.id }}</h3>
+                <p class="ion-text-wrap raw-json-preview">
+                  {{ jsonOf(item.data) }}
+                </p>
+              </ion-label>
+              <ion-badge slot="end" color="medium"
+                >{{ subPath().length + 2 }} levels deep</ion-badge
+              >
+            </ion-item>
+          }
+        </ion-list>
+      }
+    }
+  }
+</ion-content>

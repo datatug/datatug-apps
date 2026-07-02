@@ -1,7 +1,7 @@
 import { NgModule } from '@angular/core';
 import { RouterModule, Routes } from '@angular/router';
 import { SNEAT_AUTH_GUARDS } from '@sneat/auth-core';
-import { routingParamStoreId } from '../core/datatug-routing-params';
+import { routingParamSpaceId, routingParamStoreId } from '../core/datatug-routing-params';
 
 export const datatugRoutes: Routes = [
   {
@@ -18,6 +18,19 @@ export const datatugRoutes: Routes = [
       import('../pages/my/page/datatug-my-page.component').then(
         (m) => m.DatatugMyPageComponent,
       ),
+  },
+  {
+    // Read-only "explore my raw data" transparency viewer, rooted at
+    // `/spaces/{spaceId}` (see space-explorer-page.component.ts). The
+    // spaceId is a route param for this first slice — a "my spaces" list
+    // isn't wired up in datatug-apps yet (see
+    // backstage/docs/roadmaps/datatug-transparency-explorer.md §6).
+    path: 'explore/:' + routingParamSpaceId,
+    ...SNEAT_AUTH_GUARDS,
+    loadComponent: () =>
+      import(
+        '../pages/signed-in/space-explorer/space-explorer-page.component'
+      ).then((m) => m.SpaceExplorerPageComponent),
   },
   {
     path: 'signed-out',
