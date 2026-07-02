@@ -9,6 +9,7 @@ export * from './lib/routes/datatug-routing-proj-env';
 export * from './lib/routes/datatug-routing-proj-env-db';
 export * from './lib/routes/datatug-routing-store';
 export * from './lib/pages/my/page/datatug-my-page.component';
+export * from './lib/pages/signed-in/space-explorer/space-explorer-page.component';
 export * from './lib/pages/home/datatug-home-page.component';
 export * from './lib/pages/home/my-projects/my-datatug-projects.component';
 export { DatatugHomePageComponent } from './lib/pages/home/datatug-home-page.component';

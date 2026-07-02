@@ -1,10 +1,18 @@
-import { Component } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 import {
   IonBackButton,
+  IonButton,
   IonButtons,
   IonContent,
   IonHeader,
+  IonInput,
+  IonItem,
+  IonLabel,
+  IonList,
+  IonListHeader,
+  IonNote,
   IonTitle,
   IonToolbar,
 } from '@ionic/angular/standalone';
@@ -22,6 +30,30 @@ import { DatatugServicesStoreModule } from '../../../services/repo/datatug-servi
     IonBackButton,
     IonTitle,
     IonContent,
+    IonList,
+    IonListHeader,
+    IonItem,
+    IonLabel,
+    IonInput,
+    IonButton,
+    IonNote,
   ],
 })
-export class DatatugMyPageComponent {}
+export class DatatugMyPageComponent {
+  private readonly router = inject(Router);
+
+  // First-slice entry point for the read-only "explore my raw data" viewer
+  // (see space-explorer-page.component.ts). A "my spaces" list isn't wired
+  // up in datatug-apps yet, so the user types the spaceId they already know
+  // from Sneat — see
+  // backstage/docs/roadmaps/datatug-transparency-explorer.md §6.
+  protected readonly exploreSpaceId = signal('');
+
+  protected goExplore(): void {
+    const spaceId = this.exploreSpaceId().trim();
+    if (!spaceId) {
+      return;
+    }
+    this.router.navigate(['/explore', spaceId]);
+  }
+}

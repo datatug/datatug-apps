@@ -7,4 +7,26 @@
   </ion-toolbar>
 </ion-header>
 
-<ion-content />
+<ion-content>
+  <ion-list>
+    <ion-list-header>
+      <ion-label>Explore my raw data</ion-label>
+      <ion-note class="ion-text-wrap"
+        >Read-only view of your own Sneat space's Firestore data, exactly as
+        stored. Enter a space id you're a member of — a "my spaces" picker
+        will replace this once it's wired up.</ion-note
+      >
+    </ion-list-header>
+    <ion-item>
+      <ion-input
+        label="Space ID"
+        label-placement="floating"
+        placeholder="e.g. abc123"
+        [ngModel]="exploreSpaceId()"
+        (ngModelChange)="exploreSpaceId.set($event)"
+        (keyup.enter)="goExplore()"
+      />
+      <ion-button slot="end" (click)="goExplore()">Explore</ion-button>
+    </ion-item>
+  </ion-list>
+</ion-content>
