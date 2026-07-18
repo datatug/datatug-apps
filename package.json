@@ -22,7 +22,7 @@
     "@capacitor/core": "8.1.0",
     "@firebase/auth": "1.12.1",
     "@firebase/firestore": "4.12.0",
-    "@firebase/firestore-types": "3.0.3",
+    "@firebase/firestore-types": "3.0.4",
     "@ingitdb/client": "0.1.0",
     "@ingitdb/client-github": "0.1.2",
     "@ingr/codec": "^0.0.1",
