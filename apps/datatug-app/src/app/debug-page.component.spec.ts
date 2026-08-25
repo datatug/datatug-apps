@@ -1,12 +1,12 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { DebugPageComponent } from './debug-page.component';
 
 describe('DebugPageComponent', () => {
   let component: DebugPageComponent;
   let fixture: ComponentFixture<DebugPageComponent>;
 
-  beforeEach(waitForAsync(async () => {
+  beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [DebugPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -17,7 +17,7 @@ describe('DebugPageComponent', () => {
       .compileComponents();
     fixture = TestBed.createComponent(DebugPageComponent);
     component = fixture.componentInstance;
-  }));
+  });
 
   it('should create', () => {
     expect(component).toBeTruthy();

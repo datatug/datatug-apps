@@ -1,5 +1,5 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { DatatugMyPageComponent } from './datatug-my-page.component';
 
@@ -7,7 +7,7 @@ describe('MyPage', () => {
   let component: DatatugMyPageComponent;
   let fixture: ComponentFixture<DatatugMyPageComponent>;
 
-  beforeEach(waitForAsync(async () => {
+  beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [DatatugMyPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -24,7 +24,7 @@ describe('MyPage', () => {
 
     fixture = TestBed.createComponent(DatatugMyPageComponent);
     component = fixture.componentInstance;
-  }));
+  });
 
   it('should create', () => {
     expect(component).toBeTruthy();

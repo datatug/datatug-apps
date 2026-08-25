@@ -1,5 +1,5 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import {
   BoardCardComponent,
@@ -10,7 +10,7 @@ describe('BoardCardComponent', () => {
   let component: BoardCardComponent;
   let fixture: ComponentFixture<BoardCardComponent>;
 
-  beforeEach(waitForAsync(async () => {
+  beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [BoardCardComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -28,7 +28,7 @@ describe('BoardCardComponent', () => {
 
     fixture = TestBed.createComponent(BoardCardComponent);
     component = fixture.componentInstance;
-  }));
+  });
 
   it('should create', () => {
     expect(component).toBeTruthy();

@@ -1,5 +1,5 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ModalController } from '@ionic/angular';
 import { ErrorLogger } from '@sneat/core';
 
@@ -9,7 +9,7 @@ describe('BoardComponent', () => {
   let component: BoardComponent;
   let fixture: ComponentFixture<BoardComponent>;
 
-  beforeEach(waitForAsync(async () => {
+  beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [BoardComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -39,7 +39,7 @@ describe('BoardComponent', () => {
 
     fixture = TestBed.createComponent(BoardComponent);
     component = fixture.componentInstance;
-  }));
+  });
 
   it('should create', () => {
     expect(component).toBeTruthy();

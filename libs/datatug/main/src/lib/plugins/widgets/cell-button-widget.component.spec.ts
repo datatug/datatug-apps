@@ -1,5 +1,5 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { CellButtonWidgetComponent } from './cell-button-widget.component';
 
@@ -7,7 +7,7 @@ describe('CellButtonWidgetComponent', () => {
   let component: CellButtonWidgetComponent;
   let fixture: ComponentFixture<CellButtonWidgetComponent>;
 
-  beforeEach(waitForAsync(async () => {
+  beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [CellButtonWidgetComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -24,7 +24,7 @@ describe('CellButtonWidgetComponent', () => {
 
     fixture = TestBed.createComponent(CellButtonWidgetComponent);
     component = fixture.componentInstance;
-  }));
+  });
 
   it('should create', () => {
     expect(component).toBeTruthy();

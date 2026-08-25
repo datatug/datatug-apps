@@ -1,5 +1,5 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MenuController, NavController } from '@ionic/angular';
 import { SneatAuthStateService, SneatUserService } from '@sneat/auth-core';
 import { ErrorLogger } from '@sneat/core';
@@ -12,7 +12,7 @@ describe('DatatugAuthMenuItemComponent', () => {
   let navCtrl: { navigateRoot: ReturnType<typeof vi.fn> };
   let menuCtrl: { close: ReturnType<typeof vi.fn> };
 
-  beforeEach(waitForAsync(async () => {
+  beforeEach(async () => {
     navCtrl = { navigateRoot: vi.fn().mockResolvedValue(undefined) };
     menuCtrl = { close: vi.fn().mockResolvedValue(undefined) };
 
@@ -53,7 +53,7 @@ describe('DatatugAuthMenuItemComponent', () => {
       .compileComponents();
 
     fixture = TestBed.createComponent(DatatugAuthMenuItemComponent);
-  }));
+  });
 
   it('creates', () => {
     expect(fixture.componentInstance).toBeTruthy();

@@ -1,5 +1,5 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { PopoverController } from '@ionic/angular';
 import { ErrorLogger } from '@sneat/core';
 
@@ -9,7 +9,7 @@ describe('EntityFieldDialogComponent', () => {
   let component: EntityFieldDialogComponent;
   let fixture: ComponentFixture<EntityFieldDialogComponent>;
 
-  beforeEach(waitForAsync(async () => {
+  beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [EntityFieldDialogComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -42,7 +42,7 @@ describe('EntityFieldDialogComponent', () => {
 
     fixture = TestBed.createComponent(EntityFieldDialogComponent);
     component = fixture.componentInstance;
-  }));
+  });
 
   it('should create', () => {
     expect(component).toBeTruthy();

@@ -1,5 +1,5 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { WidgetsPageComponent } from './widgets-page.component';
 
@@ -7,7 +7,7 @@ describe('WidgetsPage', () => {
   let component: WidgetsPageComponent;
   let fixture: ComponentFixture<WidgetsPageComponent>;
 
-  beforeEach(waitForAsync(async () => {
+  beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [WidgetsPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -24,7 +24,7 @@ describe('WidgetsPage', () => {
 
     fixture = TestBed.createComponent(WidgetsPageComponent);
     component = fixture.componentInstance;
-  }));
+  });
 
   it('should create', () => {
     expect(component).toBeTruthy();

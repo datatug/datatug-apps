@@ -1,5 +1,5 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute } from '@angular/router';
 import { Router } from '@angular/router';
 import { ErrorLogger } from '@sneat/core';
@@ -11,7 +11,7 @@ describe('SqlQueriesPage', () => {
   let component: QueriesPageComponent;
   let fixture: ComponentFixture<QueriesPageComponent>;
 
-  beforeEach(waitForAsync(async () => {
+  beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [QueriesPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -52,7 +52,7 @@ describe('SqlQueriesPage', () => {
 
     fixture = TestBed.createComponent(QueriesPageComponent);
     component = fixture.componentInstance;
-  }));
+  });
 
   it('should create', () => {
     expect(component).toBeTruthy();

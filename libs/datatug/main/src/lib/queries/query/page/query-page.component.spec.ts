@@ -1,5 +1,5 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ErrorLogger } from '@sneat/core';
 import { RandomIdService } from '@sneat/random';
@@ -17,7 +17,7 @@ describe('SqlEditorPage', () => {
   let component: QueryPageComponent;
   let fixture: ComponentFixture<QueryPageComponent>;
 
-  beforeEach(waitForAsync(async () => {
+  beforeEach(async () => {
     Object.defineProperty(window, 'history', {
       value: { ...window.history, state: { query: undefined } },
       writable: true,
@@ -93,7 +93,7 @@ describe('SqlEditorPage', () => {
 
     fixture = TestBed.createComponent(QueryPageComponent);
     component = fixture.componentInstance;
-  }));
+  });
 
   it('should create', () => {
     expect(component).toBeTruthy();

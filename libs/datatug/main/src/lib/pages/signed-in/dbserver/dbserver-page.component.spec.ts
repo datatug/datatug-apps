@@ -1,5 +1,5 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute } from '@angular/router';
 import { ErrorLogger } from '@sneat/core';
 import { of } from 'rxjs';
@@ -12,7 +12,7 @@ describe('DbserverPage', () => {
   let component: DbserverPageComponent;
   let fixture: ComponentFixture<DbserverPageComponent>;
 
-  beforeEach(waitForAsync(async () => {
+  beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [DbserverPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -61,7 +61,7 @@ describe('DbserverPage', () => {
 
     fixture = TestBed.createComponent(DbserverPageComponent);
     component = fixture.componentInstance;
-  }));
+  });
 
   it('should create', () => {
     expect(component).toBeTruthy();

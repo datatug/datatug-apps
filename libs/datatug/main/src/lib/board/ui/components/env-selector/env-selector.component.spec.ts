@@ -1,5 +1,5 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ErrorLogger } from '@sneat/core';
 import { of } from 'rxjs';
 
@@ -10,7 +10,7 @@ describe('EnvSelectorComponent', () => {
   let component: EnvSelectorComponent;
   let fixture: ComponentFixture<EnvSelectorComponent>;
 
-  beforeEach(waitForAsync(async () => {
+  beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [EnvSelectorComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -44,7 +44,7 @@ describe('EnvSelectorComponent', () => {
 
     fixture = TestBed.createComponent(EnvSelectorComponent);
     component = fixture.componentInstance;
-  }));
+  });
 
   it('should create', () => {
     expect(component).toBeTruthy();

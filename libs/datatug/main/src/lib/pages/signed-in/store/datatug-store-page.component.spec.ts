@@ -1,5 +1,5 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute } from '@angular/router';
 import { ErrorLogger } from '@sneat/core';
 import { of } from 'rxjs';
@@ -15,7 +15,7 @@ describe('StorePageComponent', () => {
   let component: DatatugStorePageComponent;
   let fixture: ComponentFixture<DatatugStorePageComponent>;
 
-  beforeEach(waitForAsync(async () => {
+  beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [DatatugStorePageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -68,7 +68,7 @@ describe('StorePageComponent', () => {
 
     fixture = TestBed.createComponent(DatatugStorePageComponent);
     component = fixture.componentInstance;
-  }));
+  });
 
   it('should create', () => {
     expect(component).toBeTruthy();

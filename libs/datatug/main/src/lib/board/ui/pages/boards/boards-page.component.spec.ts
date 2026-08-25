@@ -1,5 +1,5 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ErrorLogger } from '@sneat/core';
 import { of } from 'rxjs';
 import { AlertController } from '@ionic/angular';
@@ -14,7 +14,7 @@ describe('DataboardsPage', () => {
   let component: BoardsPageComponent;
   let fixture: ComponentFixture<BoardsPageComponent>;
 
-  beforeEach(waitForAsync(async () => {
+  beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [BoardsPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -62,7 +62,7 @@ describe('DataboardsPage', () => {
 
     fixture = TestBed.createComponent(BoardsPageComponent);
     component = fixture.componentInstance;
-  }));
+  });
 
   it('should create', () => {
     expect(component).toBeTruthy();

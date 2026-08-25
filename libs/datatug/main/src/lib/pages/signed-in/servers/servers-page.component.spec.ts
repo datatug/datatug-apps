@@ -1,5 +1,5 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ModalController, NavController } from '@ionic/angular';
 import { ErrorLogger } from '@sneat/core';
 import { of } from 'rxjs';
@@ -12,7 +12,7 @@ describe('ServersPage', () => {
   let component: ServersPageComponent;
   let fixture: ComponentFixture<ServersPageComponent>;
 
-  beforeEach(waitForAsync(async () => {
+  beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [ServersPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -55,7 +55,7 @@ describe('ServersPage', () => {
 
     fixture = TestBed.createComponent(ServersPageComponent);
     component = fixture.componentInstance;
-  }));
+  });
 
   it('should create', () => {
     expect(component).toBeTruthy();
