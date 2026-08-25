@@ -7,9 +7,6 @@ import {
 import { ErrorLogger, AnalyticsService } from '@sneat/core';
 import { Firestore } from '@angular/fire/firestore';
 import { Auth } from '@angular/fire/auth';
-import { AngularFirestore } from '@angular/fire/compat/firestore';
-import { AngularFireAuth } from '@angular/fire/compat/auth';
-import { of } from 'rxjs';
 
 export function configureGlobalTestBed() {
   try {
@@ -47,14 +44,6 @@ export function configureGlobalTestBed() {
             setCurrentScreen: vi.fn(),
           },
         },
-        {
-          provide: AngularFirestore,
-          useValue: {
-            collection: () => ({ valueChanges: () => of([]) }),
-            doc: () => ({ valueChanges: () => of(null) }),
-          },
-        },
-        { provide: AngularFireAuth, useValue: { authState: of(null) } },
       ],
     });
   } catch {
