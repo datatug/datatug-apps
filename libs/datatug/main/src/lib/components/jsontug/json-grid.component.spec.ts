@@ -1,5 +1,5 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { JsonGridComponent } from './json-grid.component';
 
@@ -7,7 +7,7 @@ describe('JsonGridComponent', () => {
   let component: JsonGridComponent;
   let fixture: ComponentFixture<JsonGridComponent>;
 
-  beforeEach(waitForAsync(async () => {
+  beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [JsonGridComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -24,7 +24,7 @@ describe('JsonGridComponent', () => {
 
     fixture = TestBed.createComponent(JsonGridComponent);
     component = fixture.componentInstance;
-  }));
+  });
 
   it('should create', () => {
     expect(component).toBeTruthy();

@@ -1,5 +1,5 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ErrorLogger } from '@sneat/core';
 import { of } from 'rxjs';
 
@@ -12,7 +12,7 @@ describe('QueriesMenuComponent', () => {
   let component: QueriesMenuComponent;
   let fixture: ComponentFixture<QueriesMenuComponent>;
 
-  beforeEach(waitForAsync(async () => {
+  beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [QueriesMenuComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -54,7 +54,7 @@ describe('QueriesMenuComponent', () => {
 
     fixture = TestBed.createComponent(QueriesMenuComponent);
     component = fixture.componentInstance;
-  }));
+  });
 
   it('should create', () => {
     expect(component).toBeTruthy();

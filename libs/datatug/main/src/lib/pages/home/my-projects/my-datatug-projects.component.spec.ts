@@ -1,5 +1,5 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ErrorLogger } from '@sneat/core';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { of } from 'rxjs';
@@ -13,7 +13,7 @@ describe('MyProjectsComponent', () => {
   let component: MyDatatugProjectsComponent;
   let fixture: ComponentFixture<MyDatatugProjectsComponent>;
 
-  beforeEach(waitForAsync(async () => {
+  beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [MyDatatugProjectsComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -57,7 +57,7 @@ describe('MyProjectsComponent', () => {
 
     fixture = TestBed.createComponent(MyDatatugProjectsComponent);
     component = fixture.componentInstance;
-  }));
+  });
 
   it('should create', () => {
     expect(component).toBeTruthy();

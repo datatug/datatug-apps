@@ -1,5 +1,5 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ErrorLogger } from '@sneat/core';
 
 import { SqlQueryWidgetComponent } from './sql-query-widget.component';
@@ -10,7 +10,7 @@ describe('SqlQueryWidgetComponent', () => {
   let component: SqlQueryWidgetComponent;
   let fixture: ComponentFixture<SqlQueryWidgetComponent>;
 
-  beforeEach(waitForAsync(async () => {
+  beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [SqlQueryWidgetComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -38,7 +38,7 @@ describe('SqlQueryWidgetComponent', () => {
 
     fixture = TestBed.createComponent(SqlQueryWidgetComponent);
     component = fixture.componentInstance;
-  }));
+  });
 
   it('should create', () => {
     expect(component).toBeTruthy();

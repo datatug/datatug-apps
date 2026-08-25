@@ -1,5 +1,5 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute } from '@angular/router';
 import { PopoverController } from '@ionic/angular';
 import { ErrorLogger } from '@sneat/core';
@@ -14,7 +14,7 @@ describe('EntityEditPage', () => {
   let component: EntityEditPageComponent;
   let fixture: ComponentFixture<EntityEditPageComponent>;
 
-  beforeEach(waitForAsync(async () => {
+  beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [EntityEditPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -58,7 +58,7 @@ describe('EntityEditPage', () => {
 
     fixture = TestBed.createComponent(EntityEditPageComponent);
     component = fixture.componentInstance;
-  }));
+  });
 
   it('should create', () => {
     expect(component).toBeTruthy();

@@ -1,5 +1,5 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ErrorLogger } from '@sneat/core';
 import { of } from 'rxjs';
 
@@ -10,7 +10,7 @@ describe('EnvironmentsPage', () => {
   let component: EnvironmentsPageComponent;
   let fixture: ComponentFixture<EnvironmentsPageComponent>;
 
-  beforeEach(waitForAsync(async () => {
+  beforeEach(async () => {
     Object.defineProperty(window, 'history', {
       value: { ...window.history, state: { projSummary: undefined } },
       writable: true,
@@ -48,7 +48,7 @@ describe('EnvironmentsPage', () => {
 
     fixture = TestBed.createComponent(EnvironmentsPageComponent);
     component = fixture.componentInstance;
-  }));
+  });
 
   it('should create', () => {
     expect(component).toBeTruthy();

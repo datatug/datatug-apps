@@ -1,5 +1,5 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { ProjectMenuComponent } from './project-menu.component';
 
@@ -7,7 +7,7 @@ describe('ProjectContextMenuComponent', () => {
   let component: ProjectMenuComponent;
   let fixture: ComponentFixture<ProjectMenuComponent>;
 
-  beforeEach(waitForAsync(async () => {
+  beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [ProjectMenuComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -24,7 +24,7 @@ describe('ProjectContextMenuComponent', () => {
 
     fixture = TestBed.createComponent(ProjectMenuComponent);
     component = fixture.componentInstance;
-  }));
+  });
 
   it('should create', () => {
     expect(component).toBeTruthy();

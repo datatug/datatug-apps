@@ -1,5 +1,5 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { SqlEditorComponent } from './sql-editor.component';
 
@@ -7,7 +7,7 @@ describe('SqlComponent', () => {
   let component: SqlEditorComponent;
   let fixture: ComponentFixture<SqlEditorComponent>;
 
-  beforeEach(waitForAsync(async () => {
+  beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [SqlEditorComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -24,7 +24,7 @@ describe('SqlComponent', () => {
 
     fixture = TestBed.createComponent(SqlEditorComponent);
     component = fixture.componentInstance;
-  }));
+  });
 
   it('should create', () => {
     expect(component).toBeTruthy();

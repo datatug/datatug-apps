@@ -1,5 +1,5 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ErrorLogger } from '@sneat/core';
 import { of } from 'rxjs';
 
@@ -10,7 +10,7 @@ describe('JoinsComponent', () => {
   let component: JoinsComponent;
   let fixture: ComponentFixture<JoinsComponent>;
 
-  beforeEach(waitForAsync(async () => {
+  beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [JoinsComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -44,7 +44,7 @@ describe('JoinsComponent', () => {
 
     fixture = TestBed.createComponent(JoinsComponent);
     component = fixture.componentInstance;
-  }));
+  });
 
   it('should create', () => {
     expect(component).toBeTruthy();

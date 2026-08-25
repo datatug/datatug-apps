@@ -1,5 +1,5 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
-import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { DbModelPageComponent } from './db-model-page.component';
 
@@ -7,7 +7,7 @@ describe('DbModelPage', () => {
   let component: DbModelPageComponent;
   let fixture: ComponentFixture<DbModelPageComponent>;
 
-  beforeEach(waitForAsync(async () => {
+  beforeEach(async () => {
     // Mock history.state to prevent null access in constructor
     Object.defineProperty(window, 'history', {
       value: { ...window.history, state: { dbmodel: undefined } },
@@ -31,7 +31,7 @@ describe('DbModelPage', () => {
 
     fixture = TestBed.createComponent(DbModelPageComponent);
     component = fixture.componentInstance;
-  }));
+  });
 
   it('should create', () => {
     expect(component).toBeTruthy();
