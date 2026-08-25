@@ -24,7 +24,7 @@ import {
   IonToolbar,
   ModalController,
   NavController,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';

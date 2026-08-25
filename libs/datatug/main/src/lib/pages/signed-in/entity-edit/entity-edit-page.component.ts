@@ -22,7 +22,7 @@ import {
   IonTitle,
   IonToolbar,
   PopoverController,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import {
   IEntity,
   IEntityFieldDef,

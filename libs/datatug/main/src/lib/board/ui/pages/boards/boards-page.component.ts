@@ -11,7 +11,7 @@ import {
   IonTitle,
   IonToolbar,
   AlertController,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { SneatCardListComponent } from '@sneat/components';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { Subject } from 'rxjs';

@@ -18,7 +18,7 @@ import {
   IonSkeletonText,
   IonTitle,
   IonToolbar,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import {
   IEnvDbServer,

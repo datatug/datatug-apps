@@ -29,7 +29,7 @@ import {
   IonTitle,
   IonToolbar,
   PopoverController,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { IGridColumn, IGridDef } from '@sneat/grid';
 import { Subject } from 'rxjs';

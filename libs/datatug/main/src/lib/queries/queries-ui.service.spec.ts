@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { ActionSheetController } from '@ionic/angular/standalone';
+import { ActionSheetController } from '@ionic/angular';
 import { RandomIdService } from '@sneat/random';
 import { of } from 'rxjs';
 

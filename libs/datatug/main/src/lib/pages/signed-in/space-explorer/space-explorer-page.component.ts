@@ -25,7 +25,7 @@ import {
   IonSpinner,
   IonTitle,
   IonToolbar,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { catchError, defer, map, of, switchMap } from 'rxjs';
 import { routingParamSpaceId } from '../../../core/datatug-routing-params';
 import {

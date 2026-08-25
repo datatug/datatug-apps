@@ -1,9 +1,9 @@
 import {
   Component,
-  Input,
   OnChanges,
   SimpleChanges,
   inject,
+  input
 } from '@angular/core';
 import {
   IonBadge,
@@ -14,7 +14,7 @@ import {
   IonItem,
   IonLabel,
   IonText,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { IGridDef } from '@sneat/grid';
 import { ICommandResponseWithRecordset } from '../../../../dto/response';
@@ -51,9 +51,9 @@ export class ForeignKeyCardComponent implements OnChanges {
   private readonly datatugNavService = inject(DatatugNavService);
   private readonly agentService = inject(AgentService);
 
-  @Input() fk?: IForeignKey;
-  @Input() row?: Record<string, unknown>;
-  @Input() tableNavParams?: IDbObjectNavParams;
+  readonly fk = input<IForeignKey>();
+  readonly row = input<Record<string, unknown>>();
+  readonly tableNavParams = input<IDbObjectNavParams>();
   public grid?: IGridDef;
   public table?: {
     meta: ITableFull;
@@ -78,11 +78,14 @@ export class ForeignKeyCardComponent implements OnChanges {
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['tableNavParams'] || changes['row'] || changes['fk']) {
-      if (this.fk && this.tableNavParams && this.row) {
+      const fk = this.fk();
+      const tableNavParams = this.tableNavParams();
+      const row = this.row();
+      if (fk && tableNavParams && row) {
         // console.log('tableNavParams', this.tableNavParams);
         if (!this.table?.meta) {
           this.projectService
-            .getFull(this.tableNavParams.project.ref)
+            .getFull(tableNavParams.project.ref)
             .subscribe({
               next: () => {
                 // console.log('ForeignKeyCardComponent => project:', project);
@@ -101,7 +104,7 @@ export class ForeignKeyCardComponent implements OnChanges {
             });
         } else if (
           !this.table.meta.primaryKey ||
-          this.row[this.fk.columns[0]] !==
+          row[fk.columns[0]] !==
             this.table.row[this.table.meta.primaryKey.columns[0]]
         ) {
           this.loadData();
@@ -112,30 +115,36 @@ export class ForeignKeyCardComponent implements OnChanges {
 
   public fkTitle(): string | undefined {
     return (
-      this.row &&
-      this.fk?.columns?.map((c) => `${c}=${this.row && this.row[c]}`).join(', ')
+      this.row() &&
+      this.fk()?.columns?.map((c) => {
+      const row = this.row();
+      return `${c}=${row && row[c]}`;
+    }).join(', ')
     );
   }
 
   private loadData(): void {
+    const fk = this.fk();
+    const tableNavParams = this.tableNavParams();
+    const rowValue = this.row();
     if (
       !this.table?.meta ||
-      !this.tableNavParams?.db ||
-      !this.tableNavParams.env ||
-      !this.row ||
-      !this.fk?.columns?.length
+      !tableNavParams?.db ||
+      !tableNavParams.env ||
+      !rowValue ||
+      !fk?.columns?.length
     ) {
       return;
     }
     const { schema, name } = this.table.meta;
     this.agentService
-      .select(this.tableNavParams.project.ref.storeId, {
-        proj: this.tableNavParams.project.ref.projectId,
-        db: this.tableNavParams?.db,
-        env: this.tableNavParams?.env,
+      .select(tableNavParams.project.ref.storeId, {
+        proj: tableNavParams.project.ref.projectId,
+        db: tableNavParams?.db,
+        env: tableNavParams?.env,
         from: `${schema}.${name}`,
         where: `${this.table.meta.primaryKey?.columns[0]}:${
-          (this.row as Record<string, unknown>)[this.fk.columns[0]]
+          (rowValue as Record<string, unknown>)[fk.columns[0]]
         }`,
       })
       .subscribe({

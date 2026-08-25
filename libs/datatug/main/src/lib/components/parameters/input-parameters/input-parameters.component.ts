@@ -1,10 +1,10 @@
 import {
   Component,
   EventEmitter,
-  Input,
   OnChanges,
   Output,
   SimpleChanges,
+  input
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
@@ -17,7 +17,7 @@ import {
   IonItemDivider,
   IonLabel,
   IonText,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 
 @Component({
   selector: 'sneat-datatug-input-parameters',
@@ -36,8 +36,7 @@ import {
   ],
 })
 export class InputParametersComponent implements OnChanges {
-  @Input()
-  public paramDefs?: IParameterDef[];
+  public readonly paramDefs = input<IParameterDef[]>();
 
   public parameters?: IParamWithDefAndValue[];
 
@@ -46,7 +45,7 @@ export class InputParametersComponent implements OnChanges {
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['paramDefs']) {
-      this.parameters = this.paramDefs?.map((def) => ({
+      this.parameters = this.paramDefs()?.map((def) => ({
         def,
         val: this.parameters?.find((p) => p.def.id === def.id)?.val,
       }));

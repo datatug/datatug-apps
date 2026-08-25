@@ -1,9 +1,10 @@
-@switch (widgetDef?.name) {
-  @case ("tabs") {
+@let definition = widgetDef();
+@switch (definition?.name) {
+  @case ('tabs') {
     <sneat-datatug-tabs-widget
-      [level]="level"
+      [level]="level()"
       [tabsWidgetSettings]="tabsWidgetSettings"
-      [boardContext]="boardContext"
+      [boardContext]="boardContext()"
     />
   }
   <!--	@case ('SQL') {-->
@@ -17,12 +18,12 @@
   <!--	}-->
   @default {
     <div class="ion-margin-top">
-      @if (!widgetDef) {
+      @if (!definition) {
         No widget definition
-      } @else if (!widgetDef.name) {
+      } @else if (!definition.name) {
         No widget name
       } @else {
-        To be implemented: {{ widgetDef.name }}
+        To be implemented: {{ definition.name }}
       }
     </div>
   }

@@ -2,9 +2,9 @@ import {
   ChangeDetectionStrategy,
   ChangeDetectorRef,
   Component,
-  Input,
   OnDestroy,
   inject,
+  input
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
@@ -15,7 +15,7 @@ import {
   IonItem,
   IonItemDivider,
   IonLabel,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import {
   allUserProjectsAsFlatList,
   IDatatugProjectBriefWithIdAndStoreRef,
@@ -59,7 +59,7 @@ export class MyDatatugProjectsComponent implements OnDestroy {
   private readonly newProjectService = inject(NewProjectService);
   private readonly changeDetectorRef = inject(ChangeDetectorRef);
 
-  @Input() title?: string;
+  readonly title = input<string>();
 
   public datatugUserState?: IDatatugUserState;
   public userRecordLoaded = false;

@@ -9,7 +9,7 @@ import {
   IonLabel,
   IonSegment,
   IonSegmentButton,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { IQueryState } from '../editor/models';
 import { ProjectContextService } from '../services/project/project-context.service';
 import { QueryEditorStateService } from './query-editor-state-service';

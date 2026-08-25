@@ -10,7 +10,7 @@ import {
   IonLabel,
   IonList,
   IonText,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 
 @Component({
   selector: 'sneat-datatug-qe-columns',

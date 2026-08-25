@@ -29,4 +29,15 @@ describe('SqlComponent', () => {
   it('should create', () => {
     expect(component).toBeTruthy();
   });
+
+  it('emits the edited SQL without mutating its input signal', () => {
+    const listener = vi.fn();
+    component.sqlChanged.subscribe(listener);
+    fixture.componentRef.setInput('sql', 'select 1');
+
+    component.onSqlChanged('select 2');
+
+    expect(listener).toHaveBeenCalledWith('select 2');
+    expect(component.sql()).toBe('select 1');
+  });
 });

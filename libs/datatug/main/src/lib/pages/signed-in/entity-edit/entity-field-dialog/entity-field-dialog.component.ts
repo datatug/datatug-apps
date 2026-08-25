@@ -11,7 +11,7 @@ import {
   IonSelectOption,
   IonTitle,
   PopoverController,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { IEntityFieldDef } from '../../../../models/definition/metapedia/entity';
 import { DataType } from '../../../../models/definition/types';

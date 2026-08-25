@@ -2,10 +2,10 @@ import {
   ChangeDetectionStrategy,
   ChangeDetectorRef,
   Component,
-  Input,
   OnChanges,
   SimpleChanges,
   inject,
+  input
 } from '@angular/core';
 import { DataGridComponent } from '@sneat/datagrid';
 import { IGridDef } from '@sneat/grid';
@@ -21,15 +21,16 @@ export class GridWidgetComponent implements OnChanges {
   private readonly changeDetectorRef = inject(ChangeDetectorRef);
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
 
-  @Input() recordset?: IRecordset;
-  @Input() hideColumns?: string[];
+  readonly recordset = input<IRecordset>();
+  readonly hideColumns = input<string[]>();
 
   public grid?: IGridDef;
 
   ngOnChanges(changes: SimpleChanges): void {
     try {
-      if (changes['recordset'] && this.recordset) {
-        this.grid = recordsetToGridDef(this.recordset, this.hideColumns);
+      const recordset = this.recordset();
+      if (changes['recordset'] && recordset) {
+        this.grid = recordsetToGridDef(recordset, this.hideColumns());
         this.changeDetectorRef.markForCheck();
       }
     } catch (ex) {

@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { NavController } from '@ionic/angular/standalone';
+import { NavController } from '@ionic/angular';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import {
   IProjBoard,

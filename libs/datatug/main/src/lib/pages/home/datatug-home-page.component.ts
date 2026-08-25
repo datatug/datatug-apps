@@ -13,7 +13,7 @@ import {
   IonLabel,
   IonTitle,
   IonToolbar,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { CopyrightComponent } from '@sneat/components';
 import { NewProjectService } from '../../project/new-project/new-project.service';
 import { DatatugUserService } from '../../services/base/datatug-user-service';

@@ -22,7 +22,7 @@ import {
   IonText,
   IonTitle,
   IonToolbar,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { SneatCardListComponent } from '@sneat/components';
 import { IProjDbModelBrief } from '../../../models/definition/project';
 

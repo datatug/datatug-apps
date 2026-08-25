@@ -11,7 +11,7 @@ import {
   IonLabel,
   IonList,
   ModalController,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 
 @Component({

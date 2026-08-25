@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { NavController } from '@ionic/angular/standalone';
+import { NavController } from '@ionic/angular';
 import { ErrorLogger } from '@sneat/core';
 import { DatatugNavService } from './datatug-nav.service';
 import { describe, it, expect, beforeEach, vi, Mock } from 'vitest';

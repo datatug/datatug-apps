@@ -3,10 +3,10 @@ import {
   ChangeDetectorRef,
   Component,
   Injectable,
-  Input,
   OnChanges,
   SimpleChanges,
   inject,
+  input
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
@@ -18,7 +18,7 @@ import {
   IonLabel,
   IonSegment,
   IonSegmentButton,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { Subject } from 'rxjs';
 import {
   IBoardCardDef,
@@ -67,12 +67,16 @@ export class BoardCardComponent implements OnChanges {
   readonly boardCardTab = inject(BoardCardTabService);
   private readonly changeDetectorRef = inject(ChangeDetectorRef);
 
-  @Input() boarCardDef?: IBoardCardDef;
-  @Input() boardContext?: IBoardContext;
+  // TODO: Skipped for migration because:
+  //  This input is used in a control flow expression (e.g. `@if` or `*ngIf`)
+  //  and migrating would break narrowing currently.
+  readonly boarCardDef = input<IBoardCardDef>();
+  readonly boardContext = input<IBoardContext>();
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes['boarCardDef'] && this.boarCardDef) {
-      if (this.boarCardDef?.widget?.name === sqlWidgetName) {
+    const boarCardDef = this.boarCardDef();
+    if (changes['boarCardDef'] && boarCardDef) {
+      if (boarCardDef?.widget?.name === sqlWidgetName) {
         this.boardCardTab.setTab(sqlWidgetName);
       }
     }

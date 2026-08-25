@@ -1,11 +1,11 @@
 import {
   Component,
   EventEmitter,
-  Input,
   OnChanges,
   Output,
   SimpleChanges,
   inject,
+  input
 } from '@angular/core';
 import {
   IonButton,
@@ -15,7 +15,7 @@ import {
   IonLabel,
   IonSelect,
   IonSelectOption,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { parseStoreRef } from '@sneat/core';
 import { IProjectContext } from '../nav/nav-models';
@@ -47,7 +47,7 @@ export class MenuProjectSelectorComponent implements OnChanges {
   private readonly nav = inject(DatatugNavService);
   private readonly datatugNavContextService = inject(DatatugNavContextService);
 
-  @Input() datatugUser?: IDatatugUser;
+  readonly datatugUser = input<IDatatugUser>();
   currentStoreId?: string;
   currentProjectId?: string;
   currentProject?: IProjectContext;
@@ -79,9 +79,10 @@ export class MenuProjectSelectorComponent implements OnChanges {
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['datatugUser']) {
-      if (this.datatugUser?.datatug?.stores && this.currentStoreId) {
+      const datatugUser = this.datatugUser();
+      if (datatugUser?.datatug?.stores && this.currentStoreId) {
         const projectsById =
-          this.datatugUser?.datatug?.stores[this.currentStoreId]?.projects;
+          datatugUser?.datatug?.stores[this.currentStoreId]?.projects;
         this.projects = projectsBriefFromDictToFlatList(projectsById);
       } else {
         this.projects = undefined;

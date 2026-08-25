@@ -2,7 +2,7 @@ import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
 import { ErrorLogger } from '@sneat/core';
 import { of } from 'rxjs';
-import { AlertController } from '@ionic/angular/standalone';
+import { AlertController } from '@ionic/angular';
 
 import { BoardsPageComponent } from './boards-page.component';
 import { DatatugNavContextService } from '../../../../services/nav/datatug-nav-context.service';

@@ -1,4 +1,4 @@
-import { Component, Input, inject } from '@angular/core';
+import { Component, inject, input } from '@angular/core';
 import {
   IonBadge,
   IonButton,
@@ -10,7 +10,7 @@ import {
   IonSelectOption,
   IonText,
   PopoverController,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { IProjectContext } from '../nav/nav-models';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
@@ -37,15 +37,19 @@ export class MenuEnvSelectorComponent {
   private readonly nav = inject(DatatugNavService);
   private readonly datatugNavContextService = inject(DatatugNavContextService);
 
-  @Input() project?: IProjectContext;
-  @Input() currentEnvId?: string;
+  // TODO: Skipped for migration because:
+  //  This input is used in a control flow expression (e.g. `@if` or `*ngIf`)
+  //  and migrating would break narrowing currently.
+  readonly project = input<IProjectContext>();
+  readonly currentEnvId = input<string>();
 
   public clearEnv(): void {
     // Called from template
     try {
       this.datatugNavContextService.setCurrentEnvironment(undefined);
-      if (this.project?.ref && this.project?.summary?.id) {
-        this.nav.goProject(this.project);
+      const project = this.project();
+      if (project?.ref && project?.summary?.id) {
+        this.nav.goProject(project);
       }
     } catch (e: unknown) {
       this.errorLogger.logError(e, 'Failed to clear environment');
@@ -55,10 +59,11 @@ export class MenuEnvSelectorComponent {
   switchEnv(event: CustomEvent): void {
     try {
       const envId = event.detail.value as string;
-      if (envId !== this.currentEnvId) {
+      if (envId !== this.currentEnvId()) {
         this.datatugNavContextService.setCurrentEnvironment(envId);
-        if (this.project?.ref) {
-          this.nav.goEnvironment(this.project, undefined, envId);
+        const project = this.project();
+        if (project?.ref) {
+          this.nav.goEnvironment(project, undefined, envId);
         }
       }
     } catch (e: unknown) {

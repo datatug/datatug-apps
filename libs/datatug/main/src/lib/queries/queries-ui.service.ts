@@ -1,4 +1,4 @@
-import { ActionSheetController } from '@ionic/angular/standalone';
+import { ActionSheetController } from '@ionic/angular';
 import { Injectable, inject } from '@angular/core';
 import { IProjectRef } from '../core/project-context';
 import { QueryType } from '../models/definition/query-def';

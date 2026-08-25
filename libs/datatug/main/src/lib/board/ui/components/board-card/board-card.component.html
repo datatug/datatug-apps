@@ -1,10 +1,10 @@
 <ion-card>
-  @if (boarCardDef?.title) {
+  @if (boarCardDef()?.title) {
     <ion-item>
-      @if (boarCardDef?.title) {
-        <ion-label>{{ boarCardDef?.title }}</ion-label>
+      @if (boarCardDef()?.title) {
+        <ion-label>{{ boarCardDef()?.title }}</ion-label>
       }
-      @if (boarCardDef?.widget?.name === "SQL") {
+      @if (boarCardDef()?.widget?.name === "SQL") {
         <ion-buttons slot="end">
           <ion-segment
             [ngModel]="boardCardTab.currentTab"
@@ -30,7 +30,7 @@
   <sneat-datatug-board-widget
     [level]="0"
     [cardTab]="boardCardTab.currentTab"
-    [widgetDef]="boarCardDef?.widget"
-    [boardContext]="boardContext"
+    [widgetDef]="boarCardDef()?.widget"
+    [boardContext]="boardContext()"
   />
 </ion-card>

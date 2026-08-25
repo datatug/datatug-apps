@@ -5,33 +5,33 @@
     </ion-button>
   </ion-buttons>
   <ion-label>
-    @if (currentEnvId) {
+    @if (currentEnvId()) {
       Environment
     } @else {
       Environments
     }
-    @if (!currentEnvId && project?.summary?.environments) {
+    @if (!currentEnvId() && project()?.summary?.environments) {
       <ion-badge color="light" class="ion-margin-start">
         <ion-text color="medium" style="font-weight: normal"
-          >{{ project?.summary?.environments?.length }}
+          >{{ project()?.summary?.environments?.length }}
         </ion-text>
       </ion-badge>
     }
   </ion-label>
-  @if (project?.summary?.environments?.length) {
+  @if (project()?.summary?.environments?.length) {
     <ion-select
-      [value]="currentEnvId"
+      [value]="currentEnvId()"
       interface="popover"
       (ionChange)="switchEnv($event)"
     >
-      @for (env of project!.summary!.environments!; track env) {
+      @for (env of project()!.summary!.environments!; track env) {
         <ion-select-option [value]="env.id"
           >{{ env.title || env.id }}
         </ion-select-option>
       }
     </ion-select>
   }
-  @if (currentEnvId) {
+  @if (currentEnvId()) {
     <ion-buttons
       slot="end"
       class="ion-no-margin ion-no-padding"

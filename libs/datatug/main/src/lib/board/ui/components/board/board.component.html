@@ -1,8 +1,8 @@
-@if (!!boardDef?.rows?.length) {
-  @for (boardRowDef of boardDef?.rows || []; track boardRowDef) {
+@if (!!boardDef()?.rows?.length) {
+  @for (boardRowDef of boardDef()?.rows || []; track boardRowDef) {
     <sneat-datatug-board-row
       [boardRowDef]="boardRowDef"
-      [boardContext]="boardContext"
+      [boardContext]="boardContext()"
     />
   }
 } @else {
@@ -14,7 +14,7 @@
         </ion-text>
       </ion-col>
     </ion-row>
-    @if (boardContext?.mode === "edit") {
+    @if (boardContext()?.mode === "edit") {
       <ion-row>
         <ion-col>
           <ion-button fill="outline" (click)="newCard()">

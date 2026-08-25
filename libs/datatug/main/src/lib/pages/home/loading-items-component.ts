@@ -1,5 +1,5 @@
-import { Component, Input } from '@angular/core';
-import { IonIcon, IonItem, IonLabel } from '@ionic/angular/standalone';
+import { Component, input } from '@angular/core';
+import { IonIcon, IonItem, IonLabel } from '@ionic/angular';
 import { AuthStatus } from '@sneat/auth-core';
 
 @Component({
@@ -8,6 +8,9 @@ import { AuthStatus } from '@sneat/auth-core';
   imports: [IonItem, IonIcon, IonLabel],
 })
 export class LoadingItemsComponent {
-  @Input({ required: true }) public authStatus?: AuthStatus;
-  @Input({ required: true }) public title?: string;
+  // TODO: Skipped for migration because:
+  //  This input is used in a control flow expression (e.g. `@if` or `*ngIf`)
+  //  and migrating would break narrowing currently.
+  public readonly authStatus = input.required<AuthStatus | undefined>();
+  public readonly title = input.required<string | undefined>();
 }

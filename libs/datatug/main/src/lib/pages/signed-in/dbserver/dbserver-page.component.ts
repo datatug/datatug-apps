@@ -21,7 +21,7 @@ import {
   IonText,
   IonTitle,
   IonToolbar,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { map, takeUntil } from 'rxjs/operators';
 import { Subject } from 'rxjs';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';

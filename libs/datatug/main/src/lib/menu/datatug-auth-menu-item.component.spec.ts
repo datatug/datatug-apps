@@ -1,6 +1,6 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
-import { MenuController, NavController } from '@ionic/angular/standalone';
+import { MenuController, NavController } from '@ionic/angular';
 import { SneatAuthStateService, SneatUserService } from '@sneat/auth-core';
 import { ErrorLogger } from '@sneat/core';
 import { Subject, of } from 'rxjs';

@@ -1,4 +1,4 @@
-import { Component, Input, ViewChild, inject } from '@angular/core';
+import { Component, ViewChild, inject, input } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
   PopoverController,
@@ -16,7 +16,7 @@ import {
   IonSelectOption,
   IonTitle,
   IonToolbar,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { parseStoreRef } from '@sneat/core';
 import { IProjectContext } from '../../nav/nav-models';
@@ -56,7 +56,7 @@ export class NewProjectFormComponent implements ViewDidEnter {
 
   isCreating = false;
 
-  @Input() onCancel?: () => void;
+  readonly onCancel = input<() => void>();
 
   @ViewChild(IonInput, { static: false }) titleInput?: IonInput;
 
@@ -67,8 +67,9 @@ export class NewProjectFormComponent implements ViewDidEnter {
   }
 
   cancel(): void {
-    if (this.onCancel) {
-      this.onCancel();
+    const onCancel = this.onCancel();
+    if (onCancel) {
+      onCancel();
     }
   }
 
