@@ -23,10 +23,9 @@
     "noFallthroughCasesInSwitch": true,
     "lib": ["ES2023", "DOM"],
     "skipLibCheck": true,
-    "baseUrl": ".",
     "paths": {
-      "@sneat/datatug-main": ["libs/datatug/main/src/public_api.ts"],
-      "@sneat/core/testing": ["libs/testing/src/test-setup.ts"]
+      "@sneat/datatug-main": ["./libs/datatug/main/src/public_api.ts"],
+      "@sneat/core/testing": ["./libs/testing/src/test-setup.ts"]
     }
   },
   "exclude": ["node_modules", "tmp"]
