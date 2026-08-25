@@ -1,8 +1,9 @@
 import { bootstrapApplication } from '@angular/platform-browser';
+import { provideZonelessChangeDetection } from '@angular/core';
 import { provideHttpClient } from '@angular/common/http';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
 import { provideRouter, RouteReuseStrategy } from '@angular/router';
-import { IonicRouteStrategy, provideIonicAngular } from '@ionic/angular/standalone';
+import { IonicRouteStrategy, provideIonicAngular } from '@ionic/angular';
 import { DefaultSneatAppApiBaseUrl, SneatApiBaseUrl } from '@sneat/api';
 import { TelegramAuthService } from '@sneat/auth-core';
 import { authRoutes, TelegramLoginConfig } from '@sneat/auth-ui';
@@ -32,6 +33,7 @@ if (datatugAppEnvironmentConfig.posthog) {
 
 bootstrapApplication(DatatugAppComponent, {
   providers: [
+    provideZonelessChangeDetection(),
     provideHttpClient(),
     provideErrorLogger(),
     provideIonicAngular(),

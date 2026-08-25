@@ -1,8 +1,8 @@
-import { Component, Input, OnInit, inject } from '@angular/core';
+import { Component, OnInit, inject, input } from '@angular/core';
 import { DataGridComponent } from '@sneat/datagrid';
 import { Observable, Subject } from 'rxjs';
 import { first } from 'rxjs/operators';
-import { ModalController } from '@ionic/angular/standalone';
+import { ModalController } from '@ionic/angular';
 import { IGridDef } from '@sneat/grid';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { ICommandResponseItem } from '../../dto/command-response';
@@ -28,18 +28,18 @@ export class ParameterLookupComponent implements OnInit {
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly modal = inject(ModalController);
 
-  @Input() parameter?: IParameterDef;
-  @Input() subj?: Subject<IParameterValueWithoutID>;
-  @Input() canceled?: () => void;
-  @Input() storeId?: string;
-  @Input() projectId?: string;
-  @Input() envId?: string;
-  @Input() lookupResponse?: Observable<IExecuteResponse>;
+  readonly parameter = input<IParameterDef>();
+  readonly subj = input<Subject<IParameterValueWithoutID>>();
+  readonly canceled = input<() => void>();
+  readonly storeId = input<string>();
+  readonly projectId = input<string>();
+  readonly envId = input<string>();
+  readonly lookupResponse = input<Observable<IExecuteResponse>>();
 
   grid?: IGridDef;
 
   ngOnInit() {
-    this.lookupResponse?.pipe(first()).subscribe({
+    this.lookupResponse()?.pipe(first()).subscribe({
       next: (response: IExecuteResponse) => {
         try {
           const firstCommand = response.commands[0];
@@ -64,9 +64,10 @@ export class ParameterLookupComponent implements OnInit {
       string,
       undefined
     >;
-    const value = this.parameter?.lookup?.keyFields.map((f) => data[f])[0];
-    if (this.parameter?.type) {
-      this.subj?.next({ type: this.parameter.type, value });
+    const parameter = this.parameter();
+    const value = parameter?.lookup?.keyFields.map((f) => data[f])[0];
+    if (parameter?.type) {
+      this.subj()?.next({ type: parameter.type, value });
     }
     this.modal
       .dismiss()

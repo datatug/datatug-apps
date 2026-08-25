@@ -1,3 +1,29 @@
+overrides:
+  '@angular/router': 22.1.3
+  '@angular/platform-server': 22.1.3
+  '@angular/platform-browser-dynamic': 22.1.3
+  '@angular/platform-browser': 22.1.3
+  '@angular/forms': 22.1.3
+  '@angular/core': 22.1.3
+  '@angular/compiler': 22.1.3
+  '@angular/common': 22.1.3
+  '@angular/animations': 22.1.3
+  '@sneat/api-public': 0.26.4
+  '@sneat/api': 0.26.4
+  '@sneat/auth-core': 0.26.4
+  '@sneat/auth-models': 0.26.4
+  '@sneat/auth-ui': 0.26.4
+  '@sneat/components': 0.26.4
+  '@sneat/core-public': 0.26.4
+  '@sneat/core': 0.26.4
+  '@sneat/data': 0.26.4
+  '@sneat/datagrid': 0.26.4
+  '@sneat/dto': 0.26.4
+  '@sneat/grid': 0.26.4
+  '@sneat/logging': 0.26.4
+  '@sneat/space-models': 0.26.4
+  '@sneat/space-services': 0.26.4
+  '@sneat/ui': 0.26.4
 packages:
   - '.'
 
@@ -18,19 +44,20 @@ allowBuilds:
   protobufjs: true
   unrs-resolver: true
 minimumReleaseAgeExclude:
-  - '@sneat/api@0.5.0'
-  - '@sneat/auth-core@0.5.0'
-  - '@sneat/auth-models@0.5.0'
-  - '@sneat/auth-ui@0.5.0'
-  - '@sneat/components@0.5.0'
-  - '@sneat/contactus-core@0.5.0'
-  - '@sneat/core@0.5.0'
-  - '@sneat/data@0.5.0'
-  - '@sneat/datagrid@0.5.0'
-  - '@sneat/dto@0.5.0'
-  - '@sneat/grid@0.5.0'
-  - '@sneat/logging@0.5.0'
-  - '@sneat/space-models@0.5.0'
-  - '@sneat/space-services@0.5.0'
-  - '@sneat/ui@0.5.0'
+  - '@sneat/api@0.5.0 || 0.26.4'
+  - '@sneat/auth-core@0.5.0 || 0.26.4'
+  - '@sneat/auth-models@0.5.0 || 0.26.4'
+  - '@sneat/auth-ui@0.5.0 || 0.26.4'
+  - '@sneat/components@0.5.0 || 0.26.4'
+  - '@sneat/core@0.5.0 || 0.26.4'
+  - '@sneat/data@0.5.0 || 0.26.4'
+  - '@sneat/datagrid@0.5.0 || 0.26.4'
+  - '@sneat/dto@0.5.0 || 0.26.4'
+  - '@sneat/grid@0.5.0 || 0.26.4'
+  - '@sneat/logging@0.5.0 || 0.26.4'
+  - '@sneat/space-models@0.5.0 || 0.26.4'
+  - '@sneat/space-services@0.5.0 || 0.26.4'
+  - '@sneat/ui@0.5.0 || 0.26.4'
   - '@ingitdb/client-github@0.1.2'
+  - '@sneat/api-public@0.26.4'
+  - '@sneat/core-public@0.26.4'

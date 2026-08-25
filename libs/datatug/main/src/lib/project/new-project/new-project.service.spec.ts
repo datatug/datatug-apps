@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { PopoverController } from '@ionic/angular/standalone';
+import { PopoverController } from '@ionic/angular';
 import { ErrorLogger } from '@sneat/core';
 
 import { NewProjectService } from './new-project.service';

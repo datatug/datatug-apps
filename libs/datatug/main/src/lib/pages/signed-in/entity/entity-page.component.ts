@@ -22,7 +22,7 @@ import {
   IonSelectOption,
   IonTitle,
   IonToolbar,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { DataGridComponent } from '@sneat/datagrid';
 import { Subject } from 'rxjs';
 import { takeUntil, takeWhile } from 'rxjs/operators';

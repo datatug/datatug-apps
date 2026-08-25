@@ -14,8 +14,8 @@
                 <span>{{ row[1] | json }}</span>
               } @else {
                 <sneat-datatug-json-table
-                  [path]="path + '.' + row[0]"
-                  [level]="level + 1"
+                  [path]="path() + '.' + row[0]"
+                  [level]="level() + 1"
                   [json]="row[1]"
                 />
               }

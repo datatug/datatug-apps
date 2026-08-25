@@ -2,9 +2,9 @@
   <ion-card-header>
     <ion-card-title>
       <a
-        [href]="fk?.refTable?.name ?? '#'"
-        (click)="goTable($event, fk?.refTable)"
-        >{{ fk?.refTable?.schema }} .{{ fk?.refTable?.name }}</a
+        [href]="fk()?.refTable?.name ?? '#'"
+        (click)="goTable($event, fk()?.refTable)"
+        >{{ fk()?.refTable?.schema }} .{{ fk()?.refTable?.name }}</a
       >
       <ion-text
         color="medium"
@@ -13,7 +13,7 @@
       >
         ⇐
         <span [title]="fkTitle()"
-          >with foreign key {{ fk?.name }} (<b>{{ fk?.columns?.join(", ") }}</b
+          >with foreign key {{ fk()?.name }} (<b>{{ fk()?.columns?.join(", ") }}</b
           >)</span
         >
       </ion-text>

@@ -8,7 +8,7 @@ import {
   IonLabel,
   IonSegment,
   IonSegmentButton,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { QueriesMenuComponent } from '../../../queries/queries-menu.component';
 import { ProjectMenuTopComponent } from '../project-menu-top/project-menu-top.component';
 

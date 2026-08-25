@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { PopoverController } from '@ionic/angular/standalone';
+import { PopoverController } from '@ionic/angular';
 import { NewProjectFormComponent } from './new-project-form.component';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 

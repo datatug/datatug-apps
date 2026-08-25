@@ -21,7 +21,7 @@ import {
   NavController,
   ViewDidLeave,
   ViewWillEnter,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { parseStoreRef } from '@sneat/core';
 import { DatatugCoreModule } from '../../../core/datatug-core.module';
 import { IProjectRef } from '../../../core/project-context';

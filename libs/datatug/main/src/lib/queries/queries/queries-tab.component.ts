@@ -1,5 +1,5 @@
 import { TitleCasePipe } from '@angular/common';
-import { Component, Input, inject } from '@angular/core';
+import { Component, inject, input, model } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
   IonBadge,
@@ -11,7 +11,7 @@ import {
   IonItemDivider,
   IonLabel,
   IonText,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { Subscription } from 'rxjs';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -67,8 +67,12 @@ export class QueriesTabComponent {
   private readonly dataTugNavContextService = inject(DatatugNavContextService);
   private readonly dataTugNavService = inject(DatatugNavService);
 
-  @Input() rootFolder?: 'shared' | 'personal' | 'bookmarked';
-  @Input() project?: IProjectContext;
+  readonly rootFolder = input<'shared' | 'personal' | 'bookmarked'>();
+  // TODO: Skipped for migration because:
+  //  Your application code writes to the input. This prevents migration.
+  // TODO: Skipped for migration because:
+  //  Your application code writes to the input. This prevents migration.
+  readonly project = model<IProjectContext>();
 
   public isDeletingFolders: string[] = [];
   public type: QueryType | '*' = '*';
@@ -136,8 +140,9 @@ export class QueriesTabComponent {
   goQuery(q: IQueryDef, action?: 'execute' | 'edit', folders?: string[]): void {
     const id = folders?.join('/').replace('~/', '');
     q = { ...q, id: `${id}/${q.id}` };
-    if (this.project) {
-      this.dataTugNavService.goQuery(this.project, q, action);
+    const project = this.project();
+    if (project) {
+      this.dataTugNavService.goQuery(project, q, action);
     }
   }
 
@@ -222,7 +227,7 @@ export class QueriesTabComponent {
           'QueryPage.constructor() => currentProject:',
           currentProject,
         );
-        this.project = currentProject;
+        this.project.set(currentProject);
         if (!currentProject) {
           return;
         }
@@ -319,9 +324,10 @@ export class QueriesTabComponent {
       return;
     }
     const parentFolder = this.currentFolder;
-    if (parentFolder && this.project) {
+    const project = this.project();
+    if (parentFolder && project) {
       this.queriesService
-        .createQueryFolder(this.project.ref, parentFolder.path, name)
+        .createQueryFolder(project.ref, parentFolder.path, name)
         .subscribe({
           next: (folder) => {
             const existing = parentFolder.folders?.find((f) => f.id === name);
@@ -357,29 +363,28 @@ export class QueriesTabComponent {
     const folderPath = folder.path;
     const parent = this.parentFolders[this.parentFolders.length - 1];
     this.isDeletingFolders.push(folderPath);
-    if (this.project) {
-      this.queriesService
-        .deleteQueryFolder(this.project.ref, folderPath)
-        .subscribe({
-          next: () => {
-            this.isDeletingFolders = this.isDeletingFolders.filter(
-              (f) => f !== folderPath,
-            );
-            parent.folders = parent.folders?.filter((f) => f.id !== folder.id);
-            if (
-              this.currentFolder.path === folderPath &&
-              this.currentFolder.id === folder.id
-            ) {
-              this.cd('..');
-            }
-          },
-          error: (err) => {
-            this.isDeletingFolders = this.isDeletingFolders.filter(
-              (f) => f !== folderPath,
-            );
-            this.errorLogger.logError(err, 'Failed to delete queries folder');
-          },
-        });
+    const project = this.project();
+    if (project) {
+      this.queriesService.deleteQueryFolder(project.ref, folderPath).subscribe({
+        next: () => {
+          this.isDeletingFolders = this.isDeletingFolders.filter(
+            (f) => f !== folderPath,
+          );
+          parent.folders = parent.folders?.filter((f) => f.id !== folder.id);
+          if (
+            this.currentFolder.path === folderPath &&
+            this.currentFolder.id === folder.id
+          ) {
+            this.cd('..');
+          }
+        },
+        error: (err) => {
+          this.isDeletingFolders = this.isDeletingFolders.filter(
+            (f) => f !== folderPath,
+          );
+          this.errorLogger.logError(err, 'Failed to delete queries folder');
+        },
+      });
     }
   }
 }

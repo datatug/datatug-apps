@@ -1,16 +1,16 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  Input,
   OnChanges,
   SimpleChanges,
+  input
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
   IonLabel,
   IonSegment,
   IonSegmentButton,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { IBoardContext } from '../../../../../models/definition/board/board';
 import { ITabsWidgetSettings } from '../../../../../models/definition/board/widget-tabs';
 
@@ -23,15 +23,16 @@ import { ITabsWidgetSettings } from '../../../../../models/definition/board/widg
 export class TabsWidgetComponent implements OnChanges {
   public selectedTab?: string;
 
-  @Input() level?: number;
-  @Input() tabsWidgetSettings?: ITabsWidgetSettings;
-  @Input() boardContext?: IBoardContext;
+  readonly level = input<number>();
+  readonly tabsWidgetSettings = input<ITabsWidgetSettings>();
+  readonly boardContext = input<IBoardContext>();
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['tabsWidgetDef'] && !this.selectedTab) {
+      const tabsWidgetSettings = this.tabsWidgetSettings();
       this.selectedTab =
-        (this.tabsWidgetSettings?.tabs?.length &&
-          this.tabsWidgetSettings.tabs[0].title) ||
+        (tabsWidgetSettings?.tabs?.length &&
+          tabsWidgetSettings.tabs[0].title) ||
         undefined;
     }
   }

@@ -83,7 +83,7 @@ export function createBaseViteConfig(
         deps: {
           inline: [
             '@ionic/angular',
-            '@ionic/angular/standalone',
+            '@ionic/angular',
             '@angular/fire',
             /@angular\//,
             /@sneat\//,

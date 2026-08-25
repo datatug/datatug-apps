@@ -8,7 +8,7 @@ import {
   IonItem,
   IonLabel,
   IonText,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import {
   allUserStoresAsFlatList,
   DatatugProjStoreType,
@@ -22,7 +22,7 @@ import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
-import { NavController } from '@ionic/angular/standalone';
+import { NavController } from '@ionic/angular';
 import { DatatugUserService } from '../../../services/base/datatug-user-service';
 import { AuthStatus } from '@sneat/auth-core';
 import { IDatatugStoreContext } from '../../../nav/nav-models';

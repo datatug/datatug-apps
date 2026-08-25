@@ -13,7 +13,7 @@ import {
   IonSelect,
   IonSelectOption,
   ModalController,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { Subject } from 'rxjs';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { IDbServer } from '../../../models/definition/apis/database';

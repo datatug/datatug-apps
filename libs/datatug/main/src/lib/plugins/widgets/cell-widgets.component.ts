@@ -1,4 +1,4 @@
-import { Component, Input } from '@angular/core';
+import { Component, input } from '@angular/core';
 import { ICellWidgetDef } from '../../models/definition/cell-widget';
 import { CellHrefWidgetComponent } from './cell-href-widget';
 
@@ -8,7 +8,7 @@ import { CellHrefWidgetComponent } from './cell-href-widget';
   imports: [CellHrefWidgetComponent],
 })
 export class CellWidgetsComponent {
-  @Input() v: unknown;
-  @Input() def?: ICellWidgetDef;
-  @Input() settings?: unknown;
+  readonly v = input<unknown>();
+  readonly def = input<ICellWidgetDef>();
+  readonly settings = input<unknown>();
 }

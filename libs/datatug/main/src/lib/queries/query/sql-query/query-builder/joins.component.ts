@@ -1,5 +1,12 @@
 import { JsonPipe } from '@angular/common';
-import { Component, EventEmitter, Input, Output, inject } from '@angular/core';
+import {
+  Component,
+  EventEmitter,
+  Output,
+  inject,
+  input,
+  model,
+} from '@angular/core';
 import {
   IonBadge,
   IonButton,
@@ -13,13 +20,18 @@ import {
   IonSelect,
   IonSelectOption,
   IonText,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { ISqlChanged } from '../intefaces';
 import {
   ICanJoin,
   QueryContextSqlService,
 } from '../../../query-context-sql.service';
+import {
+  IAstJoin,
+  IAstQuery,
+  SqlParser,
+} from '../../../../services/unsorted/sql-parser';
 
 @Component({
   selector: 'sneat-datatug-qe-joins',
@@ -44,9 +56,9 @@ export class JoinsComponent {
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   readonly queryContextSqlService = inject(QueryContextSqlService);
 
-  @Input() public sql?: string;
-  @Input() public queryAst?: IAstQuery;
-  @Input() public sqlParser?: SqlParser;
+  public readonly sql = model<string>();
+  public readonly queryAst = model<IAstQuery>();
+  public readonly sqlParser = input<SqlParser>();
   @Output() public astChanged = new EventEmitter<ISqlChanged>();
 
   public suggestedJoins?: ICanJoin[];
@@ -66,15 +78,17 @@ export class JoinsComponent {
     // console.log('joinCheckChanged', event, join);
     const ce = event as CustomEvent;
     const checked = !!ce.detail.checked;
-    if (this.sql) {
+    const sqlParser = this.sqlParser();
+    const sql = this.sql();
+    if (sql) {
       if (checked) {
-        this.sql = this.sqlParser?.uncommentJoin(this.sql, join);
+        this.sql.set(sqlParser?.uncommentJoin(sql, join));
       } else {
-        this.sql = this.sqlParser?.commentOutJoin(this.sql, join);
+        this.sql.set(sqlParser?.commentOutJoin(sql, join));
       }
     }
-    this.queryAst = this.sql ? this.sqlParser?.parseQuery(this.sql) : undefined;
-    this.astChanged.emit({ sql: this.sql || '', ast: this.queryAst || {} });
+    this.queryAst.set(sql ? sqlParser?.parseQuery(sql) : undefined);
+    this.astChanged.emit({ sql: sql || '', ast: this.queryAst() || {} });
   }
 
   public addJoin(join: ICanJoin, type: 'left' | 'right' | 'inner'): void {

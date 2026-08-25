@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 import { IBoardContext } from '../../../../models/definition/board/board';
 import { WidgetDef } from '../../../../models/definition/board/widget-def';
 import { ISqlWidgetSettings } from '../../../../models/definition/board/widget-sql';
@@ -13,17 +13,20 @@ import { TabsWidgetComponent } from '../widgets/tabs-widget/tabs-widget.componen
   imports: [TabsWidgetComponent],
 })
 export class BoardWidgetComponent {
-  @Input() level?: number;
-  @Input() cardTab?: QueryType | 'grid' | 'card';
-  @Input() widgetDef?: WidgetDef;
+  readonly level = input<number>();
+  readonly cardTab = input<QueryType | 'grid' | 'card'>();
+  // TODO: Skipped for migration because:
+  //  This input is used in a control flow expression (e.g. `@if` or `*ngIf`)
+  //  and migrating would break narrowing currently.
+  readonly widgetDef = input<WidgetDef>();
 
   get tabsWidgetSettings() {
-    return this.widgetDef?.data as ITabsWidgetSettings;
+    return this.widgetDef()?.data as ITabsWidgetSettings;
   }
 
   get sqlWidgetSettings() {
-    return this.widgetDef?.data as ISqlWidgetSettings;
+    return this.widgetDef()?.data as ISqlWidgetSettings;
   }
 
-  @Input() boardContext?: IBoardContext;
+  readonly boardContext = input<IBoardContext>();
 }

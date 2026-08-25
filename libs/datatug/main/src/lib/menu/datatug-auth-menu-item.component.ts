@@ -17,7 +17,7 @@ import {
   IonLabel,
   MenuController,
   NavController,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import {
   ISneatAuthState,
   ISneatUserState,

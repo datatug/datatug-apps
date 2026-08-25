@@ -19,13 +19,13 @@ import {
   IonSelectOption,
   IonTitle,
   IonToolbar,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import {
   ViewDidEnter,
   ViewDidLeave,
   ViewWillEnter,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { getStoreId, IProjectContext } from '../../nav/nav-models';
 import { QueriesTabComponent } from './queries-tab.component';
 

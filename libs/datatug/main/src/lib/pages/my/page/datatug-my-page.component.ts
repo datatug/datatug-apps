@@ -15,7 +15,7 @@ import {
   IonNote,
   IonTitle,
   IonToolbar,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { DatatugServicesStoreModule } from '../../../services/repo/datatug-services-store.module';
 
 @Component({

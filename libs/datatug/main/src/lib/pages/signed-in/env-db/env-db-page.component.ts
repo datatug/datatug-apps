@@ -24,7 +24,7 @@ import {
   IonSegmentButton,
   IonTitle,
   IonToolbar,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { GlobalTooltipOption, Options, Tabulator } from 'tabulator-tables';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { getTabulatorCols, IGridColumn } from '@sneat/grid';

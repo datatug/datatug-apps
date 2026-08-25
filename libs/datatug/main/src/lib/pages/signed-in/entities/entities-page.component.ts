@@ -16,7 +16,7 @@ import {
   IonMenuButton,
   IonTitle,
   IonToolbar,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import {
@@ -24,7 +24,7 @@ import {
   ToastController,
   ViewDidEnter,
   ViewDidLeave,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { IRecord } from '@sneat/data';

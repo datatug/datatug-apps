@@ -1,5 +1,5 @@
-import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
-import { IonCol, IonRow } from '@ionic/angular/standalone';
+import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { IonCol, IonRow } from '@ionic/angular';
 import {
   IBoardContext,
   IBoardRowDef,
@@ -13,6 +13,6 @@ import { BoardCardComponent } from '../board-card/board-card.component';
   imports: [IonCol, IonRow, BoardCardComponent],
 })
 export class BoardRowComponent {
-  @Input() boardRowDef?: IBoardRowDef;
-  @Input() boardContext?: IBoardContext;
+  readonly boardRowDef = input<IBoardRowDef>();
+  readonly boardContext = input<IBoardContext>();
 }

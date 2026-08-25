@@ -1,4 +1,4 @@
-import { Component, Input, OnDestroy, inject } from '@angular/core';
+import { Component, OnDestroy, inject, input } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Params, Router } from '@angular/router';
 import {
@@ -29,7 +29,7 @@ import {
   IonText,
   IonTitle,
   IonToolbar,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { RandomIdService } from '@sneat/random';
 import { ISqlChanged } from './intefaces';
@@ -39,7 +39,7 @@ import {
 } from '../../query-editor-state-service';
 import { distinctUntilChanged, takeUntil } from 'rxjs/operators';
 import { Subject } from 'rxjs';
-import { ViewDidEnter } from '@ionic/angular/standalone';
+import { ViewDidEnter } from '@ionic/angular';
 import { QueriesService } from '../../queries.service';
 import { QueryContextSqlService } from '../../query-context-sql.service';
 import { parseStoreRef } from '@sneat/core';
@@ -127,7 +127,7 @@ export class SqlQueryEditorComponent implements OnDestroy, ViewDidEnter {
   private readonly queryEditorStateService = inject(QueryEditorStateService);
   private readonly envService = inject(EnvironmentService);
 
-  @Input() currentProject?: IProjectContext;
+  readonly currentProject = input<IProjectContext>();
 
   public showQueryBuilder = false;
   public editorTab: 'text' | 'builder' = 'text';
@@ -226,7 +226,7 @@ export class SqlQueryEditorComponent implements OnDestroy, ViewDidEnter {
       }
       if (this.queryState.environments && !this.queryState.activeEnv) {
         this.setActiveEnv(this.queryState.environments[0].id);
-        const dbModels = this.currentProject?.summary?.dbModels;
+        const dbModels = this.currentProject()?.summary?.dbModels;
         if (dbModels?.length === 1) {
           this.updateQueryState({
             ...this.queryState,
@@ -290,9 +290,10 @@ export class SqlQueryEditorComponent implements OnDestroy, ViewDidEnter {
           environments: queryState.environments || [activeEnv],
         });
       }
-      if (!activeEnv.summary && this.currentProject) {
+      const currentProject = this.currentProject();
+      if (!activeEnv.summary && currentProject) {
         // Potentially can be duplicate calls if user changes env back and forth before response comes back
-        this.getEnvData(this.currentProject, envId);
+        this.getEnvData(currentProject, envId);
       }
     } catch (e) {
       this.errorLogger.logError(e, 'Failed to set active environment');
@@ -522,8 +523,9 @@ export class SqlQueryEditorComponent implements OnDestroy, ViewDidEnter {
       ...this.queryState,
       activeEnv: this.queryState.environments?.find((v) => v.id === value),
     });
-    if (this.activeEnv && !this.activeEnv.summary && this.currentProject) {
-      this.getEnvData(this.currentProject, this.activeEnv.id);
+    const currentProject = this.currentProject();
+    if (this.activeEnv && !this.activeEnv.summary && currentProject) {
+      this.getEnvData(currentProject, this.activeEnv.id);
     }
     this.updateUrl();
   }
@@ -712,11 +714,12 @@ export class SqlQueryEditorComponent implements OnDestroy, ViewDidEnter {
       alert('Query does not require saving as is not changed yet');
       return;
     }
-    if (!this.currentProject) {
+    const currentProject = this.currentProject();
+    if (!currentProject) {
       throw 'currentProject is not set';
     }
     this.queryEditorStateService
-      .saveQuery(this.queryState, this.currentProject.ref)
+      .saveQuery(this.queryState, currentProject.ref)
       .subscribe({
         error: this.errorLogger.logErrorHandler('Failed to save query'),
       });

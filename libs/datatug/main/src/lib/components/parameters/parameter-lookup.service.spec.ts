@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { ModalController } from '@ionic/angular/standalone';
+import { ModalController } from '@ionic/angular';
 import { ErrorLogger } from '@sneat/core';
 
 import { ParameterLookupService } from './parameter-lookup.service';

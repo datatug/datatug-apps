@@ -12,7 +12,7 @@
         "outputPath": "dist/apps/datatug-app",
         "index": "apps/datatug-app/src/index.html",
         "browser": "apps/datatug-app/src/main.ts",
-        "polyfills": ["zone.js"],
+        "polyfills": [],
         "allowedCommonJsDependencies": ["qrcode"],
         "tsConfig": "apps/datatug-app/tsconfig.app.json",
         "inlineStyleLanguage": "scss",
@@ -87,10 +87,7 @@
     },
     "test": {
       "executor": "@nx/vitest:test",
-      "outputs": ["{options.reportsDirectory}"],
-      "options": {
-        "reportsDirectory": "../../coverage/apps/datatug-app"
-      }
+      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"]
     },
     "e2e": {
       "executor": "nx:run-commands",

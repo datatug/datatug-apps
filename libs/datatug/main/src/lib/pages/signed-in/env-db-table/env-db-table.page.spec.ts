@@ -1,7 +1,7 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
 import { ActivatedRoute } from '@angular/router';
-import { PopoverController } from '@ionic/angular/standalone';
+import { PopoverController } from '@ionic/angular';
 import { ErrorLogger } from '@sneat/core';
 import { of } from 'rxjs';
 

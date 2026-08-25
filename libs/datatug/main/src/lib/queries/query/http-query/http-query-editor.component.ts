@@ -24,7 +24,7 @@ import {
   IonSelect,
   IonSelectOption,
   IonTextarea,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { JsonTableComponent } from '../../../components/jsontug/json-table.component';
 import { currencyFlag } from '../../../plugins/pipes/lookup-country-flags';
 import { LookupPipe } from '../../../plugins/pipes/lookup-pipe';

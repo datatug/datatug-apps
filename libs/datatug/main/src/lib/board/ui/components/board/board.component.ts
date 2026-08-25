@@ -1,8 +1,8 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  Input,
   inject,
+  input
 } from '@angular/core';
 import {
   IonButton,
@@ -13,7 +13,7 @@ import {
   IonRow,
   IonText,
   ModalController,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import {
   IBoardContext,
   IBoardDef,
@@ -41,8 +41,11 @@ export class BoardComponent {
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly modalCtrl = inject(ModalController);
 
-  @Input() boardDef?: IBoardDef;
-  @Input() boardContext?: IBoardContext;
+  // TODO: Skipped for migration because:
+  //  This input is used in a control flow expression (e.g. `@if` or `*ngIf`)
+  //  and migrating would break narrowing currently.
+  readonly boardDef = input<IBoardDef>();
+  readonly boardContext = input<IBoardContext>();
 
   async newCard() {
     const modal = await this.modalCtrl.create({

@@ -1,11 +1,11 @@
 import { TitleCasePipe } from '@angular/common';
 import {
   Component,
-  Input,
   OnChanges,
   OnDestroy,
   SimpleChanges,
   inject,
+  input
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
@@ -16,7 +16,7 @@ import {
   IonSegment,
   IonSegmentButton,
   IonText,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { SneatCardListComponent } from '@sneat/components';
 import { Observable, Subject, throwError } from 'rxjs';
 import { IProjectRef } from '../../core/project-context';
@@ -75,8 +75,8 @@ export class DatatugFolderComponent implements OnChanges, OnDestroy {
   boards?: IProjItemBrief[];
   queries?: IProjItemBrief[];
 
-  @Input() path = '~';
-  @Input() projectRef?: IProjectRef;
+  readonly path = input('~');
+  readonly projectRef = input<IProjectRef>();
 
   tab: 'boards' | 'queries' | 'environments' | 'entities' = 'boards';
 
@@ -96,7 +96,7 @@ export class DatatugFolderComponent implements OnChanges, OnDestroy {
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['projectRef']) {
-      if (this.projectRef) {
+      if (this.projectRef()) {
         this.subscribeForFolder();
       }
     }
@@ -134,10 +134,11 @@ export class DatatugFolderComponent implements OnChanges, OnDestroy {
     create: (request: CreateNamedRequest) => Observable<IRecord<T>>,
   ): Observable<IRecord<T>> {
     // console.log('createProjItem()', projItemType, name);
-    if (!this.projectRef) {
+    const projectRef = this.projectRef();
+    if (!projectRef) {
       return throwError(() => 'projectRef is not set');
     }
-    return create({ projectRef: this.projectRef, name: name.trim() }).pipe(
+    return create({ projectRef: projectRef, name: name.trim() }).pipe(
       tap(() => {
         // console.log('project item created:', value);
         try {
@@ -163,7 +164,8 @@ export class DatatugFolderComponent implements OnChanges, OnDestroy {
 
   private goProjItemPage(page: ProjectItemType): void {
     // console.log('goProjItemPage()', page, projItem, this.projectRef);
-    if (!this.projectRef) {
+    const projectRef = this.projectRef();
+    if (!projectRef) {
       throw new Error('projectRef is not set');
     }
     switch (page) {
@@ -173,17 +175,18 @@ export class DatatugFolderComponent implements OnChanges, OnDestroy {
     }
     this.datatugNavService.goProjPage(
       page,
-      { ref: this.projectRef },
+      { ref: projectRef },
       {
-        projectContext: { ref: this.projectRef },
+        projectContext: { ref: projectRef },
       },
     );
   }
 
   private subscribeForFolder(): void {
-    if (this.projectRef) {
+    const projectRef = this.projectRef();
+    if (projectRef) {
       this.foldersService
-        .watchFolder({ ...this.projectRef, id: this.path })
+        .watchFolder({ ...projectRef, id: this.path() })
         .pipe(takeUntil(this.destroyed))
         .subscribe({
           next: (folder) => {

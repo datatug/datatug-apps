@@ -1,12 +1,12 @@
-@if (level) {
-  <ion-segment [(ngModel)]="tab">
+@if (level()) {
+  <ion-segment [ngModel]="tab()" (ngModelChange)="tab.set($event)">
     <ion-segment-button value="SQL">SQL</ion-segment-button>
     <ion-segment-button value="grid">Grid</ion-segment-button>
     <ion-segment-button value="card">Card</ion-segment-button>
   </ion-segment>
 }
 <div class="ion-margin-top">
-  @switch (tab) {
+  @switch (tab()) {
     @case ("SQL") {
       <sneat-datatug-sql [sql]="sql" />
     }
@@ -15,8 +15,8 @@
     }
   }
   <sneat-datatug-grid-widget
-    [style.display]="tab === 'grid' ? 'block' : 'none'"
+    [style.display]="tab() === 'grid' ? 'block' : 'none'"
     [recordset]="recordset"
-    [hideColumns]="data?.hideColumns"
+    [hideColumns]="data()?.hideColumns"
   />
 </div>

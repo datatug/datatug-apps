@@ -7,7 +7,7 @@ import {
   IonItem,
   IonLabel,
   IonSpinner,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { Observable, Subject } from 'rxjs';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { takeUntil } from 'rxjs/operators';

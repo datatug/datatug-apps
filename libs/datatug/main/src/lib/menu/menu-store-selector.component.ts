@@ -1,10 +1,10 @@
 import {
   Component,
-  Input,
   OnChanges,
   OnDestroy,
   SimpleChanges,
   inject,
+  input
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
@@ -15,7 +15,7 @@ import {
   IonLabel,
   IonSelect,
   IonSelectOption,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { Subject } from 'rxjs';
 import { filter, takeUntil } from 'rxjs/operators';
@@ -46,7 +46,7 @@ export class MenuStoreSelectorComponent implements OnDestroy, OnChanges {
   private readonly nav = inject(DatatugNavService);
   readonly datatugNavContextService = inject(DatatugNavContextService);
 
-  @Input() datatugUser?: IDatatugUser;
+  readonly datatugUser = input<IDatatugUser>();
 
   currentStoreId?: string;
 
@@ -85,7 +85,7 @@ export class MenuStoreSelectorComponent implements OnDestroy, OnChanges {
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['datatugUser']) {
-      this.stores = allUserStoresAsFlatList(this.datatugUser?.datatug?.stores);
+      this.stores = allUserStoresAsFlatList(this.datatugUser()?.datatug?.stores);
     }
   }
 

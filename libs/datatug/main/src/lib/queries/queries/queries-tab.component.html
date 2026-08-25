@@ -45,7 +45,7 @@
   @if (!isFiltering() && currentFolder.folders) {
     <ion-item-divider>
       @if (!parentFolders.length) {
-        <ion-label>{{ rootFolder || "" | titlecase }} queries</ion-label>
+        <ion-label>{{ rootFolder() || "" | titlecase }} queries</ion-label>
       }
       @for (parentFolder of parentFolders; track parentFolder.id) {
         <ion-badge

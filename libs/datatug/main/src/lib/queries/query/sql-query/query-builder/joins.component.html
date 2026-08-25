@@ -1,6 +1,6 @@
 <ion-card>
   <ion-list>
-    @if (!queryAst?.from) {
+    @if (!queryAst()?.from) {
       <ion-item>
         <ion-label color="medium" style="font-weight: bold">FROM</ion-label>
         <ion-select>
@@ -9,16 +9,16 @@
         </ion-select>
       </ion-item>
     }
-    @if (queryAst?.from) {
+    @if (queryAst()?.from) {
       <ion-item>
         <ion-checkbox checked="true" disabled slot="start" />
         <ion-label title="FROM">
-          @if (queryAst?.from?.schema; as schema) {
+          @if (queryAst()?.from?.schema; as schema) {
             <span>[{{ schema }}].</span>
           }
-          |{{ queryAst?.from?.name }}|
+          |{{ queryAst()?.from?.name }}|
         </ion-label>
-        @if (queryAst?.from?.alias; as alias) {
+        @if (queryAst()?.from?.alias; as alias) {
           <ion-badge color="medium">{{ alias }}</ion-badge>
         }
         <ion-buttons slot="end">
@@ -28,7 +28,7 @@
         </ion-buttons>
       </ion-item>
     }
-    @for (join of queryAst?.joins || []; track $index) {
+    @for (join of queryAst()?.joins || []; track $index) {
       <ion-item>
         <ion-checkbox
           slot="start"

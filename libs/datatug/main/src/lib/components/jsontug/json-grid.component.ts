@@ -1,5 +1,5 @@
 import { JsonPipe } from '@angular/common';
-import { Component, Input } from '@angular/core';
+import { Component, input } from '@angular/core';
 import { IJsonGridData } from '../../plugins/interfaces';
 
 @Component({
@@ -9,5 +9,5 @@ import { IJsonGridData } from '../../plugins/interfaces';
   imports: [JsonPipe],
 })
 export class JsonGridComponent {
-  @Input() jsonGrid?: IJsonGridData;
+  readonly jsonGrid = input<IJsonGridData>();
 }

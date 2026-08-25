@@ -4,7 +4,7 @@ import { NavigationEnd, Router } from '@angular/router';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { Subject } from 'rxjs';
 import { filter, takeUntil } from 'rxjs/operators';
-import { IonCard, IonCardContent } from '@ionic/angular/standalone';
+import { IonCard, IonCardContent } from '@ionic/angular';
 import { DatatugCoreModule } from '../core/datatug-core.module';
 import { DatatugServicesStoreModule } from '../services/repo/datatug-services-store.module';
 import { DatatugServicesProjectModule } from '../services/project/datatug-services-project.module';

@@ -22,7 +22,7 @@ import {
   IonTitle,
   IonToolbar,
   ViewDidEnter,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { IProjectRef } from '../../../core/project-context';
 import {
   IQueryEditorState,

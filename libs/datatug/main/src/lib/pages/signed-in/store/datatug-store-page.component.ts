@@ -20,7 +20,7 @@ import {
   IonToolbar,
   ViewDidEnter,
   ViewDidLeave,
-} from '@ionic/angular/standalone';
+} from '@ionic/angular';
 import { AuthStatus } from '@sneat/auth-core';
 import { SneatErrorCardComponent } from '@sneat/components';
 import { parseStoreRef } from '@sneat/core';
