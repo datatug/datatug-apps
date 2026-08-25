@@ -45,7 +45,6 @@ export function createBaseViteConfig(
         '@angular/router',
         '@angular/fire',
         'rxjs',
-        'zone.js',
       ],
     },
     plugins: [
