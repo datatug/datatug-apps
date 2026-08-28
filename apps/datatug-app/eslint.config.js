@@ -9,6 +9,17 @@ module.exports = [
     files: ['**/*.ts'],
     rules: {
       '@angular-eslint/prefer-standalone': 'off',
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@ionic/angular',
+              message: 'Use focused Ionic entry points such as @ionic/angular/standalone or @ionic/angular/provide.',
+            },
+          ],
+        },
+      ],
     },
   },
 ];
