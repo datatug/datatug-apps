@@ -10,22 +10,22 @@ overrides:
   '@angular/compiler': 22.1.3
   '@angular/common': 22.1.3
   '@angular/animations': 22.1.3
-  '@sneat/api-public': 0.26.4
-  '@sneat/api': 0.26.4
-  '@sneat/auth-core': 0.26.4
-  '@sneat/auth-models': 0.26.4
-  '@sneat/auth-ui': 0.26.4
-  '@sneat/components': 0.26.4
-  '@sneat/core-public': 0.26.4
-  '@sneat/core': 0.26.4
-  '@sneat/data': 0.26.4
-  '@sneat/datagrid': 0.26.4
-  '@sneat/dto': 0.26.4
-  '@sneat/grid': 0.26.4
-  '@sneat/logging': 0.26.4
-  '@sneat/space-models': 0.26.4
-  '@sneat/space-services': 0.26.4
-  '@sneat/ui': 0.26.4
+  '@sneat/api-public': 0.27.6
+  '@sneat/api': 0.27.6
+  '@sneat/auth-core': 0.27.6
+  '@sneat/auth-models': 0.27.6
+  '@sneat/auth-ui': 0.27.6
+  '@sneat/components': 0.27.6
+  '@sneat/core-public': 0.27.6
+  '@sneat/core': 0.27.6
+  '@sneat/data': 0.27.6
+  '@sneat/datagrid': 0.27.6
+  '@sneat/dto': 0.27.6
+  '@sneat/grid': 0.27.6
+  '@sneat/logging': 0.27.6
+  '@sneat/space-models': 0.27.6
+  '@sneat/space-services': 0.27.6
+  '@sneat/ui': 0.27.6
 packages:
   - '.'
 
@@ -63,3 +63,4 @@ minimumReleaseAgeExclude:
   - '@ingitdb/client-github@0.1.2'
   - '@sneat/api-public@0.26.4'
   - '@sneat/core-public@0.26.4'
+  - '@sneat/extension-contactus-contract@0.12.5'
