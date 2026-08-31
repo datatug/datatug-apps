@@ -4,8 +4,8 @@ import {
   setupGlobalMocks,
 } from './base-test-setup';
 import { ErrorLogger, AnalyticsService } from '@sneat/core';
-import { Firestore } from '@angular/fire/firestore';
-import { Auth } from '@angular/fire/auth';
+import { Auth } from 'firebase/auth';
+import { Firestore } from 'firebase/firestore';
 
 export function configureGlobalTestBed() {
   try {

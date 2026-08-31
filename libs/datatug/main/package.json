@@ -6,7 +6,6 @@
     "@angular/core": ">=22.0.0 <23.0.0",
     "@angular/router": ">=22.0.0 <23.0.0",
     "@angular/forms": ">=22.0.0 <23.0.0",
-    "@angular/fire": "^20.0.0",
     "@ingitdb/client": "*",
     "@ingitdb/client-github": "*",
     "@ionic/angular": ">=9.0.0 <10.0.0",
@@ -23,6 +22,7 @@
     "@sneat/grid": "0.27.6",
     "@sneat/random": "*",
     "@sneat/api": "0.27.6",
+    "firebase": ">=12.0.0 <13.0.0",
     "vitest": "^4.0.18"
   },
   "sideEffects": false

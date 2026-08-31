@@ -7,7 +7,7 @@ import { DatatugServicesUnsortedModule } from '../services/unsorted/datatug-serv
 import { QueriesService } from './queries.service';
 import { QUERY_PROJ_ITEM_SERVICE } from './queries.service.token';
 import { QueryContextSqlService } from './query-context-sql.service';
-import { Firestore as AngularFirestore } from '@angular/fire/firestore';
+import { Firestore } from 'firebase/firestore';
 import { QueryEditorStateService } from './query-editor-state-service';
 import { QueriesUiService } from './queries-ui.service';
 
@@ -20,9 +20,9 @@ import { QueriesUiService } from './queries-ui.service';
   providers: [
     {
       provide: QUERY_PROJ_ITEM_SERVICE,
-      deps: [AngularFirestore, ProjectItemServiceFactory, StoreApiService],
+      deps: [Firestore, ProjectItemServiceFactory, StoreApiService],
       useFactory: (
-        db: AngularFirestore,
+        db: Firestore,
         projectItemServiceFactory: ProjectItemServiceFactory,
         repoProvider: StoreApiService,
       ) =>

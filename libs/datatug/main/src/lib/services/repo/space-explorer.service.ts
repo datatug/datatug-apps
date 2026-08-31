@@ -31,13 +31,12 @@
 import { Injectable, inject } from '@angular/core';
 import {
   collection,
-  collectionData,
   doc,
-  docData,
-  Firestore as AngularFirestore,
-} from '@angular/fire/firestore';
+  Firestore,
+} from 'firebase/firestore';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
+import { collectionData, docData } from './firestore-observables';
 
 const ID_FIELD = '__docId';
 
@@ -56,7 +55,7 @@ export interface IExploreCollectionItem {
 
 @Injectable()
 export class SpaceExplorerService {
-  private readonly db = inject(AngularFirestore);
+  private readonly db = inject(Firestore);
 
   /** Streams one document's raw fields as stored, read-only. */
   watchDocument$(pathSegments: readonly string[]): Observable<IExploreDoc> {

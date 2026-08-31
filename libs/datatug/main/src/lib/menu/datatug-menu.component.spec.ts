@@ -1,8 +1,7 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NavigationEnd, Router } from '@angular/router';
-import { Analytics, logEvent } from '@angular/fire/analytics';
-import { ErrorLogger } from '@sneat/core';
+import { AnalyticsService, ErrorLogger } from '@sneat/core';
 import { Subject } from 'rxjs';
 
 import { DatatugMenuComponent } from './datatug-menu.component';
@@ -21,13 +20,6 @@ interface MenuInternals {
 const peek = (c: DatatugMenuComponent): MenuInternals =>
   c as unknown as MenuInternals;
 
-// logEvent is a standalone export, so mock the module to assert calls and to
-// avoid touching a real Firebase Analytics instance.
-vi.mock('@angular/fire/analytics', () => ({
-  Analytics: class Analytics {},
-  logEvent: vi.fn(),
-}));
-
 describe('DatatugMenuComponent', () => {
   let routerEvents: Subject<unknown>;
   let routerMock: { url: string; events: Subject<unknown> };
@@ -35,6 +27,7 @@ describe('DatatugMenuComponent', () => {
   let project$: Subject<unknown>;
   let envDbTable$: Subject<unknown>;
   let userState$: Subject<unknown>;
+  let analytics: { logEvent: ReturnType<typeof vi.fn> };
 
   // The constructor reads router.url, so set it before creating the component.
   const createComponent = (
@@ -45,13 +38,13 @@ describe('DatatugMenuComponent', () => {
   };
 
   beforeEach(async () => {
-    vi.mocked(logEvent).mockClear();
     routerEvents = new Subject();
     routerMock = { url: '/', events: routerEvents };
     storeId$ = new Subject();
     project$ = new Subject();
     envDbTable$ = new Subject();
     userState$ = new Subject();
+    analytics = { logEvent: vi.fn() };
 
     await TestBed.configureTestingModule({
       imports: [DatatugMenuComponent],
@@ -77,7 +70,7 @@ describe('DatatugMenuComponent', () => {
           provide: DatatugUserService,
           useValue: { datatugUserState: userState$ },
         },
-        { provide: Analytics, useValue: {} },
+        { provide: AnalyticsService, useValue: analytics },
       ],
     })
       // Keep the real template (so visibility can be asserted) but render child
@@ -139,30 +132,27 @@ describe('DatatugMenuComponent', () => {
   describe('login_page_viewed analytics event', () => {
     it('logs once when entering /login at startup', () => {
       createComponent('/login');
-      expect(logEvent).toHaveBeenCalledTimes(1);
-      expect(logEvent).toHaveBeenCalledWith(
-        expect.anything(),
-        'login_page_viewed',
-      );
+      expect(analytics.logEvent).toHaveBeenCalledTimes(1);
+      expect(analytics.logEvent).toHaveBeenCalledWith('login_page_viewed');
     });
 
     it('does not log when not on /login', () => {
       createComponent('/');
-      expect(logEvent).not.toHaveBeenCalled();
+      expect(analytics.logEvent).not.toHaveBeenCalled();
     });
 
     it('logs only on transition into /login, not on repeat', () => {
       createComponent('/');
       routerEvents.next(new NavigationEnd(1, '/login', '/login'));
       routerEvents.next(new NavigationEnd(2, '/login', '/login'));
-      expect(logEvent).toHaveBeenCalledTimes(1);
+      expect(analytics.logEvent).toHaveBeenCalledTimes(1);
     });
 
     it('does not throw or log when Analytics is not provided', () => {
-      TestBed.overrideProvider(Analytics, { useValue: null });
+      TestBed.overrideProvider(AnalyticsService, { useValue: null });
       const c = createComponent('/login').componentInstance;
       expect(peek(c).isLoginPage()).toBe(true);
-      expect(logEvent).not.toHaveBeenCalled();
+      expect(analytics.logEvent).not.toHaveBeenCalled();
     });
   });
 

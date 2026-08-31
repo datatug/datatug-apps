@@ -1,7 +1,6 @@
 import { Component, OnDestroy, inject, signal } from '@angular/core';
-import { Analytics, logEvent } from '@angular/fire/analytics';
 import { NavigationEnd, Router } from '@angular/router';
-import { ErrorLogger, IErrorLogger } from '@sneat/core';
+import { AnalyticsService, ErrorLogger, IErrorLogger } from '@sneat/core';
 import { Subject } from 'rxjs';
 import { filter, takeUntil } from 'rxjs/operators';
 import { IonCard, IonCardContent } from '@ionic/angular';
@@ -53,7 +52,7 @@ export class DatatugMenuComponent implements OnDestroy {
   private readonly router = inject(Router);
   // Analytics is only provided in production (when a measurementId is set),
   // so inject it optionally and no-op when absent.
-  private readonly analytics = inject(Analytics, { optional: true });
+  private readonly analytics = inject(AnalyticsService, { optional: true });
 
   protected readonly isLoginPage = signal(false);
   protected readonly currentStoreId = signal<string | undefined>(undefined);
@@ -103,7 +102,7 @@ export class DatatugMenuComponent implements OnDestroy {
     const enteredLoginPage = isLoginPage && !this.isLoginPage();
     this.isLoginPage.set(isLoginPage);
     if (enteredLoginPage && this.analytics) {
-      logEvent(this.analytics, 'login_page_viewed');
+      this.analytics.logEvent('login_page_viewed');
     }
   }
 

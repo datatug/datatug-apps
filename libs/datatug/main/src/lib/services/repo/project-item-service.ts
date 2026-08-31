@@ -10,16 +10,16 @@ import { StoreApiService } from './store-api.service';
 import {
   collection,
   doc,
-  docSnapshots,
-  Firestore as AngularFirestore,
-} from '@angular/fire/firestore';
+  Firestore,
+} from 'firebase/firestore';
+import { docSnapshots } from './firestore-observables';
 
 // const notImplemented = 'not implemented';
 
 @Injectable()
 export class ProjectItemServiceFactory {
   public readonly newProjectItemService = (
-    db: AngularFirestore,
+    db: Firestore,
     storeApiService: StoreApiService,
     itemsPath: string,
     itemPath: string,
@@ -31,7 +31,7 @@ export class ProjectItemService<ProjItem extends IProjItemBrief> {
   private cache: Record<string, ProjItem> = {};
 
   constructor(
-    private readonly db: AngularFirestore,
+    private readonly db: Firestore,
     private readonly storeApiService: StoreApiService,
     private readonly itemsPath: string,
     private readonly itemPath: string,

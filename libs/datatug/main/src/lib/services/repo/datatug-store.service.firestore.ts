@@ -3,15 +3,15 @@ import { IDatatugStoreService } from './datatug-store.service.interface';
 import { Observable, throwError } from 'rxjs';
 import {
   doc,
-  docSnapshots,
-  Firestore as AngularFirestore,
-} from '@angular/fire/firestore';
+  Firestore,
+} from 'firebase/firestore';
 import { map } from 'rxjs/operators';
 import { Injectable, inject } from '@angular/core';
+import { docSnapshots } from './firestore-observables';
 
 @Injectable()
 export class DatatugStoreFirestoreService implements IDatatugStoreService {
-  private readonly db = inject(AngularFirestore);
+  private readonly db = inject(Firestore);
 
   getProjectSummary(projectId: string): Observable<IProjectSummary> {
     return throwError(() => 'not implemented ' + projectId);

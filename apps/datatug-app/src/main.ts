@@ -6,6 +6,7 @@ import { provideRouter, RouteReuseStrategy } from '@angular/router';
 import { IonicRouteStrategy } from '@ionic/angular/common';
 import { provideIonicAngular } from '@ionic/angular/provide';
 import { DefaultSneatAppApiBaseUrl, SneatApiBaseUrl } from '@sneat/api';
+import { provideSneatAuthenticatedProviders } from '@sneat/app-auth';
 import { TelegramAuthService } from '@sneat/auth-core';
 import { authRoutes, TelegramLoginConfig } from '@sneat/auth-ui';
 import {
@@ -24,7 +25,6 @@ import { RANDOM_ID_OPTIONS } from '@sneat/random';
 import { routes } from './app/datatug-app-routes';
 import { DatatugAppComponent } from './app/datatug-app.component';
 import { datatugAppEnvironmentConfig } from './environments/environment';
-import { getAngularFireProviders } from './init-firebase';
 import { registerIonicons } from './register-ionicons';
 import { registerPosthog } from './register-posthog';
 
@@ -50,7 +50,7 @@ bootstrapApplication(DatatugAppComponent, {
           : DefaultSneatAppApiBaseUrl,
     },
     { provide: RANDOM_ID_OPTIONS, useValue: { len: 9 } },
-    ...getAngularFireProviders(datatugAppEnvironmentConfig.firebaseConfig),
+    provideSneatAuthenticatedProviders(datatugAppEnvironmentConfig),
     provideSneatAnalytics(datatugAppEnvironmentConfig),
     TopMenuService,
     TelegramAuthService,
