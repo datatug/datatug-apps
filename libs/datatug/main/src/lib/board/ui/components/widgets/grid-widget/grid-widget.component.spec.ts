@@ -1,5 +1,6 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ErrorLogger } from '@sneat/core';
 
 import { GridWidgetComponent } from './grid-widget.component';
 
@@ -11,6 +12,7 @@ describe('GridWidgetComponent', () => {
     await TestBed.configureTestingModule({
       imports: [GridWidgetComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [{ provide: ErrorLogger, useValue: { logError: vi.fn() } }],
     })
       .overrideComponent(GridWidgetComponent, {
         set: {
