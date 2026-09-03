@@ -1,0 +1,43 @@
+{
+  "realm": "acme",
+  "enabled": true,
+  "displayName": "Acme test company",
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "clients": [
+    {
+      "clientId": "datatug",
+      "name": "DataTug local SSO",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "clientAuthenticatorType": "client-secret",
+      "secret": "keycloak-client-secret",
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["http://127.0.0.1:8090/v0/sso/callback"],
+      "webOrigins": ["http://127.0.0.1:4200"],
+      "defaultClientScopes": ["web-origins", "acr", "profile", "email"]
+    }
+  ],
+  "users": [
+    {
+      "id": "11111111-1111-4111-8111-111111111111",
+      "username": "alice@acme.test",
+      "email": "alice@acme.test",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Alice",
+      "lastName": "Acme",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "alice-firebase-password",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}

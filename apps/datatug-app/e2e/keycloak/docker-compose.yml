@@ -1,0 +1,15 @@
+version: '3.9'
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.3
+    command: start-dev --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin-local-only
+      JAVA_OPTS_APPEND: -Xms64m -Xmx256m
+    mem_limit: 512m
+    ports:
+      - '127.0.0.1:8088:8080'
+    volumes:
+      - ./realm-acme.json:/opt/keycloak/data/import/realm-acme.json:ro

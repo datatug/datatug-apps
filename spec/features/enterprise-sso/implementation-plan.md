@@ -1,4 +1,4 @@
-# Enterprise SSO MVP implementation plan
+# Enterprise SSO implementation plan
 
 ## Repository findings and ownership
 
@@ -85,3 +85,15 @@ Every screen supports cold arrival from URL/query/hash context. Async actions di
 5. Shared origin-policy tests prove tenant suffix boundaries.
 6. DataTug unit tests, lint, and production build pass against the local shared UI worktree.
 7. The focused Playwright SSO E2E passes, followed by each touched repository's WB hooks and full relevant test suites.
+
+## Production-hardening and SAML increment
+
+1. Extend the source configuration with provider preset, DNS challenge/proof, lifecycle timestamps, OIDC fields, and SAML IdP metadata while preserving the single-provider/single-domain shape.
+2. Add DNS TXT verification behind an injected resolver. Preserve Entra verified-domain trust and the explicit generic allowlist as alternate evidence, but make DNS proof the provider-neutral self-service path.
+3. Add atomic disable/delete operations that remove owned domain and login-host projections, invalidate active status, and append sanitized audit records. Material edits always require a new real-login activation.
+4. Add bounded in-process endpoint rate limiting with hashed keys and standard `429`/`Retry-After` responses; retain edge/distributed rate limiting as deployment defense in depth.
+5. Add a SAML protocol engine using an established XML-signature library, global SP signing material from Secret Manager, generated SP metadata, signed SP-initiated AuthnRequests, strict ACS validation, replay prevention, and persistent NameID linkage. Reuse the common Firebase/Sneat identity and membership completion path.
+6. Replace the settings form with a provider-aware setup wizard and lifecycle/status panel. Add an Enterprise SSO entry to company-space navigation and provider presets for Entra, Okta, Keycloak, generic OIDC, and generic SAML.
+7. Add local DNS, OIDC, and SAML protocol test doubles plus a pinned Keycloak Docker profile that executes the complete browser flow against a real OIDC provider. Keep cloud-tenant Entra/Okta certification as follow-up because repeatable interactive credentials and MFA policy do not belong in the normal local/CI suite.
+8. Configure Firestore TTL for `sso-flows.expiresAt` and `sso-exchanges.expiresAt` in deployment automation.
+9. Extend unit, integration, and browser tests for DNS proof, lifecycle route release, audit sanitization, rate limits, wizard/navigation, OIDC provider presets, SAML activation/login/account reuse, and tenant-host fixed-domain behavior.
