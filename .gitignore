@@ -49,7 +49,8 @@ Thumbs.db
 
 vite.config.*.timestamp*
 vitest.config.*.timestamp*
+firebase-debug.log
+firestore-debug.log
 specscore.local.yaml
 
 .codegraph/
-

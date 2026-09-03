@@ -10,6 +10,7 @@ Pre-spec one-pagers. Each Idea is a lint-clean problem-direction-MVP one-pager t
 
 | Idea | Status | Date | Owner | Promotes To |
 |------|--------|------|-------|-------------|
+| [enterprise-sso](enterprise-sso.md) | Specified | 2026-09-03 | DataTug team | enterprise-sso |
 
 ## Open Questions
 

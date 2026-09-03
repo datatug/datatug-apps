@@ -59,6 +59,18 @@
           "extractLicenses": false,
           "sourceMap": true,
           "namedChunks": true
+        },
+        "sso-e2e": {
+          "optimization": false,
+          "extractLicenses": false,
+          "sourceMap": true,
+          "namedChunks": true,
+          "fileReplacements": [
+            {
+              "replace": "apps/datatug-app/src/environments/environment.ts",
+              "with": "apps/datatug-app/src/environments/environment.sso-e2e.ts"
+            }
+          ]
         }
       },
       "defaultConfiguration": "production"
@@ -71,6 +83,9 @@
         },
         "development": {
           "buildTarget": "datatug-app:build:development"
+        },
+        "sso-e2e": {
+          "buildTarget": "datatug-app:build:sso-e2e"
         }
       },
       "defaultConfiguration": "development",
@@ -94,6 +109,13 @@
       "outputs": ["{workspaceRoot}/coverage/apps/datatug-app-e2e"],
       "options": {
         "command": "playwright test -c apps/datatug-app/playwright.config.ts"
+      }
+    },
+    "e2e-sso": {
+      "executor": "nx:run-commands",
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-app-sso-e2e"],
+      "options": {
+        "command": "pnpm e2e:sso"
       }
     }
   }

@@ -8,7 +8,7 @@ import { provideIonicAngular } from '@ionic/angular/provide';
 import { DefaultSneatAppApiBaseUrl, SneatApiBaseUrl } from '@sneat/api';
 import { provideSneatAuthenticatedProviders } from '@sneat/app-auth';
 import { TelegramAuthService } from '@sneat/auth-core';
-import { authRoutes, TelegramLoginConfig } from '@sneat/auth-ui';
+import { authRoutes, ssoRoutes, TelegramLoginConfig } from '@sneat/auth-ui';
 import {
   APP_INFO,
   EnvConfigToken,
@@ -46,7 +46,10 @@ bootstrapApplication(DatatugAppComponent, {
       useValue: datatugAppEnvironmentConfig.useNgrok
         ? `//${location.host}/v0/`
         : datatugAppEnvironmentConfig.firebaseConfig.emulator
-          ? 'https://local-api.sneat.ws/v0/'
+          ? location.hostname === '127.0.0.1' ||
+            location.hostname === 'localhost'
+            ? 'http://127.0.0.1:8090/v0/'
+            : 'https://local-api.sneat.ws/v0/'
           : DefaultSneatAppApiBaseUrl,
     },
     { provide: RANDOM_ID_OPTIONS, useValue: { len: 9 } },
@@ -64,7 +67,8 @@ bootstrapApplication(DatatugAppComponent, {
       useValue: { appId: 'datatug', appTitle: 'DataTug.app' },
     },
     { provide: EnvConfigToken, useValue: datatugAppEnvironmentConfig },
-    provideRouter([...routes, ...authRoutes]),
+    // Literal SSO routes must precede DataTug's root/catch-all feature routes.
+    provideRouter([...ssoRoutes, ...routes, ...authRoutes]),
     ...(datatugAppEnvironmentConfig.sentry
       ? [provideSentryAppInitializer(datatugAppEnvironmentConfig.sentry)]
       : []),

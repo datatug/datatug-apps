@@ -4,7 +4,8 @@
   "license": "MIT",
   "packageManager": "pnpm@11.3.0",
   "scripts": {
-    "sentry:sourcemaps": "sentry-cli sourcemaps inject dist/apps/datatug-app/browser && sentry-cli sourcemaps upload --org sneat-eu --project datatug-app dist/apps/datatug-app/browser && find dist/apps/datatug-app/browser -name '*.js.map' -delete"
+    "sentry:sourcemaps": "sentry-cli sourcemaps inject dist/apps/datatug-app/browser && sentry-cli sourcemaps upload --org sneat-eu --project datatug-app dist/apps/datatug-app/browser && find dist/apps/datatug-app/browser -name '*.js.map' -delete",
+    "e2e:sso": "playwright test -c apps/datatug-app/playwright.sso.config.ts"
   },
   "private": true,
   "dependencies": {
@@ -97,6 +98,7 @@
     "eslint": "9.39.3",
     "eslint-config-prettier": "10.1.8",
     "eslint-plugin-json": "4.0.1",
+    "firebase-tools": "^15.23.0",
     "happy-dom": "^20.10.6",
     "jiti": "2.4.2",
     "jsonc-eslint-parser": "2.4.2",
