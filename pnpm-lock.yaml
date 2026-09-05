@@ -77,8 +77,8 @@ importers:
         specifier: 4.12.0
         version: 4.12.0(@firebase/app@0.14.9)
       '@firebase/firestore-types':
-        specifier: 3.0.3
-        version: 3.0.3(@firebase/app-types@0.9.3)(@firebase/util@1.14.0)
+        specifier: 3.0.5
+        version: 3.0.5(@firebase/app-types@0.9.3)(@firebase/util@1.14.0)
       '@ingitdb/client':
         specifier: 0.1.0
         version: 0.1.0
@@ -2195,6 +2195,12 @@ packages:
 
   '@firebase/firestore-types@3.0.3':
     resolution: {integrity: sha512-hD2jGdiWRxB/eZWF89xcK9gF8wvENDJkzpVFb4aGkzfEaKxVRD1kjz1t1Wj8VZEp2LCB53Yx1zD8mrhQu87R6Q==}
+    peerDependencies:
+      '@firebase/app-types': 0.x
+      '@firebase/util': 1.x
+
+  '@firebase/firestore-types@3.0.5':
+    resolution: {integrity: sha512-dbdMAQkMd5dwWc48eupz/Y6/E9ruat3+gY5lhVKscvvT/HnDBEEMzJW38zdKhgdnglZHGk2vUsJMOHAphMHGMA==}
     peerDependencies:
       '@firebase/app-types': 0.x
       '@firebase/util': 1.x
@@ -11108,6 +11114,11 @@ snapshots:
       - '@firebase/app-types'
 
   '@firebase/firestore-types@3.0.3(@firebase/app-types@0.9.3)(@firebase/util@1.14.0)':
+    dependencies:
+      '@firebase/app-types': 0.9.3
+      '@firebase/util': 1.14.0
+
+  '@firebase/firestore-types@3.0.5(@firebase/app-types@0.9.3)(@firebase/util@1.14.0)':
     dependencies:
       '@firebase/app-types': 0.9.3
       '@firebase/util': 1.14.0
