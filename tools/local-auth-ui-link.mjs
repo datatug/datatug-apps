@@ -8,14 +8,30 @@ import {
   unlink,
   writeFile,
 } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 const workspace = process.cwd();
 const published = path.join(workspace, 'node_modules', '@sneat', 'auth-ui');
 const backup = `${published}.wb-published`;
-const local = path.resolve(
-  workspace,
-  '../../sneat-co/sneat-libs/dist/libs/auth/ui',
+const canonicalWorkspace = path.dirname(
+  execFileSync(
+    'git',
+    ['rev-parse', '--path-format=absolute', '--git-common-dir'],
+    { cwd: workspace, encoding: 'utf8' },
+  ).trim(),
+);
+const localCandidates = [
+  process.env.SNEAT_AUTH_UI_DIST_DIR,
+  path.resolve(workspace, '../../sneat-co/sneat-libs/dist/libs/auth/ui'),
+  path.resolve(
+    canonicalWorkspace,
+    '../../sneat-co/sneat-libs/dist/libs/auth/ui',
+  ),
+].filter(Boolean);
+const local = localCandidates.find((candidate) =>
+  existsSync(path.join(candidate, 'package.json')),
 );
 const marker = path.join(published, '.wb-local-auth-ui');
 
@@ -49,9 +65,10 @@ async function restore() {
 }
 
 async function link() {
-  const localPackage = path.join(local, 'package.json');
-  if (!(await exists(localPackage))) {
-    throw new Error(`Build the shared auth UI first; missing ${localPackage}`);
+  if (!local) {
+    throw new Error(
+      `Build the shared auth UI first; checked ${localCandidates.join(', ')}. Set SNEAT_AUTH_UI_DIST_DIR to override.`,
+    );
   }
   await mkdir(path.dirname(published), { recursive: true });
   const current = await exists(published);

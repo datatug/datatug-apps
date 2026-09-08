@@ -15,7 +15,11 @@ pnpm e2e:sso:keycloak
 The command starts Keycloak 26.7.3 in Docker, imports `realm-acme.json`, starts
 the Firebase emulators, shared SSO HTTP host, and DataTug app, and tears the
 processes down after the test. No host-machine Keycloak configuration is
-required.
+required. The runner locates sibling `sneat-core-modules` from either the
+current WB fleet or its canonical Git worktree and uses the exact
+`@sneat/auth-ui` version pinned by DataTug. Non-standard layouts can set
+`SNEAT_CORE_MODULES_DIR`; cross-repository development can set
+`SNEAT_AUTH_UI_DIST_DIR` to test an explicitly built local auth UI instead.
 
 The realm is deliberately local-only:
 
