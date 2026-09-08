@@ -20,7 +20,7 @@ overrides:
   '@sneat/api': 0.27.6
   '@sneat/auth-core': 0.27.6
   '@sneat/auth-models': 0.27.6
-  '@sneat/auth-ui': 0.27.6
+  '@sneat/auth-ui': 0.27.20
   '@sneat/components': 0.27.6
   '@sneat/core-public': 0.27.6
   '@sneat/core': 0.27.6
@@ -122,8 +122,8 @@ importers:
         specifier: 0.27.6
         version: 0.27.6(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))
       '@sneat/auth-ui':
-        specifier: 0.27.6
-        version: 0.27.6(80528dc532e56f51cffff183b943e70d)
+        specifier: 0.27.20
+        version: 0.27.20(15cd3da2094dcb3ebbbbd23a1098717d)
       '@sneat/components':
         specifier: 0.27.6
         version: 0.27.6(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(@ionic/angular@9.0.0(6ff9fc4b486d8c68e67889d2ebc5db9b))
@@ -4664,14 +4664,20 @@ packages:
       '@angular/common': 22.1.3
       '@angular/core': 22.1.3
 
-  '@sneat/auth-ui@0.27.6':
-    resolution: {integrity: sha512-uIk+ZoQ8Ds1gVT4s3im4c8pMXeyFSZUv894UGxWkcabD4AvbV5x0nz55o6ZDQnFsPNf6BSFwkWoibiTQpbmyMQ==}
+  '@sneat/auth-ui@0.27.20':
+    resolution: {integrity: sha512-tbsuNgV65lZJ6aFBAr6GOx75s32ZpOKQeJ6jWNDbA7u1uAJ2mnIvdQzuwwqBgX+J2yl9Gy9Gepq9+qpPbz6TdQ==}
     peerDependencies:
       '@angular/common': 22.1.3
       '@angular/core': 22.1.3
+      '@angular/forms': 22.1.3
+      '@angular/router': 22.1.3
       '@ionic/angular': '>=9.0.0 <10.0.0'
+      '@sneat/api': 0.27.6
+      '@sneat/auth-core': 0.27.6
+      '@sneat/auth-models': 0.27.6
       '@sneat/core': 0.27.6
       '@sneat/random': '*'
+      '@sneat/space-services': 0.27.6
       firebase: '*'
 
   '@sneat/components@0.27.6':
@@ -14904,13 +14910,19 @@ snapshots:
       '@angular/core': 22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)
       tslib: 2.8.1
 
-  '@sneat/auth-ui@0.27.6(80528dc532e56f51cffff183b943e70d)':
+  '@sneat/auth-ui@0.27.20(15cd3da2094dcb3ebbbbd23a1098717d)':
     dependencies:
       '@angular/common': 22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2)
       '@angular/core': 22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)
+      '@angular/forms': 22.1.3(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(@angular/platform-browser@22.1.3(@angular/animations@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))(rxjs@7.8.2)
+      '@angular/router': 22.1.3(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(@angular/platform-browser@22.1.3(@angular/animations@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))(rxjs@7.8.2)
       '@ionic/angular': 9.0.0(6ff9fc4b486d8c68e67889d2ebc5db9b)
+      '@sneat/api': 0.27.6(3d896ba97bc8039233b4aae4264714aa)
+      '@sneat/auth-core': 0.27.6(4df0c6ee12d06ddca95b43b327221091)
+      '@sneat/auth-models': 0.27.6(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))
       '@sneat/core': 0.27.6(@angular/animations@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(@angular/router@22.1.3(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(@angular/platform-browser@22.1.3(@angular/animations@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))(rxjs@7.8.2))(@ionic/angular@9.0.0(6ff9fc4b486d8c68e67889d2ebc5db9b))(@sneat/core-public@0.27.6(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))(firebase@12.10.0)(rxjs@7.8.2)
       '@sneat/random': 0.0.4(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))
+      '@sneat/space-services': 0.27.6(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(@ionic/angular@9.0.0(6ff9fc4b486d8c68e67889d2ebc5db9b))(@sneat/extension-contactus-contract@0.12.5(1c5e179f7365c8b4ab2592162161db91))(firebase@12.10.0)
       firebase: 12.10.0
       tslib: 2.8.1
 

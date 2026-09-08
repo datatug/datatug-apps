@@ -38,12 +38,13 @@
     "@sneat/app-auth": "0.27.6",
     "@sneat/auth-core": "0.27.6",
     "@sneat/auth-models": "0.27.6",
-    "@sneat/auth-ui": "0.27.6",
+    "@sneat/auth-ui": "0.27.20",
     "@sneat/components": "0.27.6",
     "@sneat/core": "0.27.6",
     "@sneat/data": "0.27.6",
     "@sneat/datagrid": "0.27.6",
     "@sneat/dto": "0.27.6",
+    "@sneat/extension-contactus-contract": "0.12.5",
     "@sneat/grid": "0.27.6",
     "@sneat/logging": "0.27.6",
     "@sneat/random": "0.0.4",
@@ -59,8 +60,7 @@
     "posthog-js": "1.357.0",
     "rxjs": "7.8.2",
     "tabulator-tables": "6.3.1",
-    "tslib": "2.8.1",
-    "@sneat/extension-contactus-contract": "0.12.5"
+    "tslib": "2.8.1"
   },
   "devDependencies": {
     "@analogjs/vite-plugin-angular": "2.7.0",
