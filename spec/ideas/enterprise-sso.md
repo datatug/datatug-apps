@@ -30,6 +30,13 @@ Use `issuer + subject` as the durable external identity key. On the first truste
 
 Activation is an authenticated owner/admin flow and is distinct from issuer discovery. It completes an authorization-code login with state, nonce, and PKCE, validates the token with the provider's discovery keys, validates the claimed domain, and only then atomically claims the domain index and marks the configuration active.
 
+## Alternatives Considered
+
+- A DataTug-only SSO implementation was rejected because identity, spaces, and authentication are shared Sneat platform concerns and the same capability is required by sneat.work, sneat.team, and later applications.
+- Activating generic OIDC after discovery or a matching email claim was rejected because an attacker-controlled issuer can mint identities for an unrelated company's domain.
+- Entra-only support would provide a narrower trust model but would exclude other enterprise providers. The chosen provider-neutral path requires DNS proof, while Entra verified-tenant domains and operator allow-lists remain explicit alternate trust mechanisms.
+- A separate company or enterprise-user model was rejected because Sneat spaces, Firebase users, Sneat users, and existing memberships already provide the canonical organisation and authorisation boundaries.
+
 ## User Journey
 
 ```text
@@ -113,6 +120,10 @@ The schema uses domain/provider arrays or metadata-compatible records even thoug
 | Must-be-true   | The Contactus member facade can idempotently provision an SSO user without elevated roles.             | Integration test runs provisioning twice and asserts one contact/membership containing only `member`.                         |
 | Must-be-true   | A tenant host cannot select another company's email domain or bypass the API origin policy.            | Service and origin-policy tests cover fixed-domain mismatch, suffix lookalikes, HTTP/ports, and atomic duplicate host claims. |
 | Should-be-true | Entra Graph verified domains are practical for self-service administrators.                            | Test against a staging tenant and refine setup guidance around admin consent.                                                 |
+
+## SpecScore Integration
+
+This idea promotes to [the Enterprise SSO feature specification](../features/enterprise-sso/README.md). That specification turns the direction above into testable requirements for shared routing, configuration, domain trust, protocol validation, stable account linking, canonical Sneat membership, tenant hosts, lifecycle controls, and browser-session handoff.
 
 ## Open Questions
 

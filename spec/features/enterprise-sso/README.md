@@ -5,6 +5,8 @@ status: Approved
 
 # Feature: Enterprise SSO
 
+> [SpecScore.**Studio**](https://specscore.studio): | [Explore](https://specscore.studio/app/github.com/datatug/datatug-apps/spec/features/enterprise-sso?op=explore) | [Edit](https://specscore.studio/app/github.com/datatug/datatug-apps/spec/features/enterprise-sso?op=edit) | [Ask question](https://specscore.studio/app/github.com/datatug/datatug-apps/spec/features/enterprise-sso?op=ask) | [Request change](https://specscore.studio/app/github.com/datatug/datatug-apps/spec/features/enterprise-sso?op=request-change) |
+
 **Status:** Approved
 **Date:** 2026-09-03
 **Owner:** DataTug team
