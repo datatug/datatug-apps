@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { parseDatatugStoreRef, storeIdToDisplayLabel } from './nav-models';
+import {
+  isAgentStoreId,
+  parseDatatugStoreRef,
+  storeIdToDisplayLabel,
+} from './nav-models';
 
 describe('parseDatatugStoreRef', () => {
   it('accepts a bare host:port store id as an agent store', () => {
@@ -115,5 +119,35 @@ describe('storeIdToDisplayLabel', () => {
   it('returns an empty string for a missing store id', () => {
     expect(storeIdToDisplayLabel(undefined)).toBe('');
     expect(storeIdToDisplayLabel(null)).toBe('');
+  });
+});
+
+describe('isAgentStoreId', () => {
+  it.each([
+    'localhost:8989',
+    '127.0.0.1:8989',
+    '192.168.1.10:8989',
+    'http-localhost:8989',
+    'https-agent.example.com:8443',
+    'http-example.com',
+  ])('is true for the agent store id %s', (storeId) => {
+    expect(isAgentStoreId(storeId)).toBe(true);
+  });
+
+  it.each(['firestore', 'github', 'github.com'])(
+    'is false for the non-agent store id %s',
+    (storeId) => {
+      expect(isAgentStoreId(storeId)).toBe(false);
+    },
+  );
+
+  it('is false, not a throw, for an unparseable store id', () => {
+    expect(() => isAgentStoreId('gitlab.example.com')).not.toThrow();
+    expect(isAgentStoreId('gitlab.example.com')).toBe(false);
+  });
+
+  it('is false for an empty or undefined store id', () => {
+    expect(isAgentStoreId('')).toBe(false);
+    expect(isAgentStoreId(undefined)).toBe(false);
   });
 });

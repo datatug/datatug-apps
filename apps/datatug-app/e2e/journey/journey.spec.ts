@@ -47,6 +47,12 @@ import { expect, test } from './fixtures/agent-server';
  *    (wire `apicore.GetAuthTokenFromHttpRequest`, e.g. to a no-auth-required
  *    passthrough for the local `serve` command) before ANY journey test can
  *    pass; re-run this suite once that lands.
+ *    UPDATE 2026-09-09: landed as datatug/datatug-cli#205. Against a
+ *    datatug-cli main build J1 now passes its title assertion (locator
+ *    corrected in datatug/datatug-apps#69) and fails next at the Album grid:
+ *    `NG0201: No provider found for DatatugNavContextService. Source:
+ *    Standalone[EnvDbTablePageComponent]` — a defect in this repo, not yet
+ *    fixed.
  *
  * J2 additionally needs `GET /datatug/semantic/columns`, `GET
  * /datatug/semantic/related` and `POST /datatug/queries/applicable`, none
@@ -80,14 +86,23 @@ test.describe('J1 — first useful result (the null-action path)', () => {
 
     // "the browser opens the demo project" — real navigation, no interception.
     await page.goto(projectUrl);
-    // EXPECTED TO FAIL here right now — not this stream's doing. The project
-    // page's title comes from `GET /datatug/projects/project_summary`, which
-    // panics server-side on datatug-cli main before answering (see the file
-    // header comment, blocker 2: `apicore.GetAuthTokenFromHttpRequest` is
-    // never wired). Once that's fixed, this is the real mechanism check.
+    // "the project appears with nobody doing anything else": the title comes
+    // from `GET /datatug/projects/project_summary` and is bound to the VALUE
+    // of the read-only Title `ion-input` (project-page.component.html) — so
+    // assert that textbox's value. `getByText` can never see an input's value
+    // and stayed at 0 matches even once the page rendered, so it failed the
+    // same way for a rendered and an unrendered page. Needs the agent side's
+    // auth-hook fix (datatug/datatug-cli#205, merged). The title renders
+    // with or without datatug/datatug-apps#69; what #69 removes is the
+    // uncaught `unknown store: <host:port>` the page's folder child threw
+    // out of ngOnChanges on every visit (console ERROR, Boards card stuck
+    // loading).
     await expect(
-      page.getByText('DataTug Demo Project 1', { exact: false }),
-    ).toBeVisible({ timeout: 15_000 });
+      page
+        .locator('ion-item', { hasText: 'Title' })
+        .first()
+        .getByRole('textbox'),
+    ).toHaveValue('DataTug Demo Project 1', { timeout: 15_000 });
 
     // "the user clicks Album": EnvDbPageComponent's row-click handler
     // (libs/datatug/main/src/lib/pages/signed-in/env-db/env-db-page.component.ts)
@@ -174,9 +189,9 @@ test.describe('J2 — from a value to related knowledge', () => {
     // not implemented server-side yet. ApplicableQuery items render by
     // `queryId`, not title (context-panel.component.html), so this looks for
     // the saved-query ids under datatug-demo-projects/.../queries/customers/.
-    await expect(page.getByText('customer-invoices', { exact: false })).toBeVisible(
-      { timeout: 15_000 },
-    );
+    await expect(
+      page.getByText('customer-invoices', { exact: false }),
+    ).toBeVisible({ timeout: 15_000 });
     await expect(
       page.getByText('customer-purchases-by-genre', { exact: false }),
     ).toBeVisible({ timeout: 10_000 });
@@ -185,9 +200,11 @@ test.describe('J2 — from a value to related knowledge', () => {
     // (EnvDbTablePageComponent.onOpenQuery) and run it.
     await page.getByText('customer-invoices', { exact: false }).click();
     await expect(
-      page.getByText('Customer.ID', { exact: false }).getByText('from selection', {
-        exact: false,
-      }),
+      page
+        .getByText('Customer.ID', { exact: false })
+        .getByText('from selection', {
+          exact: false,
+        }),
     ).toBeVisible({ timeout: 10_000 });
     await page.getByText('Run query', { exact: false }).click();
     await expect
@@ -244,9 +261,11 @@ test.describe('J3 — carrying context', () => {
       `${projectUrl}/query/customer-purchases-by-genre?id=customer-purchases-by-genre`,
     );
     await expect(
-      page.getByText('Customer.ID', { exact: false }).getByText('from context', {
-        exact: false,
-      }),
+      page
+        .getByText('Customer.ID', { exact: false })
+        .getByText('from context', {
+          exact: false,
+        }),
     ).toBeVisible({ timeout: 10_000 });
 
     // Disabling/clearing the chip empties the binding (REQ:no-hidden-filters —
@@ -261,20 +280,17 @@ test.describe('J3 — carrying context', () => {
 });
 
 test.describe('J4 — restricted principal', () => {
-  test.fixme(
-    '`datatug serve --as support` filters rows, hides Email, and states the limitation',
-    async () => {
-      // TODO (plan task 10, after task 6 lands). Needs its own agentServer
-      // started with `--as support` rather than `--as admin` — not simply
-      // reusable from the shared worker-scoped fixture above — see AC
-      // restricted-rows-and-columns, hidden-column-refused.
-      // 1. Run "Customer invoices" for a Brazilian customer (Customer.ID
-      //    outside Canada) -> 0 rows, limitation header states
-      //    "customers-support: rows filtered".
-      // 2. Run it for a Canadian customer -> rows render without the Email
-      //    column; header states "1 column hidden".
-      // 3. A hand-crafted request selecting Email is refused with
-      //    ACCESS_DENIED naming policy customers-support, no row data.
-    },
-  );
+  test.fixme('`datatug serve --as support` filters rows, hides Email, and states the limitation', async () => {
+    // TODO (plan task 10, after task 6 lands). Needs its own agentServer
+    // started with `--as support` rather than `--as admin` — not simply
+    // reusable from the shared worker-scoped fixture above — see AC
+    // restricted-rows-and-columns, hidden-column-refused.
+    // 1. Run "Customer invoices" for a Brazilian customer (Customer.ID
+    //    outside Canada) -> 0 rows, limitation header states
+    //    "customers-support: rows filtered".
+    // 2. Run it for a Canadian customer -> rows render without the Email
+    //    column; header states "1 column hidden".
+    // 3. A hand-crafted request selecting Email is refused with
+    //    ACCESS_DENIED naming policy customers-support, no row data.
+  });
 });
