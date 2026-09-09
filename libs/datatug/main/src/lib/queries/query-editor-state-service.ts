@@ -189,28 +189,41 @@ export class QueryEditorStateService {
     };
     if (this.currentProject) {
       const currentProject = this.currentProject;
+      // `id` here may be a bare id (`customer-invoices`) or, as of
+      // datatug-cli#219, the folder-qualified id `queries/applicable`'s
+      // `Candidate.queryId` now returns (`customers/customer-invoices`).
+      // `ProjectItemService.getProjItem()` passes it through `HttpClient`'s
+      // plain-object `params`, whose default `HttpUrlEncodingCodec`
+      // deliberately un-escapes `%2F` back to a literal `/` (a documented
+      // Angular quirk) — so the folder-qualified id reaches the server as
+      // `query=customers/customer-invoices`, a literal `/` inside the query
+      // *component* of the URL, which is valid per RFC 3986 and exactly what
+      // `get_query` (datatug-cli#219) now parses — no extra encoding needed
+      // here.
       this.queriesService.getQuery(currentProject.ref, id).subscribe({
         next: (def) => onCompleted(def),
-        // `GET /datatug/queries/get_query?...&query=<id>` 500s for every
-        // query in a folder (datatug-core's fsQueriesStore.LoadQuery splits
-        // `id` on `/` to derive both the folder and the item — a *bare* id
-        // like "customer-invoices" resolves to no folder, so it looks
-        // directly under `queries/`, never `queries/<folder>/`, and every
-        // demo-project query lives in one). Nothing in this app currently
-        // learns a query's folder-qualified id (`queries/applicable`'s own
-        // `Candidate.queryId` — the only id a query opened from the context
-        // panel ever carries — is the same bare id). `GET
+        // `GET /datatug/queries/get_query?...&query=<id>` used to 500 for every
+        // query in a folder when given only the *bare* id (datatug-core's
+        // fsQueriesStore.LoadQuery split `id` on `/` to derive folder+item, so a
+        // bare id like "customer-invoices" resolved to no folder and looked
+        // directly under `queries/`, never `queries/<folder>/`). datatug-cli#219
+        // fixes `get_query` to also accept the folder-qualified id (see comment
+        // above), so this primary call now succeeds for it too — but this
+        // fallback stays: it's still load-bearing for any other `get_query`
+        // failure (server not yet on #219, network hiccup, a genuinely bare id
+        // for a query that server-side still can't resolve, etc). `GET
         // /datatug/projects/project_full`'s response embeds each query's
         // FULL definition (parameters included) directly under
-        // `queries.folders[].items[]`, keyed by that same bare id, so it
-        // already has everything `updateBindings()` needs without a
-        // folder-qualified id at all. Falling back to it here (only on a
+        // `queries.folders[].items[]`, keyed by that same bare id under its
+        // folder's own id — `findQueryInProjectFull()` matches either form of
+        // `id` against that shape. Falling back to it here (only on a
         // `get_query` error, so an id that already works — e.g. a
         // flat/unfoldered query — is unaffected) fixes AC:bound-from-selection
-        // / AC:context-carries without a server change (lane S92, journey
-        // J2/J3) — confirmed live: this exact 500 blocked every query this
-        // demo project has.
-        error: () => this.loadQueryFromProjectFull(currentProject, id, onCompleted),
+        // / AC:context-carries without depending on a server change (lane S92,
+        // journey J2/J3) — confirmed live: this exact 500 blocked every query
+        // this demo project has.
+        error: () =>
+          this.loadQueryFromProjectFull(currentProject, id, onCompleted),
       });
     }
   }
@@ -221,7 +234,14 @@ export class QueryEditorStateService {
    * fixed here: that interface predates the server's current `project_full`
    * response and several other callers read it too — out of this stream's
    * scope). Deliberately narrow: only the fields `updateBindings()` and this
-   * method's own `onCompleted` adapter actually read. */
+   * method's own `onCompleted` adapter actually read.
+   *
+   * `id` may be either the bare item id (`customer-invoices`, the only form
+   * this app used to see) or the folder-qualified id `queries/applicable`'s
+   * `Candidate.queryId` now returns as of datatug-cli#219
+   * (`customers/customer-invoices`) — items here are still keyed by their
+   * own bare id, grouped under a `folder.id` (e.g. `customers`), so a
+   * folder-qualified id is matched by joining the two back together. */
   private static findQueryInProjectFull(
     full: unknown,
     id: string,
@@ -230,6 +250,7 @@ export class QueryEditorStateService {
       full as {
         queries?: {
           folders?: readonly {
+            id?: string;
             items?: readonly {
               id: string;
               title?: string;
@@ -242,7 +263,9 @@ export class QueryEditorStateService {
       }
     )?.queries?.folders;
     for (const folder of folders ?? []) {
-      const item = folder.items?.find((i) => i.id === id);
+      const item = folder.items?.find(
+        (i) => i.id === id || (folder.id && `${folder.id}/${i.id}` === id),
+      );
       if (item) {
         return {
           id: item.id,

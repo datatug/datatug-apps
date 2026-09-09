@@ -5,6 +5,7 @@ import { DatatugNavService, IDbObjectNavParams } from './datatug-nav.service';
 import { describe, it, expect, beforeEach, vi, Mock } from 'vitest';
 import { IDatatugStoreContext, IProjectContext } from '../../nav/nav-models';
 import { IProjectRef } from '../../core/project-context';
+import { IQueryDef, QueryType } from '../../models/definition/query-def';
 
 describe('DatatugNavService', () => {
   let service: DatatugNavService;
@@ -110,6 +111,52 @@ describe('DatatugNavService', () => {
           'main.Album',
         ],
         undefined,
+      );
+    });
+  });
+
+  describe('goQuery', () => {
+    const project = {
+      ref: { storeId: 'localhost:8989', projectId: 'demo-project' },
+    } as IProjectContext;
+
+    function queryDef(id: string): IQueryDef {
+      return {
+        id,
+        request: { queryType: QueryType.SQL, text: 'select 1' },
+      };
+    }
+
+    it('navigates to the query page route with the id as a single path segment', () => {
+      service.goQuery(project, queryDef('customer-invoices'));
+
+      expect(navMock.navigateForward).toHaveBeenCalledWith(
+        '/store/localhost:8989/project/demo-project/query/customer-invoices',
+        {
+          state: {
+            project,
+            query: queryDef('customer-invoices'),
+            action: undefined,
+          },
+          queryParams: { id: 'customer-invoices' },
+        },
+      );
+    });
+
+    // Regression: before this fix, `goQuery()` built the URL without any id
+    // path segment at all (`.../query`), which never matched the registered
+    // `query/:queryId` route (`datatug-routing-proj.ts`) — every navigation
+    // through this method 404'd, not only a folder-qualified one.
+    it('encodes a folder-qualified id (datatug-cli#219) as a single routable path segment', () => {
+      const query = queryDef('customers/customer-invoices');
+      service.goQuery(project, query);
+
+      expect(navMock.navigateForward).toHaveBeenCalledWith(
+        '/store/localhost:8989/project/demo-project/query/customers%2Fcustomer-invoices',
+        {
+          state: { project, query, action: undefined },
+          queryParams: { id: 'customers/customer-invoices' },
+        },
       );
     });
   });

@@ -35,7 +35,10 @@ const APPLICABLE: ApplicableQueriesResponse = {
         },
       ],
       chain: [
-        { parameterId: 'CustomerId', explanation: 'maps to Customer.ID (declared)' },
+        {
+          parameterId: 'CustomerId',
+          explanation: 'maps to Customer.ID (declared)',
+        },
         { parameterId: 'CustomerId', explanation: 'requires Customer.ID' },
       ],
       missing: [],
@@ -70,7 +73,9 @@ describe('InvestigationContextPageComponent', () => {
   let context: InvestigationContextService;
   let navigateSpy: ReturnType<typeof vi.fn>;
 
-  async function create(fixtures: { applicable?: ApplicableQueriesResponse } = {}) {
+  async function create(
+    fixtures: { applicable?: ApplicableQueriesResponse } = {},
+  ) {
     mock = new MockSemanticApi(fixtures);
     navigateSpy = vi.fn(() => Promise.resolve(true));
 
@@ -84,7 +89,10 @@ describe('InvestigationContextPageComponent', () => {
         },
         {
           provide: DatatugNavContextService,
-          useValue: { currentProject: of(project), currentEnv: of({ id: 'production' }) },
+          useValue: {
+            currentProject: of(project),
+            currentEnv: of({ id: 'production' }),
+          },
         },
         { provide: Router, useValue: { navigate: navigateSpy, events: of() } },
         {
@@ -249,9 +257,8 @@ describe('InvestigationContextPageComponent', () => {
       expect(protectedComponent.applicable()).toEqual([]);
       expect(protectedComponent.notYet()).toEqual([]);
       expect(
-        fixture.nativeElement.querySelector(
-          '.investigation-context-page__item',
-        )?.textContent,
+        fixture.nativeElement.querySelector('.investigation-context-page__item')
+          ?.textContent,
       ).toContain('Customer.ID = 5'); // still listed, just disabled
     });
 
@@ -298,6 +305,75 @@ describe('InvestigationContextPageComponent', () => {
             bindings: APPLICABLE.applicable[0].bindings,
             targets: APPLICABLE.applicable[0].targets,
             selectedSource: APPLICABLE.applicable[0].selectedSource,
+          },
+        },
+      );
+    });
+  });
+
+  describe('opening an applicable query whose id is folder-qualified (datatug-cli#219)', () => {
+    const FOLDER_QUALIFIED_APPLICABLE: ApplicableQueriesResponse = {
+      applicable: [
+        {
+          queryId: 'customers/customer-invoices',
+          targets: [{ source: 'chinook', label: 'Chinook (SQLite)' }],
+          selectedSource: 'chinook',
+          bindings: [],
+          chain: [],
+          missing: [],
+          ambiguous: [],
+          state: 'runnable',
+        },
+      ],
+      notYet: [],
+    };
+
+    beforeEach(async () => {
+      await create({ applicable: FOLDER_QUALIFIED_APPLICABLE });
+      context.setScope({
+        project: 'demo-project',
+        environment: 'production',
+        securityContextId: 'sctx-1',
+      });
+      context.addValue({
+        entityField: { entity: 'Customer', field: 'ID' },
+        value: 5,
+        label: 'Customer.ID = 5',
+        source: 'grid',
+      });
+
+      fixture.detectChanges();
+      TestBed.tick();
+      fixture.detectChanges();
+    });
+
+    it('encodes the folder-qualified queryId as a single routable path segment, keeping the raw id in the id query param', () => {
+      const items: HTMLElement[] = Array.from(
+        fixture.nativeElement.querySelectorAll('ion-item[button="true"]'),
+      );
+      const applicable = items.find((el) =>
+        el.textContent?.includes('customers/customer-invoices'),
+      ) as HTMLElement;
+      applicable.dispatchEvent(new Event('click'));
+
+      expect(navigateSpy).toHaveBeenCalledWith(
+        [
+          '/store',
+          'localhost:8989',
+          'project',
+          'demo-project',
+          'query',
+          // Single `%2F`-encoded segment — see the matching
+          // EnvDbTablePageComponent.onOpenQuery spec for why.
+          'customers%2Fcustomer-invoices',
+        ],
+        {
+          queryParams: { id: 'customers/customer-invoices' },
+          state: {
+            bindings: FOLDER_QUALIFIED_APPLICABLE.applicable[0].bindings,
+            targets: FOLDER_QUALIFIED_APPLICABLE.applicable[0].targets,
+            selectedSource:
+              FOLDER_QUALIFIED_APPLICABLE.applicable[0].selectedSource,
           },
         },
       );

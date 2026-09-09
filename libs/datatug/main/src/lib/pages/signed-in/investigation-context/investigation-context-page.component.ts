@@ -137,14 +137,23 @@ export class InvestigationContextPageComponent implements OnDestroy {
       // `context.items()` below, same ordering/reasoning as ContextPanelComponent's
       // identical effect.
       if (projectId && environment && securityContextId) {
-        this.context.setScope({ project: projectId, environment, securityContextId });
+        this.context.setScope({
+          project: projectId,
+          environment,
+          securityContextId,
+        });
       }
       const enabledItems = this.context.items().filter((item) => item.enabled);
       if (this.suppressNextReload) {
         this.suppressNextReload = false;
         return;
       }
-      this.loadApplicable(project, environment, securityContextId, enabledItems);
+      this.loadApplicable(
+        project,
+        environment,
+        securityContextId,
+        enabledItems,
+      );
     });
   }
 
@@ -198,12 +207,18 @@ export class InvestigationContextPageComponent implements OnDestroy {
           'project',
           project.ref.projectId,
           'query',
-          candidate.queryId,
+          // `encodeURIComponent` — `candidate.queryId` may be folder-qualified
+          // (e.g. `customers/customer-invoices`, per `queries/applicable`'s
+          // `Candidate.queryId` contract, datatug-cli#219). See
+          // `EnvDbTablePageComponent.onOpenQuery`'s matching comment for why.
+          encodeURIComponent(candidate.queryId),
         ],
         {
           // QueryPageComponent.trackQueryParams() resolves the query it opens from the
           // `id` query-string param, not the `:queryId` path segment — see
           // EnvDbTablePageComponent.onOpenQuery's own comment on this contract.
+          // `id` is passed RAW (not encoded) — it's a query-string value, already
+          // form-encoded on the way out.
           queryParams: { id: candidate.queryId },
           state: {
             bindings: candidate.bindings,
@@ -230,7 +245,12 @@ export class InvestigationContextPageComponent implements OnDestroy {
     enabledItems: readonly ContextItem[],
   ): void {
     const projectId = project?.ref.projectId;
-    if (!projectId || !environment || !securityContextId || !enabledItems.length) {
+    if (
+      !projectId ||
+      !environment ||
+      !securityContextId ||
+      !enabledItems.length
+    ) {
       // Guarded (skip if already at the target value) — this runs inside an
       // `effect()`; see ContextPanelComponent's identical guard/comment for why an
       // unconditional `.set()` on every run risks a change-detection fixed point never
@@ -266,7 +286,11 @@ export class InvestigationContextPageComponent implements OnDestroy {
 
   private handleLoadError(
     err: unknown,
-    requestScope: { project: string; environment: string; securityContextId: string },
+    requestScope: {
+      project: string;
+      environment: string;
+      securityContextId: string;
+    },
   ): void {
     if (!this.context.isCurrentScope(requestScope)) {
       // Late error response for a scope we've already left — same discard rule as a
@@ -275,12 +299,16 @@ export class InvestigationContextPageComponent implements OnDestroy {
     }
     this.loading.set(false);
     const envelope =
-      err instanceof HttpErrorResponse ? tryDecodeErrorEnvelope(err.error) : undefined;
+      err instanceof HttpErrorResponse
+        ? tryDecodeErrorEnvelope(err.error)
+        : undefined;
     if (envelope?.error.code === 'STALE_CONTEXT') {
       this.suppressNextReload = true;
       this.context.clear();
       this.agentContext.refresh().subscribe({ error: () => undefined });
-      this.error.set('Your session changed — context was cleared, please retry.');
+      this.error.set(
+        'Your session changed — context was cleared, please retry.',
+      );
       return;
     }
     this.error.set('Failed to load applicable queries');
