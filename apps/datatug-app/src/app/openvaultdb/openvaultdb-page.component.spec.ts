@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ActivatedRoute, convertToParamMap } from '@angular/router';
-import { of, throwError } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { OpenVaultDBAgentService } from './openvaultdb-agent.service';
 import { AuthorizationResult } from './openvaultdb.models';
@@ -61,6 +62,8 @@ const result = (
 describe('OpenVaultDBPageComponent', () => {
   let api: {
     targets: ReturnType<typeof vi.fn>;
+    query: ReturnType<typeof vi.fn>;
+    explain: ReturnType<typeof vi.fn>;
     evidence: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;
   };
@@ -68,6 +71,8 @@ describe('OpenVaultDBPageComponent', () => {
   beforeEach(async () => {
     api = {
       targets: vi.fn(() => of({ targets: [] })),
+      query: vi.fn(),
+      explain: vi.fn(),
       evidence: vi.fn(),
       update: vi.fn(),
     };
@@ -98,9 +103,9 @@ describe('OpenVaultDBPageComponent', () => {
   ] as const) {
     it(`renders the ${outcome} outcome`, async () => {
       const fixture = TestBed.createComponent(OpenVaultDBPageComponent);
-      fixture.componentInstance.authorization.set(result(outcome));
       fixture.detectChanges();
       await fixture.whenStable();
+      fixture.componentInstance.authorization.set(result(outcome));
       fixture.detectChanges();
       expect(fixture.nativeElement.textContent).toContain(`Access: ${outcome}`);
     });
@@ -108,11 +113,11 @@ describe('OpenVaultDBPageComponent', () => {
 
   it('renders redacted structural limits without policy text', async () => {
     const fixture = TestBed.createComponent(OpenVaultDBPageComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
     fixture.componentInstance.authorization.set(
       result('conditional', 'redacted'),
     );
-    fixture.detectChanges();
-    await fixture.whenStable();
     fixture.detectChanges();
     const text = fixture.nativeElement.textContent;
     expect(text).toContain('limited details');
@@ -123,9 +128,9 @@ describe('OpenVaultDBPageComponent', () => {
 
   it('shows a public reference only when the response supplies it', async () => {
     const fixture = TestBed.createComponent(OpenVaultDBPageComponent);
-    fixture.componentInstance.authorization.set(result('allow', 'full'));
     fixture.detectChanges();
     await fixture.whenStable();
+    fixture.componentInstance.authorization.set(result('allow', 'full'));
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('public-policy-ref');
   });
@@ -141,6 +146,8 @@ describe('OpenVaultDBPageComponent', () => {
     component.targets.set([{ id: 'crm-target', databaseId: 'crm' }]);
     component.targetId.set('crm-target');
     component.selected.set({ key: '101', data: { name: 'Ada' } });
+    component.recordsTargetId.set('crm-target');
+    component.recordsTable.set('customers');
     component.updateValue.set('Grace');
     await component.updateSelected();
     expect(api.update).not.toHaveBeenCalled();
@@ -159,6 +166,8 @@ describe('OpenVaultDBPageComponent', () => {
     component.targets.set([{ id: 'crm-target', databaseId: 'crm' }]);
     component.targetId.set('crm-target');
     component.selected.set({ key: '101', data: { name: 'Ada' } });
+    component.recordsTargetId.set('crm-target');
+    component.recordsTable.set('customers');
     component.updateValue.set('Grace');
     await component.updateSelected();
     expect(api.update).toHaveBeenCalledOnce();
@@ -171,5 +180,75 @@ describe('OpenVaultDBPageComponent', () => {
         }),
       }),
     );
+  });
+
+  it('clears records and selection when the target changes', async () => {
+    const fixture = TestBed.createComponent(OpenVaultDBPageComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const component = fixture.componentInstance;
+    component.targets.set([
+      { id: 'first', databaseId: 'crm-a' },
+      { id: 'second', databaseId: 'crm-b' },
+    ]);
+    component.targetId.set('first');
+    const record = { key: 'customers/101', data: { name: 'Ada' } };
+    component.records.set([record]);
+    component.recordsTargetId.set('first');
+    component.recordsTable.set('customers');
+    component.select(record);
+    component.authorization.set(result('allow'));
+
+    component.changeTarget('second');
+
+    expect(component.records()).toEqual([]);
+    expect(component.selected()).toBeUndefined();
+    expect(component.authorization()).toBeUndefined();
+  });
+
+  it('ignores a query response after its target changes', async () => {
+    const response = new Subject<{ records: readonly [] }>();
+    api.query.mockReturnValue(response);
+    const fixture = TestBed.createComponent(OpenVaultDBPageComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const component = fixture.componentInstance;
+    component.targets.set([
+      { id: 'first', databaseId: 'crm-a' },
+      { id: 'second', databaseId: 'crm-b' },
+    ]);
+    component.targetId.set('first');
+    const pending = component.runQuery();
+    component.changeTarget('second');
+    response.next({ records: [] });
+    response.complete();
+    await pending;
+
+    expect(component.recordsTargetId()).toBe('');
+  });
+
+  it('replaces a prior allow with authorization from a failed request', async () => {
+    const denial = result('deny');
+    api.explain.mockReturnValue(
+      throwError(
+        () =>
+          new HttpErrorResponse({
+            status: 403,
+            error: { authorization: denial, error: { message: 'Access denied' } },
+          }),
+      ),
+    );
+    const fixture = TestBed.createComponent(OpenVaultDBPageComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const component = fixture.componentInstance;
+    component.targets.set([{ id: 'crm-target', databaseId: 'crm' }]);
+    component.targetId.set('crm-target');
+    component.authorization.set(result('allow'));
+
+    await component.explain('plan');
+
+    expect(component.authorization()?.result).toBe('deny');
+    expect(component.error()).toBe('Access denied');
   });
 });

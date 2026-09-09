@@ -8,6 +8,7 @@ import {
   signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ActivatedRoute } from '@angular/router';
 import { IonButton } from '@ionic/angular/ion-button';
 import { IonCard } from '@ionic/angular/ion-card';
@@ -69,6 +70,8 @@ export class OpenVaultDBPageComponent implements OnInit {
   readonly table = signal('customers');
   readonly dtql = signal('from: {name: customers}\nlimit: 20\n');
   readonly records = signal<readonly OpenVaultRecord[]>([]);
+  readonly recordsTargetId = signal('');
+  readonly recordsTable = signal('');
   readonly selected = signal<OpenVaultRecord | undefined>(undefined);
   readonly authorization = signal<AuthorizationResult | undefined>(undefined);
   readonly updateField = signal('name');
@@ -103,11 +106,17 @@ export class OpenVaultDBPageComponent implements OnInit {
   async runQuery(): Promise<void> {
     const target = this.requireTarget();
     if (!target) return;
+    const targetId = target.id;
+    const table = this.table();
+    const dtql = this.dtql();
     await this.run(async () => {
       const response = await firstValueFrom(
-        this.api.query(this.agentId(), target.id, this.dtql()),
+        this.api.query(this.agentId(), targetId, dtql),
       );
+      if (this.targetId() !== targetId || this.table() !== table) return;
       this.records.set(response.records);
+      this.recordsTargetId.set(targetId);
+      this.recordsTable.set(table);
       this.selected.set(undefined);
       this.status.set(`${response.records.length} record(s)`);
     });
@@ -119,6 +128,10 @@ export class OpenVaultDBPageComponent implements OnInit {
     const selected = this.selected();
     if (mode === 'inspect' && !selected) {
       this.error.set('Select a record before inspection.');
+      return;
+    }
+    if (selected && !this.selectionMatches(target.id, this.table())) {
+      this.error.set('Run the query again and reselect the record.');
       return;
     }
     const rowID = selected ? recordID(selected.key, this.table()) : '';
@@ -160,11 +173,11 @@ export class OpenVaultDBPageComponent implements OnInit {
         : {}),
     };
     await this.run(async () => {
-      this.authorization.set(
-        await firstValueFrom(
-          this.api.explain(this.agentId(), target.id, request),
-        ),
+      const response = await firstValueFrom(
+        this.api.explain(this.agentId(), target.id, request),
       );
+      if (this.targetId() !== target.id || this.table() !== resource.table) return;
+      this.authorization.set(response);
     });
   }
 
@@ -174,6 +187,10 @@ export class OpenVaultDBPageComponent implements OnInit {
     const field = this.updateField().trim();
     if (!target || !selected || !field || field.includes('.')) {
       this.error.set('Select a record and enter one top-level field.');
+      return;
+    }
+    if (!this.selectionMatches(target.id, this.table())) {
+      this.error.set('Run the query again and reselect the record.');
       return;
     }
     const rowID = recordID(selected.key, this.table());
@@ -192,10 +209,15 @@ export class OpenVaultDBPageComponent implements OnInit {
           }),
         );
         dataRevision = evidence.dataRevision;
-      } catch {
+      } catch (error: unknown) {
+        const failedAuthorization = authorizationFromError(error);
+        if (failedAuthorization) this.authorization.set(failedAuthorization);
         throw new Error(
           'The row could not be refreshed for a safe update. Run the query again, select the row, and retry.',
         );
+      }
+      if (!this.selectionMatches(target.id, this.table())) {
+        throw new Error('Run the query again and reselect the record.');
       }
       const mutation: {
         changes: readonly unknown[];
@@ -228,6 +250,18 @@ export class OpenVaultDBPageComponent implements OnInit {
 
   select(record: OpenVaultRecord): void {
     this.selected.set(record);
+  }
+
+  changeTarget(targetId: string): void {
+    if (targetId === this.targetId()) return;
+    this.targetId.set(targetId);
+    this.clearQueryResult();
+  }
+
+  changeTable(table: string): void {
+    if (table === this.table()) return;
+    this.table.set(table);
+    this.clearQueryResult();
   }
 
   trackRecord(_: number, record: OpenVaultRecord): string {
@@ -265,13 +299,30 @@ export class OpenVaultDBPageComponent implements OnInit {
     return target;
   }
 
+  private selectionMatches(targetId: string, table: string): boolean {
+    return this.recordsTargetId() === targetId && this.recordsTable() === table;
+  }
+
+  private clearQueryResult(): void {
+    this.records.set([]);
+    this.recordsTargetId.set('');
+    this.recordsTable.set('');
+    this.selected.set(undefined);
+    this.authorization.set(undefined);
+    this.status.set('');
+    this.error.set('');
+  }
+
   private async run(action: () => Promise<void>): Promise<void> {
     this.busy.set(true);
+    this.authorization.set(undefined);
     this.error.set('');
     this.status.set('');
     try {
       await action();
     } catch (error: unknown) {
+      const failedAuthorization = authorizationFromError(error);
+      if (failedAuthorization) this.authorization.set(failedAuthorization);
       this.error.set(safeErrorMessage(error));
     } finally {
       this.busy.set(false);
@@ -293,6 +344,8 @@ function recordID(key: string, collection: string): string {
 }
 
 function safeErrorMessage(error: unknown): string {
+  if (error instanceof HttpErrorResponse && error.status === 409)
+    return 'The row changed since it was loaded. Run the query again and reselect it.';
   if (error instanceof Error && !error.message.includes('http'))
     return error.message;
   if (
@@ -314,4 +367,33 @@ function safeErrorMessage(error: unknown): string {
     }
   }
   return 'The protected OpenVaultDB request failed.';
+}
+
+function authorizationFromError(error: unknown): AuthorizationResult | undefined {
+  if (!(error instanceof HttpErrorResponse) || !isObject(error.error)) return undefined;
+  const body = error.error;
+  const candidate = isObject(body['authorization'])
+    ? body['authorization']
+    : isObject(body['error']) && isObject(body['error']['authorization'])
+      ? body['error']['authorization']
+      : undefined;
+  return isAuthorizationResult(candidate) ? candidate : undefined;
+}
+
+function isAuthorizationResult(value: unknown): value is AuthorizationResult {
+  return (
+    isObject(value) &&
+    value['apiVersion'] === 'dtql.org/authorization/v1' &&
+    ['allow', 'conditional', 'deny', 'indeterminate'].includes(String(value['result'])) &&
+    ['plan', 'inspect', 'sample', 'execution'].includes(String(value['mode'])) &&
+    Array.isArray(value['layers']) &&
+    Array.isArray(value['blockers']) &&
+    Array.isArray(value['operations']) &&
+    Array.isArray(value['restrictions']) &&
+    isObject(value['coverage'])
+  );
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

@@ -116,7 +116,7 @@ function earlyExit(child: ChildProcess, name: string): Promise<never> {
   });
 }
 
-export const test = base.extend<{}, WorkerFixtures>({
+export const test = base.extend<Record<string, never>, WorkerFixtures>({
   realStack: [
     // eslint-disable-next-line no-empty-pattern
     async ({}, use, workerInfo) => {

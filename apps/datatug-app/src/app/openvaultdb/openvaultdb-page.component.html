@@ -15,7 +15,7 @@
           <ion-select
             label="Database"
             [ngModel]="targetId()"
-            (ngModelChange)="targetId.set($event)"
+            (ngModelChange)="changeTarget($event)"
           >
             @for (target of targets(); track target.id) {
               <ion-select-option [value]="target.id">
@@ -28,7 +28,7 @@
           <ion-input
             label="Collection"
             [ngModel]="table()"
-            (ngModelChange)="table.set($event)"
+            (ngModelChange)="changeTable($event)"
           />
         </ion-item>
         <ion-item>
