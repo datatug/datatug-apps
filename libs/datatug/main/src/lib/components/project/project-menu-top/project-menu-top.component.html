@@ -1,3 +1,16 @@
+<!--
+  REQ:context-basket — visible (collapsed by default, count shown) on every project
+  screen (INTEGRATION.md §4). This top project menu is a named router outlet
+  alongside every routed project page (see DatatugNavService's own comment on why
+  services here must be providedIn:'root'), not an ancestor of it, so this is the one
+  place that reaches every project screen without adding it to each page
+  individually. InvestigationContextBarComponent already renders nothing when the
+  basket is empty (`@if (items().length)`), and reads InvestigationContextService
+  directly — the collapsed/expanded affordance a host page owns per INTEGRATION.md
+  is out of scope for this MVP integration; it always renders every item as chips
+  for now.
+-->
+<sneat-datatug-investigation-context-bar />
 @for (page of projTopLevelPages; track page) {
   <ion-item
     (click)="goProjPage($event, page.path)"

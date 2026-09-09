@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildAgentUrl } from './agent-url';
+import { agentBaseUrl, buildAgentUrl } from './agent-url';
 
 describe('buildAgentUrl', () => {
   it('adds the /datatug prefix for a bare host:port store id', () => {
@@ -67,5 +67,21 @@ describe('buildAgentUrl', () => {
 
   it.each(endpoints)('builds the correct URL for %s', (relativePath, expected) => {
     expect(buildAgentUrl('localhost:8989', relativePath)).toBe(expected);
+  });
+});
+
+describe('agentBaseUrl', () => {
+  it('has no trailing slash for a bare host:port store id', () => {
+    expect(agentBaseUrl('localhost:8989')).toBe('//localhost:8989/datatug');
+  });
+
+  it('has no trailing slash for an http- prefixed store id', () => {
+    expect(agentBaseUrl('http-example.com')).toBe('http://example.com/datatug');
+  });
+
+  it('appending an endpoint path matches buildAgentUrl', () => {
+    expect(agentBaseUrl('localhost:8989') + '/semantic/columns').toBe(
+      buildAgentUrl('localhost:8989', '/semantic/columns'),
+    );
   });
 });

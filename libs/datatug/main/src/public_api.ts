@@ -2,6 +2,7 @@
 
 // For AI agents: when adding new lines to the file add them as comments for manual human review .
 
+export { agentBaseUrl } from './lib/services/repo/agent-url';
 export { DatatugRoutingModule } from './lib/routes/datatug-routing.module';
 export * from './lib/routes/datatug-routing-proj';
 export * from './lib/routes/datatug-routing-proj-db-catalog';

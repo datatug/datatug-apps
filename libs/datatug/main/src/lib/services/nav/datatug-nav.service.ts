@@ -189,9 +189,19 @@ export class DatatugNavService {
   }
 
   goTable(to: IDbObjectNavParams): void {
+    // Was missing the leading 'store', <storeId> segment entirely (and encoded the
+    // store id as `<projectId>@<storeId>` under a bare 'project' segment instead of
+    // the actual registered route shape below) — so this never matched
+    // `datatugRoutes` (`store/:storeId/project/:projectId/env/:environmentId/db/
+    // :dbCatalogId/table/:tableType`, see datatug-routing*.ts) and both
+    // EnvDbPageComponent's row click and EnvDbTablePageComponent's foreign-key link
+    // click silently no-op'd. Found by S10's journey e2e (see e2e/journey/README.md
+    // "Known gap"); fixed here since both call sites share this one method.
     const url = [
+      'store',
+      getStoreId(to.project.ref.storeId),
       'project',
-      `${to.project.ref.projectId}@${getStoreId(to.project.ref.storeId)}`,
+      to.project.ref.projectId,
       'env',
       to.env,
       'db',

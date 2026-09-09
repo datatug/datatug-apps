@@ -36,7 +36,10 @@ import {
 } from '../../../models/definition/apis/database';
 import { IEnvironmentFull } from '../../../models/definition/environments';
 import { IProjectFull } from '../../../models/definition/project';
-import { IProjectContext } from '../../../nav/nav-models';
+import {
+  IProjectContext,
+  newProjectContextFromRef,
+} from '../../../nav/nav-models';
 import { ProjectTracker } from '../../../services/nav/contexts/project.tracker';
 import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
 import { ProjectService } from '../../../services/project/project.service';
@@ -116,6 +119,11 @@ export class EnvDbPageComponent implements OnDestroy, OnInit {
     const projectTracker = new ProjectTracker(this.destroyed, this.route);
     projectTracker.projectRef.subscribe({
       next: (projectRef) => {
+        // `this.project` was never assigned here, so the rowClick handler below
+        // (built in createTabulator()) always bailed out of `goTable()` on its
+        // `if (!project || ...)` guard — a row click silently did nothing. Found by
+        // S10's journey e2e (see e2e/journey/README.md "Known gap").
+        this.project = newProjectContextFromRef(projectRef);
         this.projService.getFull(projectRef).subscribe((p) => {
           this.projectFull = p;
           const envId = this.route.snapshot.params[routingParamEnvironmentId];

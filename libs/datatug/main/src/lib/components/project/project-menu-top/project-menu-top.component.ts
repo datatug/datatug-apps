@@ -9,6 +9,7 @@ import {
   IonLabel,
   IonSpinner,
 } from '@ionic/angular';
+import { InvestigationContextBarComponent } from '@sneat/datatug-semantic';
 import { Observable, Subject } from 'rxjs';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { takeUntil } from 'rxjs/operators';
@@ -40,6 +41,7 @@ interface IProjectTopLevelPage {
     IonSpinner,
     IonButtons,
     IonButton,
+    InvestigationContextBarComponent,
   ],
 })
 export class ProjectMenuTopComponent implements OnDestroy {

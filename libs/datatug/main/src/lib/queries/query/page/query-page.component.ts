@@ -1,4 +1,11 @@
-import { ChangeDetectorRef, Component, OnDestroy, inject } from '@angular/core';
+import {
+  ChangeDetectorRef,
+  Component,
+  OnDestroy,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Params, Router } from '@angular/router';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
@@ -7,22 +14,40 @@ import { distinctUntilChanged, takeUntil } from 'rxjs/operators';
 import { Subject } from 'rxjs';
 import {
   IonBackButton,
+  IonBadge,
   IonButton,
   IonButtons,
   IonCard,
+  IonCardContent,
+  IonCardHeader,
+  IonCardTitle,
   IonContent,
   IonHeader,
   IonIcon,
   IonInput,
   IonItem,
   IonLabel,
+  IonList,
+  IonListHeader,
   IonMenuButton,
   IonSelect,
   IonSelectOption,
+  IonSpinner,
+  IonText,
   IonTitle,
   IonToolbar,
   ViewDidEnter,
 } from '@ionic/angular';
+import {
+  EntityFieldRef,
+  InvestigationContextService,
+  LimitationHeaderComponent,
+  QueryParameterBinding,
+  RunQueryResponse,
+  SemanticApiService,
+  SemanticParameterRef,
+  SemanticValue,
+} from '@sneat/datatug-semantic';
 import { IProjectRef } from '../../../core/project-context';
 import {
   IQueryEditorState,
@@ -55,6 +80,24 @@ import {
 } from '../../query-editor-state-service';
 import { HttpQueryEditorComponent } from '../http-query/http-query-editor.component';
 
+/**
+ * REQ:parameter-auto-binding, REQ:no-hidden-filters (INTEGRATION.md §6) — one
+ * candidate binding shown to the user before a run, regardless of whether it came
+ * from the context panel's "open this applicable query" (`origin: 'selection'`,
+ * carried via router state — see EnvDbTablePageComponent.onOpenQuery) or from
+ * InvestigationContextService.bindingsFor() (`origin: 'context'`). Selection always
+ * wins over context for the same parameter id (REQ:parameter-auto-binding). Never
+ * applied to a run until the user sees it here and doesn't clear it
+ * (REQ:no-hidden-filters) — see effectiveBindings().
+ */
+interface ResolvedParameterBinding {
+  readonly parameterId: string;
+  readonly entityField: EntityFieldRef;
+  readonly value: SemanticValue;
+  readonly label: string;
+  readonly origin: 'selection' | 'context';
+}
+
 @Component({
   selector: 'sneat-datatug-sql-editor',
   templateUrl: './query-page.component.html',
@@ -70,12 +113,21 @@ import { HttpQueryEditorComponent } from '../http-query/http-query-editor.compon
     IonButton,
     IonContent,
     IonCard,
+    IonCardHeader,
+    IonCardTitle,
+    IonCardContent,
     IonItem,
     IonInput,
     IonSelect,
     IonSelectOption,
     IonIcon,
     IonLabel,
+    IonList,
+    IonListHeader,
+    IonBadge,
+    IonSpinner,
+    IonText,
+    LimitationHeaderComponent,
   ],
 })
 export class QueryPageComponent implements OnDestroy, ViewDidEnter {
@@ -86,6 +138,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private readonly router = inject(Router);
   private readonly queryContextSqlService = inject(QueryContextSqlService);
   private readonly queriesService = inject(QueriesService);
+  private readonly semanticApi = inject(SemanticApiService);
+  private readonly investigationContext = inject(InvestigationContextService);
   private readonly coordinator = inject(Coordinator);
   private readonly queryEditorStateService = inject(QueryEditorStateService);
   private readonly envService = inject(EnvironmentService);
@@ -124,7 +178,34 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   private readonly destroyed = new Subject<void>();
 
+  // REQ:parameter-auto-binding, REQ:no-hidden-filters (INTEGRATION.md §6). Signals,
+  // not plain fields, per this repo's zoneless-ready convention (AGENTS.md).
+  private readonly selectionBindings: readonly QueryParameterBinding[];
+  public readonly bindings = signal<readonly ResolvedParameterBinding[]>([]);
+  private readonly clearedParamIds = signal<ReadonlySet<string>>(new Set());
+  /** What actually gets sent on a run — cleared bindings are never silently
+   * resurrected (REQ:no-hidden-filters). */
+  public readonly effectiveBindings = computed(() =>
+    this.bindings().filter((b) => !this.clearedParamIds().has(b.parameterId)),
+  );
+  public readonly running = signal(false);
+  public readonly runError = signal<string | undefined>(undefined);
+  public readonly runResult = signal<RunQueryResponse | undefined>(undefined);
+
   constructor() {
+    // REQ:applicable-queries / INTEGRATION.md §3 — EnvDbTablePageComponent.onOpenQuery
+    // carries the context panel's resolved bindings (selection wins over context,
+    // REQ:parameter-auto-binding) via router state, since this shared library
+    // deliberately doesn't depend on @angular/router. MUST run before
+    // trackQueryState(): queryEditorState can emit synchronously (a BehaviorSubject
+    // in the real QueryEditorStateService — an of()-backed test double, always), and
+    // its handler calls updateBindings(), which reads this.selectionBindings.
+    // Reading it before assignment threw inside that handler's try/catch, so
+    // `bindings` silently never got set at all — caught by this component's own
+    // unit tests, not by inspection.
+    this.selectionBindings =
+      (history.state.bindings as readonly QueryParameterBinding[] | undefined) || [];
+
     this.trackQueryState();
     const query = history.state.query as IQueryDef;
     if (query) {
@@ -167,6 +248,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         this.envId = queryState?.activeEnv.id;
         this.datatugNavContextService.setCurrentEnvironment(this.envId);
       }
+      this.updateBindings();
     } catch (e) {
       this.errorLogger.logError(
         e,
@@ -583,5 +665,101 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           error: this.errorLogger.logErrorHandler('Failed to save query'),
         });
     }
+  }
+
+  /**
+   * REQ:parameter-auto-binding (INTEGRATION.md §6) — resolves a candidate binding for
+   * every semantic parameter of the current query: the context panel's selection
+   * (router state, set once in the constructor) first, then
+   * InvestigationContextService.bindingsFor() for whatever selection didn't cover.
+   * Never applies anything — see effectiveBindings() and clearBinding() for the
+   * REQ:no-hidden-filters half (the user must see and can clear/override every
+   * binding before a run).
+   */
+  private updateBindings(): void {
+    const parameterDefs = this.queryState.def?.parameters || [];
+    const semanticParams: SemanticParameterRef[] = parameterDefs
+      .filter((p) => !!p.meta)
+      .map((p) => ({ id: p.id, meta: p.meta }));
+    if (!semanticParams.length) {
+      this.bindings.set([]);
+      return;
+    }
+    const contextBindings = this.investigationContext.bindingsFor(semanticParams);
+    const resolved: ResolvedParameterBinding[] = [];
+    for (const param of semanticParams) {
+      const selection = this.selectionBindings.find(
+        (b) => b.parameterId === param.id,
+      );
+      if (selection) {
+        resolved.push({
+          parameterId: selection.parameterId,
+          entityField: { entity: selection.entity, field: selection.field },
+          value: selection.value,
+          label: `${selection.entity}.${selection.field} = ${selection.value}`,
+          origin: 'selection',
+        });
+        continue;
+      }
+      const contextMatch = contextBindings.find((b) => b.parameterId === param.id);
+      if (contextMatch) {
+        resolved.push({
+          parameterId: contextMatch.parameterId,
+          entityField: contextMatch.entityField,
+          value: contextMatch.value,
+          label: contextMatch.label,
+          origin: 'context',
+        });
+      }
+    }
+    this.bindings.set(resolved);
+    // Dropping a parameter (e.g. switching to a query with different params)
+    // shouldn't leave a stale clear behind for a parameterId that no longer applies,
+    // but a still-applicable one the user explicitly cleared should stay cleared.
+    const resolvedIds = new Set(resolved.map((b) => b.parameterId));
+    const stillCleared = new Set(
+      [...this.clearedParamIds()].filter((id) => resolvedIds.has(id)),
+    );
+    this.clearedParamIds.set(stillCleared);
+  }
+
+  /** REQ:no-hidden-filters — the user clears (or, by not clearing, implicitly
+   * confirms) every auto-bound parameter before it's ever sent on a run. */
+  public clearBinding(parameterId: string): void {
+    this.clearedParamIds.set(new Set([...this.clearedParamIds(), parameterId]));
+  }
+
+  /** REQ:parameter-auto-binding, REQ:no-hidden-filters, REQ:limitation-visible
+   * (INTEGRATION.md §5-6) — runs the query through SemanticApiService (never a
+   * browser-built query) with only the bindings the user has actually seen and not
+   * cleared, then renders limitations and the applied-bindings list from the
+   * response so nothing is a hidden filter. */
+  public runQuery(): void {
+    const projectId = this.project?.ref.projectId;
+    const queryId = this.queryId;
+    if (!projectId || !queryId) {
+      return;
+    }
+    this.running.set(true);
+    this.runError.set(undefined);
+    const parameters: Record<string, SemanticValue> = {};
+    for (const binding of this.effectiveBindings()) {
+      parameters[binding.parameterId] = binding.value;
+    }
+    this.semanticApi
+      .runQuery({ project: projectId, queryId, parameters })
+      .subscribe({
+        next: (response) => {
+          this.runResult.set(response);
+          this.running.set(false);
+        },
+        error: (err) => {
+          this.runError.set(
+            err?.message ? String(err.message) : 'Failed to run the query',
+          );
+          this.running.set(false);
+          this.errorLogger.logError(err, 'Failed to run query');
+        },
+      });
   }
 }

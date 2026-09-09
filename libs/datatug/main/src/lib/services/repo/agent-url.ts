@@ -28,6 +28,18 @@ export function buildAgentUrl(storeId: string, endpointPath: string): string {
 }
 
 /**
+ * Base URL of a store's `/datatug` API, with no endpoint suffix and no trailing
+ * slash — what `libs/datatug/semantic`'s `DATATUG_AGENT_BASE_URL` token needs
+ * (`SemanticApiService` appends its own leading-slash endpoint path, e.g.
+ * `/semantic/columns`, directly onto this value). Built from {@link buildAgentUrl}
+ * so the semantic client resolves the exact same origin as every other agent call
+ * (REQ:agent-path-contract) — see `libs/datatug/semantic/INTEGRATION.md` §1.
+ */
+export function agentBaseUrl(storeId: string): string {
+  return buildAgentUrl(storeId, '/').replace(/\/$/, '');
+}
+
+/**
  * Map of every relative path this app's agent client passes to
  * `buildAgentUrl()`, to the CLI server route it is expected to hit
  * (`datatug-cli/pkg/server/endpoints/register.go`), and the client call

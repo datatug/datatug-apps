@@ -1,9 +1,9 @@
 import { TestBed } from '@angular/core/testing';
 import { NavController } from '@ionic/angular';
 import { ErrorLogger } from '@sneat/core';
-import { DatatugNavService } from './datatug-nav.service';
+import { DatatugNavService, IDbObjectNavParams } from './datatug-nav.service';
 import { describe, it, expect, beforeEach, vi, Mock } from 'vitest';
-import { IDatatugStoreContext } from '../../nav/nav-models';
+import { IDatatugStoreContext, IProjectContext } from '../../nav/nav-models';
 import { IProjectRef } from '../../core/project-context';
 
 describe('DatatugNavService', () => {
@@ -53,6 +53,36 @@ describe('DatatugNavService', () => {
       expect(() =>
         service.goStore({} as unknown as IDatatugStoreContext),
       ).toThrow('store.ref is a required parameter');
+    });
+  });
+
+  describe('goTable', () => {
+    it('navigates within the store route (store, project, env, db, table segments)', () => {
+      const to: IDbObjectNavParams = {
+        project: {
+          ref: { storeId: 'localhost:8989', projectId: 'p1' },
+        } as IProjectContext,
+        env: 'local',
+        db: 'chinook-local',
+        schema: 'main',
+        name: 'Album',
+      };
+      service.goTable(to);
+      expect(navMock.navigateRoot).toHaveBeenCalledWith(
+        [
+          'store',
+          'localhost:8989',
+          'project',
+          'p1',
+          'env',
+          'local',
+          'db',
+          'chinook-local',
+          'table',
+          'main.Album',
+        ],
+        undefined,
+      );
     });
   });
 

@@ -6,7 +6,15 @@ import { IBoardDef } from '../../models/definition/board/board';
 import { IProjBoard } from '../../models/definition/project';
 import { ICreateProjectItemRequest } from '../../services/project/project.service';
 
-@Injectable()
+// `providedIn: 'root'` for the same reason DatatugNavService is (see the comment
+// there): `DatatugFolderComponent` injects this service directly without importing
+// `DatatugBoardCoreModule`, so a module-scoped-only provider threw `NG0201: No
+// provider found for _DatatugBoardService` on any page that renders a folder list —
+// including the project overview page, which crashed entirely (blocking journey e2e
+// J1, discovered wiring stream S9b's semantic-foundation integration). Kept in
+// `DatatugBoardCoreModule.providers` too; that's harmless (same class), matching the
+// existing `DatatugNavService` precedent.
+@Injectable({ providedIn: 'root' })
 export class DatatugBoardService {
   private readonly sneatApiServiceFactory = inject(SneatApiServiceFactory);
 

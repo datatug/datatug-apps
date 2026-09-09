@@ -38,3 +38,32 @@ ion-item ion-buttons[slot='end'] {
 ion-select {
   max-width: 100% !important; // https://forum.ionicframework.com/t/ion-option-in-ion-select-doesnt-use-full-width/148256
 }
+
+// REQ:semantic-markers-in-grid — env-db-table.page.ts embeds this exact markup (icon
+// + class) directly into a Tabulator column's `title` HTML string (see
+// columnTitleWithMarker() there), because that content is injected via
+// Tabulator's own innerHTML assignment inside @sneat/datagrid's Tabulator instance,
+// never through Angular's template compiler — so it never gets an Angular
+// component's emulated-encapsulation `_ngcontent-*` attribute, and a scoped
+// `env-db-table.page.scss` rule (or SemanticMarkerComponent's own scoped SCSS)
+// could never match it. Mirrors SemanticMarkerComponent's own SCSS
+// (libs/datatug/semantic/.../semantic-marker.component.scss) so both look the same.
+.semantic-marker {
+  font-size: 0.8rem;
+  vertical-align: middle;
+  color: var(--ion-color-medium, #92949c);
+  margin-inline-start: 4px;
+
+  &--inferred {
+    opacity: 0.65;
+  }
+}
+
+// The env-db-table page's context panel side pane (env-db-table.page.html) — same
+// reasoning as above doesn't apply here (this one IS a normal Angular template), but
+// ion-split-pane's default secondary-pane width assumes an <ion-menu>, not a plain
+// <div class="ion-page">, so it needs an explicit width.
+.context-panel-pane {
+  max-width: 360px;
+  border-inline-start: 1px solid var(--ion-color-step-150, #d9d9d9);
+}
