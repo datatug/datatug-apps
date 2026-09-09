@@ -108,6 +108,15 @@ export class ProjectMenuTopComponent implements OnDestroy {
       icon: 'terminal-outline',
       buttons: [{ path: 'query', icon: 'add' }],
     },
+    // Investigation Context (plan task 9, REQ:context-basket) — the former
+    // "Variables" empty-shell page now has a real screen
+    // (InvestigationContextPageComponent), so unlike its former siblings in
+    // emptyShellPages below, it is always in the menu.
+    {
+      path: 'variables',
+      title: 'Investigation Context',
+      icon: 'bookmarks-outline',
+    },
     ...(ENABLE_EMPTY_SHELL_PAGES ? ProjectMenuTopComponent.emptyShellPages : []),
   ];
 

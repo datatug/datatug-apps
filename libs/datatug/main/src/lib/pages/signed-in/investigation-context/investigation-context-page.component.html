@@ -1,0 +1,91 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-menu-button />
+      <ion-back-button />
+    </ion-buttons>
+    <ion-title>Investigation Context</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="ion-padding">
+  @if (!items().length) {
+    <ion-text color="medium" class="investigation-context-page__empty">
+      <p>
+        Nothing added yet. Select a value on a table or query result and choose
+        "Add to context" to start an investigation.
+      </p>
+    </ion-text>
+  } @else {
+    <ion-list>
+      <ion-list-header>
+        <ion-label>Collected values ({{ enabledCount() }} enabled)</ion-label>
+      </ion-list-header>
+      @for (item of items(); track item.id) {
+        <ion-item
+          class="investigation-context-page__item"
+          [class.investigation-context-page__item--disabled]="!item.enabled"
+        >
+          <ion-label>
+            {{ item.label }}
+            <p>from {{ item.source }} · added {{ addedAtLabel(item) }}</p>
+          </ion-label>
+          <ion-toggle
+            slot="end"
+            [checked]="item.enabled"
+            [attr.aria-label]="'Enable ' + item.label"
+            (ionChange)="toggle(item)"
+          ></ion-toggle>
+          <ion-button
+            slot="end"
+            fill="clear"
+            [attr.aria-label]="'Remove ' + item.label"
+            (click)="remove(item)"
+          >
+            <ion-icon slot="icon-only" name="closeOutline"></ion-icon>
+          </ion-button>
+        </ion-item>
+      }
+    </ion-list>
+
+    <ion-list>
+      <ion-list-header>
+        <ion-label>Applicable queries</ion-label>
+      </ion-list-header>
+      @if (loading()) {
+        <ion-item lines="none">
+          <ion-spinner name="dots"></ion-spinner>
+        </ion-item>
+      }
+      @if (error(); as errorText) {
+        <ion-item lines="none">
+          <ion-text color="danger">{{ errorText }}</ion-text>
+        </ion-item>
+      }
+      @if (!loading() && !applicable().length && !notYet().length) {
+        <ion-item lines="none">
+          <ion-label color="medium"
+            >No queries match the enabled context yet.</ion-label
+          >
+        </ion-item>
+      }
+      @for (query of applicable(); track query.queryId) {
+        <ion-item button="true" (click)="onOpenApplicable(query)">
+          <ion-icon slot="start" name="linkOutline"></ion-icon>
+          <ion-label>
+            {{ query.queryId }}
+            <p>{{ chainText(query.chain) }}</p>
+          </ion-label>
+        </ion-item>
+      }
+      @for (query of notYet(); track query.queryId) {
+        <ion-item lines="none" color="light">
+          <ion-label>
+            {{ query.queryId }}
+            <p>not yet applicable — needs {{ missingText(query.missing) }}</p>
+          </ion-label>
+        </ion-item>
+      }
+    </ion-list>
+  }
+</ion-content>
