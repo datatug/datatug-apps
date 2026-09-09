@@ -83,8 +83,27 @@ import { expect, test } from './fixtures/agent-server';
  * pure client-side state once blocker 2 is cleared — no further server
  * contract needed for it specifically.
  *
- * J4 stays `test.fixme` — it depends on plan task 6 (`--as support` policy
- * enforcement), out of this stream's scope.
+ * J4 (S100) now runs for real against its own `supportAgentServer` fixture
+ * (`--as support --role support`, `fixtures/agent-server.ts`) rather than
+ * staying `test.fixme` — plan task 6's own server-side ACL enforcement is
+ * `complete` (`datatug-cli@a30132d9…`). Currently FAILS at its very first
+ * assertion (confirmed live, S100, both via the real browser and directly
+ * via curl — see the test's own comment right there): the real browser
+ * requests `main.Customer` (schema-qualified) but
+ * `policies/customers.yaml`'s `customers-support` rule declares `path:
+ * /Customer` (no schema prefix), so the access-policy engine's exact path
+ * match denies every request for this table outright — the grid never
+ * renders a single row under this principal. A `datatug-cli`/`datatug-core`
+ * or `datatug-demo-projects` fixture gap, not this repo's own client code;
+ * not fixed here. Once resolved, this test is expected to reach (and this
+ * stream's own comments flag) at least two further, separately-confirmed
+ * gaps: no limitation header on a plain table browse (`ISelectResponse` —
+ * dto/execute.ts — carries no `limitations` field at all, confirmed live),
+ * and `POST /datatug/queries/applicable` emitting a bare `queryId` that
+ * `POST /datatug/exec/run_query` 404s on (only the folder-qualified form
+ * resolves) — already fixed in `datatug-cli` PR #219 (lane S97), not yet
+ * merged at the time of this stream. See ./journey.spec.ts's own J4 test
+ * comments and this stream's report for exact evidence on all three.
  *
  * See ./README.md for the env vars this suite reads and what CI must
  * provide to run it instead of skipping it.
@@ -352,17 +371,214 @@ test.describe('J3 — carrying context', () => {
 });
 
 test.describe('J4 — restricted principal', () => {
-  test.fixme('`datatug serve --as support` filters rows, hides Email, and states the limitation', async () => {
-    // TODO (plan task 10, after task 6 lands). Needs its own agentServer
-    // started with `--as support` rather than `--as admin` — not simply
-    // reusable from the shared worker-scoped fixture above — see AC
-    // restricted-rows-and-columns, hidden-column-refused.
-    // 1. Run "Customer invoices" for a Brazilian customer (Customer.ID
-    //    outside Canada) -> 0 rows, limitation header states
-    //    "customers-support: rows filtered".
-    // 2. Run it for a Canadian customer -> rows render without the Email
-    //    column; header states "1 column hidden".
-    // 3. A hand-crafted request selecting Email is refused with
-    //    ACCESS_DENIED naming policy customers-support, no row data.
+  test('`datatug serve --as support` filters rows, hides Email, and states the limitation', async ({
+    supportAgentServer,
+    page,
+    request,
+  }) => {
+    // "http-<host>:<port>" (store-id-scheme.spec.ts) rather than J1–J3's bare
+    // "<host>:<port>" — both resolve, this is the form `datatug serve` itself
+    // prints (see that spec's own header), and this is a fresh agent process
+    // this test alone talks to.
+    const storeId = `http-${supportAgentServer.host}:${supportAgentServer.port}`;
+    const projectUrl = `/store/${storeId}/project/${DEMO_PROJECT_ID}`;
+    const customerTableUrl =
+      `${projectUrl}/env/${DEMO_ENV_ID}/db/${DEMO_DB_CATALOG_ID}` +
+      `/table/${CUSTOMER_TABLE_TYPE}`;
+    const agentOrigin = `http://${supportAgentServer.host}:${supportAgentServer.port}`;
+
+    // "Browse Customer with an allowed projection" — the real GET
+    // /datatug/exec/select response (mechanism), not just the rendered grid.
+    //
+    // CONFIRMED FAILING HERE (S100, first failing assertion in this suite —
+    // see this stream's report for the request/response evidence): the real
+    // browser sends `from=main.Customer` (schema-qualified —
+    // EnvDbTablePageComponent builds it from CUSTOMER_TABLE_TYPE, this
+    // suite's own `'main.Customer'`), but `policies/customers.yaml`'s
+    // `customers-support` rule declares `path: /Customer` (no schema
+    // prefix). The access-policy engine's path match is exact, so every
+    // request for this table is denied outright: `dalgo access denied:
+    // policy="demo-project-1" ... resource=/main.Customer: no matching allow
+    // rule` (confirmed identically via direct curl, bypassing the browser
+    // entirely, S100) — the grid never renders a single row, Canadian or
+    // otherwise, so nothing below this point in the test can execute this
+    // run. Contrast: the SAME request with a bare, non-schema-qualified
+    // `from=Customer` (never actually sent by this app) succeeds and returns
+    // the expected 8 Canadian rows — proving the row DATA and the ACL
+    // decision are otherwise correct; only the schema-qualified table name's
+    // path form is unmatched. This is a `datatug-cli`/`datatug-core` access-
+    // policy path-matching gap and/or a `datatug-demo-projects` policy-
+    // fixture gap (the policy could instead declare `path: /main.Customer`)
+    // — either repo's call, not this one's; not fixed here, per this
+    // stream's brief.
+    const selectResponsePromise = page.waitForResponse(
+      (res) =>
+        res.url().includes('/datatug/exec/select') &&
+        res.request().method() === 'GET',
+      { timeout: 15_000 },
+    );
+    await page.goto(customerTableUrl);
+    await expect(page.locator('.tabulator-row').first()).toBeVisible({
+      timeout: 15_000,
+    });
+
+    const selectBody = (await (await selectResponsePromise).json()) as {
+      columns: string[];
+      rows: Record<string, unknown>[];
+    };
+    // "only Canadian rows return" (REQ:server-acl-all-reads) — the demo
+    // policy's own customers-support rule (policies/customers.yaml: `where
+    // Country == Canada`).
+    expect(selectBody.rows.length).toBeGreaterThan(0);
+    expect(selectBody.rows.every((row) => row['Country'] === 'Canada')).toBe(
+      true,
+    );
+    // "Email is absent" — customers-support's own `fields:` allow-list omits it.
+    expect(selectBody.columns).not.toContain('Email');
+    await expect(page.locator('[tabulator-field="Email"]')).toHaveCount(0);
+
+    // Feature J4 (README.md, verbatim): "Browse Customer with an allowed
+    // projection: ... the header states the applied limitations."
+    // REQ:limitation-visible. EXPECTED TO FAIL here right now: confirmed live
+    // (curl against a `--as support` agent, S100) that `GET
+    // /datatug/exec/select`'s wire response is only ever `{columns, rows}` —
+    // no `limitations` field at all (`ISelectResponse`, dto/execute.ts,
+    // matches the real response byte for byte) — and
+    // EnvDbTablePageComponent's own template has no limitation-header
+    // rendering for a table browse (only the query PAGE's run result does,
+    // exercised further below). This is a real product gap spanning both
+    // the server's `exec/select` envelope and this client's handling of it —
+    // not touched here, per this stream's brief ("do not fix product code in
+    // this lane").
+    await expect(page.locator('sneat-datatug-limitation-header')).toBeVisible(
+      { timeout: 5_000 },
+    );
+
+    // "Run customer-invoices for a ... Canadian fixture ID: ... the latter
+    // only authorized invoices" — customer 3 (François Tremblay, Montréal
+    // QC) is Canadian (sqlite3 on ~/datatug/dbs/chinook-local.sqlite: 8
+    // Canadian customers under this policy, ids 3/14/15/29/30/31/32/33;
+    // customer 3 has 7 invoices, all `BillingCountry = Canada` — confirmed
+    // directly, S100) and is real, clickable data in the grid this test just
+    // asserted is Canada-only above — the real selection → context panel →
+    // open query → run flow J2 already proves for the admin principal.
+    const customerId3Cell = page
+      .locator('[tabulator-field="CustomerId"]')
+      .filter({ hasText: /^3$/ });
+    await expect(customerId3Cell).toBeVisible({ timeout: 10_000 });
+    await customerId3Cell.click();
+
+    await expect(page.locator('sneat-datatug-context-panel')).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(
+      page.getByText('customer-invoices', { exact: false }),
+    ).toBeVisible({ timeout: 15_000 });
+
+    const canadianRunResponsePromise = page.waitForResponse(
+      (res) =>
+        res.url().includes('/datatug/exec/run_query') &&
+        res.request().method() === 'POST',
+      { timeout: 15_000 },
+    );
+    await page.getByText('customer-invoices', { exact: false }).click();
+    await expect(
+      page
+        .getByText('Customer.ID', { exact: false })
+        .getByText('from selection', { exact: false }),
+    ).toBeVisible({ timeout: 10_000 });
+    await page.getByText('Run query', { exact: false }).click();
+
+    // EXPECTED TO POSSIBLY FAIL here: `queryId` on this request is whatever
+    // `POST /datatug/queries/applicable`'s own `Candidate.queryId` gave the
+    // context panel — bare (`"customer-invoices"`) on `datatug-cli` main at
+    // the time of this stream (confirmed live via curl, S100: a bare
+    // `queryId` on `exec/run_query` 404s `NOT_FOUND — query
+    // "customer-invoices" not found`; only the folder-qualified
+    // `"customers/customer-invoices"` succeeds). `datatug-cli` PR #219 (lane
+    // S97, not yet merged at the time of this stream) already fixes exactly
+    // this — `applicable` emitting the canonical folder-qualified id and
+    // `run_query`/`get_query` accepting a bare one — so this is not a new gap
+    // to investigate, only to report if it reproduces here.
+    const canadianRunBody = (await (await canadianRunResponsePromise).json()) as {
+      recordset?: { rows: unknown[] };
+      limitations?: { rowsFiltered: boolean }[];
+      provenance?: { executionProfile: string };
+    };
+    expect(canadianRunBody.recordset?.rows?.length).toBe(7);
+    // "each result names its applied limitations" (AC:restricted-rows-and-columns).
+    expect(canadianRunBody.limitations).toEqual(
+      expect.arrayContaining([expect.objectContaining({ rowsFiltered: true })]),
+    );
+    expect(canadianRunBody.provenance?.executionProfile).toBe('protected');
+    await expect(page.locator('sneat-datatug-limitation-header')).toBeVisible(
+      { timeout: 10_000 },
+    );
+
+    // "Run customer-invoices for a Brazilian ... fixture ID: the former
+    // yields no rows" — customer 1 (Luís Gonçalves, Brazil) can NEVER appear
+    // in any Customer/Invoice browse under `--as support` (both policies
+    // filter to Country/BillingCountry == Canada — by design, the whole
+    // point of the ACL), and this app has no manual parameter-entry control
+    // anywhere on the query page (query-page.component.html only ever shows
+    // a resolved binding's value plus a "Clear this binding" button, never
+    // an input to type one) — so there is no real UI path, under this
+    // principal specifically, to bind CustomerId to a Brazilian id at all.
+    // A real, unmocked request directly against this SAME running support
+    // agent — exactly the request shape `runQuery()` itself sends, using the
+    // canonical folder-qualified query id so this assertion tests the access
+    // policy, not the separate id-format gap noted above — is the only way
+    // to exercise this half of the AC through the real server. This goes
+    // beyond this stream's brief, which sanctions one direct request only
+    // for the hidden-column-refused check below; done here because the
+    // alternative (a fabricated page.evaluate() history/state injection to
+    // fake a UI selection that cannot really happen) would not be testing a
+    // real user action either, and would be a worse fiction. See this
+    // stream's report.
+    const agentInfo = (await (
+      await request.get(`${agentOrigin}/datatug/agent-info`)
+    ).json()) as { securityContextId: string };
+    const brazilianRunBody = (await (
+      await request.post(`${agentOrigin}/datatug/exec/run_query`, {
+        data: {
+          project: DEMO_PROJECT_ID,
+          environment: DEMO_ENV_ID,
+          securityContextId: agentInfo.securityContextId,
+          queryId: 'customers/customer-invoices',
+          parameters: { CustomerId: { type: 'integer', value: '1' } },
+          bindingOrigins: [{ parameterId: 'CustomerId', origin: 'manual' }],
+          mode: 'live',
+        },
+      })
+    ).json()) as {
+      recordset?: { rows: unknown[] };
+      limitations?: { rowsFiltered: boolean }[];
+    };
+    expect(brazilianRunBody.recordset?.rows).toEqual([]);
+    expect(brazilianRunBody.limitations).toEqual(
+      expect.arrayContaining([expect.objectContaining({ rowsFiltered: true })]),
+    );
+
+    // AC:hidden-column-refused — "a hand-crafted request selects Email from
+    // Customer". `exec/select` has no client-side "select these columns"
+    // control at all (dto/execute.ts's `ISelectRequest.cols` isn't even
+    // wired into the params AgentService.select() builds) — the server-side
+    // `cols` param it accepts anyway (confirmed live, S100) is exactly the
+    // hand-crafted request the AC names; sent directly against the real
+    // agent, never intercepted, per this stream's brief.
+    const hiddenColumnBody = (await (
+      await request.get(`${agentOrigin}/datatug/exec/select`, {
+        params: {
+          db: DEMO_DB_CATALOG_ID,
+          env: DEMO_ENV_ID,
+          proj: DEMO_PROJECT_ID,
+          from: 'Customer',
+          cols: 'Email',
+        },
+      })
+    ).json()) as { error?: string; code?: string; rows?: unknown };
+    expect(hiddenColumnBody.code).toBe('ACCESS_DENIED');
+    expect(hiddenColumnBody.error).toContain('Email');
+    expect(hiddenColumnBody.rows).toBeUndefined();
   });
 });
