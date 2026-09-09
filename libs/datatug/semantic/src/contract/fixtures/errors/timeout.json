@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "TIMEOUT",
+    "message": "execution exceeded the 10s default timeout",
+    "requestId": "req-0013"
+  }
+}

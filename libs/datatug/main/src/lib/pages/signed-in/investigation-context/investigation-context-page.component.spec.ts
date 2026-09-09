@@ -1,9 +1,10 @@
-import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
+import { CUSTOM_ELEMENTS_SCHEMA, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { NavController } from '@ionic/angular';
 import { ErrorLogger } from '@sneat/core';
 import {
+  AgentContextService,
   ApplicableQueriesResponse,
   InvestigationContextService,
   MockSemanticApi,
@@ -23,14 +24,44 @@ const APPLICABLE: ApplicableQueriesResponse = {
   applicable: [
     {
       queryId: 'customer-purchases-by-genre',
+      targets: [{ source: 'chinook', label: 'Chinook (SQLite)' }],
+      selectedSource: 'chinook',
       bindings: [
-        { parameterId: 'CustomerId', entity: 'Customer', field: 'ID', value: 5 },
+        {
+          parameterId: 'CustomerId',
+          value: { type: 'integer', value: '5' },
+          origin: 'context',
+          originEvidence: 'client-reported',
+        },
       ],
-      chain: ['CustomerId', 'maps to Customer.ID (declared)', 'requires Customer.ID'],
+      chain: [
+        { parameterId: 'CustomerId', explanation: 'maps to Customer.ID (declared)' },
+        { parameterId: 'CustomerId', explanation: 'requires Customer.ID' },
+      ],
+      missing: [],
+      ambiguous: [],
+      state: 'runnable',
     },
   ],
-  notYet: [{ queryId: 'invoice-lines', missing: ['Invoice.ID'] }],
+  notYet: [
+    {
+      queryId: 'invoice-lines',
+      targets: [],
+      bindings: [],
+      chain: [],
+      missing: ['InvoiceId'],
+      ambiguous: [],
+      state: 'needs-input',
+    },
+  ],
 };
+
+function agentContextStub(securityContextId: string | undefined = 'sctx-1') {
+  return {
+    securityContextId: signal(securityContextId),
+    refresh: vi.fn(() => of(undefined)),
+  };
+}
 
 describe('InvestigationContextPageComponent', () => {
   let fixture: ComponentFixture<InvestigationContextPageComponent>;
@@ -53,7 +84,7 @@ describe('InvestigationContextPageComponent', () => {
         },
         {
           provide: DatatugNavContextService,
-          useValue: { currentProject: of(project) },
+          useValue: { currentProject: of(project), currentEnv: of({ id: 'production' }) },
         },
         { provide: Router, useValue: { navigate: navigateSpy, events: of() } },
         {
@@ -67,6 +98,7 @@ describe('InvestigationContextPageComponent', () => {
             logErrorHandler: vi.fn(() => vi.fn()),
           },
         },
+        { provide: AgentContextService, useValue: agentContextStub() },
       ],
     }).compileComponents();
 
@@ -132,17 +164,24 @@ describe('InvestigationContextPageComponent', () => {
       );
     });
 
-    it('REQ:applicable-queries — resolves applicable queries from the enabled context only, tagged origin "context"', () => {
+    it('REQ:applicable-queries — resolves applicable queries from the enabled context only, tagged origin "context", as wire Facts', () => {
       const call = mock.calls.find((c) => c.method === 'getApplicableQueries');
       expect(call?.request).toMatchObject({
         project: 'demo-project',
+        environment: 'production',
+        securityContextId: 'sctx-1',
         values: [
-          { entity: 'Customer', field: 'ID', value: 5, origin: 'context' },
+          {
+            entity: 'Customer',
+            field: 'ID',
+            value: { type: 'integer', value: '5' },
+            origin: 'context',
+          },
         ],
       });
     });
 
-    it('AC:applicable-with-chain — renders the applicable query with its chain and the not-yet list with the missing field', () => {
+    it('AC:applicable-with-chain — renders the applicable query with its chain and the not-yet list with the missing parameter id', () => {
       const items: HTMLElement[] = Array.from(
         fixture.nativeElement.querySelectorAll('ion-item[button="true"]'),
       );
@@ -150,7 +189,7 @@ describe('InvestigationContextPageComponent', () => {
         el.textContent?.includes('customer-purchases-by-genre'),
       );
       expect(applicable?.textContent).toContain(
-        'CustomerId → maps to Customer.ID (declared) → requires Customer.ID',
+        'maps to Customer.ID (declared) → requires Customer.ID',
       );
 
       const notYet: HTMLElement[] = Array.from(
@@ -160,7 +199,7 @@ describe('InvestigationContextPageComponent', () => {
         el.textContent?.includes('invoice-lines'),
       );
       expect(invoiceLines?.textContent).toContain(
-        'not yet applicable — needs Invoice.ID',
+        'not yet applicable — needs InvoiceId',
       );
     });
 
@@ -225,7 +264,7 @@ describe('InvestigationContextPageComponent', () => {
       expect(context.items()).toHaveLength(1);
     });
 
-    it('opening an applicable query navigates to the query page carrying its resolved bindings', () => {
+    it('opening an applicable query navigates to the query page carrying its resolved wire bindings/targets', () => {
       const items: HTMLElement[] = Array.from(
         fixture.nativeElement.querySelectorAll('ion-item[button="true"]'),
       );
@@ -245,7 +284,11 @@ describe('InvestigationContextPageComponent', () => {
         ],
         {
           queryParams: { id: 'customer-purchases-by-genre' },
-          state: { bindings: APPLICABLE.applicable[0].bindings },
+          state: {
+            bindings: APPLICABLE.applicable[0].bindings,
+            targets: APPLICABLE.applicable[0].targets,
+            selectedSource: APPLICABLE.applicable[0].selectedSource,
+          },
         },
       );
     });

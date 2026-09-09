@@ -73,9 +73,11 @@ import { expect, test } from './fixtures/agent-server';
  *    all, which it never did before; no `/datatug/exec/select` follows
  *    because the environment never resolves.
  *
- * J2 additionally needs `GET /datatug/semantic/columns`, `GET
- * /datatug/semantic/related` and `POST /datatug/queries/applicable`, none
- * of which exist on datatug-cli main yet (`grep -rn semantic pkg/server
+ * J2 additionally needs `GET /datatug/semantic/columns`, `POST
+ * /datatug/semantic/related` and `POST /datatug/queries/applicable` (plan Task 12
+ * moved `semantic/related` from GET to POST — the appendix requires semantic values
+ * never be copied into a URL/browser history — see this stream's contract cut-over),
+ * none of which exist on datatug-cli main yet (`grep -rn semantic pkg/server
  * pkg/api` in that repo finds nothing) — see its own test comment. J3's
  * remainder (Investigation Context bar/service, binding "from context") is
  * pure client-side state once blocker 2 is cleared — no further server
@@ -203,9 +205,9 @@ test.describe('J2 — from a value to related knowledge', () => {
       page.getByText(`Customer.ID = ${customerId}`, { exact: false }),
     ).toBeVisible({ timeout: 10_000 });
 
-    // "related records" and "applicable queries" — GET /datatug/semantic/related
+    // "related records" and "applicable queries" — POST /datatug/semantic/related
     // and POST /datatug/queries/applicable (ContextPanelComponent.load()); also
-    // not implemented server-side yet. ApplicableQuery items render by
+    // not implemented server-side yet. Candidate items render by
     // `queryId`, not title (context-panel.component.html), so this looks for
     // the saved-query ids under datatug-demo-projects/.../queries/customers/.
     await expect(

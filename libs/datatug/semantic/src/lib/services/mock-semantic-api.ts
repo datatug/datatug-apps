@@ -10,7 +10,7 @@ import {
   SemanticRelatedResponse,
   SemanticRelatedRowsRequest,
   SemanticRelatedRowsResponse,
-} from '../models/models';
+} from '../../contract/types';
 // Referenced only in the JSDoc `{@link SemanticApiService}` below.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { SemanticApiService } from './semantic-api.service';
@@ -33,6 +33,19 @@ export interface RecordedCall {
     | 'runQuery';
   readonly request: unknown;
 }
+
+const EMPTY_RESULT: SemanticRelatedRowsResponse = {
+  recordset: { columns: [], rows: [] },
+  limitations: [],
+  bindingsApplied: [],
+  provenance: {
+    source: '',
+    mode: 'live',
+    observedAt: '1970-01-01T00:00:00Z',
+    executionProfile: 'protected',
+  },
+  truncated: false,
+};
 
 /**
  * In-memory test double for {@link SemanticApiService} — same method shape, no network
@@ -57,26 +70,21 @@ export class MockSemanticApi {
     request: SemanticColumnsRequest,
   ): Observable<SemanticColumnsResponse> {
     this.calls.push({ method: 'getSemanticColumns', request });
-    return of(this.fixtures.columns ?? []);
+    return of(this.fixtures.columns ?? { columns: [] });
   }
 
   getRelated(
     request: SemanticRelatedRequest,
   ): Observable<SemanticRelatedResponse> {
     this.calls.push({ method: 'getRelated', request });
-    return of(this.fixtures.related ?? []);
+    return of(this.fixtures.related ?? { related: [], truncated: false });
   }
 
   getRelatedRows(
     request: SemanticRelatedRowsRequest,
   ): Observable<SemanticRelatedRowsResponse> {
     this.calls.push({ method: 'getRelatedRows', request });
-    return of(
-      this.fixtures.relatedRows?.[request.lookupId] ?? {
-        recordset: { columns: [], rows: [] },
-        limitations: [],
-      },
-    );
+    return of(this.fixtures.relatedRows?.[request.lookupId] ?? EMPTY_RESULT);
   }
 
   getApplicableQueries(
@@ -88,12 +96,6 @@ export class MockSemanticApi {
 
   runQuery(request: RunQueryRequest): Observable<RunQueryResponse> {
     this.calls.push({ method: 'runQuery', request });
-    return of(
-      this.fixtures.runQuery ?? {
-        recordset: { columns: [], rows: [] },
-        limitations: [],
-        bindingsApplied: [],
-      },
-    );
+    return of(this.fixtures.runQuery ?? EMPTY_RESULT);
   }
 }

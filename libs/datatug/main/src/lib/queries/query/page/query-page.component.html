@@ -95,12 +95,36 @@
         <ion-text color="medium">No parameters bound from selection or context.</ion-text>
       </ion-card-content>
     }
+
+    @if (availableTargets().length) {
+      <!-- api-contract.md needs-target/TARGET_REQUIRED — a real target selector, never
+           a hidden source; targets come only from an authorized Candidate or a
+           TARGET_REQUIRED error's own error.targets. -->
+      <ion-item>
+        <ion-label>Target</ion-label>
+        <ion-select
+          interface="popover"
+          [value]="selectedSource()"
+          (ionChange)="chooseTarget($event.detail.value)"
+        >
+          @for (target of availableTargets(); track target.source) {
+            <ion-select-option [value]="target.source">{{ target.label }}</ion-select-option>
+          }
+        </ion-select>
+      </ion-item>
+    }
+
     <ion-item lines="none">
       <ion-buttons>
         <ion-button
           fill="solid"
           color="primary"
-          [disabled]="running() || !queryId || !project"
+          [disabled]="
+            running() ||
+            !queryId ||
+            !project ||
+            (availableTargets().length > 0 && !selectedSource())
+          "
           (click)="runQuery()"
         >
           @if (running()) {
@@ -116,27 +140,48 @@
 
   @if (runError(); as error) {
     <ion-card color="danger">
-      <ion-card-content>{{ error }}</ion-card-content>
+      <ion-card-content>
+        {{ error }}
+        @if (sourceUnavailable()) {
+          <!-- api-contract.md "Bounded lookups and HTTP" — the user must explicitly
+               choose a labeled snapshot; never a silent fallback. -->
+          <div>
+            <ion-button fill="outline" color="medium" (click)="runSnapshot()">
+              View recorded snapshot instead
+            </ion-button>
+          </div>
+        }
+      </ion-card-content>
     </ion-card>
   }
 
   @if (runResult(); as result) {
-    <!-- REQ:limitation-visible -->
-    <sneat-datatug-limitation-header [limitations]="result.limitations" />
+    <!-- REQ:limitation-visible / REQ:opaque-sql-limitation -->
+    <sneat-datatug-limitation-header
+      [limitations]="result.limitations"
+      [executionProfile]="result.provenance.executionProfile"
+    />
+    <ion-text color="medium">
+      {{ result.provenance.mode === 'snapshot' ? 'snapshot' : 'live' }} · {{
+        result.provenance.source
+      }}
+    </ion-text>
 
     @if (result.bindingsApplied.length) {
       <!-- REQ:no-hidden-filters — "the results header MUST list the bindings that
-           were applied". -->
+           were applied". Origin/originEvidence are shown distinctly per the 2026-09-09
+           handoff correction: a client-supplied origin is never presented as
+           server-attested provenance. -->
       <ion-list>
         <ion-list-header>
           <ion-label>Bindings applied</ion-label>
         </ion-list-header>
         @for (applied of result.bindingsApplied; track applied.parameterId) {
           <ion-item lines="none">
-            <ion-label
-              >{{ applied.entity }}.{{ applied.field }} = {{ applied.value }}</ion-label
-            >
-            <ion-badge slot="end" color="medium">{{ applied.origin }}</ion-badge>
+            <ion-label>{{ appliedBindingLabel(applied) }}</ion-label>
+            <ion-badge slot="end" color="medium">{{
+              appliedBindingProvenance(applied)
+            }}</ion-badge>
           </ion-item>
         }
       </ion-list>
@@ -151,7 +196,7 @@
           <thead>
             <tr>
               @for (col of result.recordset.columns; track col.name) {
-                <th style="text-align: left; border-bottom: 2px solid var(--ion-color-step-150, #d9d9d9); padding: 4px 8px">{{ col.title || col.name }}</th>
+                <th style="text-align: left; border-bottom: 2px solid var(--ion-color-step-150, #d9d9d9); padding: 4px 8px">{{ col.name }}</th>
               }
             </tr>
           </thead>
@@ -159,7 +204,7 @@
             @for (row of result.recordset.rows; track $index) {
               <tr>
                 @for (cell of row; track $index) {
-                  <td style="border-bottom: 1px solid var(--ion-color-step-100, #e6e6e6); padding: 4px 8px">{{ cell }}</td>
+                  <td style="border-bottom: 1px solid var(--ion-color-step-100, #e6e6e6); padding: 4px 8px">{{ displayValue(cell) }}</td>
                 }
               </tr>
             }

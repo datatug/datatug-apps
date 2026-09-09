@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "AMBIGUOUS_BINDING",
+    "message": "two distinct enabled context values are eligible for CustomerId",
+    "field": "CustomerId",
+    "requestId": "req-0004"
+  }
+}

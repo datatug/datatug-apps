@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "INVALID_REQUEST",
+    "message": "duplicate JSON key \"project\"",
+    "requestId": "req-0001"
+  }
+}

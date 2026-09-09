@@ -1,49 +1,84 @@
+import { HttpErrorResponse } from '@angular/common/http';
+import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { of, throwError } from 'rxjs';
 import {
   ApplicableQueriesResponse,
   SemanticRelatedResponse,
-} from '../../models/models';
+} from '../../../contract/types';
+import { AgentContextService } from '../../services/agent-context.service';
 import { InvestigationContextService } from '../../services/investigation-context.service';
 import { MockSemanticApi } from '../../services/mock-semantic-api';
 import { SemanticApiService } from '../../services/semantic-api.service';
 import { ContextPanelComponent } from './context-panel.component';
 
-const RELATED: SemanticRelatedResponse = [
-  {
-    lookupId: 'invoices',
-    label: 'Invoices',
-    source: 'chinook',
-    collection: 'Invoice',
-    count: 7,
-  },
-  {
-    lookupId: 'support-notes',
-    label: 'Support notes',
-    source: 'support-notes',
-    collection: 'notes',
-    count: 2,
-  },
-];
+const RELATED: SemanticRelatedResponse = {
+  related: [
+    { lookupId: 'invoices', label: 'Invoices', source: 'chinook', collection: 'Invoice', count: 7 },
+    { lookupId: 'support-notes', label: 'Support notes', source: 'support-notes', collection: 'notes', count: 2 },
+  ],
+  truncated: false,
+};
 
 const APPLICABLE: ApplicableQueriesResponse = {
   applicable: [
     {
       queryId: 'customer-invoices',
+      targets: [{ source: 'chinook', label: 'Chinook (SQLite)' }],
+      selectedSource: 'chinook',
       bindings: [
-        { parameterId: 'customerId', entity: 'Customer', field: 'ID', value: 5 },
+        {
+          parameterId: 'CustomerId',
+          value: { type: 'integer', value: '5' },
+          origin: 'selection',
+          originEvidence: 'client-reported',
+        },
       ],
-      chain: ['CustomerId', 'maps to Customer.ID (declared)', 'requires Customer.ID'],
+      chain: [
+        { parameterId: 'CustomerId', explanation: 'maps to Customer.ID (declared)' },
+      ],
+      missing: [],
+      ambiguous: [],
+      state: 'runnable',
     },
   ],
-  notYet: [{ queryId: 'invoice-lines', missing: ['Invoice.ID'] }],
+  notYet: [
+    {
+      queryId: 'invoice-lines',
+      targets: [],
+      bindings: [],
+      chain: [],
+      missing: ['InvoiceId'],
+      ambiguous: [],
+      state: 'needs-input',
+    },
+  ],
 };
 
 const RELATED_ROWS = {
   invoices: {
-    recordset: { columns: [{ name: 'InvoiceId' }], rows: [[1], [2]] },
+    recordset: {
+      columns: [{ name: 'InvoiceId', type: 'integer' }],
+      rows: [[{ type: 'integer', value: '1' }], [{ type: 'integer', value: '2' }]],
+    },
     limitations: [],
+    bindingsApplied: [],
+    provenance: {
+      source: 'chinook',
+      mode: 'live' as const,
+      observedAt: '2026-09-09T12:00:00Z',
+      executionProfile: 'protected' as const,
+    },
+    truncated: false,
   },
 };
+
+function agentContextStub(securityContextId: string | undefined = 'sctx-1') {
+  return {
+    securityContextId: signal(securityContextId),
+    refresh: vi.fn(() => of(undefined)),
+  };
+}
 
 describe('ContextPanelComponent', () => {
   let fixture: ComponentFixture<ContextPanelComponent>;
@@ -51,7 +86,7 @@ describe('ContextPanelComponent', () => {
   let mock: MockSemanticApi;
   let context: InvestigationContextService;
 
-  async function createWithSelection() {
+  async function createWithSelection(agentContext = agentContextStub()) {
     mock = new MockSemanticApi({
       related: RELATED,
       applicable: APPLICABLE,
@@ -61,6 +96,7 @@ describe('ContextPanelComponent', () => {
       imports: [ContextPanelComponent],
       providers: [
         { provide: SemanticApiService, useValue: mock as unknown as SemanticApiService },
+        { provide: AgentContextService, useValue: agentContext },
       ],
     }).compileComponents();
 
@@ -69,6 +105,7 @@ describe('ContextPanelComponent', () => {
     context = TestBed.inject(InvestigationContextService);
 
     fixture.componentRef.setInput('project', 'demo-project-1');
+    fixture.componentRef.setInput('environment', 'production');
     fixture.componentRef.setInput('selection', {
       entity: 'Customer',
       field: 'ID',
@@ -91,11 +128,13 @@ describe('ContextPanelComponent', () => {
       imports: [ContextPanelComponent],
       providers: [
         { provide: SemanticApiService, useValue: mock as unknown as SemanticApiService },
+        { provide: AgentContextService, useValue: agentContextStub() },
       ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(ContextPanelComponent);
     fixture.componentRef.setInput('project', 'demo-project-1');
+    fixture.componentRef.setInput('environment', 'production');
     fixture.detectChanges();
     TestBed.tick();
     fixture.detectChanges();
@@ -106,7 +145,7 @@ describe('ContextPanelComponent', () => {
   });
 
   describe('J2 — from a value to related knowledge', () => {
-    beforeEach(createWithSelection);
+    beforeEach(() => createWithSelection());
 
     it('renders the selected meaning', () => {
       const header = fixture.nativeElement.querySelector(
@@ -129,30 +168,32 @@ describe('ContextPanelComponent', () => {
       );
     });
 
-    it('requested related for the selected entity/field/value only from the server', () => {
+    it('POSTs a Scope + Fact for the selected entity/field/value, never facts in the URL', () => {
       const call = mock.calls.find((c) => c.method === 'getRelated');
       expect(call?.request).toMatchObject({
         project: 'demo-project-1',
-        entity: 'Customer',
-        field: 'ID',
-        value: 5,
+        environment: 'production',
+        securityContextId: 'sctx-1',
+        fact: {
+          entity: 'Customer',
+          field: 'ID',
+          value: { type: 'integer', value: '5' },
+          origin: 'selection',
+        },
       });
     });
 
     it('AC:applicable-with-chain — shows the applicable query with its resolution chain', () => {
-      // Find by text, to not depend on DOM ordering assumptions.
       const items: HTMLElement[] = Array.from(
         fixture.nativeElement.querySelectorAll('ion-item[button="true"]'),
       );
       const applicable = items.find((el) =>
         el.textContent?.includes('customer-invoices'),
       );
-      expect(applicable?.textContent).toContain(
-        'CustomerId → maps to Customer.ID (declared) → requires Customer.ID',
-      );
+      expect(applicable?.textContent).toContain('maps to Customer.ID (declared)');
     });
 
-    it('AC:applicable-with-chain — lists "invoice-lines" as not yet applicable with the missing field', () => {
+    it('AC:applicable-with-chain — lists "invoice-lines" as not yet applicable with the missing parameter id', () => {
       const notYet: HTMLElement[] = Array.from(
         fixture.nativeElement.querySelectorAll('ion-item[color="light"]'),
       );
@@ -160,7 +201,7 @@ describe('ContextPanelComponent', () => {
         el.textContent?.includes('invoice-lines'),
       );
       expect(invoiceLines?.textContent).toContain(
-        'not yet applicable — needs Invoice.ID',
+        'not yet applicable — needs InvoiceId',
       );
     });
 
@@ -179,7 +220,7 @@ describe('ContextPanelComponent', () => {
       });
     });
 
-    it('emits openQuery with the queryId and bindings when an applicable query is opened', () => {
+    it('emits openQuery with the queryId, wire bindings and targets when an applicable query is opened', () => {
       const emitted: { queryId: string }[] = [];
       component.openQuery.subscribe((e) => emitted.push(e));
 
@@ -195,7 +236,7 @@ describe('ContextPanelComponent', () => {
       expect(emitted[0].queryId).toBe('customer-invoices');
     });
 
-    it('AC:related-across-sources — expanding a related lookup fetches rows from the server, not the browser', () => {
+    it('AC:related-across-sources — expanding a related lookup POSTs Scope + lookupId + typed value', () => {
       const items: HTMLElement[] = Array.from(
         fixture.nativeElement.querySelectorAll('ion-item[button="true"]'),
       );
@@ -208,7 +249,7 @@ describe('ContextPanelComponent', () => {
       const rowsCall = mock.calls.find((c) => c.method === 'getRelatedRows');
       expect(rowsCall?.request).toMatchObject({
         lookupId: 'invoices',
-        value: 5,
+        value: { type: 'integer', value: '5' },
       });
       expect(
         fixture.nativeElement.querySelector('.context-panel__related-rows'),
@@ -216,13 +257,86 @@ describe('ContextPanelComponent', () => {
     });
   });
 
-  describe('J3 — applicable queries resolve against selection AND the active context', () => {
-    it('includes an enabled context value alongside the selection in the applicable-queries request', async () => {
-      mock = new MockSemanticApi({ related: [], applicable: { applicable: [], notYet: [] } });
+  describe('needs-target candidates', () => {
+    it('are rendered clickable and emit openQuery with their targets', async () => {
+      mock = new MockSemanticApi({
+        related: { related: [], truncated: false },
+        applicable: {
+          applicable: [],
+          notYet: [
+            {
+              queryId: 'exchange-rate-for-customer-currency',
+              targets: [
+                { source: 'chinook', label: 'Chinook (SQLite)' },
+                { source: 'exchange-rates-http', label: 'Exchange rates (HTTP)' },
+              ],
+              bindings: [],
+              chain: [],
+              missing: [],
+              ambiguous: [],
+              state: 'needs-target',
+            },
+          ],
+        },
+      });
       await TestBed.configureTestingModule({
         imports: [ContextPanelComponent],
         providers: [
           { provide: SemanticApiService, useValue: mock as unknown as SemanticApiService },
+          { provide: AgentContextService, useValue: agentContextStub() },
+        ],
+      }).compileComponents();
+
+      fixture = TestBed.createComponent(ContextPanelComponent);
+      component = fixture.componentInstance;
+      fixture.componentRef.setInput('project', 'demo-project-1');
+      fixture.componentRef.setInput('environment', 'production');
+      fixture.componentRef.setInput('selection', {
+        entity: 'Customer',
+        field: 'ID',
+        value: 5,
+        label: 'Customer.ID = 5',
+        source: 'grid',
+      });
+      fixture.detectChanges();
+      TestBed.tick();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const emitted: { queryId: string; targets: unknown }[] = [];
+      component.openQuery.subscribe((e) => emitted.push(e));
+
+      // Query the plain (non-custom-element) <p> directly rather than `ion-item`'s own
+      // `.textContent` — once Ionic's real Stencil web components finish lazy-loading
+      // (asynchronously, on first use, shared across this whole spec file's tests), a
+      // custom element's own `.textContent` becomes unreliable in happy-dom while its
+      // plain-HTML descendants stay normal.
+      const needsTarget = fixture.nativeElement.querySelector(
+        'ion-item[button="true"]',
+      ) as HTMLElement;
+      expect(needsTarget).toBeTruthy();
+      const needsTargetText = needsTarget.querySelector('p')?.textContent;
+      expect(needsTargetText).toContain('needs a target');
+      needsTarget.dispatchEvent(new Event('click'));
+
+      expect(emitted).toHaveLength(1);
+      expect(emitted[0].queryId).toBe('exchange-rate-for-customer-currency');
+      expect(emitted[0].targets).toHaveLength(2);
+    });
+  });
+
+  describe('J3 — applicable queries resolve against selection AND the active context', () => {
+    it('includes an enabled context value alongside the selection in the applicable-queries request', async () => {
+      mock = new MockSemanticApi({
+        related: { related: [], truncated: false },
+        applicable: { applicable: [], notYet: [] },
+      });
+      await TestBed.configureTestingModule({
+        imports: [ContextPanelComponent],
+        providers: [
+          { provide: SemanticApiService, useValue: mock as unknown as SemanticApiService },
+          { provide: AgentContextService, useValue: agentContextStub() },
         ],
       }).compileComponents();
 
@@ -236,6 +350,7 @@ describe('ContextPanelComponent', () => {
 
       fixture = TestBed.createComponent(ContextPanelComponent);
       fixture.componentRef.setInput('project', 'demo-project-1');
+      fixture.componentRef.setInput('environment', 'production');
       fixture.componentRef.setInput('selection', {
         entity: 'Customer',
         field: 'ID',
@@ -248,11 +363,22 @@ describe('ContextPanelComponent', () => {
       fixture.detectChanges();
 
       const call = mock.calls.find((c) => c.method === 'getApplicableQueries');
-      const values = (call?.request as { values: unknown[] }).values;
+      const values = (call?.request as { values: { entity: string; field: string }[] })
+        .values;
       expect(values).toEqual(
         expect.arrayContaining([
-          { entity: 'Customer', field: 'ID', value: 5, origin: 'grid' },
-          { entity: 'Country', field: 'Name', value: 'Canada', origin: 'context' },
+          expect.objectContaining({
+            entity: 'Customer',
+            field: 'ID',
+            value: { type: 'integer', value: '5' },
+            origin: 'selection',
+          }),
+          expect.objectContaining({
+            entity: 'Country',
+            field: 'Name',
+            value: { type: 'string', value: 'Canada' },
+            origin: 'context',
+          }),
         ]),
       );
     });
@@ -261,26 +387,25 @@ describe('ContextPanelComponent', () => {
   describe('J4 — restricted principal: related counts can be withheld', () => {
     it('AC:related-respects-policy — a null count renders "count unavailable"', async () => {
       mock = new MockSemanticApi({
-        related: [
-          {
-            lookupId: 'invoices',
-            label: 'Invoices',
-            source: 'chinook',
-            collection: 'Invoice',
-            count: null,
-          },
-        ],
+        related: {
+          related: [
+            { lookupId: 'invoices', label: 'Invoices', source: 'chinook', collection: 'Invoice', count: null },
+          ],
+          truncated: false,
+        },
         applicable: { applicable: [], notYet: [] },
       });
       await TestBed.configureTestingModule({
         imports: [ContextPanelComponent],
         providers: [
           { provide: SemanticApiService, useValue: mock as unknown as SemanticApiService },
+          { provide: AgentContextService, useValue: agentContextStub() },
         ],
       }).compileComponents();
 
       fixture = TestBed.createComponent(ContextPanelComponent);
       fixture.componentRef.setInput('project', 'demo-project-1');
+      fixture.componentRef.setInput('environment', 'production');
       fixture.componentRef.setInput('selection', {
         entity: 'Customer',
         field: 'ID',
@@ -294,6 +419,66 @@ describe('ContextPanelComponent', () => {
 
       const badge = fixture.nativeElement.querySelector('ion-badge');
       expect(badge.textContent.trim()).toBe('count unavailable');
+    });
+  });
+
+  describe('STALE_CONTEXT', () => {
+    it('clears the Investigation Context and refreshes agent-info, surfacing a retry prompt', async () => {
+      const staleError = new HttpErrorResponse({
+        status: 409,
+        error: {
+          error: {
+            code: 'STALE_CONTEXT',
+            message: 'securityContextId no longer valid',
+            requestId: 'req-1',
+          },
+        },
+      });
+      mock = {
+        calls: [],
+        getRelated: vi.fn(() => throwError(() => staleError)),
+        getApplicableQueries: vi.fn(() => throwError(() => staleError)),
+        getRelatedRows: vi.fn(),
+        getSemanticColumns: vi.fn(),
+        runQuery: vi.fn(),
+      } as unknown as MockSemanticApi;
+
+      const agentContext = agentContextStub();
+      await TestBed.configureTestingModule({
+        imports: [ContextPanelComponent],
+        providers: [
+          { provide: SemanticApiService, useValue: mock as unknown as SemanticApiService },
+          { provide: AgentContextService, useValue: agentContext },
+        ],
+      }).compileComponents();
+
+      context = TestBed.inject(InvestigationContextService);
+      context.addValue({
+        entityField: { entity: 'Customer', field: 'ID' },
+        value: 1,
+        label: 'Customer.ID = 1',
+        source: 'grid',
+      });
+      expect(context.items()).toHaveLength(1);
+
+      fixture = TestBed.createComponent(ContextPanelComponent);
+      fixture.componentRef.setInput('project', 'demo-project-1');
+      fixture.componentRef.setInput('environment', 'production');
+      fixture.componentRef.setInput('selection', {
+        entity: 'Customer',
+        field: 'ID',
+        value: 5,
+        label: 'Customer.ID = 5',
+        source: 'grid',
+      });
+      fixture.detectChanges();
+      TestBed.tick();
+      fixture.detectChanges();
+
+      expect(context.items()).toHaveLength(0);
+      expect(agentContext.refresh).toHaveBeenCalled();
+      const errorEl = fixture.nativeElement.querySelector('ion-text[color="danger"]');
+      expect(errorEl.textContent).toContain('session changed');
     });
   });
 });

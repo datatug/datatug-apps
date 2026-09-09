@@ -309,6 +309,7 @@
   <ion-content>
     <sneat-datatug-context-panel
       [project]="project?.ref?.projectId || ''"
+      [environment]="envId || ''"
       [selection]="selection()"
       (openQuery)="onOpenQuery($event)"
     />

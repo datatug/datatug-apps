@@ -1,0 +1,11 @@
+{
+  "error": {
+    "code": "TARGET_REQUIRED",
+    "message": "multiple eligible targets, select one",
+    "requestId": "req-0005",
+    "targets": [
+      { "source": "chinook", "label": "Chinook (SQLite)" },
+      { "source": "exchange-rates-http", "label": "Exchange rates (HTTP)" }
+    ]
+  }
+}

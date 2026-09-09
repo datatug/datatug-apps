@@ -1,0 +1,21 @@
+{
+  "applicable": [],
+  "notYet": [
+    {
+      "queryId": "genre-report",
+      "targets": [{ "source": "chinook", "label": "Chinook (SQLite)" }],
+      "bindings": [],
+      "chain": [
+        {
+          "parameterId": "GenreId",
+          "explanation": "two distinct enabled context values for Genre.ID are ambiguous"
+        }
+      ],
+      "missing": [],
+      "ambiguous": [
+        { "parameterId": "GenreId", "factIds": ["Genre.ID=1", "Genre.ID=2"] }
+      ],
+      "state": "needs-input"
+    }
+  ]
+}
