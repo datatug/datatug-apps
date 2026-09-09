@@ -22,6 +22,24 @@ export interface IExecuteResponse {
   commands: ICommandResponse[];
 }
 
+/**
+ * `GET /exec/select`'s actual response shape (datatug-cli
+ * pkg/api/query_result.go's `QueryResultResponse`) — confirmed against a
+ * live agent (lane S89). `exec/select` is one of Task 12's "keep-as-is
+ * legacy" routes (datatug-cli pkg/server/endpoints/routes.go's
+ * `executeRoutes` comment) — it was never wrapped in `IExecuteResponse`'s
+ * `commands` envelope (that shape belongs to the separate
+ * `exec/execute_commands` route `AgentService.execute` calls), and its rows
+ * are column-name-keyed objects, not `IRecordsetResult`'s positional value
+ * arrays. `AgentService.select()` declared `IExecuteResponse` by mistake —
+ * this was never actually exercised end-to-end before, since every earlier
+ * request in the chain was blocked by other bugs (see lane S89's report).
+ */
+export interface ISelectResponse {
+  columns: string[];
+  rows: Record<string, unknown>[];
+}
+
 export type RecordsetValue = string | number | boolean;
 
 export type IRecordsetRow = RecordsetValue[];
