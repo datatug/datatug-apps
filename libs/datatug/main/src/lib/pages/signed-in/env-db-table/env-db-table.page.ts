@@ -29,12 +29,11 @@ import {
   IonText,
   IonTitle,
   IonToolbar,
-  PopoverController,
 } from '@ionic/angular';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { IGridColumn, IGridDef } from '@sneat/grid';
 import { Subject } from 'rxjs';
-import { CellPopoverComponent, DataGridComponent } from '@sneat/datagrid';
+import { DataGridComponent } from '@sneat/datagrid';
 import {
   ContextPanelComponent,
   InvestigationContextService,
@@ -45,7 +44,6 @@ import {
 } from '@sneat/datatug-semantic';
 import { addIcons } from 'ionicons';
 import { helpCircleOutline, pricetag } from 'ionicons/icons';
-import { ColumnComponent } from 'tabulator-tables';
 import {
   routingParamDbCatalogId,
   routingParamEnvironmentId,
@@ -124,7 +122,6 @@ export class EnvDbTablePageComponent implements OnDestroy {
   private readonly projService = inject(ProjectService);
   private readonly agentService = inject(AgentService);
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
-  private readonly popoverController = inject(PopoverController);
   private readonly datatugNavService = inject(DatatugNavService);
   private readonly semanticApi = inject(SemanticApiService);
   private readonly investigationContext = inject(InvestigationContextService);
@@ -300,72 +297,6 @@ from ${from}`;
 
   protected indexColumns(index: IIndex): string {
     return (index.columns || []).map((c) => c.name).join(', ');
-  }
-
-  private cellFormatter = (
-    cell: {
-      getValue: () => unknown;
-      getElement: () => HTMLElement;
-      getColumn: () => ColumnComponent;
-    },
-    formatterParams: unknown,
-    onRendered: (f: () => void) => void,
-  ) => {
-    try {
-      const value = cell.getValue();
-      onRendered(() => {
-        try {
-          const el: HTMLElement = cell.getElement();
-          const colDef = cell.getColumn().getDefinition();
-          const { field } = colDef;
-          const fk = field ? this.getColFk(field) : undefined;
-          const col = this.table?.meta?.columns?.find((c) => c.name === field);
-          // console.log('cellFormatter', field, value, colDef, col);
-          if (col?.dbType === 'uniqueidentifier') {
-            el.style.fontSize = 'smaller';
-          }
-          if (fk) {
-            el.style.color = 'blue';
-            el.onclick = (event) => {
-              this.popoverController
-                .create({
-                  component: CellPopoverComponent,
-                  event,
-                  componentProps: { column: { name: colDef.field }, value, fk },
-                  cssClass: 'cell-popover',
-                  // showBackdrop: false,
-                })
-                .then((p) => {
-                  p.present().catch((e) =>
-                    this.errorLogger.logError(
-                      e,
-                      'Failed to present cell popover',
-                    ),
-                  );
-                })
-                .catch((e) =>
-                  this.errorLogger.logError(
-                    e,
-                    'Failed to present cell popover',
-                  ),
-                );
-            };
-          }
-        } catch (e) {
-          this.errorLogger.logError(e, 'Failed to alter rendered cell');
-        }
-      });
-      return value;
-    } catch (e) {
-      this.errorLogger.logError(e, 'Failed to render cell');
-      return '' + e;
-    }
-  };
-
-  private getColFk(field: string) {
-    return this.table?.meta?.foreignKeys?.find((v) =>
-      v.columns.includes(field),
-    );
   }
 
   /** Initial column scaffold from table metadata, before the recordset (and any row
@@ -612,9 +543,11 @@ from ${from}`;
               // tooltip: (cell: CellComponent) =>
               // 	// function should return a string for the tooltip of false to hide the tooltip
               // 	`${cell.getColumn().getField()}: ${cell.getValue()}`, // return cells "field - value";
-              // formatter:
-              // 	(c.dbType === 'UNIQUEIDENTIFIER' || this.getColFk(c.name)) &&
-              // 	this.cellFormatter,
+              // Per-cell click affordance (FK "blue text" + popover) used to live here as
+              // a Tabulator `formatter`; removed with CellPopoverComponent (REQ:context-basket,
+              // libs/datatug/semantic INTEGRATION.md §3) — cell selection now flows through
+              // onGridRowClick() below into the semantic-mapping-driven context panel, which
+              // covers FK-backed columns via the server's `related` lookups once mapped.
               hozAlign: c.dbType === 'integer' ? 'right' : undefined,
             };
             return col;

@@ -1,7 +1,6 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
-import { PopoverController } from '@ionic/angular';
 import { ErrorLogger } from '@sneat/core';
 import {
   InvestigationContextService,
@@ -54,7 +53,6 @@ describe('EnvDbTablePage', () => {
           useValue: { watchProjectSummary: vi.fn(), getFull: vi.fn() },
         },
         { provide: AgentService, useValue: { select: vi.fn() } },
-        { provide: PopoverController, useValue: { create: vi.fn() } },
         { provide: DatatugNavService, useValue: { goTable: vi.fn() } },
         {
           provide: SemanticApiService,
@@ -150,7 +148,6 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
           provide: AgentService,
           useValue: { select: vi.fn(() => of({ commands: [] })) },
         },
-        { provide: PopoverController, useValue: { create: vi.fn() } },
         { provide: DatatugNavService, useValue: { goTable: vi.fn() } },
         {
           provide: SemanticApiService,
@@ -241,6 +238,36 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
     cellEl.setAttribute('tabulator-field', 'FirstName');
     const event = { target: cellEl } as unknown as Event;
     const row = { getData: () => ({ FirstName: 'Bob' }) };
+
+    component.onGridRowClick(event, row);
+
+    expect(component.selection()).toBeUndefined();
+  });
+
+  // Full-cutover regression (REQ:context-basket, INTEGRATION.md §3): clicking a
+  // foreign-key-backed cell used to open @sneat/datagrid's hard-coded
+  // CellPopoverComponent via a Tabulator cell formatter, independent of any
+  // semantic mapping. That code path (cellFormatter/getColFk/PopoverController)
+  // is deleted; an FK column with no server-reported semantic mapping now behaves
+  // exactly like any other unmapped column — no popover, no selection — proving
+  // there is no second, parallel cell-click mechanism left beside the context panel.
+  it('does not select an FK-backed cell that the server has not mapped semantically', async () => {
+    component = await createComponent([]);
+    component.table = {
+      ...table,
+      meta: {
+        ...(table.meta as Record<string, unknown>),
+        foreignKeys: [
+          { name: 'FK_Customer_Country', columns: ['CountryId'], refTable: { schema: 'main', name: 'Country' } },
+        ],
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
+    };
+
+    const cellEl = document.createElement('div');
+    cellEl.setAttribute('tabulator-field', 'CountryId');
+    const event = { target: cellEl } as unknown as Event;
+    const row = { getData: () => ({ CountryId: 7 }) };
 
     component.onGridRowClick(event, row);
 
