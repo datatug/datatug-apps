@@ -98,33 +98,40 @@ jobs:
       - name: Checkout datatug-apps
         uses: actions/checkout@v6
 
-      # Public repo (datatug/datatug-cli), main branch, checked out as a
-      # sibling of datatug-apps so DATATUG_BIN below is a plain path outside
-      # this repo's tree and nothing here needs to know about worktrees.
+      # Public repo (datatug/datatug-cli), main branch. actions/checkout
+      # refuses a `path` that escapes the primary checkout's directory
+      # ("Repository path '.../datatug-cli' is not under
+      # '.../datatug-apps'") even for an intended-sibling `../datatug-cli`,
+      # so this nests it inside the datatug-apps checkout instead of beside
+      # it. Nothing here needs a true sibling: DATATUG_BIN points straight
+      # at the built binary, and this repo's pnpm workspace is a single
+      # package at '.' (pnpm-workspace.yaml), so an extra unrelated Go repo
+      # directory alongside it doesn't get pulled into `pnpm install`.
       - name: Checkout datatug-cli (main)
         uses: actions/checkout@v6
         with:
           repository: datatug/datatug-cli
           ref: main
-          path: ../datatug-cli
+          path: datatug-cli
 
       # Public repo (datatug/datatug-demo-projects), main branch — the demo
-      # project the journey suite drives the agent against.
+      # project the journey suite drives the agent against. Same nested-path
+      # reasoning as datatug-cli above.
       - name: Checkout datatug-demo-projects (main)
         uses: actions/checkout@v6
         with:
           repository: datatug/datatug-demo-projects
           ref: main
-          path: ../datatug-demo-projects
+          path: datatug-demo-projects
 
       - uses: ./.github/actions/pnpm
 
       - name: Set up Go (version from datatug-cli's go.mod)
         uses: actions/setup-go@v7
         with:
-          go-version-file: ../datatug-cli/go.mod
+          go-version-file: datatug-cli/go.mod
           cache: true
-          cache-dependency-path: ../datatug-cli/go.sum
+          cache-dependency-path: datatug-cli/go.sum
 
       # CGO_ENABLED=0 was verified locally (go1.27.1, 2026-09-09) to build a
       # working `datatug serve` binary against datatug-cli@main: `go build .`
@@ -138,7 +145,7 @@ jobs:
       # package is needed for mattn/go-sqlite3's bundled amalgamation) and
       # update this comment.
       - name: Build datatug CLI (CGO_ENABLED=0)
-        working-directory: ../datatug-cli
+        working-directory: datatug-cli
         run: |
           mkdir -p "$RUNNER_TEMP/datatug-bin"
           CGO_ENABLED=0 go build -o "$RUNNER_TEMP/datatug-bin/datatug" .
@@ -149,7 +156,7 @@ jobs:
 
       - name: Run journey e2e (real agent, no interception)
         env:
-          DATATUG_DEMO_DIR: ${{ github.workspace }}/../datatug-demo-projects/demo-project-1
+          DATATUG_DEMO_DIR: ${{ github.workspace }}/datatug-demo-projects/demo-project-1
         run: pnpm exec playwright test -c apps/datatug-app/playwright.config.ts --project=journey
 
       - name: Upload Playwright report
