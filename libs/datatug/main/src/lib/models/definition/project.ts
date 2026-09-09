@@ -2,6 +2,7 @@ import { IStore } from './store';
 import { IEnvironmentFull } from './environments';
 import { IDbModelFull } from './dbmodels';
 import { IProjDbServerFull } from './apis/database';
+import { IParameterDef } from './parameter';
 
 export type ProjectAccess = 'private' | 'protected' | 'public';
 
@@ -52,7 +53,12 @@ export interface IProjItemsFolder {
   items?: IProjItemBrief[];
 }
 
-export type IProjBoard = IProjItemBrief;
+// Mirrors `ProjBoardBrief` (datatug-core's boards.go) field for field:
+// `ProjItemBrief` + `parameters` + `requiredParams`.
+export interface IProjBoard extends IProjItemBrief {
+  parameters?: IParameterDef[];
+  requiredParams?: string[][];
+}
 
 export interface IProjDbModelBrief extends IProjItemBrief {
   numberOf?: IProjDbModelNumbers;
