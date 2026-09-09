@@ -201,6 +201,9 @@ export class DatatugNavContextService {
 
   public setCurrentEnvironment(id?: string): void {
     // console.log('DatatugNavContextService.setCurrentEnvironment()', id);
+    if (id) {
+      this.persistLastEnvId(id);
+    }
     if (this.$currentEnv.value?.id === id) {
       return;
     }
@@ -289,10 +292,72 @@ export class DatatugNavContextService {
   private processEnvironment(url: string): void {
     const m = url.match(reEnv);
     const id = m && m[1];
-    if (id || !location.search.includes('env=')) {
-      this.setCurrentEnvironment(id || undefined);
+    if (id) {
+      this.setCurrentEnvironment(id);
+    } else if (!location.search.includes('env=')) {
+      // No `/env/:id` path segment and no `?env=` query param — a query
+      // page reached without either (the context panel's "open a query"
+      // hand-off, or a direct/reloaded navigation to `/query/:id`) has no
+      // way to name its own environment in the URL at all, yet still needs
+      // one: `InvestigationContextService`'s basket is scoped by
+      // `{agentUrl, project, environment, securityContextId}`, so clearing
+      // to `undefined` here opens an always-empty scope — the "Customer.ID
+      // · from context" binding a value was already added under (on an
+      // `/env/local/...` page) can never be found this way, even though the
+      // basket itself is still sitting in sessionStorage under the *real*
+      // environment. Falling back to the last environment this store+project
+      // actually resolved (also sessionStorage-persisted, survives a full
+      // reload the same way the basket itself does) instead of clearing
+      // keeps that basket reachable — confirmed live, journey J3, lane S92.
+      // A project with no prior environment at all (nothing ever
+      // persisted) still clears to `undefined`, unchanged from before.
+      this.setCurrentEnvironment(this.lastPersistedEnvId());
     }
     // console.log('processEnvironment', id);
+  }
+
+  /** `sessionStorage` key for the last environment id resolved for the
+   * current store+project — `undefined` (skip persistence/lookup entirely)
+   * until both are known, so this can never key state to the wrong
+   * store/project. `sessionStorage` (not `localStorage`) matches
+   * `InvestigationContextService`'s own per-tab, per-scope persistence
+   * choice (api-contract.md: "a new tab starts without another tab's
+   * context") — the whole point is to survive a reload within this tab,
+   * never to carry across tabs. */
+  private lastEnvStorageKey(): string | undefined {
+    const storeId = this.$currentStoreId.value;
+    const projectId = this.$currentProj.value?.ref.projectId;
+    if (!storeId || !projectId) {
+      return undefined;
+    }
+    return `datatug:lastEnv:${storeId}:${projectId}`;
+  }
+
+  private persistLastEnvId(id: string): void {
+    const key = this.lastEnvStorageKey();
+    if (!key) {
+      return;
+    }
+    try {
+      sessionStorage.setItem(key, id);
+    } catch {
+      // sessionStorage unavailable (private mode, SSR, full quota) — the
+      // in-memory current-env state still works for this page load, it
+      // just won't survive a reload. Same tolerance
+      // InvestigationContextService's own persist()/restore() apply.
+    }
+  }
+
+  private lastPersistedEnvId(): string | undefined {
+    const key = this.lastEnvStorageKey();
+    if (!key) {
+      return undefined;
+    }
+    try {
+      return sessionStorage.getItem(key) ?? undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   private processEnvDb(url: string): void {

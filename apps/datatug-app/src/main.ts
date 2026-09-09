@@ -21,7 +21,7 @@ import {
   provideSentryAppInitializer,
   provideSneatAnalytics,
 } from '@sneat/logging';
-import { RANDOM_ID_OPTIONS } from '@sneat/random';
+import { RANDOM_ID_OPTIONS, RandomIdService } from '@sneat/random';
 import { DATATUG_AGENT_BASE_URL } from '@sneat/datatug-semantic';
 import { routes } from './app/datatug-app-routes';
 import { DatatugAppComponent } from './app/datatug-app.component';
@@ -54,6 +54,22 @@ bootstrapApplication(DatatugAppComponent, {
           : DefaultSneatAppApiBaseUrl,
     },
     { provide: RANDOM_ID_OPTIONS, useValue: { len: 9 } },
+    // `@sneat/random`'s `RandomIdService` is `@Injectable()` with no
+    // `providedIn` — the package's own `RandomModule` is how it's meant to
+    // be provided, but nothing in this app ever imports that module, and
+    // this service has no other root provider either. This app's own
+    // consumers (`QueryPageComponent`, `QueriesUiService`,
+    // `SqlQueryEditorComponent`) all `inject(RandomIdService)` as an eager
+    // field initializer, so the dependency is resolved unconditionally at
+    // construction time — a direct navigation to `/query/:id` (the context
+    // panel's "open a query" hand-off) threw `NG0201: No provider found for
+    // \`RandomIdService\`. Source: Standalone[_QueryPageComponent]` for
+    // every query, new or existing, well before any code path that
+    // actually calls `newRandomId()` ever ran (confirmed live, journey
+    // J2/J3, lane S92). Root-providing it here, right next to the
+    // `RANDOM_ID_OPTIONS` token its constructor already consumes, fixes all
+    // three consumers in the one place this app configures the library.
+    RandomIdService,
     // `libs/datatug/semantic`'s SemanticApiService is `providedIn: 'root'` and reads
     // this token once, synchronously, the first time something injects the service —
     // so this factory resolves the store id from the current URL's `/store/<id>`

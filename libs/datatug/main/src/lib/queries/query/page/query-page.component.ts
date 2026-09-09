@@ -61,6 +61,7 @@ import {
   TypedValue,
 } from '@sneat/datatug-semantic';
 import { IProjectRef } from '../../../core/project-context';
+import { DatatugCoreModule } from '../../../core/datatug-core.module';
 import {
   IQueryEditorState,
   IQueryEnvState,
@@ -194,16 +195,25 @@ function mapsEqual<K, V>(
   imports: [
     // DatatugNavContextService, EnvironmentService, QueriesService,
     // QueryContextSqlService, QueryEditorStateService and Coordinator
-    // (all injected below) are plain @Injectable(), provided by these four
+    // (all injected below) are plain @Injectable(), provided by these
     // modules rather than providedIn: 'root'. `query/:queryId` is a sibling
     // of the bare '' route (routes/datatug-routing-proj.ts), not a child of
     // ProjectPageComponent, so this page never inherited them — the same
     // NG0201 class `EnvDbTablePageComponent` and `DatatugStorePageComponent`
-    // were already fixed for. Not yet observed failing in CI because J3
-    // (journey.spec.ts), the only test that navigates straight to this
-    // route, is currently blocked earlier by the server-side
-    // environment-summary bug (see that spec's header) — found by sweeping
-    // for this bug class (lane S79), not by a failing test.
+    // were already fixed for. Lane S79's static sweep added the four
+    // DatatugServices*Module below, but never caught that
+    // DatatugNavContextService's OWN constructor also needs AppContextService
+    // (DatatugCoreModule, not any of the four) — a static sweep can't see a
+    // transitive DI gap like that; only actually constructing the component
+    // does. Confirmed live: even with DatatugUserService fixed
+    // (providedIn: 'root', lane S79) and the four modules below present, a
+    // real navigation to `/query/:id` (the context panel's "open a query"
+    // hand-off) still threw `NG0201: No provider found for
+    // \`AppContextService\`. Source: Standalone[_QueryPageComponent]`, one
+    // level deeper than the RandomIdService gap this same stream also fixed
+    // (main.ts) — found only once RandomIdService stopped masking it
+    // (lane S92, journey J2/J3).
+    DatatugCoreModule,
     DatatugServicesNavModule,
     DatatugServicesUnsortedModule,
     DatatugQueriesServicesModule,

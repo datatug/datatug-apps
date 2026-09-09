@@ -1,9 +1,11 @@
-import { HttpErrorResponse } from '@angular/common/http';
-import { CUSTOM_ELEMENTS_SCHEMA, signal } from '@angular/core';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { ChangeDetectorRef, CUSTOM_ELEMENTS_SCHEMA, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
+import { NavController } from '@ionic/angular';
+import { Firestore } from 'firebase/firestore';
 import { ErrorLogger } from '@sneat/core';
-import { RandomIdService } from '@sneat/random';
+import { RANDOM_ID_OPTIONS, RandomIdService } from '@sneat/random';
 import {
   AgentContextService,
   InvestigationContextService,
@@ -647,5 +649,143 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     expect(investigationContext.items()).toHaveLength(0);
     expect(agentContext.refresh).toHaveBeenCalled();
     expect(component.runError()).toContain('session changed');
+  });
+});
+
+/**
+ * Regression (lane S92, journey J2/J3): `@sneat/random`'s `RandomIdService` is
+ * `@Injectable()` with no `providedIn`, and nothing in this app ever imports
+ * the package's own `RandomModule` or otherwise root-provides the service —
+ * only its `RANDOM_ID_OPTIONS` injection token is provided, in
+ * `apps/datatug-app/src/main.ts`. `QueryPageComponent` (and
+ * `QueriesUiService`/`SqlQueryEditorComponent`) `inject(RandomIdService)` as
+ * an eager field initializer, so the dependency is resolved unconditionally
+ * at construction — confirmed live: navigating straight to `/query/:id` (the
+ * context panel's "open a query" hand-off) threw `NG0201: No provider found
+ * for \`RandomIdService\`. Source: Standalone[_QueryPageComponent]` before any
+ * of this component's own binding-resolution logic ever ran, for every
+ * query, new or existing. The two describes above cannot see this: they stub
+ * `RandomIdService` directly. Here the component is left exactly as
+ * production declares it (its own `imports:` are the only thing satisfying
+ * `DatatugNavContextService`/`QueryContextSqlService`/`QueriesService`/
+ * `QueryEditorStateService`/`Coordinator`), and `RandomIdService` +
+ * `RANDOM_ID_OPTIONS` are provided the same way `apps/datatug-app/src/main.ts`
+ * provides them app-wide (the actual fix) — not via this component's own
+ * `imports:`, since that file is where the real app wires this up.
+ */
+describe('QueryPageComponent dependency injection', () => {
+  beforeEach(() => {
+    Object.defineProperty(window, 'history', {
+      value: { ...window.history, state: {} },
+      writable: true,
+      configurable: true,
+    });
+    TestBed.configureTestingModule({
+      // Importing the standalone component brings its own `imports` into the
+      // testing injector — nothing else here provides the datatug services.
+      imports: [QueryPageComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        {
+          provide: ErrorLogger,
+          useValue: {
+            logError: vi.fn(),
+            logErrorHandler: vi.fn(() => vi.fn()),
+          },
+        },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            queryParamMap: of({ get: () => null }),
+            paramMap: of({ get: () => null }),
+            snapshot: { paramMap: { get: () => null }, params: {} },
+          },
+        },
+        {
+          provide: Router,
+          useValue: {
+            navigate: vi.fn(() => Promise.resolve(true)),
+            events: of(),
+            url: '/',
+          },
+        },
+        {
+          provide: NavController,
+          useValue: {
+            navigateForward: vi.fn(() => Promise.resolve(true)),
+            navigateRoot: vi.fn(),
+          },
+        },
+        { provide: HttpClient, useValue: { get: vi.fn(() => of({})) } },
+        { provide: Firestore, useValue: {} },
+        // ChangeDetectorRef is a real, per-view Angular construct that
+        // `TestBed.runInInjectionContext(() => new X())` (below) cannot
+        // resolve — there's no actual component view backing a raw `new`
+        // call, unlike a genuine `TestBed.createComponent`. Confirmed this
+        // is purely a test-methodology gap, not a production one: the real
+        // browser reproduction (journey J2/J3) never raised this — only
+        // RandomIdService, then AppContextService, then HttpExecutor, all
+        // fixed above/below.
+        { provide: ChangeDetectorRef, useValue: { markForCheck: vi.fn() } },
+        // The actual fix under test: app-wide root providers
+        // (apps/datatug-app/src/main.ts), not anything QueryPageComponent's
+        // own `imports:` declares.
+        RandomIdService,
+        { provide: RANDOM_ID_OPTIONS, useValue: { len: 9 } },
+      ],
+    });
+  });
+
+  it('constructs from its own declared imports plus the app-level RandomIdService provider, the site that threw NG0201', () => {
+    expect(() =>
+      TestBed.runInInjectionContext(() => new QueryPageComponent()),
+    ).not.toThrow();
+  });
+
+  it('throws NG0201 for RandomIdService when the app-level provider is missing (proves the test above is not a false positive)', () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [QueryPageComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        {
+          provide: ErrorLogger,
+          useValue: {
+            logError: vi.fn(),
+            logErrorHandler: vi.fn(() => vi.fn()),
+          },
+        },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            queryParamMap: of({ get: () => null }),
+            paramMap: of({ get: () => null }),
+            snapshot: { paramMap: { get: () => null }, params: {} },
+          },
+        },
+        {
+          provide: Router,
+          useValue: {
+            navigate: vi.fn(() => Promise.resolve(true)),
+            events: of(),
+            url: '/',
+          },
+        },
+        {
+          provide: NavController,
+          useValue: {
+            navigateForward: vi.fn(() => Promise.resolve(true)),
+            navigateRoot: vi.fn(),
+          },
+        },
+        { provide: HttpClient, useValue: { get: vi.fn(() => of({})) } },
+        { provide: Firestore, useValue: {} },
+        // RandomIdService deliberately NOT provided here.
+      ],
+    });
+
+    expect(() =>
+      TestBed.runInInjectionContext(() => new QueryPageComponent()),
+    ).toThrow(/RandomIdService/);
   });
 });
