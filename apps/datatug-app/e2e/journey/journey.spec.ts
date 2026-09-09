@@ -289,14 +289,65 @@ test.describe('J3 — carrying context', () => {
         }),
     ).toBeVisible({ timeout: 10_000 });
 
-    // Disabling/clearing the chip empties the binding (REQ:no-hidden-filters —
-    // a query must never be silently constrained by context).
+    // S96 — api-contract.md "Binding and context behavior": "The user can clear a
+    // value; a cleared required value blocks Run until supplied." `CustomerId` is
+    // `isRequired: true` on this query
+    // (datatug-demo-projects/demo-project-1/queries/customers/customer-purchases-by-genre.query.json),
+    // so emptying its binding must NOT read as "No parameters bound from selection or
+    // context" — that wording is only correct for an optional parameter or an empty
+    // parameter list (query-page.component.html: the "required — no value supplied"
+    // branch is a *member* of `visibleBindings()`, not absent from it). The original
+    // version of this test asserted the optional-parameter wording against this
+    // required parameter and would have stayed green even if Run were left silently
+    // enabled with no value — checking `runButton` state directly closes that gap.
+    // `ion-button`'s own [disabled] Input reflects to a boolean `disabled` attribute
+    // on the host element, but the host is not a native form control — Playwright's
+    // toBeDisabled()/toBeEnabled() match `:disabled`, which only native form elements
+    // ever satisfy, so they misreport an `ion-button` regardless of its actual state.
+    // The `disabled` attribute's presence/absence on the host is the reliable signal.
+    const runButton = page.locator('ion-button', { hasText: 'Run query' });
+    await expect(runButton).not.toHaveAttribute('disabled');
+
+    // AC:context-carries's own wording — "disabling the chip empties it" — names the
+    // Investigation Context bar's chip (InvestigationContextBarComponent, reachable
+    // from every project screen via the persistent project menu, REQ:context-basket:
+    // "Temporarily enables/disables a value without removing it"), a *different*,
+    // global mechanism from the query page's own page-local "Clear this binding"
+    // button exercised below (REQ:parameter-auto-binding). Clicking the chip's label
+    // (not its "×" remove icon) toggles InvestigationContextService.setEnabled(id,
+    // false); the query page's own binding effect (constructor, reads
+    // investigationContext.items()) picks that up reactively with no server call.
+    const contextChip = page
+      .locator('sneat-datatug-investigation-context-bar')
+      .getByText('Customer.ID', { exact: false });
+    await contextChip.click();
+    await expect(
+      page
+        .getByText('Customer.ID', { exact: false })
+        .getByText('required', { exact: false }),
+    ).toBeVisible({ timeout: 10_000 });
+    await expect(runButton).toHaveAttribute('disabled', '');
+
+    // Disabling is not removing (REQ:context-basket) — re-enabling the same chip
+    // restores the "from context" binding.
+    await contextChip.click();
+    await expect(
+      page
+        .getByText('Customer.ID', { exact: false })
+        .getByText('from context', { exact: false }),
+    ).toBeVisible({ timeout: 10_000 });
+    await expect(runButton).not.toHaveAttribute('disabled');
+
+    // The query page's own "Clear this binding" button (REQ:parameter-auto-binding:
+    // "The user MUST be able to clear or override a bound value before running") —
+    // a page-local override, independent of the global context chip above.
     await page.getByTitle('Clear this binding').click();
     await expect(
-      page.getByText('No parameters bound from selection or context', {
-        exact: false,
-      }),
+      page
+        .getByText('Customer.ID', { exact: false })
+        .getByText('required', { exact: false }),
     ).toBeVisible({ timeout: 10_000 });
+    await expect(runButton).toHaveAttribute('disabled', '');
   });
 });
 

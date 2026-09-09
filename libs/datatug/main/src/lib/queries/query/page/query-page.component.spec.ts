@@ -653,6 +653,220 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
 });
 
 /**
+ * S96 — api-contract.md "Binding and context behavior": "The user can clear a value;
+ * a cleared required value blocks Run until supplied." The demo project's real queries
+ * (`customer-invoices`, `customer-purchases-by-genre`) declare `CustomerId` with
+ * `isRequired: true` (datatug-demo-projects/demo-project-1/queries/customers/*.query.json)
+ * — the describe block above never sets `required` on its own `queryDef` fixture (see
+ * its own `clearBinding` test: "optional param, not required"), so it cannot see what
+ * happens for the parameter shape the journey e2e (S89/S90/S92/S96) actually exercises.
+ * `resolveBindings()`'s own `unresolved()` helper (binding-resolver.ts) already returns
+ * `blocked: 'missing-required'` for a required parameter with no candidate value —
+ * these tests lock that production behavior in at the component level, for both ways a
+ * bound value can be emptied: this page's own "Clear this binding" button
+ * ({@link QueryPageComponent.clearBinding}) and disabling the Investigation Context's
+ * own chip ({@link InvestigationContextService.setEnabled}, REQ:context-basket — the
+ * literal action AC:context-carries names: "disabling the chip empties it").
+ */
+describe('QueryPageComponent — clearing a required parameter blocks Run (S96)', () => {
+  let component: QueryPageComponent;
+  let runQueryMock: ReturnType<typeof vi.fn>;
+  let investigationContext: InvestigationContextService;
+
+  const project: IProjectContext = {
+    ref: { storeId: 'localhost:8989', projectId: 'demo-project' },
+  };
+
+  const requiredQueryDef: IQueryDef = {
+    id: 'customer-purchases-by-genre',
+    title: 'Customer purchases by genre',
+    request: { queryType: QueryType.SQL, text: '' } as ISqlQueryRequest,
+    parameters: [
+      {
+        id: 'CustomerId',
+        type: 'integer',
+        isRequired: true,
+        meta: { entity: 'Customer', field: 'ID' },
+      },
+    ],
+  };
+
+  const requiredEditorState: IQueryEditorState = {
+    currentQueryId: requiredQueryDef.id,
+    activeQueries: [
+      {
+        id: requiredQueryDef.id,
+        queryType: QueryType.SQL,
+        request: requiredQueryDef.request,
+        def: requiredQueryDef,
+      },
+    ],
+  } as unknown as IQueryEditorState;
+
+  const selectionBinding = {
+    parameterId: 'CustomerId',
+    value: { type: 'integer' as const, value: '5' },
+    origin: 'selection' as const,
+    originEvidence: 'client-reported' as const,
+  };
+
+  async function createComponent(
+    historyState: Record<string, unknown> = {},
+  ): Promise<QueryPageComponent> {
+    Object.defineProperty(window, 'history', {
+      value: { ...window.history, state: historyState },
+      writable: true,
+      configurable: true,
+    });
+    runQueryMock = vi.fn();
+    await TestBed.configureTestingModule({
+      imports: [QueryPageComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        {
+          provide: ErrorLogger,
+          useValue: { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) },
+        },
+        { provide: RandomIdService, useValue: { newRandomId: vi.fn(() => 'test-id') } },
+        {
+          provide: DatatugNavContextService,
+          useValue: {
+            currentProject: of(project),
+            currentEnv: of(undefined),
+            setCurrentEnvironment: vi.fn(),
+          },
+        },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            queryParamMap: of({ get: () => null }),
+            paramMap: of({ get: () => null }),
+            snapshot: { paramMap: { get: () => null }, params: {} },
+          },
+        },
+        {
+          provide: Router,
+          useValue: { navigate: vi.fn(() => Promise.resolve(true)), events: of() },
+        },
+        {
+          provide: QueryContextSqlService,
+          useValue: { setSql: vi.fn(), setTarget: vi.fn() },
+        },
+        { provide: QueriesService, useValue: {} },
+        { provide: Coordinator, useValue: { execute: vi.fn() } },
+        {
+          provide: QueryEditorStateService,
+          useValue: {
+            queryEditorState: of(requiredEditorState),
+            updateQueryState: vi.fn(),
+            openQuery: vi.fn(),
+            newQuery: vi.fn(),
+            getQueryState: vi.fn(),
+            saveQuery: vi.fn(),
+          },
+        },
+        { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn() } },
+        { provide: SemanticApiService, useValue: { runQuery: runQueryMock } },
+        { provide: AgentContextService, useValue: agentContextStub() },
+      ],
+    })
+      .overrideComponent(QueryPageComponent, {
+        set: {
+          imports: [],
+          template: '',
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+          providers: [],
+        },
+      })
+      .compileComponents();
+
+    investigationContext = TestBed.inject(InvestigationContextService);
+    const created = TestBed.createComponent(QueryPageComponent).componentInstance;
+    created.project = project;
+    created.envId = 'production';
+    investigationContext.setScope({
+      project: 'demo-project',
+      environment: 'production',
+      securityContextId: 'sctx-1',
+    });
+    return created;
+  }
+
+  beforeEach(() => {
+    sessionStorage.clear();
+  });
+
+  it('clearing a required parameter bound from selection stays visible as missing-required and blocks Run', async () => {
+    component = await createComponent({ bindings: [selectionBinding] });
+    expect(component.bindings()[0]).toEqual(
+      expect.objectContaining({ parameterId: 'CustomerId', value: { type: 'integer', value: '5' } }),
+    );
+
+    component.clearBinding('CustomerId');
+
+    expect(component.bindings()[0].blocked).toBe('missing-required');
+    expect(component.visibleBindings()).toHaveLength(1); // still shown, never silently hidden
+    expect(component.hasBlockedBindings()).toBe(true);
+    expect(component.effectiveBindings()).toEqual([]);
+
+    component.project = project;
+    component.runQuery();
+    expect(runQueryMock).not.toHaveBeenCalled();
+    expect(component.runError()).toBeTruthy();
+  });
+
+  it('clearing a required parameter bound from context stays visible as missing-required and blocks Run', async () => {
+    component = await createComponent({});
+    investigationContext.addValue({
+      entityField: { entity: 'Customer', field: 'ID' },
+      value: 5,
+      label: 'Customer.ID = 5',
+      source: 'grid',
+    });
+    TestBed.tick();
+    expect(component.bindings()[0].origin).toBe('context');
+
+    component.clearBinding('CustomerId');
+
+    expect(component.bindings()[0].blocked).toBe('missing-required');
+    expect(component.hasBlockedBindings()).toBe(true);
+
+    component.project = project;
+    component.runQuery();
+    expect(runQueryMock).not.toHaveBeenCalled();
+  });
+
+  it('disabling the Investigation Context chip (not clearing the page-local binding) empties a required from-context binding the same way (AC:context-carries "disabling the chip empties it")', async () => {
+    component = await createComponent({});
+    const item = investigationContext.addValue({
+      entityField: { entity: 'Customer', field: 'ID' },
+      value: 5,
+      label: 'Customer.ID = 5',
+      source: 'grid',
+    });
+    TestBed.tick();
+    expect(component.bindings()[0]).toEqual(
+      expect.objectContaining({ parameterId: 'CustomerId', origin: 'context', value: { type: 'integer', value: '5' } }),
+    );
+
+    investigationContext.setEnabled(item.id, false);
+    TestBed.tick();
+
+    expect(component.bindings()[0].blocked).toBe('missing-required');
+    expect(component.hasBlockedBindings()).toBe(true);
+
+    // Re-enabling restores the binding without the user ever having clicked
+    // "Clear this binding" on the page itself.
+    investigationContext.setEnabled(item.id, true);
+    TestBed.tick();
+
+    expect(component.bindings()[0]).toEqual(
+      expect.objectContaining({ parameterId: 'CustomerId', origin: 'context', value: { type: 'integer', value: '5' } }),
+    );
+  });
+});
+
+/**
  * Regression (lane S92, journey J2/J3): `@sneat/random`'s `RandomIdService` is
  * `@Injectable()` with no `providedIn`, and nothing in this app ever imports
  * the package's own `RandomModule` or otherwise root-provides the service —
