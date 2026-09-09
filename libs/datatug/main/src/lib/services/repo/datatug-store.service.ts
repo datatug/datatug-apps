@@ -2,7 +2,7 @@ import { Observable, throwError } from 'rxjs';
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { map, shareReplay } from 'rxjs/operators';
-import { getStoreUrl } from '@sneat/api';
+import { buildAgentUrl } from './agent-url';
 import { IGridColumn, IGridDef } from '@sneat/grid';
 import { storeCanProvideListOfProjects } from '@sneat/core';
 import { IRecordset } from '../../dto/execute';
@@ -61,9 +61,8 @@ export class DatatugStoreService {
     if (projects) {
       return projects;
     }
-    const storeUrl = getStoreUrl(storeId);
     projects = this.http
-      .get<IProjectBase[]>(`${storeUrl}/projects`)
+      .get<IProjectBase[]>(buildAgentUrl(storeId, '/projects/projects_summary'))
       .pipe(shareReplay(1));
     this.projectsByStore[storeId] = projects;
     return projects;

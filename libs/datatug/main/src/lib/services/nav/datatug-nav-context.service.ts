@@ -11,7 +11,6 @@ import {
   tap,
 } from 'rxjs/operators';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
-import { parseStoreRef } from '@sneat/core';
 import { newRandomId } from '@sneat/random';
 import { IProjectRef } from '../../core/project-context';
 import {
@@ -24,6 +23,7 @@ import {
   IEnvDbContext,
   IEnvDbTableContext,
   IProjectContext,
+  parseDatatugStoreRef,
   populateProjectBriefFromSummaryIfMissing,
 } from '../../nav/nav-models';
 import { ProjectContextService } from '../project/project-context.service';
@@ -279,7 +279,7 @@ export class DatatugNavContextService {
       // }
       const projectContext: IProjectContext = {
         // brief: {access: undefined, title: undefined},
-        store: { ref: parseStoreRef(currentStoreId) },
+        store: { ref: parseDatatugStoreRef(currentStoreId) },
         ref: { projectId: id, storeId: currentStoreId || '' },
       };
       this.setCurrentProject(projectContext);

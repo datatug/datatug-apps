@@ -68,9 +68,12 @@ export class MyDatatugProjectsComponent implements OnDestroy {
 
   private readonly destroyed = new Subject<void>();
   public projects?: IProjectAndStore[];
+  // https://github.com/datatug/datatug-demo-projects/blob/main/demo-project-1/datatug-project.json
+  // — see DatatugStoreGithubService.getProjectSummary() for how the "repo@org@folder"
+  // id below is turned into that raw-content URL.
   public demoProjects: IDatatugProjectBriefWithIdAndStoreRef[] = [
     {
-      id: 'datatug-demo-project@datatug',
+      id: 'datatug-demo-projects@datatug@demo-project-1',
       access: 'public',
       store: { ref: { type: STORE_TYPE_GITHUB, id: 'github.com' } },
       title: 'DataTug Demo Project @ GitHub',

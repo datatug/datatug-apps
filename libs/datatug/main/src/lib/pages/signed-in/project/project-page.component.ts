@@ -22,8 +22,8 @@ import {
   ViewDidLeave,
   ViewWillEnter,
 } from '@ionic/angular';
-import { parseStoreRef } from '@sneat/core';
 import { DatatugCoreModule } from '../../../core/datatug-core.module';
+import { ENABLE_EMPTY_SHELL_PAGES } from '../../../core/feature-flags';
 import { IProjectRef } from '../../../core/project-context';
 import { DatatugFolderComponent } from '../../../folders/ui/datatug-folder.component';
 import {
@@ -35,7 +35,7 @@ import {
   ProjectItem,
   ProjectItemType,
 } from '../../../models/definition/project';
-import { IProjectContext } from '../../../nav/nav-models';
+import { IProjectContext, parseDatatugStoreRef } from '../../../nav/nav-models';
 import { ProjectTracker } from '../../../services/nav/contexts/project.tracker';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import {
@@ -80,6 +80,10 @@ import { SchemaService } from '../../../services/unsorted/schema.service';
 export class ProjectPageComponent
   implements OnDestroy, ViewWillEnter, ViewDidLeave
 {
+  // Tags is an empty-shell page — see ENABLE_EMPTY_SHELL_PAGES. Read from
+  // the template to hide the "Go to..." menu option for it.
+  protected readonly enableEmptyShellPages = ENABLE_EMPTY_SHELL_PAGES;
+
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly route = inject(ActivatedRoute);
   private readonly datatugNavService = inject(DatatugNavService);
@@ -119,7 +123,10 @@ export class ProjectPageComponent
   private setProjRef = (ref: IProjectRef) => {
     try {
       if (ref.projectId === this.project?.ref?.projectId) {
-        this.project = { ref, store: { ref: parseStoreRef(ref.storeId) } };
+        this.project = {
+          ref,
+          store: { ref: parseDatatugStoreRef(ref.storeId) },
+        };
       }
       this.projectService
         .watchProjectSummary(ref)

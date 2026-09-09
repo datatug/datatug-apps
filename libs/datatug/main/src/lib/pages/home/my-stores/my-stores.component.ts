@@ -25,8 +25,10 @@ import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
 import { NavController } from '@ionic/angular';
 import { DatatugUserService } from '../../../services/base/datatug-user-service';
 import { AuthStatus } from '@sneat/auth-core';
-import { IDatatugStoreContext } from '../../../nav/nav-models';
-import { parseStoreRef } from '@sneat/core';
+import {
+  IDatatugStoreContext,
+  parseDatatugStoreRef,
+} from '../../../nav/nav-models';
 import { LoadingItemsComponent } from '../loading-items-component';
 
 @Component({
@@ -110,7 +112,7 @@ export class MyStoresComponent implements OnInit, OnDestroy {
       brief = { ...brief, projects: {} }; // TODO: document why we do this or remove
     }
     const store: IDatatugStoreContext = {
-      ref: parseStoreRef(brief.id),
+      ref: parseDatatugStoreRef(brief.id),
       brief,
     };
     this.datatugNavService.goStore(store);
