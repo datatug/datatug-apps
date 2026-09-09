@@ -50,5 +50,13 @@ export default defineConfig({
       testDir: './e2e/journey',
       use: { ...devices['Desktop Chrome'] },
     },
+    {
+      name: 'openvaultdb',
+      testDir: './e2e/openvaultdb',
+      fullyParallel: false,
+      // Request traces retain headers, including the in-memory daemon session
+      // capability. Keep protected-flow artifacts to server logs and screenshots.
+      use: { ...devices['Desktop Chrome'], trace: 'off' },
+    },
   ],
 });

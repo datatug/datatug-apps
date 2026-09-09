@@ -10,5 +10,5 @@
   // predate this tsconfig, were never type-checked before, and carry
   // pre-existing noPropertyAccessFromIndexSignature findings unrelated to
   // this stream — not this stream's to fix (see brief: "do not widen scope").
-  "include": ["journey/**/*.ts"]
+  "include": ["journey/**/*.ts", "openvaultdb/**/*.ts"]
 }

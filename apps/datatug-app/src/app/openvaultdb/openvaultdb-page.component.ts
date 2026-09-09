@@ -121,15 +121,14 @@ export class OpenVaultDBPageComponent implements OnInit {
       this.error.set('Select a record before inspection.');
       return;
     }
+    const rowID = selected ? recordID(selected.key, this.table()) : '';
     const id = mode === 'sample' ? 'sample-template' : mode;
     const resource = {
       databaseId: target.databaseId,
       path:
-        mode === 'inspect'
-          ? `/${this.table()}/${selected?.key}`
-          : `/${this.table()}`,
+        mode === 'inspect' ? `/${this.table()}/${rowID}` : `/${this.table()}`,
       table: this.table(),
-      ...(mode === 'inspect' ? { rowId: selected?.key } : {}),
+      ...(mode === 'inspect' ? { rowId: rowID } : {}),
     };
     const operation =
       mode === 'plan'
@@ -177,6 +176,7 @@ export class OpenVaultDBPageComponent implements OnInit {
       this.error.set('Select a record and enter one top-level field.');
       return;
     }
+    const rowID = recordID(selected.key, this.table());
     await this.run(async () => {
       let dataRevision: string;
       try {
@@ -185,8 +185,8 @@ export class OpenVaultDBPageComponent implements OnInit {
             apiVersion: 'dtql.org/authorization/v1',
             resource: {
               databaseId: target.databaseId,
-              path: `/${this.table()}/${selected.key}`,
-              rowId: selected.key,
+              path: `/${this.table()}/${rowID}`,
+              rowId: rowID,
             },
             requiredFields: [[field]],
           }),
@@ -212,9 +212,9 @@ export class OpenVaultDBPageComponent implements OnInit {
           action: 'update',
           resource: {
             databaseId: target.databaseId,
-            path: `/${this.table()}/${selected.key}`,
+            path: `/${this.table()}/${rowID}`,
             table: this.table(),
-            rowId: selected.key,
+            rowId: rowID,
             columns: [[field]],
           },
           mutation,
@@ -285,6 +285,11 @@ function parseValue(value: string): unknown {
   } catch {
     return value;
   }
+}
+
+function recordID(key: string, collection: string): string {
+  const prefix = `${collection}/`;
+  return key.startsWith(prefix) ? key.slice(prefix.length) : key;
 }
 
 function safeErrorMessage(error: unknown): string {

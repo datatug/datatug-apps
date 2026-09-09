@@ -197,7 +197,7 @@
               @if (layer.source.reference) {
                 · {{ layer.source.reference }}
               }
-              @for (decision of layer.decisions; track decision.operationId) {
+              @for (decision of layer.decisions; track $index) {
                 @if (decision.policyRef) {
                   · {{ decision.policyRef.policyId }}
                   @if (decision.policyRef.ruleId) {
