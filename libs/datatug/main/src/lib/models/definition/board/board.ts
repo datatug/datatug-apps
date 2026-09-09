@@ -1,6 +1,19 @@
 import { IParameterDef, IParameterValueWithoutID } from '../parameter';
 import { WidgetDef } from './widget-def';
 
+// NOTE: this is a pre-existing, independently-evolved copy of the board
+// schema, not a re-export of `@datatug/board-models` (libs/datatug/board-models,
+// generated field-for-field from datatug-core's boards.go). It has already
+// diverged from boards.go in ways that are not a pure rename (extra
+// `description`/`related` fields here, no `boards.go` equivalent; widget-def
+// shapes differ, e.g. `ISqlWidgetSettings` carries `db`/`env`/`hideColumns`
+// via `ICommandDefinition` where boards.go's `SQLWidgetSettings` is `{ query }`
+// only) — see @datatug/board-models's README ("Relationship to
+// libs/datatug/main's existing board types") for the full list. Swapping
+// these 9 consumer files over to the new package is therefore a real
+// behaviour change, not a pure re-export, so it is left as-is here; not done
+// in this change.
+
 export interface IBoardDef {
   id: string;
   title: string;
