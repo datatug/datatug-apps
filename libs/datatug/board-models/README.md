@@ -101,25 +101,82 @@ list, not a diff against its current code:
    reconciliation pass in Dashboardius's own repo — this package intentionally
    does not carry forward any Dashboardius-only fields.
 
-## Relationship to `libs/datatug/main`'s existing board types
+## Reconciliation of `libs/datatug/main` (2026-09-09)
 
-`libs/datatug/main/src/lib/models/definition/board/board.ts` (and its
-sibling `widget*.ts` files) is a **pre-existing, independently-evolved** copy
-of the board schema, not a re-export of `boards.go`. It has already diverged
-in ways that are not a pure rename, e.g.:
+`libs/datatug/main/src/lib/models/definition/board/board.ts` and its sibling
+`widget*.ts` files used to be a pre-existing, independently-evolved copy of
+the board schema, not a re-export of `boards.go`. It has been reconciled to
+consume this package; the local copy is gone.
 
-- `IBoardDef` carries `description` and `related.boards`, neither of which
-  exists on `boards.go`'s `Board`.
-- Its SQL widget settings (`ISqlWidgetSettings`) carry `db`, `env`,
-  `hideColumns` via `ICommandDefinition` — `boards.go`'s `SQLWidgetSettings`
-  is `{ query }` only.
-- `IBoardContext`/`IWidgetPosition`/`IBoardWidgetInstance` are UI-local state
-  with no `boards.go` equivalent (by design — they're not part of the wire
-  schema).
+### Verdict and evidence
 
-Because swapping `libs/datatug/main`'s imports over to this package would
-therefore be a real behaviour change (not a pure re-export) for the 9 files
-that currently import `IBoardDef`/`IBoardRowDef`/`IBoardCardDef`/etc., this
-package leaves `libs/datatug/main`'s local copy untouched. See the PR
-description for the full list of affected files and what reconciling them
-would take.
+Every field that had diverged from `boards.go` was dead or aspirational:
+
+1. `IBoardDef.description` and `IBoardDef.related.boards` had zero readers
+   anywhere in `libs/` or `apps/`, zero in the Go backend (`datatug-core`,
+   `datatug-cli`), zero in demo data, zero in docs.
+2. `ISqlWidgetSettings.db` / `.env` / `.hideColumns` were read only by
+   `SqlQueryWidgetComponent`
+   (`libs/datatug/main/src/lib/board/ui/components/widgets/sql-query-widget/`).
+   That component was instantiated by no template: the `@case ('SQL')` block
+   in `board-widget.component.html` has been commented out since the
+   2026-03-04 migration commit `1726f96`. Zero in Go, zero in demo data.
+3. `IBoardDef.parameters` was read by `board-page.component.ts`, but
+   `boards.go`'s `Board` struct has no `parameters` field (it is
+   `ProjectItem` + `rows`) — `ProjBoardBrief` in the same Go file carries
+   `parameters` and `requiredParams` instead.
+4. `DatatugBoardService.getBoard()` always returned
+   `throwError('not implemented ...')`, so no board reached the rendering
+   tree at runtime; the whole board UI was unexercised.
+5. `ISqlWidgetSettings extends ICommandDefinition` (requiring `id`, `type`,
+   `title` on widget settings) had no basis in `boards.go`, and
+   `board-widget.component.ts` cast `widget.data` to `ISqlWidgetSettings`
+   even though the local `ISqlWidgetDef.data` was `{ sql: ISqlWidgetSettings }`
+   — internally inconsistent, confirming nothing exercised it.
+6. The demo board
+   (`datatug-demo-projects/demo-project-1/boards/board1/board.json`) is
+   `{"title": "1st board"}` — no rows, no widgets.
+
+### What changed
+
+Removed:
+
+- The seven files under `libs/datatug/main/src/lib/models/definition/board/`:
+  `widget-def.ts`, `widget-http.ts`, `widget-name.ts`, `widget-sql.ts`,
+  `widget-tabs-def.ts`, `widget-tabs.ts`, `widget.ts`.
+- The three wire-schema interfaces from `board.ts`: `IBoardDef`,
+  `IBoardRowDef`, `IBoardCardDef`.
+- Five dropped fields, each because it had zero readers or was reachable
+  only through dead code (see evidence above): `description`,
+  `related.boards`, `db`, `env`, `hideColumns`.
+
+Stayed, and why:
+
+- `IBoardContext`, `IWidgetPosition`, `IBoardWidgetInstance` stayed in
+  `board.ts` — they are UI-local state with no `boards.go` equivalent.
+- `IParameterDef` in `models/definition/parameter.ts` stayed as-is — it
+  mirrors `parameters.go`, not `boards.go`, and is what
+  `ParameterLookupService` consumes.
+- `GridWidgetComponent.hideColumns` stayed — it is a grid UI input, not part
+  of the board schema.
+
+`IProjBoard` (`libs/datatug/main/src/lib/models/definition/project.ts`) now
+mirrors `ProjBoardBrief` field for field (`IProjItemBrief` +
+`parameters?: IParameterDef[]` + `requiredParams?: string[][]`).
+
+### Open questions for `boards.go` (datatug-core)
+
+The following are the coordinating agent's observations, **not** a founder
+ruling — both are tracked in the DataTug hub Feature
+(`datatug/datatug` → `spec/features/dashboards`, "Open Questions"):
+
+- `Board` carries no `parameters`, while `ProjBoardBrief` in the same file
+  carries `parameters` and `requiredParams`; a `board.json` with
+  `parameters` is silently dropped on a `LoadBoard`/`SaveBoard` round trip.
+  Should `Board` carry them?
+- `SQLWidgetSettings` is `{ query }` only, so a SQL widget has no db/env
+  execution target, although `ParameterLookup` beside it does carry `db`.
+  How is a board SQL widget meant to be executed? The dashboards Feature's
+  REQ `board-persistence-and-query-binding` binds widgets to a library query
+  plus parameters, which may make db/env a property of the bound query
+  rather than the widget.

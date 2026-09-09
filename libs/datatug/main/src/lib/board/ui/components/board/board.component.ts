@@ -14,10 +14,8 @@ import {
   IonText,
   ModalController,
 } from '@ionic/angular';
-import {
-  IBoardContext,
-  IBoardDef,
-} from '../../../../models/definition/board/board';
+import { Board } from '@datatug/board-models';
+import { IBoardContext } from '../../../../models/definition/board/board';
 import { NewCardDialogComponent } from '../../modals/new-card-dialog/new-card-dialog.component';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { BoardRowComponent } from '../board-row/board-row.component';
@@ -44,7 +42,7 @@ export class BoardComponent {
   // TODO: Skipped for migration because:
   //  This input is used in a control flow expression (e.g. `@if` or `*ngIf`)
   //  and migrating would break narrowing currently.
-  readonly boardDef = input<IBoardDef>();
+  readonly boardDef = input<Board>();
   readonly boardContext = input<IBoardContext>();
 
   async newCard() {

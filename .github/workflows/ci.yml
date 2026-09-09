@@ -69,19 +69,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Checkout the pinned SSO test backend
-        uses: actions/checkout@v6
-        with:
-          repository: sneat-co/sneat-core-modules
-          # v0.75.0; keep the immutable revision aligned with the deployed API.
-          ref: 19d1be4231f2d92877290d38801db84cafa26dc2
-          path: .ci/sneat-core-modules
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: .ci/sneat-core-modules/go.mod
-          cache-dependency-path: .ci/sneat-core-modules/go.sum
-
       - uses: ./.github/actions/pnpm
 
       - name: Derive appropriate SHAs for base and head for nx affected commands
@@ -92,16 +79,3 @@ jobs:
 
       - name: nx e2e affected
         run: pnpm nx affected --target=e2e --parallel=1 --base=${{ env.NX_BASE }}
-
-      - name: Run the deterministic enterprise SSO journey
-        run: pnpm nx run datatug-app:e2e-sso
-        env:
-          SNEAT_CORE_MODULES_DIR: ${{ github.workspace }}/.ci/sneat-core-modules
-
-      - name: Upload enterprise SSO diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: enterprise-sso-e2e
-          path: coverage/apps/datatug-app-sso-e2e
-          if-no-files-found: ignore

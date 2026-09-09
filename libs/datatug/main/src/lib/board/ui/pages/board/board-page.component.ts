@@ -22,14 +22,12 @@ import {
 import { distinctUntilChanged, filter, map, takeUntil } from 'rxjs/operators';
 import { Subject } from 'rxjs';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
+import { Board } from '@datatug/board-models';
 import { ParameterLookupService } from '../../../../components/parameters/parameter-lookup.service';
 import { routingParamBoard } from '../../../../core/datatug-routing-params';
 import { projectRefToString } from '../../../../core/project-context';
 import { QueryParamsService } from '../../../../core/services/QueryParamsService';
-import {
-  IBoardContext,
-  IBoardDef,
-} from '../../../../models/definition/board/board';
+import { IBoardContext } from '../../../../models/definition/board/board';
 import { IParamWithDefAndValue } from '../../../../models/definition/parameter';
 import { IProjBoard } from '../../../../models/definition/project';
 import { DatatugNavContextService } from '../../../../services/nav/datatug-nav-context.service';
@@ -76,7 +74,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
 
   projBoard?: IProjBoard;
 
-  boardDef?: IBoardDef;
+  boardDef?: Board;
 
   parameters?: IParamWithDefAndValue[];
 
@@ -91,6 +89,10 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   constructor() {
     const dataTugNavContext = this.dataTugNavContext;
     this.projBoard = history.state?.projBoard;
+    this.parameters = this.projBoard?.parameters?.map((def) => ({
+      def,
+      val: '',
+    }));
     try {
       this.route.queryParamMap.subscribe({
         next: (queryParamMap) => {
@@ -150,10 +152,6 @@ export class BoardPageComponent implements OnInit, OnDestroy {
                     try {
                       this.projBoard = board;
                       this.boardDef = board;
-                      this.parameters = board.parameters?.map((def) => ({
-                        def,
-                        val: '',
-                      }));
                     } catch (e) {
                       this.errorLogger.logError(
                         e,
