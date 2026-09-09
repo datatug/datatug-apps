@@ -2,6 +2,20 @@ import { Routes } from '@angular/router';
 
 export const routes: Routes = [
   {
+    path: 'pwa/repo/:repo/agent/:agentId',
+    loadComponent: () =>
+      import('./openvaultdb/openvaultdb-page.component').then(
+        (m) => m.OpenVaultDBPageComponent,
+      ),
+  },
+  {
+    path: 'agent/:agentId',
+    loadComponent: () =>
+      import('./openvaultdb/openvaultdb-page.component').then(
+        (m) => m.OpenVaultDBPageComponent,
+      ),
+  },
+  {
     path: 'hello-world',
     loadChildren: () =>
       import('./hello-world-page.component').then(

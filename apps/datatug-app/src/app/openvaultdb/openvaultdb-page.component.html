@@ -1,0 +1,257 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-title>OpenVaultDB access</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="ion-padding">
+  <ion-card>
+    <ion-card-header
+      ><ion-card-title>Query data</ion-card-title></ion-card-header
+    >
+    <ion-card-content>
+      <ion-list>
+        <ion-item>
+          <ion-select
+            label="Database"
+            [ngModel]="targetId()"
+            (ngModelChange)="targetId.set($event)"
+          >
+            @for (target of targets(); track target.id) {
+              <ion-select-option [value]="target.id">
+                {{ target.id }} · {{ target.databaseId }}
+              </ion-select-option>
+            }
+          </ion-select>
+        </ion-item>
+        <ion-item>
+          <ion-input
+            label="Collection"
+            [ngModel]="table()"
+            (ngModelChange)="table.set($event)"
+          />
+        </ion-item>
+        <ion-item>
+          <ion-textarea
+            label="DTQL YAML"
+            labelPlacement="stacked"
+            [autoGrow]="true"
+            [ngModel]="dtql()"
+            (ngModelChange)="dtql.set($event)"
+          />
+        </ion-item>
+      </ion-list>
+      <ion-button (click)="runQuery()" [disabled]="busy() || !target()"
+        >Run query</ion-button
+      >
+      <ion-button
+        fill="outline"
+        (click)="explain('plan')"
+        [disabled]="busy() || !target()"
+      >
+        Explain access
+      </ion-button>
+      <ion-button
+        fill="outline"
+        (click)="explain('sample')"
+        [disabled]="busy() || !target()"
+      >
+        Check access for top {{ sampleLimit() }}
+      </ion-button>
+      <ion-item>
+        <ion-input
+          type="number"
+          min="1"
+          max="100"
+          label="Rows to check"
+          [ngModel]="sampleLimit()"
+          (ngModelChange)="sampleLimit.set(+$event)"
+        />
+      </ion-item>
+      @if (busy()) {
+        <ion-spinner aria-label="Working" />
+      }
+      @if (error()) {
+        <p role="alert">{{ error() }}</p>
+      }
+      @if (status()) {
+        <p role="status">{{ status() }}</p>
+      }
+    </ion-card-content>
+  </ion-card>
+
+  @if (records().length) {
+    <ion-card>
+      <ion-card-header
+        ><ion-card-title>Records</ion-card-title></ion-card-header
+      >
+      <ion-card-content>
+        <table>
+          <thead>
+            <tr>
+              <th>Key</th>
+              <th>Data</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (record of records(); track record.key) {
+              <tr [class.selected]="selected()?.key === record.key">
+                <td>{{ record.key }}</td>
+                <td>
+                  <pre>{{ record.data | json }}</pre>
+                </td>
+                <td>
+                  <ion-button size="small" (click)="select(record)"
+                    >Select</ion-button
+                  >
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </ion-card-content>
+    </ion-card>
+  }
+
+  @if (selected(); as row) {
+    <ion-card>
+      <ion-card-header
+        ><ion-card-title
+          >Selected row {{ row.key }}</ion-card-title
+        ></ion-card-header
+      >
+      <ion-card-content>
+        <ion-button
+          fill="outline"
+          (click)="explain('inspect')"
+          [disabled]="busy()"
+        >
+          Explain access to this row
+        </ion-button>
+        <ion-item>
+          <ion-input
+            label="Field"
+            [ngModel]="updateField()"
+            (ngModelChange)="updateField.set($event)"
+          />
+        </ion-item>
+        <ion-item>
+          <ion-input
+            label="New value (JSON or text)"
+            [ngModel]="updateValue()"
+            (ngModelChange)="updateValue.set($event)"
+          />
+        </ion-item>
+        <ion-button
+          color="warning"
+          (click)="updateSelected()"
+          [disabled]="busy()"
+        >
+          Save change
+        </ion-button>
+      </ion-card-content>
+    </ion-card>
+  }
+
+  @if (authorization(); as result) {
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>Access: {{ result.result }}</ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        <p>
+          {{ modeLabel(result.mode) }} ·
+          {{
+            result.coverage.evaluation === 'complete'
+              ? 'check complete'
+              : 'check incomplete'
+          }}
+          ·
+          {{
+            result.coverage.disclosure === 'full'
+              ? 'full details'
+              : 'limited details'
+          }}
+          @if (result.coverage.truncated) {
+            · some details omitted
+          }
+        </p>
+        <h3>Operations</h3>
+        <ul>
+          @for (operation of result.operations; track operation.id) {
+            <li>
+              {{ operation.action }} · {{ operation.resource.path }} ·
+              {{ operation.result }}
+            </li>
+          }
+        </ul>
+        <h3>Access layers</h3>
+        <ol>
+          @for (layer of result.layers; track layer.layerId) {
+            <li>
+              <strong>{{ layer.source.ownerId }}</strong>
+              · {{ layer.source.provider }} ·
+              {{ accessStateLabel(layer.aclState) }} ·
+              {{ layer.result }}
+              @if (layer.source.reference) {
+                · {{ layer.source.reference }}
+              }
+              @for (decision of layer.decisions; track decision.operationId) {
+                @if (decision.policyRef) {
+                  · {{ decision.policyRef.policyId }}
+                  @if (decision.policyRef.ruleId) {
+                    / {{ decision.policyRef.ruleId }}
+                  }
+                }
+              }
+            </li>
+          }
+        </ol>
+        @if (result.blockers.length) {
+          <h3>Blockers</h3>
+          <ul>
+            @for (blocker of result.blockers; track $index) {
+              <li>
+                {{ blocker.code }} · {{ blocker.scope }}
+                @if (blocker.layerId) {
+                  · {{ blocker.layerId }}
+                }
+                @if (blocker.policyRef) {
+                  · {{ blocker.policyRef.policyId }}
+                }
+              </li>
+            }
+          </ul>
+        }
+        @if (result.restrictions.length) {
+          <h3>Limits</h3>
+          <ul>
+            @for (restriction of result.restrictions; track restriction.id) {
+              <li>
+                {{ restrictionLabel(restriction.kind) }}
+                @if (restriction.omissionReason) {
+                  · details unavailable
+                }
+                @if (restriction.layerId) {
+                  · {{ restriction.layerId }}
+                }
+                @if (restriction.policyRef) {
+                  · {{ restriction.policyRef.policyId }}
+                }
+              </li>
+            }
+          </ul>
+        }
+        @if (result.coverage.unevaluated.length) {
+          <h3>Could not check</h3>
+          <ul>
+            @for (item of result.coverage.unevaluated; track $index) {
+              <li>{{ item.operationId }} · {{ item.reason }}</li>
+            }
+          </ul>
+        }
+      </ion-card-content>
+    </ion-card>
+  }
+</ion-content>

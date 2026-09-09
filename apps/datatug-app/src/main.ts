@@ -27,6 +27,11 @@ import { DatatugAppComponent } from './app/datatug-app.component';
 import { datatugAppEnvironmentConfig } from './environments/environment';
 import { registerIonicons } from './register-ionicons';
 import { registerPosthog } from './register-posthog';
+import { consumeAgentSessionFragment } from './app/openvaultdb/agent-session';
+
+// Consume and erase the local daemon capability before router initialization,
+// analytics registration, or any component can observe the URL.
+consumeAgentSessionFragment(window.location, window.history);
 
 if (datatugAppEnvironmentConfig.posthog) {
   registerPosthog(datatugAppEnvironmentConfig.posthog);
