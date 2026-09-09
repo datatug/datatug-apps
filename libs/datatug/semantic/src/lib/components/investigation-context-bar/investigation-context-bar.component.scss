@@ -1,0 +1,10 @@
+.investigation-context-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+
+  &__chip--disabled {
+    opacity: 0.6;
+  }
+}

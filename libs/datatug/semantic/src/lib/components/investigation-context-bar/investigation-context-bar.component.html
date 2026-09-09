@@ -1,0 +1,19 @@
+@if (items().length) {
+  <div class="investigation-context-bar">
+    @for (item of items(); track item.id) {
+      <ion-chip
+        [outline]="!item.enabled"
+        class="investigation-context-bar__chip"
+        [class.investigation-context-bar__chip--disabled]="!item.enabled"
+        [attr.title]="item.source"
+        (click)="toggle(item.id, item.enabled)"
+      >
+        <ion-icon
+          [name]="item.enabled ? 'checkmarkCircleOutline' : 'banOutline'"
+        ></ion-icon>
+        <ion-label>{{ item.label }}</ion-label>
+        <ion-icon name="close" (click)="remove(item.id, $event)"></ion-icon>
+      </ion-chip>
+    }
+  </div>
+}

@@ -1,0 +1,86 @@
+<ion-list>
+  @if (meaning(); as meaningText) {
+    <ion-list-header class="context-panel__meaning">
+      <ion-label>{{ meaningText }}</ion-label>
+      <ion-button size="small" fill="outline" (click)="addToContext()">
+        <ion-icon slot="start" name="addCircleOutline"></ion-icon>
+        Add to context
+      </ion-button>
+    </ion-list-header>
+  }
+
+  @if (loading()) {
+    <ion-item lines="none">
+      <ion-spinner name="dots"></ion-spinner>
+    </ion-item>
+  }
+
+  @if (error(); as errorText) {
+    <ion-item lines="none">
+      <ion-text color="danger">{{ errorText }}</ion-text>
+    </ion-item>
+  }
+
+  @if (related().length) {
+    <ion-list-header>
+      <ion-label>Related records</ion-label>
+    </ion-list-header>
+    @for (lookup of related(); track lookup.lookupId) {
+      <ion-item button="true" (click)="toggleRelated(lookup)">
+        <ion-icon slot="start" name="linkOutline"></ion-icon>
+        <ion-label>
+          {{ lookup.label }}
+          <p>{{ lookup.source }} / {{ lookup.collection }}</p>
+        </ion-label>
+        <ion-badge slot="end">{{ countText(lookup.count) }}</ion-badge>
+        <ion-icon
+          slot="end"
+          [name]="
+            expandedRows()[lookup.lookupId]
+              ? 'chevronDownOutline'
+              : 'chevronForwardOutline'
+          "
+        ></ion-icon>
+      </ion-item>
+      @if (expandedLoading()[lookup.lookupId]) {
+        <ion-item lines="none">
+          <ion-spinner name="dots"></ion-spinner>
+        </ion-item>
+      }
+      @if (expandedRows()[lookup.lookupId]; as rows) {
+        <ion-item lines="none" class="context-panel__related-rows">
+          <ion-label>
+            @for (row of rows.rows; track $index) {
+              <p>{{ row.join(', ') }}</p>
+            }
+            @if (!rows.rows.length) {
+              <p>No rows</p>
+            }
+          </ion-label>
+        </ion-item>
+      }
+    }
+  }
+
+  @if (applicable().length || notYet().length) {
+    <ion-list-header>
+      <ion-label>Applicable queries</ion-label>
+    </ion-list-header>
+    @for (query of applicable(); track query.queryId) {
+      <ion-item button="true" (click)="onOpenApplicable(query)">
+        <ion-label>
+          {{ query.queryId }}
+          <p>{{ chainText(query.chain) }}</p>
+        </ion-label>
+      </ion-item>
+    }
+    @for (query of notYet(); track query.queryId) {
+      <ion-item lines="none" color="light">
+        <ion-label>
+          {{ query.queryId }}
+          <p>not yet applicable — needs {{ missingText(query.missing) }}</p>
+        </ion-label>
+      </ion-item>
+    }
+  }
+</ion-list>

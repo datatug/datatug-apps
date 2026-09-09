@@ -1,0 +1,11 @@
+.context-panel__meaning {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.context-panel__related-rows {
+  font-size: 0.85rem;
+  --background: var(--ion-color-light, #f4f5f8);
+}
