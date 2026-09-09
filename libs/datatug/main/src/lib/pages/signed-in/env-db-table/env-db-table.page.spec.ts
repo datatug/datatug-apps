@@ -276,6 +276,7 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
     expect(routerMock.navigate).toHaveBeenCalledWith(
       ['/store', 'localhost:8989', 'project', 'demo-project', 'query', 'customer-invoices'],
       {
+        queryParams: { id: 'customer-invoices' },
         state: {
           bindings: [
             { parameterId: 'CustomerId', entity: 'Customer', field: 'ID', value: 5 },

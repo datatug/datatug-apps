@@ -70,9 +70,53 @@ what it logged for a request.
 ## Known gap this harness works around (not this stream's to fix)
 
 J1 navigates directly to the Album table's URL instead of clicking a table
-row to get there, because `EnvDbPageComponent`'s row-click handler
-(`libs/datatug/main/src/lib/pages/signed-in/env-db/env-db-page.component.ts`)
-builds a URL without the leading `store` segment and never matches
-`datatugRoutes`. Phase 1 plan task 2 ("make the `EnvDbPageComponent` route
-resolve") owns that fix. Swap the `page.goto` for a real click on task 2's
-completion.
+row to get there. `EnvDbPageComponent`'s row-click handler was fixed by
+stream S9b (2026-09-09 — see `env-db-page.component.spec.ts` /
+`datatug-nav.service.spec.ts`), so a real click-through would work now; J1
+still uses the direct URL to keep proving the grid-render/agent-contract
+mechanism independent of that page's own navigation.
+
+## Known blockers, not fixable in this repo (as of 2026-09-09)
+
+Every journey test (J1, J2, J3) currently fails against a `datatug-cli` main
+build. Two separate causes, both outside `datatug-apps`:
+
+1. **Fixed here**: this suite's dev server and agent both used to bind
+   `127.0.0.1`, but `datatug-cli`'s CORS origin check
+   (`github.com/sneat-co/sneat-go-core/security.VerifyOrigin`, vendored via
+   `apicore.Execute`) allow-lists the literal hostname `localhost`, not
+   `127.0.0.1` — every real request from the page was blocked by the
+   browser's own CORS enforcement. Fixed by serving the dev server (and
+   therefore the page origin) from `http://localhost:4200` instead — see
+   `../../playwright.config.ts`'s `use.baseURL` / `webServer` comment for the
+   `curl` repro.
+2. **Not fixable here — a `datatug-cli`/`sneat-go-core` defect**: even from
+   an allowed origin, any request that reaches
+   `apicore.Execute`/`VerifyRequest` (e.g. `GET
+   /datatug/projects/project_summary`, which the project page needs just to
+   show its title) panics server-side with `GetAuthTokenFromHttpRequest is
+   nil` and the connection closes with no response. Reproduced directly:
+   `curl -H "Origin: http://localhost:4200"
+   ".../datatug/projects/project_summary?id=<id>"` → `Empty reply from
+   server`; the agent's own log shows `http: panic serving ...:
+   GetAuthTokenFromHttpRequest is nil` at
+   `sneat-go-core@v0.67.3/apicore/request_validation.go:121`.
+   `apicore.GetAuthTokenFromHttpRequest` is a package-level function var
+   every consumer must set at startup
+   (`sneat-go-core/apicore/request_validation.go:105`) — `datatug-cli` never
+   does (`grep -rn GetAuthTokenFromHttpRequest` in that repo finds nothing),
+   so this panics unconditionally for every client on every endpoint routed
+   through `handle()`/`apicore.Execute` (`/datatug/exec/select` and
+   `/datatug/exec/run_query` bypass it — they call their `api.*` functions
+   directly — but `/datatug/projects/project_summary` and most other routes
+   in `pkg/server/endpoints/routes.go` do not). This blocks J1 before it can
+   confirm the project loaded, and therefore J2/J3 too (they navigate to the
+   same project first). Needs a `datatug-cli` fix — wire
+   `apicore.GetAuthTokenFromHttpRequest` (e.g. to a no-auth-required
+   passthrough for the local `serve` command) — before any journey test can
+   pass.
+
+J2 additionally needs `GET /datatug/semantic/columns`, `GET
+/datatug/semantic/related` and `POST /datatug/queries/applicable`, none of
+which exist on `datatug-cli` main yet. See `journey.spec.ts`'s file header
+and per-test comments for the exact assertion each currently fails at.

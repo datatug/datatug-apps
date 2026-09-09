@@ -7,11 +7,57 @@ import { expect, test } from './fixtures/agent-server';
  * backend never proves the contract").
  *
  * Walks user journeys J1–J4 from Feature core-investigation-loop
- * (datatug/datatug spec/features/core-investigation-loop/README.md). Only
- * J1 is implemented here (Phase 1 plan task 3, AC:journey-harness); J2–J4
- * are `test.fixme` skeletons for plan task 10, which lands after tasks
- * 7–9 (related lookups, applicable queries, context panel, auto-binding)
- * are in.
+ * (datatug/datatug spec/features/core-investigation-loop/README.md). J1
+ * (Phase 1 plan task 3, AC:journey-harness), J2 and J3 (plan task 10) are
+ * all filled in below and all currently FAIL against a `datatug-cli` main
+ * build — deliberately left un-skipped per this stream's brief ("keep them
+ * un-skipped and report the exact failure, do not hide it"). Two blockers,
+ * both outside `datatug-apps` (nothing in this repo can fix them):
+ *
+ * 1. (found while fixing this suite's own host mismatch, and now fixed here)
+ *    `datatug-cli`'s CORS origin check
+ *    (github.com/sneat-co/sneat-go-core/security.VerifyOrigin, vendored via
+ *    apicore.Execute) allow-lists literal "localhost" but not "127.0.0.1" —
+ *    this suite's dev server and agent both used to bind 127.0.0.1
+ *    (ERR wasn't a 404, it was "Http failure response ... 0 Unknown Error",
+ *    i.e. the browser's own CORS block). Fixed in
+ *    ../../playwright.config.ts (dev server now serves from
+ *    "http://localhost:4200"); see that file's comment for the repro.
+ * 2. (NOT fixable here — a datatug-cli/sneat-go-core defect) Even from an
+ *    allowed origin, every request that reaches
+ *    `apicore.Execute`/`VerifyRequest` (e.g. `GET /datatug/projects/
+ *    project_summary`, which the project page needs just to render its
+ *    title — this is what J1 waits on first) panics server-side with
+ *    "GetAuthTokenFromHttpRequest is nil" and the connection closes with no
+ *    response (reproduced directly: `curl -H "Origin: http://localhost:4200"
+ *    ".../datatug/projects/project_summary?id=..."` → "Empty reply from
+ *    server"; the agent's own log shows `http: panic serving ...:
+ *    GetAuthTokenFromHttpRequest is nil` at sneat-go-core's
+ *    apicore/request_validation.go:121). `apicore.GetAuthTokenFromHttpRequest`
+ *    is a package-level function var every consumer must set at startup
+ *    (see sneat-go-core/apicore/request_validation.go:105) —
+ *    `grep -rn GetAuthTokenFromHttpRequest` in datatug-cli finds no call
+ *    setting it, so this panics unconditionally, for any client, on any
+ *    endpoint that funnels through `handle()`/`apicore.Execute`
+ *    (`/datatug/exec/select` and `/datatug/exec/run_query` bypass it and
+ *    are unaffected — they call their `api.*` functions directly — but
+ *    `/datatug/projects/project_summary` does not). This blocks J1 before
+ *    it can even confirm the project loaded, so it also blocks J2/J3
+ *    (which navigate to the same project first). Needs a datatug-cli fix
+ *    (wire `apicore.GetAuthTokenFromHttpRequest`, e.g. to a no-auth-required
+ *    passthrough for the local `serve` command) before ANY journey test can
+ *    pass; re-run this suite once that lands.
+ *
+ * J2 additionally needs `GET /datatug/semantic/columns`, `GET
+ * /datatug/semantic/related` and `POST /datatug/queries/applicable`, none
+ * of which exist on datatug-cli main yet (`grep -rn semantic pkg/server
+ * pkg/api` in that repo finds nothing) — see its own test comment. J3's
+ * remainder (Investigation Context bar/service, binding "from context") is
+ * pure client-side state once blocker 2 is cleared — no further server
+ * contract needed for it specifically.
+ *
+ * J4 stays `test.fixme` — it depends on plan task 6 (`--as support` policy
+ * enforcement), out of this stream's scope.
  *
  * See ./README.md for the env vars this suite reads and what CI must
  * provide to run it instead of skipping it.
@@ -23,6 +69,7 @@ const DEMO_DB_CATALOG_ID = 'chinook-local'; // .../environments/local/catalogs/c
 // Chinook's sqlite3 catalog uses schema "main" — see
 // datatug-demo-projects/demo-project-1/dbmodels/chinook/main/tables/Album.
 const ALBUM_TABLE_TYPE = 'main.Album';
+const CUSTOMER_TABLE_TYPE = 'main.Customer';
 
 test.describe('J1 — first useful result (the null-action path)', () => {
   test('open the demo project, open Album, rows render and the agent log shows the request', async ({
@@ -33,24 +80,25 @@ test.describe('J1 — first useful result (the null-action path)', () => {
 
     // "the browser opens the demo project" — real navigation, no interception.
     await page.goto(projectUrl);
+    // EXPECTED TO FAIL here right now — not this stream's doing. The project
+    // page's title comes from `GET /datatug/projects/project_summary`, which
+    // panics server-side on datatug-cli main before answering (see the file
+    // header comment, blocker 2: `apicore.GetAuthTokenFromHttpRequest` is
+    // never wired). Once that's fixed, this is the real mechanism check.
     await expect(
       page.getByText('DataTug Demo Project 1', { exact: false }),
     ).toBeVisible({ timeout: 15_000 });
 
-    // "the user clicks Album": the UI's own click path from here (tables
-    // list -> row click -> table page) is currently broken independently of
-    // this stream — EnvDbPageComponent's rowClick handler
+    // "the user clicks Album": EnvDbPageComponent's row-click handler
     // (libs/datatug/main/src/lib/pages/signed-in/env-db/env-db-page.component.ts)
-    // builds `['project', '<id>@<storeId>', 'env', ...]`, a URL with no
-    // leading "store" segment, so it never matches datatugRoutes
-    // (`store/:storeId/project/:projectId/...`). datatug-apps Phase 1 plan
-    // task 2 ("make the EnvDbPageComponent route resolve") owns that fix;
-    // S2 owns libs/datatug/main for this stream, so it is out of scope
-    // here. Until task 2 lands, this test navigates to the equivalent,
-    // already-correct contract route directly, so the harness mechanics —
-    // and the mechanism assertions below — are provable independently of
-    // that unrelated, already-tracked bug. Swap this `goto` for a real
-    // click once task 2 lands.
+    // and the `goTable()` URL it drove (services/nav/datatug-nav.service.ts)
+    // were both fixed by this stream (S9b deliverable 3 — see
+    // env-db-page.component.spec.ts / datatug-nav.service.spec.ts for the
+    // unit coverage), so a real click-through would work now. This test
+    // still navigates to the table URL directly rather than switching to a
+    // click, to keep proving the grid-render/agent-contract mechanism below
+    // independent of that page's own (now separately covered) navigation
+    // behaviour.
     const albumTableUrl =
       `${projectUrl}/env/${DEMO_ENV_ID}/db/${DEMO_DB_CATALOG_ID}` +
       `/table/${ALBUM_TABLE_TYPE}`;
@@ -74,42 +122,142 @@ test.describe('J1 — first useful result (the null-action path)', () => {
 });
 
 test.describe('J2 — from a value to related knowledge', () => {
-  test.fixme(
-    'clicking a CustomerId cell shows related records and applicable queries, running one binds the parameter',
-    async () => {
-      // TODO (plan task 10, after tasks 7-9 land):
-      // 1. Open the Customer table, click a CustomerId=5 cell.
-      // 2. Assert the context panel shows "Customer.ID = 5" and related
-      //    lookups: Invoices (chinook, count 7), Support notes
-      //    (support-notes / inGitDB, count 2), Country facts (REST Countries,
-      //    HTTP). Assert the rows come from the server (agent log), not a
-      //    browser-built query.
-      // 3. Assert applicable queries list "Customer invoices" and
-      //    "Customer purchases by genre" with resolution chain
-      //    "CustomerId -> Customer.ID (declared) -> requires Customer.ID",
-      //    and "Invoice lines" under "not yet applicable — needs Invoice.ID".
-      // 4. Click "Customer invoices"; assert the query page shows
-      //    "Customer.ID · from selection", and a run returns invoices for
-      //    customer 5 (mechanism: agent log for the run_query request).
-    },
-  );
+  test('clicking a CustomerId cell shows related records and applicable queries, running one binds the parameter', async ({
+    agentServer,
+    page,
+  }) => {
+    const projectUrl = `/store/${agentServer.storeId}/project/${DEMO_PROJECT_ID}`;
+    const customerTableUrl =
+      `${projectUrl}/env/${DEMO_ENV_ID}/db/${DEMO_DB_CATALOG_ID}` +
+      `/table/${CUSTOMER_TABLE_TYPE}`;
+
+    // "the user opens the Customer table" — same already-correct contract
+    // route J1 uses (see its comment on why: EnvDbPageComponent's row-click
+    // -> table-page navigation is exercised separately, not by this test).
+    await page.goto(customerTableUrl);
+    // EXPECTED TO FAIL here right now (file header, blocker 2): this page's
+    // EnvDbTablePageComponent.loadData() needs `this.project`, populated
+    // from DatatugNavContextService's project tracking, which itself needs a
+    // project-loading call that panics server-side on datatug-cli main — so
+    // the grid never renders any row to click. Once blocker 2 is fixed, this
+    // gates on blocker 1 below instead.
+    await expect(page.locator('.tabulator-row').first()).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // "the user clicks a CustomerId cell" — EnvDbTablePageComponent.onGridRowClick
+    // (this stream) recovers the clicked column via Tabulator's
+    // `tabulator-field` attribute and looks it up in `semanticColumns()`, which
+    // is populated only from `GET /datatug/semantic/columns`
+    // (loadSemanticColumns()). That route does not exist on datatug-cli main
+    // yet, so the lookup never finds a mapping and `selection` never gets set
+    // — the context panel never opens, blocking here once the row above
+    // renders. Once /datatug/semantic/columns exists, everything below is
+    // the real, unmocked check of this stream's wiring.
+    const cell = page
+      .locator('.tabulator-row')
+      .first()
+      .locator('[tabulator-field="CustomerId"]');
+    await expect(cell).toBeVisible({ timeout: 15_000 });
+    const customerId = (await cell.textContent())?.trim();
+    await cell.click();
+
+    await expect(page.locator('sneat-datatug-context-panel')).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(
+      page.getByText(`Customer.ID = ${customerId}`, { exact: false }),
+    ).toBeVisible({ timeout: 10_000 });
+
+    // "related records" and "applicable queries" — GET /datatug/semantic/related
+    // and POST /datatug/queries/applicable (ContextPanelComponent.load()); also
+    // not implemented server-side yet. ApplicableQuery items render by
+    // `queryId`, not title (context-panel.component.html), so this looks for
+    // the saved-query ids under datatug-demo-projects/.../queries/customers/.
+    await expect(page.getByText('customer-invoices', { exact: false })).toBeVisible(
+      { timeout: 15_000 },
+    );
+    await expect(
+      page.getByText('customer-purchases-by-genre', { exact: false }),
+    ).toBeVisible({ timeout: 10_000 });
+
+    // "running one binds the parameter" — click through to the query page
+    // (EnvDbTablePageComponent.onOpenQuery) and run it.
+    await page.getByText('customer-invoices', { exact: false }).click();
+    await expect(
+      page.getByText('Customer.ID', { exact: false }).getByText('from selection', {
+        exact: false,
+      }),
+    ).toBeVisible({ timeout: 10_000 });
+    await page.getByText('Run query', { exact: false }).click();
+    await expect
+      .poll(() => agentServer.readLog(), { timeout: 15_000 })
+      .toMatch(/\/datatug\/exec\/run_query/);
+  });
 });
 
 test.describe('J3 — carrying context', () => {
-  test.fixme(
-    'adding a value to the Investigation Context binds it on another query; disabling the chip clears it',
-    async () => {
-      // TODO (plan task 10, after task 9 lands):
-      // 1. Select Customer.ID = 5, click "Add to context".
-      // 2. Open the saved query "Customer purchases by genre" from the
-      //    queries list; assert its Customer.ID parameter shows a chip
-      //    bound "from context".
-      // 3. Disable the chip; assert the parameter empties and the run
-      //    button requires a value before running (REQ:no-hidden-filters —
-      //    a query must never be silently constrained by context).
-      // 4. Run it; assert the results header lists the bindings applied.
-    },
-  );
+  test('adding a value to the Investigation Context binds it on another query; disabling the chip clears it', async ({
+    agentServer,
+    page,
+  }) => {
+    const projectUrl = `/store/${agentServer.storeId}/project/${DEMO_PROJECT_ID}`;
+    const customerTableUrl =
+      `${projectUrl}/env/${DEMO_ENV_ID}/db/${DEMO_DB_CATALOG_ID}` +
+      `/table/${CUSTOMER_TABLE_TYPE}`;
+
+    await page.goto(customerTableUrl);
+    // EXPECTED TO FAIL here right now — same blocker 2 as J2 (file header):
+    // the grid never renders a row to click. Once that's fixed, this gates
+    // on the same GET /datatug/semantic/columns gap J2 hits next.
+    await expect(page.locator('.tabulator-row').first()).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // "select Customer.ID = 5, click Add to context" — same
+    // /datatug/semantic/columns blocker as J2 (its own comment above).
+    // Unlike J2, everything *after* this point (the Investigation Context
+    // bar/service, and a query page binding a parameter "from context") is
+    // pure client-side state — no further server contract is needed once
+    // semantic/columns exists.
+    const cell = page
+      .locator('.tabulator-row')
+      .first()
+      .locator('[tabulator-field="CustomerId"]');
+    await expect(cell).toBeVisible({ timeout: 15_000 });
+    await cell.click();
+    await expect(page.locator('sneat-datatug-context-panel')).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.getByText('Add to context', { exact: false }).click();
+
+    // REQ:context-basket — visible on every project screen via
+    // ProjectMenuTopComponent -> InvestigationContextBarComponent.
+    await expect(
+      page.locator('sneat-datatug-investigation-context-bar'),
+    ).toContainText(/Customer\.ID/, { timeout: 10_000 });
+
+    // Open the saved query "Customer purchases by genre" and assert its
+    // Customer.ID parameter is bound "from context" (INTEGRATION.md §6 —
+    // InvestigationContextService.bindingsFor(), no server call).
+    await page.goto(
+      `${projectUrl}/query/customer-purchases-by-genre?id=customer-purchases-by-genre`,
+    );
+    await expect(
+      page.getByText('Customer.ID', { exact: false }).getByText('from context', {
+        exact: false,
+      }),
+    ).toBeVisible({ timeout: 10_000 });
+
+    // Disabling/clearing the chip empties the binding (REQ:no-hidden-filters —
+    // a query must never be silently constrained by context).
+    await page.getByTitle('Clear this binding').click();
+    await expect(
+      page.getByText('No parameters bound from selection or context', {
+        exact: false,
+      }),
+    ).toBeVisible({ timeout: 10_000 });
+  });
 });
 
 test.describe('J4 — restricted principal', () => {

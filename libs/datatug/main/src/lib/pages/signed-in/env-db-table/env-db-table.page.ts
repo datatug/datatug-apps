@@ -527,7 +527,18 @@ from ${from}`;
           'query',
           request.queryId,
         ],
-        { state: { bindings: request.bindings } },
+        {
+          // QueryPageComponent.trackQueryParams() resolves the query it opens from
+          // the `id` *query-string* param (`route.queryParamMap`), not the
+          // `:queryId` *path* segment above — the same contract
+          // DatatugNavService.goQuery() (the queries-list page's own "open a
+          // query" path) already follows. Without this, the path segment is
+          // cosmetic only and the page opens a blank/new query instead of
+          // `request.queryId`. Found while writing this stream's J2/J3 journey
+          // e2e (plan task 10) against the real app.
+          queryParams: { id: request.queryId },
+          state: { bindings: request.bindings },
+        },
       )
       .catch((err) => this.errorLogger.logError(err, 'Failed to open query'));
   };

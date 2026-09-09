@@ -18,7 +18,22 @@ export default defineConfig({
     ],
   ],
   use: {
-    baseURL: 'http://127.0.0.1:4200',
+    // "localhost", not "127.0.0.1": the web app's own *page origin* becomes
+    // the `Origin` header on every request a real agent sees (journey
+    // project below), and sneat-go-core's security.VerifyOrigin
+    // (github.com/sneat-co/sneat-go-core/security, vendored into
+    // datatug-cli's apicore.Execute request pipeline) allow-lists the
+    // literal hostname "localhost" but NOT "127.0.0.1" — a real GET from an
+    // "http://127.0.0.1:4200" page origin gets a hard 403 "Unsupported
+    // origin" from the agent (found running the journey suite against a
+    // datatug-cli main build: `curl -H "Origin: http://127.0.0.1:4200"
+    // .../project_summary` reproduces it directly; "http://localhost:4200"
+    // does not). Vite's dev-server itself also refuses any request whose
+    // Host header doesn't match what it was told to bind to (ERR_EMPTY_RESPONSE,
+    // no HTTP response at all) — see the matching --host below — so this and
+    // the dev-server's own bind address must agree, which is why this isn't
+    // scoped to just the "journey" project.
+    baseURL: 'http://localhost:4200',
     trace: 'retain-on-failure',
   },
   // Shared by every project below, including "journey": the app resolves
@@ -28,8 +43,8 @@ export default defineConfig({
   // names its own agent's host:port.
   webServer: {
     command:
-      'pnpm nx run datatug-app:serve:development --host 127.0.0.1 --port 4200',
-    url: 'http://127.0.0.1:4200',
+      'pnpm nx run datatug-app:serve:development --host localhost --port 4200',
+    url: 'http://localhost:4200',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },
