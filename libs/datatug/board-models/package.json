@@ -1,0 +1,6 @@
+{
+  "name": "@datatug/board-models",
+  "version": "0.0.1",
+  "description": "The DataTug<->Dashboardius board contract: Board/BoardRow/BoardCard/BoardWidget types, field-for-field from datatug-core's boards.go.",
+  "sideEffects": false
+}

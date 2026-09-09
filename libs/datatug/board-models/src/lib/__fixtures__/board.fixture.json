@@ -1,0 +1,112 @@
+{
+  "id": "sales-overview",
+  "title": "Sales overview",
+  "folder": "~/dashboards",
+  "tags": ["sales", "demo"],
+  "userIds": ["u1"],
+  "access": "protected",
+  "rows": [
+    {
+      "minHeight": "240px",
+      "cards": [
+        {
+          "id": "card-revenue",
+          "title": "Revenue by month",
+          "cols": 6,
+          "widget": {
+            "name": "SQL",
+            "data": {
+              "title": "Revenue by month",
+              "parameters": [
+                {
+                  "id": "year",
+                  "type": "integer",
+                  "title": "Year",
+                  "isRequired": true,
+                  "defaultValue": 2026
+                }
+              ],
+              "sql": {
+                "query": "SELECT month, SUM(amount) FROM invoices WHERE year = @year GROUP BY month"
+              }
+            }
+          }
+        },
+        {
+          "id": "card-breakdown",
+          "title": "Breakdown",
+          "cols": 6,
+          "widget": {
+            "name": "tabs",
+            "data": {
+              "title": "Breakdown",
+              "tabs": [
+                {
+                  "title": "By region",
+                  "widget": {
+                    "name": "SQL",
+                    "data": {
+                      "sql": {
+                        "query": "SELECT region, SUM(amount) FROM invoices GROUP BY region"
+                      }
+                    }
+                  }
+                },
+                {
+                  "title": "Live feed",
+                  "widget": {
+                    "name": "HTTP",
+                    "data": {
+                      "request": {
+                        "method": "GET",
+                        "url": "https://example.com/api/sales/live",
+                        "protocol": "https",
+                        "headers": [
+                          { "name": "Accept", "value": "application/json" }
+                        ],
+                        "timeoutThresholdMs": 5000
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "maxHeight": "480px",
+      "cards": [
+        {
+          "id": "card-webhook",
+          "title": "Webhook trigger",
+          "widget": {
+            "name": "HTTP",
+            "data": {
+              "title": "Webhook trigger",
+              "parameters": [
+                {
+                  "id": "customerId",
+                  "type": "string",
+                  "isRequired": true,
+                  "meta": { "entity": "Customer", "field": "ID" },
+                  "lookup": {
+                    "db": "sales",
+                    "sql": "SELECT id FROM customers",
+                    "keyFields": ["id"]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "url": "https://example.com/api/hooks/notify",
+                "content": "{\"customerId\":\"@customerId\"}"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
