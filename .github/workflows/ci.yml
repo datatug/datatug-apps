@@ -82,3 +82,90 @@ jobs:
 
       - name: nx e2e affected
         run: pnpm nx affected --target=e2e --parallel=1 --base=${{ env.NX_BASE }}
+
+  # Walks user journeys J1-J4 (apps/datatug-app/e2e/journey/**, project
+  # "journey" in playwright.config.ts) against a REAL `datatug serve` agent
+  # built from datatug-cli's main branch — no HTTP route interception. See
+  # apps/datatug-app/e2e/README.md for what this suite needs and why it is
+  # not part of the "e2e" job above (that job stubs the agent and runs via
+  # `nx affected`; this one always runs, because it is the thing that proves
+  # the web <-> agent contract, not just that the web app renders).
+  journey-e2e:
+    name: journey e2e (real datatug-cli agent)
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout datatug-apps
+        uses: actions/checkout@v6
+
+      # Public repo (datatug/datatug-cli), main branch, checked out as a
+      # sibling of datatug-apps so DATATUG_BIN below is a plain path outside
+      # this repo's tree and nothing here needs to know about worktrees.
+      - name: Checkout datatug-cli (main)
+        uses: actions/checkout@v6
+        with:
+          repository: datatug/datatug-cli
+          ref: main
+          path: ../datatug-cli
+
+      # Public repo (datatug/datatug-demo-projects), main branch — the demo
+      # project the journey suite drives the agent against.
+      - name: Checkout datatug-demo-projects (main)
+        uses: actions/checkout@v6
+        with:
+          repository: datatug/datatug-demo-projects
+          ref: main
+          path: ../datatug-demo-projects
+
+      - uses: ./.github/actions/pnpm
+
+      - name: Set up Go (version from datatug-cli's go.mod)
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: ../datatug-cli/go.mod
+          cache: true
+          cache-dependency-path: ../datatug-cli/go.sum
+
+      # CGO_ENABLED=0 was verified locally (go1.27.1, 2026-09-09) to build a
+      # working `datatug serve` binary against datatug-cli@main: `go build .`
+      # succeeds, and `serve --project <demo> --as admin` answers
+      # /datatug/ping. datatug-cli still blank-imports the cgo-only
+      # github.com/mattn/go-sqlite3 (main.go) alongside the pure-Go
+      # modernc.org/sqlite driver pkg/secureread uses, but without cgo that
+      # import just compiles to an inert stub rather than failing the build.
+      # If a future datatug-cli change makes this fail, switch to
+      # `CGO_ENABLED=1` (the runner has gcc preinstalled; no extra apt
+      # package is needed for mattn/go-sqlite3's bundled amalgamation) and
+      # update this comment.
+      - name: Build datatug CLI (CGO_ENABLED=0)
+        working-directory: ../datatug-cli
+        run: |
+          mkdir -p "$RUNNER_TEMP/datatug-bin"
+          CGO_ENABLED=0 go build -o "$RUNNER_TEMP/datatug-bin/datatug" .
+          echo "DATATUG_BIN=$RUNNER_TEMP/datatug-bin/datatug" >> "$GITHUB_ENV"
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run journey e2e (real agent, no interception)
+        env:
+          DATATUG_DEMO_DIR: ${{ github.workspace }}/../datatug-demo-projects/demo-project-1
+        run: pnpm exec playwright test -c apps/datatug-app/playwright.config.ts --project=journey
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: journey-e2e-playwright-report
+          path: coverage/apps/datatug-app-e2e/report
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload agent logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: journey-e2e-agent-logs
+          path: coverage/apps/datatug-app-e2e/journey/*.log
+          if-no-files-found: ignore
+          retention-days: 7
