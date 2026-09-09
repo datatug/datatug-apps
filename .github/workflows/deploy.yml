@@ -1,0 +1,64 @@
+name: Deploy
+
+# Builds apps/datatug-app and deploys it to the "datatug-apps" Cloudflare
+# Worker (static assets, see wrangler.jsonc) so https://datatug.app tracks
+# main instead of drifting behind it.
+#
+# Deploy mechanism note (2026-09-09 investigation, see PR body for full
+# findings): no deploy workflow existed in this repo before this file, and
+# repo-level Actions secrets/environments were both empty
+# (`gh api repos/datatug/datatug-apps/actions/secrets` -> 0,
+# `gh api repos/datatug/datatug-apps/environments` -> 0). wrangler.jsonc's
+# git history contains a commit from
+# `cloudflare-workers-and-pages[bot]` (93dcd7f, "Update wrangler config name
+# to datatug-apps"), which is the signature of Cloudflare's own Workers
+# Builds git integration reconciling the dashboard project name with this
+# file — i.e. the live site was very likely deployed via Cloudflare's
+# native GitHub App integration, not GitHub Actions, and not CI in this
+# repo. If that dashboard integration is still connected to this repo on
+# push to main, it and this workflow would both try to deploy on every
+# push — check the Cloudflare dashboard (Workers & Pages > datatug-apps >
+# Settings > Build) and disable one of the two paths.
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'docs/**'
+      - '.git-hooks/**'
+  workflow_dispatch: {}
+
+concurrency:
+  # Queue rather than cancel: never leave a push undeployed because a later
+  # push cancelled it mid-flight.
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build & deploy to Cloudflare Workers
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/pnpm
+
+      - name: nx build datatug-app
+        # Explicit target, not `nx affected`: a deploy always builds the
+        # exact app that ships, regardless of what else changed in the push.
+        run: pnpm exec nx build datatug-app
+
+      - name: Deploy to Cloudflare
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --config wrangler.jsonc
