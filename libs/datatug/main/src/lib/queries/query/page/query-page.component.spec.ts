@@ -305,6 +305,29 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     expect(component.hasBlockedBindings()).toBe(false);
   });
 
+  it('AC:bound-from-selection literal wording — renders "5 · from selection"', async () => {
+    component = await createComponent({ bindings: [selectionBinding] }); // selection = 5
+    const [selectionRendered] = component.visibleBindings();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((component as any).bindingFieldLabel(selectionRendered)).toBe('Customer.ID');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((component as any).bindingValueLabel(selectionRendered)).toBe('5 · from selection');
+  });
+
+  it('AC:context-carries literal wording — renders "7 · from context"', async () => {
+    component = await createComponent({});
+    investigationContext.addValue({
+      entityField: { entity: 'Customer', field: 'ID' },
+      value: 7,
+      label: 'Customer.ID = 7',
+      source: 'grid',
+    });
+    TestBed.tick();
+    const [contextRendered] = component.visibleBindings();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((component as any).bindingValueLabel(contextRendered)).toBe('7 · from context');
+  });
+
   it('clearBinding removes a binding from effectiveBindings without touching bindings() presence', async () => {
     component = await createComponent({ bindings: [selectionBinding] });
 
