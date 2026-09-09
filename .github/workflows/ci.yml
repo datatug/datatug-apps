@@ -76,6 +76,12 @@ jobs:
           # v0.75.0; keep the immutable revision aligned with the deployed API.
           ref: 19d1be4231f2d92877290d38801db84cafa26dc2
           path: .ci/sneat-core-modules
+          # sneat-core-modules is a private repository (since 2026-09-09), so the
+          # default GITHUB_TOKEN cannot read it. SNEAT_CI_READWRITE_TOKEN is the
+          # canonical sneat-co CI token; it must exist as a datatug org or
+          # datatug-apps repo secret. When it is absent the checkout falls back
+          # to github.token and fails exactly as before.
+          token: ${{ secrets.SNEAT_CI_READWRITE_TOKEN || github.token }}
 
       - uses: actions/setup-go@v6
         with:
