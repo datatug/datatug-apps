@@ -16,6 +16,9 @@ export {
   SQLWidgetSettings,
   BOARD_WIDGET_NAME_SQL,
 } from './lib/widget-sql';
+// New export for human review — SQLWidgetSettings.parameters now references
+// this type (widget-query-ref, mirrors boards.go WidgetParameterBinding):
+// export { WidgetParameterBinding } from './lib/widget-sql';
 export {
   HTTPWidgetDef,
   HTTPRequest,
@@ -24,4 +27,7 @@ export {
 } from './lib/widget-http';
 export { TabWidget, TabsWidgetDef } from './lib/widget-tabs';
 export { ParameterLookup } from './lib/parameter-lookup';
-export { BoardParameterDef, BoardParameterFieldRef } from './lib/widget-parameter';
+export {
+  BoardParameterDef,
+  BoardParameterFieldRef,
+} from './lib/widget-parameter';

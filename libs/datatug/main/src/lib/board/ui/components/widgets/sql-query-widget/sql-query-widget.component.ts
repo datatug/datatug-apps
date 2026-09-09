@@ -20,8 +20,6 @@ import { QueryType } from '../../../../../models/definition/query-def';
 import { IBoardContext } from '../../../../../models/definition/board/board';
 import { IRecordsetResult, IRecordset } from '../../../../../dto/execute';
 
-const reSqlParams = /@(\w+)/;
-
 @Component({
   selector: 'sneat-datatug-sql-query-widget',
   templateUrl: './sql-query-widget.component.html',
@@ -40,7 +38,9 @@ export class SqlQueryWidgetComponent implements OnChanges, OnDestroy {
   readonly level = input<number>();
   // TODO: Skipped for migration because:
   //  Your application code writes to the input. This prevents migration.
-  readonly tab = model<(QueryType | 'grid' | 'card') | undefined>(QueryType.SQL);
+  readonly tab = model<(QueryType | 'grid' | 'card') | undefined>(
+    QueryType.SQL,
+  );
   readonly sqlWidgetDef = input<SQLWidgetDef>();
   readonly boardContext = input<IBoardContext>();
 
@@ -69,27 +69,18 @@ export class SqlQueryWidgetComponent implements OnChanges, OnDestroy {
   ngOnChanges(changes: SimpleChanges): void {
     const def = this.sqlWidgetDef();
     if ((changes['sqlWidgetDef'] || changes['boardContext']) && def) {
-      let sql = def.sql.query;
-      const match = sql.match(reSqlParams);
-      if (match) {
-        const paramName = match[1];
-        const parameter = this.boardContext()?.parameters[paramName];
-        if (parameter) {
-          switch (parameter.type) {
-            case 'string':
-            case 'GUID':
-            case 'UUID':
-              sql = sql.replace(match[0], `'${parameter.value}'`);
-              break;
-            case 'integer':
-              sql = sql.replace(match[0], `${parameter.value}`);
-          }
-        }
-      }
-      this.sql = sql;
-      // boards.go's SQLWidgetSettings is `{ query }` only — no db/env
-      // execution target. See @datatug/board-models README "Open questions
-      // for boards.go (datatug-core)".
+      // boards.go's SQLWidgetSettings now references a query by id
+      // (`sql.queryId`) instead of carrying inline SQL text — see the
+      // widget-query-ref decision recorded in @datatug/board-models
+      // README "Open questions for boards.go (datatug-core)". Resolving
+      // queryId to query text (and substituting bound parameters) requires
+      // a server call that does not exist yet, so this widget cannot
+      // render SQL text until that lands (Phase 3,
+      // REQ:board-persistence-and-query-binding). This component is
+      // unreachable dead code today: the `@case ('SQL')` branch in
+      // board-widget.component.html has been commented out since
+      // 2026-03-04.
+      this.sql = undefined;
       this.changeDetectorRef.markForCheck();
     }
   }
