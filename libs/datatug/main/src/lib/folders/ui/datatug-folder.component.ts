@@ -5,7 +5,7 @@ import {
   OnDestroy,
   SimpleChanges,
   inject,
-  input
+  input,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
@@ -199,6 +199,14 @@ export class DatatugFolderComponent implements OnChanges, OnDestroy {
               : [];
             // console.log('DatatugFolderComponent => folder:', folder);
           },
+          // Log, never rethrow: a folder that cannot be watched (e.g. the
+          // GitHub store's "not implemented", an unknown store) must not
+          // become an unhandled error that takes the project page down.
+          error: (err) =>
+            this.errorLogger.logError(
+              err,
+              `Failed to watch folder "${this.path()}" of project ${projectRef.projectId} at store ${projectRef.storeId}`,
+            ),
         });
     }
   }

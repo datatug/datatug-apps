@@ -74,6 +74,23 @@ export function storeIdToDisplayLabel(storeId?: string | null): string {
   }
 }
 
+/**
+ * True when a store id addresses a DataTug CLI agent (`datatug serve`) —
+ * bare `host:port`, or `http-`/`https-` prefixed — in any of the forms
+ * `parseDatatugStoreRef` accepts. Never throws: an unparseable id is simply
+ * not an agent, so callers can branch on it before deciding whether to fail.
+ */
+export function isAgentStoreId(storeId?: string | null): boolean {
+  if (!storeId) {
+    return false;
+  }
+  try {
+    return parseDatatugStoreRef(storeId).type === 'agent';
+  } catch {
+    return false;
+  }
+}
+
 export interface IDatatugStoreContext {
   readonly ref: IStoreRef;
   readonly brief?: IDatatugStoreBrief;
