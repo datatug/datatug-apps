@@ -18,8 +18,7 @@ import {
   IonToolbar,
 } from '@ionic/angular';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
-import { parseStoreRef } from '@sneat/core';
-import { IProjectContext } from '../../nav/nav-models';
+import { IProjectContext, parseDatatugStoreRef } from '../../nav/nav-models';
 import { DatatugNavService } from '../../services/nav/datatug-nav.service';
 import { DatatugServicesProjectModule } from '../../services/project/datatug-services-project.module';
 import { ProjectService } from '../../services/project/project.service';
@@ -90,7 +89,7 @@ export class NewProjectFormComponent implements ViewDidEnter {
             );
           const projectContext: IProjectContext = {
             ref: { projectId, storeId },
-            store: { ref: parseStoreRef(storeId) },
+            store: { ref: parseDatatugStoreRef(storeId) },
           };
           this.nav.goProject(projectContext);
         },

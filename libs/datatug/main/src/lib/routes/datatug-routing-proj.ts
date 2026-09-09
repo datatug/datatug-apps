@@ -1,5 +1,6 @@
 import { RouterModule, Routes } from '@angular/router';
 import { NgModule } from '@angular/core';
+import { ENABLE_EMPTY_SHELL_PAGES } from '../core/feature-flags';
 import {
   routingParamBoard,
   routingParamDbCatalogId,
@@ -10,6 +11,66 @@ import {
   routingParamEnvironmentId,
   routingParamServerType,
 } from '../core/datatug-routing-params';
+
+// The empty-shell pages (Widgets, Tags, Resources, Variables, DB models,
+// Diff) — see `ENABLE_EMPTY_SHELL_PAGES`. Left out of `datatugProjectRoutes`
+// entirely while the flag is off, so there is no route for a user (or a
+// stale link) to land on.
+const emptyShellProjectRoutes: Routes = [
+  {
+    path: 'widgets',
+    loadComponent: () =>
+      import('../pages/signed-in/widgets/widgets-page.component').then(
+        (m) => m.WidgetsPageComponent,
+      ),
+  },
+  {
+    path: 'tags',
+    loadComponent: () =>
+      import('../pages/signed-in/tags/tags-page.component').then(
+        (m) => m.TagsPageComponent,
+      ),
+  },
+  {
+    path: 'dbmodel/:' + routingParamDbModelId,
+    loadComponent: () =>
+      import('../pages/signed-in/db-schema/db-model-page.component').then(
+        (m) => m.DbModelPageComponent,
+      ),
+  },
+  {
+    path: 'dbmodel',
+    redirectTo: 'dbmodels',
+  },
+  {
+    path: 'dbmodels',
+    loadComponent: () =>
+      import('../pages/signed-in/db-schemas/db-models-page.component').then(
+        (m) => m.DbModelsPageComponent,
+      ),
+  },
+  {
+    path: 'resources',
+    loadComponent: () =>
+      import('../pages/signed-in/resources/resources-page.component').then(
+        (m) => m.ResourcesPageComponent,
+      ),
+  },
+  {
+    path: 'variables',
+    loadComponent: () =>
+      import('../pages/signed-in/variables/variables-page.component').then(
+        (m) => m.VariablesPageComponent,
+      ),
+  },
+  {
+    path: 'diff',
+    loadComponent: () =>
+      import('../pages/signed-in/diff/diff-page.component').then(
+        (m) => m.DiffPageComponent,
+      ),
+  },
+];
 
 export const datatugProjectRoutes: Routes = [
   {
@@ -63,56 +124,10 @@ export const datatugProjectRoutes: Routes = [
     redirectTo: 'environments',
   },
   {
-    path: 'widgets',
-    loadComponent: () =>
-      import('../pages/signed-in/widgets/widgets-page.component').then(
-        (m) => m.WidgetsPageComponent,
-      ),
-  },
-  {
-    path: 'tags',
-    loadComponent: () =>
-      import('../pages/signed-in/tags/tags-page.component').then(
-        (m) => m.TagsPageComponent,
-      ),
-  },
-  {
     path: 'project',
     loadComponent: () =>
       import('../pages/signed-in/project/project-page.component').then(
         (m) => m.ProjectPageComponent,
-      ),
-  },
-  {
-    path: 'dbmodel/:' + routingParamDbModelId,
-    loadComponent: () =>
-      import('../pages/signed-in/db-schema/db-model-page.component').then(
-        (m) => m.DbModelPageComponent,
-      ),
-  },
-  {
-    path: 'dbmodel',
-    redirectTo: 'dbmodels',
-  },
-  {
-    path: 'dbmodels',
-    loadComponent: () =>
-      import('../pages/signed-in/db-schemas/db-models-page.component').then(
-        (m) => m.DbModelsPageComponent,
-      ),
-  },
-  {
-    path: 'resources',
-    loadComponent: () =>
-      import('../pages/signed-in/resources/resources-page.component').then(
-        (m) => m.ResourcesPageComponent,
-      ),
-  },
-  {
-    path: 'variables',
-    loadComponent: () =>
-      import('../pages/signed-in/variables/variables-page.component').then(
-        (m) => m.VariablesPageComponent,
       ),
   },
   {
@@ -162,13 +177,7 @@ export const datatugProjectRoutes: Routes = [
         (m) => m.DatatugRoutingProjDbCatalog,
       ),
   },
-  {
-    path: 'diff',
-    loadComponent: () =>
-      import('../pages/signed-in/diff/diff-page.component').then(
-        (m) => m.DiffPageComponent,
-      ),
-  },
+  ...(ENABLE_EMPTY_SHELL_PAGES ? emptyShellProjectRoutes : []),
 ];
 
 @NgModule({

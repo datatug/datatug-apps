@@ -23,12 +23,15 @@ import {
 } from '@ionic/angular';
 import { AuthStatus } from '@sneat/auth-core';
 import { SneatErrorCardComponent } from '@sneat/components';
-import { parseStoreRef } from '@sneat/core';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { merge, Subject } from 'rxjs';
 import { filter, takeUntil, tap } from 'rxjs/operators';
 import { IProjectBase } from '../../../models/definition/project';
-import { IDatatugStoreContext, IProjectContext } from '../../../nav/nav-models';
+import {
+  IDatatugStoreContext,
+  IProjectContext,
+  parseDatatugStoreRef,
+} from '../../../nav/nav-models';
 import { NewProjectService } from '../../../project/new-project/new-project.service';
 import { DatatugUserService } from '../../../services/base/datatug-user-service';
 import { StoreTracker } from '../../../services/nav/contexts/store.tracker';
@@ -218,7 +221,7 @@ export class DatatugStorePageComponent
     }
     const projectContext: IProjectContext = {
       ref: { projectId: project.id, storeId: this.storeId },
-      store: { ref: parseStoreRef(this.storeId) },
+      store: { ref: parseDatatugStoreRef(this.storeId) },
       brief: {
         access: project.access,
         title: project.title,
