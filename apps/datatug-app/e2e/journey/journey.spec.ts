@@ -47,6 +47,12 @@ import { expect, test } from './fixtures/agent-server';
  *    (wire `apicore.GetAuthTokenFromHttpRequest`, e.g. to a no-auth-required
  *    passthrough for the local `serve` command) before ANY journey test can
  *    pass; re-run this suite once that lands.
+ *    UPDATE 2026-09-09: landed as datatug/datatug-cli#205. Against a
+ *    datatug-cli main build J1 now passes its title assertion (locator
+ *    corrected in datatug/datatug-apps#69) and fails next at the Album grid:
+ *    `NG0201: No provider found for DatatugNavContextService. Source:
+ *    Standalone[EnvDbTablePageComponent]` — a defect in this repo, not yet
+ *    fixed.
  *
  * J2 additionally needs `GET /datatug/semantic/columns`, `GET
  * /datatug/semantic/related` and `POST /datatug/queries/applicable`, none
@@ -84,11 +90,13 @@ test.describe('J1 — first useful result (the null-action path)', () => {
     // from `GET /datatug/projects/project_summary` and is bound to the VALUE
     // of the read-only Title `ion-input` (project-page.component.html) — so
     // assert that textbox's value. `getByText` can never see an input's value
-    // and stayed at 0 matches even once the page rendered. Needs the agent
-    // side's auth-hook fix (datatug/datatug-cli#205, merged) and this repo's
-    // agent-aware store factory (datatug/datatug-apps#69): before #69 the
-    // page's folder child threw `unknown store: <host:port>` out of
-    // ngOnChanges and the pass that would have committed the title aborted.
+    // and stayed at 0 matches even once the page rendered, so it failed the
+    // same way for a rendered and an unrendered page. Needs the agent side's
+    // auth-hook fix (datatug/datatug-cli#205, merged). The title renders
+    // with or without datatug/datatug-apps#69; what #69 removes is the
+    // uncaught `unknown store: <host:port>` the page's folder child threw
+    // out of ngOnChanges on every visit (console ERROR, Boards card stuck
+    // loading).
     await expect(
       page
         .locator('ion-item', { hasText: 'Title' })
