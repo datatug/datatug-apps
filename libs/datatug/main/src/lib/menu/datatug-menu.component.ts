@@ -40,8 +40,9 @@ import { DatatugAuthMenuItemComponent } from './datatug-auth-menu-item.component
     MenuEnvSelectorComponent,
     ProjectMenuComponent,
   ],
+  // DatatugUserService is providedIn: 'root' — see its own file for why;
+  // NewProjectService still needs its own local provider here.
   providers: [
-    DatatugUserService,
     NewProjectService,
   ],
 })

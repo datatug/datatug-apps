@@ -82,18 +82,17 @@ import { DatatugServicesStoreModule } from '../../../services/repo/datatug-servi
     IonCardTitle,
     IonCardContent,
   ],
-  // `DatatugUserService`/`NewProjectService` (both injected below) have no
-  // `providedIn: 'root'` either, and — unlike `DatatugServicesStoreModule`
-  // above — no ancestor route provides them: `DatatugHomePageComponent`
-  // (`pages/home/datatug-home-page.component.ts`) provides them the same
-  // way, as component-local `providers`, but that only reaches this page
-  // when it is a DESCENDANT of the home route's injector. `/store/:storeId`
-  // is a sibling top-level route (`routes/datatug-routing.module.ts`), not
-  // a child of `/`, so it never inherits them — this threw the same NG0201
-  // as the `DatatugServicesStoreModule` gap above for any direct hit on
-  // `/store/:storeId` (a full navigation, or a `page.goto`), independent of
-  // this stream's store-id fix.
-  providers: [DatatugUserService, NewProjectService],
+  // NewProjectService (injected below) has no `providedIn: 'root'`, and —
+  // unlike `DatatugServicesStoreModule` above — no ancestor route provides
+  // it: `/store/:storeId` is a sibling top-level route
+  // (`routes/datatug-routing.module.ts`), not a child of `/`, so it never
+  // inherits `DatatugHomePageComponent`'s own local provider. This threw the
+  // same NG0201 as the `DatatugServicesStoreModule` gap above for any direct
+  // hit on `/store/:storeId` (a full navigation, or a `page.goto`),
+  // independent of this stream's store-id fix. (DatatugUserService used to
+  // be provided here too, for the same reason — it is now `providedIn:
+  // 'root'` instead; see its own file.)
+  providers: [NewProjectService],
 })
 export class DatatugStorePageComponent
   implements OnInit, OnDestroy, ViewDidLeave, ViewDidEnter
@@ -192,8 +191,17 @@ export class DatatugStorePageComponent
       this.agentStateService
         .watchAgentInfo(storeId)
         .pipe(
+          // `merge()` takes its notifiers as separate arguments, not one
+          // array argument — `merge([a, b, c])` instead converts that array
+          // itself into a *single* synchronous notifier (via `from()`) that
+          // emits all three Subjects as values and completes immediately,
+          // so `takeUntil` unsubscribes before `watchAgentInfo`'s `interval`
+          // source is ever subscribed to and its first HTTP request never
+          // fires. Root cause of e2e/journey/store-id-scheme.spec.ts's
+          // "no request observed within 15s" failure (lane S79); reproduced
+          // in isolation against this repo's own rxjs before this fix.
           takeUntil(
-            merge([this.viewDidLeave, this.destroyed, this.storeChanged]),
+            merge(this.viewDidLeave, this.destroyed, this.storeChanged),
           ),
         )
         .subscribe({

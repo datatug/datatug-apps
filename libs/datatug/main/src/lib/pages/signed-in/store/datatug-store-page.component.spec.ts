@@ -7,7 +7,10 @@ import { of } from 'rxjs';
 import { DatatugStorePageComponent } from './datatug-store-page.component';
 import { DatatugStoreService } from '../../../services/repo/datatug-store.service';
 import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
-import { AgentStateService } from '../../../services/repo/agent-state.service';
+import {
+  AgentStateService,
+  IAgentState,
+} from '../../../services/repo/agent-state.service';
 import { NewProjectService } from '../../../project/new-project/new-project.service';
 import { DatatugUserService } from '../../../services/base/datatug-user-service';
 
@@ -93,6 +96,23 @@ describe('StorePageComponent', () => {
     it('is empty when storeId is not yet set', () => {
       component.storeId = undefined;
       expect(component.storeDisplayId).toBe('');
+    });
+  });
+
+  describe('processStoreId', () => {
+    it('applies the agentState watchAgentInfo emits (a bare-array merge() argument makes takeUntil complete before the source ever subscribes, e2e/journey/store-id-scheme.spec.ts)', () => {
+      const emittedState: IAgentState = {
+        isNotAvailable: true,
+        lastCheckedAt: new Date(),
+      };
+      const agentStateService = TestBed.inject(AgentStateService) as {
+        watchAgentInfo: (storeId: string) => ReturnType<typeof of<IAgentState>>;
+      };
+      agentStateService.watchAgentInfo = () => of(emittedState);
+
+      component.processStoreId('http-localhost:8989');
+
+      expect(component.agentState).toEqual(emittedState);
     });
   });
 });
