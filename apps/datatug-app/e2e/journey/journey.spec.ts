@@ -1,4 +1,5 @@
 import { expect, test } from './fixtures/agent-server';
+import { activePage } from './helpers/active-page';
 
 /**
  * Journey e2e against the REAL `datatug serve` agent — no HTTP route
@@ -105,6 +106,27 @@ import { expect, test } from './fixtures/agent-server';
  * merged at the time of this stream. See ./journey.spec.ts's own J4 test
  * comments and this stream's report for exact evidence on all three.
  *
+ * S101/S103 landed the schema-prefix policy fix and a table-page limitation
+ * header (datatug-cli PR #221, datatug-apps PR #81) — J4 then ran to within
+ * one assertion of completion before hitting a NEW failure: `locator(
+ * 'sneat-datatug-limitation-header')` resolved to two elements. S104
+ * root-caused this with a live DOM probe: `IonicRouteStrategy`
+ * (main.ts) correctly DETACHES (not destroys) a previously-visited sibling
+ * page rather than destroying it — confirmed, the detached page carries
+ * `class="ion-page ion-page-hidden" aria-hidden="true"` and `display:none`
+ * on its own host element, exactly as Ionic intends; this is not a product
+ * defect. `helpers/active-page.ts`'s `activePage(page)` scopes every
+ * assertion below that targets a category of element more than one project
+ * page can render (limitation header, grid rows/cells, panels,
+ * parameter-binding text) to only the currently active `.ion-page`. With
+ * that fix, J1–J4 and store-id-scheme.spec.ts all pass (confirmed, S104,
+ * `datatug-cli` main `aba31f6`/PR #221 + `datatug-apps` main `814c104`/PR
+ * #81 — run four times single-worker; J4 passed cleanly all four times, J1
+ * flaked twice on its own title-load assertion under heavy concurrent load
+ * from unrelated sessions on this VM — a pre-existing, documented,
+ * load-dependent flake unconnected to router navigation or this file's own
+ * changes, see this stream's report).
+ *
  * See ./README.md for the env vars this suite reads and what CI must
  * provide to run it instead of skipping it.
  */
@@ -160,11 +182,13 @@ test.describe('J1 — first useful result (the null-action path)', () => {
     await page.goto(albumTableUrl);
 
     // "rows render in the grid" — @sneat/datagrid renders rows as Tabulator
-    // does, via the stable `.tabulator-row` class.
-    await expect(page.locator('.tabulator-row').first()).toBeVisible({
+    // does, via the stable `.tabulator-row` class. Scoped to the active page
+    // (S104, helpers/active-page.ts) — a grid is one of the element
+    // categories more than one project page can render.
+    await expect(activePage(page).locator('.tabulator-row').first()).toBeVisible({
       timeout: 15_000,
     });
-    expect(await page.locator('.tabulator-row').count()).toBeGreaterThan(0);
+    expect(await activePage(page).locator('.tabulator-row').count()).toBeGreaterThan(0);
 
     // "the agent log shows the select request under /datatug/" — mechanism,
     // not just outcome (AC:first-result-two-clicks, REQ:agent-path-contract).
@@ -196,7 +220,7 @@ test.describe('J2 — from a value to related knowledge', () => {
     // project-loading call that panics server-side on datatug-cli main — so
     // the grid never renders any row to click. Once blocker 2 is fixed, this
     // gates on blocker 1 below instead.
-    await expect(page.locator('.tabulator-row').first()).toBeVisible({
+    await expect(activePage(page).locator('.tabulator-row').first()).toBeVisible({
       timeout: 15_000,
     });
 
@@ -209,7 +233,7 @@ test.describe('J2 — from a value to related knowledge', () => {
     // — the context panel never opens, blocking here once the row above
     // renders. Once /datatug/semantic/columns exists, everything below is
     // the real, unmocked check of this stream's wiring.
-    const cell = page
+    const cell = activePage(page)
       .locator('.tabulator-row')
       .first()
       .locator('[tabulator-field="CustomerId"]');
@@ -217,11 +241,11 @@ test.describe('J2 — from a value to related knowledge', () => {
     const customerId = (await cell.textContent())?.trim();
     await cell.click();
 
-    await expect(page.locator('sneat-datatug-context-panel')).toBeVisible({
+    await expect(activePage(page).locator('sneat-datatug-context-panel')).toBeVisible({
       timeout: 15_000,
     });
     await expect(
-      page.getByText(`Customer.ID = ${customerId}`, { exact: false }),
+      activePage(page).getByText(`Customer.ID = ${customerId}`, { exact: false }),
     ).toBeVisible({ timeout: 10_000 });
 
     // "related records" and "applicable queries" — POST /datatug/semantic/related
@@ -230,23 +254,26 @@ test.describe('J2 — from a value to related knowledge', () => {
     // `queryId`, not title (context-panel.component.html), so this looks for
     // the saved-query ids under datatug-demo-projects/.../queries/customers/.
     await expect(
-      page.getByText('customer-invoices', { exact: false }),
+      activePage(page).getByText('customer-invoices', { exact: false }),
     ).toBeVisible({ timeout: 15_000 });
     await expect(
-      page.getByText('customer-purchases-by-genre', { exact: false }),
+      activePage(page).getByText('customer-purchases-by-genre', { exact: false }),
     ).toBeVisible({ timeout: 10_000 });
 
     // "running one binds the parameter" — click through to the query page
-    // (EnvDbTablePageComponent.onOpenQuery) and run it.
-    await page.getByText('customer-invoices', { exact: false }).click();
+    // (EnvDbTablePageComponent.onOpenQuery) and run it. The click below
+    // navigates away (router.navigate) — the Customer table page this test
+    // started on is detached-not-destroyed afterward (S104, this file's own
+    // header), so every assertion from here on is scoped to the active page.
+    await activePage(page).getByText('customer-invoices', { exact: false }).click();
     await expect(
-      page
+      activePage(page)
         .getByText('Customer.ID', { exact: false })
         .getByText('from selection', {
           exact: false,
         }),
     ).toBeVisible({ timeout: 10_000 });
-    await page.getByText('Run query', { exact: false }).click();
+    await activePage(page).getByText('Run query', { exact: false }).click();
     await expect
       .poll(() => agentServer.readLog(), { timeout: 15_000 })
       .toMatch(/\/datatug\/exec\/run_query/);
@@ -267,7 +294,7 @@ test.describe('J3 — carrying context', () => {
     // EXPECTED TO FAIL here right now — same blocker 2 as J2 (file header):
     // the grid never renders a row to click. Once that's fixed, this gates
     // on the same GET /datatug/semantic/columns gap J2 hits next.
-    await expect(page.locator('.tabulator-row').first()).toBeVisible({
+    await expect(activePage(page).locator('.tabulator-row').first()).toBeVisible({
       timeout: 15_000,
     });
 
@@ -277,31 +304,38 @@ test.describe('J3 — carrying context', () => {
     // bar/service, and a query page binding a parameter "from context") is
     // pure client-side state — no further server contract is needed once
     // semantic/columns exists.
-    const cell = page
+    const cell = activePage(page)
       .locator('.tabulator-row')
       .first()
       .locator('[tabulator-field="CustomerId"]');
     await expect(cell).toBeVisible({ timeout: 15_000 });
     await cell.click();
-    await expect(page.locator('sneat-datatug-context-panel')).toBeVisible({
+    await expect(activePage(page).locator('sneat-datatug-context-panel')).toBeVisible({
       timeout: 15_000,
     });
-    await page.getByText('Add to context', { exact: false }).click();
+    await activePage(page).getByText('Add to context', { exact: false }).click();
 
     // REQ:context-basket — visible on every project screen via
-    // ProjectMenuTopComponent -> InvestigationContextBarComponent.
+    // ProjectMenuTopComponent -> InvestigationContextBarComponent. NOT scoped
+    // to activePage(): this component lives in the app's persistent side-menu
+    // tree, outside <ion-router-outlet> entirely (confirmed live, S104 — only
+    // one instance ever exists, regardless of which project page is active),
+    // so it is never duplicated by page detachment.
     await expect(
       page.locator('sneat-datatug-investigation-context-bar'),
     ).toContainText(/Customer\.ID/, { timeout: 10_000 });
 
     // Open the saved query "Customer purchases by genre" and assert its
     // Customer.ID parameter is bound "from context" (INTEGRATION.md §6 —
-    // InvestigationContextService.bindingsFor(), no server call).
+    // InvestigationContextService.bindingsFor(), no server call). A full
+    // page.goto() reload, not an in-app click — no detached sibling page can
+    // exist afterward (the whole Angular app re-bootstraps) — but scoped to
+    // activePage() anyway for consistency (S104).
     await page.goto(
       `${projectUrl}/query/customer-purchases-by-genre?id=customer-purchases-by-genre`,
     );
     await expect(
-      page
+      activePage(page)
         .getByText('Customer.ID', { exact: false })
         .getByText('from context', {
           exact: false,
@@ -324,7 +358,7 @@ test.describe('J3 — carrying context', () => {
     // toBeDisabled()/toBeEnabled() match `:disabled`, which only native form elements
     // ever satisfy, so they misreport an `ion-button` regardless of its actual state.
     // The `disabled` attribute's presence/absence on the host is the reliable signal.
-    const runButton = page.locator('ion-button', { hasText: 'Run query' });
+    const runButton = activePage(page).locator('ion-button', { hasText: 'Run query' });
     await expect(runButton).not.toHaveAttribute('disabled');
 
     // AC:context-carries's own wording — "disabling the chip empties it" — names the
@@ -336,12 +370,14 @@ test.describe('J3 — carrying context', () => {
     // (not its "×" remove icon) toggles InvestigationContextService.setEnabled(id,
     // false); the query page's own binding effect (constructor, reads
     // investigationContext.items()) picks that up reactively with no server call.
+    // The bar itself is never scoped to activePage() (see this test's own comment
+    // above) — it is not inside the active page's subtree at all.
     const contextChip = page
       .locator('sneat-datatug-investigation-context-bar')
       .getByText('Customer.ID', { exact: false });
     await contextChip.click();
     await expect(
-      page
+      activePage(page)
         .getByText('Customer.ID', { exact: false })
         .getByText('required', { exact: false }),
     ).toBeVisible({ timeout: 10_000 });
@@ -351,7 +387,7 @@ test.describe('J3 — carrying context', () => {
     // restores the "from context" binding.
     await contextChip.click();
     await expect(
-      page
+      activePage(page)
         .getByText('Customer.ID', { exact: false })
         .getByText('from context', { exact: false }),
     ).toBeVisible({ timeout: 10_000 });
@@ -360,9 +396,9 @@ test.describe('J3 — carrying context', () => {
     // The query page's own "Clear this binding" button (REQ:parameter-auto-binding:
     // "The user MUST be able to clear or override a bound value before running") —
     // a page-local override, independent of the global context chip above.
-    await page.getByTitle('Clear this binding').click();
+    await activePage(page).getByTitle('Clear this binding').click();
     await expect(
-      page
+      activePage(page)
         .getByText('Customer.ID', { exact: false })
         .getByText('required', { exact: false }),
     ).toBeVisible({ timeout: 10_000 });
@@ -418,7 +454,7 @@ test.describe('J4 — restricted principal', () => {
       { timeout: 15_000 },
     );
     await page.goto(customerTableUrl);
-    await expect(page.locator('.tabulator-row').first()).toBeVisible({
+    await expect(activePage(page).locator('.tabulator-row').first()).toBeVisible({
       timeout: 15_000,
     });
 
@@ -435,24 +471,20 @@ test.describe('J4 — restricted principal', () => {
     );
     // "Email is absent" — customers-support's own `fields:` allow-list omits it.
     expect(selectBody.columns).not.toContain('Email');
-    await expect(page.locator('[tabulator-field="Email"]')).toHaveCount(0);
+    await expect(activePage(page).locator('[tabulator-field="Email"]')).toHaveCount(0);
 
     // Feature J4 (README.md, verbatim): "Browse Customer with an allowed
     // projection: ... the header states the applied limitations."
-    // REQ:limitation-visible. EXPECTED TO FAIL here right now: confirmed live
-    // (curl against a `--as support` agent, S100) that `GET
-    // /datatug/exec/select`'s wire response is only ever `{columns, rows}` —
-    // no `limitations` field at all (`ISelectResponse`, dto/execute.ts,
-    // matches the real response byte for byte) — and
-    // EnvDbTablePageComponent's own template has no limitation-header
-    // rendering for a table browse (only the query PAGE's run result does,
-    // exercised further below). This is a real product gap spanning both
-    // the server's `exec/select` envelope and this client's handling of it —
-    // not touched here, per this stream's brief ("do not fix product code in
-    // this lane").
-    await expect(page.locator('sneat-datatug-limitation-header')).toBeVisible(
-      { timeout: 5_000 },
-    );
+    // REQ:limitation-visible — landed by S101/S103 (datatug-cli PR #221,
+    // datatug-apps PR #81: the table page now renders its own
+    // `<sneat-datatug-limitation-header>` from `exec/select`'s own
+    // `limitations`). Scoped to the active page (S104): this is the FIRST
+    // instance of this component this test's page has rendered, so at this
+    // exact point there is no detached sibling yet — but scoped anyway for
+    // consistency with every other use below, where one already exists.
+    await expect(
+      activePage(page).locator('sneat-datatug-limitation-header'),
+    ).toBeVisible({ timeout: 5_000 });
 
     // "Run customer-invoices for a ... Canadian fixture ID: ... the latter
     // only authorized invoices" — customer 3 (François Tremblay, Montréal
@@ -462,17 +494,17 @@ test.describe('J4 — restricted principal', () => {
     // directly, S100) and is real, clickable data in the grid this test just
     // asserted is Canada-only above — the real selection → context panel →
     // open query → run flow J2 already proves for the admin principal.
-    const customerId3Cell = page
+    const customerId3Cell = activePage(page)
       .locator('[tabulator-field="CustomerId"]')
       .filter({ hasText: /^3$/ });
     await expect(customerId3Cell).toBeVisible({ timeout: 10_000 });
     await customerId3Cell.click();
 
-    await expect(page.locator('sneat-datatug-context-panel')).toBeVisible({
+    await expect(activePage(page).locator('sneat-datatug-context-panel')).toBeVisible({
       timeout: 15_000,
     });
     await expect(
-      page.getByText('customer-invoices', { exact: false }),
+      activePage(page).getByText('customer-invoices', { exact: false }),
     ).toBeVisible({ timeout: 15_000 });
 
     const canadianRunResponsePromise = page.waitForResponse(
@@ -481,25 +513,21 @@ test.describe('J4 — restricted principal', () => {
         res.request().method() === 'POST',
       { timeout: 15_000 },
     );
-    await page.getByText('customer-invoices', { exact: false }).click();
+    // The click below navigates away (router.navigate, EnvDbTablePageComponent
+    // .onOpenQuery) — the Customer table page is detached-not-destroyed
+    // afterward (S104, this file's own header), so every assertion from here
+    // on is scoped to the active page. This is exactly the navigation S100
+    // originally flagged as likely to 404 on a bare query id — S97's PR #219
+    // (folder-qualified ids) and S101's PR #221 landed since, and this run
+    // confirms the run below now resolves and executes correctly (S104).
+    await activePage(page).getByText('customer-invoices', { exact: false }).click();
     await expect(
-      page
+      activePage(page)
         .getByText('Customer.ID', { exact: false })
         .getByText('from selection', { exact: false }),
     ).toBeVisible({ timeout: 10_000 });
-    await page.getByText('Run query', { exact: false }).click();
+    await activePage(page).getByText('Run query', { exact: false }).click();
 
-    // EXPECTED TO POSSIBLY FAIL here: `queryId` on this request is whatever
-    // `POST /datatug/queries/applicable`'s own `Candidate.queryId` gave the
-    // context panel — bare (`"customer-invoices"`) on `datatug-cli` main at
-    // the time of this stream (confirmed live via curl, S100: a bare
-    // `queryId` on `exec/run_query` 404s `NOT_FOUND — query
-    // "customer-invoices" not found`; only the folder-qualified
-    // `"customers/customer-invoices"` succeeds). `datatug-cli` PR #219 (lane
-    // S97, not yet merged at the time of this stream) already fixes exactly
-    // this — `applicable` emitting the canonical folder-qualified id and
-    // `run_query`/`get_query` accepting a bare one — so this is not a new gap
-    // to investigate, only to report if it reproduces here.
     const canadianRunBody = (await (await canadianRunResponsePromise).json()) as {
       recordset?: { rows: unknown[] };
       limitations?: { rowsFiltered: boolean }[];
@@ -511,9 +539,17 @@ test.describe('J4 — restricted principal', () => {
       expect.arrayContaining([expect.objectContaining({ rowsFiltered: true })]),
     );
     expect(canadianRunBody.provenance?.executionProfile).toBe('protected');
-    await expect(page.locator('sneat-datatug-limitation-header')).toBeVisible(
-      { timeout: 10_000 },
-    );
+    // S104's own confirmed bug: this exact assertion, unscoped, resolved to
+    // TWO elements once the query page's own limitation header (this run's
+    // result) joined the detached-but-present Customer table page's own copy
+    // (checked above, first instance) in the DOM. Root-caused with a live DOM
+    // probe: the detached table page carries `class="ion-page ion-page-hidden"
+    // aria-hidden="true"` and `display:none` on its own host element — Ionic
+    // behaving exactly as its RouteReuseStrategy intends, not a product
+    // defect. Scoping to the active page (below) is the correct fix.
+    await expect(
+      activePage(page).locator('sneat-datatug-limitation-header'),
+    ).toBeVisible({ timeout: 10_000 });
 
     // "Run customer-invoices for a Brazilian ... fixture ID: the former
     // yields no rows" — customer 1 (Luís Gonçalves, Brazil) can NEVER appear
