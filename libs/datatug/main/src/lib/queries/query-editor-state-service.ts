@@ -11,7 +11,9 @@ import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { IProjectRef } from '../core/project-context';
 import { IProjectContext } from '../nav/nav-models';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
+import { ProjectService } from '../services/project/project.service';
 import { QueriesService } from './queries.service';
+import { IParameterDef } from '../models/definition/parameter';
 import { filter } from 'rxjs/operators';
 import {
   IHttpQueryRequest,
@@ -60,6 +62,7 @@ let counter = 0;
 export class QueryEditorStateService {
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly queriesService = inject(QueriesService);
+  private readonly projectService = inject(ProjectService);
   readonly datatugNavContextService = inject(DatatugNavContextService);
 
   public readonly queryEditorState = $state
@@ -185,11 +188,92 @@ export class QueryEditorStateService {
       this.updateQueryState(state);
     };
     if (this.currentProject) {
-      this.queriesService.getQuery(this.currentProject.ref, id).subscribe({
+      const currentProject = this.currentProject;
+      this.queriesService.getQuery(currentProject.ref, id).subscribe({
         next: (def) => onCompleted(def),
-        error: () => onCompleted(),
+        // `GET /datatug/queries/get_query?...&query=<id>` 500s for every
+        // query in a folder (datatug-core's fsQueriesStore.LoadQuery splits
+        // `id` on `/` to derive both the folder and the item — a *bare* id
+        // like "customer-invoices" resolves to no folder, so it looks
+        // directly under `queries/`, never `queries/<folder>/`, and every
+        // demo-project query lives in one). Nothing in this app currently
+        // learns a query's folder-qualified id (`queries/applicable`'s own
+        // `Candidate.queryId` — the only id a query opened from the context
+        // panel ever carries — is the same bare id). `GET
+        // /datatug/projects/project_full`'s response embeds each query's
+        // FULL definition (parameters included) directly under
+        // `queries.folders[].items[]`, keyed by that same bare id, so it
+        // already has everything `updateBindings()` needs without a
+        // folder-qualified id at all. Falling back to it here (only on a
+        // `get_query` error, so an id that already works — e.g. a
+        // flat/unfoldered query — is unaffected) fixes AC:bound-from-selection
+        // / AC:context-carries without a server change (lane S92, journey
+        // J2/J3) — confirmed live: this exact 500 blocked every query this
+        // demo project has.
+        error: () => this.loadQueryFromProjectFull(currentProject, id, onCompleted),
       });
     }
+  }
+
+  /** Minimal shape of what `GET /datatug/projects/project_full` actually
+   * embeds per query item — `IProjectFull` (models/definition/project.ts)
+   * doesn't yet declare this (a separate, pre-existing contract gap, not
+   * fixed here: that interface predates the server's current `project_full`
+   * response and several other callers read it too — out of this stream's
+   * scope). Deliberately narrow: only the fields `updateBindings()` and this
+   * method's own `onCompleted` adapter actually read. */
+  private static findQueryInProjectFull(
+    full: unknown,
+    id: string,
+  ): IQueryDef | undefined {
+    const folders = (
+      full as {
+        queries?: {
+          folders?: readonly {
+            items?: readonly {
+              id: string;
+              title?: string;
+              type?: string;
+              text?: string;
+              parameters?: readonly IParameterDef[];
+            }[];
+          }[];
+        };
+      }
+    )?.queries?.folders;
+    for (const folder of folders ?? []) {
+      const item = folder.items?.find((i) => i.id === id);
+      if (item) {
+        return {
+          id: item.id,
+          title: item.title ?? item.id,
+          request: {
+            queryType: QueryType.SQL,
+            text: item.text ?? '',
+          } as ISqlQueryRequest,
+          parameters: item.parameters as IParameterDef[] | undefined,
+        };
+      }
+    }
+    return undefined;
+  }
+
+  private loadQueryFromProjectFull(
+    project: IProjectContext,
+    id: string,
+    onCompleted: (def?: IQueryDef) => void,
+  ): void {
+    this.projectService.getFull(project.ref).subscribe({
+      next: (full) =>
+        onCompleted(QueryEditorStateService.findQueryInProjectFull(full, id)),
+      error: (err) => {
+        this.errorLogger.logError(
+          err,
+          `Failed to load query[${id}] from project_full fallback`,
+        );
+        onCompleted();
+      },
+    });
   }
 
   public newQuery(queryState: IQueryState): IQueryState {
