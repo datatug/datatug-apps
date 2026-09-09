@@ -206,6 +206,13 @@
     </ion-item>
     }
     <ion-card-content style="padding: 0.5em">
+      <!-- REQ:limitation-visible (feature J4) — renders nothing until `exec/select`
+           reports `limitations`/`provenance` (lane S101, additive; absent from
+           today's servers). -->
+      <sneat-datatug-limitation-header
+        [limitations]="limitations()"
+        [executionProfile]="executionProfile()"
+      />
       <sneat-datagrid
         [data]="grid()?.rows"
         [columns]="grid()?.columns"
