@@ -83,7 +83,11 @@ import {
 } from '../../../nav/nav-models';
 import { ProjectTracker } from '../../../services/nav/contexts/project.tracker';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
+import { DatatugServicesNavModule } from '../../../services/nav/datatug-services-nav.module';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
+import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
+import { DatatugExecutorModule } from '../../../executor/datatug-executor.module';
+import { DatatugQueriesServicesModule } from '../../datatug-queries-services.module';
 import { QueriesService } from '../../queries.service';
 import { QueryContextSqlService } from '../../query-context-sql.service';
 import {
@@ -188,6 +192,22 @@ function mapsEqual<K, V>(
   selector: 'sneat-datatug-sql-editor',
   templateUrl: './query-page.component.html',
   imports: [
+    // DatatugNavContextService, EnvironmentService, QueriesService,
+    // QueryContextSqlService, QueryEditorStateService and Coordinator
+    // (all injected below) are plain @Injectable(), provided by these four
+    // modules rather than providedIn: 'root'. `query/:queryId` is a sibling
+    // of the bare '' route (routes/datatug-routing-proj.ts), not a child of
+    // ProjectPageComponent, so this page never inherited them — the same
+    // NG0201 class `EnvDbTablePageComponent` and `DatatugStorePageComponent`
+    // were already fixed for. Not yet observed failing in CI because J3
+    // (journey.spec.ts), the only test that navigates straight to this
+    // route, is currently blocked earlier by the server-side
+    // environment-summary bug (see that spec's header) — found by sweeping
+    // for this bug class (lane S79), not by a failing test.
+    DatatugServicesNavModule,
+    DatatugServicesUnsortedModule,
+    DatatugQueriesServicesModule,
+    DatatugExecutorModule,
     FormsModule,
     HttpQueryEditorComponent,
     IonHeader,
