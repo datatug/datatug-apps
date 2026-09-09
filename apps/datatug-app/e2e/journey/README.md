@@ -57,13 +57,13 @@ what this fixture uses.)
 ## Known blockers (see `journey.spec.ts`'s own header for the authoritative,
 kept-current account)
 
-J1–J4 are deliberately left un-skipped even while they fail, so CI reports the
-real, current blocker rather than a false green. J4 (S100) now runs against
-its own `supportAgentServer` fixture (`--as support --role support`) rather
-than staying `test.fixme`, and currently fails at its first assertion on a
-schema-prefix mismatch between the real browser's requests and the demo
-policy fixture (see `journey.spec.ts`'s own header and J4 test comments for
-the confirmed root cause and evidence). As of the header's own last update,
-remaining blockers are server-side (`datatug-cli`/`datatug-core` contract or
-`datatug-demo-projects` fixture issues), not this repo's own client code —
-check the spec header before assuming a new failure here is client-side.
+J1–J4 are deliberately left un-skipped, so CI reports the real, current state
+rather than a false green. As of S104, J1–J4 and `store-id-scheme.spec.ts` all
+pass against `datatug-cli` main (`aba31f6`+) and this repo's own main
+(`814c104`+) — see `journey.spec.ts`'s own header for the fix history
+(S100–S104) and `helpers/active-page.ts` for why every assertion that could
+match more than one project page's own copy of an element is scoped to the
+currently active `.ion-page`. J1 has an intermittent, pre-existing,
+load-dependent flake on its own title-load assertion under heavy concurrent
+load on the host machine, unrelated to any of these fixes — re-run once if it
+flakes before assuming a regression.
