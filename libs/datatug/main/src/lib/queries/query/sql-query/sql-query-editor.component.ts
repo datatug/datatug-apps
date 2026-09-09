@@ -42,7 +42,6 @@ import { Subject } from 'rxjs';
 import { ViewDidEnter } from '@ionic/angular';
 import { QueriesService } from '../../queries.service';
 import { QueryContextSqlService } from '../../query-context-sql.service';
-import { parseStoreRef } from '@sneat/core';
 import { ColumnsComponent } from './query-builder/columns.component';
 import { JoinsComponent } from './query-builder/joins.component';
 import { GridWidgetComponent } from '../../../board/ui/components/widgets/grid-widget/grid-widget.component';
@@ -52,7 +51,11 @@ import { DatatugNavContextService } from '../../../services/nav/datatug-nav-cont
 import { Coordinator } from '../../../executor/coordinator';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
 import { ProjectTracker } from '../../../services/nav/contexts/project.tracker';
-import { IProjectContext, IEnvContext } from '../../../nav/nav-models';
+import {
+  IProjectContext,
+  IEnvContext,
+  parseDatatugStoreRef,
+} from '../../../nav/nav-models';
 import {
   IQueryEditorState,
   IQueryEnvState,
@@ -387,7 +390,7 @@ export class SqlQueryEditorComponent implements OnDestroy, ViewDidEnter {
       next: (projectRef) => {
         this.project = {
           ref: projectRef,
-          store: { ref: parseStoreRef(projectRef.storeId) },
+          store: { ref: parseDatatugStoreRef(projectRef.storeId) },
         };
         if (projectRef) {
           this.target = {

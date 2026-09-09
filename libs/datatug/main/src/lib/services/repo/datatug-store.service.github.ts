@@ -5,7 +5,28 @@ import { map, mergeMap } from 'rxjs/operators';
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 
-@Injectable()
+/**
+ * Builds the raw-content URL for a GitHub-store project's
+ * `datatug-project.json`.
+ *
+ * `projectId` format: `"repo@org"` or `"repo@org@folder"` — `folder` is the
+ * repo-relative directory the project's `datatug-project.json` lives in.
+ * Defaults to `"datatug"` to preserve the historical convention; the demo
+ * project (`spec/research/2026-09-09-web-ui-audit.md`) needed an explicit
+ * `"demo-project-1"` folder instead. `entity.service.ts`'s
+ * `getEntityFromGithub()` also splits this same id on `"@"` but only
+ * destructures the first two parts, so an extra folder segment here is
+ * silently ignored there — safe to add without touching that file.
+ */
+export function buildGithubProjectSummaryUrl(projectId: string): string {
+  const [repo, org, folder = 'datatug'] = projectId.split('@');
+  return `https://raw.githubusercontent.com/${org}/${repo}/main/${folder}/datatug-project.json`;
+}
+
+// `providedIn: 'root'` — needed so `DatatugStoreServiceFactory` (also
+// root-provided) can resolve this dependency regardless of which route
+// requested it.
+@Injectable({ providedIn: 'root' })
 export class DatatugStoreGithubService implements IDatatugStoreService {
   private readonly http = inject(HttpClient);
 
@@ -15,9 +36,7 @@ export class DatatugStoreGithubService implements IDatatugStoreService {
       headers?: Record<string, string>;
     }
 
-    const [repo, org] = projectId.split('@');
-
-    const url = `https://raw.githubusercontent.com/${org}/${repo}/main/datatug/datatug-project.json`;
+    const url = buildGithubProjectSummaryUrl(projectId);
 
     const connectTo: Observable<urlAndHeaders> = of({ url });
     // if (storeId.startsWith(GITLAB_REPO_PREFIX)) {

@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { getStoreUrl, SneatApiServiceFactory } from '@sneat/api';
+import { SneatApiServiceFactory } from '@sneat/api';
 import { PrivateTokenStoreService } from '@sneat/auth-core';
 import {
   GITLAB_REPO_PREFIX,
@@ -23,6 +23,7 @@ import {
   projectRefToString,
 } from '../../core/project-context';
 import { IProjectFull, IProjectSummary } from '../../models/definition/project';
+import { buildAgentUrl } from '../repo/agent-url';
 import { DatatugStoreServiceFactory } from '../repo/datatug-store-service-factory.service';
 
 @Injectable()
@@ -119,9 +120,12 @@ export class ProjectService {
       return $project;
     }
     $project = this.http
-      .get<IProjectFull>(`${getStoreUrl(projectRef.storeId)}/project-full`, {
-        params: { id: projectRef.projectId },
-      })
+      .get<IProjectFull>(
+        buildAgentUrl(projectRef.storeId, '/projects/project_full'),
+        {
+          params: { id: projectRef.projectId },
+        },
+      )
       .pipe(shareReplay(1));
     this.projects[projectRef.projectId] = $project;
     return $project;
@@ -169,10 +173,12 @@ export class ProjectService {
         this.datatugStoreServiceFactory.getDatatugStoreService(storeId);
       return storeService.getProjectSummary(projectId);
     }
-    const agentUrl = getStoreUrl(storeId);
-    return this.http.get<IProjectSummary>(`${agentUrl}/project-summary`, {
-      params: { id: projectId },
-    });
+    return this.http.get<IProjectSummary>(
+      buildAgentUrl(storeId, '/projects/project_summary'),
+      {
+        params: { id: projectId },
+      },
+    );
   }
 
   public createNewProject(

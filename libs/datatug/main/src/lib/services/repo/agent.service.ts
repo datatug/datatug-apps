@@ -4,7 +4,7 @@ import { IExecuteRequest } from '../../dto/request';
 import { IExecuteResponse, ISelectRequest } from '../../dto/execute';
 import { ISqlCommandRequest } from '../../dto/requests';
 import { Observable, throwError } from 'rxjs';
-import { getStoreUrl } from '@sneat/api';
+import { buildAgentUrl } from './agent-url';
 
 type Writeable<T> = { -readonly [P in keyof T]: T[P] };
 
@@ -44,10 +44,10 @@ export class AgentService {
         params = params.append(`p:${id}:${p.type}`, '' + p.value);
       });
     }
-    const agentUrl = getStoreUrl(agentId);
-    return this.http.get<IExecuteResponse>(agentUrl + '/exec/select', {
-      params,
-    });
+    return this.http.get<IExecuteResponse>(
+      buildAgentUrl(agentId, '/exec/select'),
+      { params },
+    );
   }
 
   public execute(
@@ -78,9 +78,8 @@ export class AgentService {
     const params = new HttpParams().append('project', request.projectId);
     const body: Writeable<IExecuteRequest> = { ...request };
     delete body.projectId;
-    const agentUrl = getStoreUrl(agentId);
     return this.http.post<IExecuteResponse>(
-      agentUrl + `/exec/execute_commands`,
+      buildAgentUrl(agentId, '/exec/execute_commands'),
       body,
       { params },
     );

@@ -1,5 +1,6 @@
 import { AsyncPipe } from '@angular/common';
 import { Component, OnDestroy, inject } from '@angular/core';
+import { ENABLE_EMPTY_SHELL_PAGES } from '../../../core/feature-flags';
 import {
   IonButton,
   IonButtons,
@@ -47,6 +48,29 @@ export class ProjectMenuTopComponent implements OnDestroy {
   private readonly nav = inject(DatatugNavService);
   private readonly userService = inject(DatatugUserService);
 
+  // Widgets, Tags and DB models are empty-shell pages — see
+  // ENABLE_EMPTY_SHELL_PAGES. Left out of the menu entirely while the flag
+  // is off, matching them being left out of the routes.
+  private static readonly emptyShellPages: IProjectTopLevelPage[] = [
+    {
+      path: 'dbmodels',
+      title: 'DB models',
+      icon: 'layers-outline',
+      count: (proj) => proj?.dbModels?.length,
+    },
+    {
+      path: 'tags',
+      title: 'Tags',
+      icon: 'pricetags-outline',
+      count: (proj) => Object.keys(proj?.tags || {}).length,
+    },
+    {
+      path: 'widgets',
+      title: 'Widgets',
+      icon: 'easel-outline',
+    },
+  ];
+
   public readonly projTopLevelPages: IProjectTopLevelPage[] = [
     {
       path: 'overview',
@@ -58,12 +82,6 @@ export class ProjectMenuTopComponent implements OnDestroy {
       title: 'Boards',
       icon: 'easel-outline',
       count: (proj) => proj?.boards?.length,
-    },
-    {
-      path: 'dbmodels',
-      title: 'DB models',
-      icon: 'layers-outline',
-      count: (proj) => proj?.dbModels?.length,
     },
     {
       path: 'entities',
@@ -88,17 +106,7 @@ export class ProjectMenuTopComponent implements OnDestroy {
       icon: 'terminal-outline',
       buttons: [{ path: 'query', icon: 'add' }],
     },
-    {
-      path: 'tags',
-      title: 'Tags',
-      icon: 'pricetags-outline',
-      count: (proj) => Object.keys(proj?.tags || {}).length,
-    },
-    {
-      path: 'widgets',
-      title: 'Widgets',
-      icon: 'easel-outline',
-    },
+    ...(ENABLE_EMPTY_SHELL_PAGES ? ProjectMenuTopComponent.emptyShellPages : []),
   ];
 
   project?: IProjectContext;

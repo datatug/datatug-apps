@@ -14,7 +14,7 @@
     "@acrodata/code-editor": "*",
     "@sneat/auth-core": "0.27.6",
     "@sneat/auth-models": "0.27.6",
-    "@sneat/auth-ui": "0.27.6",
+    "@sneat/auth-ui": "0.27.20",
     "@sneat/components": "0.27.6",
     "@sneat/core": "0.27.6",
     "@sneat/data": "0.27.6",
