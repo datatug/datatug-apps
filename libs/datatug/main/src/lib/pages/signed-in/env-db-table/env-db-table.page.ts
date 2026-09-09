@@ -50,8 +50,7 @@ import {
   routingParamEnvironmentId,
   routingParamTableType,
 } from '../../../core/datatug-routing-params';
-import { IExecuteResponse, IRecordsetResult } from '../../../dto/execute';
-import { ICommandResponseWithRecordset } from '../../../dto/response';
+import { ISelectResponse } from '../../../dto/execute';
 import { IForeignKey, IIndex } from '../../../models/definition/apis/database';
 import {
   getStoreId,
@@ -175,7 +174,19 @@ export class EnvDbTablePageComponent implements OnDestroy {
 
   public groupByFk?: string;
   public groupByFks?: IForeignKey[];
-  public grid?: IGridDef;
+  // A signal, not a plain field: this app is zoneless
+  // (provideZonelessChangeDetection(), main.ts), so a plain field mutated
+  // from an RxJS `.subscribe()` callback (loadData()'s response, the
+  // currentEnvDbTable subscription below) never triggers change detection —
+  // the grid's own inputs never re-evaluate, `DataGridComponent` (OnPush)
+  // never gets a new `[data]`/`[columns]` reference, and Tabulator never
+  // (re-)renders, even though `this.recordset`/the underlying HTTP response
+  // were already correct. Confirmed empirically (lane S89): with a plain
+  // field here, `setupGrid()` verifiably ran to completion with real
+  // `{columns: 3, rows: 100}` data, yet zero `.tabulator-row` elements ever
+  // appeared. A signal write notifies change detection directly, per this
+  // repo's own zoneless convention (AGENTS.md).
+  public readonly grid = signal<IGridDef | undefined>(undefined);
   public currentRow?: {
     index: number;
     data?: Record<string, unknown>;
@@ -183,7 +194,7 @@ export class EnvDbTablePageComponent implements OnDestroy {
   public sql = 'select * from';
 
   public step = 'initial';
-  public recordset?: IRecordsetResult;
+  public recordset?: ISelectResponse;
 
   private readonly destroyed = new Subject<void>();
 
@@ -246,20 +257,30 @@ export class EnvDbTablePageComponent implements OnDestroy {
             this.groupByFks = currentTable.meta?.foreignKeys?.filter(
               (fk) => fk.columns.length === 1,
             );
-            const from =
-              currentTable.schema === 'dbo'
-                ? currentTable.name
-                : `${currentTable.schema}.${currentTable.name}`;
             this.sql = `select *
-from ${from}`;
+from ${this.tableFromClause(currentTable)}`;
             // this.codemirrorComponent?.codeMirror?.refresh();
-            if (currentTable.meta) {
-              this.grid = {
-                columns: this.buildGridColumns(),
-              };
-              this.loadData();
-              this.loadSemanticColumns(currentTable.name);
-            }
+            // Row fetch and the initial grid scaffold only ever need the
+            // table's schema+name, never gated on `currentTable.meta`.
+            // `DatatugNavContextService.processEnvDbTable()` never actually
+            // resolves `meta` (columns/FKs/indexes) — the code that would is
+            // commented out ("TODO(help-wanted)") — so every navigation only
+            // ever gets `{schema, name}`. Gating here on `currentTable.meta`
+            // meant `loadData()` (`AgentService.select` -> `GET
+            // /exec/select`) never fired at all: no request, no error,
+            // "drawTable() columns: undefined data: undefined" printed once
+            // and nothing else (journey J1/J2/J3's `.tabulator-row` never
+            // visible, lane S89). `buildGridColumns()` already tolerates a
+            // missing `meta` (empty scaffold), and `setupGrid()` replaces it
+            // from the real recordset's own columns once `loadData()`
+            // resolves — `meta` was never actually load-bearing for the row
+            // fetch itself, only for the FK group-by feature above and the
+            // pre-recordset column scaffold.
+            this.grid.set({
+              columns: this.buildGridColumns(),
+            });
+            this.loadData();
+            this.loadSemanticColumns(currentTable.name);
           } catch (e) {
             this.errorLogger.logError(e, 'Failed to process current table');
           }
@@ -290,7 +311,7 @@ from ${from}`;
   public setCurrentRow(index: number, data?: Record<string, unknown>): void {
     try {
       if (!data) {
-        const rows = this.grid?.rows;
+        const rows = this.grid()?.rows;
         data = rows && rows[index];
       }
       this.currentRow = { index, data };
@@ -371,19 +392,20 @@ from ${from}`;
    * now-loaded semantic mapping (if any) — safe to call repeatedly, never
    * double-embeds the marker's HTML. */
   private refreshColumnMarkers(): void {
-    if (!this.grid) {
+    const grid = this.grid();
+    if (!grid) {
       return;
     }
-    this.grid = {
-      ...this.grid,
-      columns: this.grid.columns.map((col) => ({
+    this.grid.set({
+      ...grid,
+      columns: grid.columns.map((col) => ({
         ...col,
         title: this.columnTitleWithMarker(
           col.colName || col.field || '',
           col.field || '',
         ),
       })),
-    };
+    });
   }
 
   /**
@@ -513,8 +535,18 @@ from ${from}`;
       .catch((err) => this.errorLogger.logError(err, 'Failed to open query'));
   };
 
+  /** Schema-qualified `from` clause for both the SQL preview text and the
+   * actual row-fetch (`AgentService.select({ from })`) call. `dbo` (MSSQL's
+   * common default schema) is omitted for readability; everything else is
+   * `schema.name` — matches the server's own `exec/select` contract (e.g.
+   * `main.Album` for SQLite, verified against a live agent in lane S87's
+   * report). Only ever needs the table's identity, never its `meta`. */
+  private tableFromClause(table: IEnvDbTableContext): string {
+    return table.schema === 'dbo' ? table.name : `${table.schema}.${table.name}`;
+  }
+
   private loadData(): void {
-    if (!this.project || !this.envId || !this.dbId || !this.table?.meta?.name) {
+    if (!this.project || !this.envId || !this.dbId || !this.table?.name) {
       return;
     }
     try {
@@ -524,7 +556,7 @@ from ${from}`;
           proj: this.project?.ref?.projectId,
           env: this.envId,
           db: this.dbId,
-          from: this.table.meta.name,
+          from: this.tableFromClause(this.table),
           limit: 100,
         })
         .pipe(first())
@@ -541,15 +573,10 @@ from ${from}`;
     }
   }
 
-  private processResponse = (response: IExecuteResponse): void => {
+  private processResponse = (response: ISelectResponse): void => {
     try {
       this.step = 'processResponse';
-      const firstCommand = response.commands?.length
-        ? response.commands[0]
-        : undefined;
-      const firstItem = firstCommand?.items?.[0];
-      const itemWithRecordset = firstItem as ICommandResponseWithRecordset;
-      this.recordset = itemWithRecordset?.value;
+      this.recordset = response;
       this.setupGrid();
     } catch (ex) {
       this.errorLogger.logError(ex, 'Failed to process response');
@@ -567,38 +594,41 @@ from ${from}`;
         this.groupByFk &&
         this.table?.meta?.foreignKeys?.find((fk) => fk.name === this.groupByFk)
           ?.columns[0];
-      this.grid = {
+      const newGrid: IGridDef = {
         groupBy,
+        // `/exec/select`'s response only ever carries column NAMES
+        // (ISelectResponse — see its own doc comment), never dbType/title;
+        // there is no server-side metadata here to derive `hozAlign` from
+        // the way the old (never-actually-reachable) code assumed.
         columns: cols
-          .filter((c) => c.name !== groupBy)
-          .map((c) => {
-            const baseTitle = c.title || c.name;
+          .filter((name) => name !== groupBy)
+          .map((name) => {
             const col: IGridColumn = {
-              field: c.name,
-              colName: baseTitle,
-              dbType: c.dbType,
-              title: this.columnTitleWithMarker(baseTitle, c.name),
-              // sortable: true,
-              // tooltip: (cell: CellComponent) =>
-              // 	// function should return a string for the tooltip of false to hide the tooltip
-              // 	`${cell.getColumn().getField()}: ${cell.getValue()}`, // return cells "field - value";
+              field: name,
+              colName: name,
+              title: this.columnTitleWithMarker(name, name),
+              // IGridColumn.dbType is required by @sneat/grid, but
+              // /exec/select's response carries no type info to fill it
+              // with (see the comment above) — 'unknown' is an honest
+              // placeholder, not a guess; only affects hozAlign (unset here).
+              dbType: 'unknown',
               // Per-cell click affordance (FK "blue text" + popover) used to live here as
               // a Tabulator `formatter`; removed with CellPopoverComponent (REQ:context-basket,
               // libs/datatug/semantic INTEGRATION.md §3) — cell selection now flows through
               // onGridRowClick() below into the semantic-mapping-driven context panel, which
               // covers FK-backed columns via the server's `related` lookups once mapped.
-              hozAlign: c.dbType === 'integer' ? 'right' : undefined,
             };
             return col;
           }),
-        rows: this.recordset?.rows.map((row) => {
-          const r: Record<string, unknown> = {};
-          cols?.forEach((col, i) => (r[col.name] = row[i]));
-          return r;
-        }),
+        // Rows already arrive column-name-keyed (ISelectResponse), so no
+        // positional zip is needed — the old code assumed `IRecordsetResult`'s
+        // positional `RecordsetValue[]` rows, a shape `/exec/select` never
+        // actually returns (lane S89's report).
+        rows: this.recordset?.rows,
       };
-      const gridRows = this.grid?.rows;
-      const l = this.grid?.rows?.length;
+      this.grid.set(newGrid);
+      const gridRows = newGrid.rows;
+      const l = newGrid.rows?.length;
       if (gridRows && l) {
         const index = Math.min(this.currentRow?.index || 0, l - 1);
         const data = gridRows[index];

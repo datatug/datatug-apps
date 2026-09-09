@@ -17,7 +17,6 @@ import {
 } from '@ionic/angular';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { IGridDef } from '@sneat/grid';
-import { ICommandResponseWithRecordset } from '../../../../dto/response';
 import {
   IForeignKey,
   ITableFull,
@@ -149,16 +148,13 @@ export class ForeignKeyCardComponent implements OnChanges {
       })
       .subscribe({
         next: (response) => {
-          const firstCommand = response.commands[0];
-          const firstItem = firstCommand.items?.length
-            ? firstCommand.items[0]
-            : undefined;
-          const itemWithRecordset = firstItem as ICommandResponseWithRecordset;
-          const recordset = itemWithRecordset.value;
-          const r = recordset.rows[0];
-          const row: Record<string, unknown> = {};
-          recordset.columns.forEach((c, i) => (row[c.name] = r[i]));
-          if (this.table) {
+          // `/exec/select`'s response rows already arrive column-name-keyed
+          // (ISelectResponse — see its own doc comment); no `commands[]`
+          // envelope or positional zip to unwrap, unlike the old
+          // (never-actually-reachable, since `this.table?.meta` gates this
+          // whole method and nothing populates it yet) code assumed.
+          const row = response.rows[0];
+          if (this.table && row) {
             this.table = {
               ...this.table,
               row,

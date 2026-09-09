@@ -230,6 +230,21 @@ export const test = base.extend<{}, JourneyWorkerFixtures>({
         String(port),
         '--as',
         'admin',
+        // `--as` sets the request's principal id only; `--role` (a separate,
+        // repeatable flag — `datatug serve --help`) is what the dalgo access
+        // policy engine actually checks bindings against. Without it, every
+        // exec/select and exec/run_query the journey pages send gets a real
+        // `403` — "dalgo access denied ... no binding applies to principal
+        // 'admin'" — even though the demo project's own
+        // policies/customers.yaml binds role "admin" to principal "admin"
+        // (bindings.roles.admin: [admin]) and grants it opaque-SQL query
+        // access. Found while diagnosing why the row-fetch request (fixed
+        // above, EnvDbTablePageComponent) still never produced visible rows
+        // (lane S89) — confirmed via curl A/B: identical exec/select 403s
+        // with `--as admin` alone, 200s with real rows once `--role admin`
+        // is added too.
+        '--role',
+        'admin',
       ];
       const child = spawn(binResult.value, args, {
         stdio: ['ignore', 'pipe', 'pipe'],

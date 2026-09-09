@@ -14,7 +14,10 @@ import { of } from 'rxjs';
 
 import { EnvDbTablePageComponent } from './env-db-table.page';
 import { IEnvDbTableContext, IProjectContext } from '../../../nav/nav-models';
-import { routingParamEnvironmentId } from '../../../core/datatug-routing-params';
+import {
+  routingParamDbCatalogId,
+  routingParamEnvironmentId,
+} from '../../../core/datatug-routing-params';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { ProjectService } from '../../../services/project/project.service';
 import { AgentService } from '../../../services/repo/agent.service';
@@ -216,7 +219,7 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
       collection: 'Customer',
     });
 
-    const columns = component.grid?.columns || [];
+    const columns = component.grid()?.columns || [];
     const customerIdCol = columns.find((c) => c.field === 'CustomerId');
     const firstNameCol = columns.find((c) => c.field === 'FirstName');
 
@@ -237,7 +240,7 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
       },
     ]);
 
-    const customerIdCol = (component.grid?.columns || []).find(
+    const customerIdCol = (component.grid()?.columns || []).find(
       (c) => c.field === 'CustomerId',
     );
     expect(customerIdCol?.title).toContain('helpCircleOutline');
@@ -405,6 +408,213 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
     });
 
     expect(routerMock.navigate).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Regression (lane S89): `DatatugNavContextService.processEnvDbTable()` never
+ * actually resolves `IEnvDbTableContext.meta` — the code that would (looking
+ * up the table's columns/FKs from the loaded project) is commented out
+ * ("TODO(help-wanted)"). So in production, `currentEnvDbTable` only ever
+ * emits `{schema, name}`, `meta` always undefined. The page's own
+ * subscription handler used to gate the entire row fetch behind
+ * `if (currentTable.meta)`, so `loadData()` (`AgentService.select` ->
+ * `GET /exec/select`) never fired at all — matching lane S87's real-browser
+ * finding: every precondition request succeeds, yet the page never issues
+ * `exec/select`/`exec/run_query`. `buildGridColumns()` already tolerates a
+ * missing `meta` (empty scaffold, replaced by `setupGrid()` off the real
+ * recordset once `loadData()` resolves), and `loadData()`/`AgentService.select`
+ * only ever needed the table's schema+name, not its full metadata.
+ */
+describe('EnvDbTablePage — row fetch fires without table.meta', () => {
+  function routeStubWithDb(dbId: string | null) {
+    return {
+      queryParamMap: of({ get: () => null }),
+      paramMap: of({ get: () => null }),
+      snapshot: {
+        paramMap: {
+          get: (key: string) => {
+            if (key === routingParamEnvironmentId) {
+              return 'production';
+            }
+            if (key === routingParamDbCatalogId) {
+              return dbId;
+            }
+            return null;
+          },
+        },
+        params: {},
+      },
+    };
+  }
+
+  it('calls AgentService.select once project/env/db/table are known, even though table.meta is never resolved', async () => {
+    const project: IProjectContext = {
+      ref: { storeId: 'localhost:8989', projectId: 'demo-project' },
+    };
+    // No `meta` — this is what DatatugNavContextService actually emits today.
+    const table: IEnvDbTableContext = { schema: 'main', name: 'Album' };
+    const selectMock = vi.fn(() => of({ commands: [] }));
+
+    await TestBed.configureTestingModule({
+      imports: [EnvDbTablePageComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        {
+          provide: ErrorLogger,
+          useValue: {
+            logError: vi.fn(),
+            logErrorHandler: vi.fn(() => vi.fn()),
+          },
+        },
+        {
+          provide: ActivatedRoute,
+          useValue: routeStubWithDb('chinook-local'),
+        },
+        {
+          provide: DatatugNavContextService,
+          useValue: {
+            currentProject: of(project),
+            currentEnv: of(undefined),
+            currentEnvDbTable: of(table),
+            setCurrentEnvironment: vi.fn(),
+          },
+        },
+        {
+          provide: ProjectService,
+          useValue: { watchProjectSummary: vi.fn(), getFull: vi.fn() },
+        },
+        { provide: AgentService, useValue: { select: selectMock } },
+        { provide: DatatugNavService, useValue: { goTable: vi.fn() } },
+        {
+          provide: SemanticApiService,
+          useValue: { getSemanticColumns: vi.fn(() => of({ columns: [] })) },
+        },
+        {
+          provide: InvestigationContextService,
+          useValue: { addValue: vi.fn(), items: () => [] },
+        },
+        {
+          provide: Router,
+          useValue: { navigate: vi.fn(() => Promise.resolve(true)) },
+        },
+        { provide: AgentContextService, useValue: agentContextStub() },
+      ],
+    })
+      .overrideComponent(EnvDbTablePageComponent, {
+        set: {
+          imports: [],
+          template: '',
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+          providers: [],
+        },
+      })
+      .compileComponents();
+
+    TestBed.createComponent(EnvDbTablePageComponent);
+
+    expect(selectMock).toHaveBeenCalledWith('localhost:8989', {
+      proj: 'demo-project',
+      env: 'production',
+      db: 'chinook-local',
+      from: 'main.Album',
+      limit: 100,
+    });
+  });
+
+  /**
+   * Regression (lane S89, finding 2): `AgentService.select()` declared
+   * `Observable<IExecuteResponse>` (the `commands[]` envelope belonging to
+   * the separate `POST /exec/execute_commands` route) but `GET /exec/select`
+   * actually returns a flat `{columns: string[], rows: Record<string,
+   * unknown>[]}` (datatug-cli's `QueryResultResponse` — confirmed against a
+   * live agent). The old `processResponse()`/`setupGrid()` tried to unwrap
+   * `response.commands[0].items[0].value`, which is always `undefined`
+   * against the real shape, so `setupGrid()` always threw `Error: !cols` and
+   * no `.tabulator-row` ever rendered — even once the row-fetch request
+   * itself started firing (the fix above).
+   */
+  it('renders grid rows straight from the real, flat exec/select response shape', async () => {
+    const project: IProjectContext = {
+      ref: { storeId: 'localhost:8989', projectId: 'demo-project' },
+    };
+    const table: IEnvDbTableContext = { schema: 'main', name: 'Album' };
+    const selectMock = vi.fn(() =>
+      of({
+        columns: ['AlbumId', 'Title'],
+        rows: [
+          { AlbumId: 1, Title: 'For Those About To Rock' },
+          { AlbumId: 2, Title: 'Balls to the Wall' },
+        ],
+      }),
+    );
+
+    await TestBed.configureTestingModule({
+      imports: [EnvDbTablePageComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        {
+          provide: ErrorLogger,
+          useValue: {
+            logError: vi.fn(),
+            logErrorHandler: vi.fn(() => vi.fn()),
+          },
+        },
+        {
+          provide: ActivatedRoute,
+          useValue: routeStubWithDb('chinook-local'),
+        },
+        {
+          provide: DatatugNavContextService,
+          useValue: {
+            currentProject: of(project),
+            currentEnv: of(undefined),
+            currentEnvDbTable: of(table),
+            setCurrentEnvironment: vi.fn(),
+          },
+        },
+        {
+          provide: ProjectService,
+          useValue: { watchProjectSummary: vi.fn(), getFull: vi.fn() },
+        },
+        { provide: AgentService, useValue: { select: selectMock } },
+        { provide: DatatugNavService, useValue: { goTable: vi.fn() } },
+        {
+          provide: SemanticApiService,
+          useValue: { getSemanticColumns: vi.fn(() => of({ columns: [] })) },
+        },
+        {
+          provide: InvestigationContextService,
+          useValue: { addValue: vi.fn(), items: () => [] },
+        },
+        {
+          provide: Router,
+          useValue: { navigate: vi.fn(() => Promise.resolve(true)) },
+        },
+        { provide: AgentContextService, useValue: agentContextStub() },
+      ],
+    })
+      .overrideComponent(EnvDbTablePageComponent, {
+        set: {
+          imports: [],
+          template: '',
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+          providers: [],
+        },
+      })
+      .compileComponents();
+
+    const component = TestBed.createComponent(EnvDbTablePageComponent)
+      .componentInstance;
+
+    expect(component.grid()?.rows).toEqual([
+      { AlbumId: 1, Title: 'For Those About To Rock' },
+      { AlbumId: 2, Title: 'Balls to the Wall' },
+    ]);
+    expect(component.grid()?.columns?.map((c) => c.field)).toEqual([
+      'AlbumId',
+      'Title',
+    ]);
   });
 });
 

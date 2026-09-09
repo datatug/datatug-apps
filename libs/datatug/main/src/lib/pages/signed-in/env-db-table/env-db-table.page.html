@@ -207,9 +207,9 @@
     }
     <ion-card-content style="padding: 0.5em">
       <sneat-datagrid
-        [data]="grid?.rows"
-        [columns]="grid?.columns"
-        [groupBy]="grid?.groupBy"
+        [data]="grid()?.rows"
+        [columns]="grid()?.columns"
+        [groupBy]="grid()?.groupBy"
         [rowClick]="onGridRowClick"
       />
     </ion-card-content>
@@ -227,7 +227,7 @@
           </ion-button>
           <ion-button disabled>#{{ (currentRow?.index || 0) + 1 }}</ion-button>
           <ion-button
-            [disabled]="!currentRow || currentRow.index + 1 === grid?.rows?.length"
+            [disabled]="!currentRow || currentRow.index + 1 === grid()?.rows?.length"
             (click)="setCurrentRow((currentRow?.index || 0) + 1)"
           >
             <ion-icon name="chevron-forward-outline" />
