@@ -1,0 +1,14 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "../../../dist/out-tsc/apps/datatug-app/e2e",
+    "types": ["node", "@playwright/test"],
+    "noEmit": true
+  },
+  // Scoped to journey/** on purpose: the sibling specs (enterprise-sso.spec.ts,
+  // debug.spec.ts, root-and-login.spec.ts) and playwright.sso*.config.ts
+  // predate this tsconfig, were never type-checked before, and carry
+  // pre-existing noPropertyAccessFromIndexSignature findings unrelated to
+  // this stream — not this stream's to fix (see brief: "do not widen scope").
+  "include": ["journey/**/*.ts"]
+}
