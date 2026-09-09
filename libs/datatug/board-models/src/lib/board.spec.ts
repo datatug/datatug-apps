@@ -50,10 +50,7 @@ describe('Board JSON shape (fixture derived from boards.go struct tags)', () => 
       type: 'string',
       isMultiValue: true,
     });
-    expect(boardFixture.requiredParams).toEqual([
-      ['year'],
-      ['region', 'year'],
-    ]);
+    expect(boardFixture.requiredParams).toEqual([['year'], ['region', 'year']]);
   });
 
   it('types a SQL widget card end to end', () => {
@@ -62,7 +59,11 @@ describe('Board JSON shape (fixture derived from boards.go struct tags)', () => 
     expect(card?.widget?.name).toBe(BOARD_WIDGET_NAME_SQL);
 
     const sqlDef = card?.widget?.data as SQLWidgetDef;
-    expect(sqlDef.sql.query).toContain('SUM(amount)');
+    expect(sqlDef.sql.queryId).toBe('q-revenue-by-month');
+    expect(sqlDef.sql.parameters?.[0]).toEqual({
+      id: 'year',
+      boardParameterId: 'year',
+    });
     expect(sqlDef.parameters?.[0]?.id).toBe('year');
   });
 
@@ -75,7 +76,12 @@ describe('Board JSON shape (fixture derived from boards.go struct tags)', () => 
 
     const sqlTabWidget = tabsDef.tabs[0].widget;
     expect(sqlTabWidget?.name).toBe(BOARD_WIDGET_NAME_SQL);
-    expect((sqlTabWidget?.data as SQLWidgetDef).sql.query).toContain('region');
+    const sqlTabDef = sqlTabWidget?.data as SQLWidgetDef;
+    expect(sqlTabDef.sql.queryId).toBe('q-revenue-by-region');
+    expect(sqlTabDef.sql.parameters?.[0]).toEqual({
+      id: 'region',
+      value: 'EMEA',
+    });
 
     const httpTabWidget = tabsDef.tabs[1].widget;
     expect(httpTabWidget?.name).toBe(BOARD_WIDGET_NAME_HTTP);

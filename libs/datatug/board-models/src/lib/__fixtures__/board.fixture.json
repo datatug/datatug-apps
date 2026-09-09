@@ -42,7 +42,8 @@
                 }
               ],
               "sql": {
-                "query": "SELECT month, SUM(amount) FROM invoices WHERE year = @year GROUP BY month"
+                "queryId": "q-revenue-by-month",
+                "parameters": [{ "id": "year", "boardParameterId": "year" }]
               }
             }
           }
@@ -62,7 +63,8 @@
                     "name": "SQL",
                     "data": {
                       "sql": {
-                        "query": "SELECT region, SUM(amount) FROM invoices GROUP BY region"
+                        "queryId": "q-revenue-by-region",
+                        "parameters": [{ "id": "region", "value": "EMEA" }]
                       }
                     }
                   }
