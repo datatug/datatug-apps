@@ -79,3 +79,128 @@ jobs:
 
       - name: nx e2e affected
         run: pnpm nx affected --target=e2e --parallel=1 --base=${{ env.NX_BASE }}
+
+  # Walks user journeys J1-J4 (apps/datatug-app/e2e/journey/**, project
+  # "journey" in playwright.config.ts) against a REAL `datatug serve` agent
+  # built from a pinned datatug-cli release — no HTTP route interception.
+  # See apps/datatug-app/e2e/README.md for what this suite needs and why it
+  # is a separate job from "e2e" above (that job stubs the agent and only
+  # runs affected specs; this one always runs and proves the actual web <->
+  # agent contract). Always runs (not gated by `nx affected`) because it is
+  # the one suite that can catch a datatug-cli-side regression even when no
+  # file in this repo changed.
+  journey:
+    # `env` is not an available context for `jobs.<job_id>.name`, so the
+    # pinned tag can't be interpolated here — it's visible in the "Checkout
+    # datatug-cli" step name below instead. Keep this literal name and the
+    # env var below in sync when bumping DATATUG_CLI_REF.
+    name: journey e2e (real datatug-cli agent)
+    runs-on: ubuntu-latest
+    needs: build
+    env:
+      # Pinned datatug-cli release tag (not `main`) so this job is
+      # reproducible. Bump by checking the newest `vX.Y.Z` tag:
+      #   git ls-remote --tags https://github.com/datatug/datatug-cli.git
+      # See apps/datatug-app/e2e/README.md "Bumping the pinned CLI tag".
+      DATATUG_CLI_REF: v0.20.6
+    steps:
+      - name: Checkout datatug-apps
+        uses: actions/checkout@v6
+
+      # Public repo (datatug/datatug-cli), pinned release tag. actions/checkout
+      # refuses a `path` that escapes the primary checkout's directory, so this
+      # nests it inside the datatug-apps checkout instead of beside it. Nothing
+      # here needs a true sibling: DATATUG_BIN points straight at the built
+      # binary, and this repo's pnpm workspace is a single package at '.'
+      # (pnpm-workspace.yaml), so an extra unrelated Go repo directory
+      # alongside it doesn't get pulled into `pnpm install`.
+      - name: Checkout datatug-cli (${{ env.DATATUG_CLI_REF }})
+        uses: actions/checkout@v6
+        with:
+          repository: datatug/datatug-cli
+          ref: ${{ env.DATATUG_CLI_REF }}
+          path: datatug-cli
+
+      # Public repo (datatug/datatug-demo-projects), main branch — the demo
+      # project the journey suite drives the agent against. Same nested-path
+      # reasoning as datatug-cli above.
+      - name: Checkout datatug-demo-projects (main)
+        uses: actions/checkout@v6
+        with:
+          repository: datatug/datatug-demo-projects
+          ref: main
+          path: datatug-demo-projects
+
+      - uses: ./.github/actions/pnpm
+
+      - name: Set up Go (version from datatug-cli's go.mod)
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: datatug-cli/go.mod
+          cache: true
+          cache-dependency-path: datatug-cli/go.sum
+
+      # CGO_ENABLED=0 builds a working `datatug serve` binary: datatug-cli's
+      # main.go still blank-imports the cgo-only github.com/mattn/go-sqlite3
+      # driver, but without cgo that import compiles to an inert stub rather
+      # than failing the build (verified locally against v0.20.6, go1.27.1).
+      # Required setup step: no continue-on-error — a build failure here must
+      # fail the job, not be silently skipped.
+      - name: Build datatug CLI (CGO_ENABLED=0, from repo root)
+        working-directory: datatug-cli
+        run: |
+          mkdir -p "$RUNNER_TEMP/datatug-bin"
+          CGO_ENABLED=0 go build -o "$RUNNER_TEMP/datatug-bin/datatug" .
+          echo "DATATUG_BIN=$RUNNER_TEMP/datatug-bin/datatug" >> "$GITHUB_ENV"
+
+      # The journey fixture (e2e/journey/fixtures/agent-server.ts) spawns
+      # `datatug serve` itself; it does not fetch this dependency. `datatug
+      # demo` normally does (apps/datatugapp/commands/cmd_demo.go
+      # downloadSQLiteSource), but that command then blocks forever serving
+      # the demo project, so it can't be used as a CI step — this replicates
+      # its keyless download of the same fixture file to the same path
+      # (`~/datatug/dbs/chinook-local.sqlite`) that
+      # environments/local/catalogs/chinook-local/chinook-local.db.json in
+      # datatug-demo-projects declares, without the `serve` call. Required
+      # setup step: no continue-on-error.
+      - name: Fetch Chinook SQLite fixture (keyless, same source `datatug demo` uses)
+        run: |
+          mkdir -p "$HOME/datatug/dbs"
+          curl -fsSL -o "$HOME/datatug/dbs/chinook-local.sqlite" \
+            "https://github.com/datatug/chinook-database/blob/master/ChinookDatabase/DataSources/Chinook_Sqlite.sqlite?raw=true"
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      # Fail fast on a build break before spending the journey suite's
+      # runtime; playwright.config.ts's own webServer starts the dev server
+      # for the actual test run (`nx run datatug-app:serve:development`), so
+      # this is a production-config build check, not a second server.
+      - name: Build datatug-app
+        run: pnpm exec nx run datatug-app:build
+
+      - name: Run journey e2e (J1-J4, real datatug-cli agent)
+        env:
+          DATATUG_DEMO_DIR: ${{ github.workspace }}/datatug-demo-projects/demo-project-1
+        run: pnpm exec playwright test -c apps/datatug-app/playwright.config.ts --project=journey --workers=1
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: journey-e2e-playwright-report
+          path: coverage/apps/datatug-app-e2e/report
+          if-no-files-found: ignore
+          retention-days: 7
+
+      # The agent's own stdout+stderr (e2e/journey/README.md) — the only way
+      # to see why `datatug serve` refused to start or what it logged for a
+      # request that failed.
+      - name: Upload agent logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: journey-e2e-agent-logs
+          path: coverage/apps/datatug-app-e2e/journey/*.log
+          if-no-files-found: ignore
+          retention-days: 7

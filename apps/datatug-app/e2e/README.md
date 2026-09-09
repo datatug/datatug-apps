@@ -53,19 +53,66 @@ can't be found, every journey test is skipped with a message naming exactly
 what was tried (see `fixtures/agent-server.ts`, `resolveBinary()` /
 `resolveDemoDir()`).
 
-### What CI should provide
+### What CI provides: the `journey` job
 
-`datatug-cli` publishes release binaries (GitHub Releases) and a Homebrew
-cask named `datatug`. CI for this repo should install one of those and set
-`DATATUG_BIN` to its path — that avoids a `go build` step (and a Go
-toolchain dependency) in a Node/Playwright job. `DATATUG_CLI_DIR` is the
-local-dev / "build from source" fallback.
+`.github/workflows/ci.yml`'s `journey` job (needs: `build`) is what actually
+runs this suite in CI. It:
 
-The agent's own stdout+stderr is captured to
-`coverage/apps/datatug-app-e2e/journey/agent-worker-<n>.log` (one file per
-Playwright worker) — publish that path as a CI artifact when the suite is
-run in CI; it is the only way to see why `datatug serve` refused to start or
-what it logged for a request.
+1. Checks out this repo, plus `datatug/datatug-cli` at a **pinned release
+   tag** (`env.DATATUG_CLI_REF` at the top of the job — currently
+   `v0.20.6`) and `datatug/datatug-demo-projects` at `main`, both nested
+   under the workspace (`actions/checkout`'s `path:` cannot escape the
+   primary checkout).
+2. Sets up Go from `datatug-cli/go.mod` and builds `datatug` from the CLI
+   repo root (`go build -o "$RUNNER_TEMP/datatug-bin/datatug" .` —
+   `CGO_ENABLED=0`; the root package is `main.go`, not
+   `apps/datatugapp/`), then sets `DATATUG_BIN` to that path. This is a
+   **build-from-source-at-a-pinned-tag** strategy, not a downloaded release
+   binary: `datatug-cli` publishes release binaries too (GitHub Releases,
+   plus a Homebrew cask named `datatug`), but pinning a source tag and
+   building it keeps the Go toolchain step reproducible and version-pinned
+   in one place (`DATATUG_CLI_REF`) without a separate binary-download step.
+3. Fetches the Chinook SQLite fixture directly, keylessly, to
+   `~/datatug/dbs/chinook-local.sqlite` — the exact path
+   `environments/local/catalogs/chinook-local/chinook-local.db.json`
+   declares in `datatug-demo-projects`. This is *not* `datatug demo`: that
+   CLI command (`apps/datatugapp/commands/cmd_demo.go` in `datatug-cli`)
+   does the same keyless download but then blocks forever serving the demo
+   project (it hands off to `serve`), so it can't run as a CI step; the CI
+   step replicates just its `downloadSQLiteSource` behavior (same URL) and
+   stops there. `DATATUG_DEMO_DIR` is set to the checked-out
+   `datatug-demo-projects/demo-project-1`, so the fixture never needs its
+   own git clone.
+4. Installs Playwright's `chromium` browser, builds `datatug-app`
+   (production config — a fail-fast check; `playwright.config.ts`'s own
+   `webServer` starts the *dev* server for the actual test run, so this
+   is not a second server), then runs
+   `playwright test -c apps/datatug-app/playwright.config.ts --project=journey --workers=1`.
+5. On failure, uploads the Playwright HTML report (`journey-e2e-playwright-report`,
+   from `coverage/apps/datatug-app-e2e/report` — traces are embedded in the
+   report by Playwright's default HTML reporter behavior) and the agent's
+   captured stdout+stderr (`journey-e2e-agent-logs`, from
+   `coverage/apps/datatug-app-e2e/journey/*.log` — one file per worker; the
+   only way to see why `datatug serve` refused to start or what it logged
+   for a request).
+
+Every setup step above (CLI build, fixture fetch) fails the job outright on
+error — none of them use `continue-on-error`, because a broken build or a
+missing fixture must not be reported as a passing (or silently skipped)
+suite.
+
+#### Bumping the pinned CLI tag
+
+`DATATUG_CLI_REF` in the `journey` job is the only place the tag is pinned.
+To bump it:
+
+```sh
+git ls-remote --tags https://github.com/datatug/datatug-cli.git \
+  | sed 's#.*refs/tags/##' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1
+```
+
+Update `DATATUG_CLI_REF` to that tag and re-run the `journey` job. There is
+no other DataTug-CLI-version reference to keep in sync in this repo.
 
 ## Known gap this harness works around (not this stream's to fix)
 
