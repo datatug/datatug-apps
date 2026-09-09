@@ -61,4 +61,116 @@
   @if (queryState.queryType === "HTTP") {
     <sneat-datatug-http-query-editor />
   }
+
+  <!--
+    REQ:parameter-auto-binding / REQ:no-hidden-filters (INTEGRATION.md §6) — every
+    auto-bound parameter is shown with its origin ("from selection"/"from context")
+    before it is ever sent on a run, and the user can clear it here.
+  -->
+  <ion-card>
+    <ion-card-header>
+      <ion-card-title>Parameters</ion-card-title>
+    </ion-card-header>
+    @if (effectiveBindings().length) {
+      <ion-list>
+        @for (binding of effectiveBindings(); track binding.parameterId) {
+          <ion-item>
+            <ion-label>
+              {{ binding.label }}
+              <p>bound from {{ binding.origin }}</p>
+            </ion-label>
+            <ion-button
+              slot="end"
+              fill="clear"
+              title="Clear this binding"
+              (click)="clearBinding(binding.parameterId)"
+            >
+              <ion-icon name="close-outline" />
+            </ion-button>
+          </ion-item>
+        }
+      </ion-list>
+    } @else {
+      <ion-card-content>
+        <ion-text color="medium">No parameters bound from selection or context.</ion-text>
+      </ion-card-content>
+    }
+    <ion-item lines="none">
+      <ion-buttons>
+        <ion-button
+          fill="solid"
+          color="primary"
+          [disabled]="running() || !queryId || !project"
+          (click)="runQuery()"
+        >
+          @if (running()) {
+            <ion-spinner name="dots" slot="start" />
+          } @else {
+            <ion-icon name="play-outline" slot="start" />
+          }
+          Run query
+        </ion-button>
+      </ion-buttons>
+    </ion-item>
+  </ion-card>
+
+  @if (runError(); as error) {
+    <ion-card color="danger">
+      <ion-card-content>{{ error }}</ion-card-content>
+    </ion-card>
+  }
+
+  @if (runResult(); as result) {
+    <!-- REQ:limitation-visible -->
+    <sneat-datatug-limitation-header [limitations]="result.limitations" />
+
+    @if (result.bindingsApplied.length) {
+      <!-- REQ:no-hidden-filters — "the results header MUST list the bindings that
+           were applied". -->
+      <ion-list>
+        <ion-list-header>
+          <ion-label>Bindings applied</ion-label>
+        </ion-list-header>
+        @for (applied of result.bindingsApplied; track applied.parameterId) {
+          <ion-item lines="none">
+            <ion-label
+              >{{ applied.entity }}.{{ applied.field }} = {{ applied.value }}</ion-label
+            >
+            <ion-badge slot="end" color="medium">{{ applied.origin }}</ion-badge>
+          </ion-item>
+        }
+      </ion-list>
+    }
+
+    <ion-card>
+      <ion-card-content style="overflow-x: auto">
+        <table
+          class="run-result-table"
+          style="width: 100%; border-collapse: collapse"
+        >
+          <thead>
+            <tr>
+              @for (col of result.recordset.columns; track col.name) {
+                <th style="text-align: left; border-bottom: 2px solid var(--ion-color-step-150, #d9d9d9); padding: 4px 8px">{{ col.title || col.name }}</th>
+              }
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of result.recordset.rows; track $index) {
+              <tr>
+                @for (cell of row; track $index) {
+                  <td style="border-bottom: 1px solid var(--ion-color-step-100, #e6e6e6); padding: 4px 8px">{{ cell }}</td>
+                }
+              </tr>
+            }
+            @if (!result.recordset.rows.length) {
+              <tr>
+                <td [attr.colspan]="result.recordset.columns.length" style="padding: 4px 8px">No rows.</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </ion-card-content>
+    </ion-card>
+  }
 </ion-content>

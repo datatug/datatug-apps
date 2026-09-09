@@ -1,3 +1,15 @@
+<!--
+  REQ:related-lookup-model / REQ:applicable-queries / REQ:context-basket
+  (libs/datatug/semantic INTEGRATION.md §3) — the context panel opens as a side pane
+  next to the grid, per the brief ("in a side panel inside the page's
+  ion-split-pane/ion-content layout — plain list first, no PrimeNG"). [when]="false"
+  keeps both panes always in their side-by-side layout (rather than collapsing the
+  secondary pane below some viewport-width breakpoint, ion-split-pane's default
+  behaviour) since visibility here is driven by whether a cell is selected, not by
+  screen size.
+-->
+<ion-split-pane [when]="false" contentId="env-db-table-main">
+<div class="ion-page" id="env-db-table-main">
 <ion-header>
   <ion-toolbar>
     <ion-buttons slot="start">
@@ -198,6 +210,7 @@
         [data]="grid?.rows"
         [columns]="grid?.columns"
         [groupBy]="grid?.groupBy"
+        [rowClick]="onGridRowClick"
       />
     </ion-card-content>
   </ion-card>
@@ -280,3 +293,26 @@
     } }
   </div>
 </ion-content>
+</div>
+@if (hasSelection()) {
+<div class="ion-page context-panel-pane">
+  <ion-header>
+    <ion-toolbar>
+      <ion-title>Context</ion-title>
+      <ion-buttons slot="end">
+        <ion-button (click)="closeContextPanel()">
+          <ion-icon name="close-outline" />
+        </ion-button>
+      </ion-buttons>
+    </ion-toolbar>
+  </ion-header>
+  <ion-content>
+    <sneat-datatug-context-panel
+      [project]="project?.ref?.projectId || ''"
+      [selection]="selection()"
+      (openQuery)="onOpenQuery($event)"
+    />
+  </ion-content>
+</div>
+}
+</ion-split-pane>
