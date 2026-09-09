@@ -76,3 +76,90 @@ builds a URL without the leading `store` segment and never matches
 `datatugRoutes`. Phase 1 plan task 2 ("make the `EnvDbPageComponent` route
 resolve") owns that fix. Swap the `page.goto` for a real click on task 2's
 completion.
+
+## J1 is currently blocked on two `datatug-cli` / demo-project defects, not a
+## missing sign-in step
+
+CI run https://github.com/datatug/datatug-apps/actions/runs/34337467977
+attributed J1's failure to the journey navigating straight into a
+`signed-in/**`-named route with no sign-in step. That hypothesis does not
+hold: `datatugRoutes`' `store/:storeId/**` subtree (see
+`libs/datatug/main/src/lib/routes/datatug-routing*.ts`) carries no
+`SNEAT_AUTH_GUARDS`, `DatatugAppComponent`'s shell has no auth gate, and
+`ProjectService`/`ProjectPageComponent` make a plain unauthenticated
+`HttpClient` call. "`signed-in/`" is only this app's directory-naming
+convention for pages under a store, not an auth-guarded route tree.
+Reproduced 2026-09-09 against `datatug-cli` main (a30132d, `CGO_ENABLED=0 go
+build .`) + `datatug-demo-projects/demo-project-1`, both with a bare `curl`
+and by running this suite itself — same agent-log signature CI saw (`GET
+/datatug/ping` then exactly one `GET
+/datatug/projects/project_summary?id=datatug-demo-project`, then nothing):
+
+**Blocker 1 — `GET /datatug/projects/project_summary` panics the server on
+every call**, closing the connection before any response is written (the
+browser sees `HttpErrorResponse{status: 0, statusText: 'Unknown Error'}`,
+which is why the project title never renders and nothing else follows in
+the agent log — not a stalled/slow request).
+
+```
+$ curl -i 'http://127.0.0.1:8971/datatug/projects/project_summary?id=datatug-demo-project'
+curl: (52) Empty reply from server
+```
+
+Server side:
+
+```
+2026/09/09 GET 0 /datatug/projects/project_summary?id=datatug-demo-project
+2026/09/09 http: panic serving 127.0.0.1:xxxxx: GetAuthTokenFromHttpRequest is nil
+  .../sneat-go-core@v0.67.3/apicore/request_validation.go:121 (VerifyRequest)
+  .../sneat-go-core@v0.67.3/apicore/api_http.go:39 (Execute)
+  pkg/server/endpoints/project_endpoints.go:46 (getProjectSummary)
+```
+
+Root cause: `pkg/server/http_server.go:81` wires every `handle(...)`-routed
+endpoint straight to `sneat-go-core/apicore.Execute`, whose `VerifyRequest`
+unconditionally panics when the package-level
+`apicore.GetAuthTokenFromHttpRequest` hook is unset
+(`request_validation.go:118-121`) — before it even reads
+`AuthRequired`/`AuthenticationRequired()`. `datatug serve` never assigns
+that hook anywhere in the repo (`grep -rn GetAuthTokenFromHttpRequest`
+outside `sneat-go-core` returns nothing): it authenticates the whole process
+once, up front, via `--as`/`--role`/`--group` into a fixed
+`secureread.Session` (`apps/datatugapp/commands/cmd_serve.go`
+`resolveServeSession`), not per-request bearer tokens, so the hosted-backend
+auth hook `apicore.Execute` expects was simply never appropriate here. Every
+other `handle(...)`-routed endpoint (`createProject`,
+`getProjectItem`/`saveProjectItem`/`createProjectItem`-based handlers —
+`getEntity`, `saveEntity`, the query/board equivalents) panics the same way;
+only the bespoke `exec/select` / `exec/run_query` / `execute_commands`
+handlers and the endpoints that bypass `handle()` entirely (e.g.
+`entities/all_entities`) are unaffected.
+
+**Blocker 2 — even past blocker 1, `GET /datatug/exec/select` (the request
+the Album table page needs) fails against this exact demo project**:
+
+```
+$ curl 'http://127.0.0.1:8971/datatug/exec/select?proj=datatug-demo-project&env=local&db=chinook-local&from=main.Album&limit=5'
+{"error":"load environment \"local\": failed to load *datatug.Environment[local] from project: open .../demo-project-1/environments/local/environment-summary.json: no such file or directory"}
+```
+
+`pkg/datatug-core/storage/filestore/loader_internals.go:165` (via
+`environments_store.go`) only ever looks for a fixed
+`environment-summary.json` (`storage.EnvironmentSummaryFileName`,
+`file_names.go:79`) inside each `environments/<id>/` folder, but
+`datatug-demo-projects/demo-project-1/environments/local/` ships
+`local.env.json` instead — same mismatch in every other environment folder
+in that project (`prod.env.json`, `QA.env.json`, `UAT.env.json`,
+`dev.env.json`). Either the loader needs to also accept `<id>.env.json`, or
+the demo project's environment files need renaming/duplicating to
+`environment-summary.json` — a `datatug-cli` and/or `datatug-demo-projects`
+fix, not a `datatug-apps` one.
+
+Both are `datatug-cli`/`datatug-demo-projects`-side defects with no
+workaround available from this repo (a server that panics before writing a
+response can't be routed around from the client). Do not gate the
+`store/:storeId/**` routes behind sign-in or reach for the emulator
+sign-in recipe to "fix" this — neither addresses the actual failure. J1's
+assertions are correct as written; leave them unmodified until the CLI
+fixes land, then re-run this suite with `DATATUG_CLI_DIR` (or a `DATATUG_BIN`
+newer than a30132d fixing both) to confirm.
