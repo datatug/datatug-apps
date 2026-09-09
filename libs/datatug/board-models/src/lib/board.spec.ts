@@ -36,6 +36,26 @@ describe('Board JSON shape (fixture derived from boards.go struct tags)', () => 
     expect(boardFixture.access).toBe('protected');
   });
 
+  it('carries its own parameters and requiredParams, mirroring ProjBoardBrief', () => {
+    expect(boardFixture.parameters).toHaveLength(2);
+    expect(boardFixture.parameters?.[0]).toEqual({
+      id: 'year',
+      type: 'integer',
+      title: 'Year',
+      isRequired: true,
+      defaultValue: 2026,
+    });
+    expect(boardFixture.parameters?.[1]).toEqual({
+      id: 'region',
+      type: 'string',
+      isMultiValue: true,
+    });
+    expect(boardFixture.requiredParams).toEqual([
+      ['year'],
+      ['region', 'year'],
+    ]);
+  });
+
   it('types a SQL widget card end to end', () => {
     const card = boardFixture.rows?.[0]?.cards?.[0];
     expect(card?.id).toBe('card-revenue');

@@ -2,6 +2,7 @@
 
 import { BoardWidget } from './board-widget';
 import { BoardCardId, BoardId } from './ids';
+import { BoardParameterDef } from './widget-parameter';
 
 /**
  * Mirrors `Board` (boards.go) field for field, JSON-shape only.
@@ -27,6 +28,14 @@ export interface Board {
   tags?: string[];
   userIds?: string[];
   access?: 'private' | 'protected' | 'public';
+  /**
+   * Mirrors `ProjBoardBrief.Parameters` (boards.go), which `Board` now also
+   * carries so a `board.json` holding `parameters` round-trips instead of
+   * being silently dropped.
+   */
+  parameters?: BoardParameterDef[];
+  /** Mirrors `ProjBoardBrief.RequiredParams` (boards.go), which `Board` now also carries. */
+  requiredParams?: string[][];
   rows?: BoardRow[];
 }
 

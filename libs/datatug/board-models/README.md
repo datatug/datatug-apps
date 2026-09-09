@@ -166,14 +166,20 @@ mirrors `ProjBoardBrief` field for field (`IProjItemBrief` +
 
 ### Open questions for `boards.go` (datatug-core)
 
-The following are the coordinating agent's observations, **not** a founder
-ruling — both are tracked in the DataTug hub Feature
-(`datatug/datatug` → `spec/features/dashboards`, "Open Questions"):
+Tracked in the DataTug hub Feature (`datatug/datatug` →
+`spec/features/dashboards`, "Open Questions"):
 
-- `Board` carries no `parameters`, while `ProjBoardBrief` in the same file
-  carries `parameters` and `requiredParams`; a `board.json` with
-  `parameters` is silently dropped on a `LoadBoard`/`SaveBoard` round trip.
-  Should `Board` carry them?
+- **Resolved (founder ruling, 2026-09-09, verbatim: "1 - yes").** Asked
+  whether `Board` should carry `parameters`/`requiredParams` too (a
+  datatug-core change), or whether board parameters are brief-only by
+  design — the founder ruled yes. `datatug-core`'s `Board` now carries
+  `parameters` and `requiredParams`, mirroring `ProjBoardBrief` field for
+  field, and this package's `Board` type (`board.ts`) has been updated to
+  match; see `BOARD_MODELS_VERSION` bump to `0.1.0`.
+
+The following is the coordinating agent's observation, **not** a founder
+ruling:
+
 - `SQLWidgetSettings` is `{ query }` only, so a SQL widget has no db/env
   execution target, although `ParameterLookup` beside it does carry `db`.
   How is a board SQL widget meant to be executed? The dashboards Feature's

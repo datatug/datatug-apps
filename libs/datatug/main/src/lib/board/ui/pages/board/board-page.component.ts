@@ -28,7 +28,10 @@ import { routingParamBoard } from '../../../../core/datatug-routing-params';
 import { projectRefToString } from '../../../../core/project-context';
 import { QueryParamsService } from '../../../../core/services/QueryParamsService';
 import { IBoardContext } from '../../../../models/definition/board/board';
-import { IParamWithDefAndValue } from '../../../../models/definition/parameter';
+import {
+  IParameterDef,
+  IParamWithDefAndValue,
+} from '../../../../models/definition/parameter';
 import { IProjBoard } from '../../../../models/definition/project';
 import { DatatugNavContextService } from '../../../../services/nav/datatug-nav-context.service';
 import { DatatugBoardService } from '../../../core/datatug-board.service';
@@ -89,10 +92,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   constructor() {
     const dataTugNavContext = this.dataTugNavContext;
     this.projBoard = history.state?.projBoard;
-    this.parameters = this.projBoard?.parameters?.map((def) => ({
-      def,
-      val: '',
-    }));
+    this.parameters = this.resolveParameters();
     try {
       this.route.queryParamMap.subscribe({
         next: (queryParamMap) => {
@@ -150,8 +150,15 @@ export class BoardPageComponent implements OnInit, OnDestroy {
                 .subscribe({
                   next: (board) => {
                     try {
-                      this.projBoard = board;
+                      // `Board.parameters` (from `@datatug/board-models`, a
+                      // field-for-field mirror of boards.go) types `type` as
+                      // plain `string`, matching Go's `ParameterDef.Type`;
+                      // `IProjBoard.parameters` (this app's own model) narrows
+                      // it to `DataType`. Both describe the same JSON shape,
+                      // so the cast is type-only, not a behaviour change.
+                      this.projBoard = board as IProjBoard;
                       this.boardDef = board;
+                      this.parameters = this.resolveParameters();
                     } catch (e) {
                       this.errorLogger.logError(
                         e,
@@ -180,6 +187,17 @@ export class BoardPageComponent implements OnInit, OnDestroy {
     } catch (e) {
       this.errorLogger.logError(e, 'Failed in BoardPage.constructor()');
     }
+  }
+
+  /**
+   * `Board` now carries its own `parameters`/`requiredParams` (mirroring
+   * `ProjBoardBrief`, i.e. `IProjBoard`) — prefer the loaded board's own
+   * definitions once available, falling back to the brief passed via router
+   * state before that.
+   */
+  private resolveParameters(): IParamWithDefAndValue[] | undefined {
+    const defs = this.boardDef?.parameters ?? this.projBoard?.parameters;
+    return defs?.map((def) => ({ def: def as IParameterDef, val: '' }));
   }
 
   public startEditing(): void {
