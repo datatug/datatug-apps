@@ -43,8 +43,3 @@ pnpm e2e:sso
 That test uses the checked-in cryptographic OIDC/SAML test providers while
 still running the production protocol validation and Firebase/Firestore
 emulators.
-
-The required CI job runs this deterministic profile against the immutable
-`sneat-core-modules` revision identified as `v0.75.0`. When the deployed SSO
-backend is upgraded, update that revision in `.github/workflows/ci.yml` in the
-same change so the browser contract remains pinned to production behavior.
