@@ -90,7 +90,11 @@ jobs:
   # the one suite that can catch a datatug-cli-side regression even when no
   # file in this repo changed.
   journey:
-    name: journey e2e (datatug-cli ${{ env.DATATUG_CLI_REF }})
+    # `env` is not an available context for `jobs.<job_id>.name`, so the
+    # pinned tag can't be interpolated here — it's visible in the "Checkout
+    # datatug-cli" step name below instead. Keep this literal name and the
+    # env var below in sync when bumping DATATUG_CLI_REF.
+    name: journey e2e (real datatug-cli agent)
     runs-on: ubuntu-latest
     needs: build
     env:
