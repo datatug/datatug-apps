@@ -1,8 +1,8 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable, throwError } from 'rxjs';
 import { SneatApiServiceFactory } from '@sneat/api';
+import { Board } from '@datatug/board-models';
 import { CreateNamedRequest } from '../../dto/requests';
-import { IBoardDef } from '../../models/definition/board/board';
 import { IProjBoard } from '../../models/definition/project';
 import { ICreateProjectItemRequest } from '../../services/project/project.service';
 
@@ -22,7 +22,7 @@ export class DatatugBoardService {
     storeId: string,
     project: string,
     boardId: string,
-  ): Observable<IBoardDef> {
+  ): Observable<Board> {
     if (!boardId) {
       return throwError(
         () => 'required parameter "boardId" has not been provided',

@@ -4,7 +4,6 @@ import { ErrorLogger } from '@sneat/core';
 
 import { SqlQueryWidgetComponent } from './sql-query-widget.component';
 import { BoardCardTabService } from '../../board-card/board-card.component';
-import { AgentService } from '../../../../../services/repo/agent.service';
 
 describe('SqlQueryWidgetComponent', () => {
   let component: SqlQueryWidgetComponent;
@@ -16,7 +15,6 @@ describe('SqlQueryWidgetComponent', () => {
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
         BoardCardTabService,
-        { provide: AgentService, useValue: { select: vi.fn() } },
         {
           provide: ErrorLogger,
           useValue: {

@@ -13,6 +13,7 @@
     "rxjs": "^7.8.0",
     "tabulator-tables": "^6.0.0",
     "@acrodata/code-editor": "*",
+    "@datatug/board-models": "*",
     "@sneat/auth-core": "0.27.6",
     "@sneat/auth-models": "0.27.6",
     "@sneat/auth-ui": "0.27.20",

@@ -54,7 +54,10 @@ export default defineConfig({
       command:
         'pnpm exec firebase emulators:start --only auth,firestore --project demo-local-sneat-app',
       cwd: workspaceRoot,
-      url: 'http://127.0.0.1:9099',
+      // Auth opens first, but the test resets both emulators immediately.
+      // Wait for Firestore's documents endpoint so a cold CI runner cannot
+      // race the second emulator while it is still starting.
+      url: 'http://127.0.0.1:8180',
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
       gracefulShutdown: { signal: 'SIGTERM', timeout: 10_000 },

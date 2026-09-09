@@ -12,9 +12,6 @@ on:
       - 'docs/**'
       - '.git-hooks/**'
   merge_group:
-    paths-ignore:
-      - 'docs/**'
-      - '.git-hooks/**'
 
 permissions:
   actions: read

@@ -14,11 +14,9 @@ import { GridWidgetComponent } from '../grid-widget/grid-widget.component';
 import { BoardCardTabService } from '../../board-card/board-card.component';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
-import { ErrorLogger, IErrorLogger } from '@sneat/core';
-import { AgentService } from '../../../../../services/repo/agent.service';
+import { SQLWidgetDef } from '@datatug/board-models';
 import { SqlEditorComponent } from '../../../../../components/sqleditor/sql-editor.component';
 import { QueryType } from '../../../../../models/definition/query-def';
-import { ISqlWidgetSettings } from '../../../../../models/definition/board/widget-sql';
 import { IBoardContext } from '../../../../../models/definition/board/board';
 import { IRecordsetResult, IRecordset } from '../../../../../dto/execute';
 
@@ -38,14 +36,12 @@ const reSqlParams = /@(\w+)/;
 export class SqlQueryWidgetComponent implements OnChanges, OnDestroy {
   private readonly boardCardTab = inject(BoardCardTabService);
   private readonly changeDetectorRef = inject(ChangeDetectorRef);
-  private readonly agentService = inject(AgentService);
-  private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
 
   readonly level = input<number>();
   // TODO: Skipped for migration because:
   //  Your application code writes to the input. This prevents migration.
   readonly tab = model<(QueryType | 'grid' | 'card') | undefined>(QueryType.SQL);
-  readonly data = input<ISqlWidgetSettings>();
+  readonly sqlWidgetDef = input<SQLWidgetDef>();
   readonly boardContext = input<IBoardContext>();
 
   public state?: 'loading' | 'loaded' | 'error';
@@ -71,9 +67,9 @@ export class SqlQueryWidgetComponent implements OnChanges, OnDestroy {
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-    const data = this.data();
-    if ((changes['data'] || changes['boardContext']) && data) {
-      let sql = data.query;
+    const def = this.sqlWidgetDef();
+    if ((changes['sqlWidgetDef'] || changes['boardContext']) && def) {
+      let sql = def.sql.query;
       const match = sql.match(reSqlParams);
       if (match) {
         const paramName = match[1];
@@ -91,34 +87,9 @@ export class SqlQueryWidgetComponent implements OnChanges, OnDestroy {
         }
       }
       this.sql = sql;
-      if (data.env && data.db) {
-        this.agentService
-          .select('localhost:8989', {
-            sql,
-            env: data.env || 'LOCAL',
-            db: data.db,
-            proj: '.',
-          })
-          .subscribe({
-            next: () => {
-              alert('not implemented processing response');
-              // const itemWithRecordset = response.commands[0].items[0] as ICommandResponseWithRecordset
-              // this.recordset = itemWithRecordset.value;
-              this.changeDetectorRef.markForCheck();
-            },
-            error: (err) =>
-              this.errorLogger.logError(err, 'Failed to load data'),
-          });
-      } else {
-        // TODO: temporary debug thing
-        console.log(
-          `Not issuing SELECT query as env=${data.env}, db=${data.db}`,
-        );
-      }
-      if (data.db) {
-        this.sql = `-- USE ${data.db};
-${this.sql}`;
-      }
+      // boards.go's SQLWidgetSettings is `{ query }` only — no db/env
+      // execution target. See @datatug/board-models README "Open questions
+      // for boards.go (datatug-core)".
       this.changeDetectorRef.markForCheck();
     }
   }
