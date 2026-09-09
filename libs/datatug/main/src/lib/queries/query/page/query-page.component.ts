@@ -4,6 +4,7 @@ import {
   Component,
   OnDestroy,
   computed,
+  effect,
   inject,
   signal,
 } from '@angular/core';
@@ -42,17 +43,20 @@ import {
 import {
   AgentContextService,
   Binding,
+  BindingParameterRef,
   CandidateTarget,
   displayTypedValue,
-  EntityFieldRef,
   ExecutionBindingOrigin,
+  Fact,
+  hasBlockingBindings,
   InvestigationContextService,
+  isBindingRunnable,
   LimitationHeaderComponent,
+  ResolvedBinding,
+  resolveBindings,
   RunQueryRequest,
   RunQueryResponse,
   SemanticApiService,
-  SemanticParameterRef,
-  toTypedValue,
   tryDecodeErrorEnvelope,
   TypedValue,
 } from '@sneat/datatug-semantic';
@@ -88,24 +92,96 @@ import {
 } from '../../query-editor-state-service';
 import { HttpQueryEditorComponent } from '../http-query/http-query-editor.component';
 
-/**
- * REQ:parameter-auto-binding, REQ:no-hidden-filters (INTEGRATION.md §6) — one
- * candidate binding shown to the user before a run, regardless of whether it came
- * from the context panel's "open this applicable query" (`origin: 'selection'`,
- * carried via router state as a wire `Binding[]` — see
- * EnvDbTablePageComponent.onOpenQuery / ContextPanelComponent.OpenQueryRequest) or from
- * InvestigationContextService.bindingsFor() (`origin: 'context'`, wrapped as a
- * {@link TypedValue} here). Selection always wins over context for the same parameter id
- * (REQ:parameter-auto-binding). Never applied to a run until the user sees it here and
- * doesn't clear it (REQ:no-hidden-filters) — see effectiveBindings(). `value` stays a wire
- * TypedValue end to end so runQuery() never re-wraps it (plan Task 12 item 3).
- */
-interface ResolvedParameterBinding {
-  readonly parameterId: string;
-  readonly entityField: EntityFieldRef;
-  readonly value: TypedValue;
-  readonly label: string;
-  readonly origin: 'selection' | 'context';
+/** The exact pair of disagreeing values a confirmed conflict was confirmed for — see
+ * `confirmConflict()`'s own comment on why a confirmation is invalidated (not silently
+ * reused) if the underlying facts change to a *different* conflicting pair. */
+interface ConfirmedConflict {
+  readonly selectionValue: TypedValue;
+  readonly contextValue: TypedValue;
+}
+
+function typedValuesEqual(a: TypedValue, b: TypedValue): boolean {
+  return a.type === b.type && a.value === b.value;
+}
+
+/** Writes `next` into `sig` only if it differs from the current value per `equal` —
+ * see `updateBindings()`'s own comment on why an unconditional `.set()` inside an
+ * `effect()` is unsafe here. */
+function setIfChanged<T>(
+  sig: { (): T; set: (value: T) => void },
+  next: T,
+  equal: (a: T, b: T) => boolean,
+): void {
+  if (!equal(sig(), next)) {
+    sig.set(next);
+  }
+}
+
+function resolvedBindingEqual(a: ResolvedBinding, b: ResolvedBinding): boolean {
+  if (
+    a.parameterId !== b.parameterId ||
+    a.origin !== b.origin ||
+    a.blocked !== b.blocked ||
+    a.meta?.entity !== b.meta?.entity ||
+    a.meta?.field !== b.meta?.field
+  ) {
+    return false;
+  }
+  if ((a.value === undefined) !== (b.value === undefined)) {
+    return false;
+  }
+  if (a.value && b.value && !typedValuesEqual(a.value, b.value)) {
+    return false;
+  }
+  const aAmb = a.ambiguousValues ?? [];
+  const bAmb = b.ambiguousValues ?? [];
+  if (
+    aAmb.length !== bAmb.length ||
+    aAmb.some((v, i) => !typedValuesEqual(v, bAmb[i]))
+  ) {
+    return false;
+  }
+  if ((a.conflict === undefined) !== (b.conflict === undefined)) {
+    return false;
+  }
+  if (
+    a.conflict &&
+    b.conflict &&
+    (!typedValuesEqual(a.conflict.selectionValue, b.conflict.selectionValue) ||
+      !typedValuesEqual(a.conflict.contextValue, b.conflict.contextValue))
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function bindingsEqual(
+  a: readonly ResolvedBinding[],
+  b: readonly ResolvedBinding[],
+): boolean {
+  return (
+    a.length === b.length && a.every((binding, i) => resolvedBindingEqual(binding, b[i]))
+  );
+}
+
+function setsEqual<T>(a: ReadonlySet<T>, b: ReadonlySet<T>): boolean {
+  return a.size === b.size && [...a].every((v) => b.has(v));
+}
+
+function mapsEqual<K, V>(
+  a: ReadonlyMap<K, V>,
+  b: ReadonlyMap<K, V>,
+  valueEqual: (x: V, y: V) => boolean = (x, y) => x === y,
+): boolean {
+  if (a.size !== b.size) {
+    return false;
+  }
+  for (const [key, value] of a) {
+    if (!b.has(key) || !valueEqual(value, b.get(key) as V)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 @Component({
@@ -192,12 +268,35 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   // REQ:parameter-auto-binding, REQ:no-hidden-filters (INTEGRATION.md §6). Signals,
   // not plain fields, per this repo's zoneless-ready convention (AGENTS.md).
   private readonly selectionBindings: readonly Binding[];
-  public readonly bindings = signal<readonly ResolvedParameterBinding[]>([]);
+  /** Task 15 item 3 — every semantic parameter's resolved binding, via
+   * `binding-resolver.ts`'s precedence engine (explicit user edit > selection >
+   * context > default; ambiguous/conflict/missing-required block Run). */
+  public readonly bindings = signal<readonly ResolvedBinding[]>([]);
   private readonly clearedParamIds = signal<ReadonlySet<string>>(new Set());
-  /** What actually gets sent on a run — cleared bindings are never silently
-   * resurrected (REQ:no-hidden-filters). */
+  /** Parameter ids where the user has explicitly confirmed a shown
+   * selection-vs-context conflict — keyed by the EXACT pair of values confirmed, so a
+   * later change to a *different* conflicting pair is never silently treated as
+   * already-confirmed (api-contract.md "an already-open query never rebinds
+   * silently"). */
+  private readonly confirmedConflicts = signal<
+    ReadonlyMap<string, ConfirmedConflict>
+  >(new Map());
+  /** Bindings actually visible in the Parameters card — anything with a value or a
+   * block reason; a still-empty optional parameter renders nothing (unchanged from
+   * the pre-Task-15 behavior). */
+  public readonly visibleBindings = computed(() =>
+    this.bindings().filter((b) => b.value !== undefined || b.blocked),
+  );
+  /** What actually gets sent on a run — cleared, ambiguous, unconfirmed-conflict and
+   * missing-required bindings are never silently sent (REQ:no-hidden-filters). */
   public readonly effectiveBindings = computed(() =>
-    this.bindings().filter((b) => !this.clearedParamIds().has(b.parameterId)),
+    this.bindings().filter(isBindingRunnable),
+  );
+  /** `true` when at least one parameter is ambiguous, conflicted or a missing
+   * required value — Run must be disabled and the reason shown (REQ:no-hidden-filters,
+   * AC:typed-context-isolation "conflict blocks an unconfirmed run"). */
+  public readonly hasBlockedBindings = computed(() =>
+    hasBlockingBindings(this.bindings()),
   );
   public readonly running = signal(false);
   public readonly runError = signal<string | undefined>(undefined);
@@ -215,6 +314,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
    * silent fallback) via {@link runSnapshot}. */
   public readonly sourceUnavailable = signal(false);
   private lastRequest?: RunQueryRequest;
+  private lastRequestScope?: { project: string; environment: string; securityContextId: string };
 
   constructor() {
     // REQ:applicable-queries / INTEGRATION.md §3 — EnvDbTablePageComponent.onOpenQuery
@@ -243,6 +343,36 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.trackCurrentProject();
     this.trackQueryParams();
     this.trackProject();
+
+    // Task 15 item 2/4 — reactive to the agent's securityContextId (a real signal)
+    // and the Investigation Context's enabled items (also a signal): switches this
+    // scope's own basket before recomputing bindings, and recomputes bindings whenever
+    // the context changes underneath an already-open query page (a *changed*
+    // conflict is never silently rebound — see confirmConflict()'s own comment).
+    // project/envId are this component's own plain (non-signal) tracked fields, kept
+    // in sync imperatively wherever they change (trackCurrentProject/trackCurrentEnv/
+    // envChanged/setActiveEnv all call syncScopeAndBindings() too) — reading their
+    // current value here is safe even though they aren't themselves tracked
+    // dependencies of this effect.
+    effect(() => {
+      this.agentContext.securityContextId();
+      this.investigationContext.items();
+      this.syncScopeAndBindings();
+    });
+  }
+
+  /** Switches (or opens) the Investigation Context basket for the CURRENT
+   * project/environment/securityContextId, then recomputes every parameter's
+   * resolved binding — the single place both concerns happen together, called from
+   * every place this component's tracked project/env/securityContextId can change. */
+  private syncScopeAndBindings(): void {
+    const projectId = this.project?.ref.projectId;
+    const environment = this.envId;
+    const securityContextId = this.agentContext.securityContextId();
+    if (projectId && environment && securityContextId) {
+      this.investigationContext.setScope({ project: projectId, environment, securityContextId });
+    }
+    this.updateBindings();
   }
 
   ionViewDidEnter(): void {
@@ -275,7 +405,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         this.envId = queryState?.activeEnv.id;
         this.datatugNavContextService.setCurrentEnvironment(this.envId);
       }
-      this.updateBindings();
+      this.syncScopeAndBindings();
     } catch (e) {
       this.errorLogger.logError(
         e,
@@ -339,6 +469,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
             activeEnv,
             environments,
           });
+          this.syncScopeAndBindings();
         } catch (e) {
           this.errorLogger.logError(
             e,
@@ -366,6 +497,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           return; // TODO: cleanup query state?
         }
         this.project = currentProject;
+        this.syncScopeAndBindings();
         const summary = currentProject?.summary;
         if (!summary) {
           return;
@@ -695,72 +827,173 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   /**
-   * REQ:parameter-auto-binding (INTEGRATION.md §6) — resolves a candidate binding for
-   * every semantic parameter of the current query: the context panel's selection
-   * (router state, set once in the constructor) first, then
-   * InvestigationContextService.bindingsFor() for whatever selection didn't cover.
-   * Never applies anything — see effectiveBindings() and clearBinding() for the
-   * REQ:no-hidden-filters half (the user must see and can clear/override every
-   * binding before a run).
+   * REQ:parameter-auto-binding (INTEGRATION.md §6), Task 15 item 3 — resolves every
+   * semantic parameter's binding through `binding-resolver.ts`'s precedence engine:
+   * the context panel's selection (router state, set once in the constructor) first,
+   * then the Investigation Context's *enabled* facts, then a declared default. More
+   * than one distinct typed value within a tier is `ambiguous`; a selection that
+   * disagrees with a different context value is `conflict-unconfirmed` until
+   * {@link confirmConflict}. Never applies anything — see effectiveBindings() and
+   * clearBinding() for the REQ:no-hidden-filters half (the user must see and can
+   * clear/override every binding before a run).
    */
   private updateBindings(): void {
     const parameterDefs = this.queryState.def?.parameters || [];
-    const semanticParams: SemanticParameterRef[] = parameterDefs
+    const parameters: BindingParameterRef[] = parameterDefs
       .filter((p) => !!p.meta)
-      .map((p) => ({ id: p.id, meta: p.meta }));
-    if (!semanticParams.length) {
+      .map((p) => ({ id: p.id, meta: p.meta, required: p.isRequired }));
+    if (!parameters.length) {
       this.bindings.set([]);
+      this.clearedParamIds.set(new Set());
+      this.confirmedConflicts.set(new Map());
       return;
     }
-    const contextBindings = this.investigationContext.bindingsFor(semanticParams);
-    const resolved: ResolvedParameterBinding[] = [];
-    for (const param of semanticParams) {
-      // Binding (wire shape) carries only parameterId/value — entity/field come from
-      // this query's own parameter definition, not the wire payload (api-contract.md:
-      // Binding has no entity/field; the server already knows them from the query def).
-      const meta = param.meta as EntityFieldRef;
-      const selection = this.selectionBindings.find(
-        (b) => b.parameterId === param.id,
-      );
-      if (selection) {
-        resolved.push({
-          parameterId: selection.parameterId,
-          entityField: meta,
-          value: selection.value,
-          label: `${meta.entity}.${meta.field} = ${displayTypedValue(selection.value)}`,
-          origin: 'selection',
-        });
+    const selectionFacts = this.buildSelectionFacts(parameters);
+    const contextFacts = this.investigationContext.items().filter((i) => i.enabled);
+    const clearedParamIds = this.clearedParamIds();
+
+    // First pass with no confirmations, to discover the CURRENT conflict pair (if
+    // any) per parameter — a stale confirmation for a *different* pair must not carry
+    // over silently.
+    const discovery = resolveBindings({
+      parameters,
+      selectionFacts,
+      contextFacts,
+      clearedParamIds,
+    });
+    const confirmedNow = new Set<string>();
+    for (const binding of discovery) {
+      if (binding.blocked !== 'conflict-unconfirmed' || !binding.conflict) {
         continue;
       }
-      const contextMatch = contextBindings.find((b) => b.parameterId === param.id);
-      if (contextMatch) {
-        resolved.push({
-          parameterId: contextMatch.parameterId,
-          entityField: contextMatch.entityField,
-          // InvestigationContextService stays on the UI-local SemanticValue model
-          // (Task 15 owns migrating its storage to typed Facts) — wrap at this edge,
-          // the wire boundary, per plan Task 12 item 3.
-          value: toTypedValue(contextMatch.value),
-          label: contextMatch.label,
-          origin: 'context',
-        });
+      const stored = this.confirmedConflicts().get(binding.parameterId);
+      if (
+        stored &&
+        typedValuesEqual(stored.selectionValue, binding.conflict.selectionValue) &&
+        typedValuesEqual(stored.contextValue, binding.conflict.contextValue)
+      ) {
+        confirmedNow.add(binding.parameterId);
       }
     }
-    this.bindings.set(resolved);
+    const resolved = confirmedNow.size
+      ? resolveBindings({
+          parameters,
+          selectionFacts,
+          contextFacts,
+          clearedParamIds,
+          confirmedConflicts: confirmedNow,
+        })
+      : discovery;
+
+    // Signal writes are skipped when the new value is equivalent to the current one
+    // (deep-equal, not just a fresh array/Set/Map reference) — this method runs inside
+    // a reactive `effect()` (see the constructor), and an unconditional `.set()` on
+    // every run — even with unchanged content — repeatedly invalidates this component's
+    // own signal graph and never lets Angular's change-detection loop reach a fixed
+    // point (observed directly: a real infinite `detectChangesInViewWhileDirty` loop in
+    // this component's own tests once `investigationContext.items()` started changing).
+    setIfChanged(this.bindings, resolved, bindingsEqual);
+
     // Dropping a parameter (e.g. switching to a query with different params)
-    // shouldn't leave a stale clear behind for a parameterId that no longer applies,
-    // but a still-applicable one the user explicitly cleared should stay cleared.
+    // shouldn't leave a stale clear/confirmation behind for a parameterId that no
+    // longer applies, but a still-applicable one the user explicitly cleared/confirmed
+    // should stay that way.
     const resolvedIds = new Set(resolved.map((b) => b.parameterId));
-    const stillCleared = new Set(
-      [...this.clearedParamIds()].filter((id) => resolvedIds.has(id)),
+    setIfChanged(
+      this.clearedParamIds,
+      new Set([...clearedParamIds].filter((id) => resolvedIds.has(id))),
+      setsEqual,
     );
-    this.clearedParamIds.set(stillCleared);
+    setIfChanged(
+      this.confirmedConflicts,
+      new Map([...this.confirmedConflicts()].filter(([id]) => resolvedIds.has(id))),
+      (a, b) =>
+        mapsEqual(
+          a,
+          b,
+          (x, y) =>
+            typedValuesEqual(x.selectionValue, y.selectionValue) &&
+            typedValuesEqual(x.contextValue, y.contextValue),
+        ),
+    );
+  }
+
+  /** Wraps the context panel's resolved selection `Binding[]` (router state,
+   * parameterId + value only) as {@link Fact}s keyed by each parameter's own
+   * `meta.entity`/`meta.field` — `binding-resolver.ts` matches candidates by field, not
+   * parameterId (api-contract.md: "Binding has no entity/field; the server already
+   * knows them from the query def"). */
+  private buildSelectionFacts(parameters: readonly BindingParameterRef[]): Fact[] {
+    const facts: Fact[] = [];
+    for (const selection of this.selectionBindings) {
+      const param = parameters.find((p) => p.id === selection.parameterId);
+      if (!param?.meta) {
+        continue;
+      }
+      facts.push({
+        id: `selection:${selection.parameterId}`,
+        entity: param.meta.entity,
+        field: param.meta.field,
+        value: selection.value,
+        origin: 'selection',
+        enabled: true,
+      });
+    }
+    return facts;
   }
 
   /** REQ:no-hidden-filters — the user clears (or, by not clearing, implicitly
    * confirms) every auto-bound parameter before it's ever sent on a run. */
   public clearBinding(parameterId: string): void {
     this.clearedParamIds.set(new Set([...this.clearedParamIds(), parameterId]));
+    this.updateBindings();
+  }
+
+  /** api-contract.md "Selection overriding a different context value is shown as an
+   * explicit conflict requiring confirmation" — accepts the selection value for THIS
+   * exact conflicting pair. A later change to a *different* context/selection pair for
+   * the same parameter is never silently treated as already-confirmed (see
+   * {@link updateBindings}'s discovery pass). */
+  public confirmConflict(parameterId: string): void {
+    const current = this.bindings().find((b) => b.parameterId === parameterId);
+    if (current?.blocked !== 'conflict-unconfirmed' || !current.conflict) {
+      return;
+    }
+    this.confirmedConflicts.set(
+      new Map(this.confirmedConflicts()).set(parameterId, current.conflict),
+    );
+    this.updateBindings();
+  }
+
+  /** `"Customer.ID"` — the parameter's meta, for the Parameters card heading. */
+  protected bindingFieldLabel(binding: ResolvedBinding): string {
+    return binding.meta ? `${binding.meta.entity}.${binding.meta.field}` : binding.parameterId;
+  }
+
+  /** AC:bound-from-selection literal wording — `"5 · from selection"` /
+   * `"5 · from context"` / `"5 · from default"` / `"5 · your edit"`. */
+  protected bindingValueLabel(binding: ResolvedBinding): string {
+    if (binding.value === undefined) {
+      return '';
+    }
+    const origin = binding.origin === 'user' ? 'your edit' : `from ${binding.origin}`;
+    return `${displayTypedValue(binding.value)} · ${origin}`;
+  }
+
+  /** AC:typed-context-isolation — ">1 distinct typed value" rendered for an
+   * `ambiguous` block. */
+  protected ambiguousValuesLabel(binding: ResolvedBinding): string {
+    return (binding.ambiguousValues ?? []).map(displayTypedValue).join(', ');
+  }
+
+  /** "Selection overriding a different context value is shown as an explicit conflict
+   * requiring confirmation" — the two disagreeing values for a `conflict-unconfirmed`
+   * block. */
+  protected conflictLabel(binding: ResolvedBinding): string {
+    if (!binding.conflict) {
+      return '';
+    }
+    return `selection ${displayTypedValue(binding.conflict.selectionValue)} vs context ${displayTypedValue(binding.conflict.contextValue)}`;
   }
 
   /** Renders one `Result.bindingsApplied` entry (a wire {@link Binding}: parameterId +
@@ -808,52 +1041,90 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     if (!projectId || !queryId || !environment || !securityContextId) {
       return;
     }
+    // REQ:no-hidden-filters, AC:typed-context-isolation "conflict blocks an
+    // unconfirmed run" — an ambiguous, unconfirmed-conflict or missing-required
+    // parameter stops Run entirely rather than silently omitting it.
+    if (this.hasBlockedBindings()) {
+      this.runError.set(
+        'Resolve every ambiguous, conflicting or required parameter before running.',
+      );
+      return;
+    }
     this.running.set(true);
     this.runError.set(undefined);
     this.sourceUnavailable.set(false);
     const parameters: Record<string, TypedValue> = {};
     const bindingOrigins: ExecutionBindingOrigin[] = [];
     for (const binding of this.effectiveBindings()) {
-      parameters[binding.parameterId] = binding.value;
-      bindingOrigins.push({ parameterId: binding.parameterId, origin: binding.origin });
+      // isBindingRunnable() (effectiveBindings' own filter) guarantees `value` is set.
+      parameters[binding.parameterId] = binding.value as TypedValue;
+      bindingOrigins.push({
+        parameterId: binding.parameterId,
+        // The resolver's 'user' origin (an explicit edit) maps to the wire contract's
+        // 'manual' bucket — api-contract.md's BindingOrigin has no 'user' case; a
+        // client-entered value that isn't from selection/context IS what the appendix
+        // calls 'manual'.
+        origin: binding.origin === 'user' ? 'manual' : (binding.origin ?? 'default'),
+      });
     }
-    this.executeQuery({
-      project: projectId,
-      environment,
-      securityContextId,
-      queryId,
-      source: this.selectedSource(),
-      parameters,
-      bindingOrigins,
-      mode: 'live',
-    });
+    this.executeQuery(
+      {
+        project: projectId,
+        environment,
+        securityContextId,
+        queryId,
+        source: this.selectedSource(),
+        parameters,
+        bindingOrigins,
+        mode: 'live',
+      },
+      { project: projectId, environment, securityContextId },
+    );
   }
 
   /** api-contract.md "Bounded lookups and HTTP" — the user's explicit choice to view a
    * recorded snapshot after a live `SOURCE_UNAVAILABLE` failure; never automatic. Reuses
    * the same request the live attempt sent, only flipping `mode`. */
   public runSnapshot(): void {
-    if (!this.lastRequest) {
+    if (!this.lastRequest || !this.lastRequestScope) {
       return;
     }
     this.running.set(true);
     this.runError.set(undefined);
     this.sourceUnavailable.set(false);
-    this.executeQuery({ ...this.lastRequest, mode: 'snapshot' });
+    this.executeQuery({ ...this.lastRequest, mode: 'snapshot' }, this.lastRequestScope);
   }
 
-  private executeQuery(request: RunQueryRequest): void {
+  private executeQuery(
+    request: RunQueryRequest,
+    requestScope: { project: string; environment: string; securityContextId: string },
+  ): void {
     this.lastRequest = request;
+    this.lastRequestScope = requestScope;
     this.semanticApi.runQuery(request).subscribe({
       next: (response) => {
+        // Task 15 item 4 — discard a late response for a scope the user has since left
+        // (project/environment/principal switch mid-flight): api-contract.md "late
+        // responses from another scope are discarded".
+        if (!this.investigationContext.isCurrentScope(requestScope)) {
+          return;
+        }
         this.runResult.set(response);
         this.running.set(false);
       },
-      error: (err: unknown) => this.handleRunError(err, request),
+      error: (err: unknown) => this.handleRunError(err, request, requestScope),
     });
   }
 
-  private handleRunError(err: unknown, request: RunQueryRequest): void {
+  private handleRunError(
+    err: unknown,
+    request: RunQueryRequest,
+    requestScope: { project: string; environment: string; securityContextId: string },
+  ): void {
+    if (!this.investigationContext.isCurrentScope(requestScope)) {
+      // Late error response for a scope we've already left.
+      return;
+    }
     this.running.set(false);
     const envelope =
       err instanceof HttpErrorResponse ? tryDecodeErrorEnvelope(err.error) : undefined;

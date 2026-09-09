@@ -14,6 +14,11 @@ describe('InvestigationContextBarComponent', () => {
 
     fixture = TestBed.createComponent(InvestigationContextBarComponent);
     context = TestBed.inject(InvestigationContextService);
+    // This bar component only reads/mutates InvestigationContextService (it doesn't
+    // track project/environment/securityContextId itself — a host page's own scope
+    // wiring, e.g. ContextPanelComponent's effect, owns setScope() in the real app), so
+    // these specs set a scope directly to exercise the same basket the chips render.
+    context.setScope({ project: 'p1', environment: 'local', securityContextId: 'sc-1' });
   });
 
   it('renders nothing when the context is empty', () => {

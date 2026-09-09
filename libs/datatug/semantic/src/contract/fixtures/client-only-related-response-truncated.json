@@ -1,0 +1,12 @@
+{
+  "related": [
+    {
+      "lookupId": "l-invoices-by-customer",
+      "label": "Invoices",
+      "source": "chinook-local",
+      "collection": "Invoice",
+      "count": 7
+    }
+  ],
+  "truncated": true
+}

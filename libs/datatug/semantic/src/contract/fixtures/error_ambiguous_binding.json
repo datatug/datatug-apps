@@ -1,7 +1,7 @@
 {
   "error": {
     "code": "AMBIGUOUS_BINDING",
-    "message": "two distinct enabled context values are eligible for CustomerId",
+    "message": "parameter CustomerId has more than one candidate value",
     "field": "CustomerId",
     "requestId": "req-0004"
   }

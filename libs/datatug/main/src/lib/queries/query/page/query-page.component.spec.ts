@@ -9,7 +9,7 @@ import {
   InvestigationContextService,
   SemanticApiService,
 } from '@sneat/datatug-semantic';
-import { of, throwError } from 'rxjs';
+import { Observable, of, throwError } from 'rxjs';
 
 import { QueryPageComponent } from './query-page.component';
 import { IQueryEditorState } from '../../../editor/models';
@@ -34,6 +34,7 @@ describe('SqlEditorPage', () => {
   let fixture: ComponentFixture<QueryPageComponent>;
 
   beforeEach(async () => {
+    sessionStorage.clear();
     Object.defineProperty(window, 'history', {
       value: { ...window.history, state: { query: undefined } },
       writable: true,
@@ -99,10 +100,6 @@ describe('SqlEditorPage', () => {
           provide: SemanticApiService,
           useValue: { runQuery: vi.fn() },
         },
-        {
-          provide: InvestigationContextService,
-          useValue: { bindingsFor: vi.fn(() => []), clear: vi.fn() },
-        },
         { provide: AgentContextService, useValue: agentContextStub() },
       ],
     })
@@ -125,13 +122,17 @@ describe('SqlEditorPage', () => {
   });
 });
 
-// REQ:parameter-auto-binding, REQ:no-hidden-filters (INTEGRATION.md §6).
+// REQ:parameter-auto-binding, REQ:no-hidden-filters (INTEGRATION.md §6), Task 15 item 3
+// (binding-resolver.ts precedence/ambiguity/conflict). Uses the REAL
+// InvestigationContextService (not a bindingsFor() mock) so scope-keyed storage,
+// typed equality and the resolver's precedence are exercised end to end, the same as
+// production — see investigation-context.service.spec.ts / binding-resolver.spec.ts
+// for those units' own isolated coverage.
 describe('QueryPageComponent — semantic parameter binding and run', () => {
   let component: QueryPageComponent;
-  let bindingsForMock: ReturnType<typeof vi.fn>;
   let runQueryMock: ReturnType<typeof vi.fn>;
-  let investigationContextClearMock: ReturnType<typeof vi.fn>;
   let agentContext: ReturnType<typeof agentContextStub>;
+  let investigationContext: InvestigationContextService;
 
   const project: IProjectContext = {
     ref: { storeId: 'localhost:8989', projectId: 'demo-project' },
@@ -164,20 +165,13 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
 
   async function createComponent(
     historyState: Record<string, unknown> = {},
-    contextBindings: unknown[] = [],
   ): Promise<QueryPageComponent> {
     Object.defineProperty(window, 'history', {
       value: { ...window.history, state: historyState },
       writable: true,
       configurable: true,
     });
-    // Configured before TestBed.createComponent() below (not after) because the
-    // component reads `queryEditorState` (an `of(editorState)` — synchronous) and
-    // calls updateBindings() -> investigationContext.bindingsFor() during its own
-    // constructor, i.e. before this function returns.
-    bindingsForMock = vi.fn(() => contextBindings);
     runQueryMock = vi.fn();
-    investigationContextClearMock = vi.fn();
     agentContext = agentContextStub();
     await TestBed.configureTestingModule({
       imports: [QueryPageComponent],
@@ -191,7 +185,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
         {
           provide: DatatugNavContextService,
           useValue: {
-            currentProject: of(undefined),
+            currentProject: of(project),
             currentEnv: of(undefined),
             setCurrentEnvironment: vi.fn(),
           },
@@ -227,10 +221,6 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
         },
         { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn() } },
         { provide: SemanticApiService, useValue: { runQuery: runQueryMock } },
-        {
-          provide: InvestigationContextService,
-          useValue: { bindingsFor: bindingsForMock, clear: investigationContextClearMock },
-        },
         { provide: AgentContextService, useValue: agentContext },
       ],
     })
@@ -244,19 +234,21 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       })
       .compileComponents();
 
+    investigationContext = TestBed.inject(InvestigationContextService);
     const created = TestBed.createComponent(QueryPageComponent).componentInstance;
+    created.project = project;
     created.envId = 'production';
+    // The component's own effect/constructor already calls setScope once project/env/
+    // securityContextId are all available (Task 15 item 2), but DatatugNavContextService
+    // is stubbed here rather than reactive, so nudge it once explicitly the same way a
+    // real change-detection tick would.
+    investigationContext.setScope({
+      project: 'demo-project',
+      environment: 'production',
+      securityContextId: 'sctx-1',
+    });
     return created;
   }
-
-  const contextBinding = {
-    parameterId: 'CustomerId',
-    entityField: { entity: 'Customer', field: 'ID' },
-    value: 7,
-    label: 'Customer.ID = 7',
-    source: 'grid',
-    contextItemId: 'Customer.ID=7',
-  };
 
   const selectionBinding = {
     parameterId: 'CustomerId',
@@ -265,44 +257,153 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     originEvidence: 'client-reported' as const,
   };
 
+  beforeEach(() => {
+    sessionStorage.clear();
+  });
+
   it('binds a parameter from context when no selection binding is present', async () => {
-    component = await createComponent({}, [contextBinding]);
+    component = await createComponent({});
+    investigationContext.addValue({
+      entityField: { entity: 'Customer', field: 'ID' },
+      value: 7,
+      label: 'Customer.ID = 7',
+      source: 'grid',
+    });
+    TestBed.tick(); // flush the component's own investigationContext.items()-reactive effect
 
-    expect(bindingsForMock).toHaveBeenCalledWith([
-      { id: 'CustomerId', meta: { entity: 'Customer', field: 'ID' } },
-    ]);
     expect(component.effectiveBindings()).toEqual([
-      {
+      expect.objectContaining({
         parameterId: 'CustomerId',
-        entityField: { entity: 'Customer', field: 'ID' },
         value: { type: 'integer', value: '7' },
-        label: 'Customer.ID = 7',
         origin: 'context',
-      },
+      }),
     ]);
   });
 
-  it('selection (router state from the context panel, a wire Binding[]) wins over context for the same parameter', async () => {
-    component = await createComponent({ bindings: [selectionBinding] }, [contextBinding]);
+  it('selection (router state from the context panel, a wire Binding[]) is reported as origin "selection", not "context", when both agree', async () => {
+    // A context fact that agrees with the selection value is NOT a conflict — the
+    // resolver still reports the higher-precedence tier's origin (REQ:parameter-auto-
+    // binding: "an explicit user edit wins; otherwise one compatible selected fact
+    // wins; otherwise ... a context fact"), proving selection is checked BEFORE
+    // context even when the outcome value happens to be identical either way.
+    component = await createComponent({ bindings: [selectionBinding] }); // selection = 5
+    investigationContext.addValue({
+      entityField: { entity: 'Customer', field: 'ID' },
+      value: 5, // agrees with the selection — not a conflict
+      label: 'Customer.ID = 5',
+      source: 'grid',
+    });
+    TestBed.tick();
 
     expect(component.effectiveBindings()).toEqual([
-      {
+      expect.objectContaining({
         parameterId: 'CustomerId',
-        entityField: { entity: 'Customer', field: 'ID' },
         value: { type: 'integer', value: '5' },
-        label: 'Customer.ID = 5',
         origin: 'selection',
-      },
+      }),
     ]);
+    expect(component.hasBlockedBindings()).toBe(false);
   });
 
-  it('clearBinding removes a binding from effectiveBindings without touching bindings()', async () => {
-    component = await createComponent({}, [contextBinding]);
+  it('AC:bound-from-selection literal wording — renders "5 · from selection"', async () => {
+    component = await createComponent({ bindings: [selectionBinding] }); // selection = 5
+    const [selectionRendered] = component.visibleBindings();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((component as any).bindingFieldLabel(selectionRendered)).toBe('Customer.ID');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((component as any).bindingValueLabel(selectionRendered)).toBe('5 · from selection');
+  });
+
+  it('AC:context-carries literal wording — renders "7 · from context"', async () => {
+    component = await createComponent({});
+    investigationContext.addValue({
+      entityField: { entity: 'Customer', field: 'ID' },
+      value: 7,
+      label: 'Customer.ID = 7',
+      source: 'grid',
+    });
+    TestBed.tick();
+    const [contextRendered] = component.visibleBindings();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((component as any).bindingValueLabel(contextRendered)).toBe('7 · from context');
+  });
+
+  it('clearBinding removes a binding from effectiveBindings without touching bindings() presence', async () => {
+    component = await createComponent({ bindings: [selectionBinding] });
 
     component.clearBinding('CustomerId');
 
     expect(component.effectiveBindings()).toEqual([]);
     expect(component.bindings().length).toBe(1);
+    expect(component.bindings()[0].blocked).toBeUndefined(); // optional param, not required
+  });
+
+  it('two distinct context facts for the same field are ambiguous and block Run', async () => {
+    component = await createComponent({});
+    investigationContext.addValue({
+      entityField: { entity: 'Customer', field: 'ID' },
+      value: 7,
+      label: 'Customer.ID = 7',
+      source: 'grid',
+    });
+    investigationContext.addValue({
+      entityField: { entity: 'Customer', field: 'ID' },
+      value: 9,
+      label: 'Customer.ID = 9',
+      source: 'related',
+    });
+    TestBed.tick();
+
+    expect(component.bindings()[0].blocked).toBe('ambiguous');
+    expect(component.hasBlockedBindings()).toBe(true);
+    expect(component.effectiveBindings()).toEqual([]);
+
+    component.project = project;
+    component.runQuery();
+    expect(runQueryMock).not.toHaveBeenCalled();
+    expect(component.runError()).toBeTruthy();
+  });
+
+  it('a selection value conflicting with a different context value blocks Run until confirmed (AC:typed-context-isolation)', async () => {
+    component = await createComponent({ bindings: [selectionBinding] }); // selection = 5
+    investigationContext.addValue({
+      entityField: { entity: 'Customer', field: 'ID' },
+      value: 9, // conflicts with selection's 5
+      label: 'Customer.ID = 9',
+      source: 'grid',
+    });
+    TestBed.tick();
+
+    expect(component.bindings()[0].blocked).toBe('conflict-unconfirmed');
+    expect(component.hasBlockedBindings()).toBe(true);
+
+    component.project = project;
+    component.runQuery();
+    expect(runQueryMock).not.toHaveBeenCalled();
+
+    component.confirmConflict('CustomerId');
+
+    expect(component.bindings()[0]).toEqual(
+      expect.objectContaining({
+        parameterId: 'CustomerId',
+        value: { type: 'integer', value: '5' },
+        origin: 'selection',
+      }),
+    );
+    expect(component.hasBlockedBindings()).toBe(false);
+  });
+
+  it('typed distinctness: integer 5 vs string "5" from selection vs context is a conflict, never silently equal', async () => {
+    component = await createComponent({ bindings: [selectionBinding] }); // selection = integer 5
+    investigationContext.addValue({
+      entityField: { entity: 'Customer', field: 'ID' },
+      value: '5', // string "5" — typed-distinct from integer 5
+      label: 'Customer.ID = "5"',
+      source: 'grid',
+    });
+    TestBed.tick();
+
+    expect(component.bindings()[0].blocked).toBe('conflict-unconfirmed');
   });
 
   it('runQuery sends the full ExecutionRequest (Scope + typed parameters + bindingOrigins) and stores the response', async () => {
@@ -325,7 +426,14 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       },
       truncated: false,
     };
-    component = await createComponent({}, [contextBinding]);
+    component = await createComponent({});
+    investigationContext.addValue({
+      entityField: { entity: 'Customer', field: 'ID' },
+      value: 7,
+      label: 'Customer.ID = 7',
+      source: 'grid',
+    });
+    TestBed.tick();
     runQueryMock.mockReturnValue(of(response));
     component.project = project;
 
@@ -347,7 +455,14 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
   });
 
   it('runQuery does not include a cleared binding', async () => {
-    component = await createComponent({}, [contextBinding]);
+    component = await createComponent({});
+    investigationContext.addValue({
+      entityField: { entity: 'Customer', field: 'ID' },
+      value: 7,
+      label: 'Customer.ID = 7',
+      source: 'grid',
+    });
+    TestBed.tick();
     runQueryMock.mockReturnValue(
       of({
         recordset: { columns: [], rows: [] },
@@ -373,7 +488,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
   });
 
   it('runQuery reports the failure without hiding it', async () => {
-    component = await createComponent({}, []);
+    component = await createComponent({});
     runQueryMock.mockReturnValue(throwError(() => ({ message: 'ACCESS_DENIED' })));
     component.project = project;
 
@@ -385,7 +500,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
   });
 
   it('runQuery does nothing without a project', async () => {
-    component = await createComponent({}, []);
+    component = await createComponent({});
     component.project = undefined;
 
     component.runQuery();
@@ -394,7 +509,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
   });
 
   it('runQuery does nothing without an environment (envId unset)', async () => {
-    component = await createComponent({}, []);
+    component = await createComponent({});
     component.project = project;
     component.envId = undefined;
 
@@ -404,7 +519,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
   });
 
   it('TARGET_REQUIRED populates availableTargets from the error, never a hidden source', async () => {
-    component = await createComponent({}, []);
+    component = await createComponent({});
     component.project = project;
     const targetRequired = new HttpErrorResponse({
       status: 400,
@@ -432,7 +547,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
   });
 
   it('SOURCE_UNAVAILABLE on a live run offers an explicit snapshot retry, never a silent fallback', async () => {
-    component = await createComponent({}, []);
+    component = await createComponent({});
     component.project = project;
     const sourceUnavailable = new HttpErrorResponse({
       status: 503,
@@ -471,9 +586,54 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     expect(component.runResult()).toEqual(snapshotResponse);
   });
 
-  it('STALE_CONTEXT clears the Investigation Context and refreshes agent-info', async () => {
-    component = await createComponent({}, []);
+  it('a late run response for a scope the user has since left is discarded (Task 15 item 4)', async () => {
+    component = await createComponent({});
     component.project = project;
+    const response = {
+      recordset: { columns: [], rows: [] },
+      limitations: [],
+      bindingsApplied: [],
+      provenance: {
+        source: 'chinook',
+        mode: 'live' as const,
+        observedAt: '2026-09-09T12:00:00Z',
+        executionProfile: 'protected' as const,
+      },
+      truncated: false,
+    };
+    // Don't resolve synchronously — simulate an in-flight request.
+    let resolveRun!: (value: typeof response) => void;
+    runQueryMock.mockReturnValue(
+      new Observable<typeof response>((subscriber) => {
+        resolveRun = (value) => {
+          subscriber.next(value);
+          subscriber.complete();
+        };
+      }),
+    );
+
+    component.runQuery();
+    // User switches principal/scope while the request is still in flight.
+    investigationContext.setScope({
+      project: 'demo-project',
+      environment: 'production',
+      securityContextId: 'sctx-2',
+    });
+    resolveRun(response);
+
+    expect(component.runResult()).toBeUndefined();
+  });
+
+  it('STALE_CONTEXT clears the Investigation Context and refreshes agent-info', async () => {
+    component = await createComponent({});
+    component.project = project;
+    investigationContext.addValue({
+      entityField: { entity: 'Customer', field: 'ID' },
+      value: 1,
+      label: 'Customer.ID = 1',
+      source: 'grid',
+    });
+    expect(investigationContext.items()).toHaveLength(1);
     const staleContext = new HttpErrorResponse({
       status: 409,
       error: {
@@ -484,7 +644,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
 
     component.runQuery();
 
-    expect(investigationContextClearMock).toHaveBeenCalled();
+    expect(investigationContext.items()).toHaveLength(0);
     expect(agentContext.refresh).toHaveBeenCalled();
     expect(component.runError()).toContain('session changed');
   });

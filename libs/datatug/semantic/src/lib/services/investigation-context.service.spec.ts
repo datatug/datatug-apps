@@ -1,37 +1,46 @@
 import { TestBed } from '@angular/core/testing';
 import {
-  ContextItem,
+  ContextScope,
   InvestigationContextService,
+  scopesEqual,
   SemanticParameterRef,
 } from './investigation-context.service';
-
-const STORAGE_KEY = 'datatug.investigationContext.v1';
+import { DATATUG_AGENT_BASE_URL } from '../tokens/datatug-agent-base-url.token';
 
 function createService(): InvestigationContextService {
   TestBed.resetTestingModule();
   return TestBed.inject(InvestigationContextService);
 }
 
+const scopeA = { project: 'demo-project-1', environment: 'local', securityContextId: 'sc-1' };
+const scopeB = { project: 'demo-project-1', environment: 'local', securityContextId: 'sc-2' };
+const scopeOtherProject = { project: 'other-project', environment: 'local', securityContextId: 'sc-1' };
+
 describe('InvestigationContextService', () => {
   beforeEach(() => {
     sessionStorage.clear();
   });
 
-  it('starts empty when sessionStorage holds corrupted JSON, instead of throwing', () => {
-    sessionStorage.setItem(STORAGE_KEY, '{not valid json');
-    const service = createService();
-    expect(service.items()).toEqual([]);
-  });
-
-  it('starts empty when sessionStorage has nothing', () => {
+  it('starts empty before any setScope call', () => {
     const service = createService();
     expect(service.items()).toEqual([]);
     expect(service.enabledCount()).toBe(0);
   });
 
+  it('starts empty when sessionStorage holds corrupted JSON for the active scope, instead of throwing', () => {
+    const service = createService();
+    service.setScope(scopeA);
+    const key = `datatug.investigationContext.v2.${service.scope()!.agentUrl} demo-project-1 local sc-1`;
+    sessionStorage.setItem(key, '{not valid json');
+    const restarted = createService();
+    restarted.setScope(scopeA);
+    expect(restarted.items()).toEqual([]);
+  });
+
   describe('J3 — carrying context', () => {
-    it('addValue adds an enabled item and is idempotent for the same entity.field=value', () => {
+    it('addValue adds an enabled item and is idempotent for the same entity.field + typed value', () => {
       const service = createService();
+      service.setScope(scopeA);
       const added = service.addValue({
         entityField: { entity: 'Customer', field: 'ID' },
         value: 5,
@@ -40,7 +49,10 @@ describe('InvestigationContextService', () => {
       });
 
       expect(added.enabled).toBe(true);
-      expect(added.id).toBe('Customer.ID=5');
+      expect(added.entity).toBe('Customer');
+      expect(added.field).toBe('ID');
+      expect(added.value).toEqual({ type: 'integer', value: '5' });
+      expect(added.origin).toBe('context');
       expect(service.items().length).toBe(1);
       expect(service.enabledCount()).toBe(1);
 
@@ -55,8 +67,67 @@ describe('InvestigationContextService', () => {
       expect(service.items().length).toBe(1);
     });
 
+    it('typed equality: adding 5 (number) then "5" (string) for the same field keeps BOTH — never deduped (AC:typed-context-isolation)', () => {
+      const service = createService();
+      service.setScope(scopeA);
+      service.addValue({
+        entityField: { entity: 'Customer', field: 'ID' },
+        value: 5,
+        label: 'Customer.ID = 5',
+        source: 'grid',
+      });
+      service.addValue({
+        entityField: { entity: 'Customer', field: 'ID' },
+        value: '5',
+        label: 'Customer.ID = "5"',
+        source: 'grid',
+      });
+
+      expect(service.items().length).toBe(2);
+      const values = service.items().map((i) => i.value);
+      expect(values).toEqual(
+        expect.arrayContaining([
+          { type: 'integer', value: '5' },
+          { type: 'string', value: '5' },
+        ]),
+      );
+    });
+
+    it('false, zero and null add as three distinct declared-typed items, never merged', () => {
+      const service = createService();
+      service.setScope(scopeA);
+      service.addValue({
+        entityField: { entity: 'X', field: 'Flag' },
+        value: false,
+        label: 'X.Flag = false',
+        source: 'grid',
+      });
+      service.addValue({
+        entityField: { entity: 'X', field: 'Flag' },
+        value: 0,
+        label: 'X.Flag = 0',
+        source: 'grid',
+      });
+      service.addValue({
+        entityField: { entity: 'X', field: 'Flag' },
+        value: null,
+        label: 'X.Flag = null',
+        source: 'grid',
+      });
+
+      expect(service.items()).toHaveLength(3);
+      expect(service.items().map((i) => i.value)).toEqual(
+        expect.arrayContaining([
+          { type: 'boolean', value: false },
+          { type: 'integer', value: '0' },
+          { type: 'null', value: null },
+        ]),
+      );
+    });
+
     it('bindingsFor binds a parameter whose meta matches an enabled context item', () => {
       const service = createService();
+      service.setScope(scopeA);
       service.addValue({
         entityField: { entity: 'Customer', field: 'ID' },
         value: 5,
@@ -83,6 +154,7 @@ describe('InvestigationContextService', () => {
 
     it('disabling the chip empties the binding (REQ:context-basket disable without removing)', () => {
       const service = createService();
+      service.setScope(scopeA);
       const item = service.addValue({
         entityField: { entity: 'Customer', field: 'ID' },
         value: 5,
@@ -107,6 +179,7 @@ describe('InvestigationContextService', () => {
 
     it('removeValue deletes the item entirely', () => {
       const service = createService();
+      service.setScope(scopeA);
       const item = service.addValue({
         entityField: { entity: 'Customer', field: 'ID' },
         value: 5,
@@ -122,6 +195,7 @@ describe('InvestigationContextService', () => {
 
     it('never returns a binding for context values on its own — bindingsFor is read-only', () => {
       const service = createService();
+      service.setScope(scopeA);
       service.addValue({
         entityField: { entity: 'Customer', field: 'ID' },
         value: 5,
@@ -137,8 +211,107 @@ describe('InvestigationContextService', () => {
     });
   });
 
-  it('persists to sessionStorage and restores on a fresh instance', () => {
+  describe('scope isolation (api-contract.md "Binding and context behavior")', () => {
+    it('switching project/environment/securityContextId opens an empty basket — never imports facts', () => {
+      const service = createService();
+      service.setScope(scopeA);
+      service.addValue({
+        entityField: { entity: 'Customer', field: 'ID' },
+        value: 5,
+        label: 'Customer.ID = 5',
+        source: 'grid',
+      });
+      expect(service.items()).toHaveLength(1);
+
+      service.setScope(scopeB); // securityContextId changed — e.g. principal switch
+      expect(service.items()).toEqual([]); // old scope's fact does not bind here
+
+      service.setScope(scopeOtherProject);
+      expect(service.items()).toEqual([]);
+    });
+
+    it('switching back to a previously visited scope RETAINS that scope’s own basket', () => {
+      const service = createService();
+      service.setScope(scopeA);
+      service.addValue({
+        entityField: { entity: 'Customer', field: 'ID' },
+        value: 5,
+        label: 'Customer.ID = 5',
+        source: 'grid',
+      });
+
+      service.setScope(scopeB);
+      expect(service.items()).toEqual([]);
+
+      service.setScope(scopeA); // back to A
+      expect(service.items()).toHaveLength(1);
+      expect(service.items()[0].value).toEqual({ type: 'integer', value: '5' });
+    });
+
+    it('setScope is a no-op for the same scope (does not clear the basket or thrash storage)', () => {
+      const service = createService();
+      service.setScope(scopeA);
+      service.addValue({
+        entityField: { entity: 'Customer', field: 'ID' },
+        value: 5,
+        label: 'Customer.ID = 5',
+        source: 'grid',
+      });
+      service.setScope({ ...scopeA }); // same fields, new object
+      expect(service.items()).toHaveLength(1);
+    });
+
+    it('isCurrentScope distinguishes the active scope from any other — the late-response-discard gate', () => {
+      const service = createService();
+      service.setScope(scopeA);
+      const requestScope: ContextScope = service.scope()!;
+      expect(service.isCurrentScope(requestScope)).toBe(true);
+
+      service.setScope(scopeB); // user switches principal mid-flight
+      expect(service.isCurrentScope(requestScope)).toBe(false); // late response discarded
+      expect(service.isCurrentScope(service.scope()!)).toBe(true);
+    });
+
+    it('clear() only empties the CURRENT scope, never another scope’s basket', () => {
+      const service = createService();
+      service.setScope(scopeA);
+      service.addValue({
+        entityField: { entity: 'Customer', field: 'ID' },
+        value: 5,
+        label: 'Customer.ID = 5',
+        source: 'grid',
+      });
+      service.setScope(scopeB);
+      service.addValue({
+        entityField: { entity: 'Customer', field: 'ID' },
+        value: 9,
+        label: 'Customer.ID = 9',
+        source: 'grid',
+      });
+
+      service.clear(); // clears scope B only
+      expect(service.items()).toEqual([]);
+
+      service.setScope(scopeA);
+      expect(service.items()).toHaveLength(1); // scope A untouched
+    });
+
+    it('addValue before any setScope call returns a transient item that is never persisted', () => {
+      const service = createService();
+      const transient = service.addValue({
+        entityField: { entity: 'Customer', field: 'ID' },
+        value: 5,
+        label: 'Customer.ID = 5',
+        source: 'grid',
+      });
+      expect(transient.value).toEqual({ type: 'integer', value: '5' });
+      expect(service.items()).toEqual([]); // no active scope to store it in
+    });
+  });
+
+  it('persists to sessionStorage (keyed by scope) and restores on a fresh instance', () => {
     const service = createService();
+    service.setScope(scopeA);
     service.addValue({
       entityField: { entity: 'Customer', field: 'ID' },
       value: 5,
@@ -146,20 +319,22 @@ describe('InvestigationContextService', () => {
       source: 'grid',
     });
 
-    const raw = sessionStorage.getItem(STORAGE_KEY);
-    expect(raw).toBeTruthy();
-    const persisted = JSON.parse(raw as string) as ContextItem[];
-    expect(persisted).toHaveLength(1);
-    expect(persisted[0].value).toBe(5);
-
-    // A fresh service instance (new browser tab within the same session) restores state.
+    // A fresh service instance (new browser tab within the same session, or a reload)
+    // restores this scope's state once it re-declares the same scope.
     const restored = createService();
+    restored.setScope(scopeA);
     expect(restored.items()).toHaveLength(1);
     expect(restored.items()[0].label).toBe('Customer.ID = 5');
+
+    // A different scope on the fresh instance starts empty.
+    const freshOtherScope = createService();
+    freshOtherScope.setScope(scopeB);
+    expect(freshOtherScope.items()).toEqual([]);
   });
 
   it('clear empties the basket and persists the empty state', () => {
     const service = createService();
+    service.setScope(scopeA);
     service.addValue({
       entityField: { entity: 'Customer', field: 'ID' },
       value: 5,
@@ -170,6 +345,45 @@ describe('InvestigationContextService', () => {
     service.clear();
 
     expect(service.items()).toEqual([]);
-    expect(JSON.parse(sessionStorage.getItem(STORAGE_KEY) as string)).toEqual([]);
+    const restored = createService();
+    restored.setScope(scopeA);
+    expect(restored.items()).toEqual([]);
+  });
+});
+
+describe('scopesEqual', () => {
+  const base: ContextScope = {
+    agentUrl: 'http://localhost:8989/datatug',
+    project: 'p1',
+    environment: 'local',
+    securityContextId: 'sc-1',
+  };
+
+  it('true for identical scopes, false for any differing field', () => {
+    expect(scopesEqual(base, { ...base })).toBe(true);
+    expect(scopesEqual(base, { ...base, project: 'p2' })).toBe(false);
+    expect(scopesEqual(base, { ...base, environment: 'prod' })).toBe(false);
+    expect(scopesEqual(base, { ...base, securityContextId: 'sc-2' })).toBe(false);
+    expect(scopesEqual(base, { ...base, agentUrl: 'http://localhost:9999/datatug' })).toBe(
+      false,
+    );
+  });
+
+  it('undefined compares equal only to undefined', () => {
+    expect(scopesEqual(undefined, undefined)).toBe(true);
+    expect(scopesEqual(base, undefined)).toBe(false);
+    expect(scopesEqual(undefined, base)).toBe(false);
+  });
+});
+
+describe('DATATUG_AGENT_BASE_URL contributes the scope’s agentUrl automatically', () => {
+  it('setScope fills in agentUrl from the injected token, not a caller-supplied value', () => {
+    TestBed.resetTestingModule();
+    TestBed.overrideProvider(DATATUG_AGENT_BASE_URL, {
+      useValue: 'http://localhost:1234/datatug',
+    });
+    const service = TestBed.inject(InvestigationContextService);
+    service.setScope(scopeA);
+    expect(service.scope()?.agentUrl).toBe('http://localhost:1234/datatug');
   });
 });

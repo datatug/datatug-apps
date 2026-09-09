@@ -1,7 +1,7 @@
 {
   "error": {
     "code": "TYPE_MISMATCH",
-    "message": "parameter CustomerId expected type integer",
+    "message": "parameter CustomerId expects integer, got string",
     "field": "CustomerId",
     "requestId": "req-0002"
   }

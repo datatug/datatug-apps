@@ -63,30 +63,51 @@
   }
 
   <!--
-    REQ:parameter-auto-binding / REQ:no-hidden-filters (INTEGRATION.md §6) — every
-    auto-bound parameter is shown with its origin ("from selection"/"from context")
-    before it is ever sent on a run, and the user can clear it here.
+    REQ:parameter-auto-binding / REQ:no-hidden-filters (INTEGRATION.md §6, Task 15
+    item 3) — every auto-bound parameter is shown with its origin ("5 · from
+    selection"/"5 · from context") before it is ever sent on a run, and the user can
+    clear it here. An ambiguous or unconfirmed-conflict parameter blocks Run until
+    resolved (AC:typed-context-isolation).
   -->
   <ion-card>
     <ion-card-header>
       <ion-card-title>Parameters</ion-card-title>
     </ion-card-header>
-    @if (effectiveBindings().length) {
+    @if (visibleBindings().length) {
       <ion-list>
-        @for (binding of effectiveBindings(); track binding.parameterId) {
-          <ion-item>
+        @for (binding of visibleBindings(); track binding.parameterId) {
+          <ion-item [color]="binding.blocked ? 'warning' : undefined">
             <ion-label>
-              {{ binding.label }}
-              <p>bound from {{ binding.origin }}</p>
+              {{ bindingFieldLabel(binding) }}
+              @if (binding.blocked === "ambiguous") {
+                <p>ambiguous — {{ ambiguousValuesLabel(binding) }}</p>
+              } @else if (binding.blocked === "conflict-unconfirmed") {
+                <p>conflict — {{ conflictLabel(binding) }}</p>
+              } @else if (binding.blocked === "missing-required") {
+                <p>required — no value supplied</p>
+              } @else {
+                <p>{{ bindingValueLabel(binding) }}</p>
+              }
             </ion-label>
-            <ion-button
-              slot="end"
-              fill="clear"
-              title="Clear this binding"
-              (click)="clearBinding(binding.parameterId)"
-            >
-              <ion-icon name="close-outline" />
-            </ion-button>
+            @if (binding.blocked === "conflict-unconfirmed") {
+              <ion-button
+                slot="end"
+                fill="clear"
+                title="Use the selection value"
+                (click)="confirmConflict(binding.parameterId)"
+              >
+                Use selection
+              </ion-button>
+            } @else if (binding.value !== undefined) {
+              <ion-button
+                slot="end"
+                fill="clear"
+                title="Clear this binding"
+                (click)="clearBinding(binding.parameterId)"
+              >
+                <ion-icon name="close-outline" />
+              </ion-button>
+            }
           </ion-item>
         }
       </ion-list>
@@ -123,6 +144,7 @@
             running() ||
             !queryId ||
             !project ||
+            hasBlockedBindings() ||
             (availableTargets().length > 0 && !selectedSource())
           "
           (click)="runQuery()"

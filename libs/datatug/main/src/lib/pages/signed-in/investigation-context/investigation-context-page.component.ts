@@ -28,10 +28,8 @@ import {
   AgentContextService,
   Candidate,
   ContextItem,
-  Fact,
   InvestigationContextService,
   SemanticApiService,
-  toFact,
   tryDecodeErrorEnvelope,
 } from '@sneat/datatug-semantic';
 import { getStoreId, IProjectContext } from '../../../nav/nav-models';
@@ -133,12 +131,20 @@ export class InvestigationContextPageComponent implements OnDestroy {
     effect(() => {
       const project = this.project();
       const environment = this.environment();
+      const securityContextId = this.agentContext.securityContextId();
+      const projectId = project?.ref.projectId;
+      // Task 15 item 2/4 — switch (or open) this scope's own basket before reading
+      // `context.items()` below, same ordering/reasoning as ContextPanelComponent's
+      // identical effect.
+      if (projectId && environment && securityContextId) {
+        this.context.setScope({ project: projectId, environment, securityContextId });
+      }
       const enabledItems = this.context.items().filter((item) => item.enabled);
       if (this.suppressNextReload) {
         this.suppressNextReload = false;
         return;
       }
-      this.loadApplicable(project, environment, enabledItems);
+      this.loadApplicable(project, environment, securityContextId, enabledItems);
     });
   }
 
@@ -220,35 +226,53 @@ export class InvestigationContextPageComponent implements OnDestroy {
   private loadApplicable(
     project: IProjectContext | undefined,
     environment: string | undefined,
+    securityContextId: string | undefined,
     enabledItems: readonly ContextItem[],
   ): void {
     const projectId = project?.ref.projectId;
-    const securityContextId = this.agentContext.securityContextId();
     if (!projectId || !environment || !securityContextId || !enabledItems.length) {
-      this.applicable.set([]);
-      this.notYet.set([]);
-      this.loading.set(false);
-      this.error.set(undefined);
+      // Guarded (skip if already at the target value) — this runs inside an
+      // `effect()`; see ContextPanelComponent's identical guard/comment for why an
+      // unconditional `.set()` on every run risks a change-detection fixed point never
+      // being reached (reproduced directly in QueryPageComponent's own effect).
+      if (this.applicable().length) this.applicable.set([]);
+      if (this.notYet().length) this.notYet.set([]);
+      if (this.loading()) this.loading.set(false);
+      if (this.error() !== undefined) this.error.set(undefined);
       return;
     }
     this.loading.set(true);
     this.error.set(undefined);
-    const values: Fact[] = enabledItems.map((item) =>
-      toFact(item.entityField.entity, item.entityField.field, item.value, 'context'),
-    );
+    // Task 15 item 2 — `enabledItems` are already wire-shaped Facts (`origin: 'context'`)
+    // straight from InvestigationContextService; no toFact() re-wrap needed.
+    const values = enabledItems;
+    const requestScope = { project: projectId, environment, securityContextId };
     this.semanticApi
-      .getApplicableQueries({ project: projectId, environment, securityContextId, values })
+      .getApplicableQueries({ ...requestScope, values })
       .subscribe({
         next: (response) => {
+          // Task 15 item 4 — discard a late response for a scope the user has since
+          // left (project/environment/principal switch mid-flight).
+          if (!this.context.isCurrentScope(requestScope)) {
+            return;
+          }
           this.applicable.set(response.applicable);
           this.notYet.set(response.notYet);
           this.loading.set(false);
         },
-        error: (err: unknown) => this.handleLoadError(err),
+        error: (err: unknown) => this.handleLoadError(err, requestScope),
       });
   }
 
-  private handleLoadError(err: unknown): void {
+  private handleLoadError(
+    err: unknown,
+    requestScope: { project: string; environment: string; securityContextId: string },
+  ): void {
+    if (!this.context.isCurrentScope(requestScope)) {
+      // Late error response for a scope we've already left — same discard rule as a
+      // late success response.
+      return;
+    }
     this.loading.set(false);
     const envelope =
       err instanceof HttpErrorResponse ? tryDecodeErrorEnvelope(err.error) : undefined;

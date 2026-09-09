@@ -1,7 +1,0 @@
-{
-  "related": [
-    { "lookupId": "invoices", "label": "Invoices", "source": "chinook", "collection": "Invoice", "count": 7 },
-    { "lookupId": "support-notes", "label": "Support notes", "source": "support-notes", "collection": "notes", "count": 2 }
-  ],
-  "truncated": false
-}

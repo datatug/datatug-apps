@@ -1,8 +1,7 @@
 {
   "error": {
     "code": "NOT_FOUND",
-    "message": "query not found",
-    "field": "queryId",
+    "message": "no such query in this project",
     "requestId": "req-0009"
   }
 }
