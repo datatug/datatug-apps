@@ -49,10 +49,29 @@ import { expect, test } from './fixtures/agent-server';
  *    pass; re-run this suite once that lands.
  *    UPDATE 2026-09-09: landed as datatug/datatug-cli#205. Against a
  *    datatug-cli main build J1 now passes its title assertion (locator
- *    corrected in datatug/datatug-apps#69) and fails next at the Album grid:
- *    `NG0201: No provider found for DatatugNavContextService. Source:
- *    Standalone[EnvDbTablePageComponent]` — a defect in this repo, not yet
- *    fixed.
+ *    corrected in datatug/datatug-apps#69). It then failed at the Album grid
+ *    with `NG0201: No provider found for DatatugNavContextService. Source:
+ *    Standalone[EnvDbTablePageComponent]` — this repo's own defect, fixed by
+ *    giving that page the service modules it never declared.
+ * 3. (NOT fixable here — a datatug-cli contract defect) The Album grid still
+ *    does not render, and this is now the first blocker. The table page loads
+ *    its environment before it can select rows, and
+ *    `GET /datatug/environment-summary?proj=<id>&env=local` answers 400:
+ *    `validation error: invalid request: bad value for field [projID]:
+ *    missing required field` (reproduce with `datatug serve --project
+ *    datatug-demo-projects/demo-project-1 --as admin` and curl that path).
+ *    Two mismatches, both server-side of the contract: this client sends the
+ *    project as `proj=` (environment.service.ts `getEnvSummary`) while
+ *    `fillProjectRef` reads `urlParamProjectID = "project"`; and
+ *    `getEnvironmentSummary` calls `fillProjectItemRef(ref, q, "")`, so the
+ *    environment id is read from an empty parameter name and is always blank
+ *    even once the project id arrives. datatug-cli is itself inconsistent
+ *    here — `dbserver_databases.go` and `execute_endpoints.go` read `proj` —
+ *    so which spelling is canonical is that repo's call, not this one's.
+ *    With the page fixed, the agent log now shows this page reaching
+ *    `/datatug/environment-summary` and `/datatug/projects/project_full` at
+ *    all, which it never did before; no `/datatug/exec/select` follows
+ *    because the environment never resolves.
  *
  * J2 additionally needs `GET /datatug/semantic/columns`, `GET
  * /datatug/semantic/related` and `POST /datatug/queries/applicable`, none

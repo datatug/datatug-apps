@@ -1,6 +1,9 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { HttpClient } from '@angular/common/http';
 import { ActivatedRoute, Router } from '@angular/router';
+import { NavController } from '@ionic/angular';
+import { Firestore } from 'firebase/firestore';
 import { ErrorLogger } from '@sneat/core';
 import {
   InvestigationContextService,
@@ -121,7 +124,10 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
       providers: [
         {
           provide: ErrorLogger,
-          useValue: { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) },
+          useValue: {
+            logError: vi.fn(),
+            logErrorHandler: vi.fn(() => vi.fn()),
+          },
         },
         {
           provide: ActivatedRoute,
@@ -175,7 +181,12 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
 
   it('marks a mapped column header and leaves an unmapped one alone', async () => {
     component = await createComponent([
-      { column: 'CustomerId', entity: 'Customer', field: 'ID', provenance: 'declared' },
+      {
+        column: 'CustomerId',
+        entity: 'Customer',
+        field: 'ID',
+        provenance: 'declared',
+      },
     ]);
 
     expect(getSemanticColumnsMock).toHaveBeenCalledWith({
@@ -197,7 +208,12 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
 
   it('uses the inferred-provenance icon for an inferred mapping', async () => {
     component = await createComponent([
-      { column: 'CustomerId', entity: 'Customer', field: 'ID', provenance: 'inferred' },
+      {
+        column: 'CustomerId',
+        entity: 'Customer',
+        field: 'ID',
+        provenance: 'inferred',
+      },
     ]);
 
     const customerIdCol = (component.grid?.columns || []).find(
@@ -209,7 +225,12 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
 
   it('sets selection from the clicked cell using the loaded semantic mapping', async () => {
     component = await createComponent([
-      { column: 'CustomerId', entity: 'Customer', field: 'ID', provenance: 'declared' },
+      {
+        column: 'CustomerId',
+        entity: 'Customer',
+        field: 'ID',
+        provenance: 'declared',
+      },
     ]);
 
     const cellEl = document.createElement('div');
@@ -231,7 +252,12 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
 
   it('clears selection when the clicked column has no semantic mapping', async () => {
     component = await createComponent([
-      { column: 'CustomerId', entity: 'Customer', field: 'ID', provenance: 'declared' },
+      {
+        column: 'CustomerId',
+        entity: 'Customer',
+        field: 'ID',
+        provenance: 'declared',
+      },
     ]);
 
     const cellEl = document.createElement('div');
@@ -258,7 +284,11 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
       meta: {
         ...(table.meta as Record<string, unknown>),
         foreignKeys: [
-          { name: 'FK_Customer_Country', columns: ['CountryId'], refTable: { schema: 'main', name: 'Country' } },
+          {
+            name: 'FK_Customer_Country',
+            columns: ['CountryId'],
+            refTable: { schema: 'main', name: 'Country' },
+          },
         ],
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any,
@@ -276,7 +306,12 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
 
   it('closeContextPanel clears the selection', async () => {
     component = await createComponent([
-      { column: 'CustomerId', entity: 'Customer', field: 'ID', provenance: 'declared' },
+      {
+        column: 'CustomerId',
+        entity: 'Customer',
+        field: 'ID',
+        provenance: 'declared',
+      },
     ]);
     component.selection.set({
       entity: 'Customer',
@@ -297,16 +332,35 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
 
     component.onOpenQuery({
       queryId: 'customer-invoices',
-      bindings: [{ parameterId: 'CustomerId', entity: 'Customer', field: 'ID', value: 5 }],
+      bindings: [
+        {
+          parameterId: 'CustomerId',
+          entity: 'Customer',
+          field: 'ID',
+          value: 5,
+        },
+      ],
     });
 
     expect(routerMock.navigate).toHaveBeenCalledWith(
-      ['/store', 'localhost:8989', 'project', 'demo-project', 'query', 'customer-invoices'],
+      [
+        '/store',
+        'localhost:8989',
+        'project',
+        'demo-project',
+        'query',
+        'customer-invoices',
+      ],
       {
         queryParams: { id: 'customer-invoices' },
         state: {
           bindings: [
-            { parameterId: 'CustomerId', entity: 'Customer', field: 'ID', value: 5 },
+            {
+              parameterId: 'CustomerId',
+              entity: 'Customer',
+              field: 'ID',
+              value: 5,
+            },
           ],
         },
       },
@@ -321,4 +375,85 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
 
     expect(routerMock.navigate).not.toHaveBeenCalled();
   });
+});
+
+/**
+ * Regression for `NG0201: No provider found for DatatugNavContextService.
+ * Source: Standalone[EnvDbTablePageComponent]`, thrown for real every time the
+ * table page was reached by URL, which left the grid unrendered (journey J1's
+ * Album step). The two describes above cannot see it: they stub every injected
+ * service AND blank the component's own `imports`, so they prove the class
+ * constructs under hand-fed doubles, not that the app can build it.
+ *
+ * Here the component is left exactly as production declares it, so the only
+ * thing that can satisfy these injections is its own `imports` list, and only
+ * leaf I/O (HTTP, Firestore, router, navigation) is stubbed. The template is
+ * never rendered: `TestBed.createComponent` on this page fails in this
+ * environment for an unrelated, pre-existing reason (its real child tree
+ * reaches a directive whose `providersResolver` runs against a second
+ * @angular/core copy and throws "Cannot read properties of null (reading
+ * 'firstCreatePass')"), and that reproduces identically with the original
+ * component and every service stubbed. Construction is the right site anyway:
+ * NG0201 came from this component's own `inject()` field initializers.
+ */
+describe('EnvDbTablePage dependency injection', () => {
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      // Importing the standalone component brings its own `imports` into the
+      // testing injector — nothing else here provides the datatug services.
+      imports: [EnvDbTablePageComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        {
+          provide: ErrorLogger,
+          useValue: {
+            logError: vi.fn(),
+            logErrorHandler: vi.fn(() => vi.fn()),
+          },
+        },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            queryParamMap: of({ get: () => null }),
+            paramMap: of({ get: () => null }),
+            snapshot: { paramMap: { get: () => null }, params: {} },
+          },
+        },
+        {
+          provide: Router,
+          useValue: {
+            navigate: vi.fn(() => Promise.resolve(true)),
+            events: of(),
+            url: '/',
+          },
+        },
+        {
+          provide: NavController,
+          useValue: {
+            navigateForward: vi.fn(() => Promise.resolve(true)),
+            navigateRoot: vi.fn(),
+          },
+        },
+        { provide: HttpClient, useValue: { get: vi.fn(() => of({})) } },
+        { provide: Firestore, useValue: {} },
+      ],
+    });
+  });
+
+  it('constructs from its own declared imports, the site that threw NG0201', () => {
+    expect(() =>
+      TestBed.runInInjectionContext(() => new EnvDbTablePageComponent()),
+    ).not.toThrow();
+  });
+
+  it.each([
+    ['DatatugNavContextService', DatatugNavContextService],
+    ['ProjectService', ProjectService],
+    ['AgentService', AgentService],
+  ])(
+    'resolves %s, which is provided by a module and never `providedIn: root`',
+    (_name, token) => {
+      expect(TestBed.inject(token, null)).toBeTruthy();
+    },
+  );
 });

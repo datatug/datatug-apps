@@ -64,6 +64,11 @@ import {
 } from '../../../services/nav/datatug-nav.service';
 import { ProjectService } from '../../../services/project/project.service';
 import { AgentService } from '../../../services/repo/agent.service';
+import { DatatugCoreModule } from '../../../core/datatug-core.module';
+import { DatatugServicesNavModule } from '../../../services/nav/datatug-services-nav.module';
+import { DatatugServicesProjectModule } from '../../../services/project/datatug-services-project.module';
+import { DatatugServicesStoreModule } from '../../../services/repo/datatug-services-store.module';
+import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
 import { ForeignKeyCardComponent } from './foreign-key-card/foreign-key-card.component';
 
 // Registers the same two icon names SemanticMarkerComponent uses
@@ -84,6 +89,24 @@ addIcons({ pricetag, helpCircleOutline });
   templateUrl: './env-db-table.page.html',
   styleUrls: ['./env-db-table.page.scss'],
   imports: [
+    // `DatatugNavContextService`, `ProjectService`/`ProjectContextService`,
+    // `AgentService`, `AppContextService` and `EnvironmentService` are all
+    // plain `@Injectable()`, provided by these modules rather than
+    // `providedIn: 'root'`. This component injects the first three directly
+    // and reaches the last two through `DatatugNavContextService`, but
+    // declared none of the modules, so opening a table by URL threw
+    // `NG0201: No provider found for DatatugNavContextService. Source:
+    // Standalone[EnvDbTablePageComponent]` and the grid never rendered
+    // (journey J1's Album step). No ancestor route provides them either —
+    // `env-db-table-routing.module.ts` and every parent in
+    // `routes/datatug-routing*.ts` have no `providers:` entry. Same fix, and
+    // same cause, as `DatatugStorePageComponent` (PR #63) and
+    // `ProjectPageComponent`, whose module set this mirrors.
+    DatatugCoreModule,
+    DatatugServicesNavModule,
+    DatatugServicesProjectModule,
+    DatatugServicesStoreModule,
+    DatatugServicesUnsortedModule,
     ForeignKeyCardComponent,
     ContextPanelComponent,
     CodeEditor,
@@ -136,7 +159,9 @@ export class EnvDbTablePageComponent implements OnDestroy {
   // (fetched once per table load) and the currently selected cell, which drives the
   // context panel in the split pane. Signals, not plain fields, per this repo's
   // zoneless-ready convention (AGENTS.md).
-  public readonly semanticColumns = signal<readonly SemanticColumnMapping[]>([]);
+  public readonly semanticColumns = signal<readonly SemanticColumnMapping[]>(
+    [],
+  );
   public readonly selection = signal<SemanticSelection | undefined>(undefined);
   public readonly hasSelection = computed(() => !!this.selection());
 
@@ -175,9 +200,9 @@ export class EnvDbTablePageComponent implements OnDestroy {
       // ever calling the agent, i.e. the grid never rendered any rows. Found while
       // diagnosing why journey e2e J1 doesn't see `.tabulator-row` after this
       // stream's table-page changes.
-      const [schema, name] = (
-        paramMap.get(routingParamTableType) || ''
-      ).split('.');
+      const [schema, name] = (paramMap.get(routingParamTableType) || '').split(
+        '.',
+      );
       this.table = { schema, name };
       this.envId = paramMap.get(routingParamEnvironmentId) || undefined;
       this.dbId = paramMap.get(routingParamDbCatalogId) || undefined;
@@ -369,13 +394,17 @@ from ${from}`;
    * provenance MUST come from `semanticColumns` (i.e. the server), never computed
    * here (REQ:semantic-markers-in-grid).
    */
-  private columnTitleWithMarker(displayTitle: string, columnName: string): string {
+  private columnTitleWithMarker(
+    displayTitle: string,
+    columnName: string,
+  ): string {
     const mapping = this.semanticColumns().find((m) => m.column === columnName);
     const escapedTitle = this.escapeHtml(displayTitle);
     if (!mapping) {
       return escapedTitle;
     }
-    const icon = mapping.provenance === 'declared' ? 'pricetag' : 'helpCircleOutline';
+    const icon =
+      mapping.provenance === 'declared' ? 'pricetag' : 'helpCircleOutline';
     const cssClass =
       mapping.provenance === 'inferred'
         ? 'semantic-marker semantic-marker--inferred'
