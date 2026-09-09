@@ -9,7 +9,10 @@ import { map } from 'rxjs/operators';
 import { Injectable, inject } from '@angular/core';
 import { docSnapshots } from './firestore-observables';
 
-@Injectable()
+// `providedIn: 'root'` — needed so `DatatugStoreServiceFactory` (also
+// root-provided) can resolve this dependency regardless of which route
+// requested it.
+@Injectable({ providedIn: 'root' })
 export class DatatugStoreFirestoreService implements IDatatugStoreService {
   private readonly db = inject(Firestore);
 

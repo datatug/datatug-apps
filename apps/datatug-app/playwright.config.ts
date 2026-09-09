@@ -2,6 +2,9 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e',
+  // Enterprise SSO owns Firebase, Firestore, an SSO backend, and an OIDC IdP;
+  // run it through playwright.sso.config.ts or the Keycloak profile instead.
+  testIgnore: 'enterprise-sso.spec.ts',
   outputDir: '../../coverage/apps/datatug-app-e2e/results',
   fullyParallel: true,
   reporter: [

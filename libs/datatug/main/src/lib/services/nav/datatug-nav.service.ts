@@ -31,7 +31,18 @@ export type ProjectTopLevelPage =
   | 'tags'
   | 'widgets';
 
-@Injectable()
+// `providedIn: 'root'` — the app has multiple sibling `<router-outlet>`s
+// (the side menu is a *named* outlet, not an ancestor of the routed page
+// outlet — see `apps/datatug-app/src/app/datatug-app.component.html`), so a
+// feature-module-scoped provider is only available to whichever routed page
+// component happens to import that module itself. Several page components
+// injected this service without doing so and crashed with
+// `NullInjectorError: No provider for DatatugNavService` (e.g. navigating to
+// a project's "queries" tab) — see
+// `spec/research/2026-09-09-web-ui-audit.md`. Root-providing it fixes every
+// route uniformly; its dependencies (`NavController`, `ErrorLogger`) are
+// both already provided at the application root.
+@Injectable({ providedIn: 'root' })
 export class DatatugNavService {
   private readonly nav = inject(NavController);
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
