@@ -59,4 +59,14 @@ describe('ProjectContextMenuComponent', () => {
   it('should create', () => {
     expect(component).toBeTruthy();
   });
+
+  it('REQ:context-basket — links to the Investigation Context screen (the former "Variables" empty-shell entry), unconditionally', () => {
+    const entry = component.projTopLevelPages.find(
+      (page) => page.path === 'variables',
+    );
+    expect(entry).toMatchObject({
+      path: 'variables',
+      title: 'Investigation Context',
+    });
+  });
 });

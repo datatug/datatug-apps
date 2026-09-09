@@ -12,10 +12,12 @@ import {
   routingParamServerType,
 } from '../core/datatug-routing-params';
 
-// The empty-shell pages (Widgets, Tags, Resources, Variables, DB models,
-// Diff) — see `ENABLE_EMPTY_SHELL_PAGES`. Left out of `datatugProjectRoutes`
-// entirely while the flag is off, so there is no route for a user (or a
-// stale link) to land on.
+// The empty-shell pages (Widgets, Tags, Resources, DB models, Diff) — see
+// `ENABLE_EMPTY_SHELL_PAGES`. Left out of `datatugProjectRoutes` entirely
+// while the flag is off, so there is no route for a user (or a stale link)
+// to land on. "Variables" used to be here too; it now has a real screen
+// (`InvestigationContextPageComponent`, plan task 9 — REQ:context-basket)
+// and moved to the always-present list below.
 const emptyShellProjectRoutes: Routes = [
   {
     path: 'widgets',
@@ -54,13 +56,6 @@ const emptyShellProjectRoutes: Routes = [
     loadComponent: () =>
       import('../pages/signed-in/resources/resources-page.component').then(
         (m) => m.ResourcesPageComponent,
-      ),
-  },
-  {
-    path: 'variables',
-    loadComponent: () =>
-      import('../pages/signed-in/variables/variables-page.component').then(
-        (m) => m.VariablesPageComponent,
       ),
   },
   {
@@ -176,6 +171,16 @@ export const datatugProjectRoutes: Routes = [
       import('./datatug-routing-proj-db-catalog').then(
         (m) => m.DatatugRoutingProjDbCatalog,
       ),
+  },
+  {
+    // REQ:context-basket (plan task 9) — the former "Variables" empty-shell
+    // page; now a real screen (InvestigationContextPageComponent), so it is
+    // NOT gated behind ENABLE_EMPTY_SHELL_PAGES like its former siblings.
+    path: 'variables',
+    loadComponent: () =>
+      import(
+        '../pages/signed-in/investigation-context/investigation-context-page.component'
+      ).then((m) => m.InvestigationContextPageComponent),
   },
   ...(ENABLE_EMPTY_SHELL_PAGES ? emptyShellProjectRoutes : []),
 ];

@@ -1,0 +1,11 @@
+.investigation-context-page {
+  &__empty {
+    display: block;
+    padding: 16px;
+    text-align: center;
+  }
+
+  &__item--disabled {
+    opacity: 0.6;
+  }
+}

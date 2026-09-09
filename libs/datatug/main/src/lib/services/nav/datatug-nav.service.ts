@@ -29,6 +29,7 @@ export type ProjectTopLevelPage =
   | 'queries'
   | 'query'
   | 'tags'
+  | 'variables'
   | 'widgets';
 
 // `providedIn: 'root'` — the app has multiple sibling `<router-outlet>`s
