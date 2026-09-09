@@ -1,6 +1,6 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable, throwError } from 'rxjs';
+import { map, Observable, throwError } from 'rxjs';
 import { getAgentSessionToken } from './agent-session';
 import {
   AuthorizationResult,
@@ -8,6 +8,8 @@ import {
   OpenVaultQueryResponse,
   OpenVaultTargetsResponse,
   UpdateResponse,
+  isAuthorizationResult,
+  isUpdateResponse,
 } from './openvaultdb.models';
 
 @Injectable({ providedIn: 'root' })
@@ -31,7 +33,9 @@ export class OpenVaultDBAgentService {
     target: string,
     request: unknown,
   ): Observable<AuthorizationResult> {
-    return this.post(agentId, 'explain', { target, request });
+    return this.post<unknown>(agentId, 'explain', { target, request }).pipe(
+      map((value) => requireResponse(value, isAuthorizationResult)),
+    );
   }
 
   evidence(
@@ -47,7 +51,9 @@ export class OpenVaultDBAgentService {
     target: string,
     request: unknown,
   ): Observable<UpdateResponse> {
-    return this.post(agentId, 'update', { target, request });
+    return this.post<unknown>(agentId, 'update', { target, request }).pipe(
+      map((value) => requireResponse(value, isUpdateResponse)),
+    );
   }
 
   private post<T>(
@@ -66,6 +72,16 @@ export class OpenVaultDBAgentService {
       headers: new HttpHeaders({ 'X-Datatug-Agent-Token': token }),
     });
   }
+}
+
+function requireResponse<T>(
+  value: unknown,
+  validator: (value: unknown) => value is T,
+): T {
+  if (!validator(value)) {
+    throw new Error('The local agent returned an invalid response.');
+  }
+  return value;
 }
 
 export function loopbackAgentOrigin(agentId: string): string | undefined {

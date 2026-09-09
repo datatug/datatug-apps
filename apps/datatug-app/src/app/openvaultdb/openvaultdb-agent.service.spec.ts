@@ -63,7 +63,37 @@ describe('OpenVaultDBAgentService', () => {
       request: operation,
     });
     expect(JSON.stringify(request.request.body)).not.toContain('bearer');
-    request.flush({ authorization: {}, dataRevision: 'r2' });
+    request.flush({
+      authorization: {
+        apiVersion: 'dtql.org/authorization/v1',
+        requestId: 'request-1',
+        mode: 'execution',
+        scope: 'request',
+        result: 'allow',
+        allowed: true,
+        hypothetical: false,
+        operations: [],
+        layers: [],
+        blockers: [],
+        coverage: {
+          evaluation: 'complete',
+          disclosure: 'full',
+          truncated: false,
+          unevaluated: [],
+        },
+        restrictions: [
+          {
+            id: 'field-limit',
+            operationId: 'u1',
+            representation: 'fields',
+            kind: 'field_allowlist',
+            fields: ['name'],
+            enforced: true,
+          },
+        ],
+      },
+      dataRevision: 'r2',
+    });
   });
 
   it('never sends the capability to a route-selected remote origin', () => {

@@ -116,3 +116,79 @@ export interface UpdateResponse {
   readonly authorization: AuthorizationResult;
   readonly dataRevision: string;
 }
+
+export function isAuthorizationResult(
+  value: unknown,
+): value is AuthorizationResult {
+  if (!isObject(value)) return false;
+  const mode = value['mode'];
+  const outcome = value['result'];
+  const coverage = value['coverage'];
+  const restrictions = value['restrictions'];
+  const blockers = value['blockers'];
+  if (
+    value['apiVersion'] !== 'dtql.org/authorization/v1' ||
+    typeof value['requestId'] !== 'string' ||
+    value['requestId'].length === 0 ||
+    !['plan', 'inspect', 'sample', 'execution'].includes(String(mode)) ||
+    !['allow', 'conditional', 'deny', 'indeterminate'].includes(
+      String(outcome),
+    ) ||
+    typeof value['allowed'] !== 'boolean' ||
+    typeof value['hypothetical'] !== 'boolean' ||
+    !Array.isArray(value['operations']) ||
+    !Array.isArray(value['layers']) ||
+    !Array.isArray(blockers) ||
+    !Array.isArray(restrictions) ||
+    !isObject(coverage) ||
+    !['complete', 'partial'].includes(String(coverage['evaluation'])) ||
+    !['full', 'redacted'].includes(String(coverage['disclosure'])) ||
+    typeof coverage['truncated'] !== 'boolean' ||
+    !Array.isArray(coverage['unevaluated']) ||
+    !restrictions.every(
+      (restriction) =>
+        isObject(restriction) && typeof restriction['enforced'] === 'boolean',
+    )
+  ) {
+    return false;
+  }
+
+  const allowed = value['allowed'];
+  const completeAllow =
+    outcome === 'allow' &&
+    value['scope'] === 'request' &&
+    coverage['evaluation'] === 'complete' &&
+    coverage['truncated'] === false;
+  if (allowed !== completeAllow) return false;
+  if (mode === 'sample') {
+    if (value['scope'] !== 'sample' || allowed) return false;
+  } else if (value['scope'] !== 'request') {
+    return false;
+  }
+  if (
+    ['plan', 'inspect', 'sample'].includes(String(mode)) &&
+    restrictions.some((restriction) => restriction['enforced'] !== false)
+  ) {
+    return false;
+  }
+  return (
+    !allowed ||
+    (blockers.length === 0 &&
+      restrictions.every((restriction) => restriction['enforced'] === true))
+  );
+}
+
+export function isUpdateResponse(value: unknown): value is UpdateResponse {
+  return (
+    isObject(value) &&
+    typeof value['dataRevision'] === 'string' &&
+    value['dataRevision'].length > 0 &&
+    isAuthorizationResult(value['authorization']) &&
+    value['authorization'].mode === 'execution' &&
+    value['authorization'].allowed
+  );
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}

@@ -30,6 +30,7 @@ import { firstValueFrom } from 'rxjs';
 import { OpenVaultDBAgentService } from './openvaultdb-agent.service';
 import {
   AuthorizationResult,
+  isAuthorizationResult,
   OpenVaultRecord,
   OpenVaultTarget,
 } from './openvaultdb.models';
@@ -378,20 +379,6 @@ function authorizationFromError(error: unknown): AuthorizationResult | undefined
       ? body['error']['authorization']
       : undefined;
   return isAuthorizationResult(candidate) ? candidate : undefined;
-}
-
-function isAuthorizationResult(value: unknown): value is AuthorizationResult {
-  return (
-    isObject(value) &&
-    value['apiVersion'] === 'dtql.org/authorization/v1' &&
-    ['allow', 'conditional', 'deny', 'indeterminate'].includes(String(value['result'])) &&
-    ['plan', 'inspect', 'sample', 'execution'].includes(String(value['mode'])) &&
-    Array.isArray(value['layers']) &&
-    Array.isArray(value['blockers']) &&
-    Array.isArray(value['operations']) &&
-    Array.isArray(value['restrictions']) &&
-    isObject(value['coverage'])
-  );
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
