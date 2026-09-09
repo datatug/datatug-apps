@@ -1,9 +1,11 @@
-import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
+import { CUSTOM_ELEMENTS_SCHEMA, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ErrorLogger } from '@sneat/core';
 import { RandomIdService } from '@sneat/random';
 import {
+  AgentContextService,
   InvestigationContextService,
   SemanticApiService,
 } from '@sneat/datatug-semantic';
@@ -19,6 +21,13 @@ import { QueriesService } from '../../queries.service';
 import { Coordinator } from '../../../executor/coordinator';
 import { QueryEditorStateService } from '../../query-editor-state-service';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
+
+function agentContextStub(securityContextId: string | undefined = 'sctx-1') {
+  return {
+    securityContextId: signal(securityContextId),
+    refresh: vi.fn(() => of(undefined)),
+  };
+}
 
 describe('SqlEditorPage', () => {
   let component: QueryPageComponent;
@@ -92,8 +101,9 @@ describe('SqlEditorPage', () => {
         },
         {
           provide: InvestigationContextService,
-          useValue: { bindingsFor: vi.fn(() => []) },
+          useValue: { bindingsFor: vi.fn(() => []), clear: vi.fn() },
         },
+        { provide: AgentContextService, useValue: agentContextStub() },
       ],
     })
       .overrideComponent(QueryPageComponent, {
@@ -120,6 +130,8 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
   let component: QueryPageComponent;
   let bindingsForMock: ReturnType<typeof vi.fn>;
   let runQueryMock: ReturnType<typeof vi.fn>;
+  let investigationContextClearMock: ReturnType<typeof vi.fn>;
+  let agentContext: ReturnType<typeof agentContextStub>;
 
   const project: IProjectContext = {
     ref: { storeId: 'localhost:8989', projectId: 'demo-project' },
@@ -165,6 +177,8 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     // constructor, i.e. before this function returns.
     bindingsForMock = vi.fn(() => contextBindings);
     runQueryMock = vi.fn();
+    investigationContextClearMock = vi.fn();
+    agentContext = agentContextStub();
     await TestBed.configureTestingModule({
       imports: [QueryPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -215,8 +229,9 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
         { provide: SemanticApiService, useValue: { runQuery: runQueryMock } },
         {
           provide: InvestigationContextService,
-          useValue: { bindingsFor: bindingsForMock },
+          useValue: { bindingsFor: bindingsForMock, clear: investigationContextClearMock },
         },
+        { provide: AgentContextService, useValue: agentContext },
       ],
     })
       .overrideComponent(QueryPageComponent, {
@@ -229,7 +244,9 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       })
       .compileComponents();
 
-    return TestBed.createComponent(QueryPageComponent).componentInstance;
+    const created = TestBed.createComponent(QueryPageComponent).componentInstance;
+    created.envId = 'production';
+    return created;
   }
 
   const contextBinding = {
@@ -239,6 +256,13 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     label: 'Customer.ID = 7',
     source: 'grid',
     contextItemId: 'Customer.ID=7',
+  };
+
+  const selectionBinding = {
+    parameterId: 'CustomerId',
+    value: { type: 'integer' as const, value: '5' },
+    origin: 'selection' as const,
+    originEvidence: 'client-reported' as const,
   };
 
   it('binds a parameter from context when no selection binding is present', async () => {
@@ -251,26 +275,21 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       {
         parameterId: 'CustomerId',
         entityField: { entity: 'Customer', field: 'ID' },
-        value: 7,
+        value: { type: 'integer', value: '7' },
         label: 'Customer.ID = 7',
         origin: 'context',
       },
     ]);
   });
 
-  it('selection (router state from the context panel) wins over context for the same parameter', async () => {
-    component = await createComponent(
-      {
-        bindings: [{ parameterId: 'CustomerId', entity: 'Customer', field: 'ID', value: 5 }],
-      },
-      [contextBinding],
-    );
+  it('selection (router state from the context panel, a wire Binding[]) wins over context for the same parameter', async () => {
+    component = await createComponent({ bindings: [selectionBinding] }, [contextBinding]);
 
     expect(component.effectiveBindings()).toEqual([
       {
         parameterId: 'CustomerId',
         entityField: { entity: 'Customer', field: 'ID' },
-        value: 5,
+        value: { type: 'integer', value: '5' },
         label: 'Customer.ID = 5',
         origin: 'selection',
       },
@@ -286,13 +305,25 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     expect(component.bindings().length).toBe(1);
   });
 
-  it('runQuery sends only effectiveBindings and stores the response', async () => {
+  it('runQuery sends the full ExecutionRequest (Scope + typed parameters + bindingOrigins) and stores the response', async () => {
     const response = {
-      recordset: { columns: [{ name: 'InvoiceId' }], rows: [[1]] },
+      recordset: { columns: [{ name: 'InvoiceId', type: 'integer' }], rows: [[{ type: 'integer', value: '1' }]] },
       limitations: [],
       bindingsApplied: [
-        { parameterId: 'CustomerId', entity: 'Customer', field: 'ID', value: 7, origin: 'context' },
+        {
+          parameterId: 'CustomerId',
+          value: { type: 'integer', value: '7' },
+          origin: 'context',
+          originEvidence: 'client-reported',
+        },
       ],
+      provenance: {
+        source: 'chinook',
+        mode: 'live',
+        observedAt: '2026-09-09T12:00:00Z',
+        executionProfile: 'protected',
+      },
+      truncated: false,
     };
     component = await createComponent({}, [contextBinding]);
     runQueryMock.mockReturnValue(of(response));
@@ -302,8 +333,13 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
 
     expect(runQueryMock).toHaveBeenCalledWith({
       project: 'demo-project',
+      environment: 'production',
+      securityContextId: 'sctx-1',
       queryId: 'customer-invoices',
-      parameters: { CustomerId: 7 },
+      source: undefined,
+      parameters: { CustomerId: { type: 'integer', value: '7' } },
+      bindingOrigins: [{ parameterId: 'CustomerId', origin: 'context' }],
+      mode: 'live',
     });
     expect(component.runResult()).toEqual(response);
     expect(component.running()).toBe(false);
@@ -313,18 +349,27 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
   it('runQuery does not include a cleared binding', async () => {
     component = await createComponent({}, [contextBinding]);
     runQueryMock.mockReturnValue(
-      of({ recordset: { columns: [], rows: [] }, limitations: [], bindingsApplied: [] }),
+      of({
+        recordset: { columns: [], rows: [] },
+        limitations: [],
+        bindingsApplied: [],
+        provenance: {
+          source: 'chinook',
+          mode: 'live',
+          observedAt: '2026-09-09T12:00:00Z',
+          executionProfile: 'protected',
+        },
+        truncated: false,
+      }),
     );
     component.project = project;
     component.clearBinding('CustomerId');
 
     component.runQuery();
 
-    expect(runQueryMock).toHaveBeenCalledWith({
-      project: 'demo-project',
-      queryId: 'customer-invoices',
-      parameters: {},
-    });
+    expect(runQueryMock).toHaveBeenCalledWith(
+      expect.objectContaining({ parameters: {}, bindingOrigins: [] }),
+    );
   });
 
   it('runQuery reports the failure without hiding it', async () => {
@@ -346,5 +391,101 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     component.runQuery();
 
     expect(runQueryMock).not.toHaveBeenCalled();
+  });
+
+  it('runQuery does nothing without an environment (envId unset)', async () => {
+    component = await createComponent({}, []);
+    component.project = project;
+    component.envId = undefined;
+
+    component.runQuery();
+
+    expect(runQueryMock).not.toHaveBeenCalled();
+  });
+
+  it('TARGET_REQUIRED populates availableTargets from the error, never a hidden source', async () => {
+    component = await createComponent({}, []);
+    component.project = project;
+    const targetRequired = new HttpErrorResponse({
+      status: 400,
+      error: {
+        error: {
+          code: 'TARGET_REQUIRED',
+          message: 'choose a target',
+          requestId: 'req-1',
+          targets: [
+            { source: 'chinook', label: 'Chinook (SQLite)' },
+            { source: 'exchange-rates-http', label: 'Exchange rates (HTTP)' },
+          ],
+        },
+      },
+    });
+    runQueryMock.mockReturnValue(throwError(() => targetRequired));
+
+    component.runQuery();
+
+    expect(component.availableTargets()).toEqual([
+      { source: 'chinook', label: 'Chinook (SQLite)' },
+      { source: 'exchange-rates-http', label: 'Exchange rates (HTTP)' },
+    ]);
+    expect(component.running()).toBe(false);
+  });
+
+  it('SOURCE_UNAVAILABLE on a live run offers an explicit snapshot retry, never a silent fallback', async () => {
+    component = await createComponent({}, []);
+    component.project = project;
+    const sourceUnavailable = new HttpErrorResponse({
+      status: 503,
+      error: {
+        error: { code: 'SOURCE_UNAVAILABLE', message: 'live request failed', requestId: 'req-2' },
+      },
+    });
+    runQueryMock.mockReturnValue(throwError(() => sourceUnavailable));
+
+    component.runQuery();
+
+    expect(component.sourceUnavailable()).toBe(true);
+    expect(runQueryMock).toHaveBeenCalledTimes(1);
+    expect(runQueryMock.mock.calls[0][0]).toMatchObject({ mode: 'live' });
+
+    const snapshotResponse = {
+      recordset: { columns: [], rows: [] },
+      limitations: [],
+      bindingsApplied: [],
+      provenance: {
+        source: 'exchange-rates-http',
+        mode: 'snapshot',
+        snapshotId: 'exchange-rates-2026-09-01',
+        observedAt: '2026-09-01T00:00:00Z',
+        executionProfile: 'protected',
+      },
+      truncated: false,
+    };
+    runQueryMock.mockReturnValue(of(snapshotResponse));
+
+    component.runSnapshot();
+
+    expect(runQueryMock).toHaveBeenCalledTimes(2);
+    expect(runQueryMock.mock.calls[1][0]).toMatchObject({ mode: 'snapshot' });
+    expect(component.sourceUnavailable()).toBe(false);
+    expect(component.runResult()).toEqual(snapshotResponse);
+  });
+
+  it('STALE_CONTEXT clears the Investigation Context and refreshes agent-info', async () => {
+    component = await createComponent({}, []);
+    component.project = project;
+    const staleContext = new HttpErrorResponse({
+      status: 409,
+      error: {
+        error: { code: 'STALE_CONTEXT', message: 'stale', requestId: 'req-3' },
+      },
+    });
+    runQueryMock.mockReturnValue(throwError(() => staleContext));
+
+    component.runQuery();
+
+    expect(investigationContextClearMock).toHaveBeenCalled();
+    expect(agentContext.refresh).toHaveBeenCalled();
+    expect(component.runError()).toContain('session changed');
   });
 });

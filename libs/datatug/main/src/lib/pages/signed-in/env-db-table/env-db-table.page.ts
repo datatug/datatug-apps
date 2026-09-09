@@ -35,6 +35,7 @@ import { IGridColumn, IGridDef } from '@sneat/grid';
 import { Subject } from 'rxjs';
 import { DataGridComponent } from '@sneat/datagrid';
 import {
+  AgentContextService,
   ContextPanelComponent,
   InvestigationContextService,
   OpenQueryRequest,
@@ -147,6 +148,7 @@ export class EnvDbTablePageComponent implements OnDestroy {
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly datatugNavService = inject(DatatugNavService);
   private readonly semanticApi = inject(SemanticApiService);
+  private readonly agentContext = inject(AgentContextService);
   private readonly investigationContext = inject(InvestigationContextService);
   private readonly router = inject(Router);
 
@@ -338,25 +340,26 @@ from ${from}`;
   // REQ:semantic-markers-in-grid, REQ:context-basket (INTEGRATION.md §2-3).
   private loadSemanticColumns(collection: string): void {
     const projectId = this.project?.ref.projectId;
-    if (!projectId) {
+    const environment = this.envId;
+    const securityContextId = this.agentContext.securityContextId();
+    if (!projectId || !environment || !securityContextId) {
       return;
     }
     this.semanticApi
       .getSemanticColumns({
         project: projectId,
+        environment,
+        securityContextId,
         // ASSUMPTION (S9b): "source" is this page's db catalog id (the same value
         // already passed to AgentService.select's `db` param above) — the closest
-        // identifier this page has on hand. The server contract for GET
-        // /datatug/semantic/columns doesn't exist yet (datatug-cli main has no
-        // /datatug/semantic/* routes), so this can't be confirmed against a real
-        // response yet; flag for review once that endpoint lands.
+        // identifier this page has on hand.
         source: this.dbId || '',
         collection,
       })
       .pipe(first())
       .subscribe({
-        next: (columns) => {
-          this.semanticColumns.set(columns);
+        next: (response) => {
+          this.semanticColumns.set(response.columns);
           this.refreshColumnMarkers();
         },
         error: (err) =>
@@ -497,7 +500,14 @@ from ${from}`;
           // `request.queryId`. Found while writing this stream's J2/J3 journey
           // e2e (plan task 10) against the real app.
           queryParams: { id: request.queryId },
-          state: { bindings: request.bindings },
+          // `targets`/`selectedSource` carry a needs-target Candidate's authorized
+          // options through to the query page's target selector (plan Task 12 item 3;
+          // api-contract.md "needs-target").
+          state: {
+            bindings: request.bindings,
+            targets: request.targets,
+            selectedSource: request.selectedSource,
+          },
         },
       )
       .catch((err) => this.errorLogger.logError(err, 'Failed to open query'));

@@ -1,0 +1,26 @@
+{
+  "recordset": {
+    "columns": [{ "name": "InvoiceId", "type": "integer" }],
+    "rows": []
+  },
+  "limitations": [
+    { "policy": "customers-support", "rowsFiltered": true, "hiddenColumns": [] }
+  ],
+  "bindingsApplied": [
+    {
+      "parameterId": "CustomerId",
+      "value": { "type": "integer", "value": "3" },
+      "origin": "selection",
+      "originEvidence": "client-reported"
+    }
+  ],
+  "provenance": {
+    "source": "chinook",
+    "collection": "Invoice",
+    "queryId": "customer-invoices",
+    "mode": "live",
+    "observedAt": "2026-09-09T12:00:00Z",
+    "executionProfile": "protected"
+  },
+  "truncated": false
+}

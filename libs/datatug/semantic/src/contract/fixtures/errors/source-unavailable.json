@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "SOURCE_UNAVAILABLE",
+    "message": "live request to exchange-rates-http failed",
+    "requestId": "req-0012"
+  }
+}

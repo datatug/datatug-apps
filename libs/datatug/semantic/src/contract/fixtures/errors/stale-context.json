@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "STALE_CONTEXT",
+    "message": "securityContextId no longer valid; refresh agent-info",
+    "requestId": "req-0010"
+  }
+}

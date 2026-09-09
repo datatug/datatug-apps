@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "query not found",
+    "field": "queryId",
+    "requestId": "req-0009"
+  }
+}

@@ -1,4 +1,4 @@
-import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
+import { CUSTOM_ELEMENTS_SCHEMA, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { HttpClient } from '@angular/common/http';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -6,6 +6,7 @@ import { NavController } from '@ionic/angular';
 import { Firestore } from 'firebase/firestore';
 import { ErrorLogger } from '@sneat/core';
 import {
+  AgentContextService,
   InvestigationContextService,
   SemanticApiService,
 } from '@sneat/datatug-semantic';
@@ -13,10 +14,34 @@ import { of } from 'rxjs';
 
 import { EnvDbTablePageComponent } from './env-db-table.page';
 import { IEnvDbTableContext, IProjectContext } from '../../../nav/nav-models';
+import { routingParamEnvironmentId } from '../../../core/datatug-routing-params';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { ProjectService } from '../../../services/project/project.service';
 import { AgentService } from '../../../services/repo/agent.service';
 import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
+
+function agentContextStub(securityContextId: string | undefined = 'sctx-1') {
+  return {
+    securityContextId: signal(securityContextId),
+    refresh: vi.fn(() => of(undefined)),
+  };
+}
+
+/** Route mock whose `snapshot.paramMap.get` resolves `routingParamEnvironmentId` — the
+ * component reads `envId` from it in its constructor, and every semantic-columns request
+ * now needs it (Scope.environment, plan Task 12). */
+function activatedRouteStub() {
+  return {
+    queryParamMap: of({ get: () => null }),
+    paramMap: of({ get: () => null }),
+    snapshot: {
+      paramMap: {
+        get: (key: string) => (key === routingParamEnvironmentId ? 'production' : null),
+      },
+      params: {},
+    },
+  };
+}
 
 describe('EnvDbTablePage', () => {
   let component: EnvDbTablePageComponent;
@@ -36,11 +61,7 @@ describe('EnvDbTablePage', () => {
         },
         {
           provide: ActivatedRoute,
-          useValue: {
-            queryParamMap: of({ get: () => null }),
-            paramMap: of({ get: () => null }),
-            snapshot: { paramMap: { get: () => null }, params: {} },
-          },
+          useValue: activatedRouteStub(),
         },
         {
           provide: DatatugNavContextService,
@@ -59,7 +80,7 @@ describe('EnvDbTablePage', () => {
         { provide: DatatugNavService, useValue: { goTable: vi.fn() } },
         {
           provide: SemanticApiService,
-          useValue: { getSemanticColumns: vi.fn(() => of([])) },
+          useValue: { getSemanticColumns: vi.fn(() => of({ columns: [] })) },
         },
         {
           provide: InvestigationContextService,
@@ -69,6 +90,7 @@ describe('EnvDbTablePage', () => {
           provide: Router,
           useValue: { navigate: vi.fn(() => Promise.resolve(true)) },
         },
+        { provide: AgentContextService, useValue: agentContextStub() },
       ],
     })
       .overrideComponent(EnvDbTablePageComponent, {
@@ -114,9 +136,9 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
   };
 
   async function createComponent(
-    semanticColumnsResponse: unknown[] = [],
+    semanticColumns: unknown[] = [],
   ): Promise<EnvDbTablePageComponent> {
-    getSemanticColumnsMock = vi.fn(() => of(semanticColumnsResponse));
+    getSemanticColumnsMock = vi.fn(() => of({ columns: semanticColumns }));
     routerMock = { navigate: vi.fn(() => Promise.resolve(true)) };
     await TestBed.configureTestingModule({
       imports: [EnvDbTablePageComponent],
@@ -131,11 +153,7 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
         },
         {
           provide: ActivatedRoute,
-          useValue: {
-            queryParamMap: of({ get: () => null }),
-            paramMap: of({ get: () => null }),
-            snapshot: { paramMap: { get: () => null }, params: {} },
-          },
+          useValue: activatedRouteStub(),
         },
         {
           provide: DatatugNavContextService,
@@ -164,6 +182,7 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
           useValue: { addValue: vi.fn(), items: () => [] },
         },
         { provide: Router, useValue: routerMock },
+        { provide: AgentContextService, useValue: agentContextStub() },
       ],
     })
       .overrideComponent(EnvDbTablePageComponent, {
@@ -191,6 +210,8 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
 
     expect(getSemanticColumnsMock).toHaveBeenCalledWith({
       project: 'demo-project',
+      environment: 'production',
+      securityContextId: 'sctx-1',
       source: component.dbId || '',
       collection: 'Customer',
     });
@@ -326,7 +347,7 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
     expect(component.selection()).toBeUndefined();
   });
 
-  it('onOpenQuery navigates to the query page route carrying the resolved bindings as router state', async () => {
+  it('onOpenQuery navigates to the query page route carrying the resolved wire bindings/targets as router state', async () => {
     component = await createComponent();
     component.project = project;
 
@@ -335,11 +356,14 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
       bindings: [
         {
           parameterId: 'CustomerId',
-          entity: 'Customer',
-          field: 'ID',
-          value: 5,
+          value: { type: 'integer', value: '5' },
+          origin: 'selection',
+          originEvidence: 'client-reported',
         },
       ],
+      targets: [{ source: 'chinook', label: 'Chinook (SQLite)' }],
+      selectedSource: 'chinook',
+      state: 'runnable',
     });
 
     expect(routerMock.navigate).toHaveBeenCalledWith(
@@ -357,11 +381,13 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
           bindings: [
             {
               parameterId: 'CustomerId',
-              entity: 'Customer',
-              field: 'ID',
-              value: 5,
+              value: { type: 'integer', value: '5' },
+              origin: 'selection',
+              originEvidence: 'client-reported',
             },
           ],
+          targets: [{ source: 'chinook', label: 'Chinook (SQLite)' }],
+          selectedSource: 'chinook',
         },
       },
     );
@@ -371,7 +397,12 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
     component = await createComponent();
     component.project = undefined;
 
-    component.onOpenQuery({ queryId: 'customer-invoices', bindings: [] });
+    component.onOpenQuery({
+      queryId: 'customer-invoices',
+      bindings: [],
+      targets: [],
+      state: 'runnable',
+    });
 
     expect(routerMock.navigate).not.toHaveBeenCalled();
   });

@@ -1,0 +1,14 @@
+{
+  "version": "0.1.0-fixture",
+  "principal": {
+    "id": "support",
+    "roles": ["support"],
+    "groups": ["support-team"]
+  },
+  "securityContextId": "sctx-0002",
+  "projects": [{ "id": "demo-project-1" }],
+  "capabilities": {
+    "protectedQueries": true,
+    "opaqueReadOnly": false
+  }
+}

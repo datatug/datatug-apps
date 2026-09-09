@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
 import { IonIcon } from '@ionic/angular';
 import { addIcons } from 'ionicons';
 import { helpCircleOutline, pricetag } from 'ionicons/icons';
-import { SemanticProvenance } from '../../models/models';
+import { SemanticProvenance } from '../../../contract/types';
 
 addIcons({ pricetag, helpCircleOutline });
 

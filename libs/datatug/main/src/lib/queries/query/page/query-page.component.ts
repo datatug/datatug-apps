@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import {
   ChangeDetectorRef,
   Component,
@@ -39,14 +40,21 @@ import {
   ViewDidEnter,
 } from '@ionic/angular';
 import {
+  AgentContextService,
+  Binding,
+  CandidateTarget,
+  displayTypedValue,
   EntityFieldRef,
+  ExecutionBindingOrigin,
   InvestigationContextService,
   LimitationHeaderComponent,
-  QueryParameterBinding,
+  RunQueryRequest,
   RunQueryResponse,
   SemanticApiService,
   SemanticParameterRef,
-  SemanticValue,
+  toTypedValue,
+  tryDecodeErrorEnvelope,
+  TypedValue,
 } from '@sneat/datatug-semantic';
 import { IProjectRef } from '../../../core/project-context';
 import {
@@ -84,16 +92,18 @@ import { HttpQueryEditorComponent } from '../http-query/http-query-editor.compon
  * REQ:parameter-auto-binding, REQ:no-hidden-filters (INTEGRATION.md §6) — one
  * candidate binding shown to the user before a run, regardless of whether it came
  * from the context panel's "open this applicable query" (`origin: 'selection'`,
- * carried via router state — see EnvDbTablePageComponent.onOpenQuery) or from
- * InvestigationContextService.bindingsFor() (`origin: 'context'`). Selection always
- * wins over context for the same parameter id (REQ:parameter-auto-binding). Never
- * applied to a run until the user sees it here and doesn't clear it
- * (REQ:no-hidden-filters) — see effectiveBindings().
+ * carried via router state as a wire `Binding[]` — see
+ * EnvDbTablePageComponent.onOpenQuery / ContextPanelComponent.OpenQueryRequest) or from
+ * InvestigationContextService.bindingsFor() (`origin: 'context'`, wrapped as a
+ * {@link TypedValue} here). Selection always wins over context for the same parameter id
+ * (REQ:parameter-auto-binding). Never applied to a run until the user sees it here and
+ * doesn't clear it (REQ:no-hidden-filters) — see effectiveBindings(). `value` stays a wire
+ * TypedValue end to end so runQuery() never re-wraps it (plan Task 12 item 3).
  */
 interface ResolvedParameterBinding {
   readonly parameterId: string;
   readonly entityField: EntityFieldRef;
-  readonly value: SemanticValue;
+  readonly value: TypedValue;
   readonly label: string;
   readonly origin: 'selection' | 'context';
 }
@@ -139,6 +149,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private readonly queryContextSqlService = inject(QueryContextSqlService);
   private readonly queriesService = inject(QueriesService);
   private readonly semanticApi = inject(SemanticApiService);
+  private readonly agentContext = inject(AgentContextService);
   private readonly investigationContext = inject(InvestigationContextService);
   private readonly coordinator = inject(Coordinator);
   private readonly queryEditorStateService = inject(QueryEditorStateService);
@@ -180,7 +191,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   // REQ:parameter-auto-binding, REQ:no-hidden-filters (INTEGRATION.md §6). Signals,
   // not plain fields, per this repo's zoneless-ready convention (AGENTS.md).
-  private readonly selectionBindings: readonly QueryParameterBinding[];
+  private readonly selectionBindings: readonly Binding[];
   public readonly bindings = signal<readonly ResolvedParameterBinding[]>([]);
   private readonly clearedParamIds = signal<ReadonlySet<string>>(new Set());
   /** What actually gets sent on a run — cleared bindings are never silently
@@ -192,19 +203,35 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly runError = signal<string | undefined>(undefined);
   public readonly runResult = signal<RunQueryResponse | undefined>(undefined);
 
+  /** api-contract.md "needs-target"/`TARGET_REQUIRED` — authorized eligible targets,
+   * populated either from the Candidate the context panel opened this query with, or from
+   * a `TARGET_REQUIRED` error's `error.targets` on a run attempt. Never leaks a hidden
+   * source: only ever set from one of those two authorized responses. */
+  public readonly availableTargets = signal<readonly CandidateTarget[]>([]);
+  public readonly selectedSource = signal<string | undefined>(undefined);
+
+  /** api-contract.md "Bounded lookups and HTTP" — a live run failed with
+   * `SOURCE_UNAVAILABLE`; the user must explicitly choose a labeled snapshot (never a
+   * silent fallback) via {@link runSnapshot}. */
+  public readonly sourceUnavailable = signal(false);
+  private lastRequest?: RunQueryRequest;
+
   constructor() {
     // REQ:applicable-queries / INTEGRATION.md §3 — EnvDbTablePageComponent.onOpenQuery
-    // carries the context panel's resolved bindings (selection wins over context,
-    // REQ:parameter-auto-binding) via router state, since this shared library
-    // deliberately doesn't depend on @angular/router. MUST run before
+    // carries the context panel's resolved Candidate bindings/targets (selection wins
+    // over context, REQ:parameter-auto-binding) via router state, since this shared
+    // library deliberately doesn't depend on @angular/router. MUST run before
     // trackQueryState(): queryEditorState can emit synchronously (a BehaviorSubject
     // in the real QueryEditorStateService — an of()-backed test double, always), and
     // its handler calls updateBindings(), which reads this.selectionBindings.
     // Reading it before assignment threw inside that handler's try/catch, so
     // `bindings` silently never got set at all — caught by this component's own
     // unit tests, not by inspection.
-    this.selectionBindings =
-      (history.state.bindings as readonly QueryParameterBinding[] | undefined) || [];
+    this.selectionBindings = (history.state.bindings as readonly Binding[] | undefined) || [];
+    this.availableTargets.set(
+      (history.state.targets as readonly CandidateTarget[] | undefined) || [],
+    );
+    this.selectedSource.set(history.state.selectedSource as string | undefined);
 
     this.trackQueryState();
     const query = history.state.query as IQueryDef;
@@ -688,15 +715,19 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const contextBindings = this.investigationContext.bindingsFor(semanticParams);
     const resolved: ResolvedParameterBinding[] = [];
     for (const param of semanticParams) {
+      // Binding (wire shape) carries only parameterId/value — entity/field come from
+      // this query's own parameter definition, not the wire payload (api-contract.md:
+      // Binding has no entity/field; the server already knows them from the query def).
+      const meta = param.meta as EntityFieldRef;
       const selection = this.selectionBindings.find(
         (b) => b.parameterId === param.id,
       );
       if (selection) {
         resolved.push({
           parameterId: selection.parameterId,
-          entityField: { entity: selection.entity, field: selection.field },
+          entityField: meta,
           value: selection.value,
-          label: `${selection.entity}.${selection.field} = ${selection.value}`,
+          label: `${meta.entity}.${meta.field} = ${displayTypedValue(selection.value)}`,
           origin: 'selection',
         });
         continue;
@@ -706,7 +737,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         resolved.push({
           parameterId: contextMatch.parameterId,
           entityField: contextMatch.entityField,
-          value: contextMatch.value,
+          // InvestigationContextService stays on the UI-local SemanticValue model
+          // (Task 15 owns migrating its storage to typed Facts) — wrap at this edge,
+          // the wire boundary, per plan Task 12 item 3.
+          value: toTypedValue(contextMatch.value),
           label: contextMatch.label,
           origin: 'context',
         });
@@ -729,37 +763,127 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.clearedParamIds.set(new Set([...this.clearedParamIds(), parameterId]));
   }
 
+  /** Renders one `Result.bindingsApplied` entry (a wire {@link Binding}: parameterId +
+   * value only) for the results header — entity/field come from this query's own
+   * parameter definition, same lookup {@link updateBindings} uses. */
+  protected appliedBindingLabel(binding: Binding): string {
+    const meta = this.queryState.def?.parameters?.find(
+      (p) => p.id === binding.parameterId,
+    )?.meta;
+    const name = meta ? `${meta.entity}.${meta.field}` : binding.parameterId;
+    return `${name} = ${displayTypedValue(binding.value)}`;
+  }
+
+  /** REQ:parameter-auto-binding correction (2026-09-09 handoff): "Client-origin claims
+   * appeared to be server provenance... do not describe a client-supplied
+   * selection/context origin as server-attested evidence." Renders the exact distinction
+   * the appendix requires (`originEvidence`), not just `origin`. */
+  protected appliedBindingProvenance(binding: Binding): string {
+    return binding.originEvidence === 'server-default'
+      ? `${binding.origin} · server default`
+      : `${binding.origin} · client-reported`;
+  }
+
+  protected chooseTarget(source: string): void {
+    this.selectedSource.set(source);
+  }
+
+  /** Grid-adapter unwrap at the template edge (plan Task 12 item 3) — bound as a field so
+   * the template can call it directly. */
+  protected readonly displayValue = displayTypedValue;
+
   /** REQ:parameter-auto-binding, REQ:no-hidden-filters, REQ:limitation-visible
    * (INTEGRATION.md §5-6) — runs the query through SemanticApiService (never a
    * browser-built query) with only the bindings the user has actually seen and not
    * cleared, then renders limitations and the applied-bindings list from the
-   * response so nothing is a hidden filter. */
+   * response so nothing is a hidden filter. Every call carries the current
+   * project/environment/securityContextId Scope and, per api-contract.md, the exact
+   * bindingOrigins for the submitted parameter keys — display provenance only, never
+   * authorization. */
   public runQuery(): void {
     const projectId = this.project?.ref.projectId;
     const queryId = this.queryId;
-    if (!projectId || !queryId) {
+    const environment = this.envId;
+    const securityContextId = this.agentContext.securityContextId();
+    if (!projectId || !queryId || !environment || !securityContextId) {
       return;
     }
     this.running.set(true);
     this.runError.set(undefined);
-    const parameters: Record<string, SemanticValue> = {};
+    this.sourceUnavailable.set(false);
+    const parameters: Record<string, TypedValue> = {};
+    const bindingOrigins: ExecutionBindingOrigin[] = [];
     for (const binding of this.effectiveBindings()) {
       parameters[binding.parameterId] = binding.value;
+      bindingOrigins.push({ parameterId: binding.parameterId, origin: binding.origin });
     }
-    this.semanticApi
-      .runQuery({ project: projectId, queryId, parameters })
-      .subscribe({
-        next: (response) => {
-          this.runResult.set(response);
-          this.running.set(false);
-        },
-        error: (err) => {
-          this.runError.set(
-            err?.message ? String(err.message) : 'Failed to run the query',
-          );
-          this.running.set(false);
-          this.errorLogger.logError(err, 'Failed to run query');
-        },
-      });
+    this.executeQuery({
+      project: projectId,
+      environment,
+      securityContextId,
+      queryId,
+      source: this.selectedSource(),
+      parameters,
+      bindingOrigins,
+      mode: 'live',
+    });
+  }
+
+  /** api-contract.md "Bounded lookups and HTTP" — the user's explicit choice to view a
+   * recorded snapshot after a live `SOURCE_UNAVAILABLE` failure; never automatic. Reuses
+   * the same request the live attempt sent, only flipping `mode`. */
+  public runSnapshot(): void {
+    if (!this.lastRequest) {
+      return;
+    }
+    this.running.set(true);
+    this.runError.set(undefined);
+    this.sourceUnavailable.set(false);
+    this.executeQuery({ ...this.lastRequest, mode: 'snapshot' });
+  }
+
+  private executeQuery(request: RunQueryRequest): void {
+    this.lastRequest = request;
+    this.semanticApi.runQuery(request).subscribe({
+      next: (response) => {
+        this.runResult.set(response);
+        this.running.set(false);
+      },
+      error: (err: unknown) => this.handleRunError(err, request),
+    });
+  }
+
+  private handleRunError(err: unknown, request: RunQueryRequest): void {
+    this.running.set(false);
+    const envelope =
+      err instanceof HttpErrorResponse ? tryDecodeErrorEnvelope(err.error) : undefined;
+    if (envelope?.error.code === 'TARGET_REQUIRED' && envelope.error.targets) {
+      // Same authorized selector the context panel's needs-target Candidate renders —
+      // never a hidden source (api-contract.md: "TARGET_REQUIRED errors return the same
+      // authorized target options in error.targets, never hidden source IDs").
+      this.availableTargets.set(envelope.error.targets);
+      this.runError.set('This query needs a target — choose one below and run again.');
+      return;
+    }
+    if (envelope?.error.code === 'SOURCE_UNAVAILABLE' && request.mode === 'live') {
+      this.sourceUnavailable.set(true);
+      this.runError.set('This source is unavailable right now.');
+      return;
+    }
+    if (envelope?.error.code === 'STALE_CONTEXT') {
+      // Old-principal facts must not survive a principal/policy-session change
+      // (api-contract.md "Scope and identity"); Task 15 owns full reactive retry.
+      this.investigationContext.clear();
+      this.agentContext.refresh().subscribe({ error: () => undefined });
+      this.runError.set('Your session changed — context was cleared, please retry.');
+      return;
+    }
+    this.runError.set(envelope?.error.message ?? this.extractErrorMessage(err));
+    this.errorLogger.logError(err, 'Failed to run query');
+  }
+
+  private extractErrorMessage(err: unknown): string {
+    const message = (err as { message?: unknown } | undefined)?.message;
+    return message ? String(message) : 'Failed to run the query';
   }
 }

@@ -1,0 +1,54 @@
+{
+  "recordset": {
+    "columns": [
+      { "name": "InvoiceId", "type": "integer" },
+      { "name": "CustomerId", "type": "integer" },
+      { "name": "Total", "type": "decimal" },
+      { "name": "Note", "type": "string" },
+      { "name": "Refunded", "type": "boolean" },
+      { "name": "ClosedAt", "type": "datetime" },
+      { "name": "DueDate", "type": "date" },
+      { "name": "DeletedFlag", "type": "null" }
+    ],
+    "rows": [
+      [
+        { "type": "integer", "value": "9007199254740993" },
+        { "type": "integer", "value": "5" },
+        { "type": "decimal", "value": "0.00" },
+        { "type": "string", "value": "" },
+        { "type": "boolean", "value": false },
+        { "type": "datetime", "value": "2026-09-09T12:00:00Z" },
+        { "type": "date", "value": "2026-09-09" },
+        { "type": "null", "value": null }
+      ],
+      [
+        { "type": "integer", "value": "2" },
+        { "type": "integer", "value": "5" },
+        { "type": "decimal", "value": "13.86" },
+        { "type": "string", "value": "second row" },
+        { "type": "boolean", "value": true },
+        { "type": "datetime", "value": "2026-01-01T00:00:00Z" },
+        { "type": "date", "value": "2026-01-01" },
+        { "type": "null", "value": null }
+      ]
+    ]
+  },
+  "limitations": [],
+  "bindingsApplied": [
+    {
+      "parameterId": "CustomerId",
+      "value": { "type": "integer", "value": "5" },
+      "origin": "selection",
+      "originEvidence": "client-reported"
+    }
+  ],
+  "provenance": {
+    "source": "chinook",
+    "collection": "Invoice",
+    "queryId": "customer-invoices",
+    "mode": "live",
+    "observedAt": "2026-09-09T12:00:00Z",
+    "executionProfile": "protected"
+  },
+  "truncated": false
+}

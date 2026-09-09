@@ -47,13 +47,13 @@
           <ion-spinner name="dots"></ion-spinner>
         </ion-item>
       }
-      @if (expandedRows()[lookup.lookupId]; as rows) {
+      @if (expandedRows()[lookup.lookupId]; as result) {
         <ion-item lines="none" class="context-panel__related-rows">
           <ion-label>
-            @for (row of rows.rows; track $index) {
-              <p>{{ row.join(', ') }}</p>
+            @for (row of result.recordset.rows; track $index) {
+              <p>{{ rowText(row) }}</p>
             }
-            @if (!rows.rows.length) {
+            @if (!result.recordset.rows.length) {
               <p>No rows</p>
             }
           </ion-label>
@@ -75,12 +75,25 @@
       </ion-item>
     }
     @for (query of notYet(); track query.queryId) {
-      <ion-item lines="none" color="light">
-        <ion-label>
-          {{ query.queryId }}
-          <p>not yet applicable — needs {{ missingText(query.missing) }}</p>
-        </ion-label>
-      </ion-item>
+      @if (isOpenable(query)) {
+        <ion-item button="true" lines="none" color="light" (click)="onOpenNotYet(query)">
+          <ion-label>
+            {{ query.queryId }}
+            <p>needs a target — {{ query.targets.length }} available, tap to choose</p>
+          </ion-label>
+        </ion-item>
+      } @else {
+        <ion-item lines="none" color="light">
+          <ion-label>
+            {{ query.queryId }}
+            @if (query.state === 'source-unavailable') {
+              <p>not yet applicable — source unavailable</p>
+            } @else {
+              <p>not yet applicable — needs {{ missingText(query.missing) }}</p>
+            }
+          </ion-label>
+        </ion-item>
+      }
     }
   }
 </ion-list>

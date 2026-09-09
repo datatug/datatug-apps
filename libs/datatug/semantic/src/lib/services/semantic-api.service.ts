@@ -13,19 +13,27 @@ import {
   SemanticRelatedResponse,
   SemanticRelatedRowsRequest,
   SemanticRelatedRowsResponse,
-} from '../models/models';
+} from '../../contract/types';
 
 /**
  * Typed client for the semantic-resolution and execution endpoints described in the hub
- * Feature's "API contracts" table (datatug/datatug:
- * spec/features/core-investigation-loop/README.md). The browser MUST use only this
- * client to resolve meaning, related records and applicable queries — it MUST NOT
- * evaluate name patterns or build queries itself (REQ:semantic-resolution-endpoint,
- * REQ:related-lookup-execution).
+ * Feature's normative transport appendix (datatug/datatug:
+ * spec/features/core-investigation-loop/api-contract.md — see ../../contract/types.ts for
+ * the exact shapes). The browser MUST use only this client to resolve meaning, related
+ * records and applicable queries — it MUST NOT evaluate name patterns or build queries
+ * itself (REQ:semantic-resolution-endpoint, REQ:related-lookup-execution).
  *
- * The base URL comes from {@link DATATUG_AGENT_BASE_URL} so the agent-URL builder
- * landing on `fix/phase0-web-agent-contract` (stream S2) can provide it later without
- * this service importing anything from that stream.
+ * Every request carries the caller's full {@link import('../../contract/types').Scope}
+ * (`project`, `environment`, `securityContextId`) — this service does not inject
+ * `AgentContextService` itself, so a caller obtains `securityContextId` from it and
+ * reacts to a `STALE_CONTEXT` (409) response by calling `AgentContextService.refresh()`
+ * and retrying (plan Task 12 item 3; full reactive isolation is Task 15).
+ *
+ * `related`/`related/rows`/`applicable`/`run_query` are POST so semantic values (facts,
+ * typed parameter values) are never copied into a URL, browser history or access log —
+ * only `semantic/columns` (identifiers only) stays GET, per the appendix's endpoint table.
+ *
+ * The base URL comes from {@link DATATUG_AGENT_BASE_URL}.
  */
 @Injectable({ providedIn: 'root' })
 export class SemanticApiService {
@@ -38,6 +46,8 @@ export class SemanticApiService {
   ): Observable<SemanticColumnsResponse> {
     const params = new HttpParams()
       .set('project', request.project)
+      .set('environment', request.environment)
+      .set('securityContextId', request.securityContextId)
       .set('source', request.source)
       .set('collection', request.collection);
     return this.http.get<SemanticColumnsResponse>(
@@ -46,38 +56,23 @@ export class SemanticApiService {
     );
   }
 
-  /** `GET /datatug/semantic/related` */
+  /** `POST /datatug/semantic/related` */
   getRelated(
     request: SemanticRelatedRequest,
   ): Observable<SemanticRelatedResponse> {
-    const params = this.withOptionalLimit(
-      new HttpParams()
-        .set('project', request.project)
-        .set('entity', request.entity)
-        .set('field', request.field)
-        .set('value', String(request.value)),
-      request.limit,
-    );
-    return this.http.get<SemanticRelatedResponse>(
+    return this.http.post<SemanticRelatedResponse>(
       `${this.baseUrl}/semantic/related`,
-      { params },
+      request,
     );
   }
 
-  /** `GET /datatug/semantic/related/rows` */
+  /** `POST /datatug/semantic/related/rows` */
   getRelatedRows(
     request: SemanticRelatedRowsRequest,
   ): Observable<SemanticRelatedRowsResponse> {
-    const params = this.withOptionalLimit(
-      new HttpParams()
-        .set('project', request.project)
-        .set('lookupId', request.lookupId)
-        .set('value', String(request.value)),
-      request.limit,
-    );
-    return this.http.get<SemanticRelatedRowsResponse>(
+    return this.http.post<SemanticRelatedRowsResponse>(
       `${this.baseUrl}/semantic/related/rows`,
-      { params },
+      request,
     );
   }
 
@@ -97,12 +92,5 @@ export class SemanticApiService {
       `${this.baseUrl}/exec/run_query`,
       request,
     );
-  }
-
-  private withOptionalLimit(
-    params: HttpParams,
-    limit: number | undefined,
-  ): HttpParams {
-    return limit === undefined ? params : params.set('limit', String(limit));
   }
 }

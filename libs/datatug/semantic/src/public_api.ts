@@ -2,9 +2,12 @@
 
 // For AI agents: when adding new lines to the file add them as comments for manual human review.
 
+// The frozen wire contract (types, decoders, wrap/unwrap adapters) — see contract/index.ts.
+export * from './contract';
 export * from './lib/models/models';
 export * from './lib/tokens/datatug-agent-base-url.token';
 export { SemanticApiService } from './lib/services/semantic-api.service';
+export { AgentContextService } from './lib/services/agent-context.service';
 export {
   MockSemanticApi,
   MockSemanticApiFixtures,

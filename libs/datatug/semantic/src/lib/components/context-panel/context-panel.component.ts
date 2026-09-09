@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -27,15 +28,18 @@ import {
   linkOutline,
 } from 'ionicons/icons';
 import { forkJoin } from 'rxjs';
+import { displayTypedValue, toFact, toTypedValue } from '../../../contract/adapt';
+import { tryDecodeErrorEnvelope } from '../../../contract/decoders';
 import {
-  ApplicableQuery,
-  NotYetApplicableQuery,
-  QueryParameterBinding,
-  Recordset,
+  Candidate,
+  CandidateState,
+  CandidateTarget,
+  Fact,
   RelatedLookup,
-  SemanticSelection,
-  SemanticValueWithOrigin,
-} from '../../models/models';
+  Result,
+} from '../../../contract/types';
+import { SemanticSelection } from '../../models/models';
+import { AgentContextService } from '../../services/agent-context.service';
 import { InvestigationContextService } from '../../services/investigation-context.service';
 import { SemanticApiService } from '../../services/semantic-api.service';
 
@@ -46,10 +50,15 @@ addIcons({
   linkOutline,
 });
 
-/** Emitted when the user opens an applicable query; the host page owns navigation. */
+/** Emitted when the user opens an applicable (or needs-target) query; the host page owns
+ * navigation. Carries the Candidate's own bindings/targets/state so the query page can
+ * render a target selector without a second `queries/applicable` round trip. */
 export interface OpenQueryRequest {
   readonly queryId: string;
-  readonly bindings: readonly QueryParameterBinding[];
+  readonly bindings: Candidate['bindings'];
+  readonly targets: readonly CandidateTarget[];
+  readonly selectedSource?: string;
+  readonly state: CandidateState;
 }
 
 /**
@@ -62,8 +71,14 @@ export interface OpenQueryRequest {
  * or builds a query client-side (REQ:semantic-resolution-endpoint,
  * REQ:related-lookup-execution). Applicable queries are resolved against the selection
  * *and* the active Investigation Context, per REQ:applicable-queries. Opening an
- * applicable query only emits {@link openQuery}; navigating to the query page and
- * running it is a host-page concern (the later table/query-page integration task).
+ * applicable (or needs-target) query only emits {@link openQuery}; navigating to the
+ * query page and running it is a host-page concern.
+ *
+ * Every request carries the current {@link AgentContextService.securityContextId}. A
+ * `STALE_CONTEXT` response refreshes it and clears the Investigation Context (old-principal
+ * facts must not survive a principal/policy-session change) before surfacing a retry prompt
+ * — plan Task 12 item 3's cut-over scope; full reactive isolation (conflicts, late-response
+ * discard) is Task 15.
  */
 @Component({
   selector: 'sneat-datatug-context-panel',
@@ -84,25 +99,25 @@ export interface OpenQueryRequest {
 })
 export class ContextPanelComponent {
   private readonly semanticApi = inject(SemanticApiService);
+  private readonly agentContext = inject(AgentContextService);
   protected readonly context = inject(InvestigationContextService);
 
   readonly project = input.required<string>();
+  readonly environment = input.required<string>();
   readonly selection = input<SemanticSelection | undefined>();
   readonly limit = input<number>(10);
 
   readonly openQuery = output<OpenQueryRequest>();
 
   protected readonly related = signal<readonly RelatedLookup[]>([]);
-  protected readonly applicable = signal<readonly ApplicableQuery[]>([]);
-  protected readonly notYet = signal<readonly NotYetApplicableQuery[]>([]);
+  protected readonly applicable = signal<readonly Candidate[]>([]);
+  protected readonly notYet = signal<readonly Candidate[]>([]);
   protected readonly loading = signal(false);
   protected readonly error = signal<string | undefined>(undefined);
-  protected readonly expandedRows = signal<
-    Readonly<Record<string, Recordset | undefined>>
-  >({});
-  protected readonly expandedLoading = signal<Readonly<Record<string, boolean>>>(
+  protected readonly expandedRows = signal<Readonly<Record<string, Result | undefined>>>(
     {},
   );
+  protected readonly expandedLoading = signal<Readonly<Record<string, boolean>>>({});
 
   protected readonly meaning = computed(() => {
     const selection = this.selection();
@@ -111,21 +126,34 @@ export class ContextPanelComponent {
       : undefined;
   });
 
+  /** Guards against the effect below re-entering itself: `handleLoadError` clears the
+   * Investigation Context on `STALE_CONTEXT`, and this effect also depends on
+   * `context.items()` (to reload when the user changes it) — without this guard, that
+   * self-inflicted clear would immediately re-trigger `load()` against the still-stale
+   * `securityContextId`, which fails the same way, clears again, forever (a real,
+   * reproduced infinite `effect` re-entry, not a hypothetical). */
+  private suppressNextReload = false;
+
   constructor() {
     effect(() => {
       const selection = this.selection();
       const project = this.project();
+      const environment = this.environment();
       // Re-run whenever the enabled context items change too, since REQ:applicable-queries
       // resolves against selection + context together.
       this.context.items();
-      if (!selection || !project) {
+      if (this.suppressNextReload) {
+        this.suppressNextReload = false;
+        return;
+      }
+      if (!selection || !project || !environment) {
         this.related.set([]);
         this.applicable.set([]);
         this.notYet.set([]);
         this.expandedRows.set({});
         return;
       }
-      this.load(project, selection);
+      this.load(project, environment, selection);
     });
   }
 
@@ -145,7 +173,9 @@ export class ContextPanelComponent {
   protected toggleRelated(lookup: RelatedLookup): void {
     const selection = this.selection();
     const project = this.project();
-    if (!selection || !project) {
+    const environment = this.environment();
+    const securityContextId = this.agentContext.securityContextId();
+    if (!selection || !project || !environment || !securityContextId) {
       return;
     }
     if (this.expandedRows()[lookup.lookupId]) {
@@ -162,15 +192,17 @@ export class ContextPanelComponent {
     this.semanticApi
       .getRelatedRows({
         project,
+        environment,
+        securityContextId,
         lookupId: lookup.lookupId,
-        value: selection.value,
+        value: toTypedValue(selection.value),
         limit: this.limit(),
       })
       .subscribe({
-        next: (response) => {
+        next: (result) => {
           this.expandedRows.set({
             ...this.expandedRows(),
-            [lookup.lookupId]: response.recordset,
+            [lookup.lookupId]: result,
           });
           this.expandedLoading.set({
             ...this.expandedLoading(),
@@ -186,8 +218,14 @@ export class ContextPanelComponent {
       });
   }
 
-  protected chainText(chain: readonly string[]): string {
-    return chain.join(' → ');
+  /** Renders a Result row (typed values) for the read-only related-rows preview — the
+   * "grid adapters unwrap at the edge" half of plan Task 12 item 3. */
+  protected rowText(row: Result['recordset']['rows'][number]): string {
+    return row.map(displayTypedValue).join(', ');
+  }
+
+  protected chainText(chain: Candidate['chain']): string {
+    return chain.map((step) => step.explanation).join(' → ');
   }
 
   protected missingText(missing: readonly string[]): string {
@@ -198,63 +236,100 @@ export class ContextPanelComponent {
     return count === null ? 'count unavailable' : String(count);
   }
 
-  protected onOpenApplicable(query: ApplicableQuery): void {
-    this.openQuery.emit({ queryId: query.queryId, bindings: query.bindings });
+  protected onOpenApplicable(candidate: Candidate): void {
+    this.emitOpenQuery(candidate);
   }
 
-  private load(project: string, selection: SemanticSelection): void {
+  /** `needs-target` candidates are openable too — the query page renders the target
+   * selector from `candidate.targets` (api-contract.md: "Render a real target selector...
+   * without leaking hidden targets"). Other not-yet states stay informational only. */
+  protected isOpenable(candidate: Candidate): boolean {
+    return candidate.state === 'needs-target';
+  }
+
+  protected onOpenNotYet(candidate: Candidate): void {
+    if (this.isOpenable(candidate)) {
+      this.emitOpenQuery(candidate);
+    }
+  }
+
+  private emitOpenQuery(candidate: Candidate): void {
+    this.openQuery.emit({
+      queryId: candidate.queryId,
+      bindings: candidate.bindings,
+      targets: candidate.targets,
+      selectedSource: candidate.selectedSource,
+      state: candidate.state,
+    });
+  }
+
+  private load(project: string, environment: string, selection: SemanticSelection): void {
+    const securityContextId = this.agentContext.securityContextId();
+    if (!securityContextId) {
+      // agent-info hasn't resolved yet (AgentContextService fetches it once, on
+      // construction) — nothing to send a Scope-bearing request with yet.
+      this.error.set('Waiting for the agent connection…');
+      return;
+    }
     this.loading.set(true);
     this.error.set(undefined);
+    const scope = { project, environment, securityContextId };
     const values = this.applicableValues(selection);
     forkJoin({
       related: this.semanticApi.getRelated({
-        project,
-        entity: selection.entity,
-        field: selection.field,
-        value: selection.value,
+        ...scope,
+        fact: values[0],
         limit: this.limit(),
       }),
-      applicable: this.semanticApi.getApplicableQueries({ project, values }),
+      applicable: this.semanticApi.getApplicableQueries({ ...scope, values }),
     }).subscribe({
       next: ({ related, applicable }) => {
-        this.related.set(related);
+        this.related.set(related.related);
         this.applicable.set(applicable.applicable);
         this.notYet.set(applicable.notYet);
         this.loading.set(false);
       },
-      error: () => {
-        this.error.set('Failed to load the context panel');
-        this.loading.set(false);
-      },
+      error: (err: unknown) => this.handleLoadError(err),
     });
   }
 
-  /** Selection first, then enabled context items (REQ:applicable-queries), de-duplicated. */
-  private applicableValues(
-    selection: SemanticSelection,
-  ): SemanticValueWithOrigin[] {
-    const values: SemanticValueWithOrigin[] = [
-      {
-        entity: selection.entity,
-        field: selection.field,
-        value: selection.value,
-        origin: selection.source,
-      },
+  private handleLoadError(err: unknown): void {
+    this.loading.set(false);
+    const envelope =
+      err instanceof HttpErrorResponse ? tryDecodeErrorEnvelope(err.error) : undefined;
+    if (envelope?.error.code === 'STALE_CONTEXT') {
+      // The principal/policy-session changed underneath this scope — old-principal
+      // facts must not survive it (api-contract.md "Scope and identity"). See
+      // `suppressNextReload`'s comment for why the clear below must not auto-reload.
+      this.suppressNextReload = true;
+      this.context.clear();
+      this.agentContext.refresh().subscribe({
+        error: () => undefined,
+      });
+      this.error.set('Your session changed — context was cleared, please retry.');
+      return;
+    }
+    this.error.set('Failed to load the context panel');
+  }
+
+  /** Selection first, then enabled context items (REQ:applicable-queries), de-duplicated,
+   * each wrapped as a wire {@link Fact} — the "grid adapters wrap at the edge" half of
+   * plan Task 12 item 3. */
+  private applicableValues(selection: SemanticSelection): Fact[] {
+    const values: Fact[] = [
+      toFact(selection.entity, selection.field, selection.value, 'selection'),
     ];
     for (const item of this.context.items().filter((i) => i.enabled)) {
       const isDuplicate = values.some(
         (v) =>
           v.entity === item.entityField.entity &&
           v.field === item.entityField.field &&
-          v.value === item.value,
+          displayTypedValue(v.value) === String(item.value),
       );
       if (!isDuplicate) {
-        values.push({
-          entity: item.entityField.entity,
-          field: item.entityField.field,
-          value: item.value,
-          origin: 'context',
-        });
+        values.push(
+          toFact(item.entityField.entity, item.entityField.field, item.value, 'context'),
+        );
       }
     }
     return values;
