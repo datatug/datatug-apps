@@ -1,6 +1,18 @@
 import { RouterModule, Routes } from '@angular/router';
 import { NgModule } from '@angular/core';
+import { ENABLE_EMPTY_SHELL_PAGES } from '../core/feature-flags';
 import { routingParamProjectId } from '../core/datatug-routing-params';
+
+// Diff is one of the empty-shell pages — see `ENABLE_EMPTY_SHELL_PAGES`.
+const emptyShellStoreRoutes: Routes = [
+  {
+    path: 'diff',
+    loadComponent: () =>
+      import('../pages/signed-in/diff/diff-page.component').then(
+        (m) => m.DiffPageComponent,
+      ),
+  },
+];
 
 export const datatugStoreRoutes: Routes = [
   {
@@ -10,13 +22,7 @@ export const datatugStoreRoutes: Routes = [
         (m) => m.DatatugStorePageComponent,
       ),
   },
-  {
-    path: 'diff',
-    loadComponent: () =>
-      import('../pages/signed-in/diff/diff-page.component').then(
-        (m) => m.DiffPageComponent,
-      ),
-  },
+  ...(ENABLE_EMPTY_SHELL_PAGES ? emptyShellStoreRoutes : []),
   {
     path: 'project/:' + routingParamProjectId,
     loadChildren: () =>
