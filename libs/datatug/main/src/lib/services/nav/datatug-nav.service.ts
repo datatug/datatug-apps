@@ -51,7 +51,16 @@ export class DatatugNavService {
     if (!store?.ref) {
       throw new Error('store.ref is a required parameter');
     }
-    const storeId = storeRefToId(store.ref);
+    // `storeRefToId()` (`@sneat/core`) returns an `'agent'` ref's `.url`
+    // verbatim — and since the `parseDatatugStoreRef` fix, that `.url` is a
+    // genuine `scheme://host:port` URL (e.g. from a `"http-localhost:8989"`
+    // id). Route segments must stay in the app's dash-prefixed canonical
+    // id form (`"http-localhost:8989"`), or `['store', storeId]` below
+    // produces a broken multi-segment path (`/store/http://localhost:8989`).
+    // `getStoreId()` (this app's `nav-models.ts`) is the inverse of that
+    // `://` conversion, and is a no-op passthrough for every other ref
+    // type/form — see its use in `projectPageUrl()`/`goTable()` below.
+    const storeId = getStoreId(storeRefToId(store.ref));
     const options: NavigationOptions | undefined = store.brief
       ? { state: { store } }
       : undefined;

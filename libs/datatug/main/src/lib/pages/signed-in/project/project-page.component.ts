@@ -35,7 +35,11 @@ import {
   ProjectItem,
   ProjectItemType,
 } from '../../../models/definition/project';
-import { IProjectContext, parseDatatugStoreRef } from '../../../nav/nav-models';
+import {
+  IProjectContext,
+  parseDatatugStoreRef,
+  storeIdToDisplayLabel,
+} from '../../../nav/nav-models';
 import { ProjectTracker } from '../../../services/nav/contexts/project.tracker';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import {
@@ -97,6 +101,17 @@ export class ProjectPageComponent
   // readonly DbModel = ProjectItem.dbModel as const;
 
   protected project?: IProjectContext;
+
+  /**
+   * The read-only "Store" field shows this instead of the raw
+   * `project.ref.storeId` so an agent store reads as the actual URL the
+   * browser calls (`http://localhost:8989`), not the raw id
+   * (`http-localhost:8989`) — see `storeIdToDisplayLabel()` in
+   * `nav-models.ts` and its twin use in `DatatugStorePageComponent`. A
+   * plain function, not a stored field: purely derived from
+   * `project.ref.storeId`, called directly from the template.
+   */
+  protected readonly storeDisplayLabel = storeIdToDisplayLabel;
 
   protected destroyed = new Subject<boolean>();
   @ViewChild(IonInput, { static: false }) addInput?: IonInput;

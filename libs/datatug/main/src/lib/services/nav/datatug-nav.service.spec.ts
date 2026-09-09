@@ -54,6 +54,34 @@ describe('DatatugNavService', () => {
         service.goStore({} as unknown as IDatatugStoreContext),
       ).toThrow('store.ref is a required parameter');
     });
+
+    // Regression: `storeRefToId()` (`@sneat/core`) returns an `'agent'`
+    // ref's `.url` verbatim, and `parseDatatugStoreRef` now correctly
+    // turns an `http-`/`https-` prefixed id into a real `scheme://` URL
+    // (see nav-models.spec.ts). Without converting back via `getStoreId()`
+    // in `goStore()`, this navigated to `['store', 'http://localhost:8989']`
+    // — a broken multi-segment route.
+    it('converts an agent store ref URL back to its dash-form store id when navigating', () => {
+      const store = {
+        ref: { type: 'agent', url: 'http://localhost:8989' },
+      } as unknown as IDatatugStoreContext;
+      service.goStore(store);
+      expect(navMock.navigateRoot).toHaveBeenCalledWith(
+        ['store', 'http-localhost:8989'],
+        undefined,
+      );
+    });
+
+    it('leaves a bare host:port agent store ref unchanged when navigating', () => {
+      const store = {
+        ref: { type: 'agent', url: 'localhost:8989' },
+      } as unknown as IDatatugStoreContext;
+      service.goStore(store);
+      expect(navMock.navigateRoot).toHaveBeenCalledWith(
+        ['store', 'localhost:8989'],
+        undefined,
+      );
+    });
   });
 
   describe('goTable', () => {
