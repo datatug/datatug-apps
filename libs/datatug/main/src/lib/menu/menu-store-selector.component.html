@@ -8,7 +8,7 @@
   @if (currentStoreId && !stores?.length) {
     <ion-select disabled [value]="currentStoreId">
       <ion-select-option [value]="currentStoreId">{{
-        currentStoreId
+        currentStoreDisplayLabel
       }}</ion-select-option>
     </ion-select>
   }

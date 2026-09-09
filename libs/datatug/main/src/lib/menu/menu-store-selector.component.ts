@@ -24,6 +24,7 @@ import {
   IDatatugStoreBriefWithId,
   IDatatugUser,
 } from '../models/interfaces';
+import { storeIdToDisplayLabel } from '../nav/nav-models';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import { DatatugNavService } from '../services/nav/datatug-nav.service';
 
@@ -49,6 +50,18 @@ export class MenuStoreSelectorComponent implements OnDestroy, OnChanges {
   readonly datatugUser = input<IDatatugUser>();
 
   currentStoreId?: string;
+
+  /**
+   * Shown instead of the raw `currentStoreId` in the single-store fallback
+   * (below, `@if (currentStoreId && !stores?.length)`) — that case has no
+   * `store.title` to fall back to, so it was always the raw id
+   * (`http-localhost:8989`) with no more readable alternative. A getter,
+   * not a stored field: purely derived from `currentStoreId` — see
+   * `storeIdToDisplayLabel()` in `nav-models.ts`.
+   */
+  get currentStoreDisplayLabel(): string {
+    return storeIdToDisplayLabel(this.currentStoreId);
+  }
 
   stores?: IDatatugStoreBriefWithId[];
 

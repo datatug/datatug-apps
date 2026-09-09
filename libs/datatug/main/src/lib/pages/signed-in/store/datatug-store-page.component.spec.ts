@@ -73,4 +73,26 @@ describe('StorePageComponent', () => {
   it('should create', () => {
     expect(component).toBeTruthy();
   });
+
+  describe('storeDisplayId', () => {
+    it('shows an http- prefixed host:port storeId as a real URL', () => {
+      component.storeId = 'http-localhost:8989';
+      expect(component.storeDisplayId).toBe('http://localhost:8989');
+    });
+
+    it('shows a bare host:port storeId unchanged, with no scheme to display', () => {
+      component.storeId = 'localhost:8989';
+      expect(component.storeDisplayId).toBe('localhost:8989');
+    });
+
+    it('shows firestore unchanged, which has no url', () => {
+      component.storeId = 'firestore';
+      expect(component.storeDisplayId).toBe('firestore');
+    });
+
+    it('is empty when storeId is not yet set', () => {
+      component.storeId = undefined;
+      expect(component.storeDisplayId).toBe('');
+    });
+  });
 });

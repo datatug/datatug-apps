@@ -32,6 +32,28 @@ describe('buildAgentUrl', () => {
     ).toBe('http://localhost:8989/datatug/exec/select');
   });
 
+  // These are the exact forms `datatug serve` (datatug-cli PR #198) prints
+  // and datatug-apps' own store-id parsing/display now agree on — see
+  // `nav-models.spec.ts`'s `parseDatatugStoreRef`/`storeIdToDisplayLabel`
+  // tests for the same four forms on the parse/display side.
+  it('works for an http- prefixed host:port store id, as printed by `datatug serve`', () => {
+    expect(buildAgentUrl('http-localhost:8989', '/agent-info')).toBe(
+      'http://localhost:8989/datatug/agent-info',
+    );
+  });
+
+  it('works for an https- prefixed host:port store id', () => {
+    expect(
+      buildAgentUrl('https-agent.example.com:8443', '/agent-info'),
+    ).toBe('https://agent.example.com:8443/datatug/agent-info');
+  });
+
+  it('works for a configured non-localhost host:port store id', () => {
+    expect(buildAgentUrl('http-192.168.1.10:8989', '/agent-info')).toBe(
+      'http://192.168.1.10:8989/datatug/agent-info',
+    );
+  });
+
   // One test per endpoint this app's agent client uses today — see the
   // client-call -> server-route table in agent-url.ts.
   const endpoints: Array<[relativePath: string, expectedUrl: string]> = [
