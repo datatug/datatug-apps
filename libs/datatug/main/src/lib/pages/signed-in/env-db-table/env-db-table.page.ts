@@ -45,7 +45,10 @@ import { DataGridComponent } from '@sneat/datagrid';
 import {
   AgentContextService,
   ContextPanelComponent,
+  ExecutionProfile,
   InvestigationContextService,
+  Limitation,
+  LimitationHeaderComponent,
   OpenQueryRequest,
   SemanticApiService,
   SemanticColumnMapping,
@@ -117,6 +120,7 @@ addIcons({ pricetag, helpCircleOutline });
     DatatugServicesUnsortedModule,
     ForeignKeyCardComponent,
     ContextPanelComponent,
+    LimitationHeaderComponent,
     CodeEditor,
     DataGridComponent,
     IonHeader,
@@ -204,6 +208,18 @@ export class EnvDbTablePageComponent implements OnDestroy {
 
   public step = 'initial';
   public recordset?: ISelectResponse;
+
+  // REQ:limitation-visible (feature J4) — `ISelectResponse.limitations`/`.provenance`
+  // are set asynchronously from `processResponse()` (the `AgentService.select()`
+  // subscribe callback), so — same zoneless reasoning as `grid` above — these are
+  // signals, not plain fields: `sneat-datatug-limitation-header`'s OnPush inputs would
+  // never see a plain-field write. Empty/`undefined` (today's servers, which don't
+  // send these fields yet) makes the shared component render nothing, per its own
+  // spec.
+  public readonly limitations = signal<readonly Limitation[]>([]);
+  public readonly executionProfile = signal<ExecutionProfile | undefined>(
+    undefined,
+  );
 
   private readonly destroyed = new Subject<void>();
 
@@ -661,6 +677,8 @@ from ${this.tableFromClause(currentTable)}`;
     try {
       this.step = 'processResponse';
       this.recordset = response;
+      this.limitations.set(response.limitations || []);
+      this.executionProfile.set(response.provenance?.executionProfile);
       this.setupGrid();
     } catch (ex) {
       this.errorLogger.logError(ex, 'Failed to process response');

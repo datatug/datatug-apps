@@ -660,6 +660,147 @@ describe('EnvDbTablePage — row fetch fires without table.meta', () => {
 });
 
 /**
+ * Feature J4 (hub spec/features/core-investigation-loop/README.md): "Browse Customer
+ * with an allowed projection: only Canadian rows return, Email is absent, and the
+ * header states the applied limitations." `exec/select`'s `ISelectResponse` now
+ * carries `limitations`/`provenance` additively (lane S101, datatug-cli) — today's
+ * servers still omit them. This page exposes them as signals
+ * (`limitations`/`executionProfile`) feeding the shared
+ * `sneat-datatug-limitation-header` component the query page already renders (REQ:
+ * limitation-visible); that component's own spec covers the rendered text in full, so
+ * these tests only prove the page wires the right values through, including the
+ * "nothing to show" default.
+ */
+describe('EnvDbTablePage — table page states the applied limitations (J4)', () => {
+  const project: IProjectContext = {
+    ref: { storeId: 'localhost:8989', projectId: 'demo-project' },
+  };
+  const table: IEnvDbTableContext = { schema: 'main', name: 'Customer' };
+
+  function routeStubWithDb(dbId: string | null) {
+    return {
+      queryParamMap: of({ get: () => null }),
+      paramMap: of({ get: () => null }),
+      snapshot: {
+        paramMap: {
+          get: (key: string) => {
+            if (key === routingParamEnvironmentId) {
+              return 'production';
+            }
+            if (key === routingParamDbCatalogId) {
+              return dbId;
+            }
+            return null;
+          },
+        },
+        params: {},
+      },
+    };
+  }
+
+  async function createComponent(
+    selectResponse: unknown,
+  ): Promise<EnvDbTablePageComponent> {
+    const selectMock = vi.fn(() => of(selectResponse));
+    await TestBed.configureTestingModule({
+      imports: [EnvDbTablePageComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        {
+          provide: ErrorLogger,
+          useValue: {
+            logError: vi.fn(),
+            logErrorHandler: vi.fn(() => vi.fn()),
+          },
+        },
+        {
+          provide: ActivatedRoute,
+          useValue: routeStubWithDb('chinook-local'),
+        },
+        {
+          provide: DatatugNavContextService,
+          useValue: {
+            currentProject: of(project),
+            currentEnv: of(undefined),
+            currentEnvDbTable: of(table),
+            setCurrentEnvironment: vi.fn(),
+          },
+        },
+        {
+          provide: ProjectService,
+          useValue: { watchProjectSummary: vi.fn(), getFull: vi.fn() },
+        },
+        { provide: AgentService, useValue: { select: selectMock } },
+        { provide: DatatugNavService, useValue: { goTable: vi.fn() } },
+        {
+          provide: SemanticApiService,
+          useValue: { getSemanticColumns: vi.fn(() => of({ columns: [] })) },
+        },
+        {
+          provide: InvestigationContextService,
+          useValue: { addValue: vi.fn(), items: () => [] },
+        },
+        {
+          provide: Router,
+          useValue: { navigate: vi.fn(() => Promise.resolve(true)) },
+        },
+        { provide: AgentContextService, useValue: agentContextStub() },
+      ],
+    })
+      .overrideComponent(EnvDbTablePageComponent, {
+        set: {
+          imports: [],
+          template: '',
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+          providers: [],
+        },
+      })
+      .compileComponents();
+
+    return TestBed.createComponent(EnvDbTablePageComponent).componentInstance;
+  }
+
+  it('AC:restricted-rows-and-columns — exposes limitations/executionProfile from exec/select for the shared header', async () => {
+    const component = await createComponent({
+      columns: ['CustomerId', 'FirstName'],
+      rows: [{ CustomerId: 1, FirstName: 'Luís' }],
+      limitations: [
+        {
+          policy: 'customers-support',
+          rowsFiltered: true,
+          hiddenColumns: ['Email'],
+        },
+      ],
+      provenance: {
+        source: 'chinook-local',
+        mode: 'live',
+        observedAt: '2026-09-09T00:00:00Z',
+        executionProfile: 'protected',
+      },
+    });
+
+    expect(component.limitations()).toEqual([
+      {
+        policy: 'customers-support',
+        rowsFiltered: true,
+        hiddenColumns: ['Email'],
+      },
+    ]);
+    expect(component.executionProfile()).toBe('protected');
+  });
+
+  it("renders no limitation header data when exec/select omits limitations/provenance (today's servers)", async () => {
+    const component = await createComponent({
+      columns: ['CustomerId', 'FirstName'],
+      rows: [{ CustomerId: 1, FirstName: 'Luís' }],
+    });
+
+    expect(component.limitations()).toEqual([]);
+    expect(component.executionProfile()).toBeUndefined();
+  });
+});
+
+/**
  * Regression (lane S90, journey J2/J3): `securityContextId` (Task 15's scope
  * gate every Scope-bearing call must carry) resolves asynchronously from
  * `GET /agent-info` (`AgentContextService`), independently of — and, in

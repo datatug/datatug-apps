@@ -3,6 +3,7 @@ import { IParameter } from '../models/definition/parameter';
 import { IRecordsetDef } from '../models/definition/recordset';
 import { NamedParams } from '../models/requests/command';
 import { ICommandResponse } from './command-response';
+import { Limitation, ResultProvenance } from '@sneat/datatug-semantic';
 
 export interface ISelectRequest {
   // TODO: document where & how it is used
@@ -38,6 +39,14 @@ export interface IExecuteResponse {
 export interface ISelectResponse {
   columns: string[];
   rows: Record<string, unknown>[];
+  // Both ADDITIVE (lane S101, datatug-cli): the frozen contract's `Result.limitations`
+  // / `Result.provenance` fields, reused verbatim from `@sneat/datatug-semantic`'s
+  // contract module so `exec/select` states the same applied limitations
+  // `exec/run_query` already does (REQ:limitation-visible / feature J4). Optional
+  // because today's servers don't send them yet — EnvDbTablePageComponent renders no
+  // header at all when either is absent.
+  limitations?: readonly Limitation[];
+  provenance?: ResultProvenance;
 }
 
 export type RecordsetValue = string | number | boolean;
