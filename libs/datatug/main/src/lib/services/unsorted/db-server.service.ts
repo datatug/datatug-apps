@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable, throwError } from 'rxjs';
 import { HttpClient } from '@angular/common/http';
 import { map } from 'rxjs/operators';
-import { getStoreUrl } from '@sneat/api';
+import { buildAgentUrl } from '../repo/agent-url';
 import { IProjectRef } from '../../core/project-context';
 import { GetServerDatabasesRequest } from '../../dto/requests';
 import {
@@ -30,7 +30,7 @@ export class DbServerService {
       ...dbServer,
     };
     return this.http.get<IDbServerSummary>(
-      `${getStoreUrl(target.storeId)}/dbserver-summary`,
+      buildAgentUrl(target.storeId, '/dbserver-summary'),
       { params },
     );
   }
@@ -47,7 +47,7 @@ export class DbServerService {
       proj: request.project || target.projectId,
     };
     return this.http.get<IDbCatalogSummary[]>(
-      `${getStoreUrl(target.storeId)}/dbserver-databases`,
+      buildAgentUrl(target.storeId, '/dbserver-databases'),
       { params },
     );
   }
@@ -59,7 +59,7 @@ export class DbServerService {
     }
     const params = { proj: target.projectId, ...dbServer };
     return this.http.post<IDbServerSummary>(
-      `${getStoreUrl(target.storeId)}/dbserver-add`,
+      buildAgentUrl(target.storeId, '/dbserver-add'),
       undefined,
       { params },
     );
@@ -72,7 +72,7 @@ export class DbServerService {
     }
     const params = { proj: target.projectId, ...dbServer };
     return this.http.delete<void>(
-      `${getStoreUrl(target.storeId)}/dbserver-delete`,
+      buildAgentUrl(target.storeId, '/dbserver-delete'),
       { params },
     );
   }

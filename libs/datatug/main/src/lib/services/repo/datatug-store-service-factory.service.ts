@@ -3,7 +3,10 @@ import { DatatugStoreGithubService } from './datatug-store.service.github';
 import { DatatugStoreFirestoreService } from './datatug-store.service.firestore';
 import { IDatatugStoreService } from './datatug-store.service.interface';
 
-@Injectable()
+// `providedIn: 'root'` — needed so `DatatugFoldersService` (also
+// root-provided, see its own comment) can resolve this dependency
+// regardless of which route requested it.
+@Injectable({ providedIn: 'root' })
 export class DatatugStoreServiceFactory {
   private readonly firestoreService = inject(DatatugStoreFirestoreService);
   private readonly githubService = inject(DatatugStoreGithubService);

@@ -1,11 +1,8 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import {
-  getStoreUrl,
-  IHttpRequestOptions,
-  SneatApiServiceFactory,
-} from '@sneat/api';
+import { IHttpRequestOptions, SneatApiServiceFactory } from '@sneat/api';
+import { buildAgentUrl } from './agent-url';
 
 @Injectable()
 export class StoreApiService {
@@ -13,8 +10,7 @@ export class StoreApiService {
   private readonly httpClient = inject(HttpClient);
 
   private static getUrl(repo: string, path: string): string {
-    const repoUrl = getStoreUrl(repo);
-    return `${repoUrl}${path}`;
+    return buildAgentUrl(repo, path);
   }
 
   public get<T>(
