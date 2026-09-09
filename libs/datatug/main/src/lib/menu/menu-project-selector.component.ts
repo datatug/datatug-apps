@@ -17,8 +17,7 @@ import {
   IonSelectOption,
 } from '@ionic/angular';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
-import { parseStoreRef } from '@sneat/core';
-import { IProjectContext } from '../nav/nav-models';
+import { IProjectContext, parseDatatugStoreRef } from '../nav/nav-models';
 import { NewProjectService } from '../project/new-project/new-project.service';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import { DatatugNavService } from '../services/nav/datatug-nav.service';
@@ -111,7 +110,7 @@ export class MenuProjectSelectorComponent implements OnChanges {
       this.currentProject = {
         ref: { projectId, storeId },
         brief,
-        store: { ref: parseStoreRef(storeId) },
+        store: { ref: parseDatatugStoreRef(storeId) },
       };
       this.datatugNavContextService.setCurrentProject(this.currentProject);
       if (projectId) {

@@ -5,7 +5,7 @@ import { routingParamTableType } from '../core/datatug-routing-params';
 export const datatugProjEnvDbRoutes: Routes = [
   {
     path: '',
-    loadChildren: () =>
+    loadComponent: () =>
       import('../pages/signed-in/env-db/env-db-page.component').then(
         (m) => m.EnvDbPageComponent,
       ),
