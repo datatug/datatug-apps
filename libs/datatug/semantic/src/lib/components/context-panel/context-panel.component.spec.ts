@@ -214,8 +214,9 @@ describe('ContextPanelComponent', () => {
 
       expect(context.items()).toHaveLength(1);
       expect(context.items()[0]).toMatchObject({
-        entityField: { entity: 'Customer', field: 'ID' },
-        value: 5,
+        entity: 'Customer',
+        field: 'ID',
+        value: { type: 'integer', value: '5' },
         source: 'grid',
       });
     });
@@ -341,6 +342,14 @@ describe('ContextPanelComponent', () => {
       }).compileComponents();
 
       context = TestBed.inject(InvestigationContextService);
+      // Same scope the component below will resolve (project/environment inputs +
+      // agentContextStub()'s default securityContextId) — the pre-seeded fact must
+      // land in the basket the component actually reads from.
+      context.setScope({
+        project: 'demo-project-1',
+        environment: 'production',
+        securityContextId: 'sctx-1',
+      });
       context.addValue({
         entityField: { entity: 'Country', field: 'Name' },
         value: 'Canada',
@@ -453,6 +462,11 @@ describe('ContextPanelComponent', () => {
       }).compileComponents();
 
       context = TestBed.inject(InvestigationContextService);
+      context.setScope({
+        project: 'demo-project-1',
+        environment: 'production',
+        securityContextId: 'sctx-1',
+      });
       context.addValue({
         entityField: { entity: 'Customer', field: 'ID' },
         value: 1,

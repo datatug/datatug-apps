@@ -126,6 +126,16 @@ describe('InvestigationContextPageComponent', () => {
   describe('with two collected values, one disabled', () => {
     beforeEach(async () => {
       await create({ applicable: APPLICABLE });
+      // Same scope the component's own effect will set from
+      // DatatugNavContextService's stubbed project/env + agentContextStub()'s default
+      // securityContextId — set it up front so these pre-render addValue() calls land
+      // in the basket the component actually reads (InvestigationContextService.addValue
+      // is a transient no-op with no active scope, Task 15 item 2).
+      context.setScope({
+        project: 'demo-project',
+        environment: 'production',
+        securityContextId: 'sctx-1',
+      });
       context.addValue({
         entityField: { entity: 'Customer', field: 'ID' },
         value: 5,

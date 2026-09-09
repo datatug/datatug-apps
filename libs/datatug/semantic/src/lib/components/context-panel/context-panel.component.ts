@@ -139,21 +139,36 @@ export class ContextPanelComponent {
       const selection = this.selection();
       const project = this.project();
       const environment = this.environment();
+      const securityContextId = this.agentContext.securityContextId();
       // Re-run whenever the enabled context items change too, since REQ:applicable-queries
       // resolves against selection + context together.
       this.context.items();
+      // Task 15 item 2/4 — every project/environment/securityContextId change switches
+      // (or opens) that scope's own Investigation Context basket before anything else
+      // in this effect runs, so `this.context.items()` above already reflects the
+      // *new* scope's own facts, never the previous scope's (api-contract.md
+      // "Switching scope clears active bindings and opens that scope's own empty or
+      // retained local context; it never imports facts automatically").
+      if (project && environment && securityContextId) {
+        this.context.setScope({ project, environment, securityContextId });
+      }
       if (this.suppressNextReload) {
         this.suppressNextReload = false;
         return;
       }
       if (!selection || !project || !environment) {
-        this.related.set([]);
-        this.applicable.set([]);
-        this.notYet.set([]);
-        this.expandedRows.set({});
+        // Guarded (skip if already empty) rather than an unconditional `.set([])` on
+        // every run — this runs inside an `effect()`, and a signal write on every
+        // invocation (even to an equivalent value) can keep Angular's change-detection
+        // loop from reaching a fixed point (reproduced directly in
+        // QueryPageComponent's own effect — see its `updateBindings()` comment).
+        if (this.related().length) this.related.set([]);
+        if (this.applicable().length) this.applicable.set([]);
+        if (this.notYet().length) this.notYet.set([]);
+        if (Object.keys(this.expandedRows()).length) this.expandedRows.set({});
         return;
       }
-      this.load(project, environment, selection);
+      this.load(project, environment, securityContextId, selection);
     });
   }
 
@@ -189,17 +204,21 @@ export class ContextPanelComponent {
       ...this.expandedLoading(),
       [lookup.lookupId]: true,
     });
+    const requestScope = { project, environment, securityContextId };
     this.semanticApi
       .getRelatedRows({
-        project,
-        environment,
-        securityContextId,
+        ...requestScope,
         lookupId: lookup.lookupId,
         value: toTypedValue(selection.value),
         limit: this.limit(),
       })
       .subscribe({
         next: (result) => {
+          // Task 15 item 4 — discard a late response for a scope the user has since
+          // left (project/environment/principal switch mid-flight).
+          if (!this.context.isCurrentScope(requestScope)) {
+            return;
+          }
           this.expandedRows.set({
             ...this.expandedRows(),
             [lookup.lookupId]: result,
@@ -210,6 +229,9 @@ export class ContextPanelComponent {
           });
         },
         error: () => {
+          if (!this.context.isCurrentScope(requestScope)) {
+            return;
+          }
           this.expandedLoading.set({
             ...this.expandedLoading(),
             [lookup.lookupId]: false,
@@ -263,8 +285,12 @@ export class ContextPanelComponent {
     });
   }
 
-  private load(project: string, environment: string, selection: SemanticSelection): void {
-    const securityContextId = this.agentContext.securityContextId();
+  private load(
+    project: string,
+    environment: string,
+    securityContextId: string | undefined,
+    selection: SemanticSelection,
+  ): void {
     if (!securityContextId) {
       // agent-info hasn't resolved yet (AgentContextService fetches it once, on
       // construction) — nothing to send a Scope-bearing request with yet.
@@ -284,16 +310,32 @@ export class ContextPanelComponent {
       applicable: this.semanticApi.getApplicableQueries({ ...scope, values }),
     }).subscribe({
       next: ({ related, applicable }) => {
+        // Task 15 item 4 — a response whose requested scope no longer matches the
+        // *current* scope (the user switched project/environment/principal while this
+        // request was in flight) is a late response and must be discarded, never
+        // applied to the now-different scope's panel (api-contract.md "late responses
+        // from another scope are discarded").
+        if (!this.context.isCurrentScope(scope)) {
+          return;
+        }
         this.related.set(related.related);
         this.applicable.set(applicable.applicable);
         this.notYet.set(applicable.notYet);
         this.loading.set(false);
       },
-      error: (err: unknown) => this.handleLoadError(err),
+      error: (err: unknown) => this.handleLoadError(err, scope),
     });
   }
 
-  private handleLoadError(err: unknown): void {
+  private handleLoadError(
+    err: unknown,
+    requestScope: { project: string; environment: string; securityContextId: string },
+  ): void {
+    if (!this.context.isCurrentScope(requestScope)) {
+      // Late error response for a scope we've already left — same discard rule as a
+      // late success response.
+      return;
+    }
     this.loading.set(false);
     const envelope =
       err instanceof HttpErrorResponse ? tryDecodeErrorEnvelope(err.error) : undefined;
@@ -319,17 +361,29 @@ export class ContextPanelComponent {
     const values: Fact[] = [
       toFact(selection.entity, selection.field, selection.value, 'selection'),
     ];
+    // Task 15 item 2 — InvestigationContextService's items are now wire-shaped Facts
+    // already (`origin: 'context'`), so no re-wrap through toFact() is needed here —
+    // just typed-equality dedup against what's already in `values` (a same-typed-value
+    // duplicate is dropped; a *different* typed value for the same entity.field is kept
+    // as a genuine second candidate, letting the server's own ambiguity/conflict
+    // detection see it, same as before).
     for (const item of this.context.items().filter((i) => i.enabled)) {
       const isDuplicate = values.some(
         (v) =>
-          v.entity === item.entityField.entity &&
-          v.field === item.entityField.field &&
-          displayTypedValue(v.value) === String(item.value),
+          v.entity === item.entity &&
+          v.field === item.field &&
+          v.value.type === item.value.type &&
+          v.value.value === item.value.value,
       );
       if (!isDuplicate) {
-        values.push(
-          toFact(item.entityField.entity, item.entityField.field, item.value, 'context'),
-        );
+        values.push({
+          id: item.id,
+          entity: item.entity,
+          field: item.field,
+          value: item.value,
+          origin: 'context',
+          enabled: item.enabled,
+        });
       }
     }
     return values;

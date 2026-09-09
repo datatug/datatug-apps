@@ -1,6 +1,0 @@
-{
-  "columns": [
-    { "column": "CustomerId", "entity": "Customer", "field": "ID", "provenance": "declared" },
-    { "column": "Email", "entity": "Customer", "field": "Email", "provenance": "declared" }
-  ]
-}

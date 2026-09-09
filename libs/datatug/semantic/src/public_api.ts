@@ -17,9 +17,22 @@ export {
   InvestigationContextService,
   ContextItem,
   ContextItemInput,
+  ContextScope,
   ParameterBinding,
+  scopeKey,
+  scopesEqual,
   SemanticParameterRef,
 } from './lib/services/investigation-context.service';
+export {
+  BindingBlockReason,
+  BindingParameterRef,
+  hasBlockingBindings,
+  isBindingRunnable,
+  ResolveBindingsInput,
+  resolveBindings,
+  ResolvedBinding,
+  ResolvedBindingOrigin,
+} from './lib/services/binding-resolver';
 export { ContextPanelComponent, OpenQueryRequest } from './lib/components/context-panel/context-panel.component';
 export { InvestigationContextBarComponent } from './lib/components/investigation-context-bar/investigation-context-bar.component';
 export { LimitationHeaderComponent } from './lib/components/limitation-header/limitation-header.component';

@@ -1,8 +1,0 @@
-{
-  "error": {
-    "code": "ACCESS_DENIED",
-    "message": "policy customers-support denies field Email",
-    "field": "Email",
-    "requestId": "req-0007"
-  }
-}
