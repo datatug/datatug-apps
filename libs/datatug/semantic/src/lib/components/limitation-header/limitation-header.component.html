@@ -1,0 +1,14 @@
+@if (lines().length) {
+  <div class="limitation-header">
+    @for (line of lines(); track line.text) {
+      <ion-text
+        color="warning"
+        class="limitation-header__line"
+        [class.limitation-header__line--native-sql]="line.kind === 'native-sql'"
+      >
+        <ion-icon name="alertCircleOutline"></ion-icon>
+        {{ line.text }}
+      </ion-text>
+    }
+  </div>
+}

@@ -1,0 +1,13 @@
+.limitation-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 8px;
+  font-size: 0.85rem;
+
+  &__line {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+}

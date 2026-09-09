@@ -25,6 +25,7 @@
     "skipLibCheck": true,
     "paths": {
       "@sneat/datatug-main": ["./libs/datatug/main/src/public_api.ts"],
+      "@sneat/datatug-semantic": ["./libs/datatug/semantic/src/public_api.ts"],
       "@sneat/core/testing": ["./libs/testing/src/test-setup.ts"]
     }
   },

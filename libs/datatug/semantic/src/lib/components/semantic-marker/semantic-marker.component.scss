@@ -1,0 +1,10 @@
+.semantic-marker {
+  font-size: 0.8rem;
+  vertical-align: middle;
+  color: var(--ion-color-medium, #92949c);
+  margin-inline-start: 4px;
+
+  &--inferred {
+    opacity: 0.65;
+  }
+}
