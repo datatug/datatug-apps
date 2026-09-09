@@ -8,7 +8,7 @@
 // rows are rendered (unwrap) — not throughout the whole app. Task 15 owns
 // converting the UI-local state itself to Fact-shaped typed storage.
 
-import { Fact, FactOrigin, TypedValue } from './types';
+import { Fact, FactOrigin, PhysicalRef, TypedValue } from './types';
 
 export type SemanticValue = string | number | boolean | null;
 
@@ -87,6 +87,7 @@ export function toFact(
   value: SemanticValue,
   origin: FactOrigin,
   enabled = true,
+  physical?: PhysicalRef,
 ): Fact {
   const typedValue = toTypedValue(value);
   return {
@@ -96,5 +97,6 @@ export function toFact(
     value: typedValue,
     origin,
     enabled,
+    ...(physical ? { physical } : {}),
   };
 }

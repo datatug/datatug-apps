@@ -144,6 +144,57 @@ describe('ContextPanelComponent', () => {
     expect(fixture.nativeElement.querySelectorAll('ion-item').length).toBe(0);
   });
 
+  /**
+   * Regression (lane S90): the server rejects `POST /datatug/semantic/related`
+   * with `INVALID_REQUEST` on `fact.physical` ("is required to compute
+   * related lookups") when it's missing — confirmed live against a real
+   * agent. A host page that resolved the selection from a `GET
+   * /semantic/columns` mapping (e.g. `EnvDbTablePageComponent`) has
+   * `source`/`collection`/`column` on hand and now passes them through as
+   * `SemanticSelection.physical`; this asserts `toFact()`/this component
+   * forward it onto the wire `Fact` unchanged, rather than dropping it.
+   */
+  it('forwards SemanticSelection.physical onto the wire Fact sent to getRelated', async () => {
+    mock = new MockSemanticApi({
+      related: RELATED,
+      applicable: APPLICABLE,
+      relatedRows: RELATED_ROWS,
+    });
+    await TestBed.configureTestingModule({
+      imports: [ContextPanelComponent],
+      providers: [
+        { provide: SemanticApiService, useValue: mock as unknown as SemanticApiService },
+        { provide: AgentContextService, useValue: agentContextStub() },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(ContextPanelComponent);
+    fixture.componentRef.setInput('project', 'demo-project-1');
+    fixture.componentRef.setInput('environment', 'production');
+    fixture.componentRef.setInput('selection', {
+      entity: 'Customer',
+      field: 'ID',
+      value: 5,
+      label: 'Customer.ID = 5',
+      source: 'grid',
+      physical: { source: 'chinook-local', collection: 'Customer', column: 'CustomerId' },
+    });
+    fixture.detectChanges();
+    TestBed.tick();
+    fixture.detectChanges();
+
+    const call = mock.calls.find((c) => c.method === 'getRelated');
+    expect(call?.request).toMatchObject({
+      fact: {
+        physical: {
+          source: 'chinook-local',
+          collection: 'Customer',
+          column: 'CustomerId',
+        },
+      },
+    });
+  });
+
   describe('J2 — from a value to related knowledge', () => {
     beforeEach(() => createWithSelection());
 

@@ -1,7 +1,15 @@
-import { Component, OnDestroy, computed, inject, signal } from '@angular/core';
+import {
+  Component,
+  Injector,
+  OnDestroy,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
+import { toObservable } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { first } from 'rxjs/operators';
+import { filter, first } from 'rxjs/operators';
 import { CodeEditor } from '@acrodata/code-editor';
 import {
   IonBackButton,
@@ -150,6 +158,7 @@ export class EnvDbTablePageComponent implements OnDestroy {
   private readonly agentContext = inject(AgentContextService);
   private readonly investigationContext = inject(InvestigationContextService);
   private readonly router = inject(Router);
+  private readonly injector = inject(Injector);
 
   project?: IProjectContext;
   envId?: string;
@@ -362,10 +371,56 @@ from ${this.tableFromClause(currentTable)}`;
   private loadSemanticColumns(collection: string): void {
     const projectId = this.project?.ref.projectId;
     const environment = this.envId;
-    const securityContextId = this.agentContext.securityContextId();
-    if (!projectId || !environment || !securityContextId) {
+    if (!projectId || !environment) {
       return;
     }
+    const securityContextId = this.agentContext.securityContextId();
+    if (securityContextId) {
+      this.fetchSemanticColumns(
+        projectId,
+        environment,
+        securityContextId,
+        collection,
+      );
+      return;
+    }
+    // `securityContextId` (the Task 15 scope gate every Scope-bearing call
+    // must carry) resolves asynchronously from `GET /agent-info`
+    // (AgentContextService), independently of — and, in practice, often
+    // later than — this table-load path. A single synchronous read here
+    // raced it and lost every time in production: `GET
+    // /datatug/semantic/columns` was never requested at all (confirmed
+    // live), even though `/datatug/agent-info` always eventually resolved a
+    // few requests later. Nothing re-triggered this call once the context
+    // became available, so `semanticColumns` stayed empty forever,
+    // `onGridRowClick` never found a mapping, and
+    // `sneat-datatug-context-panel` never opened (journey J2/J3, lane S90).
+    // `toObservable()` never emits synchronously even when the signal
+    // already has a value (it always defers at least one microtask via its
+    // own `effect()`), so this fallback path is deliberately only reached
+    // when the fast, synchronous check above found nothing yet — taking it
+    // unconditionally would add a needless async delay to the common case
+    // (and silently break every caller that reads `semanticColumns()`
+    // synchronously right after construction, as this file's own earlier
+    // tests do).
+    toObservable(this.agentContext.securityContextId, {
+      injector: this.injector,
+    })
+      .pipe(
+        filter((id): id is string => !!id),
+        first(),
+      )
+      .subscribe((id) =>
+        this.fetchSemanticColumns(projectId, environment, id, collection),
+      );
+  }
+
+  private fetchSemanticColumns(
+    projectId: string,
+    environment: string,
+    securityContextId: string,
+    collection: string,
+  ): void {
     this.semanticApi
       .getSemanticColumns({
         project: projectId,
@@ -484,6 +539,20 @@ from ${this.tableFromClause(currentTable)}`;
         value: value as SemanticSelection['value'],
         label: `${mapping.entity}.${mapping.field} = ${value}`,
         source: this.dbId || 'grid',
+        // `Fact.physical` — the server rejects `semantic/related` without it
+        // ("is required to compute related lookups"). Every part of this is
+        // already on hand from the same GET /semantic/columns call that
+        // resolved `mapping` (loadSemanticColumns sends the same
+        // `source`/`collection` pair; `mapping.column` is this clicked
+        // field's own key in that response) — see SemanticSelection.physical's
+        // own doc comment (lane S90).
+        physical: this.table
+          ? {
+              source: this.dbId || '',
+              collection: this.table.name,
+              column: mapping.column,
+            }
+          : undefined,
       });
     } catch (e) {
       this.errorLogger.logError(e, 'Failed to process grid cell click');

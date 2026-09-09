@@ -359,7 +359,14 @@ export class ContextPanelComponent {
    * plan Task 12 item 3. */
   private applicableValues(selection: SemanticSelection): Fact[] {
     const values: Fact[] = [
-      toFact(selection.entity, selection.field, selection.value, 'selection'),
+      toFact(
+        selection.entity,
+        selection.field,
+        selection.value,
+        'selection',
+        true,
+        selection.physical,
+      ),
     ];
     // Task 15 item 2 — InvestigationContextService's items are now wire-shaped Facts
     // already (`origin: 'context'`), so no re-wrap through toFact() is needed here —

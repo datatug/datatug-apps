@@ -270,6 +270,11 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
       value: 5,
       label: 'Customer.ID = 5',
       source: component.dbId || 'grid',
+      physical: {
+        source: component.dbId || '',
+        collection: 'Customer',
+        column: 'CustomerId',
+      },
     });
     expect(component.hasSelection()).toBe(true);
   });
@@ -615,6 +620,112 @@ describe('EnvDbTablePage — row fetch fires without table.meta', () => {
       'AlbumId',
       'Title',
     ]);
+  });
+});
+
+/**
+ * Regression (lane S90, journey J2/J3): `securityContextId` (Task 15's scope
+ * gate every Scope-bearing call must carry) resolves asynchronously from
+ * `GET /agent-info` (`AgentContextService`), independently of — and, in
+ * practice, later than — the table-load path. `loadSemanticColumns()` used
+ * to read `agentContext.securityContextId()` synchronously once and
+ * silently skip the request forever if it wasn't ready yet at that exact
+ * moment — confirmed live: `GET /datatug/semantic/columns` was never
+ * requested at all, even though `/datatug/agent-info` always eventually
+ * resolved (a few requests later). With `semanticColumns` staying empty
+ * forever, `onGridRowClick` never found a mapping for the clicked column,
+ * so `sneat-datatug-context-panel` never opened.
+ */
+describe('EnvDbTablePage — semantic columns wait for the security-context scope gate', () => {
+  it('fires getSemanticColumns once securityContextId becomes available, not only if it already was', () => {
+    const project: IProjectContext = {
+      ref: { storeId: 'localhost:8989', projectId: 'demo-project' },
+    };
+    const table: IEnvDbTableContext = { schema: 'main', name: 'Customer' };
+    const getSemanticColumnsMock = vi.fn(() => of({ columns: [] }));
+    // Not yet resolved — mirrors the real timing: agent-info hasn't
+    // responded when the table-load path first runs. Built inline, not via
+    // agentContextStub(undefined): a default-parameter call receiving
+    // `undefined` falls back to its own default ('sctx-1'), which would
+    // silently defeat this test.
+    const agentContext = {
+      securityContextId: signal<string | undefined>(undefined),
+      refresh: vi.fn(() => of(undefined)),
+    };
+
+    TestBed.configureTestingModule({
+      imports: [EnvDbTablePageComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        {
+          provide: ErrorLogger,
+          useValue: {
+            logError: vi.fn(),
+            logErrorHandler: vi.fn(() => vi.fn()),
+          },
+        },
+        {
+          provide: ActivatedRoute,
+          useValue: activatedRouteStub(),
+        },
+        {
+          provide: DatatugNavContextService,
+          useValue: {
+            currentProject: of(project),
+            currentEnv: of(undefined),
+            currentEnvDbTable: of(table),
+            setCurrentEnvironment: vi.fn(),
+          },
+        },
+        {
+          provide: ProjectService,
+          useValue: { watchProjectSummary: vi.fn(), getFull: vi.fn() },
+        },
+        {
+          provide: AgentService,
+          useValue: { select: vi.fn(() => of({ columns: [], rows: [] })) },
+        },
+        { provide: DatatugNavService, useValue: { goTable: vi.fn() } },
+        {
+          provide: SemanticApiService,
+          useValue: { getSemanticColumns: getSemanticColumnsMock },
+        },
+        {
+          provide: InvestigationContextService,
+          useValue: { addValue: vi.fn(), items: () => [] },
+        },
+        {
+          provide: Router,
+          useValue: { navigate: vi.fn(() => Promise.resolve(true)) },
+        },
+        { provide: AgentContextService, useValue: agentContext },
+      ],
+    })
+      .overrideComponent(EnvDbTablePageComponent, {
+        set: {
+          imports: [],
+          template: '',
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+          providers: [],
+        },
+      })
+      .compileComponents();
+
+    TestBed.createComponent(EnvDbTablePageComponent);
+
+    expect(getSemanticColumnsMock).not.toHaveBeenCalled();
+
+    // agent-info resolves later.
+    agentContext.securityContextId.set('sctx-1');
+    TestBed.tick();
+
+    expect(getSemanticColumnsMock).toHaveBeenCalledWith({
+      project: 'demo-project',
+      environment: 'production',
+      securityContextId: 'sctx-1',
+      source: '',
+      collection: 'Customer',
+    });
   });
 });
 
