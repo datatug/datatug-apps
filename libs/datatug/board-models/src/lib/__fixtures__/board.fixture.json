@@ -5,6 +5,21 @@
   "tags": ["sales", "demo"],
   "userIds": ["u1"],
   "access": "protected",
+  "parameters": [
+    {
+      "id": "year",
+      "type": "integer",
+      "title": "Year",
+      "isRequired": true,
+      "defaultValue": 2026
+    },
+    {
+      "id": "region",
+      "type": "string",
+      "isMultiValue": true
+    }
+  ],
+  "requiredParams": [["year"], ["region", "year"]],
   "rows": [
     {
       "minHeight": "240px",

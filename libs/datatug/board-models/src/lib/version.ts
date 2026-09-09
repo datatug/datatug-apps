@@ -4,4 +4,4 @@
 // `datatug-core/pkg/datatug/boards.go` (the source of truth), so a consumer
 // (e.g. Dashboardius) pinned to a version can detect drift instead of
 // silently reading a shape that changed under it.
-export const BOARD_MODELS_VERSION = '0.0.1';
+export const BOARD_MODELS_VERSION = '0.1.0';
