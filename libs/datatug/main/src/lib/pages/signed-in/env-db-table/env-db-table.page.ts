@@ -579,7 +579,17 @@ from ${this.tableFromClause(currentTable)}`;
           'project',
           project.ref.projectId,
           'query',
-          request.queryId,
+          // `encodeURIComponent` — `request.queryId` may be folder-qualified
+          // (e.g. `customers/customer-invoices`, the shape `queries/applicable`'s
+          // `Candidate.queryId` returns as of datatug-cli#219). `router.navigate()`
+          // splits a *string* command containing `/` into several path segments
+          // regardless of its position in the array, so an un-encoded
+          // folder-qualified id would land as `.../query/customers/customer-invoices`
+          // — two extra segments the `query/:queryId` route (single param) does not
+          // match. Encoding keeps it one segment; Angular's router decodes it back
+          // to the raw id for anything that reads the `:queryId` param (nothing
+          // does today — see `id` queryParam below, which is the actual contract).
+          encodeURIComponent(request.queryId),
         ],
         {
           // QueryPageComponent.trackQueryParams() resolves the query it opens from
@@ -590,6 +600,9 @@ from ${this.tableFromClause(currentTable)}`;
           // cosmetic only and the page opens a blank/new query instead of
           // `request.queryId`. Found while writing this stream's J2/J3 journey
           // e2e (plan task 10) against the real app.
+          // `id` is passed RAW (not encoded) here — it's a query-string value,
+          // not a path segment, and `HttpClient`/`Router` already form-encode
+          // query-string values on the way out.
           queryParams: { id: request.queryId },
           // `targets`/`selectedSource` carry a needs-target Candidate's authorized
           // options through to the query page's target selector (plan Task 12 item 3;
@@ -611,7 +624,9 @@ from ${this.tableFromClause(currentTable)}`;
    * `main.Album` for SQLite, verified against a live agent in lane S87's
    * report). Only ever needs the table's identity, never its `meta`. */
   private tableFromClause(table: IEnvDbTableContext): string {
-    return table.schema === 'dbo' ? table.name : `${table.schema}.${table.name}`;
+    return table.schema === 'dbo'
+      ? table.name
+      : `${table.schema}.${table.name}`;
   }
 
   private loadData(): void {

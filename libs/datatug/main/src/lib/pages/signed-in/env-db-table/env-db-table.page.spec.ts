@@ -39,7 +39,8 @@ function activatedRouteStub() {
     paramMap: of({ get: () => null }),
     snapshot: {
       paramMap: {
-        get: (key: string) => (key === routingParamEnvironmentId ? 'production' : null),
+        get: (key: string) =>
+          key === routingParamEnvironmentId ? 'production' : null,
       },
       params: {},
     },
@@ -401,6 +402,40 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
     );
   });
 
+  it('onOpenQuery encodes a folder-qualified queryId as a single routable path segment, keeping the raw id in the id query param', async () => {
+    component = await createComponent();
+    component.project = project;
+
+    component.onOpenQuery({
+      queryId: 'customers/customer-invoices',
+      bindings: [],
+      targets: [],
+      state: 'runnable',
+    });
+
+    expect(routerMock.navigate).toHaveBeenCalledWith(
+      [
+        '/store',
+        'localhost:8989',
+        'project',
+        'demo-project',
+        'query',
+        // A single, `%2F`-encoded segment — an un-encoded `customers/customer-invoices`
+        // here would split into two path segments and never match the
+        // `query/:queryId` route (single param).
+        'customers%2Fcustomer-invoices',
+      ],
+      {
+        queryParams: { id: 'customers/customer-invoices' },
+        state: {
+          bindings: [],
+          targets: [],
+          selectedSource: undefined,
+        },
+      },
+    );
+  });
+
   it('onOpenQuery does nothing without a project', async () => {
     component = await createComponent();
     component.project = undefined;
@@ -609,8 +644,9 @@ describe('EnvDbTablePage — row fetch fires without table.meta', () => {
       })
       .compileComponents();
 
-    const component = TestBed.createComponent(EnvDbTablePageComponent)
-      .componentInstance;
+    const component = TestBed.createComponent(
+      EnvDbTablePageComponent,
+    ).componentInstance;
 
     expect(component.grid()?.rows).toEqual([
       { AlbumId: 1, Title: 'For Those About To Rock' },

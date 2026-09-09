@@ -132,7 +132,15 @@ export class DatatugNavService {
     action?: 'execute' | 'edit',
   ): void {
     // console.log('goQuery', query.id);
-    const url = this.projectPageUrl(project.ref, 'query');
+    // `query.id` as the 3rd arg — `projectPageUrl()` already
+    // `encodeURIComponent()`s a supplied id (see its own doc comment), which
+    // is required once a query's id can be folder-qualified (e.g.
+    // `customers/customer-invoices`, per `queries/applicable`'s
+    // `Candidate.queryId` contract, datatug-cli#219): without an id segment
+    // here at all, the built URL (`.../project/<id>/query`) never matched the
+    // registered `query/:queryId` route (`datatug-routing-proj.ts`), so this
+    // navigation 404'd for every id, not only a folder-qualified one.
+    const url = this.projectPageUrl(project.ref, 'query', query.id);
     this.navForward(
       url,
       {

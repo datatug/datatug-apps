@@ -147,6 +147,12 @@ export interface CandidateAmbiguity {
 }
 
 export interface Candidate {
+  /** The saved query this candidate resolves to. May be a bare id
+   * (`customer-invoices`) or folder-qualified (`customers/customer-invoices`,
+   * as of datatug-cli#219) — opaque to the client either way: pass it
+   * straight through to `get_query`/`run_query` (which accept both forms)
+   * and, when routing to it, encode it as a single path segment rather than
+   * assuming it has no `/`. Never parse or reconstruct it client-side. */
   readonly queryId: string;
   /** Authorized eligible targets only. */
   readonly targets: readonly CandidateTarget[];
