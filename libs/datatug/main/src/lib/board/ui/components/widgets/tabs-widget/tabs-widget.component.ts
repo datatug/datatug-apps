@@ -11,8 +11,8 @@ import {
   IonSegment,
   IonSegmentButton,
 } from '@ionic/angular';
+import { TabsWidgetDef } from '@datatug/board-models';
 import { IBoardContext } from '../../../../../models/definition/board/board';
-import { ITabsWidgetSettings } from '../../../../../models/definition/board/widget-tabs';
 
 @Component({
   selector: 'sneat-datatug-tabs-widget',
@@ -24,15 +24,14 @@ export class TabsWidgetComponent implements OnChanges {
   public selectedTab?: string;
 
   readonly level = input<number>();
-  readonly tabsWidgetSettings = input<ITabsWidgetSettings>();
+  readonly tabsWidgetDef = input<TabsWidgetDef>();
   readonly boardContext = input<IBoardContext>();
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['tabsWidgetDef'] && !this.selectedTab) {
-      const tabsWidgetSettings = this.tabsWidgetSettings();
+      const tabsWidgetDef = this.tabsWidgetDef();
       this.selectedTab =
-        (tabsWidgetSettings?.tabs?.length &&
-          tabsWidgetSettings.tabs[0].title) ||
+        (tabsWidgetDef?.tabs?.length && tabsWidgetDef.tabs[0].title) ||
         undefined;
     }
   }
