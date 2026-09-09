@@ -76,3 +76,43 @@ builds a URL without the leading `store` segment and never matches
 `datatugRoutes`. Phase 1 plan task 2 ("make the `EnvDbPageComponent` route
 resolve") owns that fix. Swap the `page.goto` for a real click on task 2's
 completion.
+
+## CI status (2026-09-09): J1 currently fails, before the harness mechanics are exercised
+
+The first CI run of the `journey-e2e` workflow job (datatug-apps PR #48,
+[run 34336771160](https://github.com/datatug/datatug-apps/actions/runs/34336771160))
+went red on J1's very first assertion — not the harness (checkout, CLI
+build, agent boot all succeeded), and not yet the known route gap above:
+
+```
+Error: expect(locator).toBeVisible() failed
+Locator: getByText('DataTug Demo Project 1')
+Timeout: 15000ms
+    at apps/datatug-app/e2e/journey/journey.spec.ts:38:7
+```
+
+The accessibility snapshot at failure time shows only:
+
+```yaml
+- navigation "menu": DataTug.app
+- paragraph: Running in emulator mode. Do not use with production credentials.
+```
+
+i.e. the app shell rendered, but nothing project-specific did. The agent log
+(`agent-worker-0.log`) shows it received exactly one request beyond `/ping`:
+
+```
+2026/09/09 09:51:50 GET 0 /datatug/projects/project_summary?id=datatug-demo-project
+```
+
+...and nothing after that — no further request, no panic (contrast with
+`GET /datatug/exec/select`, whose backend, `pkg/api.ExecuteCommands`, is a
+literal `panic("not implemented yet")` on `datatug-cli@main` as of this
+writing — J1 doesn't get far enough to hit that yet). This wasn't
+root-caused further: it's out of this stream's write scope (`.github/workflows/**`
+and this README only), and per this stream's brief, another lane owns
+`journey.spec.ts` and the app pages it drives. Worth checking first:
+whether `/store/:storeId/project/:projectId` is guarded by an auth check
+that a direct `page.goto` (no sign-in step) can't satisfy — the emulator
+banner is a Firebase Auth Emulator artifact, and no other e2e spec in this
+repo navigates straight to a `signed-in/**` route without one.
