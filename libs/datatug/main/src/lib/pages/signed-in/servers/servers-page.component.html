@@ -4,21 +4,35 @@
       <ion-back-button />
       <ion-menu-button />
     </ion-buttons>
-    <ion-title>Servers</ion-title>
+    <sneat-datatug-page-title pageTitle="Servers" />
   </ion-toolbar>
 </ion-header>
 
 <ion-content color="light">
   <ion-card>
     <ion-item-divider>Environments</ion-item-divider>
-    <ion-item>
-      <ion-checkbox slot="start" checked="true" />
-      <ion-label>Local</ion-label>
-    </ion-item>
-    <ion-item>
-      <ion-checkbox slot="start" checked="true" />
-      <ion-label>PROD</ion-label>
-    </ion-item>
+    @if (environments(); as envs) {
+      @for (environment of envs; track environment.id) {
+        <ion-item>
+          <ion-checkbox
+            slot="start"
+            [checked]="selectedEnvironmentIds().has(environment.id)"
+            (ionChange)="
+              toggleEnvironment(environment.id, $event.detail.checked)
+            "
+          />
+          <ion-label>{{ environment.title || environment.id }}</ion-label>
+        </ion-item>
+      } @empty {
+        <ion-item>
+          <ion-label color="medium">No environments found</ion-label>
+        </ion-item>
+      }
+    } @else {
+      <ion-item>
+        <ion-label color="medium">Loading...</ion-label>
+      </ion-item>
+    }
   </ion-card>
   <ion-card>
     <ion-item>
@@ -29,7 +43,9 @@
         <ion-segment-button value="db">
           <ion-label
             >DB servers
-            <ion-badge color="light">2</ion-badge>
+            <ion-badge color="light">{{
+              filteredDbServers()?.length ?? 0
+            }}</ion-badge>
           </ion-label>
         </ion-segment-button>
         <ion-segment-button value="web">Web servers</ion-segment-button>
@@ -38,15 +54,19 @@
     </ion-card-header>
     @if (tab === "db") {
       <ion-list>
-        @if (dbServers()) {
-          @for (dbServer of dbServers(); track dbServer) {
+        @if (filteredDbServers(); as servers) {
+          @for (dbServer of servers; track dbServer) {
             <ion-item tappable (click)="goDbServer(dbServer)">
-              <ion-label>{{ dbServer.dbServer.host }}</ion-label>
+              <ion-label>{{ serverLabel(dbServer.dbServer) }}</ion-label>
               <ion-badge color="medium">{{
                 dbServer.dbServer.driver
               }}</ion-badge>
-              <ion-badge color="light" class="ion-margin-start"
+              <ion-badge
+                color="light"
+                class="ion-margin-start"
+                title="Number of databases/catalogs on this server"
                 >{{ dbServer.databasesCount }}
+                {{ dbServer.databasesCount === 1 ? "database" : "databases" }}
               </ion-badge>
               <ion-buttons slot="end">
                 <ion-button
@@ -60,7 +80,7 @@
           }
           <ion-item>
             <ion-label color="medium"
-              >Total: {{ dbServers()?.length }} database servers
+              >Total: {{ servers.length }} database servers
             </ion-label>
             <ion-buttons slot="end">
               <ion-button fill="outline" (click)="addDbServer()"

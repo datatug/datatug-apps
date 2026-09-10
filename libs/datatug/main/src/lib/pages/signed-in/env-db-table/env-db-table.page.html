@@ -16,7 +16,11 @@
       <ion-menu-button />
       <ion-back-button defaultHref="datatug" />
     </ion-buttons>
-    <ion-title>Table: <b>{{ table?.schema }}.{{ table?.name }}</b></ion-title>
+    <sneat-datatug-page-title
+      [pageTitle]="
+        'Table: ' + (table?.schema || '') + '.' + (table?.name || '')
+      "
+    />
   </ion-toolbar>
 </ion-header>
 

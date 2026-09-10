@@ -24,7 +24,6 @@ import {
   IonMenuButton,
   IonSegment,
   IonSegmentButton,
-  IonTitle,
   IonToolbar,
 } from '@ionic/angular';
 import {
@@ -85,6 +84,7 @@ import { DatatugServicesStoreModule } from '../../../services/repo/datatug-servi
 import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
 import { ProjectService } from '../../../services/project/project.service';
+import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
 
 interface IRecordsetInfo {
   schema: string;
@@ -122,12 +122,12 @@ interface IRecordsetInfo {
     DatatugServicesStoreModule,
     DatatugServicesUnsortedModule,
     FormsModule,
+    SneatDatatugPageTitleComponent,
     IonHeader,
     IonToolbar,
     IonButtons,
     IonMenuButton,
     IonBackButton,
-    IonTitle,
     IonContent,
     IonCard,
     IonItem,

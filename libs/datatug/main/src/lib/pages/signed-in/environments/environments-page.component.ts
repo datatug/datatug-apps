@@ -4,14 +4,9 @@ import { map } from 'rxjs/operators';
 import {
   IonBackButton,
   IonButtons,
-  IonCard,
   IonContent,
   IonHeader,
-  IonInput,
-  IonItem,
-  IonLabel,
   IonMenuButton,
-  IonTitle,
   IonToolbar,
 } from '@ionic/angular';
 import { SneatCardListComponent } from '@sneat/components';
@@ -33,6 +28,7 @@ import { DatatugServicesProjectModule } from '../../../services/project/datatug-
 import { DatatugServicesStoreModule } from '../../../services/repo/datatug-services-store.module';
 import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
+import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
 
 const isGithubStoreId = (storeId: string): boolean =>
   storeId === STORE_ID_GITHUB_COM || storeId === STORE_TYPE_GITHUB;
@@ -64,17 +60,13 @@ const isGithubStoreId = (storeId: string): boolean =>
     DatatugServicesUnsortedModule,
     FormsModule,
     SneatCardListComponent,
+    SneatDatatugPageTitleComponent,
     IonHeader,
     IonToolbar,
     IonButtons,
     IonMenuButton,
     IonBackButton,
-    IonTitle,
     IonContent,
-    IonCard,
-    IonItem,
-    IonLabel,
-    IonInput,
   ],
 })
 export class EnvironmentsPageComponent {

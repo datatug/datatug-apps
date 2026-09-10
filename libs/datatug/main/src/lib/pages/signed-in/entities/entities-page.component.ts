@@ -14,7 +14,6 @@ import {
   IonLabel,
   IonList,
   IonMenuButton,
-  IonTitle,
   IonToolbar,
 } from '@ionic/angular';
 import { Subject } from 'rxjs';
@@ -39,6 +38,7 @@ import { DatatugServicesProjectModule } from '../../../services/project/datatug-
 import { DatatugServicesStoreModule } from '../../../services/repo/datatug-services-store.module';
 import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
 import { EntityService } from '../../../services/unsorted/entity.service';
+import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
 
 type Entities = IRecord<IEntity>[];
 
@@ -67,12 +67,12 @@ type Entities = IRecord<IEntity>[];
     DatatugServicesUnsortedModule,
     FormsModule,
     RouterLink,
+    SneatDatatugPageTitleComponent,
     IonHeader,
     IonToolbar,
     IonButtons,
     IonMenuButton,
     IonBackButton,
-    IonTitle,
     IonButton,
     IonIcon,
     IonLabel,
