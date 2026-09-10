@@ -3,7 +3,7 @@
     <ion-buttons slot="start">
       <ion-menu-button />
       <ion-back-button
-        [defaultHref]="project?.ref && '/store/' + project?.ref?.storeId"
+        [defaultHref]="project()?.ref && '/store/' + project()?.ref?.storeId"
       />
     </ion-buttons>
     <ion-title color="medium">Project</ion-title>
@@ -17,7 +17,7 @@
       <ion-input
         style="font-weight: bold"
         readonly
-        [value]="project?.brief?.title || 'Loading...'"
+        [value]="project()?.brief?.title || 'Loading...'"
       />
       <ion-select
         slot="end"
@@ -37,12 +37,12 @@
     <!--			<ion-label color="medium" style="font-weight: bold;">ID</ion-label>-->
     <!--			<ion-input readonly [value]="project?.ref?.projectId" color="medium"></ion-input>-->
     <!--		</ion-item>-->
-    @if (project?.ref && project?.ref?.storeId !== "firestore") {
+    @if (project()?.ref && project()?.ref?.storeId !== "firestore") {
       <ion-item>
         <ion-label color="medium" style="font-weight: bold">Store</ion-label>
         <ion-input
           readonly="true"
-          [value]="storeDisplayLabel(project?.ref?.storeId)"
+          [value]="storeDisplayLabel(project()?.ref?.storeId)"
           color="medium"
         />
       </ion-item>
@@ -67,7 +67,7 @@
   <!--							 (itemClick)="goEntity($event)"-->
   <!--							 (cardTitleClick)="goProjFolder(Entity)"/>-->
 
-  <sneat-datatug-folder [path]="'~'" [projectRef]="project?.ref" />
+  <sneat-datatug-folder [path]="'~'" [projectRef]="project()?.ref" />
   <!--	<sneat-datatug-card-list [projItemType]="Agent"-->
   <!--							 title="Agents"-->
   <!--							 itemIcon="cube-outline"-->
