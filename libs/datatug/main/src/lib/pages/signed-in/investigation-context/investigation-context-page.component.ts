@@ -33,7 +33,12 @@ import {
   tryDecodeErrorEnvelope,
 } from '@sneat/datatug-semantic';
 import { getStoreId, IProjectContext } from '../../../nav/nav-models';
+import { DatatugCoreModule } from '../../../core/datatug-core.module';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
+import { DatatugServicesNavModule } from '../../../services/nav/datatug-services-nav.module';
+import { DatatugServicesProjectModule } from '../../../services/project/datatug-services-project.module';
+import { DatatugServicesStoreModule } from '../../../services/repo/datatug-services-store.module';
+import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
 
 addIcons({ closeOutline, linkOutline });
 
@@ -60,6 +65,23 @@ addIcons({ closeOutline, linkOutline });
   templateUrl: './investigation-context-page.component.html',
   styleUrl: './investigation-context-page.component.scss',
   imports: [
+    // `DatatugNavContextService` (injected below) is a plain `@Injectable()`
+    // provided by `DatatugServicesNavModule`, whose own constructor needs
+    // `AppContextService` (`DatatugCoreModule`), `ProjectContextService`/
+    // `ProjectService` (`DatatugServicesProjectModule`) and
+    // `EnvironmentService` (`DatatugServicesUnsortedModule`, itself needing
+    // `StoreApiService` from `DatatugServicesStoreModule`) — none of which
+    // this page declared, so navigating here from the project side menu's
+    // "Investigation Context" item threw `NG0201: No provider found for
+    // DatatugNavContextService` (confirmed live, S135, 2026-09-10). Same
+    // fix, same cause, as `EnvironmentsPageComponent`/`QueriesPageComponent`
+    // (S120 PR #89, S121 Task 17 item B.1) — mirrors the exact module set
+    // those pages already declare for the identical transitive chain.
+    DatatugCoreModule,
+    DatatugServicesNavModule,
+    DatatugServicesProjectModule,
+    DatatugServicesStoreModule,
+    DatatugServicesUnsortedModule,
     IonHeader,
     IonToolbar,
     IonButtons,
