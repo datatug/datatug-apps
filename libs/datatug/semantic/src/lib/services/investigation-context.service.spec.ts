@@ -211,6 +211,95 @@ describe('InvestigationContextService', () => {
     });
   });
 
+  describe('condition (S156, founder ruling 2026-09-10 — "conditions like ==, >, >=, etc.")', () => {
+    it('defaults to "==" for every caller that never sets one, unchanged from before this field existed', () => {
+      const service = createService();
+      service.setScope(scopeA);
+      const added = service.addValue({
+        entityField: { entity: 'Customer', field: 'ID' },
+        value: 5,
+        label: 'Customer.ID = 5',
+        source: 'grid',
+      });
+      expect(added.condition).toBe('==');
+    });
+
+    it('is stored verbatim when the caller sets one (the "Add a context variable" form)', () => {
+      const service = createService();
+      service.setScope(scopeA);
+      const added = service.addValue({
+        entityField: { entity: 'Customer', field: 'Age' },
+        value: 21,
+        label: 'Customer.Age > 21',
+        source: 'manual',
+        condition: '>',
+      });
+      expect(added.condition).toBe('>');
+      expect(added.origin).toBe('context');
+      expect(added.enabled).toBe(true);
+    });
+
+    it('two items for the same entity.field + value but a DIFFERENT condition are both kept — never deduped into one', () => {
+      const service = createService();
+      service.setScope(scopeA);
+      service.addValue({
+        entityField: { entity: 'Customer', field: 'Age' },
+        value: 21,
+        label: 'Customer.Age > 21',
+        source: 'manual',
+        condition: '>',
+      });
+      service.addValue({
+        entityField: { entity: 'Customer', field: 'Age' },
+        value: 21,
+        label: 'Customer.Age >= 21',
+        source: 'manual',
+        condition: '>=',
+      });
+
+      expect(service.items()).toHaveLength(2);
+      expect(service.items().map((i) => i.condition)).toEqual(
+        expect.arrayContaining(['>', '>=']),
+      );
+    });
+
+    it('adding the same entity.field + value + condition twice is still idempotent, same as equality-only callers', () => {
+      const service = createService();
+      service.setScope(scopeA);
+      const first = service.addValue({
+        entityField: { entity: 'Customer', field: 'Age' },
+        value: 21,
+        label: 'Customer.Age > 21',
+        source: 'manual',
+        condition: '>',
+      });
+      const second = service.addValue({
+        entityField: { entity: 'Customer', field: 'Age' },
+        value: 21,
+        label: 'Customer.Age > 21 (duplicate)',
+        source: 'manual',
+        condition: '>',
+      });
+
+      expect(second).toEqual(first);
+      expect(service.items()).toHaveLength(1);
+    });
+
+    it('a default-condition ("==") item keeps the exact pre-existing id format — condition is never folded into an equality item\'s id', () => {
+      const service = createService();
+      service.setScope(scopeA);
+      const added = service.addValue({
+        entityField: { entity: 'Customer', field: 'ID' },
+        value: 5,
+        label: 'Customer.ID = 5',
+        source: 'grid',
+      });
+      // JSON.stringify of the TypedValue's own (string) `.value` — pre-existing format,
+      // untouched by this lane; only the condition-tag insertion point is new.
+      expect(added.id).toBe('Customer.ID:integer="5"');
+    });
+  });
+
   describe('scope isolation (api-contract.md "Binding and context behavior")', () => {
     it('switching project/environment/securityContextId opens an empty basket — never imports facts', () => {
       const service = createService();

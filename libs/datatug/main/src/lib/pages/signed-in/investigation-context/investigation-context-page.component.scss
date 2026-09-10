@@ -1,4 +1,8 @@
 .investigation-context-page {
+  &__form {
+    margin-bottom: 16px;
+  }
+
   &__empty {
     display: block;
     padding: 16px;

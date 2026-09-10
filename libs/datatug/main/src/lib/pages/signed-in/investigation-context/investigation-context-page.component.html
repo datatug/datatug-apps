@@ -9,6 +9,82 @@
 </ion-header>
 
 <ion-content class="ion-padding">
+  <ion-list class="investigation-context-page__form">
+    <ion-list-header>
+      <ion-label>Add a context variable</ion-label>
+    </ion-list-header>
+    <ion-item>
+      <ion-select
+        label="Entity"
+        aria-label="Entity"
+        label-placement="stacked"
+        placeholder="Select an entity"
+        interface="popover"
+        [value]="selectedEntity()"
+        (ionChange)="onEntityChange($event.detail.value)"
+      >
+        @for (entity of entities(); track entity) {
+          <ion-select-option [value]="entity">{{ entity }}</ion-select-option>
+        }
+      </ion-select>
+    </ion-item>
+    <ion-item>
+      <ion-select
+        label="Field"
+        aria-label="Field"
+        label-placement="stacked"
+        placeholder="Select a field"
+        interface="popover"
+        [disabled]="!selectedEntity()"
+        [value]="selectedField()"
+        (ionChange)="onFieldChange($event.detail.value)"
+      >
+        @for (field of fields(); track field.id) {
+          <ion-select-option [value]="field.id">{{
+            field.id
+          }}</ion-select-option>
+        }
+      </ion-select>
+    </ion-item>
+    <ion-item>
+      <ion-select
+        label="Condition"
+        aria-label="Condition"
+        label-placement="stacked"
+        placeholder="Select a condition"
+        interface="popover"
+        [value]="selectedCondition()"
+        (ionChange)="onConditionChange($event.detail.value)"
+      >
+        @for (condition of conditions; track condition) {
+          <ion-select-option [value]="condition">{{
+            condition
+          }}</ion-select-option>
+        }
+      </ion-select>
+    </ion-item>
+    <ion-item>
+      <ion-input
+        label="Value"
+        aria-label="Value"
+        label-placement="stacked"
+        placeholder="Enter a value"
+        [type]="valueInputType()"
+        [value]="valueInput()"
+        (ionInput)="onValueChange($event.detail.value)"
+        (keyup.enter)="add()"
+      />
+    </ion-item>
+    <ion-item lines="none">
+      <ion-button
+        aria-label="Add context variable"
+        [disabled]="!canAdd()"
+        (click)="add()"
+        >Add</ion-button
+      >
+    </ion-item>
+  </ion-list>
+
   @if (!items().length) {
     <ion-text color="medium" class="investigation-context-page__empty">
       <p>
