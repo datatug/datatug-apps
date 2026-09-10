@@ -15,7 +15,8 @@ Two kinds of e2e live here.
   contract.
 
 Both projects share the same Angular dev server (the `webServer` block in
-`playwright.config.ts`, `http://127.0.0.1:4200`) — the journey suite does not
+`playwright.config.ts`, `http://localhost:4200` — the literal hostname
+matters, see that file's CORS comment) — the journey suite does not
 need its own dev server or any build-time/env-var wiring to "point" it at the
 agent. The DataTug web app resolves which agent to talk to **at runtime**,
 from the `:storeId` route segment (`/store/<storeId>/...`): `getStoreUrl()`
@@ -123,115 +124,34 @@ stream S9b (2026-09-09 — see `env-db-page.component.spec.ts` /
 still uses the direct URL to keep proving the grid-render/agent-contract
 mechanism independent of that page's own navigation.
 
-## Known blockers, not fixable in this repo (as of 2026-09-09)
+## Known blockers
 
-Every journey test (J1, J2, J3) currently fails against a `datatug-cli` main
-build. Causes, all outside `datatug-apps` except the first (already fixed
-here):
+`journey/README.md`'s own "Known blockers" section is the authoritative,
+kept-current account, with `journey.spec.ts`'s file header behind it for
+the per-test fix history. Read those two, not this file.
 
-1. **Fixed here**: this suite's dev server and agent both used to bind
-   `127.0.0.1`, but `datatug-cli`'s CORS origin check
-   (`github.com/sneat-co/sneat-go-core/security.VerifyOrigin`, vendored via
-   `apicore.Execute`) allow-lists the literal hostname `localhost`, not
-   `127.0.0.1` — every real request from the page was blocked by the
-   browser's own CORS enforcement. Fixed by serving the dev server (and
-   therefore the page origin) from `http://localhost:4200` instead — see
-   `../../playwright.config.ts`'s `use.baseURL` / `webServer` comment for the
-   `curl` repro.
-2. **Not fixable here — a `datatug-cli`/`sneat-go-core` defect**: even from
-   an allowed origin, `GET /datatug/projects/project_summary` (which the
-   project page needs just to show its title, and which blocks J1 before it
-   can confirm the project loaded, and therefore J2/J3 too since they
-   navigate to the same project first) panics the server on every call,
-   closing the connection before any response is written (the browser sees
-   `HttpErrorResponse{status: 0, statusText: 'Unknown Error'}`, which is why
-   the project title never renders and nothing else follows in the agent
-   log — not a stalled/slow request). Reproduced 2026-09-09 against
-   `datatug-cli` main (a30132d, `CGO_ENABLED=0 go build .`) +
-   `datatug-demo-projects/demo-project-1`, both with a bare `curl` and by
-   running this suite itself — same agent-log signature CI saw (`GET
-   /datatug/ping` then exactly one `GET
-   /datatug/projects/project_summary?id=datatug-demo-project`, then
-   nothing):
+This file used to carry a second copy of that account — three
+`datatug-cli`/`datatug-demo-projects` defects that blocked every journey
+test. It went stale the moment those fixes landed and contradicted
+`journey/README.md` for as long as it stood, which is why the status now
+lives in exactly one place; please keep it that way rather than restoring
+a copy here. As of 2026-09-09 nothing is blocked: J1–J4 and
+`store-id-scheme.spec.ts` pass against the pinned `datatug-cli` tag in
+CI's `journey` job.
 
-   ```
-   $ curl -i 'http://127.0.0.1:8971/datatug/projects/project_summary?id=datatug-demo-project'
-   curl: (52) Empty reply from server
-   ```
+## A hypothesis that does not hold: `signed-in/` is not an auth gate
 
-   Server side:
-
-   ```
-   2026/09/09 GET 0 /datatug/projects/project_summary?id=datatug-demo-project
-   2026/09/09 http: panic serving 127.0.0.1:xxxxx: GetAuthTokenFromHttpRequest is nil
-     .../sneat-go-core@v0.67.3/apicore/request_validation.go:121 (VerifyRequest)
-     .../sneat-go-core@v0.67.3/apicore/api_http.go:39 (Execute)
-     pkg/server/endpoints/project_endpoints.go:46 (getProjectSummary)
-   ```
-
-   Root cause: `pkg/server/http_server.go:81` wires every `handle(...)`-routed
-   endpoint straight to `sneat-go-core/apicore.Execute`, whose `VerifyRequest`
-   unconditionally panics when the package-level
-   `apicore.GetAuthTokenFromHttpRequest` hook is unset
-   (`request_validation.go:118-121`) — before it even reads
-   `AuthRequired`/`AuthenticationRequired()`. `datatug serve` never assigns
-   that hook anywhere in the repo (`grep -rn GetAuthTokenFromHttpRequest`
-   outside `sneat-go-core` returns nothing): it authenticates the whole
-   process once, up front, via `--as`/`--role`/`--group` into a fixed
-   `secureread.Session` (`apps/datatugapp/commands/cmd_serve.go`
-   `resolveServeSession`), not per-request bearer tokens, so the
-   hosted-backend auth hook `apicore.Execute` expects was simply never
-   appropriate here. Every other `handle(...)`-routed endpoint
-   (`createProject`,
-   `getProjectItem`/`saveProjectItem`/`createProjectItem`-based handlers —
-   `getEntity`, `saveEntity`, the query/board equivalents) panics the same
-   way; only the bespoke `exec/select` / `exec/run_query` /
-   `execute_commands` handlers and the endpoints that bypass `handle()`
-   entirely (e.g. `entities/all_entities`) are unaffected. Needs a
-   `datatug-cli` fix — wire `apicore.GetAuthTokenFromHttpRequest` (e.g. to a
-   no-auth-required passthrough for the local `serve` command) — before any
-   journey test can pass.
-3. **Not fixable here — even past #2, a second `datatug-cli` /
-   `datatug-demo-projects` mismatch**: `GET /datatug/exec/select` (the
-   request the Album table page needs) fails against this exact demo
-   project:
-
-   ```
-   $ curl 'http://127.0.0.1:8971/datatug/exec/select?proj=datatug-demo-project&env=local&db=chinook-local&from=main.Album&limit=5'
-   {"error":"load environment \"local\": failed to load *datatug.Environment[local] from project: open .../demo-project-1/environments/local/environment-summary.json: no such file or directory"}
-   ```
-
-   `pkg/datatug-core/storage/filestore/loader_internals.go:165` (via
-   `environments_store.go`) only ever looks for a fixed
-   `environment-summary.json` (`storage.EnvironmentSummaryFileName`,
-   `file_names.go:79`) inside each `environments/<id>/` folder, but
-   `datatug-demo-projects/demo-project-1/environments/local/` ships
-   `local.env.json` instead — same mismatch in every other environment
-   folder in that project (`prod.env.json`, `QA.env.json`, `UAT.env.json`,
-   `dev.env.json`). Either the loader needs to also accept `<id>.env.json`,
-   or the demo project's environment files need renaming/duplicating to
-   `environment-summary.json` — a `datatug-cli` and/or
-   `datatug-demo-projects` fix, not a `datatug-apps` one.
-
-J2 additionally needs `GET /datatug/semantic/columns`, `GET
-/datatug/semantic/related` and `POST /datatug/queries/applicable`, none of
-which exist on `datatug-cli` main yet. See `journey.spec.ts`'s file header
-and per-test comments for the exact assertion each currently fails at.
-
-Blockers #2 and #3 are `datatug-cli`/`datatug-demo-projects`-side defects
-with no workaround available from this repo (a server that panics before
-writing a response can't be routed around from the client). A prior CI run
-(https://github.com/datatug/datatug-apps/actions/runs/34337467977)
-attributed J1's failure to the journey navigating straight into a
-`signed-in/**`-named route with no sign-in step instead — that hypothesis
-does not hold: `datatugRoutes`' `store/:storeId/**` subtree (see
-`libs/datatug/main/src/lib/routes/datatug-routing*.ts`) carries no
-`SNEAT_AUTH_GUARDS`, `DatatugAppComponent`'s shell has no auth gate, and
-`ProjectService`/`ProjectPageComponent` make a plain unauthenticated
-`HttpClient` call. "`signed-in/`" is only this app's directory-naming
-convention for pages under a store, not an auth-guarded route tree. Do not
-gate the `store/:storeId/**` routes behind sign-in or reach for the emulator
-sign-in recipe to "fix" this — neither addresses the actual failure. J1's
-assertions are correct as written; leave them unmodified until the CLI
-fixes land, then re-run this suite with `DATATUG_CLI_DIR` (or a
-`DATATUG_BIN` newer than a30132d fixing both) to confirm.
+Kept from the long blocker account this file used to carry, because it is
+the one part of that account still true and still worth not
+rediscovering. A journey failure here is
+never explained by "the test navigates into a `signed-in/**` route
+without signing in first". `datatugRoutes`' `store/:storeId/**` subtree
+carries no `SNEAT_AUTH_GUARDS` (verified 2026-09-10 —
+`datatug-routing.module.ts` spreads them onto `my`, `explore/:spaceId`
+and `explore-vault` only, and `datatug-routing-store.ts` adds none),
+`DatatugAppComponent`'s shell has no auth gate, and `ProjectService`
+issues a plain unauthenticated `HttpClient` call. `signed-in/` is only
+this app's directory-naming convention for pages under a store. Do not
+gate the `store/:storeId/**` routes behind sign-in, and do not reach for
+the emulator sign-in recipe, to "fix" a journey failure — neither
+addresses any failure mode this suite has actually had.
