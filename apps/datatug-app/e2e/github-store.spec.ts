@@ -346,4 +346,70 @@ test.describe('GitHub-store project — every side-menu page loads without error
 
     expect(errors).toEqual([]);
   });
+
+  /**
+   * S158 — founder report 2026-09-10, production build ed66c71: loading the
+   * founder's exact URL (the test just above) logged `NG04002: Cannot match
+   * any routes` three times and the app ended on `/` with an empty router
+   * outlet. Investigation (this task) found the actual request Angular's
+   * router sees is NOT `%2F`-encoded: this app's own Cloudflare Workers
+   * Assets config (`wrangler.jsonc`, `not_found_handling:
+   * "single-page-application"`, unchanged since 2026-06-08, long before
+   * this bug was ever reported) 307-redirects a cold top-level navigation
+   * to such a URL, decoding `%2F` back into a literal `/` in the process —
+   * confirmed live both via `wrangler dev` + `curl -v` against this repo's
+   * own build (`Location: .../query/artists/artists_with_albums`, no
+   * `%2F`) and via a direct request to https://datatug.app. So the id ends
+   * up split across TWO real path segments by the time the SPA's router
+   * sees it, not preserved as one `%2F`-encoded segment the way the test
+   * above (and every in-app "open query" click, which never round-trips
+   * through a redirect at all) sees it. `query/:queryId` (exactly one
+   * param segment, the pre-existing route) never matched that shape; the
+   * fix widens it to a literal `'query'` segment with a wildcard child
+   * (`datatug-routing-proj.ts`), matching 1..N trailing segments. This
+   * test reproduces the REAL failure mode directly — a `page.goto()` to
+   * the id ALREADY split into two segments, the exact shape the redirect
+   * produces — without needing a redirect-capable server in this suite.
+   */
+  test('a direct navigation to a folder-qualified query id already split across two real path segments (the shape this app\'s own Cloudflare redirect produces) still loads the query page, not NG04002', async ({
+    page,
+  }) => {
+    const errors = installErrorLoggerWatch(page);
+    const consoleErrors: string[] = [];
+    page.on('console', (message) => {
+      if (message.type() === 'error') {
+        consoleErrors.push(message.text());
+      }
+    });
+
+    await page.goto(
+      `${PROJECT_URL}/query/artists/artists_with_albums?id=artists%2Fartists_with_albums&editor=text&env=local`,
+    );
+
+    // The page-title component's own "{Page title} @ {Project title}"
+    // header (sneat-datatug-page-title.component.ts) — proves the route
+    // actually activated QueryPageComponent inside the real project
+    // context, not just that *something* rendered.
+    const pageTitle = page.locator('sneat-datatug-page-title');
+    await expect(pageTitle).toContainText('Query', { timeout: 20_000 });
+    await expect(pageTitle).toContainText('DataTug Demo Project 1');
+
+    const bodyText = page.getByTestId('query-body-text');
+    await expect(bodyText).toBeVisible({ timeout: 20_000 });
+    await expect
+      .poll(
+        () => bodyText.evaluate((el: unknown) => (el as { value?: string }).value),
+        { timeout: 20_000 },
+      )
+      .toContain('FROM Artist');
+
+    expect(errors).toEqual([]);
+    // NG04002 surfaces as Angular's own internal `console.error`, not
+    // through `ErrorLoggerService.logError` (the `errors` watch above) —
+    // check for it directly.
+    expect(consoleErrors.filter((text) => text.includes('NG04002'))).toEqual([]);
+    // The founder's own report: the app ending up on the bare "/" store
+    // route with an empty outlet, not on the query page at all.
+    expect(new URL(page.url()).pathname).toContain('/query/');
+  });
 });
