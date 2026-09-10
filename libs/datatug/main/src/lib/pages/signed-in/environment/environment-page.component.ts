@@ -16,7 +16,6 @@ import {
   IonList,
   IonMenuButton,
   IonSkeletonText,
-  IonTitle,
   IonToolbar,
 } from '@ionic/angular';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
@@ -35,6 +34,7 @@ import { DatatugServicesProjectModule } from '../../../services/project/datatug-
 import { DatatugServicesStoreModule } from '../../../services/repo/datatug-services-store.module';
 import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
+import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
 
 @Component({
   selector: 'sneat-datatug-environment',
@@ -65,12 +65,12 @@ import { EnvironmentService } from '../../../services/unsorted/environment.servi
     DatatugServicesStoreModule,
     DatatugServicesUnsortedModule,
     FormsModule,
+    SneatDatatugPageTitleComponent,
     IonHeader,
     IonToolbar,
     IonButtons,
     IonMenuButton,
     IonBackButton,
-    IonTitle,
     IonContent,
     IonCard,
     IonCardHeader,

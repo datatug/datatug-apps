@@ -81,6 +81,7 @@ import { DatatugServicesProjectModule } from '../../../services/project/datatug-
 import { DatatugServicesStoreModule } from '../../../services/repo/datatug-services-store.module';
 import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
 import { ForeignKeyCardComponent } from './foreign-key-card/foreign-key-card.component';
+import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
 
 // Registers the same two icon names SemanticMarkerComponent uses
 // (libs/datatug/semantic/.../semantic-marker.component.ts) so they resolve when this
@@ -130,6 +131,7 @@ addIcons({ pricetag, helpCircleOutline });
     LimitationHeaderComponent,
     CodeEditor,
     DataGridComponent,
+    SneatDatatugPageTitleComponent,
     IonHeader,
     IonToolbar,
     IonButtons,

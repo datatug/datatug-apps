@@ -19,7 +19,6 @@ import {
   IonSegment,
   IonSegmentButton,
   IonText,
-  IonTitle,
   IonToolbar,
 } from '@ionic/angular';
 import { map, takeUntil } from 'rxjs/operators';
@@ -34,6 +33,7 @@ import {
   IDbCatalogSummary,
   getDbServerFromId,
 } from '../../../models/definition/apis/database';
+import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
 
 @Component({
   selector: 'sneat-datatug-dbserver',
@@ -50,12 +50,12 @@ import {
     // `NG0201` (confirmed live, S136) — same fix, same cause, as
     // `EntitiesPageComponent`'s own identical doc comment.
     DatatugServicesUnsortedModule,
+    SneatDatatugPageTitleComponent,
     IonHeader,
     IonToolbar,
     IonButtons,
     IonBackButton,
     IonMenuButton,
-    IonTitle,
     IonContent,
     IonCard,
     IonItemDivider,

@@ -20,7 +20,6 @@ import {
   IonMenuButton,
   IonSegment,
   IonSegmentButton,
-  IonTitle,
   IonToolbar,
   ModalController,
   NavController,
@@ -38,6 +37,7 @@ import { ProjectContextService } from '../../../services/project/project-context
 import { DatatugServicesProjectModule } from '../../../services/project/datatug-services-project.module';
 import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
 import { DbServerService } from '../../../services/unsorted/db-server.service';
+import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
 
 @Component({
   selector: 'sneat-datatug-servers',
@@ -75,11 +75,11 @@ import { DbServerService } from '../../../services/unsorted/db-server.service';
     DatatugServicesProjectModule,
     DatatugServicesUnsortedModule,
     FormsModule,
+    SneatDatatugPageTitleComponent,
     IonHeader,
     IonToolbar,
     IonButtons,
     IonBackButton,
-    IonTitle,
     IonContent,
     IonCard,
     IonItemDivider,

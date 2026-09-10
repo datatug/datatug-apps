@@ -4,7 +4,9 @@
       <ion-menu-button />
       <ion-back-button [defaultHref]="defaultBackUrl" />
     </ion-buttons>
-    <ion-title>Environment: {{ projEnv?.title || projEnv?.id }}</ion-title>
+    <sneat-datatug-page-title
+      [pageTitle]="'Environment: ' + (projEnv?.title || projEnv?.id || '')"
+    />
   </ion-toolbar>
 </ion-header>
 
