@@ -21,6 +21,7 @@ import { MenuStoreSelectorComponent } from './menu-store-selector.component';
 import { MenuProjectSelectorComponent } from './menu-project-selector.component';
 import { MenuEnvSelectorComponent } from './menu-env-selector.component';
 import { DatatugAuthMenuItemComponent } from './datatug-auth-menu-item.component';
+import { MenuBuildInfoComponent } from './build-info/menu-build-info.component';
 
 @Component({
   selector: 'sneat-datatug-menu',
@@ -39,6 +40,7 @@ import { DatatugAuthMenuItemComponent } from './datatug-auth-menu-item.component
     MenuProjectSelectorComponent,
     MenuEnvSelectorComponent,
     ProjectMenuComponent,
+    MenuBuildInfoComponent,
   ],
   // DatatugUserService is providedIn: 'root' — see its own file for why;
   // NewProjectService still needs its own local provider here.

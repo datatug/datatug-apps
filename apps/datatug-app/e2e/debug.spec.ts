@@ -26,7 +26,13 @@ test('debug page throws an error with the message from the textbox', async ({
   await expect(page.locator('sneat-datatug-debug')).toBeVisible();
   await expect(page.getByText('Debug')).toBeVisible();
 
-  await page.locator('ion-input input').fill('Boom from e2e');
+  // Scoped to sneat-datatug-debug: a bare 'ion-input input' now also
+  // matches the side menu's build-info panel (feat/build-info-menu,
+  // libs/datatug/main/src/lib/menu/build-info/), which renders an
+  // ion-input on every page.
+  await page
+    .locator('sneat-datatug-debug ion-input input')
+    .fill('Boom from e2e');
   await page.getByRole('button', { name: 'Throw error' }).click();
 
   await expect
