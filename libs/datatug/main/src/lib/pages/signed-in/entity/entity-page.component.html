@@ -12,7 +12,7 @@
   <ion-card>
     <ion-item>
       <ion-label position="floating" color="medium">Name</ion-label>
-      <ion-input style="font-weight: bold" [value]="entityId" readonly />
+      <ion-input style="font-weight: bold" [value]="entityId()" readonly />
     </ion-item>
   </ion-card>
 
@@ -26,9 +26,9 @@
       </ion-buttons>
     </ion-item>
     <ion-list class="last-child-no-border">
-      @if (entity?.fields?.length) {
+      @if (entity()?.fields?.length) {
         <ion-item-group>
-          @for (field of entity?.fields || []; track field.id) {
+          @for (field of entity()?.fields || []; track field.id) {
             <ion-item>
               <ion-label>
                 {{ field.id }}
@@ -53,10 +53,14 @@
     <ion-item>
       <ion-label color="medium">Source</ion-label>
       <ion-badge>{{ getEntityContentType() }}</ion-badge>
-      @if (entity?.options?.sources) {
-        <ion-select [(ngModel)]="sourceIndex" interface="popover">
+      @if (entity()?.options?.sources) {
+        <ion-select
+          [ngModel]="sourceIndex()"
+          (ngModelChange)="sourceIndex.set($event)"
+          interface="popover"
+        >
           @for (
-            source of entity?.options?.sources || [];
+            source of entity()?.options?.sources || [];
             track $index;
             let i = $index
           ) {
@@ -65,7 +69,7 @@
         </ion-select>
       }
     </ion-item>
-    @if (!sourceData) {
+    @if (!sourceData()) {
       <ion-card-content>
         <p>Loading...</p>
       </ion-card-content>
@@ -73,8 +77,8 @@
     <sneat-datagrid
       layout="fitData"
       [height]="undefined"
-      [columns]="sourceCols"
-      [data]="sourceData"
+      [columns]="sourceCols()"
+      [data]="sourceData()"
     />
   </ion-card>
 </ion-content>

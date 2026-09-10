@@ -1,4 +1,10 @@
-import { Component, OnDestroy, OnInit, inject } from '@angular/core';
+import {
+  Component,
+  OnDestroy,
+  OnInit,
+  inject,
+  signal,
+} from '@angular/core';
 import {
   IonBackButton,
   IonButton,
@@ -82,9 +88,18 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
   tab = 'shared';
   noItemsText?: string;
 
-  boards?: IProjBoard[];
+  // Signals, not plain fields: this app is zoneless
+  // (provideZonelessChangeDetection(), main.ts). Both are written from
+  // setProject()/onFolderReceived() below, which are themselves called from
+  // inside `.subscribe()` callbacks — a plain field written by a method
+  // *called from* an async callback is exactly as zoneless-unsafe as one
+  // written directly inside it; neither triggers change detection on its
+  // own. See AGENTS.md's "Change detection & state" section and
+  // pages/signed-in/project/project-page.component.ts (PR #95) for the
+  // established pattern.
+  readonly boards = signal<IProjBoard[] | undefined>(undefined);
   defaultHref?: string;
-  project?: IProjectContext;
+  readonly project = signal<IProjectContext | undefined>(undefined);
 
   folderPath = '~';
 
@@ -124,32 +139,30 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
     const path = this.folderPath;
     if (
       project?.ref?.projectId &&
-      project.ref.projectId !== this.project?.ref?.projectId
+      project.ref.projectId !== this.project()?.ref?.projectId
     ) {
       this.foldersService
         .watchFolder({ ...project.ref, id: path })
         .pipe(takeUntil(this.destroyed))
         .subscribe((folder) => this.onFolderReceived(path, folder));
     }
-    this.project = project;
+    this.project.set(project);
   }
 
   private onFolderReceived = (path: string, folder?: IFolder | null): void => {
     if (this.folderPath !== path) {
       return;
     }
-    this.boards = [];
-    if (folder?.boards) {
-      this.boards = folderItemsAsList(folder.boards);
-    }
+    this.boards.set(folder?.boards ? folderItemsAsList(folder.boards) : []);
   };
 
   protected getLinkToBoard = (item: unknown) => {
     const projItemBrief = item as IProjItemBrief;
+    const project = this.project();
     return (
-      (this.project &&
+      (project &&
         this.datatugNavService.projectPageUrl(
-          this.project.ref,
+          project.ref,
           'board',
           projItemBrief.id,
         )) ||
@@ -163,8 +176,9 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
   }
 
   public goBoard(item: unknown): void {
-    if (this.project) {
-      this.datatugNavService.goBoard(this.project, <IProjItemBrief>item);
+    const project = this.project();
+    if (project) {
+      this.datatugNavService.goBoard(project, <IProjItemBrief>item);
     }
   }
 
@@ -193,17 +207,24 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
             // const store: IProjStoreRef = {
             // 	type: 'firestore',
             // };
-            if (!this.project) {
+            const project = this.project();
+            if (!project) {
               return;
             }
             this.boardService
               .createNewBoard({
-                projectRef: this.project.ref,
+                projectRef: project.ref,
                 name: value.title as string,
               })
               .subscribe({
                 next: (board) => {
-                  this.boards?.push(board);
+                  // Matches the pre-signal behaviour: if the list hasn't
+                  // loaded yet, this silently no-ops (same as the old
+                  // `this.boards?.push()`).
+                  const boards = this.boards();
+                  if (boards) {
+                    this.boards.set([...boards, board]);
+                  }
                 },
                 error: this.logError(
                   () =>

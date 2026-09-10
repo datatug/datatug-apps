@@ -38,8 +38,8 @@
     </ion-card-header>
     @if (tab === "db") {
       <ion-list>
-        @if (dbServers) {
-          @for (dbServer of dbServers; track dbServer) {
+        @if (dbServers()) {
+          @for (dbServer of dbServers(); track dbServer) {
             <ion-item tappable (click)="goDbServer(dbServer)">
               <ion-label>{{ dbServer.dbServer.host }}</ion-label>
               <ion-badge color="medium">{{
@@ -60,7 +60,7 @@
           }
           <ion-item>
             <ion-label color="medium"
-              >Total: {{ dbServers.length }} database servers
+              >Total: {{ dbServers()?.length }} database servers
             </ion-label>
             <ion-buttons slot="end">
               <ion-button fill="outline" (click)="addDbServer()"

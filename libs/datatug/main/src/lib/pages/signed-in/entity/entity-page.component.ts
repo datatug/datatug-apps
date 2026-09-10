@@ -1,5 +1,5 @@
 import { JsonPipe } from '@angular/common';
-import { Component, OnDestroy, inject } from '@angular/core';
+import { Component, OnDestroy, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import {
@@ -76,50 +76,59 @@ export class EntityPageComponent implements OnDestroy {
   readonly entityService = inject(EntityService);
   readonly http = inject(HttpClient);
 
-  storeId?: string;
-  projectId?: string;
-  entityId?: string;
-  projEntity: IProjEntity;
-  entity?: IEntity;
-  public sourceIndex?: number;
-  sourceData?: RecordsetValue[][];
-  sourceCols?: IGridColumn[];
+  // Signals, not plain fields: this app is zoneless
+  // (provideZonelessChangeDetection(), main.ts) — every one of these is
+  // written from inside `.subscribe()` callbacks below, which never
+  // trigger change detection on their own for a plain field. See
+  // AGENTS.md's "Change detection & state" section and
+  // pages/signed-in/project/project-page.component.ts (PR #95) for the
+  // established pattern.
+  readonly storeId = signal<string | undefined>(undefined);
+  readonly projectId = signal<string | undefined>(undefined);
+  readonly entityId = signal<string | undefined>(undefined);
+  readonly projEntity = signal<IProjEntity>(history.state.entity);
+  readonly entity = signal<IEntity | undefined>(undefined);
+  public readonly sourceIndex = signal<number | undefined>(undefined);
+  readonly sourceData = signal<RecordsetValue[][] | undefined>(undefined);
+  readonly sourceCols = signal<IGridColumn[] | undefined>(undefined);
   private destroyed = new Subject<void>();
 
   constructor() {
     const route = this.route;
 
-    this.projEntity = history.state.entity;
     route.paramMap.pipe(takeUntil(this.destroyed)).subscribe((params) => {
-      this.storeId = params.get(routingParamStoreId) || undefined;
-      this.projectId = params.get(routingParamProjectId) || undefined;
+      const storeId = params.get(routingParamStoreId) || undefined;
+      const projectId = params.get(routingParamProjectId) || undefined;
       const entityId = params.get(routingParamEntityId) || undefined;
-      this.entityId = entityId;
-      if (!this.storeId || !this.projectId || !this.entityId) {
+      this.storeId.set(storeId);
+      this.projectId.set(projectId);
+      this.entityId.set(entityId);
+      if (!storeId || !projectId || !entityId) {
         return;
       }
       this.entityService
-        .getEntity(this.storeId, this.projectId, this.entityId)
+        .getEntity(storeId, projectId, entityId)
         .pipe(
           takeUntil(this.destroyed),
-          takeWhile(() => this.entityId === entityId),
+          takeWhile(() => this.entityId() === entityId),
         )
         .subscribe({
           next: (entity) => {
-            this.projEntity = entity;
-            this.entity = entity.dbo; // TODO: workaround cast
+            this.projEntity.set(entity);
+            this.entity.set(entity.dbo); // TODO: workaround cast
             const sourcesLen = entity.dbo?.options?.sources?.length;
+            const sourceIndex = this.sourceIndex();
             if (!sourcesLen) {
-              this.sourceIndex = undefined;
+              this.sourceIndex.set(undefined);
             } else if (
-              (sourcesLen && this.sourceIndex === undefined) ||
-              (this.sourceIndex !== undefined &&
-                this.sourceIndex + 1 > sourcesLen)
+              (sourcesLen && sourceIndex === undefined) ||
+              (sourceIndex !== undefined && sourceIndex + 1 > sourcesLen)
             ) {
-              this.sourceIndex = 0;
+              const newSourceIndex = 0;
+              this.sourceIndex.set(newSourceIndex);
               const source =
                 entity.dbo.options?.sources &&
-                entity.dbo.options?.sources[this.sourceIndex];
+                entity.dbo.options?.sources[newSourceIndex];
               if (!source) {
                 return;
               }
@@ -128,8 +137,8 @@ export class EntityPageComponent implements OnDestroy {
                 .pipe(takeUntil(this.destroyed))
                 .subscribe({
                   next: (rows) => {
-                    this.sourceData = rows;
-                    this.sourceCols = [
+                    this.sourceData.set(rows);
+                    this.sourceCols.set([
                       { field: 'region', dbType: 'NVARCHAR', title: 'region' },
                       {
                         field: 'alpha-2',
@@ -142,7 +151,7 @@ export class EntityPageComponent implements OnDestroy {
                         title: 'alpha-3',
                       },
                       { field: 'name', dbType: 'NVARCHAR', title: 'name' },
-                    ];
+                    ]);
                   },
                   error: this.errorLogger.logErrorHandler(
                     'Failed to get source data',
@@ -157,10 +166,12 @@ export class EntityPageComponent implements OnDestroy {
   }
 
   protected getEntityContentType(): EntityContentType | undefined {
-    if (this.sourceIndex === undefined || !this.entity?.options?.sources) {
+    const sourceIndex = this.sourceIndex();
+    const entity = this.entity();
+    if (sourceIndex === undefined || !entity?.options?.sources) {
       return undefined;
     }
-    return this.entity.options.sources[this.sourceIndex].contentType;
+    return entity.options.sources[sourceIndex].contentType;
   }
 
   ngOnDestroy(): void {

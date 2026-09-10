@@ -1,4 +1,4 @@
-import { Component, OnDestroy, inject } from '@angular/core';
+import { Component, OnDestroy, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
   IonBackButton,
@@ -94,24 +94,44 @@ export class ServersPageComponent implements OnDestroy {
 
   protected tab: 'db' | 'web' | 'api' = 'db';
 
-  protected dbServers?: IProjDbServerSummary[];
+  // A signal, not a plain field: this app is zoneless
+  // (provideZonelessChangeDetection(), main.ts) — written from inside
+  // `.subscribe()` callbacks below, which never trigger change detection on
+  // their own for a plain field. See AGENTS.md's "Change detection & state"
+  // section and pages/signed-in/project/project-page.component.ts (PR #95)
+  // for the established pattern.
+  protected readonly dbServers = signal<IProjDbServerSummary[] | undefined>(
+    undefined,
+  );
 
   private readonly destroyed = new Subject<void>();
-  private target?: IProjectRef;
+  // Written from the same `.subscribe()` callback as `dbServers` above.
+  // Never read by the template, but kept as a signal too for consistency
+  // and so tools/check-zoneless-fields.mjs doesn't need a carve-out for it.
+  private readonly target = signal<IProjectRef | undefined>(undefined);
+  // NOTE: mutated in place (`this.isDeletingServer[id] = ...` /
+  // `delete this.isDeletingServer[id]`) from deleteDbServer()'s
+  // `.subscribe()` callback below — a different zoneless-unsafe shape than
+  // the "this.field = ..." pattern tools/check-zoneless-fields.mjs looks
+  // for (it's an in-place mutation of a Record, not a reassignment of this
+  // field), so the detector does not flag it and it is intentionally left
+  // unconverted in this batch — see the S138 report for the flagged
+  // follow-up.
   private readonly isDeletingServer: Record<string, boolean> = {};
 
   constructor() {
     this.projectContextService.current$
       .pipe(takeUntil(this.destroyed))
       .subscribe((target) => {
+        const previousTarget = this.target();
         if (
           target &&
-          (this.target?.storeId !== target?.storeId ||
-            this.target?.projectId !== target?.projectId)
+          (previousTarget?.storeId !== target?.storeId ||
+            previousTarget?.projectId !== target?.projectId)
         ) {
           this.loadDbServers(target);
         }
-        this.target = target;
+        this.target.set(target);
       });
   }
 
@@ -123,7 +143,7 @@ export class ServersPageComponent implements OnDestroy {
     this.navCtrl
       .navigateForward([
         'project',
-        '.@' + this.target?.storeId,
+        '.@' + this.target()?.storeId,
         'servers',
         'db',
         dbServer.dbServer.driver,
@@ -141,7 +161,7 @@ export class ServersPageComponent implements OnDestroy {
     this.isDeletingServer[id] = true;
     this.dbServerService.deleteDbServer(dbServer.dbServer).subscribe({
       next: () => {
-        this.dbServers = this.dbServers?.filter((s) => s !== dbServer);
+        this.dbServers.set(this.dbServers()?.filter((s) => s !== dbServer));
         delete this.isDeletingServer[id];
       },
       error: (err) => {
@@ -164,7 +184,12 @@ export class ServersPageComponent implements OnDestroy {
       .then((modal) => {
         modal.onDidDismiss().then((result) => {
           const projDbServerSummary = result.data as IProjDbServerSummary;
-          this.dbServers?.push(projDbServerSummary);
+          const dbServers = this.dbServers();
+          // Matches the pre-signal behaviour: if the list hasn't loaded yet,
+          // this silently no-ops (same as the old `this.dbServers?.push()`).
+          if (dbServers) {
+            this.dbServers.set([...dbServers, projDbServerSummary]);
+          }
         });
         modal
           .present()
@@ -186,7 +211,7 @@ export class ServersPageComponent implements OnDestroy {
   private loadDbServers(target: IProjectRef): void {
     this.dbServerService.getDbServers(target).subscribe({
       next: (dbServers) => {
-        this.dbServers = dbServers || [];
+        this.dbServers.set(dbServers || []);
       },
       error: (err) =>
         this.errorLogger.logError(err, 'Failed to load list of DB servers'),
