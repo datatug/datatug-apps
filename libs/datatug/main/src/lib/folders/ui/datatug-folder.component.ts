@@ -91,7 +91,7 @@ export class DatatugFolderComponent implements OnChanges, OnDestroy {
   public readonly folder = signal<IFolder | undefined | null>(undefined);
 
   public numberOf(tab: string): number {
-    return (this.folder()?.numberOf && this.numberOf(tab)) || 0;
+    return this.folder()?.numberOf?.[tab] ?? 0;
   }
 
   public getItemLink = (path: string) => (item: IProjItemBrief) =>
