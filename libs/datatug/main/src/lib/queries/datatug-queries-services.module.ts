@@ -1,15 +1,8 @@
 import { NgModule } from '@angular/core';
 import { DatatugServicesStoreModule } from '../services/repo/datatug-services-store.module';
-import { ProjectItemServiceFactory } from '../services/repo/project-item-service';
 import { ProjItemServiceModule } from '../services/repo/project-item-service.module';
-import { StoreApiService } from '../services/repo/store-api.service';
 import { DatatugServicesUnsortedModule } from '../services/unsorted/datatug-services-unsorted.module';
-import { QueriesService } from './queries.service';
-import { QUERY_PROJ_ITEM_SERVICE } from './queries.service.token';
 import { QueryContextSqlService } from './query-context-sql.service';
-import { Firestore } from 'firebase/firestore';
-import { QueryEditorStateService } from './query-editor-state-service';
-import { QueriesUiService } from './queries-ui.service';
 
 @NgModule({
   imports: [
@@ -18,25 +11,13 @@ import { QueriesUiService } from './queries-ui.service';
     DatatugServicesUnsortedModule,
   ],
   providers: [
-    {
-      provide: QUERY_PROJ_ITEM_SERVICE,
-      deps: [Firestore, ProjectItemServiceFactory, StoreApiService],
-      useFactory: (
-        db: Firestore,
-        projectItemServiceFactory: ProjectItemServiceFactory,
-        repoProvider: StoreApiService,
-      ) =>
-        projectItemServiceFactory.newProjectItemService(
-          db,
-          repoProvider,
-          'queries',
-          'query',
-        ),
-    },
-    QueriesService,
     QueryContextSqlService,
-    QueryEditorStateService,
-    QueriesUiService,
+    // `QUERY_PROJ_ITEM_SERVICE`, `QueriesService`, `QueryEditorStateService`
+    // and `QueriesUiService` used to be listed here too — all four are
+    // `providedIn: 'root'` now (S157: a module-level entry would shadow the
+    // root singleton in every injector that imports this module, same trap
+    // PR #96/#115 fixed for other services), so they're resolved from root
+    // instead. See `query-editor-state-service.ts`'s own comment for why.
   ],
 })
 export class DatatugQueriesServicesModule {}
