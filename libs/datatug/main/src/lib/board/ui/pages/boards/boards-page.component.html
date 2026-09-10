@@ -23,9 +23,9 @@
 
 <ion-content color="light">
   <sneat-card-list
-    [isLoading]="!boards"
+    [isLoading]="!boards()"
     [noItemsText]="noItemsText"
-    [items]="boards"
+    [items]="boards()"
     itemIcon="easel-outline"
     [tab]="tab"
     [tabs]="[
@@ -33,7 +33,7 @@
       { id: 'favorite', title: 'Favorite' },
     ]"
     (tabChanged)="tabChanged($event)"
-    [isFilterable]="boards && boards.length > 7"
+    [isFilterable]="boards() && boards()!.length > 7"
     [getRouterLink]="getLinkToBoard"
     (itemClick)="goBoard($event)"
   />

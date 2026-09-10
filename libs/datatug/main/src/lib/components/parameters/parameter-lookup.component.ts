@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, input } from '@angular/core';
+import { Component, OnInit, inject, input, signal } from '@angular/core';
 import { DataGridComponent } from '@sneat/datagrid';
 import { Observable, Subject } from 'rxjs';
 import { first } from 'rxjs/operators';
@@ -36,7 +36,14 @@ export class ParameterLookupComponent implements OnInit {
   readonly envId = input<string>();
   readonly lookupResponse = input<Observable<IExecuteResponse>>();
 
-  grid?: IGridDef;
+  // A signal, not a plain field: this app is zoneless
+  // (provideZonelessChangeDetection(), main.ts) — written from inside a
+  // `.subscribe()` callback in ngOnInit() below, which never triggers change
+  // detection on its own for a plain field. See AGENTS.md's "Change
+  // detection & state" section and
+  // pages/signed-in/project/project-page.component.ts (PR #95) for the
+  // established pattern.
+  readonly grid = signal<IGridDef | undefined>(undefined);
 
   ngOnInit() {
     this.lookupResponse()?.pipe(first()).subscribe({
@@ -46,7 +53,7 @@ export class ParameterLookupComponent implements OnInit {
           const firstItem = (firstCommand.items as ICommandResponseItem[])[0];
           const itemWithRecordset = firstItem as ICommandResponseWithRecordset;
           const recordset = itemWithRecordset.value;
-          this.grid = recordsetToGridDef({ result: recordset });
+          this.grid.set(recordsetToGridDef({ result: recordset }));
         } catch (e) {
           this.errorLogger.logError(e, 'Failed to process lookup response');
         }
