@@ -1,10 +1,35 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, RouterLink, provideRouter } from '@angular/router';
+import { provideIonicAngular } from '@ionic/angular/provide';
+import {
+  IonBackButton,
+  IonButton,
+  IonButtons,
+  IonCard,
+  IonCardContent,
+  IonCardHeader,
+  IonCardTitle,
+  IonContent,
+  IonHeader,
+  IonIcon,
+  IonInput,
+  IonItem,
+  IonItemDivider,
+  IonLabel,
+  IonList,
+  IonMenuButton,
+  IonTitle,
+  IonToolbar,
+} from '@ionic/angular';
+import { SneatErrorCardComponent } from '@sneat/components';
 import { ErrorLogger } from '@sneat/core';
-import { of } from 'rxjs';
+import { BehaviorSubject, of } from 'rxjs';
 
-import { DatatugStorePageComponent } from './datatug-store-page.component';
+import {
+  DatatugStorePageComponent,
+  GITHUB_DEMO_PROJECTS,
+} from './datatug-store-page.component';
 import { DatatugStoreService } from '../../../services/repo/datatug-store.service';
 import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
 import {
@@ -12,9 +37,45 @@ import {
   IAgentState,
 } from '../../../services/repo/agent-state.service';
 import { NewProjectService } from '../../../project/new-project/new-project.service';
-import { DatatugUserService } from '../../../services/base/datatug-user-service';
+import {
+  DatatugUserService,
+  IDatatugUserState,
+} from '../../../services/base/datatug-user-service';
 
 const DEMO_PROJECT_ID = 'datatug-demo-projects@datatug@demo-project-1';
+
+// Real-template imports for the `describe('project list gating ...')` block
+// below, minus `DatatugServicesStoreModule` (the real component's own
+// import): that module's `providers` — `DatatugStoreService`,
+// `AgentStateService`, `DatatugStoreServiceFactory`,
+// `DatatugStoreFirestoreService` (which itself needs a real `Firestore`
+// injectable, `provideFirestore()`, not set up in any spec here), ... — are
+// scoped to the component's own injector and would shadow the root-level
+// mocks configured per test below. Every other real template dependency
+// (Ionic components, `RouterLink`, `SneatErrorCardComponent`) is kept so the
+// actual template (not a stand-in) is what's under test.
+const REAL_TEMPLATE_IMPORTS = [
+  SneatErrorCardComponent,
+  RouterLink,
+  IonHeader,
+  IonToolbar,
+  IonButtons,
+  IonMenuButton,
+  IonBackButton,
+  IonTitle,
+  IonContent,
+  IonCard,
+  IonList,
+  IonItemDivider,
+  IonLabel,
+  IonButton,
+  IonIcon,
+  IonItem,
+  IonCardHeader,
+  IonCardTitle,
+  IonCardContent,
+  IonInput,
+];
 
 /** Matches `db-model-page.component.spec.ts`'s own `window.history` mock
  * pattern (this file's `store` is the analogue of that spec's `dbmodel`). */
@@ -308,6 +369,149 @@ describe('StorePageComponent', () => {
 
       expect(nav.goProject).not.toHaveBeenCalled();
       expect(component.githubFormError()).toBeTruthy();
+    });
+  });
+
+  // Founder ruling 2026-09-11 (post-PR-#102 production check): GitHub is a
+  // public, read-only store — its known projects (the demo project, merged
+  // in by `withGithubDemoProjects()`) and the "Open a GitHub project" form
+  // must render for anonymous visitors, not sit behind "Please sign in to
+  // see projects". firestore (DataTug Cloud) and agent stores are
+  // unchanged. Every other `describe` above overrides the component to an
+  // empty template (`set: { template: '' }`), which cannot catch a
+  // template-level gating regression like this one — that gap is exactly
+  // how the bug shipped in #102. These render the real, un-stubbed
+  // template instead.
+  describe('project list gating in the real template', () => {
+    let authState: BehaviorSubject<IDatatugUserState>;
+
+    beforeEach(async () => {
+      // The outer `describe`'s own `beforeEach` (runs before this one, per
+      // Jasmine/Vitest nesting order) already calls
+      // `TestBed.createComponent()`, which instantiates the module — after
+      // that, `TestBed.configureTestingModule()` throws ("test module has
+      // already been instantiated"). Reset first so this block can
+      // configure its own module from a clean slate.
+      TestBed.resetTestingModule();
+
+      authState = new BehaviorSubject<IDatatugUserState>({
+        status: 'notAuthenticated',
+        record: null,
+      });
+
+      await TestBed.configureTestingModule({
+        imports: [DatatugStorePageComponent],
+        schemas: [CUSTOM_ELEMENTS_SCHEMA],
+        providers: [
+          provideRouter([]),
+          provideIonicAngular(),
+          {
+            provide: ErrorLogger,
+            useValue: {
+              logError: vi.fn(),
+              logErrorHandler: vi.fn(() => vi.fn()),
+            },
+          },
+          {
+            provide: ActivatedRoute,
+            useValue: {
+              queryParamMap: of({ get: () => null }),
+              paramMap: of({ get: () => null }),
+              snapshot: { paramMap: { get: () => null }, params: {} },
+            },
+          },
+          { provide: DatatugStoreService, useValue: { getProjects: vi.fn() } },
+          {
+            provide: DatatugNavService,
+            useValue: { goProject: vi.fn(), goStore: vi.fn() },
+          },
+          {
+            provide: AgentStateService,
+            useValue: { watchAgentInfo: vi.fn(() => of()) },
+          },
+          {
+            provide: NewProjectService,
+            useValue: { openNewProjectDialog: vi.fn() },
+          },
+          { provide: DatatugUserService, useValue: { datatugUserState: authState } },
+        ],
+      })
+        .overrideComponent(DatatugStorePageComponent, {
+          set: {
+            imports: REAL_TEMPLATE_IMPORTS,
+            providers: [],
+            schemas: [CUSTOM_ELEMENTS_SCHEMA],
+          },
+        })
+        .compileComponents();
+    });
+
+    function render(
+      storeId: string,
+      projects: typeof GITHUB_DEMO_PROJECTS | undefined,
+    ): ComponentFixture<DatatugStorePageComponent> {
+      const f = TestBed.createComponent(DatatugStorePageComponent);
+      f.componentInstance.storeId = storeId;
+      f.componentInstance.projects = projects;
+      f.detectChanges();
+      return f;
+    }
+
+    // `ion-label`'s real Stencil shadow-DOM implementation does not reliably
+    // surface a BARE text-node child (e.g. "Please sign in to see
+    // projects") through `Element.textContent` read on any ancestor in this
+    // vitest/happy-dom environment — verified empirically: the same text is
+    // present in `innerHTML`'s serialized markup, and an ELEMENT child
+    // inside an `ion-label` (e.g. this template's project-title `<h3>`) DOES
+    // come through `textContent` fine, so this is specifically a bare-text-
+    // node-in-`ion-label` quirk of this test environment, not a real
+    // rendering bug. `innerHTML` is unaffected (it's a markup serialization,
+    // not the same runtime aggregation), so assert against it instead.
+    const html = (f: ComponentFixture<DatatugStorePageComponent>): string =>
+      (f.nativeElement as HTMLElement).innerHTML;
+
+    it('anonymous + GitHub store: lists the demo project and shows the "Open a GitHub project" form, no sign-in prompt', () => {
+      authState.next({ status: 'notAuthenticated', record: null });
+
+      const f = render('github.com', [...GITHUB_DEMO_PROJECTS]);
+
+      expect(html(f)).not.toContain('Please sign in to see projects');
+      expect(f.nativeElement.querySelector('h3')?.textContent).toBe(
+        'DataTug Demo Project @ GitHub',
+      );
+      expect(
+        f.nativeElement.querySelector('ion-card-title')?.textContent,
+      ).toContain('Open a GitHub project');
+      expect(f.nativeElement.querySelectorAll('ion-input').length).toBe(3);
+    });
+
+    it('anonymous + firestore: still shows "Please sign in to see projects" (unchanged)', () => {
+      authState.next({ status: 'notAuthenticated', record: null });
+
+      const f = render('firestore', undefined);
+
+      expect(html(f)).toContain('Please sign in to see projects');
+      expect(html(f)).not.toContain('Open a GitHub project');
+      expect(f.nativeElement.querySelector('h3')).toBeNull();
+    });
+
+    it('anonymous + agent store: still shows "Please sign in to see projects" (current behaviour preserved)', () => {
+      authState.next({ status: 'notAuthenticated', record: null });
+
+      const f = render('http-localhost:8989', undefined);
+
+      expect(html(f)).toContain('Please sign in to see projects');
+      expect(html(f)).not.toContain('Open a GitHub project');
+      expect(f.nativeElement.querySelector('h3')).toBeNull();
+    });
+
+    it('authenticated + firestore: shows the project list, not the sign-in prompt (sanity check the gate still opens)', () => {
+      authState.next({ status: 'authenticated', record: null });
+
+      const f = render('firestore', []);
+
+      expect(html(f)).not.toContain('Please sign in to see projects');
+      expect(html(f)).toContain('No projects yet');
     });
   });
 });

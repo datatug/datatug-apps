@@ -244,6 +244,22 @@ export class DatatugStorePageComponent
 
   protected authStatus?: AuthStatus;
 
+  /**
+   * The status the template's `@switch` gates the project list/"Open a
+   * GitHub project" form on (`datatug-store-page.component.html`). GitHub
+   * is a public, read-only store — founder ruling 2026-09-11: its known
+   * projects (the demo project, merged in by `withGithubDemoProjects()`)
+   * and the "Open a GitHub project" form must render for anonymous
+   * visitors, not sit behind "Please sign in to see projects". So this
+   * always resolves to `'authenticated'` for the GitHub store regardless
+   * of the visitor's real DataTug sign-in state; `firestore` (DataTug
+   * Cloud) and agent stores are unchanged — they still gate on the real
+   * `authStatus`.
+   */
+  protected get projectsAuthStatus(): AuthStatus | undefined {
+    return this.isGithubStore ? 'authenticated' : this.authStatus;
+  }
+
   constructor() {
     const route = this.route;
     const datatugUserService = this.datatugUserService;
