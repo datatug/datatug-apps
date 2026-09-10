@@ -46,7 +46,6 @@ import {
   IonSelectOption,
   IonSpinner,
   IonText,
-  IonTitle,
   IonToolbar,
   ViewDidEnter,
 } from '@ionic/angular';
@@ -107,6 +106,7 @@ import {
   QueryEditorStateService,
 } from '../../query-editor-state-service';
 import { HttpQueryEditorComponent } from '../http-query/http-query-editor.component';
+import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
 
 /** The exact pair of disagreeing values a confirmed conflict was confirmed for — see
  * `confirmConflict()`'s own comment on why a confirmation is invalidated (not silently
@@ -232,12 +232,12 @@ function mapsEqual<K, V>(
     DatatugExecutorModule,
     FormsModule,
     HttpQueryEditorComponent,
+    SneatDatatugPageTitleComponent,
     IonHeader,
     IonToolbar,
     IonButtons,
     IonMenuButton,
     IonBackButton,
-    IonTitle,
     IonButton,
     IonContent,
     IonCard,

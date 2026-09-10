@@ -20,7 +20,6 @@ import {
   IonMenuButton,
   IonSelect,
   IonSelectOption,
-  IonTitle,
   IonToolbar,
 } from '@ionic/angular';
 import { DataGridComponent } from '@sneat/datagrid';
@@ -43,6 +42,7 @@ import { IProjEntity } from '../../../models/definition/project';
 import { DatatugServicesStoreModule } from '../../../services/repo/datatug-services-store.module';
 import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
 import { EntityService } from '../../../services/unsorted/entity.service';
+import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
 
 @Component({
   selector: 'sneat-datatug-entity',
@@ -61,10 +61,10 @@ import { EntityService } from '../../../services/unsorted/entity.service';
     DatatugServicesUnsortedModule,
     FormsModule,
     DataGridComponent,
+    SneatDatatugPageTitleComponent,
     IonHeader,
     IonToolbar,
     IonButtons,
-    IonTitle,
     IonContent,
     IonCard,
     IonItem,

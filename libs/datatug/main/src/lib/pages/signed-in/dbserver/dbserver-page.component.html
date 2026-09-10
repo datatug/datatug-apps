@@ -4,12 +4,13 @@
       <ion-back-button defaultHref=".." />
       <ion-menu-button />
     </ion-buttons>
-    <ion-title>
-      DB server: {{ dbServer()?.host }}
-      @if (dbServer()?.port) {
-        <span>{{ dbServer()?.port }}</span>
-      }
-    </ion-title>
+    <sneat-datatug-page-title
+      [pageTitle]="
+        'DB server: ' +
+        (dbServer()?.host || '') +
+        (dbServer()?.port ? ':' + dbServer()?.port : '')
+      "
+    />
   </ion-toolbar>
 </ion-header>
 

@@ -4,23 +4,11 @@
       <ion-menu-button />
       <ion-back-button />
     </ion-buttons>
-    <ion-title>
-      Environments
-      @if (project) {
-        {{ project.title || project.id }}
-      }
-    </ion-title>
+    <sneat-datatug-page-title pageTitle="Environments" />
   </ion-toolbar>
 </ion-header>
 
 <ion-content color="light">
-  <ion-card>
-    <ion-item>
-      <ion-label>Project</ion-label>
-      <ion-input readonly="true" color="medium" [value]="project?.title" />
-    </ion-item>
-  </ion-card>
-
   <sneat-card-list
     title="Environments"
     [isLoading]="!environments"
