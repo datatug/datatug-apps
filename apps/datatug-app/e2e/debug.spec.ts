@@ -27,9 +27,9 @@ test('debug page throws an error with the message from the textbox', async ({
   await expect(page.getByText('Debug')).toBeVisible();
 
   // Scoped to sneat-datatug-debug: the side menu's build-info footer
-  // (<sneat-app-version /> from @sneat/components, rendered on every page)
-  // also lives in the DOM here, so an unscoped locator risks matching it
-  // instead of the debug page's own input.
+  // (sneat-datatug-menu-build-info, rendered on every page) also lives in
+  // the DOM here, so an unscoped locator risks matching it instead of the
+  // debug page's own input.
   await page
     .locator('sneat-datatug-debug ion-input input')
     .fill('Boom from e2e');

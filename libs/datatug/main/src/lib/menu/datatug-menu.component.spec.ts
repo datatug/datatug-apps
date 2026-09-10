@@ -180,7 +180,7 @@ describe('DatatugMenuComponent', () => {
       fixture.detectChanges();
       expect(
         fixture.nativeElement.querySelector(
-          'sneat-app-version',
+          'sneat-datatug-menu-build-info',
         ),
       ).toBeTruthy();
     });
@@ -190,7 +190,7 @@ describe('DatatugMenuComponent', () => {
       fixture.detectChanges();
       expect(
         fixture.nativeElement.querySelector(
-          'sneat-app-version',
+          'sneat-datatug-menu-build-info',
         ),
       ).toBeTruthy();
     });

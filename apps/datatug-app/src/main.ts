@@ -114,11 +114,14 @@ bootstrapApplication(DatatugAppComponent, {
       provide: APP_INFO,
       useValue: { appId: 'datatug', appTitle: 'DataTug.app' },
     },
-    // Feeds the side menu's <sneat-app-version /> (@sneat/components'
-    // AppVersionComponent) this app's own stamped build info instead of
-    // that component's own (never-restamped) placeholders — see
-    // build-info.ts and apps/datatug-app/project.json's `stamp-build-info`
-    // target.
+    // Feeds the side menu's build-info footer
+    // (libs/datatug/main/.../menu/build-info/menu-build-info.component.ts,
+    // which injects BUILD_INFO) this app's own stamped build info via the
+    // shared @sneat/core-public runtime contract — see build-info.ts and
+    // apps/datatug-app/project.json's `stamp-build-info` target. Not yet
+    // @sneat/components' own `<sneat-app-version />`: see
+    // menu-build-info.component.ts's header comment for why that swap is
+    // deferred.
     provideBuildInfo(buildInfo),
     { provide: EnvConfigToken, useValue: datatugAppEnvironmentConfig },
     // Literal SSO routes must precede DataTug's root/catch-all feature routes.

@@ -15,9 +15,9 @@ overrides:
   '@sneat/auth-core': 0.27.6
   '@sneat/auth-models': 0.27.6
   '@sneat/auth-ui': 0.27.20
-  '@sneat/components': 0.27.22
+  '@sneat/components': 0.27.6
   '@sneat/core-public': 0.27.23
-  '@sneat/core': 0.27.22
+  '@sneat/core': 0.27.6
   '@sneat/data': 0.27.6
   '@sneat/datagrid': 0.27.6
   '@sneat/dto': 0.27.6
@@ -51,8 +51,8 @@ minimumReleaseAgeExclude:
   - '@sneat/auth-core@0.5.0 || 0.26.4'
   - '@sneat/auth-models@0.5.0 || 0.26.4'
   - '@sneat/auth-ui@0.5.0 || 0.26.4 || 0.27.20'
-  - '@sneat/components@0.5.0 || 0.26.4 || 0.27.22'
-  - '@sneat/core@0.5.0 || 0.26.4 || 0.27.22'
+  - '@sneat/components@0.5.0 || 0.26.4'
+  - '@sneat/core@0.5.0 || 0.26.4'
   - '@sneat/data@0.5.0 || 0.26.4'
   - '@sneat/datagrid@0.5.0 || 0.26.4'
   - '@sneat/dto@0.5.0 || 0.26.4'

@@ -4,7 +4,6 @@ import { AnalyticsService, ErrorLogger, IErrorLogger } from '@sneat/core';
 import { Subject } from 'rxjs';
 import { filter, takeUntil } from 'rxjs/operators';
 import { IonCard, IonCardContent } from '@ionic/angular';
-import { AppVersionComponent } from '@sneat/components';
 import { DatatugCoreModule } from '../core/datatug-core.module';
 import { DatatugServicesStoreModule } from '../services/repo/datatug-services-store.module';
 import { DatatugServicesProjectModule } from '../services/project/datatug-services-project.module';
@@ -22,6 +21,7 @@ import { MenuStoreSelectorComponent } from './menu-store-selector.component';
 import { MenuProjectSelectorComponent } from './menu-project-selector.component';
 import { MenuEnvSelectorComponent } from './menu-env-selector.component';
 import { DatatugAuthMenuItemComponent } from './datatug-auth-menu-item.component';
+import { MenuBuildInfoComponent } from './build-info/menu-build-info.component';
 
 @Component({
   selector: 'sneat-datatug-menu',
@@ -40,7 +40,7 @@ import { DatatugAuthMenuItemComponent } from './datatug-auth-menu-item.component
     MenuProjectSelectorComponent,
     MenuEnvSelectorComponent,
     ProjectMenuComponent,
-    AppVersionComponent,
+    MenuBuildInfoComponent,
   ],
   // DatatugUserService is providedIn: 'root' — see its own file for why;
   // NewProjectService still needs its own local provider here.

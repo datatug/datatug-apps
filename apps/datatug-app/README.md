@@ -2,13 +2,13 @@
 
 ## Build info
 
-The side menu's footer (`<sneat-app-version />`, `@sneat/components`'
-`AppVersionComponent` — generic/reusable across every Sneat app, not
-DataTug-specific) is a collapsed-by-default row showing the copyright line;
-tapping it reveals the app version, a short git hash, and the UTC build
-timestamp. The same three values are written to a static `build-info.json`
-at the root of the built app, so you can check which commit is actually live
-without opening the app:
+The side menu's footer
+(`libs/datatug/main/src/lib/menu/build-info/menu-build-info.component.ts`)
+is a collapsed-by-default row showing the Sneat.Work copyright line; tapping
+it reveals the app version, a short git hash, and the UTC build timestamp.
+The same three values are written to a static `build-info.json` at the root
+of the built app, so you can check which commit is actually live without
+opening the app:
 
 ```sh
 curl https://datatug.app/build-info.json
@@ -75,8 +75,23 @@ committed.
 
 The side menu wires this up via `provideBuildInfo(buildInfo)`
 (`apps/datatug-app/src/main.ts`, `@sneat/core-public`), which
-`<sneat-app-version />` reads through the `BUILD_INFO` injection token — see
-[sneat-libs' `libs/components/src/lib/app-version/README.md`](https://github.com/sneat-co/sneat-libs/blob/main/libs/components/src/lib/app-version/README.md)
-for the component's inputs (`copyrightHolder`, `copyrightUrl`, `startYear` —
-DataTug uses the defaults: Sneat.Work / https://sneat.work / 2020) and
-`data-testid` hooks.
+`MenuBuildInfoComponent` reads through the `BUILD_INFO` injection token —
+the same runtime contract
+[sneat-libs' `AppVersionComponent`](https://github.com/sneat-co/sneat-libs/blob/main/libs/components/src/lib/app-version/README.md)
+(`<sneat-app-version />`) consumes.
+
+**Not yet swapped for `<sneat-app-version />` itself.** sneat-libs' own repo
+has redesigned that component to match this one exactly (collapsed by
+default, Sneat.Work copyright link, same `data-testid` hooks), but as of this
+change that redesign is only in sneat-libs' source tree — the published
+`@sneat/components` (0.27.22, the latest on npm; 0.27.23 doesn't exist for
+that package yet even though its own `package.json` already reads 0.27.23)
+still ships the *old* shape: an always-expanded "App version" card with no
+collapse, no copyright line, and none of the `data-testid` hooks this app's
+e2e suite depends on. Swapping today would be a real UI regression and would
+break `apps/datatug-app/e2e/build-info.spec.ts`. `MenuBuildInfoComponent`
+(`libs/datatug/main/src/lib/menu/build-info/menu-build-info.component.ts`)
+is deliberately written so that swap is a pure deletion once sneat-libs
+publishes a `@sneat/components` release containing the redesign — no
+provider wiring changes needed, since `provideBuildInfo()`/`BUILD_INFO`
+already come from the shared `@sneat/core-public` package.
