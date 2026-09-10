@@ -108,7 +108,28 @@ test.describe('GitHub-store project — every side-menu page loads without error
 
     // --- Boards (side-menu click) ----------------------------------------
     await page.locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Boards' }).click();
-    await expect(activePage(page).getByText('1st board')).toBeVisible({ timeout: 15_000 });
+    // NOT `activePage(page).getByText('1st board')`: the project page
+    // asserted above ALSO embeds a `sneat-datatug-folder` (`DatatugFolderComponent`)
+    // whose own default tab is 'boards' — the SAME "1st board" text — and on
+    // a slower runner (confirmed failing in CI, passing every time locally)
+    // that page is still present, un-hidden, alongside the dedicated Boards
+    // page once this navigates: `document.querySelectorAll('ion-router-outlet
+    // > .ion-page')` shows BOTH `sneat-datatug-project` and
+    // `sneat-datatug-boards` without `.ion-page-hidden` at the same time
+    // (confirmed live, S136). That made `activePage(page).getByText('1st
+    // board')` strict-mode-fail with 2 matches. `sneat-datatug-boards`
+    // (`BoardsPageComponent`'s own selector) turns out to carry the
+    // `.ion-page` class on its OWN host element, not on some wrapper around
+    // it — so `activePage(page).locator('sneat-datatug-boards')` (a
+    // descendant search) finds nothing (verified live, S136: 0 matches even
+    // though the element is present) — the fix has to select
+    // `sneat-datatug-boards` itself as (one of) the not-hidden `.ion-page`
+    // elements, not search inside it.
+    await expect(
+      page
+        .locator('ion-router-outlet > sneat-datatug-boards.ion-page:not(.ion-page-hidden)')
+        .getByText('1st board'),
+    ).toBeVisible({ timeout: 15_000 });
     // NOT clicking into the board's own detail page here: `goBoard()`
     // (`DatatugNavService`) navigates via Ionic's `NavController.navigateForward()`,
     // which constructs `BoardPageComponent` through a DIFFERENT path than
