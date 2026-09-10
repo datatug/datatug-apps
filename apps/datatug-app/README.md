@@ -2,11 +2,12 @@
 
 ## Build info
 
-The side menu (`libs/datatug/main/src/lib/menu/build-info/`) shows the app
-version, a short git hash, and the UTC build timestamp at the bottom, under
-"App version". The same three values are written to a static
-`build-info.json` at the root of the built app, so you can check which
-commit is actually live without opening the app:
+The side menu (`libs/datatug/main/src/lib/menu/build-info/`) has a
+collapsed-by-default footer row at the bottom (the DataTug copyright line);
+tapping it reveals the app version, a short git hash, and the UTC build
+timestamp. The same three values are written to a static `build-info.json`
+at the root of the built app, so you can check which commit is actually live
+without opening the app:
 
 ```sh
 curl https://datatug.app/build-info.json
@@ -33,7 +34,7 @@ automatically; there is no manual step on either build path:
   `git rev-parse HEAD` (a normal checkout via `actions/checkout`).
 - **Cloudflare Workers Builds** (deploys `datatug.app` from `main` on every
   push, per `wrangler.jsonc`'s `assets.directory:
-  ./dist/apps/datatug-app/browser`) — the script reads the commit SHA from
+./dist/apps/datatug-app/browser`) — the script reads the commit SHA from
   the `WORKERS_CI_COMMIT_SHA` environment variable Cloudflare injects by
   default ([Cloudflare docs](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/#environment-variables)),
   falling back to `CF_PAGES_COMMIT_SHA` and then `git rev-parse HEAD` if
@@ -44,7 +45,7 @@ The script rewrites two placeholder values in
 tree only** — that file's committed content must always keep the
 placeholders (`gitHash: 'gitHash t0be$et'`, `buildTimestamp: 'timestamp
 t0be$et'`); never `git add`/`git commit` after running the script by hand.
-`build-info.spec.ts` guards this by reading the *committed* blob via
+`build-info.spec.ts` guards this by reading the _committed_ blob via
 `git show HEAD:...`, not the working copy. `apps/datatug-app/src/build-info.json`
 (the file the `build-info.json` HTTP endpoint above is copied from) is
 `.gitignore`d for the same reason.

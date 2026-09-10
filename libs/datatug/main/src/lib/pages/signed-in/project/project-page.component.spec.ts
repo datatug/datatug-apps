@@ -6,7 +6,7 @@ import { ActivatedRoute, convertToParamMap } from '@angular/router';
 import { NavController } from '@ionic/angular';
 import { ErrorLogger } from '@sneat/core';
 import { Firestore } from 'firebase/firestore';
-import { of } from 'rxjs';
+import { of, Subject } from 'rxjs';
 
 import { ProjectPageComponent } from './project-page.component';
 import { DatatugBoardService } from '../../../board/core/datatug-board.service';
@@ -194,5 +194,90 @@ describe('ProjectPage rendering a local-agent store project', () => {
     ) as HTMLElement & { isLoading?: boolean; items?: unknown[] };
     expect(boardsCard.isLoading).toBe(false);
     expect(boardsCard.items).toEqual([]);
+  });
+});
+
+/**
+ * Regression for the journey e2e title-load flake (S126 — datatug/datatug
+ * spec/plans/2026-09-09-phase-1-core-investigation-loop.md Task 3's note;
+ * journey.spec.ts J1 and epilogues.spec.ts Epilogue A both assert the Title
+ * textbox's value). Unlike the suite above — which double-provides
+ * `watchProjectSummary` with `of(summary)`, a SYNCHRONOUS observable that
+ * already delivers the title before the very first `fixture.detectChanges()`
+ * call, so that first (real, TestBed-driven) change-detection pass renders
+ * the correct value regardless of whether the fix is present — this double
+ * uses a `Subject` so the summary arrives strictly AFTER the page has
+ * already rendered once (matching the real HTTP timing the e2e flake hit:
+ * the response arrives once the Title `ion-input` already shows
+ * "Loading..."). Deliberately never calls `fixture.detectChanges()` again
+ * after that: this app is zoneless (`provideZonelessChangeDetection()`,
+ * apps/datatug-app/src/main.ts), so a manual `detectChanges()` call would
+ * force a check regardless of whether the underlying state is wired to
+ * notify Angular's own scheduler — masking exactly the gap this test exists
+ * to catch. `fixture.whenStable()` instead awaits only what Angular's own
+ * zoneless scheduler has actually queued, the same idiom already used for
+ * this identical class of gap elsewhere in this codebase
+ * (context-panel.component.spec.ts, investigation-context-page.component
+ * .spec.ts). Fails without the fix: with `project` as a plain mutable field,
+ * `onProjectSummaryChanged()`'s assignment never schedules a repaint, so the
+ * title stays "Loading..." even after `whenStable()` resolves.
+ */
+describe('ProjectPage commits the title once it arrives asynchronously (zoneless)', () => {
+  const summary: IProjectSummary = {
+    id: 'datatug-demo-project',
+    title: 'DataTug Demo Project 1',
+    access: 'private',
+  };
+
+  it('updates the Title textbox with no explicit detectChanges() call after the summary arrives', async () => {
+    const summary$ = new Subject<IProjectSummary>();
+    const doubles: TestDoubles = {
+      logError: vi.fn(),
+      watchProjectSummary: vi.fn(() => summary$.asObservable()),
+    };
+
+    await TestBed.configureTestingModule({
+      imports: [ProjectPageComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        ...baseProviders(doubles, {
+          storeId: 'localhost:8989',
+          projectId: summary.id,
+        }),
+        { provide: HttpClient, useValue: { get: vi.fn(() => of({})) } },
+        { provide: Firestore, useValue: {} },
+        { provide: DatatugBoardService, useValue: {} },
+      ],
+    })
+      .overrideComponent(ProjectPageComponent, {
+        set: {
+          imports: [DatatugFolderComponent],
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+          providers: [],
+        },
+      })
+      .overrideComponent(DatatugFolderComponent, {
+        set: { imports: [TitleCasePipe], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+      })
+      .compileComponents();
+
+    const fixture = TestBed.createComponent(ProjectPageComponent);
+    fixture.detectChanges(); // initial render — no summary has arrived yet
+
+    const title = fixture.nativeElement.querySelector(
+      'ion-input',
+    ) as HTMLElement & { value?: string };
+    expect(title.value).toBe('Loading...');
+
+    // The summary arrives strictly after the initial render — the real
+    // HTTP-response timing this flake reproduced.
+    summary$.next(summary);
+
+    // No `fixture.detectChanges()` here — see this describe block's own
+    // header comment for why.
+    await fixture.whenStable();
+
+    expect(title.value).toBe('DataTug Demo Project 1');
+    expect(doubles.logError).not.toHaveBeenCalled();
   });
 });
