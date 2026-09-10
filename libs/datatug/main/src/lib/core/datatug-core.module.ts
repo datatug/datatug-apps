@@ -1,10 +1,10 @@
 import { NgModule } from '@angular/core';
-import { AppContextService } from './services/app-context.service';
 import { QueryParamsService } from './services/QueryParamsService';
 
 @NgModule({
   providers: [
-    AppContextService,
+    // AppContextService is providedIn: 'root' — not re-listed here, that
+    // would shadow the root singleton in every importing injector.
     QueryParamsService,
   ],
 })

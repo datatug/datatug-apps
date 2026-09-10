@@ -46,8 +46,10 @@ type Entities = IRecord<IEntity>[];
   selector: 'sneat-datatug-entities',
   templateUrl: './entities-page.component.html',
   imports: [
-    // `DatatugNavContextService` (injected below) is a plain `@Injectable()`
-    // provided by `DatatugServicesNavModule`, whose own constructor needs
+    // `DatatugNavContextService` (injected below) was a plain `@Injectable()`
+    // provided by `DatatugServicesNavModule` (it and its whole dependency
+    // chain are `providedIn: 'root'` since nav-context-root-singletons),
+    // whose own constructor needed
     // `AppContextService` (`DatatugCoreModule`), `ProjectContextService`/
     // `ProjectService` (`DatatugServicesProjectModule`) and
     // `EnvironmentService` (`DatatugServicesUnsortedModule`, itself needing

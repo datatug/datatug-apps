@@ -4,7 +4,6 @@ import {
   withInterceptorsFromDi,
 } from '@angular/common/http';
 import { DatatugStoreService } from './datatug-store.service';
-import { StoreApiService } from './store-api.service';
 import { AgentStateService } from './agent-state.service';
 import { AgentService } from './agent.service';
 import { DatatugStoreServiceFactory } from './datatug-store-service-factory.service';
@@ -14,8 +13,12 @@ import { DatatugStoreGithubService } from './datatug-store.service.github';
 @NgModule({
   providers: [
     provideHttpClient(withInterceptorsFromDi()),
+    // StoreApiService is providedIn: 'root' — not re-listed here, that
+    // would shadow the root singleton in every importing injector. It now
+    // resolves the plain root HttpClient instead of this module's own
+    // provideHttpClient(withInterceptorsFromDi()) — behavior-neutral, no DI
+    // HTTP interceptors are registered anywhere in this app.
     DatatugStoreService,
-    StoreApiService,
     AgentService,
     AgentStateService,
     DatatugStoreServiceFactory,
