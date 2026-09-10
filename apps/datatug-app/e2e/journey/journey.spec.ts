@@ -144,15 +144,11 @@ import { activePage } from './helpers/active-page';
  * load-dependent flake unconnected to router navigation or this file's own
  * changes, see this stream's report).
  *
- * 2026-09-10: host load does not explain that title-load flake, and a re-run
- * should not wave it through. It failed main's journey CI job at a single
- * worker on a GitHub-hosted runner (run 34453639702, 4d242ad) in Epilogue A,
- * which uses this same Title-textbox assertion (epilogues.spec.ts:157), and
- * it failed J1 locally under fullyParallel. In that local failure the
- * Playwright trace shows both `GET /datatug/projects/project_summary` calls
- * answered 200 in about 5 ms and 1 ms with the correct CORS header and no
- * console error: the agent responds promptly and the page never commits the
- * title, so the fault is client-side. Root cause not yet established.
+ * 2026-09-10: that title-load flake is an open defect, and host load does not
+ * explain it. Its evidence and current status are tracked in one place, the
+ * Note on Task 3 of the Phase 1 plan (datatug/datatug
+ * spec/plans/2026-09-09-phase-1-core-investigation-loop.md). Record updates
+ * there rather than here, and do not treat a re-run as a fix.
  *
  * See ./README.md for the env vars this suite reads and what CI must
  * provide to run it instead of skipping it.
