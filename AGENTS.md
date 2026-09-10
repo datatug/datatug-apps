@@ -22,12 +22,30 @@
 
 <!-- nx configuration end-->
 
-# Change detection & state (zoneless-ready)
+# Change detection & state (zoneless)
 
-The app is **not yet fully zoneless** — Zone.js is still shipped (`apps/datatug-app/project.json` → `polyfills: ["zone.js"]`) because Ionic does not yet support zoneless change detection. We will drop Zone.js once Ionic supports it.
+The app **is zoneless**: `apps/datatug-app/src/main.ts` calls `provideZonelessChangeDetection()`, and `apps/datatug-app/project.json`'s `polyfills` is `[]` — there is no Zone.js in this app (it is not even a direct dependency; it only appears in `pnpm-lock.yaml` as a peer-dep range some Angular packages declare but never actually need here).
 
 **All new code and changes must follow the zoneless approach:**
 
-- Expose component state to templates via **signals** (`signal()`, `computed()`), not plain mutable fields. Read them in templates with `()` (e.g. `@if (!isLoginPage())`).
-- Never rely on Zone.js to notice async state changes — signal writes notify change detection directly, so components stay correct now and after the zoneless switch.
-- Prefer `OnPush` and signal-based patterns for new components.
+- Expose component state to templates via **signals** (`signal()`, `computed()`, `linkedSignal()`), not plain mutable fields. Read them in templates with `()` (e.g. `@if (!isLoginPage())`).
+- Never rely on Zone.js to notice async state changes — signal writes notify change detection directly, so components stay correct.
+- Prefer `OnPush` and signal-based patterns for all components.
+
+## The bug this causes, and the fix recipe
+
+Assigning a plain class field (`this.foo = value;`) from inside an RxJS `.subscribe()` callback, a promise `.then()`/`.catch()`/`.finally()` callback, or a `setTimeout()`/`setInterval()` callback never schedules a repaint by itself — nothing tells Angular's zoneless scheduler that component state changed. The template then shows stale content (often a literal "Loading..." placeholder) until some *unrelated* event happens to trigger a global change-detection pass (e.g. the user clicks something else). This is exactly the bug the founder hit 2026-09-10 on the store/project page ("it does not show data until I click dropdown").
+
+The fix, worked out in `libs/datatug/main/src/lib/pages/signed-in/project/project-page.component.ts` (PR #95) and applied fleet-wide since:
+
+1. Change the field from a plain property to `readonly foo = signal<T>(initialValue);`.
+2. Change every write from `this.foo = value;` to `this.foo.set(value);` (or `.update(fn)` for a derived write) — including a write reached via array/object destructuring assignment (`[this.a, this.b] = x.split(...)`) and a write made by a private method that is itself *called from* an async callback, not just a literal write inside the callback body.
+3. Change every template read from `foo`/`foo?.bar` to `foo()`/`foo()?.bar`.
+4. For a value written from a template event only (e.g. `[(ngModel)]` driven purely by user input, with no async writer) — that's already zoneless-safe as-is; no signal needed.
+5. Add a unit test in the same shape as the fix commit's spec: use a `Subject` (not `of(value)`, which resolves synchronously before the first `detectChanges()` and would mask the bug) that emits strictly *after* the component has already rendered once, then assert the DOM updated via `fixture.whenStable()` with **no** subsequent manual `detectChanges()` call.
+
+## `check:zoneless` — the durable control for this rule
+
+`tools/check-zoneless-fields.mjs` (run via `pnpm run check:zoneless`, wired into CI's `build` job) statically scans every `*.component.ts` under `libs/**` and `apps/**` for exactly the bug shape above (a `this.<field>` write inside a tracked async callback, where `<field>` isn't declared as a signal) and fails the build if it finds one outside `tools/zoneless-allowlist.txt`. See that script's own file header for the detection rule, and its known limitations (it does not trace writes made by a method called from a callback, nor in-place mutation of a Record/array reachable from `this`).
+
+`tools/zoneless-allowlist.txt` is a temporary carve-out for components not yet converted — it must only ever shrink. Converting a file removes it from the list; a newly authored file must never be added to it.

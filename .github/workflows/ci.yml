@@ -33,6 +33,16 @@ jobs:
       - name: nx lint affected
         run: pnpm nx affected --target=lint --base=${{ env.NX_BASE }} --parallel=8
 
+      # Whole-repo static check (not nx-affected-scoped — it's a single
+      # cheap AST walk, not a per-project target): fails the build if any
+      # *.component.ts writes a plain field from inside subscribe()/then()/
+      # catch()/finally()/setTimeout()/setInterval() and isn't listed in
+      # tools/zoneless-allowlist.txt. See tools/check-zoneless-fields.mjs
+      # for the rule and AGENTS.md's "Change detection & state" section for
+      # the fix recipe.
+      - name: check:zoneless (no new plain-field writes from async callbacks)
+        run: pnpm run check:zoneless
+
       - name: nx build affected
         run: pnpm nx affected --target=build --base=${{ env.NX_BASE }} --parallel=8
 

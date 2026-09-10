@@ -1,0 +1,36 @@
+# Files with plain class fields still written from inside subscribe()/then()/
+# catch()/finally()/setTimeout()/setInterval() callbacks under zoneless change
+# detection (see tools/check-zoneless-fields.mjs and AGENTS.md's "Change
+# detection & state" section for the bug and the fix recipe).
+#
+# This list is a temporary carve-out, not a permanent exception: every entry
+# here is a component NOT converted in the PR that introduced this check
+# (fix/zoneless-batch-a, "Batch A") because it is out of that batch's scope —
+# either owned by another concurrent lane, or reserved for a later batch. The
+# list must only ever shrink: remove a path once its async-written fields are
+# converted to signal()/computed()/linkedSignal(), and never add a newly
+# authored file to it.
+#
+# Lane ownership at the time this list was seeded (2026-09-10, fix/zoneless-batch-a):
+#   pages/home/**                         S133
+#   menu/**                                (S132 landed; left alone per lead's brief)
+#   queries/**, pages/signed-in/{environments,environment,env-db,env-db-table}/** S136
+#   pages/signed-in/store/**               S137
+#   pages/signed-in/project/**, services/project/**  S126
+libs/datatug/main/src/lib/pages/signed-in/env-db/env-db-page.component.ts
+libs/datatug/main/src/lib/pages/signed-in/store/datatug-store-page.component.ts
+libs/datatug/main/src/lib/pages/home/my-stores/my-stores.component.ts
+libs/datatug/main/src/lib/pages/signed-in/environment/environment-page.component.ts
+libs/datatug/main/src/lib/queries/queries/queries-tab.component.ts
+libs/datatug/main/src/lib/pages/home/my-projects/my-datatug-projects.component.ts
+libs/datatug/main/src/lib/pages/signed-in/environments/environments-page.component.ts
+libs/datatug/main/src/lib/queries/query/sql-query/sql-query-editor.component.ts
+libs/datatug/main/src/lib/menu/menu-store-selector.component.ts
+libs/datatug/main/src/lib/queries/queries-menu.component.ts
+libs/datatug/main/src/lib/queries/queries/queries-page.component.ts
+libs/datatug/main/src/lib/queries/query/page/query-page.component.ts
+libs/datatug/main/src/lib/menu/datatug-menu.component.ts
+libs/datatug/main/src/lib/menu/menu-project-selector.component.ts
+libs/datatug/main/src/lib/pages/signed-in/env-db-table/foreign-key-card/foreign-key-card.component.ts
+libs/datatug/main/src/lib/queries/query/http-query/http-query-editor.component.ts
+libs/datatug/main/src/lib/queries/query/sql-query/query-builder/joins.component.ts

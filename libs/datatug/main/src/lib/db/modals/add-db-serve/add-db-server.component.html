@@ -25,13 +25,13 @@
     </ion-item>
     <ion-item>
       <ion-label>Host name</ion-label>
-      <ion-input [disabled]="submitting" [(ngModel)]="dbServer.host" />
+      <ion-input [disabled]="submitting()" [(ngModel)]="dbServer.host" />
     </ion-item>
     <ion-item>
       <ion-label>Port</ion-label>
       <ion-input
         type="number"
-        [disabled]="submitting"
+        [disabled]="submitting()"
         [(ngModel)]="dbServer.port"
         placeholder="leave empty to use default"
       />
