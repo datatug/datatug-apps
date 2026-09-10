@@ -53,6 +53,34 @@ ion-item ion-buttons[slot='end'] {
   margin-right: -1em; // TODO: Replace this dirty workaround with proper fix
 }
 
+// S159 (founder screenshot, 2026-09-10): "Storegithub.com" rendered with no
+// gap on the project page. Root cause verified live (measured computed
+// styles + bounding boxes in Chromium): it is Ionic's own default, not an
+// app override. `ion-item`'s "md" mode shadow stylesheet gives a slotted
+// `ion-label` only `margin-top/bottom: 10px` — no horizontal margin at all
+// (`margin-left:0; margin-right:0`) — while its "ios" mode stylesheet gives
+// the same label `margin-inline-end: 8px`
+// (node_modules/@ionic/core/dist/esm/ion-item_8.entry.js, itemMdCss() vs
+// itemIosCss()). This app runs in "md" mode (Chromium isn't detected as an
+// Apple/iOS UA), so every legacy `<ion-item><ion-label>…</ion-label><ion-input
+// | ion-select | ion-textarea | ion-text | plain text>…</ion-item>` pattern
+// in the app — not just the Store row — renders with zero gap. Ionic 7+'s
+// modern replacement (the control's own `label`/`labelPlacement` input,
+// rendered inside the control's shadow DOM) doesn't have this gap at all
+// because there is no separate slotted `<ion-label>` to margin; migrating
+// every such template is out of scope for a cosmetic-spacing fix (~50
+// files), so this single rule restores the gap the "ios" stylesheet already
+// gives for free, without per-template edits. Scoped to a direct `ion-item`
+// child so `ion-item-divider` / `ion-list-header` labels (which have their
+// own, already-correct, spacing rules) are untouched; `:not([slot])`
+// excludes labels explicitly placed in slot="start"/"end" (already
+// positioned by the slot, e.g. the Databases segment header); `:has(+ *)`
+// only matches a label that has a following sibling to create a gap
+// against, so a lone `<ion-label>` (nothing else in the item) is unchanged.
+ion-item > ion-label:not([slot]):has(+ *) {
+  margin-inline-end: 16px;
+}
+
 ion-select {
   max-width: 100% !important; // https://forum.ionicframework.com/t/ion-option-in-ion-select-doesnt-use-full-width/148256
 }
