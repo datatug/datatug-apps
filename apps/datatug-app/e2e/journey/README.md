@@ -63,7 +63,9 @@ pass against `datatug-cli` main (`aba31f6`+) and this repo's own main
 (`814c104`+) — see `journey.spec.ts`'s own header for the fix history
 (S100–S104) and `helpers/active-page.ts` for why every assertion that could
 match more than one project page's own copy of an element is scoped to the
-currently active `.ion-page`. J1 has an intermittent, pre-existing,
-load-dependent flake on its own title-load assertion under heavy concurrent
-load on the host machine, unrelated to any of these fixes — re-run once if it
-flakes before assuming a regression.
+currently active `.ion-page`. The project-title assertion shared by J1 and
+Epilogue A fails intermittently with the title stuck on "Loading...". Host
+load does not explain it: it has failed in CI at a single worker while the
+agent answered in milliseconds, so the fault is client-side and its root
+cause is still open. Do not treat a re-run as the fix; see
+`journey.spec.ts`'s header for the evidence.
