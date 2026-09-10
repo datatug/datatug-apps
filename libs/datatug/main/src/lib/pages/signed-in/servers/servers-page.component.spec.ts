@@ -124,7 +124,20 @@ describe('ServersPage replaces "Loading..." once DB servers arrive (zoneless)', 
           },
         },
       ],
-    }).compileComponents();
+    })
+      // Keep the real template so the Loading -> list transition is
+      // genuinely exercised, but strip the component's own `imports:`
+      // (FormsModule — this page's tab `[(ngModel)]`, the Ionic
+      // components) so those real Angular directives never get
+      // instantiated against a template that only provides test-double
+      // services — CUSTOM_ELEMENTS_SCHEMA then renders every `<ion-*>` tag
+      // as an inert custom element. Same idiom already used successfully
+      // by board/ui/pages/boards/boards-page.component.spec.ts and
+      // board/ui/pages/board/board-page.component.spec.ts.
+      .overrideComponent(ServersPageComponent, {
+        set: { imports: [], schemas: [CUSTOM_ELEMENTS_SCHEMA], providers: [] },
+      })
+      .compileComponents();
 
     fixture = TestBed.createComponent(ServersPageComponent);
     component = fixture.componentInstance;
