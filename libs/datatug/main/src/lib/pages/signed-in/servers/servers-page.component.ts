@@ -109,15 +109,16 @@ export class ServersPageComponent implements OnDestroy {
   // Never read by the template, but kept as a signal too for consistency
   // and so tools/check-zoneless-fields.mjs doesn't need a carve-out for it.
   private readonly target = signal<IProjectRef | undefined>(undefined);
-  // NOTE: mutated in place (`this.isDeletingServer[id] = ...` /
-  // `delete this.isDeletingServer[id]`) from deleteDbServer()'s
-  // `.subscribe()` callback below — a different zoneless-unsafe shape than
-  // the "this.field = ..." pattern tools/check-zoneless-fields.mjs looks
-  // for (it's an in-place mutation of a Record, not a reassignment of this
-  // field), so the detector does not flag it and it is intentionally left
-  // unconverted in this batch — see the S138 report for the flagged
-  // follow-up.
-  private readonly isDeletingServer: Record<string, boolean> = {};
+  // A signal, not a plain field mutated in place: `this.isDeletingServer[id]
+  // = ...` / `delete this.isDeletingServer[id]` from deleteDbServer()'s
+  // `.subscribe()` callback below used to mutate a plain `Record` — a
+  // different zoneless-unsafe shape than the "this.field = ..." pattern
+  // tools/check-zoneless-fields.mjs originally looked for (in-place
+  // mutation, not reassignment of this field), flagged as a follow-up in
+  // the S138 report and fixed here (S147) once the detector was extended to
+  // also catch this shape. Written via `.update()` with an immutable copy —
+  // see `setDeleting()` below.
+  private readonly isDeletingServer = signal<Record<string, boolean>>({});
 
   constructor() {
     this.projectContextService.current$
@@ -158,14 +159,14 @@ export class ServersPageComponent implements OnDestroy {
     event.preventDefault();
     event.stopPropagation();
     const id = serverId(dbServer.dbServer);
-    this.isDeletingServer[id] = true;
+    this.setDeleting(id, true);
     this.dbServerService.deleteDbServer(dbServer.dbServer).subscribe({
       next: () => {
         this.dbServers.set(this.dbServers()?.filter((s) => s !== dbServer));
-        delete this.isDeletingServer[id];
+        this.setDeleting(id, false);
       },
       error: (err) => {
-        delete this.isDeletingServer[id];
+        this.setDeleting(id, false);
         this.errorLogger.logError(
           err,
           'Failed to remove DB server from project',
@@ -175,7 +176,24 @@ export class ServersPageComponent implements OnDestroy {
   }
 
   public isDeleting(dbServer: IDbServer): boolean {
-    return this.isDeletingServer[serverId(dbServer)];
+    return this.isDeletingServer()[serverId(dbServer)] ?? false;
+  }
+
+  /** Immutable `isDeletingServer` update: `true` marks `id` as deleting,
+   * `false` removes it from the map (rather than storing `false`) so the map
+   * doesn't grow unboundedly across the page's lifetime. */
+  private setDeleting(id: string, deleting: boolean): void {
+    this.isDeletingServer.update((byId) => {
+      if (deleting) {
+        return { ...byId, [id]: true };
+      }
+      if (!(id in byId)) {
+        return byId;
+      }
+      const next = { ...byId };
+      delete next[id];
+      return next;
+    });
   }
 
   addDbServer() {
