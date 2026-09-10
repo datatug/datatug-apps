@@ -74,18 +74,19 @@ test.describe('Epilogue A — close/reopen', () => {
     // route J1–J4 already prove works on direct navigation (customerTableUrl
     // above IS this route for Customer). Deliberately NOT the DB overview page
     // (env-db-page.component, bare `env/:envId/db/:catalogId`, no `/table/`
-    // suffix): confirmed live while building this test — direct navigation to
-    // that route throws `NG0201: No provider found for ProjectService` and
-    // never renders (EnvDbPageComponent's own `@Component` decorator has no
-    // `providers:` array; its sibling env-db-table.page.ts:113 already
-    // documents fixing the identical class of bug for itself — "routes/
-    // datatug-routing*.ts have no providers: entry. Same fix" — but
-    // EnvDbPageComponent itself was apparently never covered by a direct-
-    // navigation e2e before this file). A real, separate datatug-apps defect,
-    // NOT fixed here (out of this stream's scope — a NEW spec file only); see
-    // this stream's report. Routing around it here (using only the
-    // already-proven `/table/<type>` URLs) keeps this test's own result
-    // independent of that unrelated bug.
+    // suffix): its `NG0201: No provider found for ProjectService` crash on
+    // direct navigation (found while building this test) is now FIXED — see
+    // `direct-nav.spec.ts`, which asserts that route's own chrome renders
+    // with no NG0201, direct-nav.spec.ts's own header, and this stream's
+    // report (lane S120). Still deliberately not used HERE, though: that page
+    // has never had any way to populate its own table list on a bare URL
+    // load regardless of the DI fix (confirmed live: `EnvDbPageComponent`
+    // only ever reads `history.state.db`, and nothing anywhere — not this
+    // route, not any agent endpoint — supplies table/view data for a direct
+    // load; see direct-nav.spec.ts's header for the full finding), so it
+    // still cannot prove "the Album table is still present" the way the
+    // already-proven `/table/<type>` route can. Kept as the more precise,
+    // already-established mechanism for THIS test's own purpose.
     const albumTableUrl =
       `${projectUrl}/env/${DEMO_ENV_ID}/db/${DEMO_DB_CATALOG_ID}` +
       `/table/main.Album`;
@@ -93,18 +94,21 @@ test.describe('Epilogue A — close/reopen', () => {
     // query's OWN page, the exact pattern J3 already proves works
     // (journey.spec.ts's `page.goto(`${projectUrl}/query/<id>?id=<id>`)`).
     // Deliberately NOT the queries LIST page (`/queries?folder=customers`,
-    // QueriesTabComponent): confirmed live while building this test — that
-    // page's `loadQueries()` never calls the agent at all on a direct
-    // navigation. It ignores its own `project` @Input entirely and instead
-    // waits on `DatatugNavContextService.currentProject` (queries-tab
-    // .component.ts:224-231), which this route never populates on a bare
-    // URL load (no `ProjectTracker` anywhere in QueriesPageComponent/
-    // QueriesTabComponent, unlike every other page that resolves a project —
-    // e.g. env-db-page.component.ts's own `trackProject()`). The page sits on
-    // its default empty folder forever, no error, nothing to click. A real,
-    // separate datatug-apps defect, NOT fixed here (out of this stream's
-    // scope); see this stream's report. Routing around it here (direct query
-    // URLs only) keeps this test's own result independent of that bug.
+    // QueriesTabComponent): its `NG0201: No provider found for
+    // QueriesService` crash on navigation to this route — direct or in-app —
+    // (found while building this test) is now FIXED — see
+    // `direct-nav.spec.ts`, which asserts this route's own chrome renders
+    // with no NG0201 and that the project resolves correctly into its
+    // outgoing request; and this stream's report (lane S120). Still
+    // deliberately not used HERE, though: `QueriesTabComponent.loadQueries()`
+    // now correctly calls the agent, but the endpoint it depends on
+    // (`GET /datatug/queries/all_queries`) is commented out server-side in
+    // `datatug-cli` (confirmed live: the request IS sent, correctly scoped,
+    // and 404s — a separate, cross-repo backend gap, NOT fixed here or
+    // fixable in this repo; see direct-nav.spec.ts's header), so this route
+    // still cannot prove "the saved queries are still present" the way
+    // direct navigation to each query's own page can. Kept as the more
+    // precise, already-established mechanism for THIS test's own purpose.
     const customerInvoicesUrl = `${projectUrl}/query/customer-invoices?id=customer-invoices`;
     const customerPurchasesUrl = `${projectUrl}/query/customer-purchases-by-genre?id=customer-purchases-by-genre`;
 

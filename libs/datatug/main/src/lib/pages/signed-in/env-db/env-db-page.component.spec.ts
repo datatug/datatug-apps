@@ -1,6 +1,9 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ActivatedRoute } from '@angular/router';
+import { HttpClient } from '@angular/common/http';
+import { ActivatedRoute, Router } from '@angular/router';
+import { NavController } from '@ionic/angular';
+import { Firestore } from 'firebase/firestore';
 import { ErrorLogger } from '@sneat/core';
 import { of } from 'rxjs';
 
@@ -134,5 +137,78 @@ describe('EnvDbPage — project ref wiring', () => {
       storeId: 'localhost:8989',
       projectId: 'demo-project',
     });
+  });
+});
+
+/**
+ * Regression for `NG0201: No provider found for ProjectService. Source:
+ * Standalone[EnvDbPageComponent]`, thrown for real on a direct URL load of
+ * this page's own bare route (`env/:envId/db/:catalogId`, one level above
+ * `env-db-table.page.ts`'s `/table/<type>` route). The two describes above
+ * cannot see it: they stub every injected service AND blank the component's
+ * own `imports`, so they prove the class constructs under hand-fed doubles,
+ * not that the app can build it.
+ *
+ * Here the component is left exactly as production declares it, so the only
+ * thing that can satisfy `ProjectService` is its own `imports` list, and only
+ * leaf I/O (HTTP, Firestore, router, navigation) is stubbed.
+ */
+describe('EnvDbPage dependency injection', () => {
+  beforeEach(() => {
+    Object.defineProperty(window, 'history', {
+      value: { ...window.history, state: { db: undefined } },
+      writable: true,
+      configurable: true,
+    });
+    TestBed.configureTestingModule({
+      // Importing the standalone component brings its own `imports` into the
+      // testing injector — nothing else here provides the datatug services.
+      imports: [EnvDbPageComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        {
+          provide: ErrorLogger,
+          useValue: {
+            logError: vi.fn(),
+            logErrorHandler: vi.fn(() => vi.fn()),
+          },
+        },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            queryParamMap: of({ get: () => null }),
+            paramMap: of({ get: () => null }),
+            snapshot: { paramMap: { get: () => null }, params: {} },
+          },
+        },
+        {
+          provide: Router,
+          useValue: {
+            navigate: vi.fn(() => Promise.resolve(true)),
+            events: of(),
+            url: '/',
+          },
+        },
+        {
+          provide: NavController,
+          useValue: {
+            navigateForward: vi.fn(() => Promise.resolve(true)),
+            navigateRoot: vi.fn(),
+          },
+        },
+        { provide: HttpClient, useValue: { get: vi.fn(() => of({})) } },
+        { provide: Firestore, useValue: {} },
+      ],
+    });
+  });
+
+  it('constructs from its own declared imports, the site that threw NG0201', () => {
+    expect(() =>
+      TestBed.runInInjectionContext(() => new EnvDbPageComponent()),
+    ).not.toThrow();
+  });
+
+  it('resolves ProjectService, which is provided by a module and never `providedIn: root`', () => {
+    expect(TestBed.inject(ProjectService, null)).toBeTruthy();
   });
 });
