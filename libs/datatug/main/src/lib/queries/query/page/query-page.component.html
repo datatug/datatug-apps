@@ -55,11 +55,53 @@
     </ion-item>
   </ion-card>
 
-  <!--	<sneat-datatug-sql-query *ngIf="queryState?.queryType === 'SQL'"-->
-  <!--										 [currentProject]="project"-->
-  <!--	></sneat-datatug-sql-query>-->
   @if (queryState.queryType === "HTTP") {
     <sneat-datatug-http-query-editor />
+  } @else if (editorTab === "text") {
+    <!-- S155 (founder ruling 2026-09-10): the query page previously had no
+         body editor at all for SQL/DTQL — the old `sneat-datatug-sql-query`
+         binding this replaces was commented out and never wired up, so the
+         query's own text, already correctly loaded onto
+         `queryState.request.text` (GithubProjectReaderService.getQuery() /
+         QueriesService.getQuery(), confirmed correct by this task's own
+         tests), simply never reached the DOM. Read-only here: this card is
+         about DISPLAY, not editing — this page's existing `isChanged`/`Save`
+         flow (title only, so far) is unaffected, and a GitHub-store project
+         has no agent to persist a body edit to anyway. -->
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>Query text</ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        @if (queryBodyText(); as bodyText) {
+          <ion-textarea
+            data-testid="query-body-text"
+            readonly="true"
+            autoGrow="true"
+            [value]="bodyText"
+          />
+        } @else {
+          <ion-text color="medium">No query text.</ion-text>
+        }
+      </ion-card-content>
+    </ion-card>
+  }
+
+  @if (linkedEntities().length) {
+    <!-- S155 — the query's linked entities/collections; see
+         `extractLinkedEntityNames()`'s own doc comment (query-page.component.ts)
+         for the two sources this reads (parameter/recordset `meta.entity`,
+         falling back to a FROM/JOIN scan of the SQL text). -->
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>Linked entities</ion-card-title>
+      </ion-card-header>
+      <ion-card-content data-testid="linked-entities">
+        @for (entity of linkedEntities(); track entity) {
+          <ion-badge color="medium" style="margin-right: 4px">{{ entity }}</ion-badge>
+        }
+      </ion-card-content>
+    </ion-card>
   }
 
   <!--

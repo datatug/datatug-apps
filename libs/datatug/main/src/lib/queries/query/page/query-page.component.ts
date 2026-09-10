@@ -46,6 +46,7 @@ import {
   IonSelectOption,
   IonSpinner,
   IonText,
+  IonTextarea,
   IonTitle,
   IonToolbar,
   ViewDidEnter,
@@ -200,6 +201,67 @@ function mapsEqual<K, V>(
   return true;
 }
 
+/** Naive `FROM`/`JOIN` table-name scan — deliberately NOT `SqlParser`
+ * (`services/unsorted/sql-parser.ts`): that parser's own `reFrom` regex
+ * requires a schema-qualified `schema.table` reference (mandatory `(\w+)\.`
+ * before the table name), so an unqualified `FROM Artist` — exactly what
+ * demo-project-1's own `artists_with_albums.sql` writes — never matches it
+ * at all (confirmed by reading that regex; out of scope to change here, it
+ * backs `QueryContextSqlService`'s live-catalog join-suggestion feature
+ * elsewhere). This scan is display-only (used by
+ * {@link extractLinkedEntityNames}'s own fallback below) and intentionally
+ * schema-optional. */
+const FROM_JOIN_TABLE_RE = /\b(?:FROM|JOIN)\s+([A-Za-z_]\w*)(?:\.([A-Za-z_]\w*))?/gi;
+
+/** Distinct entity/collection names a query definition references — the
+ * "linked entities/collections" the founder's ruling (S155, 2026-09-10)
+ * says the query page must show. Primary source: `parameters[].meta.entity`
+ * and `recordsets[].columns[].meta.entity` (`IEntityFieldRef`) — every
+ * typed/DTQL query in demo-project-1 (e.g. `customer-invoices`) carries
+ * this directly on its `.query.json` definition file, no parsing needed.
+ * Falls back to a naive FROM/JOIN table-name scan of the query's own SQL
+ * text ({@link FROM_JOIN_TABLE_RE}) only when NO metadata entity was found
+ * at all — the legacy `<id>.sql.json` shape (e.g. `artists_with_albums`)
+ * carries no `parameters`/`recordsets` whatsoever (confirmed against the
+ * real demo file: `{"title": "Artists with albums"}`, nothing else), so
+ * without this fallback that query would show no linked entities at all
+ * despite its SQL text plainly naming `Artist`/`Album`. Never applied to a
+ * non-SQL request (DTQL's own body is YAML, not SQL — parsing it as SQL
+ * would be meaningless; every DTQL query in this demo already has metadata
+ * anyway) or when metadata already yielded at least one name (metadata is
+ * the more precise source, never silently supplemented by a text guess). */
+export function extractLinkedEntityNames(
+  def: IQueryDef | undefined,
+): readonly string[] {
+  if (!def) {
+    return [];
+  }
+  const names = new Set<string>();
+  def.parameters?.forEach((p) => {
+    if (p.meta?.entity) {
+      names.add(p.meta.entity);
+    }
+  });
+  def.recordsets?.forEach((rs) => {
+    rs.columns?.forEach((c) => {
+      if (c.meta?.entity) {
+        names.add(c.meta.entity);
+      }
+    });
+  });
+  if (names.size === 0 && def.request?.queryType === QueryType.SQL) {
+    const text = (def.request as ISqlQueryRequest).text;
+    if (text) {
+      FROM_JOIN_TABLE_RE.lastIndex = 0;
+      let m: RegExpExecArray | null;
+      while ((m = FROM_JOIN_TABLE_RE.exec(text))) {
+        names.add(m[2] || m[1]);
+      }
+    }
+  }
+  return [...names].sort();
+}
+
 @Component({
   selector: 'sneat-datatug-sql-editor',
   templateUrl: './query-page.component.html',
@@ -255,6 +317,7 @@ function mapsEqual<K, V>(
     IonBadge,
     IonSpinner,
     IonText,
+    IonTextarea,
     LimitationHeaderComponent,
   ],
 })
@@ -343,6 +406,35 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly running = signal(false);
   public readonly runError = signal<string | undefined>(undefined);
   public readonly runResult = signal<RunQueryResponse | undefined>(undefined);
+
+  /** The resolved definition backing the CURRENT `queryState` — a dedicated
+   * signal, deliberately NOT read straight off `queryState.def` (a plain
+   * field written from inside `onQueryEditorStateChanged()`'s `.subscribe()`
+   * callback, this file's own pre-existing zoneless-allowlist entry): a
+   * signal write notifies Angular's zoneless scheduler directly, so the
+   * query-text/linked-entities display below (new, S155) reliably repaints
+   * once the query finishes loading — including the direct-URL-load path
+   * (no in-app click, no router `state`) that founder ruling 2026-09-10
+   * reproduced, where the fetch genuinely completes asynchronously after
+   * this component's first render. See AGENTS.md's "Change detection &
+   * state" section. */
+  public readonly queryDef = signal<IQueryDef | undefined>(undefined);
+
+  /** SQL/DTQL body text for the current query, for the `editor=text` panel
+   * below — `undefined` for an HTTP query (no text-shaped `request`) or
+   * before the query has loaded. */
+  public readonly queryBodyText = computed(() => {
+    const request = this.queryDef()?.request;
+    return request && request.queryType !== QueryType.HTTP
+      ? (request as ISqlQueryRequest).text
+      : undefined;
+  });
+
+  /** Entity/collection names this query references — see
+   * {@link extractLinkedEntityNames}'s own doc comment. */
+  public readonly linkedEntities = computed(() =>
+    extractLinkedEntityNames(this.queryDef()),
+  );
 
   /** api-contract.md "needs-target"/`TARGET_REQUIRED` — authorized eligible targets,
    * populated either from the Candidate the context panel opened this query with, or from
@@ -447,6 +539,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         return;
       }
       this.queryState = queryState;
+      // Signal write (zoneless-safe, unlike the plain-field write just
+      // above) — see `queryDef`'s own doc comment.
+      this.queryDef.set(queryState.def);
       if (this.queryState.environments && !this.queryState.activeEnv) {
         this.setActiveEnv(this.queryState.environments[0].id);
       }
@@ -669,11 +764,24 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           queryParams,
         );
 
-        const envId = queryParams.get('env');
-        if (envId) {
-          this.setActiveEnv(envId);
-        }
-
+        // `id` BEFORE `env` (S155 fix — was the other way round): on a
+        // direct/reloaded navigation carrying both `?id=...&env=...` (the
+        // founder's own reproduction URL), `setQueryId()` below opens the
+        // query state SYNCHRONOUSLY — `QueryEditorStateService.openQuery()`
+        // pushes a new `BehaviorSubject` value that this component's own
+        // `trackQueryState()` subscription (constructor, runs before this
+        // method) observes synchronously too, so `this.queryState`/
+        // `this.queryId` are already the real id by the time `setActiveEnv()`
+        // runs just below. The old order called `setActiveEnv(envId)` FIRST,
+        // while `this.queryId` was still `''` (the component's own initial
+        // placeholder) — `setActiveEnv()`'s own `getQueryState(this.queryId)`
+        // then found nothing and logged a user-visible "Something went
+        // wrong: An attempt to set unknown env as an active one: local" toast
+        // on every load of that URL (confirmed live), silently dropping the
+        // `env=` query param in the process (`local` was never actually set
+        // as the active environment for a direct URL load, only a click-
+        // through from within the app already had a matching `queryState`
+        // by the time `env` was applied).
         let queryId = queryParams.get('id');
         const isNew = !queryId;
         if (isNew) {
@@ -681,6 +789,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           queryId = '' + (this.editorState?.activeQueries?.length || 1);
         }
         this.setQueryId(queryId, isNew);
+
+        const envId = queryParams.get('env');
+        if (envId) {
+          this.setActiveEnv(envId);
+        }
       },
     });
   }
