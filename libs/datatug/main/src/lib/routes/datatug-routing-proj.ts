@@ -163,11 +163,50 @@ export const datatugProjectRoutes: Routes = [
       ),
   },
   {
-    path: 'query/:queryId',
-    loadComponent: () =>
-      import('../queries/query/page/query-page.component').then(
-        (m) => m.QueryPageComponent,
-      ),
+    // S158 (NG04002 on the founder's own reported URL, production build
+    // ed66c71) — a query id can be folder-qualified (`artists/artists_with_
+    // albums`, datatug-cli#219) and `DatatugNavService.goQuery()` already
+    // `encodeURIComponent()`s it into ONE path segment (`%2F`) before an
+    // in-app `router.navigate([...])` call, which is safe: Angular's Router
+    // takes that array of segments directly and never re-parses a URL
+    // string, so `%2F` survives regardless of what the browser does. A cold
+    // top-level navigation straight to that same URL string — pasting or
+    // opening the founder's link, not an in-app click — is not safe the
+    // same way: this app's own Cloudflare Workers Assets config
+    // (`wrangler.jsonc`, `not_found_handling: "single-page-application"`,
+    // unchanged since 2026-06-08 — confirmed via `wrangler dev` +
+    // `curl -v`, long before this bug was ever reported) 307-redirects
+    // such a request to a CANONICALIZED path that has already decoded
+    // `%2F` back into a literal `/`, splitting the id into TWO real path
+    // segments before Angular's router ever sees the URL — reproduced
+    // locally with no Cloudflare/browser involvement at all by requesting
+    // `query/artists/artists_with_albums` directly. A single `:queryId`
+    // param (exactly one segment) can never match that shape, hence
+    // NG04002 ("cannot match any routes"). This has always been true here —
+    // confirmed unchanged all the way back past `a7eaf10` — so this is not
+    // something any single commit introduced; it just took a
+    // folder-qualified query id in a directly-loaded (not clicked-through)
+    // URL to expose it.
+    //
+    // `QueryPageComponent` never reads this path segment's value anyway —
+    // `trackQueryParams()` resolves the real id exclusively from the `?id=`
+    // query-string param, where a literal `/` is unambiguous RFC 3986
+    // query-component syntax and survives every hop (browser, CDN
+    // redirect, HttpClient) intact. So the route only needs to MATCH,
+    // regardless of how many real segments the id ends up split across — a
+    // wildcard child of the literal 'query' segment does that (1..N
+    // trailing segments), where `query/:queryId` only ever matched exactly
+    // 1.
+    path: 'query',
+    children: [
+      {
+        path: '**',
+        loadComponent: () =>
+          import('../queries/query/page/query-page.component').then(
+            (m) => m.QueryPageComponent,
+          ),
+      },
+    ],
   },
   {
     path: 'queries',
