@@ -38,6 +38,13 @@ const HOST_PORT_STORE_ID = /^[^\s:@/]+:\d+$/;
  * That silently broke every consumer that reads `ref.url` expecting a
  * fetchable URL (e.g. the store page title — see
  * `datatug-store-page.component.ts`'s `storeIdToDisplayLabel` use).
+ *
+ * Task 13 (S108): this bare/`http-`/`https-` `host:port` id is the ONE
+ * store-id/agent-URL convention this app supports. The read-only worktree
+ * `.worktrees/datatug-apps-layered-acl-query` registers a second, competing
+ * convention (`pwa/repo/:repo/agent/:agentId`); it is deliberately not
+ * ported here — see `datatug-app-routes.ts`'s own comment and
+ * `spec/research/2026-09-09-layered-acl-reconciliation.md` (datatug/datatug).
  */
 export function parseDatatugStoreRef(storeId?: string): IStoreRef {
   if (
