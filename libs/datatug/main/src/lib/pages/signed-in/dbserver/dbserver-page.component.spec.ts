@@ -141,7 +141,24 @@ describe('DbserverPage replaces "Loading..." once the summary arrives (zoneless)
           },
         },
       ],
-    }).compileComponents();
+    })
+      // Without this, `DbServerService` resolves through the component's
+      // own `DatatugServicesUnsortedModule` import (nearer in the injector
+      // chain than this TestBed-level mock) instead of the mock above,
+      // constructing the REAL service and its full dependency chain
+      // (`ProjectService` -> `DatatugStoreServiceFactory` ->
+      // `DatatugStoreFirestoreService` -> `Firestore`, none of which are
+      // provided here) — `NG0201: No provider found for Firestore`. Blanking
+      // the component's own `imports` forces every dependency to resolve
+      // from this TestBed's own providers instead, matching the file's
+      // other `describe` block.
+      .overrideComponent(DbserverPageComponent, {
+        set: {
+          imports: [],
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+        },
+      })
+      .compileComponents();
 
     fixture = TestBed.createComponent(DbserverPageComponent);
     component = fixture.componentInstance;

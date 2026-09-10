@@ -134,7 +134,20 @@ describe('EntityPage replaces "Loading..." once the source data arrives (zoneles
           useValue: { get: vi.fn(() => httpGet$.asObservable()), post: vi.fn() },
         },
       ],
-    }).compileComponents();
+    })
+      // Without this, `EntityService` resolves through the component's own
+      // `DatatugServicesStoreModule`/`DatatugServicesUnsortedModule`
+      // imports (nearer in the injector chain than this TestBed-level mock)
+      // instead of the mock above, constructing the REAL service and its
+      // own dependency chain instead — matching the file's other `describe`
+      // block, which already blanks `imports` for the same reason.
+      .overrideComponent(EntityPageComponent, {
+        set: {
+          imports: [],
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+        },
+      })
+      .compileComponents();
 
     fixture = TestBed.createComponent(EntityPageComponent);
     component = fixture.componentInstance;
