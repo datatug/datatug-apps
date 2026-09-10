@@ -10,10 +10,14 @@ import { activePage } from './helpers/active-page';
  * Walks user journeys J1–J4 from Feature core-investigation-loop
  * (datatug/datatug spec/features/core-investigation-loop/README.md). J1
  * (Phase 1 plan task 3, AC:journey-harness), J2 and J3 (plan task 10) are
- * all filled in below and all currently FAIL against a `datatug-cli` main
- * build — deliberately left un-skipped per this stream's brief ("keep them
- * un-skipped and report the exact failure, do not hide it"). Two blockers,
- * both outside `datatug-apps` (nothing in this repo can fix them):
+ * all filled in below and deliberately left un-skipped per this stream's
+ * brief ("keep them un-skipped and report the exact failure, do not hide
+ * it"), so CI reports the real state. CURRENT STATE (2026-09-10): J1–J4 and
+ * store-id-scheme.spec.ts all pass against datatug-cli main — see the S104
+ * paragraph at the end of this comment, and main's journey CI job (run
+ * 34456175915 on 620b4fa, success). The numbered entries below are the
+ * blocker HISTORY, each marked with how it was resolved; none is open. Read
+ * any "currently" or "now" inside an entry as of that entry's own date:
  *
  * 1. (found while fixing this suite's own host mismatch, and now fixed here)
  *    `datatug-cli`'s CORS origin check
@@ -73,6 +77,17 @@ import { activePage } from './helpers/active-page';
  *    `/datatug/environment-summary` and `/datatug/projects/project_full` at
  *    all, which it never did before; no `/datatug/exec/select` follows
  *    because the environment never resolves.
+ *    RESOLVED 2026-09-09, about 1.5 hours after this entry was written:
+ *    datatug-cli PR #214 (1569f1f, merged 18:41 UTC) routes both reads
+ *    through `paramAlias`, so `fillProjectRef` accepts `project` or `proj`
+ *    and `getEnvironmentSummary` reads the environment id from `id`,
+ *    `environment` or `env`; `param_aliases_test.go` pins the client's exact
+ *    `proj=…&env=…` query. Every datatug-cli release from v0.20.1 carries
+ *    it. Re-verified 2026-09-10: the curl above returns the environment
+ *    summary against a build of datatug-cli main 5be73b7, the pre-fix
+ *    4327903 build still returns the 400, and J1's agent log shows the
+ *    `/datatug/exec/select?…from=main.Album` request this entry said never
+ *    came.
  *
  * J2 additionally needs `GET /datatug/semantic/columns`, `POST
  * /datatug/semantic/related` and `POST /datatug/queries/applicable` (plan Task 12
@@ -82,7 +97,9 @@ import { activePage } from './helpers/active-page';
  * pkg/api` in that repo finds nothing) — see its own test comment. J3's
  * remainder (Investigation Context bar/service, binding "from context") is
  * pure client-side state once blocker 2 is cleared — no further server
- * contract needed for it specifically.
+ * contract needed for it specifically. RESOLVED: all three routes are
+ * registered on datatug-cli main (pkg/server/endpoints/routes.go), and J2 and
+ * J3 both pass (S104, and main's journey CI job).
  *
  * J4 (S100) now runs for real against its own `supportAgentServer` fixture
  * (`--as support --role support`, `fixtures/agent-server.ts`) rather than
@@ -126,6 +143,16 @@ import { activePage } from './helpers/active-page';
  * from unrelated sessions on this VM — a pre-existing, documented,
  * load-dependent flake unconnected to router navigation or this file's own
  * changes, see this stream's report).
+ *
+ * 2026-09-10: host load does not explain that title-load flake, and a re-run
+ * should not wave it through. It failed main's journey CI job at a single
+ * worker on a GitHub-hosted runner (run 34453639702, 4d242ad) in Epilogue A,
+ * which uses this same Title-textbox assertion (epilogues.spec.ts:157), and
+ * it failed J1 locally under fullyParallel. In that local failure the
+ * Playwright trace shows both `GET /datatug/projects/project_summary` calls
+ * answered 200 in about 5 ms and 1 ms with the correct CORS header and no
+ * console error: the agent responds promptly and the page never commits the
+ * title, so the fault is client-side. Root cause not yet established.
  *
  * See ./README.md for the env vars this suite reads and what CI must
  * provide to run it instead of skipping it.
