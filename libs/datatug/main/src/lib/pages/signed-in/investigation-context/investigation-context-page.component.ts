@@ -18,7 +18,6 @@ import {
   IonSelectOption,
   IonSpinner,
   IonText,
-  IonTitle,
   IonToggle,
   IonToolbar,
 } from '@ionic/angular';
@@ -47,6 +46,7 @@ import { DatatugServicesProjectModule } from '../../../services/project/datatug-
 import { DatatugServicesStoreModule } from '../../../services/repo/datatug-services-store.module';
 import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
 import { EntityService } from '../../../services/unsorted/entity.service';
+import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
 
 addIcons({ closeOutline, linkOutline });
 
@@ -155,7 +155,7 @@ function toSemanticValue(raw: string, dataType: DataType | undefined): SemanticV
     IonButtons,
     IonMenuButton,
     IonBackButton,
-    IonTitle,
+    SneatDatatugPageTitleComponent,
     IonContent,
     IonList,
     IonListHeader,

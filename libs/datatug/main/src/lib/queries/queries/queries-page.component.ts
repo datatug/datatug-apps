@@ -17,7 +17,6 @@ import {
   IonSegmentButton,
   IonSelect,
   IonSelectOption,
-  IonTitle,
   IonToolbar,
 } from '@ionic/angular';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
@@ -31,6 +30,7 @@ import { getStoreId, IProjectContext } from '../../nav/nav-models';
 import { DatatugServicesNavModule } from '../../services/nav/datatug-services-nav.module';
 import { DatatugQueriesServicesModule } from '../datatug-queries-services.module';
 import { QueriesTabComponent } from './queries-tab.component';
+import { SneatDatatugPageTitleComponent } from '../../components/page-title/sneat-datatug-page-title.component';
 
 // const paramTab = 'tab';
 const tabs = ['active', 'bookmarked', 'personal', 'shared'] as const;
@@ -74,7 +74,7 @@ type OrderBy = (typeof orderBys)[number];
     IonHeader,
     IonToolbar,
     IonBackButton,
-    IonTitle,
+    SneatDatatugPageTitleComponent,
     IonButton,
     IonIcon,
     IonSegmentButton,

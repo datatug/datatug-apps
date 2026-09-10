@@ -1,4 +1,4 @@
-import { Component, OnDestroy, inject, signal } from '@angular/core';
+import { Component, OnDestroy, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
   IonBackButton,
@@ -20,24 +20,38 @@ import {
   IonMenuButton,
   IonSegment,
   IonSegmentButton,
-  IonTitle,
   IonToolbar,
   ModalController,
   NavController,
 } from '@ionic/angular';
 import { Subject } from 'rxjs';
-import { takeUntil } from 'rxjs/operators';
-import { ErrorLogger, IErrorLogger } from '@sneat/core';
+import { map, takeUntil } from 'rxjs/operators';
+import {
+  ErrorLogger,
+  IErrorLogger,
+  STORE_ID_GITHUB_COM,
+  STORE_TYPE_GITHUB,
+} from '@sneat/core';
 import { IProjectRef } from '../../../core/project-context';
 import { AddDbServerComponent } from '../../../db/modals/add-db-serve/add-db-server.component';
 import {
   IDbServer,
   IProjDbServerSummary,
 } from '../../../models/definition/apis/database';
+import { IEnvironmentFull } from '../../../models/definition/environments';
 import { ProjectContextService } from '../../../services/project/project-context.service';
+import { ProjectService } from '../../../services/project/project.service';
 import { DatatugServicesProjectModule } from '../../../services/project/datatug-services-project.module';
 import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
 import { DbServerService } from '../../../services/unsorted/db-server.service';
+import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
+import { EnvironmentService } from '../../../services/unsorted/environment.service';
+
+// Same one-off `isGithubStoreId` idiom `EnvironmentService`,
+// `DbServerService` and `EnvironmentsPageComponent` each already define for
+// themselves — no shared util exists for it in this codebase yet.
+const isGithubStoreId = (storeId: string): boolean =>
+  storeId === STORE_ID_GITHUB_COM || storeId === STORE_TYPE_GITHUB;
 
 @Component({
   selector: 'sneat-datatug-servers',
@@ -75,11 +89,11 @@ import { DbServerService } from '../../../services/unsorted/db-server.service';
     DatatugServicesProjectModule,
     DatatugServicesUnsortedModule,
     FormsModule,
+    SneatDatatugPageTitleComponent,
     IonHeader,
     IonToolbar,
     IonButtons,
     IonBackButton,
-    IonTitle,
     IonContent,
     IonCard,
     IonItemDivider,
@@ -104,6 +118,8 @@ export class ServersPageComponent implements OnDestroy {
   private readonly modalCtrl = inject(ModalController);
   private readonly navCtrl = inject(NavController);
   private readonly dbServerService = inject(DbServerService);
+  private readonly environmentService = inject(EnvironmentService);
+  private readonly projectService = inject(ProjectService);
 
   protected tab: 'db' | 'web' | 'api' = 'db';
 
@@ -116,6 +132,62 @@ export class ServersPageComponent implements OnDestroy {
   protected readonly dbServers = signal<IProjDbServerSummary[] | undefined>(
     undefined,
   );
+
+  // The project's real environment list (S153: the "Local"/"PROD" checkboxes
+  // used to be hard-coded text with no binding at all — they matched neither
+  // the demo project's real five environments, `QA`/`UAT`/`dev`/`local`/
+  // `prod`, nor anything the component tracked). `undefined` while loading.
+  protected readonly environments = signal<IEnvironmentFull[] | undefined>(
+    undefined,
+  );
+
+  // Which environment ids are currently checked — seeded to "every
+  // environment" once `environments` arrives (loadEnvironments() below),
+  // matching this page's previous all-checked-by-default look. Drives
+  // `filteredDbServers` below.
+  protected readonly selectedEnvironmentIds = signal<ReadonlySet<string>>(
+    new Set<string>(),
+  );
+
+  // The list the template actually renders: `dbServers()` narrowed to the
+  // environments currently checked. A row whose `environments` breakdown is
+  // `undefined` (the live-agent read path — see `IProjDbServerSummary`'s own
+  // doc comment) always passes through unfiltered; a row WITH a breakdown is
+  // dropped once none of its contributing environments remain checked, and
+  // otherwise gets its own `databasesCount` recomputed from only the checked
+  // environments. The DB-servers tab badge and the footer "Total:" line both
+  // read this same signal's `.length`, so — unlike the hard-coded `2` badge
+  // this replaces — they can never disagree with each other or with the
+  // rows actually shown (S153, the founder's "numbers mismatch" ruling).
+  protected readonly filteredDbServers = computed(():
+    | IProjDbServerSummary[]
+    | undefined => {
+    const servers = this.dbServers();
+    if (!servers) {
+      return undefined;
+    }
+    const selected = this.selectedEnvironmentIds();
+    return servers
+      .map((server) => {
+        if (!server.environments) {
+          return server;
+        }
+        const environments = server.environments.filter((e) =>
+          selected.has(e.envId),
+        );
+        return {
+          ...server,
+          databasesCount: environments.reduce(
+            (sum, e) => sum + e.databasesCount,
+            0,
+          ),
+          environments,
+        };
+      })
+      .filter(
+        (server) => !server.environments || server.environments.length > 0,
+      );
+  });
 
   private readonly destroyed = new Subject<void>();
   // Written from the same `.subscribe()` callback as `dbServers` above.
@@ -144,6 +216,7 @@ export class ServersPageComponent implements OnDestroy {
             previousTarget?.projectId !== target?.projectId)
         ) {
           this.loadDbServers(target);
+          this.loadEnvironments(target);
         }
         this.target.set(target);
       });
@@ -151,6 +224,35 @@ export class ServersPageComponent implements OnDestroy {
 
   ngOnDestroy() {
     this.destroyed.next();
+  }
+
+  /** Toggles one environment's checked state — bound to each checkbox row's
+   * `(ionChange)` in the template. Recomputing `filteredDbServers` (and thus
+   * the tab badge/footer total/row `databasesCount`) is then automatic: it's
+   * a `computed()` over this signal and `dbServers`, not something this
+   * method needs to trigger itself. */
+  protected toggleEnvironment(envId: string, checked: boolean): void {
+    this.selectedEnvironmentIds.update((current) => {
+      const next = new Set(current);
+      if (checked) {
+        next.add(envId);
+      } else {
+        next.delete(envId);
+      }
+      return next;
+    });
+  }
+
+  /** The row label for one DB server: its `host` when the project actually
+   * declares one, or an explicit placeholder otherwise — never blank. The
+   * demo project's `environments/*.env.json` files declare `dbServers`
+   * entries with a `driver` and `catalogs` but no `host` at all (sqlite3 is
+   * file-based, not network-addressed), which is exactly the blank row the
+   * founder's ruling flagged ("no server name shown in the row") — the
+   * adjacent driver badge (see the template) already names the driver, so
+   * this only needs to say plainly that there's no host, not repeat it. */
+  protected serverLabel(dbServer: IDbServer): string {
+    return dbServer.host?.trim() || '(no host)';
   }
 
   goDbServer(dbServer: IProjDbServerSummary): void {
@@ -246,6 +348,30 @@ export class ServersPageComponent implements OnDestroy {
       },
       error: (err) =>
         this.errorLogger.logError(err, 'Failed to load list of DB servers'),
+    });
+  }
+
+  /** Same GitHub-vs-agent split `EnvironmentsPageComponent` already uses
+   * (pages/signed-in/environments) — reused here rather than reimplemented,
+   * since it already knows how to read each store's real environment list
+   * (`EnvironmentService.listEnvironments()` for GitHub, `ProjectService`'s
+   * own `getFull()` for a live agent). Every environment starts checked,
+   * matching this page's previous (hard-coded) all-checked look. */
+  private loadEnvironments(target: IProjectRef): void {
+    const environments$ = isGithubStoreId(target.storeId)
+      ? this.environmentService.listEnvironments(target.projectId)
+      : this.projectService
+          .getFull(target)
+          .pipe(map((full) => full.environments || []));
+    environments$.subscribe({
+      next: (environments) => {
+        this.environments.set(environments);
+        this.selectedEnvironmentIds.set(
+          new Set(environments.map((e) => e.id)),
+        );
+      },
+      error: (err) =>
+        this.errorLogger.logError(err, 'Failed to load project environments'),
     });
   }
 }

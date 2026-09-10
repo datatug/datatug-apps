@@ -110,9 +110,33 @@ export interface IDbServer extends IServer {
   driver: string;
 }
 
+/** One environment's contribution to an aggregated {@link IProjDbServerSummary}
+ * row's `databasesCount` — see that interface's own `environments` doc comment. */
+export interface IProjDbServerEnvironmentUsage {
+  envId: string;
+  databasesCount: number;
+}
+
 export interface IProjDbServerSummary {
   dbServer: IDbServer;
   databasesCount: number;
+  /**
+   * Per-environment breakdown of {@link databasesCount} — which
+   * environments contribute to this aggregated server row, and how many
+   * databases/catalogs each one contributes. Populated by the GitHub read
+   * path (`DbServerService`'s own `getGithubDbServers()`, which aggregates
+   * this row across every `environments/<id>/<id>.env.json` file) so the
+   * Servers page can recompute a narrower `databasesCount` — and hide the
+   * row entirely — once its environment filter excludes every environment
+   * that contributes to it (S153: the founder's "numbers mismatch" ruling
+   * against the GitHub-store demo project).
+   *
+   * `undefined` for the live-agent path (`ProjectService.getFull()`'s
+   * project-level `dbServers` carries no per-environment breakdown): the
+   * Servers page's environment filter is a deliberate no-op there, same as
+   * before this field existed.
+   */
+  environments?: IProjDbServerEnvironmentUsage[];
 }
 
 export interface IProjDbServerFull extends IDbServer {

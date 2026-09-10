@@ -291,4 +291,59 @@ test.describe('GitHub-store project — every side-menu page loads without error
     // call — asserted the same way as the main journey test.
     expect(errors).toEqual([]);
   });
+
+  /**
+   * S155 — founder ruling 2026-09-10, verbatim: "Query page does not show
+   * query text and linked entities/collections" — reported against exactly
+   * this URL. Deliberately a direct `page.goto()`, unlike every other
+   * query-page test above (see their own doc comments on why click-through
+   * was used instead): a fresh, un-navigated browser tab pointed straight at
+   * the founder's own URL is the actual reproduction, not an in-app click.
+   * Live investigation (this task) found `queryState.request.text`/`.def`
+   * were already loading correctly (`GithubProjectReaderService.getQuery()`
+   * / `QueriesService.getQuery()` — unchanged by this task, see
+   * `github-project-reader.service.spec.ts`'s own `getQuery` coverage and
+   * `queries.service.spec.ts`'s new GitHub-store describe block) — the query
+   * page template itself never rendered any of it (no SQL/DTQL body editor
+   * at all, no "linked entities" section anywhere), AND a separate ordering
+   * bug in `trackQueryParams()` (processed `env=` before `id=`) threw a
+   * user-visible "Something went wrong: An attempt to set unknown env as an
+   * active one: local" toast on this exact URL every time. Both fixed in
+   * `query-page.component.ts`/`.html` (this task) — this is the read-only,
+   * black-box proof: the real query text and its linked entities are
+   * visible in the DOM, and no ErrorLoggerService.logError fires at all.
+   */
+  test("the founder's own reported URL — direct navigation to a legacy SQL query (no click-through) shows its query text and linked entities", async ({
+    page,
+  }) => {
+    const errors = installErrorLoggerWatch(page);
+
+    await page.goto(
+      `${PROJECT_URL}/query/artists%2Fartists_with_albums?id=artists%2Fartists_with_albums&editor=text&env=local`,
+    );
+
+    // Query text — `artists_with_albums.sql`'s real body (no store menu
+    // click involved, this is a cold navigation straight to the query).
+    const bodyText = page.getByTestId('query-body-text');
+    await expect(bodyText).toBeVisible({ timeout: 20_000 });
+    await expect
+      .poll(
+        () => bodyText.evaluate((el: unknown) => (el as { value?: string }).value),
+        { timeout: 20_000 },
+      )
+      .toContain('FROM Artist');
+
+    // Linked entities — `artists_with_albums.sql.json` carries no
+    // parameters/recordsets metadata at all (confirmed against the real
+    // repo file: `{"title": "Artists with albums"}`, nothing else), so this
+    // exercises `extractLinkedEntityNames()`'s own FROM/JOIN text-scan
+    // fallback (query-page.component.ts) rather than the metadata path the
+    // DTQL test above exercises.
+    const linkedEntities = page.getByTestId('linked-entities');
+    await expect(linkedEntities).toBeVisible({ timeout: 15_000 });
+    await expect(linkedEntities.getByText('Artist', { exact: true })).toBeVisible();
+    await expect(linkedEntities.getByText('Album', { exact: true })).toBeVisible();
+
+    expect(errors).toEqual([]);
+  });
 });

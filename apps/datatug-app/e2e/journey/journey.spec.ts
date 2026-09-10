@@ -285,7 +285,11 @@ test.describe('J1 — first useful result (the null-action path)', () => {
     // loading).
     await expect(
       page
-        .locator('ion-item', { hasText: 'Title' })
+        // S152: the project page's Title `ion-label` was removed (founder
+        // ruling "still see 'Title' label before project title - not
+        // needed") — the value now lives in the first `ion-input` of the
+        // project-info card, with no text label to match on any more.
+        .locator('ion-card ion-input')
         .first()
         .getByRole('textbox'),
     ).toHaveValue('DataTug Demo Project 1', { timeout: 15_000 });
@@ -342,7 +346,11 @@ test.describe('J2 — from a value to related knowledge', () => {
     await page.goto(projectUrl);
     await expect(
       page
-        .locator('ion-item', { hasText: 'Title' })
+        // S152: the project page's Title `ion-label` was removed (founder
+        // ruling "still see 'Title' label before project title - not
+        // needed") — the value now lives in the first `ion-input` of the
+        // project-info card, with no text label to match on any more.
+        .locator('ion-card ion-input')
         .first()
         .getByRole('textbox'),
     ).toHaveValue('DataTug Demo Project 1', { timeout: 15_000 });
@@ -447,7 +455,11 @@ test.describe('J2b — HTTP reference source', () => {
     await page.goto(projectUrl);
     await expect(
       page
-        .locator('ion-item', { hasText: 'Title' })
+        // S152: the project page's Title `ion-label` was removed (founder
+        // ruling "still see 'Title' label before project title - not
+        // needed") — the value now lives in the first `ion-input` of the
+        // project-info card, with no text label to match on any more.
+        .locator('ion-card ion-input')
         .first()
         .getByRole('textbox'),
     ).toHaveValue('DataTug Demo Project 1', { timeout: 15_000 });
@@ -518,7 +530,11 @@ test.describe('J2b — HTTP reference source', () => {
     await page.goto(projectUrl);
     await expect(
       page
-        .locator('ion-item', { hasText: 'Title' })
+        // S152: the project page's Title `ion-label` was removed (founder
+        // ruling "still see 'Title' label before project title - not
+        // needed") — the value now lives in the first `ion-input` of the
+        // project-info card, with no text label to match on any more.
+        .locator('ion-card ion-input')
         .first()
         .getByRole('textbox'),
     ).toHaveValue('DataTug Demo Project 1', { timeout: 15_000 });
@@ -594,7 +610,11 @@ test.describe('J3 — carrying context', () => {
     await page.goto(projectUrl);
     await expect(
       page
-        .locator('ion-item', { hasText: 'Title' })
+        // S152: the project page's Title `ion-label` was removed (founder
+        // ruling "still see 'Title' label before project title - not
+        // needed") — the value now lives in the first `ion-input` of the
+        // project-info card, with no text label to match on any more.
+        .locator('ion-card ion-input')
         .first()
         .getByRole('textbox'),
     ).toHaveValue('DataTug Demo Project 1', { timeout: 15_000 });
@@ -739,7 +759,11 @@ test.describe('J4 — restricted principal', () => {
     await page.goto(projectUrl);
     await expect(
       page
-        .locator('ion-item', { hasText: 'Title' })
+        // S152: the project page's Title `ion-label` was removed (founder
+        // ruling "still see 'Title' label before project title - not
+        // needed") — the value now lives in the first `ion-input` of the
+        // project-info card, with no text label to match on any more.
+        .locator('ion-card ion-input')
         .first()
         .getByRole('textbox'),
     ).toHaveValue('DataTug Demo Project 1', { timeout: 15_000 });

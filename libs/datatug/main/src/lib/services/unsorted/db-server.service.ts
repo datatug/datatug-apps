@@ -12,6 +12,7 @@ import {
   IDbCatalogSummary,
   IDbServer,
   IDbServerSummary,
+  IProjDbServerEnvironmentUsage,
   IProjDbServerSummary,
 } from '../../models/definition/apis/database';
 import { ProjectContextService } from '../project/project-context.service';
@@ -152,19 +153,34 @@ export class DbServerService {
           : of([]),
       ),
       map((summaries) => {
-        const byKey = new Map<string, IProjDbServerSummary>();
+        const byKey = new Map<
+          string,
+          { dbServer: IDbServer; environments: IProjDbServerEnvironmentUsage[] }
+        >();
         for (const summary of summaries) {
           for (const s of summary.dbServers || []) {
             const key = `${s.driver}:${s.host}`;
-            const existing = byKey.get(key);
+            const environments = byKey.get(key)?.environments ?? [];
+            environments.push({
+              envId: summary.id,
+              databasesCount: s.catalogs?.length || 0,
+            });
             byKey.set(key, {
               dbServer: { driver: s.driver, host: s.host },
-              databasesCount:
-                (existing?.databasesCount || 0) + (s.catalogs?.length || 0),
+              environments,
             });
           }
         }
-        return [...byKey.values()];
+        return [...byKey.values()].map(
+          ({ dbServer, environments }): IProjDbServerSummary => ({
+            dbServer,
+            databasesCount: environments.reduce(
+              (sum, e) => sum + e.databasesCount,
+              0,
+            ),
+            environments,
+          }),
+        );
       }),
     );
   }

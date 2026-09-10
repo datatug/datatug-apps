@@ -4,13 +4,13 @@
       <ion-menu-button />
       <ion-back-button defaultHref="../.." />
     </ion-buttons>
-    <ion-title>
-      @if (envDb) {
-        <b>{{ envDb.id }}</b> &#64; {{ env?.id }}
-      } @else {
-        Database: loading...
-      }
-    </ion-title>
+    <sneat-datatug-page-title
+      [pageTitle]="
+        envDb
+          ? envDb.id + ' (' + (env?.id || '') + ')'
+          : 'Database: loading...'
+      "
+    />
   </ion-toolbar>
 </ion-header>
 

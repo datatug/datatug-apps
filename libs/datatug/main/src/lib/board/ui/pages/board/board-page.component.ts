@@ -22,7 +22,6 @@ import {
   IonLabel,
   IonMenuButton,
   IonRow,
-  IonTitle,
   IonToolbar,
 } from '@ionic/angular';
 import { distinctUntilChanged, filter, map, takeUntil } from 'rxjs/operators';
@@ -47,6 +46,7 @@ import { DatatugServicesUnsortedModule } from '../../../../services/unsorted/dat
 import { DatatugBoardService } from '../../../core/datatug-board.service';
 import { BoardComponent } from '../../components/board/board.component';
 import { EnvSelectorComponent } from '../../components/env-selector/env-selector.component';
+import { SneatDatatugPageTitleComponent } from '../../../../components/page-title/sneat-datatug-page-title.component';
 
 @Component({
   selector: 'sneat-datatug-board-page',
@@ -71,12 +71,12 @@ import { EnvSelectorComponent } from '../../components/env-selector/env-selector
     DatatugServicesUnsortedModule,
     FormsModule,
     // BoardServiceModule,
+    SneatDatatugPageTitleComponent,
     IonHeader,
     IonToolbar,
     IonButtons,
     IonBackButton,
     IonMenuButton,
-    IonTitle,
     IonContent,
     IonGrid,
     IonRow,
