@@ -36,8 +36,8 @@
       [isFilterable]="true"
       title="Boards"
       itemIcon="clipboard-outline"
-      [isLoading]="folder === undefined"
-      [items]="boards"
+      [isLoading]="folder() === undefined"
+      [items]="boards()"
       [create]="createFolderItem"
     />
     <!--					   -->
@@ -50,7 +50,7 @@
       [isFilterable]="true"
       title="Queries"
       itemIcon="clipboard-outline"
-      [isLoading]="folder === undefined"
+      [isLoading]="folder() === undefined"
       [items]="queries"
       [create]="createFolderItem"
     >

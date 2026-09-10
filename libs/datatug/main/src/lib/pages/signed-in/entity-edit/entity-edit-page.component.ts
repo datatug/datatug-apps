@@ -1,5 +1,11 @@
 import { JsonPipe } from '@angular/common';
-import { Component, OnDestroy, ViewChild, inject } from '@angular/core';
+import {
+  Component,
+  OnDestroy,
+  ViewChild,
+  inject,
+  signal,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { SneatErrorCardComponent } from '@sneat/components';
@@ -68,9 +74,18 @@ export class EntityEditPageComponent implements OnDestroy {
   private readonly popoverCtrl = inject(PopoverController);
 
   mode?: 'new' | 'edit';
-  public entity: IEntity = { fields: [] };
-  backUrl = '/';
-  project?: IProjectContext;
+  // A signal, not a plain field: this app is zoneless
+  // (provideZonelessChangeDetection(), main.ts) — addProperty() below writes
+  // it from inside a `.then()` callback, which never triggers change
+  // detection on its own for a plain field. See AGENTS.md's "Change
+  // detection & state" section and
+  // pages/signed-in/project/project-page.component.ts (PR #95) for the
+  // established pattern.
+  public readonly entity = signal<IEntity>({ fields: [] });
+  // Signals, not plain fields: both written from inside the `.subscribe()`
+  // callback in the constructor below, same reasoning as `entity` above.
+  backUrl = signal('/');
+  project = signal<IProjectContext | undefined>(undefined);
   @ViewChild('nameInput') nameInput?: IonInput;
   public error: unknown;
   public showNewPropForm = false;
@@ -82,17 +97,19 @@ export class EntityEditPageComponent implements OnDestroy {
 
     try {
       this.mode = !route.snapshot.paramMap.get('entityId') ? 'new' : 'edit';
-      this.entity = {
+      this.entity.set({
         fields: [],
-      };
+      });
       this.showNewPropForm = true;
       navContextService.currentProject.subscribe({
         next: (currentProject) => {
           try {
-            this.project = currentProject;
-            this.backUrl = currentProject
-              ? `/store/${currentProject.ref.storeId}/project/${currentProject.ref.projectId}/entities`
-              : '/';
+            this.project.set(currentProject);
+            this.backUrl.set(
+              currentProject
+                ? `/store/${currentProject.ref.storeId}/project/${currentProject.ref.projectId}/entities`
+                : '/',
+            );
           } catch (e) {
             this.errorLogger.logError(e, 'Failed to process current project');
           }
@@ -124,19 +141,21 @@ export class EntityEditPageComponent implements OnDestroy {
   }
 
   createEntity(): void {
-    const project = this.project;
+    const project = this.project();
     if (!project) {
       return;
     }
     try {
-      this.entityService.createEntity(project.ref, this.entity).subscribe({
-        next: (value) => {
-          this.datatugNavService.goEntity(project, {
-            id: value.id,
-            title: value.dbo?.title,
-          });
-        },
-      });
+      this.entityService
+        .createEntity(project.ref, this.entity())
+        .subscribe({
+          next: (value) => {
+            this.datatugNavService.goEntity(project, {
+              id: value.id,
+              title: value.dbo?.title,
+            });
+          },
+        });
     } catch (e) {
       this.errorLogger.logError(e, 'Failed to create entity');
     }
@@ -152,18 +171,22 @@ export class EntityEditPageComponent implements OnDestroy {
       event,
     });
     popover.onDidDismiss().then((response) => {
-      this.entity = {
-        ...this.entity,
-        fields: [...this.entity.fields, response.data as IEntityFieldDef],
-      };
+      this.entity.update((entity) => ({
+        ...entity,
+        fields: [...entity.fields, response.data as IEntityFieldDef],
+      }));
     });
     return await popover.present();
   }
 
   deleteField(id: string): void {
-    this.entity = {
-      ...this.entity,
-      fields: this.entity.fields.filter((f) => f.id !== id),
-    };
+    this.entity.update((entity) => ({
+      ...entity,
+      fields: entity.fields.filter((f) => f.id !== id),
+    }));
+  }
+
+  protected updateEntityTitle(title: string): void {
+    this.entity.update((entity) => ({ ...entity, title }));
   }
 }

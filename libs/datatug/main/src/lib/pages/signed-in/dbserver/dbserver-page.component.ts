@@ -1,4 +1,4 @@
-import { Component, OnDestroy, inject } from '@angular/core';
+import { Component, OnDestroy, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import {
@@ -67,12 +67,23 @@ export class DbserverPageComponent implements OnDestroy {
   private readonly projectContextService = inject(ProjectContextService);
 
   tab: 'known' | 'unknown' = 'known';
-  public dbServer?: IDbServer;
-  public dbServerSummary?: IDbServerSummary;
-  public dbServerCatalogs?: IDbCatalogSummary[];
-  public loadingSummary = true;
-  public loadingCatalogs = true;
-  public envs?: string[];
+  // Signals, not plain fields: this app is zoneless
+  // (provideZonelessChangeDetection(), main.ts) — every one of these is
+  // written from inside `.subscribe()` callbacks below, which never
+  // trigger change detection on their own for a plain field. See
+  // AGENTS.md's "Change detection & state" section and
+  // pages/signed-in/project/project-page.component.ts (PR #95) for the
+  // established pattern.
+  public readonly dbServer = signal<IDbServer | undefined>(undefined);
+  public readonly dbServerSummary = signal<IDbServerSummary | undefined>(
+    undefined,
+  );
+  public readonly dbServerCatalogs = signal<IDbCatalogSummary[] | undefined>(
+    undefined,
+  );
+  public readonly loadingSummary = signal(true);
+  public readonly loadingCatalogs = signal(true);
+  public readonly envs = signal<string[] | undefined>(undefined);
 
   private readonly destroyed = new Subject<void>();
 
@@ -87,7 +98,7 @@ export class DbserverPageComponent implements OnDestroy {
         }),
       )
       .subscribe((dbServer) => {
-        this.dbServer = dbServer;
+        this.dbServer.set(dbServer);
       });
     this.projectContextService.current$
       .pipe(takeUntil(this.destroyed))
@@ -111,8 +122,8 @@ export class DbserverPageComponent implements OnDestroy {
   }
 
   private loadSummary(): void {
-    this.loadingSummary = true;
-    const dbServer = this.dbServer;
+    this.loadingSummary.set(true);
+    const dbServer = this.dbServer();
     if (!dbServer) {
       return;
     }
@@ -124,32 +135,29 @@ export class DbserverPageComponent implements OnDestroy {
       )
       .subscribe({
         next: (dbServerSummary) => {
-          this.loadingSummary = false;
-          this.dbServerSummary = dbServerSummary;
-          this.envs = [];
+          this.loadingSummary.set(false);
+          this.dbServerSummary.set(dbServerSummary);
+          const envs: string[] = [];
           dbServerSummary.databases?.forEach((db) => {
             db.environments?.forEach((env) => {
-              if (!this.envs?.includes(env)) {
-                if (this.envs) {
-                  this.envs?.push(env);
-                } else {
-                  this.envs = [env];
-                }
+              if (!envs.includes(env)) {
+                envs.push(env);
               }
             });
           });
+          this.envs.set(envs);
           this.removeAddedCatalogs();
         },
         error: (err) => {
-          this.loadingSummary = false;
+          this.loadingSummary.set(false);
           this.errorLogger.logError(err, 'Failed to load DB server summary');
         },
       });
   }
 
   private loadCatalogs(): void {
-    this.loadingCatalogs = true;
-    const dbServer = this.dbServer;
+    this.loadingCatalogs.set(true);
+    const dbServer = this.dbServer();
     if (!dbServer) {
       return;
     }
@@ -161,22 +169,26 @@ export class DbserverPageComponent implements OnDestroy {
       )
       .subscribe({
         next: (catalogs) => {
-          this.loadingCatalogs = false;
-          this.dbServerCatalogs = catalogs;
+          this.loadingCatalogs.set(false);
+          this.dbServerCatalogs.set(catalogs);
           this.removeAddedCatalogs();
         },
         error: (err) => {
-          this.loadingCatalogs = false;
+          this.loadingCatalogs.set(false);
           this.errorLogger.logError(err, 'Failed to load DB catalogs');
         },
       });
   }
 
   private removeAddedCatalogs(): void {
-    if (this.dbServerSummary && this.dbServerCatalogs) {
-      const { databases } = this.dbServerSummary;
-      this.dbServerCatalogs = this.dbServerCatalogs.filter(
-        (c) => !databases || !databases.some((db) => db.id === c.name),
+    const dbServerSummary = this.dbServerSummary();
+    const dbServerCatalogs = this.dbServerCatalogs();
+    if (dbServerSummary && dbServerCatalogs) {
+      const { databases } = dbServerSummary;
+      this.dbServerCatalogs.set(
+        dbServerCatalogs.filter(
+          (c) => !databases || !databases.some((db) => db.id === c.name),
+        ),
       );
     }
   }

@@ -1,4 +1,4 @@
-import { Component, OnDestroy, inject } from '@angular/core';
+import { Component, OnDestroy, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
   IonButton,
@@ -46,7 +46,14 @@ export class AddDbServerComponent implements OnDestroy {
     driver: 'sqlserver',
     host: '',
   };
-  submitting = false;
+  // A signal, not a plain field: this app is zoneless
+  // (provideZonelessChangeDetection(), main.ts) — the error branch below
+  // writes this from inside a `.subscribe()` callback, which never triggers
+  // change detection on its own for a plain field. See AGENTS.md's "Change
+  // detection & state" section and
+  // pages/signed-in/project/project-page.component.ts (PR #95) for the
+  // established pattern.
+  protected readonly submitting = signal(false);
   private readonly destroyed = new Subject<void>();
 
   ngOnDestroy() {
@@ -58,7 +65,7 @@ export class AddDbServerComponent implements OnDestroy {
   }
 
   submit(): void {
-    this.submitting = true;
+    this.submitting.set(true);
     this.dbServerService.addDbServer(this.dbServer).subscribe({
       next: (dbServerSummary) => {
         this.modalCtrl
@@ -69,7 +76,7 @@ export class AddDbServerComponent implements OnDestroy {
       },
       error: (err) => {
         this.errorLogger.logError(err, 'Failed to add server to project');
-        this.submitting = false;
+        this.submitting.set(false);
       },
     });
   }

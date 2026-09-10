@@ -5,9 +5,9 @@
       <ion-menu-button />
     </ion-buttons>
     <ion-title>
-      DB server: {{ dbServer?.host }}
-      @if (dbServer?.port) {
-        <span>{{ dbServer?.port }}</span>
+      DB server: {{ dbServer()?.host }}
+      @if (dbServer()?.port) {
+        <span>{{ dbServer()?.port }}</span>
       }
     </ion-title>
   </ion-toolbar>
@@ -16,24 +16,24 @@
 <ion-content>
   <ion-card>
     <ion-item-divider>
-      @switch (dbServer?.driver) {
+      @switch (dbServer()?.driver) {
         @case ("sqlserver") {
           <ion-icon name="logo-windows" slot="start" />
           <ion-label>Microsoft SQL Server</ion-label>
         }
         @default {
-          <ion-label>{{ dbServer?.driver }}</ion-label>
+          <ion-label>{{ dbServer()?.driver }}</ion-label>
         }
       }
     </ion-item-divider>
     <ion-item>
       <ion-label color="medium">Host</ion-label>
-      <ion-input [value]="dbServer?.host" readonly="true" />
+      <ion-input [value]="dbServer()?.host" readonly="true" />
     </ion-item>
-    @if (dbServer?.port) {
+    @if (dbServer()?.port) {
       <ion-item>
         <ion-label color="medium">Port</ion-label>
-        <ion-input [value]="dbServer?.port" type="number" readonly="true" />
+        <ion-input [value]="dbServer()?.port" type="number" readonly="true" />
       </ion-item>
     }
   </ion-card>
@@ -41,18 +41,18 @@
     <ion-item-divider>
       <ion-label>Environments</ion-label>
     </ion-item-divider>
-    @if (loadingSummary) {
+    @if (loadingSummary()) {
       <ion-item>
         <ion-label color="medium">Loading...</ion-label>
       </ion-item>
     }
-    @if (!loadingSummary && envs?.length) {
+    @if (!loadingSummary() && envs()?.length) {
       <ion-item tappable>
         <ion-label>Local</ion-label>
         <ion-badge color="light">1</ion-badge>
       </ion-item>
     }
-    @if (!loadingSummary && !envs?.length) {
+    @if (!loadingSummary() && !envs()?.length) {
       <ion-item>
         <ion-label color="medium"
           >Not assigned to any specific environment yet
@@ -68,9 +68,9 @@
         <ion-segment-button value="unknown">
           <ion-label>
             Unknown
-            @if (dbServerCatalogs?.length) {
+            @if (dbServerCatalogs()?.length) {
               <ion-badge color="light"
-                >{{ dbServerCatalogs?.length }}
+                >{{ dbServerCatalogs()?.length }}
               </ion-badge>
             }
           </ion-label>
@@ -80,14 +80,14 @@
     <ion-list>
       @switch (tab) {
         @case ("known") {
-          @if (loadingSummary) {
+          @if (loadingSummary()) {
             <ion-item>
               <ion-label color="medium">Loading...</ion-label>
             </ion-item>
           }
-          @if (!loadingSummary && dbServerSummary?.databases?.length) {
+          @if (!loadingSummary() && dbServerSummary()?.databases?.length) {
             @for (
-              database of dbServerSummary?.databases || [];
+              database of dbServerSummary()?.databases || [];
               track database.id
             ) {
               <ion-item tappable>
@@ -108,13 +108,13 @@
           }
         }
         @case ("unknown") {
-          @if (loadingCatalogs) {
+          @if (loadingCatalogs()) {
             <ion-item>
               <ion-label color="medium">Loading...</ion-label>
             </ion-item>
           }
-          @if (dbServerCatalogs) {
-            @for (dbCatalog of dbServerCatalogs; track dbCatalog.name) {
+          @if (dbServerCatalogs()) {
+            @for (dbCatalog of dbServerCatalogs(); track dbCatalog.name) {
               <ion-item tappable>
                 <ion-icon slot="start" name="server-outline" />
                 <ion-label>{{ dbCatalog.name }}</ion-label>

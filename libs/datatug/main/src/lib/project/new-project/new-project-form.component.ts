@@ -1,4 +1,4 @@
-import { Component, ViewChild, inject, input } from '@angular/core';
+import { Component, ViewChild, inject, input, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
   PopoverController,
@@ -53,7 +53,14 @@ export class NewProjectFormComponent implements ViewDidEnter {
   store = 'cloud';
   title = '';
 
-  isCreating = false;
+  // A signal, not a plain field: this app is zoneless
+  // (provideZonelessChangeDetection(), main.ts) — the error branch in
+  // create() below writes this from inside a `.subscribe()` callback, which
+  // never triggers change detection on its own for a plain field. See
+  // AGENTS.md's "Change detection & state" section and
+  // pages/signed-in/project/project-page.component.ts (PR #95) for the
+  // established pattern.
+  protected readonly isCreating = signal(false);
 
   readonly onCancel = input<() => void>();
 
@@ -73,7 +80,7 @@ export class NewProjectFormComponent implements ViewDidEnter {
   }
 
   create(): void {
-    this.isCreating = true;
+    this.isCreating.set(true);
     const storeId = 'firestore';
     this.projectService
       .createNewProject(storeId, { title: this.title, userIDs: [] })
@@ -95,7 +102,7 @@ export class NewProjectFormComponent implements ViewDidEnter {
         },
         error: (err) => {
           this.errorLogger.logError(err, 'Failed to create a new project');
-          this.isCreating = false;
+          this.isCreating.set(false);
         },
       });
   }
