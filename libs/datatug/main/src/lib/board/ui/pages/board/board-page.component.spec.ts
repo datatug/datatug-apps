@@ -7,6 +7,7 @@ import { of } from 'rxjs';
 import { BoardPageComponent } from './board-page.component';
 import { DatatugBoardService } from '../../../core/datatug-board.service';
 import { ParameterLookupService } from '../../../../components/parameters/parameter-lookup.service';
+import { routingParamBoard } from '../../../../core/datatug-routing-params';
 import { DatatugNavContextService } from '../../../../services/nav/datatug-nav-context.service';
 import { QueryParamsService } from '../../../../core/services/QueryParamsService';
 
@@ -69,5 +70,70 @@ describe('BoardPage', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+});
+
+describe('BoardPage - currentProject navigation', () => {
+  it('reads storeId/projectId from the project ref and requests the board', async () => {
+    const logError = vi.fn();
+    const getBoard = vi.fn().mockReturnValue(of(undefined));
+
+    await TestBed.configureTestingModule({
+      imports: [BoardPageComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        {
+          provide: ErrorLogger,
+          useValue: { logError, logErrorHandler: vi.fn(() => vi.fn()) },
+        },
+        { provide: DatatugBoardService, useValue: { getBoard } },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            queryParamMap: of({ get: () => null }),
+            paramMap: of({
+              get: (key: string) => (key === routingParamBoard ? 'b1' : null),
+            }),
+            snapshot: { paramMap: { get: () => null } },
+          },
+        },
+        {
+          provide: ParameterLookupService,
+          useValue: { lookupParameterValue: vi.fn() },
+        },
+        {
+          provide: DatatugNavContextService,
+          useValue: {
+            currentProject: of({
+              ref: { storeId: 's1', projectId: 'p1' },
+            }),
+            currentEnv: of(undefined),
+            setCurrentEnvironment: vi.fn(),
+          },
+        },
+        {
+          provide: QueryParamsService,
+          useValue: { setQueryParameter: vi.fn() },
+        },
+      ],
+    })
+      .overrideComponent(BoardPageComponent, {
+        set: {
+          imports: [],
+          template: '',
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+          providers: [],
+        },
+      })
+      .compileComponents();
+
+    TestBed.createComponent(BoardPageComponent);
+
+    expect(getBoard).toHaveBeenCalledWith(
+      'http://localhost:8989',
+      'p1',
+      'b1',
+    );
+    expect(logError).not.toHaveBeenCalled();
   });
 });
