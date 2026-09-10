@@ -26,7 +26,10 @@ import {
   ViewDidLeave,
   ViewWillEnter,
 } from '@ionic/angular';
+import { DatatugCoreModule } from '../../core/datatug-core.module';
 import { getStoreId, IProjectContext } from '../../nav/nav-models';
+import { DatatugServicesNavModule } from '../../services/nav/datatug-services-nav.module';
+import { DatatugQueriesServicesModule } from '../datatug-queries-services.module';
 import { QueriesTabComponent } from './queries-tab.component';
 
 // const paramTab = 'tab';
@@ -42,6 +45,32 @@ type OrderBy = (typeof orderBys)[number];
   templateUrl: './queries-page.component.html',
   styleUrls: ['./queries-page.component.scss'],
   imports: [
+    // `QueriesTabComponent` (rendered in this page's own template below)
+    // injects `QueriesService` and `DatatugNavContextService` — both plain
+    // `@Injectable()`, provided by these modules rather than
+    // `providedIn: 'root'` — plus `AppContextService`
+    // (`DatatugNavContextService`'s own constructor dependency,
+    // `DatatugCoreModule`). `queries` (this page's own bare route,
+    // `routes/datatug-routing-proj.ts`) had no ancestor route or module
+    // supplying any of them, so `QueriesTabComponent`'s constructor threw
+    // `NG0201: No provider found for QueriesService` on every navigation to
+    // this route, direct or in-app — before that, its own
+    // `dataTugNavContextService.currentProject` subscription
+    // (`loadQueries()`) is exactly the mechanism `env-db-table.page.ts` and
+    // `query-page.component.ts` already use to resolve the current project
+    // from the URL (`DatatugNavContextService.processUrl()` parses
+    // `location.href` directly), so it never got a chance to run — the page
+    // sat on its default empty folder forever, no queries, no error
+    // surfaced past the crashed child. Same fix, and same cause, as
+    // `EnvDbPageComponent`, `EnvDbTablePageComponent` and
+    // `QueryPageComponent`: this standalone component's own `imports` — not
+    // `QueriesTabComponent`'s — is what a parent-then-child template render
+    // resolves against, mirroring `ProjectPageComponent` supplying
+    // `DatatugServicesUnsortedModule` for its own child
+    // `DatatugFolderComponent`.
+    DatatugCoreModule,
+    DatatugServicesNavModule,
+    DatatugQueriesServicesModule,
     IonButtons,
     IonHeader,
     IonToolbar,

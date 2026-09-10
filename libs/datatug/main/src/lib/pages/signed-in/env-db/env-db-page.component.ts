@@ -42,6 +42,7 @@ import {
 } from '../../../nav/nav-models';
 import { ProjectTracker } from '../../../services/nav/contexts/project.tracker';
 import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
+import { DatatugServicesProjectModule } from '../../../services/project/datatug-services-project.module';
 import { ProjectService } from '../../../services/project/project.service';
 
 interface IRecordsetInfo {
@@ -58,6 +59,19 @@ interface IRecordsetInfo {
   selector: 'sneat-datatug-env-db',
   templateUrl: './env-db-page.component.html',
   imports: [
+    // `ProjectService` (injected below) is a plain `@Injectable()`, provided
+    // by `DatatugServicesProjectModule` rather than `providedIn: 'root'`.
+    // `env/:envId/db/:catalogId` (this page's own bare route, one level
+    // above `env-db-table.page.ts`'s `/table/<type>` route) had no ancestor
+    // route or module supplying it, so a direct URL load threw `NG0201: No
+    // provider found for ProjectService. Source: Standalone[EnvDbPageComponent]`
+    // and the page never rendered — J1-J4/epilogues only ever navigate
+    // straight to the `/table/<type>` route one level deeper, so this class
+    // of bug went uncaught here even after `EnvDbTablePageComponent`
+    // (`env-db-table.page.ts:113`), `DatatugStorePageComponent` (PR #63) and
+    // `ProjectPageComponent` were already fixed for the identical reason.
+    // Same fix: declare the module the missing service actually lives in.
+    DatatugServicesProjectModule,
     FormsModule,
     IonHeader,
     IonToolbar,
