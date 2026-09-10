@@ -9,7 +9,7 @@
         (click)="toggle(item.id, item.enabled)"
       >
         <ion-icon
-          [name]="item.enabled ? 'checkmarkCircleOutline' : 'banOutline'"
+          [name]="item.enabled ? 'checkmark-circle-outline' : 'ban-outline'"
         ></ion-icon>
         <ion-label>{{ item.label }}</ion-label>
         <ion-icon name="close" (click)="remove(item.id, $event)"></ion-icon>

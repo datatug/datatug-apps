@@ -26,7 +26,7 @@ export class SemanticMarkerComponent {
   readonly provenance = input.required<SemanticProvenance>();
 
   protected readonly icon = computed(() =>
-    this.provenance() === 'declared' ? 'pricetag' : 'helpCircleOutline',
+    this.provenance() === 'declared' ? 'pricetag' : 'help-circle-outline',
   );
 
   protected readonly tooltip = computed(
