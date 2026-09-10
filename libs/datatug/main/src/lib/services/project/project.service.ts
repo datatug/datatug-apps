@@ -26,7 +26,13 @@ import { IProjectFull, IProjectSummary } from '../../models/definition/project';
 import { buildAgentUrl } from '../repo/agent-url';
 import { DatatugStoreServiceFactory } from '../repo/datatug-store-service-factory.service';
 
-@Injectable()
+// `providedIn: 'root'` — this service caches project summaries per project
+// ref (`projSummary`) so every consumer shares one request and one result.
+// A module-listed provider gave each importing standalone component its
+// own copy and its own HTTP GET (confirmed live, S126). It must also stay
+// root-resolvable because root-provided `DatatugNavContextService` and
+// `EnvironmentService` inject it.
+@Injectable({ providedIn: 'root' })
 export class ProjectService {
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly http = inject(HttpClient);

@@ -122,24 +122,17 @@ describe('ServersPage replaces "Loading..." once DB servers arrive (zoneless)', 
         { provide: DbServerService, useValue: dbServerServiceMock },
       ],
     })
-      // ServersPageComponent imports DatatugServicesProjectModule/
-      // DatatugServicesUnsortedModule, which re-provide the REAL
-      // ProjectContextService/DbServerService via their own `providers:`
-      // arrays. For a standalone component, providers from an imported
-      // NgModule attach to the component's OWN environment injector, which
-      // DI resolution checks before it ever reaches TestBed's root
-      // providers above — so without this override, this component gets
-      // the real (unmocked) services and NG0201s trying to construct the
-      // real Firestore-backed store chain. `overrideComponent(..., { add:
-      // { providers } })` re-registers the SAME mock instances at the
-      // component's own injector level, where they DO take precedence.
+      // Keep the real template so the Loading -> list transition is
+      // genuinely exercised, but strip the component's own `imports:`
+      // (FormsModule — this page's tab `[(ngModel)]`, the Ionic
+      // components) so those real Angular directives never get
+      // instantiated against a template that only provides test-double
+      // services — CUSTOM_ELEMENTS_SCHEMA then renders every `<ion-*>` tag
+      // as an inert custom element. Same idiom already used successfully
+      // by board/ui/pages/boards/boards-page.component.spec.ts and
+      // board/ui/pages/board/board-page.component.spec.ts.
       .overrideComponent(ServersPageComponent, {
-        add: {
-          providers: [
-            { provide: ProjectContextService, useValue: projectContextServiceMock },
-            { provide: DbServerService, useValue: dbServerServiceMock },
-          ],
-        },
+        set: { imports: [], schemas: [CUSTOM_ELEMENTS_SCHEMA], providers: [] },
       })
       .compileComponents();
 
@@ -202,21 +195,18 @@ describe('ServersPage clears the delete button\'s disabled state once deletion c
   beforeEach(async () => {
     deleteDbServer$ = new Subject<void>();
 
-    const projectContextServiceMock = {
-      current$: of(target),
-      current: target,
-      setCurrent: vi.fn(),
-    };
-    const dbServerServiceMock = {
-      getDbServers: vi.fn(() => of([dbServer])),
-      deleteDbServer: vi.fn(() => deleteDbServer$.asObservable()),
-    };
-
     await TestBed.configureTestingModule({
       imports: [ServersPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        { provide: ProjectContextService, useValue: projectContextServiceMock },
+        {
+          provide: ProjectContextService,
+          useValue: {
+            current$: of(target),
+            current: target,
+            setCurrent: vi.fn(),
+          },
+        },
         {
           provide: ErrorLogger,
           useValue: {
@@ -229,20 +219,23 @@ describe('ServersPage clears the delete button\'s disabled state once deletion c
           provide: NavController,
           useValue: { navigateForward: vi.fn(() => Promise.resolve(true)) },
         },
-        { provide: DbServerService, useValue: dbServerServiceMock },
+        {
+          provide: DbServerService,
+          useValue: {
+            getDbServers: vi.fn(() => of([dbServer])),
+            deleteDbServer: vi.fn(() => deleteDbServer$.asObservable()),
+          },
+        },
       ],
     })
       // See the identical override + comment in the "Loading..." describe
-      // block above: ServersPageComponent's real (non-overridden) imports
-      // re-provide ProjectContextService/DbServerService via their own
-      // NgModules, which otherwise shadows the TestBed-root mocks above.
+      // block above: strips the component's own `imports:` so its real
+      // FormsModule/Ionic directives never get instantiated against a
+      // module that only provides test-double services (which would
+      // otherwise shadow the mocks above — see fix/zoneless-batch-a's
+      // "stabilize entities/servers regression specs" commit).
       .overrideComponent(ServersPageComponent, {
-        add: {
-          providers: [
-            { provide: ProjectContextService, useValue: projectContextServiceMock },
-            { provide: DbServerService, useValue: dbServerServiceMock },
-          ],
-        },
+        set: { imports: [], schemas: [CUSTOM_ELEMENTS_SCHEMA], providers: [] },
       })
       .compileComponents();
 

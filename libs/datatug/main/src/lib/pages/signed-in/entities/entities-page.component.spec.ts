@@ -115,15 +115,6 @@ describe('EntitiesPage replaces "Loading..." once entities arrive (zoneless)', (
     currentProject$ = new Subject<IProjectContext | undefined>();
     getAllEntities$ = new Subject<IRecord<IEntity>[]>();
 
-    const datatugNavContextServiceMock = {
-      currentProject: currentProject$.asObservable(),
-      currentEnv: of(undefined),
-    };
-    const entityServiceMock = {
-      getAllEntities: vi.fn(() => getAllEntities$.asObservable()),
-      deleteEntity: vi.fn(),
-    };
-
     await TestBed.configureTestingModule({
       imports: [EntitiesPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -155,32 +146,34 @@ describe('EntitiesPage replaces "Loading..." once entities arrive (zoneless)', (
             projectPageUrl: vi.fn(),
           },
         },
-        { provide: DatatugNavContextService, useValue: datatugNavContextServiceMock },
-        { provide: EntityService, useValue: entityServiceMock },
+        {
+          provide: DatatugNavContextService,
+          useValue: {
+            currentProject: currentProject$.asObservable(),
+            currentEnv: of(undefined),
+          },
+        },
+        {
+          provide: EntityService,
+          useValue: {
+            getAllEntities: vi.fn(() => getAllEntities$.asObservable()),
+            deleteEntity: vi.fn(),
+          },
+        },
         { provide: ToastController, useValue: { create: vi.fn() } },
       ],
     })
-      // EntitiesPageComponent's own doc comment above (see its `imports:`
-      // array) explains why it needs DatatugServicesNavModule (among
-      // others): that module re-provides the REAL DatatugNavContextService
-      // via its own `providers:` array. For a standalone component,
-      // providers from an imported NgModule attach to the component's OWN
-      // environment injector, which DI resolution checks before it ever
-      // reaches TestBed's root providers above — so without this override,
-      // this component gets the real (unmocked) service and NG0201s trying
-      // to construct the real Firestore-backed store chain behind it.
-      // `overrideComponent(..., { add: { providers } })` re-registers the
-      // SAME mock instance at the component's own injector level, where it
-      // DOES take precedence. (The `EntitiesPage` "should create" block
-      // above sidesteps this differently, by blanking out `imports`
-      // entirely.)
+      // Keep the real template so the Loading -> list transition is
+      // genuinely exercised, but strip the component's own `imports:`
+      // (FormsModule, RouterLink, the Ionic components) so those real
+      // Angular directives never get instantiated against a template that
+      // only provides test-double services — CUSTOM_ELEMENTS_SCHEMA then
+      // renders every `<ion-*>` tag and the `[routerLink]` bindings as
+      // inert DOM properties. Same idiom already used successfully by
+      // board/ui/pages/boards/boards-page.component.spec.ts and
+      // board/ui/pages/board/board-page.component.spec.ts.
       .overrideComponent(EntitiesPageComponent, {
-        add: {
-          providers: [
-            { provide: DatatugNavContextService, useValue: datatugNavContextServiceMock },
-            { provide: EntityService, useValue: entityServiceMock },
-          ],
-        },
+        set: { imports: [], schemas: [CUSTOM_ELEMENTS_SCHEMA], providers: [] },
       })
       .compileComponents();
 
