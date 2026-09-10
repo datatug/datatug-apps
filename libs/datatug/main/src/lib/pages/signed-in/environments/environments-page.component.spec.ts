@@ -6,6 +6,7 @@ import { of } from 'rxjs';
 import { EnvironmentsPageComponent } from './environments-page.component';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { ProjectService } from '../../../services/project/project.service';
+import { EnvironmentService } from '../../../services/unsorted/environment.service';
 
 describe('EnvironmentsPage', () => {
   let component: EnvironmentsPageComponent;
@@ -45,6 +46,16 @@ describe('EnvironmentsPage', () => {
         {
           provide: ProjectService,
           useValue: { getFull: vi.fn(() => of({ environments: [] })) },
+        },
+        // GitHub-store branch (`loadEnvironments()`) reads through
+        // `EnvironmentService.listEnvironments()` instead — see this
+        // component's own doc comment. `currentProject` above emits
+        // `undefined`, so `loadEnvironments()` never actually runs here
+        // either, but `TestBed` needs a provider regardless (now
+        // unconditionally injected).
+        {
+          provide: EnvironmentService,
+          useValue: { listEnvironments: vi.fn(() => of([])) },
         },
       ],
     })

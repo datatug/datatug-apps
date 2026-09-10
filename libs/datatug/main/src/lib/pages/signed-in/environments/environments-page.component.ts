@@ -1,5 +1,6 @@
 import { ChangeDetectorRef, Component, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { map } from 'rxjs/operators';
 import {
   IonBackButton,
   IonButtons,
@@ -14,7 +15,12 @@ import {
   IonToolbar,
 } from '@ionic/angular';
 import { SneatCardListComponent } from '@sneat/components';
-import { ErrorLogger, IErrorLogger } from '@sneat/core';
+import {
+  ErrorLogger,
+  IErrorLogger,
+  STORE_ID_GITHUB_COM,
+  STORE_TYPE_GITHUB,
+} from '@sneat/core';
 import { DatatugCoreModule } from '../../../core/datatug-core.module';
 import { IEnvironmentFull } from '../../../models/definition/environments';
 import { IProjectSummary, IProjEnv } from '../../../models/definition/project';
@@ -26,6 +32,10 @@ import { ProjectService } from '../../../services/project/project.service';
 import { DatatugServicesProjectModule } from '../../../services/project/datatug-services-project.module';
 import { DatatugServicesStoreModule } from '../../../services/repo/datatug-services-store.module';
 import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
+import { EnvironmentService } from '../../../services/unsorted/environment.service';
+
+const isGithubStoreId = (storeId: string): boolean =>
+  storeId === STORE_ID_GITHUB_COM || storeId === STORE_TYPE_GITHUB;
 
 @Component({
   selector: 'sneat-datatug-environments',
@@ -71,6 +81,7 @@ export class EnvironmentsPageComponent {
   readonly datatugNavContextService = inject(DatatugNavContextService);
   private readonly datatugNavService = inject(DatatugNavService);
   private readonly projectService = inject(ProjectService);
+  private readonly environmentService = inject(EnvironmentService);
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   // Zoneless (see queries-tab.component.ts's own `changeDetectorRef` doc
   // comment for the class of gap this closes): `project`/`environments`
@@ -123,9 +134,19 @@ export class EnvironmentsPageComponent {
     if (this.environments) {
       return;
     }
-    this.projectService.getFull(ref).subscribe({
-      next: (full) => {
-        this.environments = full.environments || [];
+    // GitHub-store: `ProjectService.getFull()` (the agent path below) always
+    // calls `buildAgentUrl(storeId, ...)`, which has no meaningful URL to
+    // build for `storeId="github.com"` — the exact "Failed to load project
+    // environments" console error the founder's ruling names (verified
+    // live: `SyntaxError: Failed to execute 'open' on 'XMLHttpRequest':
+    // Invalid URL`). `EnvironmentService.listEnvironments()` reads the
+    // project's real `environments/` folder listing instead.
+    const environments$ = isGithubStoreId(ref.storeId)
+      ? this.environmentService.listEnvironments(ref.projectId)
+      : this.projectService.getFull(ref).pipe(map((full) => full.environments || []));
+    environments$.subscribe({
+      next: (environments) => {
+        this.environments = environments;
         this.changeDetectorRef.markForCheck();
       },
       error: (err) =>

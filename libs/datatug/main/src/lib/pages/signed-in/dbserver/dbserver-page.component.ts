@@ -27,6 +27,7 @@ import { Subject } from 'rxjs';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { DbServerService } from '../../../services/unsorted/db-server.service';
 import { ProjectContextService } from '../../../services/project/project-context.service';
+import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
 import {
   IDbServer,
   IDbServerSummary,
@@ -38,6 +39,17 @@ import {
   selector: 'sneat-datatug-dbserver',
   templateUrl: './dbserver-page.component.html',
   imports: [
+    // `DbServerService` (injected below) is a plain `@Injectable()`,
+    // provided by `DatatugServicesUnsortedModule` — its own dependencies
+    // (`HttpClient`, `ProjectContextService`, `ProjectService`,
+    // `GithubProjectReaderService`) are all `providedIn: 'root'`
+    // (nav-context-root-singletons) and need no module here.
+    // `servers/db/:dbDriver/:dbServerId` (this page's own bare route,
+    // `datatug-routing-proj.ts`) had no ancestor route or module supplying
+    // `DbServerService`, so clicking a server from the Servers list threw
+    // `NG0201` (confirmed live, S136) — same fix, same cause, as
+    // `EntitiesPageComponent`'s own identical doc comment.
+    DatatugServicesUnsortedModule,
     IonHeader,
     IonToolbar,
     IonButtons,

@@ -30,6 +30,7 @@ import { Subject } from 'rxjs';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { Board } from '@datatug/board-models';
 import { ParameterLookupService } from '../../../../components/parameters/parameter-lookup.service';
+import { DatatugCoreModule } from '../../../../core/datatug-core.module';
 import { routingParamBoard } from '../../../../core/datatug-routing-params';
 import { projectRefToString } from '../../../../core/project-context';
 import { QueryParamsService } from '../../../../core/services/QueryParamsService';
@@ -40,6 +41,9 @@ import {
 } from '../../../../models/definition/parameter';
 import { IProjBoard } from '../../../../models/definition/project';
 import { DatatugNavContextService } from '../../../../services/nav/datatug-nav-context.service';
+import { DatatugServicesNavModule } from '../../../../services/nav/datatug-services-nav.module';
+import { DatatugServicesStoreModule } from '../../../../services/repo/datatug-services-store.module';
+import { DatatugServicesUnsortedModule } from '../../../../services/unsorted/datatug-services-unsorted.module';
 import { DatatugBoardService } from '../../../core/datatug-board.service';
 import { BoardComponent } from '../../components/board/board.component';
 import { EnvSelectorComponent } from '../../components/env-selector/env-selector.component';
@@ -48,6 +52,23 @@ import { EnvSelectorComponent } from '../../components/env-selector/env-selector
   selector: 'sneat-datatug-board-page',
   templateUrl: './board-page.component.html',
   imports: [
+    // `DatatugNavContextService` (injected below) needs `AppContextService`
+    // (`DatatugCoreModule`), `EnvironmentService`
+    // (`DatatugServicesUnsortedModule`) and, transitively, `StoreApiService`
+    // (`DatatugServicesStoreModule`) — the exact same chain
+    // `BoardsPageComponent` (this task's own sibling fix) needed, one level
+    // deeper: `board/:id` (this page's own bare route,
+    // `datatug-routing-proj.ts`) had no ancestor route or module supplying
+    // any of them either, so opening a board from the Boards list threw the
+    // same `NG0201` chain (confirmed live, S136), one level further:
+    // `ParameterLookupService` (injected below, needs `AgentService` from
+    // `DatatugServicesStoreModule`) is a plain `@Injectable()`, not
+    // `providedIn: 'root'`, and was never in this component's own
+    // `providers` either.
+    DatatugCoreModule,
+    DatatugServicesNavModule,
+    DatatugServicesStoreModule,
+    DatatugServicesUnsortedModule,
     FormsModule,
     // BoardServiceModule,
     IonHeader,
@@ -69,7 +90,7 @@ import { EnvSelectorComponent } from '../../components/env-selector/env-selector
     EnvSelectorComponent,
     BoardComponent,
   ],
-  providers: [QueryParamsService],
+  providers: [QueryParamsService, ParameterLookupService],
 })
 export class BoardPageComponent implements OnInit, OnDestroy {
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
@@ -164,8 +185,17 @@ export class BoardPageComponent implements OnInit, OnDestroy {
               if (!boardId) {
                 throw new Error('boardId is ' + boardId);
               }
+              if (!this.storeId) {
+                throw new Error('storeId is ' + this.storeId);
+              }
+              // Was hard-coded to 'http://localhost:8989' regardless of the
+              // project's actual store — every board (agent or GitHub) 404'd
+              // /threw against the wrong host unless a local agent happened
+              // to be listening there. `storeId` (destructured from `ref`
+              // just above, and also tracked in the `storeId` signal) is
+              // the project's real store id — use it (confirmed live, S136).
               this.boardService
-                .getBoard('http://localhost:8989', projectId, boardId)
+                .getBoard(storeId, projectId, boardId)
                 .subscribe({
                   next: (board) => {
                     try {

@@ -130,11 +130,11 @@ describe('BoardPage - currentProject navigation', () => {
 
     TestBed.createComponent(BoardPageComponent);
 
-    expect(getBoard).toHaveBeenCalledWith(
-      'http://localhost:8989',
-      'p1',
-      'b1',
-    );
+    // `getBoard()` was previously called with the literal string
+    // 'http://localhost:8989' regardless of the project's actual store
+    // (fixed, S136) — this asserts the real `storeId` ('s1', from
+    // `currentProject`'s own `ref` above) flows through instead.
+    expect(getBoard).toHaveBeenCalledWith('s1', 'p1', 'b1');
     expect(logError).not.toHaveBeenCalled();
   });
 });

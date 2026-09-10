@@ -10,7 +10,17 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Params, Router } from '@angular/router';
-import { ErrorLogger, IErrorLogger } from '@sneat/core';
+import { ErrorLogger, IErrorLogger, STORE_ID_GITHUB_COM, STORE_TYPE_GITHUB } from '@sneat/core';
+
+const isGithubStoreId = (storeId?: string): boolean =>
+  storeId === STORE_ID_GITHUB_COM || storeId === STORE_TYPE_GITHUB;
+
+/** Shown instead of ever calling `SemanticApiService.runQuery()` for a
+ * GitHub-store project — there is no CLI agent to execute against (founder
+ * ruling 2026-09-11, deliverable 2: "an explicit, friendly notice with the
+ * command to run, not a thrown error"). */
+export const GITHUB_QUERY_RUN_MESSAGE =
+  'This project is browsed read-only from GitHub — running a query needs a DataTug agent. Clone the repo and run `datatug serve --project <path>` to execute it.';
 import { RandomIdService } from '@sneat/random';
 import { distinctUntilChanged, takeUntil } from 'rxjs/operators';
 import { Subject } from 'rxjs';
@@ -1075,9 +1085,25 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public runQuery(): void {
     const projectId = this.project?.ref.projectId;
     const queryId = this.queryId;
+    if (!projectId || !queryId) {
+      return;
+    }
+    // Checked before requiring `environment`/`securityContextId` below: a
+    // GitHub-store project has no live agent connection, so
+    // `agentContext.securityContextId()` never resolves for one — the old
+    // ordering (both checked in the same combined `if`) made this GitHub
+    // guard dead code, silently no-op'ing "Run" instead of showing
+    // `GITHUB_QUERY_RUN_MESSAGE` (confirmed live, S136: clicking "Run" on a
+    // GitHub-store query did nothing at all — no message, no thrown error,
+    // just nothing — for deliverable 2, "an explicit, friendly notice...
+    // not a thrown error").
+    if (isGithubStoreId(this.project?.ref.storeId)) {
+      this.runError.set(GITHUB_QUERY_RUN_MESSAGE);
+      return;
+    }
     const environment = this.envId;
     const securityContextId = this.agentContext.securityContextId();
-    if (!projectId || !queryId || !environment || !securityContextId) {
+    if (!environment || !securityContextId) {
       return;
     }
     // REQ:no-hidden-filters, AC:typed-context-isolation "conflict blocks an

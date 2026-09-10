@@ -1,10 +1,17 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable, throwError } from 'rxjs';
+import { map } from 'rxjs/operators';
 import { SneatApiServiceFactory } from '@sneat/api';
+import { STORE_ID_GITHUB_COM, STORE_TYPE_GITHUB } from '@sneat/core';
 import { Board } from '@datatug/board-models';
 import { CreateNamedRequest } from '../../dto/requests';
 import { IProjBoard } from '../../models/definition/project';
 import { ICreateProjectItemRequest } from '../../services/project/project.service';
+import { GithubProjectReaderService } from '../../services/repo/github/github-project-reader.service';
+import { GITHUB_READ_ONLY_MESSAGE } from '../../services/repo/store-api.service';
+
+const isGithubStoreId = (storeId: string): boolean =>
+  storeId === STORE_ID_GITHUB_COM || storeId === STORE_TYPE_GITHUB;
 
 // `providedIn: 'root'` for the same reason DatatugNavService is (see the comment
 // there): `DatatugFolderComponent` injects this service directly without importing
@@ -17,6 +24,7 @@ import { ICreateProjectItemRequest } from '../../services/project/project.servic
 @Injectable({ providedIn: 'root' })
 export class DatatugBoardService {
   private readonly sneatApiServiceFactory = inject(SneatApiServiceFactory);
+  private readonly githubReader = inject(GithubProjectReaderService);
 
   getBoard(
     storeId: string,
@@ -43,10 +51,15 @@ export class DatatugBoardService {
         () => 'required parameter "project" has "undefined" string value',
       );
     }
-    if (!storeId) {
-      return throwError(
-        () => 'required parameter "boardId" has not been provided',
-      );
+    // GitHub-store: `boards/<id>/board.json` read directly off the repo —
+    // every other store (`agent`/`firestore`) has no working board-read
+    // route yet (this method's own pre-existing "not implemented" below;
+    // see `agent-url.ts`'s client-call table: `/boards/board` is
+    // registered server-side but this class never actually called it).
+    if (isGithubStoreId(storeId)) {
+      return this.githubReader
+        .getBoard(project, boardId)
+        .pipe(map((b) => b as unknown as Board));
     }
     return throwError(() => `not implemented ${project} ${storeId} ${boardId}`);
     // return this.repoProviderService.get(storeId, '/boards/board', {params: {id: boardId, project}});
@@ -54,6 +67,9 @@ export class DatatugBoardService {
 
   createNewBoard(request: CreateNamedRequest): Observable<IProjBoard> {
     const { projectRef } = request;
+    if (isGithubStoreId(projectRef.storeId)) {
+      return throwError(() => new Error(GITHUB_READ_ONLY_MESSAGE));
+    }
     const service = this.sneatApiServiceFactory.getSneatApiService(
       projectRef.storeId,
     );

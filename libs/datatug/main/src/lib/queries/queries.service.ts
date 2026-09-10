@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
+import { STORE_ID_GITHUB_COM, STORE_TYPE_GITHUB } from '@sneat/core';
 import { IProjectRef } from '../core/project-context';
 import { IParameterDef } from '../models/definition/parameter';
 import { IRecordsetDef } from '../models/definition/recordset';
@@ -14,7 +15,11 @@ import {
   QueryType,
 } from '../models/definition/query-def';
 import { ProjectItemService } from '../services/repo/project-item-service';
+import { GithubProjectReaderService } from '../services/repo/github/github-project-reader.service';
 import { QUERY_PROJ_ITEM_SERVICE } from './queries.service.token';
+
+const isGithubStoreId = (storeId: string): boolean =>
+  storeId === STORE_ID_GITHUB_COM || storeId === STORE_TYPE_GITHUB;
 
 /**
  * The shape datatug-cli's GET /queries/all_queries and /queries/get_query
@@ -94,17 +99,38 @@ export class QueriesService {
   private readonly projItemService = inject<ProjectItemService<IQueryDef>>(
     QUERY_PROJ_ITEM_SERVICE,
   );
+  private readonly githubReader = inject(GithubProjectReaderService);
 
+  /**
+   * GitHub-store branch reads `queries/` directly off the repo (no CLI
+   * agent — `GithubProjectReaderService.getQueriesFolder()`); `folderPath`
+   * is ignored there deliberately, same as `QueriesTabComponent`'s own
+   * agent-backed call already effectively gets: the reader always returns
+   * the FULL recursive tree in one shot (mirrors datatug-cli's own
+   * `all_queries` — see `query_endpoints.go`'s own doc comment: "the
+   * response must carry the FULL recursive tree... not just the top level
+   * or whatever folder= was requested").
+   */
   public getQueriesFolder(
     projRef: IProjectRef,
     folderPath: string,
   ): Observable<IQueryFolder | null | undefined> {
+    if (isGithubStoreId(projRef.storeId)) {
+      return this.githubReader
+        .getQueriesFolder(projRef.projectId)
+        .pipe(map((folder) => toQueryFolder(folder as unknown as IWireQueryFolder)));
+    }
     return this.projItemService
       .getFolder<IWireQueryFolder>(projRef, folderPath)
       .pipe(map((folder) => (folder ? toQueryFolder(folder) : folder)));
   }
 
   public getQuery(projRef: IProjectRef, id: string): Observable<IQueryDef> {
+    if (isGithubStoreId(projRef.storeId)) {
+      return this.githubReader
+        .getQuery(projRef.projectId, id)
+        .pipe(map((item) => toQueryDef(item as unknown as IWireQueryItem)));
+    }
     return this.projItemService
       .getProjItem(projRef, id)
       .pipe(map((item) => toQueryDef(item as unknown as IWireQueryItem)));

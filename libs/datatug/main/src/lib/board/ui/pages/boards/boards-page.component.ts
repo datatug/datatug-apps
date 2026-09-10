@@ -22,6 +22,7 @@ import { SneatCardListComponent } from '@sneat/components';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
+import { DatatugCoreModule } from '../../../../core/datatug-core.module';
 import { DatatugFoldersService } from '../../../../folders/core/datatug-folders.service';
 import {
   folderItemsAsList,
@@ -32,7 +33,6 @@ import {
   IProjItemBrief,
 } from '../../../../models/definition/project';
 import { IProjectContext } from '../../../../nav/nav-models';
-import { DatatugCoreModule } from '../../../../core/datatug-core.module';
 import { DatatugNavContextService } from '../../../../services/nav/datatug-nav-context.service';
 import { DatatugNavService } from '../../../../services/nav/datatug-nav.service';
 import { DatatugServicesNavModule } from '../../../../services/nav/datatug-services-nav.module';
@@ -153,7 +153,27 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
     if (this.folderPath !== path) {
       return;
     }
-    this.boards.set(folder?.boards ? folderItemsAsList(folder.boards) : []);
+    // `folderItemsAsList()` returns `IFolderItemWithId[]` (`{id, name}`) —
+    // `this.boards` is typed `Signal<IProjBoard[] | undefined>`, and
+    // `IProjBoard` is `{id, title?}` (`title` optional), so TS accepts this
+    // structurally, but `sneat-card-list` (the external `@sneat/components`
+    // list this page's own template feeds `[items]="boards()"` into) reads
+    // `.title`, not `.name`, and silently falls back to showing the board's
+    // own `.id` when `.title` is `undefined` (confirmed live, S136: GitHub's
+    // `board1` — title "1st board" per its own `board.json`/the parent
+    // `datatug-project.json` summary — rendered as the id "board1" in the
+    // list). Pre-existing and not GitHub-specific: any store's board list
+    // goes through this same `IFolder`/`folderItemsAsList()` path
+    // (`DatatugFoldersService.watchFolder()`, used for every store type).
+    // Remapping `name` -> `title` here is the minimal fix.
+    this.boards.set(
+      folder?.boards
+        ? folderItemsAsList(folder.boards).map(({ id, name }) => ({
+            id,
+            title: name,
+          }))
+        : [],
+    );
   };
 
   protected getLinkToBoard = (item: unknown) => {

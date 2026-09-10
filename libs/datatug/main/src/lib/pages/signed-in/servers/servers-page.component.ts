@@ -59,6 +59,19 @@ import { DbServerService } from '../../../services/unsorted/db-server.service';
     // item B.1) — this page doesn't inject `DatatugNavContextService`
     // itself, so it needs this narrower two-module subset, not the full
     // five-module bundle those pages declare.
+    //
+    // This page's own constructor reads `ProjectContextService.current$`
+    // directly (rather than `DatatugNavContextService.currentProject`, the
+    // pattern most other side-menu pages use): that stream previously never
+    // actually emitted here, because `ProjectContextService` was a plain
+    // `@Injectable()` and this page's own lazy-loaded route held a SEPARATE
+    // instance from whichever page's `DatatugNavContextService` fed the
+    // "real" one (S136, found live before `nav-context-root-singletons`
+    // landed). Now that `ProjectContextService` is `providedIn: 'root'`,
+    // every page shares the one true instance and this stream resolves
+    // correctly again — confirmed live, S136, against the GitHub-store demo
+    // project (`getGithubDbServers()`'s own aggregated `sqlite3` result now
+    // renders here).
     DatatugServicesProjectModule,
     DatatugServicesUnsortedModule,
     FormsModule,

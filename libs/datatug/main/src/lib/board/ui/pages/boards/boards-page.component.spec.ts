@@ -179,6 +179,10 @@ describe('BoardsPage renders boards once the project/folder arrive asynchronousl
     await fixture.whenStable();
 
     expect(boardsCard().isLoading).toBe(false);
-    expect(boardsCard().items).toEqual([{ id: 'b1', name: 'Board One' }]);
+    // `{id, title}`, not `{id, name}`: `onFolderReceived()` remaps
+    // `folderItemsAsList()`'s own `{id, name}` shape to `{id, title}`
+    // because `sneat-card-list` reads `.title`, not `.name` — see that
+    // method's own doc comment (S136) for the display bug this fixes.
+    expect(boardsCard().items).toEqual([{ id: 'b1', title: 'Board One' }]);
   });
 });

@@ -40,12 +40,25 @@ import {
   IEntity,
 } from '../../../models/definition/metapedia/entity';
 import { IProjEntity } from '../../../models/definition/project';
+import { DatatugServicesStoreModule } from '../../../services/repo/datatug-services-store.module';
+import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
 import { EntityService } from '../../../services/unsorted/entity.service';
 
 @Component({
   selector: 'sneat-datatug-entity',
   templateUrl: './entity-page.component.html',
   imports: [
+    // `EntityService` (injected below) is a plain `@Injectable()`, provided
+    // by `DatatugServicesUnsortedModule` rather than `providedIn: 'root'`,
+    // and itself needs `StoreApiService` (`DatatugServicesStoreModule`).
+    // `entity/:id` (this page's own bare route, `datatug-routing-proj.ts`)
+    // had no ancestor route or module supplying either, so navigating here
+    // (clicking an entity from the Entities list) threw `NG0201: No
+    // provider found for \`EntityService\`` (confirmed live, S136) — same
+    // fix, same cause, as `EntitiesPageComponent`'s own identical doc
+    // comment.
+    DatatugServicesStoreModule,
+    DatatugServicesUnsortedModule,
     FormsModule,
     DataGridComponent,
     IonHeader,

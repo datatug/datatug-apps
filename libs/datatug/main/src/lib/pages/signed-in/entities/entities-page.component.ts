@@ -28,10 +28,10 @@ import {
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { IRecord } from '@sneat/data';
+import { DatatugCoreModule } from '../../../core/datatug-core.module';
 import { IEntity } from '../../../models/definition/metapedia/entity';
 import { IProjEntity } from '../../../models/definition/project';
 import { IProjectContext } from '../../../nav/nav-models';
-import { DatatugCoreModule } from '../../../core/datatug-core.module';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
 import { DatatugServicesNavModule } from '../../../services/nav/datatug-services-nav.module';
