@@ -25,6 +25,12 @@
 @import '@ionic/angular/css/text-transformation.css';
 @import '@ionic/angular/css/flex-utils.css';
 
+// Padding-less grid for page layout (`.ion-grid-layout`): the grid, its rows
+// and its columns add no padding or margin, so cards placed in the columns
+// line up with sibling cards rendered directly in <ion-content>. Shared
+// stylesheet from @sneat/components (same class sneat-apps uses).
+@import '@sneat/components/src/sneat-grid-layout';
+
 // Task 17 item B.1 (S121): this was left commented out (see the two comment
 // lines below, both pre-existing) — confirmed live that without it, every
 // Tabulator grid in the app (env-db-page.component.ts's own table/view list
