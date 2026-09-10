@@ -15,6 +15,7 @@ export {
 } from './lib/services/mock-semantic-api';
 export {
   InvestigationContextService,
+  ContextCondition,
   ContextItem,
   ContextItemInput,
   ContextScope,

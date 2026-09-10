@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { NavController } from '@ionic/angular';
 import { ErrorLogger } from '@sneat/core';
+import { IRecord } from '@sneat/data';
 import {
   AgentContextService,
   ApplicableQueriesResponse,
@@ -13,6 +14,7 @@ import {
 import { of } from 'rxjs';
 
 import { InvestigationContextPageComponent } from './investigation-context-page.component';
+import { IEntity, IEntityFieldDef } from '../../../models/definition/metapedia/entity';
 import { IProjectContext } from '../../../nav/nav-models';
 import { DatatugCoreModule } from '../../../core/datatug-core.module';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
@@ -20,10 +22,52 @@ import { DatatugServicesNavModule } from '../../../services/nav/datatug-services
 import { DatatugServicesProjectModule } from '../../../services/project/datatug-services-project.module';
 import { DatatugServicesStoreModule } from '../../../services/repo/datatug-services-store.module';
 import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
+import { EntityService } from '../../../services/unsorted/entity.service';
 
 const project: IProjectContext = {
   ref: { storeId: 'localhost:8989', projectId: 'demo-project' },
 };
+
+const CUSTOMER_FIELDS: IEntityFieldDef[] = [
+  { id: 'ID', type: 'integer' },
+  { id: 'Name', type: 'string' },
+];
+const INVOICE_FIELDS: IEntityFieldDef[] = [{ id: 'Total', type: 'money' }];
+
+const ENTITY_FIELDS: Record<string, IEntityFieldDef[]> = {
+  Customer: CUSTOMER_FIELDS,
+  Invoice: INVOICE_FIELDS,
+};
+
+/** Stub for `EntityService` (task S156 item 2 — "Field options follow the Entity
+ * choice"): `getAllEntities` feeds the Entity select, `getEntity` feeds the Field
+ * select for whichever entity was chosen — same two-call split the real GitHub-backed
+ * service makes (`getAllEntities` only returns ids; `getEntity` is the one call that
+ * actually resolves an entity's declared fields, entity.service.ts's own
+ * `getEntityFromGithub`). */
+function entityServiceStub() {
+  const entityRecords: IRecord<IEntity>[] = Object.keys(ENTITY_FIELDS).map((id) => ({
+    id,
+  }));
+  return {
+    getAllEntities: vi.fn(() => of(entityRecords)),
+    getEntity: vi.fn((_store: string, _proj: string, entityId: string) =>
+      of({
+        id: entityId,
+        dbo: { id: entityId, fields: ENTITY_FIELDS[entityId] ?? [] } as IEntity,
+      }),
+    ),
+  };
+}
+
+/** Dispatches Ionic's own `ionChange`/`ionInput` custom event, matching how a real
+ * `ion-select`/`ion-input` reports its new value — same shape the existing `ion-toggle`
+ * tests in this file already rely on (`dispatchEvent(new CustomEvent('ionChange'))`),
+ * just with a `detail.value` payload this page's handlers read
+ * (`$event.detail.value`). */
+function fireIonEvent(el: Element, type: 'ionChange' | 'ionInput', value: string): void {
+  el.dispatchEvent(new CustomEvent(type, { detail: { value } }));
+}
 
 const APPLICABLE: ApplicableQueriesResponse = {
   applicable: [
@@ -77,12 +121,14 @@ describe('InvestigationContextPageComponent', () => {
   let mock: MockSemanticApi;
   let context: InvestigationContextService;
   let navigateSpy: ReturnType<typeof vi.fn>;
+  let entityService: ReturnType<typeof entityServiceStub>;
 
   async function create(
     fixtures: { applicable?: ApplicableQueriesResponse } = {},
   ) {
     mock = new MockSemanticApi(fixtures);
     navigateSpy = vi.fn(() => Promise.resolve(true));
+    entityService = entityServiceStub();
 
     await TestBed.configureTestingModule({
       imports: [InvestigationContextPageComponent],
@@ -112,6 +158,7 @@ describe('InvestigationContextPageComponent', () => {
           },
         },
         { provide: AgentContextService, useValue: agentContextStub() },
+        { provide: EntityService, useValue: entityService },
       ],
     })
       // The component's own `imports` (project-menu-top.component.ts's
@@ -158,6 +205,168 @@ describe('InvestigationContextPageComponent', () => {
       fixture.nativeElement.querySelector('.investigation-context-page__empty'),
     ).toBeTruthy();
     expect(mock.calls).toEqual([]);
+  });
+
+  describe('"Add a context variable" form (S156, founder ruling 2026-09-10)', () => {
+    // `label`/`label-placement` are the ONE attribute pair Ionic's `ion-select`/
+    // `ion-input` keep on the host element after hydration — `aria-label` is consumed
+    // and relocated onto the internal (light- or shadow-DOM) native control instead
+    // (same relocation this file's pre-existing "removing an item" test already
+    // documents for `ion-button`'s `aria-label`), so it isn't queryable on the host.
+    function formEls() {
+      const root = fixture.nativeElement as HTMLElement;
+      return {
+        entitySelect: root.querySelector(
+          'ion-select[label="Entity"]',
+        ) as HTMLElement,
+        fieldSelect: root.querySelector(
+          'ion-select[label="Field"]',
+        ) as HTMLElement,
+        conditionSelect: root.querySelector(
+          'ion-select[label="Condition"]',
+        ) as HTMLElement,
+        valueInput: root.querySelector('ion-input[label="Value"]') as HTMLElement,
+        // The form's ion-list has exactly one ion-button (Add) — scope by the form's
+        // own class rather than a relocated aria-label.
+        addButton: root.querySelector(
+          '.investigation-context-page__form ion-button',
+        ) as HTMLElement,
+      };
+    }
+
+    function optionTexts(select: Element): string[] {
+      return Array.from(select.querySelectorAll('ion-select-option')).map(
+        (el) => el.textContent?.trim() ?? '',
+      );
+    }
+
+    beforeEach(async () => {
+      await create();
+      fixture.detectChanges();
+      TestBed.tick();
+      fixture.detectChanges();
+    });
+
+    it('loads the current project\'s entities into the Entity select', () => {
+      expect(entityService.getAllEntities).toHaveBeenCalledWith(project.ref);
+      const { entitySelect } = formEls();
+      expect(optionTexts(entitySelect)).toEqual(['Customer', 'Invoice']);
+    });
+
+    it('form validity — canAdd() stays false, and clicking Add is a no-op, until Entity, Field, Condition and Value are all set', () => {
+      const { entitySelect, valueInput, addButton } = formEls();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const protectedComponent = component as any;
+
+      // ion-button reflects its `disabled` property to a real DOM attribute — asserted
+      // once, at the known-invalid starting state (task S156 item 1: "Add button
+      // disabled until all four are set").
+      expect(addButton.hasAttribute('disabled')).toBe(true);
+
+      addButton.dispatchEvent(new Event('click'));
+      fixture.detectChanges();
+      expect(context.items()).toEqual([]);
+      expect(protectedComponent.canAdd()).toBe(false);
+
+      fireIonEvent(entitySelect, 'ionChange', 'Customer');
+      fixture.detectChanges();
+      expect(protectedComponent.canAdd()).toBe(false);
+
+      const { fieldSelect, conditionSelect } = formEls();
+      fireIonEvent(fieldSelect, 'ionChange', 'ID');
+      fixture.detectChanges();
+      expect(protectedComponent.canAdd()).toBe(false);
+
+      fireIonEvent(conditionSelect, 'ionChange', '>');
+      fixture.detectChanges();
+      expect(protectedComponent.canAdd()).toBe(false); // Value is still empty
+
+      fireIonEvent(valueInput, 'ionInput', '5');
+      fixture.detectChanges();
+      expect(protectedComponent.canAdd()).toBe(true);
+
+      // Still a no-op with an all-whitespace value.
+      fireIonEvent(valueInput, 'ionInput', '   ');
+      fixture.detectChanges();
+      expect(protectedComponent.canAdd()).toBe(false);
+    });
+
+    it('Field options follow the Entity choice; switching entity reloads the Field select and clears the stale selection', () => {
+      const { entitySelect } = formEls();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const protectedComponent = component as any;
+
+      fireIonEvent(entitySelect, 'ionChange', 'Customer');
+      fixture.detectChanges();
+
+      expect(entityService.getEntity).toHaveBeenCalledWith(
+        'localhost:8989',
+        'demo-project',
+        'Customer',
+      );
+      expect(optionTexts(formEls().fieldSelect)).toEqual(['ID', 'Name']);
+
+      fireIonEvent(formEls().fieldSelect, 'ionChange', 'ID');
+      fixture.detectChanges();
+      expect(protectedComponent.selectedField()).toBe('ID');
+
+      // Switching entity: the previous Field selection is stale for the new entity —
+      // it must reset, and the Field select must reload that entity's own fields.
+      fireIonEvent(entitySelect, 'ionChange', 'Invoice');
+      fixture.detectChanges();
+
+      expect(entityService.getEntity).toHaveBeenCalledWith(
+        'localhost:8989',
+        'demo-project',
+        'Invoice',
+      );
+      expect(protectedComponent.selectedField()).toBeUndefined();
+      expect(optionTexts(formEls().fieldSelect)).toEqual(['Total']);
+    });
+
+    it('Add writes a new item to the shared InvestigationContextService store with the chosen condition; the list shows it and the Value field clears', () => {
+      const { entitySelect, valueInput, addButton } = formEls();
+      fireIonEvent(entitySelect, 'ionChange', 'Customer');
+      fixture.detectChanges();
+      const { fieldSelect, conditionSelect } = formEls();
+      fireIonEvent(fieldSelect, 'ionChange', 'ID');
+      fireIonEvent(conditionSelect, 'ionChange', '>');
+      fireIonEvent(valueInput, 'ionInput', '100');
+      fixture.detectChanges();
+
+      addButton.dispatchEvent(new Event('click'));
+      fixture.detectChanges();
+
+      // Same store InvestigationContextBarComponent/ContextPanelComponent's "Add to
+      // context" write to — REQ:context-basket, task S156 item 1.
+      const added = context
+        .items()
+        .find((i) => i.entity === 'Customer' && i.field === 'ID');
+      expect(added).toBeDefined();
+      expect(added?.condition).toBe('>');
+      expect(added?.value).toEqual({ type: 'integer', value: '100' });
+      expect(added?.source).toBe('manual');
+      expect(added?.origin).toBe('context');
+      expect(added?.enabled).toBe(true);
+      expect(added?.label).toBe('Customer.ID > 100');
+
+      // The list re-renders from the very same signal just asserted above — checked via
+      // the rendered markup (`.textContent` on a freshly-hydrated Ionic custom element
+      // is unreliable in this test environment; the serialized markup is not). `>` comes
+      // back HTML-escaped in the serialized markup, so match on the un-encoded label
+      // parts either side of it rather than the operator itself.
+      const itemEls = fixture.nativeElement.querySelectorAll(
+        '.investigation-context-page__item',
+      );
+      expect(itemEls).toHaveLength(1);
+      const itemHtml = (itemEls[0] as HTMLElement).innerHTML;
+      expect(itemHtml).toContain('Customer.ID');
+      expect(itemHtml).toContain('100');
+      expect(itemHtml).toContain('from manual');
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect((component as any).valueInput()).toBe('');
+    });
   });
 
   describe('with two collected values, one disabled', () => {

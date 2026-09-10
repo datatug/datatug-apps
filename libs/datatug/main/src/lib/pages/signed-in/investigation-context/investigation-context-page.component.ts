@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, OnDestroy, effect, inject, signal } from '@angular/core';
+import { Component, OnDestroy, computed, effect, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import {
   IonBackButton,
@@ -8,11 +8,14 @@ import {
   IonContent,
   IonHeader,
   IonIcon,
+  IonInput,
   IonItem,
   IonLabel,
   IonList,
   IonListHeader,
   IonMenuButton,
+  IonSelect,
+  IonSelectOption,
   IonSpinner,
   IonText,
   IonToggle,
@@ -26,21 +29,84 @@ import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import {
   AgentContextService,
   Candidate,
+  ContextCondition,
   ContextItem,
   InvestigationContextService,
   SemanticApiService,
+  SemanticValue,
   tryDecodeErrorEnvelope,
 } from '@sneat/datatug-semantic';
 import { getStoreId, IProjectContext } from '../../../nav/nav-models';
 import { DatatugCoreModule } from '../../../core/datatug-core.module';
+import { IEntityFieldDef } from '../../../models/definition/metapedia/entity';
+import { DataType } from '../../../models/definition/types';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { DatatugServicesNavModule } from '../../../services/nav/datatug-services-nav.module';
 import { DatatugServicesProjectModule } from '../../../services/project/datatug-services-project.module';
 import { DatatugServicesStoreModule } from '../../../services/repo/datatug-services-store.module';
 import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
+import { EntityService } from '../../../services/unsorted/entity.service';
 import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
 
 addIcons({ closeOutline, linkOutline });
+
+/** The condition dropdown's fixed option list — founder ruling 2026-09-10 (S156):
+ * "conditions like ==, >, >=, etc."; the lead's own assumption note for the exact set
+ * (api-contract.md/hub spec still only models `==`, recorded as a follow-up). */
+const CONDITIONS: readonly ContextCondition[] = ['==', '!=', '>', '>=', '<', '<='];
+
+/** DataType kinds the "Value" field should render as `type="number"` — see
+ * {@link inputTypeForDataType}. */
+const NUMERIC_DATA_TYPES = new Set<DataType>([
+  'integer',
+  'decimal',
+  'float',
+  'money',
+  'number',
+]);
+
+/** Picks the "Value" input's HTML `type` from the selected field's declared
+ * {@link DataType}, when known — task S156 item 1 ("Value (input; type from the field
+ * when known)"). Falls back to plain text for a field whose type has no closer native
+ * input type (string/text/boolean/bit/GUID/UUID/binary), or before a field is chosen. */
+function inputTypeForDataType(
+  dataType: DataType | undefined,
+): 'number' | 'date' | 'datetime-local' | 'text' {
+  if (dataType && NUMERIC_DATA_TYPES.has(dataType)) {
+    return 'number';
+  }
+  if (dataType === 'date') {
+    return 'date';
+  }
+  if (dataType === 'datetime') {
+    return 'datetime-local';
+  }
+  return 'text';
+}
+
+/** Coerces the "Value" input's raw text into the typed {@link SemanticValue}
+ * `InvestigationContextService.addValue` expects, from the selected field's declared
+ * {@link DataType} when known — mirrors `ContextPanelComponent`'s grid-cell values,
+ * which already arrive as real numbers/booleans rather than display strings, so
+ * `toTypedValue` (contract/adapt.ts) classifies them correctly (e.g. `integer`, not
+ * `string`) instead of every manually-typed value becoming a string fact. */
+function toSemanticValue(raw: string, dataType: DataType | undefined): SemanticValue {
+  if (dataType && NUMERIC_DATA_TYPES.has(dataType)) {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  if (dataType === 'boolean' || dataType === 'bit') {
+    if (raw === 'true') {
+      return true;
+    }
+    if (raw === 'false') {
+      return false;
+    }
+  }
+  return raw;
+}
 
 /**
  * REQ:context-basket, REQ:applicable-queries (plan task 9) — the "Variables" route
@@ -100,6 +166,9 @@ addIcons({ closeOutline, linkOutline });
     IonIcon,
     IonSpinner,
     IonText,
+    IonSelect,
+    IonSelectOption,
+    IonInput,
   ],
 })
 export class InvestigationContextPageComponent implements OnDestroy {
@@ -107,6 +176,7 @@ export class InvestigationContextPageComponent implements OnDestroy {
   private readonly datatugNavContextService = inject(DatatugNavContextService);
   private readonly semanticApi = inject(SemanticApiService);
   private readonly agentContext = inject(AgentContextService);
+  private readonly entityService = inject(EntityService);
   private readonly router = inject(Router);
   protected readonly context = inject(InvestigationContextService);
 
@@ -122,6 +192,35 @@ export class InvestigationContextPageComponent implements OnDestroy {
   private readonly environment = signal<string | undefined>(undefined);
   private readonly destroyed = new Subject<void>();
 
+  // --- "Add a context variable" form (S156, founder ruling 2026-09-10) ---
+
+  /** The current project's entity ids, for the Entity select. */
+  protected readonly entities = signal<readonly string[]>([]);
+  /** The selected entity's declared fields, for the Field select — reloaded whenever
+   * {@link selectedEntity} changes; empty before an entity is chosen. */
+  protected readonly fields = signal<readonly IEntityFieldDef[]>([]);
+  protected readonly selectedEntity = signal<string | undefined>(undefined);
+  protected readonly selectedField = signal<string | undefined>(undefined);
+  protected readonly selectedCondition = signal<ContextCondition | undefined>(undefined);
+  protected readonly valueInput = signal('');
+  protected readonly conditions = CONDITIONS;
+
+  protected readonly selectedFieldType = computed<DataType | undefined>(
+    () => this.fields().find((f) => f.id === this.selectedField())?.type,
+  );
+  protected readonly valueInputType = computed(() =>
+    inputTypeForDataType(this.selectedFieldType()),
+  );
+  /** Add button stays disabled until Entity, Field, Condition and Value are all set —
+   * task S156 item 1. */
+  protected readonly canAdd = computed(
+    () =>
+      !!this.selectedEntity() &&
+      !!this.selectedField() &&
+      !!this.selectedCondition() &&
+      this.valueInput().trim().length > 0,
+  );
+
   /** Guards the effect below against re-entering itself: `handleLoadError` clears the
    * Investigation Context on `STALE_CONTEXT`, and this effect also depends on
    * `context.items()` — see ContextPanelComponent's identical guard/comment for the
@@ -132,7 +231,15 @@ export class InvestigationContextPageComponent implements OnDestroy {
     this.datatugNavContextService.currentProject
       .pipe(takeUntil(this.destroyed))
       .subscribe({
-        next: (currentProject) => this.project.set(currentProject),
+        next: (currentProject) => {
+          this.project.set(currentProject);
+          // A new project means the previous one's entity/field selection (if any) no
+          // longer applies — reset the form before loading the new project's entities.
+          this.selectedEntity.set(undefined);
+          this.selectedField.set(undefined);
+          this.fields.set([]);
+          this.loadEntities(currentProject);
+        },
         error: (err) =>
           this.errorLogger.logError(
             err,
@@ -200,6 +307,100 @@ export class InvestigationContextPageComponent implements OnDestroy {
 
   protected remove(item: ContextItem): void {
     this.context.removeValue(item.id);
+  }
+
+  /** Entity select change — resets the (now stale) Field selection and loads the newly
+   * chosen entity's fields (task S156 item 1: "Field options follow the Entity
+   * choice"). */
+  protected onEntityChange(entityId: string | null | undefined): void {
+    const id = entityId || undefined;
+    this.selectedEntity.set(id);
+    this.selectedField.set(undefined);
+    this.fields.set([]);
+    if (id) {
+      this.loadFields(id);
+    }
+  }
+
+  protected onFieldChange(fieldId: string | null | undefined): void {
+    this.selectedField.set(fieldId || undefined);
+  }
+
+  protected onConditionChange(condition: ContextCondition | null | undefined): void {
+    this.selectedCondition.set(condition || undefined);
+  }
+
+  protected onValueChange(value: string | null | undefined): void {
+    this.valueInput.set(value ?? '');
+  }
+
+  /** Adds the form's Entity.Field/condition/value as a new context variable to the
+   * SAME basket the grid's "Add to context" action and `ContextPanelComponent` write to
+   * (`InvestigationContextService.addValue`) — so both surfaces show one list. `source:
+   * 'manual'` records where this item came from (`ContextItemInput.source`'s own doc
+   * comment); `origin`/`enabled` are the service's own fixed `'context'`/`true` for
+   * every basket entry, added value or not. */
+  protected add(): void {
+    const entity = this.selectedEntity();
+    const field = this.selectedField();
+    const condition = this.selectedCondition();
+    const raw = this.valueInput().trim();
+    if (!entity || !field || !condition || !raw) {
+      return;
+    }
+    const value = toSemanticValue(raw, this.selectedFieldType());
+    this.context.addValue({
+      entityField: { entity, field },
+      value,
+      label: `${entity}.${field} ${condition} ${raw}`,
+      source: 'manual',
+      condition,
+    });
+    this.valueInput.set('');
+  }
+
+  private loadEntities(project: IProjectContext | undefined): void {
+    if (!project) {
+      this.entities.set([]);
+      return;
+    }
+    this.entityService
+      .getAllEntities(project.ref)
+      .pipe(takeUntil(this.destroyed))
+      .subscribe({
+        next: (records) =>
+          this.entities.set(records.map((record) => record.id).toSorted()),
+        error: (err) =>
+          this.errorLogger.logError(
+            err,
+            'Failed to load project entities for the Investigation Context form',
+          ),
+      });
+  }
+
+  private loadFields(entityId: string): void {
+    const project = this.project();
+    if (!project) {
+      return;
+    }
+    this.entityService
+      .getEntity(project.ref.storeId, project.ref.projectId, entityId)
+      .pipe(takeUntil(this.destroyed))
+      .subscribe({
+        next: (record) => {
+          // Discard a late response for an entity the user has since changed away from
+          // (same "late response discarded" shape as this page's own scope guards).
+          if (this.selectedEntity() !== entityId) {
+            return;
+          }
+          this.fields.set(record.dbo?.fields ?? []);
+        },
+        error: (err) =>
+          this.errorLogger.logError(
+            err,
+            `Failed to load fields for entity "${entityId}"`,
+          ),
+      });
   }
 
   protected chainText(chain: Candidate['chain']): string {
