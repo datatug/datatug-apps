@@ -3,7 +3,7 @@
     <ion-list-header class="context-panel__meaning">
       <ion-label>{{ meaningText }}</ion-label>
       <ion-button size="small" fill="outline" (click)="addToContext()">
-        <ion-icon slot="start" name="addCircleOutline"></ion-icon>
+        <ion-icon slot="start" name="add-circle-outline"></ion-icon>
         Add to context
       </ion-button>
     </ion-list-header>
@@ -27,7 +27,7 @@
     </ion-list-header>
     @for (lookup of related(); track lookup.lookupId) {
       <ion-item button="true" (click)="toggleRelated(lookup)">
-        <ion-icon slot="start" name="linkOutline"></ion-icon>
+        <ion-icon slot="start" name="link-outline"></ion-icon>
         <ion-label>
           {{ lookup.label }}
           <p>{{ lookup.source }} / {{ lookup.collection }}</p>
@@ -37,8 +37,8 @@
           slot="end"
           [name]="
             expandedRows()[lookup.lookupId]
-              ? 'chevronDownOutline'
-              : 'chevronForwardOutline'
+              ? 'chevron-down-outline'
+              : 'chevron-forward-outline'
           "
         ></ion-icon>
       </ion-item>

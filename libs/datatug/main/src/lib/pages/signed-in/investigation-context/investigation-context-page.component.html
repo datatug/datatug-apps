@@ -42,7 +42,7 @@
             [attr.aria-label]="'Remove ' + item.label"
             (click)="remove(item)"
           >
-            <ion-icon slot="icon-only" name="closeOutline"></ion-icon>
+            <ion-icon slot="icon-only" name="close-outline"></ion-icon>
           </ion-button>
         </ion-item>
       }
@@ -71,7 +71,7 @@
       }
       @for (query of applicable(); track query.queryId) {
         <ion-item button="true" (click)="onOpenApplicable(query)">
-          <ion-icon slot="start" name="linkOutline"></ion-icon>
+          <ion-icon slot="start" name="link-outline"></ion-icon>
           <ion-label>
             {{ query.queryId }}
             <p>{{ chainText(query.chain) }}</p>
