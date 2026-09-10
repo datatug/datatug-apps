@@ -15,6 +15,7 @@ import {
   AgentPrincipal,
   AgentProjectRef,
   ApplicableQueriesResponse,
+  AvailableSnapshot,
   Binding,
   BindingOrigin,
   Candidate,
@@ -23,6 +24,7 @@ import {
   CandidateState,
   CandidateTarget,
   ErrorBody,
+  ErrorDetails,
   ErrorEnvelope,
   ExecutionMode,
   ExecutionProfile,
@@ -594,10 +596,40 @@ export function decodeErrorBody(v: unknown, path = 'error'): ErrorBody {
   };
 }
 
+/** LEAD ASSUMPTION 2026-09-10, pending founder confirmation (see
+ * `AvailableSnapshot`/`ErrorDetails`'s own doc comments in ./types.ts). */
+export function decodeAvailableSnapshot(
+  v: unknown,
+  path = 'availableSnapshot',
+): AvailableSnapshot {
+  const obj = requireObject(v, path);
+  requireExactKeys(obj, ['snapshotId', 'recordedAt'], path);
+  return {
+    snapshotId: requireString(obj['snapshotId'], `${path}.snapshotId`),
+    recordedAt: requireString(obj['recordedAt'], `${path}.recordedAt`),
+  };
+}
+
+export function decodeErrorDetails(v: unknown, path = 'details'): ErrorDetails {
+  const obj = requireObject(v, path);
+  requireExactKeys(obj, ['availableSnapshots'], path);
+  return {
+    availableSnapshots: optional(
+      obj['availableSnapshots'],
+      `${path}.availableSnapshots`,
+      (arr, p) =>
+        requireArray(arr, p).map((s, i) => decodeAvailableSnapshot(s, `${p}[${i}]`)),
+    ),
+  };
+}
+
 export function decodeErrorEnvelope(v: unknown, path = 'envelope'): ErrorEnvelope {
   const obj = requireObject(v, path);
-  requireExactKeys(obj, ['error'], path);
-  return { error: decodeErrorBody(obj['error'], `${path}.error`) };
+  requireExactKeys(obj, ['error', 'details'], path);
+  return {
+    error: decodeErrorBody(obj['error'], `${path}.error`),
+    details: optional(obj['details'], `${path}.details`, decodeErrorDetails),
+  };
 }
 
 /** Best-effort: returns `undefined` instead of throwing, for call sites (HTTP error

@@ -16,9 +16,14 @@
 //
 // A small number of `client-only-*.json` fixtures cover cases the golden set
 // doesn't (documented per-file below and excluded from the manifest.json
-// drift check, since they're not part of the golden set): currently just
+// drift check, since they're not part of the golden set):
 // `client-only-related-response-truncated.json` (api-contract.md "reaching
-// the cap sets truncated" — no golden fixture has `truncated: true`).
+// the cap sets truncated" — no golden fixture has `truncated: true`) and
+// `client-only-error-source-unavailable-with-snapshot.json` (Phase 1 Task 14
+// — the sibling `details.availableSnapshots` key, LEAD ASSUMPTION
+// 2026-09-10; datatug-core's own golden SOURCE_UNAVAILABLE fixture predates
+// it and carries no `details` at all — see ErrorEnvelope.details' own doc
+// comment in ./types.ts for why this cannot be a golden fixture yet).
 
 import { readFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -81,6 +86,7 @@ import errorTimeout from './fixtures/error_timeout.json';
 import errorTypeMismatch from './fixtures/error_type_mismatch.json';
 import errorUnauthenticated from './fixtures/error_unauthenticated.json';
 import errorUnsupportedProtectedExecution from './fixtures/error_unsupported_protected_execution.json';
+import errorSourceUnavailableWithSnapshot from './fixtures/client-only-error-source-unavailable-with-snapshot.json';
 
 import manifest from './fixtures/manifest.json';
 
@@ -192,6 +198,45 @@ describe('contract fixtures decode without throwing', () => {
     // Only TARGET_REQUIRED carries `targets`.
     expect(decodeErrorEnvelope(errorTargetRequired).error.targets).toHaveLength(2);
     expect(decodeErrorEnvelope(errorAccessDenied).error.targets).toBeUndefined();
+  });
+
+  it('every golden error envelope decodes with no "details" — the sibling key is absent', () => {
+    for (const fixture of [
+      errorInvalidRequest,
+      errorSourceUnavailable,
+      errorTargetRequired,
+      errorTimeout,
+    ]) {
+      expect(decodeErrorEnvelope(fixture).details).toBeUndefined();
+    }
+  });
+
+  it('SOURCE_UNAVAILABLE with a recorded snapshot: sibling "details.availableSnapshots" decodes (LEAD ASSUMPTION 2026-09-10)', () => {
+    const envelope = decodeErrorEnvelope(errorSourceUnavailableWithSnapshot);
+    expect(envelope.error.code).toBe('SOURCE_UNAVAILABLE');
+    expect(envelope.details?.availableSnapshots).toEqual([
+      { snapshotId: 'country-facts@2026-09-09T00:00:00Z', recordedAt: '2026-09-09T00:00:00Z' },
+    ]);
+  });
+
+  it('rejects a "details" object with an unknown sibling field', () => {
+    const withExtra = {
+      ...errorSourceUnavailableWithSnapshot,
+      details: { ...errorSourceUnavailableWithSnapshot.details, extra: 'nope' },
+    };
+    expect(() => decodeErrorEnvelope(withExtra)).toThrow(ContractDecodeError);
+  });
+
+  it('rejects an availableSnapshots entry with an unknown field', () => {
+    const withExtra = {
+      ...errorSourceUnavailableWithSnapshot,
+      details: {
+        availableSnapshots: [
+          { ...errorSourceUnavailableWithSnapshot.details.availableSnapshots[0], extra: 'nope' },
+        ],
+      },
+    };
+    expect(() => decodeErrorEnvelope(withExtra)).toThrow(ContractDecodeError);
   });
 
   it('TypedValue: every documented kind, including null/false/zero/large-integer', () => {

@@ -1,0 +1,13 @@
+{
+  "error": {
+    "code": "SOURCE_UNAVAILABLE",
+    "message": "query \"reference/country-facts\": its HTTP source is unreachable or misconfigured",
+    "field": "source",
+    "requestId": "req-0099"
+  },
+  "details": {
+    "availableSnapshots": [
+      { "snapshotId": "country-facts@2026-09-09T00:00:00Z", "recordedAt": "2026-09-09T00:00:00Z" }
+    ]
+  }
+}

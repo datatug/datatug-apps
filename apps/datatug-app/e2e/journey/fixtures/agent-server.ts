@@ -39,6 +39,12 @@ export interface AgentServer {
 interface JourneyWorkerFixtures {
   agentServer: AgentServer;
   supportAgentServer: AgentServer;
+  /** Phase 1 Task 14 (J2b) — an admin agent started with `--http-offline`, so every
+   * HTTP-typed saved query's live fetch fails `SOURCE_UNAVAILABLE` deterministically in
+   * CI without depending on the real, actually-reachable countriesnow.space/
+   * frankfurter.dev endpoints being unreachable — see cmd_serve.go's own doc comment on
+   * why this is a real operator-facing switch, not a test-only hook. */
+  offlineAgentServer: AgentServer;
 }
 
 const PING_TIMEOUT_MS = 20_000;
@@ -229,6 +235,9 @@ interface StartAgentOptions {
    * in the same worker would both write `agent-worker-<N>.log` and clobber each other. */
   readonly label: string;
   readonly workerIndex: number;
+  /** Extra `datatug serve` flags appended verbatim after `--role` — e.g. `['--http-offline']`
+   * for {@link offlineAgentServer}. Empty/undefined for every other agent. */
+  readonly extraArgs?: readonly string[];
 }
 
 interface StartedAgent {
@@ -299,6 +308,7 @@ async function startAgent(opts: StartAgentOptions): Promise<Resolved<StartedAgen
     // [support]`) — S100.
     '--role',
     opts.role,
+    ...(opts.extraArgs ?? []),
   ];
   const child = spawn(binResult.value, args, {
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -395,6 +405,28 @@ export const test = base.extend<{}, JourneyWorkerFixtures>({
         role: 'support',
         label: 'support',
         workerIndex: workerInfo.workerIndex,
+      });
+      if (!started.ok) {
+        test.skip(true, started.skipReason);
+        return;
+      }
+      await use(started.value.server);
+      await started.value.stop();
+    },
+    { scope: 'worker' },
+  ],
+  // Phase 1 Task 14 (J2b) — admin principal, same as `agentServer`, but started with
+  // `--http-offline` so the HTTP reference source's live fetch fails deterministically
+  // (JourneyWorkerFixtures' own doc comment on why).
+  offlineAgentServer: [
+    // eslint-disable-next-line no-empty-pattern
+    async ({}, use, workerInfo) => {
+      const started = await startAgent({
+        as: 'admin',
+        role: 'admin',
+        label: 'offline',
+        workerIndex: workerInfo.workerIndex,
+        extraArgs: ['--http-offline'],
       });
       if (!started.ok) {
         test.skip(true, started.skipReason);
