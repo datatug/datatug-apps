@@ -13,10 +13,15 @@ import {
 } from '@sneat/datatug-semantic';
 import { Observable, of, throwError } from 'rxjs';
 
-import { QueryPageComponent } from './query-page.component';
+import { QueryPageComponent, extractLinkedEntityNames } from './query-page.component';
 import { IQueryEditorState } from '../../../editor/models';
 import { IProjectContext } from '../../../nav/nav-models';
-import { IQueryDef, ISqlQueryRequest, QueryType } from '../../../models/definition/query-def';
+import {
+  IQueryDef,
+  ISqlQueryRequest,
+  ITextQueryRequest,
+  QueryType,
+} from '../../../models/definition/query-def';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { QueryContextSqlService } from '../../query-context-sql.service';
 import { QueriesService } from '../../queries.service';
@@ -1041,5 +1046,282 @@ describe('QueryPageComponent dependency injection', () => {
     expect(() =>
       TestBed.runInInjectionContext(() => new QueryPageComponent()),
     ).toThrow(/RandomIdService/);
+  });
+});
+
+/**
+ * S155 — founder ruling 2026-09-10: "Query page does not show query text and
+ * linked entities/collections", reproduced live against the founder's own
+ * URL (`.../query/artists%2Fartists_with_albums?id=...&editor=text&env=local`,
+ * the real GitHub-store demo project). Live reproduction (this task) found
+ * the data was ALREADY correct — `queryState.request.text`/`.def` load fine
+ * (see `github-project-reader.service.spec.ts`'s own `getQuery` coverage,
+ * unchanged by this task) — the query page template itself just never
+ * rendered any of it: no body editor at all for SQL/DTQL (the old
+ * `sneat-datatug-sql-query` binding, `query-page.component.html`, was
+ * commented out and never replaced — confirmed by the pre-existing S136
+ * comment on `apps/datatug-app/e2e/github-store.spec.ts`'s own
+ * `getQueryBodyText()` helper) and no "linked entities" section anywhere.
+ * `queryBodyText`/`linkedEntities` (new signals, `query-page.component.ts`)
+ * are what the template now reads — these tests assert them directly, the
+ * same way every other describe block in this file asserts component
+ * signals rather than rendered DOM (this file overrides the template to
+ * `''` throughout — real DOM rendering is covered instead by
+ * `github-store.spec.ts`'s own Playwright case for this exact query).
+ * `extractLinkedEntityNames()` has its own dedicated, TestBed-free tests
+ * below this describe block.
+ */
+describe('QueryPageComponent — query text and linked entities display (S155)', () => {
+  let component: QueryPageComponent;
+
+  const project: IProjectContext = {
+    ref: {
+      storeId: 'github.com',
+      projectId: 'datatug-demo-projects@datatug@demo-project-1',
+    },
+  };
+
+  // The real `artists/artists_with_albums.sql`/`.sql.json` shape
+  // (datatug/datatug-demo-projects, demo-project-1/queries/artists/) — the
+  // founder's own reproduction query. Its `.sql.json` file is just
+  // `{"title": "Artists with albums"}` (confirmed live against the real
+  // repo) — no `parameters`/`recordsets` at all, exactly the case
+  // `extractLinkedEntityNames()`'s SQL-text fallback exists for.
+  const legacySqlText =
+    'SELECT ar.*, (SELECT COUNT(1) FROM Album al WHERE al.ArtistId = ar.ArtistID) as AlbumsCount FROM Artist as ar ORDER BY (SELECT COUNT(1) FROM Album al WHERE al.ArtistId = ar.ArtistID) DESC';
+  const legacySqlDef: IQueryDef = {
+    id: 'artists/artists_with_albums',
+    title: 'Artists with albums',
+    request: { queryType: QueryType.SQL, text: legacySqlText } as ISqlQueryRequest,
+  };
+
+  // The real `customers/customer-invoices.query.json`/`.query.dtql` shape —
+  // a DTQL query whose parameters/recordsets already carry `meta.entity`
+  // (confirmed live against the real repo), the metadata path.
+  const dtqlDef: IQueryDef = {
+    id: 'customers/customer-invoices',
+    title: 'Customer invoices',
+    request: {
+      queryType: QueryType.DTQL,
+      text: 'from:\n  name: Invoice\n',
+    } as unknown as ITextQueryRequest,
+    parameters: [
+      {
+        id: 'CustomerId',
+        type: 'integer',
+        isRequired: true,
+        meta: { entity: 'Customer', field: 'ID' },
+      },
+    ],
+    recordsets: [
+      {
+        name: 'result',
+        columns: [
+          {
+            name: 'InvoiceId',
+            type: 'integer',
+            meta: { entity: 'Invoice', field: 'ID' },
+          },
+          {
+            name: 'Total',
+            type: 'number',
+            meta: { entity: 'Invoice', field: 'Total' },
+          },
+        ],
+      },
+    ],
+  };
+
+  async function createComponent(def: IQueryDef): Promise<QueryPageComponent> {
+    Object.defineProperty(window, 'history', {
+      value: { ...window.history, state: {} },
+      writable: true,
+      configurable: true,
+    });
+    const editorState: IQueryEditorState = {
+      currentQueryId: def.id,
+      activeQueries: [
+        {
+          id: def.id,
+          queryType: def.request.queryType,
+          request: def.request,
+          def,
+        },
+      ],
+    } as unknown as IQueryEditorState;
+
+    await TestBed.configureTestingModule({
+      imports: [QueryPageComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        {
+          provide: ErrorLogger,
+          useValue: { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) },
+        },
+        { provide: RandomIdService, useValue: { newRandomId: vi.fn(() => 'test-id') } },
+        {
+          provide: DatatugNavContextService,
+          useValue: {
+            currentProject: of(project),
+            currentEnv: of(undefined),
+            setCurrentEnvironment: vi.fn(),
+          },
+        },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            queryParamMap: of({ get: () => null }),
+            paramMap: of({ get: () => null }),
+            snapshot: { paramMap: { get: () => null }, params: {} },
+          },
+        },
+        {
+          provide: Router,
+          useValue: { navigate: vi.fn(() => Promise.resolve(true)), events: of() },
+        },
+        {
+          provide: QueryContextSqlService,
+          useValue: { setSql: vi.fn(), setTarget: vi.fn() },
+        },
+        { provide: QueriesService, useValue: {} },
+        { provide: Coordinator, useValue: { execute: vi.fn() } },
+        {
+          provide: QueryEditorStateService,
+          useValue: {
+            queryEditorState: of(editorState),
+            updateQueryState: vi.fn(),
+            openQuery: vi.fn(),
+            newQuery: vi.fn(),
+            getQueryState: vi.fn(),
+            saveQuery: vi.fn(),
+          },
+        },
+        { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn() } },
+        { provide: SemanticApiService, useValue: { runQuery: vi.fn() } },
+        { provide: AgentContextService, useValue: agentContextStub() },
+      ],
+    })
+      .overrideComponent(QueryPageComponent, {
+        set: {
+          imports: [],
+          template: '',
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+          providers: [],
+        },
+      })
+      .compileComponents();
+
+    return TestBed.createComponent(QueryPageComponent).componentInstance;
+  }
+
+  beforeEach(() => {
+    sessionStorage.clear();
+  });
+
+  it('a direct-URL-loaded legacy SQL query (no parameters/recordsets metadata) exposes its own text and, from a FROM/JOIN scan, the tables it references', async () => {
+    component = await createComponent(legacySqlDef);
+
+    expect(component.queryBodyText()).toBe(legacySqlText);
+    expect(component.linkedEntities()).toEqual(['Album', 'Artist']);
+  });
+
+  it('a DTQL query with parameter/recordset meta.entity exposes those entities, not a text-parsed guess', async () => {
+    component = await createComponent(dtqlDef);
+
+    expect(component.queryBodyText()).toBe('from:\n  name: Invoice\n');
+    expect(component.linkedEntities()).toEqual(['Customer', 'Invoice']);
+  });
+
+  it('an HTTP query has no body text (queryBodyText is only for a text-shaped request)', async () => {
+    const httpDef: IQueryDef = {
+      id: 'reference/country-facts',
+      title: 'Country facts',
+      request: { queryType: QueryType.HTTP, url: 'https://example.test', method: 'GET' },
+    };
+    component = await createComponent(httpDef);
+
+    expect(component.queryBodyText()).toBeUndefined();
+  });
+});
+
+/**
+ * `extractLinkedEntityNames()` (query-page.component.ts) in isolation — no
+ * TestBed needed, a pure function. See its own doc comment for why the SQL
+ * fallback exists and when it does/doesn't apply.
+ */
+describe('extractLinkedEntityNames', () => {
+  it('returns nothing for an undefined definition', () => {
+    expect(extractLinkedEntityNames(undefined)).toEqual([]);
+  });
+
+  it('prefers parameter/recordset meta.entity, deduplicated and sorted, over any text scan', () => {
+    const def: IQueryDef = {
+      id: 'q',
+      title: 'q',
+      request: {
+        queryType: QueryType.SQL,
+        text: 'SELECT 1 FROM Ignored',
+      } as ISqlQueryRequest,
+      parameters: [
+        { id: 'p1', type: 'integer', meta: { entity: 'Customer', field: 'ID' } },
+      ],
+      recordsets: [
+        {
+          name: 'r',
+          columns: [
+            { name: 'c1', type: 'integer', meta: { entity: 'Invoice', field: 'ID' } },
+            { name: 'c2', type: 'integer', meta: { entity: 'Customer', field: 'ID' } }, // dup
+          ],
+        },
+      ],
+    };
+
+    expect(extractLinkedEntityNames(def)).toEqual(['Customer', 'Invoice']);
+  });
+
+  it('falls back to a FROM/JOIN scan of the SQL text when there is no metadata at all (the legacy .sql.json shape)', () => {
+    const def: IQueryDef = {
+      id: 'artists_with_albums',
+      title: 'Artists with albums',
+      request: {
+        queryType: QueryType.SQL,
+        text: 'SELECT ar.* FROM Artist as ar INNER JOIN Album al ON al.ArtistId = ar.ArtistID',
+      } as ISqlQueryRequest,
+    };
+
+    expect(extractLinkedEntityNames(def)).toEqual(['Album', 'Artist']);
+  });
+
+  it('the SQL-text fallback also handles a schema-qualified table name', () => {
+    const def: IQueryDef = {
+      id: 'q',
+      title: 'q',
+      request: { queryType: QueryType.SQL, text: 'SELECT * FROM dbo.Artist' } as ISqlQueryRequest,
+    };
+
+    expect(extractLinkedEntityNames(def)).toEqual(['Artist']);
+  });
+
+  it('never SQL-parses a DTQL body (its text is YAML, not SQL) — no metadata means no entities', () => {
+    const def: IQueryDef = {
+      id: 'q',
+      title: 'q',
+      request: {
+        queryType: QueryType.DTQL,
+        text: 'from:\n  name: Invoice\n',
+      } as unknown as ITextQueryRequest,
+    };
+
+    expect(extractLinkedEntityNames(def)).toEqual([]);
+  });
+
+  it('returns nothing for an HTTP query with no metadata', () => {
+    const def: IQueryDef = {
+      id: 'q',
+      title: 'q',
+      request: { queryType: QueryType.HTTP, url: 'https://example.test', method: 'GET' },
+    };
+
+    expect(extractLinkedEntityNames(def)).toEqual([]);
   });
 });
