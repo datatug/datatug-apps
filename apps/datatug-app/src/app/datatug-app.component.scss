@@ -1,0 +1,23 @@
+// The brand link replaces a plain `<span>DataTug.app</span>` inside
+// `ion-title`, so it must look exactly like the title text it replaces
+// (same size/weight/colour, no anchor underline or button chrome) while
+// still behaving like a real, keyboard-focusable link.
+.brand-home-link {
+  display: inline-block;
+  color: inherit;
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+
+  &:hover,
+  &:focus,
+  &:active {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  &:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+  }
+}
