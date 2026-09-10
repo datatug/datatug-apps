@@ -10,6 +10,7 @@ import { of } from 'rxjs';
 import { EnvDbPageComponent } from './env-db-page.component';
 import { ProjectService } from '../../../services/project/project.service';
 import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
+import { EnvironmentService } from '../../../services/unsorted/environment.service';
 
 describe('EnvDbPage', () => {
   let component: EnvDbPageComponent;
@@ -37,6 +38,10 @@ describe('EnvDbPage', () => {
           useValue: { watchProjectSummary: vi.fn(), getFull: vi.fn() },
         },
         { provide: DatatugNavService, useValue: { goTable: vi.fn() } },
+        {
+          provide: EnvironmentService,
+          useValue: { getCatalogTables: vi.fn(() => of({ tables: [], views: [] })) },
+        },
         {
           provide: ActivatedRoute,
           useValue: {
@@ -97,6 +102,10 @@ describe('EnvDbPage — project ref wiring', () => {
           useValue: { watchProjectSummary: vi.fn(), getFull: getFullMock },
         },
         { provide: DatatugNavService, useValue: { goTable: vi.fn() } },
+        {
+          provide: EnvironmentService,
+          useValue: { getCatalogTables: vi.fn(() => of({ tables: [], views: [] })) },
+        },
         {
           provide: ActivatedRoute,
           useValue: {

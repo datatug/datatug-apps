@@ -34,6 +34,20 @@ import { activePage } from './helpers/active-page';
  * initializers throw before anything renders" and "the component
  * constructs and its template paints."
  *
+ * UPDATE (Task 17 items A.1/A.2/B.1, S121/S121b): at the time the paragraph
+ * below was written, neither test could assert real DATA content (table
+ * rows / a populated saved-query list) for these two routes — that was a
+ * deliberate, evidence-based scope boundary, not an oversight, for the two
+ * reasons the (unmodified, kept for its own history below) paragraph
+ * documents. Both reasons are now RESOLVED: `datatug-cli` restored
+ * `GET /datatug/queries/all_queries` (item A.1) and added
+ * `GET /datatug/catalog-tables` (item A.2), and `EnvDbPageComponent` was
+ * wired to the latter (item B.1, replacing its old dead `history.state.db`
+ * read). Both tests below now also assert the real content each route was
+ * missing — see each test's own comment.
+ *
+ * Original scope-boundary note, kept verbatim for its own history:
+ *
  * Neither test asserts real DATA content (table rows / a populated
  * saved-query list) for these two specific routes, and that is a deliberate,
  * evidence-based scope boundary, not an oversight or a cut — see each test's
@@ -122,6 +136,22 @@ test.describe('Direct navigation — EnvDbPageComponent (env/:envId/db/:catalogI
       activePage(page).locator('ion-input[placeholder="Filter"]'),
     ).toBeVisible({ timeout: 10_000 });
 
+    // Task 17 items A.2/B.1 (S121/S121b): the table LIST itself now
+    // actually renders on a direct load — `EnvDbPageComponent` fetches it
+    // from `GET /datatug/catalog-tables`, not the dead `history.state.db`
+    // read this file's own header used to document as an unaddressed gap.
+    // Real content, not "no crash": the catalog's own Tabulator grid
+    // (`.tabulator-row`, `[tabulator-field="name"]`) with its real table
+    // names, confirmed live (S121b) to match
+    // datatug-demo-projects/demo-project-1/dbmodels/chinook/main/tables/*.
+    await expect(activePage(page).locator('.tabulator-row').first()).toBeVisible({
+      timeout: 15_000,
+    });
+    expect(await activePage(page).locator('.tabulator-row').count()).toBeGreaterThan(0);
+    await expect(
+      activePage(page).locator('[tabulator-field="name"]', { hasText: /^Album$/ }),
+    ).toBeVisible({ timeout: 10_000 });
+
     expect(diErrors).toEqual([]);
   });
 });
@@ -137,10 +167,9 @@ test.describe('Direct navigation — QueriesPageComponent/QueriesTabComponent (q
       `/queries?folder=customers`;
 
     // Observed the same way store-id-scheme.spec.ts proves its own DI/nav
-    // fix: watch the REAL, unintercepted outgoing request rather than only
-    // the rendered outcome, since the rendered outcome here is a 404 (see
-    // this file's header) that would look identical whether or not the
-    // request was even scoped to the right project.
+    // fix: watch the REAL, unintercepted outgoing request, in addition to
+    // (not instead of, now that Task 17 item A.1 restored the endpoint —
+    // see this file's header UPDATE) the rendered outcome below.
     const queriesRequestPromise = page.waitForRequest(
       (req) => req.url().includes('/datatug/queries/all_queries'),
       { timeout: 15_000 },
@@ -168,6 +197,18 @@ test.describe('Direct navigation — QueriesPageComponent/QueriesTabComponent (q
     const requestUrl = new URL(queriesRequest.url());
     expect(requestUrl.searchParams.get('project')).toBe(DEMO_PROJECT_ID);
     expect(requestUrl.searchParams.get('folder')).toBe('~/customers');
+
+    // Task 17 item A.1 (S121): the query LIST itself now actually renders —
+    // `GET /datatug/queries/all_queries` is no longer 404ing server-side.
+    // Real content, not "no crash": the `customers` folder's own two saved
+    // queries, by their title (QueriesTabComponent renders each query by
+    // its title, not its id — confirmed live, S121b).
+    await expect(
+      activePage(page).getByText('Customer invoices', { exact: true }),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(
+      activePage(page).getByText('Customer purchases by genre', { exact: true }),
+    ).toBeVisible({ timeout: 10_000 });
 
     expect(diErrors).toEqual([]);
   });

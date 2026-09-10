@@ -78,15 +78,16 @@ test.describe('Epilogue A — close/reopen', () => {
     // direct navigation (found while building this test) is now FIXED — see
     // `direct-nav.spec.ts`, which asserts that route's own chrome renders
     // with no NG0201, direct-nav.spec.ts's own header, and this stream's
-    // report (lane S120). Still deliberately not used HERE, though: that page
-    // has never had any way to populate its own table list on a bare URL
-    // load regardless of the DI fix (confirmed live: `EnvDbPageComponent`
-    // only ever reads `history.state.db`, and nothing anywhere — not this
-    // route, not any agent endpoint — supplies table/view data for a direct
-    // load; see direct-nav.spec.ts's header for the full finding), so it
-    // still cannot prove "the Album table is still present" the way the
-    // already-proven `/table/<type>` route can. Kept as the more precise,
-    // already-established mechanism for THIS test's own purpose.
+    // report (lane S120).
+    // UPDATE (Task 17 items A.2/B.1, S121/S121b): the data-fetch gap this
+    // paragraph originally documented is now RESOLVED — `EnvDbPageComponent`
+    // fetches its table list from `GET /datatug/catalog-tables`, and
+    // `direct-nav.spec.ts`'s own test for this route now asserts the real
+    // table list renders, not just the chrome. Kept here anyway, unchanged:
+    // this epilogue's own point is "Album is still present after
+    // close/reopen", and the deeper `/table/<type>` route remains the more
+    // direct, already-proven way to assert that one table specifically —
+    // not a workaround for a gap anymore, just the more precise route.
     const albumTableUrl =
       `${projectUrl}/env/${DEMO_ENV_ID}/db/${DEMO_DB_CATALOG_ID}` +
       `/table/main.Album`;
@@ -99,16 +100,17 @@ test.describe('Epilogue A — close/reopen', () => {
     // (found while building this test) is now FIXED — see
     // `direct-nav.spec.ts`, which asserts this route's own chrome renders
     // with no NG0201 and that the project resolves correctly into its
-    // outgoing request; and this stream's report (lane S120). Still
-    // deliberately not used HERE, though: `QueriesTabComponent.loadQueries()`
-    // now correctly calls the agent, but the endpoint it depends on
-    // (`GET /datatug/queries/all_queries`) is commented out server-side in
-    // `datatug-cli` (confirmed live: the request IS sent, correctly scoped,
-    // and 404s — a separate, cross-repo backend gap, NOT fixed here or
-    // fixable in this repo; see direct-nav.spec.ts's header), so this route
-    // still cannot prove "the saved queries are still present" the way
-    // direct navigation to each query's own page can. Kept as the more
-    // precise, already-established mechanism for THIS test's own purpose.
+    // outgoing request; and this stream's report (lane S120).
+    // UPDATE (Task 17 item A.1, S121/S121b): `GET /datatug/queries/all_queries`
+    // is no longer commented out server-side — restored in datatug-cli, and
+    // `direct-nav.spec.ts`'s own test for this route now asserts the real
+    // query list renders (each saved query by its title), not just the
+    // chrome. Kept here anyway, unchanged: this epilogue's own point is that
+    // customer-invoices/customer-purchases-by-genre SPECIFICALLY are still
+    // present and still correctly parameter-bound after close/reopen, and
+    // navigating to each query's own page remains the more direct,
+    // already-proven way to assert exactly that — not a workaround for a
+    // gap anymore, just the more precise route.
     const customerInvoicesUrl = `${projectUrl}/query/customer-invoices?id=customer-invoices`;
     const customerPurchasesUrl = `${projectUrl}/query/customer-purchases-by-genre?id=customer-purchases-by-genre`;
 

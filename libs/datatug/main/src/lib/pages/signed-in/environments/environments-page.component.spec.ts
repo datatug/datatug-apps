@@ -5,6 +5,7 @@ import { of } from 'rxjs';
 
 import { EnvironmentsPageComponent } from './environments-page.component';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
+import { ProjectService } from '../../../services/project/project.service';
 
 describe('EnvironmentsPage', () => {
   let component: EnvironmentsPageComponent;
@@ -33,6 +34,17 @@ describe('EnvironmentsPage', () => {
             currentProject: of(undefined),
             currentEnv: of(undefined),
           },
+        },
+        // `EnvironmentsPageComponent` fetches its environments list via
+        // `ProjectService.getFull()`, not `project?.environments` (Task 17
+        // item B.1, S121 — see the component's own doc comment on
+        // `environments`): `currentProject` above emits `undefined` in this
+        // describe block, so `loadEnvironments()` never actually runs, but
+        // the component now injects `ProjectService` unconditionally and
+        // `TestBed` needs a provider for it regardless.
+        {
+          provide: ProjectService,
+          useValue: { getFull: vi.fn(() => of({ environments: [] })) },
         },
       ],
     })

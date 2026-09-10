@@ -23,7 +23,8 @@
 
   <sneat-card-list
     title="Environments"
-    [isLoading]="!project"
-    [items]="project?.environments"
+    [isLoading]="!environments"
+    [items]="environments"
+    (itemClick)="goEnvironment($event)"
   />
 </ion-content>

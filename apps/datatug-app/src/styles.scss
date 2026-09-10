@@ -25,9 +25,21 @@
 @import '@ionic/angular/css/text-transformation.css';
 @import '@ionic/angular/css/flex-utils.css';
 
+// Task 17 item B.1 (S121): this was left commented out (see the two comment
+// lines below, both pre-existing) — confirmed live that without it, every
+// Tabulator grid in the app (env-db-page.component.ts's own table/view list
+// included) renders with no row/column layout CSS at all: rows collapse to
+// overlapping absolutely-positioned blocks at effectively the same
+// coordinates, so a real click on a table's row (needed for the
+// tables-list -> table-page navigation this task wires up) lands on the
+// wrong row or nothing. `env-db-table.page.ts`'s own Tabulator grid (one
+// level deeper, the per-table column/data view) was never reachable via
+// real navigation before this task either (both pages' own doc comments:
+// journeys only ever `page.goto()`'d straight past both), so this gap went
+// unnoticed until now.
 // For some reason this one is not importing from common SCSS file.
 // But maybe it's just OK as we need it only in DataTug for now
-//@import '../../../node_modules/tabulator-tables/dist/css/tabulator.min.css';
+@import '../../../node_modules/tabulator-tables/dist/css/tabulator.min.css';
 
 //@import '../../../styles/sneat';
 
