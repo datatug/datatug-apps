@@ -551,10 +551,19 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
   it('SOURCE_UNAVAILABLE on a live run offers an explicit snapshot retry, never a silent fallback', async () => {
     component = await createComponent({});
     component.project = project;
+    // LEAD ASSUMPTION 2026-09-10 (AvailableSnapshot's own doc comment,
+    // @sneat/datatug-semantic) — the sibling "details.availableSnapshots" key a
+    // SOURCE_UNAVAILABLE response for an HTTP query with a recorded fixture carries;
+    // runSnapshot() reads the snapshotId from HERE, never fabricating one client-side.
     const sourceUnavailable = new HttpErrorResponse({
       status: 503,
       error: {
         error: { code: 'SOURCE_UNAVAILABLE', message: 'live request failed', requestId: 'req-2' },
+        details: {
+          availableSnapshots: [
+            { snapshotId: 'exchange-rates-2026-09-01', recordedAt: '2026-09-01T00:00:00Z' },
+          ],
+        },
       },
     });
     runQueryMock.mockReturnValue(throwError(() => sourceUnavailable));
@@ -562,6 +571,10 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     component.runQuery();
 
     expect(component.sourceUnavailable()).toBe(true);
+    expect(component.availableSnapshot()).toEqual({
+      snapshotId: 'exchange-rates-2026-09-01',
+      recordedAt: '2026-09-01T00:00:00Z',
+    });
     expect(runQueryMock).toHaveBeenCalledTimes(1);
     expect(runQueryMock.mock.calls[0][0]).toMatchObject({ mode: 'live' });
 
@@ -583,9 +596,36 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     component.runSnapshot();
 
     expect(runQueryMock).toHaveBeenCalledTimes(2);
-    expect(runQueryMock.mock.calls[1][0]).toMatchObject({ mode: 'snapshot' });
+    expect(runQueryMock.mock.calls[1][0]).toMatchObject({
+      mode: 'snapshot',
+      snapshotId: 'exchange-rates-2026-09-01',
+    });
     expect(component.sourceUnavailable()).toBe(false);
     expect(component.runResult()).toEqual(snapshotResponse);
+  });
+
+  it('runSnapshot() is a no-op when the server reported no recorded snapshot at all', async () => {
+    component = await createComponent({});
+    component.project = project;
+    const sourceUnavailableNoFixture = new HttpErrorResponse({
+      status: 503,
+      error: {
+        error: { code: 'SOURCE_UNAVAILABLE', message: 'live request failed', requestId: 'req-3' },
+        // No "details" key at all — this query has no recorded fixture.
+      },
+    });
+    runQueryMock.mockReturnValue(throwError(() => sourceUnavailableNoFixture));
+
+    component.runQuery();
+
+    expect(component.sourceUnavailable()).toBe(true);
+    expect(component.availableSnapshot()).toBeUndefined();
+    expect(runQueryMock).toHaveBeenCalledTimes(1);
+
+    component.runSnapshot();
+
+    // Never sends a mode:snapshot request with a fabricated/empty snapshotId.
+    expect(runQueryMock).toHaveBeenCalledTimes(1);
   });
 
   it('a late run response for a scope the user has since left is discarded (Task 15 item 4)', async () => {

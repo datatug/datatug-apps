@@ -308,8 +308,32 @@ export interface ErrorBody {
   readonly targets?: readonly CandidateTarget[];
 }
 
+/** One recorded snapshot a client may explicitly request via
+ * `ExecutionRequest.snapshotId` — `recordedAt` is RFC3339, the fixture's actual capture
+ * time (never "now"). LEAD ASSUMPTION 2026-09-10, pending founder confirmation (see the
+ * contract amendment, `spec/features/core-investigation-loop/api-contract.md`,
+ * datatug/datatug hub): datatug-core v0.27.3's `apicontract.ErrorBody` has no generic
+ * extension field, and its own `Validate()` restricts `targets` to `TARGET_REQUIRED`
+ * only, so this travels as a sibling top-level `details` key next to `error` (never
+ * nested inside it) — see `ErrorEnvelope.details` below. */
+export interface AvailableSnapshot {
+  readonly snapshotId: string;
+  readonly recordedAt: string;
+}
+
+export interface ErrorDetails {
+  /** Present only on a `SOURCE_UNAVAILABLE` response for an HTTP-typed saved query that
+   * has a recorded fixture; always exactly one entry for Phase 1 (one fixture per
+   * query — see datatug-cli's `pkg/httpsource` fixtureFS doc comment). */
+  readonly availableSnapshots?: readonly AvailableSnapshot[];
+}
+
 export interface ErrorEnvelope {
   readonly error: ErrorBody;
+  /** Sibling to `error`, never nested inside it — see `ErrorDetails`'s own doc comment
+   * for why. Absent on every error that isn't `SOURCE_UNAVAILABLE` for an HTTP query
+   * with a recorded fixture. */
+  readonly details?: ErrorDetails;
 }
 
 export function isKnownErrorCode(code: string): code is ErrorCode {

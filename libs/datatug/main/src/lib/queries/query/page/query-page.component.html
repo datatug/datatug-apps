@@ -164,12 +164,14 @@
     <ion-card color="danger">
       <ion-card-content>
         {{ error }}
-        @if (sourceUnavailable()) {
+        @if (sourceUnavailable() && availableSnapshot(); as snapshot) {
           <!-- api-contract.md "Bounded lookups and HTTP" — the user must explicitly
-               choose a labeled snapshot; never a silent fallback. -->
+               choose a labeled snapshot; never a silent fallback. Labeled with the
+               fixture's own recorded date (LEAD ASSUMPTION 2026-09-10 — see
+               AvailableSnapshot's doc comment, @sneat/datatug-semantic), never "now". -->
           <div>
             <ion-button fill="outline" color="medium" (click)="runSnapshot()">
-              View recorded snapshot instead
+              Use recorded snapshot from {{ formatRecordedDate(snapshot.recordedAt) }}
             </ion-button>
           </div>
         }
@@ -183,10 +185,19 @@
       [limitations]="result.limitations"
       [executionProfile]="result.provenance.executionProfile"
     />
-    <ion-text color="medium">
-      {{ result.provenance.mode === 'snapshot' ? 'snapshot' : 'live' }} · {{
-        result.provenance.source
-      }}
+    <!-- api-contract.md "Bounded lookups and HTTP" — the header states "live" or
+         "snapshot · recorded <date>" from provenance alone, never client state; the
+         recorded date comes from Result.provenance.observedAt, which for a snapshot
+         response is the fixture's actual capture time (never "now" — see
+         datatug-cli's pkg/httpsource snapshot handling). -->
+    <ion-text color="medium" data-testid="result-provenance">
+      @if (result.provenance.mode === 'snapshot') {
+        snapshot · recorded {{ formatRecordedDate(result.provenance.observedAt) }} · {{
+          result.provenance.source
+        }}
+      } @else {
+        live · {{ result.provenance.source }}
+      }
     </ion-text>
 
     @if (result.bindingsApplied.length) {

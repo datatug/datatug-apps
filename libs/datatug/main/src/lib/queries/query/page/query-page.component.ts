@@ -42,6 +42,7 @@ import {
 } from '@ionic/angular';
 import {
   AgentContextService,
+  AvailableSnapshot,
   Binding,
   BindingParameterRef,
   CandidateTarget,
@@ -343,6 +344,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
    * `SOURCE_UNAVAILABLE`; the user must explicitly choose a labeled snapshot (never a
    * silent fallback) via {@link runSnapshot}. */
   public readonly sourceUnavailable = signal(false);
+  /** LEAD ASSUMPTION 2026-09-10 (`AvailableSnapshot`'s own doc comment,
+   * `@sneat/datatug-semantic`) — the ONE recorded snapshot named on a `SOURCE_UNAVAILABLE`
+   * error's sibling `details.availableSnapshots`, when the server reported one; `undefined`
+   * means no recorded fixture exists for this query, so {@link runSnapshot} has nothing to
+   * offer and the template must not render the action at all. Cleared on every new run
+   * attempt (never stale across a live retry). */
+  public readonly availableSnapshot = signal<AvailableSnapshot | undefined>(undefined);
   private lastRequest?: RunQueryRequest;
   private lastRequestScope?: { project: string; environment: string; securityContextId: string };
 
@@ -1083,6 +1091,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.running.set(true);
     this.runError.set(undefined);
     this.sourceUnavailable.set(false);
+    this.availableSnapshot.set(undefined);
     const parameters: Record<string, TypedValue> = {};
     const bindingOrigins: ExecutionBindingOrigin[] = [];
     for (const binding of this.effectiveBindings()) {
@@ -1114,15 +1123,23 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   /** api-contract.md "Bounded lookups and HTTP" — the user's explicit choice to view a
    * recorded snapshot after a live `SOURCE_UNAVAILABLE` failure; never automatic. Reuses
-   * the same request the live attempt sent, only flipping `mode`. */
+   * the same request the live attempt sent, flipping `mode` AND naming the exact
+   * `snapshotId` the server itself reported on the failed live attempt
+   * (`availableSnapshot()`, `handleRunError`) — never fabricated or guessed client-side;
+   * a request with no known snapshot id is refused rather than sent with an empty one
+   * (the server's own `req.Validate()` would reject that anyway). */
   public runSnapshot(): void {
-    if (!this.lastRequest || !this.lastRequestScope) {
+    const snapshot = this.availableSnapshot();
+    if (!this.lastRequest || !this.lastRequestScope || !snapshot) {
       return;
     }
     this.running.set(true);
     this.runError.set(undefined);
     this.sourceUnavailable.set(false);
-    this.executeQuery({ ...this.lastRequest, mode: 'snapshot' }, this.lastRequestScope);
+    this.executeQuery(
+      { ...this.lastRequest, mode: 'snapshot', snapshotId: snapshot.snapshotId },
+      this.lastRequestScope,
+    );
   }
 
   private executeQuery(
@@ -1168,6 +1185,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     }
     if (envelope?.error.code === 'SOURCE_UNAVAILABLE' && request.mode === 'live') {
       this.sourceUnavailable.set(true);
+      // LEAD ASSUMPTION 2026-09-10 (AvailableSnapshot's own doc comment) — exactly one
+      // entry for Phase 1, or none when this query has no recorded fixture at all; the
+      // template renders the "Use recorded snapshot" action only when this is set.
+      this.availableSnapshot.set(envelope.details?.availableSnapshots?.[0]);
       this.runError.set('This source is unavailable right now.');
       return;
     }
@@ -1181,6 +1202,16 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     }
     this.runError.set(envelope?.error.message ?? this.extractErrorMessage(err));
     this.errorLogger.logError(err, 'Failed to run query');
+  }
+
+  /** Renders an RFC3339 instant (`ResultProvenance.observedAt`, `AvailableSnapshot.
+   * recordedAt`) as a plain calendar date for the result header / snapshot-action label —
+   * "snapshot · recorded <date>" (api-contract.md), never the full timestamp, matching
+   * datatug-cli's own `provenanceLine` CLI-output convention (`2006-01-02`). Falls back to
+   * the raw string for a value that somehow isn't parseable, rather than throwing. */
+  protected formatRecordedDate(iso: string): string {
+    const date = new Date(iso);
+    return Number.isNaN(date.getTime()) ? iso : date.toISOString().slice(0, 10);
   }
 
   private extractErrorMessage(err: unknown): string {

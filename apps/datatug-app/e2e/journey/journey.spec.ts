@@ -280,6 +280,147 @@ test.describe('J2 — from a value to related knowledge', () => {
   });
 });
 
+test.describe('J2b — HTTP reference source', () => {
+  // Phase 1 Task 14 (AC:http-source-in-demo, AC:safe-http-and-lookups):
+  // country-facts (queries/reference/country-facts, HTTP-typed) resolves as
+  // an applicable query from a Country cell exactly like customer-invoices
+  // resolves from a CustomerId cell in J2 above — semantic.Applicable
+  // (datatug-core) never filters by QueryDef.Type, so no server change was
+  // needed for this half; entities/Country/Country.entity.json's own
+  // Name field mapping (chinook.Customer.Country) is what makes the
+  // selection semantic at all. The row picked here is deliberately the one
+  // whose Country is "Canada" — datatug-demo-projects' fixtures/http/
+  // country-facts.json (used by the offline sub-test below) was recorded
+  // for Canada, so both sub-tests exercise the same real currency (CAD),
+  // never a hand-picked assertion divorced from the actual recorded data.
+
+  test('with network: selecting Country=Canada runs country-facts live and shows CAD', async ({
+    agentServer,
+    page,
+  }) => {
+    const projectUrl = `/store/${agentServer.storeId}/project/${DEMO_PROJECT_ID}`;
+    const customerTableUrl =
+      `${projectUrl}/env/${DEMO_ENV_ID}/db/${DEMO_DB_CATALOG_ID}` +
+      `/table/${CUSTOMER_TABLE_TYPE}`;
+
+    await page.goto(customerTableUrl);
+    await expect(activePage(page).locator('.tabulator-row').first()).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // "the user clicks a Country cell" — the row whose Country is "Canada"
+    // (chinook's CustomerId=3, François Tremblay), not just the first row:
+    // see this describe block's own header comment for why.
+    const countryCell = activePage(page)
+      .locator('[tabulator-field="Country"]', { hasText: 'Canada' })
+      .first();
+    await expect(countryCell).toBeVisible({ timeout: 15_000 });
+    await countryCell.click();
+
+    await expect(activePage(page).locator('sneat-datatug-context-panel')).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(
+      activePage(page).getByText('Country.Name = Canada', { exact: false }),
+    ).toBeVisible({ timeout: 10_000 });
+
+    // "country-facts" surfaces as an applicable candidate (POST
+    // /datatug/queries/applicable) exactly like J2's SQL-typed candidates —
+    // rendered by queryId, not title.
+    await expect(
+      activePage(page).getByText('country-facts', { exact: false }),
+    ).toBeVisible({ timeout: 15_000 });
+
+    await activePage(page).getByText('country-facts', { exact: false }).click();
+    await expect(
+      activePage(page)
+        .getByText('Country.Name', { exact: false })
+        .getByText('from selection', { exact: false }),
+    ).toBeVisible({ timeout: 10_000 });
+
+    await activePage(page).getByText('Run query', { exact: false }).click();
+
+    // "the server executes the HTTP reference source read-only, returns
+    // rows shaped like any other source, and the result header states
+    // 'live'" (AC:http-source-in-demo) — the real countriesnow.space
+    // endpoint, no interception. A generous timeout: this is the one real
+    // outbound HTTP call in the whole journey suite.
+    await expect(
+      activePage(page).getByTestId('result-provenance'),
+    ).toContainText('live', { timeout: 20_000 });
+    await expect(activePage(page).getByText('CAD', { exact: true })).toBeVisible({
+      timeout: 5_000,
+    });
+    await expect
+      .poll(() => agentServer.readLog(), { timeout: 15_000 })
+      .toMatch(/\/datatug\/exec\/run_query/);
+  });
+
+  test('offline: live fails honestly, then the recorded snapshot succeeds explicitly', async ({
+    offlineAgentServer,
+    page,
+  }) => {
+    const projectUrl = `/store/${offlineAgentServer.storeId}/project/${DEMO_PROJECT_ID}`;
+    const customerTableUrl =
+      `${projectUrl}/env/${DEMO_ENV_ID}/db/${DEMO_DB_CATALOG_ID}` +
+      `/table/${CUSTOMER_TABLE_TYPE}`;
+
+    await page.goto(customerTableUrl);
+    await expect(activePage(page).locator('.tabulator-row').first()).toBeVisible({
+      timeout: 15_000,
+    });
+
+    const countryCell = activePage(page)
+      .locator('[tabulator-field="Country"]', { hasText: 'Canada' })
+      .first();
+    await expect(countryCell).toBeVisible({ timeout: 15_000 });
+    await countryCell.click();
+
+    await expect(activePage(page).locator('sneat-datatug-context-panel')).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(
+      activePage(page).getByText('country-facts', { exact: false }),
+    ).toBeVisible({ timeout: 15_000 });
+    await activePage(page).getByText('country-facts', { exact: false }).click();
+    await expect(
+      activePage(page)
+        .getByText('Country.Name', { exact: false })
+        .getByText('from selection', { exact: false }),
+    ).toBeVisible({ timeout: 10_000 });
+
+    await activePage(page).getByText('Run query', { exact: false }).click();
+
+    // "with the network disabled the live request fails honestly" — `--http-offline`
+    // (datatug serve, this suite's offlineAgentServer fixture) makes every live HTTP
+    // fetch fail SOURCE_UNAVAILABLE without ever touching the network.
+    await expect(
+      activePage(page).getByText('This source is unavailable right now.', {
+        exact: false,
+      }),
+    ).toBeVisible({ timeout: 15_000 });
+
+    // "only an explicit subsequent snapshot request succeeds, retaining its
+    // recorded timestamp and policy checks" — the labeled action names the
+    // fixture's own recorded date (LEAD ASSUMPTION 2026-09-10: the
+    // SOURCE_UNAVAILABLE response's sibling `details.availableSnapshots`,
+    // see contract-amendment PR to the hub), never "now".
+    const snapshotButton = activePage(page).getByText(
+      'Use recorded snapshot from 2026-09-09',
+      { exact: false },
+    );
+    await expect(snapshotButton).toBeVisible({ timeout: 10_000 });
+    await snapshotButton.click();
+
+    await expect(
+      activePage(page).getByTestId('result-provenance'),
+    ).toContainText('snapshot · recorded 2026-09-09', { timeout: 15_000 });
+    await expect(activePage(page).getByText('CAD', { exact: true })).toBeVisible({
+      timeout: 5_000,
+    });
+  });
+});
+
 test.describe('J3 — carrying context', () => {
   test('adding a value to the Investigation Context binds it on another query; disabling the chip clears it', async ({
     agentServer,
