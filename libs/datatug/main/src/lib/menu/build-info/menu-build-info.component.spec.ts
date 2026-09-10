@@ -38,20 +38,21 @@ describe('MenuBuildInfoComponent', () => {
     ).toBeNull();
   });
 
-  it('shows the DataTug copyright line ending in the current year (unstamped build)', () => {
+  it('shows the Sneat.Work copyright line ending in the current year (unstamped build)', () => {
     // Unstamped in a unit test (no Nx dependsOn from `test` on `build` —
     // see build-info.ts's header comment), so buildInfo.buildTimestamp is
     // still the committed placeholder and the component falls back to the
     // current year rather than rendering "NaN".
     const text = toggleRow().textContent ?? '';
     expect(text).toContain(`2020 - ${new Date().getUTCFullYear()}`);
-    expect(text).toContain('DataTug.app');
+    expect(text).toContain('Sneat.Work');
   });
 
-  it('links DataTug.app to https://datatug.app in a new tab', () => {
+  it('links Sneat.Work to https://sneat.work in a new tab', () => {
     const link = fixture.nativeElement.querySelector('a') as HTMLAnchorElement;
-    expect(link.getAttribute('href')).toBe('https://datatug.app');
+    expect(link.getAttribute('href')).toBe('https://sneat.work');
     expect(link.getAttribute('target')).toBe('_blank');
+    expect(link.getAttribute('rel')).toBe('noopener');
   });
 
   it('expands to reveal the version and build lines when the row is tapped', () => {

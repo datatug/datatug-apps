@@ -23,12 +23,17 @@ addIcons({ chevronDownOutline, chevronUpOutline });
 // node_modules/ionicons/dist/collection/components/icon/utils.js.
 
 // Side-menu build-info footer — a single collapsed-by-default row showing
-// DataTug's copyright line, expandable to reveal the app version, short git
-// hash, and UTC build timestamp (datatug-menu.component.html). Founder
+// the Sneat.Work copyright line, expandable to reveal the app version, short
+// git hash, and UTC build timestamp (datatug-menu.component.html). Founder
 // request 2026-09-11: the previous always-expanded "App version" card (an
 // ion-item-divider + two rows, one of them a readonly ion-input) took too
 // much side-menu space — collapse it behind one tappable row, mirroring the
 // requested "## copyright line 🔽 / 🔼 --- Version / Build" shape.
+//
+// The copyright holder is Sneat.Work (https://sneat.work), the umbrella
+// product/company DataTug.app ships under — not "DataTug.app" itself.
+// Founder correction 2026-09-11: a previous pass wrongly kept DataTug.app
+// as the copyright holder here.
 //
 // Local sibling of sneat-co/sneat-libs' AppVersionComponent
 // (libs/components/src/lib/app-version/, selector `sneat-app-version`,
@@ -74,7 +79,7 @@ export class MenuBuildInfoComponent {
     this.expanded.update((expanded) => !expanded);
   }
 
-  // The copyright link must open datatug.app without toggling the row (the
+  // The copyright link must open sneat.work without toggling the row (the
   // ion-item's own (click) handler would otherwise also fire on bubble).
   protected onLinkClick(event: Event): void {
     event.stopPropagation();

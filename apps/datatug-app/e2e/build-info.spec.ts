@@ -23,7 +23,7 @@ test('side menu shows a real (non-placeholder) short git hash once expanded', as
   await expect(hashLine).toBeHidden();
 
   // Click the chevron, not the row's default (center) click point: the row's
-  // own copyright text wraps a "DataTug.app" link (opens datatug.app in a
+  // own copyright text wraps a "Sneat.Work" link (opens sneat.work in a
   // new tab without toggling — see onLinkClick in
   // menu-build-info.component.ts), and that link sits directly under the
   // row's horizontal center, so Playwright's default click-the-center
@@ -55,7 +55,7 @@ test('/build-info.json is served by the built app and matches the menu', async (
   await page.goto('/');
 
   // See the sibling test above for why the chevron (not the row's default
-  // center click point, which lands on the "DataTug.app" link) is the
+  // center click point, which lands on the "Sneat.Work" link) is the
   // click target.
   const chevron = page.locator('[data-testid="build-info-chevron"]');
   await chevron.click();
