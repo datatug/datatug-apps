@@ -158,12 +158,51 @@ export class QueriesTabComponent {
         // echo as the no-op it is; a genuinely new `id` (a direct deep link,
         // or browser back/forward — neither of which routes through `cd()`)
         // still updates normally below, unchanged from before this fix.
-        if (id === this.currentFolder.id) {
+        //
+        // S154: this component is never routed on its own — it's a plain
+        // child embedded in QueriesPageComponent's template
+        // (queries-page.component.html), so `inject(ActivatedRoute)` above
+        // resolves to that SAME page's ActivatedRoute. Any query-param-only
+        // navigation on THAT route — not just this component's own
+        // `updateUrlWithCurrentFolder()` above, but also the PAGE's own
+        // `updateUrlWithCurrentTab()`/`updateUrlWithOrderTagsBy()` (the
+        // "Personal"/"Shared" segment and the "Order by" select, both
+        // `router.navigate([], {queryParamsHandling: 'merge'})`) — re-emits
+        // `queryParamMap` to THIS subscription too, with `folder` unchanged.
+        // The no-op guard above compares the URL's `id` sentinel for "no
+        // folder" (`''`, `queryParams.get('folder') || ''`) against
+        // `currentFolder.id` — but once a folder has actually loaded,
+        // `currentFolder.id` is the SERVER's own id for that folder, and for
+        // the root folder that id is the literal string `'~'`
+        // (GithubProjectReaderService.getQueriesFolder()'s `{id: '~', ...}`,
+        // same for the CLI-agent path — see onFolderRetrieved() below), not
+        // `''`. `'' !== '~'` defeats the guard, and the handler wipes the
+        // just-loaded root folder back to the empty `{path: '~', id: ''}`
+        // stub — confirmed live (S154, build a7eaf10): switching the Queries
+        // page from "Personal" to "Shared" and back left BOTH tabs showing
+        // zero items, although the folder tree had loaded correctly moments
+        // before and no new fetch ever ran (this component is never
+        // destroyed by that tab switch either — `queries-page.component.html`
+        // renders one `sneat-datatug-queries-tab` for both tabs, so this is
+        // the SAME instance, same in-memory `allQueries`/`currentFolder`,
+        // the whole time). `'~'` is this app's own reserved root-path
+        // marker everywhere else (getFolderAndUpdateParents() below already
+        // filters it out of `path.split('/')` as "not a real segment"), so
+        // normalizing it to the URL's own `''` root sentinel before
+        // comparing treats both spellings of "no folder" as the same value
+        // — fixing this bug, and, as a side effect, the equivalent stale
+        // `?folder=~` URL `updateUrlWithCurrentFolder()` can itself produce
+        // for `cd('~')` (path `'~'`, `.replace('~/', '')` leaves the leading
+        // `~` untouched).
+        const normalizedId = id === '~' ? '' : id;
+        const normalizedCurrentId =
+          this.currentFolder.id === '~' ? '' : this.currentFolder.id;
+        if (normalizedId === normalizedCurrentId) {
           return;
         }
         this.currentFolder = {
-          path: (id && `~/${id}`) || '~',
-          id,
+          path: (normalizedId && `~/${normalizedId}`) || '~',
+          id: normalizedId,
         };
         this.displayCurrentFolder();
       },
