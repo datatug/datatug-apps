@@ -976,19 +976,20 @@ describe('EnvDbTablePage dependency injection', () => {
   });
 
   // DatatugNavContextService is now providedIn: 'root'
-  // (nav-context-root-singletons) — no longer grouped with the two below,
-  // which are still module-provided.
+  // (nav-context-root-singletons) — no longer grouped with AgentService
+  // below, which is still module-provided.
   it('resolves DatatugNavContextService, which is `providedIn: root`', () => {
     expect(TestBed.inject(DatatugNavContextService, null)).toBeTruthy();
   });
 
-  it.each([
-    ['ProjectService', ProjectService],
-    ['AgentService', AgentService],
-  ])(
-    'resolves %s, which is provided by a module and never `providedIn: root`',
-    (_name, token) => {
-      expect(TestBed.inject(token, null)).toBeTruthy();
-    },
-  );
+  // ProjectService is now providedIn: 'root' too
+  // (nav-context-root-singletons) — no longer grouped with AgentService
+  // below, which is still module-provided.
+  it('resolves ProjectService, which is `providedIn: root`', () => {
+    expect(TestBed.inject(ProjectService, null)).toBeTruthy();
+  });
+
+  it('resolves AgentService, which is provided by a module and never `providedIn: root`', () => {
+    expect(TestBed.inject(AgentService, null)).toBeTruthy();
+  });
 });

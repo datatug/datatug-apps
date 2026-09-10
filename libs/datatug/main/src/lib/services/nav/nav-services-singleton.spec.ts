@@ -120,14 +120,13 @@ describe('nav/project services are app singletons across independently-mounted s
             logErrorHandler: vi.fn(() => vi.fn()),
           },
         },
-        // ProjectService stays a plain module-provided `@Injectable()` on
-        // this branch (lane S126, `fix/title-load-flake`, roots it
-        // separately) — faked here so `DatatugNavContextService`/
-        // `EnvironmentService` (both root-provided by this branch, so their
-        // OWN `inject(ProjectService)` resolves starting from the root
-        // injector, not from any component's local module imports) can
-        // still find it without pulling in the real class's own HTTP/store
-        // dependency chain.
+        // ProjectService is `providedIn: 'root'` too on this branch — faked
+        // here purely because the real class pulls in the Firestore/
+        // store-factory dependency chain (`DatatugStoreServiceFactory`) that
+        // this spec doesn't want to stand up. `DatatugNavContextService`/
+        // `EnvironmentService` (both root-provided by this branch) resolve
+        // their own `inject(ProjectService)` from the root injector, so this
+        // mock just needs to be registered as a root provider override.
         {
           provide: ProjectService,
           useValue: {

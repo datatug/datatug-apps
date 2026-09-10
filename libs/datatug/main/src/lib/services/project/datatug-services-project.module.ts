@@ -1,11 +1,10 @@
 import { NgModule } from '@angular/core';
-import { ProjectService } from './project.service';
 
-@NgModule({
-  providers: [
-    // ProjectService is not yet providedIn: 'root' — lane S126
-    // (fix/title-load-flake) roots it separately.
-    ProjectService,
-  ],
-})
+// `ProjectService` and `ProjectContextService` are both `providedIn: 'root'`
+// — do not re-list them in `providers:` here. Every standalone component
+// that imports this module gets its own environment injector, and a
+// module-level provider entry shadows the root singleton there (two
+// `ProjectService` instances meant two HTTP GETs for one project summary,
+// confirmed live during the S126 title-load-flake investigation).
+@NgModule({})
 export class DatatugServicesProjectModule {}
