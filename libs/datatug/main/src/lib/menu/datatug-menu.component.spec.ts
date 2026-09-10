@@ -175,23 +175,24 @@ describe('DatatugMenuComponent', () => {
   });
 
   describe('build info footer', () => {
-    it('always renders the build-info panel', () => {
+    // The shared @sneat/components AppVersionComponent (sneat-app-version) —
+    // see datatug-menu.component.html. Rendered as an unknown element under
+    // this spec's CUSTOM_ELEMENTS_SCHEMA, so only its presence in the DOM is
+    // asserted here; AppVersionComponent's own behavior (collapse/expand,
+    // copyright text) is covered by @sneat/components' own test suite.
+    it('always renders the app-version footer', () => {
       const fixture = createComponent('/');
       fixture.detectChanges();
       expect(
-        fixture.nativeElement.querySelector(
-          'sneat-datatug-menu-build-info',
-        ),
+        fixture.nativeElement.querySelector('sneat-app-version'),
       ).toBeTruthy();
     });
 
-    it('renders the build-info panel on the login page too', () => {
+    it('renders the app-version footer on the login page too', () => {
       const fixture = createComponent('/login');
       fixture.detectChanges();
       expect(
-        fixture.nativeElement.querySelector(
-          'sneat-datatug-menu-build-info',
-        ),
+        fixture.nativeElement.querySelector('sneat-app-version'),
       ).toBeTruthy();
     });
   });
