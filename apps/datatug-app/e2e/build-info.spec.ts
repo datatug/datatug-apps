@@ -1,14 +1,16 @@
 import { expect, test } from '@playwright/test';
 
-// Smoke test for the side-menu build-info footer (deliverable of the
-// feat/build-info-menu branch, collapsed into a single tappable row by
-// feat/collapsible-version-footer — see apps/datatug-app/README.md "Build
-// info"). Runs against the shared dev server like every other spec in this
-// (chromium) project; datatug-app:serve depends on the `stamp-build-info`
-// Nx target (apps/datatug-app/project.json), so by the time this test runs
-// the dev server has already been stamped with a real local git hash,
-// version, and UTC build timestamp — not the placeholders committed to
-// build-info.ts.
+// Smoke test for the side-menu build-info footer — `<sneat-app-version />`,
+// @sneat/components' generic AppVersionComponent, fed this app's own
+// stamped build info via `provideBuildInfo()` (apps/datatug-app/src/main.ts)
+// — see apps/datatug-app/README.md "Build info". Runs against the shared dev
+// server like every other spec in this (chromium) project; datatug-app:serve
+// depends on the `stamp-build-info` Nx target (apps/datatug-app/project.json),
+// so by the time this test runs the dev server has already been stamped
+// with a real local git hash, version, and UTC build timestamp — not the
+// placeholders committed to build-info.ts (stamping never touches that
+// file; it stamps a gitignored build-info.generated.ts that an Angular
+// fileReplacements config swaps in instead).
 
 test('side menu shows a real (non-placeholder) short git hash once expanded', async ({
   page,
@@ -24,10 +26,10 @@ test('side menu shows a real (non-placeholder) short git hash once expanded', as
 
   // Click the chevron, not the row's default (center) click point: the row's
   // own copyright text wraps a "Sneat.Work" link (opens sneat.work in a
-  // new tab without toggling — see onLinkClick in
-  // menu-build-info.component.ts), and that link sits directly under the
-  // row's horizontal center, so Playwright's default click-the-center
-  // behavior would hit the link instead of toggling. Same reason a plain
+  // new tab without toggling — see onLinkClick in sneat-libs'
+  // app-version.component.ts), and that link sits directly under the row's
+  // horizontal center, so Playwright's default click-the-center behavior
+  // would hit the link instead of toggling. Same reason a plain
   // `footerRow.click()` must never be reintroduced here.
   const footerRow = page.locator('[data-testid="build-info-toggle"]');
   const chevron = page.locator('[data-testid="build-info-chevron"]');

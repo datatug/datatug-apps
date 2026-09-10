@@ -2,10 +2,11 @@
 
 ## Build info
 
-The side menu (`libs/datatug/main/src/lib/menu/build-info/`) has a
-collapsed-by-default footer row at the bottom (the Sneat.Work copyright
-line); tapping it reveals the app version, a short git hash, and the UTC
-build timestamp. The same three values are written to a static `build-info.json`
+The side menu's footer (`<sneat-app-version />`, `@sneat/components`'
+`AppVersionComponent` — generic/reusable across every Sneat app, not
+DataTug-specific) is a collapsed-by-default row showing the copyright line;
+tapping it reveals the app version, a short git hash, and the UTC build
+timestamp. The same three values are written to a static `build-info.json`
 at the root of the built app, so you can check which commit is actually live
 without opening the app:
 
@@ -23,29 +24,59 @@ release tag so both agree (this repo has no separate
 `apps/datatug-app/package.json`). Releases: bump `package.json`, merge, then
 tag main `vX.Y.Z`.
 
-Both values are produced by `tools/stamp-build-info.mjs`, wired as an Nx
-dependency of the `datatug-app` `build` and `serve` targets
-(`apps/datatug-app/project.json` — `targets.build.dependsOn` /
-`targets.serve.dependsOn: ["stamp-build-info"]`), so it always runs
-automatically; there is no manual step on either build path:
+All three values are produced by `sneat-stamp-build-info`
+(`@sneat/build-info`'s published bin — see
+[sneat-co/sneat-libs' `libs/build-info/README.md`](https://github.com/sneat-co/sneat-libs/blob/main/libs/build-info/README.md)
+for the generic contract every Sneat app wires up the same way), run via the
+`stamp-build-info` Nx target and wired as a dependency of the `datatug-app`
+`build` and `serve` targets (`apps/datatug-app/project.json` —
+`targets.build.dependsOn` / `targets.serve.dependsOn: ["stamp-build-info"]`),
+so it always runs automatically; there is no manual step on either build
+path:
 
 - **GitHub Actions CI** (`.github/workflows/ci.yml`'s `build`/`e2e`/`journey`
-  jobs) — no Cloudflare env vars are present, so the script falls back to
-  `git rev-parse HEAD` (a normal checkout via `actions/checkout`).
+  jobs) — no Cloudflare env vars are present, so the bin falls back to
+  `GITHUB_SHA` (set by GitHub Actions itself).
 - **Cloudflare Workers Builds** (deploys `datatug.app` from `main` on every
   push, per `wrangler.jsonc`'s `assets.directory:
-./dist/apps/datatug-app/browser`) — the script reads the commit SHA from
-  the `WORKERS_CI_COMMIT_SHA` environment variable Cloudflare injects by
-  default ([Cloudflare docs](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/#environment-variables)),
-  falling back to `CF_PAGES_COMMIT_SHA` and then `git rev-parse HEAD` if
-  that's ever absent.
+./dist/apps/datatug-app/browser`, running this repo's own `pnpm nx build
+  datatug-app` — see the root `README.md` "Quick start") — the bin reads the
+  commit SHA from the `WORKERS_CI_COMMIT_SHA` environment variable Cloudflare
+  injects by default
+  ([Cloudflare docs](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/#environment-variables)),
+  falling back to `CF_PAGES_COMMIT_SHA`, then `GITHUB_SHA`, then
+  `git rev-parse HEAD` if all of those are absent.
 
-The script rewrites two placeholder values in
-`libs/datatug/main/src/lib/menu/build-info/build-info.ts` **in the working
-tree only** — that file's committed content must always keep the
-placeholders (`gitHash: 'gitHash t0be$et'`, `buildTimestamp: 'timestamp
-t0be$et'`); never `git add`/`git commit` after running the script by hand.
-`build-info.spec.ts` guards this by reading the _committed_ blob via
-`git show HEAD:...`, not the working copy. `apps/datatug-app/src/build-info.json`
-(the file the `build-info.json` HTTP endpoint above is copied from) is
-`.gitignore`d for the same reason.
+Unlike the previous local `tools/stamp-build-info.mjs`, the shared bin never
+touches a tracked file: `apps/datatug-app/src/build-info.ts` stays committed
+with its placeholders (`version: 'version t0be$et'`, `gitHash: 'gitHash
+t0be$et'`, `buildTimestamp: 'timestamp t0be$et'`) at all times, and the
+`stamp-build-info` target stamps a gitignored copy instead —
+`apps/datatug-app/src/build-info.generated.ts` — which an Angular
+`fileReplacements` config (`apps/datatug-app/project.json`'s `build` and
+`serve` configurations) swaps in for `./build-info` at build time. So `git
+status` stays clean after `pnpm nx build datatug-app` or `pnpm nx serve
+datatug-app`, and a fresh clone that has never been built still compiles
+fine, showing the committed placeholders.
+
+`build-info.spec.ts` guards the committed file by reading its _committed_
+blob via `git show HEAD:...` (never the working copy — see that spec for
+why). The same placeholders can also be checked directly:
+
+```sh
+pnpm nx run datatug-app:check-build-info
+# sneat-stamp-build-info --check --ts apps/datatug-app/src/build-info.ts
+```
+
+`apps/datatug-app/src/build-info.generated.ts` and
+`apps/datatug-app/src/build-info.json` (the file the `build-info.json` HTTP
+endpoint above is copied from) are both `.gitignore`d — neither is ever
+committed.
+
+The side menu wires this up via `provideBuildInfo(buildInfo)`
+(`apps/datatug-app/src/main.ts`, `@sneat/core-public`), which
+`<sneat-app-version />` reads through the `BUILD_INFO` injection token — see
+[sneat-libs' `libs/components/src/lib/app-version/README.md`](https://github.com/sneat-co/sneat-libs/blob/main/libs/components/src/lib/app-version/README.md)
+for the component's inputs (`copyrightHolder`, `copyrightUrl`, `startYear` —
+DataTug uses the defaults: Sneat.Work / https://sneat.work / 2020) and
+`data-testid` hooks.

@@ -8,11 +8,23 @@
     "stamp-build-info": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "node tools/stamp-build-info.mjs"
+        "commands": [
+          "cp apps/datatug-app/src/build-info.ts apps/datatug-app/src/build-info.generated.ts",
+          "sneat-stamp-build-info --ts apps/datatug-app/src/build-info.generated.ts --json apps/datatug-app/src/build-info.json"
+        ],
+        "parallel": false
       },
       "outputs": [
+        "{workspaceRoot}/apps/datatug-app/src/build-info.generated.ts",
         "{workspaceRoot}/apps/datatug-app/src/build-info.json"
       ],
+      "cache": false
+    },
+    "check-build-info": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "sneat-stamp-build-info --check --ts apps/datatug-app/src/build-info.ts"
+      },
       "cache": false
     },
     "build": {
@@ -62,6 +74,10 @@
             {
               "replace": "apps/datatug-app/src/environments/environment.ts",
               "with": "apps/datatug-app/src/environments/environment.prod.ts"
+            },
+            {
+              "replace": "apps/datatug-app/src/build-info.ts",
+              "with": "apps/datatug-app/src/build-info.generated.ts"
             }
           ],
           "outputHashing": "all",
@@ -74,7 +90,13 @@
           "optimization": false,
           "extractLicenses": false,
           "sourceMap": true,
-          "namedChunks": true
+          "namedChunks": true,
+          "fileReplacements": [
+            {
+              "replace": "apps/datatug-app/src/build-info.ts",
+              "with": "apps/datatug-app/src/build-info.generated.ts"
+            }
+          ]
         },
         "sso-e2e": {
           "optimization": false,
@@ -85,6 +107,10 @@
             {
               "replace": "apps/datatug-app/src/environments/environment.ts",
               "with": "apps/datatug-app/src/environments/environment.sso-e2e.ts"
+            },
+            {
+              "replace": "apps/datatug-app/src/build-info.ts",
+              "with": "apps/datatug-app/src/build-info.generated.ts"
             }
           ]
         }

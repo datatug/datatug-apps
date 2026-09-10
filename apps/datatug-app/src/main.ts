@@ -16,6 +16,7 @@ import {
   loggerFactory,
   TopMenuService,
 } from '@sneat/core';
+import { provideBuildInfo } from '@sneat/core-public';
 import {
   provideErrorLogger,
   provideSentryAppInitializer,
@@ -25,6 +26,7 @@ import { RANDOM_ID_OPTIONS, RandomIdService } from '@sneat/random';
 import { DATATUG_AGENT_BASE_URL } from '@sneat/datatug-semantic';
 import { routes } from './app/datatug-app-routes';
 import { DatatugAppComponent } from './app/datatug-app.component';
+import { buildInfo } from './build-info';
 import { datatugAppEnvironmentConfig } from './environments/environment';
 import { registerIonicons } from './register-ionicons';
 import { registerPosthog } from './register-posthog';
@@ -112,6 +114,12 @@ bootstrapApplication(DatatugAppComponent, {
       provide: APP_INFO,
       useValue: { appId: 'datatug', appTitle: 'DataTug.app' },
     },
+    // Feeds the side menu's <sneat-app-version /> (@sneat/components'
+    // AppVersionComponent) this app's own stamped build info instead of
+    // that component's own (never-restamped) placeholders — see
+    // build-info.ts and apps/datatug-app/project.json's `stamp-build-info`
+    // target.
+    provideBuildInfo(buildInfo),
     { provide: EnvConfigToken, useValue: datatugAppEnvironmentConfig },
     // Literal SSO routes must precede DataTug's root/catch-all feature routes.
     provideRouter([...ssoRoutes, ...routes, ...authRoutes]),
