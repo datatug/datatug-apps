@@ -1,38 +1,54 @@
 import { expect, test } from '@playwright/test';
 
-// Smoke test for the side-menu build-info panel (deliverable of the
-// feat/build-info-menu branch — see apps/datatug-app/README.md "Build
-// info"). Runs against the shared dev server like every other spec in this
-// (chromium) project; datatug-app:serve depends on the `stamp-build-info`
-// Nx target (apps/datatug-app/project.json), so by the time this test runs
-// the dev server has already been stamped with a real local git hash,
-// version, and UTC build timestamp — not the placeholders committed to
-// build-info.ts.
+// Smoke test for the side-menu build-info footer
+// (MenuBuildInfoComponent, libs/datatug/main/.../menu/build-info/), fed
+// this app's own stamped build info via the shared @sneat/core-public
+// runtime contract (provideBuildInfo() in apps/datatug-app/src/main.ts) —
+// see apps/datatug-app/README.md "Build info". Runs against the shared dev
+// server like every other spec in this (chromium) project; datatug-app:serve
+// depends on the `stamp-build-info` Nx target (apps/datatug-app/project.json),
+// so by the time this test runs the dev server has already been stamped
+// with a real local git hash, version, and UTC build timestamp — not the
+// placeholders committed to build-info.ts (stamping never touches that
+// file; it stamps a gitignored build-info.generated.ts that an Angular
+// fileReplacements config swaps in instead).
 
-test('side menu shows a real (non-placeholder) short git hash', async ({
+test('side menu shows a real (non-placeholder) short git hash once expanded', async ({
   page,
 }) => {
   await page.goto('/');
 
-  const hashInput = page.locator('[data-testid="build-info-hash"]');
-  await expect(hashInput).toBeVisible();
+  // Collapsed by default — the version/hash lines aren't in the DOM at all
+  // until the footer row is tapped.
+  const versionLine = page.locator('[data-testid="build-info-version"]');
+  const hashLine = page.locator('[data-testid="build-info-hash"]');
+  await expect(versionLine).toBeHidden();
+  await expect(hashLine).toBeHidden();
 
-  // Not .inputValue(): ion-input is a Stencil web component, not a native
-  // <input>/<textarea>/<select> itself (Playwright requires one of those
-  // for .inputValue()), so read the "value" DOM property Angular's
-  // [value] binding actually sets on the host element instead.
-  const hashValue = await hashInput.evaluate(
-    (el) => (el as unknown as { value: string }).value,
-  );
-  const shortHash = hashValue.split(' @ ')[0];
+  // Click the chevron, not the row's default (center) click point: the row's
+  // own copyright text wraps a "Sneat.Work" link (opens sneat.work in a
+  // new tab without toggling — see onLinkClick in
+  // menu-build-info.component.ts), and that link sits directly under the
+  // row's horizontal center, so Playwright's default click-the-center
+  // behavior would hit the link instead of toggling. Same reason a plain
+  // `footerRow.click()` must never be reintroduced here.
+  const footerRow = page.locator('[data-testid="build-info-toggle"]');
+  const chevron = page.locator('[data-testid="build-info-chevron"]');
+  await expect(footerRow).toHaveAttribute('aria-expanded', 'false');
+  await chevron.click();
+  await expect(footerRow).toHaveAttribute('aria-expanded', 'true');
+
+  await expect(hashLine).toBeVisible();
+  const hashText = (await hashLine.textContent()) ?? '';
+  // "Build <short hash> @ <timestamp>".
+  const shortHash = hashText.replace(/^Build\s+/, '').split(' @ ')[0];
   // 7 lowercase hex chars. A short hash of 'gitHash' (substring(0, 7) of
   // the un-stamped placeholder 'gitHash t0be$et') is also 7 characters but
   // not hex, so this also proves stamping actually ran rather than just
   // that some 7-character string is present.
   expect(shortHash).toMatch(/^[0-9a-f]{7}$/);
 
-  const versionNote = page.locator('[data-testid="build-info-version"]');
-  await expect(versionNote).toHaveText(/.+/);
+  await expect(versionLine).toHaveText(/^Version v.+/);
 });
 
 test('/build-info.json is served by the built app and matches the menu', async ({
@@ -40,10 +56,16 @@ test('/build-info.json is served by the built app and matches the menu', async (
   request,
 }) => {
   await page.goto('/');
-  const hashValue = await page
-    .locator('[data-testid="build-info-hash"]')
-    .evaluate((el) => (el as unknown as { value: string }).value);
-  const shortHash = hashValue.split(' @ ')[0];
+
+  // See the sibling test above for why the chevron (not the row's default
+  // center click point, which lands on the "Sneat.Work" link) is the
+  // click target.
+  const chevron = page.locator('[data-testid="build-info-chevron"]');
+  await chevron.click();
+
+  const hashLine = page.locator('[data-testid="build-info-hash"]');
+  const hashText = (await hashLine.textContent()) ?? '';
+  const shortHash = hashText.replace(/^Build\s+/, '').split(' @ ')[0];
 
   const response = await request.get('/build-info.json');
   expect(response.ok()).toBe(true);

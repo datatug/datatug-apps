@@ -35,6 +35,7 @@ import { IProjectContext } from '../../../nav/nav-models';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
 import { DatatugServicesNavModule } from '../../../services/nav/datatug-services-nav.module';
+import { DatatugServicesProjectModule } from '../../../services/project/datatug-services-project.module';
 import { DatatugServicesStoreModule } from '../../../services/repo/datatug-services-store.module';
 import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
 import { EntityService } from '../../../services/unsorted/entity.service';
@@ -45,19 +46,23 @@ type Entities = IRecord<IEntity>[];
   selector: 'sneat-datatug-entities',
   templateUrl: './entities-page.component.html',
   imports: [
-    // `DatatugNavContextService` (injected below) needs `AppContextService`
-    // (`DatatugCoreModule`), `EnvironmentService`
-    // (`DatatugServicesUnsortedModule`) and, transitively, `StoreApiService`
-    // (`DatatugServicesStoreModule`) — the same chain
-    // `BoardsPageComponent`/`BoardPageComponent` (this task's own sibling
-    // fixes) needed. `entities` (this page's own bare route,
-    // `datatug-routing-proj.ts`) had no ancestor route or module supplying
-    // any of them, so navigating here (the side menu's own "Entities" item,
-    // or a direct URL load) threw the same `NG0201` chain (confirmed live,
-    // S136) — same fix, same cause, as `EnvironmentsPageComponent`/
-    // `QueriesPageComponent` (see their own identical doc comments).
+    // `DatatugNavContextService` (injected below) was a plain `@Injectable()`
+    // provided by `DatatugServicesNavModule` (it and its whole dependency
+    // chain are `providedIn: 'root'` since nav-context-root-singletons),
+    // whose own constructor needed
+    // `AppContextService` (`DatatugCoreModule`), `ProjectContextService`/
+    // `ProjectService` (`DatatugServicesProjectModule`) and
+    // `EnvironmentService` (`DatatugServicesUnsortedModule`, itself needing
+    // `StoreApiService` from `DatatugServicesStoreModule`) — none of which
+    // this page declared, so navigating here from the project side menu's
+    // "Entities" item threw `NG0201: No provider found for
+    // DatatugNavContextService` (confirmed live, S135, 2026-09-10). Same
+    // fix, same cause, as `EnvironmentsPageComponent`/`QueriesPageComponent`
+    // (S120 PR #89, S121 Task 17 item B.1) — mirrors the exact module set
+    // those pages already declare for the identical transitive chain.
     DatatugCoreModule,
     DatatugServicesNavModule,
+    DatatugServicesProjectModule,
     DatatugServicesStoreModule,
     DatatugServicesUnsortedModule,
     FormsModule,

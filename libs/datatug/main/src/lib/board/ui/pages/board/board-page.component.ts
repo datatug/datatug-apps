@@ -148,20 +148,15 @@ export class BoardPageComponent implements OnInit, OnDestroy {
       dataTugNavContext.currentProject
         .pipe(
           filter((p) => !!p?.ref),
-          map((p) => projectRefToString(p?.ref)),
-          distinctUntilChanged(),
-          filter((p) => !!p),
+          map((p) => p?.ref),
+          distinctUntilChanged(
+            (a, b) => projectRefToString(a) === projectRefToString(b),
+          ),
+          filter((ref) => !!ref),
         )
-        .subscribe((p) => {
-          if (p) {
-            [this.storeId, this.projectId] = p.split('/');
-          }
-          console.log(
-            'this.store, this.projectId',
-            p,
-            this.storeId,
-            this.projectId,
-          );
+        .subscribe((ref) => {
+          this.storeId = ref.storeId;
+          this.projectId = ref.projectId;
           this.route.paramMap.subscribe((params) => {
             this.boardId = params.get(routingParamBoard);
             try {

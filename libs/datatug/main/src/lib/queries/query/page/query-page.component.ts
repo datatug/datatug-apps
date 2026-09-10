@@ -204,10 +204,11 @@ function mapsEqual<K, V>(
   selector: 'sneat-datatug-sql-editor',
   templateUrl: './query-page.component.html',
   imports: [
-    // DatatugNavContextService, EnvironmentService, QueriesService,
+    // DatatugNavContextService and EnvironmentService are now
+    // providedIn: 'root' (nav-context-root-singletons); QueriesService,
     // QueryContextSqlService, QueryEditorStateService and Coordinator
-    // (all injected below) are plain @Injectable(), provided by these
-    // modules rather than providedIn: 'root'. `query/:queryId` is a sibling
+    // (all injected below too) are still plain @Injectable(), provided by
+    // these modules. `query/:queryId` is a sibling
     // of the bare '' route (routes/datatug-routing-proj.ts), not a child of
     // ProjectPageComponent, so this page never inherited them — the same
     // NG0201 class `EnvDbTablePageComponent` and `DatatugStorePageComponent`

@@ -34,10 +34,8 @@ import {
   IDbServer,
   IProjDbServerSummary,
 } from '../../../models/definition/apis/database';
-import { DatatugCoreModule } from '../../../core/datatug-core.module';
-import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
-import { DatatugServicesNavModule } from '../../../services/nav/datatug-services-nav.module';
-import { DatatugServicesStoreModule } from '../../../services/repo/datatug-services-store.module';
+import { ProjectContextService } from '../../../services/project/project-context.service';
+import { DatatugServicesProjectModule } from '../../../services/project/datatug-services-project.module';
 import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
 import { DbServerService } from '../../../services/unsorted/db-server.service';
 
@@ -45,44 +43,36 @@ import { DbServerService } from '../../../services/unsorted/db-server.service';
   selector: 'sneat-datatug-servers',
   templateUrl: './servers-page.component.html',
   imports: [
-    // `DatatugNavContextService` (injected below) is a plain
-    // `@Injectable()`, provided by `DatatugServicesNavModule`, and itself
-    // needs `AppContextService` (`DatatugCoreModule`) — same chain
-    // `BoardPageComponent`'s own identical doc comment describes.
-    // `DbServerService` likewise needs `DatatugServicesUnsortedModule` (and,
-    // transitively, `StoreApiService` from `DatatugServicesStoreModule`).
-    // `servers` (this page's own bare route, `datatug-routing-proj.ts`) had
-    // no ancestor route or module supplying any of these, so navigating
-    // here (the side menu's own "Servers" item) threw `NG0201` (confirmed
-    // live, S136) — same fix, same cause, as `EntitiesPageComponent`'s own
-    // identical doc comment.
+    // `ProjectContextService` (injected below) and `DbServerService`
+    // (injected below, itself needing `ProjectContextService`/
+    // `ProjectService`) were plain `@Injectable()`s provided by
+    // `DatatugServicesProjectModule`/`DatatugServicesUnsortedModule`
+    // respectively. `ProjectContextService` and `ProjectService` are now
+    // `providedIn: 'root'` (nav-context-root-singletons), so only
+    // `DbServerService` still needs `DatatugServicesUnsortedModule`; the
+    // project-module import is now redundant, left for a follow-up cleanup.
+    // Neither was declared here before, so navigating to this page from
+    // the project side menu's "Servers" item threw `NG0201: No provider
+    // found for ProjectContextService` (confirmed live, S135, 2026-09-10).
+    // Same cause as `EnvironmentsPageComponent`/`QueriesPageComponent`'s own
+    // documented `DatatugNavContextService` fix (S120 PR #89, S121 Task 17
+    // item B.1) — this page doesn't inject `DatatugNavContextService`
+    // itself, so it needs this narrower two-module subset, not the full
+    // five-module bundle those pages declare.
     //
-    // This page originally read the current project from
-    // `ProjectContextService.current$` instead of
-    // `DatatugNavContextService.currentProject` (every other side-menu page
-    // — Entities, Boards, Environments — uses the latter). That legacy
-    // `ProjectContextService` stream never actually emitted a value on this
-    // page (confirmed live, S136: `projectContextService.current` stayed
-    // `undefined` indefinitely even though `DatatugNavContextService`'s own
-    // `currentProject` had already resolved the real project elsewhere in
-    // the same app run). Root cause: each lazy-loaded routed standalone
-    // component's own `imports:` array gets its OWN environment-injector
-    // scope for a non-`providedIn:'root'` NgModule's providers — it is NOT
-    // shared/deduped with another routed component's import of the "same"
-    // NgModule (confirmed live, S136: adding `DatatugServicesNavModule` here
-    // without also adding `DatatugCoreModule` immediately broke with the
-    // exact same `NG0201` pattern, this time for `AppContextService`, one
-    // level deeper — proving this component really does construct its own
-    // fresh `DatatugNavContextService`, not reuse app's existing one). That
-    // fresh instance still resolves the right project on its own, though —
-    // its constructor independently parses `location.href`/router events
-    // the same way the global one does — so switching this page to
-    // `DatatugNavContextService.currentProject` (the pattern every other
-    // working side-menu page already uses) fixes it without needing a
-    // shared singleton.
-    DatatugCoreModule,
-    DatatugServicesNavModule,
-    DatatugServicesStoreModule,
+    // This page's own constructor reads `ProjectContextService.current$`
+    // directly (rather than `DatatugNavContextService.currentProject`, the
+    // pattern most other side-menu pages use): that stream previously never
+    // actually emitted here, because `ProjectContextService` was a plain
+    // `@Injectable()` and this page's own lazy-loaded route held a SEPARATE
+    // instance from whichever page's `DatatugNavContextService` fed the
+    // "real" one (S136, found live before `nav-context-root-singletons`
+    // landed). Now that `ProjectContextService` is `providedIn: 'root'`,
+    // every page shares the one true instance and this stream resolves
+    // correctly again — confirmed live, S136, against the GitHub-store demo
+    // project (`getGithubDbServers()`'s own aggregated `sqlite3` result now
+    // renders here).
+    DatatugServicesProjectModule,
     DatatugServicesUnsortedModule,
     FormsModule,
     IonHeader,
@@ -109,7 +99,7 @@ import { DbServerService } from '../../../services/unsorted/db-server.service';
   ],
 })
 export class ServersPageComponent implements OnDestroy {
-  private readonly navContextService = inject(DatatugNavContextService);
+  private readonly projectContextService = inject(ProjectContextService);
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly modalCtrl = inject(ModalController);
   private readonly navCtrl = inject(NavController);
@@ -128,10 +118,9 @@ export class ServersPageComponent implements OnDestroy {
   private readonly isDeletingServer: Record<string, boolean> = {};
 
   constructor() {
-    this.navContextService.currentProject
+    this.projectContextService.current$
       .pipe(takeUntil(this.destroyed))
-      .subscribe((value) => {
-        const target = value?.ref;
+      .subscribe((target) => {
         if (
           target &&
           (this.target?.storeId !== target?.storeId ||

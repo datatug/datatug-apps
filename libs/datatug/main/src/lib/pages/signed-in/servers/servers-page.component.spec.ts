@@ -5,7 +5,7 @@ import { ErrorLogger } from '@sneat/core';
 import { of } from 'rxjs';
 
 import { ServersPageComponent } from './servers-page.component';
-import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
+import { ProjectContextService } from '../../../services/project/project-context.service';
 import { DbServerService } from '../../../services/unsorted/db-server.service';
 
 describe('ServersPage', () => {
@@ -18,9 +18,11 @@ describe('ServersPage', () => {
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
         {
-          provide: DatatugNavContextService,
+          provide: ProjectContextService,
           useValue: {
-            currentProject: of(undefined),
+            current$: of(undefined),
+            current: undefined,
+            setCurrent: vi.fn(),
           },
         },
         {

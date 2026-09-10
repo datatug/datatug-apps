@@ -106,7 +106,16 @@ export class ProjectMenuTopComponent implements OnDestroy {
       path: 'queries',
       title: 'Queries',
       icon: 'terminal-outline',
-      buttons: [{ path: 'query', icon: 'add' }],
+      // No `buttons: [{ path: 'query', icon: 'add' }]` "+" shortcut here —
+      // it routed through goProjPage() to a bare 'query' segment, but the
+      // only project route matching that prefix is 'query/:queryId' (view
+      // an existing query); there is no route for "create a new query" by
+      // design; that flow is `QueriesUiService.openNewQuery()`, an action
+      // sheet reachable from the adjacent "Queries" segment tab
+      // (ProjectMenuComponent → QueriesMenuComponent's own "+" button,
+      // `project-menu.component.html`). The "+" here duplicated that button
+      // and 404'd (NG04002) instead of working, so it is removed rather
+      // than given a route to nowhere — see project-menu-top.component.spec.ts.
     },
     // Investigation Context (plan task 9, REQ:context-basket) — the former
     // "Variables" empty-shell page now has a real screen

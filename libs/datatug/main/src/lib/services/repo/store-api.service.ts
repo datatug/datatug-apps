@@ -17,7 +17,10 @@ const isGithubStoreId = (storeId: string): boolean =>
 export const GITHUB_READ_ONLY_MESSAGE =
   'This project is read-only on GitHub — changes cannot be saved here. Clone it and run `datatug serve` to edit.';
 
-@Injectable()
+// `providedIn: 'root'` — `EnvironmentService` (also root-provided) injects
+// this directly, so it must be root-resolvable too, not only available to
+// components that happen to import `DatatugServicesStoreModule`.
+@Injectable({ providedIn: 'root' })
 export class StoreApiService {
   private readonly sneatApiServiceFactory = inject(SneatApiServiceFactory);
   private readonly httpClient = inject(HttpClient);

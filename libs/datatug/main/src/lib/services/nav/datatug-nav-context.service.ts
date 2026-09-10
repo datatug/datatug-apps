@@ -37,7 +37,13 @@ const reStore = /\/store\/(.+?)($|\/)/,
   reEnvDb = /\/env\/\w+\/db\/(.+?)(?:\/|$)/,
   reTable = /\/table\/(.+?)(?:\/|$)/;
 
-@Injectable()
+// `providedIn: 'root'` — this holds the single URL-derived nav state for the
+// whole app; a module-listed provider hands every importing standalone
+// component its own copy, each running its own NavigationEnd subscription,
+// letting "menu current project" desync from "page current project" (two
+// instances confirmed live on one project page). Every dependency injected
+// below must stay root-resolvable too, or this constructor throws.
+@Injectable({ providedIn: 'root' })
 export class DatatugNavContextService {
   private readonly appContext = inject(AppContextService);
   private readonly projectContextService = inject(ProjectContextService);

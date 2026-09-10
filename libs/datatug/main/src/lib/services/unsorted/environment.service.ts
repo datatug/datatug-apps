@@ -28,7 +28,11 @@ const getEnvCacheKey = (projectRef: IProjectRef, env: string): string => {
 
 const envSummaryCache: Record<string, IEnvironmentSummary> = {};
 
-@Injectable()
+// `providedIn: 'root'` — `DatatugNavContextService` (also root-provided)
+// injects this directly, so it must be root-resolvable too, not only
+// available to components that happen to import
+// `DatatugServicesUnsortedModule`.
+@Injectable({ providedIn: 'root' })
 export class EnvironmentService {
   private readonly projectContextService = inject(ProjectContextService);
   private readonly api = inject(SneatApiService);

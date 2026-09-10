@@ -41,18 +41,22 @@ const isGithubStoreId = (storeId: string): boolean =>
   selector: 'sneat-datatug-environments',
   templateUrl: './environments-page.component.html',
   imports: [
-    // `DatatugNavContextService` (injected below) is a plain `@Injectable()`,
-    // provided by `DatatugServicesNavModule`, whose own constructor needs
-    // `AppContextService` (`DatatugCoreModule`), `ProjectContextService`/
-    // `ProjectService` (`DatatugServicesProjectModule`) and
-    // `EnvironmentService` (`DatatugServicesUnsortedModule`, itself needing
-    // `StoreApiService` from `DatatugServicesStoreModule`) — none of which
-    // this page declared, so reaching it via the project page's "Go to..." ->
-    // Environments select (Task 17 item B.1, S121) threw `NG0201: No
-    // provider found for DatatugNavContextService` (confirmed live). Same
-    // fix, same cause, as `QueriesPageComponent` (S120, PR #89) — mirrors
-    // the exact module set `env-db-table.page.ts` already declares for the
-    // identical transitive chain.
+    // `DatatugNavContextService` (injected below), and `ProjectService`
+    // (also injected below, and what `DatatugNavContextService`'s own
+    // constructor transitively needs), are both now `providedIn: 'root'`
+    // (nav-context-root-singletons) — nothing this page injects still needs
+    // the modules below; the imports are now redundant and left in for a
+    // follow-up cleanup rather than folded into this fix. Historically
+    // (before that fix) `DatatugNavContextService` was a plain
+    // `@Injectable()`, provided by `DatatugServicesNavModule`, whose own
+    // constructor needed `AppContextService` (`DatatugCoreModule`),
+    // `ProjectContextService`/`ProjectService` (`DatatugServicesProjectModule`)
+    // and `EnvironmentService` (`DatatugServicesUnsortedModule`, itself
+    // needing `StoreApiService` from `DatatugServicesStoreModule`) — none of
+    // which this page declared, so reaching it via the project page's
+    // "Go to..." -> Environments select (Task 17 item B.1, S121) threw
+    // `NG0201: No provider found for DatatugNavContextService` (confirmed
+    // live). Same fix, same cause, as `QueriesPageComponent` (S120, PR #89).
     DatatugCoreModule,
     DatatugServicesNavModule,
     DatatugServicesProjectModule,
