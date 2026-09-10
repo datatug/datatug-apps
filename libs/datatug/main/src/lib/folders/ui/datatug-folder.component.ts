@@ -100,7 +100,7 @@ export class DatatugFolderComponent implements OnChanges, OnDestroy {
   // template's `numberOf(t)` calls (the segment badges) are safe the moment
   // any producer does start setting it.
   public numberOf(tab: string): number {
-    return this.folder()?.numberOf?.[tab] || 0;
+    return this.folder()?.numberOf?.[tab] ?? 0;
   }
 
   public getItemLink = (path: string) => (item: IProjItemBrief) =>
