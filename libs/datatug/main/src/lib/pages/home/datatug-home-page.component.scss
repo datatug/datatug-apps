@@ -1,0 +1,24 @@
+// "My projects" and "Project stores" sit side by side in one row on medium+
+// screens (ion-col size="12" size-md="6" handles the breakpoint) and stack on
+// small screens. Both cards stretch to the row's height so a shorter card
+// doesn't look misaligned next to a taller one.
+.home-cards-col {
+  display: flex;
+  flex-direction: column;
+
+  // sneat-datatug-my-projects / sneat-datatug-my-stores are child component
+  // host elements rendered directly in this template, so they can be styled
+  // here without ::ng-deep.
+  > * {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+  }
+}
+
+// The ion-card rendered inside those child components' own templates lives
+// across the Angular view-encapsulation boundary, so reaching it needs
+// ::ng-deep. Scoped to .home-cards-col so it can't affect cards elsewhere.
+.home-cards-col ::ng-deep ion-card {
+  height: 100%;
+}

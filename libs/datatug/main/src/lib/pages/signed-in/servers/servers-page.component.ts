@@ -35,12 +35,28 @@ import {
   IProjDbServerSummary,
 } from '../../../models/definition/apis/database';
 import { ProjectContextService } from '../../../services/project/project-context.service';
+import { DatatugServicesProjectModule } from '../../../services/project/datatug-services-project.module';
+import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
 import { DbServerService } from '../../../services/unsorted/db-server.service';
 
 @Component({
   selector: 'sneat-datatug-servers',
   templateUrl: './servers-page.component.html',
   imports: [
+    // `ProjectContextService` (injected below) and `DbServerService`
+    // (injected below, itself needing `ProjectContextService`/
+    // `ProjectService`) are plain `@Injectable()`s provided by
+    // `DatatugServicesProjectModule`/`DatatugServicesUnsortedModule`
+    // respectively — neither declared here, so navigating to this page from
+    // the project side menu's "Servers" item threw `NG0201: No provider
+    // found for ProjectContextService` (confirmed live, S135, 2026-09-10).
+    // Same cause as `EnvironmentsPageComponent`/`QueriesPageComponent`'s own
+    // documented `DatatugNavContextService` fix (S120 PR #89, S121 Task 17
+    // item B.1) — this page doesn't inject `DatatugNavContextService`
+    // itself, so it needs this narrower two-module subset, not the full
+    // five-module bundle those pages declare.
+    DatatugServicesProjectModule,
+    DatatugServicesUnsortedModule,
     FormsModule,
     IonHeader,
     IonToolbar,
