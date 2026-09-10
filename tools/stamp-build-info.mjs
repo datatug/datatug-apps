@@ -70,11 +70,39 @@ function resolveGitHash() {
   }).trim();
 }
 
-function readVersion() {
+function readPackageVersion() {
   const pkg = JSON.parse(
     readFileSync(path.join(repoRoot, 'package.json'), 'utf8'),
   );
   return pkg.version;
+}
+
+// Version precedence:
+//   1. the nearest reachable release tag (`vX.Y.Z`), via `git describe`:
+//      exactly on the tag -> "X.Y.Z"; N commits past it -> "X.Y.Z+N"
+//      (the commit itself is reported separately as gitHash);
+//   2. package.json's "version" when no tag is reachable - a shallow clone
+//      without tags (some hosted build environments) or a repo that has not
+//      been tagged yet. package.json is bumped together with every release
+//      tag so both sources agree on the release number.
+export function versionFromDescribe(describe, packageVersion) {
+  const m = /^v?(\d+\.\d+\.\d+)-(\d+)-g[0-9a-f]+$/.exec(describe.trim());
+  if (!m) return packageVersion;
+  return m[2] === '0' ? m[1] : `${m[1]}+${m[2]}`;
+}
+
+function readVersion() {
+  const packageVersion = readPackageVersion();
+  try {
+    const describe = execFileSync(
+      'git',
+      ['describe', '--tags', '--long', '--match', 'v[0-9]*'],
+      { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+    );
+    return versionFromDescribe(describe, packageVersion);
+  } catch {
+    return packageVersion;
+  }
 }
 
 const gitHash = resolveGitHash();

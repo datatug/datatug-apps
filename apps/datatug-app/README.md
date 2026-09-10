@@ -10,11 +10,17 @@ commit is actually live without opening the app:
 
 ```sh
 curl https://datatug.app/build-info.json
-# {"version":"0.0.0","gitHash":"<40-char sha>","buildTimestamp":"<ISO 8601 UTC>"}
+# {"version":"0.1.0+3","gitHash":"<40-char sha>","buildTimestamp":"<ISO 8601 UTC>"}
 ```
 
-`version` is the workspace root `package.json`'s `"version"` field (this
-repo has no separate `apps/datatug-app/package.json`).
+`version` comes from the nearest reachable release tag (`vX.Y.Z`, via
+`git describe`): exactly on the tag it is `X.Y.Z`, N commits past it
+`X.Y.Z+N`. When no tag is reachable (a shallow clone without tags, as some
+hosted build environments produce), it falls back to the workspace root
+`package.json`'s `"version"` field, which is bumped together with every
+release tag so both agree (this repo has no separate
+`apps/datatug-app/package.json`). Releases: bump `package.json`, merge, then
+tag main `vX.Y.Z`.
 
 Both values are produced by `tools/stamp-build-info.mjs`, wired as an Nx
 dependency of the `datatug-app` `build` and `serve` targets
