@@ -2,12 +2,13 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  inject,
   signal,
 } from '@angular/core';
 import { IonIcon, IonItem, IonLabel, IonNote } from '@ionic/angular';
+import { BUILD_INFO, IBuildInfo } from '@sneat/core-public';
 import { addIcons } from 'ionicons';
 import { chevronDownOutline, chevronUpOutline } from 'ionicons/icons';
-import { buildInfo } from './build-info';
 
 addIcons({ chevronDownOutline, chevronUpOutline });
 // The template binds the icon `name` in kebab-case ('chevron-down-outline'
@@ -35,14 +36,27 @@ addIcons({ chevronDownOutline, chevronUpOutline });
 // Founder correction 2026-09-11: a previous pass wrongly kept DataTug.app
 // as the copyright holder here.
 //
-// Local sibling of sneat-co/sneat-libs' AppVersionComponent
-// (libs/components/src/lib/app-version/, selector `sneat-app-version`,
-// published as part of @sneat/components), not a reuse of it: that
-// component's `buildInfo` is a compile-time import baked into the published
-// npm package at sneat-libs' own build, so it always shows sneat-libs' own
-// (never-restamped) placeholder values, not this app's git hash — see
-// build-info.ts's header comment. Driven by this repo's own stamped
-// build-info.ts instead.
+// NOT swapped for sneat-co/sneat-libs' own `<sneat-app-version />`
+// (@sneat/components' AppVersionComponent, selector `sneat-app-version`)
+// despite the founder's "make it generic/reusable across all our apps"
+// ruling: verified against the actual npm registry (not just sneat-libs'
+// repo checkout, whose package.json already reads 0.27.23) that the
+// published `@sneat/components` — only up to 0.27.22 as of this change —
+// still ships that component's OLD shape: an always-expanded
+// "App version" ion-item-divider card with no collapse/expand, no
+// copyright line, and none of this component's data-testid hooks
+// (`build-info-toggle`/`build-info-chevron`). Swapping to it today would
+// both regress the founder-approved collapsed-by-default UI above and
+// break apps/datatug-app/e2e/build-info.spec.ts. What this component DOES
+// adopt now is the shared *runtime contract* those npm packages already
+// publish correctly: `IBuildInfo`/`BUILD_INFO` (`@sneat/core-public`,
+// identical between the published 0.27.22/0.27.23), injected here instead
+// of a direct import — see apps/datatug-app/src/build-info.ts (this repo's
+// own stamped placeholder) and main.ts's `provideBuildInfo(buildInfo)`. So
+// the only remaining step to actually swap in `<sneat-app-version />`, once
+// sneat-libs publishes a @sneat/components release containing the
+// redesign, is deleting this file and its use in datatug-menu.component —
+// no provider wiring changes needed anywhere.
 //
 // No ion-input: a readonly ion-input previously broke Playwright locators
 // (.inputValue() needs a native form control; ion-input is a Stencil
@@ -50,6 +64,20 @@ addIcons({ chevronDownOutline, chevronUpOutline });
 // property instead of using Playwright's normal text assertions. Plain
 // ion-item/ion-label/ion-note here so build-info-version/build-info-hash
 // are ordinary text nodes.
+
+// Fallback shown when BUILD_INFO hasn't been provided (e.g. a unit test
+// that mounts this component directly, without app.ts's bootstrap
+// providers) — mirrors the placeholders committed to
+// apps/datatug-app/src/build-info.ts. Can't import that file directly: it
+// now lives in the app project (apps/datatug-app/src/), and this component
+// lives in a lib (libs/datatug/main) — @nx/enforce-module-boundaries
+// forbids a lib importing from an app.
+const FALLBACK_BUILD_INFO: IBuildInfo = {
+  version: 'version t0be$et',
+  gitHash: 'gitHash t0be$et',
+  buildTimestamp: 'timestamp t0be$et',
+};
+
 @Component({
   selector: 'sneat-datatug-menu-build-info',
   templateUrl: './menu-build-info.component.html',
@@ -57,21 +85,23 @@ addIcons({ chevronDownOutline, chevronUpOutline });
   imports: [IonItem, IonLabel, IonNote, IonIcon],
 })
 export class MenuBuildInfoComponent {
-  protected readonly buildInfo = buildInfo;
-  protected readonly shortGitHash = buildInfo.gitHash.substring(0, 7);
+  protected readonly buildInfo: IBuildInfo =
+    inject(BUILD_INFO, { optional: true }) ?? FALLBACK_BUILD_INFO;
+  protected readonly shortGitHash = this.buildInfo.gitHash.substring(0, 7);
 
   protected readonly expanded = signal(false);
 
   // The copyright range must end with the build year, never a hand-committed
   // one (founder: "make the year range end in the build year automatically
   // so it is never stale"). buildInfo.buildTimestamp is an ISO-8601 UTC
-  // instant once stamped (see tools/stamp-build-info.mjs), but stays the
-  // committed placeholder "timestamp t0be$et" whenever this renders off an
-  // unstamped working tree (e.g. `test` has no Nx dependsOn on `build`) —
-  // `new Date(placeholder)` is Invalid Date, so fall back to the current
-  // year rather than rendering "NaN".
+  // instant once stamped (see @sneat/build-info's README and this app's
+  // `stamp-build-info` Nx target), but stays the committed placeholder
+  // "timestamp t0be$et" whenever this renders off an unstamped build (e.g.
+  // `test` has no Nx dependsOn on `build`) — `new Date(placeholder)` is
+  // Invalid Date, so fall back to the current year rather than rendering
+  // "NaN".
   protected readonly copyrightEndYear = computed(() => {
-    const stamped = new Date(buildInfo.buildTimestamp).getUTCFullYear();
+    const stamped = new Date(this.buildInfo.buildTimestamp).getUTCFullYear();
     return Number.isFinite(stamped) ? stamped : new Date().getUTCFullYear();
   });
 
