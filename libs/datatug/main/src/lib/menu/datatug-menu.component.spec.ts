@@ -174,6 +174,28 @@ describe('DatatugMenuComponent', () => {
     });
   });
 
+  describe('build info footer', () => {
+    it('always renders the build-info panel', () => {
+      const fixture = createComponent('/');
+      fixture.detectChanges();
+      expect(
+        fixture.nativeElement.querySelector(
+          'sneat-datatug-menu-build-info',
+        ),
+      ).toBeTruthy();
+    });
+
+    it('renders the build-info panel on the login page too', () => {
+      const fixture = createComponent('/login');
+      fixture.detectChanges();
+      expect(
+        fixture.nativeElement.querySelector(
+          'sneat-datatug-menu-build-info',
+        ),
+      ).toBeTruthy();
+    });
+  });
+
   describe('context tracking signals', () => {
     it('tracks the current store id', () => {
       const c = createComponent('/').componentInstance;

@@ -5,8 +5,19 @@
   "sourceRoot": "apps/datatug-app/src",
   "prefix": "sneat",
   "targets": {
+    "stamp-build-info": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node tools/stamp-build-info.mjs"
+      },
+      "outputs": [
+        "{workspaceRoot}/apps/datatug-app/src/build-info.json"
+      ],
+      "cache": false
+    },
     "build": {
       "executor": "@angular-devkit/build-angular:application",
+      "dependsOn": ["stamp-build-info"],
       "outputs": ["{options.outputPath}"],
       "options": {
         "outputPath": "dist/apps/datatug-app",
@@ -23,6 +34,11 @@
             "glob": "**/*.svg",
             "input": "node_modules/ionicons/dist/ionicons/svg",
             "output": "./svg"
+          },
+          {
+            "glob": "build-info.json",
+            "input": "apps/datatug-app/src",
+            "output": "."
           }
         ],
         "styles": ["apps/datatug-app/src/styles.scss"],
@@ -77,6 +93,7 @@
     },
     "serve": {
       "executor": "@angular-devkit/build-angular:dev-server",
+      "dependsOn": ["stamp-build-info"],
       "configurations": {
         "production": {
           "buildTarget": "datatug-app:build:production"

@@ -1,0 +1,20 @@
+<ion-item-divider color="light">
+  <ion-label>App version</ion-label>
+</ion-item-divider>
+<ion-item lines="none">
+  <ion-label>Version</ion-label>
+  <ion-note slot="end" data-testid="build-info-version">{{
+    buildInfo.version
+  }}</ion-note>
+</ion-item>
+<ion-item lines="none">
+  <ion-input
+    label="Build:"
+    color="medium"
+    readonly="true"
+    disabled="true"
+    data-testid="build-info-hash"
+    [value]="shortGitHash + ' @ ' + buildInfo.buildTimestamp"
+    [title]="buildInfo.gitHash"
+  />
+</ion-item>
