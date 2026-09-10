@@ -81,9 +81,15 @@ const gitHash = resolveGitHash();
 const buildTimestamp = new Date().toISOString();
 const version = readVersion();
 
-// --- build-info.ts: in-place placeholder replacement (never committed) ---
+// --- build-info.ts: in-place replacement ---
+// `version` is a plain literal in build-info.ts (not a package.json import
+// - see that file's header comment for why), so it is rewritten here too,
+// same as gitHash/buildTimestamp; it just isn't part of the
+// never-commit-a-real-value contract those two are (build-info.spec.ts
+// only guards gitHash/buildTimestamp).
 let ts = readFileSync(BUILD_INFO_TS, 'utf8');
 const beforeTs = ts;
+ts = ts.replace(/version:\s*'[^']*'/, `version: '${version}'`);
 ts = ts.replace(/gitHash:\s*'[^']*'/, `gitHash: '${gitHash}'`);
 ts = ts.replace(
   /buildTimestamp:\s*'[^']*'/,
@@ -91,7 +97,7 @@ ts = ts.replace(
 );
 if (ts === beforeTs) {
   throw new Error(
-    `[stamp-build-info] gitHash/buildTimestamp placeholders not found in ${BUILD_INFO_TS} - did its shape change?`,
+    `[stamp-build-info] version/gitHash/buildTimestamp fields not found in ${BUILD_INFO_TS} - did its shape change?`,
   );
 }
 writeFileSync(BUILD_INFO_TS, ts);
