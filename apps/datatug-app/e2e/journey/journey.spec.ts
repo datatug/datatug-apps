@@ -1,3 +1,4 @@
+import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures/agent-server';
 import { activePage } from './helpers/active-page';
 
@@ -161,10 +162,110 @@ import { activePage } from './helpers/active-page';
 const DEMO_PROJECT_ID = 'datatug-demo-project'; // datatug-demo-projects/demo-project-1/datatug-project.json #id
 const DEMO_ENV_ID = 'local'; // .../demo-project-1/environments/local
 const DEMO_DB_CATALOG_ID = 'chinook-local'; // .../environments/local/catalogs/chinook-local
-// Chinook's sqlite3 catalog uses schema "main" — see
-// datatug-demo-projects/demo-project-1/dbmodels/chinook/main/tables/Album.
-const ALBUM_TABLE_TYPE = 'main.Album';
-const CUSTOMER_TABLE_TYPE = 'main.Customer';
+
+/**
+ * Task 17 item B.2 (S121b, on top of B.1's navigation wiring): real in-app
+ * navigation from the project page to a catalog's own table list, replacing
+ * every former `page.goto(<table url>)` shortcut below (the schema-qualified
+ * table TYPE strings those URLs used to embed, e.g. "main.Album", are gone
+ * with them — a table is now reached by its plain name, the way a user
+ * actually clicks it). Walks the real click path: the project page's own
+ * "Go to..." select (`ion-select[placeholder="Go to..."]`,
+ * project-page.component.html) -> its "Environments" option (rendered
+ * inside a transient `<ion-popover>` Ionic appends to the document while
+ * open — scoping the click to that popover, not activePage(), is
+ * deliberate: it is not part of <ion-router-outlet> at all) -> the
+ * environments list (EnvironmentsPageComponent, `sneat-card-list`) -> the
+ * named environment card -> that environment page's own "Databases" card
+ * (EnvironmentPageComponent, Task 17 item B.1) -> the named catalog -> the
+ * catalog's own table list (EnvDbPageComponent, Task 17 items A.2/B.1 —
+ * Tabulator grid, `[tabulator-field="name"]`). Leaves the caller on that
+ * table-list page; the caller clicks the actual table row itself (via
+ * `catalogTableRow()` below), so it stays free to set up a
+ * `page.waitForResponse()` immediately before that specific click — J4
+ * needs exactly that ordering for its own `exec/select` assertion.
+ *
+ * Confirmed live (S121b) against a real `datatug serve` build from this
+ * stream's own CLI worktree before writing this helper: every step below
+ * was walked by hand first (project -> Go to... -> Environments -> local ->
+ * Databases -> chinook-local -> Album), including hitting and fixing a real
+ * bug this same click path exposed — `EnvironmentPageComponent` populated
+ * its `env` field correctly but never repainted (this app is zoneless; the
+ * component's own `loadEnvSummary()` never called `markForCheck()`), so the
+ * Databases card stayed on its skeleton-loading state forever until that
+ * fix landed (see that component's own `changeDetectorRef` doc comment).
+ */
+async function goToCatalogTables(
+  page: Page,
+  envId: string,
+  catalogId: string,
+): Promise<void> {
+  await page.locator('ion-select[placeholder="Go to..."]').click();
+  await page.locator('ion-popover').getByText('Environments', { exact: true }).click();
+
+  await expect(activePage(page).getByText(envId, { exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
+  await activePage(page).getByText(envId, { exact: true }).click();
+
+  await expect(activePage(page).getByText(catalogId, { exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
+  await activePage(page).getByText(catalogId, { exact: true }).click();
+}
+
+/**
+ * The named table's own row on the catalog table list `goToCatalogTables()`
+ * leaves the page on (EnvDbPageComponent's Tabulator grid) — clicking it
+ * drives the same `goTable()` navigation J1's own test comment already
+ * documents (fixed by stream S9b). Returns the locator rather than clicking
+ * it directly so a caller can await its visibility, optionally arm a
+ * `page.waitForResponse()`, and only then click — J4's own use needs that.
+ */
+function catalogTableRow(page: Page, tableName: string): Locator {
+  return activePage(page).locator('[tabulator-field="name"]', {
+    hasText: new RegExp(`^${tableName}$`),
+  });
+}
+
+/**
+ * Task 17 item B.2 (S121b): real in-app navigation to a saved query's own
+ * page, replacing J3's former `page.goto(<query url>)` shortcut. Clicks the
+ * persistent "Queries" side-menu item (`sneat-datatug-project-menu-top` —
+ * `ProjectMenuTopComponent`, rendered once OUTSIDE `<ion-router-outlet>` and
+ * reachable from any project page, not only the project overview — see
+ * helpers/active-page.ts's own doc comment on why that component is never
+ * duplicated by page detachment, and is exactly why this works as a
+ * mid-journey click from wherever the caller already is, with no need to
+ * revisit the project page), then the named folder, then the named query's
+ * own title (QueriesTabComponent renders each query by its title, not its
+ * id — confirmed live, S121b: "Customer purchases by genre", not
+ * "customer-purchases-by-genre").
+ *
+ * Confirmed live (S121b) that adding a value to the Investigation Context on
+ * the table page survives this in-app click-through unchanged — no reload
+ * occurs, so the query page still reads "Customer.ID ... from context"
+ * exactly as it did via the old goto/reload path this replaces.
+ */
+async function openSavedQuery(
+  page: Page,
+  folderName: string,
+  queryTitle: string,
+): Promise<void> {
+  const queriesMenuItem = page
+    .locator('sneat-datatug-project-menu-top')
+    .getByText('Queries', { exact: true });
+  await queriesMenuItem.click();
+
+  await expect(activePage(page).getByText(folderName, { exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
+  await activePage(page).getByText(folderName, { exact: true }).click();
+
+  const queryItem = activePage(page).getByText(queryTitle, { exact: true });
+  await expect(queryItem).toBeVisible({ timeout: 15_000 });
+  await queryItem.click();
+}
 
 test.describe('J1 — first useful result (the null-action path)', () => {
   test('open the demo project, open Album, rows render and the agent log shows the request', async ({
@@ -193,20 +294,25 @@ test.describe('J1 — first useful result (the null-action path)', () => {
         .getByRole('textbox'),
     ).toHaveValue('DataTug Demo Project 1', { timeout: 15_000 });
 
-    // "the user clicks Album": EnvDbPageComponent's row-click handler
-    // (libs/datatug/main/src/lib/pages/signed-in/env-db/env-db-page.component.ts)
-    // and the `goTable()` URL it drove (services/nav/datatug-nav.service.ts)
-    // were both fixed by this stream (S9b deliverable 3 — see
-    // env-db-page.component.spec.ts / datatug-nav.service.spec.ts for the
-    // unit coverage), so a real click-through would work now. This test
-    // still navigates to the table URL directly rather than switching to a
-    // click, to keep proving the grid-render/agent-contract mechanism below
-    // independent of that page's own (now separately covered) navigation
-    // behaviour.
-    const albumTableUrl =
-      `${projectUrl}/env/${DEMO_ENV_ID}/db/${DEMO_DB_CATALOG_ID}` +
-      `/table/${ALBUM_TABLE_TYPE}`;
-    await page.goto(albumTableUrl);
+    // "the user clicks Album": real in-app navigation (Task 17 item B.2,
+    // S121b) — project -> "Go to..." -> Environments -> DEMO_ENV_ID ->
+    // Databases -> DEMO_DB_CATALOG_ID -> the Album row in
+    // EnvDbPageComponent's own Tabulator grid (Task 17 items A.2/B.1). See
+    // goToCatalogTables()'s own doc comment above for the exact click path,
+    // and how it (and a real zoneless-repaint bug it exposed) was confirmed
+    // live before being encoded here. EnvDbPageComponent's row-click handler
+    // and the `goTable()` URL it drives (services/nav/datatug-nav.service.ts)
+    // were fixed by stream S9b (deliverable 3 — env-db-page.component.spec.ts
+    // / datatug-nav.service.spec.ts for the unit coverage); this test used to
+    // skip straight to the table URL to keep proving the grid-render/
+    // agent-contract mechanism below independent of navigation — now that
+    // the whole chain above it is real (A.2/B.1), walking it end to end is
+    // the point of this journey (AC:journey-harness names "from their actual
+    // entry points").
+    await goToCatalogTables(page, DEMO_ENV_ID, DEMO_DB_CATALOG_ID);
+    const albumRow = catalogTableRow(page, 'Album');
+    await expect(albumRow).toBeVisible({ timeout: 15_000 });
+    await albumRow.click();
 
     // "rows render in the grid" — @sneat/datagrid renders rows as Tabulator
     // does, via the stable `.tabulator-row` class. Scoped to the active page
@@ -233,14 +339,26 @@ test.describe('J2 — from a value to related knowledge', () => {
     page,
   }) => {
     const projectUrl = `/store/${agentServer.storeId}/project/${DEMO_PROJECT_ID}`;
-    const customerTableUrl =
-      `${projectUrl}/env/${DEMO_ENV_ID}/db/${DEMO_DB_CATALOG_ID}` +
-      `/table/${CUSTOMER_TABLE_TYPE}`;
 
-    // "the user opens the Customer table" — same already-correct contract
-    // route J1 uses (see its comment on why: EnvDbPageComponent's row-click
-    // -> table-page navigation is exercised separately, not by this test).
-    await page.goto(customerTableUrl);
+    // "the browser opens the demo project" — the single entry point every
+    // journey below uses (Task 17 item B.2, S121b); see J1's own comment on
+    // the title assertion mechanism.
+    await page.goto(projectUrl);
+    await expect(
+      page
+        .locator('ion-item', { hasText: 'Title' })
+        .first()
+        .getByRole('textbox'),
+    ).toHaveValue('DataTug Demo Project 1', { timeout: 15_000 });
+
+    // "the user opens the Customer table" — real in-app navigation (Task 17
+    // item B.2, S121b), the same click path J1's own goToCatalogTables() doc
+    // comment describes. This test used to skip straight to the table URL;
+    // see that comment for why walking it for real is now the point.
+    await goToCatalogTables(page, DEMO_ENV_ID, DEMO_DB_CATALOG_ID);
+    const customerRow = catalogTableRow(page, 'Customer');
+    await expect(customerRow).toBeVisible({ timeout: 15_000 });
+    await customerRow.click();
     // EXPECTED TO FAIL here right now (file header, blocker 2): this page's
     // EnvDbTablePageComponent.loadData() needs `this.project`, populated
     // from DatatugNavContextService's project tracking, which itself needs a
@@ -326,11 +444,21 @@ test.describe('J2b — HTTP reference source', () => {
     page,
   }) => {
     const projectUrl = `/store/${agentServer.storeId}/project/${DEMO_PROJECT_ID}`;
-    const customerTableUrl =
-      `${projectUrl}/env/${DEMO_ENV_ID}/db/${DEMO_DB_CATALOG_ID}` +
-      `/table/${CUSTOMER_TABLE_TYPE}`;
 
-    await page.goto(customerTableUrl);
+    // Real in-app navigation to the Customer table (Task 17 item B.2,
+    // S121b) — the single project-page entry point plus the click path
+    // J1's own goToCatalogTables() doc comment describes.
+    await page.goto(projectUrl);
+    await expect(
+      page
+        .locator('ion-item', { hasText: 'Title' })
+        .first()
+        .getByRole('textbox'),
+    ).toHaveValue('DataTug Demo Project 1', { timeout: 15_000 });
+    await goToCatalogTables(page, DEMO_ENV_ID, DEMO_DB_CATALOG_ID);
+    const customerRow = catalogTableRow(page, 'Customer');
+    await expect(customerRow).toBeVisible({ timeout: 15_000 });
+    await customerRow.click();
     await expect(activePage(page).locator('.tabulator-row').first()).toBeVisible({
       timeout: 15_000,
     });
@@ -388,11 +516,20 @@ test.describe('J2b — HTTP reference source', () => {
     page,
   }) => {
     const projectUrl = `/store/${offlineAgentServer.storeId}/project/${DEMO_PROJECT_ID}`;
-    const customerTableUrl =
-      `${projectUrl}/env/${DEMO_ENV_ID}/db/${DEMO_DB_CATALOG_ID}` +
-      `/table/${CUSTOMER_TABLE_TYPE}`;
 
-    await page.goto(customerTableUrl);
+    // Real in-app navigation to the Customer table (Task 17 item B.2,
+    // S121b) — same click path as the sub-test above.
+    await page.goto(projectUrl);
+    await expect(
+      page
+        .locator('ion-item', { hasText: 'Title' })
+        .first()
+        .getByRole('textbox'),
+    ).toHaveValue('DataTug Demo Project 1', { timeout: 15_000 });
+    await goToCatalogTables(page, DEMO_ENV_ID, DEMO_DB_CATALOG_ID);
+    const customerRow = catalogTableRow(page, 'Customer');
+    await expect(customerRow).toBeVisible({ timeout: 15_000 });
+    await customerRow.click();
     await expect(activePage(page).locator('.tabulator-row').first()).toBeVisible({
       timeout: 15_000,
     });
@@ -454,14 +591,21 @@ test.describe('J3 — carrying context', () => {
     page,
   }) => {
     const projectUrl = `/store/${agentServer.storeId}/project/${DEMO_PROJECT_ID}`;
-    const customerTableUrl =
-      `${projectUrl}/env/${DEMO_ENV_ID}/db/${DEMO_DB_CATALOG_ID}` +
-      `/table/${CUSTOMER_TABLE_TYPE}`;
 
-    await page.goto(customerTableUrl);
-    // EXPECTED TO FAIL here right now — same blocker 2 as J2 (file header):
-    // the grid never renders a row to click. Once that's fixed, this gates
-    // on the same GET /datatug/semantic/columns gap J2 hits next.
+    // Real in-app navigation to the Customer table (Task 17 item B.2,
+    // S121b) — the single project-page entry point plus the click path
+    // J1's own goToCatalogTables() doc comment describes.
+    await page.goto(projectUrl);
+    await expect(
+      page
+        .locator('ion-item', { hasText: 'Title' })
+        .first()
+        .getByRole('textbox'),
+    ).toHaveValue('DataTug Demo Project 1', { timeout: 15_000 });
+    await goToCatalogTables(page, DEMO_ENV_ID, DEMO_DB_CATALOG_ID);
+    const customerRow = catalogTableRow(page, 'Customer');
+    await expect(customerRow).toBeVisible({ timeout: 15_000 });
+    await customerRow.click();
     await expect(activePage(page).locator('.tabulator-row').first()).toBeVisible({
       timeout: 15_000,
     });
@@ -495,13 +639,17 @@ test.describe('J3 — carrying context', () => {
 
     // Open the saved query "Customer purchases by genre" and assert its
     // Customer.ID parameter is bound "from context" (INTEGRATION.md §6 —
-    // InvestigationContextService.bindingsFor(), no server call). A full
-    // page.goto() reload, not an in-app click — no detached sibling page can
-    // exist afterward (the whole Angular app re-bootstraps) — but scoped to
-    // activePage() anyway for consistency (S104).
-    await page.goto(
-      `${projectUrl}/query/customer-purchases-by-genre?id=customer-purchases-by-genre`,
-    );
+    // InvestigationContextService.bindingsFor(), no server call). Real
+    // in-app navigation (Task 17 item B.2, S121b) — the persistent "Queries"
+    // side-menu item -> the "customers" folder -> the query's own title; see
+    // openSavedQuery()'s own doc comment above, including why this in-app
+    // click-through (which, unlike the page.goto() reload this replaces,
+    // leaves the Customer table page as a detached-not-destroyed sibling —
+    // S104 — hence activePage() below) proves the SAME "from context"
+    // binding: InvestigationContextService is a `providedIn: 'root'`
+    // singleton the whole app shares, so no reload was ever needed for this
+    // binding to be visible, only for the query page itself to exist.
+    await openSavedQuery(page, 'customers', 'Customer purchases by genre');
     await expect(
       activePage(page)
         .getByText('Customer.ID', { exact: false })
@@ -586,10 +734,30 @@ test.describe('J4 — restricted principal', () => {
     // this test alone talks to.
     const storeId = `http-${supportAgentServer.host}:${supportAgentServer.port}`;
     const projectUrl = `/store/${storeId}/project/${DEMO_PROJECT_ID}`;
-    const customerTableUrl =
-      `${projectUrl}/env/${DEMO_ENV_ID}/db/${DEMO_DB_CATALOG_ID}` +
-      `/table/${CUSTOMER_TABLE_TYPE}`;
     const agentOrigin = `http://${supportAgentServer.host}:${supportAgentServer.port}`;
+
+    // "the browser opens the demo project" — the single entry point every
+    // journey uses (Task 17 item B.2, S121b); this test used to skip
+    // straight to the table URL. See J1's own comment on the title
+    // assertion mechanism.
+    await page.goto(projectUrl);
+    await expect(
+      page
+        .locator('ion-item', { hasText: 'Title' })
+        .first()
+        .getByRole('textbox'),
+    ).toHaveValue('DataTug Demo Project 1', { timeout: 15_000 });
+
+    // "the user opens the Customer table" — real in-app navigation (Task 17
+    // item B.2, S121b), the same click path J1's own goToCatalogTables() doc
+    // comment describes. Stops one click short of the Customer row itself
+    // (clicked below, once `selectResponsePromise` is armed) so that promise
+    // is set up immediately before the click that actually triggers the
+    // request — the same ordering the pre-existing code below already
+    // relied on with `page.goto()`.
+    await goToCatalogTables(page, DEMO_ENV_ID, DEMO_DB_CATALOG_ID);
+    const customerRow = catalogTableRow(page, 'Customer');
+    await expect(customerRow).toBeVisible({ timeout: 15_000 });
 
     // "Browse Customer with an allowed projection" — the real GET
     // /datatug/exec/select response (mechanism), not just the rendered grid.
@@ -597,8 +765,8 @@ test.describe('J4 — restricted principal', () => {
     // CONFIRMED FAILING HERE (S100, first failing assertion in this suite —
     // see this stream's report for the request/response evidence): the real
     // browser sends `from=main.Customer` (schema-qualified —
-    // EnvDbTablePageComponent builds it from CUSTOMER_TABLE_TYPE, this
-    // suite's own `'main.Customer'`), but `policies/customers.yaml`'s
+    // EnvDbTablePageComponent builds it from the clicked row's own
+    // schema+name, `main`/`Customer`), but `policies/customers.yaml`'s
     // `customers-support` rule declares `path: /Customer` (no schema
     // prefix). The access-policy engine's path match is exact, so every
     // request for this table is denied outright: `dalgo access denied:
@@ -621,7 +789,7 @@ test.describe('J4 — restricted principal', () => {
         res.request().method() === 'GET',
       { timeout: 15_000 },
     );
-    await page.goto(customerTableUrl);
+    await customerRow.click();
     await expect(activePage(page).locator('.tabulator-row').first()).toBeVisible({
       timeout: 15_000,
     });

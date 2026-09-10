@@ -117,12 +117,18 @@ no other DataTug-CLI-version reference to keep in sync in this repo.
 
 ## Known gap this harness works around (not this stream's to fix)
 
-J1 navigates directly to the Album table's URL instead of clicking a table
-row to get there. `EnvDbPageComponent`'s row-click handler was fixed by
-stream S9b (2026-09-09 — see `env-db-page.component.spec.ts` /
-`datatug-nav.service.spec.ts`), so a real click-through would work now; J1
-still uses the direct URL to keep proving the grid-render/agent-contract
-mechanism independent of that page's own navigation.
+RESOLVED 2026-09-10 (Task 17 item B.2, S121b): J1–J4 in `journey.spec.ts` now
+walk real in-app navigation end to end — project page -> "Go to..." ->
+Environments -> the environment -> Databases card -> the catalog -> a
+Tabulator row click for the table (`goToCatalogTables()`/`catalogTableRow()`
+helpers), and, for J3, the persistent "Queries" side-menu item -> folder ->
+query title (`openSavedQuery()`) — instead of `page.goto()`-ing straight to a
+table or query URL. This needed two datatug-cli endpoints B.2 depended on
+(Task 17 items A.1/A.2, `GET /datatug/queries/all_queries` and
+`GET /datatug/catalog-tables`) and datatug-apps wiring (item B.1,
+`EnvDbPageComponent`/`EnvironmentPageComponent`/`EnvironmentsPageComponent`/
+`QueriesTabComponent`). `page.goto(projectUrl)` remains each journey's single
+entry point; only the table/query URL shortcuts were removed.
 
 ## Known blockers
 

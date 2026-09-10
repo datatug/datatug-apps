@@ -80,6 +80,21 @@ export interface IDatabaseFull extends IEnvDatabaseBase {
   };
 }
 
+/**
+ * GET /datatug/catalog-tables's response shape (datatug-cli's
+ * api.CatalogTables — Task 17 item A.2): a catalog's table/view identity
+ * list, no column/key detail (env-db-table.page.ts's own /exec/select-backed
+ * row fetch remains the source of those). Deliberately lighter than
+ * `IDatabaseFull` — it has no `server`/`driver` (this call is scoped by
+ * project+environment+catalog id, not a server connection) — so
+ * `EnvDbPageComponent` uses this instead of `IDatabaseFull` for the data
+ * this endpoint actually returns.
+ */
+export interface ICatalogTables {
+  tables: ITableFull[];
+  views: ITableFull[];
+}
+
 export interface IDatabaseSummary {
   id: string;
   title?: string;

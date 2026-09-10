@@ -1,5 +1,5 @@
 import { TitleCasePipe } from '@angular/common';
-import { Component, inject, input, model } from '@angular/core';
+import { ChangeDetectorRef, Component, inject, input, model } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
   IonBadge,
@@ -66,6 +66,22 @@ export class QueriesTabComponent {
   private readonly queriesService = inject(QueriesService);
   private readonly dataTugNavContextService = inject(DatatugNavContextService);
   private readonly dataTugNavService = inject(DatatugNavService);
+  // This app runs zoneless (provideZonelessChangeDetection(), main.ts —
+  // see env-db-table.page.ts's own comment on the same class of gap):
+  // `currentFolder`/`allQueries`/`parentFolders`/`filteredItems` below are
+  // plain fields, not signals, and every one of them is mutated from an
+  // RxJS `.subscribe()` callback (loadQueries()'s HTTP response,
+  // newFolder()/deleteFolder()'s own writes) — a write Angular's zoneless
+  // change detector has no way to notice on its own. Confirmed live (S121,
+  // Task 17): the real folder tree loads correctly (verified via
+  // `ng.getComponent(...).currentFolder`) but the template never repaints —
+  // the page shows only its static SQL/HTTP toolbar forever. `markForCheck()`
+  // after each such mutation is the same fix this codebase already applies
+  // elsewhere for the identical gap (env-db-table.page.ts converted its own
+  // async-mutated fields to signals instead; `markForCheck()` here is the
+  // narrower, no-template-rewrite equivalent for this component's several
+  // interrelated fields).
+  private readonly changeDetectorRef = inject(ChangeDetectorRef);
 
   readonly rootFolder = input<'shared' | 'personal' | 'bookmarked'>();
   // TODO: Skipped for migration because:
@@ -97,19 +113,59 @@ export class QueriesTabComponent {
 
   public currentFolder: IQueryFolderContext = { path: '~', id: '' };
 
+  // Regression found live while wiring real navigation to the Queries page
+  // (Task 17 item B.1, S121): navigating here with NO `folder` query param
+  // (the real, persistent-side-menu "Queries" link —
+  // project-menu-top.component.html — produces exactly this URL) used to
+  // call `updateUrlWithCurrentFolder()`, which writes `this.currentFolder.
+  // path` ("~") straight into the `folder` URL param UNCHANGED (its own
+  // `.replace('~/', '')` only strips a "~/" PREFIX, and the bare root value
+  // "~" has none to strip) — producing `?folder=~`, a URL this component's
+  // OWN reader then re-parses as folder id `"~"` (not empty), setting
+  // `currentFolder = { path: '~/~', id: '~' }`. That extra round trip (a
+  // second `queryParamMap` emission, asynchronous) can complete BEFORE the
+  // in-flight `loadQueries()` fetch's response arrives; when it does,
+  // `onFolderRetrieved()`'s own guard (`path !== this.currentFolder.path`)
+  // compares the fetch's original "~" against the now-mutated "~/~" and
+  // silently discards the correctly-loaded folder tree — confirmed live
+  // against a real agent: the page renders its filter/type-badge toolbar
+  // (proving no crash) but NEVER the customers/reference folders it just
+  // fetched. Root cause: this round trip was pointless to begin with — an
+  // empty `folder` param is already exactly what `currentFolder`'s own field
+  // default (`{ path: '~', id: '' }`) represents, so there was never
+  // anything here to "correct" by rewriting the URL. Always taking the
+  // straightforward branch (dropped the `if (!id)` special case entirely)
+  // makes the id-empty path a no-op instead of a race: `(id && ...) || '~'`
+  // already resolves to the same `path: '~'` the field default already had.
   constructor() {
     this.route.queryParamMap.subscribe({
       next: (queryParams) => {
         const id = queryParams.get('folder') || '';
-        if (!id) {
-          this.updateUrlWithCurrentFolder();
-        } else {
-          this.currentFolder = {
-            path: (id && `~/${id}`) || '~',
-            id,
-          };
-          this.displayCurrentFolder();
+        // `cd()` below already computes the FULL `currentFolder` (real
+        // `folders`/`items`, walked out of the already-fetched tree) before
+        // pushing that same `id` into the URL via `updateUrlWithCurrentFolder()`
+        // — a query-param-only `router.navigate()`, which re-emits THIS SAME
+        // `queryParamMap` subscription with the identical `id`. Rebuilding
+        // `currentFolder` as a bare `{path, id}` stub on that echo wiped out
+        // the folders/items `cd()` had just resolved, and nothing re-fetches
+        // them (loadQueries() below runs exactly once, on construction) —
+        // confirmed live (S121, Task 17): clicking into "customers" left the
+        // subfolder view showing only its `..` row forever, though
+        // `ng.getComponent(...).parentFolders` proved the real
+        // customer-invoices/customer-purchases-by-genre items were sitting in
+        // memory the whole time, just no longer referenced by `currentFolder`.
+        // Skipping the reset when `id` hasn't actually changed treats the
+        // echo as the no-op it is; a genuinely new `id` (a direct deep link,
+        // or browser back/forward — neither of which routes through `cd()`)
+        // still updates normally below, unchanged from before this fix.
+        if (id === this.currentFolder.id) {
+          return;
         }
+        this.currentFolder = {
+          path: (id && `~/${id}`) || '~',
+          id,
+        };
+        this.displayCurrentFolder();
       },
       error: this.errorLogger.logErrorHandler(
         'Failed to get query params map from activate route',
@@ -137,9 +193,23 @@ export class QueriesTabComponent {
     return !!this.currentFolder.id;
   }
 
+  // Folder-qualifies `q.id` before navigating (S97's one saved-query id
+  // convention — GET /queries/get_query needs `customers/customer-invoices`,
+  // not the bare `customer-invoices` this component's own items carry).
+  // `folders` is only ever supplied by the *filtered/search* click path
+  // (`item.folders`, built by populateFilteredItems() below); a plain
+  // browse-mode click on `currentFolder.items` (queries-tab.component.html's
+  // `(click)="goQuery(query)"`) passes none at all. The OLD code assumed
+  // `folders` was always given — `undefined?.join('/')` produced the
+  // literal string `"undefined/<id>"`, so clicking a query normally (not
+  // via the filter box) navigated to a nonsense id and 404'd. Found while
+  // wiring real navigation for Task 17's journey e2e (S121): defaults to
+  // this.currentFolder.path (always populated, the same "~"-prefixed path
+  // the folder-tree walk already tracks) when the caller supplies nothing.
   goQuery(q: IQueryDef, action?: 'execute' | 'edit', folders?: string[]): void {
-    const id = folders?.join('/').replace('~/', '');
-    q = { ...q, id: `${id}/${q.id}` };
+    const segments = folders ?? this.currentFolder.path.split('/');
+    const folderId = segments.filter((s) => s && s !== '~').join('/');
+    q = { ...q, id: folderId ? `${folderId}/${q.id}` : q.id };
     const project = this.project();
     if (project) {
       this.dataTugNavService.goQuery(project, q, action);
@@ -273,8 +343,32 @@ export class QueriesTabComponent {
       };
     }
     this.displayCurrentFolder();
+    // Zoneless: this whole method only ever runs from an RxJS subscribe
+    // callback (loadQueries()'s HTTP response) — see this class's own
+    // `changeDetectorRef` doc comment.
+    this.changeDetectorRef.markForCheck();
   }
 
+  // S121c (Task 17, exposed by a direct/deep-link load of a non-root
+  // folder — direct-nav.spec.ts's own queries-list test, and any
+  // `?folder=<id>` URL): the original `while`/`p.pop()` loop walked EVERY
+  // segment of `path`, including the leading "~" root marker, as a child id
+  // to look up in `folder.folders` — but "~" names `folder` itself (the
+  // starting point, already resolved by the caller: `onFolderRetrieved`
+  // passes the just-fetched ROOT tree; `cd()` passes `this.currentFolder`),
+  // never one of its own children. `folder.folders.find(id => id === '~')`
+  // therefore always failed on the very first step of any multi-segment
+  // path (`onFolderRetrieved`'s own "~/customers" — `cd()`'s own
+  // single-segment calls, e.g. "customers" with no leading "~", never hit
+  // this because they had nothing to skip), leaving `folder` `undefined`
+  // before it ever reached the REAL target segment — confirmed live: a
+  // fresh `/queries?folder=customers` load left `currentFolder` empty
+  // (`allQueries: []`, no `id`/`items`) although the fetched tree, sitting
+  // right there in `parentFolders[0]`, had `customers`'s two saved queries
+  // the whole time. Fix: strip the leading "~" (and any stray empty
+  // segment) before walking, then walk forward in path order — `path`'s
+  // own segments are already root-to-leaf, so no reversal was ever needed
+  // either.
   private getFolderAndUpdateParents(
     path: string,
     folder: IQueryFolder,
@@ -282,14 +376,15 @@ export class QueriesTabComponent {
     if (path === '~') {
       return folder;
     }
-    const p = path.split('/').toReversed();
-    while (folder && p.length) {
-      const id = p.pop();
-      // if (id === '~' && !p.length) {
-      // 	continue;
-      // }
-      this.parentFolders.push({ ...folder, path: p.join('/') });
+    const segments = path.split('/').filter((s) => s && s !== '~');
+    let ancestorPath = '~';
+    for (const id of segments) {
+      if (!folder) {
+        break;
+      }
+      this.parentFolders.push({ ...folder, path: ancestorPath });
       folder = folder.folders?.find((item) => item.id === id) as IQueryFolder;
+      ancestorPath = `${ancestorPath}/${id}`;
     }
     return folder;
   }
@@ -343,6 +438,10 @@ export class QueriesTabComponent {
               }
             }
             this.cd(`${parentFolder.path}/${name}`);
+            // Zoneless (this class's own `changeDetectorRef` doc comment):
+            // this whole callback runs from an RxJS subscribe, not a
+            // tracked DOM event.
+            this.changeDetectorRef.markForCheck();
           },
           error: this.errorLogger.logErrorHandler(
             'Failed to create new folder',
@@ -377,12 +476,15 @@ export class QueriesTabComponent {
           ) {
             this.cd('..');
           }
+          // Zoneless (this class's own `changeDetectorRef` doc comment).
+          this.changeDetectorRef.markForCheck();
         },
         error: (err) => {
           this.isDeletingFolders = this.isDeletingFolders.filter(
             (f) => f !== folderPath,
           );
           this.errorLogger.logError(err, 'Failed to delete queries folder');
+          this.changeDetectorRef.markForCheck();
         },
       });
     }

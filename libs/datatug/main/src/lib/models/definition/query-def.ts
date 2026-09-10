@@ -7,6 +7,14 @@ import { IWidgetRef } from './widget';
 export enum QueryType {
   HTTP = 'HTTP',
   SQL = 'SQL',
+  // DTQL: datatug-cli's own `datatug.QueryType` (query.go) has carried this
+  // since before this enum was last touched — demo-project-1's own
+  // customer-invoices.query.json is DTQL-typed, and GET
+  // /datatug/queries/all_queries (Task 17 item A.1, S121) lists it with
+  // that type verbatim. Added here (rather than folding it into SQL) so
+  // QueriesTabComponent's type badge/filter show the query's real,
+  // server-reported type instead of a lossy substitution.
+  DTQL = 'DTQL',
 }
 
 export type IQueryItem = IProjItemBrief;

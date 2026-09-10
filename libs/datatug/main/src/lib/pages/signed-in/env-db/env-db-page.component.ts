@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
+import { IProjectRef } from '../../../core/project-context';
 import {
   IonBackButton,
   IonBadge,
@@ -25,13 +26,46 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/angular';
-import { GlobalTooltipOption, Options, Tabulator } from 'tabulator-tables';
+import {
+  GlobalTooltipOption,
+  InteractionModule,
+  Options,
+  Tabulator,
+} from 'tabulator-tables';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
+
+// Task 17 item B.1 (S121): `Tabulator.registerModule(...)` is a one-time,
+// PROCESS-GLOBAL registration (Tabulator's own static API — see
+// `@sneat/datagrid`'s `DataGridComponent`, which registers `InteractionModule`/
+// `SelectRowModule`/`MenuModule` the same way, as a module-load side effect).
+// This page constructs its own `new Tabulator(...)` directly (not through
+// `DataGridComponent`) and had never registered anything, so `tab.modules`
+// only ever carried Tabulator's own always-on core (`comms`/`layout`/
+// `localize`) — confirmed live (S121): `rowClick` (wired in createTabulator()
+// below) never fired on a real, fully-trusted click (mousedown/mouseup/click
+// all landing squarely on the row element, verified via getBoundingClientRect
+// + elementFromPoint), because Tabulator's own click-delegation listener is
+// itself lazily bound only once a "row-click"-shaped subscription exists,
+// and nothing here ever created one. `env-db-table.page.ts` (the next page
+// down, using `DataGridComponent`) was never affected: its own `@sneat/
+// datagrid` import carries the registration as a side effect, and route-level
+// code-splitting meant that chunk had usually already loaded by the time a
+// real user journey reached this page (journeys always went TABLE-first);
+// this page was unreachable via any real navigation before this same task,
+// so nothing had ever exercised its row click cold, without that lucky
+// ordering, until now. `InteractionModule` alone (not Select/Menu, which
+// this page's own `rowClick` option doesn't need) is registered here so this
+// page's own row-click keeps working table by itself, not by accident of
+// import order.
+Tabulator.registerModule([InteractionModule]);
 import { getTabulatorCols, IGridColumn } from '@sneat/grid';
 import { Subject } from 'rxjs';
-import { routingParamEnvironmentId } from '../../../core/datatug-routing-params';
 import {
-  IDatabaseFull,
+  routingParamDbCatalogId,
+  routingParamEnvironmentId,
+} from '../../../core/datatug-routing-params';
+import {
+  ICatalogTables,
   ITableFull,
 } from '../../../models/definition/apis/database';
 import { IEnvironmentFull } from '../../../models/definition/environments';
@@ -43,6 +77,9 @@ import {
 import { ProjectTracker } from '../../../services/nav/contexts/project.tracker';
 import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
 import { DatatugServicesProjectModule } from '../../../services/project/datatug-services-project.module';
+import { DatatugServicesStoreModule } from '../../../services/repo/datatug-services-store.module';
+import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
+import { EnvironmentService } from '../../../services/unsorted/environment.service';
 import { ProjectService } from '../../../services/project/project.service';
 
 interface IRecordsetInfo {
@@ -71,7 +108,15 @@ interface IRecordsetInfo {
     // (`env-db-table.page.ts:113`), `DatatugStorePageComponent` (PR #63) and
     // `ProjectPageComponent` were already fixed for the identical reason.
     // Same fix: declare the module the missing service actually lives in.
+    // `EnvironmentService` (Task 17 item A.2/B.1, S121 — getCatalogTables())
+    // is likewise plain `@Injectable()`, provided by
+    // `DatatugServicesUnsortedModule` — which itself injects `StoreApiService`
+    // (provided by `DatatugServicesStoreModule`, not `providedIn: 'root'`
+    // either), so both are declared here, mirroring the same pairing
+    // `env-db-table.page.ts` already uses for the identical transitive need.
     DatatugServicesProjectModule,
+    DatatugServicesStoreModule,
+    DatatugServicesUnsortedModule,
     FormsModule,
     IonHeader,
     IonToolbar,
@@ -93,6 +138,7 @@ interface IRecordsetInfo {
 export class EnvDbPageComponent implements OnDestroy, OnInit {
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly projService = inject(ProjectService);
+  private readonly environmentService = inject(EnvironmentService);
   private datatugNavService = inject(DatatugNavService);
   private readonly route = inject(ActivatedRoute);
 
@@ -104,7 +150,16 @@ export class EnvDbPageComponent implements OnDestroy, OnInit {
   project?: IProjectContext;
   projectFull?: IProjectFull;
   env?: IEnvironmentFull;
-  envDb?: IDatabaseFull;
+  dbId?: string;
+  // `id`/`tables`/`views` — Task 17 item A.2/B.1 (S121): fetched from
+  // GET /datatug/catalog-tables (loadCatalogTables() below), replacing the
+  // old `history.state.db` read, which nothing in this app ever pushed
+  // (S120's report) — this page was unreachable via any real navigation,
+  // and would show 0 rows even once its NG0201 DI bug (fixed separately,
+  // PR #89) was gone. `id` is filled in client-side from the route's own
+  // catalog id (the endpoint's response carries only tables/views — see
+  // ICatalogTables's own doc comment).
+  envDb?: ICatalogTables & { id: string };
 
   defaultColDef = {
     resizable: true,
@@ -116,13 +171,6 @@ export class EnvDbPageComponent implements OnDestroy, OnInit {
   private tabulator?: Tabulator;
 
   private readonly destroyed = new Subject<void>();
-
-  constructor() {
-    // this.tabulator = new Tabulator({
-    // 	// columns: this.tablesCols,
-    // });
-    this.envDb = history.state.db as IDatabaseFull;
-  }
 
   ngOnDestroy(): void {
     this.destroyed.next();
@@ -142,11 +190,34 @@ export class EnvDbPageComponent implements OnDestroy, OnInit {
           this.projectFull = p;
           const envId = this.route.snapshot.params[routingParamEnvironmentId];
           this.env = p.environments?.find((e) => e.id === envId);
-          // const dbId = params.get('routingParamDbId');
-          // this.envDb = this.env.dbServer.find(db => db.id === dbId);
-          this.onDataChanged();
+          this.dbId = this.route.snapshot.params[routingParamDbCatalogId];
+          this.loadCatalogTables(projectRef, envId, this.dbId);
         });
       },
+    });
+  }
+
+  private loadCatalogTables(
+    projectRef: IProjectRef,
+    envId?: string,
+    dbId?: string,
+  ): void {
+    if (!envId || !dbId) {
+      this.errorLogger.logError(
+        new Error(
+          `Missing environment or catalog id (env=${envId}, db=${dbId})`,
+        ),
+        'Failed to load catalog tables',
+      );
+      return;
+    }
+    this.environmentService.getCatalogTables(projectRef, envId, dbId).subscribe({
+      next: (catalogTables) => {
+        this.envDb = { id: dbId, ...catalogTables };
+        this.onDataChanged();
+      },
+      error: (err) =>
+        this.errorLogger.logError(err, 'Failed to load catalog tables'),
     });
   }
 
@@ -254,8 +325,32 @@ export class EnvDbPageComponent implements OnDestroy, OnInit {
       layout: 'fitColumns',
       groupBy: 'schema',
       columns: getTabulatorCols(columns),
-      rowClick: (e: unknown, row: { getData: () => IRecordsetInfo }) => {
-        const data: IRecordsetInfo = row.getData();
+    };
+    if (this.gridElRef) {
+      this.tabulator = new Tabulator(
+        this.gridElRef?.nativeElement,
+        options as unknown as Options,
+      );
+      // `rowClick` as a raw CONSTRUCTOR OPTION (the form this used before,
+      // matching every other Tabulator callback option here) never actually
+      // wires up a click listener in tabulator-tables 6.3.1 — Task 17 item
+      // B.1 (S121): confirmed live that a real, fully-trusted click
+      // (mousedown/mouseup/click all landing squarely on the row element,
+      // per getBoundingClientRect+elementFromPoint) never invoked it, even
+      // after registering InteractionModule (see this file's own
+      // `Tabulator.registerModule` doc comment above) — because
+      // `Interaction.initializeExternalEvents()` only watches for the
+      // EXTERNAL-EVENT SUBSCRIPTION going from 0 to 1 (`tab.on('rowClick',
+      // ...)`) to lazily bind its delegated DOM listener; nothing in
+      // Tabulator's own option-processing ever converts a same-named
+      // `options.rowClick` callback into that subscription for THIS event
+      // (unlike, e.g., per-column `cellClick`, which IS a registered column
+      // option). `@sneat/datagrid`'s own `DataGridComponent` (this app's
+      // other, working Tabulator wrapper, `env-db-table.page.ts`'s grid)
+      // already uses exactly this `.on('rowClick', ...)` form, never the
+      // options-object one — this page just never matched that pattern.
+      this.tabulator.on('rowClick', (e, row) => {
+        const data = row.getData() as unknown as IRecordsetInfo;
         const project = this.project;
         const env = this.env;
         const envDb = this.envDb;
@@ -265,18 +360,11 @@ export class EnvDbPageComponent implements OnDestroy, OnInit {
         this.datatugNavService.goTable({
           project,
           env: env.id,
-          // store: this.a
           db: envDb.id,
           schema: data.t.schema,
           name: data.t.name,
         });
-      },
-    };
-    if (this.gridElRef) {
-      this.tabulator = new Tabulator(
-        this.gridElRef?.nativeElement,
-        options as unknown as Options,
-      );
+      });
     }
   }
 

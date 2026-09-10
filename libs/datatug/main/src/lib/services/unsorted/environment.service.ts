@@ -8,6 +8,7 @@ import { IProjectRef } from '../../core/project-context';
 import { CreateNamedRequest } from '../../dto/requests';
 import { IOptionallyTitled } from '../../models/core';
 import { IEnvironmentSummary } from '../../models/definition/environments';
+import { ICatalogTables } from '../../models/definition/apis/database';
 import { createProjItem } from '../base/create-object';
 import { ProjectContextService } from '../project/project-context.service';
 import { ProjectService } from '../project/project.service';
@@ -68,5 +69,29 @@ export class EnvironmentService {
         }),
       );
     return cached ? result.pipe(startWith(cached)) : result;
+  }
+
+  /**
+   * GET /datatug/catalog-tables (Task 17 item A.2, S121) — the catalog's
+   * table/view identity list `EnvDbPageComponent` needs. Param names
+   * (proj/env/catalog) match the server's own `paramAlias` widening
+   * (`getCatalogTablesHandler`, datatug-cli).
+   */
+  public getCatalogTables(
+    projectRef: IProjectRef,
+    env: string,
+    catalog: string,
+  ): Observable<ICatalogTables> {
+    return this.storeApiService.get<ICatalogTables>(
+      projectRef.storeId,
+      '/catalog-tables',
+      {
+        params: {
+          proj: projectRef.projectId,
+          env,
+          catalog,
+        },
+      },
+    );
   }
 }

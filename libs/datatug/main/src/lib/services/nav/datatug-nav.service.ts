@@ -106,6 +106,29 @@ export class DatatugNavService {
     );
   }
 
+  // goCatalog: env/:envId/db/:catalogId (EnvDbPageComponent — the catalog
+  // overview page one level above goTable()'s own /table/<type> route).
+  // Nothing navigated here before Task 17 item B.1 (S121) — the environment
+  // page's own "databases" section either didn't exist or its click handler
+  // was commented out (`// goDb(envDb)`, environment-page.component.ts).
+  goCatalog(project: IProjectContext, envId: string, catalogId: string): void {
+    const url = [
+      'store',
+      getStoreId(project.ref.storeId),
+      'project',
+      project.ref.projectId,
+      'env',
+      envId,
+      'db',
+      catalogId,
+    ];
+    this.navForward(
+      url,
+      { state: { project } },
+      'Failed to navigate to catalog page',
+    );
+  }
+
   goEntity(
     project: IProjectContext,
     projEntity: IProjEntity,

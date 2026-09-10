@@ -37,7 +37,20 @@ export const isQueryChanged = (queryState: IQueryState): boolean => {
     );
   }
   switch (queryState?.request?.queryType) {
+    // S121c (Task 17, exposed by real navigation to a DTQL saved query,
+    // e.g. `customer-invoices`): `QueryType.DTQL` was added by S121b
+    // (query-def.ts) for `all_queries`/`get_query`'s real, server-reported
+    // type, but this switch — pre-existing, untouched by S121/S121b — was
+    // never updated to match, so opening ANY DTQL query fell to `default`
+    // and threw "Unknown query request type: DTQL" the moment
+    // `query-page.component.ts`'s `isChanged` getter read it (every
+    // template render). `queries.service.ts`'s own `toQueryRequest()`
+    // (S121) adapts a DTQL wire item to the exact same `{queryType, text}`
+    // shape as SQL (its own comment: "SQL and DTQL alike"), so the same
+    // `.text` comparison applies verbatim — grouped into the same case
+    // rather than duplicated.
     case QueryType.SQL:
+    case QueryType.DTQL:
       return (
         (queryState.request as ISqlQueryRequest).text !=
         (def.request as ISqlQueryRequest).text
@@ -163,10 +176,30 @@ export class QueryEditorStateService {
       if (def) {
         state = { ...state, def };
       }
-      if (
-        state.request?.queryType === QueryType.SQL &&
-        (state.request as ISqlQueryRequest).text === undefined
-      ) {
+      // S121c (Task 17, exposed by real navigation to a non-SQL saved
+      // query): `openQuery()` above always seeds a brand-new `queryState`
+      // with a hard-coded `{ queryType: QueryType.SQL, text: '' }`
+      // placeholder `request`, before `def` (the real loaded query, of
+      // whatever actual type) arrives here. The ORIGINAL condition only
+      // adopted `def.request` when the placeholder's `text` was still
+      // `undefined` — which it never is (the placeholder sets `text: ''`,
+      // not `undefined`), so `state.request` stayed stuck on the SQL
+      // placeholder forever, for every query type. `isQueryChanged()`
+      // (this file, above) then throws `def.request.type !==
+      // queryState.request.type: <real type> !== SQL` the first time
+      // anything reads it (query-page.component.ts's own `hasChanges`
+      // getter, evaluated by its template), which aborts that component's
+      // render — reproduced live opening `customer-invoices` (DTQL) and
+      // `country-facts` (HTTP): Title/Folder/Parameters never populate,
+      // console shows exactly that thrown error. A SQL query never
+      // surfaced this because its placeholder type already matched. Fix:
+      // adopt `def.request` whenever its `queryType` doesn't yet match the
+      // current `state.request`'s — true exactly once, on this first real
+      // load, for every query type (including SQL, unchanged behavior);
+      // once synced, a later edit changes `state.request`'s own fields but
+      // not its `queryType`, so this never fires again and never clobbers
+      // in-progress user edits.
+      if (state.request?.queryType !== def?.request?.queryType) {
         state = { ...state, request: def?.request };
       }
       if (state.title === undefined) {
