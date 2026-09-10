@@ -46,11 +46,10 @@ type OrderBy = (typeof orderBys)[number];
   styleUrls: ['./queries-page.component.scss'],
   imports: [
     // `QueriesTabComponent` (rendered in this page's own template below)
-    // injects `QueriesService` and `DatatugNavContextService` — both plain
-    // `@Injectable()`, provided by these modules rather than
-    // `providedIn: 'root'` — plus `AppContextService`
-    // (`DatatugNavContextService`'s own constructor dependency,
-    // `DatatugCoreModule`). `queries` (this page's own bare route,
+    // injects `QueriesService` (still a plain `@Injectable()`, provided by
+    // these modules) and `DatatugNavContextService` (now `providedIn: 'root'`,
+    // nav-context-root-singletons, along with its own constructor dependency
+    // `AppContextService`). `queries` (this page's own bare route,
     // `routes/datatug-routing-proj.ts`) had no ancestor route or module
     // supplying any of them, so `QueriesTabComponent`'s constructor threw
     // `NG0201: No provider found for QueriesService` on every navigation to

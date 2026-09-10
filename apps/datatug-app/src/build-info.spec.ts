@@ -5,17 +5,17 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 describe('build-info.ts (as committed to git)', () => {
-  it('keeps gitHash and buildTimestamp as placeholders in the committed blob', () => {
-    // tools/stamp-build-info.mjs rewrites gitHash/buildTimestamp *in the
-    // working tree* before a build/serve (an Nx dependency of both
-    // datatug-app targets), so reading this file straight off disk here
-    // would be racy under `nx run-many -t lint,test,build` (the `test`
-    // target has no dependsOn relationship to `build`, so ordering isn't
-    // guaranteed). Reading the committed blob via `git show HEAD:...`
-    // instead asserts what actually mirrors sneat-libs' build-info.ts TODO
-    // intent: the *committed* file must never carry a real stamped value,
-    // regardless of what a concurrent build already did to the working
-    // copy.
+  it('keeps version, gitHash and buildTimestamp as placeholders in the committed blob', () => {
+    // `sneat-stamp-build-info` (the `stamp-build-info` Nx target) never
+    // touches this file — it stamps a gitignored copy,
+    // `build-info.generated.ts`, that an Angular `fileReplacements` config
+    // (apps/datatug-app/project.json) swaps in at build time. So reading
+    // this file straight off disk here should always see the committed
+    // placeholders regardless of build/serve ordering. Reading the
+    // *committed* blob via `git show HEAD:...` anyway (rather than the
+    // working copy) is a belt-and-braces check against exactly that
+    // invariant — the same one @sneat/build-info's own README documents
+    // for any consumer of the shared bin.
     const repoRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], {
       cwd: __dirname,
       encoding: 'utf8',
@@ -40,6 +40,7 @@ describe('build-info.ts (as committed to git)', () => {
       );
     }
 
+    expect(committed).toContain("version: 'version t0be$et'");
     expect(committed).toContain("gitHash: 'gitHash t0be$et'");
     expect(committed).toContain("buildTimestamp: 'timestamp t0be$et'");
   });

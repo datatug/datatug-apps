@@ -1,14 +1,17 @@
 import { expect, test } from '@playwright/test';
 
-// Smoke test for the side-menu build-info footer (deliverable of the
-// feat/build-info-menu branch, collapsed into a single tappable row by
-// feat/collapsible-version-footer — see apps/datatug-app/README.md "Build
-// info"). Runs against the shared dev server like every other spec in this
-// (chromium) project; datatug-app:serve depends on the `stamp-build-info`
-// Nx target (apps/datatug-app/project.json), so by the time this test runs
-// the dev server has already been stamped with a real local git hash,
-// version, and UTC build timestamp — not the placeholders committed to
-// build-info.ts.
+// Smoke test for the side-menu build-info footer
+// (MenuBuildInfoComponent, libs/datatug/main/.../menu/build-info/), fed
+// this app's own stamped build info via the shared @sneat/core-public
+// runtime contract (provideBuildInfo() in apps/datatug-app/src/main.ts) —
+// see apps/datatug-app/README.md "Build info". Runs against the shared dev
+// server like every other spec in this (chromium) project; datatug-app:serve
+// depends on the `stamp-build-info` Nx target (apps/datatug-app/project.json),
+// so by the time this test runs the dev server has already been stamped
+// with a real local git hash, version, and UTC build timestamp — not the
+// placeholders committed to build-info.ts (stamping never touches that
+// file; it stamps a gitignored build-info.generated.ts that an Angular
+// fileReplacements config swaps in instead).
 
 test('side menu shows a real (non-placeholder) short git hash once expanded', async ({
   page,

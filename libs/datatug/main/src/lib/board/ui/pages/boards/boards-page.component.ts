@@ -45,8 +45,10 @@ import { DatatugBoardService } from '../../../core/datatug-board.service';
   selector: 'sneat-datatug-boards',
   templateUrl: './boards-page.component.html',
   imports: [
-    // `DatatugNavContextService` (injected below) is a plain `@Injectable()`
-    // provided by `DatatugServicesNavModule`, whose own constructor needs
+    // `DatatugNavContextService` (injected below) was a plain `@Injectable()`
+    // provided by `DatatugServicesNavModule` (it and its whole dependency
+    // chain are `providedIn: 'root'` since nav-context-root-singletons),
+    // whose own constructor needed
     // `AppContextService` (`DatatugCoreModule`), `ProjectContextService`/
     // `ProjectService` (`DatatugServicesProjectModule`) and
     // `EnvironmentService` (`DatatugServicesUnsortedModule`, itself needing

@@ -1,7 +1,16 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { BUILD_INFO, IBuildInfo } from '@sneat/core-public';
 import { MenuBuildInfoComponent } from './menu-build-info.component';
-import { buildInfo } from './build-info';
+
+// Matches this component's own FALLBACK_BUILD_INFO (menu-build-info.component.ts)
+// — the committed placeholders from apps/datatug-app/src/build-info.ts, which
+// a lib can't import directly (@nx/enforce-module-boundaries).
+const placeholderBuildInfo: IBuildInfo = {
+  version: 'version t0be$et',
+  gitHash: 'gitHash t0be$et',
+  buildTimestamp: 'timestamp t0be$et',
+};
 
 describe('MenuBuildInfoComponent', () => {
   let component: MenuBuildInfoComponent;
@@ -12,15 +21,24 @@ describe('MenuBuildInfoComponent', () => {
       '[data-testid="build-info-toggle"]',
     ) as HTMLElement;
 
-  beforeEach(async () => {
+  const createFixture = async (
+    provideBuildInfoValue?: IBuildInfo,
+  ): Promise<void> => {
     await TestBed.configureTestingModule({
       imports: [MenuBuildInfoComponent],
+      providers: provideBuildInfoValue
+        ? [{ provide: BUILD_INFO, useValue: provideBuildInfoValue }]
+        : [],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
     }).compileComponents();
     fixture = TestBed.createComponent(MenuBuildInfoComponent);
     component = fixture.componentInstance;
     fixture.detectChanges();
     await fixture.whenStable();
+  };
+
+  beforeEach(async () => {
+    await createFixture();
   });
 
   it('should create', () => {
@@ -39,10 +57,10 @@ describe('MenuBuildInfoComponent', () => {
   });
 
   it('shows the Sneat.Work copyright line ending in the current year (unstamped build)', () => {
-    // Unstamped in a unit test (no Nx dependsOn from `test` on `build` —
-    // see build-info.ts's header comment), so buildInfo.buildTimestamp is
-    // still the committed placeholder and the component falls back to the
-    // current year rather than rendering "NaN".
+    // Unstamped: no BUILD_INFO provided, so the component falls back to its
+    // own placeholder (FALLBACK_BUILD_INFO), whose buildTimestamp is not a
+    // valid date — the component falls back to the current year rather than
+    // rendering "NaN".
     const text = toggleRow().textContent ?? '';
     expect(text).toContain(`2020 - ${new Date().getUTCFullYear()}`);
     expect(text).toContain('Sneat.Work');
@@ -64,13 +82,15 @@ describe('MenuBuildInfoComponent', () => {
     const version = fixture.nativeElement.querySelector(
       '[data-testid="build-info-version"]',
     ) as HTMLElement;
-    expect(version.textContent?.trim()).toBe(`Version v${buildInfo.version}`);
+    expect(version.textContent?.trim()).toBe(
+      `Version v${placeholderBuildInfo.version}`,
+    );
 
     const hash = fixture.nativeElement.querySelector(
       '[data-testid="build-info-hash"]',
     ) as HTMLElement;
     expect(hash.textContent?.trim()).toBe(
-      `Build ${buildInfo.gitHash.substring(0, 7)} @ ${buildInfo.buildTimestamp}`,
+      `Build ${placeholderBuildInfo.gitHash.substring(0, 7)} @ ${placeholderBuildInfo.buildTimestamp}`,
     );
   });
 
@@ -95,5 +115,30 @@ describe('MenuBuildInfoComponent', () => {
     fixture.detectChanges();
 
     expect(toggleRow().getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('renders the injected BUILD_INFO when the app calls provideBuildInfo()', async () => {
+    const stamped: IBuildInfo = {
+      version: '1.2.3',
+      gitHash: 'abcdef1234567890',
+      buildTimestamp: '2026-09-10T12:00:00.000Z',
+    };
+    // beforeEach already configured/instantiated TestBed with no provider —
+    // reset before configuring it again with one, or TestBed throws
+    // "Cannot configure the test module when the test module has already
+    // been instantiated".
+    TestBed.resetTestingModule();
+    await createFixture(stamped);
+
+    toggleRow().click();
+    fixture.detectChanges();
+
+    const version = fixture.nativeElement.querySelector(
+      '[data-testid="build-info-version"]',
+    ) as HTMLElement;
+    expect(version.textContent?.trim()).toBe('Version v1.2.3');
+
+    // Build year (from buildTimestamp) drives the collapsed row's end year.
+    expect(toggleRow().textContent).toContain('2026');
   });
 });

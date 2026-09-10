@@ -7,6 +7,7 @@ import { of, Subject } from 'rxjs';
 import { BoardPageComponent } from './board-page.component';
 import { DatatugBoardService } from '../../../core/datatug-board.service';
 import { ParameterLookupService } from '../../../../components/parameters/parameter-lookup.service';
+import { routingParamBoard } from '../../../../core/datatug-routing-params';
 import { DatatugNavContextService } from '../../../../services/nav/datatug-nav-context.service';
 import { QueryParamsService } from '../../../../core/services/QueryParamsService';
 import { Board } from '@datatug/board-models';
@@ -70,6 +71,71 @@ describe('BoardPage', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+});
+
+describe('BoardPage - currentProject navigation', () => {
+  it('reads storeId/projectId from the project ref and requests the board', async () => {
+    const logError = vi.fn();
+    const getBoard = vi.fn().mockReturnValue(of(undefined));
+
+    await TestBed.configureTestingModule({
+      imports: [BoardPageComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        {
+          provide: ErrorLogger,
+          useValue: { logError, logErrorHandler: vi.fn(() => vi.fn()) },
+        },
+        { provide: DatatugBoardService, useValue: { getBoard } },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            queryParamMap: of({ get: () => null }),
+            paramMap: of({
+              get: (key: string) => (key === routingParamBoard ? 'b1' : null),
+            }),
+            snapshot: { paramMap: { get: () => null } },
+          },
+        },
+        {
+          provide: ParameterLookupService,
+          useValue: { lookupParameterValue: vi.fn() },
+        },
+        {
+          provide: DatatugNavContextService,
+          useValue: {
+            currentProject: of({
+              ref: { storeId: 's1', projectId: 'p1' },
+            }),
+            currentEnv: of(undefined),
+            setCurrentEnvironment: vi.fn(),
+          },
+        },
+        {
+          provide: QueryParamsService,
+          useValue: { setQueryParameter: vi.fn() },
+        },
+      ],
+    })
+      .overrideComponent(BoardPageComponent, {
+        set: {
+          imports: [],
+          template: '',
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+          providers: [],
+        },
+      })
+      .compileComponents();
+
+    TestBed.createComponent(BoardPageComponent);
+
+    expect(getBoard).toHaveBeenCalledWith(
+      'http://localhost:8989',
+      'p1',
+      'b1',
+    );
+    expect(logError).not.toHaveBeenCalled();
   });
 });
 
@@ -168,19 +234,14 @@ describe('BoardPage renders the board once it arrives asynchronously (zoneless)'
     };
 
     // Both arrive strictly after the initial render — no detectChanges()
-    // call between this and the assertions below; only whenStable().
-    //
-    // NOTE: the component derives storeId/projectId from
-    // `projectRefToString(ref).split('/')` — but projectRefToString()
-    // (core/project-context.ts) joins with '@', not '/', so a normal ref
-    // never actually reaches getBoard() in real navigation (this looks like
-    // a genuine, pre-existing, independent bug — flagged separately, not
-    // fixed here to keep this batch's diff to the zoneless signal
-    // conversion only). Embedding a literal '/' in projectId is a
-    // test-only workaround so this test can still reach and exercise the
-    // getBoard().subscribe() signal-write path under test.
+    // call between this and the assertions below; only whenStable(). The
+    // component now reads storeId/projectId straight off `ref` (merged
+    // from main's "BoardPage - currentProject navigation" fix above,
+    // 2026-09-10) instead of round-tripping through
+    // `projectRefToString(ref).split('/')`, so a plain, realistic ref
+    // works here directly.
     currentProject$.next({
-      ref: { storeId: 'firestore', projectId: 'p1/x' },
+      ref: { storeId: 'firestore', projectId: 'p1' },
     });
     getBoard$.next(board);
     await fixture.whenStable();

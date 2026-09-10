@@ -45,9 +45,13 @@ import { DbServerService } from '../../../services/unsorted/db-server.service';
   imports: [
     // `ProjectContextService` (injected below) and `DbServerService`
     // (injected below, itself needing `ProjectContextService`/
-    // `ProjectService`) are plain `@Injectable()`s provided by
+    // `ProjectService`) were plain `@Injectable()`s provided by
     // `DatatugServicesProjectModule`/`DatatugServicesUnsortedModule`
-    // respectively — neither declared here, so navigating to this page from
+    // respectively. `ProjectContextService` and `ProjectService` are now
+    // `providedIn: 'root'` (nav-context-root-singletons), so only
+    // `DbServerService` still needs `DatatugServicesUnsortedModule`; the
+    // project-module import is now redundant, left for a follow-up cleanup.
+    // Neither was declared here before, so navigating to this page from
     // the project side menu's "Servers" item threw `NG0201: No provider
     // found for ProjectContextService` (confirmed live, S135, 2026-09-10).
     // Same cause as `EnvironmentsPageComponent`/`QueriesPageComponent`'s own
