@@ -6,7 +6,14 @@ import { DatatugNavService } from '../services/nav/datatug-nav.service';
 import { QueryEditorStateService } from './query-editor-state-service';
 import { RandomIdService } from '@sneat/random';
 
-@Injectable()
+// `providedIn: 'root'` — same S157 fix, same reason, as
+// `QueryEditorStateService` (this file's own `queryEditorStateService`
+// dependency): a plain `@Injectable()` provided only via
+// `DatatugQueriesUiModule`'s `providers:` array left `QueriesMenuComponent`
+// (side-menu "Active Queries" tab) unable to construct — nothing in its
+// ancestor chain imports that module. See `query-editor-state-service.ts`'s
+// own comment for the full story.
+@Injectable({ providedIn: 'root' })
 export class QueriesUiService {
   private readonly randomIdService = inject(RandomIdService);
   private readonly actionSheet = inject(ActionSheetController);

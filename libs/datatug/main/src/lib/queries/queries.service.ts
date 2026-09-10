@@ -94,7 +94,20 @@ function toQueryFolder(folder: IWireQueryFolder): IQueryFolder {
   };
 }
 
-@Injectable()
+// `providedIn: 'root'` (S157, same trap as `QueryEditorStateService`/
+// `QueriesUiService` — see `query-editor-state-service.ts`'s own comment):
+// this was a plain `@Injectable()`, provided only via
+// `DatatugQueriesServicesModule`'s `providers:` array. `QueryEditorStateService`
+// (root-provided by the same S157 fix) `inject()`s this as an eager field
+// initializer, and a `providedIn: 'root'` service's `inject()` calls always
+// resolve against the ROOT injector — so without this also being root,
+// `QueryEditorStateService` could not construct at all from a component
+// that doesn't import `DatatugQueriesServicesModule` (i.e. the side menu),
+// even after being made root-provided itself (confirmed live: rooting
+// `QueryEditorStateService` alone reproduces this repo's own 2234728 "make
+// ProjectService an app singleton too" follow-up bug — NG0201 for
+// `QueriesService` instead of for `QueryEditorStateService`).
+@Injectable({ providedIn: 'root' })
 export class QueriesService {
   private readonly projItemService = inject<ProjectItemService<IQueryDef>>(
     QUERY_PROJ_ITEM_SERVICE,

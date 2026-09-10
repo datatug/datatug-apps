@@ -71,7 +71,26 @@ const $state = new BehaviorSubject<IQueryEditorState | undefined>(undefined);
 
 let counter = 0;
 
-@Injectable()
+// `providedIn: 'root'` (S157, follows PR #96/#115's `providedIn: 'root'`
+// fix for `ProjectContextService`/`DatatugStoreGithubService`): this used
+// to be a plain `@Injectable()`, provided only via
+// `DatatugQueriesServicesModule`'s `providers:` array. A standalone
+// component that lists that module in its own `imports` (`QueryPageComponent`,
+// `QueriesPageComponent`) gets its OWN environment injector carrying a
+// fresh instance — fine on its own, but `ProjectMenuComponent`'s side-menu
+// "Active Queries" tab (`QueriesMenuComponent`) injects this service
+// directly, without importing that module anywhere in its own ancestor
+// chain (`DatatugMenuComponent`, the side menu's host, imports several
+// other datatug-services modules but never this one) — so selecting that
+// tab threw `NG0201: No provider found for QueryEditorStateService`
+// (confirmed live, S157 founder report). Root-providing it (and removing
+// it from the module's `providers:`, since a module-level entry would
+// shadow the root singleton in every injector that imports the module —
+// same trap #96/#115 fixed) makes it resolvable from any injector, and
+// gives the menu and the query pages the ONE shared instance the "active
+// queries" state is meant to be (see `queries-menu.component.ts`'s and
+// `query/page/query-page.component.ts`'s own comments).
+@Injectable({ providedIn: 'root' })
 export class QueryEditorStateService {
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly queriesService = inject(QueriesService);

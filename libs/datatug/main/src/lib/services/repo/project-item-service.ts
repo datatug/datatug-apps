@@ -16,14 +16,40 @@ import { docSnapshots } from './firestore-observables';
 
 // const notImplemented = 'not implemented';
 
-@Injectable()
+// `providedIn: 'root'` (S157, same trap as `QueryEditorStateService`/
+// `QueriesUiService` — see `query-editor-state-service.ts`'s own comment):
+// `QUERY_PROJ_ITEM_SERVICE` (`queries/queries.service.token.ts`) needs this
+// factory resolvable from the ROOT injector — a `providedIn: 'root'` token's
+// own factory always runs its `inject()` calls against the root injector,
+// never against whichever leaf component happened to trigger its first
+// construction (confirmed live by this repo's own 2234728 "make
+// ProjectService an app singleton too" follow-up fix). This class has no
+// constructor dependencies of its own and is purely stateless (one factory
+// method wrapping `new ProjectItemService(...)`), so rooting it is safe —
+// no shared-state semantics to preserve either way.
+@Injectable({ providedIn: 'root' })
 export class ProjectItemServiceFactory {
-  public readonly newProjectItemService = (
+  // Explicitly generic (S157): none of the constructor params reference
+  // `ProjItem`, so TypeScript cannot infer it from a call site — without
+  // this, every call silently widened to the generic's own constraint
+  // (`ProjectItemService<IProjItemBrief>`), which only went unnoticed
+  // before because the two call sites (this file's old
+  // `datatug-queries-services.module.ts` factory provider,
+  // `queries.service.token.ts` now) both READ the result through an
+  // explicit `inject<ProjectItemService<IQueryDef>>(...)` cast rather than
+  // relying on this method's own return type. `QUERY_PROJ_ITEM_SERVICE`'s
+  // new `InjectionToken<ProjectItemService<IQueryDef>>` (S157) type-checks
+  // its `factory`'s return against that generic for real, so it needs the
+  // explicit `<IQueryDef>` type argument at the call site to type-check.
+  public readonly newProjectItemService = <
+    ProjItem extends IProjItemBrief,
+  >(
     db: Firestore,
     storeApiService: StoreApiService,
     itemsPath: string,
     itemPath: string,
-  ) => new ProjectItemService(db, storeApiService, itemsPath, itemPath);
+  ): ProjectItemService<ProjItem> =>
+    new ProjectItemService<ProjItem>(db, storeApiService, itemsPath, itemPath);
 }
 
 // TODO: why it's complaining about TS1219?
