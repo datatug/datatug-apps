@@ -48,8 +48,8 @@
     <!--			</ion-segment-button>-->
     <!--		</ion-segment>-->
     <ion-list class="last-child-no-border">
-      @if (entities) {
-        @for (entity of entities; track entity.id) {
+      @if (entities()) {
+        @for (entity of entities(); track entity.id) {
           <ion-item
             [routerLink]="entityUrl(entity)"
             (click)="goEntity(entity)"

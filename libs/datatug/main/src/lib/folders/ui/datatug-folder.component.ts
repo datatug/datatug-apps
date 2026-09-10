@@ -6,6 +6,7 @@ import {
   SimpleChanges,
   inject,
   input,
+  signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
@@ -72,7 +73,14 @@ export class DatatugFolderComponent implements OnChanges, OnDestroy {
 
   private destroyed = new Subject<void>();
 
-  boards?: IProjItemBrief[];
+  // Signals, not plain fields: this app is zoneless
+  // (provideZonelessChangeDetection(), main.ts) — both are written from
+  // inside the `.subscribe()` callback in subscribeForFolder() below, which
+  // never triggers change detection on its own for a plain field. See
+  // AGENTS.md's "Change detection & state" section and
+  // pages/signed-in/project/project-page.component.ts (PR #95) for the
+  // established pattern.
+  readonly boards = signal<IProjItemBrief[] | undefined>(undefined);
   queries?: IProjItemBrief[];
 
   readonly path = input('~');
@@ -80,7 +88,7 @@ export class DatatugFolderComponent implements OnChanges, OnDestroy {
 
   tab: 'boards' | 'queries' | 'environments' | 'entities' = 'boards';
 
-  public folder?: IFolder | null;
+  public readonly folder = signal<IFolder | undefined | null>(undefined);
 
   // Was `return (this.folder?.numberOf && this.numberOf(tab)) || 0;` — an
   // unconditional recursive self-call (infinite recursion / stack overflow)
@@ -92,7 +100,7 @@ export class DatatugFolderComponent implements OnChanges, OnDestroy {
   // template's `numberOf(t)` calls (the segment badges) are safe the moment
   // any producer does start setting it.
   public numberOf(tab: string): number {
-    return this.folder?.numberOf?.[tab] || 0;
+    return this.folder()?.numberOf?.[tab] || 0;
   }
 
   public getItemLink = (path: string) => (item: IProjItemBrief) =>
@@ -199,13 +207,15 @@ export class DatatugFolderComponent implements OnChanges, OnDestroy {
         .pipe(takeUntil(this.destroyed))
         .subscribe({
           next: (folder) => {
-            this.folder = folder;
-            this.boards = folder?.boards
-              ? folderItemsAsList(folder.boards).map((v) => ({
-                  id: v.id,
-                  title: v.name,
-                }))
-              : [];
+            this.folder.set(folder);
+            this.boards.set(
+              folder?.boards
+                ? folderItemsAsList(folder.boards).map((v) => ({
+                    id: v.id,
+                    title: v.name,
+                  }))
+                : [],
+            );
             // console.log('DatatugFolderComponent => folder:', folder);
           },
           // Log, never rethrow: a folder that cannot be watched (e.g. the

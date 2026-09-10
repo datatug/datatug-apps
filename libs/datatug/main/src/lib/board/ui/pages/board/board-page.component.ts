@@ -1,4 +1,10 @@
-import { ChangeDetectorRef, Component, OnDestroy, OnInit, inject } from '@angular/core';
+import {
+  Component,
+  OnDestroy,
+  OnInit,
+  inject,
+  signal,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import {
@@ -92,39 +98,50 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly lookupService = inject(ParameterLookupService);
   private readonly dataTugNavContext = inject(DatatugNavContextService);
-  // Zoneless (AGENTS.md; see `entities-page.component.ts`'s own identical
-  // doc comment, this task's sibling fix): `projBoard`/`boardDef`/
-  // `parameters` below are plain fields, mutated from RxJS `.subscribe()`
-  // callbacks.
-  private readonly changeDetectorRef = inject(ChangeDetectorRef);
   private readonly queryParamsService = inject(QueryParamsService);
 
-  boardId?: string | null;
+  // Signals, not plain fields: this app is zoneless
+  // (provideZonelessChangeDetection(), main.ts) — every one of these is
+  // written from inside a `.subscribe()` callback (or, for `storeId`/
+  // `projectId`, a destructuring assignment inside one — the same
+  // zoneless-unsafe shape as a plain `this.field = ...` write, just via
+  // array-pattern syntax) in the constructor below, which never triggers
+  // change detection on its own for a plain field. See AGENTS.md's "Change
+  // detection & state" section and
+  // pages/signed-in/project/project-page.component.ts (PR #95) for the
+  // established pattern.
+  readonly boardId = signal<string | null | undefined>(undefined);
 
-  projBoard?: IProjBoard;
+  readonly projBoard = signal<IProjBoard | undefined>(undefined);
 
-  boardDef?: Board;
+  readonly boardDef = signal<Board | undefined>(undefined);
 
-  parameters?: IParamWithDefAndValue[];
+  readonly parameters = signal<IParamWithDefAndValue[] | undefined>(
+    undefined,
+  );
 
   defaultHref?: string;
-  envId?: string | null = 'LOCAL';
-  projectId?: string;
-  storeId?: string;
+  readonly envId = signal<string | null | undefined>('LOCAL');
+  readonly projectId = signal<string | undefined>(undefined);
+  readonly storeId = signal<string | undefined>(undefined);
 
-  boardContext: IBoardContext = { parameters: {}, mode: 'view' };
+  readonly boardContext = signal<IBoardContext>({
+    parameters: {},
+    mode: 'view',
+  });
   private readonly destroyed$ = new Subject<void>();
 
   constructor() {
     const dataTugNavContext = this.dataTugNavContext;
-    this.projBoard = history.state?.projBoard;
-    this.parameters = this.resolveParameters();
+    this.projBoard.set(history.state?.projBoard);
+    this.parameters.set(this.resolveParameters());
     try {
       this.route.queryParamMap.subscribe({
         next: (queryParamMap) => {
-          this.envId = queryParamMap.get('env');
-          if (this.envId) {
-            this.dataTugNavContext.setCurrentEnvironment(this.envId);
+          const envId = queryParamMap.get('env');
+          this.envId.set(envId);
+          if (envId) {
+            this.dataTugNavContext.setCurrentEnvironment(envId);
           }
         },
         error: (err) =>
@@ -134,9 +151,9 @@ export class BoardPageComponent implements OnInit, OnDestroy {
         .pipe(takeUntil(this.destroyed$.asObservable()))
         .subscribe({
           next: (env) => {
-            this.envId = env?.id;
-            if (this.envId) {
-              this.queryParamsService.setQueryParameter('env', this.envId);
+            this.envId.set(env?.id);
+            if (env?.id) {
+              this.queryParamsService.setQueryParameter('env', env.id);
             }
           },
           error: (e) =>
@@ -155,16 +172,18 @@ export class BoardPageComponent implements OnInit, OnDestroy {
           filter((ref) => !!ref),
         )
         .subscribe((ref) => {
-          this.storeId = ref.storeId;
-          this.projectId = ref.projectId;
+          const { storeId, projectId } = ref;
+          this.storeId.set(storeId);
+          this.projectId.set(projectId);
           this.route.paramMap.subscribe((params) => {
-            this.boardId = params.get(routingParamBoard);
+            const boardId = params.get(routingParamBoard);
+            this.boardId.set(boardId);
             try {
-              if (!this.projectId) {
-                throw new Error('projectId is ' + this.projectId);
+              if (!projectId) {
+                throw new Error('projectId is ' + projectId);
               }
-              if (!this.boardId) {
-                throw new Error('boardId is ' + this.boardId);
+              if (!boardId) {
+                throw new Error('boardId is ' + boardId);
               }
               if (!this.storeId) {
                 throw new Error('storeId is ' + this.storeId);
@@ -172,10 +191,11 @@ export class BoardPageComponent implements OnInit, OnDestroy {
               // Was hard-coded to 'http://localhost:8989' regardless of the
               // project's actual store — every board (agent or GitHub) 404'd
               // /threw against the wrong host unless a local agent happened
-              // to be listening there. `this.storeId` is already tracked
-              // (above, from `dataTugNavContext.currentProject`) — use it.
+              // to be listening there. `storeId` (destructured from `ref`
+              // just above, and also tracked in the `storeId` signal) is
+              // the project's real store id — use it (confirmed live, S136).
               this.boardService
-                .getBoard(this.storeId, this.projectId, this.boardId)
+                .getBoard(storeId, projectId, boardId)
                 .subscribe({
                   next: (board) => {
                     try {
@@ -185,10 +205,9 @@ export class BoardPageComponent implements OnInit, OnDestroy {
                       // `IProjBoard.parameters` (this app's own model) narrows
                       // it to `DataType`. Both describe the same JSON shape,
                       // so the cast is type-only, not a behaviour change.
-                      this.projBoard = board as IProjBoard;
-                      this.boardDef = board;
-                      this.parameters = this.resolveParameters();
-                      this.changeDetectorRef.markForCheck();
+                      this.projBoard.set(board as IProjBoard);
+                      this.boardDef.set(board);
+                      this.parameters.set(this.resolveParameters());
                     } catch (e) {
                       this.errorLogger.logError(
                         e,
@@ -209,7 +228,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
         });
       dataTugNavContext.currentEnv.subscribe({
         next: (env) => {
-          this.envId = env?.id;
+          this.envId.set(env?.id);
         },
         error: (err) =>
           this.errorLogger.logError(err, 'Failed process current environment'),
@@ -226,16 +245,22 @@ export class BoardPageComponent implements OnInit, OnDestroy {
    * state before that.
    */
   private resolveParameters(): IParamWithDefAndValue[] | undefined {
-    const defs = this.boardDef?.parameters ?? this.projBoard?.parameters;
+    const defs = this.boardDef()?.parameters ?? this.projBoard()?.parameters;
     return defs?.map((def) => ({ def: def as IParameterDef, val: '' }));
   }
 
   public startEditing(): void {
-    this.boardContext = { ...this.boardContext, mode: 'edit' };
+    this.boardContext.update((boardContext) => ({
+      ...boardContext,
+      mode: 'edit',
+    }));
   }
 
   public saveChanges(): void {
-    this.boardContext = { ...this.boardContext, mode: 'view' };
+    this.boardContext.update((boardContext) => ({
+      ...boardContext,
+      mode: 'view',
+    }));
   }
 
   ngOnInit() {
@@ -247,24 +272,27 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   }
 
   lookup(p: IParamWithDefAndValue): void {
-    if (!this.storeId) {
+    const storeId = this.storeId();
+    const projectId = this.projectId();
+    const envId = this.envId();
+    if (!storeId) {
       return;
     }
-    if (!this.projectId) {
+    if (!projectId) {
       return;
     }
-    if (!this.envId) {
+    if (!envId) {
       return;
     }
     this.lookupService
-      .lookupParameterValue(p.def, this.storeId, this.projectId, this.envId)
+      .lookupParameterValue(p.def, storeId, projectId, envId)
       .subscribe({
         next: (v) => {
           p.val = v.value;
-          this.boardContext = {
-            ...this.boardContext,
-            parameters: { ...this.boardContext.parameters, [p.def.id]: v },
-          };
+          this.boardContext.update((boardContext) => ({
+            ...boardContext,
+            parameters: { ...boardContext.parameters, [p.def.id]: v },
+          }));
         },
         error: (err) =>
           this.errorLogger.logError(err, 'Failed to lookup parameter value'),

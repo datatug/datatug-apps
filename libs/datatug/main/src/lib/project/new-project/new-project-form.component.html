@@ -29,12 +29,12 @@
 </ion-item>
 <ion-footer>
   <div class="ion-padding">
-    <ion-button (click)="create()" [disabled]="isCreating">
+    <ion-button (click)="create()" [disabled]="isCreating()">
       <ion-icon name="save-outline" slot="start" />
       <ion-label>Create new project</ion-label>
     </ion-button>
     <ion-button
-      [disabled]="isCreating"
+      [disabled]="isCreating()"
       style="position: absolute; right: 1em"
       (click)="cancel()"
       color="light"

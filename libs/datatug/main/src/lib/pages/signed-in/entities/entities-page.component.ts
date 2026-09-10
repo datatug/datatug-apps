@@ -1,4 +1,4 @@
-import { ChangeDetectorRef, Component, OnDestroy, inject } from '@angular/core';
+import { Component, OnDestroy, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
   IonBackButton,
@@ -94,17 +94,16 @@ export class EntitiesPageComponent
   private readonly navContextService = inject(DatatugNavContextService);
   private readonly entityService = inject(EntityService);
   private readonly toastCtrl = inject(ToastController);
-  // Zoneless (AGENTS.md, `environments-page.component.ts`'s own
-  // `changeDetectorRef` doc comment for the class of gap this closes):
-  // `entities`/`project` below are plain fields, mutated from RxJS
-  // `.subscribe()` callbacks — a write Angular's zoneless change detector
-  // has no way to notice on its own, so this page stayed on "Loading..."
-  // forever even once its data actually arrived (confirmed live, S136,
-  // opening this page for the GitHub-store demo project).
-  private readonly changeDetectorRef = inject(ChangeDetectorRef);
 
-  entities?: Entities;
-  project?: IProjectContext;
+  // Signals, not plain fields: this app is zoneless
+  // (provideZonelessChangeDetection(), main.ts) — both are written from
+  // inside `.subscribe()` callbacks below, which never trigger change
+  // detection on their own for a plain field. See AGENTS.md's "Change
+  // detection & state" section and
+  // pages/signed-in/project/project-page.component.ts (PR #95) for the
+  // established pattern.
+  readonly entities = signal<Entities | undefined>(undefined);
+  readonly project = signal<IProjectContext | undefined>(undefined);
   private readonly destroyed = new Subject<void>();
 
   constructor() {
@@ -112,9 +111,8 @@ export class EntitiesPageComponent
 
     navContextService.currentProject.pipe(takeUntil(this.destroyed)).subscribe({
       next: (currentProject) => {
-        this.project = currentProject;
+        this.project.set(currentProject);
         this.loadEntities();
-        this.changeDetectorRef.markForCheck();
         // if (currentProject?.brief && !this.entities) {
         // 	if (currentProject?.summary?.entities) {
         // 		this.setEntities([
@@ -150,11 +148,12 @@ export class EntitiesPageComponent
   }
 
   entityUrl(entity: IProjEntity): string {
-    if (!this.project?.ref) {
+    const project = this.project();
+    if (!project?.ref) {
       return undefined as unknown as string; // TODO: fix typing
     }
     return this.datatugNavService.projectPageUrl(
-      this.project.ref,
+      project.ref,
       'entity',
       entity.id,
     );
@@ -163,28 +162,31 @@ export class EntitiesPageComponent
   goNewEntity(event: Event): void {
     event.preventDefault();
     event.stopPropagation();
-    this.datatugNavService.goProjPage('new-entity', this.project);
+    this.datatugNavService.goProjPage('new-entity', this.project());
   }
 
   goEntity(entity: IProjEntity): void {
-    if (!this.project?.ref) {
+    const project = this.project();
+    if (!project?.ref) {
       return;
     }
-    this.datatugNavService.goEntity(this.project, entity);
+    this.datatugNavService.goEntity(project, entity);
   }
 
   deleteEntity(event: Event, entity: IProjEntity): void {
     event?.stopPropagation();
     event?.preventDefault();
-    if (!this.project?.ref) {
+    const project = this.project();
+    if (!project?.ref) {
       return;
     }
-    this.entityService.deleteEntity(this.project.ref, entity.id).subscribe({
+    this.entityService.deleteEntity(project.ref, entity.id).subscribe({
       next: async () => {
-        this.entities = (this.entities as IProjEntity[]).filter(
-          (v) => v.id !== entity.id,
+        this.entities.set(
+          (this.entities() as IProjEntity[]).filter(
+            (v) => v.id !== entity.id,
+          ),
         );
-        this.changeDetectorRef.markForCheck();
         const toast = await this.toastCtrl.create({
           position: 'top',
           header: 'Success',
@@ -199,11 +201,12 @@ export class EntitiesPageComponent
   }
 
   private loadEntities(): void {
-    if (!this.project) {
+    const project = this.project();
+    if (!project) {
       return;
     }
     this.entityService
-      .getAllEntities(this.project.ref)
+      .getAllEntities(project.ref)
       .pipe(takeUntil(this.destroyed))
       .subscribe({
         next: (entities) => this.setEntities(entities),
@@ -214,8 +217,6 @@ export class EntitiesPageComponent
 
   private setEntities(entities: Entities): void {
     //console.log('entities', [...entities]);
-    this.entities = entities.toSorted((a, b) => (a.id > b.id ? 1 : -1));
-    //console.log('this.entities', this.entities);
-    this.changeDetectorRef.markForCheck();
+    this.entities.set(entities.toSorted((a, b) => (a.id > b.id ? 1 : -1)));
   }
 }

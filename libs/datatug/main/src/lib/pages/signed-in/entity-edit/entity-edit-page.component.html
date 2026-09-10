@@ -2,14 +2,15 @@
   <ion-toolbar>
     <ion-buttons slot="start">
       <ion-menu-button />
-      <ion-back-button [defaultHref]="backUrl" />
+      <ion-back-button [defaultHref]="backUrl()" />
     </ion-buttons>
     @if (mode === "new") {
       <ion-title>
         New entity
-        @if (project?.brief) {
+        @if (project()?.brief) {
           <span
-            >&#64; {{ project?.brief?.title || project?.ref?.projectId }}</span
+            >&#64;
+            {{ project()?.brief?.title || project()?.ref?.projectId }}</span
           >
         }
       </ion-title>
@@ -21,7 +22,12 @@
   <ion-card>
     <ion-item>
       <ion-label position="floating">Name</ion-label>
-      <ion-input #nameInput autofocus="autofocus" [(ngModel)]="entity.title" />
+      <ion-input
+        #nameInput
+        autofocus="autofocus"
+        [ngModel]="entity().title"
+        (ngModelChange)="updateEntityTitle($event)"
+      />
     </ion-item>
   </ion-card>
 
@@ -36,13 +42,13 @@
           </ion-button>
         </ion-buttons>
       </ion-item>
-      @if (entity && !entity.fields.length) {
+      @if (entity() && !entity().fields.length) {
         <ion-item>
           <ion-label color="medium">No properties defined yet</ion-label>
         </ion-item>
       }
-      @if (entity) {
-        @for (field of entity.fields; track field.id) {
+      @if (entity()) {
+        @for (field of entity().fields; track field.id) {
           <ion-item tappable>
             <ion-label>
               {{ field.id }}

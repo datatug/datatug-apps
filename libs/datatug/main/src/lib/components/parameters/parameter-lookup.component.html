@@ -7,7 +7,7 @@
 <sneat-datagrid
   layout="fitColumns"
   height="500px"
-  [columns]="grid?.columns"
-  [data]="grid?.rows"
+  [columns]="grid()?.columns"
+  [data]="grid()?.rows"
   [rowClick]="rowClicked"
 />

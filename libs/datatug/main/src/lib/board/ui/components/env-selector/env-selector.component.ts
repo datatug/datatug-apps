@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
   IonLabel,
@@ -23,21 +23,28 @@ export class EnvSelectorComponent {
   private readonly dataTugNavContext = inject(DatatugNavContextService);
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
 
-  public currentEnvId?: string;
+  // Signals, not plain fields: this app is zoneless
+  // (provideZonelessChangeDetection(), main.ts) — both are written from
+  // inside `.subscribe()` callbacks below, which never trigger change
+  // detection on their own for a plain field. See AGENTS.md's "Change
+  // detection & state" section and
+  // pages/signed-in/project/project-page.component.ts (PR #95) for the
+  // established pattern.
+  public readonly currentEnvId = signal<string | undefined>(undefined);
 
-  public environments?: IProjEnv[];
+  public readonly environments = signal<IProjEnv[] | undefined>(undefined);
 
   constructor() {
     const dataTugNavContext = this.dataTugNavContext;
 
     dataTugNavContext.currentProject.subscribe((currentProject) => {
       if (currentProject?.summary?.environments) {
-        this.environments = currentProject.summary.environments;
+        this.environments.set(currentProject.summary.environments);
       }
     });
     dataTugNavContext.currentEnv.subscribe({
       next: (currentEnv) => {
-        this.currentEnvId = currentEnv?.id;
+        this.currentEnvId.set(currentEnv?.id);
       },
       error: (err: unknown) =>
         this.errorLogger.logError(
@@ -48,6 +55,6 @@ export class EnvSelectorComponent {
   }
 
   public envChanged(): void {
-    this.dataTugNavContext.setCurrentEnvironment(this.currentEnvId);
+    this.dataTugNavContext.setCurrentEnvironment(this.currentEnvId());
   }
 }
