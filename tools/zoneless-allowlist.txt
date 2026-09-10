@@ -17,6 +17,23 @@
 #   queries/**, pages/signed-in/{environments,environment,env-db,env-db-table}/** S136
 #   pages/signed-in/store/**               S137
 #   pages/signed-in/project/**, services/project/**  S126
+#
+# board-page.component.ts (added 2026-09-10, S147, fix/zoneless-mutations):
+# NOT out-of-scope work left unconverted — fix/zoneless-batch-a DID convert
+# every field here to a signal, but that hunk conflicts with PR #106 (already
+# on main), which changed the same subscribe() callback to read
+# `ref.storeId`/`ref.projectId` directly instead of splitting an '@'-joined
+# string. Per S147's brief, that reconciliation is intentionally left to the
+# lead when merging #105 onto main (not attempted in this stacked branch, to
+# avoid a second, possibly-conflicting resolution) — this branch's merge of
+# origin/fix/zoneless-batch-a took the current-main (#106) side for this file
+# only, which reverts it to a plain-field component again (its .html was
+# also reverted to match — batch-a's template called the signals as
+# functions, e.g. `boardDef()`, which doesn't compile against a plain
+# field). Remove this entry once that reconciliation lands (it will fail
+# closed here — a stale-entry
+# note — the moment the file is signal-converted again).
+libs/datatug/main/src/lib/board/ui/pages/board/board-page.component.ts
 libs/datatug/main/src/lib/pages/signed-in/env-db/env-db-page.component.ts
 libs/datatug/main/src/lib/pages/signed-in/store/datatug-store-page.component.ts
 libs/datatug/main/src/lib/pages/home/my-stores/my-stores.component.ts

@@ -115,6 +115,15 @@ describe('EntitiesPage replaces "Loading..." once entities arrive (zoneless)', (
     currentProject$ = new Subject<IProjectContext | undefined>();
     getAllEntities$ = new Subject<IRecord<IEntity>[]>();
 
+    const datatugNavContextServiceMock = {
+      currentProject: currentProject$.asObservable(),
+      currentEnv: of(undefined),
+    };
+    const entityServiceMock = {
+      getAllEntities: vi.fn(() => getAllEntities$.asObservable()),
+      deleteEntity: vi.fn(),
+    };
+
     await TestBed.configureTestingModule({
       imports: [EntitiesPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -146,23 +155,34 @@ describe('EntitiesPage replaces "Loading..." once entities arrive (zoneless)', (
             projectPageUrl: vi.fn(),
           },
         },
-        {
-          provide: DatatugNavContextService,
-          useValue: {
-            currentProject: currentProject$.asObservable(),
-            currentEnv: of(undefined),
-          },
-        },
-        {
-          provide: EntityService,
-          useValue: {
-            getAllEntities: vi.fn(() => getAllEntities$.asObservable()),
-            deleteEntity: vi.fn(),
-          },
-        },
+        { provide: DatatugNavContextService, useValue: datatugNavContextServiceMock },
+        { provide: EntityService, useValue: entityServiceMock },
         { provide: ToastController, useValue: { create: vi.fn() } },
       ],
-    }).compileComponents();
+    })
+      // EntitiesPageComponent's own doc comment above (see its `imports:`
+      // array) explains why it needs DatatugServicesNavModule (among
+      // others): that module re-provides the REAL DatatugNavContextService
+      // via its own `providers:` array. For a standalone component,
+      // providers from an imported NgModule attach to the component's OWN
+      // environment injector, which DI resolution checks before it ever
+      // reaches TestBed's root providers above — so without this override,
+      // this component gets the real (unmocked) service and NG0201s trying
+      // to construct the real Firestore-backed store chain behind it.
+      // `overrideComponent(..., { add: { providers } })` re-registers the
+      // SAME mock instance at the component's own injector level, where it
+      // DOES take precedence. (The `EntitiesPage` "should create" block
+      // above sidesteps this differently, by blanking out `imports`
+      // entirely.)
+      .overrideComponent(EntitiesPageComponent, {
+        add: {
+          providers: [
+            { provide: DatatugNavContextService, useValue: datatugNavContextServiceMock },
+            { provide: EntityService, useValue: entityServiceMock },
+          ],
+        },
+      })
+      .compileComponents();
 
     fixture = TestBed.createComponent(EntitiesPageComponent);
     component = fixture.componentInstance;
