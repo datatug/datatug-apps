@@ -1,4 +1,4 @@
-import { Component, OnDestroy, ViewChild, inject } from '@angular/core';
+import { Component, OnDestroy, ViewChild, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { race, Subject } from 'rxjs';
 import { skip, takeUntil } from 'rxjs/operators';
@@ -100,7 +100,21 @@ export class ProjectPageComponent
 
   // readonly DbModel = ProjectItem.dbModel as const;
 
-  protected project?: IProjectContext;
+  // A signal, not a plain field: this app is zoneless
+  // (provideZonelessChangeDetection(), main.ts) — a plain field mutated from
+  // an RxJS `.subscribe()` callback (setProjRef()/onProjectSummaryChanged()
+  // below, driven by ProjectService.watchProjectSummary()'s HTTP response)
+  // never triggers change detection on its own. Confirmed live (S126,
+  // journey e2e J1/Epilogue A title-load flake): the console showed
+  // `onProjectSummaryChanged()` receiving the correct title and assigning it
+  // to this field, yet the Title `ion-input`'s committed value stayed
+  // "Loading..." until the e2e's own 15s timeout — the same class of gap
+  // already fixed elsewhere in this codebase for the identical reason
+  // (env-db-table.page.ts's own `grid`/`semanticColumns` signals;
+  // queries-tab.component.ts's `markForCheck()` for the narrower
+  // no-template-rewrite case). A signal write notifies change detection
+  // directly, per this repo's own zoneless convention (AGENTS.md).
+  protected readonly project = signal<IProjectContext | undefined>(undefined);
 
   /**
    * The read-only "Store" field shows this instead of the raw
@@ -137,11 +151,11 @@ export class ProjectPageComponent
 
   private setProjRef = (ref: IProjectRef) => {
     try {
-      if (ref.projectId === this.project?.ref?.projectId) {
-        this.project = {
+      if (ref.projectId === this.project()?.ref?.projectId) {
+        this.project.set({
           ref,
           store: { ref: parseDatatugStoreRef(ref.storeId) },
-        };
+        });
       }
       this.projectService
         .watchProjectSummary(ref)
@@ -191,23 +205,24 @@ export class ProjectPageComponent
 
   // noinspection JSUnusedGlobalSymbols
   protected goEnvironment(projEnv: IProjEnv): void {
-    this.datatugNavService.goEnvironment(this.project, projEnv);
+    this.datatugNavService.goEnvironment(this.project(), projEnv);
   }
 
   // noinspection JSUnusedGlobalSymbols
   protected goProjFolder(projItemType: ProjectItemType): void {
-    if (!this.project?.ref?.projectId) {
+    const project = this.project();
+    if (!project?.ref?.projectId) {
       this.errorLogger.logError(
         new Error('Can not navigate to project folder'),
         '!this.projBrief.id',
       );
       return;
     }
-    const url = `project/${this.project.ref.projectId}/${projItemType}s`;
+    const url = `project/${project.ref.projectId}/${projItemType}s`;
     this.navController
       .navigateForward(url, {
         state: {
-          project: this.project,
+          project,
         },
       })
       .catch((err) =>
@@ -220,18 +235,20 @@ export class ProjectPageComponent
 
   // noinspection JSUnusedGlobalSymbols
   protected goEntity(entity: IProjEntity): void {
-    if (!this.project) {
+    const project = this.project();
+    if (!project) {
       return;
     }
-    this.datatugNavService.goEntity(this.project, entity);
+    this.datatugNavService.goEntity(project, entity);
   }
 
   // noinspection JSUnusedGlobalSymbols
   protected goBoard(board: IProjBoard): void {
-    if (!this.project) {
+    const project = this.project();
+    if (!project) {
       return;
     }
-    this.datatugNavService.goBoard(this.project, board);
+    this.datatugNavService.goBoard(project, board);
   }
 
   // noinspection JSUnusedGlobalSymbols
@@ -265,12 +282,12 @@ export class ProjectPageComponent
     if (!summary) {
       return;
     }
-    this.project = {
-      ...this.project,
+    this.project.set({
+      ...this.project(),
       ref,
       brief: { access: summary.access, title: summary.title },
       summary,
-    };
+    });
   }
 
   private goProjItemPage(page: ProjectItemType): void {
@@ -279,13 +296,14 @@ export class ProjectPageComponent
         page = 'env' as ProjectItemType;
         break;
     }
-    this.datatugNavService.goProjPage(page, this.project, {
-      projectContext: this.project,
+    const project = this.project();
+    this.datatugNavService.goProjPage(page, project, {
+      projectContext: project,
     });
   }
 
   goTo(event: CustomEvent): void {
     const page = event.detail.value as ProjectTopLevelPage;
-    this.datatugNavService.goProject(this.project, page);
+    this.datatugNavService.goProject(this.project(), page);
   }
 }
