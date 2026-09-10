@@ -122,13 +122,16 @@ describe('QueriesPage dependency injection', () => {
     });
   });
 
-  it.each([
-    ['QueriesService', QueriesService],
-    ['DatatugNavContextService', DatatugNavContextService],
-  ])(
+  it.each([['QueriesService', QueriesService]])(
     'resolves %s, which is provided by a module and never `providedIn: root`',
     (_name, token) => {
       expect(TestBed.inject(token, null)).toBeTruthy();
     },
   );
+
+  // DatatugNavContextService is now providedIn: 'root'
+  // (nav-context-root-singletons) — no longer grouped with the above.
+  it('resolves DatatugNavContextService, which is `providedIn: root`', () => {
+    expect(TestBed.inject(DatatugNavContextService, null)).toBeTruthy();
+  });
 });

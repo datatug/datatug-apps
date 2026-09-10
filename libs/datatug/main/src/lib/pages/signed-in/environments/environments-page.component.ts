@@ -31,8 +31,12 @@ import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatu
   selector: 'sneat-datatug-environments',
   templateUrl: './environments-page.component.html',
   imports: [
-    // `DatatugNavContextService` (injected below) is a plain `@Injectable()`,
-    // provided by `DatatugServicesNavModule`, whose own constructor needs
+    // `DatatugNavContextService` (injected below) is now `providedIn: 'root'`
+    // (nav-context-root-singletons); this page still declares the modules
+    // below because its constructor transitively needs `ProjectService`
+    // (`DatatugServicesProjectModule`), which is not yet root (lane S126).
+    // Historically (before that fix) it was a plain `@Injectable()`,
+    // provided by `DatatugServicesNavModule`, whose own constructor needed
     // `AppContextService` (`DatatugCoreModule`), `ProjectContextService`/
     // `ProjectService` (`DatatugServicesProjectModule`) and
     // `EnvironmentService` (`DatatugServicesUnsortedModule`, itself needing

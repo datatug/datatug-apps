@@ -109,11 +109,12 @@ interface IRecordsetInfo {
     // `ProjectPageComponent` were already fixed for the identical reason.
     // Same fix: declare the module the missing service actually lives in.
     // `EnvironmentService` (Task 17 item A.2/B.1, S121 — getCatalogTables())
-    // is likewise plain `@Injectable()`, provided by
-    // `DatatugServicesUnsortedModule` — which itself injects `StoreApiService`
-    // (provided by `DatatugServicesStoreModule`, not `providedIn: 'root'`
-    // either), so both are declared here, mirroring the same pairing
-    // `env-db-table.page.ts` already uses for the identical transitive need.
+    // and `StoreApiService` are now `providedIn: 'root'`
+    // (nav-context-root-singletons) — `DatatugServicesUnsortedModule`/
+    // `DatatugServicesStoreModule` are still declared here only for
+    // `ProjectService` (above) and this page's other module-scoped
+    // services, mirroring the same pairing `env-db-table.page.ts` already
+    // uses for the identical transitive need.
     DatatugServicesProjectModule,
     DatatugServicesStoreModule,
     DatatugServicesUnsortedModule,

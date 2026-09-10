@@ -13,7 +13,10 @@ export interface AppContext {
   readonly appCode: AppCode;
 }
 
-@Injectable()
+// `providedIn: 'root'` — `DatatugNavContextService` (also root-provided)
+// injects this directly, so it must be root-resolvable too, not only
+// available to components that happen to import `DatatugCoreModule`.
+@Injectable({ providedIn: 'root' })
 export class AppContextService {
   // TODO: move to common
 

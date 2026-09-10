@@ -1,10 +1,10 @@
 import { NgModule } from '@angular/core';
-import { ProjectContextService } from './project-context.service';
 import { ProjectService } from './project.service';
 
 @NgModule({
   providers: [
-    ProjectContextService,
+    // ProjectService is not yet providedIn: 'root' — lane S126
+    // (fix/title-load-flake) roots it separately.
     ProjectService,
   ],
 })

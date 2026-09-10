@@ -41,12 +41,13 @@ import { EnvironmentService } from '../../../services/unsorted/environment.servi
   templateUrl: './environment-page.component.html',
   imports: [
     // `EnvironmentService`/`DatatugNavContextService` (injected below) are
-    // plain `@Injectable()`s, provided by `DatatugServicesUnsortedModule`/
-    // `DatatugServicesNavModule` rather than `providedIn: 'root'` (the
-    // latter itself needs `AppContextService` from `DatatugCoreModule`,
-    // `ProjectContextService`/`ProjectService` from
-    // `DatatugServicesProjectModule` and `EnvironmentService` again) — this
-    // page's own bare route (`env/:envId`, one level above
+    // now `providedIn: 'root'` (nav-context-root-singletons); this page
+    // still declares `DatatugServicesUnsortedModule`/`DatatugServicesNavModule`
+    // below because both transitively need `ProjectService` from
+    // `DatatugServicesProjectModule`, which is not yet root (lane S126).
+    // Historically (before that fix) these were plain `@Injectable()`s,
+    // provided only by those modules — this page's own bare route
+    // (`env/:envId`, one level above
     // `EnvDbPageComponent`'s `db/:catalogId` route) had no ancestor route or
     // module supplying either, so navigating here (project -> Environments
     // -> an environment card, Task 17 item B.1, S121) threw `NG0201: No

@@ -100,12 +100,14 @@ addIcons({ pricetag, helpCircleOutline });
   templateUrl: './env-db-table.page.html',
   styleUrls: ['./env-db-table.page.scss'],
   imports: [
-    // `DatatugNavContextService`, `ProjectService`/`ProjectContextService`,
-    // `AgentService`, `AppContextService` and `EnvironmentService` are all
-    // plain `@Injectable()`, provided by these modules rather than
-    // `providedIn: 'root'`. This component injects the first three directly
-    // and reaches the last two through `DatatugNavContextService`, but
-    // declared none of the modules, so opening a table by URL threw
+    // `DatatugNavContextService` (injected directly below), and
+    // `ProjectContextService`/`AppContextService`/`EnvironmentService`
+    // (reached transitively through it), are now `providedIn: 'root'`
+    // (nav-context-root-singletons); `ProjectService` and `AgentService`
+    // (both injected directly below too) are still plain `@Injectable()`,
+    // provided by these modules — `ProjectService` transitively too (lane
+    // S126 roots it separately). None of the modules below were declared
+    // here at all, so opening a table by URL threw
     // `NG0201: No provider found for DatatugNavContextService. Source:
     // Standalone[EnvDbTablePageComponent]` and the grid never rendered
     // (journey J1's Album step). No ancestor route provides them either —
