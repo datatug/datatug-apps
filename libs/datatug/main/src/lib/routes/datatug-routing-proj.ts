@@ -76,6 +76,25 @@ export const datatugProjectRoutes: Routes = [
       ),
   },
   {
+    // The side menu's "Overview" item (project-menu-top.component.ts,
+    // ProjectTopLevelPage 'overview') navigates here via
+    // `DatatugNavService.goProjPage('overview', project)`, which always
+    // appends a page segment — there is no "navigate to project root, no
+    // segment" special case, and none of goProjPage's other 8 callers need
+    // one either, so this route (not a nav-service special case) is the
+    // uniform fix: every ProjectTopLevelPage.path now has a matching route
+    // segment of the same name, same as boards/entities/environments/etc.
+    // Without it, clicking Overview 404'd with NG04002 (founder report,
+    // 2026-09-11) — there was no route at all for the 'overview' segment.
+    // Points at the same ProjectPageComponent as '' (and 'project' below)
+    // so Overview's content is identical to the project root either way.
+    path: 'overview',
+    loadComponent: () =>
+      import('../pages/signed-in/project/project-page.component').then(
+        (m) => m.ProjectPageComponent,
+      ),
+  },
+  {
     path: 'board/:' + routingParamBoard,
     loadComponent: () =>
       import('../board/ui/pages/board/board-page.component').then(

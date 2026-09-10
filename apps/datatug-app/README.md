@@ -3,9 +3,9 @@
 ## Build info
 
 The side menu (`libs/datatug/main/src/lib/menu/build-info/`) has a
-collapsed-by-default footer row at the bottom (the DataTug copyright line);
-tapping it reveals the app version, a short git hash, and the UTC build
-timestamp. The same three values are written to a static `build-info.json`
+collapsed-by-default footer row at the bottom (the Sneat.Work copyright
+line); tapping it reveals the app version, a short git hash, and the UTC
+build timestamp. The same three values are written to a static `build-info.json`
 at the root of the built app, so you can check which commit is actually live
 without opening the app:
 

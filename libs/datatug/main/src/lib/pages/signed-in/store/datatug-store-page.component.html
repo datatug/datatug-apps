@@ -21,13 +21,31 @@
         <ion-item-divider>
           <ion-label>Projects</ion-label>
           <ion-buttons slot="end">
-            <ion-button title="New project" (click)="create()">
-              <ion-icon name="add" slot="start" color="primary" />
-              <ion-label>Add</ion-label>
-            </ion-button>
+            @if (isGithubStore) {
+              <ion-button
+                disabled
+                title="GitHub stores are read-only in the web app"
+              >
+                <ion-icon name="add" slot="start" color="medium" />
+                <ion-label>Add</ion-label>
+              </ion-button>
+            } @else {
+              <ion-button title="New project" (click)="create()">
+                <ion-icon name="add" slot="start" color="primary" />
+                <ion-label>Add</ion-label>
+              </ion-button>
+            }
           </ion-buttons>
         </ion-item-divider>
-        @switch (authStatus) {
+        @if (isGithubStore) {
+          <ion-item>
+            <ion-label color="medium">
+              GitHub stores are read-only in the web app — open a project
+              directly from its repository below instead of adding one here.
+            </ion-label>
+          </ion-item>
+        }
+        @switch (projectsAuthStatus) {
           @case ("authenticating") {
             <ion-item>
               <ion-label color="medium">Authenticating...</ion-label>
@@ -76,6 +94,48 @@
         }
       </ion-list>
     </ion-card>
+    @if (isGithubStore) {
+      <ion-card>
+        <ion-card-header>
+          <ion-card-title>Open a GitHub project</ion-card-title>
+        </ion-card-header>
+        <ion-card-content>
+          <ion-list>
+            <ion-item>
+              <ion-label position="floating">Owner</ion-label>
+              <ion-input
+                [value]="githubOwner()"
+                (ionInput)="updateGithubField('owner', $event.detail.value)"
+              />
+            </ion-item>
+            <ion-item>
+              <ion-label position="floating">Repository</ion-label>
+              <ion-input
+                [value]="githubRepository()"
+                (ionInput)="
+                  updateGithubField('repository', $event.detail.value)
+                "
+              />
+            </ion-item>
+            <ion-item>
+              <ion-label position="floating">Folder</ion-label>
+              <ion-input
+                [value]="githubFolder()"
+                (ionInput)="updateGithubField('folder', $event.detail.value)"
+              />
+            </ion-item>
+            @if (githubFormError()) {
+              <ion-item>
+                <ion-label color="danger">{{ githubFormError() }}</ion-label>
+              </ion-item>
+            }
+          </ion-list>
+          <ion-button expand="block" (click)="openGithubProject($event)">
+            Open project
+          </ion-button>
+        </ion-card-content>
+      </ion-card>
+    }
     @if (agentState?.isNotAvailable) {
       <ion-card>
         <ion-card-header>

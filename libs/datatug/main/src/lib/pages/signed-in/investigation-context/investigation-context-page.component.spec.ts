@@ -14,7 +14,12 @@ import { of } from 'rxjs';
 
 import { InvestigationContextPageComponent } from './investigation-context-page.component';
 import { IProjectContext } from '../../../nav/nav-models';
+import { DatatugCoreModule } from '../../../core/datatug-core.module';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
+import { DatatugServicesNavModule } from '../../../services/nav/datatug-services-nav.module';
+import { DatatugServicesProjectModule } from '../../../services/project/datatug-services-project.module';
+import { DatatugServicesStoreModule } from '../../../services/repo/datatug-services-store.module';
+import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
 
 const project: IProjectContext = {
   ref: { storeId: 'localhost:8989', projectId: 'demo-project' },
@@ -108,7 +113,31 @@ describe('InvestigationContextPageComponent', () => {
         },
         { provide: AgentContextService, useValue: agentContextStub() },
       ],
-    }).compileComponents();
+    })
+      // The component's own `imports` (project-menu-top.component.ts's
+      // sibling fix, S135, 2026-09-10) pull in `DatatugServicesNavModule`
+      // et al. so the real `DatatugNavContextService` chain resolves at
+      // runtime (`... -> ProjectService -> DatatugStoreServiceFactory ->
+      // DatatugStoreFirestoreService -> Firestore`) — a standalone
+      // component's own declared `imports` sit closer in the injector tree
+      // than `TestBed`'s `providers` override above, so without removing
+      // them here the real chain wins over the `DatatugNavContextService`
+      // stub and fails on the unprovided `Firestore` token. `remove` (not
+      // `set: { imports: [] }`, the pattern the smoke-test-only sibling
+      // specs use) keeps every other declared import — and the real
+      // template — intact, since these tests assert actual rendered DOM.
+      .overrideComponent(InvestigationContextPageComponent, {
+        remove: {
+          imports: [
+            DatatugCoreModule,
+            DatatugServicesNavModule,
+            DatatugServicesProjectModule,
+            DatatugServicesStoreModule,
+            DatatugServicesUnsortedModule,
+          ],
+        },
+      })
+      .compileComponents();
 
     fixture = TestBed.createComponent(InvestigationContextPageComponent);
     component = fixture.componentInstance;

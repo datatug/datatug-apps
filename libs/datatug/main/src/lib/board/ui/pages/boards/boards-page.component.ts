@@ -32,14 +32,38 @@ import {
   IProjItemBrief,
 } from '../../../../models/definition/project';
 import { IProjectContext } from '../../../../nav/nav-models';
+import { DatatugCoreModule } from '../../../../core/datatug-core.module';
 import { DatatugNavContextService } from '../../../../services/nav/datatug-nav-context.service';
 import { DatatugNavService } from '../../../../services/nav/datatug-nav.service';
+import { DatatugServicesNavModule } from '../../../../services/nav/datatug-services-nav.module';
+import { DatatugServicesProjectModule } from '../../../../services/project/datatug-services-project.module';
+import { DatatugServicesStoreModule } from '../../../../services/repo/datatug-services-store.module';
+import { DatatugServicesUnsortedModule } from '../../../../services/unsorted/datatug-services-unsorted.module';
 import { DatatugBoardService } from '../../../core/datatug-board.service';
 
 @Component({
   selector: 'sneat-datatug-boards',
   templateUrl: './boards-page.component.html',
   imports: [
+    // `DatatugNavContextService` (injected below) was a plain `@Injectable()`
+    // provided by `DatatugServicesNavModule` (it and its whole dependency
+    // chain are `providedIn: 'root'` since nav-context-root-singletons),
+    // whose own constructor needed
+    // `AppContextService` (`DatatugCoreModule`), `ProjectContextService`/
+    // `ProjectService` (`DatatugServicesProjectModule`) and
+    // `EnvironmentService` (`DatatugServicesUnsortedModule`, itself needing
+    // `StoreApiService` from `DatatugServicesStoreModule`) — none of which
+    // this page declared, so navigating here from the project side menu's
+    // "Boards" item threw `NG0201: No provider found for
+    // DatatugNavContextService` (confirmed live, S135, 2026-09-10). Same
+    // fix, same cause, as `EnvironmentsPageComponent`/`QueriesPageComponent`
+    // (S120 PR #89, S121 Task 17 item B.1) — mirrors the exact module set
+    // those pages already declare for the identical transitive chain.
+    DatatugCoreModule,
+    DatatugServicesNavModule,
+    DatatugServicesProjectModule,
+    DatatugServicesStoreModule,
+    DatatugServicesUnsortedModule,
     SneatCardListComponent,
     IonHeader,
     IonButtons,

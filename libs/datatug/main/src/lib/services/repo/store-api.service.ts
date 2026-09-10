@@ -4,7 +4,10 @@ import { Observable } from 'rxjs';
 import { IHttpRequestOptions, SneatApiServiceFactory } from '@sneat/api';
 import { buildAgentUrl } from './agent-url';
 
-@Injectable()
+// `providedIn: 'root'` — `EnvironmentService` (also root-provided) injects
+// this directly, so it must be root-resolvable too, not only available to
+// components that happen to import `DatatugServicesStoreModule`.
+@Injectable({ providedIn: 'root' })
 export class StoreApiService {
   private readonly sneatApiServiceFactory = inject(SneatApiServiceFactory);
   private readonly httpClient = inject(HttpClient);

@@ -26,7 +26,13 @@ import { IProjectFull, IProjectSummary } from '../../models/definition/project';
 import { buildAgentUrl } from '../repo/agent-url';
 import { DatatugStoreServiceFactory } from '../repo/datatug-store-service-factory.service';
 
-@Injectable()
+// `providedIn: 'root'` — this service caches project summaries per project
+// ref (`projSummary`) so every consumer shares one request and one result.
+// A module-listed provider gave each importing standalone component its
+// own copy and its own HTTP GET (confirmed live, S126). It must also stay
+// root-resolvable because root-provided `DatatugNavContextService` and
+// `EnvironmentService` inject it.
+@Injectable({ providedIn: 'root' })
 export class ProjectService {
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly http = inject(HttpClient);
@@ -37,6 +43,8 @@ export class ProjectService {
   );
 
   private projects: Record<string, Observable<IProjectFull>> = {};
+  // One entry per project, keyed only by projectRefToString(). Only
+  // watchProjectSummary() writes to it; getSummary() reads through it.
   private projSummary: Record<
     string,
     ReplaySubject<IProjectSummary | undefined>
@@ -74,22 +82,18 @@ export class ProjectService {
         id,
       );
       this.projSummary[id] = subj = new ReplaySubject(1);
-      if (projectRef.storeId === 'firestore') {
-        this.firestoreChanges()
-          .pipe(
-            tap((summary) =>
-              console.log(
-                `ProjectService.watchProject(${id}) => summary:`,
-                summary,
+      const summary$ =
+        projectRef.storeId === 'firestore'
+          ? this.firestoreChanges().pipe(
+              tap((summary) =>
+                console.log(
+                  `ProjectService.watchProject(${id}) => summary:`,
+                  summary,
+                ),
               ),
-            ),
-          )
-          .subscribe(subj);
-      }
-      this.getSummary(projectRef).pipe(shareReplay(1)).subscribe(subj);
-      // const m = id.match(/(\.|\w+)@(\w+:\d+)()/);
-      // if (m) {
-      // }
+            )
+          : this.getProjectSummaryRequest(projectRef);
+      summary$.subscribe(subj);
     }
     return subj.asObservable();
   }
@@ -131,27 +135,11 @@ export class ProjectService {
     return $project;
   }
 
+  /** One-shot read of the same cached summary watchProjectSummary() serves. */
   public getSummary(
     projectRef: IProjectRef,
   ): Observable<IProjectSummary | undefined> {
-    if (projectRef.storeId === 'firestore') {
-      return this.watchProjectSummary(projectRef).pipe(take(1));
-    }
-    const id = `${projectRef.storeId}|${projectRef.projectId}`;
-    let subj = this.projSummary[id];
-    if (subj) {
-      return subj.asObservable();
-    }
-
-    this.projSummary[id] = subj = new ReplaySubject();
-
-    this.getProjectSummaryRequest(projectRef)
-      .pipe(
-        shareReplay(1),
-        // map(project => ({...project, id: projectId})),
-      )
-      .subscribe(subj);
-    return subj.asObservable();
+    return this.watchProjectSummary(projectRef).pipe(take(1));
   }
 
   private getProjectSummaryRequest(

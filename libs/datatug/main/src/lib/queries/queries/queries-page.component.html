@@ -46,7 +46,11 @@
       </ion-card-content>
     }
     @if (tab === "shared" || tab === "personal") {
-      <sneat-datatug-queries-tab [rootFolder]="tab" [project]="project" />
+      <!-- No [project] binding: the tab resolves the current project itself
+           (DatatugNavContextService.currentProject). This page never sets its
+           own `project`, so binding it wrote `undefined` over the tab's value
+           and clicking a query silently did nothing (journey J3). -->
+      <sneat-datatug-queries-tab [rootFolder]="tab" />
     }
   </ion-card>
 
