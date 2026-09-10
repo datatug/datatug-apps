@@ -17,7 +17,13 @@ test('side menu shows a real (non-placeholder) short git hash', async ({
   const hashInput = page.locator('[data-testid="build-info-hash"]');
   await expect(hashInput).toBeVisible();
 
-  const hashValue = await hashInput.inputValue();
+  // Not .inputValue(): ion-input is a Stencil web component, not a native
+  // <input>/<textarea>/<select> itself (Playwright requires one of those
+  // for .inputValue()), so read the "value" DOM property Angular's
+  // [value] binding actually sets on the host element instead.
+  const hashValue = await hashInput.evaluate(
+    (el) => (el as unknown as { value: string }).value,
+  );
   const shortHash = hashValue.split(' @ ')[0];
   // 7 lowercase hex chars. A short hash of 'gitHash' (substring(0, 7) of
   // the un-stamped placeholder 'gitHash t0be$et') is also 7 characters but
@@ -36,7 +42,7 @@ test('/build-info.json is served by the built app and matches the menu', async (
   await page.goto('/');
   const hashValue = await page
     .locator('[data-testid="build-info-hash"]')
-    .inputValue();
+    .evaluate((el) => (el as unknown as { value: string }).value);
   const shortHash = hashValue.split(' @ ')[0];
 
   const response = await request.get('/build-info.json');
