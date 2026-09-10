@@ -1,5 +1,5 @@
 import { JsonPipe } from '@angular/common';
-import { Component, OnDestroy, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, OnDestroy, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import {
@@ -40,12 +40,25 @@ import {
   IEntity,
 } from '../../../models/definition/metapedia/entity';
 import { IProjEntity } from '../../../models/definition/project';
+import { DatatugServicesStoreModule } from '../../../services/repo/datatug-services-store.module';
+import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
 import { EntityService } from '../../../services/unsorted/entity.service';
 
 @Component({
   selector: 'sneat-datatug-entity',
   templateUrl: './entity-page.component.html',
   imports: [
+    // `EntityService` (injected below) is a plain `@Injectable()`, provided
+    // by `DatatugServicesUnsortedModule` rather than `providedIn: 'root'`,
+    // and itself needs `StoreApiService` (`DatatugServicesStoreModule`).
+    // `entity/:id` (this page's own bare route, `datatug-routing-proj.ts`)
+    // had no ancestor route or module supplying either, so navigating here
+    // (clicking an entity from the Entities list) threw `NG0201: No
+    // provider found for \`EntityService\`` (confirmed live, S136) — same
+    // fix, same cause, as `EntitiesPageComponent`'s own identical doc
+    // comment.
+    DatatugServicesStoreModule,
+    DatatugServicesUnsortedModule,
     FormsModule,
     DataGridComponent,
     IonHeader,
@@ -75,6 +88,10 @@ export class EntityPageComponent implements OnDestroy {
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   readonly entityService = inject(EntityService);
   readonly http = inject(HttpClient);
+  // Zoneless (AGENTS.md; see `entities-page.component.ts`'s own identical
+  // doc comment, this task's sibling fix): `entity`/`projEntity` below are
+  // plain fields, mutated from RxJS `.subscribe()` callbacks.
+  private readonly changeDetectorRef = inject(ChangeDetectorRef);
 
   storeId?: string;
   projectId?: string;
@@ -108,6 +125,7 @@ export class EntityPageComponent implements OnDestroy {
           next: (entity) => {
             this.projEntity = entity;
             this.entity = entity.dbo; // TODO: workaround cast
+            this.changeDetectorRef.markForCheck();
             const sourcesLen = entity.dbo?.options?.sources?.length;
             if (!sourcesLen) {
               this.sourceIndex = undefined;
@@ -143,6 +161,7 @@ export class EntityPageComponent implements OnDestroy {
                       },
                       { field: 'name', dbType: 'NVARCHAR', title: 'name' },
                     ];
+                    this.changeDetectorRef.markForCheck();
                   },
                   error: this.errorLogger.logErrorHandler(
                     'Failed to get source data',

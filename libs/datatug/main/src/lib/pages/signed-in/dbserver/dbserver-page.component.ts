@@ -1,4 +1,4 @@
-import { Component, OnDestroy, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, OnDestroy, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import {
@@ -25,8 +25,12 @@ import {
 import { map, takeUntil } from 'rxjs/operators';
 import { Subject } from 'rxjs';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
+import { DatatugCoreModule } from '../../../core/datatug-core.module';
 import { DbServerService } from '../../../services/unsorted/db-server.service';
-import { ProjectContextService } from '../../../services/project/project-context.service';
+import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
+import { DatatugServicesNavModule } from '../../../services/nav/datatug-services-nav.module';
+import { DatatugServicesStoreModule } from '../../../services/repo/datatug-services-store.module';
+import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
 import {
   IDbServer,
   IDbServerSummary,
@@ -38,6 +42,32 @@ import {
   selector: 'sneat-datatug-dbserver',
   templateUrl: './dbserver-page.component.html',
   imports: [
+    // `DbServerService` (injected below) needs `DatatugServicesUnsortedModule`
+    // (and, transitively, `StoreApiService`/`GithubProjectReaderService` from
+    // `DatatugServicesStoreModule`); `DatatugNavContextService` needs
+    // `DatatugServicesNavModule` + `AppContextService`
+    // (`DatatugCoreModule`) — same chain `ServersPageComponent`'s own
+    // identical doc comment describes. `servers/db/:dbDriver/:dbServerId`
+    // (this page's own bare route, `datatug-routing-proj.ts`) had no
+    // ancestor route or module supplying any of these, so clicking a server
+    // from the Servers list threw `NG0201` (confirmed live, S136) — same
+    // fix, same cause, as `EntitiesPageComponent`'s own identical doc
+    // comment.
+    //
+    // This page originally read the current project from
+    // `ProjectContextService.current$`, which `DbServerService` itself also
+    // reads internally (`getDbServerSummary()`'s own
+    // `this.projectContextService.current`) — switched the outer
+    // subscription to `DatatugNavContextService.currentProject` (see
+    // `ServersPageComponent`'s doc comment for why the legacy stream never
+    // emitted) so both this component's own load trigger AND
+    // `DbServerService`'s internal read resolve against the same
+    // `ProjectContextService` instance populated by the
+    // `DatatugNavContextService` this component's own `imports` now provide.
+    DatatugCoreModule,
+    DatatugServicesNavModule,
+    DatatugServicesStoreModule,
+    DatatugServicesUnsortedModule,
     IonHeader,
     IonToolbar,
     IonButtons,
@@ -64,7 +94,11 @@ export class DbserverPageComponent implements OnDestroy {
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly route = inject(ActivatedRoute);
   private readonly dbServerService = inject(DbServerService);
-  private readonly projectContextService = inject(ProjectContextService);
+  private readonly navContextService = inject(DatatugNavContextService);
+  // Zoneless (AGENTS.md; see `entities-page.component.ts`'s own identical
+  // doc comment): `dbServer`/`dbServerSummary`/`dbServerCatalogs`/`envs`
+  // below are plain fields, mutated from RxJS `.subscribe()` callbacks.
+  private readonly changeDetectorRef = inject(ChangeDetectorRef);
 
   tab: 'known' | 'unknown' = 'known';
   public dbServer?: IDbServer;
@@ -88,12 +122,13 @@ export class DbserverPageComponent implements OnDestroy {
       )
       .subscribe((dbServer) => {
         this.dbServer = dbServer;
+        this.changeDetectorRef.markForCheck();
       });
-    this.projectContextService.current$
+    this.navContextService.currentProject
       .pipe(takeUntil(this.destroyed))
       .subscribe({
-        next: (target) => {
-          if (target) {
+        next: (value) => {
+          if (value?.ref) {
             this.loadData();
           }
         },
@@ -139,10 +174,12 @@ export class DbserverPageComponent implements OnDestroy {
             });
           });
           this.removeAddedCatalogs();
+          this.changeDetectorRef.markForCheck();
         },
         error: (err) => {
           this.loadingSummary = false;
           this.errorLogger.logError(err, 'Failed to load DB server summary');
+          this.changeDetectorRef.markForCheck();
         },
       });
   }
@@ -164,10 +201,12 @@ export class DbserverPageComponent implements OnDestroy {
           this.loadingCatalogs = false;
           this.dbServerCatalogs = catalogs;
           this.removeAddedCatalogs();
+          this.changeDetectorRef.markForCheck();
         },
         error: (err) => {
           this.loadingCatalogs = false;
           this.errorLogger.logError(err, 'Failed to load DB catalogs');
+          this.changeDetectorRef.markForCheck();
         },
       });
   }

@@ -82,8 +82,17 @@ export class DatatugFolderComponent implements OnChanges, OnDestroy {
 
   public folder?: IFolder | null;
 
+  // Was `return (this.folder?.numberOf && this.numberOf(tab)) || 0;` — an
+  // unconditional recursive self-call (infinite recursion / stack overflow)
+  // the instant `this.folder.numberOf` was ever truthy. Never previously
+  // triggered because no `IFolder` producer in this codebase populated
+  // `numberOf` (this GitHub-store change's own `watchRootFolder()`,
+  // services/repo/datatug-store.service.github.ts, deliberately still
+  // doesn't, precisely to avoid waking this bug up) — fixed here so the
+  // template's `numberOf(t)` calls (the segment badges) are safe the moment
+  // any producer does start setting it.
   public numberOf(tab: string): number {
-    return (this.folder?.numberOf && this.numberOf(tab)) || 0;
+    return this.folder?.numberOf?.[tab] || 0;
   }
 
   public getItemLink = (path: string) => (item: IProjItemBrief) =>

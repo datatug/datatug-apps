@@ -1,4 +1,4 @@
-import { Component, OnDestroy, OnInit, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, OnDestroy, OnInit, inject } from '@angular/core';
 import {
   IonBackButton,
   IonButton,
@@ -16,6 +16,7 @@ import { SneatCardListComponent } from '@sneat/components';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
+import { DatatugCoreModule } from '../../../../core/datatug-core.module';
 import { DatatugFoldersService } from '../../../../folders/core/datatug-folders.service';
 import {
   folderItemsAsList,
@@ -28,12 +29,33 @@ import {
 import { IProjectContext } from '../../../../nav/nav-models';
 import { DatatugNavContextService } from '../../../../services/nav/datatug-nav-context.service';
 import { DatatugNavService } from '../../../../services/nav/datatug-nav.service';
+import { DatatugServicesNavModule } from '../../../../services/nav/datatug-services-nav.module';
+import { DatatugServicesStoreModule } from '../../../../services/repo/datatug-services-store.module';
+import { DatatugServicesUnsortedModule } from '../../../../services/unsorted/datatug-services-unsorted.module';
 import { DatatugBoardService } from '../../../core/datatug-board.service';
 
 @Component({
   selector: 'sneat-datatug-boards',
   templateUrl: './boards-page.component.html',
   imports: [
+    // `DatatugNavContextService` (injected below) is a plain `@Injectable()`,
+    // provided by `DatatugServicesNavModule` rather than `providedIn: 'root'`
+    // — its own constructor needs `AppContextService` (`DatatugCoreModule`),
+    // `EnvironmentService` (`DatatugServicesUnsortedModule`), which itself
+    // needs `StoreApiService` (`DatatugServicesStoreModule`, not
+    // `providedIn: 'root'` either). `boards` (this page's own bare route,
+    // `datatug-routing-proj.ts`) had no ancestor route or module supplying
+    // any of them, so navigating here (the side menu's own "Boards" item)
+    // threw a chain of `NG0201: No provider found for...` errors, each one
+    // exposing the next missing module one level deeper (all confirmed
+    // live, S136) — same fix, same cause, as
+    // `EnvironmentsPageComponent`/`QueriesPageComponent` (see their own
+    // identical doc comments) — mirrors the exact module set those already
+    // declare for the identical transitive chain.
+    DatatugCoreModule,
+    DatatugServicesNavModule,
+    DatatugServicesStoreModule,
+    DatatugServicesUnsortedModule,
     SneatCardListComponent,
     IonHeader,
     IonButtons,
@@ -54,6 +76,10 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
   private readonly boardService = inject(DatatugBoardService);
   private readonly alertCtrl = inject(AlertController);
   private readonly foldersService = inject(DatatugFoldersService);
+  // Zoneless (AGENTS.md; see `entities-page.component.ts`'s own identical
+  // doc comment, this task's sibling fix): `boards`/`project` below are
+  // plain fields, mutated from RxJS `.subscribe()` callbacks.
+  private readonly changeDetectorRef = inject(ChangeDetectorRef);
 
   tab = 'shared';
   noItemsText?: string;
@@ -108,6 +134,7 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
         .subscribe((folder) => this.onFolderReceived(path, folder));
     }
     this.project = project;
+    this.changeDetectorRef.markForCheck();
   }
 
   private onFolderReceived = (path: string, folder?: IFolder | null): void => {
@@ -116,8 +143,25 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
     }
     this.boards = [];
     if (folder?.boards) {
-      this.boards = folderItemsAsList(folder.boards);
+      // `folderItemsAsList()` returns `IFolderItemWithId[]` (`{id, name}`) —
+      // `this.boards` is typed `IProjBoard[]` (`{id, title?}`, `title`
+      // optional), so TS accepts the assignment structurally, but
+      // `sneat-card-list` (the external `@sneat/components` list this
+      // page's own template feeds `[items]="boards"` into) reads `.title`,
+      // not `.name`, and silently falls back to showing the board's own
+      // `.id` when `.title` is `undefined` (confirmed live, S136: GitHub's
+      // `board1` — title "1st board" per its own `board.json`/the parent
+      // `datatug-project.json` summary — rendered as the id "board1" in the
+      // list). Pre-existing and not GitHub-specific: any store's board list
+      // goes through this same `IFolder`/`folderItemsAsList()` path
+      // (`DatatugFoldersService.watchFolder()`, used for every store type).
+      // Remapping `name` -> `title` here is the minimal fix.
+      this.boards = folderItemsAsList(folder.boards).map(({ id, name }) => ({
+        id,
+        title: name,
+      }));
     }
+    this.changeDetectorRef.markForCheck();
   };
 
   protected getLinkToBoard = (item: unknown) => {

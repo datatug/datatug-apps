@@ -6,7 +6,7 @@ import { of } from 'rxjs';
 
 import { DbserverPageComponent } from './dbserver-page.component';
 import { DbServerService } from '../../../services/unsorted/db-server.service';
-import { ProjectContextService } from '../../../services/project/project-context.service';
+import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 
 describe('DbserverPage', () => {
   let component: DbserverPageComponent;
@@ -40,11 +40,9 @@ describe('DbserverPage', () => {
           },
         },
         {
-          provide: ProjectContextService,
+          provide: DatatugNavContextService,
           useValue: {
-            current$: of(undefined),
-            current: undefined,
-            setCurrent: vi.fn(),
+            currentProject: of(undefined),
           },
         },
       ],

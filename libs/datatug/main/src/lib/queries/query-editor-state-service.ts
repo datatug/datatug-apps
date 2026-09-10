@@ -169,6 +169,20 @@ export class QueryEditorStateService {
       if (!activeQuery) {
         return;
       }
+      // Captured before `isLoading` gets forced to `false` two lines below:
+      // `true` only for the very first `onCompleted()` after `openQuery()`
+      // seeded the placeholder (see the S121c comment just below) — used by
+      // this method's own `request` swap-in check, since a SQL query's real
+      // `def.request.queryType` is `'SQL'`, identical to that placeholder's
+      // hard-coded `queryType: QueryType.SQL` default (S136: confirmed live,
+      // opening a legacy `.sql.json` saved query — `def.request.text` (the
+      // real SQL body, correctly fetched over the wire) never replaced the
+      // placeholder's `text: ''`, because the S121c fix below only swaps in
+      // `def.request` when `queryType` DIFFERS from the placeholder's,
+      // leaving every SQL-type query's body permanently blank; DTQL/HTTP
+      // queries were fine only because their real type differs from the
+      // SQL placeholder's).
+      const wasLoading = activeQuery.isLoading;
       let state: IQueryState = {
         ...activeQuery,
         isLoading: false,
@@ -194,12 +208,16 @@ export class QueryEditorStateService {
       // console shows exactly that thrown error. A SQL query never
       // surfaced this because its placeholder type already matched. Fix:
       // adopt `def.request` whenever its `queryType` doesn't yet match the
-      // current `state.request`'s — true exactly once, on this first real
-      // load, for every query type (including SQL, unchanged behavior);
+      // current `state.request`'s, OR this is the first load regardless of
+      // type (`wasLoading`, S136's own follow-up fix above — the original
+      // `queryType`-only check left every SQL query's body permanently
+      // blank, since a real SQL query's type matches the placeholder's) —
+      // true exactly once, on this first real load, for every query type;
       // once synced, a later edit changes `state.request`'s own fields but
-      // not its `queryType`, so this never fires again and never clobbers
-      // in-progress user edits.
-      if (state.request?.queryType !== def?.request?.queryType) {
+      // not its `queryType`, and `wasLoading` is only ever true here once,
+      // so this never fires again and never clobbers in-progress user
+      // edits.
+      if (wasLoading || state.request?.queryType !== def?.request?.queryType) {
         state = { ...state, request: def?.request };
       }
       if (state.title === undefined) {

@@ -1,4 +1,4 @@
-import { Component, OnDestroy, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, OnDestroy, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
   IonBackButton,
@@ -28,11 +28,15 @@ import {
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { IRecord } from '@sneat/data';
+import { DatatugCoreModule } from '../../../core/datatug-core.module';
 import { IEntity } from '../../../models/definition/metapedia/entity';
 import { IProjEntity } from '../../../models/definition/project';
 import { IProjectContext } from '../../../nav/nav-models';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
+import { DatatugServicesNavModule } from '../../../services/nav/datatug-services-nav.module';
+import { DatatugServicesStoreModule } from '../../../services/repo/datatug-services-store.module';
+import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
 import { EntityService } from '../../../services/unsorted/entity.service';
 
 type Entities = IRecord<IEntity>[];
@@ -41,6 +45,21 @@ type Entities = IRecord<IEntity>[];
   selector: 'sneat-datatug-entities',
   templateUrl: './entities-page.component.html',
   imports: [
+    // `DatatugNavContextService` (injected below) needs `AppContextService`
+    // (`DatatugCoreModule`), `EnvironmentService`
+    // (`DatatugServicesUnsortedModule`) and, transitively, `StoreApiService`
+    // (`DatatugServicesStoreModule`) — the same chain
+    // `BoardsPageComponent`/`BoardPageComponent` (this task's own sibling
+    // fixes) needed. `entities` (this page's own bare route,
+    // `datatug-routing-proj.ts`) had no ancestor route or module supplying
+    // any of them, so navigating here (the side menu's own "Entities" item,
+    // or a direct URL load) threw the same `NG0201` chain (confirmed live,
+    // S136) — same fix, same cause, as `EnvironmentsPageComponent`/
+    // `QueriesPageComponent` (see their own identical doc comments).
+    DatatugCoreModule,
+    DatatugServicesNavModule,
+    DatatugServicesStoreModule,
+    DatatugServicesUnsortedModule,
     FormsModule,
     RouterLink,
     IonHeader,
@@ -70,6 +89,14 @@ export class EntitiesPageComponent
   private readonly navContextService = inject(DatatugNavContextService);
   private readonly entityService = inject(EntityService);
   private readonly toastCtrl = inject(ToastController);
+  // Zoneless (AGENTS.md, `environments-page.component.ts`'s own
+  // `changeDetectorRef` doc comment for the class of gap this closes):
+  // `entities`/`project` below are plain fields, mutated from RxJS
+  // `.subscribe()` callbacks — a write Angular's zoneless change detector
+  // has no way to notice on its own, so this page stayed on "Loading..."
+  // forever even once its data actually arrived (confirmed live, S136,
+  // opening this page for the GitHub-store demo project).
+  private readonly changeDetectorRef = inject(ChangeDetectorRef);
 
   entities?: Entities;
   project?: IProjectContext;
@@ -82,6 +109,7 @@ export class EntitiesPageComponent
       next: (currentProject) => {
         this.project = currentProject;
         this.loadEntities();
+        this.changeDetectorRef.markForCheck();
         // if (currentProject?.brief && !this.entities) {
         // 	if (currentProject?.summary?.entities) {
         // 		this.setEntities([
@@ -151,6 +179,7 @@ export class EntitiesPageComponent
         this.entities = (this.entities as IProjEntity[]).filter(
           (v) => v.id !== entity.id,
         );
+        this.changeDetectorRef.markForCheck();
         const toast = await this.toastCtrl.create({
           position: 'top',
           header: 'Success',
@@ -182,5 +211,6 @@ export class EntitiesPageComponent
     //console.log('entities', [...entities]);
     this.entities = entities.toSorted((a, b) => (a.id > b.id ? 1 : -1));
     //console.log('this.entities', this.entities);
+    this.changeDetectorRef.markForCheck();
   }
 }

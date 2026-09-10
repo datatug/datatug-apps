@@ -1,4 +1,5 @@
 import {
+  ChangeDetectorRef,
   Component,
   ElementRef,
   OnDestroy,
@@ -32,7 +33,10 @@ import {
   Options,
   Tabulator,
 } from 'tabulator-tables';
-import { ErrorLogger, IErrorLogger } from '@sneat/core';
+import { ErrorLogger, IErrorLogger, STORE_ID_GITHUB_COM, STORE_TYPE_GITHUB } from '@sneat/core';
+
+const isGithubStoreId = (storeId: string): boolean =>
+  storeId === STORE_ID_GITHUB_COM || storeId === STORE_TYPE_GITHUB;
 
 // Task 17 item B.1 (S121): `Tabulator.registerModule(...)` is a one-time,
 // PROCESS-GLOBAL registration (Tabulator's own static API — see
@@ -141,6 +145,11 @@ export class EnvDbPageComponent implements OnDestroy, OnInit {
   private readonly environmentService = inject(EnvironmentService);
   private datatugNavService = inject(DatatugNavService);
   private readonly route = inject(ActivatedRoute);
+  // Zoneless (AGENTS.md; see `entities-page.component.ts`'s own identical
+  // doc comment, this task's sibling fix): `project`/`env`/`envDb`/
+  // `projectFull` below are plain fields, mutated from RxJS `.subscribe()`
+  // callbacks.
+  private readonly changeDetectorRef = inject(ChangeDetectorRef);
 
   @ViewChild('grid', { static: false }) gridElRef?: ElementRef;
 
@@ -186,11 +195,30 @@ export class EnvDbPageComponent implements OnDestroy, OnInit {
         // `if (!project || ...)` guard — a row click silently did nothing. Found by
         // S10's journey e2e (see e2e/journey/README.md "Known gap").
         this.project = newProjectContextFromRef(projectRef);
+        const envId = this.route.snapshot.params[routingParamEnvironmentId];
+        this.dbId = this.route.snapshot.params[routingParamDbCatalogId];
+        this.changeDetectorRef.markForCheck();
+        if (isGithubStoreId(projectRef.storeId)) {
+          // GitHub-store: `ProjectService.getFull()` (below) always calls
+          // `buildAgentUrl(storeId, ...)`, invalid for `storeId="github.com"`
+          // (same root cause as `EnvironmentsPageComponent`'s own fix, founder
+          // ruling 2026-09-11). `this.env` only needs `{id}` here — the
+          // tabulator row-click handler (`createTabulator()` below) reads
+          // `env.id` — so the GitHub-aware `EnvironmentService.getEnvSummary()`
+          // supplies it without needing the whole project tree.
+          this.environmentService
+            .getEnvSummary(projectRef, envId)
+            .subscribe((envSummary) => {
+              this.env = envSummary;
+              this.changeDetectorRef.markForCheck();
+            });
+          this.loadCatalogTables(projectRef, envId, this.dbId);
+          return;
+        }
         this.projService.getFull(projectRef).subscribe((p) => {
           this.projectFull = p;
-          const envId = this.route.snapshot.params[routingParamEnvironmentId];
           this.env = p.environments?.find((e) => e.id === envId);
-          this.dbId = this.route.snapshot.params[routingParamDbCatalogId];
+          this.changeDetectorRef.markForCheck();
           this.loadCatalogTables(projectRef, envId, this.dbId);
         });
       },
@@ -215,6 +243,7 @@ export class EnvDbPageComponent implements OnDestroy, OnInit {
       next: (catalogTables) => {
         this.envDb = { id: dbId, ...catalogTables };
         this.onDataChanged();
+        this.changeDetectorRef.markForCheck();
       },
       error: (err) =>
         this.errorLogger.logError(err, 'Failed to load catalog tables'),

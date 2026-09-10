@@ -1,4 +1,4 @@
-import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
+import { CUSTOM_ELEMENTS_SCHEMA, ChangeDetectorRef } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { HttpClient } from '@angular/common/http';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -207,6 +207,15 @@ describe('EnvDbPage dependency injection', () => {
         },
         { provide: HttpClient, useValue: { get: vi.fn(() => of({})) } },
         { provide: Firestore, useValue: {} },
+        // `runInInjectionContext(() => new EnvDbPageComponent())` below
+        // constructs the component without an actual host view (no
+        // `TestBed.createComponent`), so the real `ChangeDetectorRef` —
+        // only ever resolvable from a component's own view injector — isn't
+        // available. Provide a stub so this test keeps proving what it's
+        // meant to prove (every *service* dependency resolves via the
+        // component's own declared `imports`), rather than failing on an
+        // unrelated view-layer token.
+        { provide: ChangeDetectorRef, useValue: { markForCheck: vi.fn() } },
       ],
     });
   });
