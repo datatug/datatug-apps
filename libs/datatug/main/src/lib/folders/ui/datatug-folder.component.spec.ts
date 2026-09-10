@@ -84,6 +84,63 @@ describe('DatatugFolderComponent', () => {
 });
 
 /**
+ * Regression for numberOf() self-recursing instead of indexing into
+ * folder().numberOf: `return (this.folder()?.numberOf && this.numberOf(tab)) || 0;`
+ * called itself with the identical `tab` argument whenever the map was
+ * truthy, recursing until the stack overflowed — crashing any folder page
+ * whose numberOf map was populated (this.numberOf(tab) is invoked once per
+ * tab from the @for loop in datatug-folder.component.html). The fix reads
+ * `this.folder()?.numberOf?.[tab] ?? 0` instead.
+ */
+describe('DatatugFolderComponent.numberOf()', () => {
+  let fixture: ComponentFixture<DatatugFolderComponent>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [DatatugFolderComponent],
+      providers: [
+        {
+          provide: ErrorLogger,
+          useValue: {
+            logError: vi.fn(),
+            logErrorHandler: vi.fn(() => vi.fn()),
+          },
+        },
+        {
+          provide: DatatugFoldersService,
+          useValue: { watchFolder: vi.fn(() => of(null)) },
+        },
+        { provide: DatatugNavService, useValue: {} },
+        { provide: SchemaService, useValue: {} },
+        { provide: EnvironmentService, useValue: {} },
+        { provide: DatatugBoardService, useValue: {} },
+        { provide: EntityService, useValue: {} },
+      ],
+    })
+      .overrideComponent(DatatugFolderComponent, {
+        set: { imports: [TitleCasePipe], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+      })
+      .compileComponents();
+    fixture = TestBed.createComponent(DatatugFolderComponent);
+  });
+
+  it("indexes into the folder's numberOf map instead of recursing", () => {
+    fixture.componentInstance.folder.set({ id: '~', numberOf: { queries: 3 } });
+    expect(fixture.componentInstance.numberOf('queries')).toBe(3);
+  });
+
+  it('returns 0 for a tab absent from the numberOf map', () => {
+    fixture.componentInstance.folder.set({ id: '~', numberOf: { queries: 3 } });
+    expect(fixture.componentInstance.numberOf('boards')).toBe(0);
+  });
+
+  it('returns 0 when no folder has loaded yet', () => {
+    expect(fixture.componentInstance.folder()).toBeUndefined();
+    expect(fixture.componentInstance.numberOf('boards')).toBe(0);
+  });
+});
+
+/**
  * Regression for the zoneless bug class this repo hit in
  * pages/signed-in/project/project-page.component.ts (PR #95) and is now
  * guarded fleet-wide by tools/check-zoneless-fields.mjs: `folder` and
