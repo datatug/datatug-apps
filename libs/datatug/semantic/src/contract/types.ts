@@ -40,6 +40,16 @@ export interface PhysicalRef {
 export type FactOrigin = 'selection' | 'context' | 'manual';
 export type FactMapping = 'declared' | 'inferred';
 
+/** Comparison operator a {@link Fact} (or an Investigation Context item built from one —
+ * see `InvestigationContextService`'s `ContextItem`) may carry — founder ruling
+ * 2026-09-10 (S156): "should have form to add context variable for selected
+ * Entity.Field with conditions like ==, >, >=, etc." Operator set is a lead assumption
+ * recorded in the hub Feature (`spec/features/investigation-context`
+ * REQ:context-variable-conditions) and carried into the transport appendix
+ * (`spec/features/core-investigation-loop/api-contract.md`, `Fact.condition`
+ * paragraph), pending founder confirmation. `'=='` is the default. */
+export type ContextCondition = '==' | '!=' | '>' | '>=' | '<' | '<=';
+
 /** A semantic value the browser suggests to the server — never an access credential; the
  * server revalidates `physical`/`mapping` against authorized project metadata. */
 export interface Fact {
@@ -47,6 +57,12 @@ export interface Fact {
   readonly entity: string;
   readonly field: string;
   readonly value: TypedValue;
+  /** OPTIONAL; absent means `'=='` — matches every fact produced before this field
+   * existed. See api-contract.md's `Fact.condition` paragraph for the compatibility
+   * rule an agent that does not implement conditions must follow (leave the parameter
+   * unbound and report it unbound, never apply a non-`'=='` fact as equality). Lead
+   * assumption 2026-09-10, pending founder confirmation. */
+  readonly condition?: ContextCondition;
   readonly origin: FactOrigin;
   readonly physical?: PhysicalRef;
   readonly mapping?: FactMapping;

@@ -1,5 +1,5 @@
 import { Injectable, Signal, computed, inject, signal } from '@angular/core';
-import { Fact, TypedValue } from '../../contract/types';
+import { ContextCondition, Fact, TypedValue } from '../../contract/types';
 import { toTypedValue, SemanticValue } from '../../contract/adapt';
 import { DATATUG_AGENT_BASE_URL } from '../tokens/datatug-agent-base-url.token';
 import { EntityFieldRef } from '../models/models';
@@ -43,14 +43,15 @@ export function scopesEqual(
 
 /** Comparison operator for a context variable — founder ruling 2026-09-10 (S156):
  * "should have form to add context variable for selected Entity.Field with conditions
- * like ==, >, >=, etc." `'=='` is the default (and, until now, the only) condition —
- * the hub Feature (`spec/features/investigation-context`) still models `entity.field =
- * value` only; a condition other than `'=='` is UI-local (display + dedup identity)
- * until that spec grows an operator field, since the wire {@link Fact} shape (this
- * file's own `../../contract/types.ts`) is frozen and NOT extended by this type —
- * `queries/applicable`/`exec/run_query` keep resolving every context item as its typed
- * `value` only, condition or not. */
-export type ContextCondition = '==' | '!=' | '>' | '>=' | '<' | '<=';
+ * like ==, >, >=, etc." `'=='` is the default. This type now lives on the wire
+ * {@link Fact} shape itself (`../../contract/types.ts`, `Fact.condition` — see the hub
+ * contract amendment `spec/features/core-investigation-loop/api-contract.md`); it is
+ * re-exported here for backward-compatible imports, since `ContextItem extends Fact`
+ * already inherits the field. `queries/applicable`/`exec/run_query` now receive
+ * `condition` for real (via {@link contextItemToFact}) — an agent that doesn't
+ * implement conditions must leave a non-`'=='` fact unbound rather than apply it as
+ * equality (api-contract.md's compatibility rule). */
+export type { ContextCondition } from '../../contract/types';
 
 const DEFAULT_CONDITION: ContextCondition = '==';
 
@@ -70,16 +71,40 @@ export interface ContextItemInput {
   readonly condition?: ContextCondition;
 }
 
-/** REQ:context-basket — one Investigation Context entry: a wire {@link Fact} (so it can
- * be sent to `queries/applicable`/`exec/run_query` verbatim, no re-wrapping needed —
- * see `entity`/`field`/`value`/`origin`/`enabled`) plus UI-local display metadata. */
+/** REQ:context-basket — one Investigation Context entry: a wire {@link Fact} (so its
+ * `entity`/`field`/`value`/`condition`/`origin`/`enabled` need no re-wrapping — see
+ * {@link contextItemToFact} for the exact narrowing used before it reaches
+ * `queries/applicable`/`exec/run_query`) plus UI-local display metadata. */
 export interface ContextItem extends Fact {
   readonly label: string;
   readonly source: string;
   readonly addedAt: string;
   /** See {@link ContextCondition} — always populated (`'=='` when the caller didn't
-   * specify one), never `undefined`, so every render site can show it uniformly. */
+   * specify one), never `undefined`, so every render site can show it uniformly.
+   * Narrows back to Fact's OPTIONAL `condition?` when serialised — see
+   * {@link contextItemToFact}. */
   readonly condition: ContextCondition;
+}
+
+/** Narrows a {@link ContextItem} to the exact wire {@link Fact} shape — the boundary
+ * where a context basket entry becomes a request payload for `queries/applicable`/
+ * `exec/run_query`. `condition` is included only when it differs from the default
+ * (`'=='`), so a plain equality item serialises byte-for-byte exactly as it always
+ * has — see api-contract.md's `Fact.condition` paragraph for the compatibility rule
+ * this preserves for an agent that doesn't implement conditions (it must leave a
+ * non-`'=='` fact unbound and report it unbound, never apply it as equality). */
+export function contextItemToFact(item: ContextItem): Fact {
+  return {
+    id: item.id,
+    entity: item.entity,
+    field: item.field,
+    value: item.value,
+    origin: item.origin,
+    enabled: item.enabled,
+    ...(item.physical ? { physical: item.physical } : {}),
+    ...(item.mapping ? { mapping: item.mapping } : {}),
+    ...(item.condition !== DEFAULT_CONDITION ? { condition: item.condition } : {}),
+  };
 }
 
 /** The subset of a query parameter's shape {@link InvestigationContextService.bindingsFor} needs. */

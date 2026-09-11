@@ -23,6 +23,7 @@ import {
   CandidateChainStep,
   CandidateState,
   CandidateTarget,
+  ContextCondition,
   ErrorBody,
   ErrorDetails,
   ErrorEnvelope,
@@ -203,6 +204,7 @@ export function decodeTypedValue(v: unknown, path = 'value'): TypedValue {
 
 const FACT_ORIGINS: readonly FactOrigin[] = ['selection', 'context', 'manual'];
 const FACT_MAPPINGS: readonly FactMapping[] = ['declared', 'inferred'];
+const FACT_CONDITIONS: readonly ContextCondition[] = ['==', '!=', '>', '>=', '<', '<='];
 
 function decodePhysicalRef(v: unknown, path: string): PhysicalRef {
   const obj = requireObject(v, path);
@@ -218,7 +220,7 @@ export function decodeFact(v: unknown, path = 'fact'): Fact {
   const obj = requireObject(v, path);
   requireExactKeys(
     obj,
-    ['id', 'entity', 'field', 'value', 'origin', 'physical', 'mapping', 'enabled'],
+    ['id', 'entity', 'field', 'value', 'condition', 'origin', 'physical', 'mapping', 'enabled'],
     path,
   );
   return {
@@ -226,6 +228,9 @@ export function decodeFact(v: unknown, path = 'fact'): Fact {
     entity: requireString(obj['entity'], `${path}.entity`),
     field: requireString(obj['field'], `${path}.field`),
     value: decodeTypedValue(obj['value'], `${path}.value`),
+    condition: optional(obj['condition'], `${path}.condition`, (x, p) =>
+      requireEnum(x, FACT_CONDITIONS, p),
+    ),
     origin: requireEnum(obj['origin'], FACT_ORIGINS, `${path}.origin`),
     physical: optional(obj['physical'], `${path}.physical`, decodePhysicalRef),
     mapping: optional(obj['mapping'], `${path}.mapping`, (x, p) =>

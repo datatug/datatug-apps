@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import {
+  contextItemToFact,
   ContextScope,
   InvestigationContextService,
   scopesEqual,
@@ -297,6 +298,86 @@ describe('InvestigationContextService', () => {
       // JSON.stringify of the TypedValue's own (string) `.value` — pre-existing format,
       // untouched by this lane; only the condition-tag insertion point is new.
       expect(added.id).toBe('Customer.ID:integer="5"');
+    });
+
+    // S162 — the hub contract amendment (api-contract.md's Fact.condition paragraph)
+    // gives `condition` a real wire slot on Fact. contextItemToFact() is the exact
+    // boundary where a context basket entry becomes the request payload for
+    // `queries/applicable`/`exec/run_query` (context-panel.component.ts and
+    // investigation-context-page.component.ts both call it).
+    describe('contextItemToFact — the wire-narrowing boundary', () => {
+      it('a context item with condition ">" serialises to a fact with condition: ">"', () => {
+        const service = createService();
+        service.setScope(scopeA);
+        const item = service.addValue({
+          entityField: { entity: 'Customer', field: 'Age' },
+          value: 21,
+          label: 'Customer.Age > 21',
+          source: 'manual',
+          condition: '>',
+        });
+
+        expect(contextItemToFact(item)).toEqual({
+          id: item.id,
+          entity: 'Customer',
+          field: 'Age',
+          value: { type: 'integer', value: '21' },
+          origin: 'context',
+          enabled: true,
+          condition: '>',
+        });
+      });
+
+      it('a plain (default "==") item serialises unchanged — no condition key at all', () => {
+        const service = createService();
+        service.setScope(scopeA);
+        const item = service.addValue({
+          entityField: { entity: 'Customer', field: 'ID' },
+          value: 5,
+          label: 'Customer.ID = 5',
+          source: 'grid',
+        });
+
+        const fact = contextItemToFact(item);
+        expect(fact).toEqual({
+          id: item.id,
+          entity: 'Customer',
+          field: 'ID',
+          value: { type: 'integer', value: '5' },
+          origin: 'context',
+          enabled: true,
+        });
+        expect('condition' in fact).toBe(false);
+      });
+
+      it('preserves physical/mapping when present, alongside a non-default condition', () => {
+        const service = createService();
+        service.setScope(scopeA);
+        const item = service.addValue({
+          entityField: { entity: 'Customer', field: 'Age' },
+          value: 21,
+          label: 'Customer.Age >= 21',
+          source: 'manual',
+          condition: '>=',
+        });
+        const withPhysical = {
+          ...item,
+          physical: { source: 'chinook-local', collection: 'Customer', column: 'Age' },
+          mapping: 'declared' as const,
+        };
+
+        expect(contextItemToFact(withPhysical)).toEqual({
+          id: item.id,
+          entity: 'Customer',
+          field: 'Age',
+          value: { type: 'integer', value: '21' },
+          origin: 'context',
+          enabled: true,
+          physical: { source: 'chinook-local', collection: 'Customer', column: 'Age' },
+          mapping: 'declared',
+          condition: '>=',
+        });
+      });
     });
   });
 
