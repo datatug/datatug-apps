@@ -50,7 +50,7 @@
     "@sneat/dto": "0.27.6",
     "@sneat/extension-contactus-contract": "0.12.5",
     "@sneat/grid": "0.27.6",
-    "@sneat/logging": "0.27.6",
+    "@sneat/logging": "0.27.25",
     "@sneat/random": "0.0.4",
     "@sneat/space-models": "0.27.6",
     "@sneat/space-services": "0.27.6",
