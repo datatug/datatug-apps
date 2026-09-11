@@ -9,9 +9,12 @@ describe('datatugProjectRoutes', () => {
     const route = datatugProjectRoutes.find((r) => r.path === 'variables');
     expect(route).toBeTruthy();
     expect(route?.loadComponent).toBeTruthy();
+    if (!route?.loadComponent) {
+      throw new Error('"variables" route or its loadComponent not found');
+    }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const loaded: any = await route!.loadComponent!();
+    const loaded: any = await route.loadComponent();
     expect(loaded?.name).toBe('InvestigationContextPageComponent');
   });
 
@@ -72,8 +75,11 @@ describe('datatugProjectRoutes — "query" route (S158, NG04002 regression)', ()
     const route = findQueryRoute();
     const loadComponent = route.children?.[0].loadComponent;
     expect(loadComponent).toBeTruthy();
+    if (!loadComponent) {
+      throw new Error('"query" wildcard child loadComponent not found');
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const loaded: any = await loadComponent!();
+    const loaded: any = await loadComponent();
     expect(loaded?.name).toBe('QueryPageComponent');
   });
 
@@ -145,8 +151,11 @@ describe('datatugProjectRoutes — "servers" route (S160, NG04002 regression)', 
 
   it("loadChildren resolves to ServersPageRoutingModule, whose own routes cover both '' (the list) and 'db/:dbDriver/:dbServerId' (the detail page)", async () => {
     const route = findServersRoute();
+    if (!route.loadChildren) {
+      throw new Error('"servers" route has no loadChildren');
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const loaded: any = await route.loadChildren!();
+    const loaded: any = await route.loadChildren();
     expect(loaded).toBeTruthy();
     expect(loaded?.name).toBe('ServersPageRoutingModule');
   });

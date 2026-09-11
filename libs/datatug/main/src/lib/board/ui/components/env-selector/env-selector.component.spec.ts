@@ -71,7 +71,6 @@ describe('EnvSelectorComponent', () => {
  * segment with no manual intervention.
  */
 describe('EnvSelectorComponent renders the current project/env once they arrive (zoneless)', () => {
-  let component: EnvSelectorComponent;
   let fixture: ComponentFixture<EnvSelectorComponent>;
   let currentProject$: Subject<IProjectContext | undefined>;
   let currentEnv$: Subject<{ id?: string } | undefined>;
@@ -103,7 +102,6 @@ describe('EnvSelectorComponent renders the current project/env once they arrive 
     }).compileComponents();
 
     fixture = TestBed.createComponent(EnvSelectorComponent);
-    component = fixture.componentInstance;
   });
 
   it('renders the fetched environments and selects the fetched current env, with no explicit detectChanges()', async () => {

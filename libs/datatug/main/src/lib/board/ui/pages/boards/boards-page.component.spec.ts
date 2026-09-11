@@ -98,7 +98,6 @@ describe('DataboardsPage', () => {
  * reported bug).
  */
 describe('BoardsPage renders boards once the project/folder arrive asynchronously (zoneless)', () => {
-  let component: BoardsPageComponent;
   let fixture: ComponentFixture<BoardsPageComponent>;
   let currentProject$: Subject<IProjectContext | undefined>;
   let watchFolder$: Subject<IFolder | null>;
@@ -155,7 +154,6 @@ describe('BoardsPage renders boards once the project/folder arrive asynchronousl
       .compileComponents();
 
     fixture = TestBed.createComponent(BoardsPageComponent);
-    component = fixture.componentInstance;
   });
 
   function boardsCard(): HTMLElement & { isLoading?: boolean; items?: unknown[] } {

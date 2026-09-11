@@ -86,7 +86,6 @@ describe('EntityPage', () => {
  * page with no manual intervention.
  */
 describe('EntityPage replaces "Loading..." once the source data arrives (zoneless)', () => {
-  let component: EntityPageComponent;
   let fixture: ComponentFixture<EntityPageComponent>;
   let paramMap$: Subject<{ get: (key: string) => string | null }>;
   let getEntity$: Subject<IRecord<IEntity>>;
@@ -150,7 +149,6 @@ describe('EntityPage replaces "Loading..." once the source data arrives (zoneles
       .compileComponents();
 
     fixture = TestBed.createComponent(EntityPageComponent);
-    component = fixture.componentInstance;
   });
 
   it('replaces the Loading... placeholder with the source grid once it arrives, with no explicit detectChanges()', async () => {
