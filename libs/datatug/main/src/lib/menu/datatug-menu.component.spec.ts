@@ -2,6 +2,7 @@ import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NavigationEnd, Router } from '@angular/router';
 import { AnalyticsService, ErrorLogger } from '@sneat/core';
+import { PRODUCT_PROFILE, PRODUCT_PROFILES } from '@datatug/product-profiles';
 import { Subject } from 'rxjs';
 
 import { DatatugMenuComponent } from './datatug-menu.component';
@@ -170,6 +171,62 @@ describe('DatatugMenuComponent', () => {
       fixture.detectChanges();
       expect(
         fixture.nativeElement.querySelector('sneat-datatug-auth-menu-item'),
+      ).toBeNull();
+    });
+  });
+
+  describe('Incidents menu item (hub product-profiles REQ:profile-table)', () => {
+    // Founder, 2026-09-11, verbatim: "DataTug app should always have
+    // Incidents menu item in side menu." — AC:incidents-always-in-datatug-menu
+    // requires it present both with and without a project open.
+    it('is present under the default (datatug) profile with no project open', () => {
+      const fixture = createComponent('/');
+      fixture.detectChanges();
+      const item = fixture.nativeElement.querySelector(
+        '[data-testid="incidents-menu-item"]',
+      );
+      expect(item).toBeTruthy();
+      // Not `.textContent` — under this spec's CUSTOM_ELEMENTS_SCHEMA
+      // override, happy-dom's `textContent` getter on an (unregistered,
+      // schema-stubbed) `ion-*` custom element returns `''` even though the
+      // light-DOM markup is correct (confirmed via `.innerHTML`); `innerHTML`
+      // reads the real serialized markup instead.
+      expect(item.innerHTML).toContain('Incidents');
+    });
+
+    it('is present under the default (datatug) profile with a project open', () => {
+      const fixture = createComponent('/');
+      fixture.detectChanges();
+      project$.next({ ref: { projectId: 'p1', storeId: 's1' } });
+      fixture.detectChanges();
+      const item = fixture.nativeElement.querySelector(
+        '[data-testid="incidents-menu-item"]',
+      );
+      expect(item).toBeTruthy();
+    });
+
+    it('is present on the login page too — no feature flag or page removes it', () => {
+      const fixture = createComponent('/login');
+      fixture.detectChanges();
+      const item = fixture.nativeElement.querySelector(
+        '[data-testid="incidents-menu-item"]',
+      );
+      expect(item).toBeTruthy();
+    });
+
+    it('reads the declarative showIncidentsMenuItem field, not the profile identity', () => {
+      // incidentius sets showIncidentsMenuItem: false (it would be a
+      // redundant shortcut to the page that is already its own home) — this
+      // is a data-driven decision in the profile table, not a branch here.
+      TestBed.overrideProvider(PRODUCT_PROFILE, {
+        useValue: PRODUCT_PROFILES.incidentius,
+      });
+      const fixture = createComponent('/');
+      fixture.detectChanges();
+      expect(
+        fixture.nativeElement.querySelector(
+          '[data-testid="incidents-menu-item"]',
+        ),
       ).toBeNull();
     });
   });
