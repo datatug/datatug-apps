@@ -1,5 +1,13 @@
 import { TitleCasePipe } from '@angular/common';
-import { ChangeDetectorRef, Component, inject, input, model } from '@angular/core';
+import {
+  ChangeDetectorRef,
+  Component,
+  effect,
+  inject,
+  input,
+  model,
+  signal,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
   IonBadge,
@@ -16,6 +24,7 @@ import { Subscription } from 'rxjs';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { SqlEditorComponent } from '../../components/sqleditor/sql-editor.component';
+import { IProjectRef } from '../../core/project-context';
 import { IProjItemBrief } from '../../models/definition/project';
 import {
   IQueryDef,
@@ -27,7 +36,7 @@ import {
 import { IProjectContext } from '../../nav/nav-models';
 import { DatatugNavContextService } from '../../services/nav/datatug-nav-context.service';
 import { DatatugNavService } from '../../services/nav/datatug-nav.service';
-import { QueriesService } from '../queries.service';
+import { GITHUB_PERSONAL_QUERIES_MESSAGE, QueriesService } from '../queries.service';
 
 interface FilteredItem {
   //TODO: make readonly
@@ -110,6 +119,28 @@ export class QueriesTabComponent {
   public filteredItems?: FilteredItem[];
 
   private queriesSub?: Subscription;
+
+  // Set instead of populating `currentFolder`/`allQueries` when the
+  // "Personal" tab of a GitHub-store project has no live agent to read a
+  // real personal folder from (`QueriesService.getQueriesFolder()` rejects
+  // with exactly `GITHUB_PERSONAL_QUERIES_MESSAGE` for that case — see its
+  // own doc comment) — an expected, not-a-bug outcome that gets its own
+  // friendly card notice instead of the "Shared" tree it used to silently
+  // fall back to (S163, founder-reported follow-up), and instead of an
+  // `ErrorLogger.logError()` toast.
+  public readonly personalQueriesNotice = signal<string | undefined>(undefined);
+
+  // Tracks which `rootFolder` value `currentFolder`/`allQueries` currently
+  // reflect — see this class's own `effect()` (below, in the constructor)
+  // for why comparing against this (not just re-fetching unconditionally
+  // on every signal read) matters: it is what tells a genuine tab switch
+  // (reset the folder browsing position back to the root) apart from an
+  // unrelated re-run of the same effect (e.g. `project()` changing while
+  // `rootFolder()` stays the same, where the current browsing position
+  // should be preserved, matching this component's pre-existing behaviour
+  // for any other `currentProject` re-emission).
+  private rootFolderPrimed = false;
+  private lastFetchedRootFolder?: 'shared' | 'personal' | 'bookmarked';
 
   public currentFolder: IQueryFolderContext = { path: '~', id: '' };
 
@@ -210,7 +241,58 @@ export class QueriesTabComponent {
         'Failed to get query params map from activate route',
       ),
     });
-    this.loadQueries();
+    this.trackCurrentProject();
+
+    // `rootFolder` is a signal `input()` — unlike an `@Input()`-decorated
+    // property, its value is not readable in the constructor (Angular only
+    // applies a signal input's value once the directive has already been
+    // constructed — confirmed live against this exact class: reading
+    // `this.rootFolder()` here returns `undefined` even when the parent
+    // template already binds `[rootFolder]="tab"='personal'`) and it never
+    // fires `ngOnChanges` either (that lifecycle hook only observes
+    // decorator-based `@Input()`s), so an `effect()` is the only
+    // signal-safe way to notice BOTH its true initial value and any later
+    // change — e.g. toggling the Queries page's Personal/Shared segment,
+    // which rebinds `[rootFolder]="tab"` on this SAME long-lived component
+    // instance (`queries-page.component.html` keeps ONE
+    // `<sneat-datatug-queries-tab>` alive across that whole branch — see
+    // this class's own S154 history above). `project()` is read here too
+    // (rather than closing over the `currentProject` value from
+    // `trackCurrentProject()`'s own subscribe callback) so this effect also
+    // reruns once the project resolves asynchronously, without a second,
+    // separate subscription.
+    //
+    // Before this fix, the query FETCH never depended on `rootFolder` at
+    // all — `loadQueries()`'s old body called
+    // `queriesService.getQueriesFolder(ref, path)` with no rootFolder
+    // argument, so a GitHub-store project's "Personal" tab silently showed
+    // the exact same shared folder tree as "Shared" (S163, founder-reported
+    // follow-up; `QueriesService.getQueriesFolder()`'s own doc comment
+    // explains why the GitHub reader can only ever return that one shared
+    // tree).
+    effect(() => {
+      const rootFolder = this.rootFolder();
+      const project = this.project();
+      if (!project) {
+        return;
+      }
+      const rootFolderChanged =
+        !this.rootFolderPrimed || rootFolder !== this.lastFetchedRootFolder;
+      this.rootFolderPrimed = true;
+      this.lastFetchedRootFolder = rootFolder;
+      if (rootFolderChanged) {
+        this.currentFolder = { path: '~', id: '' };
+        this.parentFolders = [];
+      }
+      this.fetchFolder(project.ref, this.currentFolder.path, rootFolder);
+    });
+  }
+
+  private trackCurrentProject(): void {
+    this.dataTugNavContextService.currentProject.subscribe({
+      next: (currentProject) => this.project.set(currentProject),
+      error: this.errorLogger.logErrorHandler('failed to get current project'),
+    });
   }
 
   public isFiltering(): boolean {
@@ -329,36 +411,47 @@ export class QueriesTabComponent {
       );
   }
 
-  private loadQueries(): void {
-    this.dataTugNavContextService.currentProject.subscribe({
-      next: (currentProject) => {
-        console.log(
-          'QueryPage.constructor() => currentProject:',
-          currentProject,
-        );
-        this.project.set(currentProject);
-        if (!currentProject) {
-          return;
-        }
-        if (this.queriesSub) {
-          this.queriesSub.unsubscribe();
-        }
-        console.log(
-          'QueriesPage.constructor() => currentProject:',
-          currentProject,
-        );
-        const { path } = this.currentFolder;
-        this.queriesSub = this.queriesService
-          .getQueriesFolder(currentProject.ref, path)
-          .subscribe({
-            next: (folder: IQueryFolder | null | undefined) => {
-              this.onFolderRetrieved(path, folder);
-            },
-            error: this.errorLogger.logErrorHandler('Failed to load queries'),
-          });
-      },
-      error: this.errorLogger.logErrorHandler('failed to get current project'),
-    });
+  /** The one place `QueriesService.getQueriesFolder()` is ever called from
+   * — both the constructor's own `effect()` (initial load, and any later
+   * `project`/`rootFolder` change) and `newFolder()`/`deleteFolder()`
+   * indirectly go through this for a fresh fetch. `rootFolder === 'personal'`
+   * on a GitHub-store project rejects with exactly
+   * `GITHUB_PERSONAL_QUERIES_MESSAGE` (see that constant's own doc comment,
+   * `queries.service.ts`) — an expected, not-a-bug outcome that gets its
+   * own friendly `personalQueriesNotice` instead of an `ErrorLogger.
+   * logError()` toast (the same `isGithubReadOnlyError`-style pattern
+   * `dbserver-page.component.ts` already establishes for its own
+   * `GITHUB_DBSERVER_DETAIL_MESSAGE`). */
+  private fetchFolder(
+    projRef: IProjectRef,
+    path: string,
+    rootFolder: 'shared' | 'personal' | 'bookmarked' | undefined,
+  ): void {
+    if (this.queriesSub) {
+      this.queriesSub.unsubscribe();
+    }
+    this.personalQueriesNotice.set(undefined);
+    this.queriesSub = this.queriesService
+      .getQueriesFolder(projRef, path, rootFolder)
+      .subscribe({
+        next: (folder: IQueryFolder | null | undefined) => {
+          this.onFolderRetrieved(path, folder);
+        },
+        error: (err: unknown) => {
+          if (isGithubPersonalQueriesError(err)) {
+            this.allQueries = [];
+            this.currentFolder = { path: '~', id: '~', folders: [], items: [] };
+            this.parentFolders = [];
+            this.personalQueriesNotice.set(GITHUB_PERSONAL_QUERIES_MESSAGE);
+            // Zoneless: this callback only ever runs from an RxJS
+            // `.subscribe()` error (this class's own `changeDetectorRef`
+            // doc comment).
+            this.changeDetectorRef.markForCheck();
+            return;
+          }
+          this.errorLogger.logError(err, 'Failed to load queries');
+        },
+      });
   }
 
   private onFolderRetrieved(path: string, folder?: IQueryFolder | null): void {
@@ -528,4 +621,15 @@ export class QueriesTabComponent {
       });
     }
   }
+}
+
+/**
+ * `QueriesService.getQueriesFolder()` rejects with exactly `new
+ * Error(GITHUB_PERSONAL_QUERIES_MESSAGE)` for the "Personal" tab of a
+ * GitHub-store project (own doc comment, `queries.service.ts`) — an
+ * expected, not-a-bug outcome that gets its own friendly card notice
+ * instead of an `ErrorLogger.logError()` toast.
+ */
+function isGithubPersonalQueriesError(err: unknown): boolean {
+  return err instanceof Error && err.message === GITHUB_PERSONAL_QUERIES_MESSAGE;
 }

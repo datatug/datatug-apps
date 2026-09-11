@@ -2,6 +2,10 @@
   <ion-item>
     <ion-label>Loading queries...</ion-label>
   </ion-item>
+} @else if (personalQueriesNotice(); as notice) {
+  <ion-item>
+    <ion-label color="medium">{{ notice }}</ion-label>
+  </ion-item>
 } @else {
   <ion-item>
     <ion-input

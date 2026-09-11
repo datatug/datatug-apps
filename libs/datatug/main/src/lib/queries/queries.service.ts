@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, throwError } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { STORE_ID_GITHUB_COM, STORE_TYPE_GITHUB } from '@sneat/core';
 import { IProjectRef } from '../core/project-context';
@@ -20,6 +20,31 @@ import { QUERY_PROJ_ITEM_SERVICE } from './queries.service.token';
 
 const isGithubStoreId = (storeId: string): boolean =>
   storeId === STORE_ID_GITHUB_COM || storeId === STORE_TYPE_GITHUB;
+
+/**
+ * Shown (via `QueriesTabComponent`'s own friendly-notice handling, the same
+ * pattern `GITHUB_DBSERVER_DETAIL_MESSAGE`/`isGithubReadOnlyError` establish
+ * in `db-server.service.ts`/`dbserver-page.component.ts`) instead of ever
+ * listing the SHARED `queries/` tree for the "Personal" tab of a GitHub-store
+ * project.
+ *
+ * datatug-core's own project-item layout (`pkg/datatug/proj_item.go`,
+ * `RootSharedFolderName = "~"` / `RootUserFolderPrefix = "user:"`) puts
+ * personal queries under a per-USER root folder (`user:<userID>`), a
+ * sibling of the shared `"~"` root — never a path inside `queries/` a
+ * GitHub-store project's read-only, unauthenticated `contents`/raw-file
+ * reads (`GithubProjectReaderService.getQueriesFolder()`) could ever
+ * resolve, since that read has no notion of "current user" to pick a
+ * `user:<userID>` folder for in the first place — only a live DataTug agent
+ * (which knows who is signed in) can. Before this fix, `getQueriesFolder()`
+ * ignored `rootFolder` entirely for a GitHub-store project (queries.service.ts's
+ * own doc comment above already conceded the reader "always returns the FULL
+ * recursive tree", i.e. the SHARED one), so the "Personal" tab silently
+ * showed the exact same shared folder tree as "Shared" — confirmed live
+ * against the real demo project (S163, founder-reported follow-up).
+ */
+export const GITHUB_PERSONAL_QUERIES_MESSAGE =
+  'This project is browsed read-only from GitHub — personal queries need a DataTug agent. Clone the repo and run `datatug serve --project <path>` to see them.';
 
 /**
  * The shape datatug-cli's GET /queries/all_queries and /queries/get_query
@@ -122,13 +147,22 @@ export class QueriesService {
    * the FULL recursive tree in one shot (mirrors datatug-cli's own
    * `all_queries` — see `query_endpoints.go`'s own doc comment: "the
    * response must carry the FULL recursive tree... not just the top level
-   * or whatever folder= was requested").
+   * or whatever folder= was requested"). That FULL tree is the repo's own
+   * SHARED `queries/` folder (datatug-core's `"~"` root) — so `rootFolder
+   * === 'personal'` short-circuits BEFORE ever calling the reader, instead
+   * of handing the shared tree back under the "Personal" label (see
+   * `GITHUB_PERSONAL_QUERIES_MESSAGE`'s own doc comment for why a GitHub
+   * read can never resolve a real personal folder).
    */
   public getQueriesFolder(
     projRef: IProjectRef,
     folderPath: string,
+    rootFolder?: 'shared' | 'personal' | 'bookmarked',
   ): Observable<IQueryFolder | null | undefined> {
     if (isGithubStoreId(projRef.storeId)) {
+      if (rootFolder === 'personal') {
+        return throwError(() => new Error(GITHUB_PERSONAL_QUERIES_MESSAGE));
+      }
       return this.githubReader
         .getQueriesFolder(projRef.projectId)
         .pipe(map((folder) => toQueryFolder(folder as unknown as IWireQueryFolder)));
