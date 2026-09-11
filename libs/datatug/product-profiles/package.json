@@ -1,0 +1,9 @@
+{
+  "name": "@datatug/product-profiles",
+  "version": "0.0.1",
+  "description": "The declarative product-profile table (datatug/incidentius, later dashboardius) and profile resolution (config override -> hostname -> default) that let one apps/datatug-app build serve multiple product shells. See spec/features/product-profiles/README.md (REQ:profile-table, REQ:profile-config-is-declarative, REQ:profile-selection-is-not-authorization) in datatug/datatug.",
+  "peerDependencies": {
+    "@angular/core": ">=22.0.0 <23.0.0"
+  },
+  "sideEffects": false
+}
