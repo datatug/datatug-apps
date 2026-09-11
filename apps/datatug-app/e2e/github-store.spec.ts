@@ -469,11 +469,26 @@ test.describe('GitHub-store project — every side-menu page loads without error
       new RegExp(`${PROJECT_URL.replace(/[.]/g, '\\.')}/servers/db/sqlite3/-$`),
     );
 
+    // Scoped to `sneat-datatug-dbserver` (`DbserverPageComponent`'s own
+    // selector) rather than `activePage(page)`: during Ionic's page-
+    // transition animation both the leaving `sneat-datatug-servers` page and
+    // the entering `sneat-datatug-dbserver` page briefly carry `.ion-page`
+    // without `.ion-page-hidden` at the same time (confirmed live — the
+    // same class of timing issue `active-page.ts`'s own doc comment already
+    // describes for `sneat-datatug-boards`), which trips
+    // `activePage(page).locator('sneat-datatug-page-title')`'s strict-mode
+    // check (2 matches: the Servers page's own title AND this one). Only
+    // one `sneat-datatug-dbserver` element ever exists in this test's own
+    // navigation (one click, one destination), so this tag alone is
+    // unambiguous regardless of transition timing.
+    const dbServerPage = page.locator('sneat-datatug-dbserver');
+    await expect(dbServerPage).toBeVisible({ timeout: 15_000 });
+
     // `sneat-datatug-page-title`'s "{Page title} @ {Project title}" format
     // (see the S158 test above) — proves the route actually activated
     // `DbserverPageComponent` inside the real project context, not just
     // that *something* rendered where the Servers list used to be.
-    const pageTitle = activePage(page).locator('sneat-datatug-page-title');
+    const pageTitle = dbServerPage.locator('sneat-datatug-page-title');
     await expect(pageTitle).toContainText('DB server:', { timeout: 15_000 });
     await expect(pageTitle).toContainText('DataTug Demo Project 1');
 
@@ -481,13 +496,13 @@ test.describe('GitHub-store project — every side-menu page loads without error
     // Databases cards (dbserver-page.component.html) — renders even though
     // this demo project has no host to show.
     await expect(
-      activePage(page).locator('ion-label', { hasText: 'Host' }),
+      dbServerPage.locator('ion-label', { hasText: 'Host' }),
     ).toBeVisible();
     await expect(
-      activePage(page).locator('ion-item-divider', { hasText: 'Environments' }),
+      dbServerPage.locator('ion-item-divider', { hasText: 'Environments' }),
     ).toBeVisible();
     await expect(
-      activePage(page).locator('ion-item-divider', { hasText: 'Databases' }),
+      dbServerPage.locator('ion-item-divider', { hasText: 'Databases' }),
     ).toBeVisible();
 
     expect(errors).toEqual([]);
