@@ -89,21 +89,39 @@ export class ProjectItemService<ProjItem extends IProjItemBrief> {
       );
   }
 
+  // S174: `root` is the wire `?root=personal` param datatug-cli v0.24.0's
+  // `GET /datatug/queries/all_queries` adds (api-contract.md, PR #55) — a
+  // missing/blank `root` (this param simply omitted) is byte-identical to
+  // every pre-v0.24.0 request and resolves to the SHARED tree, so callers
+  // must only ever pass `'personal'` here, never `'shared'`, to keep the
+  // shared-tab request wire-identical to before this fix. `getFolder` stays
+  // generic over `itemsPath` (this class has no other consumer today — see
+  // `queries.service.token.ts`'s own `QUERY_PROJ_ITEM_SERVICE` — but nothing
+  // here assumes "queries" specifically), so an unset `root` is simply never
+  // added to `params` rather than the class asserting itemsPath === 'queries'
+  // itself. The Firestore branch (DataTug Cloud) is untouched — this
+  // contract is CLI-agent-only (AGENTS.md's zoneless note aside, this is a
+  // plain data-layer change, no template/signal involvement).
   public getFolder<T extends IProjItemsFolder>(
     from: IProjectRef,
     folderPath: string,
+    root?: 'personal',
   ): Observable<T | null | undefined> {
     if (from.storeId === 'firestore') {
       return this.watchFirestoreFolder<T>(from.projectId).pipe(
         take(1),
       );
     }
+    const params: Record<string, string> = {
+      project: from.projectId,
+      folder: folderPath,
+    };
+    if (root === 'personal') {
+      params['root'] = root;
+    }
     return this.storeApiService
       .get<T>(from.storeId, `/${this.itemsPath}/all_${this.itemsPath}`, {
-        params: {
-          project: from.projectId,
-          folder: folderPath,
-        },
+        params,
       })
       .pipe(
         tap((folder) => {

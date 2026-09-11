@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import { expect, test } from './fixtures/agent-server';
+import { expect, PERSONAL_QUERY_TITLE, test } from './fixtures/agent-server';
 import { activePage } from './helpers/active-page';
 
 /**
@@ -972,5 +972,93 @@ test.describe('J4 — restricted principal', () => {
     expect(hiddenColumnBody.code).toBe('ACCESS_DENIED');
     expect(hiddenColumnBody.error).toContain('Email');
     expect(hiddenColumnBody.rows).toBeUndefined();
+  });
+});
+
+/**
+ * S174 — datatug-cli v0.24.0 (api-contract.md PR #55) adds `GET
+ * /datatug/queries/all_queries?root=personal`. `agentServer` (`--as admin
+ * --role admin`) is started with `$DATATUG_PERSONAL_DIR` pointed at a fresh
+ * temp dir seeded with exactly one personal query for this admin agent
+ * (`fixtures/agent-server.ts`'s own `personalQuery` option,
+ * `PERSONAL_QUERY_ID`/`PERSONAL_QUERY_TITLE`) — so `root=personal` resolves
+ * server-side to the real `user:admin` folder, not the `AGENT_PERSONAL_
+ * QUERIES_UNSUPPORTED_MESSAGE` fallback `queries.service.ts` raises for an
+ * agent that predates v0.24.0 (that fallback's own unit/component coverage
+ * lives in libs/datatug/main — queries.service.spec.ts / queries-tab.
+ * component.spec.ts; nothing here exercises an old agent, since
+ * DATATUG_CLI_REF above is already pinned to v0.24.0+).
+ *
+ * This is the one thing only a REAL agent can prove: that the actual
+ * `datatug-cli` v0.24.0 binary reads `$DATATUG_PERSONAL_DIR`, resolves
+ * `root=personal` to the serving principal's own folder, and — just as
+ * importantly — never leaks that file into the SHARED tree (mirrors
+ * datatug-cli's own server-side `TestGetPersonalQueries_
+ * PrincipalSeesOwnPersonalQueries` isolation assertion, from the CLIENT's
+ * point of view this time).
+ */
+test.describe('Personal queries tab — datatug-cli v0.24.0 root=personal (S174)', () => {
+  test('Personal lists the seeded personal query and no shared folders; Shared never shows it', async ({
+    agentServer,
+    page,
+  }) => {
+    const projectUrl = `/store/${agentServer.storeId}/project/${DEMO_PROJECT_ID}`;
+
+    // "the browser opens the demo project" — the single entry point every
+    // journey above uses; see J1's own comment on the title assertion
+    // mechanism.
+    await page.goto(projectUrl);
+    await expect(
+      page.locator('ion-card ion-input').first().getByRole('textbox'),
+    ).toHaveValue('DataTug Demo Project 1', { timeout: 15_000 });
+
+    // "the user opens Queries" — the persistent "Queries" side-menu item
+    // (ProjectMenuTopComponent, reachable from any project page — same
+    // element openSavedQuery() above clicks, stopping one step short here:
+    // this test needs the Queries LIST page itself, not one specific saved
+    // query).
+    await page
+      .locator('sneat-datatug-project-menu-top')
+      .getByText('Queries', { exact: true })
+      .click();
+
+    // QueriesPageComponent renders exactly ONE `<sneat-datatug-queries-tab>`
+    // for both the "Personal" and "Shared" segments (queries-page.component.
+    // html — the same instance, rebound, not recreated — see queries-tab.
+    // component.ts's own S154 history), so this one locator covers both
+    // halves of this test below; `activePage()` (S104) scopes it to the
+    // Queries page now that it is the active route.
+    const queriesTab = activePage(page).locator('sneat-datatug-queries-tab');
+
+    // "switches to Personal" — QueriesPageComponent's own segment control
+    // (queries-page.component.html, `ion-segment-button[value="personal"]`).
+    await activePage(page).locator('ion-segment-button[value="personal"]').click();
+
+    // "the seeded personal query is listed" — agentServer's own personal
+    // root (`user:admin`, via `--as admin` + `$DATATUG_PERSONAL_DIR`).
+    await expect(
+      queriesTab.getByText(PERSONAL_QUERY_TITLE, { exact: true }),
+    ).toBeVisible({ timeout: 15_000 });
+    // "and the shared queries are not" — the personal root has no folders of
+    // its own; any of the demo project's shared top-level folder names
+    // (queries/customers, queries/artists, ...) appearing here would mean
+    // the Personal tab fell back to the shared tree instead of the real
+    // v0.24.0 personal one.
+    await expect(queriesTab.getByText('customers', { exact: true })).toHaveCount(
+      0,
+    );
+
+    // "switches to Shared, the seeded query is absent" — root isolation from
+    // the CLIENT's point of view (datatug-cli's own server-side
+    // TestGetPersonalQueries_PrincipalSeesOwnPersonalQueries proves the same
+    // thing from the server's). "customers" reappearing first confirms the
+    // shared tree itself still loads normally (unaffected by this fix).
+    await activePage(page).locator('ion-segment-button[value="shared"]').click();
+    await expect(queriesTab.getByText('customers', { exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(
+      queriesTab.getByText(PERSONAL_QUERY_TITLE, { exact: true }),
+    ).toHaveCount(0);
   });
 });

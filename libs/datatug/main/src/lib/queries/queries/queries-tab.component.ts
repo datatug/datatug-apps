@@ -36,7 +36,11 @@ import {
 import { IProjectContext } from '../../nav/nav-models';
 import { DatatugNavContextService } from '../../services/nav/datatug-nav-context.service';
 import { DatatugNavService } from '../../services/nav/datatug-nav.service';
-import { GITHUB_PERSONAL_QUERIES_MESSAGE, QueriesService } from '../queries.service';
+import {
+  AGENT_PERSONAL_QUERIES_UNSUPPORTED_MESSAGE,
+  GITHUB_PERSONAL_QUERIES_MESSAGE,
+  QueriesService,
+} from '../queries.service';
 
 interface FilteredItem {
   //TODO: make readonly
@@ -463,6 +467,24 @@ export class QueriesTabComponent {
             this.changeDetectorRef.markForCheck();
             return;
           }
+          // S174: `QueriesService.getQueriesFolder()` raises exactly this
+          // when an agent-backed store answered `root=personal` with the
+          // shared tree (`id === '~'`) — i.e. an agent that predates
+          // datatug-cli v0.24.0 and silently ignored `root` — same
+          // friendly-card-instead-of-error-toast treatment as the GitHub
+          // case just above, never listing the shared items under the
+          // "Personal" label.
+          if (isAgentPersonalQueriesUnsupportedError(err)) {
+            this.allQueries = [];
+            this.currentFolder = { path: '~', id: '~', folders: [], items: [] };
+            this.parentFolders = [];
+            this.personalQueriesNotice.set(
+              AGENT_PERSONAL_QUERIES_UNSUPPORTED_MESSAGE,
+            );
+            // Zoneless (this class's own `changeDetectorRef` doc comment).
+            this.changeDetectorRef.markForCheck();
+            return;
+          }
           this.errorLogger.logError(err, 'Failed to load queries');
         },
       });
@@ -646,4 +668,18 @@ export class QueriesTabComponent {
  */
 function isGithubPersonalQueriesError(err: unknown): boolean {
   return err instanceof Error && err.message === GITHUB_PERSONAL_QUERIES_MESSAGE;
+}
+
+/**
+ * `QueriesService.getQueriesFolder()` raises exactly `new
+ * Error(AGENT_PERSONAL_QUERIES_UNSUPPORTED_MESSAGE)` (own doc comment,
+ * `queries.service.ts`) when an agent-backed store answered a
+ * `root=personal` request with the shared tree — the one unambiguous "this
+ * agent predates datatug-cli v0.24.0" signal available to the client.
+ */
+function isAgentPersonalQueriesUnsupportedError(err: unknown): boolean {
+  return (
+    err instanceof Error &&
+    err.message === AGENT_PERSONAL_QUERIES_UNSUPPORTED_MESSAGE
+  );
 }
