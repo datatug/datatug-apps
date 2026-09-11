@@ -160,6 +160,13 @@
       "options": {
         "command": "pnpm e2e:sso"
       }
+    },
+    "e2e-error-dialog": {
+      "executor": "nx:run-commands",
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-app-error-dialog-e2e"],
+      "options": {
+        "command": "pnpm e2e:error-dialog"
+      }
     }
   }
 }

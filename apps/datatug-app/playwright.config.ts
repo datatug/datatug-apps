@@ -4,7 +4,14 @@ export default defineConfig({
   testDir: './e2e',
   // Enterprise SSO owns Firebase, Firestore, an SSO backend, and an OIDC IdP;
   // run it through playwright.sso.config.ts or the Keycloak profile instead.
-  testIgnore: 'enterprise-sso.spec.ts',
+  // error-dialog.spec.ts (S167) needs the PRODUCTION build configuration
+  // (real Sentry DSN, non-"localhost" hostname) to mean anything — this
+  // config's webServer always serves `serve:development` on "localhost",
+  // where Sentry capture is unconditionally skipped
+  // (`ErrorLoggerService.logError()`), so running it here would pass
+  // vacuously rather than proving anything. Run it through
+  // playwright.error-dialog.config.ts instead.
+  testIgnore: ['enterprise-sso.spec.ts', 'error-dialog.spec.ts'],
   outputDir: '../../coverage/apps/datatug-app-e2e/results',
   fullyParallel: true,
   reporter: [
@@ -53,9 +60,10 @@ export default defineConfig({
       name: 'chromium',
       // Project-level testIgnore replaces (does not merge with) the
       // top-level one above, so it re-states 'enterprise-sso.spec.ts' and
-      // adds 'journey/**' — journey/ has its own project below (real agent,
-      // no interception) and must not also run under this default project.
-      testIgnore: ['enterprise-sso.spec.ts', 'journey/**'],
+      // 'error-dialog.spec.ts' and adds 'journey/**' — journey/ has its own
+      // project below (real agent, no interception) and must not also run
+      // under this default project.
+      testIgnore: ['enterprise-sso.spec.ts', 'error-dialog.spec.ts', 'journey/**'],
       use: { ...devices['Desktop Chrome'] },
     },
     {
