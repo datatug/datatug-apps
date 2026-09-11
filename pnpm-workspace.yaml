@@ -22,7 +22,7 @@ overrides:
   '@sneat/datagrid': 0.27.6
   '@sneat/dto': 0.27.6
   '@sneat/grid': 0.27.6
-  '@sneat/logging': 0.27.6
+  '@sneat/logging': 0.27.25
   '@sneat/space-models': 0.27.6
   '@sneat/space-services': 0.27.6
   '@sneat/ui': 0.27.6
@@ -57,7 +57,7 @@ minimumReleaseAgeExclude:
   - '@sneat/datagrid@0.5.0 || 0.26.4'
   - '@sneat/dto@0.5.0 || 0.26.4'
   - '@sneat/grid@0.5.0 || 0.26.4'
-  - '@sneat/logging@0.5.0 || 0.26.4'
+  - '@sneat/logging@0.5.0 || 0.26.4 || 0.27.25'
   - '@sneat/space-models@0.5.0 || 0.26.4'
   - '@sneat/space-services@0.5.0 || 0.26.4'
   - '@sneat/ui@0.5.0 || 0.26.4'
