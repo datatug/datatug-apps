@@ -106,7 +106,6 @@ describe('EntitiesPage', () => {
  * with no manual intervention (no dropdown click, unlike the reported bug).
  */
 describe('EntitiesPage replaces "Loading..." once entities arrive (zoneless)', () => {
-  let component: EntitiesPageComponent;
   let fixture: ComponentFixture<EntitiesPageComponent>;
   let currentProject$: Subject<IProjectContext | undefined>;
   let getAllEntities$: Subject<IRecord<IEntity>[]>;
@@ -178,7 +177,6 @@ describe('EntitiesPage replaces "Loading..." once entities arrive (zoneless)', (
       .compileComponents();
 
     fixture = TestBed.createComponent(EntitiesPageComponent);
-    component = fixture.componentInstance;
   });
 
   it('replaces the Loading... placeholder with the entity list once it arrives, with no explicit detectChanges()', async () => {

@@ -106,7 +106,6 @@ describe('ServersPage', () => {
  * list with no manual intervention.
  */
 describe('ServersPage replaces "Loading..." once DB servers arrive (zoneless)', () => {
-  let component: ServersPageComponent;
   let fixture: ComponentFixture<ServersPageComponent>;
   let current$: Subject<IProjectRef | undefined>;
   let getDbServers$: Subject<IProjDbServerSummary[]>;
@@ -162,7 +161,6 @@ describe('ServersPage replaces "Loading..." once DB servers arrive (zoneless)', 
       .compileComponents();
 
     fixture = TestBed.createComponent(ServersPageComponent);
-    component = fixture.componentInstance;
   });
 
   it('replaces the Loading... placeholder with the DB server list once it arrives, with no explicit detectChanges()', async () => {
@@ -340,7 +338,6 @@ describe('ServersPage clears the delete button\'s disabled state once deletion c
  * template is actually wired up (not just the underlying signals).
  */
 describe('ServersPage numbers add up (S153 — GitHub-store demo project)', () => {
-  let component: ServersPageComponent;
   let fixture: ComponentFixture<ServersPageComponent>;
 
   const target: IProjectRef = {
@@ -477,7 +474,6 @@ describe('ServersPage numbers add up (S153 — GitHub-store demo project)', () =
       .compileComponents();
 
     fixture = TestBed.createComponent(ServersPageComponent);
-    component = fixture.componentInstance;
   });
 
   it('badge and footer total both equal the one row shown — never the old hard-coded "2" — and the row is unambiguously labeled "5 databases", not a bare "5"', async () => {

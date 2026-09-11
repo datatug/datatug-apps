@@ -1,0 +1,62 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-menu-button />
+      <ion-back-button />
+    </ion-buttons>
+    <ion-title>Incidents</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content color="light">
+  <ion-card>
+    <ion-card-content>
+      <ion-button expand="block" color="danger" routerLink="/incidents/new">
+        <ion-icon slot="start" name="rocket-outline" />
+        Houston, we've got a problem
+      </ion-button>
+    </ion-card-content>
+  </ion-card>
+
+  @if (!storeId()) {
+    <ion-card>
+      <ion-card-content>
+        <p>
+          Open a project to see its incidents, or use "Houston, we've got a
+          problem" above to start one.
+        </p>
+      </ion-card-content>
+    </ion-card>
+  } @else if (unavailableMessage()) {
+    <ion-card>
+      <ion-card-content>
+        <ion-note color="warning">{{ unavailableMessage() }}</ion-note>
+      </ion-card-content>
+    </ion-card>
+  } @else if (isLoading()) {
+    <ion-card>
+      <ion-card-content class="ion-text-center">
+        <ion-spinner name="dots" />
+      </ion-card-content>
+    </ion-card>
+  } @else if (incidents(); as items) {
+    <ion-card>
+      @if (items.length) {
+        <ion-list>
+          @for (incident of items; track incident.id) {
+            <ion-item [routerLink]="incidentLink(incident)" button detail>
+              <ion-label>
+                <h2>{{ incident.title }}</h2>
+                <p>{{ incident.status }}</p>
+              </ion-label>
+            </ion-item>
+          }
+        </ion-list>
+      } @else {
+        <ion-card-content>
+          <p>No incidents yet.</p>
+        </ion-card-content>
+      }
+    </ion-card>
+  }
+</ion-content>

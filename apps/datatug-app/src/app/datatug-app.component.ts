@@ -10,6 +10,7 @@ import { IonTitle } from '@ionic/angular/ion-title';
 import { IonToolbar } from '@ionic/angular/ion-toolbar';
 import { MenuController } from '@ionic/angular/menu-controller';
 import { ErrorLogger } from '@sneat/core';
+import { PRODUCT_PROFILE } from '@datatug/product-profiles';
 
 @Component({
   selector: 'sneat-datatug-root',
@@ -32,6 +33,14 @@ import { ErrorLogger } from '@sneat/core';
 export class DatatugAppComponent {
   private readonly menuController = inject(MenuController);
   private readonly errorLogger = inject(ErrorLogger);
+
+  // The active product profile (hub `product-profiles` REQ:profile-table),
+  // resolved once at bootstrap (config override -> hostname -> `datatug`
+  // default) or substituted directly in a test — see `PRODUCT_PROFILE`'s own
+  // doc comment. The shell reads only its declarative `brandName`/`planned`
+  // fields, never branches on the profile's identity
+  // (REQ:profile-config-is-declarative).
+  protected readonly profile = inject(PRODUCT_PROFILE);
 
   // The side menu (`ion-menu type="overlay"`) is an overlay on small
   // screens: clicking the "DataTug.app" brand navigates home via

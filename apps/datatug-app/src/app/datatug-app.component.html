@@ -7,9 +7,9 @@
             <a
               class="brand-home-link"
               routerLink="/"
-              aria-label="DataTug.app home"
+              [attr.aria-label]="profile.brandName + ' home'"
               (click)="closeMenu()"
-              >DataTug.app</a
+              >{{ profile.brandName }}@if (profile.planned) {<span class="brand-planned-badge"> Planned</span>}</a
             >
           </ion-title>
         </ion-toolbar>

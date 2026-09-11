@@ -1,0 +1,35 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-menu-button />
+      <ion-back-button defaultHref="/incidents" />
+    </ion-buttons>
+    <ion-title>{{ incident()?.title || 'Incident' }}</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content color="light">
+  @if (unavailableMessage(); as message) {
+    <ion-card>
+      <ion-card-content>
+        <ion-note color="warning">{{ message }}</ion-note>
+      </ion-card-content>
+    </ion-card>
+  } @else if (isLoading()) {
+    <ion-card>
+      <ion-card-content class="ion-text-center">
+        <ion-note>Loading…</ion-note>
+      </ion-card-content>
+    </ion-card>
+  } @else if (incident(); as incident) {
+    <ion-card>
+      <ion-card-content>
+        <h1>{{ incident.title }}</h1>
+        <p><strong>Status:</strong> {{ incident.status }}</p>
+        @if (incident.description) {
+          <p>{{ incident.description }}</p>
+        }
+      </ion-card-content>
+    </ion-card>
+  }
+</ion-content>

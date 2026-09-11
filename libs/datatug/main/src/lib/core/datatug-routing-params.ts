@@ -10,3 +10,4 @@ export const routingParamEntityId = 'entityId';
 export const routingParamEnvironmentId = 'environmentId';
 export const routingParamBoard = 'board';
 export const routingParamSpaceId = 'spaceId';
+export const routingParamIncidentId = 'incidentId';

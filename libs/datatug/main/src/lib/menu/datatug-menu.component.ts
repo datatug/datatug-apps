@@ -1,10 +1,11 @@
 import { Component, OnDestroy, inject, signal } from '@angular/core';
-import { NavigationEnd, Router } from '@angular/router';
+import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import { AnalyticsService, ErrorLogger, IErrorLogger } from '@sneat/core';
 import { Subject } from 'rxjs';
 import { filter, takeUntil } from 'rxjs/operators';
-import { IonCard, IonCardContent } from '@ionic/angular';
+import { IonCard, IonCardContent, IonIcon, IonItem, IonLabel } from '@ionic/angular';
 import { AppVersionComponent } from '@sneat/components';
+import { PRODUCT_PROFILE } from '@datatug/product-profiles';
 import { DatatugCoreModule } from '../core/datatug-core.module';
 import { DatatugServicesStoreModule } from '../services/repo/datatug-services-store.module';
 import { DatatugServicesProjectModule } from '../services/project/datatug-services-project.module';
@@ -30,6 +31,10 @@ import { DatatugAuthMenuItemComponent } from './datatug-auth-menu-item.component
   imports: [
     IonCard,
     IonCardContent,
+    IonItem,
+    IonIcon,
+    IonLabel,
+    RouterLink,
     DatatugAuthMenuItemComponent,
     DatatugCoreModule,
     DatatugServicesStoreModule,
@@ -56,6 +61,14 @@ export class DatatugMenuComponent implements OnDestroy {
   // Analytics is only provided in production (when a measurementId is set),
   // so inject it optionally and no-op when absent.
   private readonly analytics = inject(AnalyticsService, { optional: true });
+  // Resolved once at bootstrap (or overridden directly in a test — see
+  // `PRODUCT_PROFILE`'s own doc comment) and read here only for its
+  // declarative `showIncidentsMenuItem` field — never branched on by
+  // identity (REQ:profile-config-is-declarative). Fixed `true` for
+  // `datatug` (founder, 2026-09-11, verbatim: "DataTug app should always
+  // have Incidents menu item in side menu.") — present with or without a
+  // project open, no feature flag or project setting removes it.
+  protected readonly profile = inject(PRODUCT_PROFILE);
 
   protected readonly isLoginPage = signal(false);
   protected readonly currentStoreId = signal<string | undefined>(undefined);
