@@ -31,6 +31,7 @@ import {
   Candidate,
   ContextCondition,
   ContextItem,
+  contextItemToFact,
   InvestigationContextService,
   SemanticApiService,
   SemanticValue,
@@ -489,8 +490,10 @@ export class InvestigationContextPageComponent implements OnDestroy {
     this.loading.set(true);
     this.error.set(undefined);
     // Task 15 item 2 — `enabledItems` are already wire-shaped Facts (`origin: 'context'`)
-    // straight from InvestigationContextService; no toFact() re-wrap needed.
-    const values = enabledItems;
+    // straight from InvestigationContextService; contextItemToFact() narrows off the
+    // UI-local fields (label/source/addedAt) and carries `condition` through only when
+    // it isn't the default `'=='` (S162 — api-contract.md's Fact.condition paragraph).
+    const values = enabledItems.map(contextItemToFact);
     const requestScope = { project: projectId, environment, securityContextId };
     this.semanticApi
       .getApplicableQueries({ ...requestScope, values })

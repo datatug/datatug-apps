@@ -17,6 +17,7 @@ export {
   InvestigationContextService,
   ContextCondition,
   ContextItem,
+  contextItemToFact,
   ContextItemInput,
   ContextScope,
   ParameterBinding,

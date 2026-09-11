@@ -40,7 +40,10 @@ import {
 } from '../../../contract/types';
 import { SemanticSelection } from '../../models/models';
 import { AgentContextService } from '../../services/agent-context.service';
-import { InvestigationContextService } from '../../services/investigation-context.service';
+import {
+  contextItemToFact,
+  InvestigationContextService,
+} from '../../services/investigation-context.service';
 import { SemanticApiService } from '../../services/semantic-api.service';
 
 addIcons({
@@ -373,7 +376,8 @@ export class ContextPanelComponent {
     // just typed-equality dedup against what's already in `values` (a same-typed-value
     // duplicate is dropped; a *different* typed value for the same entity.field is kept
     // as a genuine second candidate, letting the server's own ambiguity/conflict
-    // detection see it, same as before).
+    // detection see it, same as before). contextItemToFact() narrows to the exact wire
+    // shape, carrying `condition` through when it isn't the default `'=='`.
     for (const item of this.context.items().filter((i) => i.enabled)) {
       const isDuplicate = values.some(
         (v) =>
@@ -383,14 +387,7 @@ export class ContextPanelComponent {
           v.value.value === item.value.value,
       );
       if (!isDuplicate) {
-        values.push({
-          id: item.id,
-          entity: item.entity,
-          field: item.field,
-          value: item.value,
-          origin: 'context',
-          enabled: item.enabled,
-        });
+        values.push(contextItemToFact(item));
       }
     }
     return values;

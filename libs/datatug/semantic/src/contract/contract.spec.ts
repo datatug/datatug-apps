@@ -344,6 +344,47 @@ describe('decoders reject what the appendix forbids (no coercion, no unknown fie
     ).toThrow(ContractDecodeError);
   });
 
+  it('Fact.condition: absent decodes to undefined, matching every fact before this field existed (S162)', () => {
+    const fact = decodeFact({
+      id: 'Customer.ID=5',
+      entity: 'Customer',
+      field: 'ID',
+      value: { type: 'integer', value: '5' },
+      origin: 'selection',
+      enabled: true,
+    });
+    expect(fact.condition).toBeUndefined();
+  });
+
+  it('Fact.condition: decodes each of the six comparison operators verbatim (S162)', () => {
+    for (const condition of ['==', '!=', '>', '>=', '<', '<='] as const) {
+      const fact = decodeFact({
+        id: `Customer.Age${condition}21`,
+        entity: 'Customer',
+        field: 'Age',
+        value: { type: 'integer', value: '21' },
+        condition,
+        origin: 'context',
+        enabled: true,
+      });
+      expect(fact.condition).toBe(condition);
+    }
+  });
+
+  it('Fact.condition: rejects an operator outside the six-value set, no coercion to the nearest known one', () => {
+    expect(() =>
+      decodeFact({
+        id: 'x',
+        entity: 'Customer',
+        field: 'Age',
+        value: { type: 'integer', value: '21' },
+        condition: '>>',
+        origin: 'context',
+        enabled: true,
+      }),
+    ).toThrow(ContractDecodeError);
+  });
+
   it('agent-info: rejects a missing required field', () => {
     const { securityContextId: _drop, ...withoutId } = agentInfo;
     void _drop;
