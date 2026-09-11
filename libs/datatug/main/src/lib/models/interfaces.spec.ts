@@ -47,6 +47,26 @@ describe('allUserStoresAsFlatList', () => {
     expect(ids).toContain('firestore');
     expect(ids).toContain('github.com');
   });
+
+  // S165: a user record may still hold a legacy full-URL key predating
+  // PR #109's switch to the canonical dash-prefixed id.
+  // `allUserStoresAsFlatList()` already recognises it as "a localhost store
+  // exists" (via `isLocalhostAgentStoreId()`, tested above), but
+  // `MyStoresComponent.goStore()` → `parseDatatugStoreRef(brief.id)` used to
+  // throw for it regardless (founder, 2026-09-11 follow-up 5). Assert the
+  // flattened entry's id now parses without throwing.
+  it('produces an entry whose legacy full-URL id parses without throwing', () => {
+    const stores = allUserStoresAsFlatList({
+      'http://localhost:8989': { type: 'agent', title: 'my agent' },
+    });
+    const local = stores.find((s) => s.id === 'http://localhost:8989');
+    expect(local).toBeDefined();
+    expect(() => parseDatatugStoreRef(local?.id)).not.toThrow();
+    expect(parseDatatugStoreRef(local?.id)).toEqual({
+      type: 'agent',
+      url: 'http://localhost:8989',
+    });
+  });
 });
 
 describe('isLocalhostAgentStoreId', () => {

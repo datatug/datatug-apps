@@ -15,6 +15,29 @@ import { IDatatugStoreBrief, IProjectBrief } from '../models/interfaces';
 const HOST_PORT_STORE_ID = /^[^\s:@/]+:\d+$/;
 
 /**
+ * Matches a legacy full-URL store id/key, e.g. `"http://localhost:8989"` —
+ * a form some historic `IDatatugBriefForUser.stores` records still hold
+ * (`libs/datatug/main/src/lib/models/interfaces.ts`), predating PR #109's
+ * switch of the default local-agent entry to the canonical dash-prefixed
+ * key `LOCALHOST_AGENT_STORE_ID` (`"http-localhost:8989"`). A user record
+ * keyed this way is already recognised elsewhere as "a localhost store
+ * exists" (`isLocalhostAgentStoreId()`, same file), but until S165 this
+ * function itself rejected the key outright — `MyStoresComponent.goStore()`
+ * → `parseDatatugStoreRef(brief.id)` threw
+ * `unsupported format of store id:http://localhost:8989` (founder,
+ * 2026-09-11 follow-up 5).
+ *
+ * Accepts one optional trailing slash — `"http://host:port"` and
+ * `"http://host:port/"` name the same agent, so the slash carries no
+ * information and is stripped on normalisation. Anything past that (a path,
+ * query, or fragment) is deliberately NOT matched: the id names an agent's
+ * origin, never a sub-resource, so `"http://host:port/some/path"` falls
+ * through to `parseStoreRef()` and throws `unsupported format of store id`
+ * like any other malformed id, rather than silently discarding the path.
+ */
+const HTTP_URL_STORE_ID = /^(https?):\/\/([^/\s]+)\/?$/;
+
+/**
  * Wraps `@sneat/core`'s `parseStoreRef()`. That function only recognises
  * `'firestore'` | `'github'` | `'github.com'` | an `'http-'`/`'https-'`
  * prefixed id, and throws `unsupported format of store id` for anything
@@ -45,6 +68,13 @@ const HOST_PORT_STORE_ID = /^[^\s:@/]+:\d+$/;
  * convention (`pwa/repo/:repo/agent/:agentId`); it is deliberately not
  * ported here — see `datatug-app-routes.ts`'s own comment and
  * `spec/research/2026-09-09-layered-acl-reconciliation.md` (datatug/datatug).
+ *
+ * S165: a legacy full-URL id (`"http://localhost:8989"`, see
+ * `HTTP_URL_STORE_ID` above) is ALSO accepted as input — normalised to the
+ * canonical dash-prefixed id before delegating, so the returned ref (and
+ * every downstream consumer of it) behaves exactly as for the canonical
+ * id. This is input tolerance only: the convention above is unchanged, and
+ * this function never itself emits a URL-form id.
  */
 export function parseDatatugStoreRef(storeId?: string): IStoreRef {
   if (
@@ -54,6 +84,19 @@ export function parseDatatugStoreRef(storeId?: string): IStoreRef {
     HOST_PORT_STORE_ID.test(storeId)
   ) {
     return { type: 'agent', url: storeId };
+  }
+  if (storeId) {
+    const urlMatch = HTTP_URL_STORE_ID.exec(storeId);
+    if (urlMatch) {
+      const [, protocol, hostPort] = urlMatch;
+      // Normalise to the canonical dash-prefixed id and fall through to
+      // the same `parseStoreRef()` delegation as `"http-localhost:8989"`
+      // below — `.url` comes back as the real `http(s)://…` URL (minus any
+      // trailing slash) via that function's `-` → `://` conversion, so
+      // route segment (`getStoreId()`), display label, and agent detection
+      // all behave identically to the canonical id.
+      storeId = `${protocol}-${hostPort}`;
+    }
   }
   return parseStoreRef(storeId);
 }
