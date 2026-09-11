@@ -1,3 +1,4 @@
+import { isAuthorizationResult, type AuthorizationResult } from './authorization';
 // Strict runtime decoders for every server-originated shape in ./types.ts —
 // the contract appendix requires "strict runtime decoders (no string/number
 // coercion; unknown security-relevant fields rejected)" (plan Task 12, brief
@@ -617,8 +618,9 @@ export function decodeAvailableSnapshot(
 
 export function decodeErrorDetails(v: unknown, path = 'details'): ErrorDetails {
   const obj = requireObject(v, path);
-  requireExactKeys(obj, ['availableSnapshots'], path);
+  requireExactKeys(obj, ['availableSnapshots', 'authorization'], path);
   return {
+    authorization: optional(obj['authorization'], `${path}.authorization`, decodeAuthorization),
     availableSnapshots: optional(
       obj['availableSnapshots'],
       `${path}.availableSnapshots`,
@@ -646,4 +648,26 @@ export function tryDecodeErrorEnvelope(v: unknown): ErrorEnvelope | undefined {
   } catch {
     return undefined;
   }
+}
+
+function decodeAuthorization(
+  value: unknown,
+  path: string,
+): AuthorizationResult {
+  if (
+    !isAuthorizationResult(value) ||
+    value.allowed ||
+    !value.blockers.every(
+      (b) =>
+        b !== null &&
+        typeof b === 'object' &&
+        typeof b.operationId === 'string' &&
+        typeof b.code === 'string' &&
+        typeof b.scope === 'string' &&
+        (b.layerId === undefined || typeof b.layerId === 'string'),
+    )
+  ) {
+    throw new ContractDecodeError(path, 'invalid authorization denial');
+  }
+  return value;
 }

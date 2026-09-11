@@ -11,7 +11,7 @@ import {
   InvestigationContextService,
   SemanticApiService,
 } from '@sneat/datatug-semantic';
-import { Observable, of, throwError } from 'rxjs';
+import { Observable, Subject, of, throwError } from 'rxjs';
 
 import { QueryPageComponent, extractLinkedEntityNames } from './query-page.component';
 import { IQueryEditorState } from '../../../editor/models';
@@ -137,6 +137,7 @@ describe('SqlEditorPage', () => {
 // for those units' own isolated coverage.
 describe('QueryPageComponent — semantic parameter binding and run', () => {
   let component: QueryPageComponent;
+  let runFixture: ComponentFixture<QueryPageComponent>;
   let runQueryMock: ReturnType<typeof vi.fn>;
   let agentContext: ReturnType<typeof agentContextStub>;
   let investigationContext: InvestigationContextService;
@@ -234,7 +235,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       .overrideComponent(QueryPageComponent, {
         set: {
           imports: [],
-          template: '',
+          template: '<ul aria-label="Access blockers">@for (blocker of accessBlockers(); track $index) {<li>{{ blocker }}</li>}</ul>',
           schemas: [CUSTOM_ELEMENTS_SCHEMA],
           providers: [],
         },
@@ -242,7 +243,8 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       .compileComponents();
 
     investigationContext = TestBed.inject(InvestigationContextService);
-    const created = TestBed.createComponent(QueryPageComponent).componentInstance;
+    runFixture = TestBed.createComponent(QueryPageComponent);
+    const created = runFixture.componentInstance;
     created.project = project;
     created.envId = 'production';
     // The component's own effect/constructor already calls setScope once project/env/
@@ -504,6 +506,71 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     expect(component.runError()).toBe('ACCESS_DENIED');
     expect(component.running()).toBe(false);
     expect(component.runResult()).toBeUndefined();
+  });
+
+  it('receives multiple ACL blockers asynchronously and clears them on retry', async () => {
+    component = await createComponent({});
+    runFixture.detectChanges();
+    await runFixture.whenStable();
+    const pending = new Subject<never>();
+    runQueryMock.mockReturnValue(pending);
+    component.runQuery();
+    pending.error(
+      new HttpErrorResponse({
+        status: 403,
+        error: {
+          error: {
+            code: 'ACCESS_DENIED',
+            message: 'Access denied',
+            requestId: 'r1',
+          },
+          details: {
+            authorization: {
+              apiVersion: 'dtql.org/authorization/v1',
+              requestId: 'r1',
+              mode: 'execution',
+              scope: 'request',
+              result: 'deny',
+              allowed: false,
+              hypothetical: false,
+              operations: [],
+              layers: [],
+              restrictions: [],
+              coverage: {
+                evaluation: 'partial',
+                disclosure: 'redacted',
+                truncated: false,
+                unevaluated: [],
+              },
+              blockers: [
+                {
+                  operationId: 'q',
+                  code: 'COLUMN_READ_DENIED',
+                  scope: 'column',
+                  layerId: 'ingitdb',
+                },
+                {
+                  operationId: 'q',
+                  code: 'ACCESS_DENIED',
+                  scope: 'operation',
+                  layerId: 'openvaultdb',
+                },
+              ],
+            },
+          },
+        },
+      }),
+    );
+    await runFixture.whenStable();
+    expect(runFixture.nativeElement.textContent).toContain(
+      'ingitdb: COLUMN_READ_DENIED',
+    );
+    expect(runFixture.nativeElement.textContent).toContain(
+      'openvaultdb: ACCESS_DENIED',
+    );
+    runQueryMock.mockReturnValue(new Subject<never>());
+    component.runQuery();
+    expect(component.accessBlockers()).toEqual([]);
   });
 
   it('runQuery does nothing without a project', async () => {
