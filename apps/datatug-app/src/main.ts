@@ -18,7 +18,6 @@ import {
 } from '@sneat/core';
 import { provideBuildInfo } from '@sneat/core-public';
 import {
-  provideErrorLogger,
   provideSentryAppInitializer,
   provideSneatAnalytics,
 } from '@sneat/logging';
@@ -28,6 +27,7 @@ import { routes } from './app/datatug-app-routes';
 import { DatatugAppComponent } from './app/datatug-app.component';
 import { buildInfo } from './build-info';
 import { datatugAppEnvironmentConfig } from './environments/environment';
+import { provideErrorLoggerWithoutReportDialog } from './no-report-dialog-error-logger';
 import { registerIonicons } from './register-ionicons';
 import { registerPosthog } from './register-posthog';
 
@@ -39,7 +39,7 @@ bootstrapApplication(DatatugAppComponent, {
   providers: [
     provideZonelessChangeDetection(),
     provideHttpClient(),
-    provideErrorLogger(),
+    ...provideErrorLoggerWithoutReportDialog(),
     provideIonicAngular(),
     provideAnimationsAsync(),
     { provide: LOGGER_FACTORY, useValue: loggerFactory },
