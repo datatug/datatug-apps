@@ -4,6 +4,20 @@
   </ion-card>
 }
 
+@if (profile.showIncidentsMenuItem) {
+  <ion-card>
+    <ion-item
+      routerLink="/incidents"
+      button
+      detail="false"
+      data-testid="incidents-menu-item"
+    >
+      <ion-icon slot="start" name="warning-outline" color="danger" />
+      <ion-label>Incidents</ion-label>
+    </ion-item>
+  </ion-card>
+}
+
 <ion-card>
   <sneat-datatug-menu-store-selector
     [datatugUser]="datatugUserState()?.record"

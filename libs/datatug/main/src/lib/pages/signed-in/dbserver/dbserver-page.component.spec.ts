@@ -93,7 +93,6 @@ describe('DbserverPage', () => {
  * page with no manual intervention.
  */
 describe('DbserverPage replaces "Loading..." once the summary arrives (zoneless)', () => {
-  let component: DbserverPageComponent;
   let fixture: ComponentFixture<DbserverPageComponent>;
   let current$: Subject<unknown>;
   let getDbServerSummary$: Subject<IDbServerSummary>;
@@ -164,7 +163,6 @@ describe('DbserverPage replaces "Loading..." once the summary arrives (zoneless)
       .compileComponents();
 
     fixture = TestBed.createComponent(DbserverPageComponent);
-    component = fixture.componentInstance;
   });
 
   it('replaces the Loading... placeholder with the DB server summary once it arrives, with no explicit detectChanges()', async () => {

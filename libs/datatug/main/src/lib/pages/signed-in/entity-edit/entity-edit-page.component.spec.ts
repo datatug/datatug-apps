@@ -84,7 +84,6 @@ describe('EntityEditPage', () => {
  * back button with no manual intervention.
  */
 describe('EntityEditPage re-targets the back button once the project arrives (zoneless)', () => {
-  let component: EntityEditPageComponent;
   let fixture: ComponentFixture<EntityEditPageComponent>;
   let currentProject$: Subject<IProjectContext | undefined>;
 
@@ -124,7 +123,6 @@ describe('EntityEditPage re-targets the back button once the project arrives (zo
     }).compileComponents();
 
     fixture = TestBed.createComponent(EntityEditPageComponent);
-    component = fixture.componentInstance;
   });
 
   function findBackButton(): HTMLElement & { defaultHref?: string } {

@@ -98,6 +98,7 @@ import {
   reloadOutline,
   removeCircleOutline,
   reorderTwoOutline,
+  rocketOutline,
   save,
   saveOutline,
   searchOutline,
@@ -121,6 +122,7 @@ import {
   trash,
   trashBinOutline,
   trashOutline,
+  warningOutline,
 } from 'ionicons/icons';
 
 export function registerIonicons() {
@@ -223,6 +225,7 @@ export function registerIonicons() {
     reloadOutline,
     removeCircleOutline,
     reorderTwoOutline,
+    rocketOutline,
     save,
     saveOutline,
     searchOutline,
@@ -246,5 +249,6 @@ export function registerIonicons() {
     trash,
     trashBinOutline,
     trashOutline,
+    warningOutline,
   });
 }

@@ -160,7 +160,6 @@ describe('BoardPage - currentProject navigation', () => {
  * page with no manual intervention.
  */
 describe('BoardPage renders the board once it arrives asynchronously (zoneless)', () => {
-  let component: BoardPageComponent;
   let fixture: ComponentFixture<BoardPageComponent>;
   let currentProject$: Subject<{ ref: { storeId: string; projectId: string } } | undefined>;
   let getBoard$: Subject<Board>;
@@ -220,7 +219,6 @@ describe('BoardPage renders the board once it arrives asynchronously (zoneless)'
       .compileComponents();
 
     fixture = TestBed.createComponent(BoardPageComponent);
-    component = fixture.componentInstance;
   });
 
   it('replaces the board title placeholder once the board arrives, with no explicit detectChanges()', async () => {

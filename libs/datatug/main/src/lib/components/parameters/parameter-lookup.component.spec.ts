@@ -75,7 +75,6 @@ describe('ParameterLookupComponent', () => {
  * grid summary with no manual intervention.
  */
 describe('ParameterLookupComponent renders the grid once the lookup response arrives (zoneless)', () => {
-  let component: ParameterLookupComponent;
   let fixture: ComponentFixture<ParameterLookupComponent>;
   let lookupResponse$: Subject<IExecuteResponse>;
 
@@ -111,7 +110,6 @@ describe('ParameterLookupComponent renders the grid once the lookup response arr
       .compileComponents();
 
     fixture = TestBed.createComponent(ParameterLookupComponent);
-    component = fixture.componentInstance;
     fixture.componentRef.setInput('lookupResponse', lookupResponse$.asObservable());
   });
 
