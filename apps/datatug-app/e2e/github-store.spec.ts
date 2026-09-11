@@ -505,6 +505,33 @@ test.describe('GitHub-store project — every side-menu page loads without error
       dbServerPage.locator('ion-item-divider', { hasText: 'Databases' }),
     ).toBeVisible();
 
+    // S161 — this SPA nav (Servers list -> click the sqlite3 row) used to
+    // leave BOTH the Environments and Databases > Known cards on
+    // "Loading..." forever: `DbserverPageComponent`'s constructor ran
+    // `route.paramMap` and `projectContextService.current$` as two
+    // independent subscriptions, and `loadData()` (triggered off `current$`
+    // alone) read `this.dbServer()`'s value at that instant — when
+    // `current$` (already resolved for this in-app nav, a project the user
+    // is already browsing) fired before `paramMap` had produced the
+    // `dbServerId`/`dbDriver` params, `dbServer` was still `undefined`, so
+    // `loadSummary()`/`loadCatalogs()`'s own `if (!dbServer) return;` guard
+    // exited silently — no HTTP call, no error, nothing ever reran
+    // `loadData()` once the params did arrive
+    // (`dbserver-page.component.spec.ts`'s own S161 describe block proves
+    // the mechanism at the unit level). Fixed by combining both streams so
+    // `loadData()` only runs once both are known. `GITHUB_DBSERVER_DETAIL_MESSAGE`
+    // (`db-server.service.ts`) now renders in both cards instead.
+    await expect(
+      dbServerPage.getByText('Loading...'),
+    ).toHaveCount(0, { timeout: 10_000 });
+    const readOnlyNotices = dbServerPage.getByText(
+      /live database details need a DataTug agent/,
+    );
+    await expect(readOnlyNotices.first()).toBeVisible({ timeout: 10_000 });
+    // Rendered once in the Environments card and once in the Databases >
+    // Known tab (both loaders hit the identical GitHub-store guard).
+    await expect(readOnlyNotices).toHaveCount(2);
+
     expect(errors).toEqual([]);
     expect(consoleErrors.filter((text) => text.includes('NG04002'))).toEqual([]);
   });
