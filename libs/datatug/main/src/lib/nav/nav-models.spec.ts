@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  getStoreId,
   isAgentStoreId,
   parseDatatugStoreRef,
   storeIdToDisplayLabel,
@@ -71,6 +72,69 @@ describe('parseDatatugStoreRef', () => {
     expect(() => parseDatatugStoreRef(undefined)).toThrow(
       'storeId is a required parameter',
     );
+  });
+
+  // S165: a user record's `IDatatugBriefForUser.stores` may still hold a
+  // legacy full-URL key (`http://localhost:8989`) predating PR #109's
+  // switch to the canonical dash-prefixed id — `MyStoresComponent.goStore()`
+  // → `parseDatatugStoreRef(brief.id)` used to throw
+  // `unsupported format of store id:http://localhost:8989` for it (founder,
+  // 2026-09-11 follow-up 5). It is now normalised to the canonical id before
+  // delegating, so every downstream consumer sees the same ref as for the
+  // canonical id.
+  describe('legacy full-URL store id tolerance', () => {
+    it('accepts a legacy http:// localhost URL as a store id', () => {
+      expect(parseDatatugStoreRef('http://localhost:8989')).toEqual({
+        type: 'agent',
+        url: 'http://localhost:8989',
+      });
+    });
+
+    it('accepts a legacy https:// URL with a non-default host as a store id', () => {
+      expect(
+        parseDatatugStoreRef('https://agent.example.com:8443'),
+      ).toEqual({
+        type: 'agent',
+        url: 'https://agent.example.com:8443',
+      });
+    });
+
+    it('accepts a legacy http:// URL with a raw IP host as a store id', () => {
+      expect(parseDatatugStoreRef('http://192.168.1.10:8989')).toEqual({
+        type: 'agent',
+        url: 'http://192.168.1.10:8989',
+      });
+    });
+
+    // Decision: a single trailing slash carries no information for a
+    // store's origin URL, so it is stripped on normalisation — the ref
+    // returned is identical to the slash-less form.
+    it('strips a single trailing slash from a legacy URL store id', () => {
+      expect(parseDatatugStoreRef('http://localhost:8989/')).toEqual({
+        type: 'agent',
+        url: 'http://localhost:8989',
+      });
+    });
+
+    // Decision: a path beyond the origin is rejected, not silently
+    // truncated — a store id names an agent's origin, never a
+    // sub-resource, so this is treated as a genuinely malformed id.
+    it('rejects a legacy URL store id that carries a path', () => {
+      expect(() =>
+        parseDatatugStoreRef('http://localhost:8989/some/path'),
+      ).toThrow(
+        'unsupported format of store id:http://localhost:8989/some/path',
+      );
+    });
+
+    it('round-trips a legacy URL store id to the canonical dash id via getStoreId()', () => {
+      const ref = parseDatatugStoreRef('http://localhost:8989');
+      expect(getStoreId(ref.url as string)).toBe('http-localhost:8989');
+    });
+
+    it('is recognised as an agent store id', () => {
+      expect(isAgentStoreId('http://localhost:8989')).toBe(true);
+    });
   });
 });
 
