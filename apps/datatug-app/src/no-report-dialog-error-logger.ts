@@ -63,6 +63,19 @@ function withoutReportDialog(
  * Report" dialog for a handled, logged error. Genuinely uncaught exceptions
  * still go through Sentry Angular's `ErrorHandler` (wired separately by
  * `provideSentryAppInitializer()`), which is untouched by this.
+ *
+ * CALLER CONTRACT: spread this LAST in the app's `providers` array (after
+ * `provideSneatAuthenticatedProviders()` and any other provider that might
+ * also call `@sneat/logging`'s `provideErrorLogger()`). Angular keeps only
+ * the last registration it sees for a non-multi token like `ErrorLogger`
+ * once `bootstrapApplication()` flattens the whole tree — an earlier plain
+ * `provideErrorLogger()` further down the array silently wins otherwise,
+ * undoing this override for every `logError()` call in the app. This isn't
+ * hypothetical: `provideSneatAuthenticatedProviders()` (`@sneat/app-auth`)
+ * does exactly that internally, and it shadowed this wrapper in production
+ * until `apps/datatug-app/src/main.ts` moved this call to the end of its
+ * providers array — see the comment there and
+ * `main-providers-error-logger-order.spec.ts` for the regression test.
  */
 export function provideErrorLoggerWithoutReportDialog(): Provider[] {
   const baseProvider = provideErrorLogger();

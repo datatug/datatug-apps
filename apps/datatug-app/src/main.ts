@@ -39,7 +39,6 @@ bootstrapApplication(DatatugAppComponent, {
   providers: [
     provideZonelessChangeDetection(),
     provideHttpClient(),
-    ...provideErrorLoggerWithoutReportDialog(),
     provideIonicAngular(),
     provideAnimationsAsync(),
     { provide: LOGGER_FACTORY, useValue: loggerFactory },
@@ -127,6 +126,32 @@ bootstrapApplication(DatatugAppComponent, {
     ...(datatugAppEnvironmentConfig.sentry
       ? [provideSentryAppInitializer(datatugAppEnvironmentConfig.sentry)]
       : []),
+    // MUST be the last entry in this array. `bootstrapApplication()` flattens
+    // the whole `providers` tree (including nested `EnvironmentProviders`
+    // like `provideSneatAuthenticatedProviders()` above) into one list before
+    // building the injector, and for a non-multi token like `ErrorLogger`,
+    // Angular's injector keeps only the LAST registration it sees — earlier
+    // ones are silently discarded, not merged or layered.
+    // `provideSneatAuthenticatedProviders()` (`@sneat/app-auth`) calls
+    // `@sneat/logging`'s `provideErrorLogger()` itself (to provide the plain,
+    // undecorated `ErrorLoggerService`), so when this wrapper was listed
+    // *before* it (as it originally was, right after `provideHttpClient()`),
+    // that later plain registration silently won and undid this app's
+    // forced-`feedback:false` override for every `logError()` call in the
+    // app — reopening the "Submit Crash Report" dialog for handled, logged
+    // errors (e.g. a 404 while resolving a bad GitHub project id,
+    // `DatatugNavContextService.setCurrentProject()`) exactly as described
+    // in this file's own history. Local `ng serve`/unit tests never caught
+    // it because `ErrorLoggerService.logError()` skips Sentry entirely on
+    // `hostname === 'localhost'` (see no-report-dialog-error-logger.spec.ts),
+    // and the previous unit test only ever exercised
+    // `provideErrorLoggerWithoutReportDialog()` in isolation, never composed
+    // with the rest of this file's providers. Keeping this call last (after
+    // every other provider that might also touch `ErrorLogger`, including a
+    // future one) is what actually guarantees the override wins — moving it
+    // earlier reopens this exact bug. See
+    // main-providers-error-logger-order.spec.ts for the regression test.
+    ...provideErrorLoggerWithoutReportDialog(),
   ],
 }).catch((err) => console.error(err));
 
