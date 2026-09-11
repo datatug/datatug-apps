@@ -28,12 +28,14 @@ export {
 export {
   BindingBlockReason,
   BindingParameterRef,
+  explainSkippedCondition,
   hasBlockingBindings,
   isBindingRunnable,
   ResolveBindingsInput,
   resolveBindings,
   ResolvedBinding,
   ResolvedBindingOrigin,
+  SkippedConditionFact,
 } from './lib/services/binding-resolver';
 export { ContextPanelComponent, OpenQueryRequest } from './lib/components/context-panel/context-panel.component';
 export { InvestigationContextBarComponent } from './lib/components/investigation-context-bar/investigation-context-bar.component';

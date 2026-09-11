@@ -7,6 +7,7 @@ import {
   SemanticRelatedResponse,
 } from '../../../contract/types';
 import { AgentContextService } from '../../services/agent-context.service';
+import { explainSkippedCondition } from '../../services/binding-resolver';
 import { InvestigationContextService } from '../../services/investigation-context.service';
 import { MockSemanticApi } from '../../services/mock-semantic-api';
 import { SemanticApiService } from '../../services/semantic-api.service';
@@ -36,6 +37,16 @@ const APPLICABLE: ApplicableQueriesResponse = {
       ],
       chain: [
         { parameterId: 'CustomerId', explanation: 'maps to Customer.ID (declared)' },
+        // A server that mirrors api-contract.md's `Fact.condition` paragraph reports a
+        // skipped non-`==` context fact as a `chain` step, not a hidden filter — this
+        // panel's chain rendering (`chainText`) is already generic, so the exact same
+        // wording this client's own resolver uses (`explainSkippedCondition`) renders
+        // here with no template change needed.
+        {
+          parameterId: 'InvoiceDate',
+          factId: 'ctx-invoicedate-gt',
+          explanation: explainSkippedCondition('>'),
+        },
       ],
       missing: [],
       ambiguous: [],
@@ -242,6 +253,16 @@ describe('ContextPanelComponent', () => {
         el.textContent?.includes('customer-invoices'),
       );
       expect(applicable?.textContent).toContain('maps to Customer.ID (declared)');
+    });
+
+    it('renders a skipped non-equality-condition chain step verbatim (api-contract.md Fact.condition — REQ:no-hidden-filters)', () => {
+      const items: HTMLElement[] = Array.from(
+        fixture.nativeElement.querySelectorAll('ion-item[button="true"]'),
+      );
+      const applicable = items.find((el) =>
+        el.textContent?.includes('customer-invoices'),
+      );
+      expect(applicable?.textContent).toContain(explainSkippedCondition('>'));
     });
 
     it('AC:applicable-with-chain — lists "invoice-lines" as not yet applicable with the missing parameter id', () => {
