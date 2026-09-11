@@ -29,7 +29,7 @@ test('?profile=incidentius lands on the incident list with the "Houston" entry p
   await expect(page.getByText('Planned')).toBeVisible();
 
   await expect(
-    page.getByText("Houston, we've got a problem"),
+    page.getByText("Houston, we've got a problem", { exact: true }),
   ).toBeVisible();
 
   await page.screenshot({
@@ -56,7 +56,7 @@ test('the datatug profile always shows an Incidents item in the side menu, with 
   await incidentsItem.click();
   await expect(page).toHaveURL('/incidents');
   await expect(
-    page.getByText("Houston, we've got a problem"),
+    page.getByText("Houston, we've got a problem", { exact: true }),
   ).toBeVisible();
 });
 
