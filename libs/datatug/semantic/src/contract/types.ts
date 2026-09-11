@@ -1,3 +1,4 @@
+import type { AuthorizationResult } from './authorization';
 // Frozen wire types for the DataTug agent HTTP contract described in the hub
 // Feature's normative transport appendix:
 // datatug/datatug: spec/features/core-investigation-loop/api-contract.md
@@ -338,6 +339,8 @@ export interface AvailableSnapshot {
 }
 
 export interface ErrorDetails {
+  /** Owner-projected DTQL blockers; does not expose editable policies. */
+  readonly authorization?: AuthorizationResult;
   /** Present only on a `SOURCE_UNAVAILABLE` response for an HTTP-typed saved query that
    * has a recorded fixture; always exactly one entry for Phase 1 (one fixture per
    * query — see datatug-cli's `pkg/httpsource` fixtureFS doc comment). */

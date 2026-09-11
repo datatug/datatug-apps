@@ -404,6 +404,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     hasBlockingBindings(this.bindings()),
   );
   public readonly running = signal(false);
+  public readonly accessBlockers = signal<readonly string[]>([]);
   public readonly runError = signal<string | undefined>(undefined);
   public readonly runResult = signal<RunQueryResponse | undefined>(undefined);
 
@@ -1230,6 +1231,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     }
     this.running.set(true);
     this.runError.set(undefined);
+    this.accessBlockers.set([]);
     this.sourceUnavailable.set(false);
     this.availableSnapshot.set(undefined);
     const parameters: Record<string, TypedValue> = {};
@@ -1275,6 +1277,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     }
     this.running.set(true);
     this.runError.set(undefined);
+    this.accessBlockers.set([]);
     this.sourceUnavailable.set(false);
     this.executeQuery(
       { ...this.lastRequest, mode: 'snapshot', snapshotId: snapshot.snapshotId },
@@ -1315,6 +1318,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.running.set(false);
     const envelope =
       err instanceof HttpErrorResponse ? tryDecodeErrorEnvelope(err.error) : undefined;
+    this.accessBlockers.set(
+      envelope?.details?.authorization?.blockers.map(
+        (b) => `${b.layerId ?? 'source'}: ${b.code}`,
+      ) ?? [],
+    );
     if (envelope?.error.code === 'TARGET_REQUIRED' && envelope.error.targets) {
       // Same authorized selector the context panel's needs-target Candidate renders —
       // never a hidden source (api-contract.md: "TARGET_REQUIRED errors return the same

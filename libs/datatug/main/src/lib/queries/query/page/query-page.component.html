@@ -202,6 +202,13 @@
     </ion-item>
   </ion-card>
 
+  @if (accessBlockers().length) {
+    <ul aria-label="Access blockers">
+      @for (blocker of accessBlockers(); track $index) {
+        <li>{{ blocker }}</li>
+      }
+    </ul>
+  }
   @if (runError(); as error) {
     <ion-card color="danger">
       <ion-card-content>
