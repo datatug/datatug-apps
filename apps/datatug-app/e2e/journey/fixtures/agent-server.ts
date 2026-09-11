@@ -34,6 +34,52 @@ export interface AgentServer {
   readonly logFile: string;
   /** In-memory snapshot of everything the agent has printed so far. */
   readLog(): string;
+  /** S174 — set only for `agentServer` (the one fixture seeded with
+   * `PERSONAL_QUERY_ID`/`PERSONAL_QUERY_TITLE`, below): the `$DATATUG_PERSONAL_DIR`
+   * this agent process was started with. Exposed for debugging a failed run, not
+   * read by any spec today. */
+  readonly personalDir?: string;
+}
+
+/**
+ * S174 (datatug-cli v0.24.0, api-contract.md PR #55) — the ONE seeded personal
+ * query `agentServer` starts with (see `StartAgentOptions.personalQuery` and its
+ * use in the `agentServer` fixture registration below), for the Personal-tab
+ * journey coverage in `journey.spec.ts`. Exported (rather than each spec
+ * re-declaring its own copy — contrast `DEMO_PROJECT_ID`, which every spec file
+ * DOES re-declare, matching a constant that already lives on the public
+ * datatug-demo-projects fixture repo, not one this file itself invents) because
+ * this exact id/title only exists because this fixture wrote it — the single
+ * source of truth has to be here.
+ */
+export const PERSONAL_QUERY_ID = 'personal-scratchpad';
+export const PERSONAL_QUERY_TITLE = 'My personal scratchpad query';
+
+/**
+ * Writes one `.query.json` file under datatug-cli's own on-disk personal-queries
+ * convention (`pkg/personalqueries.ResolveProjectDir` — `$DATATUG_PERSONAL_DIR/
+ * <projectID>/queries/<id>.query.json`), mirroring that repo's own
+ * `query_endpoints_personal_queries_test.go` `writePersonalQuery()` fixture
+ * writer exactly (flat `{id,title,type}`, no sibling `.sql`/`.dtql`/`.http` body
+ * file needed — `all_queries` never reads a query's text, same reason
+ * `queries.service.ts`'s own `IWireQueryItem` doc comment gives). `projectId` is
+ * read out of the demo project's own `datatug-project.json` rather than
+ * hardcoded a third time in this file (every other journey spec file already
+ * duplicates `DEMO_PROJECT_ID` as a literal, per its own header comment) — this
+ * is the one place close enough to the source of truth to just read it.
+ */
+function seedPersonalQuery(
+  personalDir: string,
+  projectId: string,
+  id: string,
+  title: string,
+): void {
+  const queriesDir = path.join(personalDir, projectId, 'queries');
+  fs.mkdirSync(queriesDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(queriesDir, `${id}.query.json`),
+    JSON.stringify({ id, title, type: 'SQL' }, null, 2),
+  );
 }
 
 interface JourneyWorkerFixtures {
@@ -238,6 +284,14 @@ interface StartAgentOptions {
   /** Extra `datatug serve` flags appended verbatim after `--role` — e.g. `['--http-offline']`
    * for {@link offlineAgentServer}. Empty/undefined for every other agent. */
   readonly extraArgs?: readonly string[];
+  /** S174 — when set, `startAgent()` creates a fresh `t.TempDir()`-equivalent
+   * directory, seeds it with one `<id>.query.json` for the demo project (via
+   * {@link seedPersonalQuery}), and starts the child process with
+   * `$DATATUG_PERSONAL_DIR` pointed at it — datatug-cli v0.24.0's own override for
+   * where `GET /datatug/queries/all_queries?root=personal` reads a principal's
+   * personal queries from (`pkg/personalqueries.ResolveProjectDir`). Only
+   * `agentServer` (below) sets this today. */
+  readonly personalQuery?: { readonly id: string; readonly title: string };
 }
 
 interface StartedAgent {
@@ -264,6 +318,29 @@ async function startAgent(opts: StartAgentOptions): Promise<Resolved<StartedAgen
   const binResult = resolveBinaryCached();
   if (!binResult.ok) {
     return binResult;
+  }
+
+  // S174: seed `$DATATUG_PERSONAL_DIR` BEFORE spawning — the env var is read
+  // once, at `datatug serve` startup (`personalqueries.ResolveProjectDir`),
+  // so the file must already exist on disk by the time the child process is
+  // spawned below, not merely by the time a test later requests it.
+  let personalDir: string | undefined;
+  if (opts.personalQuery) {
+    const projectFile = JSON.parse(
+      fs.readFileSync(
+        path.join(demoDirResult.value, 'datatug-project.json'),
+        'utf8',
+      ),
+    ) as { id: string };
+    personalDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'datatug-journey-personal-'),
+    );
+    seedPersonalQuery(
+      personalDir,
+      projectFile.id,
+      opts.personalQuery.id,
+      opts.personalQuery.title,
+    );
   }
 
   const host = '127.0.0.1';
@@ -312,6 +389,11 @@ async function startAgent(opts: StartAgentOptions): Promise<Resolved<StartedAgen
   ];
   const child = spawn(binResult.value, args, {
     stdio: ['ignore', 'pipe', 'pipe'],
+    // Omitting `env` entirely (the pre-S174 behavior for every other agent)
+    // inherits the parent process's full environment, unchanged. Only when
+    // `personalDir` was seeded above do we need to layer `DATATUG_PERSONAL_DIR`
+    // on top of that same inherited environment, not replace it.
+    ...(personalDir ? { env: { ...process.env, DATATUG_PERSONAL_DIR: personalDir } } : {}),
   });
   child.stdout.on('data', appendLog);
   child.stderr.on('data', appendLog);
@@ -349,6 +431,7 @@ async function startAgent(opts: StartAgentOptions): Promise<Resolved<StartedAgen
     demoDir: demoDirResult.value,
     logFile,
     readLog: () => logBuffer,
+    personalDir,
   };
 
   const stop = async (): Promise<void> => {
@@ -382,6 +465,11 @@ export const test = base.extend<{}, JourneyWorkerFixtures>({
         role: 'admin',
         label: 'admin',
         workerIndex: workerInfo.workerIndex,
+        // S174: seeds this SAME admin agent's own `$DATATUG_PERSONAL_DIR`
+        // with one query, so `root=personal` resolves to `user:admin` and
+        // lists exactly this — see journey.spec.ts's "Personal queries tab"
+        // describe block for the coverage this enables.
+        personalQuery: { id: PERSONAL_QUERY_ID, title: PERSONAL_QUERY_TITLE },
       });
       if (!started.ok) {
         test.skip(true, started.skipReason);

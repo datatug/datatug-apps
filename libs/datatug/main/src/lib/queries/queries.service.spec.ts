@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { of } from 'rxjs';
 
 import {
+  AGENT_PERSONAL_QUERIES_UNSUPPORTED_MESSAGE,
   GITHUB_PERSONAL_QUERIES_MESSAGE,
   QueriesService,
 } from './queries.service';
@@ -195,5 +196,100 @@ describe('QueriesService.getQueriesFolder — GitHub-store personal vs shared (S
 
     expect(getQueriesFolder).toHaveBeenCalledWith(projRef.projectId);
     expect(result?.items?.map((i) => i.id)).toEqual(['artists_with_albums']);
+  });
+});
+
+/**
+ * S174 — datatug-cli v0.24.0 (api-contract.md PR #55) adds
+ * `GET /datatug/queries/all_queries?root=personal` for an agent-backed
+ * store (NOT GitHub — that's S163's own describe block above — and not
+ * DataTug Cloud/Firestore, which `ProjectItemService.getFolder()` branches
+ * on before ever reaching the HTTP call these tests stand in for via the
+ * mocked `QUERY_PROJ_ITEM_SERVICE.getFolder`). These pin down: the wire
+ * `root` argument `getQueriesFolder()` passes down to `projItemService.
+ * getFolder()` per `rootFolder`; the `id === '~'` fallback (an old agent
+ * that ignored `root=personal` and returned the shared tree) raising
+ * `AGENT_PERSONAL_QUERIES_UNSUPPORTED_MESSAGE`; and a real (v0.24.0+),
+ * merely-empty personal root passing through untouched.
+ */
+describe('QueriesService.getQueriesFolder — agent-backed root=personal (S174)', () => {
+  const projRef: IProjectRef = {
+    storeId: 'localhost:8989',
+    projectId: 'demo-project',
+  };
+
+  function createService(getFolder: ReturnType<typeof vi.fn>) {
+    TestBed.configureTestingModule({
+      providers: [
+        QueriesService,
+        {
+          provide: QUERY_PROJ_ITEM_SERVICE,
+          useValue: { getFolder, getProjItem: vi.fn() },
+        },
+      ],
+    });
+    return TestBed.inject(QueriesService);
+  }
+
+  it('rootFolder "personal" sends root="personal" down to projItemService.getFolder', () => {
+    const getFolder = vi.fn(() => of({ id: 'user:admin', items: [] }));
+    const service = createService(getFolder);
+
+    service.getQueriesFolder(projRef, '~', 'personal').subscribe();
+
+    expect(getFolder).toHaveBeenCalledWith(projRef, '~', 'personal');
+  });
+
+  it('rootFolder "shared" sends no root argument — byte-identical to before this fix', () => {
+    const getFolder = vi.fn(() =>
+      of({ id: '~', items: [{ id: 'artists_with_albums', title: 'x', type: 'SQL' }] }),
+    );
+    const service = createService(getFolder);
+
+    service.getQueriesFolder(projRef, '~', 'shared').subscribe();
+
+    expect(getFolder).toHaveBeenCalledWith(projRef, '~', undefined);
+  });
+
+  it('an unset rootFolder also sends no root argument, same as "shared"', () => {
+    const getFolder = vi.fn(() => of({ id: '~', items: [] }));
+    const service = createService(getFolder);
+
+    service.getQueriesFolder(projRef, '~').subscribe();
+
+    expect(getFolder).toHaveBeenCalledWith(projRef, '~', undefined);
+  });
+
+  it('a "~" response to a root=personal request (old agent, ignored `root`) errors with AGENT_PERSONAL_QUERIES_UNSUPPORTED_MESSAGE and lists nothing', () => {
+    const sharedFolder = {
+      id: '~',
+      items: [{ id: 'artists_with_albums', title: 'Artists with albums', type: 'SQL' }],
+    };
+    const getFolder = vi.fn(() => of(sharedFolder));
+    const service = createService(getFolder);
+
+    const next = vi.fn();
+    const error = vi.fn();
+    service.getQueriesFolder(projRef, '~', 'personal').subscribe({ next, error });
+
+    expect(next).not.toHaveBeenCalled();
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ message: AGENT_PERSONAL_QUERIES_UNSUPPORTED_MESSAGE }),
+    );
+  });
+
+  it('an empty "user:<id>" response to root=personal (real v0.24.0+ agent, no personal queries yet) passes through — no error, no items', () => {
+    const getFolder = vi.fn(() => of({ id: 'user:admin' }));
+    const service = createService(getFolder);
+
+    let result: import('../models/definition/query-def').IQueryFolder | null | undefined;
+    const error = vi.fn();
+    service
+      .getQueriesFolder(projRef, '~', 'personal')
+      .subscribe({ next: (folder) => (result = folder), error });
+
+    expect(error).not.toHaveBeenCalled();
+    expect(result?.id).toBe('user:admin');
+    expect(result?.items).toBeUndefined();
   });
 });

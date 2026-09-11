@@ -47,6 +47,30 @@ export const GITHUB_PERSONAL_QUERIES_MESSAGE =
   'This project is browsed read-only from GitHub — personal queries need a DataTug agent. Clone the repo and run `datatug serve --project <path>` to see them.';
 
 /**
+ * Shown (same `QueriesTabComponent` friendly-notice mechanism as
+ * `GITHUB_PERSONAL_QUERIES_MESSAGE` above) when an agent-backed store (not
+ * GitHub, not DataTug Cloud/Firestore) answers a `root=personal` request
+ * with the SHARED tree instead — the one unambiguous signal datatug-cli's
+ * own api-contract.md (PR #55) gives for "this agent predates v0.24.0 and
+ * doesn't know `root` at all": an old agent ignores an unrecognized query
+ * param and returns `all_queries`' pre-v0.24.0 shared-tree response, whose
+ * top-level `id` is always the literal `"~"` (`datatug.RootSharedFolderName`)
+ * — never `"user:<principalId>"`, which is what a v0.24.0+ agent's real
+ * personal root (supported, just possibly empty) always carries instead.
+ * The client must never infer "no personal support" from the REQUEST (it
+ * has no version-negotiation any other way) — only from this exact response
+ * shape — so `getQueriesFolder()` below only ever raises this for the
+ * `root === 'personal'` case, and only once the response has actually come
+ * back with `id === '~'`.
+ *
+ * Wording is a lead assumption (S174) — no founder-approved copy exists yet
+ * for this exact case; kept as a single exported constant (this file's own
+ * established pattern) so it is easy to revise in one place later.
+ */
+export const AGENT_PERSONAL_QUERIES_UNSUPPORTED_MESSAGE =
+  'This DataTug agent does not support personal queries yet — upgrade datatug-cli to v0.24.0 or newer.';
+
+/**
  * The shape datatug-cli's GET /queries/all_queries and /queries/get_query
  * actually put on the wire — flat, matching datatug-core's own
  * `datatug.QueryDef` JSON tags (`type`, `text`) — NOT `IQueryDef`'s nested
@@ -153,6 +177,20 @@ export class QueriesService {
    * of handing the shared tree back under the "Personal" label (see
    * `GITHUB_PERSONAL_QUERIES_MESSAGE`'s own doc comment for why a GitHub
    * read can never resolve a real personal folder).
+   *
+   * S174: for an agent-backed store (the branch below — GitHub is handled
+   * entirely above, DataTug Cloud/Firestore inside `projItemService.
+   * getFolder()` itself), `rootFolder === 'personal'` sends the CLI's own
+   * `root=personal` wire param (datatug-cli v0.24.0+, api-contract.md PR
+   * #55); `'shared'`/unset sends no `root` at all — byte-identical to every
+   * request this method sent before this fix, old-agent-compatible by
+   * construction. The response is checked for the ONE shape an agent that
+   * doesn't understand `root` can produce — `id === '~'`, the shared tree —
+   * and raises `AGENT_PERSONAL_QUERIES_UNSUPPORTED_MESSAGE` for that case,
+   * same `QueriesTabComponent`-caught-error convention as
+   * `GITHUB_PERSONAL_QUERIES_MESSAGE` (see that constant's own doc comment
+   * for why the request alone can never tell an old agent apart from a new
+   * one that just has no personal queries yet).
    */
   public getQueriesFolder(
     projRef: IProjectRef,
@@ -167,9 +205,17 @@ export class QueriesService {
         .getQueriesFolder(projRef.projectId)
         .pipe(map((folder) => toQueryFolder(folder as unknown as IWireQueryFolder)));
     }
+    const root = rootFolder === 'personal' ? 'personal' : undefined;
     return this.projItemService
-      .getFolder<IWireQueryFolder>(projRef, folderPath)
-      .pipe(map((folder) => (folder ? toQueryFolder(folder) : folder)));
+      .getFolder<IWireQueryFolder>(projRef, folderPath, root)
+      .pipe(
+        map((folder) => {
+          if (root === 'personal' && folder?.id === '~') {
+            throw new Error(AGENT_PERSONAL_QUERIES_UNSUPPORTED_MESSAGE);
+          }
+          return folder ? toQueryFolder(folder) : folder;
+        }),
+      );
   }
 
   public getQuery(projRef: IProjectRef, id: string): Observable<IQueryDef> {

@@ -9,7 +9,11 @@ import { SqlEditorComponent } from '../../components/sqleditor/sql-editor.compon
 import { IProjectContext } from '../../nav/nav-models';
 import { DatatugNavContextService } from '../../services/nav/datatug-nav-context.service';
 import { DatatugNavService } from '../../services/nav/datatug-nav.service';
-import { GITHUB_PERSONAL_QUERIES_MESSAGE, QueriesService } from '../queries.service';
+import {
+  AGENT_PERSONAL_QUERIES_UNSUPPORTED_MESSAGE,
+  GITHUB_PERSONAL_QUERIES_MESSAGE,
+  QueriesService,
+} from '../queries.service';
 import { QueryType } from '../../models/definition/query-def';
 
 describe('QueriesTabComponent', () => {
@@ -210,5 +214,155 @@ describe('QueriesTabComponent — GitHub-store "Personal" tab empty state (S163)
     expect(fixture.componentInstance.allQueries?.map((q) => q.id)).toEqual([
       'artists_with_albums',
     ]);
+  });
+});
+
+/**
+ * S174 — datatug-cli v0.24.0 adds `root=personal` to `GET /datatug/queries/
+ * all_queries`. `QueriesService.getQueriesFolder()`'s own S174 fix rejects
+ * with exactly `AGENT_PERSONAL_QUERIES_UNSUPPORTED_MESSAGE` when an
+ * agent-backed store answers `root=personal` with the shared tree — the
+ * signal that agent predates v0.24.0 and silently ignored `root`
+ * (queries.service.spec.ts's own describe covers that service-level
+ * contract). These pin down the CONSUMING side, mirroring the S163
+ * GitHub-store describe above: the tab component renders a friendly notice
+ * instead of the shared tree, a genuinely empty (but real, v0.24.0+)
+ * personal root renders the ordinary empty state with NO notice, and a
+ * Personal→Shared→Personal tab switch still refetches every time (the
+ * pre-existing PR #120 behavior this fix must not regress).
+ */
+describe('QueriesTabComponent — agent-backed "Personal" tab (S174)', () => {
+  const agentProject: IProjectContext = {
+    ref: { storeId: 'localhost:8989', projectId: 'demo-project' },
+  } as IProjectContext;
+
+  const sharedFolder = {
+    id: '~',
+    items: [
+      {
+        id: 'artists_with_albums',
+        title: 'Artists with albums',
+        request: { queryType: QueryType.SQL, text: 'select 1' },
+      },
+    ],
+  };
+
+  function setup(getQueriesFolder: ReturnType<typeof vi.fn>) {
+    return TestBed.configureTestingModule({
+      imports: [QueriesTabComponent],
+      providers: [
+        {
+          provide: ErrorLogger,
+          useValue: {
+            logError: vi.fn(),
+            logErrorHandler: vi.fn(() => vi.fn()),
+          },
+        },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            queryParamMap: of({ get: () => null }),
+            paramMap: of({ get: () => null }),
+            snapshot: { paramMap: { get: () => null }, params: {} },
+          },
+        },
+        {
+          provide: Router,
+          useValue: { navigate: vi.fn(() => Promise.resolve(true)), events: of() },
+        },
+        { provide: QueriesService, useValue: { getQueriesFolder } },
+        {
+          provide: DatatugNavContextService,
+          useValue: { currentProject: of(agentProject), currentEnv: of(undefined) },
+        },
+        { provide: DatatugNavService, useValue: { goQuery: vi.fn() } },
+      ],
+    })
+      .overrideComponent(QueriesTabComponent, {
+        remove: { imports: [SqlEditorComponent] },
+        add: { imports: [SqlEditorStubComponent], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+      })
+      .compileComponents();
+  }
+
+  it('an old agent\'s "~" fallback shows the unsupported notice, never the shared items, under the "Personal" label', async () => {
+    const getQueriesFolder = vi.fn((_ref, _path, rootFolder) =>
+      rootFolder === 'personal'
+        ? throwError(() => new Error(AGENT_PERSONAL_QUERIES_UNSUPPORTED_MESSAGE))
+        : of(sharedFolder),
+    );
+    await setup(getQueriesFolder);
+    const fixture = TestBed.createComponent(QueriesTabComponent);
+
+    fixture.componentRef.setInput('rootFolder', 'personal');
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.personalQueriesNotice()).toBe(
+      AGENT_PERSONAL_QUERIES_UNSUPPORTED_MESSAGE,
+    );
+    expect(fixture.componentInstance.allQueries).toEqual([]);
+    const text = (fixture.nativeElement as HTMLElement).innerHTML;
+    expect(text).toContain(
+      'This DataTug agent does not support personal queries yet',
+    );
+  });
+
+  it('a genuinely empty v0.24.0+ personal root ("user:<id>", no items) shows the ordinary empty state — no notice', async () => {
+    const getQueriesFolder = vi.fn((_ref, _path, rootFolder) =>
+      rootFolder === 'personal' ? of({ id: 'user:admin' }) : of(sharedFolder),
+    );
+    await setup(getQueriesFolder);
+    const fixture = TestBed.createComponent(QueriesTabComponent);
+
+    fixture.componentRef.setInput('rootFolder', 'personal');
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.personalQueriesNotice()).toBeUndefined();
+    expect(fixture.componentInstance.allQueries).toEqual([]);
+    const text = (fixture.nativeElement as HTMLElement).innerHTML;
+    expect(text).not.toContain(AGENT_PERSONAL_QUERIES_UNSUPPORTED_MESSAGE);
+  });
+
+  it('the "shared" tab is unaffected — still reads and renders the real shared items', async () => {
+    const getQueriesFolder = vi.fn((_ref, _path, rootFolder) =>
+      rootFolder === 'personal'
+        ? throwError(() => new Error(AGENT_PERSONAL_QUERIES_UNSUPPORTED_MESSAGE))
+        : of(sharedFolder),
+    );
+    await setup(getQueriesFolder);
+    const fixture = TestBed.createComponent(QueriesTabComponent);
+
+    fixture.componentRef.setInput('rootFolder', 'shared');
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.personalQueriesNotice()).toBeUndefined();
+    expect(fixture.componentInstance.allQueries?.map((q) => q.id)).toEqual([
+      'artists_with_albums',
+    ]);
+  });
+
+  it('Personal→Shared→Personal still refetches every time (PR #120 behavior, unregressed)', async () => {
+    const getQueriesFolder = vi.fn((_ref, _path, rootFolder) =>
+      rootFolder === 'personal' ? of({ id: 'user:admin' }) : of(sharedFolder),
+    );
+    await setup(getQueriesFolder);
+    const fixture = TestBed.createComponent(QueriesTabComponent);
+
+    fixture.componentRef.setInput('rootFolder', 'personal');
+    fixture.detectChanges();
+    expect(getQueriesFolder).toHaveBeenCalledTimes(1);
+
+    fixture.componentRef.setInput('rootFolder', 'shared');
+    fixture.detectChanges();
+    expect(getQueriesFolder).toHaveBeenCalledTimes(2);
+    expect(fixture.componentInstance.allQueries?.map((q) => q.id)).toEqual([
+      'artists_with_albums',
+    ]);
+
+    fixture.componentRef.setInput('rootFolder', 'personal');
+    fixture.detectChanges();
+    expect(getQueriesFolder).toHaveBeenCalledTimes(3);
+    expect(fixture.componentInstance.personalQueriesNotice()).toBeUndefined();
+    expect(fixture.componentInstance.allQueries).toEqual([]);
   });
 });

@@ -91,3 +91,69 @@ describe('ProjectItemService — folder-qualified id in getProjItem', () => {
     req.flush({ id: 'customer-purchases-by-genre' });
   });
 });
+
+// S174 — datatug-cli v0.24.0 (api-contract.md PR #55) adds `?root=personal`
+// to `GET /datatug/queries/all_queries`. These pin down the actual bytes
+// `ProjectItemService.getFolder()` puts on the wire: a `root: 'personal'`
+// argument adds exactly one `root=personal` query param; omitting it (what
+// every pre-v0.24.0 caller, and this app's own "Shared" tab, already did)
+// sends no `root` param at all — byte-identical to before this fix, so an
+// old agent (any store, not just pre-v0.24.0 datatug-cli) never sees a
+// request shape it hasn't always accepted.
+describe('ProjectItemService.getFolder — root=personal wire param (S174)', () => {
+  let service: ProjectItemService<IProjItemBrief>;
+  let httpMock: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        StoreApiService,
+        { provide: SneatApiServiceFactory, useValue: {} },
+      ],
+    });
+    const storeApiService = TestBed.inject(StoreApiService);
+    httpMock = TestBed.inject(HttpTestingController);
+    service = new ProjectItemService(
+      {} as Firestore,
+      storeApiService,
+      'queries',
+      'query',
+    );
+  });
+
+  afterEach(() => {
+    httpMock.verify();
+  });
+
+  it('root: "personal" adds root=personal to the outgoing request', () => {
+    service
+      .getFolder(
+        { storeId: 'localhost:8989', projectId: 'demo-project' },
+        '~',
+        'personal',
+      )
+      .subscribe();
+
+    const req = httpMock.expectOne((r) =>
+      r.url.endsWith('/datatug/queries/all_queries'),
+    );
+    expect(req.request.params.get('root')).toBe('personal');
+    expect(req.request.params.get('project')).toBe('demo-project');
+    expect(req.request.params.get('folder')).toBe('~');
+    req.flush({ id: 'user:admin' });
+  });
+
+  it('an omitted root sends no root param — byte-identical to before this fix', () => {
+    service
+      .getFolder({ storeId: 'localhost:8989', projectId: 'demo-project' }, '~')
+      .subscribe();
+
+    const req = httpMock.expectOne((r) =>
+      r.url.endsWith('/datatug/queries/all_queries'),
+    );
+    expect(req.request.params.has('root')).toBe(false);
+    req.flush({ id: '~' });
+  });
+});
