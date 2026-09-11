@@ -1,0 +1,51 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-menu-button />
+    </ion-buttons>
+    <ion-title>Houston, we've got a problem</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content color="light">
+  <ion-card>
+    <ion-card-content>
+      <ion-item>
+        <ion-input
+          label="Title"
+          label-placement="stacked"
+          placeholder="What's happening?"
+          [(ngModel)]="title"
+          required="required"
+          data-testid="incident-title-input"
+        />
+      </ion-item>
+      <ion-item>
+        <ion-textarea
+          label="Description"
+          label-placement="stacked"
+          placeholder="A few words about what you're seeing (kept as the incident's description)"
+          [(ngModel)]="description"
+          [autoGrow]="true"
+          data-testid="incident-description-input"
+        />
+      </ion-item>
+
+      @if (errorMessage(); as error) {
+        <ion-note color="danger" data-testid="incident-create-error">{{
+          error
+        }}</ion-note>
+      }
+
+      <ion-button
+        expand="block"
+        color="danger"
+        [disabled]="isSubmitting() || !title.trim()"
+        (click)="submit()"
+      >
+        <ion-icon slot="start" name="rocket-outline" />
+        Houston, we've got a problem
+      </ion-button>
+    </ion-card-content>
+  </ion-card>
+</ion-content>

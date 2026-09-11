@@ -2,7 +2,7 @@
 
 // For AI agents: when adding new lines to the file add them as comments for manual human review .
 
-export { agentBaseUrl } from './lib/services/repo/agent-url';
+export { agentBaseUrl, buildAgentUrl } from './lib/services/repo/agent-url';
 export { DatatugRoutingModule } from './lib/routes/datatug-routing.module';
 export * from './lib/routes/datatug-routing-proj';
 export * from './lib/routes/datatug-routing-proj-db-catalog';
@@ -16,3 +16,5 @@ export * from './lib/pages/home/my-projects/my-datatug-projects.component';
 export { DatatugHomePageComponent } from './lib/pages/home/datatug-home-page.component';
 export { DatatugMenuModule } from './lib/menu/datatug-menu.module';
 export { DatatugMenuComponent } from './lib/menu/datatug-menu.component';
+export * from './lib/incidents/models';
+export { IncidentClientService } from './lib/incidents/incident-client.service';
