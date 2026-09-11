@@ -1,7 +1,10 @@
 import { TestBed } from '@angular/core/testing';
 import { of } from 'rxjs';
 
-import { QueriesService } from './queries.service';
+import {
+  GITHUB_PERSONAL_QUERIES_MESSAGE,
+  QueriesService,
+} from './queries.service';
 import { QUERY_PROJ_ITEM_SERVICE } from './queries.service.token';
 import { GithubProjectReaderService } from '../services/repo/github/github-project-reader.service';
 import { IProjectRef } from '../core/project-context';
@@ -115,5 +118,82 @@ describe('QueriesService — GitHub-store getQuery (S155)', () => {
     expect(result?.request).toEqual({ queryType: 'DTQL', text: 'from:\n  name: Invoice\n' });
     expect(result?.parameters?.[0].meta).toEqual({ entity: 'Customer', field: 'ID' });
     expect(result?.recordsets?.[0].columns[0].meta).toEqual({ entity: 'Invoice', field: 'ID' });
+  });
+});
+
+/**
+ * S163 — founder-reported follow-up: "On a GitHub-store project the
+ * Queries page's `personal` and `shared` tabs list the same files". Before
+ * this fix, `getQueriesFolder()` ignored `rootFolder` entirely for a
+ * GitHub-store project, always calling `GithubProjectReaderService.
+ * getQueriesFolder()` — which can only ever return the repo's own SHARED
+ * `queries/` tree (datatug-core's `"~"` root, `pkg/datatug/proj_item.go`) —
+ * regardless of which tab asked for it. These pin down the fix: `rootFolder
+ * === 'personal'` short-circuits BEFORE ever calling the reader (so a bug
+ * in the reader mock below would not accidentally mask a regression), and
+ * `'shared'`/unset both still reach the SAME shared tree as before.
+ */
+describe('QueriesService.getQueriesFolder — GitHub-store personal vs shared (S163)', () => {
+  const projRef: IProjectRef = {
+    storeId: 'github.com',
+    projectId: 'datatug-demo-projects@datatug@demo-project-1',
+  };
+
+  const sharedFolder = {
+    id: '~',
+    items: [{ id: 'artists_with_albums', title: 'Artists with albums', type: 'SQL' }],
+  };
+
+  function createService(getQueriesFolder: ReturnType<typeof vi.fn>) {
+    TestBed.configureTestingModule({
+      providers: [
+        QueriesService,
+        {
+          provide: QUERY_PROJ_ITEM_SERVICE,
+          useValue: { getFolder: vi.fn(), getProjItem: vi.fn() },
+        },
+        { provide: GithubProjectReaderService, useValue: { getQueriesFolder } },
+      ],
+    });
+    return TestBed.inject(QueriesService);
+  }
+
+  it('rejects with GITHUB_PERSONAL_QUERIES_MESSAGE for rootFolder "personal" — never calls the reader', () => {
+    const getQueriesFolder = vi.fn(() => of(sharedFolder));
+    const service = createService(getQueriesFolder);
+
+    const next = vi.fn();
+    const error = vi.fn();
+    service.getQueriesFolder(projRef, '~', 'personal').subscribe({ next, error });
+
+    expect(next).not.toHaveBeenCalled();
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ message: GITHUB_PERSONAL_QUERIES_MESSAGE }),
+    );
+    expect(getQueriesFolder).not.toHaveBeenCalled();
+  });
+
+  it('rootFolder "shared" still reads the repo\'s own shared queries tree', () => {
+    const getQueriesFolder = vi.fn(() => of(sharedFolder));
+    const service = createService(getQueriesFolder);
+
+    let result: import('../models/definition/query-def').IQueryFolder | null | undefined;
+    service
+      .getQueriesFolder(projRef, '~', 'shared')
+      .subscribe((folder) => (result = folder));
+
+    expect(getQueriesFolder).toHaveBeenCalledWith(projRef.projectId);
+    expect(result?.items?.map((i) => i.id)).toEqual(['artists_with_albums']);
+  });
+
+  it('an unset rootFolder (e.g. a plain folder-navigation call) still reads the shared tree, same as before this fix', () => {
+    const getQueriesFolder = vi.fn(() => of(sharedFolder));
+    const service = createService(getQueriesFolder);
+
+    let result: import('../models/definition/query-def').IQueryFolder | null | undefined;
+    service.getQueriesFolder(projRef, '~').subscribe((folder) => (result = folder));
+
+    expect(getQueriesFolder).toHaveBeenCalledWith(projRef.projectId);
+    expect(result?.items?.map((i) => i.id)).toEqual(['artists_with_albums']);
   });
 });

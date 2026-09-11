@@ -67,8 +67,12 @@ describe('DatatugFolderComponent', () => {
   });
 
   it('logs a failed folder watch through ErrorLogger instead of raising an unhandled error', () => {
-    // e.g. the GitHub store's watchProjectItem still errors with
-    // "not implemented" — that must not take the project page down with it.
+    // Defends the general contract at this level regardless of which
+    // store is asked: SOME future store implementation erroring here (the
+    // GitHub store itself no longer does — `datatug-store.service.github.ts`'s
+    // `watchProjectItem()` and `datatug-store.service.github.spec.ts`'s own
+    // S163 tests cover that directly) must still not take the whole project
+    // page down with it.
     const failure = new Error('not implemented');
     watchFolder.mockReturnValue(throwError(() => failure));
     fixture.componentRef.setInput('projectRef', {

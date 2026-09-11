@@ -186,6 +186,56 @@ test.describe('GitHub-store project — every side-menu page loads without error
     expect(errors).toEqual([]);
   });
 
+  /**
+   * S163 — founder-reported follow-ups (2): the Queries page's "Personal"
+   * and "Shared" tabs listed the exact same shared folder tree on a
+   * GitHub-store project (`QueriesService.getQueriesFolder()` used to
+   * ignore `rootFolder` entirely there); (4): every project page logged
+   * `ErrorLoggerService.logError: Failed to watch folder "~" of project …
+   * at store github.com: not implemented … /folders/~`
+   * (`DatatugFolderComponent`, rendered on the project page itself).
+   *
+   * This test covers BOTH: the project page load (follow-up 4's own folder
+   * watch) and a direct `?tab=personal` navigation (follow-up 2's own
+   * personal-vs-shared split) — asserting zero `ErrorLoggerService.logError`
+   * console entries across both, and that the Personal tab shows its own
+   * friendly, GitHub-specific empty-state message rather than the Shared
+   * tab's real folder names (`albums`/`artists`/etc., asserted by the
+   * combined test above for the Shared tab already showing those for real).
+   */
+  test('project page loads with no folder-watch error, and the Personal tab shows its own empty state (not the Shared tree)', async ({
+    page,
+  }) => {
+    const errors = installErrorLoggerWatch(page);
+
+    // --- Project page (DatatugFolderComponent's own root-folder watch) -----
+    await page.goto(PROJECT_URL);
+    await expect(
+      activePage(page).getByRole('tab', { name: 'Boards' }),
+    ).toBeVisible({ timeout: 20_000 });
+
+    // --- Queries page, direct ?tab=personal navigation ----------------------
+    await page.goto(`${PROJECT_URL}/queries?tab=personal`);
+    await expect(
+      activePage(page).getByText(
+        'This project is browsed read-only from GitHub',
+        { exact: false },
+      ),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(
+      activePage(page).getByText('personal queries need a DataTug agent', {
+        exact: false,
+      }),
+    ).toBeVisible();
+    // The Personal tab must NOT fall back to the Shared tab's real folder
+    // tree (the exact bug this follow-up fixes).
+    for (const folder of ['albums', 'artists', 'customers', 'invoices', 'reference', 'tracks']) {
+      await expect(activePage(page).getByText(folder, { exact: true })).not.toBeVisible();
+    }
+
+    expect(errors).toEqual([]);
+  });
+
   test('a saved DTQL query page shows its definition and body', async ({
     page,
   }) => {
