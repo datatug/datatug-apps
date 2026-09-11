@@ -11,7 +11,10 @@ import { DbServerService } from '../../../services/unsorted/db-server.service';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
 import { IProjectRef } from '../../../core/project-context';
 import { IEnvironmentFull } from '../../../models/definition/environments';
-import { IProjDbServerSummary } from '../../../models/definition/apis/database';
+import {
+  DB_SERVER_ID_NO_HOST,
+  IProjDbServerSummary,
+} from '../../../models/definition/apis/database';
 
 // Every describe block below provides these two — `EnvironmentService` and
 // `ProjectService` — because the constructor unconditionally calls
@@ -523,5 +526,115 @@ describe('ServersPage numbers add up (S153 — GitHub-store demo project)', () =
     expect(
       fixture.nativeElement.querySelector('ion-item[tappable]'),
     ).toBeNull();
+  });
+});
+
+/**
+ * S160 — `goDbServer()` used to `navigateForward(['project', '.@' +
+ * storeId, 'servers', 'db', driver, host])`: an ABSOLUTE array starting at
+ * a bare `'project'` segment (no `store/:storeId` prefix at all), and a
+ * `host` segment left blank/`NaN`-producing for a host-less server — never
+ * matched the real route (`/store/:storeId/project/:projectId/servers/
+ * db/:dbDriver/:dbServerId`), so clicking any DB server row threw
+ * `NG04002` for every store/project (founder report, 2026-09-10, 100%
+ * reproducible). These tests call the component method directly (not a
+ * dispatched DOM click) and assert the exact array now passed to
+ * `NavController.navigateForward()`.
+ */
+describe('ServersPage.goDbServer() navigation target (S160, NG04002 regression)', () => {
+  let component: ServersPageComponent;
+  let fixture: ComponentFixture<ServersPageComponent>;
+  let navigateForward: ReturnType<typeof vi.fn>;
+
+  const target: IProjectRef = {
+    storeId: STORE_ID_GITHUB_COM,
+    projectId: 'datatug-demo-projects@datatug@demo-project-1',
+  };
+
+  beforeEach(async () => {
+    navigateForward = vi.fn(() => Promise.resolve(true));
+
+    await TestBed.configureTestingModule({
+      imports: [ServersPageComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        {
+          provide: ProjectContextService,
+          useValue: {
+            current$: of(target),
+            current: target,
+            setCurrent: vi.fn(),
+          },
+        },
+        {
+          provide: ErrorLogger,
+          useValue: {
+            logError: vi.fn(),
+            logErrorHandler: vi.fn(() => vi.fn()),
+          },
+        },
+        { provide: ModalController, useValue: { create: vi.fn() } },
+        { provide: NavController, useValue: { navigateForward } },
+        {
+          provide: DbServerService,
+          useValue: { getDbServers: vi.fn(() => of([])), deleteDbServer: vi.fn() },
+        },
+        noopEnvironmentServiceProvider,
+        noopProjectServiceProvider,
+      ],
+    })
+      .overrideComponent(ServersPageComponent, {
+        set: {
+          imports: [],
+          template: '',
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+          providers: [],
+        },
+      })
+      .compileComponents();
+
+    fixture = TestBed.createComponent(ServersPageComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+  });
+
+  it('navigates to /store/<storeId>/project/<projectId>/servers/db/<driver>/<host:port> for a server with a host and a port', () => {
+    const dbServer: IProjDbServerSummary = {
+      dbServer: { driver: 'sqlserver', host: 'localhost', port: 1433 },
+      databasesCount: 1,
+    };
+
+    component.goDbServer(dbServer);
+
+    expect(navigateForward).toHaveBeenCalledWith([
+      'store',
+      STORE_ID_GITHUB_COM,
+      'project',
+      'datatug-demo-projects@datatug@demo-project-1',
+      'servers',
+      'db',
+      'sqlserver',
+      'localhost:1433',
+    ]);
+  });
+
+  it('navigates with the host-less placeholder id for the GitHub demo project\'s sqlite3 server (no host at all)', () => {
+    const dbServer: IProjDbServerSummary = {
+      dbServer: { driver: 'sqlite3', host: '' },
+      databasesCount: 5,
+    };
+
+    component.goDbServer(dbServer);
+
+    expect(navigateForward).toHaveBeenCalledWith([
+      'store',
+      STORE_ID_GITHUB_COM,
+      'project',
+      'datatug-demo-projects@datatug@demo-project-1',
+      'servers',
+      'db',
+      'sqlite3',
+      DB_SERVER_ID_NO_HOST,
+    ]);
   });
 });

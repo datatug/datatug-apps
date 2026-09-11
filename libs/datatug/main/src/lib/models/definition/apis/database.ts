@@ -153,10 +153,52 @@ export interface IDbCatalogSummary {
   name: string;
 }
 
+/**
+ * S160 — placeholder `dbServerId` route segment for a server with no `host`
+ * at all (sqlite3 is file-based, not network-addressed — the GitHub demo
+ * project's own aggregated server, `ServersPageComponent`'s
+ * `getGithubDbServers()` read path, `PR #116`). A route segment
+ * (`servers/db/:dbDriver/:dbServerId`, `servers-routing.module.ts`) can
+ * never be an empty string, so `getDbServerId()` below emits this literal
+ * instead, and `getDbServerFromId()` maps it straight back to an empty
+ * host. `'-'` can never collide with a real `host[:port]` id: neither `:`
+ * (the host/port separator) nor a bare host containing only `-` is a valid
+ * hostname.
+ */
+export const DB_SERVER_ID_NO_HOST = '-';
+
+/**
+ * Inverse of {@link getDbServerId} — parses a `servers/db/:dbDriver/
+ * :dbServerId` route segment back into an `IDbServer`. `id` is either
+ * {@link DB_SERVER_ID_NO_HOST} (a host-less server, e.g. sqlite3), a bare
+ * host (`"localhost"`), or `host:port` (`"localhost:5432"`).
+ */
 export const getDbServerFromId = (driver: string, id: string): IDbServer => {
+  if (id === DB_SERVER_ID_NO_HOST) {
+    return { driver, host: '' };
+  }
   const v = id.split(':');
   if (v.length === 1) {
     return { driver, host: v[0] };
   }
-  return { driver, host: v[0], port: +v[0] };
+  // S160: this used to read `+v[0]` here — the HOST segment, always `NaN`
+  // (`+"localhost"` is `NaN`) — so a server's Port row never rendered
+  // (`dbserver-page.component.html`'s `@if (dbServer()?.port)` is falsy for
+  // `NaN`). `v[1]` is the actual port segment.
+  return { driver, host: v[0], port: +v[1] };
+};
+
+/**
+ * Inverse of {@link getDbServerFromId} — builds the `dbServerId` route
+ * segment (`servers/db/:dbDriver/:dbServerId`) for a given server: `host`,
+ * `host:port` when a port is set, or {@link DB_SERVER_ID_NO_HOST} when
+ * `host` is empty/whitespace-only (see that constant's own doc comment).
+ * `ServersPageComponent.goDbServer()` is the one caller today.
+ */
+export const getDbServerId = (dbServer: IDbServer): string => {
+  const host = dbServer.host?.trim();
+  if (!host) {
+    return DB_SERVER_ID_NO_HOST;
+  }
+  return dbServer.port ? `${host}:${dbServer.port}` : host;
 };
