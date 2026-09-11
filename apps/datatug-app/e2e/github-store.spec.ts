@@ -412,4 +412,100 @@ test.describe('GitHub-store project — every side-menu page loads without error
     // route with an empty outlet, not on the query page at all.
     expect(new URL(page.url()).pathname).toContain('/query/');
   });
+
+  /**
+   * S160 — NG04002, 100% reproducible on every store/project (founder
+   * report, 2026-09-10): the `'servers'` route was a bare `loadComponent`
+   * leaf with no child route at all for `ServersPageComponent.goDbServer()`'s
+   * own navigation to `servers/db/:dbDriver/:dbServerId` — clicking any DB
+   * server row threw `NG04002: Cannot match any routes`. Fixed by switching
+   * `'servers'` to `loadChildren` into the (previously dead-code)
+   * `ServersPageRoutingModule`, correcting `goDbServer()`'s target array to
+   * the real `/store/:storeId/project/:projectId/servers/db/...` shape, and
+   * fixing `getDbServerFromId()`'s `port: +v[0]` off-by-one (it read the
+   * HOST segment, always `NaN`, instead of `v[1]`, the port segment) so a
+   * server's own Port row can actually render.
+   *
+   * The GitHub demo project's one aggregated DB server (sqlite3) declares no
+   * `host` at all — a route segment can never be empty, so `getDbServerId()`
+   * emits the placeholder `'-'` for it (`database.ts`); `getDbServerFromId()`
+   * maps that back to an empty host. This test exercises exactly that
+   * host-less row — the only DB server this demo project actually has.
+   */
+  test('clicking a DB server row on the Servers page opens its detail page, not NG04002 (S160)', async ({
+    page,
+  }) => {
+    const errors = installErrorLoggerWatch(page);
+    const consoleErrors: string[] = [];
+    page.on('console', (message) => {
+      if (message.type() === 'error') {
+        consoleErrors.push(message.text());
+      }
+    });
+
+    await page.goto(PROJECT_URL);
+    await page
+      .locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Servers' })
+      .click();
+    await expect(activePage(page).locator('ion-title', { hasText: 'Servers' })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // The demo project's one DB server row — no host (sqlite3 is
+    // file-based), driver badge "sqlite3" (see the "servers all render
+    // their real content" test above for the same row). Clicking the row's
+    // own label, not the row itself: `ion-item`'s bounding-box center can
+    // land on the trailing delete button on a narrow viewport, and
+    // `deleteDbServer()`'s own `event.stopPropagation()` would swallow the
+    // click before it ever reaches `goDbServer()`.
+    await activePage(page)
+      .locator('ion-item[tappable]', { hasText: 'sqlite3' })
+      .locator('ion-label')
+      .click();
+
+    // The real route: `/store/:storeId/project/:projectId/servers/db/
+    // :dbDriver/:dbServerId` — `'-'` is the host-less placeholder id.
+    await expect(page).toHaveURL(
+      new RegExp(`${PROJECT_URL.replace(/[.]/g, '\\.')}/servers/db/sqlite3/-$`),
+    );
+
+    // Scoped to `sneat-datatug-dbserver` (`DbserverPageComponent`'s own
+    // selector) rather than `activePage(page)`: during Ionic's page-
+    // transition animation both the leaving `sneat-datatug-servers` page and
+    // the entering `sneat-datatug-dbserver` page briefly carry `.ion-page`
+    // without `.ion-page-hidden` at the same time (confirmed live — the
+    // same class of timing issue `active-page.ts`'s own doc comment already
+    // describes for `sneat-datatug-boards`), which trips
+    // `activePage(page).locator('sneat-datatug-page-title')`'s strict-mode
+    // check (2 matches: the Servers page's own title AND this one). Only
+    // one `sneat-datatug-dbserver` element ever exists in this test's own
+    // navigation (one click, one destination), so this tag alone is
+    // unambiguous regardless of transition timing.
+    const dbServerPage = page.locator('sneat-datatug-dbserver');
+    await expect(dbServerPage).toBeVisible({ timeout: 15_000 });
+
+    // `sneat-datatug-page-title`'s "{Page title} @ {Project title}" format
+    // (see the S158 test above) — proves the route actually activated
+    // `DbserverPageComponent` inside the real project context, not just
+    // that *something* rendered where the Servers list used to be.
+    const pageTitle = dbServerPage.locator('sneat-datatug-page-title');
+    await expect(pageTitle).toContainText('DB server:', { timeout: 15_000 });
+    await expect(pageTitle).toContainText('DataTug Demo Project 1');
+
+    // The rest of the detail page's own structure — Host/Environments/
+    // Databases cards (dbserver-page.component.html) — renders even though
+    // this demo project has no host to show.
+    await expect(
+      dbServerPage.locator('ion-label', { hasText: 'Host' }),
+    ).toBeVisible();
+    await expect(
+      dbServerPage.locator('ion-item-divider', { hasText: 'Environments' }),
+    ).toBeVisible();
+    await expect(
+      dbServerPage.locator('ion-item-divider', { hasText: 'Databases' }),
+    ).toBeVisible();
+
+    expect(errors).toEqual([]);
+    expect(consoleErrors.filter((text) => text.includes('NG04002'))).toEqual([]);
+  });
 });

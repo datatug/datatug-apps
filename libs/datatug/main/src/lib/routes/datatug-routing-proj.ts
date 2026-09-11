@@ -216,10 +216,19 @@ export const datatugProjectRoutes: Routes = [
       ),
   },
   {
+    // S160 (NG04002, 100% reproducible on every store/project — founder
+    // report, 2026-09-10): this used to be a bare `loadComponent` leaf, so
+    // there was no route at all for `ServersPageComponent.goDbServer()`'s
+    // own child navigation (`servers/db/:dbDriver/:dbServerId` — see that
+    // method and `ServersPageRoutingModule` below). That module already
+    // declares both this page's own `''` route and the `db/...` detail
+    // route, so it's reused here via `loadChildren` rather than duplicating
+    // its routes inline. `ServersPageRoutingModule` was dead code before
+    // this — nothing imported it anywhere except an e2e comment.
     path: 'servers',
-    loadComponent: () =>
-      import('../pages/signed-in/servers/servers-page.component').then(
-        (m) => m.ServersPageComponent,
+    loadChildren: () =>
+      import('../pages/signed-in/servers/servers-routing.module').then(
+        (m) => m.ServersPageRoutingModule,
       ),
   },
   {

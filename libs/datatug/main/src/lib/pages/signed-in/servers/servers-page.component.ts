@@ -35,10 +35,12 @@ import {
 import { IProjectRef } from '../../../core/project-context';
 import { AddDbServerComponent } from '../../../db/modals/add-db-serve/add-db-server.component';
 import {
+  getDbServerId,
   IDbServer,
   IProjDbServerSummary,
 } from '../../../models/definition/apis/database';
 import { IEnvironmentFull } from '../../../models/definition/environments';
+import { getStoreId } from '../../../nav/nav-models';
 import { ProjectContextService } from '../../../services/project/project-context.service';
 import { ProjectService } from '../../../services/project/project.service';
 import { DatatugServicesProjectModule } from '../../../services/project/datatug-services-project.module';
@@ -255,15 +257,36 @@ export class ServersPageComponent implements OnDestroy {
     return dbServer.host?.trim() || '(no host)';
   }
 
+  /**
+   * S160 (NG04002, 100% reproducible on every store/project — founder
+   * report, 2026-09-10): this used to build `['project', '.@' +
+   * this.target()?.storeId, 'servers', 'db', driver, host]` — an ABSOLUTE
+   * array starting at a bare `'project'` segment with no `store/:storeId`
+   * prefix at all, and a `host` segment left blank (`NaN`-producing) for
+   * any host-less server. The real route lives at `/store/:storeId/
+   * project/:projectId/servers/db/:dbDriver/:dbServerId`
+   * (`datatug-routing-proj.ts`'s `'servers'` entry, now `loadChildren` into
+   * `ServersPageRoutingModule`) — same `store/<id>/project/<id>/...` shape
+   * every other project sub-page link uses (`getStoreId()`,
+   * `nav/nav-models.ts`; c.f. `DatatugNavService.projectPageUrl()`/
+   * `goCatalog()`). `getDbServerId()` (database.ts) supplies the
+   * `:dbServerId` segment, including the host-less placeholder.
+   */
   goDbServer(dbServer: IProjDbServerSummary): void {
+    const target = this.target();
+    if (!target) {
+      return;
+    }
     this.navCtrl
       .navigateForward([
+        'store',
+        getStoreId(target.storeId),
         'project',
-        '.@' + this.target()?.storeId,
+        target.projectId,
         'servers',
         'db',
         dbServer.dbServer.driver,
-        dbServer.dbServer.host,
+        getDbServerId(dbServer.dbServer),
       ])
       .catch((err) =>
         this.errorLogger.logError(err, 'Failed to navigate to DB server page'),

@@ -1,6 +1,6 @@
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { provideRouter, type Route } from '@angular/router';
+import { provideRouter, type Route, type Routes } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { datatugProjectRoutes } from './datatug-routing-proj';
 
@@ -112,6 +112,101 @@ describe('datatugProjectRoutes — "query" route (S158, NG04002 regression)', ()
     const harness = await RouterTestingHarness.create();
 
     await harness.navigateByUrl('/query/artists%2Fartists_with_albums');
+
+    expect(harness.routeNativeElement).toBeTruthy();
+  });
+});
+
+/**
+ * S160 — NG04002 on every store/project, 100% reproducible (founder report,
+ * 2026-09-10): `'servers'` used to be a bare `loadComponent` LEAF route, so
+ * there was no route at all for `ServersPageComponent.goDbServer()`'s own
+ * child navigation to `servers/db/:dbDriver/:dbServerId`
+ * (`servers-routing.module.ts`'s `db/...` route, which loads
+ * `DbserverPageComponent` — previously dead code, nothing imported that
+ * module). Fixed by switching `'servers'` to `loadChildren` into
+ * `ServersPageRoutingModule`, which already declares both routes.
+ */
+describe('datatugProjectRoutes — "servers" route (S160, NG04002 regression)', () => {
+  function findServersRoute(): Route {
+    const route = datatugProjectRoutes.find((r) => r.path === 'servers');
+    if (!route) {
+      throw new Error('"servers" route not found in datatugProjectRoutes');
+    }
+    return route;
+  }
+
+  it('is a "servers" segment with loadChildren — NOT a bare loadComponent leaf', () => {
+    const route = findServersRoute();
+    expect(route.path).toBe('servers');
+    expect(route.loadChildren).toBeTruthy();
+    expect(route.loadComponent).toBeFalsy();
+  });
+
+  it("loadChildren resolves to ServersPageRoutingModule, whose own routes cover both '' (the list) and 'db/:dbDriver/:dbServerId' (the detail page)", async () => {
+    const route = findServersRoute();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const loaded: any = await route.loadChildren!();
+    expect(loaded).toBeTruthy();
+    expect(loaded?.name).toBe('ServersPageRoutingModule');
+  });
+
+  // Trivial standalone stand-ins for the real, DI-heavy
+  // `ServersPageComponent`/`DbserverPageComponent` — already covered above
+  // (the real route entry's `loadChildren` really does resolve to
+  // `ServersPageRoutingModule`). These two tests are about proving the
+  // registered child routes actually MATCH real URLs through Angular's own
+  // router, the same idiom the "query" route block above already uses.
+  @Component({ selector: 'sneat-stub-servers-page', template: '' })
+  class StubServersPageComponent {}
+
+  @Component({ selector: 'sneat-stub-dbserver-page', template: '' })
+  class StubDbServerPageComponent {}
+
+  function routesUnderTest(): Routes {
+    return [
+      {
+        path: 'servers',
+        children: [
+          { path: '', component: StubServersPageComponent },
+          {
+            path: 'db/:dbDriver/:dbServerId',
+            component: StubDbServerPageComponent,
+          },
+        ],
+      },
+    ];
+  }
+
+  it("matches '/servers' (the list page)", async () => {
+    TestBed.configureTestingModule({
+      providers: [provideRouter(routesUnderTest())],
+    });
+    const harness = await RouterTestingHarness.create();
+
+    await harness.navigateByUrl('/servers');
+
+    expect(harness.routeNativeElement).toBeTruthy();
+  });
+
+  it("matches '/servers/db/sqlite3/<dbServerId>' (the detail page `goDbServer()` navigates to) — including the host-less placeholder id", async () => {
+    TestBed.configureTestingModule({
+      providers: [provideRouter(routesUnderTest())],
+    });
+    const harness = await RouterTestingHarness.create();
+
+    await harness.navigateByUrl('/servers/db/sqlite3/-');
+
+    expect(harness.routeNativeElement).toBeTruthy();
+  });
+
+  it("matches '/servers/db/sqlserver/<host:port>' too", async () => {
+    TestBed.configureTestingModule({
+      providers: [provideRouter(routesUnderTest())],
+    });
+    const harness = await RouterTestingHarness.create();
+
+    await harness.navigateByUrl('/servers/db/sqlserver/localhost:1433');
 
     expect(harness.routeNativeElement).toBeTruthy();
   });
