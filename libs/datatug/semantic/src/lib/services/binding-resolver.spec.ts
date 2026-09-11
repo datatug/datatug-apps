@@ -282,6 +282,107 @@ describe('resolveBindings — ambiguity within one tier does not fall through to
   });
 });
 
+describe('resolveBindings — non-equality condition facts (api-contract.md Fact.condition paragraph)', () => {
+  it('a context fact with condition ">" does not bind a compatible parameter and is reported skipped', () => {
+    const params: BindingParameterRef[] = [{ id: 'CustomerId', meta: customerIdMeta }];
+    const [binding] = resolveBindings({
+      parameters: params,
+      selectionFacts: [],
+      contextFacts: [
+        { id: 'gt-fact', entity: 'Customer', field: 'ID', value: integer5, condition: '>', origin: 'context', enabled: true },
+      ],
+    });
+    // Never applied as equality — no value, no origin.
+    expect(binding.value).toBeUndefined();
+    expect(binding.origin).toBeUndefined();
+    expect(binding.skippedConditionFacts).toEqual([
+      expect.objectContaining({ factId: 'gt-fact', condition: '>' }),
+    ]);
+    expect(binding.skippedConditionFacts?.[0]?.explanation).toContain('>');
+    expect(binding.skippedConditionFacts?.[0]?.explanation.toLowerCase()).toContain('skip');
+  });
+
+  it('an explicit condition: "==" fact still binds exactly as an absent-condition fact does', () => {
+    const params: BindingParameterRef[] = [{ id: 'CustomerId', meta: customerIdMeta }];
+    const [binding] = resolveBindings({
+      parameters: params,
+      selectionFacts: [],
+      contextFacts: [
+        { id: 'eq-fact', entity: 'Customer', field: 'ID', value: integer5, condition: '==', origin: 'context', enabled: true },
+      ],
+    });
+    expect(binding).toMatchObject({ value: integer5, origin: 'context' });
+    expect(binding.skippedConditionFacts).toBeUndefined();
+  });
+
+  it('an absent-condition fact still binds exactly as today (no regression)', () => {
+    const params: BindingParameterRef[] = [{ id: 'CustomerId', meta: customerIdMeta }];
+    const [binding] = resolveBindings({
+      parameters: params,
+      selectionFacts: [],
+      contextFacts: [fact(integer5, 'context')],
+    });
+    expect(binding).toMatchObject({ value: integer5, origin: 'context' });
+    expect(binding.skippedConditionFacts).toBeUndefined();
+  });
+
+  it('a selected fact still wins over a context fact regardless of the context fact\'s condition', () => {
+    const params: BindingParameterRef[] = [{ id: 'CustomerId', meta: customerIdMeta }];
+    const [binding] = resolveBindings({
+      parameters: params,
+      selectionFacts: [fact(integer5, 'selection')],
+      contextFacts: [
+        { id: 'gt-fact', entity: 'Customer', field: 'ID', value: integer7, condition: '>', origin: 'context', enabled: true },
+      ],
+    });
+    // The context fact is never eligible as an equality candidate, so it can never
+    // become a "conflict" either — selection simply wins, unblocked.
+    expect(binding).toMatchObject({ value: integer5, origin: 'selection' });
+    expect(binding.blocked).toBeUndefined();
+    expect(binding.skippedConditionFacts).toEqual([
+      expect.objectContaining({ factId: 'gt-fact', condition: '>' }),
+    ]);
+  });
+
+  it('with only a ">" fact available a required parameter is reported missing, not bound', () => {
+    const params: BindingParameterRef[] = [
+      { id: 'CustomerId', meta: customerIdMeta, required: true },
+    ];
+    const [binding] = resolveBindings({
+      parameters: params,
+      selectionFacts: [],
+      contextFacts: [
+        { id: 'gt-fact', entity: 'Customer', field: 'ID', value: integer5, condition: '>', origin: 'context', enabled: true },
+      ],
+    });
+    expect(binding.value).toBeUndefined();
+    expect(binding.blocked).toBe('missing-required');
+    expect(binding.skippedConditionFacts).toEqual([
+      expect.objectContaining({ factId: 'gt-fact', condition: '>' }),
+    ]);
+  });
+
+  it('a declared default never applies over a skipped non-equality-only context fact — still reported missing', () => {
+    const params: BindingParameterRef[] = [
+      { id: 'CustomerId', meta: customerIdMeta, defaultValue: integer7 },
+    ];
+    const [binding] = resolveBindings({
+      parameters: params,
+      selectionFacts: [],
+      contextFacts: [
+        { id: 'gt-fact', entity: 'Customer', field: 'ID', value: integer5, condition: '>', origin: 'context', enabled: true },
+      ],
+    });
+    // No eligible candidate in any tier — the default is free to apply (it never hides
+    // an ambiguity, and a skipped fact isn't one), but it's still worth asserting the
+    // skip is reported alongside it.
+    expect(binding).toMatchObject({ value: integer7, origin: 'default' });
+    expect(binding.skippedConditionFacts).toEqual([
+      expect.objectContaining({ factId: 'gt-fact', condition: '>' }),
+    ]);
+  });
+});
+
 describe('hasBlockingBindings', () => {
   it('true when any resolved binding is blocked', () => {
     const blocked = resolveBindings({

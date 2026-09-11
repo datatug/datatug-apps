@@ -12,6 +12,15 @@
 //   The user can clear a value; a cleared required value blocks Run until
 //   supplied."
 //
+// "Compatible" excludes a context fact whose `Fact.condition` is anything other than
+// `'=='` (absent means `'=='`) — this resolver doesn't implement conditions, so per
+// the appendix's `Fact.condition` paragraph it must never apply such a fact as
+// equality. It's reported instead via `ResolvedBinding.skippedConditionFacts`, the
+// client-side mirror of the wire `Candidate.chain`'s skip explanation, and otherwise
+// falls through exactly as if that fact didn't exist (S168). Selection facts are
+// unaffected — they're always treated as equality candidates regardless of
+// `condition`.
+//
 // Pure, framework-free (no Angular, no HTTP) so its precedence/typed-equality/
 // blocking logic is directly unit-testable — Task 15 item 3
 // (core-investigation-loop#ac:typed-context-isolation,
@@ -23,7 +32,7 @@
 // stops a Run, and how it's rendered, is the caller's job (QueryPageComponent).
 
 import { EntityFieldRef } from '../models/models';
-import { Fact, TypedValue } from '../../contract/types';
+import { ContextCondition, Fact, TypedValue } from '../../contract/types';
 
 /** One query parameter the resolver can bind — a subset of `IParameterDef`
  * (`libs/datatug/main`) kept dependency-free here. */
@@ -38,6 +47,23 @@ export interface BindingParameterRef {
 
 export type ResolvedBindingOrigin = 'user' | 'selection' | 'context' | 'default';
 export type BindingBlockReason = 'ambiguous' | 'conflict-unconfirmed' | 'missing-required';
+
+/** One enabled context {@link Fact} excluded from binding candidacy for a parameter
+ * because it declares a comparison other than `'=='` — api-contract.md's
+ * `Fact.condition` paragraph: "An agent that does not implement conditions MUST NOT
+ * apply a non-`==` fact as equality; it MUST leave the parameter unbound and report it
+ * unbound in the response (`Candidate.missing`, and a `chain` entry whose `explanation`
+ * says the fact was skipped for an unsupported condition)." This resolver doesn't
+ * implement conditions, so it mirrors that agent rule client-side: every non-`==`
+ * context fact for a parameter's field is reported here (mirroring the wire
+ * `Candidate.chain` step shape) rather than silently dropped or applied as equality.
+ * Present regardless of whether the parameter ultimately binds through another
+ * tier — "why this query is constrained" must stay truthful either way. */
+export interface SkippedConditionFact {
+  readonly factId: string;
+  readonly condition: ContextCondition;
+  readonly explanation: string;
+}
 
 /** One parameter's resolved binding decision. Exactly one of `value`/`blocked` is set
  * for a semantic (meta-carrying) parameter with any candidate; a non-semantic,
@@ -57,6 +83,10 @@ export interface ResolvedBinding {
   /** Set only when `blocked === 'ambiguous'` — every distinct candidate value found in
    * the highest eligible automatic tier. */
   readonly ambiguousValues?: readonly TypedValue[];
+  /** Present only when at least one enabled context fact for this parameter's field
+   * was excluded from binding candidacy for an unsupported condition — see
+   * {@link SkippedConditionFact}. */
+  readonly skippedConditionFacts?: readonly SkippedConditionFact[];
 }
 
 export interface ResolveBindingsInput {
@@ -104,6 +134,51 @@ function factsFor(facts: readonly Fact[], meta: EntityFieldRef): Fact[] {
   return facts.filter((f) => f.entity === meta.entity && f.field === meta.field);
 }
 
+/** Absent `condition` means `'=='` (api-contract.md's `Fact.condition` paragraph —
+ * "matching every fact produced before this field existed"). */
+function isEqualityCondition(fact: Fact): boolean {
+  return !fact.condition || fact.condition === '==';
+}
+
+/** Equality-binding candidates only — "Selection facts (`origin: 'selection'`) are
+ * unaffected" (a selection fact is never filtered by condition here; only context
+ * facts are), so callers pass the already-selection-scoped or already-context-scoped
+ * slice explicitly rather than this helper branching on `origin`. */
+function equalityFactsFor(facts: readonly Fact[], meta: EntityFieldRef): Fact[] {
+  return factsFor(facts, meta).filter(isEqualityCondition);
+}
+
+/** The exact wording used for a `SkippedConditionFact.explanation` — exported so a
+ * caller rendering the wire `Candidate.chain`'s own `explanation` (context-panel.md's
+ * "why this query is constrained" view — server-driven, api-contract.md's `Fact.condition`
+ * paragraph) can use the identical phrasing this client-side resolver uses for its own
+ * skip, rather than inventing separate wording for the same rule. */
+export function explainSkippedCondition(condition: ContextCondition): string {
+  return `skipped: condition \`${condition}\` is not supported for parameter binding`;
+}
+
+/** Every enabled context fact for `meta` that declares a non-`'=='` condition —
+ * reported on the {@link ResolvedBinding} regardless of which tier the parameter
+ * ultimately binds through (or fails to). */
+function skippedConditionFactsFor(
+  contextFacts: readonly Fact[],
+  meta: EntityFieldRef,
+): SkippedConditionFact[] {
+  return factsFor(contextFacts, meta)
+    .filter((f) => !isEqualityCondition(f))
+    .map((f) => {
+      const condition = f.condition as ContextCondition;
+      return { factId: f.id, condition, explanation: explainSkippedCondition(condition) };
+    });
+}
+
+function withSkipped(
+  binding: ResolvedBinding,
+  skippedConditionFacts: readonly SkippedConditionFact[],
+): ResolvedBinding {
+  return skippedConditionFacts.length ? { ...binding, skippedConditionFacts } : binding;
+}
+
 function unresolved(
   parameterId: string,
   meta: EntityFieldRef | undefined,
@@ -142,17 +217,28 @@ export function resolveBindings(
       return unresolved(param.id, meta, param.required);
     }
 
+    // "Selection facts (`origin: 'selection'`) are unaffected" — a selection candidate
+    // is never filtered by `condition`; only *context* facts are (see
+    // `equalityFactsFor`/`skippedConditionFactsFor` below), per api-contract.md's
+    // `Fact.condition` paragraph.
     const selectionValues = distinctValues(factsFor(input.selectionFacts, meta));
+    const skippedConditionFacts = skippedConditionFactsFor(input.contextFacts, meta);
+    const resolved = (binding: ResolvedBinding): ResolvedBinding =>
+      withSkipped(binding, skippedConditionFacts);
+
     if (selectionValues.length > 1) {
-      return {
+      return resolved({
         parameterId: param.id,
         meta,
         blocked: 'ambiguous',
         ambiguousValues: selectionValues,
-      };
+      });
     }
 
-    const contextValues = distinctValues(factsFor(input.contextFacts, meta));
+    // A non-`==` context fact is never an equality-binding candidate — it must not be
+    // applied as equality and must not be treated as conflicting with a selection
+    // value either (`skippedConditionFacts` above already reports it separately).
+    const contextValues = distinctValues(equalityFactsFor(input.contextFacts, meta));
 
     if (selectionValues.length === 1) {
       const selectionValue = selectionValues[0];
@@ -160,41 +246,53 @@ export function resolveBindings(
         (v) => !typedValuesEqual(v, selectionValue),
       );
       if (conflictingContext && !confirmedConflicts.has(param.id)) {
-        return {
+        return resolved({
           parameterId: param.id,
           meta,
           blocked: 'conflict-unconfirmed',
           conflict: { selectionValue, contextValue: conflictingContext },
-        };
+        });
       }
-      return { parameterId: param.id, meta, value: selectionValue, origin: 'selection' };
+      return resolved({
+        parameterId: param.id,
+        meta,
+        value: selectionValue,
+        origin: 'selection',
+      });
     }
 
     // No selection candidate — fall through to context, then default.
     if (contextValues.length > 1) {
-      return {
+      return resolved({
         parameterId: param.id,
         meta,
         blocked: 'ambiguous',
         ambiguousValues: contextValues,
-      };
+      });
     }
     if (contextValues.length === 1) {
-      return { parameterId: param.id, meta, value: contextValues[0], origin: 'context' };
+      return resolved({
+        parameterId: param.id,
+        meta,
+        value: contextValues[0],
+        origin: 'context',
+      });
     }
 
     // "Defaults never hide an ambiguity" — reaching here means neither tier was
-    // ambiguous, so applying the default is safe.
+    // ambiguous, so applying the default is safe. A skipped non-equality-only context
+    // fact isn't an ambiguity either — it was never a candidate — so it doesn't block
+    // the default (it's still reported via `skippedConditionFacts`).
     if (param.defaultValue !== undefined) {
-      return {
+      return resolved({
         parameterId: param.id,
         meta,
         value: param.defaultValue,
         origin: 'default',
-      };
+      });
     }
 
-    return unresolved(param.id, meta, param.required);
+    return resolved(unresolved(param.id, meta, param.required));
   });
 }
 
