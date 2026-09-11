@@ -7,7 +7,7 @@
     <sneat-datatug-page-title
       [pageTitle]="
         'DB server: ' +
-        (dbServer()?.host || '') +
+        (dbServer()?.host || '(no host)') +
         (dbServer()?.port ? ':' + dbServer()?.port : '')
       "
     />
@@ -47,13 +47,18 @@
         <ion-label color="medium">Loading...</ion-label>
       </ion-item>
     }
-    @if (!loadingSummary() && envs()?.length) {
+    @if (!loadingSummary() && readOnlyNotice()) {
+      <ion-item>
+        <ion-label color="medium">{{ readOnlyNotice() }}</ion-label>
+      </ion-item>
+    }
+    @if (!loadingSummary() && !readOnlyNotice() && envs()?.length) {
       <ion-item tappable>
         <ion-label>Local</ion-label>
         <ion-badge color="light">1</ion-badge>
       </ion-item>
     }
-    @if (!loadingSummary() && !envs()?.length) {
+    @if (!loadingSummary() && !readOnlyNotice() && !envs()?.length) {
       <ion-item>
         <ion-label color="medium"
           >Not assigned to any specific environment yet
@@ -85,8 +90,11 @@
             <ion-item>
               <ion-label color="medium">Loading...</ion-label>
             </ion-item>
-          }
-          @if (!loadingSummary() && dbServerSummary()?.databases?.length) {
+          } @else if (readOnlyNotice()) {
+            <ion-item>
+              <ion-label color="medium">{{ readOnlyNotice() }}</ion-label>
+            </ion-item>
+          } @else if (dbServerSummary()?.databases?.length) {
             @for (
               database of dbServerSummary()?.databases || [];
               track database.id
@@ -113,8 +121,11 @@
             <ion-item>
               <ion-label color="medium">Loading...</ion-label>
             </ion-item>
-          }
-          @if (dbServerCatalogs()) {
+          } @else if (readOnlyNotice()) {
+            <ion-item>
+              <ion-label color="medium">{{ readOnlyNotice() }}</ion-label>
+            </ion-item>
+          } @else if (dbServerCatalogs()) {
             @for (dbCatalog of dbServerCatalogs(); track dbCatalog.name) {
               <ion-item tappable>
                 <ion-icon slot="start" name="server-outline" />
