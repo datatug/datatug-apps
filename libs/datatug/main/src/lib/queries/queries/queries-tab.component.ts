@@ -270,20 +270,34 @@ export class QueriesTabComponent {
     // follow-up; `QueriesService.getQueriesFolder()`'s own doc comment
     // explains why the GitHub reader can only ever return that one shared
     // tree).
+    //
+    // Regression found live (journey e2e, direct-nav.spec.ts, "resolves the
+    // project into its outgoing request"): a direct URL load of
+    // `?folder=customers` (no `tab`) sets `currentFolder.path = '~/customers'`
+    // SYNCHRONOUSLY via the `queryParamMap` subscription above, BEFORE this
+    // effect ever gets a real `project()` to run with (a REAL agent's
+    // `currentProject` resolves asynchronously — unlike this class's own
+    // synchronous-`of()`-backed unit tests). This effect's FIRST successful
+    // run (once `project()` finally arrives) must NOT reset `currentFolder`
+    // back to root just because it is priming `lastFetchedRootFolder` for
+    // the first time — that discarded the already-correct `'~/customers'`
+    // path, sending the outgoing `all_queries` request `folder=~` instead of
+    // `folder=~/customers`. Only an ACTUAL rootFolder value change on a
+    // LATER run (a genuine Personal/Shared tab switch on the SAME already-
+    // primed instance) resets the browsing position — gated on
+    // `rootFolderPrimed` already being `true` before this run.
     effect(() => {
       const rootFolder = this.rootFolder();
       const project = this.project();
       if (!project) {
         return;
       }
-      const rootFolderChanged =
-        !this.rootFolderPrimed || rootFolder !== this.lastFetchedRootFolder;
-      this.rootFolderPrimed = true;
-      this.lastFetchedRootFolder = rootFolder;
-      if (rootFolderChanged) {
+      if (this.rootFolderPrimed && rootFolder !== this.lastFetchedRootFolder) {
         this.currentFolder = { path: '~', id: '' };
         this.parentFolders = [];
       }
+      this.rootFolderPrimed = true;
+      this.lastFetchedRootFolder = rootFolder;
       this.fetchFolder(project.ref, this.currentFolder.path, rootFolder);
     });
   }
