@@ -113,8 +113,8 @@ importers:
         specifier: 0.27.6
         version: 0.27.6(163a10137aedaca34a82f5363b9305db)
       '@sneat/app-auth':
-        specifier: 0.27.6
-        version: 0.27.6(900c51a9ee7dbde2b095fd57dc07a721)
+        specifier: 0.27.25
+        version: 0.27.25(900c51a9ee7dbde2b095fd57dc07a721)
       '@sneat/auth-core':
         specifier: 0.27.6
         version: 0.27.6(dd55e6f98d2609056ed5ab9db3c674a4)
@@ -5343,8 +5343,8 @@ packages:
       firebase: '*'
       rxjs: '>=7.8.0'
 
-  '@sneat/app-auth@0.27.6':
-    resolution: {integrity: sha512-d3nEUsk5gOl2bVokNwdl7jxM5mXUAwU0V+Onj3zCqqT45QQ5zDEb+fw/R2U4YIboZjwR48sWlaglOvvuUALClQ==}
+  '@sneat/app-auth@0.27.25':
+    resolution: {integrity: sha512-5dz8tbt57ZRKwrbrh+WfQfaikcuUq7p7c4OOqBWJGcZf24KHXt9WpKKilMsXnfU0wDA6ylfoDppFAER1tPzBTQ==}
     peerDependencies:
       '@angular/common': 22.1.3
       '@angular/core': 22.1.3
@@ -16813,7 +16813,7 @@ snapshots:
       rxjs: 7.8.2
       tslib: 2.8.1
 
-  '@sneat/app-auth@0.27.6(900c51a9ee7dbde2b095fd57dc07a721)':
+  '@sneat/app-auth@0.27.25(900c51a9ee7dbde2b095fd57dc07a721)':
     dependencies:
       '@angular/common': 22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2)
       '@angular/core': 22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)
