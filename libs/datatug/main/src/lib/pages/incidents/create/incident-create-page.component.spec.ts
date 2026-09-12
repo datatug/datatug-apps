@@ -143,6 +143,7 @@ describe('IncidentCreatePageComponent', () => {
 
     expect(navigateSpy).toHaveBeenCalledWith(
       '/incidents/localhost%3A8989/INC-1',
+      { replaceUrl: true },
     );
   });
 
@@ -224,5 +225,84 @@ describe('IncidentCreatePageComponent', () => {
     });
 
     expect(peek(fixture.componentInstance).errorMessage()).toBeUndefined();
+  });
+
+  it('ignores a late success after the project store changes with the same project id', () => {
+    const result$ = new Subject<IncidentApiResult<IncidentDetail>>();
+    createSpy.mockReturnValue(result$);
+    const navigateSpy = vi
+      .spyOn(router, 'navigateByUrl')
+      .mockResolvedValue(true);
+
+    peek(fixture.componentInstance).title = 'Checkout errors spike';
+    peek(fixture.componentInstance).submit();
+    expect(peek(fixture.componentInstance).isSubmitting()).toBe(true);
+
+    project$.next({
+      ref: { storeId: 'other:8989', projectId: 'billing' },
+    });
+    fixture.detectChanges();
+    expect(peek(fixture.componentInstance).isSubmitting()).toBe(false);
+
+    result$.next({
+      kind: 'ok',
+      data: {
+        ref: { storeId: 'localhost:8989', incidentId: 'INC-1' },
+        uid: 'uid-1',
+        title: 'Checkout errors spike',
+        status: 'open',
+        lastSeq: 1,
+      },
+    });
+
+    expect(navigateSpy).not.toHaveBeenCalled();
+    expect(peek(fixture.componentInstance).errorMessage()).toBeUndefined();
+  });
+
+  it('ignores a late failure after the project store changes with the same project id', () => {
+    const result$ = new Subject<IncidentApiResult<IncidentDetail>>();
+    createSpy.mockReturnValue(result$);
+
+    peek(fixture.componentInstance).title = 'Checkout errors spike';
+    peek(fixture.componentInstance).submit();
+
+    project$.next({
+      ref: { storeId: 'other:8989', projectId: 'billing' },
+    });
+    fixture.detectChanges();
+
+    result$.next({
+      kind: 'unavailable',
+      message: 'The incident store is not available on this server yet.',
+    });
+
+    expect(peek(fixture.componentInstance).errorMessage()).toBeUndefined();
+  });
+
+  it('uses a new idempotency key when the project store changes with the same project id', () => {
+    createSpy.mockReturnValue(
+      of({
+        kind: 'unavailable',
+        message: 'The incident store is not available on this server yet.',
+      } satisfies IncidentApiResult<IncidentDetail>),
+    );
+    randomIdSpy
+      .mockReturnValueOnce('original-project-store')
+      .mockReturnValueOnce('new-project-store');
+
+    peek(fixture.componentInstance).title = 'Checkout errors spike';
+    peek(fixture.componentInstance).submit();
+    const firstRequest = createSpy.mock.calls[0][0];
+
+    project$.next({
+      ref: { storeId: 'other:8989', projectId: 'billing' },
+    });
+    fixture.detectChanges();
+    peek(fixture.componentInstance).submit();
+    const secondRequest = createSpy.mock.calls[1][0];
+
+    expect(randomIdSpy).toHaveBeenCalledTimes(2);
+    expect(secondRequest.mutationId).not.toBe(firstRequest.mutationId);
+    expect(secondRequest.projects[0].storeId).toBe('other:8989');
   });
 });

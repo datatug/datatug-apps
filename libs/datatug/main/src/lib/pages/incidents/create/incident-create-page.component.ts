@@ -105,6 +105,7 @@ export class IncidentCreatePageComponent {
   protected hasMutationScope(): boolean {
     return !!(
       this.storeId() &&
+      this.project()?.ref.storeId &&
       this.project()?.ref.projectId &&
       this.environment()?.id &&
       this.agentContext.securityContextId()
@@ -123,7 +124,13 @@ export class IncidentCreatePageComponent {
     if (!title) {
       return;
     }
-    if (!storeId || !project?.projectId || !environment || !securityContextId) {
+    if (
+      !storeId ||
+      !project?.storeId ||
+      !project.projectId ||
+      !environment ||
+      !securityContextId
+    ) {
       this.errorMessage.set(
         'Open a project and environment connected to a DataTug server before creating an incident.',
       );
@@ -138,6 +145,7 @@ export class IncidentCreatePageComponent {
     const description = this.description.trim() || undefined;
     const fingerprint = JSON.stringify({
       storeId,
+      projectStoreId: project.storeId,
       project: project.projectId,
       environment,
       securityContextId,
@@ -184,6 +192,7 @@ export class IncidentCreatePageComponent {
           this.router
             .navigateByUrl(
               `/incidents/${encodeURIComponent(result.data.ref.storeId)}/${encodeURIComponent(result.data.ref.incidentId)}`,
+              { replaceUrl: true },
             )
             .catch(() => void 0);
           return;
@@ -198,6 +207,7 @@ export class IncidentCreatePageComponent {
   private currentScopeKey(): string {
     return JSON.stringify({
       storeId: this.storeId(),
+      projectStoreId: this.project()?.ref.storeId,
       project: this.project()?.ref.projectId,
       environment: this.environment()?.id,
       securityContextId: this.agentContext.securityContextId(),
