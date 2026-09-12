@@ -123,13 +123,13 @@ describe('DatatugAppComponent shell — rendered under each profile token', () =
     expect(link.querySelector('.brand-planned-badge')).toBeNull();
   });
 
-  it('incidentius: brand "Incidentius" with a "Planned" badge (hub REQ:brand-and-domain-honesty)', () => {
+  it('incidentius: live app hostname removes the planned badge', () => {
     const fixture = render(PRODUCT_PROFILES.incidentius);
     const link: HTMLAnchorElement =
       fixture.nativeElement.querySelector('a.brand-home-link');
 
     expect(link.getAttribute('aria-label')).toBe('Incidentius home');
-    expect(link.textContent?.trim()).toBe('Incidentius Planned');
-    expect(link.querySelector('.brand-planned-badge')).toBeTruthy();
+    expect(link.textContent?.trim()).toBe('Incidentius');
+    expect(link.querySelector('.brand-planned-badge')).toBeNull();
   });
 });

@@ -12,9 +12,9 @@ import { resolveProductProfile } from './resolve-product-profile';
  * Explicit configuration override for a deployment that has no distinct
  * hostname of its own (REQ:profile-table). Defaults to `undefined`, meaning
  * resolution falls through to the hostname match / `datatug` default. No app
- * in this workspace provides a value for this today — `apps/datatug-app` has
- * no distinct Incidentius hostname yet (hub REQ:brand-and-domain-honesty) — a
- * future dedicated deployment sets it via
+ * in this workspace provides a value today because both product profiles have
+ * exact hostnames. A future dedicated deployment without its own hostname sets
+ * it via
  * `{ provide: PRODUCT_PROFILE_OVERRIDE, useValue: 'incidentius' }` in that
  * build's own bootstrap providers, with no change to this library.
  */
