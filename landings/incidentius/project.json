@@ -1,0 +1,51 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "incidentius-landing",
+  "projectType": "application",
+  "sourceRoot": "landings/incidentius/src",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "landings/incidentius",
+        "commands": [
+          "./node_modules/.bin/astro check",
+          "./node_modules/.bin/astro build"
+        ],
+        "parallel": false
+      },
+      "cache": true,
+      "inputs": ["default", "^default"],
+      "outputs": ["{projectRoot}/dist"]
+    },
+    "check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "landings/incidentius",
+        "command": "./node_modules/.bin/astro check"
+      },
+      "cache": true,
+      "inputs": ["default", "^default"]
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "landings/incidentius",
+        "command": "../../node_modules/.bin/eslint astro.config.mjs scripts/**/*.mjs"
+      },
+      "cache": true,
+      "inputs": ["default", "^default"]
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "options": {
+        "cwd": "landings/incidentius",
+        "command": "node --test scripts/site.test.mjs"
+      },
+      "cache": true,
+      "inputs": ["default", "^default"],
+      "outputs": []
+    }
+  }
+}

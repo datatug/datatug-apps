@@ -1,0 +1,17 @@
+{
+  "name": "Incidentius",
+  "short_name": "Incidentius",
+  "description": "Incident investigation built from evidence, executable queries and defensible resolution records.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#08141f",
+  "theme_color": "#08141f",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

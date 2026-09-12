@@ -1,0 +1,98 @@
+---
+import '../styles/global.css';
+import SharedLayout from '@sneat/astro/layouts/BaseLayout.astro';
+import type { SiteChrome, SiteMeta } from '@sneat/astro/config';
+import { i18n } from '../i18n';
+
+interface Props {
+  title?: string;
+  description?: string;
+  noindex?: boolean;
+  localeIndependent?: boolean;
+}
+
+const {
+  title = 'Incidentius — Turn incident evidence into a defensible resolution',
+  description = 'Investigate incidents with evidence, executable queries, hypotheses, comparisons, checks, metrics and a resolution record that preserves how the conclusion was reached.',
+  noindex = false,
+  localeIndependent = false,
+} = Astro.props;
+
+const siteDescription =
+  'Incidentius helps teams investigate incidents from evidence and preserve a defensible resolution record.';
+
+const site: SiteMeta = {
+  name: 'Incidentius',
+  url: 'https://incidentius.com',
+  description: siteDescription,
+  favicon: '/favicon.svg',
+  themeColor: '#08141f',
+  ogImageDefault: '/og-card.svg',
+};
+
+const chrome: SiteChrome = {
+  brand: 'Incidentius',
+  nav: [
+    { href: '#method', label: 'Method' },
+    { href: '#record', label: 'Resolution record' },
+    { href: '#datatug', label: 'DataTug' },
+  ],
+  cta: {
+    href: 'https://app.incidentius.com',
+    label: 'App access — coming soon',
+    labelShort: 'Coming soon',
+  },
+  footer: {
+    tagline: 'Incident investigations built from evidence, not hindsight.',
+    groups: [
+      {
+        title: 'Investigate',
+        links: [
+          { href: '#method', label: 'The method' },
+          { href: '#record', label: 'Resolution records' },
+        ],
+      },
+      {
+        title: 'DataTug',
+        links: [
+          { href: 'https://datatug.app', label: 'DataTug website', external: true },
+          { href: 'https://github.com/datatug', label: 'Open-source projects', external: true },
+        ],
+      },
+    ],
+    owner: 'Incidentius',
+    ecosystemHref: 'https://datatug.app',
+    ecosystemLabel: 'An incident-investigation capability of DataTug',
+  },
+  a11y: {
+    skipToContent: 'Skip to content',
+    brandHome: 'Incidentius home',
+    primaryNav: 'Primary navigation',
+  },
+};
+---
+
+<SharedLayout
+  i18n={i18n}
+  site={site}
+  chrome={chrome}
+  locale="en"
+  title={title}
+  description={description}
+  siteDescription={siteDescription}
+  ogImage="/og-card.svg"
+  noindex={noindex}
+  localeIndependent={localeIndependent}
+  langSwitcher={false}
+>
+  <Fragment slot="head">
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&amp;family=Manrope:wght@400;500;600;700;800&amp;display=swap"
+      rel="stylesheet"
+    />
+  </Fragment>
+  <slot />
+</SharedLayout>
