@@ -1,0 +1,28 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout
+  title="Page not found — Incidentius"
+  description="The requested Incidentius page could not be found."
+  noindex={true}
+  localeIndependent={true}
+>
+  <section class="not-found">
+    <div class="container">
+      <p class="eyebrow">404 · Evidence missing</p>
+      <h1>This path does not support the hypothesis.</h1>
+      <p>
+        The page you requested is not part of the Incidentius investigation record.
+        Return to the landing page to follow the evidence from the start.
+      </p>
+      <a class="button primary" href="/">Return to Incidentius</a>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .not-found { display: grid; min-height: 68vh; place-items: center; padding: 5rem 0; text-align: center; }
+  h1 { max-width: 830px; margin: 0 auto 1.5rem; font-size: clamp(3rem, 7vw, 6rem); }
+  p:not(.eyebrow) { max-width: 620px; margin: 0 auto 2rem; color: var(--color-text-muted); font-size: 1.1rem; }
+</style>

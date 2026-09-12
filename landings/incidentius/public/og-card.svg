@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">Incidentius</title>
+  <desc id="desc">Turn incident evidence into a defensible resolution.</desc>
+  <rect width="1200" height="630" fill="#08141f"/>
+  <circle cx="1040" cy="80" r="280" fill="#0f3d44" opacity=".55"/>
+  <g stroke="#294257" opacity=".4">
+    <path d="M0 90h1200M0 180h1200M0 270h1200M0 360h1200M0 450h1200M0 540h1200"/>
+    <path d="M90 0v630M180 0v630M270 0v630M360 0v630M450 0v630M540 0v630M630 0v630M720 0v630M810 0v630M900 0v630M990 0v630M1080 0v630"/>
+  </g>
+  <text x="88" y="116" fill="#ffb547" font-family="ui-monospace, monospace" font-size="25" letter-spacing="7">INCIDENT INVESTIGATION</text>
+  <text x="88" y="255" fill="#f4f8fb" font-family="system-ui, sans-serif" font-size="88" font-weight="750">Follow the evidence.</text>
+  <text x="88" y="354" fill="#f4f8fb" font-family="system-ui, sans-serif" font-size="88" font-weight="750">Defend the resolution.</text>
+  <text x="91" y="453" fill="#a8bdcc" font-family="system-ui, sans-serif" font-size="31">Queries · hypotheses · comparisons · checks · metrics</text>
+  <g transform="translate(92 514)">
+    <rect width="286" height="66" rx="33" fill="#ffb547"/>
+    <text x="143" y="43" fill="#14202a" text-anchor="middle" font-family="system-ui, sans-serif" font-size="26" font-weight="750">Incidentius</text>
+  </g>
+</svg>

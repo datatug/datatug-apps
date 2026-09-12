@@ -28,6 +28,7 @@ overrides:
   '@sneat/ui': 0.27.6
 packages:
   - '.'
+  - 'landings/incidentius'
 
 # pnpm 10+ reads settings from here (the package.json "pnpm" field is no longer read).
 # Allow these dependencies to run their install/build scripts.
@@ -46,6 +47,7 @@ allowBuilds:
   protobufjs: true
   re2: true
   unrs-resolver: true
+  workerd: true
 minimumReleaseAgeExclude:
   - '@sneat/api@0.5.0 || 0.26.4'
   - '@sneat/auth-core@0.5.0 || 0.26.4'

@@ -1,0 +1,137 @@
+:root {
+  --color-bg: #08141f;
+  --color-bg-2: #0d1d2b;
+  --color-bg-3: #14283a;
+  --color-surface: #102333;
+  --color-soft: #0b1a27;
+  --color-border: #294257;
+  --color-text: #f4f8fb;
+  --color-text-muted: #a8bdcc;
+  --color-text-faint: #7892a5;
+  --color-accent: #ffb547;
+  --color-accent-strong: #ffd18a;
+  --color-accent-soft: #3b2e1c;
+  --color-accent-text: #14202a;
+  --font-sans: 'Manrope', system-ui, sans-serif;
+  --font-body: 'Manrope', system-ui, sans-serif;
+  --font-display: 'Manrope', system-ui, sans-serif;
+  --font-mono: 'DM Mono', ui-monospace, monospace;
+  --radius: 20px;
+  --radius-sm: 10px;
+  --radius-pill: 999px;
+  --shadow: 0 28px 80px rgba(0, 0, 0, 0.28);
+  --shadow-sm: 0 8px 24px rgba(0, 0, 0, 0.2);
+  --container: min(1160px, calc(100vw - 40px));
+  --maxw: 1160px;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  background: var(--color-bg);
+}
+
+body {
+  margin: 0;
+  overflow-x: hidden;
+  background:
+    radial-gradient(
+      circle at 86% 8%,
+      rgba(45, 212, 191, 0.1),
+      transparent 27rem
+    ),
+    var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  letter-spacing: -0.035em;
+  line-height: 1.08;
+}
+
+a {
+  color: inherit;
+}
+
+a:focus-visible {
+  border-radius: 5px;
+  outline: 3px solid #5eead4;
+  outline-offset: 4px;
+}
+
+.container {
+  width: var(--container);
+  margin-inline: auto;
+}
+
+.eyebrow {
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.button {
+  display: inline-flex;
+  min-height: 50px;
+  align-items: center;
+  justify-content: center;
+  padding: 0.8rem 1.3rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  font-weight: 800;
+  text-decoration: none;
+  transition:
+    transform 150ms ease,
+    background-color 150ms ease,
+    border-color 150ms ease;
+}
+
+.button:hover {
+  transform: translateY(-2px);
+  text-decoration: none;
+}
+
+.button.primary {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-accent-text);
+}
+
+.button.secondary {
+  background: rgba(16, 35, 51, 0.7);
+  color: var(--color-text);
+}
+
+.button.secondary:hover {
+  border-color: #5eead4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .button {
+    transition: none;
+  }
+}
