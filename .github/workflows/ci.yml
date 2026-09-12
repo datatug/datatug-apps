@@ -118,7 +118,7 @@ jobs:
       # reproducible. Bump by checking the newest `vX.Y.Z` tag:
       #   git ls-remote --tags https://github.com/datatug/datatug-cli.git
       # See apps/datatug-app/e2e/README.md "Bumping the pinned CLI tag".
-      DATATUG_CLI_REF: v0.24.0
+      DATATUG_CLI_REF: v0.24.5
     steps:
       - name: Checkout datatug-apps
         uses: actions/checkout@v6
