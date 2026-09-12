@@ -70,6 +70,31 @@ describe('IncidentListPageComponent', () => {
     );
   });
 
+  it('ignores a stale response after the active store changes', () => {
+    const nextStoreResult$ =
+      new Subject<IncidentApiResult<IncidentSummary[]>>();
+    listSpy.mockReturnValueOnce(listResult$).mockReturnValueOnce(nextStoreResult$);
+
+    storeId$.next('first-store');
+    storeId$.next('second-store');
+
+    nextStoreResult$.next({
+      kind: 'ok',
+      data: [{ id: 'INC-2', title: 'Current store incident', status: 'open' }],
+    });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.innerHTML).toContain('Current store incident');
+
+    listResult$.next({
+      kind: 'ok',
+      data: [{ id: 'INC-1', title: 'Stale store incident', status: 'open' }],
+    });
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.innerHTML).toContain('Current store incident');
+    expect(fixture.nativeElement.innerHTML).not.toContain('Stale store incident');
+  });
+
   it('shows the explicit unavailable state when the server 404s', () => {
     storeId$.next('localhost:8989');
     fixture.detectChanges();

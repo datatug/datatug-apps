@@ -19,7 +19,7 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/angular';
-import { Subject, takeUntil } from 'rxjs';
+import { EMPTY, Subject, switchMap, takeUntil, tap } from 'rxjs';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { DatatugServicesNavModule } from '../../../services/nav/datatug-services-nav.module';
 import { IncidentClientService } from '../../../incidents/incident-client.service';
@@ -82,8 +82,11 @@ export class IncidentListPageComponent implements OnDestroy {
 
   constructor() {
     this.navContext.currentStoreId
-      .pipe(takeUntil(this.destroyed))
-      .subscribe({ next: (storeId) => this.loadIncidents(storeId) });
+      .pipe(
+        switchMap((storeId) => this.loadIncidents(storeId)),
+        takeUntil(this.destroyed),
+      )
+      .subscribe();
   }
 
   ngOnDestroy(): void {
@@ -91,7 +94,7 @@ export class IncidentListPageComponent implements OnDestroy {
     this.destroyed.complete();
   }
 
-  private loadIncidents(storeId: string | undefined): void {
+  private loadIncidents(storeId: string | undefined) {
     this.unavailableMessage.set(undefined);
     this.incidents.set(undefined);
     if (!storeId) {
@@ -104,20 +107,19 @@ export class IncidentListPageComponent implements OnDestroy {
       // plan Task 10 territory), so "no store in the current nav context"
       // is treated as "none configured" for now.
       this.isLoading.set(false);
-      return;
+      return EMPTY;
     }
     this.isLoading.set(true);
-    this.incidentClient
-      .list(storeId)
-      .pipe(takeUntil(this.destroyed))
-      .subscribe((result) => {
+    return this.incidentClient.list(storeId).pipe(
+      tap((result) => {
         this.isLoading.set(false);
         if (result.kind === 'ok') {
           this.incidents.set(result.data);
         } else {
           this.unavailableMessage.set(result.message);
         }
-      });
+      }),
+    );
   }
 
   protected incidentLink(incident: IncidentSummary): string {
