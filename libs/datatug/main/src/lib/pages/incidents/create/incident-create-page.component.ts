@@ -86,17 +86,18 @@ export class IncidentCreatePageComponent {
 
   protected readonly isSubmitting = signal(false);
   protected readonly errorMessage = signal<string | undefined>(undefined);
-  private pendingMutation:
-    | { readonly fingerprint: string; readonly id: string }
-    | undefined;
-  private activeScopeKey: string | undefined;
-  private submissionToken = 0;
+  private readonly pendingMutation = signal<
+    { readonly fingerprint: string; readonly id: string } | undefined
+  >(undefined);
+  private readonly activeScopeKey = signal<string | undefined>(undefined);
+  private readonly submissionToken = signal(0);
 
   private readonly retireStaleSubmission = effect(() => {
     const scopeKey = this.currentScopeKey();
-    if (this.activeScopeKey && this.activeScopeKey !== scopeKey) {
-      this.activeScopeKey = undefined;
-      this.submissionToken++;
+    const activeScopeKey = this.activeScopeKey();
+    if (activeScopeKey && activeScopeKey !== scopeKey) {
+      this.activeScopeKey.set(undefined);
+      this.submissionToken.update((value) => value + 1);
       this.isSubmitting.set(false);
     }
   });
@@ -131,8 +132,9 @@ export class IncidentCreatePageComponent {
     this.errorMessage.set(undefined);
     this.isSubmitting.set(true);
     const scopeKey = this.currentScopeKey();
-    const submissionToken = ++this.submissionToken;
-    this.activeScopeKey = scopeKey;
+    const submissionToken = this.submissionToken() + 1;
+    this.submissionToken.set(submissionToken);
+    this.activeScopeKey.set(scopeKey);
     const description = this.description.trim() || undefined;
     const fingerprint = JSON.stringify({
       storeId,
@@ -142,13 +144,14 @@ export class IncidentCreatePageComponent {
       title,
       description,
     });
-    let mutationId = this.pendingMutation?.id;
-    if (this.pendingMutation?.fingerprint !== fingerprint || !mutationId) {
+    const pendingMutation = this.pendingMutation();
+    let mutationId = pendingMutation?.id;
+    if (pendingMutation?.fingerprint !== fingerprint || !mutationId) {
       mutationId = `incident-create-${this.randomId.newRandomId({ len: 20 })}`;
-      this.pendingMutation = {
+      this.pendingMutation.set({
         fingerprint,
         id: mutationId,
-      };
+      });
     }
     this.incidentClient
       .create({
@@ -169,15 +172,15 @@ export class IncidentCreatePageComponent {
       })
       .subscribe((result) => {
         if (
-          submissionToken !== this.submissionToken ||
+          submissionToken !== this.submissionToken() ||
           scopeKey !== this.currentScopeKey()
         ) {
           return;
         }
-        this.activeScopeKey = undefined;
+        this.activeScopeKey.set(undefined);
         this.isSubmitting.set(false);
         if (result.kind === 'ok') {
-          this.pendingMutation = undefined;
+          this.pendingMutation.set(undefined);
           this.router
             .navigateByUrl(
               `/incidents/${encodeURIComponent(result.data.ref.storeId)}/${encodeURIComponent(result.data.ref.incidentId)}`,
