@@ -39,7 +39,7 @@
     "@sentry/browser": "10.70.0",
     "@sneat/api": "0.27.6",
     "@sneat/app-auth": "0.27.6",
-    "@sneat/auth-core": "0.27.6",
+    "@sneat/auth-core": "0.27.25",
     "@sneat/auth-models": "0.27.6",
     "@sneat/auth-ui": "0.27.20",
     "@sneat/components": "0.27.23",
