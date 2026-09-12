@@ -46,9 +46,13 @@ describe('resolveProductProfileId', () => {
       ).toBe('datatug');
     });
 
-    it('incidentius has no claimed hostname yet, so it is never hostname-selected', () => {
-      // Hub REQ:brand-and-domain-honesty: no Incidentius domain is registered.
-      expect(PRODUCT_PROFILES.incidentius.hostnames).toEqual([]);
+    it('selects incidentius only on its exact approved app hostname', () => {
+      expect(PRODUCT_PROFILES.incidentius.hostnames).toEqual([
+        'app.incidentius.com',
+      ]);
+      expect(
+        resolveProductProfileId({ hostname: 'app.incidentius.com' }),
+      ).toBe('incidentius');
       expect(
         resolveProductProfileId({ hostname: 'incidentius.com' }),
       ).toBe('datatug');
@@ -132,7 +136,7 @@ describe('resolveProductProfile', () => {
     });
     expect(profile).toBe(PRODUCT_PROFILES.incidentius);
     expect(profile.brandName).toBe('Incidentius');
-    expect(profile.planned).toBe(true);
+    expect(profile.planned).toBeUndefined();
     expect(profile.entryPointLabel).toBe("Houston, we've got a problem");
   });
 });

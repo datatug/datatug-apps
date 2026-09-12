@@ -5,10 +5,29 @@ import {
 } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { IncidentClientService } from './incident-client.service';
-import { IncidentDetail, IncidentSummary } from './models';
+import {
+  CreateIncidentRequest,
+  IncidentDetail,
+  IncidentSummary,
+} from './models';
 
 const STORE_ID = 'localhost:8989';
 const BASE_URL = '//localhost:8989/datatug/incidents';
+const INCIDENT: IncidentDetail = {
+  ref: { storeId: STORE_ID, incidentId: 'INC-1' },
+  uid: '6ddfe079-d5fe-4d77-b322-11b9a31a9766',
+  title: 'Checkout errors spike',
+  status: 'open',
+  lastSeq: 1,
+};
+const CREATE_REQUEST: CreateIncidentRequest = {
+  storeId: STORE_ID,
+  project: 'billing',
+  environment: 'prod',
+  securityContextId: 'ctx-1',
+  mutationId: 'mutation-create-1',
+  title: 'Houston, we have a problem',
+};
 
 describe('IncidentClientService', () => {
   let service: IncidentClientService;
@@ -28,31 +47,27 @@ describe('IncidentClientService', () => {
 
   describe('list', () => {
     it('GETs /datatug/incidents and wraps the response as an ok result', () => {
-      const fixture: IncidentSummary[] = [
-        { id: 'localhost:8989/INC-1', title: 'Checkout errors spike', status: 'open' },
-      ];
+      const fixture: IncidentSummary[] = [INCIDENT];
 
       let result: unknown;
       service.list(STORE_ID).subscribe((r) => (result = r));
 
       const req = httpMock.expectOne((r) => r.url === BASE_URL);
       expect(req.request.method).toBe('GET');
-      req.flush(fixture);
+      req.flush({ incidents: fixture });
 
       expect(result).toEqual({ kind: 'ok', data: fixture });
     });
 
     it('sends repeated status filters as query params', () => {
-      service
-        .list(STORE_ID, { status: ['open', 'investigating'] })
-        .subscribe();
+      service.list(STORE_ID, { status: ['open', 'investigating'] }).subscribe();
 
       const req = httpMock.expectOne((r) => r.url === BASE_URL);
       expect(req.request.params.getAll('status')).toEqual([
         'open',
         'investigating',
       ]);
-      req.flush([]);
+      req.flush({ incidents: [] });
     });
 
     it('reports "unavailable" on a 404 (route not registered yet)', () => {
@@ -113,14 +128,79 @@ describe('IncidentClientService', () => {
 
       expect(result).toEqual({ kind: 'error', message: 'boom' });
     });
+
+    it('rejects a success response that is missing the frozen envelope', () => {
+      let result: unknown;
+      service.list(STORE_ID).subscribe((r) => (result = r));
+
+      httpMock.expectOne((r) => r.url === BASE_URL).flush({});
+
+      expect(result).toEqual({
+        kind: 'error',
+        message: 'Invalid incident list response.',
+      });
+    });
+
+    it('rejects malformed incidents inside a valid list envelope', () => {
+      let result: unknown;
+      service.list(STORE_ID).subscribe((r) => (result = r));
+
+      httpMock.expectOne((r) => r.url === BASE_URL).flush({ incidents: [{}] });
+
+      expect(result).toEqual({
+        kind: 'error',
+        message: 'Invalid incident response.',
+      });
+    });
+
+    it('rejects path-shaped qualified incident ids', () => {
+      let result: unknown;
+      service.list(STORE_ID).subscribe((r) => (result = r));
+
+      httpMock
+        .expectOne((r) => r.url === BASE_URL)
+        .flush({
+          incidents: [
+            {
+              ...INCIDENT,
+              ref: { storeId: STORE_ID, incidentId: '../agent-info' },
+            },
+          ],
+        });
+
+      expect(result).toEqual({
+        kind: 'error',
+        message: 'Invalid incident response.',
+      });
+    });
+
+    it('rejects malformed optional qualified references', () => {
+      let result: unknown;
+      service.list(STORE_ID).subscribe((r) => (result = r));
+
+      httpMock
+        .expectOne((r) => r.url === BASE_URL)
+        .flush({
+          incidents: [
+            {
+              ...INCIDENT,
+              mergedInto: { storeId: 'ops', incidentId: 'INC/2' },
+              projects: [{ storeId: ' ops', projectId: 'billing' }],
+            },
+          ],
+        });
+
+      expect(result).toEqual({
+        kind: 'error',
+        message: 'Invalid incident response.',
+      });
+    });
   });
 
   describe('get', () => {
     it('GETs /datatug/incidents/{id}', () => {
       const fixture: IncidentDetail = {
-        id: 'localhost:8989/INC-1',
-        title: 'Checkout errors spike',
-        status: 'open',
+        ...INCIDENT,
         description: '5xx rate above baseline',
       };
 
@@ -129,7 +209,7 @@ describe('IncidentClientService', () => {
 
       const req = httpMock.expectOne((r) => r.url === `${BASE_URL}/INC-1`);
       expect(req.request.method).toBe('GET');
-      req.flush(fixture);
+      req.flush({ incident: fixture });
 
       expect(result).toEqual({ kind: 'ok', data: fixture });
     });
@@ -137,11 +217,9 @@ describe('IncidentClientService', () => {
     it('sends ?at= for a historical projection', () => {
       service.get(STORE_ID, 'INC-1', '2026-09-11T10:43:40Z').subscribe();
 
-      const req = httpMock.expectOne(
-        (r) => r.url === `${BASE_URL}/INC-1`,
-      );
+      const req = httpMock.expectOne((r) => r.url === `${BASE_URL}/INC-1`);
       expect(req.request.params.get('at')).toBe('2026-09-11T10:43:40Z');
-      req.flush({});
+      req.flush({ incident: INCIDENT });
     });
 
     it('reports "unavailable" on 404', () => {
@@ -157,36 +235,56 @@ describe('IncidentClientService', () => {
         message: 'The incident store is not available on this server yet.',
       });
     });
+
+    it('rejects a success response without an incident envelope', () => {
+      let result: unknown;
+      service.get(STORE_ID, 'INC-1').subscribe((r) => (result = r));
+
+      httpMock.expectOne((r) => r.url === `${BASE_URL}/INC-1`).flush({});
+
+      expect(result).toEqual({
+        kind: 'error',
+        message: 'Invalid incident response.',
+      });
+    });
+
+    it('rejects a malformed incident inside a valid envelope', () => {
+      let result: unknown;
+      service.get(STORE_ID, 'INC-1').subscribe((r) => (result = r));
+
+      httpMock
+        .expectOne((r) => r.url === `${BASE_URL}/INC-1`)
+        .flush({ incident: {} });
+
+      expect(result).toEqual({
+        kind: 'error',
+        message: 'Invalid incident response.',
+      });
+    });
   });
 
   describe('create', () => {
     it('POSTs the title/description to /datatug/incidents', () => {
       const fixture: IncidentDetail = {
-        id: 'localhost:8989/INC-2',
+        ...INCIDENT,
+        ref: { storeId: STORE_ID, incidentId: 'INC-2' },
         title: 'Houston, we have a problem',
-        status: 'open',
       };
 
       let result: unknown;
-      service
-        .create(STORE_ID, { title: 'Houston, we have a problem' })
-        .subscribe((r) => (result = r));
+      service.create(CREATE_REQUEST).subscribe((r) => (result = r));
 
       const req = httpMock.expectOne((r) => r.url === BASE_URL);
       expect(req.request.method).toBe('POST');
-      expect(req.request.body).toEqual({
-        title: 'Houston, we have a problem',
-      });
-      req.flush(fixture);
+      expect(req.request.body).toEqual(CREATE_REQUEST);
+      req.flush({ incident: fixture });
 
       expect(result).toEqual({ kind: 'ok', data: fixture });
     });
 
     it('reports "unavailable" on 404, keeping the caller free to retry with the same draft', () => {
       let result: unknown;
-      service
-        .create(STORE_ID, { title: 'Houston, we have a problem' })
-        .subscribe((r) => (result = r));
+      service.create(CREATE_REQUEST).subscribe((r) => (result = r));
 
       httpMock
         .expectOne((r) => r.url === BASE_URL)
