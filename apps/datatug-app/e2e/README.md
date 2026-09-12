@@ -61,7 +61,7 @@ runs this suite in CI. It:
 
 1. Checks out this repo, plus `datatug/datatug-cli` at a **pinned release
    tag** (`env.DATATUG_CLI_REF` at the top of the job — currently
-   `v0.24.0`) and `datatug/datatug-demo-projects` at `main`, both nested
+   `v0.24.5`) and `datatug/datatug-demo-projects` at `main`, both nested
    under the workspace (`actions/checkout`'s `path:` cannot escape the
    primary checkout).
 2. Sets up Go from `datatug-cli/go.mod` and builds `datatug` from the CLI
