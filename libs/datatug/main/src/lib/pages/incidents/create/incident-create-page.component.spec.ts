@@ -1,11 +1,13 @@
-import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
+import { CUSTOM_ELEMENTS_SCHEMA, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
-import { of, Subject } from 'rxjs';
+import { BehaviorSubject, of, Subject } from 'rxjs';
 import { IncidentCreatePageComponent } from './incident-create-page.component';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { IncidentClientService } from '../../../incidents/incident-client.service';
 import { IncidentApiResult, IncidentDetail } from '../../../incidents/models';
+import { AgentContextService } from '@sneat/datatug-semantic';
+import { RandomIdService } from '@sneat/random';
 
 interface Internals {
   title: string;
@@ -19,13 +21,25 @@ const peek = (c: IncidentCreatePageComponent): Internals =>
 
 describe('IncidentCreatePageComponent', () => {
   let fixture: ComponentFixture<IncidentCreatePageComponent>;
-  let storeId$: Subject<string | undefined>;
+  let storeId$: BehaviorSubject<string | undefined>;
+  let project$: BehaviorSubject<{
+    ref: { storeId: string; projectId: string };
+  }>;
+  let environment$: BehaviorSubject<{ id: string }>;
+  let securityContextId: ReturnType<typeof signal<string | undefined>>;
   let createSpy: ReturnType<typeof vi.fn>;
+  let randomIdSpy: ReturnType<typeof vi.fn>;
   let router: Router;
 
   const render = async () => {
-    storeId$ = new Subject<string | undefined>();
+    storeId$ = new BehaviorSubject<string | undefined>('localhost:8989');
+    project$ = new BehaviorSubject({
+      ref: { storeId: 'localhost:8989', projectId: 'billing' },
+    });
+    environment$ = new BehaviorSubject({ id: 'prod' });
+    securityContextId = signal<string | undefined>('ctx-1');
     createSpy = vi.fn();
+    randomIdSpy = vi.fn(() => 'test-id');
 
     await TestBed.configureTestingModule({
       imports: [IncidentCreatePageComponent],
@@ -33,7 +47,19 @@ describe('IncidentCreatePageComponent', () => {
         provideRouter([]),
         {
           provide: DatatugNavContextService,
-          useValue: { currentStoreId: storeId$ },
+          useValue: {
+            currentStoreId: storeId$,
+            currentProject: project$,
+            currentEnv: environment$,
+          },
+        },
+        {
+          provide: AgentContextService,
+          useValue: { securityContextId },
+        },
+        {
+          provide: RandomIdService,
+          useValue: { newRandomId: randomIdSpy },
         },
         { provide: IncidentClientService, useValue: { create: createSpy } },
       ],
@@ -63,7 +89,7 @@ describe('IncidentCreatePageComponent', () => {
 
     expect(createSpy).not.toHaveBeenCalled();
     expect(peek(fixture.componentInstance).errorMessage()).toContain(
-      'Open a project first',
+      'Open a project and environment',
     );
   });
 
@@ -76,9 +102,21 @@ describe('IncidentCreatePageComponent', () => {
     peek(fixture.componentInstance).description = '  5xx rate up  ';
     peek(fixture.componentInstance).submit();
 
-    expect(createSpy).toHaveBeenCalledWith('localhost:8989', {
+    expect(createSpy).toHaveBeenCalledWith({
+      storeId: 'localhost:8989',
+      project: 'billing',
+      environment: 'prod',
+      securityContextId: 'ctx-1',
+      mutationId: 'incident-create-test-id',
       title: 'Checkout errors spike',
       description: '5xx rate up',
+      projects: [
+        {
+          storeId: 'localhost:8989',
+          projectId: 'billing',
+          environment: 'prod',
+        },
+      ],
     });
   });
 
@@ -87,7 +125,13 @@ describe('IncidentCreatePageComponent', () => {
     createSpy.mockReturnValue(
       of({
         kind: 'ok',
-        data: { id: 'INC-1', title: 'x', status: 'open' },
+        data: {
+          ref: { storeId: 'localhost:8989', incidentId: 'INC-1' },
+          uid: 'uid-1',
+          title: 'x',
+          status: 'open',
+          lastSeq: 1,
+        },
       } satisfies IncidentApiResult<IncidentDetail>),
     );
     const navigateSpy = vi
@@ -119,9 +163,66 @@ describe('IncidentCreatePageComponent', () => {
       'The incident store is not available on this server yet.',
     );
     // The draft is never cleared on failure.
-    expect(peek(fixture.componentInstance).title).toBe(
-      'Checkout errors spike',
-    );
+    expect(peek(fixture.componentInstance).title).toBe('Checkout errors spike');
     expect(peek(fixture.componentInstance).description).toBe('draft text');
+
+    // A retry after a lost/unavailable response carries the same mutation id,
+    // so the server can return the durable receipt instead of duplicating it.
+    peek(fixture.componentInstance).submit();
+    expect(createSpy).toHaveBeenCalledTimes(2);
+    expect(randomIdSpy).toHaveBeenCalledTimes(1);
+    expect(createSpy.mock.calls[1][0].mutationId).toBe(
+      createSpy.mock.calls[0][0].mutationId,
+    );
+  });
+
+  it('ignores a late success after the active store changes', () => {
+    const result$ = new Subject<IncidentApiResult<IncidentDetail>>();
+    createSpy.mockReturnValue(result$);
+    const navigateSpy = vi
+      .spyOn(router, 'navigateByUrl')
+      .mockResolvedValue(true);
+
+    peek(fixture.componentInstance).title = 'Checkout errors spike';
+    peek(fixture.componentInstance).submit();
+    expect(peek(fixture.componentInstance).isSubmitting()).toBe(true);
+
+    storeId$.next('other:8989');
+    fixture.detectChanges();
+    expect(peek(fixture.componentInstance).isSubmitting()).toBe(false);
+
+    result$.next({
+      kind: 'ok',
+      data: {
+        ref: { storeId: 'localhost:8989', incidentId: 'INC-1' },
+        uid: 'uid-1',
+        title: 'Checkout errors spike',
+        status: 'open',
+        lastSeq: 1,
+      },
+    });
+
+    expect(navigateSpy).not.toHaveBeenCalled();
+    expect(peek(fixture.componentInstance).errorMessage()).toBeUndefined();
+  });
+
+  it('ignores a late failure after the security context changes', () => {
+    const result$ = new Subject<IncidentApiResult<IncidentDetail>>();
+    createSpy.mockReturnValue(result$);
+
+    peek(fixture.componentInstance).title = 'Checkout errors spike';
+    peek(fixture.componentInstance).submit();
+    expect(peek(fixture.componentInstance).isSubmitting()).toBe(true);
+
+    securityContextId.set('ctx-2');
+    fixture.detectChanges();
+    expect(peek(fixture.componentInstance).isSubmitting()).toBe(false);
+
+    result$.next({
+      kind: 'unavailable',
+      message: 'The incident store is not available on this server yet.',
+    });
+
+    expect(peek(fixture.componentInstance).errorMessage()).toBeUndefined();
   });
 });

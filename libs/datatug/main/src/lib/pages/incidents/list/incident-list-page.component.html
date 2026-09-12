@@ -22,8 +22,8 @@
     <ion-card>
       <ion-card-content>
         <p>
-          Open a project to see its incidents, or use "Houston, we've got a
-          problem" above to start one.
+          Open a project and environment connected to a DataTug server to load
+          or create incidents.
         </p>
       </ion-card-content>
     </ion-card>
@@ -43,7 +43,10 @@
     <ion-card>
       @if (items.length) {
         <ion-list>
-          @for (incident of items; track incident.id) {
+          @for (
+            incident of items;
+            track incident.ref.storeId + '/' + incident.ref.incidentId
+          ) {
             <ion-item [routerLink]="incidentLink(incident)" button detail>
               <ion-label>
                 <h2>{{ incident.title }}</h2>

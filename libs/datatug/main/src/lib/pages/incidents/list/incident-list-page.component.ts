@@ -76,9 +76,7 @@ export class IncidentListPageComponent implements OnDestroy {
     undefined,
   );
   protected readonly isLoading = signal(false);
-  protected readonly unavailableMessage = signal<string | undefined>(
-    undefined,
-  );
+  protected readonly unavailableMessage = signal<string | undefined>(undefined);
 
   constructor() {
     this.navContext.currentStoreId
@@ -123,9 +121,6 @@ export class IncidentListPageComponent implements OnDestroy {
   }
 
   protected incidentLink(incident: IncidentSummary): string {
-    const storeId = this.storeId();
-    return storeId
-      ? `/incidents/${encodeURIComponent(storeId)}/${encodeURIComponent(incident.id)}`
-      : '';
+    return `/incidents/${encodeURIComponent(incident.ref.storeId)}/${encodeURIComponent(incident.ref.incidentId)}`;
   }
 }

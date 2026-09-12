@@ -7,6 +7,18 @@ import { DatatugNavContextService } from '../../../services/nav/datatug-nav-cont
 import { IncidentClientService } from '../../../incidents/incident-client.service';
 import { IncidentApiResult, IncidentSummary } from '../../../incidents/models';
 
+const incident = (
+  storeId: string,
+  incidentId: string,
+  title: string,
+): IncidentSummary => ({
+  ref: { storeId, incidentId },
+  uid: `uid-${incidentId}`,
+  title,
+  status: 'open',
+  lastSeq: 1,
+});
+
 describe('IncidentListPageComponent', () => {
   let fixture: ComponentFixture<IncidentListPageComponent>;
   let storeId$: Subject<string | undefined>;
@@ -61,38 +73,41 @@ describe('IncidentListPageComponent', () => {
 
     listResult$.next({
       kind: 'ok',
-      data: [{ id: 'INC-1', title: 'Checkout errors spike', status: 'open' }],
+      data: [incident('localhost:8989', 'INC-1', 'Checkout errors spike')],
     });
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.innerHTML).toContain(
-      'Checkout errors spike',
-    );
+    expect(fixture.nativeElement.innerHTML).toContain('Checkout errors spike');
   });
 
   it('ignores a stale response after the active store changes', () => {
-    const nextStoreResult$ =
-      new Subject<IncidentApiResult<IncidentSummary[]>>();
-    listSpy.mockReturnValueOnce(listResult$).mockReturnValueOnce(nextStoreResult$);
+    const nextStoreResult$ = new Subject<
+      IncidentApiResult<IncidentSummary[]>
+    >();
+    listSpy
+      .mockReturnValueOnce(listResult$)
+      .mockReturnValueOnce(nextStoreResult$);
 
     storeId$.next('first-store');
     storeId$.next('second-store');
 
     nextStoreResult$.next({
       kind: 'ok',
-      data: [{ id: 'INC-2', title: 'Current store incident', status: 'open' }],
+      data: [incident('second-store', 'INC-2', 'Current store incident')],
     });
     fixture.detectChanges();
     expect(fixture.nativeElement.innerHTML).toContain('Current store incident');
 
     listResult$.next({
       kind: 'ok',
-      data: [{ id: 'INC-1', title: 'Stale store incident', status: 'open' }],
+      data: [incident('first-store', 'INC-1', 'Stale store incident')],
     });
     fixture.detectChanges();
 
     expect(fixture.nativeElement.innerHTML).toContain('Current store incident');
-    expect(fixture.nativeElement.innerHTML).not.toContain('Stale store incident');
+    expect(fixture.nativeElement.innerHTML).not.toContain(
+      'Stale store incident',
+    );
   });
 
   it('shows the explicit unavailable state when the server 404s', () => {
@@ -128,8 +143,8 @@ describe('IncidentListPageComponent', () => {
       incidentLink(incident: IncidentSummary): string;
     }
     const peek = fixture.componentInstance as unknown as Internals;
-    expect(
-      peek.incidentLink({ id: 'INC-1', title: 't', status: 'open' }),
-    ).toBe('/incidents/localhost%3A8989/INC-1');
+    expect(peek.incidentLink(incident('localhost:8989', 'INC-1', 't'))).toBe(
+      '/incidents/localhost%3A8989/INC-1',
+    );
   });
 });

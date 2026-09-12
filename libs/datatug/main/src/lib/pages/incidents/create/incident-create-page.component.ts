@@ -1,7 +1,9 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
+import { AgentContextService } from '@sneat/datatug-semantic';
+import { RandomIdService } from '@sneat/random';
 import {
   IonButton,
   IonButtons,
@@ -63,8 +65,16 @@ export class IncidentCreatePageComponent {
   private readonly navContext = inject(DatatugNavContextService);
   private readonly incidentClient = inject(IncidentClientService);
   private readonly router = inject(Router);
+  private readonly agentContext = inject(AgentContextService);
+  private readonly randomId = inject(RandomIdService);
 
   protected readonly storeId = toSignal(this.navContext.currentStoreId, {
+    initialValue: undefined,
+  });
+  protected readonly project = toSignal(this.navContext.currentProject, {
+    initialValue: undefined,
+  });
+  protected readonly environment = toSignal(this.navContext.currentEnv, {
     initialValue: undefined,
   });
 
@@ -76,32 +86,101 @@ export class IncidentCreatePageComponent {
 
   protected readonly isSubmitting = signal(false);
   protected readonly errorMessage = signal<string | undefined>(undefined);
+  private pendingMutation:
+    | { readonly fingerprint: string; readonly id: string }
+    | undefined;
+  private activeScopeKey: string | undefined;
+  private submissionToken = 0;
+
+  private readonly retireStaleSubmission = effect(() => {
+    const scopeKey = this.currentScopeKey();
+    if (this.activeScopeKey && this.activeScopeKey !== scopeKey) {
+      this.activeScopeKey = undefined;
+      this.submissionToken++;
+      this.isSubmitting.set(false);
+    }
+  });
+
+  protected hasMutationScope(): boolean {
+    return !!(
+      this.storeId() &&
+      this.project()?.ref.projectId &&
+      this.environment()?.id &&
+      this.agentContext.securityContextId()
+    );
+  }
 
   protected submit(): void {
+    if (this.isSubmitting()) {
+      return;
+    }
     const storeId = this.storeId();
+    const project = this.project()?.ref;
+    const environment = this.environment()?.id;
+    const securityContextId = this.agentContext.securityContextId();
     const title = this.title.trim();
     if (!title) {
       return;
     }
-    if (!storeId) {
+    if (!storeId || !project?.projectId || !environment || !securityContextId) {
       this.errorMessage.set(
-        'Open a project first — there is no incident store to create this in yet.',
+        'Open a project and environment connected to a DataTug server before creating an incident.',
       );
       return;
     }
     this.errorMessage.set(undefined);
     this.isSubmitting.set(true);
+    const scopeKey = this.currentScopeKey();
+    const submissionToken = ++this.submissionToken;
+    this.activeScopeKey = scopeKey;
+    const description = this.description.trim() || undefined;
+    const fingerprint = JSON.stringify({
+      storeId,
+      project: project.projectId,
+      environment,
+      securityContextId,
+      title,
+      description,
+    });
+    let mutationId = this.pendingMutation?.id;
+    if (this.pendingMutation?.fingerprint !== fingerprint || !mutationId) {
+      mutationId = `incident-create-${this.randomId.newRandomId({ len: 20 })}`;
+      this.pendingMutation = {
+        fingerprint,
+        id: mutationId,
+      };
+    }
     this.incidentClient
-      .create(storeId, {
+      .create({
+        storeId,
+        project: project.projectId,
+        environment,
+        securityContextId,
+        mutationId,
         title,
-        description: this.description.trim() || undefined,
+        description,
+        projects: [
+          {
+            storeId: project.storeId,
+            projectId: project.projectId,
+            environment,
+          },
+        ],
       })
       .subscribe((result) => {
+        if (
+          submissionToken !== this.submissionToken ||
+          scopeKey !== this.currentScopeKey()
+        ) {
+          return;
+        }
+        this.activeScopeKey = undefined;
         this.isSubmitting.set(false);
         if (result.kind === 'ok') {
+          this.pendingMutation = undefined;
           this.router
             .navigateByUrl(
-              `/incidents/${encodeURIComponent(storeId)}/${encodeURIComponent(result.data.id)}`,
+              `/incidents/${encodeURIComponent(result.data.ref.storeId)}/${encodeURIComponent(result.data.ref.incidentId)}`,
             )
             .catch(() => void 0);
           return;
@@ -111,5 +190,14 @@ export class IncidentCreatePageComponent {
         // data, no local-only write, no silent loss of what was typed.
         this.errorMessage.set(result.message);
       });
+  }
+
+  private currentScopeKey(): string {
+    return JSON.stringify({
+      storeId: this.storeId(),
+      project: this.project()?.ref.projectId,
+      environment: this.environment()?.id,
+      securityContextId: this.agentContext.securityContextId(),
+    });
   }
 }
