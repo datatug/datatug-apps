@@ -16,6 +16,7 @@
           label-placement="stacked"
           placeholder="What's happening?"
           [(ngModel)]="title"
+          [disabled]="isSubmitting()"
           required="required"
           data-testid="incident-title-input"
         />
@@ -26,6 +27,7 @@
           label-placement="stacked"
           placeholder="A few words about what you're seeing (kept as the incident's description)"
           [(ngModel)]="description"
+          [disabled]="isSubmitting()"
           [autoGrow]="true"
           data-testid="incident-description-input"
         />
@@ -37,14 +39,34 @@
         }}</ion-note>
       }
 
+      @if (contextFactCount()) {
+        <ion-note color="medium" data-testid="incident-context-fact-count">
+          {{ contextFactCount() }} enabled Investigation Context
+          {{ contextFactCount() === 1 ? 'fact' : 'facts' }} will be attached.
+        </ion-note>
+      }
+
       <ion-button
         expand="block"
         color="danger"
         [disabled]="isSubmitting() || !title.trim() || !hasMutationScope()"
         (click)="submit()"
       >
-        <ion-icon slot="start" name="rocket-outline" />
+        @if (isSubmitting()) {
+          <ion-spinner slot="start" name="dots" />
+        } @else {
+          <ion-icon slot="start" name="rocket-outline" />
+        }
         Houston, we've got a problem
+      </ion-button>
+      <ion-button
+        expand="block"
+        fill="clear"
+        routerLink="/incidents"
+        [queryParams]="scopeQueryParams()"
+        [disabled]="isSubmitting()"
+      >
+        Cancel
       </ion-button>
     </ion-card-content>
   </ion-card>

@@ -8,6 +8,7 @@
   <ion-card>
     <ion-item
       routerLink="/incidents"
+      [queryParams]="incidentQueryParams()"
       button
       detail="false"
       data-testid="incidents-menu-item"

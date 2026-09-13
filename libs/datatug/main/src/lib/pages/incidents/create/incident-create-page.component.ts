@@ -1,8 +1,19 @@
-import { Component, effect, inject, signal } from '@angular/core';
+import {
+  Component,
+  DestroyRef,
+  computed,
+  effect,
+  inject,
+  signal,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
-import { toSignal } from '@angular/core/rxjs-interop';
-import { AgentContextService } from '@sneat/datatug-semantic';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
+import {
+  AgentContextService,
+  contextItemToFact,
+  InvestigationContextService,
+} from '@sneat/datatug-semantic';
 import { RandomIdService } from '@sneat/random';
 import {
   IonButton,
@@ -16,6 +27,7 @@ import {
   IonItem,
   IonMenuButton,
   IonNote,
+  IonSpinner,
   IonTextarea,
   IonTitle,
   IonToolbar,
@@ -23,6 +35,18 @@ import {
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { DatatugServicesNavModule } from '../../../services/nav/datatug-services-nav.module';
 import { IncidentClientService } from '../../../incidents/incident-client.service';
+import {
+  datatugServeProjectStoreId,
+  incidentAgentQueryParam,
+  incidentContextQueryParams,
+  incidentEnvironmentQueryParam,
+  incidentProjectQueryParam,
+  incidentStoreQueryParam,
+} from '../../../incidents/incident-route-context';
+import {
+  IncidentFactInput,
+  IncidentRequestContext,
+} from '../../../incidents/models';
 
 /**
  * "Houston, we've got a problem" — creating an incident from a title and free
@@ -34,16 +58,17 @@ import { IncidentClientService } from '../../../incidents/incident-client.servic
  * `incident-list-page.component.ts` — this page never branches on the active
  * profile.
  *
- * The server does not implement `POST /datatug/incidents` yet: a failed
- * submit (today, always — see `IncidentClientService`) reports an explicit
- * error and keeps the user's entered title/description untouched so nothing
- * typed is lost, rather than clearing the form or pretending it worked.
+ * Failures report the server's real error and keep the entered title,
+ * description and idempotency key untouched. Successful persistence navigates
+ * to the returned IncidentRef with `replaceUrl`, so Back cannot reopen a stale
+ * filled form.
  */
 @Component({
   selector: 'sneat-datatug-incident-create',
   templateUrl: './incident-create-page.component.html',
   imports: [
     FormsModule,
+    RouterLink,
     DatatugServicesNavModule,
     IonHeader,
     IonToolbar,
@@ -59,24 +84,68 @@ import { IncidentClientService } from '../../../incidents/incident-client.servic
     IonButton,
     IonIcon,
     IonNote,
+    IonSpinner,
   ],
 })
 export class IncidentCreatePageComponent {
   private readonly navContext = inject(DatatugNavContextService);
   private readonly incidentClient = inject(IncidentClientService);
+  private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly agentContext = inject(AgentContextService);
   private readonly randomId = inject(RandomIdService);
+  private readonly investigationContext = inject(InvestigationContextService);
+  private readonly destroyRef = inject(DestroyRef);
 
-  protected readonly storeId = toSignal(this.navContext.currentStoreId, {
+  private readonly navAgentStoreId = toSignal(this.navContext.currentStoreId, {
     initialValue: undefined,
   });
-  protected readonly project = toSignal(this.navContext.currentProject, {
+  private readonly navProject = toSignal(this.navContext.currentProject, {
     initialValue: undefined,
   });
-  protected readonly environment = toSignal(this.navContext.currentEnv, {
+  private readonly navEnvironment = toSignal(this.navContext.currentEnv, {
     initialValue: undefined,
   });
+  private readonly queryParams = toSignal(this.route.queryParamMap, {
+    initialValue: this.route.snapshot.queryParamMap,
+  });
+
+  protected readonly requestContext = computed<
+    IncidentRequestContext | undefined
+  >(() => {
+    const query = this.queryParams();
+    const agentStoreId =
+      query.get(incidentAgentQueryParam) || this.navAgentStoreId();
+    const project =
+      query.get(incidentProjectQueryParam) || this.navProject()?.ref.projectId;
+    const environment =
+      query.get(incidentEnvironmentQueryParam) || this.navEnvironment()?.id;
+    const storeId = query.get(incidentStoreQueryParam) || project;
+    const securityContextId = this.agentContext.securityContextId();
+    if (
+      !agentStoreId ||
+      !storeId ||
+      !project ||
+      !environment ||
+      !securityContextId
+    ) {
+      return undefined;
+    }
+    return {
+      agentStoreId,
+      scope: { storeId, project, environment, securityContextId },
+    };
+  });
+
+  protected readonly scopeQueryParams = computed(() => {
+    const context = this.requestContext();
+    return context ? incidentContextQueryParams(context) : undefined;
+  });
+
+  protected readonly contextFactCount = computed(
+    () =>
+      this.investigationContext.items().filter((item) => item.enabled).length,
+  );
 
   // Written only from template `[(ngModel)]` bindings (user input) — no
   // async writer touches these, so plain fields are zoneless-safe as-is
@@ -92,6 +161,18 @@ export class IncidentCreatePageComponent {
   private readonly activeScopeKey = signal<string | undefined>(undefined);
   private readonly submissionToken = signal(0);
 
+  private readonly selectInvestigationContext = effect(() => {
+    const context = this.requestContext();
+    if (!context) {
+      return;
+    }
+    this.investigationContext.setScope({
+      project: context.scope.project,
+      environment: context.scope.environment,
+      securityContextId: context.scope.securityContextId,
+    });
+  });
+
   private readonly retireStaleSubmission = effect(() => {
     const scopeKey = this.currentScopeKey();
     const activeScopeKey = this.activeScopeKey();
@@ -103,34 +184,19 @@ export class IncidentCreatePageComponent {
   });
 
   protected hasMutationScope(): boolean {
-    return !!(
-      this.storeId() &&
-      this.project()?.ref.storeId &&
-      this.project()?.ref.projectId &&
-      this.environment()?.id &&
-      this.agentContext.securityContextId()
-    );
+    return !!this.requestContext();
   }
 
   protected submit(): void {
     if (this.isSubmitting()) {
       return;
     }
-    const storeId = this.storeId();
-    const project = this.project()?.ref;
-    const environment = this.environment()?.id;
-    const securityContextId = this.agentContext.securityContextId();
+    const context = this.requestContext();
     const title = this.title.trim();
     if (!title) {
       return;
     }
-    if (
-      !storeId ||
-      !project?.storeId ||
-      !project.projectId ||
-      !environment ||
-      !securityContextId
-    ) {
+    if (!context) {
       this.errorMessage.set(
         'Open a project and environment connected to a DataTug server before creating an incident.',
       );
@@ -143,14 +209,34 @@ export class IncidentCreatePageComponent {
     this.submissionToken.set(submissionToken);
     this.activeScopeKey.set(scopeKey);
     const description = this.description.trim() || undefined;
+    const canonicalContext = {
+      facts: this.investigationContext
+        .items()
+        .filter((item) => item.enabled)
+        .map((item): IncidentFactInput => {
+          const fact = contextItemToFact(item);
+          return {
+            id: fact.id,
+            entity: fact.entity,
+            field: fact.field,
+            value: fact.value,
+            origin: fact.origin,
+            enabled: fact.enabled,
+            ...(fact.physical ? { physical: fact.physical } : {}),
+            ...(fact.mapping ? { mapping: fact.mapping } : {}),
+            scope: {
+              storeId: datatugServeProjectStoreId,
+              projectId: context.scope.project,
+              environment: context.scope.environment,
+            },
+          };
+        }),
+    };
     const fingerprint = JSON.stringify({
-      storeId,
-      projectStoreId: project.storeId,
-      project: project.projectId,
-      environment,
-      securityContextId,
+      context,
       title,
       description,
+      canonicalContext,
     });
     const pendingMutation = this.pendingMutation();
     let mutationId = pendingMutation?.id;
@@ -162,22 +248,14 @@ export class IncidentCreatePageComponent {
       });
     }
     this.incidentClient
-      .create({
-        storeId,
-        project: project.projectId,
-        environment,
-        securityContextId,
+      .create(context.agentStoreId, {
+        ...context.scope,
         mutationId,
         title,
         description,
-        projects: [
-          {
-            storeId: project.storeId,
-            projectId: project.projectId,
-            environment,
-          },
-        ],
+        canonicalContext,
       })
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((result) => {
         if (
           submissionToken !== this.submissionToken() ||
@@ -189,10 +267,21 @@ export class IncidentCreatePageComponent {
         this.isSubmitting.set(false);
         if (result.kind === 'ok') {
           this.pendingMutation.set(undefined);
+          const detailContext: IncidentRequestContext = {
+            agentStoreId: context.agentStoreId,
+            scope: { ...context.scope, storeId: result.data.ref.storeId },
+          };
           this.router
-            .navigateByUrl(
-              `/incidents/${encodeURIComponent(result.data.ref.storeId)}/${encodeURIComponent(result.data.ref.incidentId)}`,
-              { replaceUrl: true },
+            .navigate(
+              [
+                '/incidents',
+                result.data.ref.storeId,
+                result.data.ref.incidentId,
+              ],
+              {
+                queryParams: incidentContextQueryParams(detailContext),
+                replaceUrl: true,
+              },
             )
             .catch(() => void 0);
           return;
@@ -205,12 +294,6 @@ export class IncidentCreatePageComponent {
   }
 
   private currentScopeKey(): string {
-    return JSON.stringify({
-      storeId: this.storeId(),
-      projectStoreId: this.project()?.ref.storeId,
-      project: this.project()?.ref.projectId,
-      environment: this.environment()?.id,
-      securityContextId: this.agentContext.securityContextId(),
-    });
+    return JSON.stringify(this.requestContext());
   }
 }

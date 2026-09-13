@@ -1,6 +1,7 @@
-import { Component, OnDestroy, inject, signal } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Component, computed, effect, inject, signal } from '@angular/core';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
+import { AgentContextService } from '@sneat/datatug-semantic';
 import {
   IonBackButton,
   IonButton,
@@ -19,11 +20,20 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/angular';
-import { EMPTY, Subject, switchMap, takeUntil, tap } from 'rxjs';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { DatatugServicesNavModule } from '../../../services/nav/datatug-services-nav.module';
 import { IncidentClientService } from '../../../incidents/incident-client.service';
-import { IncidentSummary } from '../../../incidents/models';
+import {
+  incidentAgentQueryParam,
+  incidentContextQueryParams,
+  incidentEnvironmentQueryParam,
+  incidentProjectQueryParam,
+  incidentStoreQueryParam,
+} from '../../../incidents/incident-route-context';
+import {
+  IncidentRequestContext,
+  IncidentSummary,
+} from '../../../incidents/models';
 
 /**
  * The incident list — this is the `incidentius` profile's home route
@@ -63,13 +73,55 @@ import { IncidentSummary } from '../../../incidents/models';
     IonSpinner,
   ],
 })
-export class IncidentListPageComponent implements OnDestroy {
+export class IncidentListPageComponent {
   private readonly navContext = inject(DatatugNavContextService);
+  private readonly route = inject(ActivatedRoute);
   private readonly incidentClient = inject(IncidentClientService);
-  private readonly destroyed = new Subject<void>();
+  private readonly agentContext = inject(AgentContextService);
 
-  protected readonly storeId = toSignal(this.navContext.currentStoreId, {
+  private readonly navAgentStoreId = toSignal(this.navContext.currentStoreId, {
     initialValue: undefined,
+  });
+  private readonly navProject = toSignal(this.navContext.currentProject, {
+    initialValue: undefined,
+  });
+  private readonly navEnvironment = toSignal(this.navContext.currentEnv, {
+    initialValue: undefined,
+  });
+  private readonly queryParams = toSignal(this.route.queryParamMap, {
+    initialValue: this.route.snapshot.queryParamMap,
+  });
+
+  protected readonly requestContext = computed<
+    IncidentRequestContext | undefined
+  >(() => {
+    const query = this.queryParams();
+    const agentStoreId =
+      query.get(incidentAgentQueryParam) || this.navAgentStoreId();
+    const project =
+      query.get(incidentProjectQueryParam) || this.navProject()?.ref.projectId;
+    const environment =
+      query.get(incidentEnvironmentQueryParam) || this.navEnvironment()?.id;
+    const storeId = query.get(incidentStoreQueryParam) || project;
+    const securityContextId = this.agentContext.securityContextId();
+    if (
+      !agentStoreId ||
+      !storeId ||
+      !project ||
+      !environment ||
+      !securityContextId
+    ) {
+      return undefined;
+    }
+    return {
+      agentStoreId,
+      scope: { storeId, project, environment, securityContextId },
+    };
+  });
+
+  protected readonly scopeQueryParams = computed(() => {
+    const context = this.requestContext();
+    return context ? incidentContextQueryParams(context) : undefined;
   });
 
   protected readonly incidents = signal<IncidentSummary[] | undefined>(
@@ -78,24 +130,11 @@ export class IncidentListPageComponent implements OnDestroy {
   protected readonly isLoading = signal(false);
   protected readonly unavailableMessage = signal<string | undefined>(undefined);
 
-  constructor() {
-    this.navContext.currentStoreId
-      .pipe(
-        switchMap((storeId) => this.loadIncidents(storeId)),
-        takeUntil(this.destroyed),
-      )
-      .subscribe();
-  }
-
-  ngOnDestroy(): void {
-    this.destroyed.next();
-    this.destroyed.complete();
-  }
-
-  private loadIncidents(storeId: string | undefined) {
+  private readonly loadIncidents = effect((onCleanup) => {
+    const context = this.requestContext();
     this.unavailableMessage.set(undefined);
     this.incidents.set(undefined);
-    if (!storeId) {
+    if (!context) {
       // hub `incidents` REQ:profile-home: "With no project open, the list
       // shows the incidents of every incident store configured for this
       // machine or served setup that the reader may see; with none
@@ -105,22 +144,23 @@ export class IncidentListPageComponent implements OnDestroy {
       // plan Task 10 territory), so "no store in the current nav context"
       // is treated as "none configured" for now.
       this.isLoading.set(false);
-      return EMPTY;
+      return;
     }
     this.isLoading.set(true);
-    return this.incidentClient.list(storeId).pipe(
-      tap((result) => {
+    const subscription = this.incidentClient
+      .list(context)
+      .subscribe((result) => {
         this.isLoading.set(false);
         if (result.kind === 'ok') {
           this.incidents.set(result.data);
         } else {
           this.unavailableMessage.set(result.message);
         }
-      }),
-    );
-  }
+      });
+    onCleanup(() => subscription.unsubscribe());
+  });
 
-  protected incidentLink(incident: IncidentSummary): string {
-    return `/incidents/${encodeURIComponent(incident.ref.storeId)}/${encodeURIComponent(incident.ref.incidentId)}`;
+  protected incidentLink(incident: IncidentSummary): readonly string[] {
+    return ['/incidents', incident.ref.storeId, incident.ref.incidentId];
   }
 }

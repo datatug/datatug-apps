@@ -1,9 +1,9 @@
-import { Component, OnDestroy, inject, signal } from '@angular/core';
+import { Component, OnDestroy, computed, inject, signal } from '@angular/core';
 import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import { AnalyticsService, ErrorLogger, IErrorLogger } from '@sneat/core';
 import { Subject } from 'rxjs';
 import { filter, takeUntil } from 'rxjs/operators';
-import { IonCard, IonCardContent, IonIcon, IonItem, IonLabel } from '@ionic/angular';
+import { IonCard, IonIcon, IonItem, IonLabel } from '@ionic/angular';
 import { AppVersionComponent } from '@sneat/components';
 import { PRODUCT_PROFILE } from '@datatug/product-profiles';
 import { DatatugCoreModule } from '../core/datatug-core.module';
@@ -11,7 +11,12 @@ import { DatatugServicesStoreModule } from '../services/repo/datatug-services-st
 import { DatatugServicesProjectModule } from '../services/project/datatug-services-project.module';
 import { DatatugServicesNavModule } from '../services/nav/datatug-services-nav.module';
 import { DatatugServicesUnsortedModule } from '../services/unsorted/datatug-services-unsorted.module';
-import { IEnvDbTableContext, IProjectContext } from '../nav/nav-models';
+import {
+  IEnvContext,
+  IEnvDbTableContext,
+  IProjectContext,
+} from '../nav/nav-models';
+import { incidentContextQueryParams } from '../incidents/incident-route-context';
 import {
   DatatugUserService,
   IDatatugUserState,
@@ -30,7 +35,6 @@ import { DatatugAuthMenuItemComponent } from './datatug-auth-menu-item.component
   styleUrls: ['./datatug-menu.component.scss'],
   imports: [
     IonCard,
-    IonCardContent,
     IonItem,
     IonIcon,
     IonLabel,
@@ -49,9 +53,7 @@ import { DatatugAuthMenuItemComponent } from './datatug-auth-menu-item.component
   ],
   // DatatugUserService is providedIn: 'root' — see its own file for why;
   // NewProjectService still needs its own local provider here.
-  providers: [
-    NewProjectService,
-  ],
+  providers: [NewProjectService],
 })
 export class DatatugMenuComponent implements OnDestroy {
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
@@ -75,6 +77,28 @@ export class DatatugMenuComponent implements OnDestroy {
   protected readonly currentProject = signal<IProjectContext | undefined>(
     undefined,
   );
+  protected readonly currentEnvironment = signal<IEnvContext | undefined>(
+    undefined,
+  );
+  protected readonly incidentQueryParams = computed(() => {
+    const agentStoreId = this.currentStoreId();
+    const project = this.currentProject()?.ref.projectId;
+    const environment = this.currentEnvironment()?.id;
+    if (!agentStoreId || !project || !environment) {
+      return undefined;
+    }
+    return incidentContextQueryParams({
+      agentStoreId,
+      scope: {
+        // The local MVP defaults incident storage to the active project's
+        // own repository; the server returns the qualified store ID for all
+        // subsequent links.
+        storeId: project,
+        project,
+        environment,
+      },
+    });
+  });
   protected readonly datatugUserState = signal<IDatatugUserState | undefined>(
     undefined,
   );
@@ -101,6 +125,7 @@ export class DatatugMenuComponent implements OnDestroy {
       if (datatugNavContextService) {
         this.trackCurrentStore();
         this.trackCurrentProject();
+        this.trackCurrentEnvironment();
         this.trackCurrentEnvDbTable();
       } else {
         console.error('datatugNavContextService is not injected');
@@ -199,6 +224,16 @@ export class DatatugMenuComponent implements OnDestroy {
   protected onProjectChanged = (project?: IProjectContext) => {
     this.currentProject.set(project);
   };
+
+  private trackCurrentEnvironment(): void {
+    this.datatugNavContextService.currentEnv
+      .pipe(takeUntil(this.destroyed))
+      .subscribe({
+        next: (environment) => this.currentEnvironment.set(environment),
+        error: (err) =>
+          this.errorLogger.logError(err, 'Failed to get current environment'),
+      });
+  }
 
   private trackCurrentEnvDbTable(): void {
     this.datatugNavContextService.currentEnvDbTable

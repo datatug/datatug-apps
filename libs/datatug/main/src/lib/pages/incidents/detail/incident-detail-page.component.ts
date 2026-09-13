@@ -1,5 +1,7 @@
-import { Component, OnDestroy, inject, signal } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
+import { Component, computed, effect, inject, signal } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { AgentContextService } from '@sneat/datatug-semantic';
 import {
   IonBackButton,
   IonButtons,
@@ -7,15 +9,32 @@ import {
   IonCardContent,
   IonContent,
   IonHeader,
+  IonItem,
+  IonLabel,
+  IonList,
   IonMenuButton,
   IonNote,
   IonTitle,
   IonToolbar,
 } from '@ionic/angular';
-import { Subject, takeUntil, takeWhile } from 'rxjs';
-import { routingParamIncidentId, routingParamStoreId } from '../../../core/datatug-routing-params';
+import {
+  routingParamIncidentId,
+  routingParamStoreId,
+} from '../../../core/datatug-routing-params';
 import { IncidentClientService } from '../../../incidents/incident-client.service';
-import { IncidentDetail } from '../../../incidents/models';
+import {
+  incidentAgentQueryParam,
+  incidentContextQueryParams,
+  incidentEnvironmentQueryParam,
+  incidentProjectQueryParam,
+} from '../../../incidents/incident-route-context';
+import {
+  IncidentDetail,
+  IncidentEvent,
+  IncidentRequestContext,
+  IncidentStreamItem,
+} from '../../../incidents/models';
+import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 
 /**
  * The incident detail page. Its route (`incidents/:storeId/:incidentId`)
@@ -26,10 +45,9 @@ import { IncidentDetail } from '../../../incidents/models';
  * AC:deep-link-works-in-other-profile: "no 404, no redirect to a profile
  * home, and no capability missing from the page").
  *
- * Out of scope for this scaffold slice (plan Task 9): timeline, hypotheses,
- * evidence, participants, status view, Resolution Record, compare, metrics —
- * those wait for the backend tasks. This page shows the summary fields the
- * server-side model already commits to (title, status, description).
+ * The route IncidentRef remains authoritative on refresh. Project/environment
+ * request scope is URL-carried alongside it, while the current
+ * securityContextId is always read from AgentContextService at request time.
  */
 @Component({
   selector: 'sneat-datatug-incident-detail',
@@ -44,55 +62,133 @@ import { IncidentDetail } from '../../../incidents/models';
     IonContent,
     IonCard,
     IonCardContent,
+    IonList,
+    IonItem,
+    IonLabel,
     IonNote,
   ],
 })
-export class IncidentDetailPageComponent implements OnDestroy {
+export class IncidentDetailPageComponent {
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
+  private readonly navContext = inject(DatatugNavContextService);
+  private readonly agentContext = inject(AgentContextService);
   private readonly incidentClient = inject(IncidentClientService);
-  private readonly destroyed = new Subject<void>();
+
+  private readonly routeParams = toSignal(this.route.paramMap, {
+    initialValue: this.route.snapshot.paramMap,
+  });
+  private readonly queryParams = toSignal(this.route.queryParamMap, {
+    initialValue: this.route.snapshot.queryParamMap,
+  });
+  private readonly navAgentStoreId = toSignal(this.navContext.currentStoreId, {
+    initialValue: undefined,
+  });
+  private readonly navProject = toSignal(this.navContext.currentProject, {
+    initialValue: undefined,
+  });
+  private readonly navEnvironment = toSignal(this.navContext.currentEnv, {
+    initialValue: undefined,
+  });
+
+  protected readonly incidentId = computed(
+    () => this.routeParams().get(routingParamIncidentId) || undefined,
+  );
+  protected readonly requestContext = computed<
+    IncidentRequestContext | undefined
+  >(() => {
+    const query = this.queryParams();
+    const storeId = this.routeParams().get(routingParamStoreId) || undefined;
+    const agentStoreId =
+      query.get(incidentAgentQueryParam) || this.navAgentStoreId();
+    const project =
+      query.get(incidentProjectQueryParam) || this.navProject()?.ref.projectId;
+    const environment =
+      query.get(incidentEnvironmentQueryParam) || this.navEnvironment()?.id;
+    const securityContextId = this.agentContext.securityContextId();
+    if (
+      !agentStoreId ||
+      !storeId ||
+      !project ||
+      !environment ||
+      !securityContextId
+    ) {
+      return undefined;
+    }
+    return {
+      agentStoreId,
+      scope: { storeId, project, environment, securityContextId },
+    };
+  });
+
+  protected readonly incidentListUrl = computed(() => {
+    const context = this.requestContext();
+    const tree = this.router.createUrlTree(['/incidents'], {
+      queryParams: context ? incidentContextQueryParams(context) : undefined,
+    });
+    return this.router.serializeUrl(tree);
+  });
 
   protected readonly incident = signal<IncidentDetail | undefined>(undefined);
-  protected readonly isLoading = signal(false);
-  protected readonly unavailableMessage = signal<string | undefined>(
+  protected readonly events = signal<IncidentStreamItem[] | undefined>(
     undefined,
   );
+  protected readonly isLoading = signal(false);
+  protected readonly isTimelineLoading = signal(false);
+  protected readonly unavailableMessage = signal<string | undefined>(undefined);
+  protected readonly timelineMessage = signal<string | undefined>(undefined);
 
-  constructor() {
-    this.route.paramMap.pipe(takeUntil(this.destroyed)).subscribe((params) => {
-      const storeId = params.get(routingParamStoreId) || undefined;
-      const incidentId = params.get(routingParamIncidentId) || undefined;
-      this.incident.set(undefined);
-      this.unavailableMessage.set(undefined);
-      if (!storeId || !incidentId) {
-        return;
-      }
-      this.isLoading.set(true);
-      this.incidentClient
-        .get(storeId, incidentId)
-        .pipe(
-          takeUntil(this.destroyed),
-          takeWhile(
-            () =>
-              this.route.snapshot.paramMap.get(routingParamStoreId) ===
-                storeId &&
-              this.route.snapshot.paramMap.get(routingParamIncidentId) ===
-                incidentId,
-          ),
-        )
-        .subscribe((result) => {
-          this.isLoading.set(false);
-          if (result.kind === 'ok') {
-            this.incident.set(result.data);
-          } else {
-            this.unavailableMessage.set(result.message);
-          }
-        });
+  private readonly loadIncident = effect((onCleanup) => {
+    const context = this.requestContext();
+    const incidentId = this.incidentId();
+    const at = this.queryParams().get('at') || undefined;
+    this.incident.set(undefined);
+    this.events.set(undefined);
+    this.unavailableMessage.set(undefined);
+    this.timelineMessage.set(undefined);
+    if (!context || !incidentId) {
+      this.isLoading.set(false);
+      this.isTimelineLoading.set(false);
+      return;
+    }
+
+    this.isLoading.set(true);
+    this.isTimelineLoading.set(true);
+    const incidentSubscription = this.incidentClient
+      .get(context, incidentId, at)
+      .subscribe((result) => {
+        this.isLoading.set(false);
+        if (result.kind === 'ok') {
+          this.incident.set(result.data);
+        } else {
+          this.unavailableMessage.set(result.message);
+        }
+      });
+    const eventsSubscription = this.incidentClient
+      .events(context, incidentId)
+      .subscribe((result) => {
+        this.isTimelineLoading.set(false);
+        if (result.kind === 'ok') {
+          this.events.set(result.data);
+        } else {
+          this.timelineMessage.set(result.message);
+        }
+      });
+    onCleanup(() => {
+      incidentSubscription.unsubscribe();
+      eventsSubscription.unsubscribe();
     });
-  }
+  });
 
-  ngOnDestroy(): void {
-    this.destroyed.next();
-    this.destroyed.complete();
+  protected eventSummary(event: IncidentEvent): string {
+    if (
+      event.payload &&
+      typeof event.payload === 'object' &&
+      'body' in event.payload &&
+      typeof event.payload.body === 'string'
+    ) {
+      return event.payload.body;
+    }
+    return event.type;
   }
 }

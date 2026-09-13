@@ -2,7 +2,7 @@
   <ion-toolbar>
     <ion-buttons slot="start">
       <ion-menu-button />
-      <ion-back-button defaultHref="/incidents" />
+      <ion-back-button [defaultHref]="incidentListUrl()" />
     </ion-buttons>
     <ion-title>{{ incident()?.title || 'Incident' }}</ion-title>
   </ion-toolbar>
@@ -21,6 +21,15 @@
         <ion-note>Loading…</ion-note>
       </ion-card-content>
     </ion-card>
+  } @else if (!requestContext()) {
+    <ion-card>
+      <ion-card-content>
+        <ion-note color="warning">
+          This incident link is missing its DataTug agent, project, or
+          environment scope. Open the incident from a scoped incident list.
+        </ion-note>
+      </ion-card-content>
+    </ion-card>
   } @else if (incident(); as incident) {
     <ion-card>
       <ion-card-content>
@@ -30,6 +39,41 @@
           <p>{{ incident.description }}</p>
         }
       </ion-card-content>
+    </ion-card>
+
+    <ion-card>
+      <ion-card-content>
+        <h2>Timeline</h2>
+      </ion-card-content>
+      @if (timelineMessage(); as message) {
+        <ion-card-content>
+          <ion-note color="warning">{{ message }}</ion-note>
+        </ion-card-content>
+      } @else if (isTimelineLoading()) {
+        <ion-card-content>
+          <ion-note>Loading timeline…</ion-note>
+        </ion-card-content>
+      } @else if (events(); as items) {
+        @if (items.length) {
+          <ion-list>
+            @for (item of items; track item.cursor) {
+              <ion-item>
+                <ion-label>
+                  <h3>{{ eventSummary(item.event) }}</h3>
+                  <p>
+                    {{ item.event.actor.id }} · {{ item.event.at }} ·
+                    {{ item.event.assertion.kind }}
+                  </p>
+                </ion-label>
+              </ion-item>
+            }
+          </ion-list>
+        } @else {
+          <ion-card-content>
+            <p>No visible timeline events.</p>
+          </ion-card-content>
+        }
+      }
     </ion-card>
   }
 </ion-content>
