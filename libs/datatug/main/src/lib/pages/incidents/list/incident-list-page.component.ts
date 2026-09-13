@@ -1,7 +1,10 @@
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { AgentContextService } from '@sneat/datatug-semantic';
+import {
+  AgentContextService,
+  InvestigationContextService,
+} from '@sneat/datatug-semantic';
 import {
   IonBackButton,
   IonButton,
@@ -23,6 +26,7 @@ import {
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { DatatugServicesNavModule } from '../../../services/nav/datatug-services-nav.module';
 import { IncidentClientService } from '../../../incidents/incident-client.service';
+import { agentBaseUrl } from '../../../services/repo/agent-url';
 import {
   incidentAgentQueryParam,
   incidentContextQueryParams,
@@ -78,6 +82,7 @@ export class IncidentListPageComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly incidentClient = inject(IncidentClientService);
   private readonly agentContext = inject(AgentContextService);
+  private readonly investigationContext = inject(InvestigationContextService);
 
   private readonly navAgentStoreId = toSignal(this.navContext.currentStoreId, {
     initialValue: undefined,
@@ -103,7 +108,11 @@ export class IncidentListPageComponent {
     const environment =
       query.get(incidentEnvironmentQueryParam) || this.navEnvironment()?.id;
     const storeId = query.get(incidentStoreQueryParam) || project;
-    const securityContextId = this.agentContext.securityContextId();
+    const securityContextId = agentStoreId
+      ? this.agentContext
+          .contextFor(agentBaseUrl(agentStoreId))
+          .securityContextId()
+      : undefined;
     if (
       !agentStoreId ||
       !storeId ||
@@ -129,6 +138,9 @@ export class IncidentListPageComponent {
   );
   protected readonly isLoading = signal(false);
   protected readonly unavailableMessage = signal<string | undefined>(undefined);
+  private recoveryTargetKey: string | undefined;
+  private staleRecoveryAttempted = false;
+  private staleRecoveryInProgress = false;
 
   private readonly loadIncidents = effect((onCleanup) => {
     const context = this.requestContext();
@@ -146,18 +158,76 @@ export class IncidentListPageComponent {
       this.isLoading.set(false);
       return;
     }
+    const targetKey = JSON.stringify({
+      agentStoreId: context.agentStoreId,
+      storeId: context.scope.storeId,
+      project: context.scope.project,
+      environment: context.scope.environment,
+    });
+    if (this.recoveryTargetKey !== targetKey) {
+      this.recoveryTargetKey = targetKey;
+      this.staleRecoveryAttempted = false;
+      this.staleRecoveryInProgress = false;
+    }
+    const baseUrl = agentBaseUrl(context.agentStoreId);
+    this.investigationContext.setScope(
+      {
+        project: context.scope.project,
+        environment: context.scope.environment,
+        securityContextId: context.scope.securityContextId,
+      },
+      baseUrl,
+    );
     this.isLoading.set(true);
+    let recoverySubscription: { unsubscribe(): void } | undefined;
     const subscription = this.incidentClient
       .list(context)
       .subscribe((result) => {
+        if (
+          result.kind === 'error' &&
+          result.code === 'STALE_CONTEXT' &&
+          this.recoveryTargetKey === targetKey
+        ) {
+          if (this.staleRecoveryInProgress) {
+            return;
+          }
+          if (!this.staleRecoveryAttempted) {
+            this.staleRecoveryAttempted = true;
+            this.staleRecoveryInProgress = true;
+            this.investigationContext.clear();
+            recoverySubscription = this.agentContext
+              .contextFor(baseUrl)
+              .refresh()
+              .subscribe({
+                error: () => {
+                  if (this.recoveryTargetKey !== targetKey) {
+                    return;
+                  }
+                  this.staleRecoveryInProgress = false;
+                  this.isLoading.set(false);
+                  this.unavailableMessage.set(
+                    'The DataTug agent context changed and could not be refreshed.',
+                  );
+                },
+              });
+            return;
+          }
+        }
         this.isLoading.set(false);
         if (result.kind === 'ok') {
+          this.staleRecoveryAttempted = false;
           this.incidents.set(result.data);
         } else {
           this.unavailableMessage.set(result.message);
         }
       });
-    onCleanup(() => subscription.unsubscribe());
+    onCleanup(() => {
+      subscription.unsubscribe();
+      recoverySubscription?.unsubscribe();
+      if (this.recoveryTargetKey === targetKey) {
+        this.staleRecoveryInProgress = false;
+      }
+    });
   });
 
   protected incidentLink(incident: IncidentSummary): readonly string[] {

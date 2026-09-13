@@ -7,7 +7,8 @@ export * from './contract';
 export * from './lib/models/models';
 export * from './lib/tokens/datatug-agent-base-url.token';
 export { SemanticApiService } from './lib/services/semantic-api.service';
-export { AgentContextService } from './lib/services/agent-context.service';
+// prettier-ignore
+export { AgentContextService, type AgentContextHandle } from './lib/services/agent-context.service';
 export {
   MockSemanticApi,
   MockSemanticApiFixtures,
@@ -37,7 +38,10 @@ export {
   ResolvedBindingOrigin,
   SkippedConditionFact,
 } from './lib/services/binding-resolver';
-export { ContextPanelComponent, OpenQueryRequest } from './lib/components/context-panel/context-panel.component';
+export {
+  ContextPanelComponent,
+  OpenQueryRequest,
+} from './lib/components/context-panel/context-panel.component';
 export { InvestigationContextBarComponent } from './lib/components/investigation-context-bar/investigation-context-bar.component';
 export { LimitationHeaderComponent } from './lib/components/limitation-header/limitation-header.component';
 export { SemanticMarkerComponent } from './lib/components/semantic-marker/semantic-marker.component';

@@ -35,6 +35,7 @@ import {
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { DatatugServicesNavModule } from '../../../services/nav/datatug-services-nav.module';
 import { IncidentClientService } from '../../../incidents/incident-client.service';
+import { agentBaseUrl } from '../../../services/repo/agent-url';
 import {
   datatugServeProjectStoreId,
   incidentAgentQueryParam,
@@ -44,9 +45,17 @@ import {
   incidentStoreQueryParam,
 } from '../../../incidents/incident-route-context';
 import {
+  CreateIncidentRequest,
+  IncidentDetail,
   IncidentFactInput,
   IncidentRequestContext,
 } from '../../../incidents/models';
+
+interface CommittedIncident {
+  readonly context: IncidentRequestContext;
+  readonly incident: IncidentDetail;
+  readonly mutationId: string;
+}
 
 /**
  * "Houston, we've got a problem" — creating an incident from a title and free
@@ -121,7 +130,11 @@ export class IncidentCreatePageComponent {
     const environment =
       query.get(incidentEnvironmentQueryParam) || this.navEnvironment()?.id;
     const storeId = query.get(incidentStoreQueryParam) || project;
-    const securityContextId = this.agentContext.securityContextId();
+    const securityContextId = agentStoreId
+      ? this.agentContext
+          .contextFor(agentBaseUrl(agentStoreId))
+          .securityContextId()
+      : undefined;
     if (
       !agentStoreId ||
       !storeId ||
@@ -146,6 +159,31 @@ export class IncidentCreatePageComponent {
     () =>
       this.investigationContext.items().filter((item) => item.enabled).length,
   );
+  private readonly committedIncident = signal<CommittedIncident | undefined>(
+    undefined,
+  );
+  protected readonly createdIncidentLink = computed(() => {
+    const committed = this.committedIncident();
+    return committed
+      ? [
+          '/incidents',
+          committed.incident.ref.storeId,
+          committed.incident.ref.incidentId,
+        ]
+      : undefined;
+  });
+  protected readonly createdIncidentQueryParams = computed(() => {
+    const committed = this.committedIncident();
+    return committed
+      ? incidentContextQueryParams({
+          agentStoreId: committed.context.agentStoreId,
+          scope: {
+            ...committed.context.scope,
+            storeId: committed.incident.ref.storeId,
+          },
+        })
+      : undefined;
+  });
 
   // Written only from template `[(ngModel)]` bindings (user input) — no
   // async writer touches these, so plain fields are zoneless-safe as-is
@@ -159,6 +197,8 @@ export class IncidentCreatePageComponent {
     { readonly fingerprint: string; readonly id: string } | undefined
   >(undefined);
   private readonly activeScopeKey = signal<string | undefined>(undefined);
+  private readonly activeTargetKey = signal<string | undefined>(undefined);
+  private readonly isRefreshingAgentContext = signal(false);
   private readonly submissionToken = signal(0);
 
   private readonly selectInvestigationContext = effect(() => {
@@ -166,18 +206,29 @@ export class IncidentCreatePageComponent {
     if (!context) {
       return;
     }
-    this.investigationContext.setScope({
-      project: context.scope.project,
-      environment: context.scope.environment,
-      securityContextId: context.scope.securityContextId,
-    });
+    this.investigationContext.setScope(
+      {
+        project: context.scope.project,
+        environment: context.scope.environment,
+        securityContextId: context.scope.securityContextId,
+      },
+      agentBaseUrl(context.agentStoreId),
+    );
   });
 
   private readonly retireStaleSubmission = effect(() => {
     const scopeKey = this.currentScopeKey();
     const activeScopeKey = this.activeScopeKey();
     if (activeScopeKey && activeScopeKey !== scopeKey) {
+      if (
+        this.isRefreshingAgentContext() &&
+        this.activeTargetKey() === this.currentTargetKey()
+      ) {
+        return;
+      }
       this.activeScopeKey.set(undefined);
+      this.activeTargetKey.set(undefined);
+      this.isRefreshingAgentContext.set(false);
       this.submissionToken.update((value) => value + 1);
       this.isSubmitting.set(false);
     }
@@ -189,6 +240,11 @@ export class IncidentCreatePageComponent {
 
   protected submit(): void {
     if (this.isSubmitting()) {
+      return;
+    }
+    const committed = this.committedIncident();
+    if (committed) {
+      this.navigateToCommittedIncident(committed);
       return;
     }
     const context = this.requestContext();
@@ -208,8 +264,40 @@ export class IncidentCreatePageComponent {
     const submissionToken = this.submissionToken() + 1;
     this.submissionToken.set(submissionToken);
     this.activeScopeKey.set(scopeKey);
+    this.activeTargetKey.set(this.currentTargetKey());
     const description = this.description.trim() || undefined;
-    const canonicalContext = {
+    const canonicalContext = this.canonicalContext(context);
+    const fingerprint = this.mutationFingerprint(
+      context,
+      title,
+      description,
+      canonicalContext,
+    );
+    const pendingMutation = this.pendingMutation();
+    let mutationId = pendingMutation?.id;
+    if (pendingMutation?.fingerprint !== fingerprint || !mutationId) {
+      mutationId = `incident-create-${this.randomId.newRandomId({ len: 20 })}`;
+      this.pendingMutation.set({
+        fingerprint,
+        id: mutationId,
+      });
+    }
+    this.persistIncident(
+      context,
+      {
+        ...context.scope,
+        mutationId,
+        title,
+        description,
+        canonicalContext,
+      },
+      submissionToken,
+      false,
+    );
+  }
+
+  private canonicalContext(context: IncidentRequestContext) {
+    return {
       facts: this.investigationContext
         .items()
         .filter((item) => item.enabled)
@@ -232,29 +320,37 @@ export class IncidentCreatePageComponent {
           };
         }),
     };
-    const fingerprint = JSON.stringify({
-      context,
+  }
+
+  private mutationFingerprint(
+    context: IncidentRequestContext,
+    title: string,
+    description: string | undefined,
+    canonicalContext: CreateIncidentRequest['canonicalContext'],
+  ): string {
+    return JSON.stringify({
+      agentStoreId: context.agentStoreId,
+      scope: {
+        storeId: context.scope.storeId,
+        project: context.scope.project,
+        environment: context.scope.environment,
+      },
       title,
       description,
       canonicalContext,
     });
-    const pendingMutation = this.pendingMutation();
-    let mutationId = pendingMutation?.id;
-    if (pendingMutation?.fingerprint !== fingerprint || !mutationId) {
-      mutationId = `incident-create-${this.randomId.newRandomId({ len: 20 })}`;
-      this.pendingMutation.set({
-        fingerprint,
-        id: mutationId,
-      });
-    }
+  }
+
+  private persistIncident(
+    context: IncidentRequestContext,
+    request: CreateIncidentRequest,
+    submissionToken: number,
+    staleRecoveryAttempted: boolean,
+  ): void {
+    const scopeKey = JSON.stringify(context);
+    const targetKey = this.targetKey(context);
     this.incidentClient
-      .create(context.agentStoreId, {
-        ...context.scope,
-        mutationId,
-        title,
-        description,
-        canonicalContext,
-      })
+      .create(context.agentStoreId, request)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((result) => {
         if (
@@ -263,27 +359,82 @@ export class IncidentCreatePageComponent {
         ) {
           return;
         }
+        if (
+          result.kind === 'error' &&
+          result.code === 'STALE_CONTEXT' &&
+          !staleRecoveryAttempted
+        ) {
+          this.isRefreshingAgentContext.set(true);
+          this.investigationContext.clear();
+          this.agentContext
+            .contextFor(agentBaseUrl(context.agentStoreId))
+            .refresh()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+              next: () => {
+                const refreshedContext = this.requestContext();
+                if (
+                  submissionToken !== this.submissionToken() ||
+                  !refreshedContext ||
+                  targetKey !== this.targetKey(refreshedContext)
+                ) {
+                  return;
+                }
+                const refreshedCanonicalContext =
+                  this.canonicalContext(refreshedContext);
+                const refreshedRequest: CreateIncidentRequest = {
+                  ...request,
+                  ...refreshedContext.scope,
+                  canonicalContext: refreshedCanonicalContext,
+                };
+                this.pendingMutation.set({
+                  id: request.mutationId,
+                  fingerprint: this.mutationFingerprint(
+                    refreshedContext,
+                    request.title,
+                    request.description,
+                    refreshedCanonicalContext,
+                  ),
+                });
+                this.activeScopeKey.set(JSON.stringify(refreshedContext));
+                this.isRefreshingAgentContext.set(false);
+                this.persistIncident(
+                  refreshedContext,
+                  refreshedRequest,
+                  submissionToken,
+                  true,
+                );
+              },
+              error: () => {
+                if (
+                  submissionToken !== this.submissionToken() ||
+                  targetKey !== this.currentTargetKey()
+                ) {
+                  return;
+                }
+                this.activeScopeKey.set(undefined);
+                this.activeTargetKey.set(undefined);
+                this.isRefreshingAgentContext.set(false);
+                this.isSubmitting.set(false);
+                this.errorMessage.set(
+                  'The DataTug agent context changed and could not be refreshed.',
+                );
+              },
+            });
+          return;
+        }
         this.activeScopeKey.set(undefined);
+        this.activeTargetKey.set(undefined);
+        this.isRefreshingAgentContext.set(false);
         this.isSubmitting.set(false);
         if (result.kind === 'ok') {
-          this.pendingMutation.set(undefined);
-          const detailContext: IncidentRequestContext = {
-            agentStoreId: context.agentStoreId,
-            scope: { ...context.scope, storeId: result.data.ref.storeId },
+          const committed = {
+            context,
+            incident: result.data,
+            mutationId: request.mutationId,
           };
-          this.router
-            .navigate(
-              [
-                '/incidents',
-                result.data.ref.storeId,
-                result.data.ref.incidentId,
-              ],
-              {
-                queryParams: incidentContextQueryParams(detailContext),
-                replaceUrl: true,
-              },
-            )
-            .catch(() => void 0);
+          this.committedIncident.set(committed);
+          this.navigateToCommittedIncident(committed);
           return;
         }
         // Keep the draft (title/description untouched) and report the
@@ -293,7 +444,63 @@ export class IncidentCreatePageComponent {
       });
   }
 
+  private navigateToCommittedIncident(committed: CommittedIncident): void {
+    const detailContext: IncidentRequestContext = {
+      agentStoreId: committed.context.agentStoreId,
+      scope: {
+        ...committed.context.scope,
+        storeId: committed.incident.ref.storeId,
+      },
+    };
+    this.isSubmitting.set(true);
+    this.errorMessage.set(undefined);
+    this.router
+      .navigate(
+        [
+          '/incidents',
+          committed.incident.ref.storeId,
+          committed.incident.ref.incidentId,
+        ],
+        {
+          queryParams: incidentContextQueryParams(detailContext),
+          replaceUrl: true,
+        },
+      )
+      .then((navigated) => {
+        this.isSubmitting.set(false);
+        if (navigated) {
+          this.pendingMutation.set(undefined);
+          return;
+        }
+        this.reportCommittedNavigationFailure(committed);
+      })
+      .catch(() => {
+        this.isSubmitting.set(false);
+        this.reportCommittedNavigationFailure(committed);
+      });
+  }
+
+  private reportCommittedNavigationFailure(committed: CommittedIncident): void {
+    this.errorMessage.set(
+      `Incident ${committed.incident.ref.incidentId} was created, but it could not be opened automatically. Use Open created incident below.`,
+    );
+  }
+
   private currentScopeKey(): string {
     return JSON.stringify(this.requestContext());
+  }
+
+  private currentTargetKey(): string {
+    const context = this.requestContext();
+    return context ? this.targetKey(context) : '';
+  }
+
+  private targetKey(context: IncidentRequestContext): string {
+    return JSON.stringify({
+      agentStoreId: context.agentStoreId,
+      storeId: context.scope.storeId,
+      project: context.scope.project,
+      environment: context.scope.environment,
+    });
   }
 }

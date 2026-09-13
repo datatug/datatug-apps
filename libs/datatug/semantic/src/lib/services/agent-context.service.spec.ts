@@ -8,6 +8,7 @@ import { AgentInfo } from '../../contract/types';
 import { AgentContextService } from './agent-context.service';
 
 const BASE_URL = 'http://localhost:8989/datatug';
+const OTHER_BASE_URL = 'https://agent-b.example/datatug';
 
 const AGENT_INFO: AgentInfo = {
   version: '0.1.0',
@@ -56,6 +57,38 @@ describe('AgentContextService', () => {
 
     expect(refreshed?.securityContextId).toBe('sctx-2');
     expect(service.securityContextId()).toBe('sctx-2');
+  });
+
+  it('loads and caches a reactive context for an explicit agent base URL', () => {
+    const service = TestBed.inject(AgentContextService);
+    httpMock.expectOne(`${BASE_URL}/agent-info`).flush(AGENT_INFO);
+
+    const other = service.contextFor(OTHER_BASE_URL);
+    expect(other.securityContextId()).toBeUndefined();
+    httpMock
+      .expectOne(`${OTHER_BASE_URL}/agent-info`)
+      .flush({ ...AGENT_INFO, securityContextId: 'agent-b-context' });
+
+    expect(other.securityContextId()).toBe('agent-b-context');
+    expect(service.securityContextId()).toBe('sctx-1');
+    expect(service.contextFor(`${OTHER_BASE_URL}/`)).toBe(other);
+  });
+
+  it('refreshes only the requested agent context', () => {
+    const service = TestBed.inject(AgentContextService);
+    httpMock.expectOne(`${BASE_URL}/agent-info`).flush(AGENT_INFO);
+    const other = service.contextFor(OTHER_BASE_URL);
+    httpMock
+      .expectOne(`${OTHER_BASE_URL}/agent-info`)
+      .flush({ ...AGENT_INFO, securityContextId: 'agent-b-context-1' });
+
+    other.refresh().subscribe();
+    httpMock
+      .expectOne(`${OTHER_BASE_URL}/agent-info`)
+      .flush({ ...AGENT_INFO, securityContextId: 'agent-b-context-2' });
+
+    expect(other.securityContextId()).toBe('agent-b-context-2');
+    expect(service.securityContextId()).toBe('sctx-1');
   });
 
   it('rejects a malformed agent-info body instead of silently exposing undefined shape', () => {

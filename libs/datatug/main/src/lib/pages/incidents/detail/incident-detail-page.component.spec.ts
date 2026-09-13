@@ -5,8 +5,11 @@ import {
   convertToParamMap,
   provideRouter,
 } from '@angular/router';
-import { AgentContextService } from '@sneat/datatug-semantic';
-import { BehaviorSubject, Observable, of, Subject } from 'rxjs';
+import {
+  AgentContextService,
+  InvestigationContextService,
+} from '@sneat/datatug-semantic';
+import { BehaviorSubject, defer, Observable, of, Subject } from 'rxjs';
 import { IncidentDetailPageComponent } from './incident-detail-page.component';
 import { IncidentClientService } from '../../../incidents/incident-client.service';
 import {
@@ -40,7 +43,7 @@ const streamItem = (
     visibleAt: '2026-09-13T08:00:00Z',
     incident: { storeId: 'ops', incidentId },
     actor: { kind: 'human', id: 'alex', via: 'web' },
-    type: 'incident.note_added',
+    type: 'note.added',
     assertion: { kind: 'observation' },
     payload: { body },
   },
@@ -69,6 +72,9 @@ describe('IncidentDetailPageComponent', () => {
   >;
   let navEnvironment$: BehaviorSubject<{ id: string } | undefined>;
   let securityContextId: ReturnType<typeof signal<string | undefined>>;
+  let refreshAgentContextSpy: ReturnType<typeof vi.fn>;
+  let setInvestigationScopeSpy: ReturnType<typeof vi.fn>;
+  let clearInvestigationContextSpy: ReturnType<typeof vi.fn>;
   let getSpy: ReturnType<typeof vi.fn>;
   let eventsSpy: ReturnType<typeof vi.fn>;
 
@@ -98,6 +104,11 @@ describe('IncidentDetailPageComponent', () => {
       undefined,
     );
     securityContextId = signal<string | undefined>('ctx-current');
+    refreshAgentContextSpy = vi.fn(() =>
+      of({ securityContextId: 'ctx-current' }),
+    );
+    setInvestigationScopeSpy = vi.fn();
+    clearInvestigationContextSpy = vi.fn();
     getSpy = vi.fn().mockReturnValue(getReturn);
     eventsSpy = vi.fn().mockReturnValue(eventsReturn);
 
@@ -124,7 +135,23 @@ describe('IncidentDetailPageComponent', () => {
             currentEnv: navEnvironment$,
           },
         },
-        { provide: AgentContextService, useValue: { securityContextId } },
+        {
+          provide: AgentContextService,
+          useValue: {
+            securityContextId: signal('ctx-default-agent'),
+            contextFor: vi.fn(() => ({
+              securityContextId,
+              refresh: refreshAgentContextSpy,
+            })),
+          },
+        },
+        {
+          provide: InvestigationContextService,
+          useValue: {
+            setScope: setInvestigationScopeSpy,
+            clear: clearInvestigationContextSpy,
+          },
+        },
         {
           provide: IncidentClientService,
           useValue: { get: getSpy, events: eventsSpy },
@@ -174,6 +201,55 @@ describe('IncidentDetailPageComponent', () => {
       '5xx rate above baseline',
     );
     expect(fixture.nativeElement.innerHTML).toContain('Payment API is slow');
+  });
+
+  it('refreshes once and retries projection and events after STALE_CONTEXT', async () => {
+    await render();
+    getSpy
+      .mockReturnValueOnce(
+        of({
+          kind: 'error',
+          code: 'STALE_CONTEXT',
+          message: 'Refresh agent info and retry.',
+        }),
+      )
+      .mockReturnValueOnce(of({ kind: 'ok', data: incident('Recovered') }));
+    eventsSpy
+      .mockReturnValueOnce(
+        of({
+          kind: 'error',
+          code: 'STALE_CONTEXT',
+          message: 'Refresh agent info and retry.',
+        }),
+      )
+      .mockReturnValueOnce(
+        of({
+          kind: 'ok',
+          data: [streamItem('cursor-2', 'Recovered timeline')],
+        }),
+      );
+    refreshAgentContextSpy.mockImplementation(() =>
+      defer(() => {
+        securityContextId.set('ctx-refreshed');
+        return of({ securityContextId: 'ctx-refreshed' });
+      }),
+    );
+
+    paramMap$.next(
+      convertToParamMap({ storeId: 'ops', incidentId: 'INC-retry' }),
+    );
+    fixture.detectChanges();
+    fixture.detectChanges();
+
+    expect(clearInvestigationContextSpy).toHaveBeenCalledTimes(1);
+    expect(refreshAgentContextSpy).toHaveBeenCalledTimes(1);
+    expect(getSpy.mock.calls.at(-1)?.[0].scope.securityContextId).toBe(
+      'ctx-refreshed',
+    );
+    expect(eventsSpy.mock.calls.at(-1)?.[0].scope.securityContextId).toBe(
+      'ctx-refreshed',
+    );
+    expect(fixture.nativeElement.innerHTML).toContain('Recovered timeline');
   });
 
   it('shows explicit unavailable states for projection and timeline', async () => {

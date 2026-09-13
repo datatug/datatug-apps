@@ -218,4 +218,8 @@ export interface IncidentStreamItem {
 export type IncidentApiResult<T> =
   | { readonly kind: 'ok'; readonly data: T }
   | { readonly kind: 'unavailable'; readonly message: string }
-  | { readonly kind: 'error'; readonly message: string };
+  | {
+      readonly kind: 'error';
+      readonly message: string;
+      readonly code?: string;
+    };

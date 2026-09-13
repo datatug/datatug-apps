@@ -39,6 +39,18 @@
         }}</ion-note>
       }
 
+      @if (!hasMutationScope()) {
+        <ion-note
+          color="warning"
+          role="status"
+          aria-live="polite"
+          data-testid="incident-scope-guidance"
+        >
+          Open a project and environment connected to a DataTug server before
+          creating an incident.
+        </ion-note>
+      }
+
       @if (contextFactCount()) {
         <ion-note color="medium" data-testid="incident-context-fact-count">
           {{ contextFactCount() }} enabled Investigation Context
@@ -46,19 +58,31 @@
         </ion-note>
       }
 
-      <ion-button
-        expand="block"
-        color="danger"
-        [disabled]="isSubmitting() || !title.trim() || !hasMutationScope()"
-        (click)="submit()"
-      >
-        @if (isSubmitting()) {
-          <ion-spinner slot="start" name="dots" />
-        } @else {
-          <ion-icon slot="start" name="rocket-outline" />
-        }
-        Houston, we've got a problem
-      </ion-button>
+      @if (createdIncidentLink(); as link) {
+        <ion-button
+          expand="block"
+          color="primary"
+          [routerLink]="link"
+          [queryParams]="createdIncidentQueryParams()"
+          [disabled]="isSubmitting()"
+        >
+          Open created incident
+        </ion-button>
+      } @else {
+        <ion-button
+          expand="block"
+          color="danger"
+          [disabled]="isSubmitting() || !title.trim() || !hasMutationScope()"
+          (click)="submit()"
+        >
+          @if (isSubmitting()) {
+            <ion-spinner slot="start" name="dots" />
+          } @else {
+            <ion-icon slot="start" name="rocket-outline" />
+          }
+          Houston, we've got a problem
+        </ion-button>
+      }
       <ion-button
         expand="block"
         fill="clear"

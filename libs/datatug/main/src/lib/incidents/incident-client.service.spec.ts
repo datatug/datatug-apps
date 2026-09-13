@@ -155,6 +155,30 @@ describe('IncidentClientService', () => {
       expect(result).toEqual({ kind: 'error', message: 'boom' });
     });
 
+    it('preserves the structured STALE_CONTEXT code for caller recovery', () => {
+      let result: unknown;
+      service.list(CONTEXT).subscribe((r) => (result = r));
+
+      httpMock
+        .expectOne((r) => r.url === BASE_URL)
+        .flush(
+          {
+            error: {
+              code: 'STALE_CONTEXT',
+              message: 'Refresh agent info and retry.',
+              requestId: 'r-stale',
+            },
+          },
+          { status: 409, statusText: 'Conflict' },
+        );
+
+      expect(result).toEqual({
+        kind: 'error',
+        code: 'STALE_CONTEXT',
+        message: 'Refresh agent info and retry.',
+      });
+    });
+
     it('rejects a success response that is missing the frozen envelope', () => {
       let result: unknown;
       service.list(CONTEXT).subscribe((r) => (result = r));
@@ -271,6 +295,22 @@ describe('IncidentClientService', () => {
 
     it.each([
       ['visible field', { field: '' }],
+      [
+        'noncanonical integer value',
+        { value: { type: 'integer', value: '05' } },
+      ],
+      [
+        'invalid calendar date value',
+        { value: { type: 'date', value: '2026-02-30' } },
+      ],
+      [
+        'non-normalized datetime value',
+        { value: { type: 'datetime', value: '2026-09-11T10:43:40+01:00' } },
+      ],
+      [
+        'extra typed-value key',
+        { value: { type: 'string', value: 'five', trusted: true } },
+      ],
       [
         'physical ref',
         { physical: { source: '', collection: 'c', column: 'x' } },

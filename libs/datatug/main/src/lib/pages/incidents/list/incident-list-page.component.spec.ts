@@ -1,8 +1,11 @@
 import { CUSTOM_ELEMENTS_SCHEMA, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { AgentContextService } from '@sneat/datatug-semantic';
-import { BehaviorSubject, Subject } from 'rxjs';
+import {
+  AgentContextService,
+  InvestigationContextService,
+} from '@sneat/datatug-semantic';
+import { BehaviorSubject, defer, of, Subject } from 'rxjs';
 import { IncidentListPageComponent } from './incident-list-page.component';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { IncidentClientService } from '../../../incidents/incident-client.service';
@@ -46,6 +49,9 @@ describe('IncidentListPageComponent', () => {
   >;
   let environment$: BehaviorSubject<{ id: string } | undefined>;
   let securityContextId: ReturnType<typeof signal<string | undefined>>;
+  let refreshAgentContextSpy: ReturnType<typeof vi.fn>;
+  let setInvestigationScopeSpy: ReturnType<typeof vi.fn>;
+  let clearInvestigationContextSpy: ReturnType<typeof vi.fn>;
   let listResult$: Subject<IncidentApiResult<IncidentSummary[]>>;
   let listSpy: ReturnType<typeof vi.fn>;
 
@@ -56,6 +62,9 @@ describe('IncidentListPageComponent', () => {
     >(undefined);
     environment$ = new BehaviorSubject<{ id: string } | undefined>(undefined);
     securityContextId = signal<string | undefined>('ctx-1');
+    refreshAgentContextSpy = vi.fn(() => of({ securityContextId: 'ctx-1' }));
+    setInvestigationScopeSpy = vi.fn();
+    clearInvestigationContextSpy = vi.fn();
     listResult$ = new Subject<IncidentApiResult<IncidentSummary[]>>();
     listSpy = vi.fn().mockReturnValue(listResult$);
 
@@ -71,7 +80,23 @@ describe('IncidentListPageComponent', () => {
             currentEnv: environment$,
           },
         },
-        { provide: AgentContextService, useValue: { securityContextId } },
+        {
+          provide: AgentContextService,
+          useValue: {
+            securityContextId: signal('default-agent-context'),
+            contextFor: vi.fn(() => ({
+              securityContextId,
+              refresh: refreshAgentContextSpy,
+            })),
+          },
+        },
+        {
+          provide: InvestigationContextService,
+          useValue: {
+            setScope: setInvestigationScopeSpy,
+            clear: clearInvestigationContextSpy,
+          },
+        },
         { provide: IncidentClientService, useValue: { list: listSpy } },
       ],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -121,6 +146,47 @@ describe('IncidentListPageComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.innerHTML).toContain('Checkout errors spike');
+  });
+
+  it('recovers once from STALE_CONTEXT using the same explicit agent', () => {
+    listSpy
+      .mockReturnValueOnce(
+        of({
+          kind: 'error',
+          code: 'STALE_CONTEXT',
+          message: 'Refresh agent info and retry.',
+        } as const),
+      )
+      .mockReturnValueOnce(
+        of({
+          kind: 'ok',
+          data: [incident('billing', 'INC-1', 'Recovered incident')],
+        } as const),
+      );
+    refreshAgentContextSpy.mockImplementation(() =>
+      defer(() => {
+        securityContextId.set('ctx-2');
+        return of({ securityContextId: 'ctx-2' });
+      }),
+    );
+
+    selectScope('agent-b:8989');
+    fixture.detectChanges();
+
+    expect(clearInvestigationContextSpy).toHaveBeenCalledTimes(1);
+    expect(refreshAgentContextSpy).toHaveBeenCalledTimes(1);
+    expect(listSpy).toHaveBeenNthCalledWith(
+      1,
+      context('agent-b:8989', 'billing'),
+    );
+    expect(listSpy).toHaveBeenNthCalledWith(2, {
+      ...context('agent-b:8989', 'billing'),
+      scope: {
+        ...context('agent-b:8989', 'billing').scope,
+        securityContextId: 'ctx-2',
+      },
+    });
+    expect(fixture.nativeElement.innerHTML).toContain('Recovered incident');
   });
 
   it('ignores a stale response after the active scope changes', () => {

@@ -4,6 +4,7 @@ import {
   HttpParams,
 } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
+import { decodeTypedValue } from '@sneat/datatug-semantic';
 import { Observable, catchError, map, of } from 'rxjs';
 import { buildAgentUrl } from '../services/repo/agent-url';
 import {
@@ -369,8 +370,12 @@ function isIncidentFactView(value: unknown): boolean {
     isRecord(factValue) &&
     Object.keys(factValue).length === 1 &&
     factValue['redacted'] === true;
-  if (!redacted && !isTypedValue(factValue)) {
-    return false;
+  if (!redacted) {
+    try {
+      decodeTypedValue(factValue, 'incident.canonicalContext.fact.value');
+    } catch {
+      return false;
+    }
   }
   if (!redacted && !isNonEmptyString(value['field'])) {
     return false;
@@ -446,30 +451,6 @@ function optionalProjectScope(value: unknown): boolean {
   );
 }
 
-function isTypedValue(value: unknown): boolean {
-  if (!isRecord(value) || !('value' in value)) {
-    return false;
-  }
-  switch (value['type']) {
-    case 'string':
-    case 'integer':
-    case 'decimal':
-    case 'date':
-    case 'datetime':
-      return typeof value['value'] === 'string';
-    case 'number':
-      return (
-        typeof value['value'] === 'number' && Number.isFinite(value['value'])
-      );
-    case 'boolean':
-      return typeof value['value'] === 'boolean';
-    case 'null':
-      return value['value'] === null;
-    default:
-      return false;
-  }
-}
-
 function isRfc3339(value: unknown): value is string {
   return (
     typeof value === 'string' &&
@@ -516,11 +497,11 @@ function optionalStringArray(value: unknown): boolean {
  */
 function toIncidentApiResult<T>(err: unknown): IncidentApiResult<T> {
   if (err instanceof HttpErrorResponse) {
-    const serverMessage = readServerErrorMessage(err.error);
+    const serverError = readServerError(err.error);
     // Current incident endpoints use the frozen structured NOT_FOUND error
     // for a missing store or incident. A route-level 404 from an older server
     // has no such envelope, which is the only case reported as unavailable.
-    if ((err.status === 404 && !serverMessage) || err.status === 501) {
+    if ((err.status === 404 && !serverError?.message) || err.status === 501) {
       return {
         kind: 'unavailable',
         message: 'The incident store is not available on this server yet.',
@@ -535,7 +516,12 @@ function toIncidentApiResult<T>(err: unknown): IncidentApiResult<T> {
     return {
       kind: 'error',
       message:
-        serverMessage || err.message || `Request failed (${err.status}).`,
+        serverError?.message ||
+        err.message ||
+        `Request failed (${err.status}).`,
+      ...(serverError?.code === 'STALE_CONTEXT'
+        ? { code: serverError.code }
+        : {}),
     };
   }
   return {
@@ -544,10 +530,16 @@ function toIncidentApiResult<T>(err: unknown): IncidentApiResult<T> {
   };
 }
 
-function readServerErrorMessage(value: unknown): string | undefined {
+function readServerError(
+  value: unknown,
+): { readonly code?: string; readonly message?: string } | undefined {
   if (!isRecord(value) || !isRecord(value['error'])) {
     return undefined;
   }
+  const code = value['error']['code'];
   const message = value['error']['message'];
-  return typeof message === 'string' && message.trim() ? message : undefined;
+  return {
+    ...(typeof code === 'string' && code.trim() ? { code } : {}),
+    ...(typeof message === 'string' && message.trim() ? { message } : {}),
+  };
 }
