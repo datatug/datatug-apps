@@ -1,5 +1,12 @@
 import { Injectable, Signal, computed, inject, signal } from '@angular/core';
-import { ContextCondition, Fact, TypedValue } from '../../contract/types';
+import {
+  ContextCondition,
+  Fact,
+  FactLayer,
+  FactRole,
+  TypedValue,
+} from '../../contract/types';
+import { decodeFact } from '../../contract/decoders';
 import { toTypedValue, SemanticValue } from '../../contract/adapt';
 import { DATATUG_AGENT_BASE_URL } from '../tokens/datatug-agent-base-url.token';
 import { EntityFieldRef } from '../models/models';
@@ -72,6 +79,8 @@ export interface ContextItemInput {
   /** Defaults to `'=='` (equality) — every pre-existing caller (grid "Add to context",
    * related-lookup rows) never sets this and keeps meaning equality, unchanged. */
   readonly condition?: ContextCondition;
+  readonly role?: FactRole;
+  readonly layer?: FactLayer;
 }
 
 /** REQ:context-basket — one Investigation Context entry: a wire {@link Fact} (so its
@@ -87,6 +96,8 @@ export interface ContextItem extends Fact {
    * Narrows back to Fact's OPTIONAL `condition?` when serialised — see
    * {@link contextItemToFact}. */
   readonly condition: ContextCondition;
+  /** Explicit opt-in required before an overlay participates in query binding. */
+  readonly selectedForBinding?: boolean;
 }
 
 /** Narrows a {@link ContextItem} to the exact wire {@link Fact} shape — the boundary
@@ -106,6 +117,8 @@ export function contextItemToFact(item: ContextItem): Fact {
     enabled: item.enabled,
     ...(item.physical ? { physical: item.physical } : {}),
     ...(item.mapping ? { mapping: item.mapping } : {}),
+    ...(item.role ? { role: item.role } : {}),
+    ...(item.layer ? { layer: item.layer } : {}),
     ...(item.condition !== DEFAULT_CONDITION
       ? { condition: item.condition }
       : {}),
@@ -142,11 +155,13 @@ function itemMatches(
   entityField: EntityFieldRef,
   value: TypedValue,
   condition: ContextCondition,
+  layer: FactLayer | undefined,
 ): boolean {
   return (
     item.entity === entityField.entity &&
     item.field === entityField.field &&
     item.condition === condition &&
+    normalizedFactLayer(item.layer) === normalizedFactLayer(layer) &&
     typedValuesEqual(item.value, value)
   );
 }
@@ -155,6 +170,7 @@ function contextItemId(
   entityField: EntityFieldRef,
   value: TypedValue,
   condition: ContextCondition,
+  layer: FactLayer | undefined,
 ): string {
   // Includes the TypedValue's own `type` (not just its display value) so 5 (integer)
   // and "5" (string) never collide into the same context-item id — see this file's
@@ -164,7 +180,21 @@ function contextItemId(
   // get distinct ids from each other and from the default-equality `Age = 5`, while
   // `Age = 5` keeps the exact id it always had.
   const conditionTag = condition === DEFAULT_CONDITION ? '' : condition;
-  return `${entityField.entity}.${entityField.field}${conditionTag}:${value.type}=${JSON.stringify(value.value)}`;
+  const layerTag =
+    normalizedFactLayer(layer) === 'canonical' ? '' : `@${layer}`;
+  return `${entityField.entity}.${entityField.field}${conditionTag}${layerTag}:${value.type}=${JSON.stringify(value.value)}`;
+}
+
+export function normalizedFactLayer(layer: FactLayer | undefined): FactLayer {
+  return layer ?? 'canonical';
+}
+
+export function isOverlayFact(item: Pick<Fact, 'layer'>): boolean {
+  return normalizedFactLayer(item.layer) !== 'canonical';
+}
+
+export function isFactSelectedForBinding(item: ContextItem): boolean {
+  return !isOverlayFact(item) || item.selectedForBinding === true;
 }
 
 /**
@@ -223,6 +253,9 @@ export class InvestigationContextService {
   readonly enabledCount: Signal<number> = computed(
     () => this.items().filter((item) => item.enabled).length,
   );
+  private readonly promotionRevisionSignal = signal(0);
+  /** Changes only after a server-confirmed promotion adds a canonical copy. */
+  readonly promotionRevision = this.promotionRevisionSignal.asReadonly();
 
   /**
    * Switches the active scope (REQ:context-basket / api-contract.md "Switching scope
@@ -276,11 +309,12 @@ export class InvestigationContextService {
     const scope = this.scopeSignal();
     const typedValue = toTypedValue(input.value);
     const condition = input.condition ?? DEFAULT_CONDITION;
+    const layer = input.layer;
     if (!scope) {
       // No scope yet — nothing to key storage by. Same shape as a stored item so
       // callers don't need a special case, but never persisted.
       return {
-        id: contextItemId(input.entityField, typedValue, condition),
+        id: contextItemId(input.entityField, typedValue, condition, layer),
         entity: input.entityField.entity,
         field: input.entityField.field,
         value: typedValue,
@@ -290,18 +324,20 @@ export class InvestigationContextService {
         source: input.source,
         addedAt: new Date().toISOString(),
         condition,
+        ...(input.role ? { role: input.role } : {}),
+        ...(layer ? { layer } : {}),
       };
     }
     const key = scopeKey(scope);
     const existingItems = this.basketsSignal().get(key) ?? [];
     const existing = existingItems.find((item) =>
-      itemMatches(item, input.entityField, typedValue, condition),
+      itemMatches(item, input.entityField, typedValue, condition, layer),
     );
     if (existing) {
       return existing;
     }
     const item: ContextItem = {
-      id: contextItemId(input.entityField, typedValue, condition),
+      id: contextItemId(input.entityField, typedValue, condition, layer),
       entity: input.entityField.entity,
       field: input.entityField.field,
       value: typedValue,
@@ -311,21 +347,93 @@ export class InvestigationContextService {
       source: input.source,
       addedAt: new Date().toISOString(),
       condition,
+      ...(input.role ? { role: input.role } : {}),
+      ...(layer ? { layer } : {}),
     };
     this.setBasket(key, [...existingItems, item]);
     return item;
   }
 
   /** Removes a value from the current scope's basket entirely. */
-  removeValue(id: string): void {
-    this.updateCurrentBasket((items) => items.filter((item) => item.id !== id));
+  removeValue(id: string, layer?: FactLayer): void {
+    this.updateCurrentBasket((items) =>
+      items.filter((item) => !factMatchesIdentity(item, id, layer)),
+    );
   }
 
   /** Temporarily enables/disables a value without removing it (REQ:context-basket). */
-  setEnabled(id: string, enabled: boolean): void {
+  setEnabled(id: string, enabled: boolean, layer?: FactLayer): void {
     this.updateCurrentBasket((items) =>
-      items.map((item) => (item.id === id ? { ...item, enabled } : item)),
+      items.map((item) =>
+        factMatchesIdentity(item, id, layer) ? { ...item, enabled } : item,
+      ),
     );
+  }
+
+  setMetadata(
+    id: string,
+    role: FactRole | undefined,
+    layer: FactLayer,
+    currentLayer?: FactLayer,
+  ): void {
+    this.updateCurrentBasket((items) =>
+      items.map((item) =>
+        factMatchesIdentity(item, id, currentLayer)
+          ? {
+              ...item,
+              ...(role ? { role } : { role: undefined }),
+              ...(layer === 'canonical' ? { layer: undefined } : { layer }),
+              ...(layer === 'canonical'
+                ? { selectedForBinding: undefined }
+                : {}),
+            }
+          : item,
+      ),
+    );
+  }
+
+  setOverlaySelectedForBinding(
+    id: string,
+    layer: FactLayer,
+    selected: boolean,
+  ): void {
+    this.updateCurrentBasket((items) =>
+      items.map((item) =>
+        factMatchesIdentity(item, id, layer) && isOverlayFact(item)
+          ? { ...item, selectedForBinding: selected || undefined }
+          : item,
+      ),
+    );
+  }
+
+  /** Applies a server-confirmed promotion locally only after append succeeded. */
+  applyPromotion(id: string, layer: FactLayer, role: FactRole): void {
+    const source = this.items().find(
+      (item) => item.id === id && normalizedFactLayer(item.layer) === layer,
+    );
+    if (!source || !isOverlayFact(source)) {
+      return;
+    }
+    if (
+      this.items().some(
+        (item) =>
+          item.id === id && normalizedFactLayer(item.layer) === 'canonical',
+      )
+    ) {
+      return;
+    }
+    const canonical: ContextItem = {
+      ...source,
+      layer: undefined,
+      role,
+      selectedForBinding: undefined,
+      id: source.id,
+      label: `${source.entity}.${source.field} ${source.condition} ${String(source.value.value)}`,
+      source: `promoted from ${layer}`,
+      addedAt: new Date().toISOString(),
+    };
+    this.promotionRevisionSignal.update((revision) => revision + 1);
+    this.updateCurrentBasket((items) => [...items, canonical]);
   }
 
   /** Clears the current scope's whole basket (e.g. after `STALE_CONTEXT`, or "start a
@@ -349,7 +457,9 @@ export class InvestigationContextService {
   bindingsFor(
     parameters: readonly SemanticParameterRef[],
   ): readonly ParameterBinding[] {
-    const enabled = this.items().filter((item) => item.enabled);
+    const enabled = this.items().filter(
+      (item) => item.enabled && isFactSelectedForBinding(item),
+    );
     const bindings: ParameterBinding[] = [];
     for (const parameter of parameters) {
       const meta = parameter.meta;
@@ -409,7 +519,14 @@ export class InvestigationContextService {
   private restore(key: string): readonly ContextItem[] {
     try {
       const raw = sessionStorage.getItem(STORAGE_KEY_PREFIX + key);
-      return raw ? (JSON.parse(raw) as ContextItem[]) : [];
+      if (!raw) {
+        return [];
+      }
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
+      return parsed.map(decodeStoredContextItem);
     } catch {
       // sessionStorage unavailable (private mode, SSR, or a full quota) or corrupted
       // JSON — start empty rather than throwing.
@@ -424,6 +541,68 @@ export class InvestigationContextService {
       // Same as above: in-memory state still works even if it can't be persisted.
     }
   }
+}
+
+function factMatchesIdentity(
+  item: ContextItem,
+  id: string,
+  layer: FactLayer | undefined,
+): boolean {
+  return (
+    item.id === id &&
+    (layer === undefined || normalizedFactLayer(item.layer) === layer)
+  );
+}
+
+function decodeStoredContextItem(value: unknown, index: number): ContextItem {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`context[${index}] must be an object`);
+  }
+  const object = value as Record<string, unknown>;
+  const allowed = [
+    'id',
+    'entity',
+    'field',
+    'value',
+    'condition',
+    'origin',
+    'physical',
+    'mapping',
+    'role',
+    'layer',
+    'enabled',
+    'label',
+    'source',
+    'addedAt',
+    'selectedForBinding',
+  ];
+  if (Object.keys(object).some((key) => !allowed.includes(key))) {
+    throw new Error(`context[${index}] has unknown fields`);
+  }
+  const { label, source, addedAt, selectedForBinding, ...factValue } = object;
+  const fact = decodeFact(factValue, `context[${index}]`);
+  if (
+    typeof label !== 'string' ||
+    !label.trim() ||
+    typeof source !== 'string' ||
+    !source.trim() ||
+    typeof addedAt !== 'string' ||
+    Number.isNaN(Date.parse(addedAt)) ||
+    (selectedForBinding !== undefined &&
+      typeof selectedForBinding !== 'boolean') ||
+    (selectedForBinding === true &&
+      normalizedFactLayer(fact.layer) === 'canonical')
+  ) {
+    throw new Error(`context[${index}] has invalid display metadata`);
+  }
+  return {
+    ...fact,
+    condition: fact.condition ?? DEFAULT_CONDITION,
+    label,
+    source,
+    addedAt,
+    ...(selectedForBinding ? { selectedForBinding: true } : {}),
+  };
 }
 
 function normalizedAgentUrl(agentUrl: string): string {

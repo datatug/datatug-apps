@@ -556,6 +556,106 @@ describe('InvestigationContextService', () => {
     restored.setScope(scopeA);
     expect(restored.items()).toEqual([]);
   });
+
+  it('keeps layer-qualified fact identity and requires explicit overlay selection for binding', () => {
+    const service = createService();
+    service.setScope(scopeA);
+    const overlay = service.addValue({
+      entityField: { entity: 'Customer', field: 'ID' },
+      value: 11,
+      label: 'Customer.ID = 11',
+      source: 'hypothesis',
+      role: 'suspected',
+      layer: 'hypothesis:H17',
+    });
+    service.addValue({
+      entityField: { entity: 'Customer', field: 'ID' },
+      value: 11,
+      label: 'Customer.ID = 11',
+      source: 'canonical',
+      role: 'affected',
+    });
+
+    expect(service.items()).toHaveLength(2);
+    service.removeValue(overlay.id, 'hypothesis:H17');
+    expect(service.items()).toHaveLength(1);
+
+    const restoredOverlay = service.addValue({
+      entityField: { entity: 'Customer', field: 'ID' },
+      value: 12,
+      label: 'Customer.ID = 12',
+      source: 'hypothesis',
+      layer: 'hypothesis:H17',
+    });
+    service.removeValue(service.items()[0].id, 'canonical');
+    expect(
+      service.bindingsFor([
+        { id: 'customerId', meta: { entity: 'Customer', field: 'ID' } },
+      ]),
+    ).toEqual([]);
+    service.setOverlaySelectedForBinding(
+      restoredOverlay.id,
+      'hypothesis:H17',
+      true,
+    );
+    expect(
+      service.bindingsFor([
+        { id: 'customerId', meta: { entity: 'Customer', field: 'ID' } },
+      ]),
+    ).toHaveLength(1);
+  });
+
+  it('applies a server-confirmed promotion as a canonical affected copy while retaining the overlay', () => {
+    const service = createService();
+    service.setScope(scopeA);
+    const overlay = service.addValue({
+      entityField: { entity: 'Customer', field: 'ID' },
+      value: 11,
+      label: 'Customer.ID = 11',
+      source: 'hypothesis',
+      role: 'suspected',
+      layer: 'hypothesis:H17',
+    });
+
+    service.applyPromotion(overlay.id, 'hypothesis:H17', 'affected');
+
+    expect(service.items()).toHaveLength(2);
+    expect(service.items()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: overlay.id,
+          layer: 'hypothesis:H17',
+          role: 'suspected',
+        }),
+        expect.objectContaining({
+          id: overlay.id,
+          layer: undefined,
+          role: 'affected',
+        }),
+      ]),
+    );
+  });
+
+  it('restoration fails closed for a persisted fact with invalid role or unknown fields', () => {
+    const service = createService();
+    service.setScope(scopeA);
+    service.addValue({
+      entityField: { entity: 'Customer', field: 'ID' },
+      value: 5,
+      label: 'Customer.ID = 5',
+      source: 'grid',
+    });
+    const key = sessionStorage.key(0);
+    if (!key) throw new Error('Expected persisted context key.');
+    const persisted = JSON.parse(sessionStorage.getItem(key) || '[]');
+    persisted[0].role = 'admin';
+    persisted[0].trusted = true;
+    sessionStorage.setItem(key, JSON.stringify(persisted));
+
+    const restarted = createService();
+    restarted.setScope(scopeA);
+    expect(restarted.items()).toEqual([]);
+  });
 });
 
 describe('scopesEqual', () => {

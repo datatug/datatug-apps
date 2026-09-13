@@ -40,6 +40,17 @@ export interface PhysicalRef {
 
 export type FactOrigin = 'selection' | 'context' | 'manual';
 export type FactMapping = 'declared' | 'inferred';
+export type FactRole =
+  | 'affected'
+  | 'healthy_control'
+  | 'suspected'
+  | 'excluded'
+  | 'recovered';
+export type FactLayer =
+  | 'canonical'
+  | `hypothesis:${string}`
+  | `participant:${string}`
+  | `question:${string}`;
 
 /** Comparison operator a {@link Fact} (or an Investigation Context item built from one —
  * see `InvestigationContextService`'s `ContextItem`) may carry — founder ruling
@@ -67,6 +78,10 @@ export interface Fact {
   readonly origin: FactOrigin;
   readonly physical?: PhysicalRef;
   readonly mapping?: FactMapping;
+  /** Cohort display metadata only; it never changes authorization or precedence. */
+  readonly role?: FactRole;
+  /** Absent means canonical. Named overlays bind only after explicit selection. */
+  readonly layer?: FactLayer;
   readonly enabled: boolean;
 }
 

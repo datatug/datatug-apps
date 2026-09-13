@@ -23,7 +23,9 @@ const integer7: TypedValue = { type: 'integer', value: '7' };
 
 describe('resolveBindings — precedence (AC:bound-from-selection, AC:context-carries)', () => {
   it('binds from a single selection fact when no user edit exists', () => {
-    const params: BindingParameterRef[] = [{ id: 'CustomerId', meta: customerIdMeta }];
+    const params: BindingParameterRef[] = [
+      { id: 'CustomerId', meta: customerIdMeta },
+    ];
     const [binding] = resolveBindings({
       parameters: params,
       selectionFacts: [fact(integer5, 'selection', 'selection-fact-5')],
@@ -38,7 +40,9 @@ describe('resolveBindings — precedence (AC:bound-from-selection, AC:context-ca
   });
 
   it('falls back to a single context fact when there is no selection', () => {
-    const params: BindingParameterRef[] = [{ id: 'CustomerId', meta: customerIdMeta }];
+    const params: BindingParameterRef[] = [
+      { id: 'CustomerId', meta: customerIdMeta },
+    ];
     const [binding] = resolveBindings({
       parameters: params,
       selectionFacts: [],
@@ -51,8 +55,73 @@ describe('resolveBindings — precedence (AC:bound-from-selection, AC:context-ca
     });
   });
 
+  it('propagates cohort role metadata from the selected context fact', () => {
+    const affected = {
+      ...fact(integer5, 'context', 'affected-5'),
+      role: 'affected' as const,
+    };
+    const [binding] = resolveBindings({
+      parameters: [{ id: 'CustomerId', meta: customerIdMeta }],
+      selectionFacts: [],
+      contextFacts: [affected],
+    });
+
+    expect(binding).toMatchObject({
+      value: integer5,
+      origin: 'context',
+      factId: 'affected-5',
+      role: 'affected',
+    });
+  });
+
+  it('offers affected and healthy-control cohorts until one is explicitly selected', () => {
+    const affected = {
+      ...fact(integer5, 'context', 'affected-5'),
+      role: 'affected' as const,
+    };
+    const healthy = {
+      ...fact(integer7, 'context', 'healthy-7'),
+      role: 'healthy_control' as const,
+    };
+    const input = {
+      parameters: [{ id: 'CustomerId', meta: customerIdMeta }],
+      selectionFacts: [],
+      contextFacts: [affected, healthy],
+    };
+    const unresolved = resolveBindings(input)[0];
+
+    expect(unresolved.blocked).toBe('ambiguous');
+    expect(unresolved.cohortOptions).toEqual([
+      expect.objectContaining({ factId: 'affected-5', role: 'affected' }),
+      expect.objectContaining({
+        factId: 'healthy-7',
+        role: 'healthy_control',
+      }),
+    ]);
+    const cohortOptions = unresolved.cohortOptions;
+    if (!cohortOptions) {
+      throw new Error('Expected cohort choices for ambiguous context facts');
+    }
+
+    const selected = resolveBindings({
+      ...input,
+      selectedContextFactKeys: new Map([
+        ['CustomerId', cohortOptions[0].factKey],
+      ]),
+    })[0];
+    expect(selected).toMatchObject({
+      value: integer5,
+      origin: 'context',
+      factId: 'affected-5',
+      role: 'affected',
+    });
+    expect(selected.cohortOptions).toEqual(unresolved.cohortOptions);
+  });
+
   it('an explicit user edit wins over both selection and context', () => {
-    const params: BindingParameterRef[] = [{ id: 'CustomerId', meta: customerIdMeta }];
+    const params: BindingParameterRef[] = [
+      { id: 'CustomerId', meta: customerIdMeta },
+    ];
     const [binding] = resolveBindings({
       parameters: params,
       selectionFacts: [fact(integer5, 'selection')],
@@ -77,7 +146,9 @@ describe('resolveBindings — precedence (AC:bound-from-selection, AC:context-ca
   });
 
   it('a matching selection and context value (same typed value) is not a conflict', () => {
-    const params: BindingParameterRef[] = [{ id: 'CustomerId', meta: customerIdMeta }];
+    const params: BindingParameterRef[] = [
+      { id: 'CustomerId', meta: customerIdMeta },
+    ];
     const [binding] = resolveBindings({
       parameters: params,
       selectionFacts: [fact(integer5, 'selection')],
@@ -89,7 +160,11 @@ describe('resolveBindings — precedence (AC:bound-from-selection, AC:context-ca
 
   it('a non-semantic parameter (no meta) with no user value resolves to nothing, not required', () => {
     const params: BindingParameterRef[] = [{ id: 'freeText' }];
-    const [binding] = resolveBindings({ parameters: params, selectionFacts: [], contextFacts: [] });
+    const [binding] = resolveBindings({
+      parameters: params,
+      selectionFacts: [],
+      contextFacts: [],
+    });
     expect(binding.value).toBeUndefined();
     expect(binding.blocked).toBeUndefined();
   });
@@ -97,7 +172,9 @@ describe('resolveBindings — precedence (AC:bound-from-selection, AC:context-ca
 
 describe('resolveBindings — typed distinctness (AC:typed-context-isolation)', () => {
   it('integer 5 and string "5" are distinct values, not deduped', () => {
-    const params: BindingParameterRef[] = [{ id: 'CustomerId', meta: customerIdMeta }];
+    const params: BindingParameterRef[] = [
+      { id: 'CustomerId', meta: customerIdMeta },
+    ];
     const [binding] = resolveBindings({
       parameters: params,
       selectionFacts: [fact(integer5, 'selection'), fact(string5, 'selection')],
@@ -116,21 +193,40 @@ describe('resolveBindings — typed distinctness (AC:typed-context-isolation)', 
     const boolFalse: TypedValue = { type: 'boolean', value: false };
     const numZero: TypedValue = { type: 'number', value: 0 };
     const nullValue: TypedValue = { type: 'null', value: null };
-    const params: BindingParameterRef[] = [{ id: 'Flag', meta: { entity: 'X', field: 'Flag' } }];
+    const params: BindingParameterRef[] = [
+      { id: 'Flag', meta: { entity: 'X', field: 'Flag' } },
+    ];
 
     const boolBinding = resolveBindings({
       parameters: params,
       selectionFacts: [
-        { id: 'f1', entity: 'X', field: 'Flag', value: boolFalse, origin: 'selection', enabled: true },
+        {
+          id: 'f1',
+          entity: 'X',
+          field: 'Flag',
+          value: boolFalse,
+          origin: 'selection',
+          enabled: true,
+        },
       ],
       contextFacts: [],
     })[0];
-    expect(boolBinding).toMatchObject({ value: boolFalse, origin: 'selection' });
+    expect(boolBinding).toMatchObject({
+      value: boolFalse,
+      origin: 'selection',
+    });
 
     const zeroBinding = resolveBindings({
       parameters: params,
       selectionFacts: [
-        { id: 'f2', entity: 'X', field: 'Flag', value: numZero, origin: 'selection', enabled: true },
+        {
+          id: 'f2',
+          entity: 'X',
+          field: 'Flag',
+          value: numZero,
+          origin: 'selection',
+          enabled: true,
+        },
       ],
       contextFacts: [],
     })[0];
@@ -139,20 +235,51 @@ describe('resolveBindings — typed distinctness (AC:typed-context-isolation)', 
     const nullBinding = resolveBindings({
       parameters: params,
       selectionFacts: [
-        { id: 'f3', entity: 'X', field: 'Flag', value: nullValue, origin: 'selection', enabled: true },
+        {
+          id: 'f3',
+          entity: 'X',
+          field: 'Flag',
+          value: nullValue,
+          origin: 'selection',
+          enabled: true,
+        },
       ],
       contextFacts: [],
     })[0];
-    expect(nullBinding).toMatchObject({ value: nullValue, origin: 'selection' });
+    expect(nullBinding).toMatchObject({
+      value: nullValue,
+      origin: 'selection',
+    });
 
     // All three, offered together as "selection" facts, are 3 distinct candidates —
     // ambiguous, never silently collapsed to one falsy-looking value.
     const combined = resolveBindings({
       parameters: params,
       selectionFacts: [
-        { id: 'f1', entity: 'X', field: 'Flag', value: boolFalse, origin: 'selection', enabled: true },
-        { id: 'f2', entity: 'X', field: 'Flag', value: numZero, origin: 'selection', enabled: true },
-        { id: 'f3', entity: 'X', field: 'Flag', value: nullValue, origin: 'selection', enabled: true },
+        {
+          id: 'f1',
+          entity: 'X',
+          field: 'Flag',
+          value: boolFalse,
+          origin: 'selection',
+          enabled: true,
+        },
+        {
+          id: 'f2',
+          entity: 'X',
+          field: 'Flag',
+          value: numZero,
+          origin: 'selection',
+          enabled: true,
+        },
+        {
+          id: 'f3',
+          entity: 'X',
+          field: 'Flag',
+          value: nullValue,
+          origin: 'selection',
+          enabled: true,
+        },
       ],
       contextFacts: [],
     })[0];
@@ -163,19 +290,26 @@ describe('resolveBindings — typed distinctness (AC:typed-context-isolation)', 
 
 describe('resolveBindings — conflict (selection overriding a different context value)', () => {
   it('blocks with conflict-unconfirmed when selection and context disagree', () => {
-    const params: BindingParameterRef[] = [{ id: 'CustomerId', meta: customerIdMeta }];
+    const params: BindingParameterRef[] = [
+      { id: 'CustomerId', meta: customerIdMeta },
+    ];
     const [binding] = resolveBindings({
       parameters: params,
       selectionFacts: [fact(integer5, 'selection')],
       contextFacts: [fact(integer7, 'context')],
     });
     expect(binding.blocked).toBe('conflict-unconfirmed');
-    expect(binding.conflict).toEqual({ selectionValue: integer5, contextValue: integer7 });
+    expect(binding.conflict).toEqual({
+      selectionValue: integer5,
+      contextValue: integer7,
+    });
     expect(isBindingRunnable(binding)).toBe(false);
   });
 
   it('resolves to the selection value once the conflict is confirmed for that parameter', () => {
-    const params: BindingParameterRef[] = [{ id: 'CustomerId', meta: customerIdMeta }];
+    const params: BindingParameterRef[] = [
+      { id: 'CustomerId', meta: customerIdMeta },
+    ];
     const [binding] = resolveBindings({
       parameters: params,
       selectionFacts: [fact(integer5, 'selection')],
@@ -187,14 +321,19 @@ describe('resolveBindings — conflict (selection overriding a different context
   });
 
   it('typed-distinct 5 vs "5" across selection/context is a conflict too, not silently equal', () => {
-    const params: BindingParameterRef[] = [{ id: 'CustomerId', meta: customerIdMeta }];
+    const params: BindingParameterRef[] = [
+      { id: 'CustomerId', meta: customerIdMeta },
+    ];
     const [binding] = resolveBindings({
       parameters: params,
       selectionFacts: [fact(integer5, 'selection')],
       contextFacts: [fact(string5, 'context')],
     });
     expect(binding.blocked).toBe('conflict-unconfirmed');
-    expect(binding.conflict).toEqual({ selectionValue: integer5, contextValue: string5 });
+    expect(binding.conflict).toEqual({
+      selectionValue: integer5,
+      contextValue: string5,
+    });
   });
 });
 
@@ -203,13 +342,23 @@ describe('resolveBindings — missing-required and clear (REQ:no-hidden-filters)
     const params: BindingParameterRef[] = [
       { id: 'CustomerId', meta: customerIdMeta, required: true },
     ];
-    const [binding] = resolveBindings({ parameters: params, selectionFacts: [], contextFacts: [] });
+    const [binding] = resolveBindings({
+      parameters: params,
+      selectionFacts: [],
+      contextFacts: [],
+    });
     expect(binding.blocked).toBe('missing-required');
   });
 
   it('an optional parameter with no candidate is not blocked', () => {
-    const params: BindingParameterRef[] = [{ id: 'CustomerId', meta: customerIdMeta }];
-    const [binding] = resolveBindings({ parameters: params, selectionFacts: [], contextFacts: [] });
+    const params: BindingParameterRef[] = [
+      { id: 'CustomerId', meta: customerIdMeta },
+    ];
+    const [binding] = resolveBindings({
+      parameters: params,
+      selectionFacts: [],
+      contextFacts: [],
+    });
     expect(binding.blocked).toBeUndefined();
     expect(binding.value).toBeUndefined();
   });
@@ -236,7 +385,9 @@ describe('resolveBindings — missing-required and clear (REQ:no-hidden-filters)
   });
 
   it('clearing an optional parameter empties it without blocking', () => {
-    const params: BindingParameterRef[] = [{ id: 'CustomerId', meta: customerIdMeta }];
+    const params: BindingParameterRef[] = [
+      { id: 'CustomerId', meta: customerIdMeta },
+    ];
     const cleared = resolveBindings({
       parameters: params,
       selectionFacts: [fact(integer5, 'selection')],
@@ -257,7 +408,9 @@ describe('resolveBindings — missing-required and clear (REQ:no-hidden-filters)
       selectionFacts: [fact(integer5, 'selection')],
       contextFacts: [],
       clearedParamIds: new Set(['CustomerId']),
-      userValues: new Map([['Genre', { type: 'string', value: 'Rock' } as TypedValue]]),
+      userValues: new Map([
+        ['Genre', { type: 'string', value: 'Rock' } as TypedValue],
+      ]),
     });
     expect(resolved[0].blocked).toBe('missing-required');
     expect(resolved[1]).toMatchObject({ origin: 'user' });
@@ -266,11 +419,16 @@ describe('resolveBindings — missing-required and clear (REQ:no-hidden-filters)
 
 describe('resolveBindings — ambiguity within one tier does not fall through to a lower tier', () => {
   it('two distinct context values block ambiguous rather than picking either', () => {
-    const params: BindingParameterRef[] = [{ id: 'CustomerId', meta: customerIdMeta }];
+    const params: BindingParameterRef[] = [
+      { id: 'CustomerId', meta: customerIdMeta },
+    ];
     const [binding] = resolveBindings({
       parameters: params,
       selectionFacts: [],
-      contextFacts: [fact(integer5, 'context', 'a'), fact(integer7, 'context', 'b')],
+      contextFacts: [
+        fact(integer5, 'context', 'a'),
+        fact(integer7, 'context', 'b'),
+      ],
     });
     expect(binding.blocked).toBe('ambiguous');
     expect(binding.ambiguousValues).toEqual(
@@ -284,7 +442,10 @@ describe('resolveBindings — ambiguity within one tier does not fall through to
     ];
     const [binding] = resolveBindings({
       parameters: params,
-      selectionFacts: [fact(integer5, 'selection', 'a'), fact(string5, 'selection', 'b')],
+      selectionFacts: [
+        fact(integer5, 'selection', 'a'),
+        fact(string5, 'selection', 'b'),
+      ],
       contextFacts: [],
     });
     expect(binding.blocked).toBe('ambiguous');
@@ -294,12 +455,22 @@ describe('resolveBindings — ambiguity within one tier does not fall through to
 
 describe('resolveBindings — non-equality condition facts (api-contract.md Fact.condition paragraph)', () => {
   it('a context fact with condition ">" does not bind a compatible parameter and is reported skipped', () => {
-    const params: BindingParameterRef[] = [{ id: 'CustomerId', meta: customerIdMeta }];
+    const params: BindingParameterRef[] = [
+      { id: 'CustomerId', meta: customerIdMeta },
+    ];
     const [binding] = resolveBindings({
       parameters: params,
       selectionFacts: [],
       contextFacts: [
-        { id: 'gt-fact', entity: 'Customer', field: 'ID', value: integer5, condition: '>', origin: 'context', enabled: true },
+        {
+          id: 'gt-fact',
+          entity: 'Customer',
+          field: 'ID',
+          value: integer5,
+          condition: '>',
+          origin: 'context',
+          enabled: true,
+        },
       ],
     });
     // Never applied as equality — no value, no origin.
@@ -309,16 +480,28 @@ describe('resolveBindings — non-equality condition facts (api-contract.md Fact
       expect.objectContaining({ factId: 'gt-fact', condition: '>' }),
     ]);
     expect(binding.skippedConditionFacts?.[0]?.explanation).toContain('>');
-    expect(binding.skippedConditionFacts?.[0]?.explanation.toLowerCase()).toContain('skip');
+    expect(
+      binding.skippedConditionFacts?.[0]?.explanation.toLowerCase(),
+    ).toContain('skip');
   });
 
   it('an explicit condition: "==" fact still binds exactly as an absent-condition fact does', () => {
-    const params: BindingParameterRef[] = [{ id: 'CustomerId', meta: customerIdMeta }];
+    const params: BindingParameterRef[] = [
+      { id: 'CustomerId', meta: customerIdMeta },
+    ];
     const [binding] = resolveBindings({
       parameters: params,
       selectionFacts: [],
       contextFacts: [
-        { id: 'eq-fact', entity: 'Customer', field: 'ID', value: integer5, condition: '==', origin: 'context', enabled: true },
+        {
+          id: 'eq-fact',
+          entity: 'Customer',
+          field: 'ID',
+          value: integer5,
+          condition: '==',
+          origin: 'context',
+          enabled: true,
+        },
       ],
     });
     expect(binding).toMatchObject({ value: integer5, origin: 'context' });
@@ -326,7 +509,9 @@ describe('resolveBindings — non-equality condition facts (api-contract.md Fact
   });
 
   it('an absent-condition fact still binds exactly as today (no regression)', () => {
-    const params: BindingParameterRef[] = [{ id: 'CustomerId', meta: customerIdMeta }];
+    const params: BindingParameterRef[] = [
+      { id: 'CustomerId', meta: customerIdMeta },
+    ];
     const [binding] = resolveBindings({
       parameters: params,
       selectionFacts: [],
@@ -336,13 +521,23 @@ describe('resolveBindings — non-equality condition facts (api-contract.md Fact
     expect(binding.skippedConditionFacts).toBeUndefined();
   });
 
-  it('a selected fact still wins over a context fact regardless of the context fact\'s condition', () => {
-    const params: BindingParameterRef[] = [{ id: 'CustomerId', meta: customerIdMeta }];
+  it("a selected fact still wins over a context fact regardless of the context fact's condition", () => {
+    const params: BindingParameterRef[] = [
+      { id: 'CustomerId', meta: customerIdMeta },
+    ];
     const [binding] = resolveBindings({
       parameters: params,
       selectionFacts: [fact(integer5, 'selection')],
       contextFacts: [
-        { id: 'gt-fact', entity: 'Customer', field: 'ID', value: integer7, condition: '>', origin: 'context', enabled: true },
+        {
+          id: 'gt-fact',
+          entity: 'Customer',
+          field: 'ID',
+          value: integer7,
+          condition: '>',
+          origin: 'context',
+          enabled: true,
+        },
       ],
     });
     // The context fact is never eligible as an equality candidate, so it can never
@@ -362,7 +557,15 @@ describe('resolveBindings — non-equality condition facts (api-contract.md Fact
       parameters: params,
       selectionFacts: [],
       contextFacts: [
-        { id: 'gt-fact', entity: 'Customer', field: 'ID', value: integer5, condition: '>', origin: 'context', enabled: true },
+        {
+          id: 'gt-fact',
+          entity: 'Customer',
+          field: 'ID',
+          value: integer5,
+          condition: '>',
+          origin: 'context',
+          enabled: true,
+        },
       ],
     });
     expect(binding.value).toBeUndefined();
@@ -380,7 +583,15 @@ describe('resolveBindings — non-equality condition facts (api-contract.md Fact
       parameters: params,
       selectionFacts: [],
       contextFacts: [
-        { id: 'gt-fact', entity: 'Customer', field: 'ID', value: integer5, condition: '>', origin: 'context', enabled: true },
+        {
+          id: 'gt-fact',
+          entity: 'Customer',
+          field: 'ID',
+          value: integer5,
+          condition: '>',
+          origin: 'context',
+          enabled: true,
+        },
       ],
     });
     // No eligible candidate in any tier — the default is free to apply (it never hides

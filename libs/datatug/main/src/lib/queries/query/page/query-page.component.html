@@ -55,9 +55,9 @@
     </ion-item>
   </ion-card>
 
-  @if (queryState.queryType === "HTTP") {
+  @if (queryState.queryType === 'HTTP') {
     <sneat-datatug-http-query-editor />
-  } @else if (editorTab === "text") {
+  } @else if (editorTab === 'text') {
     <!-- S155 (founder ruling 2026-09-10): the query page previously had no
          body editor at all for SQL/DTQL — the old `sneat-datatug-sql-query`
          binding this replaces was commented out and never wired up, so the
@@ -98,7 +98,9 @@
       </ion-card-header>
       <ion-card-content data-testid="linked-entities">
         @for (entity of linkedEntities(); track entity) {
-          <ion-badge color="medium" style="margin-right: 4px">{{ entity }}</ion-badge>
+          <ion-badge color="medium" style="margin-right: 4px">{{
+            entity
+          }}</ion-badge>
         }
       </ion-card-content>
     </ion-card>
@@ -121,17 +123,39 @@
           <ion-item [color]="binding.blocked ? 'warning' : undefined">
             <ion-label>
               {{ bindingFieldLabel(binding) }}
-              @if (binding.blocked === "ambiguous") {
+              @if (binding.blocked === 'ambiguous') {
                 <p>ambiguous — {{ ambiguousValuesLabel(binding) }}</p>
-              } @else if (binding.blocked === "conflict-unconfirmed") {
+              } @else if (binding.blocked === 'conflict-unconfirmed') {
                 <p>conflict — {{ conflictLabel(binding) }}</p>
-              } @else if (binding.blocked === "missing-required") {
+              } @else if (binding.blocked === 'missing-required') {
                 <p>required — no value supplied</p>
               } @else {
                 <p>{{ bindingValueLabel(binding) }}</p>
               }
             </ion-label>
-            @if (binding.blocked === "conflict-unconfirmed") {
+            @if (binding.cohortOptions?.length) {
+              @for (option of binding.cohortOptions; track option.factKey) {
+                @if (
+                  option.factKey !== selectedCohortFactKey(binding.parameterId)
+                ) {
+                  <ion-button
+                    slot="end"
+                    fill="outline"
+                    (click)="
+                      chooseContextCohort(binding.parameterId, option.factKey)
+                    "
+                  >
+                    @if (selectedCohortFactKey(binding.parameterId)) {
+                      Other compare side:
+                    } @else {
+                      Use
+                    }
+                    {{ cohortOptionLabel(option) }}
+                  </ion-button>
+                }
+              }
+            }
+            @if (binding.blocked === 'conflict-unconfirmed') {
               <ion-button
                 slot="end"
                 fill="clear"
@@ -155,8 +179,32 @@
       </ion-list>
     } @else {
       <ion-card-content>
-        <ion-text color="medium">No parameters bound from selection or context.</ion-text>
+        <ion-text color="medium"
+          >No parameters bound from selection or context.</ion-text
+        >
       </ion-card-content>
+    }
+
+    @for (suggestion of rebindSuggestions(); track suggestion.parameterId) {
+      <ion-item color="warning" data-testid="rebind-choice">
+        <ion-label>
+          Context changed for {{ suggestion.parameterId }}
+          <p>
+            {{ rebindSuggestionLabel(suggestion) }}. Current binding is
+            preserved.
+          </p>
+        </ion-label>
+        <ion-button
+          slot="end"
+          fill="clear"
+          (click)="keepCurrentBinding(suggestion.parameterId)"
+        >
+          Keep current
+        </ion-button>
+        <ion-button slot="end" (click)="acceptRebind(suggestion.parameterId)">
+          Use new context
+        </ion-button>
+      </ion-item>
     }
 
     @if (availableTargets().length) {
@@ -171,7 +219,9 @@
           (ionChange)="chooseTarget($event.detail.value)"
         >
           @for (target of availableTargets(); track target.source) {
-            <ion-select-option [value]="target.source">{{ target.label }}</ion-select-option>
+            <ion-select-option [value]="target.source">{{
+              target.label
+            }}</ion-select-option>
           }
         </ion-select>
       </ion-item>
@@ -220,7 +270,8 @@
                AvailableSnapshot's doc comment, @sneat/datatug-semantic), never "now". -->
           <div>
             <ion-button fill="outline" color="medium" (click)="runSnapshot()">
-              Use recorded snapshot from {{ formatRecordedDate(snapshot.recordedAt) }}
+              Use recorded snapshot from
+              {{ formatRecordedDate(snapshot.recordedAt) }}
             </ion-button>
           </div>
         }
@@ -241,9 +292,9 @@
          datatug-cli's pkg/httpsource snapshot handling). -->
     <ion-text color="medium" data-testid="result-provenance">
       @if (result.provenance.mode === 'snapshot') {
-        snapshot · recorded {{ formatRecordedDate(result.provenance.observedAt) }} · {{
-          result.provenance.source
-        }}
+        snapshot · recorded
+        {{ formatRecordedDate(result.provenance.observedAt) }} ·
+        {{ result.provenance.source }}
       } @else {
         live · {{ result.provenance.source }}
       }
@@ -261,6 +312,14 @@
         @for (applied of result.bindingsApplied; track applied.parameterId) {
           <ion-item lines="none">
             <ion-label>{{ appliedBindingLabel(applied) }}</ion-label>
+            @if (appliedBindingRole(applied); as role) {
+              <ion-badge
+                slot="end"
+                color="secondary"
+                data-testid="applied-binding-role"
+                >{{ role }}</ion-badge
+              >
+            }
             <ion-badge slot="end" color="medium">{{
               appliedBindingProvenance(applied)
             }}</ion-badge>
@@ -278,7 +337,15 @@
           <thead>
             <tr>
               @for (col of result.recordset.columns; track col.name) {
-                <th style="text-align: left; border-bottom: 2px solid var(--ion-color-step-150, #d9d9d9); padding: 4px 8px">{{ col.name }}</th>
+                <th
+                  style="
+                    text-align: left;
+                    border-bottom: 2px solid var(--ion-color-step-150, #d9d9d9);
+                    padding: 4px 8px;
+                  "
+                >
+                  {{ col.name }}
+                </th>
               }
             </tr>
           </thead>
@@ -286,13 +353,26 @@
             @for (row of result.recordset.rows; track $index) {
               <tr>
                 @for (cell of row; track $index) {
-                  <td style="border-bottom: 1px solid var(--ion-color-step-100, #e6e6e6); padding: 4px 8px">{{ displayValue(cell) }}</td>
+                  <td
+                    style="
+                      border-bottom: 1px solid
+                        var(--ion-color-step-100, #e6e6e6);
+                      padding: 4px 8px;
+                    "
+                  >
+                    {{ displayValue(cell) }}
+                  </td>
                 }
               </tr>
             }
             @if (!result.recordset.rows.length) {
               <tr>
-                <td [attr.colspan]="result.recordset.columns.length" style="padding: 4px 8px">No rows.</td>
+                <td
+                  [attr.colspan]="result.recordset.columns.length"
+                  style="padding: 4px 8px"
+                >
+                  No rows.
+                </td>
               </tr>
             }
           </tbody>

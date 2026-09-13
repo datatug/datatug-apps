@@ -9,6 +9,8 @@
 
 import type {
   ContextCondition,
+  FactLayer,
+  FactRole,
   PhysicalRef,
   TypedValue,
 } from '@sneat/datatug-semantic';
@@ -65,13 +67,8 @@ export interface IncidentFactView {
   readonly mapping?: 'declared' | 'inferred';
   readonly condition?: ContextCondition;
   readonly enabled: boolean;
-  readonly role?:
-    | 'affected'
-    | 'healthy_control'
-    | 'suspected'
-    | 'excluded'
-    | 'recovered';
-  readonly layer?: string;
+  readonly role?: FactRole;
+  readonly layer?: FactLayer;
   readonly scope?: IncidentProjectScope;
 }
 
@@ -180,6 +177,8 @@ export interface IncidentSummary {
   readonly projects?: readonly IncidentProjectRef[];
   readonly participants?: readonly IncidentParticipant[];
   readonly canonicalContext: IncidentContextView;
+  readonly contextPromotions?: readonly IncidentContextPromotion[];
+  readonly contextRejections?: readonly IncidentContextRejection[];
   readonly assetRefs?: readonly IncidentArtifactRef[];
   readonly notes?: readonly string[];
   readonly lastSeq: number;
@@ -227,6 +226,23 @@ export interface IncidentAssertion {
   readonly confidence?: 'speculative' | 'likely' | 'confirmed';
 }
 
+export interface IncidentContextFactRef {
+  readonly scope: IncidentCanonicalProjectScope;
+  readonly id: string;
+  readonly layer: Exclude<NonNullable<IncidentFactView['layer']>, 'canonical'>;
+}
+
+export interface IncidentContextPromotion {
+  readonly eventId: string;
+  readonly fact: IncidentContextFactRef;
+  readonly role: NonNullable<IncidentFactView['role']>;
+}
+
+export interface IncidentContextRejection {
+  readonly eventId: string;
+  readonly layer: Exclude<NonNullable<IncidentFactView['layer']>, 'canonical'>;
+}
+
 export interface IncidentEvent {
   readonly id: string;
   readonly seq: number;
@@ -245,7 +261,10 @@ export interface IncidentEvent {
     | 'incident.status'
     | 'incident.outcome'
     | 'incident.merged'
-    | 'note.added';
+    | 'note.added'
+    | 'context.fact.added'
+    | 'context.fact.promoted'
+    | 'context.fact.rejected';
   readonly assertion: IncidentAssertion;
   readonly refs?: readonly IncidentArtifactRef[];
   readonly payload:
@@ -262,12 +281,56 @@ export interface IncidentEvent {
     | { readonly status: IncidentStatus }
     | { readonly outcome: IncidentOutcome }
     | { readonly into: IncidentRef; readonly mergeId: string }
-    | { readonly body: string };
+    | { readonly body: string }
+    | { readonly fact: IncidentFactInput }
+    | {
+        readonly fact: IncidentContextFactRef;
+        readonly role: NonNullable<IncidentFactView['role']>;
+      }
+    | { readonly layer: IncidentContextFactRef['layer'] };
 }
 
 export interface IncidentStreamItem {
   readonly cursor: string;
   readonly event: IncidentEvent;
+}
+
+interface IncidentEventInputBase {
+  readonly at: string;
+  readonly assertion: IncidentAssertion;
+  readonly refs?: readonly IncidentArtifactRef[];
+}
+
+export type IncidentEventInput = IncidentEventInputBase &
+  (
+    | {
+        readonly type: 'context.fact.added';
+        readonly payload: { readonly fact: IncidentFactInput };
+      }
+    | {
+        readonly type: 'context.fact.promoted';
+        readonly payload: {
+          readonly fact: IncidentContextFactRef;
+          readonly role: NonNullable<IncidentFactView['role']>;
+        };
+      }
+    | {
+        readonly type: 'context.fact.rejected';
+        readonly payload: { readonly layer: IncidentContextFactRef['layer'] };
+      }
+  );
+
+export interface AppendIncidentEventRequest extends IncidentScope {
+  readonly mutationId: string;
+  readonly incident: IncidentRef;
+  readonly expectedSeq?: number;
+  readonly event: IncidentEventInput;
+}
+
+export interface AppendIncidentEventResponse {
+  readonly event: IncidentEvent;
+  readonly projection: IncidentDetail;
+  readonly replayed: boolean;
 }
 
 /**

@@ -1,5 +1,12 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, OnDestroy, computed, effect, inject, signal } from '@angular/core';
+import {
+  Component,
+  OnDestroy,
+  computed,
+  effect,
+  inject,
+  signal,
+} from '@angular/core';
 import { Router } from '@angular/router';
 import {
   IonBackButton,
@@ -31,8 +38,13 @@ import {
   Candidate,
   ContextCondition,
   ContextItem,
+  FactLayer,
+  FactRole,
   contextItemToFact,
   InvestigationContextService,
+  isFactSelectedForBinding,
+  isOverlayFact,
+  normalizedFactLayer,
   SemanticApiService,
   SemanticValue,
   tryDecodeErrorEnvelope,
@@ -48,13 +60,35 @@ import { DatatugServicesStoreModule } from '../../../services/repo/datatug-servi
 import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
 import { EntityService } from '../../../services/unsorted/entity.service';
 import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
+import { incidentContextQueryParams } from '../../../incidents/incident-route-context';
 
 addIcons({ closeOutline, linkOutline });
 
 /** The condition dropdown's fixed option list — founder ruling 2026-09-10 (S156):
  * "conditions like ==, >, >=, etc."; the lead's own assumption note for the exact set
  * (api-contract.md/hub spec still only models `==`, recorded as a follow-up). */
-const CONDITIONS: readonly ContextCondition[] = ['==', '!=', '>', '>=', '<', '<='];
+const CONDITIONS: readonly ContextCondition[] = [
+  '==',
+  '!=',
+  '>',
+  '>=',
+  '<',
+  '<=',
+];
+const FACT_ROLES: readonly FactRole[] = [
+  'affected',
+  'healthy_control',
+  'suspected',
+  'excluded',
+  'recovered',
+];
+const LAYER_KINDS = [
+  'canonical',
+  'hypothesis',
+  'participant',
+  'question',
+] as const;
+type LayerKind = (typeof LAYER_KINDS)[number];
 
 /** DataType kinds the "Value" field should render as `type="number"` — see
  * {@link inputTypeForDataType}. */
@@ -91,7 +125,10 @@ function inputTypeForDataType(
  * which already arrive as real numbers/booleans rather than display strings, so
  * `toTypedValue` (contract/adapt.ts) classifies them correctly (e.g. `integer`, not
  * `string`) instead of every manually-typed value becoming a string fact. */
-function toSemanticValue(raw: string, dataType: DataType | undefined): SemanticValue {
+function toSemanticValue(
+  raw: string,
+  dataType: DataType | undefined,
+): SemanticValue {
   if (dataType && NUMERIC_DATA_TYPES.has(dataType)) {
     const parsed = Number(raw);
     if (Number.isFinite(parsed)) {
@@ -188,6 +225,7 @@ export class InvestigationContextPageComponent implements OnDestroy {
   protected readonly notYet = signal<readonly Candidate[]>([]);
   protected readonly loading = signal(false);
   protected readonly error = signal<string | undefined>(undefined);
+  protected readonly metadataError = signal<string | undefined>(undefined);
 
   private readonly project = signal<IProjectContext | undefined>(undefined);
   private readonly environment = signal<string | undefined>(undefined);
@@ -202,9 +240,16 @@ export class InvestigationContextPageComponent implements OnDestroy {
   protected readonly fields = signal<readonly IEntityFieldDef[]>([]);
   protected readonly selectedEntity = signal<string | undefined>(undefined);
   protected readonly selectedField = signal<string | undefined>(undefined);
-  protected readonly selectedCondition = signal<ContextCondition | undefined>(undefined);
+  protected readonly selectedCondition = signal<ContextCondition | undefined>(
+    undefined,
+  );
+  protected readonly selectedRole = signal<FactRole | undefined>(undefined);
+  protected readonly selectedLayerKind = signal<LayerKind>('canonical');
+  protected readonly selectedLayerId = signal('');
   protected readonly valueInput = signal('');
   protected readonly conditions = CONDITIONS;
+  protected readonly factRoles = FACT_ROLES;
+  protected readonly layerKinds = LAYER_KINDS;
 
   protected readonly selectedFieldType = computed<DataType | undefined>(
     () => this.fields().find((f) => f.id === this.selectedField())?.type,
@@ -219,8 +264,27 @@ export class InvestigationContextPageComponent implements OnDestroy {
       !!this.selectedEntity() &&
       !!this.selectedField() &&
       !!this.selectedCondition() &&
+      (this.selectedLayerKind() === 'canonical' ||
+        this.selectedLayerId().trim().length > 0) &&
       this.valueInput().trim().length > 0,
   );
+
+  protected readonly makeIncidentQueryParams = computed(() => {
+    const project = this.project();
+    const environment = this.environment();
+    const securityContextId = this.agentContext.securityContextId();
+    if (!project || !environment || !securityContextId) {
+      return undefined;
+    }
+    return incidentContextQueryParams({
+      agentStoreId: project.ref.storeId,
+      scope: {
+        storeId: project.ref.projectId,
+        project: project.ref.projectId,
+        environment,
+      },
+    });
+  });
 
   /** Guards the effect below against re-entering itself: `handleLoadError` clears the
    * Investigation Context on `STALE_CONTEXT`, and this effect also depends on
@@ -275,7 +339,9 @@ export class InvestigationContextPageComponent implements OnDestroy {
           securityContextId,
         });
       }
-      const enabledItems = this.context.items().filter((item) => item.enabled);
+      const enabledItems = this.context
+        .items()
+        .filter((item) => item.enabled && isFactSelectedForBinding(item));
       if (this.suppressNextReload) {
         this.suppressNextReload = false;
         return;
@@ -303,11 +369,85 @@ export class InvestigationContextPageComponent implements OnDestroy {
   }
 
   protected toggle(item: ContextItem): void {
-    this.context.setEnabled(item.id, !item.enabled);
+    this.context.setEnabled(
+      item.id,
+      !item.enabled,
+      normalizedFactLayer(item.layer),
+    );
+  }
+
+  protected makeIncident(): void {
+    const queryParams = this.makeIncidentQueryParams();
+    if (!queryParams) {
+      return;
+    }
+    this.router
+      .navigate(['/incidents/new'], { queryParams })
+      .catch((err) =>
+        this.errorLogger.logError(
+          err,
+          'Failed to open incident creation from Investigation Context',
+        ),
+      );
   }
 
   protected remove(item: ContextItem): void {
-    this.context.removeValue(item.id);
+    this.context.removeValue(item.id, normalizedFactLayer(item.layer));
+  }
+
+  protected itemTrackKey(item: ContextItem): string {
+    return `${item.id}\0${normalizedFactLayer(item.layer)}`;
+  }
+
+  protected itemLayer(item: ContextItem): FactLayer {
+    return normalizedFactLayer(item.layer);
+  }
+
+  protected isOverlay(item: ContextItem): boolean {
+    return isOverlayFact(item);
+  }
+
+  protected isSelectedForBinding(item: ContextItem): boolean {
+    return isFactSelectedForBinding(item);
+  }
+
+  protected onItemRoleChange(
+    item: ContextItem,
+    role: FactRole | '' | undefined,
+  ): void {
+    const layer = normalizedFactLayer(item.layer);
+    this.context.setMetadata(item.id, role || undefined, layer, layer);
+  }
+
+  protected onItemLayerChange(
+    item: ContextItem,
+    raw: string | null | undefined,
+  ): void {
+    const layer = raw || '';
+    if (!isValidLayer(layer)) {
+      this.metadataError.set(
+        'Layer must be canonical or hypothesis:, participant:, or question: followed by an ID.',
+      );
+      return;
+    }
+    this.metadataError.set(undefined);
+    this.context.setMetadata(
+      item.id,
+      item.role,
+      layer as FactLayer,
+      normalizedFactLayer(item.layer),
+    );
+  }
+
+  protected toggleOverlayBinding(item: ContextItem): void {
+    if (!item.layer) {
+      return;
+    }
+    this.context.setOverlaySelectedForBinding(
+      item.id,
+      item.layer,
+      !item.selectedForBinding,
+    );
   }
 
   /** Entity select change — resets the (now stale) Field selection and loads the newly
@@ -327,8 +467,22 @@ export class InvestigationContextPageComponent implements OnDestroy {
     this.selectedField.set(fieldId || undefined);
   }
 
-  protected onConditionChange(condition: ContextCondition | null | undefined): void {
+  protected onConditionChange(
+    condition: ContextCondition | null | undefined,
+  ): void {
     this.selectedCondition.set(condition || undefined);
+  }
+
+  protected onRoleChange(role: FactRole | null | undefined): void {
+    this.selectedRole.set(role || undefined);
+  }
+
+  protected onLayerKindChange(kind: LayerKind | null | undefined): void {
+    this.selectedLayerKind.set(kind || 'canonical');
+  }
+
+  protected onLayerIdChange(value: string | null | undefined): void {
+    this.selectedLayerId.set(value ?? '');
   }
 
   protected onValueChange(value: string | null | undefined): void {
@@ -350,12 +504,19 @@ export class InvestigationContextPageComponent implements OnDestroy {
       return;
     }
     const value = toSemanticValue(raw, this.selectedFieldType());
+    const layerKind = this.selectedLayerKind();
+    const layer =
+      layerKind === 'canonical'
+        ? undefined
+        : (`${layerKind}:${this.selectedLayerId().trim()}` as FactLayer);
     this.context.addValue({
       entityField: { entity, field },
       value,
       label: `${entity}.${field} ${condition} ${raw}`,
       source: 'manual',
       condition,
+      ...(this.selectedRole() ? { role: this.selectedRole() } : {}),
+      ...(layer ? { layer } : {}),
     });
     this.valueInput.set('');
   }
@@ -542,4 +703,13 @@ export class InvestigationContextPageComponent implements OnDestroy {
     this.error.set('Failed to load applicable queries');
     this.errorLogger.logError(err, 'Failed to load applicable queries');
   }
+}
+
+function isValidLayer(layer: string): boolean {
+  if (layer === 'canonical') {
+    return true;
+  }
+  const match = /^(hypothesis|participant|question):(.*)$/u.exec(layer);
+  const ownerId = match?.[2];
+  return !!ownerId && ownerId.trim() === ownerId && !/\p{Cc}/u.test(ownerId);
 }

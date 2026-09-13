@@ -18,7 +18,11 @@ describe('InvestigationContextBarComponent', () => {
     // track project/environment/securityContextId itself — a host page's own scope
     // wiring, e.g. ContextPanelComponent's effect, owns setScope() in the real app), so
     // these specs set a scope directly to exercise the same basket the chips render.
-    context.setScope({ project: 'p1', environment: 'local', securityContextId: 'sc-1' });
+    context.setScope({
+      project: 'p1',
+      environment: 'local',
+      securityContextId: 'sc-1',
+    });
   });
 
   it('renders nothing when the context is empty', () => {
@@ -81,5 +85,38 @@ describe('InvestigationContextBarComponent', () => {
     fixture.detectChanges();
 
     expect(context.items()).toEqual([]);
+  });
+
+  it('targets an overlay by its full fact identity', () => {
+    const canonical = context.addValue({
+      entityField: { entity: 'Customer', field: 'ID' },
+      value: 5,
+      label: 'Canonical customer',
+      source: 'grid',
+    });
+    const overlay = context.addValue({
+      entityField: { entity: 'Customer', field: 'ID' },
+      value: 5,
+      label: 'Suspected customer',
+      source: 'grid',
+      layer: 'hypothesis:H17',
+    });
+    fixture.detectChanges();
+
+    const chips: HTMLElement[] = Array.from(
+      fixture.nativeElement.querySelectorAll('ion-chip'),
+    );
+    chips[1].dispatchEvent(new Event('click'));
+    fixture.detectChanges();
+
+    expect(
+      context.items().find((item) => item.id === canonical.id)?.enabled,
+    ).toBe(true);
+    expect(
+      context
+        .items()
+        .find((item) => item.id === overlay.id && item.layer === overlay.layer)
+        ?.enabled,
+    ).toBe(false);
   });
 });

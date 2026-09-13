@@ -1,4 +1,7 @@
-import { isAuthorizationResult, type AuthorizationResult } from './authorization';
+import {
+  isAuthorizationResult,
+  type AuthorizationResult,
+} from './authorization';
 // Strict runtime decoders for every server-originated shape in ./types.ts —
 // the contract appendix requires "strict runtime decoders (no string/number
 // coercion; unknown security-relevant fields rejected)" (plan Task 12, brief
@@ -97,7 +100,10 @@ function requireBoolean(v: unknown, path: string): boolean {
 
 function requireFiniteNumber(v: unknown, path: string): number {
   if (typeof v !== 'number' || !Number.isFinite(v)) {
-    fail(path, `expected a finite number, got ${JSON.stringify(v)} (no coercion)`);
+    fail(
+      path,
+      `expected a finite number, got ${JSON.stringify(v)} (no coercion)`,
+    );
   }
   return v as number;
 }
@@ -152,7 +158,10 @@ export function decodeTypedValue(v: unknown, path = 'value'): TypedValue {
   const type = obj['type'];
   switch (type) {
     case 'string':
-      return { type: 'string', value: requireString(obj['value'], `${path}.value`) };
+      return {
+        type: 'string',
+        value: requireString(obj['value'], `${path}.value`),
+      };
     case 'number':
       return {
         type: 'number',
@@ -193,7 +202,10 @@ export function decodeTypedValue(v: unknown, path = 'value'): TypedValue {
     }
     case 'null':
       if (obj['value'] !== null) {
-        fail(`${path}.value`, `expected null, got ${JSON.stringify(obj['value'])}`);
+        fail(
+          `${path}.value`,
+          `expected null, got ${JSON.stringify(obj['value'])}`,
+        );
       }
       return { type: 'null', value: null };
     default:
@@ -205,7 +217,34 @@ export function decodeTypedValue(v: unknown, path = 'value'): TypedValue {
 
 const FACT_ORIGINS: readonly FactOrigin[] = ['selection', 'context', 'manual'];
 const FACT_MAPPINGS: readonly FactMapping[] = ['declared', 'inferred'];
-const FACT_CONDITIONS: readonly ContextCondition[] = ['==', '!=', '>', '>=', '<', '<='];
+const FACT_CONDITIONS: readonly ContextCondition[] = [
+  '==',
+  '!=',
+  '>',
+  '>=',
+  '<',
+  '<=',
+];
+const FACT_ROLES = [
+  'affected',
+  'healthy_control',
+  'suspected',
+  'excluded',
+  'recovered',
+] as const;
+
+function decodeFactLayer(v: unknown, path: string): Fact['layer'] {
+  const layer = requireString(v, path);
+  if (layer === 'canonical') {
+    return layer;
+  }
+  const match = /^(hypothesis|participant|question):(.*)$/u.exec(layer);
+  const ownerId = match?.[2];
+  if (!ownerId || ownerId.trim() !== ownerId || /\p{Cc}/u.test(ownerId)) {
+    return fail(path, `invalid context layer ${JSON.stringify(layer)}`);
+  }
+  return layer as Fact['layer'];
+}
 
 function decodePhysicalRef(v: unknown, path: string): PhysicalRef {
   const obj = requireObject(v, path);
@@ -221,7 +260,19 @@ export function decodeFact(v: unknown, path = 'fact'): Fact {
   const obj = requireObject(v, path);
   requireExactKeys(
     obj,
-    ['id', 'entity', 'field', 'value', 'condition', 'origin', 'physical', 'mapping', 'enabled'],
+    [
+      'id',
+      'entity',
+      'field',
+      'value',
+      'condition',
+      'origin',
+      'physical',
+      'mapping',
+      'role',
+      'layer',
+      'enabled',
+    ],
     path,
   );
   return {
@@ -237,6 +288,10 @@ export function decodeFact(v: unknown, path = 'fact'): Fact {
     mapping: optional(obj['mapping'], `${path}.mapping`, (x, p) =>
       requireEnum(x, FACT_MAPPINGS, p),
     ),
+    role: optional(obj['role'], `${path}.role`, (x, p) =>
+      requireEnum(x, FACT_ROLES, p),
+    ),
+    layer: optional(obj['layer'], `${path}.layer`, decodeFactLayer),
     enabled: requireBoolean(obj['enabled'], `${path}.enabled`),
   };
 }
@@ -244,9 +299,10 @@ export function decodeFact(v: unknown, path = 'fact'): Fact {
 export function decodeLimitation(v: unknown, path = 'limitation'): Limitation {
   const obj = requireObject(v, path);
   requireExactKeys(obj, ['policy', 'rowsFiltered', 'hiddenColumns'], path);
-  const hiddenColumns = requireArray(obj['hiddenColumns'], `${path}.hiddenColumns`).map(
-    (x, i) => requireString(x, `${path}.hiddenColumns[${i}]`),
-  );
+  const hiddenColumns = requireArray(
+    obj['hiddenColumns'],
+    `${path}.hiddenColumns`,
+  ).map((x, i) => requireString(x, `${path}.hiddenColumns[${i}]`));
   return {
     policy: requireString(obj['policy'], `${path}.policy`),
     rowsFiltered: requireBoolean(obj['rowsFiltered'], `${path}.rowsFiltered`),
@@ -319,10 +375,18 @@ function decodeResultProvenance(v: unknown, path: string): ResultProvenance {
   );
   return {
     source: requireString(obj['source'], `${path}.source`),
-    collection: optional(obj['collection'], `${path}.collection`, requireString),
+    collection: optional(
+      obj['collection'],
+      `${path}.collection`,
+      requireString,
+    ),
     queryId: optional(obj['queryId'], `${path}.queryId`, requireString),
     mode: requireEnum(obj['mode'], EXECUTION_MODES, `${path}.mode`),
-    snapshotId: optional(obj['snapshotId'], `${path}.snapshotId`, requireString),
+    snapshotId: optional(
+      obj['snapshotId'],
+      `${path}.snapshotId`,
+      requireString,
+    ),
     observedAt: requireString(obj['observedAt'], `${path}.observedAt`),
     executionProfile: requireEnum(
       obj['executionProfile'],
@@ -351,9 +415,10 @@ export function decodeResult(v: unknown, path = 'result'): Result {
         decodeTypedValue(cell, `${path}.recordset.rows[${i}][${j}]`),
       ),
   );
-  const limitations = requireArray(obj['limitations'], `${path}.limitations`).map(
-    (l, i) => decodeLimitation(l, `${path}.limitations[${i}]`),
-  );
+  const limitations = requireArray(
+    obj['limitations'],
+    `${path}.limitations`,
+  ).map((l, i) => decodeLimitation(l, `${path}.limitations[${i}]`));
   const bindingsApplied = requireArray(
     obj['bindingsApplied'],
     `${path}.bindingsApplied`,
@@ -450,7 +515,10 @@ export function decodeCandidate(v: unknown, path = 'candidate'): Candidate {
 
 // ---- semantic/columns, semantic/related ----
 
-const SEMANTIC_PROVENANCE: readonly SemanticProvenance[] = ['declared', 'inferred'];
+const SEMANTIC_PROVENANCE: readonly SemanticProvenance[] = [
+  'declared',
+  'inferred',
+];
 
 function decodeSemanticColumnMapping(
   v: unknown,
@@ -485,7 +553,11 @@ export function decodeSemanticColumnsResponse(
 
 function decodeRelatedLookup(v: unknown, path: string): RelatedLookup {
   const obj = requireObject(v, path);
-  requireExactKeys(obj, ['lookupId', 'label', 'source', 'collection', 'count'], path);
+  requireExactKeys(
+    obj,
+    ['lookupId', 'label', 'source', 'collection', 'count'],
+    path,
+  );
   const countRaw = obj['count'];
   const count =
     countRaw === null ? null : requireFiniteNumber(countRaw, `${path}.count`);
@@ -519,8 +591,8 @@ export function decodeApplicableQueriesResponse(
   const obj = requireObject(v, path);
   requireExactKeys(obj, ['applicable', 'notYet'], path);
   return {
-    applicable: requireArray(obj['applicable'], `${path}.applicable`).map((c, i) =>
-      decodeCandidate(c, `${path}.applicable[${i}]`),
+    applicable: requireArray(obj['applicable'], `${path}.applicable`).map(
+      (c, i) => decodeCandidate(c, `${path}.applicable[${i}]`),
     ),
     notYet: requireArray(obj['notYet'], `${path}.notYet`).map((c, i) =>
       decodeCandidate(c, `${path}.notYet[${i}]`),
@@ -552,7 +624,10 @@ function decodeAgentCapabilities(v: unknown, path: string): AgentCapabilities {
       obj['protectedQueries'],
       `${path}.protectedQueries`,
     ),
-    opaqueReadOnly: requireBoolean(obj['opaqueReadOnly'], `${path}.opaqueReadOnly`),
+    opaqueReadOnly: requireBoolean(
+      obj['opaqueReadOnly'],
+      `${path}.opaqueReadOnly`,
+    ),
   };
 }
 
@@ -590,14 +665,20 @@ export function decodeAgentInfo(v: unknown, path = 'agentInfo'): AgentInfo {
 
 export function decodeErrorBody(v: unknown, path = 'error'): ErrorBody {
   const obj = requireObject(v, path);
-  requireExactKeys(obj, ['code', 'message', 'field', 'requestId', 'targets'], path);
+  requireExactKeys(
+    obj,
+    ['code', 'message', 'field', 'requestId', 'targets'],
+    path,
+  );
   return {
     code: requireString(obj['code'], `${path}.code`),
     message: requireString(obj['message'], `${path}.message`),
     field: optional(obj['field'], `${path}.field`, requireString),
     requestId: requireString(obj['requestId'], `${path}.requestId`),
     targets: optional(obj['targets'], `${path}.targets`, (arr, p) =>
-      requireArray(arr, p).map((t, i) => decodeCandidateTarget(t, `${p}[${i}]`)),
+      requireArray(arr, p).map((t, i) =>
+        decodeCandidateTarget(t, `${p}[${i}]`),
+      ),
     ),
   };
 }
@@ -620,17 +701,26 @@ export function decodeErrorDetails(v: unknown, path = 'details'): ErrorDetails {
   const obj = requireObject(v, path);
   requireExactKeys(obj, ['availableSnapshots', 'authorization'], path);
   return {
-    authorization: optional(obj['authorization'], `${path}.authorization`, decodeAuthorization),
+    authorization: optional(
+      obj['authorization'],
+      `${path}.authorization`,
+      decodeAuthorization,
+    ),
     availableSnapshots: optional(
       obj['availableSnapshots'],
       `${path}.availableSnapshots`,
       (arr, p) =>
-        requireArray(arr, p).map((s, i) => decodeAvailableSnapshot(s, `${p}[${i}]`)),
+        requireArray(arr, p).map((s, i) =>
+          decodeAvailableSnapshot(s, `${p}[${i}]`),
+        ),
     ),
   };
 }
 
-export function decodeErrorEnvelope(v: unknown, path = 'envelope'): ErrorEnvelope {
+export function decodeErrorEnvelope(
+  v: unknown,
+  path = 'envelope',
+): ErrorEnvelope {
   const obj = requireObject(v, path);
   requireExactKeys(obj, ['error', 'details'], path);
   return {

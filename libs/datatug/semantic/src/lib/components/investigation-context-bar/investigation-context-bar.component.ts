@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { IonChip, IonIcon, IonLabel } from '@ionic/angular';
 import { addIcons } from 'ionicons';
 import { banOutline, checkmarkCircleOutline, close } from 'ionicons/icons';
+import { FactLayer } from '../../../contract/types';
 import { InvestigationContextService } from '../../services/investigation-context.service';
 
 addIcons({ close, banOutline, checkmarkCircleOutline });
@@ -23,12 +24,20 @@ export class InvestigationContextBarComponent {
   protected readonly context = inject(InvestigationContextService);
   protected readonly items = this.context.items;
 
-  protected toggle(id: string, currentlyEnabled: boolean): void {
-    this.context.setEnabled(id, !currentlyEnabled);
+  protected toggle(
+    id: string,
+    currentlyEnabled: boolean,
+    layer?: FactLayer,
+  ): void {
+    this.context.setEnabled(id, !currentlyEnabled, layer);
   }
 
-  protected remove(id: string, event: Event): void {
+  protected remove(
+    id: string,
+    layer: FactLayer | undefined,
+    event: Event,
+  ): void {
     event.stopPropagation();
-    this.context.removeValue(id);
+    this.context.removeValue(id, layer);
   }
 }

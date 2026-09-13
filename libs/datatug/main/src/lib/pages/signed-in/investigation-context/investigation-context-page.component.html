@@ -9,6 +9,20 @@
 </ion-header>
 
 <ion-content class="ion-padding">
+  <ion-button
+    expand="block"
+    [disabled]="!makeIncidentQueryParams()"
+    (click)="makeIncident()"
+    data-testid="make-incident"
+  >
+    Make this an incident
+  </ion-button>
+  @if (!makeIncidentQueryParams()) {
+    <ion-text color="medium">
+      <p>Open an agent-backed project and environment to create an incident.</p>
+    </ion-text>
+  }
+
   <ion-list class="investigation-context-page__form">
     <ion-list-header>
       <ion-label>Add a context variable</ion-label>
@@ -64,6 +78,47 @@
       </ion-select>
     </ion-item>
     <ion-item>
+      <ion-select
+        label="Cohort role"
+        aria-label="Cohort role"
+        label-placement="stacked"
+        placeholder="No role"
+        interface="popover"
+        [value]="selectedRole()"
+        (ionChange)="onRoleChange($event.detail.value)"
+      >
+        @for (role of factRoles; track role) {
+          <ion-select-option [value]="role">{{ role }}</ion-select-option>
+        }
+      </ion-select>
+    </ion-item>
+    <ion-item>
+      <ion-select
+        label="Context layer"
+        aria-label="Context layer"
+        label-placement="stacked"
+        interface="popover"
+        [value]="selectedLayerKind()"
+        (ionChange)="onLayerKindChange($event.detail.value)"
+      >
+        @for (kind of layerKinds; track kind) {
+          <ion-select-option [value]="kind">{{ kind }}</ion-select-option>
+        }
+      </ion-select>
+    </ion-item>
+    @if (selectedLayerKind() !== 'canonical') {
+      <ion-item>
+        <ion-input
+          label="Layer ID"
+          aria-label="Layer ID"
+          label-placement="stacked"
+          placeholder="H17"
+          [value]="selectedLayerId()"
+          (ionInput)="onLayerIdChange($event.detail.value)"
+        />
+      </ion-item>
+    }
+    <ion-item>
       <ion-input
         label="Value"
         aria-label="Value"
@@ -93,19 +148,55 @@
       </p>
     </ion-text>
   } @else {
+    @if (metadataError(); as message) {
+      <ion-text color="danger" role="alert"
+        ><p>{{ message }}</p></ion-text
+      >
+    }
     <ion-list>
       <ion-list-header>
         <ion-label>Collected values ({{ enabledCount() }} enabled)</ion-label>
       </ion-list-header>
-      @for (item of items(); track item.id) {
+      @for (item of items(); track itemTrackKey(item)) {
         <ion-item
           class="investigation-context-page__item"
           [class.investigation-context-page__item--disabled]="!item.enabled"
         >
           <ion-label>
             {{ item.label }}
-            <p>from {{ item.source }} · added {{ addedAtLabel(item) }}</p>
+            <p>
+              from {{ item.source }} · {{ item.role || 'no cohort role' }} ·
+              {{ itemLayer(item) }} · added {{ addedAtLabel(item) }}
+            </p>
           </ion-label>
+          <ion-select
+            slot="end"
+            interface="popover"
+            aria-label="Cohort role"
+            placeholder="No role"
+            [value]="item.role || ''"
+            (ionChange)="onItemRoleChange(item, $event.detail.value)"
+          >
+            <ion-select-option value="">No role</ion-select-option>
+            @for (role of factRoles; track role) {
+              <ion-select-option [value]="role">{{ role }}</ion-select-option>
+            }
+          </ion-select>
+          <ion-input
+            slot="end"
+            aria-label="Context layer"
+            [value]="itemLayer(item)"
+            (ionChange)="onItemLayerChange(item, $event.detail.value)"
+          />
+          @if (isOverlay(item)) {
+            <ion-toggle
+              slot="end"
+              [checked]="isSelectedForBinding(item)"
+              [attr.aria-label]="'Use ' + item.label + ' overlay for runs'"
+              (ionChange)="toggleOverlayBinding(item)"
+              >Use for runs</ion-toggle
+            >
+          }
           <ion-toggle
             slot="end"
             [checked]="item.enabled"
@@ -156,10 +247,18 @@
       }
       @for (query of notYet(); track query.queryId) {
         @if (isOpenable(query)) {
-          <ion-item button="true" lines="none" color="light" (click)="onOpenNotYet(query)">
+          <ion-item
+            button="true"
+            lines="none"
+            color="light"
+            (click)="onOpenNotYet(query)"
+          >
             <ion-label>
               {{ query.queryId }}
-              <p>needs a target — {{ query.targets.length }} available, tap to choose</p>
+              <p>
+                needs a target — {{ query.targets.length }} available, tap to
+                choose
+              </p>
             </ion-label>
           </ion-item>
         } @else {
@@ -169,7 +268,9 @@
               @if (query.state === 'source-unavailable') {
                 <p>not yet applicable — source unavailable</p>
               } @else {
-                <p>not yet applicable — needs {{ missingText(query.missing) }}</p>
+                <p>
+                  not yet applicable — needs {{ missingText(query.missing) }}
+                </p>
               }
             </ion-label>
           </ion-item>

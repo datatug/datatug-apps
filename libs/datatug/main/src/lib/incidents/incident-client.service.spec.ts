@@ -1,5 +1,6 @@
 import { provideHttpClient } from '@angular/common/http';
 import {
+  AppendIncidentEventRequest,
   HttpTestingController,
   provideHttpClientTesting,
 } from '@angular/common/http/testing';
@@ -779,6 +780,42 @@ describe('IncidentClientService', () => {
         },
       ],
       ['note.added', { body: 'Payment API is slow' }],
+      [
+        'context.fact.added',
+        {
+          fact: {
+            id: 'customer-secret',
+            entity: 'Customer',
+            value: { redacted: true },
+            origin: 'context',
+            enabled: true,
+            role: 'suspected',
+            layer: 'hypothesis:H17',
+            scope: {
+              storeId: 'local',
+              projectId: 'billing',
+              environment: 'prod',
+            },
+          },
+        },
+      ],
+      [
+        'context.fact.promoted',
+        {
+          fact: {
+            scope: {
+              storeId: 'local',
+              projectId: 'billing',
+              environment: 'prod',
+            },
+            id: 'customer-11',
+            layer: 'hypothesis:H17',
+          },
+          role: 'affected',
+        },
+      ],
+      ['context.fact.rejected', { layer: 'hypothesis:H17' }],
+      ['context.fact.rejected', { layer: 'hypothesis:checkout / EU west' }],
     ])('accepts a valid %s event view', (type, payload) => {
       let result: unknown;
       service.events(CONTEXT, 'INC-1').subscribe((r) => (result = r));
@@ -901,6 +938,14 @@ describe('IncidentClientService', () => {
           { seq: 2 },
         ),
       ],
+      [
+        'trimmed overlay owner id',
+        eventFixture(
+          'context.fact.rejected',
+          { layer: 'hypothesis: leading-space' },
+          { seq: 2 },
+        ),
+      ],
     ])('rejects malformed %s in an event view', (_name, event) => {
       let result: unknown;
       service.events(CONTEXT, 'INC-1').subscribe((r) => (result = r));
@@ -988,6 +1033,183 @@ describe('IncidentClientService', () => {
       expect(result).toEqual({
         kind: 'error',
         message: 'Invalid incident events response.',
+      });
+    });
+  });
+
+  describe('append', () => {
+    const request: AppendIncidentEventRequest = {
+      ...CONTEXT.scope,
+      mutationId: 'mutation-context-promote-1',
+      incident: INCIDENT.ref,
+      expectedSeq: 1,
+      event: {
+        at: '2026-09-13T08:01:00Z',
+        type: 'context.fact.promoted',
+        assertion: { kind: 'claim', confidence: 'confirmed' },
+        refs: [{ kind: 'hypothesis', id: 'H17' }],
+        payload: {
+          fact: {
+            scope: {
+              storeId: 'local',
+              projectId: 'billing',
+              environment: 'prod',
+            },
+            id: 'customer-11',
+            layer: 'hypothesis:H17',
+          },
+          role: 'affected',
+        },
+      },
+    };
+
+    it('POSTs the frozen append request and strictly decodes the committed event and projection', () => {
+      let result: unknown;
+      service
+        .append(CONTEXT, 'INC-1', request)
+        .subscribe((value) => (result = value));
+
+      const httpRequest = httpMock.expectOne(`${BASE_URL}/INC-1/events`);
+      expect(httpRequest.request.method).toBe('POST');
+      expect(httpRequest.request.body).toEqual(request);
+      const event = eventFixture(
+        'context.fact.promoted',
+        request.event.payload,
+        {
+          seq: 2,
+          assertion: request.event.assertion,
+          refs: request.event.refs,
+        },
+      );
+      const projection = {
+        ...INCIDENT,
+        lastSeq: 2,
+        contextPromotions: [
+          {
+            eventId: 'event-1',
+            fact: request.event.payload.fact,
+            role: 'affected',
+          },
+        ],
+      };
+      httpRequest.flush({ event, projection, replayed: false });
+
+      expect(result).toEqual({
+        kind: 'ok',
+        data: { event, projection, replayed: false },
+      });
+    });
+
+    it('rejects an append response with unknown projection fields', () => {
+      let result: unknown;
+      service
+        .append(CONTEXT, 'INC-1', request)
+        .subscribe((value) => (result = value));
+      httpMock.expectOne(`${BASE_URL}/INC-1/events`).flush({
+        event: eventFixture('context.fact.promoted', request.event.payload, {
+          seq: 2,
+          assertion: request.event.assertion,
+          refs: request.event.refs,
+        }),
+        projection: { ...INCIDENT, policyBypass: true },
+        replayed: false,
+      });
+      expect(result).toEqual({
+        kind: 'error',
+        message: 'Invalid incident response.',
+      });
+    });
+
+    it('rejects duplicate promotions for the same qualified fact identity', () => {
+      let result: unknown;
+      service
+        .append(CONTEXT, 'INC-1', request)
+        .subscribe((value) => (result = value));
+      const duplicate = {
+        eventId: 'event-2',
+        fact: request.event.payload.fact,
+        role: 'affected' as const,
+      };
+      httpMock.expectOne(`${BASE_URL}/INC-1/events`).flush({
+        event: eventFixture('context.fact.promoted', request.event.payload, {
+          seq: 2,
+          assertion: request.event.assertion,
+          refs: request.event.refs,
+        }),
+        projection: {
+          ...INCIDENT,
+          contextPromotions: [{ ...duplicate, eventId: 'event-1' }, duplicate],
+        },
+        replayed: false,
+      });
+
+      expect(result).toEqual({
+        kind: 'error',
+        message: 'Invalid incident response.',
+      });
+    });
+
+    it('rejects promotion and rejection histories that contradict on one layer', () => {
+      let result: unknown;
+      service
+        .append(CONTEXT, 'INC-1', request)
+        .subscribe((value) => (result = value));
+      httpMock.expectOne(`${BASE_URL}/INC-1/events`).flush({
+        event: eventFixture('context.fact.promoted', request.event.payload, {
+          seq: 2,
+          assertion: request.event.assertion,
+          refs: request.event.refs,
+        }),
+        projection: {
+          ...INCIDENT,
+          contextPromotions: [
+            {
+              eventId: 'event-1',
+              fact: request.event.payload.fact,
+              role: 'affected',
+            },
+          ],
+          contextRejections: [{ eventId: 'event-2', layer: 'hypothesis:H17' }],
+        },
+        replayed: false,
+      });
+
+      expect(result).toEqual({
+        kind: 'error',
+        message: 'Invalid incident response.',
+      });
+    });
+
+    it('rejects a context history event id reused across distinct decisions', () => {
+      let result: unknown;
+      service
+        .append(CONTEXT, 'INC-1', request)
+        .subscribe((value) => (result = value));
+      httpMock.expectOne(`${BASE_URL}/INC-1/events`).flush({
+        event: eventFixture('context.fact.promoted', request.event.payload, {
+          seq: 2,
+          assertion: request.event.assertion,
+          refs: request.event.refs,
+        }),
+        projection: {
+          ...INCIDENT,
+          contextPromotions: [
+            {
+              eventId: 'event-shared',
+              fact: request.event.payload.fact,
+              role: 'affected',
+            },
+          ],
+          contextRejections: [
+            { eventId: 'event-shared', layer: 'question:follow-up' },
+          ],
+        },
+        replayed: false,
+      });
+
+      expect(result).toEqual({
+        kind: 'error',
+        message: 'Invalid incident response.',
       });
     });
   });

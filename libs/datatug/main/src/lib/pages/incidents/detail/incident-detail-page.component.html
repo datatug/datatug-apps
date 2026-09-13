@@ -43,6 +43,57 @@
 
     <ion-card>
       <ion-card-content>
+        <h2>Attached context</h2>
+        <p>
+          Canonical facts bind automatically. Overlays remain visible and
+          require an explicit decision.
+        </p>
+        @if (contextMutationError(); as message) {
+          <ion-note color="danger" role="alert">{{ message }}</ion-note>
+        }
+      </ion-card-content>
+      @if (overlayFacts().length) {
+        <ion-list>
+          @for (fact of overlayFacts(); track fact.id + ':' + fact.layer) {
+            <ion-item>
+              <ion-label>
+                <h3>
+                  {{ fact.entity }}.{{ fact.field || 'redacted' }} =
+                  {{ factValue(fact) }}
+                </h3>
+                <p>{{ fact.role || 'no cohort role' }} · {{ fact.layer }}</p>
+              </ion-label>
+              @if (isFactFinal(fact)) {
+                <ion-note slot="end">Decided</ion-note>
+              } @else {
+                <ion-button
+                  slot="end"
+                  fill="outline"
+                  [disabled]="!!contextMutationInFlight()"
+                  (click)="reject(fact)"
+                  >Reject</ion-button
+                >
+                <ion-button
+                  slot="end"
+                  [disabled]="
+                    !!contextMutationInFlight() || !fact.scope?.environment
+                  "
+                  (click)="promote(fact)"
+                  >Promote as affected</ion-button
+                >
+              }
+            </ion-item>
+          }
+        </ion-list>
+      } @else {
+        <ion-card-content
+          ><ion-note>No overlay facts are attached.</ion-note></ion-card-content
+        >
+      }
+    </ion-card>
+
+    <ion-card>
+      <ion-card-content>
         <h2>Timeline</h2>
       </ion-card-content>
       @if (timelineMessage(); as message) {

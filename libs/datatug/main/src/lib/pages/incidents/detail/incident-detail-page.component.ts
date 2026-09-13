@@ -1,13 +1,22 @@
-import { Component, computed, effect, inject, signal } from '@angular/core';
+import {
+  Component,
+  DestroyRef,
+  computed,
+  effect,
+  inject,
+  signal,
+} from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import {
   AgentContextService,
   type ContextScope,
+  type FactLayer,
   InvestigationContextService,
 } from '@sneat/datatug-semantic';
 import {
   IonBackButton,
+  IonButton,
   IonButtons,
   IonCard,
   IonCardContent,
@@ -33,6 +42,8 @@ import {
 import {
   IncidentDetail,
   IncidentEvent,
+  IncidentFactView,
+  AppendIncidentEventRequest,
   IncidentRequestContext,
   IncidentStreamItem,
 } from '../../../incidents/models';
@@ -60,6 +71,7 @@ import { agentBaseUrl } from '../../../services/repo/agent-url';
     IonToolbar,
     IonButtons,
     IonBackButton,
+    IonButton,
     IonMenuButton,
     IonTitle,
     IonContent,
@@ -78,6 +90,7 @@ export class IncidentDetailPageComponent {
   private readonly agentContext = inject(AgentContextService);
   private readonly investigationContext = inject(InvestigationContextService);
   private readonly incidentClient = inject(IncidentClientService);
+  private readonly destroyRef = inject(DestroyRef);
 
   private readonly routeParams = toSignal(this.route.paramMap, {
     initialValue: this.route.snapshot.paramMap,
@@ -151,6 +164,21 @@ export class IncidentDetailPageComponent {
   protected readonly isTimelineLoading = signal(false);
   protected readonly unavailableMessage = signal<string | undefined>(undefined);
   protected readonly timelineMessage = signal<string | undefined>(undefined);
+  protected readonly contextMutationError = signal<string | undefined>(
+    undefined,
+  );
+  protected readonly contextMutationInFlight = signal<string | undefined>(
+    undefined,
+  );
+  private readonly pendingContextMutations = new Map<
+    string,
+    AppendIncidentEventRequest
+  >();
+  protected readonly overlayFacts = computed(() =>
+    (this.incident()?.canonicalContext.facts ?? []).filter(
+      (fact) => !!fact.layer && fact.layer !== 'canonical',
+    ),
+  );
   private recoveryTargetKey: string | undefined;
   private selectedInvestigationScope:
     | Omit<ContextScope, 'agentUrl'>
@@ -184,6 +212,9 @@ export class IncidentDetailPageComponent {
       this.recoveryTargetKey = targetKey;
       this.staleRecoveryAttempted.set(false);
       this.staleRecoveryInProgress.set(false);
+      this.contextMutationInFlight.set(undefined);
+      this.contextMutationError.set(undefined);
+      this.pendingContextMutations.clear();
     }
     const baseUrl = agentBaseUrl(context.agentStoreId);
     const investigationScope = {
@@ -307,6 +338,209 @@ export class IncidentDetailPageComponent {
     return event.type;
   }
 
+  protected factValue(fact: IncidentFactView): string {
+    return 'redacted' in fact.value ? 'redacted' : String(fact.value.value);
+  }
+
+  protected isFactFinal(fact: IncidentFactView): boolean {
+    const incident = this.incident();
+    const layer = fact.layer;
+    if (!layer || layer === 'canonical') {
+      return true;
+    }
+    return !!(
+      incident?.contextPromotions?.some(
+        (item) =>
+          item.fact.layer === layer &&
+          item.fact.id === fact.id &&
+          item.fact.scope.storeId === fact.scope?.storeId &&
+          item.fact.scope.projectId === fact.scope?.projectId &&
+          item.fact.scope.environment === fact.scope?.environment,
+      ) || incident?.contextRejections?.some((item) => item.layer === layer)
+    );
+  }
+
+  protected promote(fact: IncidentFactView): void {
+    const context = this.requestContext();
+    const incident = this.incident();
+    const incidentId = this.incidentId();
+    const layer = fact.layer;
+    const factScope = fact.scope;
+    const factEnvironment = factScope?.environment;
+    if (
+      !context ||
+      !incident ||
+      !incidentId ||
+      !layer ||
+      layer === 'canonical' ||
+      !factScope ||
+      !factEnvironment ||
+      this.contextMutationInFlight() ||
+      !this.investigationContext.isCurrentScope(
+        this.investigationScope(context),
+        agentBaseUrl(context.agentStoreId),
+      )
+    ) {
+      return;
+    }
+    const mutationKey = `promote:${factScope.storeId}:${factScope.projectId}:${factScope.environment}:${fact.id}:${layer}`;
+    const request = this.contextMutationRequest(mutationKey, () => ({
+      ...context.scope,
+      mutationId: `context-promote-${crypto.randomUUID()}`,
+      incident: incident.ref,
+      expectedSeq: incident.lastSeq,
+      event: {
+        at: new Date().toISOString(),
+        type: 'context.fact.promoted',
+        assertion: { kind: 'claim', confidence: 'confirmed' },
+        ...(layer.startsWith('hypothesis:')
+          ? {
+              refs: [
+                {
+                  kind: 'hypothesis' as const,
+                  id: layer.slice('hypothesis:'.length),
+                },
+              ],
+            }
+          : {}),
+        payload: {
+          fact: {
+            scope: {
+              storeId: factScope.storeId,
+              projectId: factScope.projectId,
+              environment: factEnvironment,
+            },
+            id: fact.id,
+            layer,
+          },
+          role: 'affected',
+        },
+      },
+    }));
+    this.appendContextEvent(mutationKey, layer, request, fact);
+  }
+
+  protected reject(fact: IncidentFactView): void {
+    const context = this.requestContext();
+    const incident = this.incident();
+    const incidentId = this.incidentId();
+    const layer = fact.layer;
+    if (
+      !context ||
+      !incident ||
+      !incidentId ||
+      !layer ||
+      layer === 'canonical' ||
+      this.contextMutationInFlight() ||
+      !this.investigationContext.isCurrentScope(
+        this.investigationScope(context),
+        agentBaseUrl(context.agentStoreId),
+      )
+    ) {
+      return;
+    }
+    const mutationKey = `reject:${layer}`;
+    const request = this.contextMutationRequest(mutationKey, () => ({
+      ...context.scope,
+      mutationId: `context-reject-${crypto.randomUUID()}`,
+      incident: incident.ref,
+      expectedSeq: incident.lastSeq,
+      event: {
+        at: new Date().toISOString(),
+        type: 'context.fact.rejected',
+        assertion: { kind: 'claim', confidence: 'confirmed' },
+        ...(layer.startsWith('hypothesis:')
+          ? {
+              refs: [
+                {
+                  kind: 'hypothesis' as const,
+                  id: layer.slice('hypothesis:'.length),
+                },
+              ],
+            }
+          : {}),
+        payload: { layer },
+      },
+    }));
+    this.appendContextEvent(mutationKey, layer, request);
+  }
+
+  private contextMutationRequest(
+    key: string,
+    create: () => AppendIncidentEventRequest,
+  ): AppendIncidentEventRequest {
+    const pending = this.pendingContextMutations.get(key);
+    if (pending) {
+      return pending;
+    }
+    const request = create();
+    this.pendingContextMutations.set(key, request);
+    return request;
+  }
+
+  private appendContextEvent(
+    mutationKey: string,
+    layer: Exclude<FactLayer, 'canonical'>,
+    request: AppendIncidentEventRequest,
+    promotedFact?: IncidentFactView,
+  ): void {
+    const context = this.requestContext();
+    const incidentId = this.incidentId();
+    if (!context || !incidentId) {
+      return;
+    }
+    const scope = this.investigationScope(context);
+    const baseUrl = agentBaseUrl(context.agentStoreId);
+    const incidentOperationKey = this.incidentOperationKey(context, incidentId);
+    this.contextMutationError.set(undefined);
+    this.contextMutationInFlight.set(mutationKey);
+    this.incidentClient
+      .append(context, incidentId, request)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((result) => {
+        if (
+          this.currentIncidentOperationKey() !== incidentOperationKey ||
+          !this.investigationContext.isCurrentScope(scope, baseUrl) ||
+          this.contextMutationInFlight() !== mutationKey
+        ) {
+          return;
+        }
+        this.contextMutationInFlight.set(undefined);
+        if (result.kind !== 'ok') {
+          this.contextMutationError.set(result.message);
+          return;
+        }
+        this.pendingContextMutations.delete(mutationKey);
+        this.incident.set(result.data.projection);
+        if (promotedFact) {
+          this.investigationContext.applyPromotion(
+            promotedFact.id,
+            layer,
+            'affected',
+          );
+        }
+        this.isTimelineLoading.set(true);
+        this.incidentClient
+          .events(context, incidentId)
+          .pipe(takeUntilDestroyed(this.destroyRef))
+          .subscribe((timelineResult) => {
+            if (
+              this.currentIncidentOperationKey() !== incidentOperationKey ||
+              !this.investigationContext.isCurrentScope(scope, baseUrl)
+            ) {
+              return;
+            }
+            this.isTimelineLoading.set(false);
+            if (timelineResult.kind === 'ok') {
+              this.events.set(timelineResult.data);
+              this.timelineMessage.set(undefined);
+            } else {
+              this.timelineMessage.set(timelineResult.message);
+            }
+          });
+      });
+  }
+
   ionViewDidEnter(): void {
     const context = this.requestContext();
     if (context) {
@@ -325,5 +559,35 @@ export class IncidentDetailPageComponent {
       agentBaseUrl(context.agentStoreId),
     );
     this.selectedInvestigationScope = investigationScope;
+  }
+
+  private investigationScope(context: IncidentRequestContext) {
+    return {
+      project: context.scope.project,
+      environment: context.scope.environment,
+      securityContextId: context.scope.securityContextId,
+    };
+  }
+
+  private currentIncidentOperationKey(): string | undefined {
+    const context = this.requestContext();
+    const incidentId = this.incidentId();
+    return context && incidentId
+      ? this.incidentOperationKey(context, incidentId)
+      : undefined;
+  }
+
+  private incidentOperationKey(
+    context: IncidentRequestContext,
+    incidentId: string,
+  ): string {
+    return JSON.stringify([
+      context.agentStoreId,
+      context.scope.storeId,
+      context.scope.project,
+      context.scope.environment,
+      context.scope.securityContextId,
+      incidentId,
+    ]);
   }
 }

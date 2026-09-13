@@ -16,6 +16,9 @@ export {
 } from './lib/services/mock-semantic-api';
 export {
   InvestigationContextService,
+  isFactSelectedForBinding,
+  isOverlayFact,
+  normalizedFactLayer,
   ContextCondition,
   ContextItem,
   contextItemToFact,
