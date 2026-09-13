@@ -393,8 +393,14 @@ describe('decoders reject what the appendix forbids (no coercion, no unknown fie
     expect(() => decodeFact({ ...base, role: 'admin' })).toThrow(
       /expected one of/,
     );
+    expect(
+      decodeFact({ ...base, layer: 'hypothesis:checkout / EU west' }),
+    ).toMatchObject({ layer: 'hypothesis:checkout / EU west' });
     expect(() =>
-      decodeFact({ ...base, layer: 'hypothesis:H17 secret' }),
+      decodeFact({ ...base, layer: 'hypothesis: leading-space' }),
+    ).toThrow(/invalid context layer/);
+    expect(() =>
+      decodeFact({ ...base, layer: 'question:line\nbreak' }),
     ).toThrow(/invalid context layer/);
   });
 

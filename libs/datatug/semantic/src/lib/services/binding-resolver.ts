@@ -32,7 +32,13 @@
 // stops a Run, and how it's rendered, is the caller's job (QueryPageComponent).
 
 import { EntityFieldRef } from '../models/models';
-import { ContextCondition, Fact, TypedValue } from '../../contract/types';
+import {
+  ContextCondition,
+  Fact,
+  FactLayer,
+  FactRole,
+  TypedValue,
+} from '../../contract/types';
 
 /** One query parameter the resolver can bind — a subset of `IParameterDef`
  * (`libs/datatug/main`) kept dependency-free here. */
@@ -45,8 +51,15 @@ export interface BindingParameterRef {
   readonly defaultValue?: TypedValue;
 }
 
-export type ResolvedBindingOrigin = 'user' | 'selection' | 'context' | 'default';
-export type BindingBlockReason = 'ambiguous' | 'conflict-unconfirmed' | 'missing-required';
+export type ResolvedBindingOrigin =
+  | 'user'
+  | 'selection'
+  | 'context'
+  | 'default';
+export type BindingBlockReason =
+  | 'ambiguous'
+  | 'conflict-unconfirmed'
+  | 'missing-required';
 
 /** One enabled context {@link Fact} excluded from binding candidacy for a parameter
  * because it declares a comparison other than `'=='` — api-contract.md's
@@ -78,6 +91,12 @@ export interface ResolvedBinding {
    * current ExecutionRequest validation requires it, and an old candidate that omitted
    * it must fail closed at the caller rather than be relabeled as a real fact. */
   readonly factId?: string;
+  /** Cohort metadata carried from the chosen context fact. Display-only: it never
+   * changes precedence, authorization, or the wire binding origin. */
+  readonly role?: FactRole;
+  /** Explicitly selectable cohort facts for the same semantic parameter. No option is
+   * chosen implicitly when their typed values differ. */
+  readonly cohortOptions?: readonly CohortBindingOption[];
   readonly blocked?: BindingBlockReason;
   /** Set only when `blocked === 'conflict-unconfirmed'`. */
   readonly conflict?: {
@@ -93,6 +112,14 @@ export interface ResolvedBinding {
   readonly skippedConditionFacts?: readonly SkippedConditionFact[];
 }
 
+export interface CohortBindingOption {
+  readonly factKey: string;
+  readonly factId: string;
+  readonly value: TypedValue;
+  readonly role?: FactRole;
+  readonly layer?: FactLayer;
+}
+
 export interface ResolveBindingsInput {
   readonly parameters: readonly BindingParameterRef[];
   /** Typically the panel/grid selection's Fact(s) for the current scope. More than one
@@ -101,8 +128,15 @@ export interface ResolveBindingsInput {
   /** The *enabled* Investigation Context facts for the current scope (disabled facts
    * must already be filtered out by the caller — "Disabled facts are ignored"). */
   readonly contextFacts: readonly Fact[];
+  /** Stable identity of the currently active Investigation Context scope. Facts are
+   * intentionally scope-free semantic values, so callers provide the owning scope
+   * separately when cohort choices need a qualified identity. */
+  readonly contextScopeKey?: string;
   /** Explicit user edits — "an explicit user edit wins" over every automatic tier. */
   readonly userValues?: ReadonlyMap<string, TypedValue>;
+  /** Explicit context cohort choice keyed by parameter id. Values are qualified fact
+   * keys from {@link CohortBindingOption}, never a role-derived precedence rule. */
+  readonly selectedContextFactKeys?: ReadonlyMap<string, string>;
   /** Parameter ids the user explicitly cleared — "The user can clear a value; a
    * cleared required value blocks Run until supplied." A cleared parameter is never
    * silently resurrected; the caller re-derives this set only from explicit user
@@ -134,12 +168,36 @@ function distinctValues(facts: readonly Fact[]): TypedValue[] {
   return out;
 }
 
-function factIdForValue(facts: readonly Fact[], value: TypedValue): string | undefined {
-  return facts.find((fact) => typedValuesEqual(fact.value, value))?.id || undefined;
+function factIdForValue(
+  facts: readonly Fact[],
+  value: TypedValue,
+): string | undefined {
+  return (
+    facts.find((fact) => typedValuesEqual(fact.value, value))?.id || undefined
+  );
+}
+
+function contextFactKey(fact: Fact, scopeKey: string): string {
+  return JSON.stringify([scopeKey, fact.id, fact.layer ?? 'canonical']);
+}
+
+function cohortOptionsFor(
+  facts: readonly Fact[],
+  scopeKey: string,
+): CohortBindingOption[] {
+  return facts.map((fact) => ({
+    factKey: contextFactKey(fact, scopeKey),
+    factId: fact.id,
+    value: fact.value,
+    ...(fact.role ? { role: fact.role } : {}),
+    ...(fact.layer ? { layer: fact.layer } : {}),
+  }));
 }
 
 function factsFor(facts: readonly Fact[], meta: EntityFieldRef): Fact[] {
-  return facts.filter((f) => f.entity === meta.entity && f.field === meta.field);
+  return facts.filter(
+    (f) => f.entity === meta.entity && f.field === meta.field,
+  );
 }
 
 /** Absent `condition` means `'=='` (api-contract.md's `Fact.condition` paragraph —
@@ -152,7 +210,10 @@ function isEqualityCondition(fact: Fact): boolean {
  * unaffected" (a selection fact is never filtered by condition here; only context
  * facts are), so callers pass the already-selection-scoped or already-context-scoped
  * slice explicitly rather than this helper branching on `origin`. */
-function equalityFactsFor(facts: readonly Fact[], meta: EntityFieldRef): Fact[] {
+function equalityFactsFor(
+  facts: readonly Fact[],
+  meta: EntityFieldRef,
+): Fact[] {
   return factsFor(facts, meta).filter(isEqualityCondition);
 }
 
@@ -176,7 +237,11 @@ function skippedConditionFactsFor(
     .filter((f) => !isEqualityCondition(f))
     .map((f) => {
       const condition = f.condition as ContextCondition;
-      return { factId: f.id, condition, explanation: explainSkippedCondition(condition) };
+      return {
+        factId: f.id,
+        condition,
+        explanation: explainSkippedCondition(condition),
+      };
     });
 }
 
@@ -184,7 +249,9 @@ function withSkipped(
   binding: ResolvedBinding,
   skippedConditionFacts: readonly SkippedConditionFact[],
 ): ResolvedBinding {
-  return skippedConditionFacts.length ? { ...binding, skippedConditionFacts } : binding;
+  return skippedConditionFacts.length
+    ? { ...binding, skippedConditionFacts }
+    : binding;
 }
 
 function unresolved(
@@ -209,6 +276,9 @@ export function resolveBindings(
   const userValues = input.userValues ?? new Map<string, TypedValue>();
   const clearedParamIds = input.clearedParamIds ?? new Set<string>();
   const confirmedConflicts = input.confirmedConflicts ?? new Set<string>();
+  const selectedContextFactKeys =
+    input.selectedContextFactKeys ?? new Map<string, string>();
+  const contextScopeKey = input.contextScopeKey ?? '';
 
   return input.parameters.map((param): ResolvedBinding => {
     if (clearedParamIds.has(param.id)) {
@@ -217,7 +287,12 @@ export function resolveBindings(
 
     const userValue = userValues.get(param.id);
     if (userValue !== undefined) {
-      return { parameterId: param.id, meta: param.meta, value: userValue, origin: 'user' };
+      return {
+        parameterId: param.id,
+        meta: param.meta,
+        value: userValue,
+        origin: 'user',
+      };
     }
 
     const meta = param.meta;
@@ -231,7 +306,10 @@ export function resolveBindings(
     // `Fact.condition` paragraph.
     const selectionFacts = factsFor(input.selectionFacts, meta);
     const selectionValues = distinctValues(selectionFacts);
-    const skippedConditionFacts = skippedConditionFactsFor(input.contextFacts, meta);
+    const skippedConditionFacts = skippedConditionFactsFor(
+      input.contextFacts,
+      meta,
+    );
     const resolved = (binding: ResolvedBinding): ResolvedBinding =>
       withSkipped(binding, skippedConditionFacts);
 
@@ -249,6 +327,7 @@ export function resolveBindings(
     // value either (`skippedConditionFacts` above already reports it separately).
     const contextFacts = equalityFactsFor(input.contextFacts, meta);
     const contextValues = distinctValues(contextFacts);
+    const cohortOptions = cohortOptionsFor(contextFacts, contextScopeKey);
 
     if (selectionValues.length === 1) {
       const selectionValue = selectionValues[0];
@@ -274,20 +353,42 @@ export function resolveBindings(
 
     // No selection candidate — fall through to context, then default.
     if (contextValues.length > 1) {
+      const selectedFactKey = selectedContextFactKeys.get(param.id);
+      const selectedFact = selectedFactKey
+        ? contextFacts.find(
+            (fact) => contextFactKey(fact, contextScopeKey) === selectedFactKey,
+          )
+        : undefined;
+      if (selectedFact) {
+        return resolved({
+          parameterId: param.id,
+          meta,
+          value: selectedFact.value,
+          origin: 'context',
+          factId: selectedFact.id,
+          ...(selectedFact.role ? { role: selectedFact.role } : {}),
+          cohortOptions,
+        });
+      }
       return resolved({
         parameterId: param.id,
         meta,
         blocked: 'ambiguous',
         ambiguousValues: contextValues,
+        cohortOptions,
       });
     }
     if (contextValues.length === 1) {
+      const selectedFact = contextFacts.find((fact) =>
+        typedValuesEqual(fact.value, contextValues[0]),
+      );
       return resolved({
         parameterId: param.id,
         meta,
         value: contextValues[0],
         origin: 'context',
-        factId: factIdForValue(contextFacts, contextValues[0]),
+        factId: selectedFact?.id,
+        ...(selectedFact?.role ? { role: selectedFact.role } : {}),
       });
     }
 
@@ -316,6 +417,8 @@ export function isBindingRunnable(binding: ResolvedBinding): boolean {
 
 /** `true` if any *required* parameter is missing a runnable binding — the caller must
  * disable Run and show why. */
-export function hasBlockingBindings(bindings: readonly ResolvedBinding[]): boolean {
+export function hasBlockingBindings(
+  bindings: readonly ResolvedBinding[],
+): boolean {
   return bindings.some((b) => !!b.blocked);
 }

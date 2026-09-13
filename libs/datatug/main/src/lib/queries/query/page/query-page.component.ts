@@ -71,6 +71,7 @@ import {
   LimitationHeaderComponent,
   ResolvedBinding,
   resolveBindings,
+  scopeKey,
   RunQueryRequest,
   RunQueryResponse,
   SemanticApiService,
@@ -158,6 +159,7 @@ function resolvedBindingEqual(a: ResolvedBinding, b: ResolvedBinding): boolean {
     a.parameterId !== b.parameterId ||
     a.origin !== b.origin ||
     a.factId !== b.factId ||
+    a.role !== b.role ||
     a.blocked !== b.blocked ||
     a.meta?.entity !== b.meta?.entity ||
     a.meta?.field !== b.meta?.field
@@ -186,6 +188,12 @@ function resolvedBindingEqual(a: ResolvedBinding, b: ResolvedBinding): boolean {
     b.conflict &&
     (!typedValuesEqual(a.conflict.selectionValue, b.conflict.selectionValue) ||
       !typedValuesEqual(a.conflict.contextValue, b.conflict.contextValue))
+  ) {
+    return false;
+  }
+  if (
+    JSON.stringify(a.cohortOptions ?? []) !==
+    JSON.stringify(b.cohortOptions ?? [])
   ) {
     return false;
   }
@@ -398,6 +406,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private readonly userBindingValues = signal<ReadonlyMap<string, TypedValue>>(
     new Map(),
   );
+  private readonly selectedContextFactKeys = signal<
+    ReadonlyMap<string, string>
+  >(new Map());
   /** Task 15 item 3 — every semantic parameter's resolved binding, via
    * `binding-resolver.ts`'s precedence engine (explicit user edit > selection >
    * context > default; ambiguous/conflict/missing-required block Run). */
@@ -440,6 +451,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly accessBlockers = signal<readonly string[]>([]);
   public readonly runError = signal<string | undefined>(undefined);
   public readonly runResult = signal<RunQueryResponse | undefined>(undefined);
+  private readonly lastRunBindingRoles = signal<
+    ReadonlyMap<string, ResolvedBinding['role']>
+  >(new Map());
 
   /** The resolved definition backing the CURRENT `queryState` — a dedicated
    * signal, deliberately NOT read straight off `queryState.def` (a plain
@@ -1060,6 +1074,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const contextFacts = this.investigationContext
       .items()
       .filter((item) => item.enabled && isFactSelectedForBinding(item));
+    const activeContextScope = this.investigationContext.scope();
+    const contextScopeKey = activeContextScope
+      ? scopeKey(activeContextScope)
+      : undefined;
     const clearedParamIds = this.clearedParamIds();
 
     // First pass with no confirmations, to discover the CURRENT conflict pair (if
@@ -1068,6 +1086,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const discovery = resolveBindings({
       parameters,
       userValues: this.userBindingValues(),
+      selectedContextFactKeys: this.selectedContextFactKeys(),
+      contextScopeKey,
       selectionFacts,
       contextFacts,
       clearedParamIds,
@@ -1093,6 +1113,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       ? resolveBindings({
           parameters,
           userValues: this.userBindingValues(),
+          selectedContextFactKeys: this.selectedContextFactKeys(),
+          contextScopeKey,
           selectionFacts,
           contextFacts,
           clearedParamIds,
@@ -1105,6 +1127,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.project?.ref.projectId,
       this.envId,
       this.queryId,
+      this.agentContext.securityContextId(),
     ]);
     const promotionRevision = this.investigationContext.promotionRevision();
     if (snapshotKey !== this.bindingSnapshotKey) {
@@ -1233,6 +1256,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.promotionRebindPending = false;
     this.dismissedRebinds.clear();
     this.clearedParamIds.set(new Set([...this.clearedParamIds(), parameterId]));
+    this.selectedContextFactKeys.set(
+      new Map(
+        [...this.selectedContextFactKeys()].filter(
+          ([id]) => id !== parameterId,
+        ),
+      ),
+    );
     this.updateBindings();
   }
 
@@ -1247,6 +1277,31 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     );
     this.userBindingValues.set(
       new Map(this.userBindingValues()).set(parameterId, value),
+    );
+    this.selectedContextFactKeys.set(
+      new Map(
+        [...this.selectedContextFactKeys()].filter(
+          ([id]) => id !== parameterId,
+        ),
+      ),
+    );
+    this.updateBindings();
+  }
+
+  public chooseContextCohort(parameterId: string, factKey: string): void {
+    this.promotionRebindPending = false;
+    this.dismissedRebinds.clear();
+    this.rebindSuggestions.set([]);
+    this.clearedParamIds.set(
+      new Set([...this.clearedParamIds()].filter((id) => id !== parameterId)),
+    );
+    this.userBindingValues.set(
+      new Map(
+        [...this.userBindingValues()].filter(([id]) => id !== parameterId),
+      ),
+    );
+    this.selectedContextFactKeys.set(
+      new Map(this.selectedContextFactKeys()).set(parameterId, factKey),
     );
     this.updateBindings();
   }
@@ -1293,7 +1348,14 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       parameterId,
       rebindFingerprint(suggestion.previous, suggestion.suggested),
     );
-    this.updateBindings();
+    const remaining = this.rebindSuggestions().filter(
+      (item) => item.parameterId !== parameterId,
+    );
+    this.rebindSuggestions.set(remaining);
+    if (!remaining.length) {
+      this.promotionRebindPending = false;
+      this.dismissedRebinds.clear();
+    }
   }
 
   protected rebindSuggestionLabel(suggestion: RebindSuggestion): string {
@@ -1317,7 +1379,19 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     }
     const origin =
       binding.origin === 'user' ? 'your edit' : `from ${binding.origin}`;
-    return `${displayTypedValue(binding.value)} · ${origin}`;
+    const role =
+      binding.origin === 'context' && binding.role ? ` · ${binding.role}` : '';
+    return `${displayTypedValue(binding.value)} · ${origin}${role}`;
+  }
+
+  protected selectedCohortFactKey(parameterId: string): string | undefined {
+    return this.selectedContextFactKeys().get(parameterId);
+  }
+
+  protected cohortOptionLabel(
+    option: NonNullable<ResolvedBinding['cohortOptions']>[number],
+  ): string {
+    return `${option.role ?? 'unassigned'} = ${displayTypedValue(option.value)}`;
   }
 
   /** AC:typed-context-isolation — ">1 distinct typed value" rendered for an
@@ -1355,6 +1429,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     return binding.originEvidence === 'server-default'
       ? `${binding.origin} · server default`
       : `${binding.origin} · client-reported`;
+  }
+
+  protected appliedBindingRole(binding: Binding): ResolvedBinding['role'] {
+    return this.lastRunBindingRoles().get(binding.parameterId);
   }
 
   protected chooseTarget(source: string): void {
@@ -1424,7 +1502,15 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.availableSnapshot.set(undefined);
     const parameters: Record<string, TypedValue> = {};
     const bindingOrigins: ExecutionBindingOrigin[] = [];
-    for (const binding of this.effectiveBindings()) {
+    const effectiveBindings = this.effectiveBindings();
+    this.lastRunBindingRoles.set(
+      new Map(
+        effectiveBindings
+          .filter((binding) => !!binding.role)
+          .map((binding) => [binding.parameterId, binding.role]),
+      ),
+    );
+    for (const binding of effectiveBindings) {
       // isBindingRunnable() (effectiveBindings' own filter) guarantees `value` is set.
       parameters[binding.parameterId] = binding.value as TypedValue;
       const factId = binding.factId;

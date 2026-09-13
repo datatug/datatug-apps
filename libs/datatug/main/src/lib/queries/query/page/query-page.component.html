@@ -133,6 +133,28 @@
                 <p>{{ bindingValueLabel(binding) }}</p>
               }
             </ion-label>
+            @if (binding.cohortOptions?.length) {
+              @for (option of binding.cohortOptions; track option.factKey) {
+                @if (
+                  option.factKey !== selectedCohortFactKey(binding.parameterId)
+                ) {
+                  <ion-button
+                    slot="end"
+                    fill="outline"
+                    (click)="
+                      chooseContextCohort(binding.parameterId, option.factKey)
+                    "
+                  >
+                    @if (selectedCohortFactKey(binding.parameterId)) {
+                      Other compare side:
+                    } @else {
+                      Use
+                    }
+                    {{ cohortOptionLabel(option) }}
+                  </ion-button>
+                }
+              }
+            }
             @if (binding.blocked === 'conflict-unconfirmed') {
               <ion-button
                 slot="end"
@@ -290,6 +312,14 @@
         @for (applied of result.bindingsApplied; track applied.parameterId) {
           <ion-item lines="none">
             <ion-label>{{ appliedBindingLabel(applied) }}</ion-label>
+            @if (appliedBindingRole(applied); as role) {
+              <ion-badge
+                slot="end"
+                color="secondary"
+                data-testid="applied-binding-role"
+                >{{ role }}</ion-badge
+              >
+            }
             <ion-badge slot="end" color="medium">{{
               appliedBindingProvenance(applied)
             }}</ion-badge>

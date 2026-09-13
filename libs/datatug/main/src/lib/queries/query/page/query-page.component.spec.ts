@@ -371,6 +371,55 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
 
     expect(component.rebindSuggestions()).toEqual([]);
     expect(component.effectiveBindings()).toEqual([]);
+
+    investigationContext.addValue({
+      entityField: { entity: 'Customer', field: 'ID' },
+      value: 23,
+      label: 'Customer.ID = 23',
+      source: 'manual',
+    });
+    TestBed.tick();
+
+    expect(component.rebindSuggestions()).toEqual([]);
+  });
+
+  it('lets the user choose affected while keeping healthy control visible as another compare side', async () => {
+    component = await createComponent({});
+    investigationContext.addValue({
+      entityField: { entity: 'Customer', field: 'ID' },
+      value: 7,
+      label: 'Affected customer',
+      source: 'manual',
+      role: 'affected',
+    });
+    investigationContext.addValue({
+      entityField: { entity: 'Customer', field: 'ID' },
+      value: 9,
+      label: 'Healthy control',
+      source: 'manual',
+      role: 'healthy_control',
+    });
+    TestBed.tick();
+    const unresolved = component.bindings()[0];
+    expect(unresolved.blocked).toBe('ambiguous');
+    const affected = unresolved.cohortOptions?.find(
+      (option) => option.role === 'affected',
+    );
+    expect(affected).toBeDefined();
+
+    component.chooseContextCohort('CustomerId', affected!.factKey);
+
+    const selected = component.bindings()[0];
+    expect(selected).toMatchObject({ role: 'affected', origin: 'context' });
+    expect(selected.cohortOptions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ role: 'healthy_control' }),
+      ]),
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((component as any).bindingValueLabel(selected)).toBe(
+      '7 · from context · affected',
+    );
   });
 
   it('treats a direct user edit as the new accepted snapshot after promotion', async () => {
@@ -401,6 +450,31 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
         origin: 'user',
       }),
     ]);
+  });
+
+  it('resets promotion rebinding when the security context changes in the same project and environment', async () => {
+    component = await createComponent({});
+    const overlay = investigationContext.addValue({
+      entityField: { entity: 'Customer', field: 'ID' },
+      value: 11,
+      label: 'Customer.ID = 11',
+      source: 'grid',
+      layer: 'hypothesis:H17',
+    });
+    TestBed.tick();
+    investigationContext.applyPromotion(
+      overlay.id,
+      'hypothesis:H17',
+      'affected',
+    );
+    TestBed.tick();
+    expect(component.rebindSuggestions()).toHaveLength(1);
+
+    agentContext.securityContextId.set('sctx-2');
+    TestBed.tick();
+
+    expect(component.rebindSuggestions()).toEqual([]);
+    expect(component.effectiveBindings()).toEqual([]);
   });
 
   it('selection (router state from the context panel, a wire Binding[]) is reported as origin "selection", not "context", when both agree', async () => {
@@ -564,6 +638,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       value: 7,
       label: 'Customer.ID = 7',
       source: 'grid',
+      role: 'affected',
     });
     TestBed.tick();
     runQueryMock.mockReturnValue(of(response));
@@ -588,6 +663,10 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       mode: 'live',
     });
     expect(component.runResult()).toEqual(response);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(
+      (component as any).appliedBindingRole(response.bindingsApplied[0]),
+    ).toBe('affected');
     expect(component.running()).toBe(false);
     expect(component.runError()).toBeUndefined();
   });

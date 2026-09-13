@@ -212,6 +212,9 @@ export class IncidentDetailPageComponent {
       this.recoveryTargetKey = targetKey;
       this.staleRecoveryAttempted.set(false);
       this.staleRecoveryInProgress.set(false);
+      this.contextMutationInFlight.set(undefined);
+      this.contextMutationError.set(undefined);
+      this.pendingContextMutations.clear();
     }
     const baseUrl = agentBaseUrl(context.agentStoreId);
     const investigationScope = {
@@ -488,6 +491,7 @@ export class IncidentDetailPageComponent {
     }
     const scope = this.investigationScope(context);
     const baseUrl = agentBaseUrl(context.agentStoreId);
+    const incidentOperationKey = this.incidentOperationKey(context, incidentId);
     this.contextMutationError.set(undefined);
     this.contextMutationInFlight.set(mutationKey);
     this.incidentClient
@@ -495,6 +499,7 @@ export class IncidentDetailPageComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((result) => {
         if (
+          this.currentIncidentOperationKey() !== incidentOperationKey ||
           !this.investigationContext.isCurrentScope(scope, baseUrl) ||
           this.contextMutationInFlight() !== mutationKey
         ) {
@@ -519,7 +524,10 @@ export class IncidentDetailPageComponent {
           .events(context, incidentId)
           .pipe(takeUntilDestroyed(this.destroyRef))
           .subscribe((timelineResult) => {
-            if (!this.investigationContext.isCurrentScope(scope, baseUrl)) {
+            if (
+              this.currentIncidentOperationKey() !== incidentOperationKey ||
+              !this.investigationContext.isCurrentScope(scope, baseUrl)
+            ) {
               return;
             }
             this.isTimelineLoading.set(false);
@@ -559,5 +567,27 @@ export class IncidentDetailPageComponent {
       environment: context.scope.environment,
       securityContextId: context.scope.securityContextId,
     };
+  }
+
+  private currentIncidentOperationKey(): string | undefined {
+    const context = this.requestContext();
+    const incidentId = this.incidentId();
+    return context && incidentId
+      ? this.incidentOperationKey(context, incidentId)
+      : undefined;
+  }
+
+  private incidentOperationKey(
+    context: IncidentRequestContext,
+    incidentId: string,
+  ): string {
+    return JSON.stringify([
+      context.agentStoreId,
+      context.scope.storeId,
+      context.scope.project,
+      context.scope.environment,
+      context.scope.securityContextId,
+      incidentId,
+    ]);
   }
 }

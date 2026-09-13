@@ -238,10 +238,9 @@ function decodeFactLayer(v: unknown, path: string): Fact['layer'] {
   if (layer === 'canonical') {
     return layer;
   }
-  const match = /^(hypothesis|participant|question):([^/\\\p{Cc}\s]+)$/u.exec(
-    layer,
-  );
-  if (!match) {
+  const match = /^(hypothesis|participant|question):(.*)$/u.exec(layer);
+  const ownerId = match?.[2];
+  if (!ownerId || ownerId.trim() !== ownerId || /\p{Cc}/u.test(ownerId)) {
     return fail(path, `invalid context layer ${JSON.stringify(layer)}`);
   }
   return layer as Fact['layer'];

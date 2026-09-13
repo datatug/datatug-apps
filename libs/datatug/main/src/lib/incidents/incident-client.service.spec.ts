@@ -815,6 +815,7 @@ describe('IncidentClientService', () => {
         },
       ],
       ['context.fact.rejected', { layer: 'hypothesis:H17' }],
+      ['context.fact.rejected', { layer: 'hypothesis:checkout / EU west' }],
     ])('accepts a valid %s event view', (type, payload) => {
       let result: unknown;
       service.events(CONTEXT, 'INC-1').subscribe((r) => (result = r));
@@ -934,6 +935,14 @@ describe('IncidentClientService', () => {
         eventFixture(
           'note.added',
           { body: 'Visible note', policyBypass: true },
+          { seq: 2 },
+        ),
+      ],
+      [
+        'trimmed overlay owner id',
+        eventFixture(
+          'context.fact.rejected',
+          { layer: 'hypothesis: leading-space' },
           { seq: 2 },
         ),
       ],
@@ -1105,6 +1114,66 @@ describe('IncidentClientService', () => {
         projection: { ...INCIDENT, policyBypass: true },
         replayed: false,
       });
+      expect(result).toEqual({
+        kind: 'error',
+        message: 'Invalid incident response.',
+      });
+    });
+
+    it('rejects duplicate promotions for the same qualified fact identity', () => {
+      let result: unknown;
+      service
+        .append(CONTEXT, 'INC-1', request)
+        .subscribe((value) => (result = value));
+      const duplicate = {
+        eventId: 'event-2',
+        fact: request.event.payload.fact,
+        role: 'affected' as const,
+      };
+      httpMock.expectOne(`${BASE_URL}/INC-1/events`).flush({
+        event: eventFixture('context.fact.promoted', request.event.payload, {
+          seq: 2,
+          assertion: request.event.assertion,
+          refs: request.event.refs,
+        }),
+        projection: {
+          ...INCIDENT,
+          contextPromotions: [{ ...duplicate, eventId: 'event-1' }, duplicate],
+        },
+        replayed: false,
+      });
+
+      expect(result).toEqual({
+        kind: 'error',
+        message: 'Invalid incident response.',
+      });
+    });
+
+    it('rejects promotion and rejection histories that contradict on one layer', () => {
+      let result: unknown;
+      service
+        .append(CONTEXT, 'INC-1', request)
+        .subscribe((value) => (result = value));
+      httpMock.expectOne(`${BASE_URL}/INC-1/events`).flush({
+        event: eventFixture('context.fact.promoted', request.event.payload, {
+          seq: 2,
+          assertion: request.event.assertion,
+          refs: request.event.refs,
+        }),
+        projection: {
+          ...INCIDENT,
+          contextPromotions: [
+            {
+              eventId: 'event-1',
+              fact: request.event.payload.fact,
+              role: 'affected',
+            },
+          ],
+          contextRejections: [{ eventId: 'event-2', layer: 'hypothesis:H17' }],
+        },
+        replayed: false,
+      });
+
       expect(result).toEqual({
         kind: 'error',
         message: 'Invalid incident response.',

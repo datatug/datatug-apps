@@ -608,6 +608,156 @@ describe('IncidentDetailPageComponent', () => {
     expect(eventsSpy).toHaveBeenCalledTimes(2);
   });
 
+  it('ignores a completed append and its timeline refresh after navigating to another incident in the same scope', async () => {
+    const overlay: IncidentFactView = {
+      id: 'fact-1',
+      entity: 'Customer',
+      field: 'ID',
+      value: { type: 'integer', value: '11' },
+      origin: 'context',
+      enabled: true,
+      layer: 'hypothesis:H17',
+      scope: {
+        storeId: 'ops',
+        projectId: 'billing',
+        environment: 'prod',
+      },
+    };
+    const appendResult$ = new Subject<
+      IncidentApiResult<{
+        event: IncidentStreamItem['event'];
+        projection: IncidentDetail;
+        replayed: boolean;
+      }>
+    >();
+    await render(
+      undefined,
+      undefined,
+      of({
+        kind: 'ok',
+        data: {
+          ...incident('First incident'),
+          canonicalContext: { facts: [overlay] },
+        },
+      }),
+    );
+    appendSpy.mockReturnValue(appendResult$);
+    interface Mutations {
+      promote(fact: IncidentFactView): void;
+    }
+    (fixture.componentInstance as unknown as Mutations).promote(overlay);
+
+    getSpy.mockReturnValue(
+      of({ kind: 'ok', data: incident('Second incident', 'INC-2') }),
+    );
+    eventsSpy.mockReturnValue(
+      of({
+        kind: 'ok',
+        data: [streamItem('cursor-2', 'Second timeline', 'INC-2')],
+      }),
+    );
+    paramMap$.next(convertToParamMap({ storeId: 'ops', incidentId: 'INC-2' }));
+    fixture.detectChanges();
+
+    appendResult$.next({
+      kind: 'ok',
+      data: {
+        event: {
+          ...streamItem('promote-1', '', 'INC-1').event,
+          seq: 3,
+          type: 'context.fact.promoted',
+          payload: {
+            fact: {
+              scope: overlay.scope!,
+              id: overlay.id,
+              layer: 'hypothesis:H17',
+            },
+            role: 'affected',
+          },
+        },
+        projection: incident('Stale first incident', 'INC-1'),
+        replayed: false,
+      },
+    });
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.innerHTML).toContain('Second incident');
+    expect(fixture.nativeElement.innerHTML).toContain('Second timeline');
+    expect(fixture.nativeElement.innerHTML).not.toContain(
+      'Stale first incident',
+    );
+    expect(applyPromotionSpy).not.toHaveBeenCalled();
+    expect(eventsSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries a failed layer rejection with the same mutation id and refreshes only after success', async () => {
+    const overlay: IncidentFactView = {
+      id: 'fact-reject',
+      entity: 'Customer',
+      field: 'ID',
+      value: { redacted: true },
+      origin: 'context',
+      enabled: true,
+      role: 'healthy_control',
+      layer: 'question:compare side',
+      scope: {
+        storeId: 'ops',
+        projectId: 'billing',
+        environment: 'prod',
+      },
+    };
+    const withOverlay: IncidentDetail = {
+      ...incident('Checkout errors spike'),
+      canonicalContext: { facts: [overlay] },
+    };
+    await render(undefined, undefined, of({ kind: 'ok', data: withOverlay }));
+    appendSpy
+      .mockReturnValueOnce(of({ kind: 'error', message: 'Connection lost.' }))
+      .mockReturnValueOnce(
+        of({
+          kind: 'ok',
+          data: {
+            event: {
+              ...streamItem('reject-server', '').event,
+              seq: 3,
+              type: 'context.fact.rejected',
+              payload: { layer: 'question:compare side' },
+            },
+            projection: {
+              ...withOverlay,
+              lastSeq: 3,
+              contextRejections: [
+                {
+                  eventId: 'event-reject-server',
+                  layer: 'question:compare side',
+                },
+              ],
+            },
+            replayed: false,
+          },
+        }),
+      );
+    interface Mutations {
+      reject(fact: IncidentFactView): void;
+    }
+    const component = fixture.componentInstance as unknown as Mutations;
+
+    component.reject(overlay);
+    const firstRequest = appendSpy.mock.calls[0][2];
+    expect(firstRequest.event).toMatchObject({
+      type: 'context.fact.rejected',
+      payload: { layer: 'question:compare side' },
+    });
+    expect(eventsSpy).toHaveBeenCalledTimes(1);
+
+    component.reject(overlay);
+
+    expect(appendSpy).toHaveBeenCalledTimes(2);
+    expect(appendSpy.mock.calls[1][2].mutationId).toBe(firstRequest.mutationId);
+    expect(applyPromotionSpy).not.toHaveBeenCalled();
+    expect(eventsSpy).toHaveBeenCalledTimes(2);
+  });
+
   it('finalizes only the promoted fact identity while a layer rejection finalizes the whole layer', async () => {
     const first: IncidentFactView = {
       id: 'fact-1',

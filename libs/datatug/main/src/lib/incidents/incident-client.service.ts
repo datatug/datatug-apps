@@ -479,6 +479,7 @@ function decodeIncident(value: unknown): IncidentDetail {
     !isContextView(incident['canonicalContext']) ||
     !optionalContextPromotions(incident['contextPromotions']) ||
     !optionalContextRejections(incident['contextRejections']) ||
+    !hasValidContextDecisionHistory(incident) ||
     !optionalArtifactRefs(incident['assetRefs']) ||
     !optionalStringArray(incident['notes'])
   ) {
@@ -748,7 +749,7 @@ function optionalFactLayer(value: unknown): boolean {
   for (const prefix of ['hypothesis:', 'participant:', 'question:']) {
     if (value.startsWith(prefix)) {
       const id = value.slice(prefix.length);
-      return !!id && !/[/\\\p{Cc}\s]/u.test(id);
+      return !!id && id.trim() === id && !/\p{Cc}/u.test(id);
     }
   }
   return false;
@@ -813,6 +814,45 @@ function optionalContextRejections(value: unknown): boolean {
           item['layer'] !== 'canonical',
       ))
   );
+}
+
+function hasValidContextDecisionHistory(
+  incident: Record<string, unknown>,
+): boolean {
+  const promotions = (incident['contextPromotions'] ?? []) as Array<
+    Record<string, unknown>
+  >;
+  const rejections = (incident['contextRejections'] ?? []) as Array<
+    Record<string, unknown>
+  >;
+  const promotionKeys = new Set<string>();
+  const promotedLayers = new Set<string>();
+  for (const promotion of promotions) {
+    const fact = promotion['fact'] as Record<string, unknown>;
+    const scope = fact['scope'] as Record<string, unknown>;
+    const layer = fact['layer'] as string;
+    const key = JSON.stringify([
+      scope['storeId'],
+      scope['projectId'],
+      scope['environment'] ?? '',
+      fact['id'],
+      layer,
+    ]);
+    if (promotionKeys.has(key)) {
+      return false;
+    }
+    promotionKeys.add(key);
+    promotedLayers.add(layer);
+  }
+  const rejectedLayers = new Set<string>();
+  for (const rejection of rejections) {
+    const layer = rejection['layer'] as string;
+    if (rejectedLayers.has(layer) || promotedLayers.has(layer)) {
+      return false;
+    }
+    rejectedLayers.add(layer);
+  }
+  return true;
 }
 
 function isRfc3339(value: unknown): value is string {
