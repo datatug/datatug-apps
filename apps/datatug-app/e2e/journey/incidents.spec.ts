@@ -1,0 +1,183 @@
+import type { Response } from '@playwright/test';
+import { expect, test } from './fixtures/agent-server';
+import { activePage } from './helpers/active-page';
+
+/**
+ * Incidentius Task 3's real browser contract. The incident agent owns an
+ * isolated copy of the demo project because `datatug serve` persists the
+ * default incident repository below `<project>/incidents`; nothing in this
+ * journey intercepts or fabricates an incident response.
+ *
+ * Flow: incident list -> Houston create -> returned server detail -> cold
+ * detail reload -> persisted list. The process restart between filling and
+ * submitting rotates the real server-issued securityContextId while retaining
+ * the same non-default agent URL and repository. That makes the first POST
+ * fail STALE_CONTEXT and proves the UI refreshes that exact agent before
+ * retrying the same mutation.
+ */
+
+const DEMO_PROJECT_ID = 'datatug-demo-project';
+const DEMO_ENV_ID = 'local';
+
+function isIncidentCreateResponse(
+  response: Response,
+  agentOrigin: string,
+): boolean {
+  return (
+    response.request().method() === 'POST' &&
+    response.url() === `${agentOrigin}/datatug/incidents`
+  );
+}
+
+test.describe('Incidentius Task 3 — real persisted Houston journey', () => {
+  test('creates through stale-context recovery, opens server detail, cold reloads, and remains listed', async ({
+    incidentAgentServer,
+    page,
+  }) => {
+    const agentStoreId = incidentAgentServer.storeId;
+    const agentOrigin = `http://${incidentAgentServer.host}:${incidentAgentServer.port}`;
+    const scope = new URLSearchParams({
+      agent: agentStoreId,
+      storeId: DEMO_PROJECT_ID,
+      project: DEMO_PROJECT_ID,
+      environment: DEMO_ENV_ID,
+    });
+    const listUrl = `/incidents?${scope.toString()}`;
+    const title = `Houston journey worker ${test.info().workerIndex}`;
+    const description = 'Persisted by the real datatug-cli v0.28.0 agent.';
+
+    const initialInfoResponse = page.waitForResponse(
+      (response) =>
+        response.url() === `${agentOrigin}/datatug/agent-info` && response.ok(),
+    );
+    const initialListResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' &&
+        response.url().startsWith(`${agentOrigin}/datatug/incidents?`) &&
+        response.ok(),
+    );
+    await page.goto(listUrl);
+    const initialInfo = await initialInfoResponse;
+    await initialListResponse;
+
+    const initialSecurityContextId = String(
+      ((await initialInfo.json()) as { securityContextId?: unknown })
+        .securityContextId,
+    );
+    expect(initialSecurityContextId).toMatch(/^[a-f0-9]{32}$/);
+    await expect(activePage(page).getByText('No incidents yet.')).toBeVisible();
+
+    await activePage(page)
+      .getByRole('link', { name: "Houston, we've got a problem" })
+      .click();
+    await expect(page).toHaveURL(/\/incidents\/new\?/);
+    await activePage(page)
+      .getByTestId('incident-title-input')
+      .locator('input')
+      .fill(title);
+    await activePage(page)
+      .getByTestId('incident-description-input')
+      .locator('textarea')
+      .fill(description);
+
+    await incidentAgentServer.restart();
+
+    const staleResponsePromise = page.waitForResponse(
+      (response) =>
+        isIncidentCreateResponse(response, agentOrigin) &&
+        response.status() === 409,
+    );
+    const refreshedInfoPromise = page.waitForResponse(
+      (response) =>
+        response.url() === `${agentOrigin}/datatug/agent-info` && response.ok(),
+    );
+    const createdResponsePromise = page.waitForResponse(
+      (response) =>
+        isIncidentCreateResponse(response, agentOrigin) &&
+        response.status() === 201,
+    );
+
+    await activePage(page)
+      .getByRole('button', { name: "Houston, we've got a problem" })
+      .click();
+
+    const staleResponse = await staleResponsePromise;
+    const staleBody = (await staleResponse.json()) as {
+      error?: { code?: unknown };
+    };
+    expect(staleBody.error?.code).toBe('STALE_CONTEXT');
+    const staleRequest = staleResponse.request().postDataJSON() as {
+      mutationId?: unknown;
+    };
+    expect(staleRequest.mutationId).toEqual(expect.any(String));
+    expect(String(staleRequest.mutationId)).not.toHaveLength(0);
+
+    const refreshedInfo = await refreshedInfoPromise;
+    const refreshedSecurityContextId = String(
+      ((await refreshedInfo.json()) as { securityContextId?: unknown })
+        .securityContextId,
+    );
+    expect(refreshedSecurityContextId).toMatch(/^[a-f0-9]{32}$/);
+    expect(refreshedSecurityContextId).not.toBe(initialSecurityContextId);
+
+    const createdResponse = await createdResponsePromise;
+    const createdBody = (await createdResponse.json()) as {
+      incident?: { ref?: { storeId?: unknown; incidentId?: unknown } };
+    };
+    const retriedRequest = createdResponse.request().postDataJSON() as {
+      mutationId?: unknown;
+    };
+    expect(retriedRequest.mutationId).toBe(staleRequest.mutationId);
+    expect(createdBody.incident?.ref?.storeId).toBe(DEMO_PROJECT_ID);
+    expect(createdBody.incident?.ref?.incidentId).toBe('INC-1');
+
+    await expect(page).toHaveURL(
+      new RegExp(`/incidents/${DEMO_PROJECT_ID}/INC-1\\?`),
+    );
+    await expect(
+      activePage(page).getByRole('heading', { name: title }),
+    ).toBeVisible();
+    await expect(
+      activePage(page).getByRole('paragraph').filter({ hasText: description }),
+    ).toBeVisible();
+    await expect(
+      activePage(page).getByRole('heading', { name: 'Timeline' }),
+    ).toBeVisible();
+    await expect(activePage(page).getByText('incident.created')).toBeVisible();
+
+    const coldDetailResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' &&
+        response.url().startsWith(`${agentOrigin}/datatug/incidents/INC-1?`) &&
+        response.ok(),
+    );
+    const coldEventsResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' &&
+        response
+          .url()
+          .startsWith(`${agentOrigin}/datatug/incidents/INC-1/events?`) &&
+        response.ok(),
+    );
+    await page.reload();
+    await coldDetailResponse;
+    await coldEventsResponse;
+    await expect(
+      activePage(page).getByRole('heading', { name: title }),
+    ).toBeVisible();
+    await expect(
+      activePage(page).getByRole('paragraph').filter({ hasText: description }),
+    ).toBeVisible();
+    await expect(activePage(page).getByText('incident.created')).toBeVisible();
+
+    const persistedListResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' &&
+        response.url().startsWith(`${agentOrigin}/datatug/incidents?`) &&
+        response.ok(),
+    );
+    await page.goto(listUrl);
+    await persistedListResponse;
+    await expect(activePage(page).getByText(title)).toBeVisible();
+  });
+});

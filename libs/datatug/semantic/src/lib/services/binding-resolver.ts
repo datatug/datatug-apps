@@ -74,6 +74,10 @@ export interface ResolvedBinding {
   readonly meta?: EntityFieldRef;
   readonly value?: TypedValue;
   readonly origin?: ResolvedBindingOrigin;
+  /** Exact source fact provenance for selection/context bindings. Never synthesized:
+   * current ExecutionRequest validation requires it, and an old candidate that omitted
+   * it must fail closed at the caller rather than be relabeled as a real fact. */
+  readonly factId?: string;
   readonly blocked?: BindingBlockReason;
   /** Set only when `blocked === 'conflict-unconfirmed'`. */
   readonly conflict?: {
@@ -128,6 +132,10 @@ function distinctValues(facts: readonly Fact[]): TypedValue[] {
     }
   }
   return out;
+}
+
+function factIdForValue(facts: readonly Fact[], value: TypedValue): string | undefined {
+  return facts.find((fact) => typedValuesEqual(fact.value, value))?.id || undefined;
 }
 
 function factsFor(facts: readonly Fact[], meta: EntityFieldRef): Fact[] {
@@ -221,7 +229,8 @@ export function resolveBindings(
     // is never filtered by `condition`; only *context* facts are (see
     // `equalityFactsFor`/`skippedConditionFactsFor` below), per api-contract.md's
     // `Fact.condition` paragraph.
-    const selectionValues = distinctValues(factsFor(input.selectionFacts, meta));
+    const selectionFacts = factsFor(input.selectionFacts, meta);
+    const selectionValues = distinctValues(selectionFacts);
     const skippedConditionFacts = skippedConditionFactsFor(input.contextFacts, meta);
     const resolved = (binding: ResolvedBinding): ResolvedBinding =>
       withSkipped(binding, skippedConditionFacts);
@@ -238,7 +247,8 @@ export function resolveBindings(
     // A non-`==` context fact is never an equality-binding candidate — it must not be
     // applied as equality and must not be treated as conflicting with a selection
     // value either (`skippedConditionFacts` above already reports it separately).
-    const contextValues = distinctValues(equalityFactsFor(input.contextFacts, meta));
+    const contextFacts = equalityFactsFor(input.contextFacts, meta);
+    const contextValues = distinctValues(contextFacts);
 
     if (selectionValues.length === 1) {
       const selectionValue = selectionValues[0];
@@ -258,6 +268,7 @@ export function resolveBindings(
         meta,
         value: selectionValue,
         origin: 'selection',
+        factId: factIdForValue(selectionFacts, selectionValue),
       });
     }
 
@@ -276,6 +287,7 @@ export function resolveBindings(
         meta,
         value: contextValues[0],
         origin: 'context',
+        factId: factIdForValue(contextFacts, contextValues[0]),
       });
     }
 

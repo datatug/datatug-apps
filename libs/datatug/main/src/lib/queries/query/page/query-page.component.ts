@@ -138,6 +138,7 @@ function resolvedBindingEqual(a: ResolvedBinding, b: ResolvedBinding): boolean {
   if (
     a.parameterId !== b.parameterId ||
     a.origin !== b.origin ||
+    a.factId !== b.factId ||
     a.blocked !== b.blocked ||
     a.meta?.entity !== b.meta?.entity ||
     a.meta?.field !== b.meta?.field
@@ -1094,7 +1095,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         continue;
       }
       facts.push({
-        id: `selection:${selection.parameterId}`,
+        // Preserve the server's exact fact provenance. An older candidate that omitted
+        // factId stays empty and runQuery fails closed instead of fabricating one.
+        id: selection.factId ?? '',
         entity: param.meta.entity,
         field: param.meta.field,
         value: selection.value,
@@ -1229,6 +1232,17 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       );
       return;
     }
+    const missingFactProvenance = this.effectiveBindings().find(
+      (binding) =>
+        (binding.origin === 'selection' || binding.origin === 'context') &&
+        !binding.factId,
+    );
+    if (missingFactProvenance) {
+      this.runError.set(
+        `Cannot run ${missingFactProvenance.parameterId}: its bound value has no fact provenance. Refresh the selection and try again.`,
+      );
+      return;
+    }
     this.running.set(true);
     this.runError.set(undefined);
     this.accessBlockers.set([]);
@@ -1239,6 +1253,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     for (const binding of this.effectiveBindings()) {
       // isBindingRunnable() (effectiveBindings' own filter) guarantees `value` is set.
       parameters[binding.parameterId] = binding.value as TypedValue;
+      const factId = binding.factId;
       bindingOrigins.push({
         parameterId: binding.parameterId,
         // The resolver's 'user' origin (an explicit edit) maps to the wire contract's
@@ -1246,6 +1261,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         // client-entered value that isn't from selection/context IS what the appendix
         // calls 'manual'.
         origin: binding.origin === 'user' ? 'manual' : (binding.origin ?? 'default'),
+        ...(factId ? { factId } : {}),
       });
     }
     this.executeQuery(

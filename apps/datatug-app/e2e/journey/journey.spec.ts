@@ -388,7 +388,23 @@ test.describe('J2 — from a value to related knowledge', () => {
       .locator('[tabulator-field="CustomerId"]');
     await expect(cell).toBeVisible({ timeout: 15_000 });
     const customerId = (await cell.textContent())?.trim();
+    const applicableResponsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes('/datatug/queries/applicable') &&
+        response.request().method() === 'POST',
+      { timeout: 15_000 },
+    );
     await cell.click();
+    const applicableBody = (await (await applicableResponsePromise).json()) as {
+      applicable?: Array<{
+        queryId?: string;
+        bindings?: Array<{ parameterId?: string; factId?: string }>;
+      }>;
+    };
+    const selectedFactId = applicableBody.applicable
+      ?.find((candidate) => candidate.queryId?.endsWith('customer-invoices'))
+      ?.bindings?.find((binding) => binding.parameterId === 'CustomerId')?.factId;
+    expect(selectedFactId).toEqual(expect.any(String));
 
     await expect(activePage(page).locator('sneat-datatug-context-panel')).toBeVisible({
       timeout: 15_000,
@@ -422,7 +438,24 @@ test.describe('J2 — from a value to related knowledge', () => {
           exact: false,
         }),
     ).toBeVisible({ timeout: 10_000 });
+    const runRequestPromise = page.waitForRequest(
+      (request) =>
+        request.url().includes('/datatug/exec/run_query') && request.method() === 'POST',
+      { timeout: 15_000 },
+    );
     await activePage(page).getByText('Run query', { exact: false }).click();
+    const runRequestBody = (await runRequestPromise).postDataJSON() as {
+      bindingOrigins?: Array<{
+        parameterId?: string;
+        origin?: string;
+        factId?: string;
+      }>;
+    };
+    expect(runRequestBody.bindingOrigins).toContainEqual({
+      parameterId: 'CustomerId',
+      origin: 'selection',
+      factId: selectedFactId,
+    });
     await expect
       .poll(() => agentServer.readLog(), { timeout: 15_000 })
       .toMatch(/\/datatug\/exec\/run_query/);
