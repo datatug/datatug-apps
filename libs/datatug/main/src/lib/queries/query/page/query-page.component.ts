@@ -1059,7 +1059,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
    * clearBinding() for the REQ:no-hidden-filters half (the user must see and can
    * clear/override every binding before a run).
    */
-  private updateBindings(): void {
+  private updateBindings(explicitlyResolvedParameterId?: string): void {
     const parameterDefs = this.queryState.def?.parameters || [];
     const parameters: BindingParameterRef[] = parameterDefs
       .filter((p) => !!p.meta)
@@ -1148,6 +1148,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       const suggestions: RebindSuggestion[] = [];
       resolved = resolved.map((suggested) => {
         const previous = this.bindingSnapshot.get(suggested.parameterId);
+        if (suggested.parameterId === explicitlyResolvedParameterId) {
+          this.bindingSnapshot.set(suggested.parameterId, suggested);
+          this.dismissedRebinds.delete(suggested.parameterId);
+          return suggested;
+        }
         const fingerprint = rebindFingerprint(previous, suggested);
         if (
           bindingsEqual(
@@ -1178,6 +1183,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         suggestions,
         (left, right) => JSON.stringify(left) === JSON.stringify(right),
       );
+      this.promotionRebindPending =
+        suggestions.length > 0 || this.dismissedRebinds.size > 0;
     } else {
       this.bindingSnapshot = new Map(
         resolved.map((binding) => [binding.parameterId, binding]),
@@ -1253,8 +1260,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   /** REQ:no-hidden-filters — the user clears (or, by not clearing, implicitly
    * confirms) every auto-bound parameter before it's ever sent on a run. */
   public clearBinding(parameterId: string): void {
-    this.promotionRebindPending = false;
-    this.dismissedRebinds.clear();
+    this.dismissedRebinds.delete(parameterId);
     this.clearedParamIds.set(new Set([...this.clearedParamIds(), parameterId]));
     this.selectedContextFactKeys.set(
       new Map(
@@ -1263,15 +1269,14 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         ),
       ),
     );
-    this.updateBindings();
+    this.updateBindings(parameterId);
   }
 
   /** Accepts a direct parameter edit from the query UI. User edits have the resolver's
    * highest precedence and become the accepted snapshot immediately; a preceding
    * promotion must never make a fresh user choice look like a context rebind. */
   public editBinding(parameterId: string, value: TypedValue): void {
-    this.promotionRebindPending = false;
-    this.dismissedRebinds.clear();
+    this.dismissedRebinds.delete(parameterId);
     this.clearedParamIds.set(
       new Set([...this.clearedParamIds()].filter((id) => id !== parameterId)),
     );
@@ -1285,13 +1290,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         ),
       ),
     );
-    this.updateBindings();
+    this.updateBindings(parameterId);
   }
 
   public chooseContextCohort(parameterId: string, factKey: string): void {
-    this.promotionRebindPending = false;
-    this.dismissedRebinds.clear();
-    this.rebindSuggestions.set([]);
+    this.dismissedRebinds.delete(parameterId);
     this.clearedParamIds.set(
       new Set([...this.clearedParamIds()].filter((id) => id !== parameterId)),
     );
@@ -1303,7 +1306,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.selectedContextFactKeys.set(
       new Map(this.selectedContextFactKeys()).set(parameterId, factKey),
     );
-    this.updateBindings();
+    this.updateBindings(parameterId);
   }
 
   /** api-contract.md "Selection overriding a different context value is shown as an
@@ -1316,12 +1319,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     if (current?.blocked !== 'conflict-unconfirmed' || !current.conflict) {
       return;
     }
-    this.promotionRebindPending = false;
-    this.dismissedRebinds.clear();
+    this.dismissedRebinds.delete(parameterId);
     this.confirmedConflicts.set(
       new Map(this.confirmedConflicts()).set(parameterId, current.conflict),
     );
-    this.updateBindings();
+    this.updateBindings(parameterId);
   }
 
   public acceptRebind(parameterId: string): void {
@@ -1333,8 +1335,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     }
     this.bindingSnapshot.set(parameterId, suggestion.suggested);
     this.dismissedRebinds.delete(parameterId);
-    this.promotionRebindPending = false;
-    this.updateBindings();
+    this.updateBindings(parameterId);
   }
 
   public keepCurrentBinding(parameterId: string): void {

@@ -180,6 +180,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
 
   async function createComponent(
     historyState: Record<string, unknown> = {},
+    definition: IQueryDef = queryDef,
   ): Promise<QueryPageComponent> {
     Object.defineProperty(window, 'history', {
       value: { ...window.history, state: historyState },
@@ -235,7 +236,22 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
         {
           provide: QueryEditorStateService,
           useValue: {
-            queryEditorState: of(editorState),
+            queryEditorState: of(
+              definition === queryDef
+                ? editorState
+                : {
+                    ...editorState,
+                    currentQueryId: definition.id,
+                    activeQueries: [
+                      {
+                        id: definition.id,
+                        queryType: QueryType.SQL,
+                        request: definition.request,
+                        def: definition,
+                      },
+                    ],
+                  },
+            ),
             updateQueryState: vi.fn(),
             openQuery: vi.fn(),
             newQuery: vi.fn(),
@@ -348,6 +364,56 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
         value: { type: 'integer', value: '11' },
       }),
     ]);
+  });
+
+  it('accepts one of two promotion rebinds without changing the other parameter', async () => {
+    const twoParameterQuery: IQueryDef = {
+      ...queryDef,
+      parameters: [
+        ...(queryDef.parameters ?? []),
+        {
+          id: 'ComparisonCustomerId',
+          type: 'integer',
+          meta: { entity: 'Customer', field: 'ID' },
+        },
+      ],
+    };
+    component = await createComponent({}, twoParameterQuery);
+    const overlay = investigationContext.addValue({
+      entityField: { entity: 'Customer', field: 'ID' },
+      value: 11,
+      label: 'Customer.ID = 11',
+      source: 'grid',
+      layer: 'hypothesis:H17',
+    });
+    TestBed.tick();
+    investigationContext.applyPromotion(
+      overlay.id,
+      'hypothesis:H17',
+      'affected',
+    );
+    TestBed.tick();
+
+    expect(
+      component.rebindSuggestions().map((item) => item.parameterId),
+    ).toEqual(['CustomerId', 'ComparisonCustomerId']);
+
+    component.acceptRebind('CustomerId');
+
+    expect(
+      component.rebindSuggestions().map((item) => item.parameterId),
+    ).toEqual(['ComparisonCustomerId']);
+    expect(
+      component.bindings().find((item) => item.parameterId === 'CustomerId'),
+    ).toMatchObject({
+      value: { type: 'integer', value: '11' },
+      origin: 'context',
+    });
+    expect(
+      component
+        .bindings()
+        .find((item) => item.parameterId === 'ComparisonCustomerId')?.value,
+    ).toBeUndefined();
   });
 
   it('keeps the accepted binding when the user declines a promotion rebind', async () => {
