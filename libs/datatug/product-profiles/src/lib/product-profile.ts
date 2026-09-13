@@ -73,10 +73,9 @@ export interface ProductProfile {
    * Exact hostnames that select this profile (REQ:profile-table: "A profile
    * MUST be selected by hostname"). Empty means this profile is never chosen by
    * hostname alone — reachable only through the configuration override or, in a
-   * local development configuration, `?profile=`. `incidentius` has no
-   * registered domain yet (hub REQ:brand-and-domain-honesty), so it is
-   * deliberately empty here rather than naming an unregistered/aspirational
-   * hostname.
+   * local development configuration, `?profile=`. Incidentius uses the exact
+   * app hostname from the approved split-domain layout; its apex remains the
+   * separate landing page.
    */
   readonly hostnames: readonly string[];
 }
@@ -100,11 +99,10 @@ export const PRODUCT_PROFILES: Readonly<
   incidentius: Object.freeze({
     id: 'incidentius',
     brandName: 'Incidentius',
-    planned: true,
     homePath: 'incidents',
     entryPointLabel: "Houston, we've got a problem",
     showIncidentsMenuItem: false,
-    hostnames: [],
+    hostnames: ['app.incidentius.com'],
   }),
 });
 

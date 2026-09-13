@@ -9,7 +9,8 @@
     "e2e:sso:keycloak": "SSO_E2E_OIDC_ISSUER=http://127.0.0.1:8088/realms/acme SSO_E2E_OIDC_CLIENT_ID=datatug SSO_E2E_OIDC_CLIENT_SECRET=keycloak-client-secret playwright test -c apps/datatug-app/playwright.sso-keycloak.config.ts",
     "e2e:error-dialog": "playwright test -c apps/datatug-app/playwright.error-dialog.config.ts",
     "check:zoneless": "node tools/check-zoneless-fields.mjs",
-    "test:check-zoneless-fields": "node --test tools/__tests__/check-zoneless-fields.test.mjs"
+    "test:check-zoneless-fields": "node --test tools/__tests__/check-zoneless-fields.test.mjs",
+    "test:wrangler-routes": "node --test scripts/wrangler-routes.test.mjs"
   },
   "private": true,
   "dependencies": {

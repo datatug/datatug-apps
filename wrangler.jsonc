@@ -2,6 +2,16 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "datatug-apps",
   "compatibility_date": "2026-06-08",
+  "routes": [
+    {
+      "pattern": "datatug.app",
+      "custom_domain": true
+    },
+    {
+      "pattern": "app.incidentius.com",
+      "custom_domain": true
+    }
+  ],
   "assets": {
     "directory": "./dist/apps/datatug-app/browser",
     "not_found_handling": "single-page-application"

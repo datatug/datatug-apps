@@ -1,6 +1,10 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
+import {
+  ActivatedRoute,
+  convertToParamMap,
+  provideRouter,
+} from '@angular/router';
 import { Observable, of, Subject } from 'rxjs';
 import { IncidentDetailPageComponent } from './incident-detail-page.component';
 import { IncidentClientService } from '../../../incidents/incident-client.service';
@@ -58,17 +62,17 @@ describe('IncidentDetailPageComponent', () => {
     result$.next({
       kind: 'ok',
       data: {
-        id: 'localhost:8989/INC-1',
+        ref: { storeId: 'localhost:8989', incidentId: 'INC-1' },
+        uid: 'uid-1',
         title: 'Checkout errors spike',
         status: 'investigating',
         description: '5xx rate above baseline',
+        lastSeq: 2,
       },
     });
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.innerHTML).toContain(
-      'Checkout errors spike',
-    );
+    expect(fixture.nativeElement.innerHTML).toContain('Checkout errors spike');
     expect(fixture.nativeElement.innerHTML).toContain('investigating');
     expect(fixture.nativeElement.innerHTML).toContain(
       '5xx rate above baseline',

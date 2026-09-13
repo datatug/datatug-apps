@@ -12,7 +12,8 @@ test('built home is indexable, honest, and useful without client JavaScript', as
     /<link rel="canonical" href="https:\/\/incidentius\.com\/"/,
   );
   assert.match(html, /href="https:\/\/app\.incidentius\.com"/);
-  assert.match(html, /App access (?:—|&mdash;) coming soon/);
+  assert.match(html, /Open Incidentius/);
+  assert.doesNotMatch(html, /coming soon/i);
   assert.match(
     html,
     /Incidentius is an incident-investigation capability of DataTug/,

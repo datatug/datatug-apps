@@ -2,10 +2,10 @@ import { expect, test } from '@playwright/test';
 
 // Hub `product-profiles` (spec/features/product-profiles/README.md) and
 // `incidents` (spec/features/incidents/README.md) — plan Task 9 scaffold
-// slice. No Incidentius hostname is registered yet (REQ:brand-and-domain-honesty),
-// so `?profile=incidentius` (honored only in a local development
-// configuration, which this dev-server run is) is the only way to reach it
-// today. Screenshots go to Playwright's per-test output directory for review.
+// slice. Production selects Incidentius on `app.incidentius.com`; this local
+// dev-server exercise uses `?profile=incidentius`, which is deliberately inert
+// outside local development. Screenshots go to Playwright's per-test output
+// directory for review.
 
 test('?profile=incidentius lands on the incident list with the "Houston" entry point (AC:incidentius-profile-home)', async ({
   page,
@@ -21,9 +21,9 @@ test('?profile=incidentius lands on the incident list with the "Houston" entry p
   await expect(
     page.getByRole('link', { name: 'Incidentius home' }),
   ).toBeVisible();
-  // Hub REQ:brand-and-domain-honesty (founder: "keep with planned label") —
-  // no Incidentius domain is claimed; the brand carries the planned label.
-  await expect(page.getByText('Planned')).toBeVisible();
+  // Hub REQ:brand-and-domain-honesty: once the approved app hostname ships,
+  // the live profile must not retain the old planned marker.
+  await expect(page.getByText('Planned', { exact: true })).toHaveCount(0);
 
   await expect(
     page.getByText("Houston, we've got a problem", { exact: true }),

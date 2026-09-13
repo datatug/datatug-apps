@@ -40,7 +40,7 @@
       <ion-button
         expand="block"
         color="danger"
-        [disabled]="isSubmitting() || !title.trim()"
+        [disabled]="isSubmitting() || !title.trim() || !hasMutationScope()"
         (click)="submit()"
       >
         <ion-icon slot="start" name="rocket-outline" />

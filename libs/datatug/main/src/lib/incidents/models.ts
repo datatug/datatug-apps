@@ -2,16 +2,9 @@
 // Feature; spec/features/cli/incident/README.md, datatug/datatug-cli — CLI/API
 // surface this client wraps).
 //
-// The server does not implement `/datatug/incidents/*` yet (Task 9 is a
-// scaffold slice only — see the hub plan's `2026-09-11-incidentius-mvp.md` task
-// list). The exact wire field names for an incident are explicitly not fixed
-// yet either: the CLI Feature itself says "the wire spelling of the two
-// [IncidentRef] fields is reconciled by the hub plan's model task" (still
-// open). These types are therefore a best-effort, conservative shape — the
-// fields both specs commit to today (id, title, status, description, the
-// `IncidentRef` pair, the five outcomes, the seven statuses) — not a claim
-// that the transport contract is final. Expect this file to be revisited once
-// the model task lands.
+// The wire shapes below mirror datatug-core/pkg/apicontract's frozen incident
+// fixtures. The server routes are still delivered by the backend task; until
+// then the client reports the honest unavailable state rather than fixtures.
 
 /**
  * A reference to one incident: which incident store it lives in, and its id
@@ -21,6 +14,12 @@
 export interface IncidentRef {
   readonly storeId: string;
   readonly incidentId: string;
+}
+
+export interface IncidentProjectRef {
+  readonly storeId: string;
+  readonly projectId: string;
+  readonly environment?: string;
 }
 
 /** The seven lifecycle statuses (hub REQ:lifecycle-and-outcomes; CLI
@@ -50,27 +49,46 @@ export type IncidentOutcome = (typeof INCIDENT_OUTCOMES)[number];
 
 /** One row of `GET /datatug/incidents` (hub REQ:api-and-cli). */
 export interface IncidentSummary {
-  readonly id: string;
+  readonly ref: IncidentRef;
+  readonly uid: string;
   readonly title: string;
   readonly status: IncidentStatus;
-  readonly createdAt?: string;
+  readonly description?: string;
+  readonly outcome?: IncidentOutcome;
+  readonly mergedInto?: IncidentRef;
+  readonly projects?: readonly IncidentProjectRef[];
+  readonly notes?: readonly string[];
+  readonly lastSeq: number;
 }
 
 /** `GET /datatug/incidents/{id}` (hub REQ:api-and-cli, REQ:houston-creation
  * for `description`). */
-export interface IncidentDetail extends IncidentSummary {
-  readonly description?: string;
-  readonly outcome?: IncidentOutcome;
-  readonly mergedInto?: IncidentRef;
+export type IncidentDetail = IncidentSummary;
+
+export interface IncidentListResponse {
+  readonly incidents: readonly IncidentSummary[];
+}
+
+export interface IncidentResponse {
+  readonly incident: IncidentDetail;
+}
+
+export interface IncidentMutationScope {
+  readonly storeId: string;
+  readonly project: string;
+  readonly environment: string;
+  readonly securityContextId: string;
 }
 
 /** Body of `POST /datatug/incidents` — title and free text (hub
  * REQ:houston-creation: "A user MUST be able to create an incident from a
  * title and free text ... The free text is kept as the incident's
  * `description`."). */
-export interface CreateIncidentRequest {
+export interface CreateIncidentRequest extends IncidentMutationScope {
+  readonly mutationId: string;
   readonly title: string;
   readonly description?: string;
+  readonly projects?: readonly IncidentProjectRef[];
 }
 
 /**
