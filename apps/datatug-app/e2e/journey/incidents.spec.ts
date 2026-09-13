@@ -1,4 +1,4 @@
-import type { Response } from '@playwright/test';
+import type { Page, Response } from '@playwright/test';
 import { expect, test } from './fixtures/agent-server';
 import { activePage } from './helpers/active-page';
 
@@ -29,6 +29,46 @@ function isIncidentCreateResponse(
   );
 }
 
+async function addNamedOverlay(
+  page: Page,
+  agentStoreId: string,
+): Promise<void> {
+  const projectUrl = `/store/${agentStoreId}/project/${DEMO_PROJECT_ID}`;
+  await page.goto(`${projectUrl}/env/${DEMO_ENV_ID}`);
+  await expect(
+    activePage(page).getByRole('heading', { name: 'Servers', exact: true }),
+  ).toBeVisible({ timeout: 15_000 });
+  await page.goto(`${projectUrl}/variables`);
+  await expect(
+    activePage(page).getByText('Add a context variable', { exact: true }),
+  ).toBeVisible({ timeout: 15_000 });
+
+  const choose = async (label: string, option: string): Promise<void> => {
+    await activePage(page).locator(`ion-select[label="${label}"]`).click();
+    await page
+      .locator('ion-popover')
+      .getByText(option, { exact: true })
+      .click();
+  };
+  await choose('Entity', 'Customer');
+  await choose('Field', 'ID');
+  await choose('Condition', '==');
+  await choose('Cohort role', 'suspected');
+  await choose('Context layer', 'hypothesis');
+  await activePage(page)
+    .locator('ion-input[label="Layer ID"] input')
+    .fill('H17');
+  await activePage(page).locator('ion-input[label="Value"] input').fill('11');
+  await activePage(page)
+    .locator('.investigation-context-page__form ion-button', {
+      hasText: 'Add',
+    })
+    .click();
+  await expect(
+    activePage(page).getByText('hypothesis:H17', { exact: false }),
+  ).toBeVisible();
+}
+
 test.describe('Incidentius Task 3 — real persisted Houston journey', () => {
   test('creates through stale-context recovery, opens server detail, cold reloads, and remains listed', async ({
     incidentAgentServer,
@@ -44,7 +84,7 @@ test.describe('Incidentius Task 3 — real persisted Houston journey', () => {
     });
     const listUrl = `/incidents?${scope.toString()}`;
     const title = `Houston journey worker ${test.info().workerIndex}`;
-    const description = 'Persisted by the real datatug-cli v0.28.0 agent.';
+    const description = 'Persisted by the real released datatug-cli agent.';
 
     const initialInfoResponse = page.waitForResponse(
       (response) =>
@@ -179,5 +219,119 @@ test.describe('Incidentius Task 3 — real persisted Houston journey', () => {
     await page.goto(listUrl);
     await persistedListResponse;
     await expect(activePage(page).getByText(title)).toBeVisible();
+  });
+});
+
+test.describe('Incidentius Task 4 — real context overlay decisions', () => {
+  test('creates a named overlay and carries it into the real incident form', async ({
+    incidentAgentServer,
+    page,
+  }, testInfo) => {
+    await addNamedOverlay(page, incidentAgentServer.storeId);
+    await expect(
+      activePage(page).getByText('Use for runs', { exact: true }),
+    ).toBeVisible();
+    await activePage(page)
+      .getByText('hypothesis:H17', { exact: false })
+      .scrollIntoViewIfNeeded();
+    await activePage(page).screenshot({
+      path: testInfo.outputPath('incidentius-task4-context-overlay.png'),
+    });
+
+    await activePage(page).getByTestId('make-incident').click();
+    await expect(page).toHaveURL(/\/incidents\/new\?/);
+    await expect(
+      activePage(page).getByTestId('incident-context-fact-count'),
+    ).toContainText('1 enabled Investigation Context fact');
+  });
+
+  test('attaches a named overlay, promotes it through the real append endpoint, and keeps the decision after reload', async ({
+    incidentAgentServer,
+    page,
+  }) => {
+    const agentStoreId = incidentAgentServer.storeId;
+    const agentOrigin = `http://${incidentAgentServer.host}:${incidentAgentServer.port}`;
+    await addNamedOverlay(page, agentStoreId);
+
+    await activePage(page).getByTestId('make-incident').click();
+    await expect(page).toHaveURL(/\/incidents\/new\?/);
+    await expect(
+      activePage(page).getByTestId('incident-context-fact-count'),
+    ).toContainText('1 enabled Investigation Context fact');
+    const title = `Overlay decision worker ${test.info().workerIndex}`;
+    await activePage(page)
+      .getByTestId('incident-title-input')
+      .locator('input')
+      .fill(title);
+
+    const createResponsePromise = page.waitForResponse((response) =>
+      isIncidentCreateResponse(response, agentOrigin),
+    );
+    await activePage(page)
+      .getByRole('button', { name: "Houston, we've got a problem" })
+      .click();
+    const createResponse = await createResponsePromise;
+    expect(createResponse.status()).toBe(201);
+    const createRequest = createResponse.request().postDataJSON() as {
+      canonicalContext?: {
+        facts?: Array<{ id?: string; role?: string; layer?: string }>;
+      };
+    };
+    const attached = createRequest.canonicalContext?.facts?.[0];
+    expect(attached).toMatchObject({
+      role: 'suspected',
+      layer: 'hypothesis:H17',
+    });
+    expect(attached?.id).toEqual(expect.any(String));
+
+    await expect(
+      activePage(page).getByRole('button', { name: 'Promote as affected' }),
+    ).toBeVisible({ timeout: 15_000 });
+    const appendResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        response.url().startsWith(`${agentOrigin}/datatug/incidents/`) &&
+        response.url().endsWith('/events'),
+    );
+    await activePage(page)
+      .getByRole('button', { name: 'Promote as affected' })
+      .click();
+    const appendResponse = await appendResponsePromise;
+    expect(appendResponse.ok()).toBe(true);
+    const appendRequest = appendResponse.request().postDataJSON() as {
+      mutationId?: unknown;
+      expectedSeq?: unknown;
+      event?: {
+        type?: unknown;
+        payload?: { fact?: { id?: unknown; layer?: unknown }; role?: unknown };
+      };
+    };
+    expect(appendRequest).toMatchObject({
+      mutationId: expect.any(String),
+      expectedSeq: expect.any(Number),
+      event: {
+        type: 'context.fact.promoted',
+        payload: {
+          fact: { id: attached?.id, layer: 'hypothesis:H17' },
+          role: 'affected',
+        },
+      },
+    });
+    await expect(
+      activePage(page).getByText('Decided', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      activePage(page).getByText('context.fact.promoted', { exact: true }),
+    ).toBeVisible();
+
+    await page.reload();
+    await expect(
+      activePage(page).getByText('Decided', { exact: true }),
+    ).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(
+      activePage(page).getByText('context.fact.promoted', { exact: true }),
+    ).toBeVisible();
   });
 });

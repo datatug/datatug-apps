@@ -15,6 +15,7 @@ import { IncidentClientService } from '../../../incidents/incident-client.servic
 import {
   IncidentApiResult,
   IncidentDetail,
+  IncidentFactView,
   IncidentRequestContext,
   IncidentStreamItem,
 } from '../../../incidents/models';
@@ -78,6 +79,8 @@ describe('IncidentDetailPageComponent', () => {
   let isCurrentInvestigationScopeSpy: ReturnType<typeof vi.fn>;
   let getSpy: ReturnType<typeof vi.fn>;
   let eventsSpy: ReturnType<typeof vi.fn>;
+  let appendSpy: ReturnType<typeof vi.fn>;
+  let applyPromotionSpy: ReturnType<typeof vi.fn>;
 
   const render = async (
     initialParams: Record<string, string> = {
@@ -113,6 +116,12 @@ describe('IncidentDetailPageComponent', () => {
     isCurrentInvestigationScopeSpy = vi.fn(() => true);
     getSpy = vi.fn().mockReturnValue(getReturn);
     eventsSpy = vi.fn().mockReturnValue(eventsReturn);
+    appendSpy = vi
+      .fn()
+      .mockReturnValue(
+        of({ kind: 'error', message: 'Append is unavailable in this test.' }),
+      );
+    applyPromotionSpy = vi.fn();
 
     await TestBed.configureTestingModule({
       imports: [IncidentDetailPageComponent],
@@ -153,11 +162,12 @@ describe('IncidentDetailPageComponent', () => {
             setScope: setInvestigationScopeSpy,
             clear: clearInvestigationContextSpy,
             isCurrentScope: isCurrentInvestigationScopeSpy,
+            applyPromotion: applyPromotionSpy,
           },
         },
         {
           provide: IncidentClientService,
-          useValue: { get: getSpy, events: eventsSpy },
+          useValue: { get: getSpy, events: eventsSpy, append: appendSpy },
         },
       ],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -498,5 +508,163 @@ describe('IncidentDetailPageComponent', () => {
         payload: { status: 'investigating', body: 'must not render' },
       }),
     ).toBe('incident.status');
+  });
+
+  it('retries a failed promotion with the same mutation id and refreshes the authoritative timeline after success', async () => {
+    const overlay: IncidentFactView = {
+      id: 'fact-1',
+      entity: 'Customer',
+      field: 'ID',
+      value: { type: 'integer', value: '11' },
+      origin: 'context',
+      enabled: true,
+      role: 'suspected',
+      layer: 'hypothesis:H17',
+      scope: {
+        storeId: 'ops',
+        projectId: 'billing',
+        environment: 'prod',
+      },
+    };
+    const withOverlay: IncidentDetail = {
+      ...incident('Checkout errors spike'),
+      canonicalContext: { facts: [overlay] },
+    };
+    await render(undefined, undefined, of({ kind: 'ok', data: withOverlay }));
+    fixture.detectChanges();
+    appendSpy
+      .mockReturnValueOnce(of({ kind: 'error', message: 'Connection lost.' }))
+      .mockReturnValueOnce(
+        of({
+          kind: 'ok',
+          data: {
+            event: {
+              ...streamItem('server-event', '').event,
+              seq: 3,
+              type: 'context.fact.promoted',
+              payload: {
+                fact: {
+                  scope: {
+                    storeId: 'ops',
+                    projectId: 'billing',
+                    environment: 'prod',
+                  },
+                  id: 'fact-1',
+                  layer: 'hypothesis:H17',
+                },
+                role: 'affected',
+              },
+            },
+            projection: {
+              ...withOverlay,
+              lastSeq: 3,
+              contextPromotions: [
+                {
+                  eventId: 'event-server-event',
+                  fact: {
+                    scope: {
+                      storeId: 'ops',
+                      projectId: 'billing',
+                      environment: 'prod',
+                    },
+                    id: 'fact-1',
+                    layer: 'hypothesis:H17',
+                  },
+                  role: 'affected',
+                },
+              ],
+            },
+            replayed: false,
+          },
+        }),
+      );
+    interface Mutations {
+      promote(fact: IncidentFactView): void;
+    }
+    const component = fixture.componentInstance as unknown as Mutations;
+
+    component.promote(overlay);
+    const firstRequest = appendSpy.mock.calls[0][2];
+    expect(firstRequest.event.payload.fact).toEqual({
+      scope: {
+        storeId: 'ops',
+        projectId: 'billing',
+        environment: 'prod',
+      },
+      id: 'fact-1',
+      layer: 'hypothesis:H17',
+    });
+    expect(applyPromotionSpy).not.toHaveBeenCalled();
+
+    component.promote(overlay);
+
+    expect(appendSpy).toHaveBeenCalledTimes(2);
+    expect(appendSpy.mock.calls[1][2].mutationId).toBe(firstRequest.mutationId);
+    expect(applyPromotionSpy).toHaveBeenCalledWith(
+      'fact-1',
+      'hypothesis:H17',
+      'affected',
+    );
+    expect(eventsSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('finalizes only the promoted fact identity while a layer rejection finalizes the whole layer', async () => {
+    const first: IncidentFactView = {
+      id: 'fact-1',
+      entity: 'Customer',
+      value: { redacted: true },
+      origin: 'context',
+      enabled: true,
+      layer: 'hypothesis:H17',
+      scope: {
+        storeId: 'ops',
+        projectId: 'billing',
+        environment: 'prod',
+      },
+    };
+    const second = { ...first, id: 'fact-2' };
+    await render(
+      undefined,
+      undefined,
+      of({
+        kind: 'ok',
+        data: {
+          ...incident('Checkout errors spike'),
+          canonicalContext: { facts: [first, second] },
+          contextPromotions: [
+            {
+              eventId: 'event-3',
+              fact: {
+                scope: {
+                  storeId: 'ops',
+                  projectId: 'billing',
+                  environment: 'prod',
+                },
+                id: 'fact-1',
+                layer: 'hypothesis:H17',
+              },
+              role: 'affected',
+            },
+          ],
+        },
+      }),
+    );
+    fixture.detectChanges();
+    interface Finality {
+      isFactFinal(fact: IncidentFactView): boolean;
+      incident: { set(value: IncidentDetail): void };
+    }
+    const component = fixture.componentInstance as unknown as Finality;
+
+    expect(component.isFactFinal(first)).toBe(true);
+    expect(component.isFactFinal(second)).toBe(false);
+
+    component.incident.set({
+      ...incident('Checkout errors spike'),
+      canonicalContext: { facts: [first, second] },
+      contextRejections: [{ eventId: 'event-4', layer: 'hypothesis:H17' }],
+    });
+    expect(component.isFactFinal(first)).toBe(true);
+    expect(component.isFactFinal(second)).toBe(true);
   });
 });

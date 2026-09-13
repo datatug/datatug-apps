@@ -9,6 +9,8 @@ import { Observable, catchError, map, of } from 'rxjs';
 import { buildAgentUrl } from '../services/repo/agent-url';
 import {
   CreateIncidentRequest,
+  AppendIncidentEventRequest,
+  AppendIncidentEventResponse,
   INCIDENT_OUTCOMES,
   INCIDENT_STATUSES,
   IncidentApiResult,
@@ -151,6 +153,32 @@ export class IncidentClientService {
         ),
       );
   }
+
+  append(
+    context: IncidentRequestContext,
+    incidentId: string,
+    request: AppendIncidentEventRequest,
+  ): Observable<IncidentApiResult<AppendIncidentEventResponse>> {
+    return this.http
+      .post(
+        buildAgentUrl(
+          context.agentStoreId,
+          `/incidents/${encodeURIComponent(incidentId)}/events`,
+        ),
+        request,
+      )
+      .pipe(
+        map(
+          (response): IncidentApiResult<AppendIncidentEventResponse> => ({
+            kind: 'ok',
+            data: decodeAppendIncidentEventResponse(response),
+          }),
+        ),
+        catchError((err: unknown) =>
+          of(toIncidentApiResult<AppendIncidentEventResponse>(err)),
+        ),
+      );
+  }
 }
 
 function incidentScopeParams(scope: IncidentScope): HttpParams {
@@ -183,7 +211,12 @@ function decodeIncidentStreamItem(value: unknown): IncidentStreamItem {
   ) {
     throw new Error('Invalid incident events response.');
   }
-  const event = value['event'];
+  const event = decodeIncidentEvent(value['event']);
+  return { cursor: value['cursor'], event };
+}
+
+function decodeIncidentEvent(value: unknown): IncidentStreamItem['event'] {
+  const event = value;
   if (
     !isRecord(event) ||
     !hasOnlyKeys(event, [
@@ -216,7 +249,24 @@ function decodeIncidentStreamItem(value: unknown): IncidentStreamItem {
   ) {
     throw new Error('Invalid incident events response.');
   }
-  return value as unknown as IncidentStreamItem;
+  return event as unknown as IncidentStreamItem['event'];
+}
+
+function decodeAppendIncidentEventResponse(
+  value: unknown,
+): AppendIncidentEventResponse {
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, ['event', 'projection', 'replayed']) ||
+    typeof value['replayed'] !== 'boolean'
+  ) {
+    throw new Error('Invalid incident append response.');
+  }
+  return {
+    event: decodeIncidentEvent(value['event']),
+    projection: decodeIncident(value['projection']),
+    replayed: value['replayed'],
+  };
 }
 
 function optionalImportedEventRef(
@@ -335,6 +385,27 @@ function isIncidentEventPayload(
       return (
         hasOnlyKeys(payload, ['body']) && isNonEmptyString(payload['body'])
       );
+    case 'context.fact.added':
+      return (
+        hasOnlyKeys(payload, ['fact']) &&
+        isIncidentFactView(payload['fact']) &&
+        isRecord(payload['fact']) &&
+        isProjectScope(payload['fact']['scope'], true)
+      );
+    case 'context.fact.promoted':
+      return (
+        hasOnlyKeys(payload, ['fact', 'role']) &&
+        isContextFactRef(payload['fact']) &&
+        optionalFactRole(payload['role']) &&
+        payload['role'] !== undefined
+      );
+    case 'context.fact.rejected':
+      return (
+        hasOnlyKeys(payload, ['layer']) &&
+        optionalFactLayer(payload['layer']) &&
+        payload['layer'] !== undefined &&
+        payload['layer'] !== 'canonical'
+      );
     default:
       return false;
   }
@@ -369,6 +440,23 @@ function decodeIncident(value: unknown): IncidentDetail {
   const incident = value;
   const ref = incident['ref'];
   if (
+    !hasOnlyKeys(incident, [
+      'ref',
+      'uid',
+      'title',
+      'description',
+      'status',
+      'outcome',
+      'mergedInto',
+      'projects',
+      'participants',
+      'canonicalContext',
+      'contextPromotions',
+      'contextRejections',
+      'assetRefs',
+      'notes',
+      'lastSeq',
+    ]) ||
     !isIncidentRef(ref) ||
     typeof incident['uid'] !== 'string' ||
     !incident['uid'].trim() ||
@@ -389,6 +477,8 @@ function decodeIncident(value: unknown): IncidentDetail {
     !optionalProjectRefs(incident['projects']) ||
     !optionalParticipants(incident['participants']) ||
     !isContextView(incident['canonicalContext']) ||
+    !optionalContextPromotions(incident['contextPromotions']) ||
+    !optionalContextRejections(incident['contextRejections']) ||
     !optionalArtifactRefs(incident['assetRefs']) ||
     !optionalStringArray(incident['notes'])
   ) {
@@ -536,7 +626,11 @@ function isContextView(value: unknown): boolean {
           scope['environment'] ?? '',
         ])
       : '';
-    const key = JSON.stringify([scopeKey, fact['id']]);
+    const key = JSON.stringify([
+      scopeKey,
+      fact['id'],
+      fact['layer'] || 'canonical',
+    ]);
     if (seen.has(key)) {
       return false;
     }
@@ -654,21 +748,70 @@ function optionalFactLayer(value: unknown): boolean {
   for (const prefix of ['hypothesis:', 'participant:', 'question:']) {
     if (value.startsWith(prefix)) {
       const id = value.slice(prefix.length);
-      return !!id && id.trim() === id;
+      return !!id && !/[/\\\p{Cc}\s]/u.test(id);
     }
   }
   return false;
 }
 
 function optionalProjectScope(value: unknown): boolean {
+  return value === undefined || isProjectScope(value, false);
+}
+
+function isProjectScope(value: unknown, requireEnvironment: boolean): boolean {
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, ['storeId', 'projectId', 'environment']) &&
+    isValidSegment(value['storeId']) &&
+    isValidSegment(value['projectId']) &&
+    (requireEnvironment
+      ? isValidSegment(value['environment'])
+      : value['environment'] === undefined ||
+        isValidSegment(value['environment']))
+  );
+}
+
+function isContextFactRef(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, ['scope', 'id', 'layer']) &&
+    isProjectScope(value['scope'], true) &&
+    isNonEmptyString(value['id']) &&
+    optionalFactLayer(value['layer']) &&
+    value['layer'] !== undefined &&
+    value['layer'] !== 'canonical'
+  );
+}
+
+function optionalContextPromotions(value: unknown): boolean {
   return (
     value === undefined ||
-    (isRecord(value) &&
-      hasOnlyKeys(value, ['storeId', 'projectId', 'environment']) &&
-      isValidSegment(value['storeId']) &&
-      isValidSegment(value['projectId']) &&
-      (value['environment'] === undefined ||
-        isValidSegment(value['environment'])))
+    (Array.isArray(value) &&
+      value.every(
+        (item) =>
+          isRecord(item) &&
+          hasOnlyKeys(item, ['eventId', 'fact', 'role']) &&
+          isValidSegment(item['eventId']) &&
+          isContextFactRef(item['fact']) &&
+          optionalFactRole(item['role']) &&
+          item['role'] !== undefined,
+      ))
+  );
+}
+
+function optionalContextRejections(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (Array.isArray(value) &&
+      value.every(
+        (item) =>
+          isRecord(item) &&
+          hasOnlyKeys(item, ['eventId', 'layer']) &&
+          isValidSegment(item['eventId']) &&
+          optionalFactLayer(item['layer']) &&
+          item['layer'] !== undefined &&
+          item['layer'] !== 'canonical',
+      ))
   );
 }
 
@@ -698,7 +841,10 @@ function isIncidentEventType(value: unknown): boolean {
     value === 'incident.status' ||
     value === 'incident.outcome' ||
     value === 'incident.merged' ||
-    value === 'note.added'
+    value === 'note.added' ||
+    value === 'context.fact.added' ||
+    value === 'context.fact.promoted' ||
+    value === 'context.fact.rejected'
   );
 }
 

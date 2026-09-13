@@ -112,15 +112,21 @@ describe('contract fixtures decode without throwing', () => {
   });
 
   it('semantic/columns (success, empty)', () => {
-    expect(decodeSemanticColumnsResponse(semanticColumnsResponse).columns).toHaveLength(3);
-    expect(decodeSemanticColumnsResponse(semanticColumnsResponseEmpty).columns).toEqual([]);
+    expect(
+      decodeSemanticColumnsResponse(semanticColumnsResponse).columns,
+    ).toHaveLength(3);
+    expect(
+      decodeSemanticColumnsResponse(semanticColumnsResponseEmpty).columns,
+    ).toEqual([]);
   });
 
   it('semantic/related (success, empty, truncated with null count)', () => {
     const related = decodeSemanticRelatedResponse(relatedResponse);
     expect(related.related).toHaveLength(2);
     expect(related.related[1].count).toBeNull(); // "count unavailable"
-    expect(decodeSemanticRelatedResponse(relatedResponseEmpty).related).toEqual([]);
+    expect(decodeSemanticRelatedResponse(relatedResponseEmpty).related).toEqual(
+      [],
+    );
 
     // client-only-related-response-truncated.json — see this file's header comment.
     const truncated = decodeSemanticRelatedResponse(relatedResponseTruncated);
@@ -137,15 +143,21 @@ describe('contract fixtures decode without throwing', () => {
     });
 
     expect(decodeResult(resultSnapshot).provenance.mode).toBe('snapshot');
-    expect(decodeResult(resultSnapshot).provenance.snapshotId).toBe('snap-2026-09-09');
-
-    expect(decodeResult(resultOpaquePrivileged).provenance.executionProfile).toBe(
-      'opaque-privileged',
+    expect(decodeResult(resultSnapshot).provenance.snapshotId).toBe(
+      'snap-2026-09-09',
     );
+
+    expect(
+      decodeResult(resultOpaquePrivileged).provenance.executionProfile,
+    ).toBe('opaque-privileged');
 
     const restricted = decodeResult(resultRestricted);
     expect(restricted.limitations).toEqual([
-      { policy: 'support/customers-support', rowsFiltered: true, hiddenColumns: ['Email'] },
+      {
+        policy: 'support/customers-support',
+        rowsFiltered: true,
+        hiddenColumns: ['Email'],
+      },
     ]);
 
     // "omitted unauthorized metadata": a protected name stays hidden behind an
@@ -163,7 +175,11 @@ describe('contract fixtures decode without throwing', () => {
     expect(decoded.applicable.every((c) => c.state === 'runnable')).toBe(true);
     const states = decoded.notYet.map((c) => c.state);
     expect(states).toEqual(
-      expect.arrayContaining(['needs-input', 'needs-target', 'source-unavailable']),
+      expect.arrayContaining([
+        'needs-input',
+        'needs-target',
+        'source-unavailable',
+      ]),
     );
     const needsTarget = decoded.notYet.find((c) => c.state === 'needs-target');
     expect(needsTarget?.ambiguous).toEqual([
@@ -196,8 +212,12 @@ describe('contract fixtures decode without throwing', () => {
       expect(envelope.error.requestId).toBeTruthy();
     }
     // Only TARGET_REQUIRED carries `targets`.
-    expect(decodeErrorEnvelope(errorTargetRequired).error.targets).toHaveLength(2);
-    expect(decodeErrorEnvelope(errorAccessDenied).error.targets).toBeUndefined();
+    expect(decodeErrorEnvelope(errorTargetRequired).error.targets).toHaveLength(
+      2,
+    );
+    expect(
+      decodeErrorEnvelope(errorAccessDenied).error.targets,
+    ).toBeUndefined();
   });
 
   it('every golden error envelope decodes with no "details" — the sibling key is absent', () => {
@@ -215,7 +235,10 @@ describe('contract fixtures decode without throwing', () => {
     const envelope = decodeErrorEnvelope(errorSourceUnavailableWithSnapshot);
     expect(envelope.error.code).toBe('SOURCE_UNAVAILABLE');
     expect(envelope.details?.availableSnapshots).toEqual([
-      { snapshotId: 'country-facts@2026-09-09T00:00:00Z', recordedAt: '2026-09-09T00:00:00Z' },
+      {
+        snapshotId: 'country-facts@2026-09-09T00:00:00Z',
+        recordedAt: '2026-09-09T00:00:00Z',
+      },
     ]);
   });
 
@@ -232,7 +255,10 @@ describe('contract fixtures decode without throwing', () => {
       ...errorSourceUnavailableWithSnapshot,
       details: {
         availableSnapshots: [
-          { ...errorSourceUnavailableWithSnapshot.details.availableSnapshots[0], extra: 'nope' },
+          {
+            ...errorSourceUnavailableWithSnapshot.details.availableSnapshots[0],
+            extra: 'nope',
+          },
         ],
       },
     };
@@ -240,24 +266,42 @@ describe('contract fixtures decode without throwing', () => {
   });
 
   it('TypedValue: every documented kind, including null/false/zero/large-integer', () => {
-    expect(decodeTypedValue(typedValueString)).toEqual({ type: 'string', value: 'Rock' });
-    expect(decodeTypedValue(typedValueNumber)).toEqual({ type: 'number', value: 14.85 });
-    expect(decodeTypedValue(typedValueNumberZero)).toEqual({ type: 'number', value: 0 });
+    expect(decodeTypedValue(typedValueString)).toEqual({
+      type: 'string',
+      value: 'Rock',
+    });
+    expect(decodeTypedValue(typedValueNumber)).toEqual({
+      type: 'number',
+      value: 14.85,
+    });
+    expect(decodeTypedValue(typedValueNumberZero)).toEqual({
+      type: 'number',
+      value: 0,
+    });
     expect(decodeTypedValue(typedValueIntegerLarge)).toEqual({
       type: 'integer',
       value: '90071992547409925',
     });
-    expect(decodeTypedValue(typedValueDecimal)).toEqual({ type: 'decimal', value: '10.50' });
+    expect(decodeTypedValue(typedValueDecimal)).toEqual({
+      type: 'decimal',
+      value: '10.50',
+    });
     expect(decodeTypedValue(typedValueBooleanFalse)).toEqual({
       type: 'boolean',
       value: false,
     });
-    expect(decodeTypedValue(typedValueDate)).toEqual({ type: 'date', value: '2026-09-09' });
+    expect(decodeTypedValue(typedValueDate)).toEqual({
+      type: 'date',
+      value: '2026-09-09',
+    });
     expect(decodeTypedValue(typedValueDatetime)).toEqual({
       type: 'datetime',
       value: '2026-09-09T12:00:00Z',
     });
-    expect(decodeTypedValue(typedValueNull)).toEqual({ type: 'null', value: null });
+    expect(decodeTypedValue(typedValueNull)).toEqual({
+      type: 'null',
+      value: null,
+    });
   });
 
   it('Scope / SourceRef fixtures carry the exact appendix field names', () => {
@@ -266,7 +310,10 @@ describe('contract fixtures decode without throwing', () => {
       environment: 'local',
       securityContextId: 'sc-abc123',
     });
-    expect(sourceRefFixture).toEqual({ source: 'chinook-local', collection: 'Customer' });
+    expect(sourceRefFixture).toEqual({
+      source: 'chinook-local',
+      collection: 'Customer',
+    });
   });
 
   it('ExecutionRequest fixtures (adhoc dtql, saved query, snapshot) carry valid typed parameters', () => {
@@ -280,7 +327,8 @@ describe('contract fixtures decode without throwing', () => {
       saved: executionRequestSaved,
       snapshot: executionRequestSnapshot,
     })) {
-      const parameters = (req as { parameters: Record<string, unknown> }).parameters;
+      const parameters = (req as { parameters: Record<string, unknown> })
+        .parameters;
       for (const [paramId, value] of Object.entries(parameters)) {
         expect(
           () => decodeTypedValue(value, `${name}.parameters.${paramId}`),
@@ -325,9 +373,29 @@ describe('decoders reject what the appendix forbids (no coercion, no unknown fie
         value: { type: 'integer', value: '5' },
         origin: 'selection',
         enabled: true,
-        role: 'admin', // not part of Fact — must never be silently accepted
+        administrator: true,
       }),
     ).toThrow(/unknown field/);
+  });
+
+  it('Fact.role and Fact.layer decode only the frozen cohort and overlay vocabularies', () => {
+    const base = {
+      id: 'Customer.ID=5',
+      entity: 'Customer',
+      field: 'ID',
+      value: { type: 'integer', value: '5' },
+      origin: 'context',
+      enabled: true,
+    } as const;
+    expect(
+      decodeFact({ ...base, role: 'affected', layer: 'hypothesis:H17' }),
+    ).toMatchObject({ role: 'affected', layer: 'hypothesis:H17' });
+    expect(() => decodeFact({ ...base, role: 'admin' })).toThrow(
+      /expected one of/,
+    );
+    expect(() =>
+      decodeFact({ ...base, layer: 'hypothesis:H17 secret' }),
+    ).toThrow(/invalid context layer/);
   });
 
   it('Fact: rejects a client-supplied role/principal-shaped field the same way', () => {
@@ -400,9 +468,10 @@ describe('fixtures/manifest.json has no drift from the pinned datatug-core tag',
     for (const entry of manifest.entries) {
       const bytes = readFileSync(join(fixturesDir, entry.name));
       const actual = createHash('sha256').update(bytes).digest('hex');
-      expect(actual, `${entry.name} drifted from fixtures/manifest.json (tag ${manifest.tag})`).toBe(
-        entry.sha256,
-      );
+      expect(
+        actual,
+        `${entry.name} drifted from fixtures/manifest.json (tag ${manifest.tag})`,
+      ).toBe(entry.sha256);
     }
   });
 
@@ -422,9 +491,10 @@ describe('fixtures/manifest.json has no drift from the pinned datatug-core tag',
     }
     // Every manifest entry must actually be present on disk (not just checked above per-file).
     for (const name of manifestNames) {
-      expect(onDisk, `${name} listed in manifest.json but missing from fixtures/`).toContain(
-        name,
-      );
+      expect(
+        onDisk,
+        `${name} listed in manifest.json but missing from fixtures/`,
+      ).toContain(name);
     }
   });
 });

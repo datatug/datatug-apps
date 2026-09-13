@@ -1,5 +1,9 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectorRef, CUSTOM_ELEMENTS_SCHEMA, signal } from '@angular/core';
+import {
+  ChangeDetectorRef,
+  CUSTOM_ELEMENTS_SCHEMA,
+  signal,
+} from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
 import { NavController } from '@ionic/angular';
@@ -13,7 +17,10 @@ import {
 } from '@sneat/datatug-semantic';
 import { Observable, Subject, of, throwError } from 'rxjs';
 
-import { QueryPageComponent, extractLinkedEntityNames } from './query-page.component';
+import {
+  QueryPageComponent,
+  extractLinkedEntityNames,
+} from './query-page.component';
 import { IQueryEditorState } from '../../../editor/models';
 import { IProjectContext } from '../../../nav/nav-models';
 import {
@@ -187,9 +194,15 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       providers: [
         {
           provide: ErrorLogger,
-          useValue: { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) },
+          useValue: {
+            logError: vi.fn(),
+            logErrorHandler: vi.fn(() => vi.fn()),
+          },
         },
-        { provide: RandomIdService, useValue: { newRandomId: vi.fn(() => 'test-id') } },
+        {
+          provide: RandomIdService,
+          useValue: { newRandomId: vi.fn(() => 'test-id') },
+        },
         {
           provide: DatatugNavContextService,
           useValue: {
@@ -208,7 +221,10 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
         },
         {
           provide: Router,
-          useValue: { navigate: vi.fn(() => Promise.resolve(true)), events: of() },
+          useValue: {
+            navigate: vi.fn(() => Promise.resolve(true)),
+            events: of(),
+          },
         },
         {
           provide: QueryContextSqlService,
@@ -235,7 +251,8 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       .overrideComponent(QueryPageComponent, {
         set: {
           imports: [],
-          template: '<ul aria-label="Access blockers">@for (blocker of accessBlockers(); track $index) {<li>{{ blocker }}</li>}</ul>',
+          template:
+            '<ul aria-label="Access blockers">@for (blocker of accessBlockers(); track $index) {<li>{{ blocker }}</li>}</ul>',
           schemas: [CUSTOM_ELEMENTS_SCHEMA],
           providers: [],
         },
@@ -290,6 +307,102 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     ]);
   });
 
+  it('preserves an open query binding when an overlay fact is promoted until the user accepts rebinding', async () => {
+    component = await createComponent({});
+    const overlay = investigationContext.addValue({
+      entityField: { entity: 'Customer', field: 'ID' },
+      value: 11,
+      label: 'Customer.ID = 11',
+      source: 'grid',
+      layer: 'hypothesis:H17',
+      role: 'suspected',
+    });
+    TestBed.tick();
+    expect(component.effectiveBindings()).toEqual([]);
+
+    investigationContext.applyPromotion(
+      overlay.id,
+      'hypothesis:H17',
+      'affected',
+    );
+    TestBed.tick();
+
+    expect(component.effectiveBindings()).toEqual([]);
+    expect(component.rebindSuggestions()).toEqual([
+      expect.objectContaining({
+        parameterId: 'CustomerId',
+        previous: expect.objectContaining({ parameterId: 'CustomerId' }),
+        suggested: expect.objectContaining({
+          value: { type: 'integer', value: '11' },
+          origin: 'context',
+        }),
+      }),
+    ]);
+
+    component.acceptRebind('CustomerId');
+
+    expect(component.rebindSuggestions()).toEqual([]);
+    expect(component.effectiveBindings()).toEqual([
+      expect.objectContaining({
+        parameterId: 'CustomerId',
+        value: { type: 'integer', value: '11' },
+      }),
+    ]);
+  });
+
+  it('keeps the accepted binding when the user declines a promotion rebind', async () => {
+    component = await createComponent({});
+    const overlay = investigationContext.addValue({
+      entityField: { entity: 'Customer', field: 'ID' },
+      value: 11,
+      label: 'Customer.ID = 11',
+      source: 'grid',
+      layer: 'hypothesis:H17',
+    });
+    TestBed.tick();
+    investigationContext.applyPromotion(
+      overlay.id,
+      'hypothesis:H17',
+      'affected',
+    );
+    TestBed.tick();
+
+    component.keepCurrentBinding('CustomerId');
+
+    expect(component.rebindSuggestions()).toEqual([]);
+    expect(component.effectiveBindings()).toEqual([]);
+  });
+
+  it('treats a direct user edit as the new accepted snapshot after promotion', async () => {
+    component = await createComponent({});
+    const overlay = investigationContext.addValue({
+      entityField: { entity: 'Customer', field: 'ID' },
+      value: 11,
+      label: 'Customer.ID = 11',
+      source: 'grid',
+      layer: 'hypothesis:H17',
+    });
+    TestBed.tick();
+    investigationContext.applyPromotion(
+      overlay.id,
+      'hypothesis:H17',
+      'affected',
+    );
+    TestBed.tick();
+    expect(component.rebindSuggestions()).toHaveLength(1);
+
+    component.editBinding('CustomerId', { type: 'integer', value: '23' });
+
+    expect(component.rebindSuggestions()).toEqual([]);
+    expect(component.effectiveBindings()).toEqual([
+      expect.objectContaining({
+        parameterId: 'CustomerId',
+        value: { type: 'integer', value: '23' },
+        origin: 'user',
+      }),
+    ]);
+  });
+
   it('selection (router state from the context panel, a wire Binding[]) is reported as origin "selection", not "context", when both agree', async () => {
     // A context fact that agrees with the selection value is NOT a conflict — the
     // resolver still reports the higher-precedence tier's origin (REQ:parameter-auto-
@@ -319,9 +432,13 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     component = await createComponent({ bindings: [selectionBinding] }); // selection = 5
     const [selectionRendered] = component.visibleBindings();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect((component as any).bindingFieldLabel(selectionRendered)).toBe('Customer.ID');
+    expect((component as any).bindingFieldLabel(selectionRendered)).toBe(
+      'Customer.ID',
+    );
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect((component as any).bindingValueLabel(selectionRendered)).toBe('5 · from selection');
+    expect((component as any).bindingValueLabel(selectionRendered)).toBe(
+      '5 · from selection',
+    );
   });
 
   it('AC:context-carries literal wording — renders "7 · from context"', async () => {
@@ -335,7 +452,9 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     TestBed.tick();
     const [contextRendered] = component.visibleBindings();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect((component as any).bindingValueLabel(contextRendered)).toBe('7 · from context');
+    expect((component as any).bindingValueLabel(contextRendered)).toBe(
+      '7 · from context',
+    );
   });
 
   it('clearBinding removes a binding from effectiveBindings without touching bindings() presence', async () => {
@@ -418,7 +537,10 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
 
   it('runQuery sends the full ExecutionRequest (Scope + typed parameters + bindingOrigins) and stores the response', async () => {
     const response = {
-      recordset: { columns: [{ name: 'InvoiceId', type: 'integer' }], rows: [[{ type: 'integer', value: '1' }]] },
+      recordset: {
+        columns: [{ name: 'InvoiceId', type: 'integer' }],
+        rows: [[{ type: 'integer', value: '1' }]],
+      },
       limitations: [],
       bindingsApplied: [
         {
@@ -517,7 +639,9 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
 
   it('runQuery reports the failure without hiding it', async () => {
     component = await createComponent({});
-    runQueryMock.mockReturnValue(throwError(() => ({ message: 'ACCESS_DENIED' })));
+    runQueryMock.mockReturnValue(
+      throwError(() => ({ message: 'ACCESS_DENIED' })),
+    );
     component.project = project;
 
     component.runQuery();
@@ -649,10 +773,17 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     const sourceUnavailable = new HttpErrorResponse({
       status: 503,
       error: {
-        error: { code: 'SOURCE_UNAVAILABLE', message: 'live request failed', requestId: 'req-2' },
+        error: {
+          code: 'SOURCE_UNAVAILABLE',
+          message: 'live request failed',
+          requestId: 'req-2',
+        },
         details: {
           availableSnapshots: [
-            { snapshotId: 'exchange-rates-2026-09-01', recordedAt: '2026-09-01T00:00:00Z' },
+            {
+              snapshotId: 'exchange-rates-2026-09-01',
+              recordedAt: '2026-09-01T00:00:00Z',
+            },
           ],
         },
       },
@@ -701,7 +832,11 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     const sourceUnavailableNoFixture = new HttpErrorResponse({
       status: 503,
       error: {
-        error: { code: 'SOURCE_UNAVAILABLE', message: 'live request failed', requestId: 'req-3' },
+        error: {
+          code: 'SOURCE_UNAVAILABLE',
+          message: 'live request failed',
+          requestId: 'req-3',
+        },
         // No "details" key at all — this query has no recorded fixture.
       },
     });
@@ -857,9 +992,15 @@ describe('QueryPageComponent — clearing a required parameter blocks Run (S96)'
       providers: [
         {
           provide: ErrorLogger,
-          useValue: { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) },
+          useValue: {
+            logError: vi.fn(),
+            logErrorHandler: vi.fn(() => vi.fn()),
+          },
         },
-        { provide: RandomIdService, useValue: { newRandomId: vi.fn(() => 'test-id') } },
+        {
+          provide: RandomIdService,
+          useValue: { newRandomId: vi.fn(() => 'test-id') },
+        },
         {
           provide: DatatugNavContextService,
           useValue: {
@@ -878,7 +1019,10 @@ describe('QueryPageComponent — clearing a required parameter blocks Run (S96)'
         },
         {
           provide: Router,
-          useValue: { navigate: vi.fn(() => Promise.resolve(true)), events: of() },
+          useValue: {
+            navigate: vi.fn(() => Promise.resolve(true)),
+            events: of(),
+          },
         },
         {
           provide: QueryContextSqlService,
@@ -913,7 +1057,8 @@ describe('QueryPageComponent — clearing a required parameter blocks Run (S96)'
       .compileComponents();
 
     investigationContext = TestBed.inject(InvestigationContextService);
-    const created = TestBed.createComponent(QueryPageComponent).componentInstance;
+    const created =
+      TestBed.createComponent(QueryPageComponent).componentInstance;
     created.project = project;
     created.envId = 'production';
     investigationContext.setScope({
@@ -931,7 +1076,10 @@ describe('QueryPageComponent — clearing a required parameter blocks Run (S96)'
   it('clearing a required parameter bound from selection stays visible as missing-required and blocks Run', async () => {
     component = await createComponent({ bindings: [selectionBinding] });
     expect(component.bindings()[0]).toEqual(
-      expect.objectContaining({ parameterId: 'CustomerId', value: { type: 'integer', value: '5' } }),
+      expect.objectContaining({
+        parameterId: 'CustomerId',
+        value: { type: 'integer', value: '5' },
+      }),
     );
 
     component.clearBinding('CustomerId');
@@ -978,7 +1126,11 @@ describe('QueryPageComponent — clearing a required parameter blocks Run (S96)'
     });
     TestBed.tick();
     expect(component.bindings()[0]).toEqual(
-      expect.objectContaining({ parameterId: 'CustomerId', origin: 'context', value: { type: 'integer', value: '5' } }),
+      expect.objectContaining({
+        parameterId: 'CustomerId',
+        origin: 'context',
+        value: { type: 'integer', value: '5' },
+      }),
     );
 
     investigationContext.setEnabled(item.id, false);
@@ -993,7 +1145,11 @@ describe('QueryPageComponent — clearing a required parameter blocks Run (S96)'
     TestBed.tick();
 
     expect(component.bindings()[0]).toEqual(
-      expect.objectContaining({ parameterId: 'CustomerId', origin: 'context', value: { type: 'integer', value: '5' } }),
+      expect.objectContaining({
+        parameterId: 'CustomerId',
+        origin: 'context',
+        value: { type: 'integer', value: '5' },
+      }),
     );
   });
 });
@@ -1179,7 +1335,10 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
   const legacySqlDef: IQueryDef = {
     id: 'artists/artists_with_albums',
     title: 'Artists with albums',
-    request: { queryType: QueryType.SQL, text: legacySqlText } as ISqlQueryRequest,
+    request: {
+      queryType: QueryType.SQL,
+      text: legacySqlText,
+    } as ISqlQueryRequest,
   };
 
   // The real `customers/customer-invoices.query.json`/`.query.dtql` shape —
@@ -1243,9 +1402,15 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
       providers: [
         {
           provide: ErrorLogger,
-          useValue: { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) },
+          useValue: {
+            logError: vi.fn(),
+            logErrorHandler: vi.fn(() => vi.fn()),
+          },
         },
-        { provide: RandomIdService, useValue: { newRandomId: vi.fn(() => 'test-id') } },
+        {
+          provide: RandomIdService,
+          useValue: { newRandomId: vi.fn(() => 'test-id') },
+        },
         {
           provide: DatatugNavContextService,
           useValue: {
@@ -1264,7 +1429,10 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
         },
         {
           provide: Router,
-          useValue: { navigate: vi.fn(() => Promise.resolve(true)), events: of() },
+          useValue: {
+            navigate: vi.fn(() => Promise.resolve(true)),
+            events: of(),
+          },
         },
         {
           provide: QueryContextSqlService,
@@ -1323,7 +1491,11 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
     const httpDef: IQueryDef = {
       id: 'reference/country-facts',
       title: 'Country facts',
-      request: { queryType: QueryType.HTTP, url: 'https://example.test', method: 'GET' },
+      request: {
+        queryType: QueryType.HTTP,
+        url: 'https://example.test',
+        method: 'GET',
+      },
     };
     component = await createComponent(httpDef);
 
@@ -1350,14 +1522,26 @@ describe('extractLinkedEntityNames', () => {
         text: 'SELECT 1 FROM Ignored',
       } as ISqlQueryRequest,
       parameters: [
-        { id: 'p1', type: 'integer', meta: { entity: 'Customer', field: 'ID' } },
+        {
+          id: 'p1',
+          type: 'integer',
+          meta: { entity: 'Customer', field: 'ID' },
+        },
       ],
       recordsets: [
         {
           name: 'r',
           columns: [
-            { name: 'c1', type: 'integer', meta: { entity: 'Invoice', field: 'ID' } },
-            { name: 'c2', type: 'integer', meta: { entity: 'Customer', field: 'ID' } }, // dup
+            {
+              name: 'c1',
+              type: 'integer',
+              meta: { entity: 'Invoice', field: 'ID' },
+            },
+            {
+              name: 'c2',
+              type: 'integer',
+              meta: { entity: 'Customer', field: 'ID' },
+            }, // dup
           ],
         },
       ],
@@ -1383,7 +1567,10 @@ describe('extractLinkedEntityNames', () => {
     const def: IQueryDef = {
       id: 'q',
       title: 'q',
-      request: { queryType: QueryType.SQL, text: 'SELECT * FROM dbo.Artist' } as ISqlQueryRequest,
+      request: {
+        queryType: QueryType.SQL,
+        text: 'SELECT * FROM dbo.Artist',
+      } as ISqlQueryRequest,
     };
 
     expect(extractLinkedEntityNames(def)).toEqual(['Artist']);
@@ -1406,7 +1593,11 @@ describe('extractLinkedEntityNames', () => {
     const def: IQueryDef = {
       id: 'q',
       title: 'q',
-      request: { queryType: QueryType.HTTP, url: 'https://example.test', method: 'GET' },
+      request: {
+        queryType: QueryType.HTTP,
+        url: 'https://example.test',
+        method: 'GET',
+      },
     };
 
     expect(extractLinkedEntityNames(def)).toEqual([]);

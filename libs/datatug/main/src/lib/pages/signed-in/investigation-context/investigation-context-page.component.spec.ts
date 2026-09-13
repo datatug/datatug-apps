@@ -14,7 +14,10 @@ import {
 import { of } from 'rxjs';
 
 import { InvestigationContextPageComponent } from './investigation-context-page.component';
-import { IEntity, IEntityFieldDef } from '../../../models/definition/metapedia/entity';
+import {
+  IEntity,
+  IEntityFieldDef,
+} from '../../../models/definition/metapedia/entity';
 import { IProjectContext } from '../../../nav/nav-models';
 import { DatatugCoreModule } from '../../../core/datatug-core.module';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
@@ -46,9 +49,11 @@ const ENTITY_FIELDS: Record<string, IEntityFieldDef[]> = {
  * actually resolves an entity's declared fields, entity.service.ts's own
  * `getEntityFromGithub`). */
 function entityServiceStub() {
-  const entityRecords: IRecord<IEntity>[] = Object.keys(ENTITY_FIELDS).map((id) => ({
-    id,
-  }));
+  const entityRecords: IRecord<IEntity>[] = Object.keys(ENTITY_FIELDS).map(
+    (id) => ({
+      id,
+    }),
+  );
   return {
     getAllEntities: vi.fn(() => of(entityRecords)),
     getEntity: vi.fn((_store: string, _proj: string, entityId: string) =>
@@ -65,7 +70,11 @@ function entityServiceStub() {
  * tests in this file already rely on (`dispatchEvent(new CustomEvent('ionChange'))`),
  * just with a `detail.value` payload this page's handlers read
  * (`$event.detail.value`). */
-function fireIonEvent(el: Element, type: 'ionChange' | 'ionInput', value: string): void {
+function fireIonEvent(
+  el: Element,
+  type: 'ionChange' | 'ionInput',
+  value: string,
+): void {
   el.dispatchEvent(new CustomEvent(type, { detail: { value } }));
 }
 
@@ -225,7 +234,15 @@ describe('InvestigationContextPageComponent', () => {
         conditionSelect: root.querySelector(
           'ion-select[label="Condition"]',
         ) as HTMLElement,
-        valueInput: root.querySelector('ion-input[label="Value"]') as HTMLElement,
+        roleSelect: root.querySelector(
+          'ion-select[label="Cohort role"]',
+        ) as HTMLElement,
+        layerSelect: root.querySelector(
+          'ion-select[label="Context layer"]',
+        ) as HTMLElement,
+        valueInput: root.querySelector(
+          'ion-input[label="Value"]',
+        ) as HTMLElement,
         // The form's ion-list has exactly one ion-button (Add) — scope by the form's
         // own class rather than a relocated aria-label.
         addButton: root.querySelector(
@@ -247,7 +264,7 @@ describe('InvestigationContextPageComponent', () => {
       fixture.detectChanges();
     });
 
-    it('loads the current project\'s entities into the Entity select', () => {
+    it("loads the current project's entities into the Entity select", () => {
       expect(entityService.getAllEntities).toHaveBeenCalledWith(project.ref);
       const { entitySelect } = formEls();
       expect(optionTexts(entitySelect)).toEqual(['Customer', 'Invoice']);
@@ -366,6 +383,36 @@ describe('InvestigationContextPageComponent', () => {
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       expect((component as any).valueInput()).toBe('');
+    });
+
+    it('adds the selected cohort role and named overlay without treating the overlay as an automatic binding', () => {
+      const { entitySelect, valueInput, roleSelect, layerSelect } = formEls();
+      fireIonEvent(entitySelect, 'ionChange', 'Customer');
+      fixture.detectChanges();
+      fireIonEvent(formEls().fieldSelect, 'ionChange', 'ID');
+      fireIonEvent(formEls().conditionSelect, 'ionChange', '==');
+      fireIonEvent(roleSelect, 'ionChange', 'suspected');
+      fireIonEvent(layerSelect, 'ionChange', 'hypothesis');
+      fixture.detectChanges();
+      const layerId = fixture.nativeElement.querySelector(
+        'ion-input[label="Layer ID"]',
+      ) as HTMLElement;
+      fireIonEvent(layerId, 'ionInput', 'H17');
+      fireIonEvent(valueInput, 'ionInput', '11');
+      fixture.detectChanges();
+
+      formEls().addButton.dispatchEvent(new Event('click'));
+      fixture.detectChanges();
+
+      expect(context.items()).toEqual([
+        expect.objectContaining({
+          entity: 'Customer',
+          field: 'ID',
+          role: 'suspected',
+          layer: 'hypothesis:H17',
+        }),
+      ]);
+      expect(context.items()[0].selectedForBinding).toBeUndefined();
     });
   });
 
@@ -546,6 +593,23 @@ describe('InvestigationContextPageComponent', () => {
           },
         },
       );
+    });
+
+    it('opens the real incident creation journey with the exact agent, incident store, project, and environment scope', () => {
+      const makeIncident = fixture.nativeElement.querySelector(
+        '[data-testid="make-incident"]',
+      ) as HTMLElement;
+
+      makeIncident.dispatchEvent(new Event('click'));
+
+      expect(navigateSpy).toHaveBeenCalledWith(['/incidents/new'], {
+        queryParams: {
+          agent: 'localhost:8989',
+          storeId: 'demo-project',
+          project: 'demo-project',
+          environment: 'production',
+        },
+      });
     });
   });
 

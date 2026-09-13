@@ -451,6 +451,43 @@ describe('IncidentCreatePageComponent', () => {
     ).toMatchObject({ condition: '>=' });
   });
 
+  it('preserves role and named layer while leaving the original Investigation Context unchanged', () => {
+    const overlay: ContextItem = {
+      id: 'Customer.ID@hypothesis:H17:integer="11"',
+      entity: 'Customer',
+      field: 'ID',
+      value: { type: 'integer', value: '11' },
+      origin: 'context',
+      enabled: true,
+      label: 'Customer.ID = 11',
+      source: 'manual',
+      addedAt: '2026-09-13T08:00:00Z',
+      condition: '==',
+      role: 'suspected',
+      layer: 'hypothesis:H17',
+    };
+    investigationItems.set([overlay]);
+    createSpy.mockReturnValue(new Subject<IncidentApiResult<IncidentDetail>>());
+
+    peek(fixture.componentInstance).title = 'Hypothesis-scoped incident';
+    peek(fixture.componentInstance).submit();
+
+    expect(
+      (createSpy.mock.calls[0][1] as CreateIncidentRequest).canonicalContext
+        .facts[0],
+    ).toMatchObject({
+      id: overlay.id,
+      role: 'suspected',
+      layer: 'hypothesis:H17',
+      scope: {
+        storeId: 'local',
+        projectId: 'billing',
+        environment: 'prod',
+      },
+    });
+    expect(investigationItems()).toEqual([overlay]);
+  });
+
   it('navigates with replaceUrl to the returned route-authoritative detail', () => {
     createSpy.mockReturnValue(
       of({
