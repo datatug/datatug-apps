@@ -98,11 +98,15 @@ describe('resolveBindings — precedence (AC:bound-from-selection, AC:context-ca
         role: 'healthy_control',
       }),
     ]);
+    const cohortOptions = unresolved.cohortOptions;
+    if (!cohortOptions) {
+      throw new Error('Expected cohort choices for ambiguous context facts');
+    }
 
     const selected = resolveBindings({
       ...input,
       selectedContextFactKeys: new Map([
-        ['CustomerId', unresolved.cohortOptions![0].factKey],
+        ['CustomerId', cohortOptions[0].factKey],
       ]),
     })[0];
     expect(selected).toMatchObject({

@@ -406,8 +406,11 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       (option) => option.role === 'affected',
     );
     expect(affected).toBeDefined();
+    if (!affected) {
+      throw new Error('Expected an affected cohort choice');
+    }
 
-    component.chooseContextCohort('CustomerId', affected!.factKey);
+    component.chooseContextCohort('CustomerId', affected.factKey);
 
     const selected = component.bindings()[0];
     expect(selected).toMatchObject({ role: 'affected', origin: 'context' });
@@ -663,9 +666,14 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       mode: 'live',
     });
     expect(component.runResult()).toEqual(response);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect(
-      (component as any).appliedBindingRole(response.bindingsApplied[0]),
+      (
+        component as unknown as {
+          appliedBindingRole: (
+            binding: (typeof response.bindingsApplied)[number],
+          ) => string | undefined;
+        }
+      ).appliedBindingRole(response.bindingsApplied[0]),
     ).toBe('affected');
     expect(component.running()).toBe(false);
     expect(component.runError()).toBeUndefined();

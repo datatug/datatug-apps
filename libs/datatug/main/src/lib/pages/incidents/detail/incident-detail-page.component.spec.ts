@@ -658,6 +658,9 @@ describe('IncidentDetailPageComponent', () => {
     );
     paramMap$.next(convertToParamMap({ storeId: 'ops', incidentId: 'INC-2' }));
     fixture.detectChanges();
+    if (!overlay.scope) {
+      throw new Error('Expected the incident overlay to retain project scope');
+    }
 
     appendResult$.next({
       kind: 'ok',
@@ -668,7 +671,7 @@ describe('IncidentDetailPageComponent', () => {
           type: 'context.fact.promoted',
           payload: {
             fact: {
-              scope: overlay.scope!,
+              scope: overlay.scope,
               id: overlay.id,
               layer: 'hypothesis:H17',
             },
