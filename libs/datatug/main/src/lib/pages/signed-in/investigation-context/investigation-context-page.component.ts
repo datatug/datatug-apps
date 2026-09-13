@@ -423,7 +423,7 @@ export class InvestigationContextPageComponent implements OnDestroy {
     item: ContextItem,
     raw: string | null | undefined,
   ): void {
-    const layer = (raw || '').trim();
+    const layer = raw || '';
     if (!isValidLayer(layer)) {
       this.metadataError.set(
         'Layer must be canonical or hypothesis:, participant:, or question: followed by an ID.',
@@ -706,8 +706,10 @@ export class InvestigationContextPageComponent implements OnDestroy {
 }
 
 function isValidLayer(layer: string): boolean {
-  return (
-    layer === 'canonical' ||
-    /^(hypothesis|participant|question):[^/\\\p{Cc}\s]+$/u.test(layer)
-  );
+  if (layer === 'canonical') {
+    return true;
+  }
+  const match = /^(hypothesis|participant|question):(.*)$/u.exec(layer);
+  const ownerId = match?.[2];
+  return !!ownerId && ownerId.trim() === ownerId && !/\p{Cc}/u.test(ownerId);
 }

@@ -373,14 +373,15 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     expect(component.effectiveBindings()).toEqual([]);
 
     investigationContext.addValue({
-      entityField: { entity: 'Customer', field: 'ID' },
-      value: 23,
-      label: 'Customer.ID = 23',
+      entityField: { entity: 'Country', field: 'Name' },
+      value: 'Ireland',
+      label: 'Country.Name = Ireland',
       source: 'manual',
     });
     TestBed.tick();
 
     expect(component.rebindSuggestions()).toEqual([]);
+    expect(component.effectiveBindings()).toEqual([]);
   });
 
   it('lets the user choose affected while keeping healthy control visible as another compare side', async () => {

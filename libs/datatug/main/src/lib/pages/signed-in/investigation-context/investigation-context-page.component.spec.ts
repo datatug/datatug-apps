@@ -566,6 +566,42 @@ describe('InvestigationContextPageComponent', () => {
       expect(context.items()).toHaveLength(1);
     });
 
+    it('edits named layers with Core-compatible owner IDs and rejects whitespace/control corruption', () => {
+      const customer = context
+        .items()
+        .find((item) => item.label === 'Customer.ID = 5');
+      expect(customer).toBeDefined();
+
+      const customerLayerInput = (): HTMLElement => {
+        const row = fixture.nativeElement.querySelector(
+          '.investigation-context-page__item',
+        ) as HTMLElement | null;
+        const input = row?.querySelector('ion-input');
+        if (!(input instanceof HTMLElement)) {
+          throw new Error('Expected the customer context layer editor');
+        }
+        return input;
+      };
+
+      fireIonEvent(customerLayerInput(), 'ionChange', 'hypothesis:H 17/US');
+      fixture.detectChanges();
+      expect(
+        context.items().find((item) => item.label === 'Customer.ID = 5')?.layer,
+      ).toBe('hypothesis:H 17/US');
+
+      for (const invalid of ['hypothesis: H17', 'question:H17\nUS']) {
+        fireIonEvent(customerLayerInput(), 'ionChange', invalid);
+        fixture.detectChanges();
+        expect(
+          context.items().find((item) => item.label === 'Customer.ID = 5')
+            ?.layer,
+        ).toBe('hypothesis:H 17/US');
+        expect(
+          fixture.nativeElement.querySelector('[role="alert"]')?.textContent,
+        ).toContain('followed by an ID');
+      }
+    });
+
     it('opening an applicable query navigates to the query page carrying its resolved wire bindings/targets', () => {
       const items: HTMLElement[] = Array.from(
         fixture.nativeElement.querySelectorAll('ion-item[button="true"]'),

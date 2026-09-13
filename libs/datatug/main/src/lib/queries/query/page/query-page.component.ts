@@ -1352,10 +1352,6 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       (item) => item.parameterId !== parameterId,
     );
     this.rebindSuggestions.set(remaining);
-    if (!remaining.length) {
-      this.promotionRebindPending = false;
-      this.dismissedRebinds.clear();
-    }
   }
 
   protected rebindSuggestionLabel(suggestion: RebindSuggestion): string {

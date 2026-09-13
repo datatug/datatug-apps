@@ -827,7 +827,13 @@ function hasValidContextDecisionHistory(
   >;
   const promotionKeys = new Set<string>();
   const promotedLayers = new Set<string>();
+  const eventIds = new Set<string>();
   for (const promotion of promotions) {
+    const eventId = promotion['eventId'] as string;
+    if (eventIds.has(eventId)) {
+      return false;
+    }
+    eventIds.add(eventId);
     const fact = promotion['fact'] as Record<string, unknown>;
     const scope = fact['scope'] as Record<string, unknown>;
     const layer = fact['layer'] as string;
@@ -846,6 +852,11 @@ function hasValidContextDecisionHistory(
   }
   const rejectedLayers = new Set<string>();
   for (const rejection of rejections) {
+    const eventId = rejection['eventId'] as string;
+    if (eventIds.has(eventId)) {
+      return false;
+    }
+    eventIds.add(eventId);
     const layer = rejection['layer'] as string;
     if (rejectedLayers.has(layer) || promotedLayers.has(layer)) {
       return false;

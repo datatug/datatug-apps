@@ -1179,5 +1179,38 @@ describe('IncidentClientService', () => {
         message: 'Invalid incident response.',
       });
     });
+
+    it('rejects a context history event id reused across distinct decisions', () => {
+      let result: unknown;
+      service
+        .append(CONTEXT, 'INC-1', request)
+        .subscribe((value) => (result = value));
+      httpMock.expectOne(`${BASE_URL}/INC-1/events`).flush({
+        event: eventFixture('context.fact.promoted', request.event.payload, {
+          seq: 2,
+          assertion: request.event.assertion,
+          refs: request.event.refs,
+        }),
+        projection: {
+          ...INCIDENT,
+          contextPromotions: [
+            {
+              eventId: 'event-shared',
+              fact: request.event.payload.fact,
+              role: 'affected',
+            },
+          ],
+          contextRejections: [
+            { eventId: 'event-shared', layer: 'question:follow-up' },
+          ],
+        },
+        replayed: false,
+      });
+
+      expect(result).toEqual({
+        kind: 'error',
+        message: 'Invalid incident response.',
+      });
+    });
   });
 });
