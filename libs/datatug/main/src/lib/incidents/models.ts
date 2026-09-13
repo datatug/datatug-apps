@@ -7,7 +7,11 @@
 // IncidentRef.storeId: the latter routes an incident store inside that agent
 // and is not a hostname.
 
-import type { PhysicalRef, TypedValue } from '@sneat/datatug-semantic';
+import type {
+  ContextCondition,
+  PhysicalRef,
+  TypedValue,
+} from '@sneat/datatug-semantic';
 
 /**
  * A reference to one incident: which incident store it lives in, and its id
@@ -59,6 +63,7 @@ export interface IncidentFactView {
   readonly origin: 'selection' | 'context' | 'manual';
   readonly physical?: PhysicalRef;
   readonly mapping?: 'declared' | 'inferred';
+  readonly condition?: ContextCondition;
   readonly enabled: boolean;
   readonly role?:
     | 'affected'

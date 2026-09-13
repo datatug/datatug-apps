@@ -230,6 +230,36 @@ describe('IncidentCreatePageComponent', () => {
         ],
       },
     } satisfies CreateIncidentRequest);
+    const defaultEqualityFact = (
+      createSpy.mock.calls[0][1] as CreateIncidentRequest
+    ).canonicalContext.facts[0];
+    expect('condition' in defaultEqualityFact).toBe(false);
+  });
+
+  it('preserves a non-default Investigation Context condition in the create payload', () => {
+    investigationItems.set([
+      {
+        id: 'Customer.Age:integer="21"',
+        entity: 'Customer',
+        field: 'Age',
+        value: { type: 'integer', value: '21' },
+        origin: 'context',
+        enabled: true,
+        label: 'Customer.Age >= 21',
+        source: 'manual',
+        addedAt: '2026-09-13T08:00:00Z',
+        condition: '>=',
+      },
+    ]);
+    createSpy.mockReturnValue(new Subject<IncidentApiResult<IncidentDetail>>());
+
+    peek(fixture.componentInstance).title = 'Age-scoped incident';
+    peek(fixture.componentInstance).submit();
+
+    expect(
+      (createSpy.mock.calls[0][1] as CreateIncidentRequest).canonicalContext
+        .facts[0],
+    ).toMatchObject({ condition: '>=' });
   });
 
   it('navigates with replaceUrl to the returned route-authoritative detail', () => {

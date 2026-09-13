@@ -139,8 +139,8 @@ export class IncidentListPageComponent {
   protected readonly isLoading = signal(false);
   protected readonly unavailableMessage = signal<string | undefined>(undefined);
   private recoveryTargetKey: string | undefined;
-  private staleRecoveryAttempted = false;
-  private staleRecoveryInProgress = false;
+  private readonly staleRecoveryAttempted = signal(false);
+  private readonly staleRecoveryInProgress = signal(false);
 
   private readonly loadIncidents = effect((onCleanup) => {
     const context = this.requestContext();
@@ -166,8 +166,8 @@ export class IncidentListPageComponent {
     });
     if (this.recoveryTargetKey !== targetKey) {
       this.recoveryTargetKey = targetKey;
-      this.staleRecoveryAttempted = false;
-      this.staleRecoveryInProgress = false;
+      this.staleRecoveryAttempted.set(false);
+      this.staleRecoveryInProgress.set(false);
     }
     const baseUrl = agentBaseUrl(context.agentStoreId);
     this.investigationContext.setScope(
@@ -188,12 +188,12 @@ export class IncidentListPageComponent {
           result.code === 'STALE_CONTEXT' &&
           this.recoveryTargetKey === targetKey
         ) {
-          if (this.staleRecoveryInProgress) {
+          if (this.staleRecoveryInProgress()) {
             return;
           }
-          if (!this.staleRecoveryAttempted) {
-            this.staleRecoveryAttempted = true;
-            this.staleRecoveryInProgress = true;
+          if (!this.staleRecoveryAttempted()) {
+            this.staleRecoveryAttempted.set(true);
+            this.staleRecoveryInProgress.set(true);
             this.investigationContext.clear();
             recoverySubscription = this.agentContext
               .contextFor(baseUrl)
@@ -203,7 +203,7 @@ export class IncidentListPageComponent {
                   if (this.recoveryTargetKey !== targetKey) {
                     return;
                   }
-                  this.staleRecoveryInProgress = false;
+                  this.staleRecoveryInProgress.set(false);
                   this.isLoading.set(false);
                   this.unavailableMessage.set(
                     'The DataTug agent context changed and could not be refreshed.',
@@ -215,7 +215,7 @@ export class IncidentListPageComponent {
         }
         this.isLoading.set(false);
         if (result.kind === 'ok') {
-          this.staleRecoveryAttempted = false;
+          this.staleRecoveryAttempted.set(false);
           this.incidents.set(result.data);
         } else {
           this.unavailableMessage.set(result.message);
@@ -225,7 +225,7 @@ export class IncidentListPageComponent {
       subscription.unsubscribe();
       recoverySubscription?.unsubscribe();
       if (this.recoveryTargetKey === targetKey) {
-        this.staleRecoveryInProgress = false;
+        this.staleRecoveryInProgress.set(false);
       }
     });
   });

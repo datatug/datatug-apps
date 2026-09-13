@@ -147,8 +147,8 @@ export class IncidentDetailPageComponent {
   protected readonly unavailableMessage = signal<string | undefined>(undefined);
   protected readonly timelineMessage = signal<string | undefined>(undefined);
   private recoveryTargetKey: string | undefined;
-  private staleRecoveryAttempted = false;
-  private staleRecoveryInProgress = false;
+  private readonly staleRecoveryAttempted = signal(false);
+  private readonly staleRecoveryInProgress = signal(false);
 
   private readonly loadIncident = effect((onCleanup) => {
     const context = this.requestContext();
@@ -173,8 +173,8 @@ export class IncidentDetailPageComponent {
     });
     if (this.recoveryTargetKey !== targetKey) {
       this.recoveryTargetKey = targetKey;
-      this.staleRecoveryAttempted = false;
-      this.staleRecoveryInProgress = false;
+      this.staleRecoveryAttempted.set(false);
+      this.staleRecoveryInProgress.set(false);
     }
     const baseUrl = agentBaseUrl(context.agentStoreId);
     this.investigationContext.setScope(
@@ -192,15 +192,15 @@ export class IncidentDetailPageComponent {
     const recoverStaleContext = (): boolean => {
       if (
         this.recoveryTargetKey !== targetKey ||
-        this.staleRecoveryInProgress
+        this.staleRecoveryInProgress()
       ) {
         return true;
       }
-      if (this.staleRecoveryAttempted) {
+      if (this.staleRecoveryAttempted()) {
         return false;
       }
-      this.staleRecoveryAttempted = true;
-      this.staleRecoveryInProgress = true;
+      this.staleRecoveryAttempted.set(true);
+      this.staleRecoveryInProgress.set(true);
       this.incident.set(undefined);
       this.events.set(undefined);
       this.isLoading.set(true);
@@ -214,7 +214,7 @@ export class IncidentDetailPageComponent {
             if (this.recoveryTargetKey !== targetKey) {
               return;
             }
-            this.staleRecoveryInProgress = false;
+            this.staleRecoveryInProgress.set(false);
             this.isLoading.set(false);
             this.isTimelineLoading.set(false);
             this.unavailableMessage.set(
@@ -263,7 +263,7 @@ export class IncidentDetailPageComponent {
       eventsSubscription.unsubscribe();
       recoverySubscription?.unsubscribe();
       if (this.recoveryTargetKey === targetKey) {
-        this.staleRecoveryInProgress = false;
+        this.staleRecoveryInProgress.set(false);
       }
     });
   });

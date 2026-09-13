@@ -312,6 +312,7 @@ export class IncidentCreatePageComponent {
             enabled: fact.enabled,
             ...(fact.physical ? { physical: fact.physical } : {}),
             ...(fact.mapping ? { mapping: fact.mapping } : {}),
+            ...(fact.condition ? { condition: fact.condition } : {}),
             scope: {
               storeId: datatugServeProjectStoreId,
               projectId: context.scope.project,

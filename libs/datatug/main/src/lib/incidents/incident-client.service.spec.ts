@@ -261,6 +261,7 @@ describe('IncidentClientService', () => {
           },
           mapping: 'declared',
           enabled: true,
+          condition: '>=',
           role: 'affected',
           layer: 'canonical',
           scope: {
@@ -316,6 +317,7 @@ describe('IncidentClientService', () => {
         { physical: { source: '', collection: 'c', column: 'x' } },
       ],
       ['mapping', { mapping: 'guessed' }],
+      ['condition', { condition: 'contains' }],
       ['role', { role: 'owner' }],
       ['layer', { layer: 'hypothesis: ' }],
       [

@@ -384,6 +384,7 @@ function isIncidentFactView(value: unknown): boolean {
     (value['field'] !== undefined && !isNonEmptyString(value['field'])) ||
     !optionalPhysicalRef(value['physical']) ||
     !optionalFactMapping(value['mapping']) ||
+    !optionalFactCondition(value['condition']) ||
     !optionalFactRole(value['role']) ||
     !optionalFactLayer(value['layer']) ||
     !optionalProjectScope(value['scope'])
@@ -411,6 +412,18 @@ function optionalPhysicalRef(value: unknown): boolean {
 
 function optionalFactMapping(value: unknown): boolean {
   return value === undefined || value === 'declared' || value === 'inferred';
+}
+
+function optionalFactCondition(value: unknown): boolean {
+  return (
+    value === undefined ||
+    value === '==' ||
+    value === '!=' ||
+    value === '>' ||
+    value === '>=' ||
+    value === '<' ||
+    value === '<='
+  );
 }
 
 function optionalFactRole(value: unknown): boolean {
