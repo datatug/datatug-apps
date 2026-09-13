@@ -149,10 +149,20 @@ export class IncidentCreatePageComponent {
     return context ? incidentContextQueryParams(context) : undefined;
   });
 
-  protected readonly contextFactCount = computed(
-    () =>
-      this.investigationContext.items().filter((item) => item.enabled).length,
-  );
+  protected readonly contextFactCount = computed(() => {
+    const context = this.requestContext();
+    if (
+      !context ||
+      !this.investigationContext.isCurrentScope(
+        this.investigationScope(context),
+        agentBaseUrl(context.agentStoreId),
+      )
+    ) {
+      return 0;
+    }
+    return this.investigationContext.items().filter((item) => item.enabled)
+      .length;
+  });
   private readonly committedIncident = signal<CommittedIncident | undefined>(
     undefined,
   );

@@ -242,10 +242,16 @@ describe('IncidentCreatePageComponent', () => {
       '//agent-b:8989/datatug',
     );
     isCurrentScopeSpy.mockReturnValue(false);
+    fixture.detectChanges();
 
     peek(fixture.componentInstance).title = 'Must not relabel B';
     peek(fixture.componentInstance).submit();
 
+    expect(
+      fixture.nativeElement.querySelector(
+        '[data-testid="incident-context-fact-count"]',
+      ),
+    ).toBeNull();
     expect(isCurrentScopeSpy).toHaveBeenLastCalledWith(
       {
         project: 'billing',
@@ -307,6 +313,51 @@ describe('IncidentCreatePageComponent', () => {
       ).toContain('Open a project and environment');
     },
   );
+
+  it('does not claim facts from a prior scope will attach for a partial agent URL', async () => {
+    const factA: ContextItem = {
+      id: 'Customer.ID:integer="5"',
+      entity: 'Customer',
+      field: 'ID',
+      value: { type: 'integer', value: '5' },
+      origin: 'context',
+      enabled: true,
+      label: 'Customer.ID = 5',
+      source: 'grid',
+      addedAt: '2026-09-13T08:00:00Z',
+      condition: '==',
+    };
+    TestBed.resetTestingModule();
+    await render(
+      { agent: 'agent-b:8989' },
+      { '//agent-a:8989/datatug': [factA] },
+    );
+    setScopeSpy(
+      {
+        project: 'billing',
+        environment: 'prod',
+        securityContextId: 'ctx-a',
+      },
+      '//agent-a:8989/datatug',
+    );
+    fixture.detectChanges();
+
+    expect(
+      fixture.nativeElement.querySelector(
+        '[data-testid="incident-context-fact-count"]',
+      ),
+    ).toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('will be attached');
+    expect(
+      fixture.nativeElement.querySelector(
+        '[data-testid="incident-scope-guidance"]',
+      )?.textContent,
+    ).toContain('Open a project and environment');
+
+    peek(fixture.componentInstance).title = 'Do not leak A context';
+    peek(fixture.componentInstance).submit();
+    expect(createSpy).not.toHaveBeenCalled();
+  });
 
   it('calls the client with trimmed input, full scope, and canonical context', () => {
     investigationItems.set([
