@@ -3,6 +3,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
 import {
   AgentContextService,
+  type ContextScope,
   InvestigationContextService,
 } from '@sneat/datatug-semantic';
 import {
@@ -28,11 +29,8 @@ import { DatatugServicesNavModule } from '../../../services/nav/datatug-services
 import { IncidentClientService } from '../../../incidents/incident-client.service';
 import { agentBaseUrl } from '../../../services/repo/agent-url';
 import {
-  incidentAgentQueryParam,
   incidentContextQueryParams,
-  incidentEnvironmentQueryParam,
-  incidentProjectQueryParam,
-  incidentStoreQueryParam,
+  resolveIncidentRouteScope,
 } from '../../../incidents/incident-route-context';
 import {
   IncidentRequestContext,
@@ -101,25 +99,21 @@ export class IncidentListPageComponent {
     IncidentRequestContext | undefined
   >(() => {
     const query = this.queryParams();
-    const agentStoreId =
-      query.get(incidentAgentQueryParam) || this.navAgentStoreId();
-    const project =
-      query.get(incidentProjectQueryParam) || this.navProject()?.ref.projectId;
-    const environment =
-      query.get(incidentEnvironmentQueryParam) || this.navEnvironment()?.id;
-    const storeId = query.get(incidentStoreQueryParam) || project;
+    const routeScope = resolveIncidentRouteScope(query, {
+      agentStoreId: this.navAgentStoreId(),
+      project: this.navProject(),
+      environment: this.navEnvironment()?.id,
+    });
+    if (!routeScope) {
+      return undefined;
+    }
+    const { agentStoreId, storeId, project, environment } = routeScope;
     const securityContextId = agentStoreId
       ? this.agentContext
           .contextFor(agentBaseUrl(agentStoreId))
           .securityContextId()
       : undefined;
-    if (
-      !agentStoreId ||
-      !storeId ||
-      !project ||
-      !environment ||
-      !securityContextId
-    ) {
+    if (!securityContextId) {
       return undefined;
     }
     return {
@@ -139,6 +133,9 @@ export class IncidentListPageComponent {
   protected readonly isLoading = signal(false);
   protected readonly unavailableMessage = signal<string | undefined>(undefined);
   private recoveryTargetKey: string | undefined;
+  private selectedInvestigationScope:
+    | Omit<ContextScope, 'agentUrl'>
+    | undefined;
   private readonly staleRecoveryAttempted = signal(false);
   private readonly staleRecoveryInProgress = signal(false);
 
@@ -164,20 +161,31 @@ export class IncidentListPageComponent {
       project: context.scope.project,
       environment: context.scope.environment,
     });
-    if (this.recoveryTargetKey !== targetKey) {
+    const sameTarget = this.recoveryTargetKey === targetKey;
+    if (!sameTarget) {
       this.recoveryTargetKey = targetKey;
       this.staleRecoveryAttempted.set(false);
       this.staleRecoveryInProgress.set(false);
     }
     const baseUrl = agentBaseUrl(context.agentStoreId);
-    this.investigationContext.setScope(
-      {
-        project: context.scope.project,
-        environment: context.scope.environment,
-        securityContextId: context.scope.securityContextId,
-      },
-      baseUrl,
-    );
+    const investigationScope = {
+      project: context.scope.project,
+      environment: context.scope.environment,
+      securityContextId: context.scope.securityContextId,
+    };
+    if (
+      sameTarget &&
+      this.selectedInvestigationScope &&
+      !this.investigationContext.isCurrentScope(
+        this.selectedInvestigationScope,
+        baseUrl,
+      )
+    ) {
+      this.isLoading.set(false);
+      return;
+    }
+    this.investigationContext.setScope(investigationScope, baseUrl);
+    this.selectedInvestigationScope = investigationScope;
     this.isLoading.set(true);
     let recoverySubscription: { unsubscribe(): void } | undefined;
     const subscription = this.incidentClient
@@ -188,6 +196,15 @@ export class IncidentListPageComponent {
           result.code === 'STALE_CONTEXT' &&
           this.recoveryTargetKey === targetKey
         ) {
+          if (
+            !this.investigationContext.isCurrentScope(
+              investigationScope,
+              baseUrl,
+            )
+          ) {
+            this.isLoading.set(false);
+            return;
+          }
           if (this.staleRecoveryInProgress()) {
             return;
           }

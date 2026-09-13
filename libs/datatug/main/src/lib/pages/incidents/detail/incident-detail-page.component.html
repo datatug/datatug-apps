@@ -12,7 +12,7 @@
   @if (unavailableMessage(); as message) {
     <ion-card>
       <ion-card-content>
-        <ion-note color="warning">{{ message }}</ion-note>
+        <ion-note color="warning" role="alert">{{ message }}</ion-note>
       </ion-card-content>
     </ion-card>
   } @else if (isLoading()) {
@@ -47,7 +47,7 @@
       </ion-card-content>
       @if (timelineMessage(); as message) {
         <ion-card-content>
-          <ion-note color="warning">{{ message }}</ion-note>
+          <ion-note color="warning" role="alert">{{ message }}</ion-note>
         </ion-card-content>
       } @else if (isTimelineLoading()) {
         <ion-card-content>

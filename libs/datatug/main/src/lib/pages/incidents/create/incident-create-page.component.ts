@@ -11,6 +11,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import {
   AgentContextService,
+  type ContextScope,
   contextItemToFact,
   InvestigationContextService,
 } from '@sneat/datatug-semantic';
@@ -38,11 +39,8 @@ import { IncidentClientService } from '../../../incidents/incident-client.servic
 import { agentBaseUrl } from '../../../services/repo/agent-url';
 import {
   datatugServeProjectStoreId,
-  incidentAgentQueryParam,
   incidentContextQueryParams,
-  incidentEnvironmentQueryParam,
-  incidentProjectQueryParam,
-  incidentStoreQueryParam,
+  resolveIncidentRouteScope,
 } from '../../../incidents/incident-route-context';
 import {
   CreateIncidentRequest,
@@ -123,25 +121,21 @@ export class IncidentCreatePageComponent {
     IncidentRequestContext | undefined
   >(() => {
     const query = this.queryParams();
-    const agentStoreId =
-      query.get(incidentAgentQueryParam) || this.navAgentStoreId();
-    const project =
-      query.get(incidentProjectQueryParam) || this.navProject()?.ref.projectId;
-    const environment =
-      query.get(incidentEnvironmentQueryParam) || this.navEnvironment()?.id;
-    const storeId = query.get(incidentStoreQueryParam) || project;
+    const routeScope = resolveIncidentRouteScope(query, {
+      agentStoreId: this.navAgentStoreId(),
+      project: this.navProject(),
+      environment: this.navEnvironment()?.id,
+    });
+    if (!routeScope) {
+      return undefined;
+    }
+    const { agentStoreId, storeId, project, environment } = routeScope;
     const securityContextId = agentStoreId
       ? this.agentContext
           .contextFor(agentBaseUrl(agentStoreId))
           .securityContextId()
       : undefined;
-    if (
-      !agentStoreId ||
-      !storeId ||
-      !project ||
-      !environment ||
-      !securityContextId
-    ) {
+    if (!securityContextId) {
       return undefined;
     }
     return {
@@ -200,20 +194,32 @@ export class IncidentCreatePageComponent {
   private readonly activeTargetKey = signal<string | undefined>(undefined);
   private readonly isRefreshingAgentContext = signal(false);
   private readonly submissionToken = signal(0);
+  private selectedTargetKey: string | undefined;
+  private selectedInvestigationScope:
+    | Omit<ContextScope, 'agentUrl'>
+    | undefined;
 
   private readonly selectInvestigationContext = effect(() => {
     const context = this.requestContext();
     if (!context) {
       return;
     }
-    this.investigationContext.setScope(
-      {
-        project: context.scope.project,
-        environment: context.scope.environment,
-        securityContextId: context.scope.securityContextId,
-      },
-      agentBaseUrl(context.agentStoreId),
-    );
+    const targetKey = this.targetKey(context);
+    const baseUrl = agentBaseUrl(context.agentStoreId);
+    if (
+      this.selectedTargetKey === targetKey &&
+      this.selectedInvestigationScope &&
+      !this.investigationContext.isCurrentScope(
+        this.selectedInvestigationScope,
+        baseUrl,
+      )
+    ) {
+      return;
+    }
+    const investigationScope = this.investigationScope(context);
+    this.investigationContext.setScope(investigationScope, baseUrl);
+    this.selectedTargetKey = targetKey;
+    this.selectedInvestigationScope = investigationScope;
   });
 
   private readonly retireStaleSubmission = effect(() => {
@@ -365,14 +371,38 @@ export class IncidentCreatePageComponent {
           result.code === 'STALE_CONTEXT' &&
           !staleRecoveryAttempted
         ) {
+          const baseUrl = agentBaseUrl(context.agentStoreId);
+          if (
+            !this.investigationContext.isCurrentScope(
+              this.investigationScope(context),
+              baseUrl,
+            )
+          ) {
+            this.activeScopeKey.set(undefined);
+            this.activeTargetKey.set(undefined);
+            this.isSubmitting.set(false);
+            return;
+          }
           this.isRefreshingAgentContext.set(true);
           this.investigationContext.clear();
           this.agentContext
-            .contextFor(agentBaseUrl(context.agentStoreId))
+            .contextFor(baseUrl)
             .refresh()
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
               next: () => {
+                if (
+                  !this.investigationContext.isCurrentScope(
+                    this.investigationScope(context),
+                    baseUrl,
+                  )
+                ) {
+                  this.activeScopeKey.set(undefined);
+                  this.activeTargetKey.set(undefined);
+                  this.isRefreshingAgentContext.set(false);
+                  this.isSubmitting.set(false);
+                  return;
+                }
                 const refreshedContext = this.requestContext();
                 if (
                   submissionToken !== this.submissionToken() ||
@@ -503,5 +533,13 @@ export class IncidentCreatePageComponent {
       project: context.scope.project,
       environment: context.scope.environment,
     });
+  }
+
+  private investigationScope(context: IncidentRequestContext) {
+    return {
+      project: context.scope.project,
+      environment: context.scope.environment,
+      securityContextId: context.scope.securityContextId,
+    };
   }
 }

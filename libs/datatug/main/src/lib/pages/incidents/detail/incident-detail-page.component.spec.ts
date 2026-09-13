@@ -75,6 +75,7 @@ describe('IncidentDetailPageComponent', () => {
   let refreshAgentContextSpy: ReturnType<typeof vi.fn>;
   let setInvestigationScopeSpy: ReturnType<typeof vi.fn>;
   let clearInvestigationContextSpy: ReturnType<typeof vi.fn>;
+  let isCurrentInvestigationScopeSpy: ReturnType<typeof vi.fn>;
   let getSpy: ReturnType<typeof vi.fn>;
   let eventsSpy: ReturnType<typeof vi.fn>;
 
@@ -109,6 +110,7 @@ describe('IncidentDetailPageComponent', () => {
     );
     setInvestigationScopeSpy = vi.fn();
     clearInvestigationContextSpy = vi.fn();
+    isCurrentInvestigationScopeSpy = vi.fn(() => true);
     getSpy = vi.fn().mockReturnValue(getReturn);
     eventsSpy = vi.fn().mockReturnValue(eventsReturn);
 
@@ -150,6 +152,7 @@ describe('IncidentDetailPageComponent', () => {
           useValue: {
             setScope: setInvestigationScopeSpy,
             clear: clearInvestigationContextSpy,
+            isCurrentScope: isCurrentInvestigationScopeSpy,
           },
         },
         {
@@ -185,6 +188,28 @@ describe('IncidentDetailPageComponent', () => {
       undefined,
     );
   });
+
+  it.each([
+    [{ agent: 'agent-b:8989' }, 'agent B'],
+    [{ project: 'operations' }, 'an explicit project'],
+  ])(
+    'fails closed without projection or events requests for partial explicit scope: %s',
+    async (query) => {
+      await render(undefined, query);
+      navStore$.next('agent-a:8989');
+      navProject$.next({
+        ref: { storeId: 'agent-a:8989', projectId: 'billing' },
+      });
+      navEnvironment$.next({ id: 'prod' });
+      fixture.detectChanges();
+
+      expect(getSpy).not.toHaveBeenCalled();
+      expect(eventsSpy).not.toHaveBeenCalled();
+      expect(fixture.nativeElement.innerHTML).toContain(
+        'missing its DataTug agent, project, or environment scope',
+      );
+    },
+  );
 
   it('renders the incident and finite timeline once loaded', async () => {
     await render(
@@ -252,6 +277,102 @@ describe('IncidentDetailPageComponent', () => {
     expect(fixture.nativeElement.innerHTML).toContain('Recovered timeline');
   });
 
+  it('recovers when only the text-mode events request reports STALE_CONTEXT', async () => {
+    const firstTimeline$ = new Subject<
+      IncidentApiResult<IncidentStreamItem[]>
+    >();
+    await render(
+      undefined,
+      undefined,
+      of({ kind: 'ok', data: incident('Projection remains visible') }),
+      firstTimeline$,
+    );
+    eventsSpy.mockReturnValue(
+      of({
+        kind: 'ok',
+        data: [streamItem('cursor-retry', 'Recovered events-only timeline')],
+      }),
+    );
+    refreshAgentContextSpy.mockImplementation(() =>
+      defer(() => {
+        securityContextId.set('ctx-events-refreshed');
+        return of({ securityContextId: 'ctx-events-refreshed' });
+      }),
+    );
+
+    firstTimeline$.next({
+      kind: 'error',
+      code: 'STALE_CONTEXT',
+      message: 'Refresh agent info and retry.',
+    });
+    fixture.detectChanges();
+    fixture.detectChanges();
+
+    expect(clearInvestigationContextSpy).toHaveBeenCalledTimes(1);
+    expect(refreshAgentContextSpy).toHaveBeenCalledTimes(1);
+    expect(eventsSpy.mock.calls.at(-1)?.[0].scope.securityContextId).toBe(
+      'ctx-events-refreshed',
+    );
+    expect(fixture.nativeElement.innerHTML).toContain(
+      'Recovered events-only timeline',
+    );
+  });
+
+  it('does not clear or refresh another active investigation scope after a late stale detail response', async () => {
+    const projection$ = new Subject<IncidentApiResult<IncidentDetail>>();
+    const timeline$ = new Subject<IncidentApiResult<IncidentStreamItem[]>>();
+    await render(undefined, undefined, projection$, timeline$);
+    isCurrentInvestigationScopeSpy.mockReturnValue(false);
+
+    projection$.next({
+      kind: 'error',
+      code: 'STALE_CONTEXT',
+      message: 'Old page scope is stale.',
+    });
+    timeline$.next({
+      kind: 'error',
+      code: 'STALE_CONTEXT',
+      message: 'Old page scope is stale.',
+    });
+
+    expect(clearInvestigationContextSpy).not.toHaveBeenCalled();
+    expect(refreshAgentContextSpy).not.toHaveBeenCalled();
+    expect(getSpy).toHaveBeenCalledTimes(1);
+    expect(eventsSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not reactivate or retry page A when page B becomes current during refresh', async () => {
+    const projection$ = new Subject<IncidentApiResult<IncidentDetail>>();
+    const timeline$ = new Subject<IncidentApiResult<IncidentStreamItem[]>>();
+    const refreshResult$ = new Subject<{ securityContextId: string }>();
+    await render(undefined, undefined, projection$, timeline$);
+    refreshAgentContextSpy.mockReturnValue(refreshResult$);
+
+    projection$.next({
+      kind: 'error',
+      code: 'STALE_CONTEXT',
+      message: 'Refresh agent info and retry.',
+    });
+    expect(refreshAgentContextSpy).toHaveBeenCalledTimes(1);
+
+    setInvestigationScopeSpy(
+      {
+        project: 'other-project',
+        environment: 'staging',
+        securityContextId: 'ctx-b',
+      },
+      '//agent-b:8989/datatug',
+    );
+    isCurrentInvestigationScopeSpy.mockReturnValue(false);
+    securityContextId.set('ctx-refreshed');
+    refreshResult$.next({ securityContextId: 'ctx-refreshed' });
+    fixture.detectChanges();
+
+    expect(getSpy).toHaveBeenCalledTimes(1);
+    expect(eventsSpy).toHaveBeenCalledTimes(1);
+    expect(setInvestigationScopeSpy).toHaveBeenCalledTimes(2);
+  });
+
   it('shows explicit unavailable states for projection and timeline', async () => {
     await render(
       undefined,
@@ -270,6 +391,24 @@ describe('IncidentDetailPageComponent', () => {
     expect(fixture.nativeElement.innerHTML).toContain(
       'The incident store is not available on this server yet.',
     );
+    expect(
+      fixture.nativeElement.querySelector('ion-note')?.getAttribute('role'),
+    ).toBe('alert');
+  });
+
+  it('announces a dynamic timeline error', async () => {
+    await render(
+      undefined,
+      undefined,
+      of({ kind: 'ok', data: incident('Loaded incident') }),
+      of({ kind: 'error', message: 'Timeline cannot be loaded.' }),
+    );
+    fixture.detectChanges();
+
+    const note = Array.from(
+      fixture.nativeElement.querySelectorAll('ion-note'),
+    ).find((item) => item.textContent?.includes('Timeline cannot be loaded.'));
+    expect(note?.getAttribute('role')).toBe('alert');
   });
 
   it('does nothing when the route does not contain an incident id', async () => {
@@ -312,5 +451,27 @@ describe('IncidentDetailPageComponent', () => {
     expect(fixture.nativeElement.innerHTML).toContain('Current timeline');
     expect(fixture.nativeElement.innerHTML).not.toContain('Stale incident');
     expect(fixture.nativeElement.innerHTML).not.toContain('Stale timeline');
+  });
+
+  it('renders a body only for note.added events', async () => {
+    await render();
+    interface Internals {
+      eventSummary(event: IncidentStreamItem['event']): string;
+    }
+    const component = fixture.componentInstance as unknown as Internals;
+
+    expect(
+      component.eventSummary({
+        ...streamItem('cursor-note', 'Visible note').event,
+        type: 'note.added',
+      }),
+    ).toBe('Visible note');
+    expect(
+      component.eventSummary({
+        ...streamItem('cursor-status', 'must not render').event,
+        type: 'incident.status',
+        payload: { status: 'investigating', body: 'must not render' },
+      }),
+    ).toBe('incident.status');
   });
 });

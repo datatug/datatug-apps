@@ -431,9 +431,12 @@ async function startAgent(
     | { code: number | null; signal: NodeJS.Signals | null }
     | undefined;
   let child: ReturnType<typeof spawn> | undefined;
+  let childExitPromise: Promise<void> | undefined;
+  let stopChildPromise: Promise<void> | undefined;
   const pingUrl = `http://${host}:${port}/datatug/ping`;
   const launch = async (): Promise<void> => {
     exited = undefined;
+    stopChildPromise = undefined;
     const launched = spawn(binResult.value, args, {
       stdio: ['ignore', 'pipe', 'pipe'],
       // Omitting `env` entirely (the pre-S174 behavior for every other agent)
@@ -447,10 +450,22 @@ async function startAgent(
     child = launched;
     launched.stdout.on('data', appendLog);
     launched.stderr.on('data', appendLog);
-    launched.once('exit', (code, signal) => {
-      if (child === launched) {
-        exited = { code, signal };
-      }
+    childExitPromise = new Promise<void>((resolve) => {
+      let resolved = false;
+      const resolveOnce = () => {
+        if (!resolved) {
+          resolved = true;
+          resolve();
+        }
+      };
+      launched.once('exit', (code, signal) => {
+        if (child === launched) {
+          exited = { code, signal };
+        }
+        resolveOnce();
+      });
+      // A spawn failure emits `error` then `close`, but may never emit `exit`.
+      launched.once('close', resolveOnce);
     });
     const spawnError = new Promise<never>((_, reject) => {
       launched.once('error', reject);
@@ -461,6 +476,7 @@ async function startAgent(
       if (!exited) {
         launched.kill('SIGKILL');
       }
+      await childExitPromise;
       const exitNote = exited
         ? ` The process already exited (code=${exited.code}, signal=${exited.signal}).`
         : '';
@@ -474,19 +490,49 @@ async function startAgent(
 
   const stopChild = async (): Promise<void> => {
     const running = child;
-    if (!running || exited) {
+    const runningExit = childExitPromise;
+    if (!running || !runningExit) {
       return;
     }
-    await new Promise<void>((resolve) => {
-      const timeout = setTimeout(() => {
-        running.kill('SIGKILL');
-      }, SHUTDOWN_TIMEOUT_MS);
-      running.once('exit', () => {
-        clearTimeout(timeout);
-        resolve();
-      });
+    if (stopChildPromise) {
+      await stopChildPromise;
+      return;
+    }
+    const stopping = (async () => {
+      if (exited || running.exitCode !== null || running.signalCode !== null) {
+        await runningExit;
+        return;
+      }
       running.kill('SIGTERM');
-    });
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      const forced = new Promise<'forced'>((resolve) => {
+        timeout = setTimeout(() => {
+          running.kill('SIGKILL');
+          resolve('forced');
+        }, SHUTDOWN_TIMEOUT_MS);
+      });
+      const outcome = await Promise.race([
+        runningExit.then(() => 'exited' as const),
+        forced,
+      ]);
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+      if (outcome === 'forced') {
+        // The listener was installed at launch, so an exit cannot race past
+        // this await. Do not delete worker temp data while the child may still
+        // hold files open.
+        await runningExit;
+      }
+    })();
+    stopChildPromise = stopping;
+    try {
+      await stopping;
+    } finally {
+      if (stopChildPromise === stopping) {
+        stopChildPromise = undefined;
+      }
+    }
   };
 
   try {

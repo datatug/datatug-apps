@@ -41,6 +41,32 @@ const CREATE_REQUEST: CreateIncidentRequest = {
   canonicalContext: { facts: [] },
 };
 
+const CREATED_PAYLOAD = {
+  uid: INCIDENT.uid,
+  title: INCIDENT.title,
+  description: '',
+  projects: [{ storeId: 'local', projectId: 'billing', environment: 'prod' }],
+  reporter: { kind: 'human', id: 'alice', via: 'web' },
+  canonicalContext: { facts: [] },
+} as const;
+
+const eventFixture = (
+  type: string,
+  payload: unknown,
+  overrides: Record<string, unknown> = {},
+) => ({
+  id: 'event-1',
+  seq: 1,
+  at: '2026-09-13T08:00:00Z',
+  visibleAt: '2026-09-13T08:00:00Z',
+  incident: INCIDENT.ref,
+  actor: { kind: 'human', id: 'alice', via: 'web' },
+  type,
+  assertion: { kind: 'observation' },
+  payload,
+  ...overrides,
+});
+
 describe('IncidentClientService', () => {
   let service: IncidentClientService;
   let httpMock: HttpTestingController;
@@ -398,6 +424,183 @@ describe('IncidentClientService', () => {
         message: 'Invalid incident response.',
       });
     });
+
+    it('rejects a self-referential mergedInto projection', () => {
+      let result: unknown;
+      service.list(CONTEXT).subscribe((r) => (result = r));
+
+      httpMock
+        .expectOne((r) => r.url === BASE_URL)
+        .flush({
+          incidents: [{ ...INCIDENT, mergedInto: INCIDENT.ref }],
+        });
+
+      expect(result).toEqual({
+        kind: 'error',
+        message: 'Invalid incident response.',
+      });
+    });
+
+    it('rejects malformed assetRefs in a projection', () => {
+      let result: unknown;
+      service.list(CONTEXT).subscribe((r) => (result = r));
+
+      httpMock
+        .expectOne((r) => r.url === BASE_URL)
+        .flush({
+          incidents: [
+            {
+              ...INCIDENT,
+              assetRefs: [
+                {
+                  kind: 'check',
+                  artifact: {
+                    storeId: 'ops',
+                    projectId: 'billing',
+                    id: '../check',
+                  },
+                },
+              ],
+            },
+          ],
+        });
+
+      expect(result).toEqual({
+        kind: 'error',
+        message: 'Invalid incident response.',
+      });
+    });
+
+    it('accepts every structured assetRef identity in a projection', () => {
+      let result: unknown;
+      service.list(CONTEXT).subscribe((r) => (result = r));
+
+      httpMock
+        .expectOne((r) => r.url === BASE_URL)
+        .flush({
+          incidents: [
+            {
+              ...INCIDENT,
+              assetRefs: [
+                { kind: 'event', id: 'event-1' },
+                { kind: 'incident', incident: INCIDENT.ref },
+                {
+                  kind: 'project',
+                  project: {
+                    storeId: 'ops',
+                    projectId: 'billing',
+                    environment: 'prod',
+                  },
+                },
+                {
+                  kind: 'execution',
+                  execution: {
+                    storeId: 'ops',
+                    projectId: 'billing',
+                    executionId: 'run-1',
+                  },
+                },
+                {
+                  kind: 'check',
+                  artifact: {
+                    storeId: 'ops',
+                    projectId: 'billing',
+                    environment: 'prod',
+                    id: 'invoice-health',
+                  },
+                },
+                {
+                  kind: 'compare',
+                  comparison: {
+                    left: {
+                      storeId: 'ops',
+                      projectId: 'billing',
+                      executionId: 'run-1',
+                    },
+                    right: {
+                      storeId: 'ops',
+                      projectId: 'billing',
+                      executionId: 'run-2',
+                    },
+                  },
+                },
+              ],
+            },
+          ],
+        });
+
+      expect(result).toMatchObject({ kind: 'ok' });
+    });
+
+    it('rejects duplicate fact ids within one project scope', () => {
+      const fact = {
+        id: 'customer-5',
+        entity: 'Customer',
+        field: 'ID',
+        value: { type: 'integer', value: '5' },
+        origin: 'context',
+        enabled: true,
+        scope: {
+          storeId: 'local',
+          projectId: 'billing',
+          environment: 'prod',
+        },
+      };
+      let result: unknown;
+      service.list(CONTEXT).subscribe((r) => (result = r));
+
+      httpMock
+        .expectOne((r) => r.url === BASE_URL)
+        .flush({
+          incidents: [
+            { ...INCIDENT, canonicalContext: { facts: [fact, { ...fact }] } },
+          ],
+        });
+
+      expect(result).toEqual({
+        kind: 'error',
+        message: 'Invalid incident response.',
+      });
+    });
+
+    it('allows the same fact id in different project scopes', () => {
+      const fact = {
+        id: 'customer-5',
+        entity: 'Customer',
+        field: 'ID',
+        value: { type: 'integer', value: '5' },
+        origin: 'context',
+        enabled: true,
+        scope: {
+          storeId: 'local',
+          projectId: 'billing',
+          environment: 'prod',
+        },
+      };
+      let result: unknown;
+      service.list(CONTEXT).subscribe((r) => (result = r));
+
+      httpMock
+        .expectOne((r) => r.url === BASE_URL)
+        .flush({
+          incidents: [
+            {
+              ...INCIDENT,
+              canonicalContext: {
+                facts: [
+                  fact,
+                  {
+                    ...fact,
+                    scope: { ...fact.scope, projectId: 'warehouse' },
+                  },
+                ],
+              },
+            },
+          ],
+        });
+
+      expect(result).toMatchObject({ kind: 'ok' });
+    });
   });
 
   describe('get', () => {
@@ -553,7 +756,7 @@ describe('IncidentClientService', () => {
             actor: { kind: 'human', id: 'alice', via: 'web' },
             type: 'incident.created',
             assertion: { kind: 'observation' },
-            payload: { title: INCIDENT.title },
+            payload: CREATED_PAYLOAD,
           },
         }) + '\n',
       );
@@ -563,6 +766,216 @@ describe('IncidentClientService', () => {
         data: [{ cursor: 'cursor-1', event: { id: 'create-1', seq: 1 } }],
       });
     });
+
+    it.each([
+      ['incident.created', CREATED_PAYLOAD],
+      ['incident.status', { status: 'investigating' }],
+      ['incident.outcome', { outcome: 'resolved' }],
+      [
+        'incident.merged',
+        {
+          into: { storeId: 'ops', incidentId: 'INC-2' },
+          mergeId: 'merge-1',
+        },
+      ],
+      ['note.added', { body: 'Payment API is slow' }],
+    ])('accepts a valid %s event view', (type, payload) => {
+      let result: unknown;
+      service.events(CONTEXT, 'INC-1').subscribe((r) => (result = r));
+
+      httpMock
+        .expectOne((r) => r.url === `${BASE_URL}/INC-1/events`)
+        .flush(
+          JSON.stringify({
+            cursor: `cursor-${type}`,
+            event: eventFixture(type, payload, {
+              ...(type === 'incident.created' ? {} : { seq: 2 }),
+            }),
+          }),
+        );
+
+      expect(result).toMatchObject({ kind: 'ok' });
+    });
+
+    it('accepts a valid imported event view with strict provenance and refs', () => {
+      let result: unknown;
+      service.events(CONTEXT, 'INC-1').subscribe((r) => (result = r));
+
+      httpMock
+        .expectOne((r) => r.url === `${BASE_URL}/INC-1/events`)
+        .flush(
+          JSON.stringify({
+            cursor: 'cursor-imported',
+            event: eventFixture(
+              'note.added',
+              { body: 'Imported evidence' },
+              {
+                seq: 2,
+                importedFrom: {
+                  incident: { storeId: 'ops', incidentId: 'INC-source' },
+                  eventId: 'source-note-1',
+                  seq: 2,
+                  mergeId: 'merge-1',
+                },
+                refs: [{ kind: 'event', id: 'source-note-1' }],
+              },
+            ),
+          }),
+        );
+
+      expect(result).toMatchObject({ kind: 'ok' });
+    });
+
+    it.each([
+      [
+        'created policy view',
+        eventFixture('incident.created', {
+          ...CREATED_PAYLOAD,
+          canonicalContext: {
+            facts: [
+              {
+                id: 'secret',
+                entity: 'Customer',
+                value: { redacted: true },
+                origin: 'context',
+                enabled: true,
+              },
+              {
+                id: 'secret',
+                entity: 'Customer',
+                value: { redacted: true },
+                origin: 'context',
+                enabled: true,
+              },
+            ],
+          },
+        }),
+      ],
+      [
+        'assertion provenance',
+        eventFixture(
+          'note.added',
+          { body: 'Inference' },
+          {
+            seq: 2,
+            assertion: { kind: 'inference' },
+          },
+        ),
+      ],
+      [
+        'nested artifact ref',
+        eventFixture(
+          'note.added',
+          { body: 'Bad ref' },
+          {
+            seq: 2,
+            refs: [{ kind: 'check', id: 'check-1' }],
+          },
+        ),
+      ],
+      [
+        'import provenance',
+        eventFixture(
+          'note.added',
+          { body: 'Bad import' },
+          {
+            seq: 2,
+            importedFrom: {
+              incident: INCIDENT.ref,
+              eventId: 'source-note-1',
+              seq: 1,
+              mergeId: 'merge-1',
+            },
+          },
+        ),
+      ],
+      [
+        'type-specific payload',
+        eventFixture('incident.status', { body: 'not a status' }, { seq: 2 }),
+      ],
+      [
+        'payload extra key',
+        eventFixture(
+          'note.added',
+          { body: 'Visible note', policyBypass: true },
+          { seq: 2 },
+        ),
+      ],
+    ])('rejects malformed %s in an event view', (_name, event) => {
+      let result: unknown;
+      service.events(CONTEXT, 'INC-1').subscribe((r) => (result = r));
+
+      httpMock
+        .expectOne((r) => r.url === `${BASE_URL}/INC-1/events`)
+        .flush(JSON.stringify({ cursor: 'cursor-bad', event }));
+
+      expect(result).toEqual({
+        kind: 'error',
+        message: 'Invalid incident events response.',
+      });
+    });
+
+    it('preserves structured STALE_CONTEXT from a text-mode events request', () => {
+      let result: unknown;
+      service.events(CONTEXT, 'INC-1').subscribe((r) => (result = r));
+
+      httpMock
+        .expectOne((r) => r.url === `${BASE_URL}/INC-1/events`)
+        .flush(
+          JSON.stringify({
+            error: {
+              code: 'STALE_CONTEXT',
+              message: 'Refresh agent info and retry.',
+              requestId: 'request-events-stale',
+            },
+          }),
+          { status: 409, statusText: 'Conflict' },
+        );
+
+      expect(result).toEqual({
+        kind: 'error',
+        code: 'STALE_CONTEXT',
+        message: 'Refresh agent info and retry.',
+      });
+    });
+
+    it.each([
+      ['malformed JSON', '{not-json'],
+      [
+        'unknown error code',
+        JSON.stringify({
+          error: {
+            code: 'SOMETHING_NEW',
+            message: 'Unknown response.',
+            requestId: 'request-unknown',
+          },
+        }),
+      ],
+      [
+        'targets on a non-target error',
+        JSON.stringify({
+          error: {
+            code: 'STALE_CONTEXT',
+            message: 'Refresh agent info and retry.',
+            requestId: 'request-targets',
+            targets: [{ source: 'db', label: 'Database' }],
+          },
+        }),
+      ],
+    ])(
+      'does not trust a %s text error as a structured envelope',
+      (_name, body) => {
+        let result: unknown;
+        service.events(CONTEXT, 'INC-1').subscribe((r) => (result = r));
+
+        httpMock
+          .expectOne((r) => r.url === `${BASE_URL}/INC-1/events`)
+          .flush(body, { status: 409, statusText: 'Conflict' });
+
+        expect(result).toMatchObject({ kind: 'error' });
+        expect(result).not.toMatchObject({ code: 'STALE_CONTEXT' });
+      },
+    );
 
     it('rejects malformed NDJSON truthfully', () => {
       let result: unknown;

@@ -34,9 +34,12 @@
       </ion-item>
 
       @if (errorMessage(); as error) {
-        <ion-note color="danger" data-testid="incident-create-error">{{
-          error
-        }}</ion-note>
+        <ion-note
+          color="danger"
+          role="alert"
+          data-testid="incident-create-error"
+          >{{ error }}</ion-note
+        >
       }
 
       @if (!hasMutationScope()) {

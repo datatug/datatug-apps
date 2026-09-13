@@ -35,7 +35,9 @@
   } @else if (unavailableMessage()) {
     <ion-card>
       <ion-card-content>
-        <ion-note color="warning">{{ unavailableMessage() }}</ion-note>
+        <ion-note color="warning" role="alert">{{
+          unavailableMessage()
+        }}</ion-note>
       </ion-card-content>
     </ion-card>
   } @else if (isLoading()) {

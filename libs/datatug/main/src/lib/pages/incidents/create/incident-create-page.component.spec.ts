@@ -56,6 +56,7 @@ describe('IncidentCreatePageComponent', () => {
   let investigationItems: ReturnType<typeof signal<readonly ContextItem[]>>;
   let setScopeSpy: ReturnType<typeof vi.fn>;
   let clearContextSpy: ReturnType<typeof vi.fn>;
+  let isCurrentScopeSpy: ReturnType<typeof vi.fn>;
   let createSpy: ReturnType<typeof vi.fn>;
   let randomIdSpy: ReturnType<typeof vi.fn>;
   let router: Router;
@@ -79,6 +80,7 @@ describe('IncidentCreatePageComponent', () => {
       }
     });
     clearContextSpy = vi.fn(() => investigationItems.set([]));
+    isCurrentScopeSpy = vi.fn(() => true);
     createSpy = vi.fn();
     randomIdSpy = vi.fn(() => 'test-id');
 
@@ -117,6 +119,7 @@ describe('IncidentCreatePageComponent', () => {
             items: investigationItems,
             setScope: setScopeSpy,
             clear: clearContextSpy,
+            isCurrentScope: isCurrentScopeSpy,
           },
         },
         {
@@ -169,6 +172,27 @@ describe('IncidentCreatePageComponent', () => {
     expect(guidance?.textContent).toContain('Open a project and environment');
     expect(guidance?.getAttribute('aria-live')).toBe('polite');
   });
+
+  it.each([
+    [{ agent: 'agent-b:8989' }, 'agent B'],
+    [{ project: 'operations' }, 'an explicit project'],
+  ])(
+    'fails closed and keeps persistent guidance for partial URL scope: %s',
+    async (query) => {
+      TestBed.resetTestingModule();
+      await render(query);
+      peek(fixture.componentInstance).title = 'Do not submit mixed scope';
+      peek(fixture.componentInstance).submit();
+      fixture.detectChanges();
+
+      expect(createSpy).not.toHaveBeenCalled();
+      expect(
+        fixture.nativeElement.querySelector(
+          '[data-testid="incident-scope-guidance"]',
+        )?.textContent,
+      ).toContain('Open a project and environment');
+    },
+  );
 
   it('calls the client with trimmed input, full scope, and canonical context', () => {
     investigationItems.set([
@@ -296,11 +320,17 @@ describe('IncidentCreatePageComponent', () => {
     peek(fixture.componentInstance).title = 'Checkout errors spike';
     peek(fixture.componentInstance).description = 'draft text';
     peek(fixture.componentInstance).submit();
+    fixture.detectChanges();
 
     expect(peek(fixture.componentInstance).isSubmitting()).toBe(false);
     expect(peek(fixture.componentInstance).errorMessage()).toBe(
       'The incident store is not available on this server yet.',
     );
+    expect(
+      fixture.nativeElement
+        .querySelector('[data-testid="incident-create-error"]')
+        ?.getAttribute('role'),
+    ).toBe('alert');
     expect(peek(fixture.componentInstance).title).toBe('Checkout errors spike');
     expect(peek(fixture.componentInstance).description).toBe('draft text');
 
@@ -452,6 +482,57 @@ describe('IncidentCreatePageComponent', () => {
     );
   });
 
+  it('does not clear or refresh another active investigation scope after a late stale create response', () => {
+    const result$ = new Subject<IncidentApiResult<IncidentDetail>>();
+    createSpy.mockReturnValue(result$);
+
+    peek(fixture.componentInstance).title = 'Old page submission';
+    peek(fixture.componentInstance).submit();
+    isCurrentScopeSpy.mockReturnValue(false);
+    result$.next({
+      kind: 'error',
+      code: 'STALE_CONTEXT',
+      message: 'Old page scope is stale.',
+    });
+
+    expect(clearContextSpy).not.toHaveBeenCalled();
+    expect(refreshAgentContextSpy).not.toHaveBeenCalled();
+    expect(peek(fixture.componentInstance).isSubmitting()).toBe(false);
+  });
+
+  it('does not reactivate or retry an old scope when another page becomes current during refresh', () => {
+    const createResult$ = new Subject<IncidentApiResult<IncidentDetail>>();
+    const refreshResult$ = new Subject<{ securityContextId: string }>();
+    createSpy.mockReturnValue(createResult$);
+    refreshAgentContextSpy.mockReturnValue(refreshResult$);
+
+    peek(fixture.componentInstance).title = 'Old page submission';
+    peek(fixture.componentInstance).submit();
+    createResult$.next({
+      kind: 'error',
+      code: 'STALE_CONTEXT',
+      message: 'Refresh agent info and retry.',
+    });
+    expect(refreshAgentContextSpy).toHaveBeenCalledTimes(1);
+
+    setScopeSpy(
+      {
+        project: 'other-project',
+        environment: 'staging',
+        securityContextId: 'ctx-b',
+      },
+      'http://agent-b:8989/datatug',
+    );
+    isCurrentScopeSpy.mockReturnValue(false);
+    securityContextId.set('ctx-2');
+    refreshResult$.next({ securityContextId: 'ctx-2' });
+    fixture.detectChanges();
+
+    expect(createSpy).toHaveBeenCalledTimes(1);
+    expect(setScopeSpy).toHaveBeenCalledTimes(2);
+    expect(peek(fixture.componentInstance).isSubmitting()).toBe(false);
+  });
+
   it.each([
     ['returns false', () => Promise.resolve(false)],
     ['rejects', () => Promise.reject(new Error('router unavailable'))],
@@ -494,6 +575,9 @@ describe('IncidentCreatePageComponent', () => {
     peek(fixture.componentInstance).title = 'Checkout errors spike';
     peek(fixture.componentInstance).submit();
     storeId$.next('other:8989');
+    project$.next({
+      ref: { storeId: 'other:8989', projectId: 'billing' },
+    });
     fixture.detectChanges();
 
     result$.next({ kind: 'ok', data: incident() });
@@ -533,6 +617,9 @@ describe('IncidentCreatePageComponent', () => {
     const firstRequest = createSpy.mock.calls[0][1] as CreateIncidentRequest;
 
     storeId$.next('other:8989');
+    project$.next({
+      ref: { storeId: 'other:8989', projectId: 'billing' },
+    });
     fixture.detectChanges();
     peek(fixture.componentInstance).submit();
     const secondRequest = createSpy.mock.calls[1][1] as CreateIncidentRequest;

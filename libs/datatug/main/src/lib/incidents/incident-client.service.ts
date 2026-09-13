@@ -176,12 +176,29 @@ function decodeIncidentStream(response: string): IncidentStreamItem[] {
 }
 
 function decodeIncidentStreamItem(value: unknown): IncidentStreamItem {
-  if (!isRecord(value) || !isEventCursor(value['cursor'])) {
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, ['cursor', 'event']) ||
+    !isEventCursor(value['cursor'])
+  ) {
     throw new Error('Invalid incident events response.');
   }
   const event = value['event'];
   if (
     !isRecord(event) ||
+    !hasOnlyKeys(event, [
+      'id',
+      'seq',
+      'at',
+      'visibleAt',
+      'incident',
+      'importedFrom',
+      'actor',
+      'type',
+      'assertion',
+      'refs',
+      'payload',
+    ]) ||
     !isNonEmptyString(event['id']) ||
     typeof event['seq'] !== 'number' ||
     !Number.isSafeInteger(event['seq']) ||
@@ -189,14 +206,151 @@ function decodeIncidentStreamItem(value: unknown): IncidentStreamItem {
     !isRfc3339(event['at']) ||
     !isRfc3339(event['visibleAt']) ||
     !isIncidentRef(event['incident']) ||
+    !optionalImportedEventRef(event['importedFrom'], event) ||
     !isActor(event['actor']) ||
     !isIncidentEventType(event['type']) ||
     !isAssertion(event['assertion']) ||
-    !('payload' in event)
+    !optionalArtifactRefs(event['refs']) ||
+    !isEventAssertionProvenanceValid(event) ||
+    !isIncidentEventPayload(event['type'], event['payload'], event['incident'])
   ) {
     throw new Error('Invalid incident events response.');
   }
   return value as unknown as IncidentStreamItem;
+}
+
+function optionalImportedEventRef(
+  value: unknown,
+  event: Record<string, unknown>,
+): boolean {
+  if (value === undefined) {
+    return true;
+  }
+  if (
+    event['seq'] === 1 ||
+    !isRecord(value) ||
+    !hasOnlyKeys(value, ['incident', 'eventId', 'seq', 'mergeId']) ||
+    !isIncidentRef(value['incident']) ||
+    !isNonEmptyString(value['eventId']) ||
+    typeof value['seq'] !== 'number' ||
+    !Number.isSafeInteger(value['seq']) ||
+    value['seq'] <= 0 ||
+    !isValidSegment(value['mergeId']) ||
+    !isRecord(event['incident']) ||
+    !isRecord(value['incident'])
+  ) {
+    return false;
+  }
+  return (
+    value['incident']['storeId'] === event['incident']['storeId'] &&
+    !sameIncidentRef(value['incident'], event['incident'])
+  );
+}
+
+function isEventAssertionProvenanceValid(
+  event: Record<string, unknown>,
+): boolean {
+  const assertion = event['assertion'];
+  const actor = event['actor'];
+  const refs = Array.isArray(event['refs']) ? event['refs'] : [];
+  if (!isRecord(assertion) || !isRecord(actor)) {
+    return false;
+  }
+  if (
+    assertion['kind'] === 'inference' &&
+    !refs.some(
+      (ref) => isRecord(ref) && ref['kind'] === 'event' && isArtifactRef(ref),
+    )
+  ) {
+    return false;
+  }
+  if (
+    actor['kind'] === 'agent' &&
+    (assertion['kind'] === 'observation' ||
+      assertion['kind'] === 'deterministic-result') &&
+    !refs.some(
+      (ref) =>
+        isRecord(ref) &&
+        (ref['kind'] === 'execution' ||
+          ref['kind'] === 'check' ||
+          ref['kind'] === 'compare') &&
+        isArtifactRef(ref),
+    )
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function isIncidentEventPayload(
+  type: unknown,
+  payload: unknown,
+  incident: unknown,
+): boolean {
+  if (!isRecord(payload)) {
+    return false;
+  }
+  switch (type) {
+    case 'incident.created':
+      return (
+        hasOnlyKeys(payload, [
+          'uid',
+          'title',
+          'description',
+          'projects',
+          'reporter',
+          'canonicalContext',
+        ]) &&
+        isNonEmptyString(payload['uid']) &&
+        isNonEmptyString(payload['title']) &&
+        typeof payload['description'] === 'string' &&
+        optionalProjectRefs(payload['projects']) &&
+        isCreatedReporter(payload['reporter']) &&
+        isContextView(payload['canonicalContext'])
+      );
+    case 'incident.status':
+      return (
+        hasOnlyKeys(payload, ['status']) &&
+        typeof payload['status'] === 'string' &&
+        INCIDENT_STATUSES.includes(
+          payload['status'] as (typeof INCIDENT_STATUSES)[number],
+        )
+      );
+    case 'incident.outcome':
+      return (
+        hasOnlyKeys(payload, ['outcome']) &&
+        typeof payload['outcome'] === 'string' &&
+        INCIDENT_OUTCOMES.includes(
+          payload['outcome'] as (typeof INCIDENT_OUTCOMES)[number],
+        )
+      );
+    case 'incident.merged':
+      return (
+        hasOnlyKeys(payload, ['into', 'mergeId']) &&
+        isIncidentRef(payload['into']) &&
+        !sameIncidentRef(payload['into'], incident) &&
+        isValidSegment(payload['mergeId'])
+      );
+    case 'note.added':
+      return (
+        hasOnlyKeys(payload, ['body']) && isNonEmptyString(payload['body'])
+      );
+    default:
+      return false;
+  }
+}
+
+function isCreatedReporter(value: unknown): boolean {
+  if (isActor(value)) {
+    return true;
+  }
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, ['kind', 'id', 'via']) &&
+    value['id'] === '' &&
+    value['kind'] === '' &&
+    value['via'] === undefined
+  );
 }
 
 function requireIncident(
@@ -230,9 +384,12 @@ function decodeIncident(value: unknown): IncidentDetail {
     !optionalString(incident['description']) ||
     !optionalOutcome(incident['outcome']) ||
     !optionalIncidentRef(incident['mergedInto']) ||
+    (incident['mergedInto'] !== undefined &&
+      sameIncidentRef(ref, incident['mergedInto'])) ||
     !optionalProjectRefs(incident['projects']) ||
     !optionalParticipants(incident['participants']) ||
     !isContextView(incident['canonicalContext']) ||
+    !optionalArtifactRefs(incident['assetRefs']) ||
     !optionalStringArray(incident['notes'])
   ) {
     throw new Error('Invalid incident response.');
@@ -264,8 +421,18 @@ function isValidSegment(value: unknown): value is string {
 function isIncidentRef(value: unknown): boolean {
   return (
     isRecord(value) &&
+    hasOnlyKeys(value, ['storeId', 'incidentId']) &&
     isValidSegment(value['storeId']) &&
     isValidSegment(value['incidentId'])
+  );
+}
+
+function sameIncidentRef(left: unknown, right: unknown): boolean {
+  return (
+    isRecord(left) &&
+    isRecord(right) &&
+    left['storeId'] === right['storeId'] &&
+    left['incidentId'] === right['incidentId']
   );
 }
 
@@ -295,6 +462,7 @@ function optionalProjectRefs(value: unknown): boolean {
 function isProjectRef(value: unknown): boolean {
   return (
     isRecord(value) &&
+    hasOnlyKeys(value, ['storeId', 'projectId', 'environment']) &&
     isValidSegment(value['storeId']) &&
     isValidSegment(value['projectId']) &&
     optionalString(value['environment'])
@@ -317,6 +485,7 @@ function optionalParticipants(value: unknown): boolean {
 function isActor(value: unknown): boolean {
   return (
     isRecord(value) &&
+    hasOnlyKeys(value, ['kind', 'id', 'via']) &&
     (value['kind'] === 'human' ||
       value['kind'] === 'agent' ||
       value['kind'] === 'system') &&
@@ -332,6 +501,7 @@ function isActor(value: unknown): boolean {
 function isAssertion(value: unknown): boolean {
   return (
     isRecord(value) &&
+    hasOnlyKeys(value, ['kind', 'confidence']) &&
     (value['kind'] === 'observation' ||
       value['kind'] === 'claim' ||
       value['kind'] === 'question' ||
@@ -346,16 +516,52 @@ function isAssertion(value: unknown): boolean {
 }
 
 function isContextView(value: unknown): boolean {
-  return (
-    isRecord(value) &&
-    Array.isArray(value['facts']) &&
-    value['facts'].every((fact) => isIncidentFactView(fact))
-  );
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, ['facts']) ||
+    !Array.isArray(value['facts'])
+  ) {
+    return false;
+  }
+  const seen = new Set<string>();
+  for (const fact of value['facts']) {
+    if (!isIncidentFactView(fact)) {
+      return false;
+    }
+    const scope = fact['scope'];
+    const scopeKey = isRecord(scope)
+      ? JSON.stringify([
+          scope['storeId'],
+          scope['projectId'],
+          scope['environment'] ?? '',
+        ])
+      : '';
+    const key = JSON.stringify([scopeKey, fact['id']]);
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+  }
+  return true;
 }
 
 function isIncidentFactView(value: unknown): boolean {
   if (
     !isRecord(value) ||
+    !hasOnlyKeys(value, [
+      'id',
+      'entity',
+      'field',
+      'value',
+      'condition',
+      'origin',
+      'physical',
+      'mapping',
+      'enabled',
+      'role',
+      'layer',
+      'scope',
+    ]) ||
     !isNonEmptyString(value['id']) ||
     !isNonEmptyString(value['entity']) ||
     (value['origin'] !== 'selection' &&
@@ -404,6 +610,7 @@ function optionalPhysicalRef(value: unknown): boolean {
   return (
     value === undefined ||
     (isRecord(value) &&
+      hasOnlyKeys(value, ['source', 'collection', 'column']) &&
       isNonEmptyString(value['source']) &&
       isNonEmptyString(value['collection']) &&
       isNonEmptyString(value['column']))
@@ -457,6 +664,7 @@ function optionalProjectScope(value: unknown): boolean {
   return (
     value === undefined ||
     (isRecord(value) &&
+      hasOnlyKeys(value, ['storeId', 'projectId', 'environment']) &&
       isValidSegment(value['storeId']) &&
       isValidSegment(value['projectId']) &&
       (value['environment'] === undefined ||
@@ -492,6 +700,100 @@ function isIncidentEventType(value: unknown): boolean {
     value === 'incident.merged' ||
     value === 'note.added'
   );
+}
+
+function optionalArtifactRefs(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (Array.isArray(value) && value.every((item) => isArtifactRef(item)))
+  );
+}
+
+function isArtifactRef(value: unknown): boolean {
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, [
+      'kind',
+      'id',
+      'incident',
+      'project',
+      'execution',
+      'artifact',
+      'comparison',
+    ])
+  ) {
+    return false;
+  }
+  const identities = [
+    value['id'] !== undefined && value['id'] !== '',
+    value['incident'] !== undefined,
+    value['project'] !== undefined,
+    value['execution'] !== undefined,
+    value['artifact'] !== undefined,
+    value['comparison'] !== undefined,
+  ].filter(Boolean).length;
+  if (identities !== 1) {
+    return false;
+  }
+  switch (value['kind']) {
+    case 'incident':
+      return isIncidentRef(value['incident']);
+    case 'project':
+      return isProjectRef(value['project']);
+    case 'execution':
+    case 'snapshot':
+      return isExecutionRef(value['execution']);
+    case 'event':
+    case 'hypothesis':
+      return typeof value['id'] === 'string' && value['id'].length > 0;
+    case 'fact':
+    case 'annotation':
+    case 'check':
+    case 'query':
+    case 'board':
+      return isProjectArtifactRef(value['artifact']);
+    case 'compare':
+      return isComparisonRef(value['comparison']);
+    default:
+      return false;
+  }
+}
+
+function isExecutionRef(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, ['storeId', 'projectId', 'executionId']) &&
+    isValidSegment(value['storeId']) &&
+    isValidSegment(value['projectId']) &&
+    isValidSegment(value['executionId'])
+  );
+}
+
+function isProjectArtifactRef(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, ['storeId', 'projectId', 'environment', 'id']) &&
+    isValidSegment(value['storeId']) &&
+    isValidSegment(value['projectId']) &&
+    optionalString(value['environment']) &&
+    isValidSegment(value['id'])
+  );
+}
+
+function isComparisonRef(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, ['left', 'right']) &&
+    isExecutionRef(value['left']) &&
+    isExecutionRef(value['right'])
+  );
+}
+
+function hasOnlyKeys(
+  value: Record<string, unknown>,
+  allowed: readonly string[],
+): boolean {
+  return Object.keys(value).every((key) => allowed.includes(key));
 }
 
 function optionalStringArray(value: unknown): boolean {
@@ -546,6 +848,17 @@ function toIncidentApiResult<T>(err: unknown): IncidentApiResult<T> {
 function readServerError(
   value: unknown,
 ): { readonly code?: string; readonly message?: string } | undefined {
+  if (typeof value === 'string') {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      if (!isStrictErrorEnvelope(parsed)) {
+        return undefined;
+      }
+      return readServerError(parsed);
+    } catch {
+      return undefined;
+    }
+  }
   if (!isRecord(value) || !isRecord(value['error'])) {
     return undefined;
   }
@@ -555,4 +868,54 @@ function readServerError(
     ...(typeof code === 'string' && code.trim() ? { code } : {}),
     ...(typeof message === 'string' && message.trim() ? { message } : {}),
   };
+}
+
+function isStrictErrorEnvelope(value: unknown): boolean {
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, ['error']) ||
+    !isRecord(value['error'])
+  ) {
+    return false;
+  }
+  const error = value['error'];
+  const code = error['code'];
+  const targets = error['targets'];
+  return (
+    hasOnlyKeys(error, ['code', 'message', 'field', 'requestId', 'targets']) &&
+    isIncidentErrorCode(code) &&
+    isNonEmptyString(error['message']) &&
+    isNonEmptyString(error['requestId']) &&
+    (error['field'] === undefined || typeof error['field'] === 'string') &&
+    (targets === undefined ||
+      (code === 'TARGET_REQUIRED' &&
+        Array.isArray(targets) &&
+        targets.length > 0 &&
+        targets.every(
+          (target) =>
+            isRecord(target) &&
+            hasOnlyKeys(target, ['source', 'label']) &&
+            isNonEmptyString(target['source']) &&
+            isNonEmptyString(target['label']),
+        )))
+  );
+}
+
+function isIncidentErrorCode(value: unknown): value is string {
+  return (
+    value === 'INVALID_REQUEST' ||
+    value === 'TYPE_MISMATCH' ||
+    value === 'MISSING_PARAMETER' ||
+    value === 'AMBIGUOUS_BINDING' ||
+    value === 'TARGET_REQUIRED' ||
+    value === 'UNAUTHENTICATED' ||
+    value === 'ACCESS_DENIED' ||
+    value === 'UNSUPPORTED_PROTECTED_EXECUTION' ||
+    value === 'NOT_FOUND' ||
+    value === 'STALE_CONTEXT' ||
+    value === 'REVISION_CONFLICT' ||
+    value === 'RESPONSE_TOO_LARGE' ||
+    value === 'SOURCE_UNAVAILABLE' ||
+    value === 'TIMEOUT'
+  );
 }

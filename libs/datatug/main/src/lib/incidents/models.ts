@@ -104,6 +104,45 @@ export interface IncidentParticipant {
   readonly role: 'reporter';
 }
 
+export type IncidentArtifactRefKind =
+  | 'execution'
+  | 'snapshot'
+  | 'annotation'
+  | 'check'
+  | 'compare'
+  | 'query'
+  | 'board'
+  | 'fact'
+  | 'hypothesis'
+  | 'event'
+  | 'incident'
+  | 'project';
+
+export interface IncidentExecutionRef {
+  readonly storeId: string;
+  readonly projectId: string;
+  readonly executionId: string;
+}
+
+export interface IncidentProjectArtifactRef extends IncidentProjectRef {
+  readonly id: string;
+}
+
+export interface IncidentComparisonRef {
+  readonly left: IncidentExecutionRef;
+  readonly right: IncidentExecutionRef;
+}
+
+export interface IncidentArtifactRef {
+  readonly kind: IncidentArtifactRefKind;
+  readonly id?: string;
+  readonly incident?: IncidentRef;
+  readonly project?: IncidentProjectRef;
+  readonly execution?: IncidentExecutionRef;
+  readonly artifact?: IncidentProjectArtifactRef;
+  readonly comparison?: IncidentComparisonRef;
+}
+
 /** The seven lifecycle statuses (hub REQ:lifecycle-and-outcomes; CLI
  * REQ:status-and-outcome-vocabulary pins this exact list). */
 export const INCIDENT_STATUSES = [
@@ -141,6 +180,7 @@ export interface IncidentSummary {
   readonly projects?: readonly IncidentProjectRef[];
   readonly participants?: readonly IncidentParticipant[];
   readonly canonicalContext: IncidentContextView;
+  readonly assetRefs?: readonly IncidentArtifactRef[];
   readonly notes?: readonly string[];
   readonly lastSeq: number;
 }
@@ -193,6 +233,12 @@ export interface IncidentEvent {
   readonly at: string;
   readonly visibleAt: string;
   readonly incident: IncidentRef;
+  readonly importedFrom?: {
+    readonly incident: IncidentRef;
+    readonly eventId: string;
+    readonly seq: number;
+    readonly mergeId: string;
+  };
   readonly actor: IncidentActor;
   readonly type:
     | 'incident.created'
@@ -201,7 +247,22 @@ export interface IncidentEvent {
     | 'incident.merged'
     | 'note.added';
   readonly assertion: IncidentAssertion;
-  readonly payload: unknown;
+  readonly refs?: readonly IncidentArtifactRef[];
+  readonly payload:
+    | {
+        readonly uid: string;
+        readonly title: string;
+        readonly description: string;
+        readonly projects?: readonly IncidentProjectRef[];
+        readonly reporter:
+          | IncidentActor
+          | { readonly kind: ''; readonly id: '' };
+        readonly canonicalContext: IncidentContextView;
+      }
+    | { readonly status: IncidentStatus }
+    | { readonly outcome: IncidentOutcome }
+    | { readonly into: IncidentRef; readonly mergeId: string }
+    | { readonly body: string };
 }
 
 export interface IncidentStreamItem {
