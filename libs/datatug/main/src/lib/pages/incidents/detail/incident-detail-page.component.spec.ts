@@ -228,6 +228,31 @@ describe('IncidentDetailPageComponent', () => {
     expect(fixture.nativeElement.innerHTML).toContain('Payment API is slow');
   });
 
+  it('reactivates its complete scope when Ionic presents the cached detail again', async () => {
+    await render();
+    setInvestigationScopeSpy(
+      {
+        project: 'other-project',
+        environment: 'staging',
+        securityContextId: 'ctx-b',
+      },
+      '//agent-b:8989/datatug',
+    );
+
+    (
+      fixture.componentInstance as unknown as { ionViewDidEnter(): void }
+    ).ionViewDidEnter();
+
+    expect(setInvestigationScopeSpy).toHaveBeenLastCalledWith(
+      {
+        project: 'billing',
+        environment: 'prod',
+        securityContextId: 'ctx-current',
+      },
+      '//url-agent:8989/datatug',
+    );
+  });
+
   it('refreshes once and retries projection and events after STALE_CONTEXT', async () => {
     await render();
     getSpy

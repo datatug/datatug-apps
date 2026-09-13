@@ -203,8 +203,7 @@ export class IncidentDetailPageComponent {
       this.isTimelineLoading.set(false);
       return;
     }
-    this.investigationContext.setScope(investigationScope, baseUrl);
-    this.selectedInvestigationScope = investigationScope;
+    this.activateInvestigationContext(context);
 
     this.isLoading.set(true);
     this.isTimelineLoading.set(true);
@@ -306,5 +305,25 @@ export class IncidentDetailPageComponent {
       return event.payload.body;
     }
     return event.type;
+  }
+
+  ionViewDidEnter(): void {
+    const context = this.requestContext();
+    if (context) {
+      this.activateInvestigationContext(context);
+    }
+  }
+
+  private activateInvestigationContext(context: IncidentRequestContext): void {
+    const investigationScope = {
+      project: context.scope.project,
+      environment: context.scope.environment,
+      securityContextId: context.scope.securityContextId,
+    };
+    this.investigationContext.setScope(
+      investigationScope,
+      agentBaseUrl(context.agentStoreId),
+    );
+    this.selectedInvestigationScope = investigationScope;
   }
 }

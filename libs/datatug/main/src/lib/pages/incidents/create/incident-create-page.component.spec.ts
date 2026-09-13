@@ -25,6 +25,7 @@ import {
 interface Internals {
   title: string;
   description: string;
+  ionViewDidEnter(): void;
   submit(): void;
   isSubmitting(): boolean;
   errorMessage(): string | undefined;
@@ -144,6 +145,119 @@ describe('IncidentCreatePageComponent', () => {
     peek(fixture.componentInstance).title = '   ';
     peek(fixture.componentInstance).submit();
     expect(createSpy).not.toHaveBeenCalled();
+  });
+
+  it('reactivates cached page A on enter and never serializes page B facts as A', async () => {
+    const factA: ContextItem = {
+      id: 'Customer.ID:integer="5"',
+      entity: 'Customer',
+      field: 'ID',
+      value: { type: 'integer', value: '5' },
+      origin: 'context',
+      enabled: true,
+      label: 'Customer.ID = 5',
+      source: 'grid',
+      addedAt: '2026-09-13T08:00:00Z',
+      condition: '==',
+    };
+    const factB: ContextItem = {
+      ...factA,
+      id: 'Customer.ID:integer="99"',
+      value: { type: 'integer', value: '99' },
+      label: 'Customer.ID = 99',
+    };
+    TestBed.resetTestingModule();
+    await render(
+      {
+        agent: 'agent-a:8989',
+        storeId: 'billing',
+        project: 'billing',
+        environment: 'prod',
+      },
+      {
+        '//agent-a:8989/datatug': [factA],
+        '//agent-b:8989/datatug': [factB],
+      },
+    );
+    setScopeSpy(
+      {
+        project: 'other-project',
+        environment: 'staging',
+        securityContextId: 'ctx-b',
+      },
+      '//agent-b:8989/datatug',
+    );
+    createSpy.mockReturnValue(new Subject<IncidentApiResult<IncidentDetail>>());
+
+    peek(fixture.componentInstance).ionViewDidEnter();
+    peek(fixture.componentInstance).title = 'Cached page A incident';
+    peek(fixture.componentInstance).submit();
+
+    expect(setScopeSpy).toHaveBeenLastCalledWith(
+      {
+        project: 'billing',
+        environment: 'prod',
+        securityContextId: 'ctx-1',
+      },
+      '//agent-a:8989/datatug',
+    );
+    const request = createSpy.mock.calls[0][1] as CreateIncidentRequest;
+    expect(request.canonicalContext.facts.map((fact) => fact.id)).toEqual([
+      factA.id,
+    ]);
+    expect(request.canonicalContext.facts).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: factB.id })]),
+    );
+  });
+
+  it('blocks submit before reading facts when another page owns the active scope', async () => {
+    const factB: ContextItem = {
+      id: 'Customer.ID:integer="99"',
+      entity: 'Customer',
+      field: 'ID',
+      value: { type: 'integer', value: '99' },
+      origin: 'context',
+      enabled: true,
+      label: 'Customer.ID = 99',
+      source: 'grid',
+      addedAt: '2026-09-13T08:00:00Z',
+      condition: '==',
+    };
+    TestBed.resetTestingModule();
+    await render(
+      {
+        agent: 'agent-a:8989',
+        storeId: 'billing',
+        project: 'billing',
+        environment: 'prod',
+      },
+      { '//agent-b:8989/datatug': [factB] },
+    );
+    setScopeSpy(
+      {
+        project: 'other-project',
+        environment: 'staging',
+        securityContextId: 'ctx-b',
+      },
+      '//agent-b:8989/datatug',
+    );
+    isCurrentScopeSpy.mockReturnValue(false);
+
+    peek(fixture.componentInstance).title = 'Must not relabel B';
+    peek(fixture.componentInstance).submit();
+
+    expect(isCurrentScopeSpy).toHaveBeenLastCalledWith(
+      {
+        project: 'billing',
+        environment: 'prod',
+        securityContextId: 'ctx-1',
+      },
+      '//agent-a:8989/datatug',
+    );
+    expect(createSpy).not.toHaveBeenCalled();
+    expect(peek(fixture.componentInstance).errorMessage()).toContain(
+      'scope is no longer active',
+    );
   });
 
   it('reports guidance when no complete scope is available', () => {

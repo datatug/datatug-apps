@@ -184,8 +184,7 @@ export class IncidentListPageComponent {
       this.isLoading.set(false);
       return;
     }
-    this.investigationContext.setScope(investigationScope, baseUrl);
-    this.selectedInvestigationScope = investigationScope;
+    this.activateInvestigationContext(context);
     this.isLoading.set(true);
     let recoverySubscription: { unsubscribe(): void } | undefined;
     const subscription = this.incidentClient
@@ -249,5 +248,25 @@ export class IncidentListPageComponent {
 
   protected incidentLink(incident: IncidentSummary): readonly string[] {
     return ['/incidents', incident.ref.storeId, incident.ref.incidentId];
+  }
+
+  ionViewDidEnter(): void {
+    const context = this.requestContext();
+    if (context) {
+      this.activateInvestigationContext(context);
+    }
+  }
+
+  private activateInvestigationContext(context: IncidentRequestContext): void {
+    const investigationScope = {
+      project: context.scope.project,
+      environment: context.scope.environment,
+      securityContextId: context.scope.securityContextId,
+    };
+    this.investigationContext.setScope(
+      investigationScope,
+      agentBaseUrl(context.agentStoreId),
+    );
+    this.selectedInvestigationScope = investigationScope;
   }
 }

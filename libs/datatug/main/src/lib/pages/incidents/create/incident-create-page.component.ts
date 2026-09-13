@@ -216,11 +216,15 @@ export class IncidentCreatePageComponent {
     ) {
       return;
     }
-    const investigationScope = this.investigationScope(context);
-    this.investigationContext.setScope(investigationScope, baseUrl);
-    this.selectedTargetKey = targetKey;
-    this.selectedInvestigationScope = investigationScope;
+    this.activateInvestigationContext(context);
   });
+
+  ionViewDidEnter(): void {
+    const context = this.requestContext();
+    if (context) {
+      this.activateInvestigationContext(context);
+    }
+  }
 
   private readonly retireStaleSubmission = effect(() => {
     const scopeKey = this.currentScopeKey();
@@ -261,6 +265,17 @@ export class IncidentCreatePageComponent {
     if (!context) {
       this.errorMessage.set(
         'Open a project and environment connected to a DataTug server before creating an incident.',
+      );
+      return;
+    }
+    if (
+      !this.investigationContext.isCurrentScope(
+        this.investigationScope(context),
+        agentBaseUrl(context.agentStoreId),
+      )
+    ) {
+      this.errorMessage.set(
+        'This page’s investigation scope is no longer active. Reopen this page before creating the incident.',
       );
       return;
     }
@@ -541,5 +556,15 @@ export class IncidentCreatePageComponent {
       environment: context.scope.environment,
       securityContextId: context.scope.securityContextId,
     };
+  }
+
+  private activateInvestigationContext(context: IncidentRequestContext): void {
+    const investigationScope = this.investigationScope(context);
+    this.investigationContext.setScope(
+      investigationScope,
+      agentBaseUrl(context.agentStoreId),
+    );
+    this.selectedTargetKey = this.targetKey(context);
+    this.selectedInvestigationScope = investigationScope;
   }
 }

@@ -200,6 +200,31 @@ describe('IncidentListPageComponent', () => {
     expect(fixture.nativeElement.innerHTML).toContain('Checkout errors spike');
   });
 
+  it('reactivates its complete scope when Ionic presents the cached list again', () => {
+    selectScope('agent-a:8989');
+    setInvestigationScopeSpy(
+      {
+        project: 'other-project',
+        environment: 'staging',
+        securityContextId: 'ctx-b',
+      },
+      '//agent-b:8989/datatug',
+    );
+
+    (
+      fixture.componentInstance as unknown as { ionViewDidEnter(): void }
+    ).ionViewDidEnter();
+
+    expect(setInvestigationScopeSpy).toHaveBeenLastCalledWith(
+      {
+        project: 'billing',
+        environment: 'prod',
+        securityContextId: 'ctx-1',
+      },
+      '//agent-a:8989/datatug',
+    );
+  });
+
   it('recovers once from STALE_CONTEXT using the same explicit agent', () => {
     listSpy
       .mockReturnValueOnce(
