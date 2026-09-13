@@ -3,8 +3,15 @@
 // surface this client wraps).
 //
 // The wire shapes below mirror datatug-core/pkg/apicontract's frozen incident
-// fixtures. The server routes are still delivered by the backend task; until
-// then the client reports the honest unavailable state rather than fixtures.
+// fixtures. The browser keeps the serving agent address separate from
+// IncidentRef.storeId: the latter routes an incident store inside that agent
+// and is not a hostname.
+
+import type {
+  ContextCondition,
+  PhysicalRef,
+  TypedValue,
+} from '@sneat/datatug-semantic';
 
 /**
  * A reference to one incident: which incident store it lives in, and its id
@@ -20,6 +27,120 @@ export interface IncidentProjectRef {
   readonly storeId: string;
   readonly projectId: string;
   readonly environment?: string;
+}
+
+/** The Core `apicontract.IncidentScope` carried by every incident request. */
+export interface IncidentScope {
+  readonly storeId: string;
+  readonly project: string;
+  readonly environment: string;
+  readonly securityContextId: string;
+}
+
+/** Browser-only transport context selecting both the agent and its incident store. */
+export interface IncidentRequestContext {
+  readonly agentStoreId: string;
+  readonly scope: IncidentScope;
+}
+
+export interface IncidentProjectScope {
+  readonly storeId: string;
+  readonly projectId: string;
+  readonly environment?: string;
+}
+
+export interface IncidentCanonicalProjectScope extends IncidentProjectScope {
+  readonly environment: string;
+}
+
+export type IncidentFactValue = TypedValue | { readonly redacted: true };
+
+export interface IncidentFactView {
+  readonly id: string;
+  readonly entity: string;
+  readonly field?: string;
+  readonly value: IncidentFactValue;
+  readonly origin: 'selection' | 'context' | 'manual';
+  readonly physical?: PhysicalRef;
+  readonly mapping?: 'declared' | 'inferred';
+  readonly condition?: ContextCondition;
+  readonly enabled: boolean;
+  readonly role?:
+    | 'affected'
+    | 'healthy_control'
+    | 'suspected'
+    | 'excluded'
+    | 'recovered';
+  readonly layer?: string;
+  readonly scope?: IncidentProjectScope;
+}
+
+/** Canonical, fully scoped fact accepted by `IncidentCreateRequest`. */
+export interface IncidentFactInput extends Omit<
+  IncidentFactView,
+  'value' | 'field' | 'scope'
+> {
+  readonly field: string;
+  readonly value: TypedValue;
+  readonly scope: IncidentCanonicalProjectScope;
+}
+
+export interface IncidentContextView {
+  readonly facts: readonly IncidentFactView[];
+}
+
+export interface IncidentContextInput {
+  readonly facts: readonly IncidentFactInput[];
+}
+
+export interface IncidentActor {
+  readonly kind: 'human' | 'agent' | 'system';
+  readonly id: string;
+  readonly via?: 'web' | 'cli' | 'api' | 'slack';
+}
+
+export interface IncidentParticipant {
+  readonly actor: IncidentActor;
+  readonly role: 'reporter';
+}
+
+export type IncidentArtifactRefKind =
+  | 'execution'
+  | 'snapshot'
+  | 'annotation'
+  | 'check'
+  | 'compare'
+  | 'query'
+  | 'board'
+  | 'fact'
+  | 'hypothesis'
+  | 'event'
+  | 'incident'
+  | 'project';
+
+export interface IncidentExecutionRef {
+  readonly storeId: string;
+  readonly projectId: string;
+  readonly executionId: string;
+}
+
+export interface IncidentProjectArtifactRef extends IncidentProjectRef {
+  readonly id: string;
+}
+
+export interface IncidentComparisonRef {
+  readonly left: IncidentExecutionRef;
+  readonly right: IncidentExecutionRef;
+}
+
+export interface IncidentArtifactRef {
+  readonly kind: IncidentArtifactRefKind;
+  readonly id?: string;
+  readonly incident?: IncidentRef;
+  readonly project?: IncidentProjectRef;
+  readonly execution?: IncidentExecutionRef;
+  readonly artifact?: IncidentProjectArtifactRef;
+  readonly comparison?: IncidentComparisonRef;
 }
 
 /** The seven lifecycle statuses (hub REQ:lifecycle-and-outcomes; CLI
@@ -57,6 +178,9 @@ export interface IncidentSummary {
   readonly outcome?: IncidentOutcome;
   readonly mergedInto?: IncidentRef;
   readonly projects?: readonly IncidentProjectRef[];
+  readonly participants?: readonly IncidentParticipant[];
+  readonly canonicalContext: IncidentContextView;
+  readonly assetRefs?: readonly IncidentArtifactRef[];
   readonly notes?: readonly string[];
   readonly lastSeq: number;
 }
@@ -73,38 +197,95 @@ export interface IncidentResponse {
   readonly incident: IncidentDetail;
 }
 
-export interface IncidentMutationScope {
-  readonly storeId: string;
-  readonly project: string;
-  readonly environment: string;
-  readonly securityContextId: string;
-}
-
 /** Body of `POST /datatug/incidents` — title and free text (hub
  * REQ:houston-creation: "A user MUST be able to create an incident from a
  * title and free text ... The free text is kept as the incident's
  * `description`."). */
-export interface CreateIncidentRequest extends IncidentMutationScope {
+export interface CreateIncidentRequest extends IncidentScope {
   readonly mutationId: string;
   readonly title: string;
   readonly description?: string;
   readonly projects?: readonly IncidentProjectRef[];
+  readonly canonicalContext: IncidentContextInput;
+}
+
+export interface IncidentListFilters {
+  readonly status?: readonly string[];
+  readonly query?: string;
+  readonly check?: string;
+  readonly board?: string;
+}
+
+export interface IncidentAssertion {
+  readonly kind:
+    | 'observation'
+    | 'claim'
+    | 'question'
+    | 'hypothesis'
+    | 'inference'
+    | 'deterministic-result';
+  readonly confidence?: 'speculative' | 'likely' | 'confirmed';
+}
+
+export interface IncidentEvent {
+  readonly id: string;
+  readonly seq: number;
+  readonly at: string;
+  readonly visibleAt: string;
+  readonly incident: IncidentRef;
+  readonly importedFrom?: {
+    readonly incident: IncidentRef;
+    readonly eventId: string;
+    readonly seq: number;
+    readonly mergeId: string;
+  };
+  readonly actor: IncidentActor;
+  readonly type:
+    | 'incident.created'
+    | 'incident.status'
+    | 'incident.outcome'
+    | 'incident.merged'
+    | 'note.added';
+  readonly assertion: IncidentAssertion;
+  readonly refs?: readonly IncidentArtifactRef[];
+  readonly payload:
+    | {
+        readonly uid: string;
+        readonly title: string;
+        readonly description: string;
+        readonly projects?: readonly IncidentProjectRef[];
+        readonly reporter:
+          | IncidentActor
+          | { readonly kind: ''; readonly id: '' };
+        readonly canonicalContext: IncidentContextView;
+      }
+    | { readonly status: IncidentStatus }
+    | { readonly outcome: IncidentOutcome }
+    | { readonly into: IncidentRef; readonly mergeId: string }
+    | { readonly body: string };
+}
+
+export interface IncidentStreamItem {
+  readonly cursor: string;
+  readonly event: IncidentEvent;
 }
 
 /**
- * The outcome of one incident-API call, without throwing — every incident
- * page in this scaffold is written against a server that does not implement
- * these endpoints yet, and REQ:no-profile-private-data / the plan Task 9 scope
- * both require an explicit, honest "not available" state rather than mock
- * data or a silent failure.
+ * The outcome of one incident-API call, without throwing. The UI reports an
+ * explicit, honest "not available" state for older servers rather than using
+ * mock data or silently hiding a failure.
  *
  *  - `ok`: the call succeeded; `data` is the parsed response.
- *  - `unavailable`: the server returned 404 (route not registered — the
- *    common case today) or 501/501-shaped "not implemented"; the incident
- *    store itself is not available on this server yet.
+ *  - `unavailable`: an older server returned an unstructured route-level 404
+ *    or explicit 501 "not implemented"; the incident surface is not available
+ *    on that server.
  *  - `error`: any other failure (network error, 5xx, malformed response).
  */
 export type IncidentApiResult<T> =
   | { readonly kind: 'ok'; readonly data: T }
   | { readonly kind: 'unavailable'; readonly message: string }
-  | { readonly kind: 'error'; readonly message: string };
+  | {
+      readonly kind: 'error';
+      readonly message: string;
+      readonly code?: string;
+    };

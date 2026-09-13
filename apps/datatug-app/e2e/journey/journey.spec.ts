@@ -197,14 +197,19 @@ async function goToCatalogTables(
   catalogId: string,
 ): Promise<void> {
   await page.locator('ion-select[placeholder="Go to..."]').click();
-  await page.locator('ion-popover').getByText('Environments', { exact: true }).click();
+  await page
+    .locator('ion-popover')
+    .getByText('Environments', { exact: true })
+    .click();
 
   await expect(activePage(page).getByText(envId, { exact: true })).toBeVisible({
     timeout: 15_000,
   });
   await activePage(page).getByText(envId, { exact: true }).click();
 
-  await expect(activePage(page).getByText(catalogId, { exact: true })).toBeVisible({
+  await expect(
+    activePage(page).getByText(catalogId, { exact: true }),
+  ).toBeVisible({
     timeout: 15_000,
   });
   await activePage(page).getByText(catalogId, { exact: true }).click();
@@ -253,7 +258,9 @@ async function openSavedQuery(
     .getByText('Queries', { exact: true });
   await queriesMenuItem.click();
 
-  await expect(activePage(page).getByText(folderName, { exact: true })).toBeVisible({
+  await expect(
+    activePage(page).getByText(folderName, { exact: true }),
+  ).toBeVisible({
     timeout: 15_000,
   });
   await activePage(page).getByText(folderName, { exact: true }).click();
@@ -318,10 +325,14 @@ test.describe('J1 — first useful result (the null-action path)', () => {
     // does, via the stable `.tabulator-row` class. Scoped to the active page
     // (S104, helpers/active-page.ts) — a grid is one of the element
     // categories more than one project page can render.
-    await expect(activePage(page).locator('.tabulator-row').first()).toBeVisible({
+    await expect(
+      activePage(page).locator('.tabulator-row').first(),
+    ).toBeVisible({
       timeout: 15_000,
     });
-    expect(await activePage(page).locator('.tabulator-row').count()).toBeGreaterThan(0);
+    expect(
+      await activePage(page).locator('.tabulator-row').count(),
+    ).toBeGreaterThan(0);
 
     // "the agent log shows the select request under /datatug/" — mechanism,
     // not just outcome (AC:first-result-two-clicks, REQ:agent-path-contract).
@@ -369,7 +380,9 @@ test.describe('J2 — from a value to related knowledge', () => {
     // project-loading call that panics server-side on datatug-cli main — so
     // the grid never renders any row to click. Once blocker 2 is fixed, this
     // gates on blocker 1 below instead.
-    await expect(activePage(page).locator('.tabulator-row').first()).toBeVisible({
+    await expect(
+      activePage(page).locator('.tabulator-row').first(),
+    ).toBeVisible({
       timeout: 15_000,
     });
 
@@ -388,13 +401,35 @@ test.describe('J2 — from a value to related knowledge', () => {
       .locator('[tabulator-field="CustomerId"]');
     await expect(cell).toBeVisible({ timeout: 15_000 });
     const customerId = (await cell.textContent())?.trim();
+    const applicableResponsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes('/datatug/queries/applicable') &&
+        response.request().method() === 'POST',
+      { timeout: 15_000 },
+    );
     await cell.click();
+    const applicableBody = (await (await applicableResponsePromise).json()) as {
+      applicable?: Array<{
+        queryId?: string;
+        bindings?: Array<{ parameterId?: string; factId?: string }>;
+      }>;
+    };
+    const selectedFactId = applicableBody.applicable
+      ?.find((candidate) => candidate.queryId?.endsWith('customer-invoices'))
+      ?.bindings?.find(
+        (binding) => binding.parameterId === 'CustomerId',
+      )?.factId;
+    expect(selectedFactId).toEqual(expect.any(String));
 
-    await expect(activePage(page).locator('sneat-datatug-context-panel')).toBeVisible({
+    await expect(
+      activePage(page).locator('sneat-datatug-context-panel'),
+    ).toBeVisible({
       timeout: 15_000,
     });
     await expect(
-      activePage(page).getByText(`Customer.ID = ${customerId}`, { exact: false }),
+      activePage(page).getByText(`Customer.ID = ${customerId}`, {
+        exact: false,
+      }),
     ).toBeVisible({ timeout: 10_000 });
 
     // "related records" and "applicable queries" — POST /datatug/semantic/related
@@ -406,7 +441,9 @@ test.describe('J2 — from a value to related knowledge', () => {
       activePage(page).getByText('customer-invoices', { exact: false }),
     ).toBeVisible({ timeout: 15_000 });
     await expect(
-      activePage(page).getByText('customer-purchases-by-genre', { exact: false }),
+      activePage(page).getByText('customer-purchases-by-genre', {
+        exact: false,
+      }),
     ).toBeVisible({ timeout: 10_000 });
 
     // "running one binds the parameter" — click through to the query page
@@ -414,7 +451,9 @@ test.describe('J2 — from a value to related knowledge', () => {
     // navigates away (router.navigate) — the Customer table page this test
     // started on is detached-not-destroyed afterward (S104, this file's own
     // header), so every assertion from here on is scoped to the active page.
-    await activePage(page).getByText('customer-invoices', { exact: false }).click();
+    await activePage(page)
+      .getByText('customer-invoices', { exact: false })
+      .click();
     await expect(
       activePage(page)
         .getByText('Customer.ID', { exact: false })
@@ -422,7 +461,43 @@ test.describe('J2 — from a value to related knowledge', () => {
           exact: false,
         }),
     ).toBeVisible({ timeout: 10_000 });
+    const runRequestPromise = page.waitForRequest(
+      (request) =>
+        request.url().includes('/datatug/exec/run_query') &&
+        request.method() === 'POST',
+      { timeout: 15_000 },
+    );
+    const runResponsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes('/datatug/exec/run_query') &&
+        response.request().method() === 'POST',
+      { timeout: 15_000 },
+    );
     await activePage(page).getByText('Run query', { exact: false }).click();
+    const runRequestBody = (await runRequestPromise).postDataJSON() as {
+      bindingOrigins?: Array<{
+        parameterId?: string;
+        origin?: string;
+        factId?: string;
+      }>;
+    };
+    expect(runRequestBody.bindingOrigins).toContainEqual({
+      parameterId: 'CustomerId',
+      origin: 'selection',
+      factId: selectedFactId,
+    });
+    const runResponse = await runResponsePromise;
+    expect(runResponse.ok()).toBe(true);
+    const runResponseBody = (await runResponse.json()) as {
+      recordset?: { rows?: unknown[] };
+    };
+    expect(runResponseBody.recordset?.rows).toEqual(expect.any(Array));
+    await expect(activePage(page).getByTestId('result-provenance')).toBeVisible(
+      {
+        timeout: 15_000,
+      },
+    );
+    await expect(activePage(page).locator('.run-result-table')).toBeVisible();
     await expect
       .poll(() => agentServer.readLog(), { timeout: 15_000 })
       .toMatch(/\/datatug\/exec\/run_query/);
@@ -467,7 +542,9 @@ test.describe('J2b — HTTP reference source', () => {
     const customerRow = catalogTableRow(page, 'Customer');
     await expect(customerRow).toBeVisible({ timeout: 15_000 });
     await customerRow.click();
-    await expect(activePage(page).locator('.tabulator-row').first()).toBeVisible({
+    await expect(
+      activePage(page).locator('.tabulator-row').first(),
+    ).toBeVisible({
       timeout: 15_000,
     });
 
@@ -480,7 +557,9 @@ test.describe('J2b — HTTP reference source', () => {
     await expect(countryCell).toBeVisible({ timeout: 15_000 });
     await countryCell.click();
 
-    await expect(activePage(page).locator('sneat-datatug-context-panel')).toBeVisible({
+    await expect(
+      activePage(page).locator('sneat-datatug-context-panel'),
+    ).toBeVisible({
       timeout: 15_000,
     });
     await expect(
@@ -511,7 +590,9 @@ test.describe('J2b — HTTP reference source', () => {
     await expect(
       activePage(page).getByTestId('result-provenance'),
     ).toContainText('live', { timeout: 20_000 });
-    await expect(activePage(page).getByText('CAD', { exact: true })).toBeVisible({
+    await expect(
+      activePage(page).getByText('CAD', { exact: true }),
+    ).toBeVisible({
       timeout: 5_000,
     });
     await expect
@@ -542,7 +623,9 @@ test.describe('J2b — HTTP reference source', () => {
     const customerRow = catalogTableRow(page, 'Customer');
     await expect(customerRow).toBeVisible({ timeout: 15_000 });
     await customerRow.click();
-    await expect(activePage(page).locator('.tabulator-row').first()).toBeVisible({
+    await expect(
+      activePage(page).locator('.tabulator-row').first(),
+    ).toBeVisible({
       timeout: 15_000,
     });
 
@@ -552,7 +635,9 @@ test.describe('J2b — HTTP reference source', () => {
     await expect(countryCell).toBeVisible({ timeout: 15_000 });
     await countryCell.click();
 
-    await expect(activePage(page).locator('sneat-datatug-context-panel')).toBeVisible({
+    await expect(
+      activePage(page).locator('sneat-datatug-context-panel'),
+    ).toBeVisible({
       timeout: 15_000,
     });
     await expect(
@@ -591,7 +676,9 @@ test.describe('J2b — HTTP reference source', () => {
     await expect(
       activePage(page).getByTestId('result-provenance'),
     ).toContainText('snapshot · recorded 2026-09-09', { timeout: 15_000 });
-    await expect(activePage(page).getByText('CAD', { exact: true })).toBeVisible({
+    await expect(
+      activePage(page).getByText('CAD', { exact: true }),
+    ).toBeVisible({
       timeout: 5_000,
     });
   });
@@ -622,7 +709,9 @@ test.describe('J3 — carrying context', () => {
     const customerRow = catalogTableRow(page, 'Customer');
     await expect(customerRow).toBeVisible({ timeout: 15_000 });
     await customerRow.click();
-    await expect(activePage(page).locator('.tabulator-row').first()).toBeVisible({
+    await expect(
+      activePage(page).locator('.tabulator-row').first(),
+    ).toBeVisible({
       timeout: 15_000,
     });
 
@@ -638,10 +727,14 @@ test.describe('J3 — carrying context', () => {
       .locator('[tabulator-field="CustomerId"]');
     await expect(cell).toBeVisible({ timeout: 15_000 });
     await cell.click();
-    await expect(activePage(page).locator('sneat-datatug-context-panel')).toBeVisible({
+    await expect(
+      activePage(page).locator('sneat-datatug-context-panel'),
+    ).toBeVisible({
       timeout: 15_000,
     });
-    await activePage(page).getByText('Add to context', { exact: false }).click();
+    await activePage(page)
+      .getByText('Add to context', { exact: false })
+      .click();
 
     // REQ:context-basket — visible on every project screen via
     // ProjectMenuTopComponent -> InvestigationContextBarComponent. NOT scoped
@@ -690,7 +783,9 @@ test.describe('J3 — carrying context', () => {
     // toBeDisabled()/toBeEnabled() match `:disabled`, which only native form elements
     // ever satisfy, so they misreport an `ion-button` regardless of its actual state.
     // The `disabled` attribute's presence/absence on the host is the reliable signal.
-    const runButton = activePage(page).locator('ion-button', { hasText: 'Run query' });
+    const runButton = activePage(page).locator('ion-button', {
+      hasText: 'Run query',
+    });
     await expect(runButton).not.toHaveAttribute('disabled');
 
     // AC:context-carries's own wording — "disabling the chip empties it" — names the
@@ -810,7 +905,9 @@ test.describe('J4 — restricted principal', () => {
       { timeout: 15_000 },
     );
     await customerRow.click();
-    await expect(activePage(page).locator('.tabulator-row').first()).toBeVisible({
+    await expect(
+      activePage(page).locator('.tabulator-row').first(),
+    ).toBeVisible({
       timeout: 15_000,
     });
 
@@ -827,7 +924,9 @@ test.describe('J4 — restricted principal', () => {
     );
     // "Email is absent" — customers-support's own `fields:` allow-list omits it.
     expect(selectBody.columns).not.toContain('Email');
-    await expect(activePage(page).locator('[tabulator-field="Email"]')).toHaveCount(0);
+    await expect(
+      activePage(page).locator('[tabulator-field="Email"]'),
+    ).toHaveCount(0);
 
     // Feature J4 (README.md, verbatim): "Browse Customer with an allowed
     // projection: ... the header states the applied limitations."
@@ -856,7 +955,9 @@ test.describe('J4 — restricted principal', () => {
     await expect(customerId3Cell).toBeVisible({ timeout: 10_000 });
     await customerId3Cell.click();
 
-    await expect(activePage(page).locator('sneat-datatug-context-panel')).toBeVisible({
+    await expect(
+      activePage(page).locator('sneat-datatug-context-panel'),
+    ).toBeVisible({
       timeout: 15_000,
     });
     await expect(
@@ -876,7 +977,9 @@ test.describe('J4 — restricted principal', () => {
     // originally flagged as likely to 404 on a bare query id — S97's PR #219
     // (folder-qualified ids) and S101's PR #221 landed since, and this run
     // confirms the run below now resolves and executes correctly (S104).
-    await activePage(page).getByText('customer-invoices', { exact: false }).click();
+    await activePage(page)
+      .getByText('customer-invoices', { exact: false })
+      .click();
     await expect(
       activePage(page)
         .getByText('Customer.ID', { exact: false })
@@ -884,7 +987,9 @@ test.describe('J4 — restricted principal', () => {
     ).toBeVisible({ timeout: 10_000 });
     await activePage(page).getByText('Run query', { exact: false }).click();
 
-    const canadianRunBody = (await (await canadianRunResponsePromise).json()) as {
+    const canadianRunBody = (await (
+      await canadianRunResponsePromise
+    ).json()) as {
       recordset?: { rows: unknown[] };
       limitations?: { rowsFiltered: boolean }[];
       provenance?: { executionProfile: string };
@@ -1032,7 +1137,9 @@ test.describe('Personal queries tab — datatug-cli v0.24.0 root=personal (S174)
 
     // "switches to Personal" — QueriesPageComponent's own segment control
     // (queries-page.component.html, `ion-segment-button[value="personal"]`).
-    await activePage(page).locator('ion-segment-button[value="personal"]').click();
+    await activePage(page)
+      .locator('ion-segment-button[value="personal"]')
+      .click();
 
     // "the seeded personal query is listed" — agentServer's own personal
     // root (`user:admin`, via `--as admin` + `$DATATUG_PERSONAL_DIR`).
@@ -1044,17 +1151,21 @@ test.describe('Personal queries tab — datatug-cli v0.24.0 root=personal (S174)
     // (queries/customers, queries/artists, ...) appearing here would mean
     // the Personal tab fell back to the shared tree instead of the real
     // v0.24.0 personal one.
-    await expect(queriesTab.getByText('customers', { exact: true })).toHaveCount(
-      0,
-    );
+    await expect(
+      queriesTab.getByText('customers', { exact: true }),
+    ).toHaveCount(0);
 
     // "switches to Shared, the seeded query is absent" — root isolation from
     // the CLIENT's point of view (datatug-cli's own server-side
     // TestGetPersonalQueries_PrincipalSeesOwnPersonalQueries proves the same
     // thing from the server's). "customers" reappearing first confirms the
     // shared tree itself still loads normally (unaffected by this fix).
-    await activePage(page).locator('ion-segment-button[value="shared"]').click();
-    await expect(queriesTab.getByText('customers', { exact: true })).toBeVisible({
+    await activePage(page)
+      .locator('ion-segment-button[value="shared"]')
+      .click();
+    await expect(
+      queriesTab.getByText('customers', { exact: true }),
+    ).toBeVisible({
       timeout: 15_000,
     });
     await expect(

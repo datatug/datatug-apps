@@ -15,6 +15,8 @@ interface MenuInternals {
   isLoginPage(): boolean;
   currentStoreId(): string | undefined;
   currentProject(): unknown;
+  currentEnvironment(): unknown;
+  incidentQueryParams(): Readonly<Record<string, string>> | undefined;
   datatugUserState(): unknown;
   onProjectChanged(project?: unknown): void;
 }
@@ -26,6 +28,7 @@ describe('DatatugMenuComponent', () => {
   let routerMock: { url: string; events: Subject<unknown> };
   let storeId$: Subject<string | undefined>;
   let project$: Subject<unknown>;
+  let env$: Subject<unknown>;
   let envDbTable$: Subject<unknown>;
   let userState$: Subject<unknown>;
   let analytics: { logEvent: ReturnType<typeof vi.fn> };
@@ -43,6 +46,7 @@ describe('DatatugMenuComponent', () => {
     routerMock = { url: '/', events: routerEvents };
     storeId$ = new Subject();
     project$ = new Subject();
+    env$ = new Subject();
     envDbTable$ = new Subject();
     userState$ = new Subject();
     analytics = { logEvent: vi.fn() };
@@ -64,6 +68,7 @@ describe('DatatugMenuComponent', () => {
           useValue: {
             currentStoreId: storeId$,
             currentProject: project$,
+            currentEnv: env$,
             currentEnvDbTable: envDbTable$,
           },
         },
@@ -266,6 +271,23 @@ describe('DatatugMenuComponent', () => {
       const project = { ref: { projectId: 'p1', storeId: 's1' } };
       project$.next(project);
       expect(peek(c).currentProject()).toBe(project);
+    });
+
+    it('builds the incidents link from the current agent, project, and environment', () => {
+      const c = createComponent('/').componentInstance;
+      storeId$.next('localhost:8989');
+      project$.next({
+        ref: { projectId: 'billing', storeId: 'localhost:8989' },
+      });
+      env$.next({ id: 'prod' });
+
+      expect(peek(c).currentEnvironment()).toEqual({ id: 'prod' });
+      expect(peek(c).incidentQueryParams()).toEqual({
+        agent: 'localhost:8989',
+        storeId: 'billing',
+        project: 'billing',
+        environment: 'prod',
+      });
     });
 
     it('updates the current project via onProjectChanged', () => {

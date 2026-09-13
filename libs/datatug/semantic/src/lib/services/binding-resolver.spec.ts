@@ -26,10 +26,14 @@ describe('resolveBindings — precedence (AC:bound-from-selection, AC:context-ca
     const params: BindingParameterRef[] = [{ id: 'CustomerId', meta: customerIdMeta }];
     const [binding] = resolveBindings({
       parameters: params,
-      selectionFacts: [fact(integer5, 'selection')],
+      selectionFacts: [fact(integer5, 'selection', 'selection-fact-5')],
       contextFacts: [],
     });
-    expect(binding).toMatchObject({ value: integer5, origin: 'selection' });
+    expect(binding).toMatchObject({
+      value: integer5,
+      origin: 'selection',
+      factId: 'selection-fact-5',
+    });
     expect(isBindingRunnable(binding)).toBe(true);
   });
 
@@ -38,9 +42,13 @@ describe('resolveBindings — precedence (AC:bound-from-selection, AC:context-ca
     const [binding] = resolveBindings({
       parameters: params,
       selectionFacts: [],
-      contextFacts: [fact(integer5, 'context')],
+      contextFacts: [fact(integer5, 'context', 'context-fact-5')],
     });
-    expect(binding).toMatchObject({ value: integer5, origin: 'context' });
+    expect(binding).toMatchObject({
+      value: integer5,
+      origin: 'context',
+      factId: 'context-fact-5',
+    });
   });
 
   it('an explicit user edit wins over both selection and context', () => {
@@ -52,6 +60,7 @@ describe('resolveBindings — precedence (AC:bound-from-selection, AC:context-ca
       userValues: new Map([['CustomerId', integer7]]),
     });
     expect(binding).toMatchObject({ value: integer7, origin: 'user' });
+    expect(binding.factId).toBeUndefined();
   });
 
   it('applies a declared default only when neither tier has a candidate', () => {
@@ -64,6 +73,7 @@ describe('resolveBindings — precedence (AC:bound-from-selection, AC:context-ca
       contextFacts: [],
     });
     expect(binding).toMatchObject({ value: integer7, origin: 'default' });
+    expect(binding.factId).toBeUndefined();
   });
 
   it('a matching selection and context value (same typed value) is not a conflict', () => {

@@ -13,9 +13,21 @@ function createService(): InvestigationContextService {
   return TestBed.inject(InvestigationContextService);
 }
 
-const scopeA = { project: 'demo-project-1', environment: 'local', securityContextId: 'sc-1' };
-const scopeB = { project: 'demo-project-1', environment: 'local', securityContextId: 'sc-2' };
-const scopeOtherProject = { project: 'other-project', environment: 'local', securityContextId: 'sc-1' };
+const scopeA = {
+  project: 'demo-project-1',
+  environment: 'local',
+  securityContextId: 'sc-1',
+};
+const scopeB = {
+  project: 'demo-project-1',
+  environment: 'local',
+  securityContextId: 'sc-2',
+};
+const scopeOtherProject = {
+  project: 'other-project',
+  environment: 'local',
+  securityContextId: 'sc-1',
+};
 
 describe('InvestigationContextService', () => {
   beforeEach(() => {
@@ -31,7 +43,11 @@ describe('InvestigationContextService', () => {
   it('starts empty when sessionStorage holds corrupted JSON for the active scope, instead of throwing', () => {
     const service = createService();
     service.setScope(scopeA);
-    const key = `datatug.investigationContext.v2.${service.scope()!.agentUrl} demo-project-1 local sc-1`;
+    const activeScope = service.scope();
+    if (!activeScope) {
+      throw new Error('Expected an active investigation scope.');
+    }
+    const key = `datatug.investigationContext.v2.${activeScope.agentUrl} demo-project-1 local sc-1`;
     sessionStorage.setItem(key, '{not valid json');
     const restarted = createService();
     restarted.setScope(scopeA);
@@ -168,13 +184,17 @@ describe('InvestigationContextService', () => {
       expect(service.items().length).toBe(1); // still present, not removed
       expect(service.enabledCount()).toBe(0);
       expect(
-        service.bindingsFor([{ id: 'customerId', meta: { entity: 'Customer', field: 'ID' } }]),
+        service.bindingsFor([
+          { id: 'customerId', meta: { entity: 'Customer', field: 'ID' } },
+        ]),
       ).toEqual([]);
 
       service.setEnabled(item.id, true);
       expect(service.enabledCount()).toBe(1);
       expect(
-        service.bindingsFor([{ id: 'customerId', meta: { entity: 'Customer', field: 'ID' } }]),
+        service.bindingsFor([
+          { id: 'customerId', meta: { entity: 'Customer', field: 'ID' } },
+        ]),
       ).toHaveLength(1);
     });
 
@@ -205,7 +225,9 @@ describe('InvestigationContextService', () => {
       });
 
       // Calling bindingsFor must not mutate state (REQ:no-hidden-filters).
-      service.bindingsFor([{ id: 'customerId', meta: { entity: 'Customer', field: 'ID' } }]);
+      service.bindingsFor([
+        { id: 'customerId', meta: { entity: 'Customer', field: 'ID' } },
+      ]);
 
       expect(service.items()).toHaveLength(1);
       expect(service.items()[0].enabled).toBe(true);
@@ -362,7 +384,11 @@ describe('InvestigationContextService', () => {
         });
         const withPhysical = {
           ...item,
-          physical: { source: 'chinook-local', collection: 'Customer', column: 'Age' },
+          physical: {
+            source: 'chinook-local',
+            collection: 'Customer',
+            column: 'Age',
+          },
           mapping: 'declared' as const,
         };
 
@@ -373,7 +399,11 @@ describe('InvestigationContextService', () => {
           value: { type: 'integer', value: '21' },
           origin: 'context',
           enabled: true,
-          physical: { source: 'chinook-local', collection: 'Customer', column: 'Age' },
+          physical: {
+            source: 'chinook-local',
+            collection: 'Customer',
+            column: 'Age',
+          },
           mapping: 'declared',
           condition: '>=',
         });
@@ -434,12 +464,19 @@ describe('InvestigationContextService', () => {
     it('isCurrentScope distinguishes the active scope from any other — the late-response-discard gate', () => {
       const service = createService();
       service.setScope(scopeA);
-      const requestScope: ContextScope = service.scope()!;
+      const requestScope = service.scope();
+      if (!requestScope) {
+        throw new Error('Expected an active investigation scope.');
+      }
       expect(service.isCurrentScope(requestScope)).toBe(true);
 
       service.setScope(scopeB); // user switches principal mid-flight
       expect(service.isCurrentScope(requestScope)).toBe(false); // late response discarded
-      expect(service.isCurrentScope(service.scope()!)).toBe(true);
+      const currentScope = service.scope();
+      if (!currentScope) {
+        throw new Error('Expected an active investigation scope.');
+      }
+      expect(service.isCurrentScope(currentScope)).toBe(true);
     });
 
     it('clear() only empties the CURRENT scope, never another scope’s basket', () => {
@@ -533,10 +570,12 @@ describe('scopesEqual', () => {
     expect(scopesEqual(base, { ...base })).toBe(true);
     expect(scopesEqual(base, { ...base, project: 'p2' })).toBe(false);
     expect(scopesEqual(base, { ...base, environment: 'prod' })).toBe(false);
-    expect(scopesEqual(base, { ...base, securityContextId: 'sc-2' })).toBe(false);
-    expect(scopesEqual(base, { ...base, agentUrl: 'http://localhost:9999/datatug' })).toBe(
+    expect(scopesEqual(base, { ...base, securityContextId: 'sc-2' })).toBe(
       false,
     );
+    expect(
+      scopesEqual(base, { ...base, agentUrl: 'http://localhost:9999/datatug' }),
+    ).toBe(false);
   });
 
   it('undefined compares equal only to undefined', () => {
@@ -555,5 +594,24 @@ describe('DATATUG_AGENT_BASE_URL contributes the scope’s agentUrl automaticall
     const service = TestBed.inject(InvestigationContextService);
     service.setScope(scopeA);
     expect(service.scope()?.agentUrl).toBe('http://localhost:1234/datatug');
+  });
+
+  it('accepts an explicit agent base URL for cross-agent scope isolation', () => {
+    const service = TestBed.inject(InvestigationContextService);
+    service.setScope(scopeA, 'https://agent-b.example/datatug');
+    service.addValue({
+      entityField: { entity: 'Customer', field: 'ID' },
+      value: 5,
+      label: 'Customer.ID = 5',
+      source: 'grid',
+    });
+
+    expect(service.scope()?.agentUrl).toBe('https://agent-b.example/datatug');
+    expect(
+      service.isCurrentScope(scopeA, 'https://agent-b.example/datatug/'),
+    ).toBe(true);
+    expect(service.isCurrentScope(scopeA)).toBe(false);
+    service.setScope(scopeA);
+    expect(service.items()).toEqual([]);
   });
 });

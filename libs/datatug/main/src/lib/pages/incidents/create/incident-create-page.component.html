@@ -16,6 +16,7 @@
           label-placement="stacked"
           placeholder="What's happening?"
           [(ngModel)]="title"
+          [disabled]="isSubmitting()"
           required="required"
           data-testid="incident-title-input"
         />
@@ -26,25 +27,73 @@
           label-placement="stacked"
           placeholder="A few words about what you're seeing (kept as the incident's description)"
           [(ngModel)]="description"
+          [disabled]="isSubmitting()"
           [autoGrow]="true"
           data-testid="incident-description-input"
         />
       </ion-item>
 
       @if (errorMessage(); as error) {
-        <ion-note color="danger" data-testid="incident-create-error">{{
-          error
-        }}</ion-note>
+        <ion-note
+          color="danger"
+          role="alert"
+          data-testid="incident-create-error"
+          >{{ error }}</ion-note
+        >
       }
 
+      @if (!hasMutationScope()) {
+        <ion-note
+          color="warning"
+          role="status"
+          aria-live="polite"
+          data-testid="incident-scope-guidance"
+        >
+          Open a project and environment connected to a DataTug server before
+          creating an incident.
+        </ion-note>
+      }
+
+      @if (contextFactCount()) {
+        <ion-note color="medium" data-testid="incident-context-fact-count">
+          {{ contextFactCount() }} enabled Investigation Context
+          {{ contextFactCount() === 1 ? 'fact' : 'facts' }} will be attached.
+        </ion-note>
+      }
+
+      @if (createdIncidentLink(); as link) {
+        <ion-button
+          expand="block"
+          color="primary"
+          [routerLink]="link"
+          [queryParams]="createdIncidentQueryParams()"
+          [disabled]="isSubmitting()"
+        >
+          Open created incident
+        </ion-button>
+      } @else {
+        <ion-button
+          expand="block"
+          color="danger"
+          [disabled]="isSubmitting() || !title.trim() || !hasMutationScope()"
+          (click)="submit()"
+        >
+          @if (isSubmitting()) {
+            <ion-spinner slot="start" name="dots" />
+          } @else {
+            <ion-icon slot="start" name="rocket-outline" />
+          }
+          Houston, we've got a problem
+        </ion-button>
+      }
       <ion-button
         expand="block"
-        color="danger"
-        [disabled]="isSubmitting() || !title.trim() || !hasMutationScope()"
-        (click)="submit()"
+        fill="clear"
+        routerLink="/incidents"
+        [queryParams]="scopeQueryParams()"
+        [disabled]="isSubmitting()"
       >
-        <ion-icon slot="start" name="rocket-outline" />
-        Houston, we've got a problem
+        Cancel
       </ion-button>
     </ion-card-content>
   </ion-card>

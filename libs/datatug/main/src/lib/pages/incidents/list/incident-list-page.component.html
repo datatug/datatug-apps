@@ -11,14 +11,19 @@
 <ion-content color="light">
   <ion-card>
     <ion-card-content>
-      <ion-button expand="block" color="danger" routerLink="/incidents/new">
+      <ion-button
+        expand="block"
+        color="danger"
+        routerLink="/incidents/new"
+        [queryParams]="scopeQueryParams()"
+      >
         <ion-icon slot="start" name="rocket-outline" />
         Houston, we've got a problem
       </ion-button>
     </ion-card-content>
   </ion-card>
 
-  @if (!storeId()) {
+  @if (!requestContext()) {
     <ion-card>
       <ion-card-content>
         <p>
@@ -30,7 +35,9 @@
   } @else if (unavailableMessage()) {
     <ion-card>
       <ion-card-content>
-        <ion-note color="warning">{{ unavailableMessage() }}</ion-note>
+        <ion-note color="warning" role="alert">{{
+          unavailableMessage()
+        }}</ion-note>
       </ion-card-content>
     </ion-card>
   } @else if (isLoading()) {
@@ -47,7 +54,12 @@
             incident of items;
             track incident.ref.storeId + '/' + incident.ref.incidentId
           ) {
-            <ion-item [routerLink]="incidentLink(incident)" button detail>
+            <ion-item
+              [routerLink]="incidentLink(incident)"
+              [queryParams]="scopeQueryParams()"
+              button
+              detail
+            >
               <ion-label>
                 <h2>{{ incident.title }}</h2>
                 <p>{{ incident.status }}</p>

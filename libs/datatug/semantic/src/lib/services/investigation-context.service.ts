@@ -24,9 +24,12 @@ export interface ContextScope {
  * comparing two scopes for equality. NUL-joined (`'\0'`) so no field value containing the
  * delimiter used elsewhere (`|`, `:`) can collide two distinct scopes into one key. */
 export function scopeKey(scope: ContextScope): string {
-  return [scope.agentUrl, scope.project, scope.environment, scope.securityContextId].join(
-    '\0',
-  );
+  return [
+    scope.agentUrl,
+    scope.project,
+    scope.environment,
+    scope.securityContextId,
+  ].join('\0');
 }
 
 /** `true` when both scopes name the same isolated basket. `undefined` compares equal
@@ -103,7 +106,9 @@ export function contextItemToFact(item: ContextItem): Fact {
     enabled: item.enabled,
     ...(item.physical ? { physical: item.physical } : {}),
     ...(item.mapping ? { mapping: item.mapping } : {}),
-    ...(item.condition !== DEFAULT_CONDITION ? { condition: item.condition } : {}),
+    ...(item.condition !== DEFAULT_CONDITION
+      ? { condition: item.condition }
+      : {}),
   };
 }
 
@@ -194,13 +199,14 @@ export class InvestigationContextService {
   private readonly scopeSignal = signal<ContextScope | undefined>(undefined);
   /** `undefined` until the first {@link setScope} call — no request can have a Scope to
    * carry yet, so there is nothing to isolate against. */
-  readonly scope: Signal<ContextScope | undefined> = this.scopeSignal.asReadonly();
+  readonly scope: Signal<ContextScope | undefined> =
+    this.scopeSignal.asReadonly();
 
   /** One basket per scope key, loaded lazily (see {@link setScope}) — never all loaded
    * eagerly, since most sessions only ever touch one or two scopes. */
-  private readonly basketsSignal = signal<ReadonlyMap<string, readonly ContextItem[]>>(
-    new Map(),
-  );
+  private readonly basketsSignal = signal<
+    ReadonlyMap<string, readonly ContextItem[]>
+  >(new Map());
 
   /** The *current scope's* items, disabled items included. Empty before the first
    * {@link setScope} call. */
@@ -222,11 +228,20 @@ export class InvestigationContextService {
    * Switches the active scope (REQ:context-basket / api-contract.md "Switching scope
    * clears active bindings and opens that scope's own empty or retained local
    * context"). A no-op if `scope` names the same basket already active — callers may
-   * call this on every render/effect tick without thrashing storage reads.
-   * `agentUrl` is filled in from {@link DATATUG_AGENT_BASE_URL} automatically.
+   * call this on every render/effect tick without thrashing storage reads. `agentUrl`
+   * defaults to {@link DATATUG_AGENT_BASE_URL}; cross-agent routes pass their explicit
+   * normalized base URL so facts never cross an agent boundary.
    */
-  setScope(scope: Omit<ContextScope, 'agentUrl'>): void {
-    const next: ContextScope = { agentUrl: this.agentUrl, ...scope };
+  setScope(
+    scope: Omit<ContextScope, 'agentUrl'> | ContextScope,
+    agentUrl?: string,
+  ): void {
+    const next: ContextScope = {
+      ...scope,
+      agentUrl: normalizedAgentUrl(
+        agentUrl ?? ('agentUrl' in scope ? scope.agentUrl : this.agentUrl),
+      ),
+    };
     if (scopesEqual(this.scopeSignal(), next)) {
       return;
     }
@@ -239,13 +254,18 @@ export class InvestigationContextService {
    * (!investigationContext.isCurrentScope(requestScope)) return;` (api-contract.md
    * "Requests/responses carry the requested scope internally; late responses from
    * another scope are discarded."). Takes the same `Omit<ContextScope, 'agentUrl'>`
-   * shape as {@link setScope} (a full {@link ContextScope} — e.g. from {@link scope} —
-   * satisfies it too) so a caller building a request-time scope from its own
-   * project/environment/securityContextId never has to look up `agentUrl` itself; this
-   * fills it in from the same injected token {@link setScope} uses, so the two can never
-   * disagree about it. */
-  isCurrentScope(scope: Omit<ContextScope, 'agentUrl'>): boolean {
-    return scopesEqual(this.scopeSignal(), { agentUrl: this.agentUrl, ...scope });
+   * shape as {@link setScope}; a cross-agent caller passes the same explicit URL
+   * to both methods. */
+  isCurrentScope(
+    scope: Omit<ContextScope, 'agentUrl'> | ContextScope,
+    agentUrl?: string,
+  ): boolean {
+    return scopesEqual(this.scopeSignal(), {
+      ...scope,
+      agentUrl: normalizedAgentUrl(
+        agentUrl ?? ('agentUrl' in scope ? scope.agentUrl : this.agentUrl),
+      ),
+    });
   }
 
   /** Adds a semantic value to the *current* scope's basket; a no-op (returns the
@@ -404,6 +424,10 @@ export class InvestigationContextService {
       // Same as above: in-memory state still works even if it can't be persisted.
     }
   }
+}
+
+function normalizedAgentUrl(agentUrl: string): string {
+  return agentUrl.replace(/\/+$/u, '');
 }
 
 /** Unwraps a stored item's typed value back to the UI-local `SemanticValue` shape

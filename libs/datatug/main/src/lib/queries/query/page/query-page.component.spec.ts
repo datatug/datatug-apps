@@ -264,6 +264,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     value: { type: 'integer' as const, value: '5' },
     origin: 'selection' as const,
     originEvidence: 'client-reported' as const,
+    factId: 'selection-customer-5',
   };
 
   beforeEach(() => {
@@ -436,7 +437,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       truncated: false,
     };
     component = await createComponent({});
-    investigationContext.addValue({
+    const contextItem = investigationContext.addValue({
       entityField: { entity: 'Customer', field: 'ID' },
       value: 7,
       label: 'Customer.ID = 7',
@@ -455,7 +456,13 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       queryId: 'customer-invoices',
       source: undefined,
       parameters: { CustomerId: { type: 'integer', value: '7' } },
-      bindingOrigins: [{ parameterId: 'CustomerId', origin: 'context' }],
+      bindingOrigins: [
+        {
+          parameterId: 'CustomerId',
+          origin: 'context',
+          factId: contextItem.id,
+        },
+      ],
       mode: 'live',
     });
     expect(component.runResult()).toEqual(response);
@@ -494,6 +501,18 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     expect(runQueryMock).toHaveBeenCalledWith(
       expect.objectContaining({ parameters: {}, bindingOrigins: [] }),
     );
+  });
+
+  it('does not run a selected value when an old candidate omitted its fact provenance', async () => {
+    component = await createComponent({
+      bindings: [{ ...selectionBinding, factId: undefined }],
+    });
+    component.project = project;
+
+    component.runQuery();
+
+    expect(runQueryMock).not.toHaveBeenCalled();
+    expect(component.runError()).toContain('provenance');
   });
 
   it('runQuery reports the failure without hiding it', async () => {
@@ -820,6 +839,7 @@ describe('QueryPageComponent — clearing a required parameter blocks Run (S96)'
     value: { type: 'integer' as const, value: '5' },
     origin: 'selection' as const,
     originEvidence: 'client-reported' as const,
+    factId: 'selection-customer-5',
   };
 
   async function createComponent(

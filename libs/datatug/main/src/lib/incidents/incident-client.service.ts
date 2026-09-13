@@ -4,6 +4,7 @@ import {
   HttpParams,
 } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
+import { decodeTypedValue } from '@sneat/datatug-semantic';
 import { Observable, catchError, map, of } from 'rxjs';
 import { buildAgentUrl } from '../services/repo/agent-url';
 import {
@@ -12,8 +13,12 @@ import {
   INCIDENT_STATUSES,
   IncidentApiResult,
   IncidentDetail,
+  IncidentListFilters,
   IncidentListResponse,
+  IncidentRequestContext,
   IncidentResponse,
+  IncidentScope,
+  IncidentStreamItem,
   IncidentSummary,
 } from './models';
 
@@ -27,28 +32,35 @@ import {
  * introduces a second project-selection mechanism"): there is no local-only
  * write and no client-side cache standing in for the server.
  *
- * The server does not implement these routes yet (Task 9 scaffold slice).
- * Every method therefore never throws or rejects on a not-found/unimplemented
- * response — it resolves to an {@link IncidentApiResult}, so a page can render
- * an explicit "the incident store is not available on this server yet" state
- * instead of a crash or, worse, silently falling back to mock data.
+ * Every method resolves HTTP failures to an {@link IncidentApiResult}, so a
+ * page can render the server's real error. In particular, clients retain an
+ * explicit "the incident store is not available on this server yet" state for
+ * older DataTug servers that predate these routes, instead of crashing or
+ * silently falling back to mock data.
  */
 @Injectable({ providedIn: 'root' })
 export class IncidentClientService {
   private readonly http = inject(HttpClient);
 
   list(
-    storeId: string,
-    filters?: { readonly status?: readonly string[] },
+    context: IncidentRequestContext,
+    filters?: IncidentListFilters,
   ): Observable<IncidentApiResult<IncidentSummary[]>> {
-    let params = new HttpParams();
+    let params = incidentScopeParams(context.scope);
     for (const status of filters?.status ?? []) {
       params = params.append('status', status);
     }
+    for (const key of ['query', 'check', 'board'] as const) {
+      const value = filters?.[key];
+      if (value) {
+        params = params.set(key, value);
+      }
+    }
     return this.http
-      .get<IncidentListResponse>(buildAgentUrl(storeId, '/incidents'), {
-        params,
-      })
+      .get<IncidentListResponse>(
+        buildAgentUrl(context.agentStoreId, '/incidents'),
+        { params },
+      )
       .pipe(
         map((response): IncidentApiResult<IncidentSummary[]> => {
           if (!response || !Array.isArray(response.incidents)) {
@@ -63,15 +75,21 @@ export class IncidentClientService {
   }
 
   get(
-    storeId: string,
+    context: IncidentRequestContext,
     incidentId: string,
     at?: string,
   ): Observable<IncidentApiResult<IncidentDetail>> {
-    const params = at ? new HttpParams().append('at', at) : undefined;
+    let params = incidentScopeParams(context.scope);
+    if (at) {
+      params = params.set('at', at);
+    }
     return this.http
       .get<IncidentResponse>(
-        buildAgentUrl(storeId, `/incidents/${encodeURIComponent(incidentId)}`),
-        params ? { params } : {},
+        buildAgentUrl(
+          context.agentStoreId,
+          `/incidents/${encodeURIComponent(incidentId)}`,
+        ),
+        { params },
       )
       .pipe(
         map(
@@ -87,11 +105,12 @@ export class IncidentClientService {
   }
 
   create(
+    agentStoreId: string,
     request: CreateIncidentRequest,
   ): Observable<IncidentApiResult<IncidentDetail>> {
     return this.http
       .post<IncidentResponse>(
-        buildAgentUrl(request.storeId, '/incidents'),
+        buildAgentUrl(agentStoreId, '/incidents'),
         request,
       )
       .pipe(
@@ -106,6 +125,232 @@ export class IncidentClientService {
         ),
       );
   }
+
+  events(
+    context: IncidentRequestContext,
+    incidentId: string,
+  ): Observable<IncidentApiResult<IncidentStreamItem[]>> {
+    const params = incidentScopeParams(context.scope).set('follow', 'false');
+    return this.http
+      .get(
+        buildAgentUrl(
+          context.agentStoreId,
+          `/incidents/${encodeURIComponent(incidentId)}/events`,
+        ),
+        { params, responseType: 'text' },
+      )
+      .pipe(
+        map(
+          (response): IncidentApiResult<IncidentStreamItem[]> => ({
+            kind: 'ok',
+            data: decodeIncidentStream(response),
+          }),
+        ),
+        catchError((err: unknown) =>
+          of(toIncidentApiResult<IncidentStreamItem[]>(err)),
+        ),
+      );
+  }
+}
+
+function incidentScopeParams(scope: IncidentScope): HttpParams {
+  return new HttpParams()
+    .set('storeId', scope.storeId)
+    .set('project', scope.project)
+    .set('environment', scope.environment)
+    .set('securityContextId', scope.securityContextId);
+}
+
+function decodeIncidentStream(response: string): IncidentStreamItem[] {
+  if (!response.trim()) {
+    return [];
+  }
+  try {
+    return response
+      .split(/\r?\n/u)
+      .filter((line) => line.trim())
+      .map((line) => decodeIncidentStreamItem(JSON.parse(line)));
+  } catch {
+    throw new Error('Invalid incident events response.');
+  }
+}
+
+function decodeIncidentStreamItem(value: unknown): IncidentStreamItem {
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, ['cursor', 'event']) ||
+    !isEventCursor(value['cursor'])
+  ) {
+    throw new Error('Invalid incident events response.');
+  }
+  const event = value['event'];
+  if (
+    !isRecord(event) ||
+    !hasOnlyKeys(event, [
+      'id',
+      'seq',
+      'at',
+      'visibleAt',
+      'incident',
+      'importedFrom',
+      'actor',
+      'type',
+      'assertion',
+      'refs',
+      'payload',
+    ]) ||
+    !isNonEmptyString(event['id']) ||
+    typeof event['seq'] !== 'number' ||
+    !Number.isSafeInteger(event['seq']) ||
+    event['seq'] <= 0 ||
+    !isRfc3339(event['at']) ||
+    !isRfc3339(event['visibleAt']) ||
+    !isIncidentRef(event['incident']) ||
+    !optionalImportedEventRef(event['importedFrom'], event) ||
+    !isActor(event['actor']) ||
+    !isIncidentEventType(event['type']) ||
+    !isAssertion(event['assertion']) ||
+    !optionalArtifactRefs(event['refs']) ||
+    !isEventAssertionProvenanceValid(event) ||
+    !isIncidentEventPayload(event['type'], event['payload'], event['incident'])
+  ) {
+    throw new Error('Invalid incident events response.');
+  }
+  return value as unknown as IncidentStreamItem;
+}
+
+function optionalImportedEventRef(
+  value: unknown,
+  event: Record<string, unknown>,
+): boolean {
+  if (value === undefined) {
+    return true;
+  }
+  if (
+    event['seq'] === 1 ||
+    !isRecord(value) ||
+    !hasOnlyKeys(value, ['incident', 'eventId', 'seq', 'mergeId']) ||
+    !isIncidentRef(value['incident']) ||
+    !isNonEmptyString(value['eventId']) ||
+    typeof value['seq'] !== 'number' ||
+    !Number.isSafeInteger(value['seq']) ||
+    value['seq'] <= 0 ||
+    !isValidSegment(value['mergeId']) ||
+    !isRecord(event['incident']) ||
+    !isRecord(value['incident'])
+  ) {
+    return false;
+  }
+  return (
+    value['incident']['storeId'] === event['incident']['storeId'] &&
+    !sameIncidentRef(value['incident'], event['incident'])
+  );
+}
+
+function isEventAssertionProvenanceValid(
+  event: Record<string, unknown>,
+): boolean {
+  const assertion = event['assertion'];
+  const actor = event['actor'];
+  const refs = Array.isArray(event['refs']) ? event['refs'] : [];
+  if (!isRecord(assertion) || !isRecord(actor)) {
+    return false;
+  }
+  if (
+    assertion['kind'] === 'inference' &&
+    !refs.some(
+      (ref) => isRecord(ref) && ref['kind'] === 'event' && isArtifactRef(ref),
+    )
+  ) {
+    return false;
+  }
+  if (
+    actor['kind'] === 'agent' &&
+    (assertion['kind'] === 'observation' ||
+      assertion['kind'] === 'deterministic-result') &&
+    !refs.some(
+      (ref) =>
+        isRecord(ref) &&
+        (ref['kind'] === 'execution' ||
+          ref['kind'] === 'check' ||
+          ref['kind'] === 'compare') &&
+        isArtifactRef(ref),
+    )
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function isIncidentEventPayload(
+  type: unknown,
+  payload: unknown,
+  incident: unknown,
+): boolean {
+  if (!isRecord(payload)) {
+    return false;
+  }
+  switch (type) {
+    case 'incident.created':
+      return (
+        hasOnlyKeys(payload, [
+          'uid',
+          'title',
+          'description',
+          'projects',
+          'reporter',
+          'canonicalContext',
+        ]) &&
+        isNonEmptyString(payload['uid']) &&
+        isNonEmptyString(payload['title']) &&
+        typeof payload['description'] === 'string' &&
+        optionalProjectRefs(payload['projects']) &&
+        isCreatedReporter(payload['reporter']) &&
+        isContextView(payload['canonicalContext'])
+      );
+    case 'incident.status':
+      return (
+        hasOnlyKeys(payload, ['status']) &&
+        typeof payload['status'] === 'string' &&
+        INCIDENT_STATUSES.includes(
+          payload['status'] as (typeof INCIDENT_STATUSES)[number],
+        )
+      );
+    case 'incident.outcome':
+      return (
+        hasOnlyKeys(payload, ['outcome']) &&
+        typeof payload['outcome'] === 'string' &&
+        INCIDENT_OUTCOMES.includes(
+          payload['outcome'] as (typeof INCIDENT_OUTCOMES)[number],
+        )
+      );
+    case 'incident.merged':
+      return (
+        hasOnlyKeys(payload, ['into', 'mergeId']) &&
+        isIncidentRef(payload['into']) &&
+        !sameIncidentRef(payload['into'], incident) &&
+        isValidSegment(payload['mergeId'])
+      );
+    case 'note.added':
+      return (
+        hasOnlyKeys(payload, ['body']) && isNonEmptyString(payload['body'])
+      );
+    default:
+      return false;
+  }
+}
+
+function isCreatedReporter(value: unknown): boolean {
+  if (isActor(value)) {
+    return true;
+  }
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, ['kind', 'id', 'via']) &&
+    value['id'] === '' &&
+    value['kind'] === '' &&
+    value['via'] === undefined
+  );
 }
 
 function requireIncident(
@@ -139,7 +384,12 @@ function decodeIncident(value: unknown): IncidentDetail {
     !optionalString(incident['description']) ||
     !optionalOutcome(incident['outcome']) ||
     !optionalIncidentRef(incident['mergedInto']) ||
+    (incident['mergedInto'] !== undefined &&
+      sameIncidentRef(ref, incident['mergedInto'])) ||
     !optionalProjectRefs(incident['projects']) ||
+    !optionalParticipants(incident['participants']) ||
+    !isContextView(incident['canonicalContext']) ||
+    !optionalArtifactRefs(incident['assetRefs']) ||
     !optionalStringArray(incident['notes'])
   ) {
     throw new Error('Invalid incident response.');
@@ -149,6 +399,10 @@ function decodeIncident(value: unknown): IncidentDetail {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && !!value.trim();
 }
 
 function isValidSegment(value: unknown): value is string {
@@ -167,8 +421,18 @@ function isValidSegment(value: unknown): value is string {
 function isIncidentRef(value: unknown): boolean {
   return (
     isRecord(value) &&
+    hasOnlyKeys(value, ['storeId', 'incidentId']) &&
     isValidSegment(value['storeId']) &&
     isValidSegment(value['incidentId'])
+  );
+}
+
+function sameIncidentRef(left: unknown, right: unknown): boolean {
+  return (
+    isRecord(left) &&
+    isRecord(right) &&
+    left['storeId'] === right['storeId'] &&
+    left['incidentId'] === right['incidentId']
   );
 }
 
@@ -198,10 +462,338 @@ function optionalProjectRefs(value: unknown): boolean {
 function isProjectRef(value: unknown): boolean {
   return (
     isRecord(value) &&
+    hasOnlyKeys(value, ['storeId', 'projectId', 'environment']) &&
     isValidSegment(value['storeId']) &&
     isValidSegment(value['projectId']) &&
     optionalString(value['environment'])
   );
+}
+
+function optionalParticipants(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (Array.isArray(value) &&
+      value.every(
+        (item) =>
+          isRecord(item) &&
+          item['role'] === 'reporter' &&
+          isActor(item['actor']),
+      ))
+  );
+}
+
+function isActor(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, ['kind', 'id', 'via']) &&
+    (value['kind'] === 'human' ||
+      value['kind'] === 'agent' ||
+      value['kind'] === 'system') &&
+    isNonEmptyString(value['id']) &&
+    (value['via'] === undefined ||
+      value['via'] === 'web' ||
+      value['via'] === 'cli' ||
+      value['via'] === 'api' ||
+      value['via'] === 'slack')
+  );
+}
+
+function isAssertion(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, ['kind', 'confidence']) &&
+    (value['kind'] === 'observation' ||
+      value['kind'] === 'claim' ||
+      value['kind'] === 'question' ||
+      value['kind'] === 'hypothesis' ||
+      value['kind'] === 'inference' ||
+      value['kind'] === 'deterministic-result') &&
+    (value['confidence'] === undefined ||
+      value['confidence'] === 'speculative' ||
+      value['confidence'] === 'likely' ||
+      value['confidence'] === 'confirmed')
+  );
+}
+
+function isContextView(value: unknown): boolean {
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, ['facts']) ||
+    !Array.isArray(value['facts'])
+  ) {
+    return false;
+  }
+  const seen = new Set<string>();
+  for (const fact of value['facts']) {
+    if (!isIncidentFactView(fact)) {
+      return false;
+    }
+    const scope = fact['scope'];
+    const scopeKey = isRecord(scope)
+      ? JSON.stringify([
+          scope['storeId'],
+          scope['projectId'],
+          scope['environment'] ?? '',
+        ])
+      : '';
+    const key = JSON.stringify([scopeKey, fact['id']]);
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+  }
+  return true;
+}
+
+function isIncidentFactView(value: unknown): boolean {
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, [
+      'id',
+      'entity',
+      'field',
+      'value',
+      'condition',
+      'origin',
+      'physical',
+      'mapping',
+      'enabled',
+      'role',
+      'layer',
+      'scope',
+    ]) ||
+    !isNonEmptyString(value['id']) ||
+    !isNonEmptyString(value['entity']) ||
+    (value['origin'] !== 'selection' &&
+      value['origin'] !== 'context' &&
+      value['origin'] !== 'manual') ||
+    typeof value['enabled'] !== 'boolean'
+  ) {
+    return false;
+  }
+  const factValue = value['value'];
+  const redacted =
+    isRecord(factValue) &&
+    Object.keys(factValue).length === 1 &&
+    factValue['redacted'] === true;
+  if (!redacted) {
+    try {
+      decodeTypedValue(factValue, 'incident.canonicalContext.fact.value');
+    } catch {
+      return false;
+    }
+  }
+  if (!redacted && !isNonEmptyString(value['field'])) {
+    return false;
+  }
+  if (
+    (value['field'] !== undefined && !isNonEmptyString(value['field'])) ||
+    !optionalPhysicalRef(value['physical']) ||
+    !optionalFactMapping(value['mapping']) ||
+    !optionalFactCondition(value['condition']) ||
+    !optionalFactRole(value['role']) ||
+    !optionalFactLayer(value['layer']) ||
+    !optionalProjectScope(value['scope'])
+  ) {
+    return false;
+  }
+  // Core deliberately strips physical provenance and mapping from a
+  // value-redacted projection. Accepting them here would expose a malformed
+  // response as though it had passed the current policy view boundary.
+  return (
+    !redacted ||
+    (value['physical'] === undefined && value['mapping'] === undefined)
+  );
+}
+
+function optionalPhysicalRef(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (isRecord(value) &&
+      hasOnlyKeys(value, ['source', 'collection', 'column']) &&
+      isNonEmptyString(value['source']) &&
+      isNonEmptyString(value['collection']) &&
+      isNonEmptyString(value['column']))
+  );
+}
+
+function optionalFactMapping(value: unknown): boolean {
+  return value === undefined || value === 'declared' || value === 'inferred';
+}
+
+function optionalFactCondition(value: unknown): boolean {
+  return (
+    value === undefined ||
+    value === '==' ||
+    value === '!=' ||
+    value === '>' ||
+    value === '>=' ||
+    value === '<' ||
+    value === '<='
+  );
+}
+
+function optionalFactRole(value: unknown): boolean {
+  return (
+    value === undefined ||
+    value === 'affected' ||
+    value === 'healthy_control' ||
+    value === 'suspected' ||
+    value === 'excluded' ||
+    value === 'recovered'
+  );
+}
+
+function optionalFactLayer(value: unknown): boolean {
+  if (value === undefined || value === 'canonical') {
+    return true;
+  }
+  if (typeof value !== 'string') {
+    return false;
+  }
+  for (const prefix of ['hypothesis:', 'participant:', 'question:']) {
+    if (value.startsWith(prefix)) {
+      const id = value.slice(prefix.length);
+      return !!id && id.trim() === id;
+    }
+  }
+  return false;
+}
+
+function optionalProjectScope(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (isRecord(value) &&
+      hasOnlyKeys(value, ['storeId', 'projectId', 'environment']) &&
+      isValidSegment(value['storeId']) &&
+      isValidSegment(value['projectId']) &&
+      (value['environment'] === undefined ||
+        isValidSegment(value['environment'])))
+  );
+}
+
+function isRfc3339(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/u.test(
+      value,
+    ) &&
+    !Number.isNaN(Date.parse(value))
+  );
+}
+
+function isEventCursor(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= 2048 &&
+    value.trim() === value &&
+    !/[\p{Cc}\s]/u.test(value)
+  );
+}
+
+function isIncidentEventType(value: unknown): boolean {
+  return (
+    value === 'incident.created' ||
+    value === 'incident.status' ||
+    value === 'incident.outcome' ||
+    value === 'incident.merged' ||
+    value === 'note.added'
+  );
+}
+
+function optionalArtifactRefs(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (Array.isArray(value) && value.every((item) => isArtifactRef(item)))
+  );
+}
+
+function isArtifactRef(value: unknown): boolean {
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, [
+      'kind',
+      'id',
+      'incident',
+      'project',
+      'execution',
+      'artifact',
+      'comparison',
+    ])
+  ) {
+    return false;
+  }
+  const identities = [
+    value['id'] !== undefined && value['id'] !== '',
+    value['incident'] !== undefined,
+    value['project'] !== undefined,
+    value['execution'] !== undefined,
+    value['artifact'] !== undefined,
+    value['comparison'] !== undefined,
+  ].filter(Boolean).length;
+  if (identities !== 1) {
+    return false;
+  }
+  switch (value['kind']) {
+    case 'incident':
+      return isIncidentRef(value['incident']);
+    case 'project':
+      return isProjectRef(value['project']);
+    case 'execution':
+    case 'snapshot':
+      return isExecutionRef(value['execution']);
+    case 'event':
+    case 'hypothesis':
+      return typeof value['id'] === 'string' && value['id'].length > 0;
+    case 'fact':
+    case 'annotation':
+    case 'check':
+    case 'query':
+    case 'board':
+      return isProjectArtifactRef(value['artifact']);
+    case 'compare':
+      return isComparisonRef(value['comparison']);
+    default:
+      return false;
+  }
+}
+
+function isExecutionRef(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, ['storeId', 'projectId', 'executionId']) &&
+    isValidSegment(value['storeId']) &&
+    isValidSegment(value['projectId']) &&
+    isValidSegment(value['executionId'])
+  );
+}
+
+function isProjectArtifactRef(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, ['storeId', 'projectId', 'environment', 'id']) &&
+    isValidSegment(value['storeId']) &&
+    isValidSegment(value['projectId']) &&
+    optionalString(value['environment']) &&
+    isValidSegment(value['id'])
+  );
+}
+
+function isComparisonRef(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, ['left', 'right']) &&
+    isExecutionRef(value['left']) &&
+    isExecutionRef(value['right'])
+  );
+}
+
+function hasOnlyKeys(
+  value: Record<string, unknown>,
+  allowed: readonly string[],
+): boolean {
+  return Object.keys(value).every((key) => allowed.includes(key));
 }
 
 function optionalStringArray(value: unknown): boolean {
@@ -212,16 +804,19 @@ function optionalStringArray(value: unknown): boolean {
 }
 
 /**
- * Normalizes any HTTP failure into an {@link IncidentApiResult}. `404` (the
- * route simply isn't registered on a server this old — today's actual live
- * behavior) and `501` (an explicit "not implemented") both mean the incident
- * store isn't available yet; every other failure (network error, `5xx`,
- * malformed response) is reported as a plain error, still explicit, never
- * silently swallowed.
+ * Normalizes any HTTP failure into an {@link IncidentApiResult}. An
+ * unstructured route-level `404` or explicit `501` from an older server means
+ * the incident surface is unavailable. A current server's structured 404,
+ * network errors, `5xx`, and malformed responses remain distinct plain
+ * errors, never silently swallowed.
  */
 function toIncidentApiResult<T>(err: unknown): IncidentApiResult<T> {
   if (err instanceof HttpErrorResponse) {
-    if (err.status === 404 || err.status === 501) {
+    const serverError = readServerError(err.error);
+    // Current incident endpoints use the frozen structured NOT_FOUND error
+    // for a missing store or incident. A route-level 404 from an older server
+    // has no such envelope, which is the only case reported as unavailable.
+    if ((err.status === 404 && !serverError?.message) || err.status === 501) {
       return {
         kind: 'unavailable',
         message: 'The incident store is not available on this server yet.',
@@ -233,18 +828,94 @@ function toIncidentApiResult<T>(err: unknown): IncidentApiResult<T> {
         message: 'Could not reach the DataTug server.',
       };
     }
-    const serverMessage =
-      err.error && typeof err.error === 'object' && 'error' in err.error
-        ? (err.error as { error?: { message?: string } }).error?.message
-        : undefined;
     return {
       kind: 'error',
       message:
-        serverMessage || err.message || `Request failed (${err.status}).`,
+        serverError?.message ||
+        err.message ||
+        `Request failed (${err.status}).`,
+      ...(serverError?.code === 'STALE_CONTEXT'
+        ? { code: serverError.code }
+        : {}),
     };
   }
   return {
     kind: 'error',
     message: err instanceof Error ? err.message : 'Request failed.',
   };
+}
+
+function readServerError(
+  value: unknown,
+): { readonly code?: string; readonly message?: string } | undefined {
+  if (typeof value === 'string') {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      if (!isStrictErrorEnvelope(parsed)) {
+        return undefined;
+      }
+      return readServerError(parsed);
+    } catch {
+      return undefined;
+    }
+  }
+  if (!isRecord(value) || !isRecord(value['error'])) {
+    return undefined;
+  }
+  const code = value['error']['code'];
+  const message = value['error']['message'];
+  return {
+    ...(typeof code === 'string' && code.trim() ? { code } : {}),
+    ...(typeof message === 'string' && message.trim() ? { message } : {}),
+  };
+}
+
+function isStrictErrorEnvelope(value: unknown): boolean {
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, ['error']) ||
+    !isRecord(value['error'])
+  ) {
+    return false;
+  }
+  const error = value['error'];
+  const code = error['code'];
+  const targets = error['targets'];
+  return (
+    hasOnlyKeys(error, ['code', 'message', 'field', 'requestId', 'targets']) &&
+    isIncidentErrorCode(code) &&
+    isNonEmptyString(error['message']) &&
+    isNonEmptyString(error['requestId']) &&
+    (error['field'] === undefined || typeof error['field'] === 'string') &&
+    (targets === undefined ||
+      (code === 'TARGET_REQUIRED' &&
+        Array.isArray(targets) &&
+        targets.length > 0 &&
+        targets.every(
+          (target) =>
+            isRecord(target) &&
+            hasOnlyKeys(target, ['source', 'label']) &&
+            isNonEmptyString(target['source']) &&
+            isNonEmptyString(target['label']),
+        )))
+  );
+}
+
+function isIncidentErrorCode(value: unknown): value is string {
+  return (
+    value === 'INVALID_REQUEST' ||
+    value === 'TYPE_MISMATCH' ||
+    value === 'MISSING_PARAMETER' ||
+    value === 'AMBIGUOUS_BINDING' ||
+    value === 'TARGET_REQUIRED' ||
+    value === 'UNAUTHENTICATED' ||
+    value === 'ACCESS_DENIED' ||
+    value === 'UNSUPPORTED_PROTECTED_EXECUTION' ||
+    value === 'NOT_FOUND' ||
+    value === 'STALE_CONTEXT' ||
+    value === 'REVISION_CONFLICT' ||
+    value === 'RESPONSE_TOO_LARGE' ||
+    value === 'SOURCE_UNAVAILABLE' ||
+    value === 'TIMEOUT'
+  );
 }

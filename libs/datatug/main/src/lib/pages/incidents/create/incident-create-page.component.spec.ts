@@ -1,43 +1,87 @@
 import { CUSTOM_ELEMENTS_SCHEMA, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideRouter, Router } from '@angular/router';
-import { BehaviorSubject, of, Subject } from 'rxjs';
+import {
+  ActivatedRoute,
+  convertToParamMap,
+  provideRouter,
+  Router,
+} from '@angular/router';
+import {
+  AgentContextService,
+  ContextItem,
+  InvestigationContextService,
+} from '@sneat/datatug-semantic';
+import { RandomIdService } from '@sneat/random';
+import { BehaviorSubject, defer, of, Subject } from 'rxjs';
 import { IncidentCreatePageComponent } from './incident-create-page.component';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { IncidentClientService } from '../../../incidents/incident-client.service';
-import { IncidentApiResult, IncidentDetail } from '../../../incidents/models';
-import { AgentContextService } from '@sneat/datatug-semantic';
-import { RandomIdService } from '@sneat/random';
+import {
+  CreateIncidentRequest,
+  IncidentApiResult,
+  IncidentDetail,
+} from '../../../incidents/models';
 
 interface Internals {
   title: string;
   description: string;
+  ionViewDidEnter(): void;
   submit(): void;
   isSubmitting(): boolean;
   errorMessage(): string | undefined;
+  createdIncidentLink(): readonly string[] | undefined;
 }
-const peek = (c: IncidentCreatePageComponent): Internals =>
-  c as unknown as Internals;
+
+const peek = (component: IncidentCreatePageComponent): Internals =>
+  component as unknown as Internals;
+
+const incident = (storeId = 'ops', incidentId = 'INC-1'): IncidentDetail => ({
+  ref: { storeId, incidentId },
+  uid: 'uid-1',
+  title: 'Checkout errors spike',
+  status: 'open',
+  canonicalContext: { facts: [] },
+  lastSeq: 1,
+});
 
 describe('IncidentCreatePageComponent', () => {
   let fixture: ComponentFixture<IncidentCreatePageComponent>;
   let storeId$: BehaviorSubject<string | undefined>;
-  let project$: BehaviorSubject<{
-    ref: { storeId: string; projectId: string };
-  }>;
-  let environment$: BehaviorSubject<{ id: string }>;
+  let project$: BehaviorSubject<
+    { ref: { storeId: string; projectId: string } } | undefined
+  >;
+  let environment$: BehaviorSubject<{ id: string } | undefined>;
+  let queryParamMap$: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
   let securityContextId: ReturnType<typeof signal<string | undefined>>;
+  let refreshAgentContextSpy: ReturnType<typeof vi.fn>;
+  let investigationItems: ReturnType<typeof signal<readonly ContextItem[]>>;
+  let setScopeSpy: ReturnType<typeof vi.fn>;
+  let clearContextSpy: ReturnType<typeof vi.fn>;
+  let isCurrentScopeSpy: ReturnType<typeof vi.fn>;
   let createSpy: ReturnType<typeof vi.fn>;
   let randomIdSpy: ReturnType<typeof vi.fn>;
   let router: Router;
 
-  const render = async () => {
+  const render = async (
+    query: Record<string, string> = {},
+    itemsByAgent?: Readonly<Record<string, readonly ContextItem[]>>,
+  ): Promise<void> => {
     storeId$ = new BehaviorSubject<string | undefined>('localhost:8989');
     project$ = new BehaviorSubject({
       ref: { storeId: 'localhost:8989', projectId: 'billing' },
     });
     environment$ = new BehaviorSubject({ id: 'prod' });
+    queryParamMap$ = new BehaviorSubject(convertToParamMap(query));
     securityContextId = signal<string | undefined>('ctx-1');
+    refreshAgentContextSpy = vi.fn(() => of({ securityContextId: 'ctx-1' }));
+    investigationItems = signal<readonly ContextItem[]>([]);
+    setScopeSpy = vi.fn((_scope, agentUrl?: string) => {
+      if (itemsByAgent) {
+        investigationItems.set(itemsByAgent[agentUrl ?? 'default'] ?? []);
+      }
+    });
+    clearContextSpy = vi.fn(() => investigationItems.set([]));
+    isCurrentScopeSpy = vi.fn(() => true);
     createSpy = vi.fn();
     randomIdSpy = vi.fn(() => 'test-id');
 
@@ -45,6 +89,13 @@ describe('IncidentCreatePageComponent', () => {
       imports: [IncidentCreatePageComponent],
       providers: [
         provideRouter([]),
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            queryParamMap: queryParamMap$,
+            snapshot: { queryParamMap: queryParamMap$.value },
+          },
+        },
         {
           provide: DatatugNavContextService,
           useValue: {
@@ -55,7 +106,22 @@ describe('IncidentCreatePageComponent', () => {
         },
         {
           provide: AgentContextService,
-          useValue: { securityContextId },
+          useValue: {
+            securityContextId: signal('ctx-default-agent'),
+            contextFor: vi.fn(() => ({
+              securityContextId,
+              refresh: refreshAgentContextSpy,
+            })),
+          },
+        },
+        {
+          provide: InvestigationContextService,
+          useValue: {
+            items: investigationItems,
+            setScope: setScopeSpy,
+            clear: clearContextSpy,
+            isCurrentScope: isCurrentScopeSpy,
+          },
         },
         {
           provide: RandomIdService,
@@ -76,14 +142,135 @@ describe('IncidentCreatePageComponent', () => {
   });
 
   it('does not submit an empty title', () => {
-    storeId$.next('localhost:8989');
     peek(fixture.componentInstance).title = '   ';
     peek(fixture.componentInstance).submit();
     expect(createSpy).not.toHaveBeenCalled();
   });
 
-  it('reports guidance when no store is in context yet', () => {
+  it('reactivates cached page A on enter and never serializes page B facts as A', async () => {
+    const factA: ContextItem = {
+      id: 'Customer.ID:integer="5"',
+      entity: 'Customer',
+      field: 'ID',
+      value: { type: 'integer', value: '5' },
+      origin: 'context',
+      enabled: true,
+      label: 'Customer.ID = 5',
+      source: 'grid',
+      addedAt: '2026-09-13T08:00:00Z',
+      condition: '==',
+    };
+    const factB: ContextItem = {
+      ...factA,
+      id: 'Customer.ID:integer="99"',
+      value: { type: 'integer', value: '99' },
+      label: 'Customer.ID = 99',
+    };
+    TestBed.resetTestingModule();
+    await render(
+      {
+        agent: 'agent-a:8989',
+        storeId: 'billing',
+        project: 'billing',
+        environment: 'prod',
+      },
+      {
+        '//agent-a:8989/datatug': [factA],
+        '//agent-b:8989/datatug': [factB],
+      },
+    );
+    setScopeSpy(
+      {
+        project: 'other-project',
+        environment: 'staging',
+        securityContextId: 'ctx-b',
+      },
+      '//agent-b:8989/datatug',
+    );
+    createSpy.mockReturnValue(new Subject<IncidentApiResult<IncidentDetail>>());
+
+    peek(fixture.componentInstance).ionViewDidEnter();
+    peek(fixture.componentInstance).title = 'Cached page A incident';
+    peek(fixture.componentInstance).submit();
+
+    expect(setScopeSpy).toHaveBeenLastCalledWith(
+      {
+        project: 'billing',
+        environment: 'prod',
+        securityContextId: 'ctx-1',
+      },
+      '//agent-a:8989/datatug',
+    );
+    const request = createSpy.mock.calls[0][1] as CreateIncidentRequest;
+    expect(request.canonicalContext.facts.map((fact) => fact.id)).toEqual([
+      factA.id,
+    ]);
+    expect(request.canonicalContext.facts).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: factB.id })]),
+    );
+  });
+
+  it('blocks submit before reading facts when another page owns the active scope', async () => {
+    const factB: ContextItem = {
+      id: 'Customer.ID:integer="99"',
+      entity: 'Customer',
+      field: 'ID',
+      value: { type: 'integer', value: '99' },
+      origin: 'context',
+      enabled: true,
+      label: 'Customer.ID = 99',
+      source: 'grid',
+      addedAt: '2026-09-13T08:00:00Z',
+      condition: '==',
+    };
+    TestBed.resetTestingModule();
+    await render(
+      {
+        agent: 'agent-a:8989',
+        storeId: 'billing',
+        project: 'billing',
+        environment: 'prod',
+      },
+      { '//agent-b:8989/datatug': [factB] },
+    );
+    setScopeSpy(
+      {
+        project: 'other-project',
+        environment: 'staging',
+        securityContextId: 'ctx-b',
+      },
+      '//agent-b:8989/datatug',
+    );
+    isCurrentScopeSpy.mockReturnValue(false);
+    fixture.detectChanges();
+
+    peek(fixture.componentInstance).title = 'Must not relabel B';
+    peek(fixture.componentInstance).submit();
+
+    expect(
+      fixture.nativeElement.querySelector(
+        '[data-testid="incident-context-fact-count"]',
+      ),
+    ).toBeNull();
+    expect(isCurrentScopeSpy).toHaveBeenLastCalledWith(
+      {
+        project: 'billing',
+        environment: 'prod',
+        securityContextId: 'ctx-1',
+      },
+      '//agent-a:8989/datatug',
+    );
+    expect(createSpy).not.toHaveBeenCalled();
+    expect(peek(fixture.componentInstance).errorMessage()).toContain(
+      'scope is no longer active',
+    );
+  });
+
+  it('reports guidance when no complete scope is available', () => {
+    project$.next(undefined);
+    environment$.next(undefined);
     storeId$.next(undefined);
+    fixture.detectChanges();
     peek(fixture.componentInstance).title = 'Checkout errors spike';
     peek(fixture.componentInstance).submit();
 
@@ -93,8 +280,112 @@ describe('IncidentCreatePageComponent', () => {
     );
   });
 
-  it('calls the client with the trimmed title and description', () => {
-    storeId$.next('localhost:8989');
+  it('announces missing scope before the user attempts to submit', () => {
+    project$.next(undefined);
+    environment$.next(undefined);
+    storeId$.next(undefined);
+    fixture.detectChanges();
+
+    const guidance = fixture.nativeElement.querySelector(
+      '[data-testid="incident-scope-guidance"]',
+    );
+    expect(guidance?.textContent).toContain('Open a project and environment');
+    expect(guidance?.getAttribute('aria-live')).toBe('polite');
+  });
+
+  it.each([
+    [{ agent: 'agent-b:8989' }, 'agent B'],
+    [{ project: 'operations' }, 'an explicit project'],
+  ])(
+    'fails closed and keeps persistent guidance for partial URL scope: %s',
+    async (query) => {
+      TestBed.resetTestingModule();
+      await render(query);
+      peek(fixture.componentInstance).title = 'Do not submit mixed scope';
+      peek(fixture.componentInstance).submit();
+      fixture.detectChanges();
+
+      expect(createSpy).not.toHaveBeenCalled();
+      expect(
+        fixture.nativeElement.querySelector(
+          '[data-testid="incident-scope-guidance"]',
+        )?.textContent,
+      ).toContain('Open a project and environment');
+    },
+  );
+
+  it('does not claim facts from a prior scope will attach for a partial agent URL', async () => {
+    const factA: ContextItem = {
+      id: 'Customer.ID:integer="5"',
+      entity: 'Customer',
+      field: 'ID',
+      value: { type: 'integer', value: '5' },
+      origin: 'context',
+      enabled: true,
+      label: 'Customer.ID = 5',
+      source: 'grid',
+      addedAt: '2026-09-13T08:00:00Z',
+      condition: '==',
+    };
+    TestBed.resetTestingModule();
+    await render(
+      { agent: 'agent-b:8989' },
+      { '//agent-a:8989/datatug': [factA] },
+    );
+    setScopeSpy(
+      {
+        project: 'billing',
+        environment: 'prod',
+        securityContextId: 'ctx-a',
+      },
+      '//agent-a:8989/datatug',
+    );
+    fixture.detectChanges();
+
+    expect(
+      fixture.nativeElement.querySelector(
+        '[data-testid="incident-context-fact-count"]',
+      ),
+    ).toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('will be attached');
+    expect(
+      fixture.nativeElement.querySelector(
+        '[data-testid="incident-scope-guidance"]',
+      )?.textContent,
+    ).toContain('Open a project and environment');
+
+    peek(fixture.componentInstance).title = 'Do not leak A context';
+    peek(fixture.componentInstance).submit();
+    expect(createSpy).not.toHaveBeenCalled();
+  });
+
+  it('calls the client with trimmed input, full scope, and canonical context', () => {
+    investigationItems.set([
+      {
+        id: 'Customer.ID:integer="5"',
+        entity: 'Customer',
+        field: 'ID',
+        value: { type: 'integer', value: '5' },
+        origin: 'context',
+        enabled: true,
+        label: 'Customer.ID = 5',
+        source: 'grid',
+        addedAt: '2026-09-13T08:00:00Z',
+        condition: '==',
+      },
+      {
+        id: 'ignored',
+        entity: 'Customer',
+        field: 'ID',
+        value: { type: 'integer', value: '6' },
+        origin: 'context',
+        enabled: false,
+        label: 'disabled',
+        source: 'grid',
+        addedAt: '2026-09-13T08:00:00Z',
+        condition: '==',
+      },
+    ]);
     const result$ = new Subject<IncidentApiResult<IncidentDetail>>();
     createSpy.mockReturnValue(result$);
 
@@ -102,53 +393,88 @@ describe('IncidentCreatePageComponent', () => {
     peek(fixture.componentInstance).description = '  5xx rate up  ';
     peek(fixture.componentInstance).submit();
 
-    expect(createSpy).toHaveBeenCalledWith({
-      storeId: 'localhost:8989',
+    expect(createSpy).toHaveBeenCalledWith('localhost:8989', {
+      storeId: 'billing',
       project: 'billing',
       environment: 'prod',
       securityContextId: 'ctx-1',
       mutationId: 'incident-create-test-id',
       title: 'Checkout errors spike',
       description: '5xx rate up',
-      projects: [
-        {
-          storeId: 'localhost:8989',
-          projectId: 'billing',
-          environment: 'prod',
-        },
-      ],
-    });
+      canonicalContext: {
+        facts: [
+          {
+            id: 'Customer.ID:integer="5"',
+            entity: 'Customer',
+            field: 'ID',
+            value: { type: 'integer', value: '5' },
+            origin: 'context',
+            enabled: true,
+            scope: {
+              storeId: 'local',
+              projectId: 'billing',
+              environment: 'prod',
+            },
+          },
+        ],
+      },
+    } satisfies CreateIncidentRequest);
+    const defaultEqualityFact = (
+      createSpy.mock.calls[0][1] as CreateIncidentRequest
+    ).canonicalContext.facts[0];
+    expect('condition' in defaultEqualityFact).toBe(false);
   });
 
-  it('navigates to the deep-linkable detail route on success', () => {
-    storeId$.next('localhost:8989');
+  it('preserves a non-default Investigation Context condition in the create payload', () => {
+    investigationItems.set([
+      {
+        id: 'Customer.Age:integer="21"',
+        entity: 'Customer',
+        field: 'Age',
+        value: { type: 'integer', value: '21' },
+        origin: 'context',
+        enabled: true,
+        label: 'Customer.Age >= 21',
+        source: 'manual',
+        addedAt: '2026-09-13T08:00:00Z',
+        condition: '>=',
+      },
+    ]);
+    createSpy.mockReturnValue(new Subject<IncidentApiResult<IncidentDetail>>());
+
+    peek(fixture.componentInstance).title = 'Age-scoped incident';
+    peek(fixture.componentInstance).submit();
+
+    expect(
+      (createSpy.mock.calls[0][1] as CreateIncidentRequest).canonicalContext
+        .facts[0],
+    ).toMatchObject({ condition: '>=' });
+  });
+
+  it('navigates with replaceUrl to the returned route-authoritative detail', () => {
     createSpy.mockReturnValue(
       of({
         kind: 'ok',
-        data: {
-          ref: { storeId: 'localhost:8989', incidentId: 'INC-1' },
-          uid: 'uid-1',
-          title: 'x',
-          status: 'open',
-          lastSeq: 1,
-        },
+        data: incident(),
       } satisfies IncidentApiResult<IncidentDetail>),
     );
-    const navigateSpy = vi
-      .spyOn(router, 'navigateByUrl')
-      .mockResolvedValue(true);
+    const navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
 
     peek(fixture.componentInstance).title = 'Checkout errors spike';
     peek(fixture.componentInstance).submit();
 
-    expect(navigateSpy).toHaveBeenCalledWith(
-      '/incidents/localhost%3A8989/INC-1',
-      { replaceUrl: true },
-    );
+    expect(navigateSpy).toHaveBeenCalledWith(['/incidents', 'ops', 'INC-1'], {
+      queryParams: {
+        agent: 'localhost:8989',
+        storeId: 'ops',
+        project: 'billing',
+        environment: 'prod',
+      },
+      replaceUrl: true,
+    });
   });
 
-  it('keeps the draft and reports the failure when the server is unavailable', () => {
-    storeId$.next('localhost:8989');
+  it('keeps the draft, restores controls, and reuses the mutation id on failure', () => {
     createSpy.mockReturnValue(
       of({
         kind: 'unavailable',
@@ -159,52 +485,270 @@ describe('IncidentCreatePageComponent', () => {
     peek(fixture.componentInstance).title = 'Checkout errors spike';
     peek(fixture.componentInstance).description = 'draft text';
     peek(fixture.componentInstance).submit();
+    fixture.detectChanges();
 
+    expect(peek(fixture.componentInstance).isSubmitting()).toBe(false);
     expect(peek(fixture.componentInstance).errorMessage()).toBe(
       'The incident store is not available on this server yet.',
     );
-    // The draft is never cleared on failure.
+    expect(
+      fixture.nativeElement
+        .querySelector('[data-testid="incident-create-error"]')
+        ?.getAttribute('role'),
+    ).toBe('alert');
     expect(peek(fixture.componentInstance).title).toBe('Checkout errors spike');
     expect(peek(fixture.componentInstance).description).toBe('draft text');
 
-    // A retry after a lost/unavailable response carries the same mutation id,
-    // so the server can return the durable receipt instead of duplicating it.
     peek(fixture.componentInstance).submit();
-    expect(createSpy).toHaveBeenCalledTimes(2);
+    const firstRequest = createSpy.mock.calls[0][1] as CreateIncidentRequest;
+    const secondRequest = createSpy.mock.calls[1][1] as CreateIncidentRequest;
     expect(randomIdSpy).toHaveBeenCalledTimes(1);
-    expect(createSpy.mock.calls[1][0].mutationId).toBe(
-      createSpy.mock.calls[0][0].mutationId,
+    expect(secondRequest.mutationId).toBe(firstRequest.mutationId);
+  });
+
+  it('disables title, description, submit, and cancel while persistence is pending', () => {
+    createSpy.mockReturnValue(new Subject<IncidentApiResult<IncidentDetail>>());
+    peek(fixture.componentInstance).title = 'Checkout errors spike';
+    peek(fixture.componentInstance).submit();
+    fixture.detectChanges();
+
+    expect(peek(fixture.componentInstance).isSubmitting()).toBe(true);
+    for (const testId of [
+      'incident-title-input',
+      'incident-description-input',
+    ]) {
+      expect(
+        fixture.nativeElement.querySelector(`[data-testid="${testId}"]`)
+          .disabled,
+      ).toBe(true);
+    }
+    const buttons = Array.from(
+      fixture.nativeElement.querySelectorAll('ion-button'),
+    ) as Array<{ disabled: boolean }>;
+    expect(buttons.every((button) => button.disabled)).toBe(true);
+  });
+
+  it('uses URL non-secret scope over ambient navigation context', async () => {
+    TestBed.resetTestingModule();
+    await render({
+      agent: 'url-agent:8989',
+      storeId: 'ops',
+      project: 'url-project',
+      environment: 'staging',
+    });
+    createSpy.mockReturnValue(new Subject<IncidentApiResult<IncidentDetail>>());
+    peek(fixture.componentInstance).title = 'Scoped incident';
+    peek(fixture.componentInstance).submit();
+
+    expect(createSpy.mock.calls[0][0]).toBe('url-agent:8989');
+    expect(createSpy.mock.calls[0][1]).toMatchObject({
+      storeId: 'ops',
+      project: 'url-project',
+      environment: 'staging',
+      securityContextId: 'ctx-1',
+    });
+    expect(setScopeSpy).toHaveBeenCalledWith(
+      {
+        project: 'url-project',
+        environment: 'staging',
+        securityContextId: 'ctx-1',
+      },
+      '//url-agent:8989/datatug',
     );
   });
 
-  it('ignores a late success after the active store changes', () => {
+  it('never imports the default agent basket into an explicit agent create', async () => {
+    const defaultAgentFact: ContextItem = {
+      id: 'Customer.ID:integer="5"',
+      entity: 'Customer',
+      field: 'ID',
+      value: { type: 'integer', value: '5' },
+      origin: 'context',
+      enabled: true,
+      label: 'Customer.ID = 5',
+      source: 'grid',
+      addedAt: '2026-09-13T08:00:00Z',
+      condition: '==',
+    };
+    TestBed.resetTestingModule();
+    await render(
+      {
+        agent: 'url-agent:8989',
+        storeId: 'ops',
+        project: 'url-project',
+        environment: 'staging',
+      },
+      {
+        'http://localhost:8989/datatug': [defaultAgentFact],
+        '//url-agent:8989/datatug': [],
+      },
+    );
+    createSpy.mockReturnValue(new Subject<IncidentApiResult<IncidentDetail>>());
+
+    peek(fixture.componentInstance).title = 'Scoped incident';
+    peek(fixture.componentInstance).submit();
+
+    expect(
+      (createSpy.mock.calls[0][1] as CreateIncidentRequest).canonicalContext
+        .facts,
+    ).toEqual([]);
+  });
+
+  it('refreshes once after STALE_CONTEXT and retries with the same mutation id and draft', async () => {
+    const contextFact: ContextItem = {
+      id: 'Customer.ID:integer="5"',
+      entity: 'Customer',
+      field: 'ID',
+      value: { type: 'integer', value: '5' },
+      origin: 'context',
+      enabled: true,
+      label: 'Customer.ID = 5',
+      source: 'grid',
+      addedAt: '2026-09-13T08:00:00Z',
+      condition: '==',
+    };
+    investigationItems.set([contextFact]);
+    createSpy
+      .mockReturnValueOnce(
+        of({
+          kind: 'error',
+          code: 'STALE_CONTEXT',
+          message: 'Refresh agent info and retry.',
+        } as const),
+      )
+      .mockReturnValueOnce(
+        of({ kind: 'error', message: 'Retry failed.' } as const),
+      );
+    refreshAgentContextSpy.mockImplementation(() =>
+      defer(() => {
+        securityContextId.set('ctx-2');
+        return of({ securityContextId: 'ctx-2' });
+      }),
+    );
+
+    peek(fixture.componentInstance).title = 'Checkout errors spike';
+    peek(fixture.componentInstance).description = 'draft text';
+    peek(fixture.componentInstance).submit();
+    fixture.detectChanges();
+
+    const first = createSpy.mock.calls[0][1] as CreateIncidentRequest;
+    const second = createSpy.mock.calls[1][1] as CreateIncidentRequest;
+    expect(first.canonicalContext.facts).toHaveLength(1);
+    expect(second.canonicalContext.facts).toEqual([]);
+    expect(second.securityContextId).toBe('ctx-2');
+    expect(second.mutationId).toBe(first.mutationId);
+    expect(randomIdSpy).toHaveBeenCalledTimes(1);
+    expect(clearContextSpy).toHaveBeenCalledTimes(1);
+    expect(refreshAgentContextSpy).toHaveBeenCalledTimes(1);
+    expect(peek(fixture.componentInstance).title).toBe('Checkout errors spike');
+    expect(peek(fixture.componentInstance).description).toBe('draft text');
+    expect(peek(fixture.componentInstance).errorMessage()).toBe(
+      'Retry failed.',
+    );
+  });
+
+  it('does not clear or refresh another active investigation scope after a late stale create response', () => {
     const result$ = new Subject<IncidentApiResult<IncidentDetail>>();
     createSpy.mockReturnValue(result$);
-    const navigateSpy = vi
-      .spyOn(router, 'navigateByUrl')
-      .mockResolvedValue(true);
+
+    peek(fixture.componentInstance).title = 'Old page submission';
+    peek(fixture.componentInstance).submit();
+    isCurrentScopeSpy.mockReturnValue(false);
+    result$.next({
+      kind: 'error',
+      code: 'STALE_CONTEXT',
+      message: 'Old page scope is stale.',
+    });
+
+    expect(clearContextSpy).not.toHaveBeenCalled();
+    expect(refreshAgentContextSpy).not.toHaveBeenCalled();
+    expect(peek(fixture.componentInstance).isSubmitting()).toBe(false);
+  });
+
+  it('does not reactivate or retry an old scope when another page becomes current during refresh', () => {
+    const createResult$ = new Subject<IncidentApiResult<IncidentDetail>>();
+    const refreshResult$ = new Subject<{ securityContextId: string }>();
+    createSpy.mockReturnValue(createResult$);
+    refreshAgentContextSpy.mockReturnValue(refreshResult$);
+
+    peek(fixture.componentInstance).title = 'Old page submission';
+    peek(fixture.componentInstance).submit();
+    createResult$.next({
+      kind: 'error',
+      code: 'STALE_CONTEXT',
+      message: 'Refresh agent info and retry.',
+    });
+    expect(refreshAgentContextSpy).toHaveBeenCalledTimes(1);
+
+    setScopeSpy(
+      {
+        project: 'other-project',
+        environment: 'staging',
+        securityContextId: 'ctx-b',
+      },
+      'http://agent-b:8989/datatug',
+    );
+    isCurrentScopeSpy.mockReturnValue(false);
+    securityContextId.set('ctx-2');
+    refreshResult$.next({ securityContextId: 'ctx-2' });
+    fixture.detectChanges();
+
+    expect(createSpy).toHaveBeenCalledTimes(1);
+    expect(setScopeSpy).toHaveBeenCalledTimes(2);
+    expect(peek(fixture.componentInstance).isSubmitting()).toBe(false);
+  });
+
+  it.each([
+    ['returns false', () => Promise.resolve(false)],
+    ['rejects', () => Promise.reject(new Error('router unavailable'))],
+  ])(
+    'does not duplicate a committed incident when navigation %s',
+    async (_case, navigationResult) => {
+      createSpy.mockReturnValue(of({ kind: 'ok', data: incident() } as const));
+      const navigateSpy = vi
+        .spyOn(router, 'navigate')
+        .mockImplementation(navigationResult);
+      peek(fixture.componentInstance).title = 'Checkout errors spike';
+
+      peek(fixture.componentInstance).submit();
+      await Promise.resolve();
+      await Promise.resolve();
+      fixture.detectChanges();
+
+      expect(createSpy).toHaveBeenCalledTimes(1);
+      expect(peek(fixture.componentInstance).createdIncidentLink()).toEqual([
+        '/incidents',
+        'ops',
+        'INC-1',
+      ]);
+      expect(fixture.nativeElement.innerHTML).toContain(
+        'Open created incident',
+      );
+
+      peek(fixture.componentInstance).submit();
+      await Promise.resolve();
+      expect(createSpy).toHaveBeenCalledTimes(1);
+      expect(navigateSpy).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it('ignores a late success after the active agent changes', () => {
+    const result$ = new Subject<IncidentApiResult<IncidentDetail>>();
+    createSpy.mockReturnValue(result$);
+    const navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
 
     peek(fixture.componentInstance).title = 'Checkout errors spike';
     peek(fixture.componentInstance).submit();
-    expect(peek(fixture.componentInstance).isSubmitting()).toBe(true);
-
     storeId$.next('other:8989');
-    fixture.detectChanges();
-    expect(peek(fixture.componentInstance).isSubmitting()).toBe(false);
-
-    result$.next({
-      kind: 'ok',
-      data: {
-        ref: { storeId: 'localhost:8989', incidentId: 'INC-1' },
-        uid: 'uid-1',
-        title: 'Checkout errors spike',
-        status: 'open',
-        lastSeq: 1,
-      },
+    project$.next({
+      ref: { storeId: 'other:8989', projectId: 'billing' },
     });
+    fixture.detectChanges();
 
+    result$.next({ kind: 'ok', data: incident() });
+
+    expect(peek(fixture.componentInstance).isSubmitting()).toBe(false);
     expect(navigateSpy).not.toHaveBeenCalled();
-    expect(peek(fixture.componentInstance).errorMessage()).toBeUndefined();
   });
 
   it('ignores a late failure after the security context changes', () => {
@@ -213,96 +757,39 @@ describe('IncidentCreatePageComponent', () => {
 
     peek(fixture.componentInstance).title = 'Checkout errors spike';
     peek(fixture.componentInstance).submit();
-    expect(peek(fixture.componentInstance).isSubmitting()).toBe(true);
-
     securityContextId.set('ctx-2');
     fixture.detectChanges();
+
+    result$.next({ kind: 'error', message: 'stale failure' });
+
     expect(peek(fixture.componentInstance).isSubmitting()).toBe(false);
-
-    result$.next({
-      kind: 'unavailable',
-      message: 'The incident store is not available on this server yet.',
-    });
-
     expect(peek(fixture.componentInstance).errorMessage()).toBeUndefined();
   });
 
-  it('ignores a late success after the project store changes with the same project id', () => {
-    const result$ = new Subject<IncidentApiResult<IncidentDetail>>();
-    createSpy.mockReturnValue(result$);
-    const navigateSpy = vi
-      .spyOn(router, 'navigateByUrl')
-      .mockResolvedValue(true);
-
-    peek(fixture.componentInstance).title = 'Checkout errors spike';
-    peek(fixture.componentInstance).submit();
-    expect(peek(fixture.componentInstance).isSubmitting()).toBe(true);
-
-    project$.next({
-      ref: { storeId: 'other:8989', projectId: 'billing' },
-    });
-    fixture.detectChanges();
-    expect(peek(fixture.componentInstance).isSubmitting()).toBe(false);
-
-    result$.next({
-      kind: 'ok',
-      data: {
-        ref: { storeId: 'localhost:8989', incidentId: 'INC-1' },
-        uid: 'uid-1',
-        title: 'Checkout errors spike',
-        status: 'open',
-        lastSeq: 1,
-      },
-    });
-
-    expect(navigateSpy).not.toHaveBeenCalled();
-    expect(peek(fixture.componentInstance).errorMessage()).toBeUndefined();
-  });
-
-  it('ignores a late failure after the project store changes with the same project id', () => {
-    const result$ = new Subject<IncidentApiResult<IncidentDetail>>();
-    createSpy.mockReturnValue(result$);
-
-    peek(fixture.componentInstance).title = 'Checkout errors spike';
-    peek(fixture.componentInstance).submit();
-
-    project$.next({
-      ref: { storeId: 'other:8989', projectId: 'billing' },
-    });
-    fixture.detectChanges();
-
-    result$.next({
-      kind: 'unavailable',
-      message: 'The incident store is not available on this server yet.',
-    });
-
-    expect(peek(fixture.componentInstance).errorMessage()).toBeUndefined();
-  });
-
-  it('uses a new idempotency key when the project store changes with the same project id', () => {
+  it('uses a new idempotency key after the active agent changes', () => {
     createSpy.mockReturnValue(
       of({
-        kind: 'unavailable',
-        message: 'The incident store is not available on this server yet.',
+        kind: 'error',
+        message: 'try again',
       } satisfies IncidentApiResult<IncidentDetail>),
     );
     randomIdSpy
-      .mockReturnValueOnce('original-project-store')
-      .mockReturnValueOnce('new-project-store');
+      .mockReturnValueOnce('original-agent')
+      .mockReturnValueOnce('new-agent');
 
     peek(fixture.componentInstance).title = 'Checkout errors spike';
     peek(fixture.componentInstance).submit();
-    const firstRequest = createSpy.mock.calls[0][0];
+    const firstRequest = createSpy.mock.calls[0][1] as CreateIncidentRequest;
 
+    storeId$.next('other:8989');
     project$.next({
       ref: { storeId: 'other:8989', projectId: 'billing' },
     });
     fixture.detectChanges();
     peek(fixture.componentInstance).submit();
-    const secondRequest = createSpy.mock.calls[1][0];
+    const secondRequest = createSpy.mock.calls[1][1] as CreateIncidentRequest;
 
-    expect(randomIdSpy).toHaveBeenCalledTimes(2);
+    expect(createSpy.mock.calls[1][0]).toBe('other:8989');
     expect(secondRequest.mutationId).not.toBe(firstRequest.mutationId);
-    expect(secondRequest.projects[0].storeId).toBe('other:8989');
   });
 });

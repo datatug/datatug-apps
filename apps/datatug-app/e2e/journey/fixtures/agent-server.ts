@@ -34,6 +34,10 @@ export interface AgentServer {
   readonly logFile: string;
   /** In-memory snapshot of everything the agent has printed so far. */
   readLog(): string;
+  /** Restart the same real agent on the same URL and repository. A restart
+   * rotates datatug-cli's server-issued securityContextId, so journeys can
+   * exercise STALE_CONTEXT recovery without intercepting a request. */
+  restart(): Promise<void>;
   /** S174 — set only for `agentServer` (the one fixture seeded with
    * `PERSONAL_QUERY_ID`/`PERSONAL_QUERY_TITLE`, below): the `$DATATUG_PERSONAL_DIR`
    * this agent process was started with. Exposed for debugging a failed run, not
@@ -84,6 +88,10 @@ function seedPersonalQuery(
 
 interface JourneyWorkerFixtures {
   agentServer: AgentServer;
+  /** An admin agent whose project repository is a worker-owned temporary
+   * copy. Incident journeys may persist and restart it without changing the
+   * shared datatug-demo-projects checkout. */
+  incidentAgentServer: AgentServer;
   supportAgentServer: AgentServer;
   /** Phase 1 Task 14 (J2b) — an admin agent started with `--http-offline`, so every
    * HTTP-typed saved query's live fetch fails `SOURCE_UNAVAILABLE` deterministically in
@@ -190,7 +198,10 @@ function resolveBinary(): Resolved<string> {
   }
 
   const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'datatug-journey-e2e-'));
-  const outBin = path.join(outDir, process.platform === 'win32' ? 'datatug.exe' : 'datatug');
+  const outBin = path.join(
+    outDir,
+    process.platform === 'win32' ? 'datatug.exe' : 'datatug',
+  );
   const build = spawnSync('go', ['build', '-o', outBin, '.'], {
     cwd: resolvedCliDir,
     encoding: 'utf8',
@@ -268,7 +279,9 @@ async function waitForPing(url: string, timeoutMs: number): Promise<void> {
     }
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
-  throw new Error(`Timed out after ${timeoutMs}ms waiting for ${url}: ${String(lastError)}`);
+  throw new Error(
+    `Timed out after ${timeoutMs}ms waiting for ${url}: ${String(lastError)}`,
+  );
 }
 
 interface StartAgentOptions {
@@ -284,6 +297,10 @@ interface StartAgentOptions {
   /** Extra `datatug serve` flags appended verbatim after `--role` — e.g. `['--http-offline']`
    * for {@link offlineAgentServer}. Empty/undefined for every other agent. */
   readonly extraArgs?: readonly string[];
+  /** Copy the demo project to a fresh worker-owned repository before serving.
+   * The copy excludes source `.git` metadata and any source `incidents/`
+   * directory, making persisted incident assertions deterministic. */
+  readonly isolateProject?: boolean;
   /** S174 — when set, `startAgent()` creates a fresh `t.TempDir()`-equivalent
    * directory, seeds it with one `<id>.query.json` for the demo project (via
    * {@link seedPersonalQuery}), and starts the child process with
@@ -310,7 +327,9 @@ interface StartedAgent {
  * (unchanged from the pre-refactor behavior — this is a real defect, e.g. a broken
  * binary, not a missing prerequisite to skip past).
  */
-async function startAgent(opts: StartAgentOptions): Promise<Resolved<StartedAgent>> {
+async function startAgent(
+  opts: StartAgentOptions,
+): Promise<Resolved<StartedAgent>> {
   const demoDirResult = resolveDemoDirCached();
   if (!demoDirResult.ok) {
     return demoDirResult;
@@ -320,6 +339,21 @@ async function startAgent(opts: StartAgentOptions): Promise<Resolved<StartedAgen
     return binResult;
   }
 
+  let demoDir = demoDirResult.value;
+  let isolatedProjectRoot: string | undefined;
+  if (opts.isolateProject) {
+    isolatedProjectRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'datatug-journey-project-'),
+    );
+    demoDir = path.join(isolatedProjectRoot, 'demo-project-1');
+    const sourceIncidentsDir = path.join(demoDirResult.value, 'incidents');
+    fs.cpSync(demoDirResult.value, demoDir, {
+      recursive: true,
+      filter: (source) =>
+        path.basename(source) !== '.git' && source !== sourceIncidentsDir,
+    });
+  }
+
   // S174: seed `$DATATUG_PERSONAL_DIR` BEFORE spawning — the env var is read
   // once, at `datatug serve` startup (`personalqueries.ResolveProjectDir`),
   // so the file must already exist on disk by the time the child process is
@@ -327,10 +361,7 @@ async function startAgent(opts: StartAgentOptions): Promise<Resolved<StartedAgen
   let personalDir: string | undefined;
   if (opts.personalQuery) {
     const projectFile = JSON.parse(
-      fs.readFileSync(
-        path.join(demoDirResult.value, 'datatug-project.json'),
-        'utf8',
-      ),
+      fs.readFileSync(path.join(demoDir, 'datatug-project.json'), 'utf8'),
     ) as { id: string };
     personalDir = fs.mkdtempSync(
       path.join(os.tmpdir(), 'datatug-journey-personal-'),
@@ -346,9 +377,18 @@ async function startAgent(opts: StartAgentOptions): Promise<Resolved<StartedAgen
   const host = '127.0.0.1';
   const port = await getFreePort();
 
-  const logDir = path.join(repoRoot, 'coverage', 'apps', 'datatug-app-e2e', 'journey');
+  const logDir = path.join(
+    repoRoot,
+    'coverage',
+    'apps',
+    'datatug-app-e2e',
+    'journey',
+  );
   fs.mkdirSync(logDir, { recursive: true });
-  const logFile = path.join(logDir, `agent-${opts.label}-worker-${opts.workerIndex}.log`);
+  const logFile = path.join(
+    logDir,
+    `agent-${opts.label}-worker-${opts.workerIndex}.log`,
+  );
   const logStream = fs.createWriteStream(logFile, { flags: 'w' });
 
   let logBuffer = '';
@@ -361,7 +401,7 @@ async function startAgent(opts: StartAgentOptions): Promise<Resolved<StartedAgen
   const args = [
     'serve',
     '--project',
-    demoDirResult.value,
+    demoDir,
     '--host',
     host,
     '--port',
@@ -387,69 +427,148 @@ async function startAgent(opts: StartAgentOptions): Promise<Resolved<StartedAgen
     opts.role,
     ...(opts.extraArgs ?? []),
   ];
-  const child = spawn(binResult.value, args, {
-    stdio: ['ignore', 'pipe', 'pipe'],
-    // Omitting `env` entirely (the pre-S174 behavior for every other agent)
-    // inherits the parent process's full environment, unchanged. Only when
-    // `personalDir` was seeded above do we need to layer `DATATUG_PERSONAL_DIR`
-    // on top of that same inherited environment, not replace it.
-    ...(personalDir ? { env: { ...process.env, DATATUG_PERSONAL_DIR: personalDir } } : {}),
-  });
-  child.stdout.on('data', appendLog);
-  child.stderr.on('data', appendLog);
-
-  let exited: { code: number | null; signal: NodeJS.Signals | null } | undefined;
-  child.once('exit', (code, signal) => {
-    exited = { code, signal };
-  });
-  const spawnError = new Promise<never>((_, reject) => {
-    child.once('error', reject);
-  });
-
+  let exited:
+    | { code: number | null; signal: NodeJS.Signals | null }
+    | undefined;
+  let child: ReturnType<typeof spawn> | undefined;
+  let childExitPromise: Promise<void> | undefined;
+  let stopChildPromise: Promise<void> | undefined;
   const pingUrl = `http://${host}:${port}/datatug/ping`;
+  const launch = async (): Promise<void> => {
+    exited = undefined;
+    stopChildPromise = undefined;
+    const launched = spawn(binResult.value, args, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      // Omitting `env` entirely (the pre-S174 behavior for every other agent)
+      // inherits the parent process's full environment, unchanged. Only when
+      // `personalDir` was seeded above do we need to layer `DATATUG_PERSONAL_DIR`
+      // on top of that same inherited environment, not replace it.
+      ...(personalDir
+        ? { env: { ...process.env, DATATUG_PERSONAL_DIR: personalDir } }
+        : {}),
+    });
+    child = launched;
+    launched.stdout.on('data', appendLog);
+    launched.stderr.on('data', appendLog);
+    childExitPromise = new Promise<void>((resolve) => {
+      let resolved = false;
+      const resolveOnce = () => {
+        if (!resolved) {
+          resolved = true;
+          resolve();
+        }
+      };
+      launched.once('exit', (code, signal) => {
+        if (child === launched) {
+          exited = { code, signal };
+        }
+        resolveOnce();
+      });
+      // A spawn failure emits `error` then `close`, but may never emit `exit`.
+      launched.once('close', resolveOnce);
+    });
+    const spawnError = new Promise<never>((_, reject) => {
+      launched.once('error', reject);
+    });
+    try {
+      await Promise.race([waitForPing(pingUrl, PING_TIMEOUT_MS), spawnError]);
+    } catch (err) {
+      if (!exited) {
+        launched.kill('SIGKILL');
+      }
+      await childExitPromise;
+      const exitNote = exited
+        ? ` The process already exited (code=${exited.code}, signal=${exited.signal}).`
+        : '';
+      throw new Error(
+        `datatug serve (${binResult.value} ${args.join(' ')}) never answered ` +
+          `${pingUrl}: ${String(err)}.${exitNote}\n` +
+          `--- captured log (${logFile}) ---\n${logBuffer || '(empty)'}`,
+      );
+    }
+  };
+
+  const stopChild = async (): Promise<void> => {
+    const running = child;
+    const runningExit = childExitPromise;
+    if (!running || !runningExit) {
+      return;
+    }
+    if (stopChildPromise) {
+      await stopChildPromise;
+      return;
+    }
+    const stopping = (async () => {
+      if (exited || running.exitCode !== null || running.signalCode !== null) {
+        await runningExit;
+        return;
+      }
+      running.kill('SIGTERM');
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      const forced = new Promise<'forced'>((resolve) => {
+        timeout = setTimeout(() => {
+          running.kill('SIGKILL');
+          resolve('forced');
+        }, SHUTDOWN_TIMEOUT_MS);
+      });
+      const outcome = await Promise.race([
+        runningExit.then(() => 'exited' as const),
+        forced,
+      ]);
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+      if (outcome === 'forced') {
+        // The listener was installed at launch, so an exit cannot race past
+        // this await. Do not delete worker temp data while the child may still
+        // hold files open.
+        await runningExit;
+      }
+    })();
+    stopChildPromise = stopping;
+    try {
+      await stopping;
+    } finally {
+      if (stopChildPromise === stopping) {
+        stopChildPromise = undefined;
+      }
+    }
+  };
+
   try {
-    await Promise.race([waitForPing(pingUrl, PING_TIMEOUT_MS), spawnError]);
+    await launch();
   } catch (err) {
     logStream.end();
-    if (!exited) {
-      child.kill('SIGKILL');
+    if (isolatedProjectRoot) {
+      fs.rmSync(isolatedProjectRoot, { recursive: true, force: true });
     }
-    const exitNote = exited
-      ? ` The process already exited (code=${exited.code}, signal=${exited.signal}).`
-      : '';
-    throw new Error(
-      `datatug serve (${binResult.value} ${args.join(' ')}) never answered ` +
-        `${pingUrl}: ${String(err)}.${exitNote}\n` +
-        `--- captured log (${logFile}) ---\n${logBuffer || '(empty)'}`,
-    );
+    throw err;
   }
 
   const server: AgentServer = {
     host,
     port,
     storeId: `${host}:${port}`,
-    demoDir: demoDirResult.value,
+    demoDir,
     logFile,
     readLog: () => logBuffer,
+    restart: async () => {
+      await stopChild();
+      appendLog('\n--- restarting real datatug agent on the same URL ---\n');
+      await launch();
+    },
     personalDir,
   };
 
   const stop = async (): Promise<void> => {
-    await new Promise<void>((resolve) => {
-      if (exited) {
-        resolve();
-        return;
+    try {
+      await stopChild();
+    } finally {
+      logStream.end();
+      if (isolatedProjectRoot) {
+        fs.rmSync(isolatedProjectRoot, { recursive: true, force: true });
       }
-      const timeout = setTimeout(() => {
-        child.kill('SIGKILL');
-      }, SHUTDOWN_TIMEOUT_MS);
-      child.once('exit', () => {
-        clearTimeout(timeout);
-        resolve();
-      });
-      child.kill('SIGTERM');
-    });
-    logStream.end();
+    }
   };
 
   return { ok: true, value: { server, stop } };
@@ -470,6 +589,28 @@ export const test = base.extend<{}, JourneyWorkerFixtures>({
         // lists exactly this — see journey.spec.ts's "Personal queries tab"
         // describe block for the coverage this enables.
         personalQuery: { id: PERSONAL_QUERY_ID, title: PERSONAL_QUERY_TITLE },
+      });
+      if (!started.ok) {
+        test.skip(true, started.skipReason);
+        return;
+      }
+      await use(started.value.server);
+      await started.value.stop();
+    },
+    { scope: 'worker' },
+  ],
+  incidentAgentServer: [
+    // eslint-disable-next-line no-empty-pattern
+    async ({}, use, workerInfo) => {
+      const started = await startAgent({
+        as: 'admin',
+        role: 'admin',
+        label: 'incidents',
+        workerIndex: workerInfo.workerIndex,
+        isolateProject: true,
+        // Incident create is a real server mutation and datatug-cli fails
+        // every mutation closed unless the operator opts the process in.
+        extraArgs: ['--allow-writes'],
       });
       if (!started.ok) {
         test.skip(true, started.skipReason);
