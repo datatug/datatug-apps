@@ -92,39 +92,19 @@
       }
     </ion-card>
 
-    <ion-card>
-      <ion-card-content>
-        <h2>Timeline</h2>
-      </ion-card-content>
-      @if (timelineMessage(); as message) {
-        <ion-card-content>
-          <ion-note color="warning" role="alert">{{ message }}</ion-note>
-        </ion-card-content>
-      } @else if (isTimelineLoading()) {
-        <ion-card-content>
-          <ion-note>Loading timeline…</ion-note>
-        </ion-card-content>
-      } @else if (events(); as items) {
-        @if (items.length) {
-          <ion-list>
-            @for (item of items; track item.cursor) {
-              <ion-item>
-                <ion-label>
-                  <h3>{{ eventSummary(item.event) }}</h3>
-                  <p>
-                    {{ item.event.actor.id }} · {{ item.event.at }} ·
-                    {{ item.event.assertion.kind }}
-                  </p>
-                </ion-label>
-              </ion-item>
-            }
-          </ion-list>
-        } @else {
-          <ion-card-content>
-            <p>No visible timeline events.</p>
-          </ion-card-content>
-        }
-      }
-    </ion-card>
+    <sneat-datatug-incident-read-panels
+      [statusSentences]="statusSentences()"
+      [statusLoading]="isTimelineLoading()"
+      [statusError]="timelineMessage()"
+      [events]="events()"
+      [timelineLoading]="isTimelineLoading()"
+      [timelineError]="timelineMessage()"
+      [hypotheses]="hypotheses()"
+      [evidence]="evidence()"
+      [participants]="participants()"
+      [projects]="projects()"
+      [recordCommands]="recordCommands()"
+      [recordQueryParams]="recordQueryParams()"
+    />
   }
 </ion-content>

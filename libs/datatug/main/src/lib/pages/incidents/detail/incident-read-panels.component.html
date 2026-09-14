@@ -1,0 +1,207 @@
+<ion-card data-testid="incident-status-panel">
+  <ion-card-content>
+    <h2>Status</h2>
+  </ion-card-content>
+  @if (statusError(); as message) {
+    <ion-card-content>
+      <ion-note color="warning" role="alert">{{ message }}</ion-note>
+    </ion-card-content>
+  } @else if (statusLoading()) {
+    <ion-card-content>
+      <ion-note>Loading status…</ion-note>
+    </ion-card-content>
+  } @else if (statusSentences().length) {
+    <ion-list>
+      @for (sentence of statusSentences(); track sentence.text) {
+        <ion-item>
+          <ion-label>
+            <p>{{ sentence.text }}</p>
+            <p>
+              Supporting events:
+              {{ sentence.eventIds.join(', ') }}
+            </p>
+          </ion-label>
+        </ion-item>
+      }
+    </ion-list>
+  } @else {
+    <ion-card-content>
+      <ion-note>No visible status events support this projection.</ion-note>
+    </ion-card-content>
+  }
+</ion-card>
+
+<ion-card data-testid="incident-timeline-panel">
+  <ion-card-content>
+    <h2>Timeline</h2>
+  </ion-card-content>
+  @if (timelineError(); as message) {
+    <ion-card-content>
+      <ion-note color="warning" role="alert">{{ message }}</ion-note>
+    </ion-card-content>
+  } @else if (timelineLoading()) {
+    <ion-card-content>
+      <ion-note>Loading timeline…</ion-note>
+    </ion-card-content>
+  } @else if (events(); as items) {
+    @if (items.length) {
+      <ion-list>
+        @for (item of items; track item.cursor) {
+          <ion-item>
+            <ion-label>
+              <h3>{{ eventSummary(item) }}</h3>
+              <p>
+                {{ item.event.actor.id }} · {{ item.event.at }} ·
+                {{ item.event.assertion.kind }}
+              </p>
+            </ion-label>
+          </ion-item>
+        }
+      </ion-list>
+    } @else {
+      <ion-card-content>
+        <p>No visible timeline events.</p>
+      </ion-card-content>
+    }
+  }
+</ion-card>
+
+<ion-card data-testid="incident-hypotheses-panel">
+  <ion-card-content>
+    <h2>Hypotheses</h2>
+  </ion-card-content>
+  @if (hypotheses().length) {
+    <ion-list>
+      @for (hypothesis of hypotheses(); track hypothesis.layer) {
+        <ion-item>
+          <ion-label>
+            <h3>{{ hypothesis.layer }} · {{ hypothesis.state }}</h3>
+            @for (fact of hypothesis.facts; track fact.id) {
+              <p>
+                {{ fact.entity }}.{{ fact.field || 'redacted' }} =
+                {{ factValue(fact) }}
+              </p>
+            }
+          </ion-label>
+        </ion-item>
+      }
+    </ion-list>
+  } @else {
+    <ion-card-content>
+      <ion-note>No hypotheses are attached.</ion-note>
+    </ion-card-content>
+  }
+</ion-card>
+
+<ion-card data-testid="incident-evidence-panel">
+  <ion-card-content>
+    <h2>Evidence</h2>
+  </ion-card-content>
+  @if (evidence().length) {
+    <ion-list>
+      @for (item of evidence(); track item.label) {
+        @if (item.routerLink; as routerLink) {
+          <ion-item
+            button
+            detail
+            [routerLink]="routerLink"
+            [queryParams]="item.queryParams"
+          >
+            <ion-label>
+              <h3>{{ item.label }}</h3>
+            </ion-label>
+          </ion-item>
+        } @else {
+          <ion-item>
+            <ion-label>
+              <h3>{{ item.label }}</h3>
+              <p>No page is available for this evidence yet.</p>
+            </ion-label>
+          </ion-item>
+        }
+      }
+    </ion-list>
+  } @else {
+    <ion-card-content>
+      <ion-note>No evidence is referenced.</ion-note>
+    </ion-card-content>
+  }
+</ion-card>
+
+<ion-card data-testid="incident-participants-panel">
+  <ion-card-content>
+    <h2>Participants</h2>
+    <p>Incident roles are presentation metadata and do not grant access.</p>
+  </ion-card-content>
+  @if (participants().length) {
+    <ion-list>
+      @for (
+        participant of participants();
+        track participant.actor.kind +
+          ':' +
+          participant.actor.id +
+          ':' +
+          participant.role
+      ) {
+        <ion-item>
+          <ion-label>
+            <h3>{{ participant.actor.id }}</h3>
+            <p>
+              {{ participant.actor.kind }} · incident role:
+              {{ participant.role }}
+            </p>
+          </ion-label>
+        </ion-item>
+      }
+    </ion-list>
+  } @else {
+    <ion-card-content>
+      <ion-note>No participants are recorded.</ion-note>
+    </ion-card-content>
+  }
+</ion-card>
+
+<ion-card data-testid="incident-projects-panel">
+  <ion-card-content>
+    <h2>Referenced projects</h2>
+  </ion-card-content>
+  @if (projects().length) {
+    <ion-list>
+      @for (
+        item of projects();
+        track item.project.storeId + '/' + item.project.projectId
+      ) {
+        <ion-item button detail [routerLink]="item.routerLink">
+          <ion-label>
+            <h3>{{ item.project.projectId }}</h3>
+            <p>
+              {{ item.project.storeId
+              }}{{
+                item.project.environment ? ' · ' + item.project.environment : ''
+              }}
+            </p>
+          </ion-label>
+        </ion-item>
+      }
+    </ion-list>
+  } @else {
+    <ion-card-content>
+      <ion-note>No projects are referenced.</ion-note>
+    </ion-card-content>
+  }
+</ion-card>
+
+@if (recordCommands(); as commands) {
+  <ion-card>
+    <ion-card-content>
+      <ion-button
+        expand="block"
+        fill="outline"
+        [routerLink]="commands"
+        [queryParams]="recordQueryParams()"
+      >
+        Resolution Record
+      </ion-button>
+    </ion-card-content>
+  </ion-card>
+}

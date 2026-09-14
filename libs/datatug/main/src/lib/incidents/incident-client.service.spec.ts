@@ -1,12 +1,12 @@
 import { provideHttpClient } from '@angular/common/http';
 import {
-  AppendIncidentEventRequest,
   HttpTestingController,
   provideHttpClientTesting,
 } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { IncidentClientService } from './incident-client.service';
 import {
+  AppendIncidentEventRequest,
   CreateIncidentRequest,
   IncidentDetail,
   IncidentSummary,
@@ -621,6 +621,27 @@ describe('IncidentClientService', () => {
       expect(result).toEqual({ kind: 'ok', data: fixture });
     });
 
+    it('accepts a coordinator participant as presentation metadata', () => {
+      const fixture: IncidentDetail = {
+        ...INCIDENT,
+        participants: [
+          {
+            actor: { kind: 'human', id: 'support', via: 'web' },
+            role: 'coordinator',
+          },
+        ],
+      };
+
+      let result: unknown;
+      service.get(CONTEXT, 'INC-1').subscribe((r) => (result = r));
+
+      httpMock
+        .expectOne((r) => r.url === `${BASE_URL}/INC-1`)
+        .flush({ incident: fixture });
+
+      expect(result).toEqual({ kind: 'ok', data: fixture });
+    });
+
     it('sends ?at= for a historical projection', () => {
       service.get(CONTEXT, 'INC-1', '2026-09-11T10:43:40Z').subscribe();
 
@@ -816,7 +837,32 @@ describe('IncidentClientService', () => {
       ],
       ['context.fact.rejected', { layer: 'hypothesis:H17' }],
       ['context.fact.rejected', { layer: 'hypothesis:checkout / EU west' }],
-    ])('accepts a valid %s event view', (type, payload) => {
+      [
+        'compare.run',
+        { key: ['Invoice.ID'] },
+        {
+          actor: { kind: 'agent', id: 'datatug' },
+          assertion: { kind: 'deterministic-result' },
+          refs: [
+            {
+              kind: 'compare',
+              comparison: {
+                left: {
+                  storeId: 'local',
+                  projectId: 'billing',
+                  executionId: 'left-1',
+                },
+                right: {
+                  storeId: 'local',
+                  projectId: 'billing',
+                  executionId: 'right-1',
+                },
+              },
+            },
+          ],
+        },
+      ],
+    ])('accepts a valid %s event view', (type, payload, overrides = {}) => {
       let result: unknown;
       service.events(CONTEXT, 'INC-1').subscribe((r) => (result = r));
 
@@ -827,6 +873,7 @@ describe('IncidentClientService', () => {
             cursor: `cursor-${type}`,
             event: eventFixture(type, payload, {
               ...(type === 'incident.created' ? {} : { seq: 2 }),
+              ...overrides,
             }),
           }),
         );

@@ -96,9 +96,18 @@ export interface IncidentActor {
   readonly via?: 'web' | 'cli' | 'api' | 'slack';
 }
 
+export const INCIDENT_PARTICIPANT_ROLES = [
+  'reporter',
+  'investigator',
+  'coordinator',
+  'observer',
+] as const;
+export type IncidentParticipantRole =
+  (typeof INCIDENT_PARTICIPANT_ROLES)[number];
+
 export interface IncidentParticipant {
   readonly actor: IncidentActor;
-  readonly role: 'reporter';
+  readonly role: IncidentParticipantRole;
 }
 
 export type IncidentArtifactRefKind =
@@ -264,7 +273,8 @@ export interface IncidentEvent {
     | 'note.added'
     | 'context.fact.added'
     | 'context.fact.promoted'
-    | 'context.fact.rejected';
+    | 'context.fact.rejected'
+    | 'compare.run';
   readonly assertion: IncidentAssertion;
   readonly refs?: readonly IncidentArtifactRef[];
   readonly payload:
@@ -287,7 +297,8 @@ export interface IncidentEvent {
         readonly fact: IncidentContextFactRef;
         readonly role: NonNullable<IncidentFactView['role']>;
       }
-    | { readonly layer: IncidentContextFactRef['layer'] };
+    | { readonly layer: IncidentContextFactRef['layer'] }
+    | { readonly key: readonly string[] };
 }
 
 export interface IncidentStreamItem {

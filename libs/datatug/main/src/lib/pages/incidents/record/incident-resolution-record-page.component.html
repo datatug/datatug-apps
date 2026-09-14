@@ -1,0 +1,68 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-menu-button />
+      <ion-back-button [defaultHref]="detailUrl()" />
+    </ion-buttons>
+    <ion-title>Resolution Record</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content color="light">
+  @if (unavailableMessage(); as message) {
+    <ion-card>
+      <ion-card-content>
+        <ion-note color="warning" role="alert">{{ message }}</ion-note>
+      </ion-card-content>
+    </ion-card>
+  } @else if (isLoading()) {
+    <ion-card>
+      <ion-card-content class="ion-text-center">
+        <ion-note>Loading…</ion-note>
+      </ion-card-content>
+    </ion-card>
+  } @else if (!requestContext()) {
+    <ion-card>
+      <ion-card-content>
+        <ion-note color="warning">
+          This Resolution Record link is missing its DataTug agent, project, or
+          environment scope. Open it from a qualified incident.
+        </ion-note>
+      </ion-card-content>
+    </ion-card>
+  } @else if (incident(); as incident) {
+    <ion-card>
+      <ion-card-content>
+        <h1>{{ incident.title }}</h1>
+        @if (incident.description) {
+          <p>{{ incident.description }}</p>
+        }
+      </ion-card-content>
+    </ion-card>
+
+    <sneat-datatug-incident-read-panels
+      [statusSentences]="statusSentences()"
+      [statusLoading]="isTimelineLoading()"
+      [statusError]="timelineMessage()"
+      [events]="events()"
+      [timelineLoading]="isTimelineLoading()"
+      [timelineError]="timelineMessage()"
+      [hypotheses]="hypotheses()"
+      [evidence]="evidence()"
+      [participants]="participants()"
+      [projects]="projects()"
+    />
+    <ion-card>
+      <ion-card-content>
+        <ion-button
+          expand="block"
+          fill="outline"
+          [routerLink]="detailCommands()"
+          [queryParams]="detailQueryParams()"
+        >
+          Back to incident
+        </ion-button>
+      </ion-card-content>
+    </ion-card>
+  }
+</ion-content>

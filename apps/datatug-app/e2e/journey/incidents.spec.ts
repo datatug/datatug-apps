@@ -199,6 +199,45 @@ test.describe('Incidentius Task 3 — real persisted Houston journey', () => {
       activePage(page).getByRole('heading', { name: 'Timeline' }),
     ).toBeVisible();
     await expect(activePage(page).getByText('incident.created')).toBeVisible();
+    await expect(
+      activePage(page).getByRole('heading', { name: 'Status', exact: true }),
+    ).toBeVisible();
+    await expect(
+      activePage(page).getByRole('heading', { name: 'Participants' }),
+    ).toBeVisible();
+
+    const detailPage = page.locator('sneat-datatug-incident-detail');
+    const recordPage = page.locator('sneat-datatug-incident-resolution-record');
+    const recordDetailResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' &&
+        response.url().startsWith(`${agentOrigin}/datatug/incidents/INC-1?`) &&
+        response.ok(),
+    );
+    const recordEventsResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' &&
+        response
+          .url()
+          .startsWith(`${agentOrigin}/datatug/incidents/INC-1/events?`) &&
+        response.ok(),
+    );
+    await detailPage.locator('ion-button', { hasText: 'Resolution Record' }).click();
+    await recordDetailResponse;
+    await recordEventsResponse;
+    await expect(page).toHaveURL(
+      new RegExp(`/incidents/${DEMO_PROJECT_ID}/INC-1/record\\?`),
+    );
+    await expect(
+      recordPage.locator('ion-title', { hasText: 'Resolution Record' }),
+    ).toBeVisible();
+    await expect(recordPage.getByRole('heading', { name: title })).toBeVisible();
+
+    await recordPage.locator('ion-button', { hasText: 'Back to incident' }).click();
+    await expect(page).toHaveURL(
+      new RegExp(`/incidents/${DEMO_PROJECT_ID}/INC-1\\?`),
+    );
+    await expect(detailPage.getByRole('heading', { name: title })).toBeVisible();
 
     const coldDetailResponse = page.waitForResponse(
       (response) =>

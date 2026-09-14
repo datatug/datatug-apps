@@ -73,3 +73,27 @@ test('build info is visible under the incidentius profile too — same shared co
   await expect(page).toHaveURL('/incidents');
   await expect(page.locator('sneat-app-version')).toBeVisible();
 });
+
+test('a cold incident detail deep link stays on the same route family under both profiles', async ({
+  page,
+}) => {
+  const detail =
+    '/incidents/datatug-demo-project/INC-1?agent=demo&storeId=datatug-demo-project&project=datatug-demo-project&environment=local';
+  const record = `${detail.replace('/INC-1?', '/INC-1/record?')}`;
+
+  await page.goto(`${detail}&profile=incidentius`);
+  await expect(page).toHaveURL(/\/incidents\/datatug-demo-project\/INC-1/);
+  await expect(page).not.toHaveURL(/\/incidents$/);
+
+  await page.goto(`${record}&profile=incidentius`);
+  await expect(page).toHaveURL(
+    /\/incidents\/datatug-demo-project\/INC-1\/record/,
+  );
+
+  await page.goto(detail);
+  await expect(page).toHaveURL(/\/incidents\/datatug-demo-project\/INC-1/);
+  await page.goto(record);
+  await expect(page).toHaveURL(
+    /\/incidents\/datatug-demo-project\/INC-1\/record/,
+  );
+});
