@@ -820,4 +820,66 @@ describe('IncidentDetailPageComponent', () => {
     expect(component.isFactFinal(first)).toBe(true);
     expect(component.isFactFinal(second)).toBe(true);
   });
+
+  it('renders status provenance and a Resolution Record link from URL ids', async () => {
+    await render(
+      undefined,
+      undefined,
+      of({
+        kind: 'ok',
+        data: {
+          ...incident('Checkout errors spike'),
+          participants: [
+            {
+              actor: { kind: 'human', id: 'support', via: 'web' },
+              role: 'coordinator',
+            },
+          ],
+        },
+      }),
+      of({
+        kind: 'ok',
+        data: [
+          {
+            cursor: 'cursor-status',
+            event: {
+              id: 'evt-status',
+              seq: 2,
+              at: '2026-09-13T08:00:00Z',
+              visibleAt: '2026-09-13T08:00:00Z',
+              incident: { storeId: 'ops', incidentId: 'INC-1' },
+              actor: { kind: 'human', id: 'alex', via: 'web' },
+              type: 'incident.status',
+              assertion: { kind: 'claim' },
+              payload: { status: 'investigating' },
+            },
+          },
+        ],
+      }),
+    );
+    fixture.detectChanges();
+
+    expect(getSpy).toHaveBeenCalledWith(requestContext(), 'INC-1', undefined);
+    expect(getSpy.mock.calls[0]?.[0]).not.toHaveProperty('role');
+    expect(fixture.nativeElement.innerHTML).toContain(
+      'Status is investigating.',
+    );
+    expect(fixture.nativeElement.innerHTML).toContain('evt-status');
+    expect(fixture.nativeElement.innerHTML).toContain('coordinator');
+    expect(fixture.nativeElement.innerHTML).toContain('do not grant access');
+    expect(fixture.nativeElement.innerHTML).toContain('Resolution Record');
+    const recordUrl = (
+      fixture.componentInstance as unknown as { recordUrl(): string }
+    ).recordUrl();
+    expect(recordUrl).toContain('/incidents/ops/INC-1/record');
+    expect(recordUrl).toContain('agent=url-agent:8989');
+    expect(recordUrl).toContain('project=billing');
+    const recordCommands = (
+      fixture.componentInstance as unknown as {
+        recordCommands(): readonly string[];
+      }
+    ).recordCommands();
+    expect(recordCommands).toEqual(['/incidents', 'ops', 'INC-1', 'record']);
+    expect(recordCommands.join('/')).not.toContain('?');
+  });
 });

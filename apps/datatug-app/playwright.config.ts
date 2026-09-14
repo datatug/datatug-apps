@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const e2ePort = process.env.DATATUG_E2E_PORT || '4200';
+
 export default defineConfig({
   testDir: './e2e',
   // Enterprise SSO owns Firebase, Firestore, an SSO backend, and an OIDC IdP;
@@ -40,7 +42,7 @@ export default defineConfig({
     // no HTTP response at all) — see the matching --host below — so this and
     // the dev-server's own bind address must agree, which is why this isn't
     // scoped to just the "journey" project.
-    baseURL: 'http://localhost:4200',
+    baseURL: `http://localhost:${e2ePort}`,
     trace: 'retain-on-failure',
   },
   // Shared by every project below, including "journey": the app resolves
@@ -50,8 +52,8 @@ export default defineConfig({
   // names its own agent's host:port.
   webServer: {
     command:
-      'pnpm nx run datatug-app:serve:development --host localhost --port 4200',
-    url: 'http://localhost:4200',
+      `pnpm nx run datatug-app:serve:development --host localhost --port ${e2ePort}`,
+    url: `http://localhost:${e2ePort}`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },

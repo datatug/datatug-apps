@@ -42,11 +42,22 @@ export const datatugRoutes: Routes = [
       ),
   },
   {
+    path:
+      'incidents/:' +
+      routingParamStoreId +
+      '/:' +
+      routingParamIncidentId +
+      '/record',
+    loadComponent: () =>
+      import('../pages/incidents/record/incident-resolution-record-page.component').then(
+        (m) => m.IncidentResolutionRecordPageComponent,
+      ),
+  },
+  {
     // Deep-linkable by IncidentRef (`storeId`/`incidentId`) rather than
     // ambient nav context, so a link produced under one profile opens
     // identically under another (AC:deep-link-works-in-other-profile).
-    path:
-      'incidents/:' + routingParamStoreId + '/:' + routingParamIncidentId,
+    path: 'incidents/:' + routingParamStoreId + '/:' + routingParamIncidentId,
     loadComponent: () =>
       import('../pages/incidents/detail/incident-detail-page.component').then(
         (m) => m.IncidentDetailPageComponent,
@@ -69,9 +80,9 @@ export const datatugRoutes: Routes = [
     path: 'explore/:' + routingParamSpaceId,
     ...SNEAT_AUTH_GUARDS,
     loadComponent: () =>
-      import(
-        '../pages/signed-in/space-explorer/space-explorer-page.component'
-      ).then((m) => m.SpaceExplorerPageComponent),
+      import('../pages/signed-in/space-explorer/space-explorer-page.component').then(
+        (m) => m.SpaceExplorerPageComponent,
+      ),
   },
   {
     // Read-only "explore my GitHub vault" transparency viewer — the
@@ -81,9 +92,9 @@ export const datatugRoutes: Routes = [
     path: 'explore-vault',
     ...SNEAT_AUTH_GUARDS,
     loadComponent: () =>
-      import(
-        '../pages/signed-in/vault-explorer/vault-explorer-page.component'
-      ).then((m) => m.VaultExplorerPageComponent),
+      import('../pages/signed-in/vault-explorer/vault-explorer-page.component').then(
+        (m) => m.VaultExplorerPageComponent,
+      ),
   },
   {
     path: 'signed-out',

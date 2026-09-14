@@ -12,6 +12,7 @@ import {
   AppendIncidentEventRequest,
   AppendIncidentEventResponse,
   INCIDENT_OUTCOMES,
+  INCIDENT_PARTICIPANT_ROLES,
   INCIDENT_STATUSES,
   IncidentApiResult,
   IncidentDetail,
@@ -245,7 +246,12 @@ function decodeIncidentEvent(value: unknown): IncidentStreamItem['event'] {
     !isAssertion(event['assertion']) ||
     !optionalArtifactRefs(event['refs']) ||
     !isEventAssertionProvenanceValid(event) ||
-    !isIncidentEventPayload(event['type'], event['payload'], event['incident'])
+    !isIncidentEventPayload(
+      event['type'],
+      event['payload'],
+      event['incident'],
+    ) ||
+    !isCompareRunEventShape(event)
   ) {
     throw new Error('Invalid incident events response.');
   }
@@ -406,6 +412,8 @@ function isIncidentEventPayload(
         payload['layer'] !== undefined &&
         payload['layer'] !== 'canonical'
       );
+    case 'compare.run':
+      return isCompareRunPayload(payload);
     default:
       return false;
   }
@@ -567,7 +575,8 @@ function optionalParticipants(value: unknown): boolean {
       value.every(
         (item) =>
           isRecord(item) &&
-          item['role'] === 'reporter' &&
+          hasOnlyKeys(item, ['actor', 'role']) &&
+          isIncidentParticipantRole(item['role']) &&
           isActor(item['actor']),
       ))
   );
@@ -895,7 +904,47 @@ function isIncidentEventType(value: unknown): boolean {
     value === 'note.added' ||
     value === 'context.fact.added' ||
     value === 'context.fact.promoted' ||
-    value === 'context.fact.rejected'
+    value === 'context.fact.rejected' ||
+    value === 'compare.run'
+  );
+}
+
+function isIncidentParticipantRole(value: unknown): boolean {
+  return (
+    typeof value === 'string' &&
+    (INCIDENT_PARTICIPANT_ROLES as readonly string[]).includes(value)
+  );
+}
+
+function isCompareRunPayload(payload: Record<string, unknown>): boolean {
+  const key = payload['key'];
+  if (!hasOnlyKeys(payload, ['key']) || !Array.isArray(key) || !key.length) {
+    return false;
+  }
+  const seen = new Set<string>();
+  for (const column of key) {
+    if (!isNonEmptyString(column) || seen.has(column)) {
+      return false;
+    }
+    seen.add(column);
+  }
+  return true;
+}
+
+function isCompareRunEventShape(event: Record<string, unknown>): boolean {
+  if (event['type'] !== 'compare.run') {
+    return true;
+  }
+  const assertion = event['assertion'];
+  const refs = event['refs'];
+  return (
+    isRecord(assertion) &&
+    assertion['kind'] === 'deterministic-result' &&
+    Array.isArray(refs) &&
+    refs.length === 1 &&
+    isRecord(refs[0]) &&
+    refs[0]['kind'] === 'compare' &&
+    isArtifactRef(refs[0])
   );
 }
 
