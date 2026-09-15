@@ -26,7 +26,10 @@ import { DatatugNavService } from '../../services/nav/datatug-nav.service';
 import { DatatugServicesProjectModule } from '../../services/project/datatug-services-project.module';
 import { ProjectService } from '../../services/project/project.service';
 import { IGithubRepo } from '../../services/repo/github/github-api';
-import { GithubOAuthService } from '../../services/repo/github/github-oauth.service';
+import {
+  GithubOAuthService,
+  GithubSignInRedirecting,
+} from '../../services/repo/github/github-oauth.service';
 import { GithubReposService } from '../../services/repo/github/github-repos.service';
 import {
   DEFAULT_GITHUB_PROJECT_FOLDER,
@@ -102,6 +105,9 @@ export class NewProjectFormComponent implements ViewDidEnter {
 
   constructor() {
     this.isGithubSignedIn.set(this.githubOAuth.isSignedIn);
+    // A previous popup may have been blocked and sent the user to GitHub; on
+    // return the credential is waiting for whoever asks first, so ask now.
+    void this.completeRedirectSignIn();
   }
 
   ionViewDidEnter(): void {
@@ -135,6 +141,12 @@ export class NewProjectFormComponent implements ViewDidEnter {
       this.isConnecting.set(false);
       this.loadGithubRepos();
     } catch (err) {
+      if (err instanceof GithubSignInRedirecting) {
+        // Not a failure: the browser is navigating to GitHub, and the dialog
+        // will pick the token up via completeRedirectSignIn() when it returns.
+        this.formError.set('Continuing on GitHub…');
+        return;
+      }
       this.isConnecting.set(false);
       const code = (err as { code?: string })?.code;
       this.formError.set(
@@ -145,6 +157,22 @@ export class NewProjectFormComponent implements ViewDidEnter {
           : 'GitHub sign-in failed. Please try again.',
       );
       this.errorLogger.logError(err, 'Failed to sign in to GitHub');
+    }
+  }
+
+  /** Picks up a GitHub token left by a redirect sign-in, if there is one. */
+  private async completeRedirectSignIn(): Promise<void> {
+    try {
+      const token = await this.githubOAuth.completeRedirectSignIn();
+      if (token) {
+        this.isGithubSignedIn.set(true);
+        this.loadGithubRepos();
+      }
+    } catch (err) {
+      this.errorLogger.logError(
+        err,
+        'Failed to complete the GitHub redirect sign-in',
+      );
     }
   }
 

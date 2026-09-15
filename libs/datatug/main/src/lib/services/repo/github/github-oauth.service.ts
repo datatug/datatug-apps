@@ -4,8 +4,11 @@ import type { Auth } from 'firebase/auth';
 import {
   GithubAuthProvider,
   UserCredential,
+  getRedirectResult,
   linkWithPopup,
+  linkWithRedirect,
   signInWithPopup,
+  signInWithRedirect,
 } from 'firebase/auth';
 
 /**
@@ -21,6 +24,30 @@ export const GITHUB_REPO_SCOPE = 'repo';
 
 /** Where the token is kept: this tab only, cleared when the tab closes. */
 export const GITHUB_TOKEN_STORAGE_KEY = 'datatug:github:token';
+
+/**
+ * Firebase error codes that mean "the browser refused the popup". Sign-in falls
+ * back to a full-page redirect for these instead of failing: pop-ups are
+ * blocked by Safari/iOS, in-app browsers and strict enterprise policies, and
+ * the redirect path works everywhere the popup does not.
+ */
+const POPUP_BLOCKED_CODES = [
+  'auth/popup-blocked',
+  'auth/operation-not-supported-in-this-environment',
+];
+
+/**
+ * Thrown when the popup was blocked and the browser has been sent to GitHub
+ * instead. It is not a failure: the page is navigating away, and
+ * {@link GithubOAuthService.completeRedirectSignIn} picks the result up when
+ * the app loads again.
+ */
+export class GithubSignInRedirecting extends Error {
+  constructor() {
+    super('Redirecting to GitHub to finish signing in');
+    this.name = 'GithubSignInRedirecting';
+  }
+}
 
 /** Firebase error codes that mean "this GitHub account is already attached". */
 const ALREADY_LINKED_CODES = [
@@ -41,6 +68,7 @@ export class GithubOAuthService {
   private readonly auth = inject<Auth>(SNEAT_FIREBASE_AUTH);
 
   private token?: string;
+  private redirectResultChecked = false;
 
   constructor() {
     this.token = sessionStorage.getItem(GITHUB_TOKEN_STORAGE_KEY) ?? undefined;
@@ -66,9 +94,53 @@ export class GithubOAuthService {
    * the working path — it returns the same user when it is this account.
    */
   public async signIn(): Promise<string> {
+    const provider = this.createProvider();
+    try {
+      return this.tokenFrom(await this.signInOrLink(provider));
+    } catch (err) {
+      const code = (err as { code?: string })?.code;
+      if (code && POPUP_BLOCKED_CODES.includes(code)) {
+        // The browser refused the popup: navigate to GitHub instead. This never
+        // returns — the page is on its way out.
+        await this.redirectToGithub(provider);
+        throw new GithubSignInRedirecting();
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Reads the result of a redirect sign-in. Call once when the app starts (the
+   * dialog does): after GitHub sends the user back, the credential — and with
+   * it the access token — is waiting here. Idempotent, so repeated calls are
+   * harmless.
+   */
+  public async completeRedirectSignIn(): Promise<string | undefined> {
+    if (this.redirectResultChecked) {
+      return this.token;
+    }
+    this.redirectResultChecked = true;
+    const credential = await getRedirectResult(this.auth);
+    if (credential) {
+      this.tokenFrom(credential);
+    }
+    return this.token;
+  }
+
+  /** Forgets the GitHub token (does not sign the user out of Sneat). */
+  public forget(): void {
+    sessionStorage.removeItem(GITHUB_TOKEN_STORAGE_KEY);
+    this.token = undefined;
+  }
+
+  private createProvider(): GithubAuthProvider {
     const provider = new GithubAuthProvider();
     provider.addScope(GITHUB_REPO_SCOPE);
-    const credential = await this.signInOrLink(provider);
+    return provider;
+  }
+
+  /** Exchanges a credential for the token, remembering it for this tab. */
+  private tokenFrom(credential: UserCredential): string {
     const token =
       GithubAuthProvider.credentialFromResult(credential)?.accessToken;
     if (!token) {
@@ -80,10 +152,26 @@ export class GithubOAuthService {
     return token;
   }
 
-  /** Forgets the GitHub token (does not sign the user out of Sneat). */
-  public forget(): void {
-    sessionStorage.removeItem(GITHUB_TOKEN_STORAGE_KEY);
-    this.token = undefined;
+  /**
+   * The redirect counterpart of {@link signInOrLink}: links GitHub to the
+   * signed-in Sneat account, or signs in with it. Neither call resolves — the
+   * browser leaves for GitHub.
+   */
+  private async redirectToGithub(provider: GithubAuthProvider): Promise<void> {
+    const currentUser = this.auth.currentUser;
+    if (!currentUser) {
+      await signInWithRedirect(this.auth, provider);
+      return;
+    }
+    try {
+      await linkWithRedirect(currentUser, provider);
+    } catch (err) {
+      const code = (err as { code?: string })?.code;
+      if (!code || !ALREADY_LINKED_CODES.includes(code)) {
+        throw err;
+      }
+      await signInWithRedirect(this.auth, provider);
+    }
   }
 
   private async signInOrLink(
