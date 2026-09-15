@@ -4,10 +4,9 @@ import {
   provideHttpClientTesting,
 } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { PrivateTokenStoreService } from '@sneat/auth-core';
 import { SneatApiService } from '@sneat/api';
 import { ErrorLogger } from '@sneat/core';
-import { Observable, of, throwError } from 'rxjs';
+import { of, throwError } from 'rxjs';
 
 import {
   DEFAULT_GITHUB_PROJECT_FOLDER,
@@ -55,10 +54,6 @@ describe('GithubProjectCreateService', () => {
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
-        {
-          provide: PrivateTokenStoreService,
-          useValue: { getPrivateToken: vi.fn(() => of(TOKEN)) },
-        },
         { provide: SneatApiService, useValue: sneatApi },
         {
           provide: ErrorLogger,
@@ -118,7 +113,7 @@ describe('GithubProjectCreateService', () => {
         repo: 'demo-projects',
         title: 'My project',
         folder: 'my-folder',
-      })
+      }, TOKEN)
       .subscribe((ref) => (projectRef = ref));
 
     expect(createFile('my-folder/README.md').content).toBe(
@@ -157,7 +152,7 @@ describe('GithubProjectCreateService', () => {
         org: 'datatug',
         repo: 'demo-projects',
         title: 'My project',
-      })
+      }, TOKEN)
       .subscribe((ref) => refs.push(ref));
     createFile(`${DEFAULT_GITHUB_PROJECT_FOLDER}/README.md`);
     createFile(`${DEFAULT_GITHUB_PROJECT_FOLDER}/${GITHUB_PROJECT_FILE_NAME}`);
@@ -177,7 +172,7 @@ describe('GithubProjectCreateService', () => {
         org: 'datatug',
         repo: 'demo-projects',
         title: 'My project',
-      })
+      }, TOKEN)
       .subscribe((ref) => refs.push(ref));
     expect(createFile(`${DEFAULT_GITHUB_PROJECT_FOLDER}/README.md`)).toBeTruthy();
     createFile(`${DEFAULT_GITHUB_PROJECT_FOLDER}/${GITHUB_PROJECT_FILE_NAME}`);
@@ -189,7 +184,7 @@ describe('GithubProjectCreateService', () => {
         repo: 'demo-projects',
         title: 'My project',
         folder: '/nested/',
-      })
+      }, TOKEN)
       .subscribe((ref) => refs.push(ref));
     createFile('nested/README.md');
     createFile(`nested/${GITHUB_PROJECT_FILE_NAME}`);
@@ -206,28 +201,10 @@ describe('GithubProjectCreateService', () => {
         org: 'datatug',
         repo: 'demo-projects',
         title: 'My project',
-      })
+      }, TOKEN)
       .subscribe();
     createFile(`${DEFAULT_GITHUB_PROJECT_FOLDER}/README.md`, 'existing-sha');
     createFile(`${DEFAULT_GITHUB_PROJECT_FOLDER}/${GITHUB_PROJECT_FILE_NAME}`);
   });
 
-  it('surfaces a rejected token prompt and makes no API call', () => {
-    const canceled = new Error('canceled by user');
-    TestBed.inject(PrivateTokenStoreService).getPrivateToken = vi.fn(
-      () => new Observable<never>((subscriber) => subscriber.error(canceled)),
-    );
-
-    let error: unknown;
-    service
-      .createProject({
-        org: 'datatug',
-        repo: 'demo-projects',
-        title: 'My project',
-      })
-      .subscribe({ error: (err) => (error = err) });
-
-    expect(error).toBe(canceled);
-    httpMock.expectNone(() => true);
-  });
 });

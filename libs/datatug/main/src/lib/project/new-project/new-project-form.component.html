@@ -21,23 +21,69 @@
   </ion-item-divider>
 }
 @if (store === 'github') {
-  <ion-item>
-    <ion-label position="stacked">GitHub repo</ion-label>
-    <ion-input
-      placeholder="owner/name, e.g. datatug/demo-projects"
-      [(ngModel)]="githubRepo"
-    />
-  </ion-item>
-  <ion-item>
-    <ion-label position="stacked">Folder (optional)</ion-label>
-    <ion-input placeholder="datatug" [(ngModel)]="githubFolder" />
-  </ion-item>
-  <ion-item-divider>
-    <i>
-      You will be asked for a GitHub token with repo access. The project files
-      are committed to the repository's main branch.
-    </i>
-  </ion-item-divider>
+  @if (!isGithubSignedIn()) {
+    <ion-item-divider>
+      <i>
+        Sign in with GitHub to choose a repository. We ask for repository access
+        so the project files can be committed; the token stays in this browser
+        tab.
+      </i>
+    </ion-item-divider>
+    <ion-item lines="none">
+      <ion-button
+        expand="block"
+        (click)="signInToGithub()"
+        [disabled]="isConnecting()"
+      >
+        @if (isConnecting()) {
+          <ion-spinner name="dots" slot="start" />
+          <ion-label>Connecting…</ion-label>
+        } @else {
+          <ion-icon name="logo-github" slot="start" />
+          <ion-label>Sign in with GitHub</ion-label>
+        }
+      </ion-button>
+    </ion-item>
+  } @else {
+    <ion-item>
+      <ion-label>Repository</ion-label>
+      <ion-select
+        interface="popover"
+        [ngModel]="selectedRepo()"
+        (ngModelChange)="selectedRepo.set($event)"
+        [disabled]="isLoadingRepos()"
+      >
+        @for (repo of githubRepos(); track repo.fullName) {
+          <ion-select-option [value]="repo.fullName">
+            {{ repo.fullName }}{{ repo.private ? ' (private)' : '' }}
+          </ion-select-option>
+        }
+        <ion-select-option [value]="newRepoValue">
+          ＋ Create a new repository
+        </ion-select-option>
+      </ion-select>
+    </ion-item>
+    @if (isLoadingRepos()) {
+      <ion-item lines="none">
+        <ion-spinner name="dots" slot="start" />
+        <ion-label>Loading your repositories…</ion-label>
+      </ion-item>
+    }
+    @if (isNewRepo()) {
+      <ion-item>
+        <ion-label position="stacked">New repository name</ion-label>
+        <ion-input placeholder="my-datatug-projects" [(ngModel)]="newRepoName" />
+      </ion-item>
+      <ion-item>
+        <ion-label>Private</ion-label>
+        <ion-toggle [(ngModel)]="makeRepoPrivate" />
+      </ion-item>
+    }
+    <ion-item>
+      <ion-label position="stacked">Folder in the repository (optional)</ion-label>
+      <ion-input placeholder="datatug" [(ngModel)]="githubFolder" />
+    </ion-item>
+  }
 }
 <ion-item>
   <ion-label>Title</ion-label>
