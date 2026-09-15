@@ -92,6 +92,11 @@
       }
     </ion-card>
 
+    <sneat-datatug-incident-compare-panel
+      [context]="requestContext()"
+      [incident]="incident"
+    />
+
     <sneat-datatug-incident-read-panels
       [statusSentences]="statusSentences()"
       [statusLoading]="isTimelineLoading()"
