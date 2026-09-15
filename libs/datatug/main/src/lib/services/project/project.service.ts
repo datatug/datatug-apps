@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { SneatApiServiceFactory } from '@sneat/api';
+import { ISneatApiService, SneatApiService } from '@sneat/api';
 import { PrivateTokenStoreService } from '@sneat/auth-core';
 import {
   GITLAB_REPO_PREFIX,
@@ -37,7 +37,15 @@ export class ProjectService {
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly http = inject(HttpClient);
   private readonly privateTokenStoreService = inject(PrivateTokenStoreService);
-  private readonly sneatApiServiceFactory = inject(SneatApiServiceFactory);
+  // Injected directly rather than resolved through `SneatApiServiceFactory`:
+  // the factory's `getSneatApiService()` used to call `inject()` internally,
+  // which throws NG0203 when reached from a UI event handler — exactly the
+  // "create new project" path (`NewProjectFormComponent.create()`). The only
+  // store type the factory resolves is `firestore`, which is the same root
+  // singleton this injection returns, so this is behaviour-preserving. Same
+  // pattern as `EnvironmentService` / `SchemaService`.
+  private readonly sneatApiService: ISneatApiService =
+    inject(SneatApiService);
   private readonly datatugStoreServiceFactory = inject(
     DatatugStoreServiceFactory,
   );
@@ -173,9 +181,10 @@ export class ProjectService {
     storeId: string,
     projData: ICreateProjectData,
   ): Observable<string> {
-    const sneatApiService =
-      this.sneatApiServiceFactory.getSneatApiService(storeId);
-    return sneatApiService
+    if (storeId !== 'firestore') {
+      return throwError(() => new Error('unknown store type: ' + storeId));
+    }
+    return this.sneatApiService
       .post<
         ICreateProjectData,
         { id: string }

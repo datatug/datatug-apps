@@ -2,8 +2,8 @@ import { TestBed } from '@angular/core/testing';
 import { HttpClient } from '@angular/common/http';
 import { ErrorLogger } from '@sneat/core';
 import { PrivateTokenStoreService } from '@sneat/auth-core';
-import { SneatApiServiceFactory } from '@sneat/api';
-import { Observable, Subject } from 'rxjs';
+import { SneatApiService } from '@sneat/api';
+import { Observable, Subject, of } from 'rxjs';
 
 import { ProjectService } from './project.service';
 import { DatatugStoreServiceFactory } from '../repo/datatug-store-service-factory.service';
@@ -12,9 +12,11 @@ import { IProjectSummary } from '../../models/definition/project';
 
 describe('ProjectService', () => {
   let http: { get: ReturnType<typeof vi.fn>; post: ReturnType<typeof vi.fn> };
+  let sneatApi: { post: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     http = { get: vi.fn(), post: vi.fn() };
+    sneatApi = { post: vi.fn() };
     TestBed.configureTestingModule({
       providers: [
         ProjectService,
@@ -27,10 +29,7 @@ describe('ProjectService', () => {
           },
         },
         { provide: PrivateTokenStoreService, useValue: {} },
-        {
-          provide: SneatApiServiceFactory,
-          useValue: { getSneatApiService: vi.fn() },
-        },
+        { provide: SneatApiService, useValue: sneatApi },
         {
           provide: DatatugStoreServiceFactory,
           useValue: { getDatatugStoreService: vi.fn() },
@@ -96,6 +95,46 @@ describe('ProjectService', () => {
       // differently keyed entries for one project in this dictionary.
       const cache = (service as unknown as { projSummary: object }).projSummary;
       expect(Object.keys(cache)).toEqual([projectRefToString(projectRef)]);
+    });
+  });
+
+  // Regression for the NG0203 the founder hit on datatug.app (2026-09-14) when
+  // submitting "Create new project" from the My projects card: the call used to
+  // be routed through `SneatApiServiceFactory.getSneatApiService()`, which
+  // called `inject()` inside that method. A click handler has no injection
+  // context, so it threw NG0203. Note these tests call `createNewProject()`
+  // *outside* any `runInInjectionContext()` — the whole point of the fix is
+  // that this path never needs an injection context.
+  describe('createNewProject', () => {
+    const projData = { title: 'New project', userIDs: [] };
+
+    it('posts to the Firestore-backed create_project endpoint and maps the id', () => {
+      sneatApi.post.mockReturnValue(of({ id: 'new-project-id' }));
+      const service = TestBed.inject(ProjectService);
+
+      let createdId: string | undefined;
+      service.createNewProject('firestore', projData).subscribe((id) => {
+        createdId = id;
+      });
+
+      expect(sneatApi.post).toHaveBeenCalledWith(
+        '/datatug/projects/create_project?store=firestore',
+        projData,
+      );
+      expect(createdId).toBe('new-project-id');
+    });
+
+    it('errors as an Observable (not a throw) for an unsupported store type', () => {
+      const service = TestBed.inject(ProjectService);
+
+      let error: unknown;
+      expect(() =>
+        service
+          .createNewProject('github', projData)
+          .subscribe({ error: (err) => (error = err) }),
+      ).not.toThrow();
+      expect(error).toEqual(new Error('unknown store type: github'));
+      expect(sneatApi.post).not.toHaveBeenCalled();
     });
   });
 });

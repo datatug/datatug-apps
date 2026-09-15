@@ -63,7 +63,7 @@ export function agentBaseUrl(storeId: string): string {
  * | `/queries/delete_query`              | `DELETE /queries/delete_query`          | `project-item-service.ts` (`ProjectItemService.deleteProjItem`) |
  * | `/queries/all_queries`               | commented out server-side (`register.go`), route does not exist | `project-item-service.ts` (`ProjectItemService.getProjItems`/`getFolder`, itemsPath="queries") — pre-existing gap, flagged here rather than "fixed" since there is no server route to fix it against |
  * | `/boards/board`                      | `GET /boards/board`                     | `datatug-board.service.ts` (`DatatugBoardService.getBoard` — currently dead code, throws "not implemented" before making the call) |
- * | `/boards/create_board`               | `POST /boards/create_board`             | `datatug-board.service.ts` (`DatatugBoardService.createNewBoard` — routes through `SneatApiServiceFactory`, i.e. the Firestore-backed `sneat-go` path, not this agent builder; separate pre-existing bug, out of scope) |
+ * | `/boards/create_board`               | `POST /boards/create_board`             | `datatug-board.service.ts` (`DatatugBoardService.createNewBoard` — routes through `SneatApiService`, i.e. the Firestore-backed `sneat-go` path, not this agent builder; separate pre-existing bug, out of scope) |
  * | `/boards/save_board`                 | `PUT /boards/save_board`                | not currently called by the client |
  * | `/boards/delete_board`               | `DELETE /boards/delete_board`           | not currently called by the client |
  * | `/environment-summary`               | `GET /environment-summary`              | `environment.service.ts` (`EnvironmentService.getEnvSummary`) |

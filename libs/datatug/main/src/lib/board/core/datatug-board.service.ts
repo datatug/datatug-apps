@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable, throwError } from 'rxjs';
 import { map } from 'rxjs/operators';
-import { SneatApiServiceFactory } from '@sneat/api';
+import { ISneatApiService, SneatApiService } from '@sneat/api';
 import { STORE_ID_GITHUB_COM, STORE_TYPE_GITHUB } from '@sneat/core';
 import { Board } from '@datatug/board-models';
 import { CreateNamedRequest } from '../../dto/requests';
@@ -23,7 +23,10 @@ const isGithubStoreId = (storeId: string): boolean =>
 // existing `DatatugNavService` precedent.
 @Injectable({ providedIn: 'root' })
 export class DatatugBoardService {
-  private readonly sneatApiServiceFactory = inject(SneatApiServiceFactory);
+  // Injected directly, not via `SneatApiServiceFactory` — see the longer note
+  // in `ProjectService`: the factory called `inject()` inside a method, which
+  // throws NG0203 when the call originates from a UI event handler.
+  private readonly sneatApiService: ISneatApiService = inject(SneatApiService);
   private readonly githubReader = inject(GithubProjectReaderService);
 
   getBoard(
@@ -70,10 +73,7 @@ export class DatatugBoardService {
     if (isGithubStoreId(projectRef.storeId)) {
       return throwError(() => new Error(GITHUB_READ_ONLY_MESSAGE));
     }
-    const service = this.sneatApiServiceFactory.getSneatApiService(
-      projectRef.storeId,
-    );
-    return service.post<ICreateProjectItemRequest, { id: string }>(
+    return this.sneatApiService.post<ICreateProjectItemRequest, { id: string }>(
       `/datatug/boards/create_board?project=${projectRef.projectId}&store=${projectRef.storeId}`,
       { title: request.name, folder: '~' },
       {
