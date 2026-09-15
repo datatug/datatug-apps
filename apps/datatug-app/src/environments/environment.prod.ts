@@ -11,7 +11,11 @@ export const datatugAppEnvironmentConfig: IEnvironmentConfig = {
     projectId: 'sneat-eur3-1',
     appId: '1:588648831063:web:303af7e0c5f8a7b10d6b12',
     apiKey: 'AIzaSyCeQu1WC182yD0VHrRm4nHUxVf27fY-MLQ',
-    authDomain: 'sneat.app',
+    // The shared, Firebase-hosted auth domain every Sneat product uses: it
+    // serves Google/GitHub OAuth's /__/auth/handler, which a Cloudflare-served
+    // app does NOT serve itself. Matches @sneat/app's SHARED_SNEAT_AUTH_DOMAIN
+    // (and the GitHub OAuth app's registered callback).
+    authDomain: 'auth.sneat.co',
     messagingSenderId: '588648831063',
     measurementId: 'G-TYBDTV738R',
   },
