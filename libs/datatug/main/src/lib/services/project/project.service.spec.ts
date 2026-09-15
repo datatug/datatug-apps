@@ -98,6 +98,37 @@ describe('ProjectService', () => {
     });
   });
 
+  // The cloud store's projects live in Firestore; the summary comes from the
+  // Firestore store service (which watches datatug_projects/{id}), NOT from
+  // ProjectService itself — it used to throw 'Not implemented' here, which made
+  // every cloud project page show "Something went wrong".
+  it('reads a cloud (firestore) project summary from the firestore store service', () => {
+    const summary$ = new Subject<IProjectSummary | undefined>();
+    const storeService = {
+      getProjectSummary: vi.fn(() => summary$.asObservable()),
+      watchProjectItem: vi.fn(),
+    };
+    TestBed.overrideProvider(DatatugStoreServiceFactory, {
+      useValue: { getDatatugStoreService: vi.fn(() => storeService) },
+    });
+    const service = TestBed.inject(ProjectService);
+    const projectRef: IProjectRef = {
+      storeId: 'firestore',
+      projectId: 'X91FirPb',
+    };
+
+    const received: (IProjectSummary | undefined)[] = [];
+    service
+      .watchProjectSummary(projectRef)
+      .subscribe((summary) => received.push(summary));
+
+    expect(storeService.getProjectSummary).toHaveBeenCalledWith('X91FirPb');
+
+    const summary = { id: 'X91FirPb', title: 'Project 1' } as IProjectSummary;
+    summary$.next(summary);
+    expect(received).toEqual([summary]);
+  });
+
   // Regression for the NG0203 the founder hit on datatug.app (2026-09-14) when
   // submitting "Create new project" from the My projects card: the call used to
   // be routed through `SneatApiServiceFactory.getSneatApiService()`, which

@@ -92,34 +92,21 @@ export class ProjectService {
       this.projSummary[id] = subj = new ReplaySubject(1);
       const summary$ =
         projectRef.storeId === 'firestore'
-          ? this.firestoreChanges().pipe(
-              tap((summary) =>
-                console.log(
-                  `ProjectService.watchProject(${id}) => summary:`,
-                  summary,
+          ? this.datatugStoreServiceFactory
+              .getDatatugStoreService(projectRef.storeId)
+              .getProjectSummary(projectRef.projectId)
+              .pipe(
+                tap((summary) =>
+                  console.log(
+                    `ProjectService.watchProject(${id}) => summary:`,
+                    summary,
+                  ),
                 ),
-              ),
-            )
+              )
           : this.getProjectSummaryRequest(projectRef);
       summary$.subscribe(subj);
     }
     return subj.asObservable();
-  }
-
-  private firestoreChanges(): Observable<IProjectSummary | undefined> {
-    return throwError(() => 'Not implemented');
-    // return this.projectsCollection
-    // 	.doc(id)
-    // 	.snapshotChanges()
-    // 	.pipe(
-    // 		tap((v) => console.log(`project[${id}] snapshotChange:`, v)),
-    // 		map((value) =>
-    // 			value.type === 'removed'
-    // 				? undefined
-    // 				: (value.payload.data() as IProjectSummary),
-    // 		),
-    // 		shareReplay(1),
-    // 	);
   }
 
   public getFull(projectRef: IProjectRef): Observable<IProjectFull> {
