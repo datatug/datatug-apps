@@ -7,7 +7,7 @@ import { IonicRouteStrategy } from '@ionic/angular/common';
 import { provideIonicAngular } from '@ionic/angular/provide';
 import { DefaultSneatAppApiBaseUrl, getStoreUrl, SneatApiBaseUrl } from '@sneat/api';
 import { provideSneatAuthenticatedProviders } from '@sneat/app-auth';
-import { provideGithubRedirectCapture } from '@sneat/datatug-main';
+import { provideGithubRedirectCapture } from './github-redirect-capture';
 import { TelegramAuthService } from '@sneat/auth-core';
 import { authRoutes, ssoRoutes, TelegramLoginConfig } from '@sneat/auth-ui';
 import {
@@ -104,7 +104,7 @@ bootstrapApplication(DatatugAppComponent, {
     // Before the platform's auth bootstrap: whoever reads Firebase's pending
     // redirect result first gets it, and the platform reads it during start-up.
     // Reading ours later (from the new-project dialog) silently lost the
-    // GitHub token — see github-oauth.initializer.ts.
+    // GitHub token — see github-redirect-capture.ts.
     provideGithubRedirectCapture(),
     provideSneatAuthenticatedProviders(datatugAppEnvironmentConfig),
     provideSneatAnalytics(datatugAppEnvironmentConfig),
