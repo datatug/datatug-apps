@@ -5,7 +5,9 @@ import {
 } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { PrivateTokenStoreService } from '@sneat/auth-core';
-import { Observable, of } from 'rxjs';
+import { SneatApiService } from '@sneat/api';
+import { ErrorLogger } from '@sneat/core';
+import { Observable, of, throwError } from 'rxjs';
 
 import {
   DEFAULT_GITHUB_PROJECT_FOLDER,
@@ -14,6 +16,7 @@ import {
   GITHUB_PROJECT_FILE_NAME,
   GITHUB_PROJECT_README,
   parseGithubRepo,
+  REGISTER_GITHUB_PROJECT_ENDPOINT,
 } from './github-project-create.service';
 
 const TOKEN = 'ghp_test_token';
@@ -44,8 +47,10 @@ describe('parseGithubRepo', () => {
 describe('GithubProjectCreateService', () => {
   let service: GithubProjectCreateService;
   let httpMock: HttpTestingController;
+  let sneatApi: { post: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
+    sneatApi = { post: vi.fn(() => of({ id: 'demo-projects@datatug@datatug' })) };
     TestBed.configureTestingModule({
       providers: [
         provideHttpClient(),
@@ -53,6 +58,14 @@ describe('GithubProjectCreateService', () => {
         {
           provide: PrivateTokenStoreService,
           useValue: { getPrivateToken: vi.fn(() => of(TOKEN)) },
+        },
+        { provide: SneatApiService, useValue: sneatApi },
+        {
+          provide: ErrorLogger,
+          useValue: {
+            logError: vi.fn(),
+            logErrorHandler: vi.fn(() => vi.fn()),
+          },
         },
       ],
     });
@@ -127,6 +140,34 @@ describe('GithubProjectCreateService', () => {
       org: 'datatug',
       folder: 'my-folder',
     });
+    // ...and the cloud is told about the project so it shows up in the list.
+    expect(sneatApi.post).toHaveBeenCalledWith(REGISTER_GITHUB_PROJECT_ENDPOINT, {
+      org: 'datatug',
+      repo: 'demo-projects',
+      folder: 'my-folder',
+      title: 'My project',
+    });
+  });
+
+  it('still succeeds when registering the project in the index fails', () => {
+    sneatApi.post.mockReturnValue(throwError(() => new Error('500')));
+    const refs: unknown[] = [];
+    service
+      .createProject({
+        org: 'datatug',
+        repo: 'demo-projects',
+        title: 'My project',
+      })
+      .subscribe((ref) => refs.push(ref));
+    createFile(`${DEFAULT_GITHUB_PROJECT_FOLDER}/README.md`);
+    createFile(`${DEFAULT_GITHUB_PROJECT_FOLDER}/${GITHUB_PROJECT_FILE_NAME}`);
+    expect(refs).toEqual([
+      {
+        repo: 'demo-projects',
+        org: 'datatug',
+        folder: DEFAULT_GITHUB_PROJECT_FOLDER,
+      },
+    ]);
   });
 
   it('defaults the folder to datatug and trims surrounding slashes', () => {

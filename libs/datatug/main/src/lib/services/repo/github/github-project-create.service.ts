@@ -5,9 +5,19 @@ import {
 } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { PrivateTokenStoreService } from '@sneat/auth-core';
+import { SneatApiService } from '@sneat/api';
+import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { Observable, forkJoin, of, throwError } from 'rxjs';
 import { catchError, map, switchMap } from 'rxjs/operators';
 import { IGithubProjectId } from './github-project-reader.service';
+
+/**
+ * DataTug cloud endpoint that records a GitHub-hosted project in the user's
+ * DataTug index. The path is relative to an API base URL that already ends in
+ * `/v0/` (see `ProjectService.createNewProject` for the same rule).
+ */
+export const REGISTER_GITHUB_PROJECT_ENDPOINT =
+  'datatug/projects/register_github_project';
 
 /**
  * Domain the GitHub API token is asked for / stored under by
@@ -89,10 +99,13 @@ function toBase64(value: string): string {
 export class GithubProjectCreateService {
   private readonly http = inject(HttpClient);
   private readonly privateTokenStoreService = inject(PrivateTokenStoreService);
+  private readonly sneatApiService = inject(SneatApiService);
+  private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
 
   /**
-   * Creates the project files in `request`'s repository and resolves with the
-   * project ref the app navigates to (`repo@org@folder`).
+   * Creates the project files in `request`'s repository, registers the project
+   * in the user's DataTug index, and resolves with the project ref the app
+   * navigates to (`repo@org@folder`).
    */
   public createProject(
     request: ICreateGithubProjectRequest,
@@ -129,8 +142,35 @@ export class GithubProjectCreateService {
             ),
           ]),
         ),
+        // Registering the project only makes it appear in the user's project
+        // list: the files are already committed, so a failure here must not
+        // fail the creation — the project is still usable right away.
+        switchMap(() =>
+          this.registerProject(project, request).pipe(
+            catchError((err: unknown) => {
+              this.errorLogger.logError(
+                err,
+                'Failed to register the new GitHub project in the user index',
+              );
+              return of(undefined);
+            }),
+          ),
+        ),
         map(() => project),
       );
+  }
+
+  /** Records the project in the user's DataTug index (cloud side). */
+  private registerProject(
+    project: IGithubProjectId,
+    request: ICreateGithubProjectRequest,
+  ): Observable<unknown> {
+    return this.sneatApiService.post(REGISTER_GITHUB_PROJECT_ENDPOINT, {
+      org: project.org,
+      repo: project.repo,
+      folder: project.folder,
+      title: request.title,
+    });
   }
 
   /**
