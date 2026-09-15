@@ -18,3 +18,4 @@ export { DatatugMenuModule } from './lib/menu/datatug-menu.module';
 export { DatatugMenuComponent } from './lib/menu/datatug-menu.component';
 export * from './lib/incidents/models';
 export { IncidentClientService } from './lib/incidents/incident-client.service';
+export { provideGithubRedirectCapture } from './lib/services/repo/github/github-oauth.initializer';
