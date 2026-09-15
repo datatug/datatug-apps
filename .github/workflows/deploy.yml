@@ -1,0 +1,39 @@
+name: Deploy (Cloudflare)
+
+# Deploys the datatug.app worker to Cloudflare (Workers static assets) via the
+# shared reusable cf-deploy workflow (sneat-co/cicd), so datatug.app deploys
+# the same way as every other Sneat site and each deploy is visible/auditable
+# in GitHub Actions. The worker is defined by the repo-root wrangler.jsonc,
+# which serves datatug.app and app.incidentius.com from
+# dist/apps/datatug-app/browser.
+#
+# Auth is org-level: CLOUDFLARE_API_TOKEN secret + CLOUDFLARE_ACCOUNT_ID
+# variable (an identifier, not a secret). No per-repo secrets are needed.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - apps/**
+      - libs/**
+      - wrangler.jsonc
+      - package.json
+      - pnpm-lock.yaml
+      - .github/workflows/deploy.yml
+
+concurrency:
+  group: deploy-datatug-app-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    uses: sneat-co/cicd/.github/workflows/cf-deploy.yml@main
+    with:
+      # The Angular app and its wrangler config both live at the repo root,
+      # and cf-deploy's Nx fallback builds it with `pnpm exec nx build
+      # datatug-app` (which also runs the stamp-build-info dependency).
+      working-directory: .
+      build-target: datatug-app
+      cloudflare-account-id: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+    secrets:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
