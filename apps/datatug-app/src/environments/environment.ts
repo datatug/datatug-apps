@@ -26,7 +26,11 @@ export const datatugAppEnvironmentConfig: IEnvironmentConfig = {
   firebaseConfig: {
     emulator,
     apiKey: 'emulator-does-not-need-api-key',
-    authDomain: 'sneat.app',
+    // The shared, Firebase-hosted auth domain every Sneat product uses: it
+    // serves Google/GitHub OAuth's /__/auth/handler, which a Cloudflare-served
+    // app does NOT serve itself. Matches @sneat/app's SHARED_SNEAT_AUTH_DOMAIN
+    // (and the GitHub OAuth app's registered callback).
+    authDomain: 'auth.sneat.co',
     projectId: 'demo-local-sneat-app',
     appId: 'emulator-does-not-need-app-id',
     measurementId: 'G-PROVIDE_IF_NEEDED',

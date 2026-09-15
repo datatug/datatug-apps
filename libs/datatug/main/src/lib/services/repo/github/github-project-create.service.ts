@@ -1,14 +1,10 @@
-import {
-  HttpClient,
-  HttpErrorResponse,
-  HttpHeaders,
-} from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { PrivateTokenStoreService } from '@sneat/auth-core';
 import { SneatApiService } from '@sneat/api';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { Observable, forkJoin, of, throwError } from 'rxjs';
 import { catchError, map, switchMap } from 'rxjs/operators';
+import { GITHUB_API_BASE, githubApiHeaders } from './github-api';
 import { IGithubProjectId } from './github-project-reader.service';
 
 /**
@@ -18,13 +14,6 @@ import { IGithubProjectId } from './github-project-reader.service';
  */
 export const REGISTER_GITHUB_PROJECT_ENDPOINT =
   'datatug/projects/register_github_project';
-
-/**
- * Domain the GitHub API token is asked for / stored under by
- * {@link PrivateTokenStoreService} (which prompts the user once and keeps the
- * token in localStorage).
- */
-export const GITHUB_API_DOMAIN = 'github.com';
 
 /**
  * Folder a project is created in when the user does not name one — the same
@@ -98,7 +87,6 @@ function toBase64(value: string): string {
 @Injectable({ providedIn: 'root' })
 export class GithubProjectCreateService {
   private readonly http = inject(HttpClient);
-  private readonly privateTokenStoreService = inject(PrivateTokenStoreService);
   private readonly sneatApiService = inject(SneatApiService);
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
 
@@ -106,9 +94,14 @@ export class GithubProjectCreateService {
    * Creates the project files in `request`'s repository, registers the project
    * in the user's DataTug index, and resolves with the project ref the app
    * navigates to (`repo@org@folder`).
+   *
+   * `token` is the GitHub access token the caller obtained through
+   * `GithubOAuthService` — repository access is the user's own, and the token
+   * never reaches our servers.
    */
   public createProject(
     request: ICreateGithubProjectRequest,
+    token: string,
   ): Observable<IGithubProjectId> {
     const folder = (request.folder || DEFAULT_GITHUB_PROJECT_FOLDER)
       .trim()
@@ -119,45 +112,40 @@ export class GithubProjectCreateService {
       folder,
     };
     const message = `Create DataTug project "${request.title}"`;
-    return this.privateTokenStoreService
-      .getPrivateToken(GITHUB_API_DOMAIN, `${request.org}/${request.repo}`)
-      .pipe(
-        switchMap((token) =>
-          forkJoin([
-            this.putFile(
-              token,
-              request.org,
-              request.repo,
-              `${folder}/README.md`,
-              GITHUB_PROJECT_README,
-              message,
-            ),
-            this.putFile(
-              token,
-              request.org,
-              request.repo,
-              `${folder}/${GITHUB_PROJECT_FILE_NAME}`,
-              this.projectFile(request.title),
-              message,
-            ),
-          ]),
+    return forkJoin([
+      this.putFile(
+        token,
+        request.org,
+        request.repo,
+        `${folder}/README.md`,
+        GITHUB_PROJECT_README,
+        message,
+      ),
+      this.putFile(
+        token,
+        request.org,
+        request.repo,
+        `${folder}/${GITHUB_PROJECT_FILE_NAME}`,
+        this.projectFile(request.title),
+        message,
+      ),
+    ]).pipe(
+      // Registering the project only makes it appear in the user's project
+      // list: the files are already committed, so a failure here must not fail
+      // the creation — the project is still usable right away.
+      switchMap(() =>
+        this.registerProject(project, request).pipe(
+          catchError((err: unknown) => {
+            this.errorLogger.logError(
+              err,
+              'Failed to register the new GitHub project in the user index',
+            );
+            return of(undefined);
+          }),
         ),
-        // Registering the project only makes it appear in the user's project
-        // list: the files are already committed, so a failure here must not
-        // fail the creation — the project is still usable right away.
-        switchMap(() =>
-          this.registerProject(project, request).pipe(
-            catchError((err: unknown) => {
-              this.errorLogger.logError(
-                err,
-                'Failed to register the new GitHub project in the user index',
-              );
-              return of(undefined);
-            }),
-          ),
-        ),
-        map(() => project),
-      );
+      ),
+      map(() => project),
+    );
   }
 
   /** Records the project in the user's DataTug index (cloud side). */
@@ -203,12 +191,8 @@ export class GithubProjectCreateService {
     content: string,
     message: string,
   ): Observable<void> {
-    const url = `https://api.github.com/repos/${org}/${repo}/contents/${path}`;
-    const headers = new HttpHeaders({
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/vnd.github+json',
-      'X-GitHub-Api-Version': '2022-11-28',
-    });
+    const url = `${GITHUB_API_BASE}/repos/${org}/${repo}/contents/${path}`;
+    const headers = githubApiHeaders(token);
     return this.http
       .get<{ sha?: string }>(url, {
         headers,

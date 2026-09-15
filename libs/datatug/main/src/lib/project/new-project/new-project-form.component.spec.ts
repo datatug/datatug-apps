@@ -2,16 +2,29 @@ import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { PopoverController } from '@ionic/angular';
 import { ErrorLogger } from '@sneat/core';
-import { Subject } from 'rxjs';
+import { Subject, of } from 'rxjs';
 
 import { NewProjectFormComponent } from './new-project-form.component';
 import { DatatugNavService } from '../../services/nav/datatug-nav.service';
 import { ProjectService } from '../../services/project/project.service';
 import { GithubProjectCreateService } from '../../services/repo/github/github-project-create.service';
+import { GithubOAuthService } from '../../services/repo/github/github-oauth.service';
+import { GithubReposService } from '../../services/repo/github/github-repos.service';
 
 const githubProjectCreateMock = (): {
   createProject: ReturnType<typeof vi.fn>;
 } => ({ createProject: vi.fn(() => new Subject()) });
+
+const githubOAuthMock = (): {
+  isSignedIn: boolean;
+  accessToken: string | undefined;
+  signIn: ReturnType<typeof vi.fn>;
+} => ({ isSignedIn: false, accessToken: undefined, signIn: vi.fn() });
+
+const githubReposMock = (): {
+  listRepos: ReturnType<typeof vi.fn>;
+  createRepo: ReturnType<typeof vi.fn>;
+} => ({ listRepos: vi.fn(() => of([])), createRepo: vi.fn() });
 
 describe('NewProjectFormComponent', () => {
   let component: NewProjectFormComponent;
@@ -37,6 +50,8 @@ describe('NewProjectFormComponent', () => {
           provide: GithubProjectCreateService,
           useValue: githubProjectCreateMock(),
         },
+        { provide: GithubOAuthService, useValue: githubOAuthMock() },
+        { provide: GithubReposService, useValue: githubReposMock() },
         {
           provide: PopoverController,
           useValue: { dismiss: vi.fn(() => Promise.resolve(true)) },
@@ -109,6 +124,8 @@ describe('NewProjectFormComponent re-enables its buttons after a failed create (
           provide: GithubProjectCreateService,
           useValue: githubProjectCreateMock(),
         },
+        { provide: GithubOAuthService, useValue: githubOAuthMock() },
+        { provide: GithubReposService, useValue: githubReposMock() },
         {
           provide: PopoverController,
           useValue: { dismiss: vi.fn(() => Promise.resolve(true)) },
@@ -170,16 +187,26 @@ describe('NewProjectFormComponent creating in a GitHub repo', () => {
   let component: NewProjectFormComponent;
   let fixture: ComponentFixture<NewProjectFormComponent>;
   let createProject$: Subject<{ repo: string; org: string; folder: string }>;
-  let githubCreate: { createProject: ReturnType<typeof vi.fn> };
+  let createProject: ReturnType<typeof vi.fn>;
+  let oauth: {
+    isSignedIn: boolean;
+    accessToken: string | undefined;
+    signIn: ReturnType<typeof vi.fn>;
+  };
+  let repos: {
+    listRepos: ReturnType<typeof vi.fn>;
+    createRepo: ReturnType<typeof vi.fn>;
+  };
   let nav: { goProject: ReturnType<typeof vi.fn> };
 
-  /** `formError` is protected; the test reads it through the instance. */
   const formErrorOf = (c: NewProjectFormComponent): string | undefined =>
     (c as unknown as { formError: () => string | undefined }).formError();
 
   beforeEach(async () => {
     createProject$ = new Subject();
-    githubCreate = { createProject: vi.fn(() => createProject$.asObservable()) };
+    createProject = vi.fn(() => createProject$.asObservable());
+    oauth = { isSignedIn: false, accessToken: undefined, signIn: vi.fn() };
+    repos = { listRepos: vi.fn(() => of([])), createRepo: vi.fn() };
     nav = { goProject: vi.fn() };
 
     await TestBed.configureTestingModule({
@@ -188,16 +215,15 @@ describe('NewProjectFormComponent creating in a GitHub repo', () => {
       providers: [
         {
           provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
+          useValue: { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) },
         },
         {
           provide: ProjectService,
           useValue: { createNewProject: vi.fn(() => new Subject()) },
         },
-        { provide: GithubProjectCreateService, useValue: githubCreate },
+        { provide: GithubProjectCreateService, useValue: { createProject } },
+        { provide: GithubOAuthService, useValue: oauth },
+        { provide: GithubReposService, useValue: repos },
         {
           provide: PopoverController,
           useValue: { dismiss: vi.fn(() => Promise.resolve(true)) },
@@ -219,19 +245,64 @@ describe('NewProjectFormComponent creating in a GitHub repo', () => {
     component = fixture.componentInstance;
   });
 
-  it('commits to the named repo and navigates to the new project', () => {
+  it('asks the user to sign in to GitHub instead of prompting for a token', () => {
     component.store = 'github';
-    component.githubRepo = 'datatug/demo-projects';
     component.title = 'My project';
 
     component.create();
 
-    expect(githubCreate.createProject).toHaveBeenCalledWith({
-      org: 'datatug',
-      repo: 'demo-projects',
-      folder: 'datatug',
-      title: 'My project',
+    expect(createProject).not.toHaveBeenCalled();
+    expect(formErrorOf(component)).toContain('Sign in to GitHub');
+  });
+
+  it('signs in to GitHub and loads the repositories the user can push to', async () => {
+    oauth.signIn = vi.fn(() => {
+      oauth.isSignedIn = true;
+      oauth.accessToken = 'gho_token';
+      return Promise.resolve('gho_token');
     });
+    repos.listRepos = vi.fn(() =>
+      of([
+        { fullName: 'datatug/demo-projects', private: false, defaultBranch: 'main' },
+        { fullName: 'datatug/private-one', private: true, defaultBranch: 'main' },
+      ]),
+    );
+
+    await component.signInToGithub();
+
+    expect(oauth.signIn).toHaveBeenCalled();
+    expect(repos.listRepos).toHaveBeenCalledWith('gho_token');
+    expect(
+      (component as unknown as { githubRepos: () => unknown[] }).githubRepos(),
+    ).toHaveLength(2);
+    // The first repository is preselected, so "Create" works without a pick.
+    expect(
+      (component as unknown as { selectedRepo: () => string }).selectedRepo(),
+    ).toBe('datatug/demo-projects');
+    expect(formErrorOf(component)).toBeUndefined();
+  });
+
+  it('commits to the selected repository and opens the new project', () => {
+    oauth.isSignedIn = true;
+    oauth.accessToken = 'gho_token';
+    (component as unknown as { selectedRepo: { set: (v: string) => void } }).selectedRepo.set(
+      'datatug/demo-projects',
+    );
+    component.store = 'github';
+    component.title = 'My project';
+
+    component.create();
+
+    expect(createProject).toHaveBeenCalledWith(
+      {
+        org: 'datatug',
+        repo: 'demo-projects',
+        folder: 'datatug',
+        title: 'My project',
+      },
+      'gho_token',
+    );
+
     createProject$.next({ repo: 'demo-projects', org: 'datatug', folder: 'datatug' });
     createProject$.complete();
 
@@ -242,15 +313,42 @@ describe('NewProjectFormComponent creating in a GitHub repo', () => {
     );
   });
 
-  it('reports a malformed repo instead of calling GitHub', () => {
+  it('creates a new repository first when the user asks for one', () => {
+    oauth.isSignedIn = true;
+    oauth.accessToken = 'gho_token';
+    const signals = component as unknown as {
+      selectedRepo: { set: (v: string) => void };
+    };
+    signals.selectedRepo.set('__new__');
+    component.newRepoName = 'my-projects';
+    component.makeRepoPrivate = true;
+    repos.createRepo = vi.fn(() =>
+      of({ fullName: 'datatug/my-projects', private: true, defaultBranch: 'main' }),
+    );
     component.store = 'github';
-    component.githubRepo = 'not-a-repo';
     component.title = 'My project';
 
     component.create();
 
-    expect(githubCreate.createProject).not.toHaveBeenCalled();
-    expect(formErrorOf(component)).toContain('owner/name');
+    expect(repos.createRepo).toHaveBeenCalledWith('gho_token', 'my-projects', true);
+    expect(createProject).toHaveBeenCalledWith(
+      expect.objectContaining({ org: 'datatug', repo: 'my-projects' }),
+      'gho_token',
+    );
+  });
+
+  it('requires a name before creating a new repository', () => {
+    oauth.isSignedIn = true;
+    oauth.accessToken = 'gho_token';
+    (component as unknown as { selectedRepo: { set: (v: string) => void } }).selectedRepo.set(
+      '__new__',
+    );
+    component.store = 'github';
+
+    component.create();
+
+    expect(repos.createRepo).not.toHaveBeenCalled();
+    expect(formErrorOf(component)).toContain('name');
   });
 
   it('still creates in the cloud store when Cloud is selected', () => {
@@ -259,7 +357,7 @@ describe('NewProjectFormComponent creating in a GitHub repo', () => {
 
     component.create();
 
-    expect(githubCreate.createProject).not.toHaveBeenCalled();
+    expect(createProject).not.toHaveBeenCalled();
     expect(TestBed.inject(ProjectService).createNewProject).toHaveBeenCalledWith(
       'firestore',
       { title: 'My project', userIDs: [] },
