@@ -139,7 +139,7 @@ export class ProjectService {
 
   private getProjectSummaryRequest(
     projectRef: IProjectRef,
-  ): Observable<IProjectSummary> {
+  ): Observable<IProjectSummary | undefined> {
     if (!projectRef) {
       return throwError(() => 'target is a required parameter');
     }

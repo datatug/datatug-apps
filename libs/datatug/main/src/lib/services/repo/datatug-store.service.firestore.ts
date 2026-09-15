@@ -2,6 +2,7 @@ import { IProjectSummary } from '../../models/definition/project';
 import { IDatatugStoreService } from './datatug-store.service.interface';
 import { Observable, throwError } from 'rxjs';
 import {
+  DocumentReference,
   doc,
   Firestore,
 } from 'firebase/firestore';
@@ -37,7 +38,13 @@ export class DatatugStoreFirestoreService implements IDatatugStoreService {
     if (!projectId) {
       return throwError(() => 'projectId is a required parameter');
     }
-    const projectDoc = doc(this.db, FIRESTORE_PROJECTS_COLLECTION, projectId);
+    // `doc(firestore, collection, id)` is typed as DocumentData; the cast gives
+    // docData the record type without changing what is read.
+    const projectDoc = doc(
+      this.db,
+      FIRESTORE_PROJECTS_COLLECTION,
+      projectId,
+    ) as DocumentReference<IProjectSummary>;
     return docData<IProjectSummary>(projectDoc).pipe(
       map((project) => (project ? { ...project, id: projectId } : undefined)),
     );
