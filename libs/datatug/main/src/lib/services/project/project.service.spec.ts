@@ -117,8 +117,11 @@ describe('ProjectService', () => {
         createdId = id;
       });
 
+      // The path is relative to an API base URL that already ends in `/v0/`:
+      // a leading slash here produced `https://api.sneat.cloud/v0//datatug/...`
+      // and 404'd, so this assertion is the regression guard for that.
       expect(sneatApi.post).toHaveBeenCalledWith(
-        '/datatug/projects/create_project?store=firestore',
+        'datatug/projects/create_project?store=firestore',
         projData,
       );
       expect(createdId).toBe('new-project-id');
