@@ -7,6 +7,11 @@ import { Subject } from 'rxjs';
 import { NewProjectFormComponent } from './new-project-form.component';
 import { DatatugNavService } from '../../services/nav/datatug-nav.service';
 import { ProjectService } from '../../services/project/project.service';
+import { GithubProjectCreateService } from '../../services/repo/github/github-project-create.service';
+
+const githubProjectCreateMock = (): {
+  createProject: ReturnType<typeof vi.fn>;
+} => ({ createProject: vi.fn(() => new Subject()) });
 
 describe('NewProjectFormComponent', () => {
   let component: NewProjectFormComponent;
@@ -27,6 +32,10 @@ describe('NewProjectFormComponent', () => {
         {
           provide: ProjectService,
           useValue: { createNewProject: vi.fn(() => new Subject()) },
+        },
+        {
+          provide: GithubProjectCreateService,
+          useValue: githubProjectCreateMock(),
         },
         {
           provide: PopoverController,
@@ -97,6 +106,10 @@ describe('NewProjectFormComponent re-enables its buttons after a failed create (
           },
         },
         {
+          provide: GithubProjectCreateService,
+          useValue: githubProjectCreateMock(),
+        },
+        {
           provide: PopoverController,
           useValue: { dismiss: vi.fn(() => Promise.resolve(true)) },
         },
@@ -150,5 +163,106 @@ describe('NewProjectFormComponent re-enables its buttons after a failed create (
     await fixture.whenStable();
 
     expect(findCreateButton()?.disabled).toBe(false);
+  });
+});
+
+describe('NewProjectFormComponent creating in a GitHub repo', () => {
+  let component: NewProjectFormComponent;
+  let fixture: ComponentFixture<NewProjectFormComponent>;
+  let createProject$: Subject<{ repo: string; org: string; folder: string }>;
+  let githubCreate: { createProject: ReturnType<typeof vi.fn> };
+  let nav: { goProject: ReturnType<typeof vi.fn> };
+
+  /** `formError` is protected; the test reads it through the instance. */
+  const formErrorOf = (c: NewProjectFormComponent): string | undefined =>
+    (c as unknown as { formError: () => string | undefined }).formError();
+
+  beforeEach(async () => {
+    createProject$ = new Subject();
+    githubCreate = { createProject: vi.fn(() => createProject$.asObservable()) };
+    nav = { goProject: vi.fn() };
+
+    await TestBed.configureTestingModule({
+      imports: [NewProjectFormComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        {
+          provide: ErrorLogger,
+          useValue: {
+            logError: vi.fn(),
+            logErrorHandler: vi.fn(() => vi.fn()),
+          },
+        },
+        {
+          provide: ProjectService,
+          useValue: { createNewProject: vi.fn(() => new Subject()) },
+        },
+        { provide: GithubProjectCreateService, useValue: githubCreate },
+        {
+          provide: PopoverController,
+          useValue: { dismiss: vi.fn(() => Promise.resolve(true)) },
+        },
+        { provide: DatatugNavService, useValue: nav },
+      ],
+    })
+      .overrideComponent(NewProjectFormComponent, {
+        set: {
+          imports: [],
+          template: '',
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+          providers: [],
+        },
+      })
+      .compileComponents();
+
+    fixture = TestBed.createComponent(NewProjectFormComponent);
+    component = fixture.componentInstance;
+  });
+
+  it('commits to the named repo and navigates to the new project', () => {
+    component.store = 'github';
+    component.githubRepo = 'datatug/demo-projects';
+    component.title = 'My project';
+
+    component.create();
+
+    expect(githubCreate.createProject).toHaveBeenCalledWith({
+      org: 'datatug',
+      repo: 'demo-projects',
+      folder: 'datatug',
+      title: 'My project',
+    });
+    createProject$.next({ repo: 'demo-projects', org: 'datatug', folder: 'datatug' });
+    createProject$.complete();
+
+    expect(nav.goProject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ref: { projectId: 'demo-projects@datatug@datatug', storeId: 'github.com' },
+      }),
+    );
+  });
+
+  it('reports a malformed repo instead of calling GitHub', () => {
+    component.store = 'github';
+    component.githubRepo = 'not-a-repo';
+    component.title = 'My project';
+
+    component.create();
+
+    expect(githubCreate.createProject).not.toHaveBeenCalled();
+    expect(formErrorOf(component)).toContain('owner/name');
+  });
+
+  it('still creates in the cloud store when Cloud is selected', () => {
+    component.store = 'cloud';
+    component.title = 'My project';
+
+    component.create();
+
+    expect(githubCreate.createProject).not.toHaveBeenCalled();
+    expect(TestBed.inject(ProjectService).createNewProject).toHaveBeenCalledWith(
+      'firestore',
+      { title: 'My project', userIDs: [] },
+    );
   });
 });
