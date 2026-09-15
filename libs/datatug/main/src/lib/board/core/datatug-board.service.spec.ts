@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { SneatApiServiceFactory } from '@sneat/api';
+import { SneatApiService } from '@sneat/api';
 
 import { DatatugBoardService } from './datatug-board.service';
 
@@ -11,8 +11,8 @@ describe('BoardService', () => {
       providers: [
         DatatugBoardService,
         {
-          provide: SneatApiServiceFactory,
-          useValue: { getSneatApiService: vi.fn() },
+          provide: SneatApiService,
+          useValue: { post: vi.fn(), put: vi.fn() },
         },
       ],
     });

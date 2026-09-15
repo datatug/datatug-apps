@@ -1,7 +1,11 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, throwError } from 'rxjs';
-import { IHttpRequestOptions, SneatApiServiceFactory } from '@sneat/api';
+import {
+  IHttpRequestOptions,
+  ISneatApiService,
+  SneatApiService,
+} from '@sneat/api';
 import { STORE_ID_GITHUB_COM, STORE_TYPE_GITHUB } from '@sneat/core';
 import { buildAgentUrl } from './agent-url';
 
@@ -22,7 +26,12 @@ export const GITHUB_READ_ONLY_MESSAGE =
 // components that happen to import `DatatugServicesStoreModule`.
 @Injectable({ providedIn: 'root' })
 export class StoreApiService {
-  private readonly sneatApiServiceFactory = inject(SneatApiServiceFactory);
+  // Injected directly, not via `SneatApiServiceFactory`: that factory resolved
+  // the service by calling `inject()` inside `getSneatApiService()`, which
+  // throws NG0203 when reached from a UI event handler (no injection context).
+  // Only `firestore` is supported by the factory and it is the same root
+  // singleton returned here, so behaviour is unchanged.
+  private readonly sneatApiService: ISneatApiService = inject(SneatApiService);
   private readonly httpClient = inject(HttpClient);
 
   private static getUrl(repo: string, path: string): string {
@@ -63,10 +72,8 @@ export class StoreApiService {
     if (isGithubStoreId(storeId)) {
       return throwError(() => new Error(GITHUB_READ_ONLY_MESSAGE));
     }
-    const sneatApiService =
-      this.sneatApiServiceFactory.getSneatApiService(storeId);
     const url = StoreApiService.getUrl(storeId, path);
-    return sneatApiService.put<I, O>(url, body, options);
+    return this.sneatApiService.put<I, O>(url, body, options);
   }
 
   // noinspection JSUnusedGlobalSymbols
