@@ -184,11 +184,16 @@ export class ProjectService {
     if (storeId !== 'firestore') {
       return throwError(() => new Error('unknown store type: ' + storeId));
     }
+    // The path is relative to the API base URL, which already ends in `/v0/`
+    // (`DefaultSneatAppApiBaseUrl`). A leading slash here produced
+    // `https://api.sneat.cloud/v0//datatug/...` — a double slash that 404s.
+    // The store also travels as `?store=` (not in the body), exactly like the
+    // datatug CLI agent's create_project endpoint.
     return this.sneatApiService
       .post<
         ICreateProjectData,
         { id: string }
-      >('/datatug/projects/create_project?store=firestore', projData)
+      >('datatug/projects/create_project?store=firestore', projData)
       .pipe(map((response) => response.id));
   }
 }
