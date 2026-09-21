@@ -2,6 +2,10 @@ import { Injectable, InjectionToken, inject } from '@angular/core';
 import { type Database, type ReadwriteTransaction, key } from '@dalgo/core';
 import { IndexedDbDatabase } from '@dalgo/indexeddb';
 import { ChatMetrics, ChatTurn } from './chat.types';
+import {
+  applyChatWorkspaceAction, ChatRecordSetData, ChatWorkspaceAction, ChatWorkspaceState,
+  emptyChatWorkspace,
+} from './chat-workspace';
 
 // The session model uses only DALgo's Database contract. Replacing this provider
 // can move sessions to another DALgo backend without changing Chat or its model.
@@ -23,6 +27,7 @@ export interface ChatSession {
   readonly turnIds: readonly string[];
   readonly queryIds: readonly string[];
   readonly recordSetIds: readonly string[];
+  readonly workspace?: ChatWorkspaceState;
 }
 
 export interface ChatQuery {
@@ -95,6 +100,7 @@ export class ChatSessionService {
     const session: ChatSession = {
       id: crypto.randomUUID(), scope, title: 'New chat', createdAt: timestamp,
       updatedAt: timestamp, turnIds: [], queryIds: [], recordSetIds: [],
+      workspace: emptyChatWorkspace(),
     };
     await this.database.runReadwriteTransaction((tx) => tx.insert(sessionKey(session.id), session));
     return session;
@@ -127,7 +133,7 @@ export class ChatSessionService {
         queryId: data.queryId, recordSetId: data.recordSetId,
         dtql: data.dtql, generatedDtql: data.generatedDtql,
         dtqlYaml: data.dtqlYaml, sql: data.sql,
-        error: data.error, metrics: data.metrics,
+        error: data.error, metrics: data.metrics, actionSummary: data.actionSummary,
       };
       return data.state === 'loading'
         ? { ...turn, state: 'error' as const, error: 'This request was interrupted. Ask it again to retry.' }
@@ -165,24 +171,43 @@ export class ChatSessionService {
     if (!where || typeof where !== 'object' || Array.isArray(where)) return { dtql: generatedDtql };
     const condition = where as Record<string, unknown>;
     const right = condition['right'];
-    if (!right || typeof right !== 'object' || Array.isArray(right) || !('recordSet' in right)) return { dtql: generatedDtql };
+    if (!right || typeof right !== 'object' || Array.isArray(right) || (!('recordSet' in right) && !('selection' in right))) {
+      return { dtql: generatedDtql };
+    }
     if (condition['op'] !== 'In') throw new Error('A saved RecordSet reference requires the In operator.');
     const rightObject = right as Record<string, unknown>;
-    if (Object.keys(rightObject).length !== 1) throw new Error('The saved RecordSet reference has unexpected fields.');
-    const reference = rightObject['recordSet'];
+    if (Object.keys(rightObject).length !== 1) throw new Error('The saved context reference has unexpected fields.');
+    const isSelection = 'selection' in rightObject;
+    const reference = rightObject[isSelection ? 'selection' : 'recordSet'];
     if (!reference || typeof reference !== 'object' || Array.isArray(reference)) throw new Error('The saved RecordSet reference is invalid.');
     const { id, field } = reference as Record<string, unknown>;
     if (Object.keys(reference).sort().join(',') !== 'field,id' || typeof id !== 'string' || typeof field !== 'string') {
       throw new Error('The saved RecordSet reference needs an ID and source column.');
     }
     const session = await this.requireSession(scope, sessionId);
-    if (!session.recordSetIds.includes(id)) throw new Error('The referenced RecordSet is not in this chat session.');
-    const stored = await this.database.get<ChatRecordSet>(recordSetKey(id));
+    let recordSetId = id;
+    let selectedRows: readonly number[] | undefined;
+    if (isSelection) {
+      const selection = session.workspace?.selections[id];
+      const view = selection && session.workspace?.views[selection.viewId];
+      if (!selection || !view || !session.recordSetIds.includes(view.recordSetId) || !selection.columns.includes(field)) {
+        throw new Error('The referenced Selection is not in this chat session.');
+      }
+      const availableToChat = session.workspace?.attachments.some((ref) => ref.kind === 'selection' && ref.objectId === id) ||
+        session.workspace?.docks.some((dock) => dock.reference.kind === 'selection' && dock.reference.objectId === id);
+      if (!availableToChat) throw new Error('Attach or dock this Selection before using it in a follow-up query.');
+      recordSetId = view.recordSetId;
+      selectedRows = selection.rows;
+    }
+    if (!session.recordSetIds.includes(recordSetId)) throw new Error('The referenced RecordSet is not in this chat session.');
+    const stored = await this.database.get<ChatRecordSet>(recordSetKey(recordSetId));
     if (!stored.exists || stored.data.sessionId !== sessionId || stored.data.source !== `${scope}/chinook`) {
       throw new Error('The referenced RecordSet is unavailable for this data source.');
     }
     if (!stored.data.columns.includes(field)) throw new Error('The referenced RecordSet has no such column.');
-    const values = [...new Set(stored.data.rows.map((row) => row[field]))];
+    const sourceRows = selectedRows ? selectedRows.map((index) => stored.data.rows[index]) : stored.data.rows;
+    if (sourceRows.some((row) => !row)) throw new Error('The referenced Selection contains a missing source row.');
+    const values = [...new Set(sourceRows.map((row) => row[field]))];
     if (!values.length) throw new Error('The referenced RecordSet has no values to use in this follow-up.');
     if (values.length > 1000 || values.some((value) => value !== null && typeof value !== 'string' &&
         typeof value !== 'boolean' && !(typeof value === 'number' && Number.isFinite(value)))) {
@@ -190,8 +215,43 @@ export class ChatSessionService {
     }
     return {
       dtql: JSON.stringify({ ...action, where: { ...condition, right: { values } } }),
-      parentRecordSetId: id,
+      parentRecordSetId: recordSetId,
     };
+  }
+
+  async workspaceAction(scope: string, sessionId: string, action: ChatWorkspaceAction): Promise<ChatWorkspaceState> {
+    return this.database.runReadwriteTransaction(async (tx) => {
+      const session = await this.sessionInTransaction(tx, scope, sessionId);
+      const records = await this.recordsForAction(tx, session, action);
+      const result = applyChatWorkspaceAction(scope, session.workspace, records, action);
+      await tx.set(sessionKey(sessionId), { ...session, workspace: result.state, updatedAt: now() });
+      return result.state;
+    });
+  }
+
+  async completeWorkspaceAction(
+    scope: string, sessionId: string, turnId: string, action: ChatWorkspaceAction,
+    metrics: Omit<ChatMetrics, 'queryMs'>,
+  ): Promise<{ turn: ChatTurn; workspace: ChatWorkspaceState }> {
+    return this.database.runReadwriteTransaction(async (tx) => {
+      const session = await this.sessionInTransaction(tx, scope, sessionId);
+      const stored = await tx.get<StoredTurn>(turnKey(turnId));
+      if (!stored.exists || stored.data.sessionId !== sessionId || stored.data.state !== 'loading') {
+        throw new Error('The pending chat request is no longer available.');
+      }
+      const records = await this.recordsForAction(tx, session, action);
+      const result = applyChatWorkspaceAction(scope, session.workspace, records, action);
+      const summary = action.kind === 'select'
+        ? `Selected ${result.state.selections[result.state.currentSelectionId || '']?.rows.length || 0} rows.`
+        : action.kind === 'dockCurrent' || action.kind === 'dock' ? `Docked ${result.reference?.title || 'selection'}.`
+          : `Workspace ${action.kind} completed.`;
+      const turn: StoredTurn = {
+        ...stored.data, state: 'result', actionSummary: summary, metrics: { ...metrics, queryMs: 0 },
+      };
+      await tx.set(turnKey(turnId), turn);
+      await tx.set(sessionKey(sessionId), { ...session, workspace: result.state, updatedAt: now() });
+      return { turn, workspace: result.state };
+    });
   }
 
   async completeQuery(scope: string, sessionId: string, turnId: string, result: CompletedChatQuery): Promise<ChatTurn> {
@@ -271,7 +331,7 @@ export class ChatSessionService {
       for (const queryId of session.queryIds) await tx.delete(queryKey(queryId));
       for (const recordSetId of session.recordSetIds) await tx.delete(recordSetKey(recordSetId));
       await tx.set(sessionKey(id), {
-        ...session, updatedAt: now(), turnIds: [], queryIds: [], recordSetIds: [],
+        ...session, updatedAt: now(), turnIds: [], queryIds: [], recordSetIds: [], workspace: emptyChatWorkspace(),
       });
     });
   }
@@ -286,17 +346,51 @@ export class ChatSessionService {
     });
   }
 
-  context(turns: readonly ChatTurn[]): string {
-    return turns.filter((turn) => turn.dtql && turn.recordSetId).slice(-5).map((turn) =>
-      `Question: ${turn.question.slice(0, 200)}\nDTQL: ${(turn.generatedDtql || turn.dtql)?.slice(0, 2000)}\n` +
+  context(turns: readonly ChatTurn[], workspace?: ChatWorkspaceState, projectId = ''): string {
+    const history = turns.filter((turn) => turn.dtql && turn.recordSetId).slice(-3).map((turn) =>
+      `Question: ${turn.question.slice(0, 200)}\nDTQL: ${(turn.generatedDtql || turn.dtql)?.slice(0, 1000)}\n` +
       `RecordSet: ${turn.recordSetId}; columns: ${turn.columns?.join(', ') || ''}; rows: ${turn.rows?.length || 0}`,
-    ).join('\n\n').slice(0, 7000);
+    ).join('\n\n');
+    const refs = [...(workspace?.attachments || [])];
+    for (const dock of workspace?.docks || []) {
+      if (!refs.some((ref) => ref.kind === dock.reference.kind && ref.objectId === dock.reference.objectId)) refs.push(dock.reference);
+    }
+    const attached = refs.map((ref) => {
+      if (ref.kind !== 'selection') return `Attached ${ref.kind}: ${ref.title}; id: ${ref.objectId}; project: ${ref.projectId}; source: ${ref.sourceId || ''}`;
+      const selection = workspace?.selections[ref.objectId];
+      return selection
+        ? `Attached Selection: ${ref.title}; id: ${ref.objectId}; project: ${ref.projectId}; source: ${ref.sourceId || ''}; columns: ${selection.columns.join(', ')}; rows: ${selection.rows.length}`
+        : `Attached Selection: ${ref.title}; unavailable`;
+    }).join('\n');
+    const current = workspace?.currentSelectionId && workspace.selections[workspace.currentSelectionId];
+    const currentLine = current ? `Current Selection: ${current.title}; id: ${current.id}; view: ${current.viewId}; rows: ${current.rows.length}` : '';
+    const docks = (workspace?.docks || []).map((dock) =>
+      `Dock: ${dock.title}; dockId: ${dock.id}; ${dock.reference.kind} id: ${dock.reference.objectId}`,
+    ).join('\n');
+    const metadata = `Project: ${projectId}\n${attached}\n${currentLine}\n${docks}\n\nRecent results:\n`;
+    return metadata + history.slice(0, Math.max(0, 7000 - metadata.length));
   }
 
   private async requireSession(scope: string, id: string): Promise<ChatSession> {
     const stored = await this.database.get<ChatSession>(sessionKey(id));
     if (!stored.exists || stored.data.scope !== scope) throw new Error('This chat session is unavailable in this project.');
     return stored.data;
+  }
+
+  private async recordsForAction(
+    tx: ReadwriteTransaction, session: ChatSession, action: ChatWorkspaceAction,
+  ): Promise<ReadonlyMap<string, ChatRecordSetData>> {
+    const id = action.kind === 'select' ? action.recordSetId
+      : action.kind === 'sortView' ? session.workspace?.views[action.viewId]?.recordSetId
+        : (action.kind === 'attach' || action.kind === 'dock') && action.reference.kind === 'recordset'
+          ? action.reference.objectId : undefined;
+    const records = new Map<string, ChatRecordSetData>();
+    if (!id) return records;
+    if (!session.recordSetIds.includes(id)) throw new Error('The referenced RecordSet is not in this chat session.');
+    const stored = await tx.get<ChatRecordSet>(recordSetKey(id));
+    if (!stored.exists || stored.data.sessionId !== session.id) throw new Error('The referenced RecordSet is unavailable.');
+    records.set(id, stored.data);
+    return records;
   }
 
   private async sessionInTransaction(tx: ReadwriteTransaction, scope: string, id: string): Promise<ChatSession> {

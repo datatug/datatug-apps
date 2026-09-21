@@ -23,6 +23,7 @@ export interface ChatTurn {
   readonly columns?: readonly string[];
   readonly error?: string;
   readonly metrics?: ChatMetrics;
+  readonly actionSummary?: string;
 }
 
 export interface ChatMetrics {
