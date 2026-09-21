@@ -77,66 +77,78 @@ export class ProjectMenuTopComponent implements OnDestroy {
     },
   ];
 
+  // Overview is always first. Add other pages inside sortProjectPages below;
+  // they appear alphabetically by title, including optional empty-shell pages.
   public readonly projTopLevelPages: IProjectTopLevelPage[] = [
-    {
-      path: 'chat',
-      title: 'Chat',
-      icon: 'chatbubbles-outline',
-    },
     {
       path: 'overview',
       title: 'Overview',
       icon: 'home-outline',
     },
-    {
-      path: 'boards',
-      title: 'Boards',
-      icon: 'easel-outline',
-      count: (proj) => proj?.boards?.length,
-    },
-    {
-      path: 'entities',
-      title: 'Entities',
-      icon: 'book-outline',
-      count: (proj) => proj?.entities?.length,
-    },
-    {
-      path: 'environments',
-      title: 'Environments',
-      icon: 'earth-outline',
-      count: (proj) => proj?.environments?.length,
-    },
-    {
-      path: 'servers',
-      title: 'Servers',
-      icon: 'server-outline',
-    },
-    {
-      path: 'queries',
-      title: 'Queries',
-      icon: 'terminal-outline',
-      // No `buttons: [{ path: 'query', icon: 'add' }]` "+" shortcut here —
-      // it routed through goProjPage() to a bare 'query' segment, but the
-      // only project route matching that prefix is 'query/:queryId' (view
-      // an existing query); there is no route for "create a new query" by
-      // design; that flow is `QueriesUiService.openNewQuery()`, an action
-      // sheet reachable from the adjacent "Queries" segment tab
-      // (ProjectMenuComponent → QueriesMenuComponent's own "+" button,
-      // `project-menu.component.html`). The "+" here duplicated that button
-      // and 404'd (NG04002) instead of working, so it is removed rather
-      // than given a route to nowhere — see project-menu-top.component.spec.ts.
-    },
-    // Investigation Context (plan task 9, REQ:context-basket) — the former
-    // "Variables" empty-shell page now has a real screen
-    // (InvestigationContextPageComponent), so unlike its former siblings in
-    // emptyShellPages below, it is always in the menu.
-    {
-      path: 'variables',
-      title: 'Investigation Context',
-      icon: 'bookmarks-outline',
-    },
-    ...(ENABLE_EMPTY_SHELL_PAGES ? ProjectMenuTopComponent.emptyShellPages : []),
+    ...ProjectMenuTopComponent.sortProjectPages([
+      {
+        path: 'chat',
+        title: 'Chat',
+        icon: 'chatbubbles-outline',
+      },
+      {
+        path: 'boards',
+        title: 'Boards',
+        icon: 'easel-outline',
+        count: (proj) => proj?.boards?.length,
+      },
+      {
+        path: 'entities',
+        title: 'Entities',
+        icon: 'book-outline',
+        count: (proj) => proj?.entities?.length,
+      },
+      {
+        path: 'environments',
+        title: 'Environments',
+        icon: 'earth-outline',
+        count: (proj) => proj?.environments?.length,
+      },
+      {
+        path: 'servers',
+        title: 'Servers',
+        icon: 'server-outline',
+      },
+      {
+        path: 'queries',
+        title: 'Queries',
+        icon: 'terminal-outline',
+        // No `buttons: [{ path: 'query', icon: 'add' }]` "+" shortcut here —
+        // it routed through goProjPage() to a bare 'query' segment, but the
+        // only project route matching that prefix is 'query/:queryId' (view
+        // an existing query); there is no route for "create a new query" by
+        // design; that flow is `QueriesUiService.openNewQuery()`, an action
+        // sheet reachable from the adjacent "Queries" segment tab
+        // (ProjectMenuComponent → QueriesMenuComponent's own "+" button,
+        // `project-menu.component.html`). The "+" here duplicated that button
+        // and 404'd (NG04002) instead of working, so it is removed rather
+        // than given a route to nowhere — see project-menu-top.component.spec.ts.
+      },
+      // Investigation Context (plan task 9, REQ:context-basket) — the former
+      // "Variables" empty-shell page now has a real screen
+      // (InvestigationContextPageComponent), so unlike its former siblings in
+      // emptyShellPages below, it is always in the menu.
+      {
+        path: 'variables',
+        title: 'Investigation Context',
+        icon: 'bookmarks-outline',
+      },
+      ...(ENABLE_EMPTY_SHELL_PAGES
+        ? ProjectMenuTopComponent.emptyShellPages
+        : []),
+    ]),
   ];
+
+  private static sortProjectPages(
+    pages: IProjectTopLevelPage[],
+  ): IProjectTopLevelPage[] {
+    return pages.sort((left, right) => left.title.localeCompare(right.title));
+  }
 
   project?: IProjectContext;
   public currentFolder: Observable<string | undefined>;
