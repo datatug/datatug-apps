@@ -1,0 +1,55 @@
+<div class="ion-page">
+  <ion-header>
+    <ion-toolbar>
+      <ion-buttons slot="start"><ion-menu-button /></ion-buttons>
+      <ion-title>Chat</ion-title>
+      <ion-badge slot="end" class="ion-margin-end">{{ projectId() }}</ion-badge>
+    </ion-toolbar>
+  </ion-header>
+
+  <ion-content class="chat-content">
+    <ion-card>
+      <ion-card-header><ion-card-title>AI provider</ion-card-title></ion-card-header>
+      <ion-card-content>
+        <ion-item>
+          <ion-label>Use endpoint</ion-label>
+          <ion-select aria-label="Use endpoint" [value]="providers.selectedId()" (ionChange)="providers.select($event.detail.value)">
+            @for (provider of providers.providers(); track provider.id) {
+              <ion-select-option [value]="provider.id">{{ provider.name }} · {{ provider.model }}</ion-select-option>
+            }
+          </ion-select>
+        </ion-item>
+        @if (selectedProvider(); as provider) {
+          <ion-item><ion-label>{{ provider.baseUrl }} · key {{ keyMask(provider) }}</ion-label><ion-button slot="end" fill="clear" (click)="edit(provider)">Edit</ion-button><ion-button slot="end" fill="clear" color="danger" (click)="providers.remove(provider.id)">Remove</ion-button></ion-item>
+        }
+        <p class="storage-warning">API keys are stored in this browser origin’s local storage. Scripts running on this origin can read them. Remove an endpoint here to delete its key.</p>
+        @if (!providerFormVisible()) { <ion-button (click)="providerFormVisible.set(true)">Add AI provider</ion-button> }
+        @if (providerFormVisible()) {
+        <ion-item><ion-label>Provider</ion-label><ion-select aria-label="Provider" [value]="presetName()" (ionChange)="choosePreset($event.detail.value)">@for (preset of ['DeepSeek', 'OpenAI', 'Anthropic']; track preset) {<ion-select-option [value]="preset">{{ preset }}</ion-select-option>}</ion-select></ion-item>
+        <ion-item><ion-label position="stacked">Name</ion-label><ion-input aria-label="Provider name" [value]="draft().name" (ionInput)="updateDraft('name', $event.detail.value || '')" /></ion-item>
+        <ion-item><ion-label>Protocol</ion-label><ion-select aria-label="Protocol" [value]="draft().protocol" (ionChange)="updateDraft('protocol', $event.detail.value)"><ion-select-option value="openai-chat">OpenAI-compatible Chat Completions</ion-select-option><ion-select-option value="anthropic-messages">Anthropic Messages</ion-select-option></ion-select></ion-item>
+        <ion-item><ion-label position="stacked">Base URL</ion-label><ion-input aria-label="Base URL" [value]="draft().baseUrl" (ionInput)="updateDraft('baseUrl', $event.detail.value || '')" /></ion-item>
+        <ion-item><ion-label position="stacked">Model</ion-label><ion-input aria-label="Model" [value]="draft().model" (ionInput)="updateDraft('model', $event.detail.value || '')" /></ion-item>
+        <ion-item><ion-label position="stacked">API key</ion-label><ion-input aria-label="API key" type="password" [value]="draft().apiKey" (ionInput)="updateDraft('apiKey', $event.detail.value || '')" /></ion-item>
+        <ion-button class="ion-margin-top" (click)="saveProvider()">{{ editingId() ? 'Save provider' : 'Add AI provider' }}</ion-button>
+        }
+      </ion-card-content>
+    </ion-card>
+
+    @if (seedState() === 'loading') { <ion-item><ion-spinner name="dots" /><ion-label class="ion-padding-start">Loading local Chinook data…</ion-label></ion-item> }
+    @if (seedState() === 'error') { <ion-item color="danger"><ion-label>{{ seedError() }}</ion-label></ion-item> }
+
+    @for (turn of turns(); track turn.id) {
+      <ion-card class="turn"><ion-card-content><strong>You</strong><p>{{ turn.question }}</p>
+        @if (turn.state === 'loading') { <ion-spinner name="dots" /><span class="ion-padding-start">Interpreting and querying…</span> }
+        @if (turn.state === 'error') { <ion-text color="danger">{{ turn.error }}</ion-text> }
+        @if (turn.dtql) { <p class="dtql">{{ turn.dtql }}</p> }
+        @if (turn.state === 'empty') { <ion-text color="medium">No matching rows.</ion-text> }
+        @if (turn.rows?.length) { <ion-badge>{{ turn.rows.length }} rows</ion-badge><ag-grid-angular class="ag-theme-quartz chat-grid" [rowData]="gridRows(turn.rows)" [columnDefs]="columnsFor(turn.rows)" [defaultColDef]="{ sortable: true, resizable: true }" /> }
+      </ion-card-content></ion-card>
+    }
+
+  </ion-content>
+
+  <ion-toolbar class="composer"><ion-item><ion-input aria-label="Ask about Chinook data" placeholder="Ask about Chinook data" [value]="question()" (ionInput)="question.set($event.detail.value || '')" (keyup.enter)="submit()" /><ion-button slot="end" [disabled]="!selectedProvider() || seedState() !== 'ready' || !question().trim() || submitting()" (click)="submit()">Send</ion-button></ion-item></ion-toolbar>
+</div>

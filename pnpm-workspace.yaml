@@ -68,3 +68,5 @@ minimumReleaseAgeExclude:
   - '@sneat/core-public@0.26.4 || 0.27.23'
   - '@sneat/extension-contactus-contract@0.12.5'
   - '@sneat/build-info@0.27.23'
+  - '@dalgo/core@0.1.0'
+  - '@dalgo/indexeddb@0.1.0'

@@ -20,6 +20,7 @@ type NavigationOptions = NonNullable<
 >;
 
 export type ProjectTopLevelPage =
+  | 'chat'
   | 'overview'
   | 'boards'
   | 'dbmodels'
