@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { Firestore } from 'firebase/firestore';
-import { Observable, Subject, of, throwError } from 'rxjs';
+import { Subject, of } from 'rxjs';
 import { IProjectSummary } from '../../models/definition/project';
 import {
   DatatugStoreFirestoreService,
@@ -8,7 +8,7 @@ import {
 } from './datatug-store.service.firestore';
 
 const { docMock, docDataMock } = vi.hoisted(() => ({
-  docMock: vi.fn((..._args: unknown[]) => ({ path: 'stub' })),
+  docMock: vi.fn(() => ({ path: 'stub' })),
   docDataMock: vi.fn(),
 }));
 

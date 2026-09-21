@@ -1,5 +1,5 @@
 import { Injectable, signal } from '@angular/core';
-import { ChatProvider, ChatProtocol } from './chat.types';
+import { ChatProvider } from './chat.types';
 
 const storageKey = 'datatug.chat.providers.v1';
 const selectedStorageKey = 'datatug.chat.selected-provider.v1';

@@ -109,9 +109,9 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
   await expect(page.locator('.question-bubble').first()).toHaveText('Show last 100 orders');
   const you = await page.locator('.turn').first().locator('.question-row strong').boundingBox();
   const bubble = await page.locator('.question-bubble').first().boundingBox();
-  expect(you && bubble).toBeTruthy();
-  expect(bubble!.x).toBeGreaterThan(you!.x + you!.width);
-  expect(Math.abs((bubble!.y + bubble!.height / 2) - (you!.y + you!.height / 2))).toBeLessThan(12);
+  if (!you || !bubble) throw new Error('The first question and its You label must be visible.');
+  expect(bubble.x).toBeGreaterThan(you.x + you.width);
+  expect(Math.abs((bubble.y + bubble.height / 2) - (you.y + you.height / 2))).toBeLessThan(12);
   await expect(page.locator('.turn').first().getByText('Rows 100', { exact: true })).toBeVisible();
   await expect(page.locator('.turn').first().locator('.dtql')).toHaveCount(0);
   await page.locator('.turn').first().getByText('DTQL', { exact: true }).click();
@@ -214,10 +214,10 @@ test('composer can add a provider and restore it after reload', async ({ page })
   const input = await page.locator('ion-footer ion-input').boundingBox();
   const dropdown = await page.locator('ion-footer ion-select').boundingBox();
   const send = await page.locator('ion-footer ion-button').boundingBox();
-  expect(input && dropdown && send).toBeTruthy();
-  expect(dropdown!.x).toBeGreaterThan(input!.x + input!.width);
-  expect(send!.x).toBeGreaterThan(dropdown!.x + dropdown!.width);
-  expect(send!.x + send!.width).toBeLessThanOrEqual(390);
+  if (!input || !dropdown || !send) throw new Error('The composer controls must be visible.');
+  expect(dropdown.x).toBeGreaterThan(input.x + input.width);
+  expect(send.x).toBeGreaterThan(dropdown.x + dropdown.width);
+  expect(send.x + send.width).toBeLessThanOrEqual(390);
   const stored = await page.evaluate(() => ({
     providers: JSON.parse(localStorage.getItem('datatug.chat.providers.v1') || '[]') as { id: string; name: string }[],
     selected: localStorage.getItem('datatug.chat.selected-provider.v1'),
