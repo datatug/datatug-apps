@@ -22,7 +22,7 @@
         @if (selectedProvider(); as provider) {
           <ion-item><ion-label>{{ provider.baseUrl }} · key {{ keyMask(provider) }}</ion-label><ion-button slot="end" fill="clear" (click)="edit(provider)">Edit</ion-button><ion-button slot="end" fill="clear" color="danger" (click)="providers.remove(provider.id)">Remove</ion-button></ion-item>
         }
-        <p class="storage-warning">API keys are stored in this browser origin’s local storage. Scripts running on this origin can read them. Remove an endpoint here to delete its key.</p>
+        <p class="storage-warning">API keys are stored in this browser origin’s local storage. Scripts running on this origin can read them. Chat requests go directly to the selected AI provider. Remove an endpoint here to delete its key.</p>
         @if (!providerFormVisible()) { <ion-button (click)="providerFormVisible.set(true)">Add AI provider</ion-button> }
         @if (providerFormVisible()) {
         <ion-item><ion-label>Provider</ion-label><ion-select aria-label="Provider" [value]="presetName()" (ionChange)="choosePreset($event.detail.value)">@for (preset of ['DeepSeek', 'OpenAI', 'Anthropic']; track preset) {<ion-select-option [value]="preset">{{ preset }}</ion-select-option>}</ion-select></ion-item>
@@ -50,7 +50,7 @@
             <ion-segment-button value="metrics">Metrics</ion-segment-button>
           </ion-segment>
           @if (turnTab(turn) === 'dtql') { <p class="dtql">{{ turn.dtql }}</p> }
-          @if (turnTab(turn) === 'metrics' && turn.metrics; as metrics) { <div class="metrics"><strong>Provider tokens</strong><p>@if (metrics.totalTokens !== undefined) { Input {{ metrics.inputTokens ?? 'Unavailable' }} · Output {{ metrics.outputTokens ?? 'Unavailable' }} · Total {{ metrics.totalTokens }} } @else { Unavailable }</p><strong>Browser ↔ local agent</strong><p>Request {{ metrics.requestBytes }} B · Response {{ metrics.responseBytes }} B · Interpret {{ metrics.interpretMs | number:'1.0-0' }} ms</p><strong>Local query</strong><p>{{ metrics.queryMs | number:'1.0-0' }} ms</p></div> }
+          @if (turnTab(turn) === 'metrics' && turn.metrics; as metrics) { <div class="metrics"><strong>Provider tokens</strong><p>@if (metrics.totalTokens !== undefined) { Input {{ metrics.inputTokens ?? 'Unavailable' }} · Output {{ metrics.outputTokens ?? 'Unavailable' }} · Total {{ metrics.totalTokens }} } @else { Unavailable }</p><strong>Browser ↔ AI provider</strong><p>Request body {{ metrics.requestBytes }} B · Response body {{ metrics.responseBytes }} B · Interpret {{ metrics.interpretMs | number:'1.0-0' }} ms</p><strong>Local query</strong><p>{{ metrics.queryMs | number:'1.0-0' }} ms</p></div> }
           @if (turnTab(turn) === 'rows' && turn.state === 'empty') { <ion-text color="medium">No matching rows.</ion-text> }
           @if (turnTab(turn) === 'rows' && turn.rows?.length) { <ag-grid-angular class="ag-theme-quartz chat-grid" [rowData]="gridRows(turn.rows)" [columnDefs]="columnsFor(turn.rows)" [defaultColDef]="{ sortable: true, resizable: true }" /> }
         }

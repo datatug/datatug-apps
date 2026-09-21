@@ -23,11 +23,11 @@ The project menu opens `/store/:storeId/project/:projectId/chat`. A cold link re
 
 The user can add, edit, select and remove AI endpoints from Chat. The form offers DeepSeek, OpenAI and Anthropic presets, a protocol choice (OpenAI-compatible Chat Completions or Anthropic Messages), editable base URL and model, and a masked API key. DeepSeek defaults to `deepseek-flash` at `https://api.deepseek.com`. Endpoint entries, including keys, are stored in this browser origin's `localStorage` at the user's explicit request; the UI states that this storage is readable by scripts on that origin and offers deletion. Keys are never placed in URLs, build configuration, IndexedDB, analytics or logs.
 
-For a turn, the browser sends the question, compact schema description, selected protocol/model/base URL and key in a POST body to the locally running DataTug agent. The agent reuses the CLI Chat Google ADK conversation and its `run_dtql` action tool in browser-interpretation mode, then returns **only a validated DTQL action**; it does not persist the key or execute against its own SQLite copy. The browser validates the DTQL against an allowlisted schema and row cap, compiles it through `@dalgo/core`, executes it via `@dalgo/indexeddb` against the selected project's seeded Chinook data, then passes structured records to AG Grid. No model-produced SQL, HTML, table markup or rows are trusted.
+For a turn, the browser sends the question and compact schema description directly to the selected AI provider using its chosen protocol. The key goes in the provider's authentication header. This local trial does not require the DataTug CLI, its agent server, or Google ADK. The provider returns one structured DTQL action; the browser validates it against an allowlisted schema and row cap, compiles it through `@dalgo/core`, executes it via `@dalgo/indexeddb` against seeded Chinook data, then passes structured records to AG Grid. No model-produced SQL, HTML, table markup or rows are trusted.
 
 The browser seed is generated reproducibly from the pinned MIT-licensed Chinook SQLite revision and SHA-256 recorded in `datatug-demo-projects/demo-project-1/fixtures/chinook/phase1-acceptance.json`. The fixture contains all 11 source tables and their fields. IndexedDB has one physical object store per table plus `_meta`; seed metadata records the fixture version. A complete seed is idempotent, an absent seed is a loading/unavailable state, and a successful zero-row query is distinct. Track includes an `ArtistName` field derived from Chinook's Track → Album → Artist relation so the Phase 1 single-source DALgo query can answer artist-name prompts without a browser join engine.
 
-The interpreter sends schema and relationship hints only. The browser does not send database rows. Model output and provider errors are shown as errors after bounded parsing, never inserted as HTML.
+The interpreter sends schema and relationship hints only. The browser does not send database rows. Model output and provider errors are shown as errors after bounded parsing, never inserted as HTML. Browser access depends on the selected provider allowing cross-origin requests; a network or browser-access failure appears in the turn.
 
 ## Acceptance Criteria
 
@@ -53,11 +53,11 @@ With a deterministic fake interpreter, the six requested prompts return the same
 
 ### AC: grid-and-states
 
-AG Grid shows headers, typed cells, keyboard navigation, sort, resize, scroll, empty state and row count. The composer stays below history. Loading, invalid-model-response, query-error and unavailable-agent/database states remain understandable.
+AG Grid shows headers, typed cells, keyboard navigation, sort, resize, scroll, empty state and row count. The composer stays below history. Loading, invalid-model-response, query-error and unavailable-provider/database states remain understandable.
 
 ### AC: browser-proof
 
-Focused tests and a real Playwright journey use seeded IndexedDB and inspect the rendered route, grid and provider form. Fake-model and real-model evidence are reported separately. Local user trial occurs before release.
+Focused tests and a real Playwright journey use seeded IndexedDB and inspect the rendered route, grid and provider form. The browser sends no Chat interpretation request to the DataTug CLI. Fake-provider and real-provider evidence are reported separately. Local user trial occurs before release.
 
 ## Open Questions
 

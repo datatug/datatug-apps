@@ -9,7 +9,7 @@ import {
   IonCardTitle, IonContent, IonHeader, IonInput, IonItem, IonLabel, IonMenuButton,
   IonSelect, IonSelectOption, IonSegment, IonSegmentButton, IonSpinner, IonText, IonTitle, IonToolbar,
 } from '@ionic/angular';
-import { ChatAgentService } from '../../../chat/chat-agent.service';
+import { ChatInterpretService } from '../../../chat/chat-interpret.service';
 import { ChinookChatDataService } from '../../../chat/chinook-chat-data.service';
 import { ChatProviderService, providerPresets } from '../../../chat/chat-provider.service';
 import { ChatProvider, ChatProtocol, ChatTurn } from '../../../chat/chat.types';
@@ -30,7 +30,7 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 })
 export class ChatPageComponent {
   private readonly route = inject(ActivatedRoute);
-  private readonly agent = inject(ChatAgentService);
+  private readonly interpreter = inject(ChatInterpretService);
   private readonly data = inject(ChinookChatDataService);
   readonly providers = inject(ChatProviderService);
 
@@ -91,7 +91,7 @@ export class ChatPageComponent {
     const id = crypto.randomUUID();
     this.turns.update((turns) => [...turns, { id, question, state: 'loading' }]);
     try {
-      const interpretation = await this.agent.interpret(this.storeId(), question, provider);
+      const interpretation = await this.interpreter.interpret(question, provider);
       if (scope !== `${this.storeId()}:${this.projectId()}`) throw new Error('The project changed before this result could be queried.');
       const queryStarted = performance.now();
       const rows = await this.data.query(scope, interpretation.dtql);

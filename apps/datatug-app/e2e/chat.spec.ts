@@ -15,8 +15,10 @@ function cell(grid: Locator, row: number, column: string): Locator {
 test('Chat persists a selected endpoint and renders seeded Chinook rows from deterministic DTQL', async ({ page }) => {
   test.setTimeout(90_000);
   let fixtureRequests = 0;
+  let localInterpretRequests = 0;
   page.on('request', (request) => {
     if (request.url().endsWith('/assets/chinook-full.json')) fixtureRequests += 1;
+    if (request.url().includes('/datatug/chat/interpret')) localInterpretRequests += 1;
   });
   await page.addInitScript(() => {
     if (sessionStorage.getItem('chat-provider-test-seeded')) return;
@@ -27,10 +29,17 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
     }]));
     localStorage.setItem('datatug.chat.selected-provider.v1', 'fake-deepseek');
   });
-  await page.route('**/datatug/chat/interpret', async (route) => {
-    expect(route.request().url()).not.toContain('test-key-not-a-secret');
-    const body = route.request().postDataJSON() as { question: string; provider: { apiKey: string } };
-    expect(body.provider.apiKey).toBe('test-key-not-a-secret');
+  await page.route('https://api.deepseek.com/chat/completions', async (route) => {
+    expect(route.request().headers()['authorization']).toBe('Bearer test-key-not-a-secret');
+    const body = route.request().postDataJSON() as { model: string; messages: { role: string; content: string }[] };
+    expect(body.model).toBe('deepseek-flash');
+    expect(JSON.stringify(body)).not.toContain('test-key-not-a-secret');
+    expect(body.messages[0].content).toContain('main.Artist(ArtistId, Name)');
+    const question = body.messages.at(-1)?.content;
+    if (question === 'Return oversized response') {
+      await route.fulfill({ json: { choices: [{ message: { content: 'x'.repeat(140_000) } }] } });
+      return;
+    }
     const actions: Record<string, unknown> = {
       'Show last 100 orders': { from: { schema: 'main', name: 'Invoice' }, orderBy: [{ field: 'InvoiceId', desc: true }], limit: 100 },
       'Show 50 customers from Prague': { from: { name: 'Customer' }, where: { op: '==', left: { field: 'City' }, right: { value: 'Prague' } }, orderBy: [{ field: 'CustomerId' }], limit: 50 },
@@ -43,7 +52,7 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
       'Show nobody from nowhere': { from: { schema: 'main', name: 'Customer' }, where: { op: '==', left: { field: 'City' }, right: { value: 'Nowhere' } }, limit: 50 },
       'Return malformed DTQL': 'not valid DTQL',
     };
-    await route.fulfill({ json: { dtql: JSON.stringify(actions[body.question]), usage: { inputTokens: 21, outputTokens: 9, totalTokens: 30 } } });
+    await route.fulfill({ json: { choices: [{ message: { content: JSON.stringify({ dtql: actions[question || ''] }) } }], usage: { prompt_tokens: 21, completion_tokens: 9, total_tokens: 30 } } });
   });
 
   await page.goto('/store/localhost:8989/project/datatug-demo-project/chat', { waitUntil: 'domcontentloaded' });
@@ -99,7 +108,7 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
   await expect(page.locator('.turn').first().locator('ag-grid-angular')).toBeVisible();
   await page.locator('.turn').first().getByText('Metrics', { exact: true }).click();
   await expect(page.locator('.turn').first().getByText('Input 21 · Output 9 · Total 30')).toBeVisible();
-  await expect(page.locator('.turn').first().getByText(/Request \d+ B · Response \d+ B/)).toBeVisible();
+  await expect(page.locator('.turn').first().getByText(/Request body \d+ B · Response body \d+ B/)).toBeVisible();
   await page.locator('.turn').first().getByText('Rows 100', { exact: true }).click();
   await expect(cell(grids.nth(0), 0, 'InvoiceId')).toHaveText('412');
   await scrollGridToLastRow(grids.nth(0));
@@ -128,6 +137,10 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.locator('.turn').last().locator('ion-text[color="danger"]')).toHaveText(/DTQL|from/i);
 
+  await page.getByLabel('Ask about Chinook data').fill('Return oversized response');
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect(page.locator('.turn').last().locator('ion-text[color="danger"]')).toHaveText('The AI provider response is too large.');
+
   await page.reload();
   await expect(page.getByText('Loading local Chinook data…')).toBeHidden({ timeout: 30_000 });
   await page.getByLabel('Ask about Chinook data').fill('Show last 100 orders');
@@ -147,7 +160,8 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
   await expect(page.getByText('Loading local Chinook data…')).toBeHidden({ timeout: 30_000 });
   await page.getByLabel('Ask about Chinook data').fill('Show last 100 orders');
   await page.getByRole('button', { name: 'Send' }).click();
-  await expect(page.getByText('This local Chat trial sends API keys only to a loopback DataTug agent. Choose a localhost store.')).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'Rows 100' }).last()).toBeVisible();
+  expect(localInterpretRequests).toBe(0);
 
   await page.goto('/store/localhost:8989/project/a-different-project/chat');
   await expect(page.getByText('This local Chat trial has Chinook data only for datatug-demo-project.')).toBeVisible();
@@ -210,3 +224,47 @@ test('existing three-table Chinook database upgrades in place to all eleven tabl
   expect(upgraded.playlistTracks).toBe(8715);
   expect(upgraded.marker.data.version).toBe('chinook-sqlite-6334395117e2478a2712e083be614721341c26c9-all-11-v2');
 });
+
+for (const provider of [
+  { name: 'OpenAI', protocol: 'openai-chat', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4.1-mini', url: 'https://api.openai.com/v1/chat/completions' },
+  { name: 'Anthropic', protocol: 'anthropic-messages', baseUrl: 'https://api.anthropic.com', model: 'claude-haiku-4-5-20251001', url: 'https://api.anthropic.com/v1/messages' },
+] as const) {
+  test(`${provider.name} sends Chat directly from the browser`, async ({ page }) => {
+    test.setTimeout(60_000);
+    let providerRequests = 0;
+    let localInterpretRequests = 0;
+    page.on('request', (request) => {
+      if (request.url().includes('/datatug/chat/interpret')) localInterpretRequests += 1;
+    });
+    await page.addInitScript((selected) => {
+      localStorage.setItem('datatug.chat.providers.v1', JSON.stringify([{ ...selected, id: 'selected-provider', apiKey: 'test-key-not-a-secret' }]));
+      localStorage.setItem('datatug.chat.selected-provider.v1', 'selected-provider');
+    }, provider);
+    await page.route(provider.url, async (route) => {
+      providerRequests += 1;
+      const headers = route.request().headers();
+      const body = route.request().postDataJSON() as Record<string, unknown>;
+      expect(body['model']).toBe(provider.model);
+      if (provider.protocol === 'anthropic-messages') {
+        expect(headers['x-api-key']).toBe('test-key-not-a-secret');
+        expect(headers['anthropic-dangerous-direct-browser-access']).toBe('true');
+        expect(body['system']).toContain('main.Artist(ArtistId, Name)');
+      } else {
+        expect(headers['authorization']).toBe('Bearer test-key-not-a-secret');
+      }
+      const content = JSON.stringify({ dtql: { from: { name: 'Artist' }, orderBy: [{ field: 'ArtistId' }], limit: 10 } });
+      await route.fulfill({ json: provider.protocol === 'anthropic-messages'
+        ? { content: [{ type: 'text', text: content }], usage: { input_tokens: 20, output_tokens: 8 } }
+        : { choices: [{ message: { content } }], usage: { prompt_tokens: 20, completion_tokens: 8, total_tokens: 28 } } });
+    });
+    await page.goto('/store/localhost:8989/project/datatug-demo-project/chat');
+    await expect(page.getByText('API keys are stored in this browser origin')).toBeVisible();
+    await expect(page.getByText('Loading local Chinook data…')).toBeHidden({ timeout: 45_000 });
+    await page.getByLabel('Ask about Chinook data').fill('Show 10 artists');
+    await page.getByRole('button', { name: 'Send' }).click();
+    await expect(page.getByRole('tab', { name: 'Rows 10' })).toBeVisible();
+    await expect(cell(page.locator('ag-grid-angular'), 0, 'ArtistId')).toHaveText('1');
+    expect(providerRequests).toBe(1);
+    expect(localInterpretRequests).toBe(0);
+  });
+}
