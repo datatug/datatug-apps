@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { key, parseDTQL, type DTQLSchema } from '@dalgo/core';
+import { key, parseDTQL, type DTQLSchema, type StructuredQuery } from '@dalgo/core';
 import { IndexedDbDatabase } from '@dalgo/indexeddb';
 import { CHINOOK_SCHEMA } from './chat.types';
 
@@ -76,12 +76,12 @@ export class ChinookChatDataService {
     });
   }
 
-  async query(scope: string, dtql: string): Promise<readonly Record<string, unknown>[]> {
+  async query(scope: string, dtql: string): Promise<{ rows: readonly Record<string, unknown>[]; query: StructuredQuery<Record<string, unknown>> }> {
     if (scope !== this.scope) throw new Error('The project changed before this result could be queried.');
     const query = parseDTQL(dtql, CHINOOK_SCHEMA as unknown as DTQLSchema, { maxLimit: 1000 });
     const page = await this.requireDatabase().query(query);
     if (scope !== this.scope) throw new Error('The project changed before this result could be shown.');
-    return page.records.map((record) => record.data as Record<string, unknown>);
+    return { rows: page.records.map((record) => record.data as Record<string, unknown>), query };
   }
 
   private requireDatabase(): IndexedDbDatabase {

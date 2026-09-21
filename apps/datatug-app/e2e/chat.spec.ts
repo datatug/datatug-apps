@@ -56,8 +56,8 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
   });
 
   await page.goto('/store/localhost:8989/project/datatug-demo-project/chat', { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('#main-content').getByText('Chat', { exact: true })).toBeVisible();
-  await expect(page.getByText('API keys are stored in this browser origin')).toBeVisible();
+  await expect(page.locator('#main-content').getByText(/Chat\s*@\s*(DataTug Demo Project 1|datatug-demo-project)/)).toBeVisible();
+  await expect(page.locator('ion-footer').getByLabel('AI provider')).toBeVisible();
   await expect(page.getByText('Loading local Chinook data…')).toBeHidden({ timeout: 30_000 });
   await page.getByLabel('Ask about Chinook data').fill('Show last 100 orders');
   await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled({ timeout: 30_000 });
@@ -100,15 +100,31 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
   await expect(grids).toHaveCount(8);
   await expect(grids.first()).toBeVisible();
   await expect(page.locator('.question-bubble').first()).toHaveText('Show last 100 orders');
+  const you = await page.locator('.turn').first().locator('.question-row strong').boundingBox();
+  const bubble = await page.locator('.question-bubble').first().boundingBox();
+  expect(you && bubble).toBeTruthy();
+  expect(bubble!.x).toBeGreaterThan(you!.x + you!.width);
+  expect(Math.abs((bubble!.y + bubble!.height / 2) - (you!.y + you!.height / 2))).toBeLessThan(12);
   await expect(page.locator('.turn').first().getByText('Rows 100', { exact: true })).toBeVisible();
   await expect(page.locator('.turn').first().locator('.dtql')).toHaveCount(0);
   await page.locator('.turn').first().getByText('DTQL', { exact: true }).click();
   await expect(page.locator('.turn').first().locator('.dtql')).toBeVisible();
+  await expect(page.locator('.turn').first().locator('.dtql')).toContainText('from:\n  schema: "main"\n  name: "Invoice"');
+  await expect(page.locator('.turn').first().locator('.dtql')).toContainText('limit: 100');
+  await page.locator('.turn').first().getByText('SQL', { exact: true }).click();
+  const sqlTurn = page.locator('.turn').first();
+  await expect(sqlTurn.getByLabel('SQL syntax')).toBeVisible();
+  await sqlTurn.locator('ion-select').click();
+  await expect(page.getByRole('radio', { name: 'SQLite' })).toBeVisible();
+  await page.getByRole('radio', { name: 'SQLite' }).click();
+  await expect(sqlTurn.getByLabel('Generated SQL')).toHaveValue('SELECT *\nFROM "main"."Invoice"\nORDER BY "InvoiceId" DESC\nLIMIT 100;');
+  await expect(sqlTurn.getByLabel('Generated SQL')).toHaveAttribute('readonly');
   await page.locator('.turn').first().getByText('Rows 100', { exact: true }).click();
   await expect(page.locator('.turn').first().locator('ag-grid-angular')).toBeVisible();
   await page.locator('.turn').first().getByText('Metrics', { exact: true }).click();
-  await expect(page.locator('.turn').first().getByText('Input 21 · Output 9 · Total 30')).toBeVisible();
-  await expect(page.locator('.turn').first().getByText(/Request body \d+ B · Response body \d+ B/)).toBeVisible();
+  await expect(page.locator('.turn').first().locator('.metric').filter({ hasText: 'Input tokens' })).toContainText('21');
+  await expect(page.locator('.turn').first().locator('.metric').filter({ hasText: 'Total tokens' })).toContainText('30');
+  await expect(page.locator('.turn').first().locator('.metric').filter({ hasText: 'Request body' })).toContainText('B');
   await page.locator('.turn').first().getByText('Rows 100', { exact: true }).click();
   await expect(cell(grids.nth(0), 0, 'InvoiceId')).toHaveText('412');
   await scrollGridToLastRow(grids.nth(0));
@@ -124,6 +140,9 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
   await scrollGridToLastRow(grids.nth(4));
   await expect(cell(grids.nth(4), 29, 'InvoiceId')).toHaveText('383');
   await expect(cell(grids.nth(5), 0, 'TrackId')).toHaveText('1');
+  await page.locator('.turn').nth(5).getByText('SQL', { exact: true }).click();
+  await expect(page.locator('.turn').nth(5).getByLabel('Generated SQL')).toHaveValue(/JOIN "main"\."Artist" AS "Artist"[\s\S]*WHERE "Artist"\."Name" = 'AC\/DC'/);
+  await page.locator('.turn').nth(5).getByText('Rows 10', { exact: true }).click();
   await scrollGridToLastRow(grids.nth(5));
   await expect(cell(grids.nth(5), 9, 'TrackId')).toHaveText('14');
   await expect(cell(grids.nth(6), 0, 'ArtistId')).toHaveText('1');
@@ -146,15 +165,18 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
   await page.getByLabel('Ask about Chinook data').fill('Show last 100 orders');
   await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled({ timeout: 30_000 });
   expect(fixtureRequests).toBe(1);
-  await expect(page.getByText('DeepSeek · deepseek-flash').nth(1)).toBeVisible();
-  await expect(page.getByText('key test-••••cret')).toBeVisible();
+  await expect(page.locator('ion-footer').getByLabel('AI provider')).toHaveAttribute('aria-label', /DeepSeek/);
+  await page.locator('ion-footer ion-select').click({ timeout: 5000 });
+  await page.getByRole('radio', { name: 'Add new AI provider' }).click({ timeout: 5000 });
+  await expect(page.getByText('API keys are stored in this browser origin')).toBeVisible();
+  await expect(page.getByText('Key test-••••cret')).toBeVisible();
   await page.getByRole('button', { name: 'Edit' }).click();
   await expect(page.getByRole('button', { name: 'Save provider' })).toBeVisible();
   await expect(page.getByLabel('API key')).toHaveValue('test-key-not-a-secret');
   await page.getByLabel('Provider name').fill('My DeepSeek');
   await page.getByRole('button', { name: 'Save provider' }).click();
   await page.reload();
-  await expect(page.getByText('My DeepSeek · deepseek-flash').nth(1)).toBeVisible();
+  await expect(page.locator('ion-footer').getByLabel('AI provider')).toHaveAttribute('aria-label', /My DeepSeek/);
 
   await page.goto('/store/evil.example/project/datatug-demo-project/chat');
   await expect(page.getByText('Loading local Chinook data…')).toBeHidden({ timeout: 30_000 });
@@ -166,6 +188,36 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
   await page.goto('/store/localhost:8989/project/a-different-project/chat');
   await expect(page.getByText('This local Chat trial has Chinook data only for datatug-demo-project.')).toBeVisible();
   await expect(page.getByText('Show last 100 orders')).toHaveCount(0);
+});
+
+test('composer can add a provider and restore it after reload', async ({ page }) => {
+  await page.goto('/store/localhost:8989/project/datatug-demo-project/chat');
+  await page.locator('ion-footer ion-select').click();
+  await page.getByRole('radio', { name: 'Add new AI provider' }).click();
+  await expect(page.getByRole('heading', { name: 'Add AI provider' })).toBeVisible();
+  await page.getByRole('button', { name: 'Add AI provider' }).click();
+  await expect(page.getByText('Enter a name, base URL, model, and API key.')).toBeVisible();
+  await page.getByLabel('API key').fill('test-key-not-a-secret');
+  await page.getByRole('button', { name: 'Add AI provider' }).click();
+  await expect(page.locator('ion-modal')).toBeHidden();
+  await expect(page.locator('ion-footer').getByLabel('AI provider')).toHaveAttribute('aria-label', /DeepSeek/);
+  await page.reload();
+  await expect(page.locator('ion-footer').getByLabel('AI provider')).toHaveAttribute('aria-label', /DeepSeek/);
+  await page.setViewportSize({ width: 390, height: 800 });
+  const input = await page.locator('ion-footer ion-input').boundingBox();
+  const dropdown = await page.locator('ion-footer ion-select').boundingBox();
+  const send = await page.locator('ion-footer ion-button').boundingBox();
+  expect(input && dropdown && send).toBeTruthy();
+  expect(dropdown!.x).toBeGreaterThan(input!.x + input!.width);
+  expect(send!.x).toBeGreaterThan(dropdown!.x + dropdown!.width);
+  expect(send!.x + send!.width).toBeLessThanOrEqual(390);
+  const stored = await page.evaluate(() => ({
+    providers: JSON.parse(localStorage.getItem('datatug.chat.providers.v1') || '[]') as { id: string; name: string }[],
+    selected: localStorage.getItem('datatug.chat.selected-provider.v1'),
+  }));
+  expect(stored.providers).toHaveLength(1);
+  expect(stored.providers[0]?.name).toBe('DeepSeek');
+  expect(stored.selected).toBe(stored.providers[0]?.id);
 });
 
 test('existing three-table Chinook database upgrades in place to all eleven tables', async ({ page }) => {
@@ -196,7 +248,7 @@ test('existing three-table Chinook database upgrades in place to all eleven tabl
   });
 
   await page.goto('/store/localhost:8989/project/datatug-demo-project/chat');
-  await expect(page.getByText('API keys are stored in this browser origin')).toBeVisible();
+  await expect(page.locator('ion-footer').getByLabel('AI provider')).toBeVisible();
   await expect(page.getByText('Loading local Chinook data…')).toBeHidden({ timeout: 45_000 });
   const upgraded = await page.evaluate(async () => {
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -258,7 +310,7 @@ for (const provider of [
         : { choices: [{ message: { content } }], usage: { prompt_tokens: 20, completion_tokens: 8, total_tokens: 28 } } });
     });
     await page.goto('/store/localhost:8989/project/datatug-demo-project/chat');
-    await expect(page.getByText('API keys are stored in this browser origin')).toBeVisible();
+    await expect(page.locator('ion-footer').getByLabel('AI provider')).toBeVisible();
     await expect(page.getByText('Loading local Chinook data…')).toBeHidden({ timeout: 45_000 });
     await page.getByLabel('Ask about Chinook data').fill('Show 10 artists');
     await page.getByRole('button', { name: 'Send' }).click();

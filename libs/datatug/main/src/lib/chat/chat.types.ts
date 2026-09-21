@@ -14,6 +14,8 @@ export interface ChatTurn {
   readonly question: string;
   readonly state: 'loading' | 'result' | 'empty' | 'error';
   readonly dtql?: string;
+  readonly dtqlYaml?: string;
+  readonly sql?: string;
   readonly rows?: readonly Record<string, unknown>[];
   readonly error?: string;
   readonly metrics?: ChatMetrics;

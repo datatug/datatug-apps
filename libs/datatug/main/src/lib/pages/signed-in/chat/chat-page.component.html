@@ -2,62 +2,104 @@
   <ion-header>
     <ion-toolbar>
       <ion-buttons slot="start"><ion-menu-button /></ion-buttons>
-      <ion-title>Chat</ion-title>
-      <ion-badge slot="end" class="ion-margin-end">{{ projectId() }}</ion-badge>
+      <sneat-datatug-page-title pageTitle="Chat" />
     </ion-toolbar>
   </ion-header>
 
   <ion-content class="chat-content">
-    <ion-card>
-      <ion-card-header><ion-card-title>AI provider</ion-card-title></ion-card-header>
-      <ion-card-content>
-        <ion-item>
-          <ion-label>Use endpoint</ion-label>
-          <ion-select aria-label="Use endpoint" [value]="providers.selectedId()" (ionChange)="providers.select($event.detail.value)">
-            @for (provider of providers.providers(); track provider.id) {
-              <ion-select-option [value]="provider.id">{{ provider.name }} · {{ provider.model }}</ion-select-option>
-            }
-          </ion-select>
-        </ion-item>
-        @if (selectedProvider(); as provider) {
-          <ion-item><ion-label>{{ provider.baseUrl }} · key {{ keyMask(provider) }}</ion-label><ion-button slot="end" fill="clear" (click)="edit(provider)">Edit</ion-button><ion-button slot="end" fill="clear" color="danger" (click)="providers.remove(provider.id)">Remove</ion-button></ion-item>
+    @if (seedState() === 'loading') { <ion-item><ion-spinner name="dots" /><ion-label class="ion-padding-start">Loading local Chinook data…</ion-label></ion-item> }
+    @if (seedState() === 'error') { <ion-item color="danger"><ion-label>{{ seedError() }}</ion-label></ion-item> }
+
+    @for (turn of turns(); track turn.id) {
+      <section class="turn">
+        <div class="question-row"><strong>You</strong><p class="question-bubble">{{ turn.question }}</p></div>
+        @if (turn.state === 'loading') { <div class="turn-status"><ion-spinner name="dots" /><span>Interpreting and querying…</span></div> }
+        @if (turn.state === 'error') { <ion-text color="danger">{{ turn.error }}</ion-text> }
+        @if (turn.dtql) {
+          <ion-card class="result-card">
+            <ion-card-content>
+              <ion-segment [value]="turnTab(turn)" (ionChange)="selectTurnTab(turn.id, $event.detail.value)">
+                <ion-segment-button value="rows">Rows {{ turn.rows?.length || 0 }}</ion-segment-button>
+                <ion-segment-button value="dtql">DTQL</ion-segment-button>
+                <ion-segment-button value="sql">SQL</ion-segment-button>
+                <ion-segment-button value="metrics">Metrics</ion-segment-button>
+              </ion-segment>
+              @if (turnTab(turn) === 'dtql') { <pre class="dtql">{{ turn.dtqlYaml }}</pre> }
+              @if (turnTab(turn) === 'sql') {
+                <ion-item><ion-label>SQL syntax</ion-label><ion-select aria-label="SQL syntax" interface="popover" value="sqlite"><ion-select-option value="sqlite">SQLite</ion-select-option></ion-select></ion-item>
+                <ion-textarea class="dtql" aria-label="Generated SQL" [readonly]="true" [autoGrow]="true" [value]="turn.sql" />
+              }
+              @if (turnTab(turn) === 'metrics' && turn.metrics; as metrics) {
+                <div class="metrics-grid">
+                  <div class="metric"><span>Input tokens</span><strong>{{ metrics.inputTokens ?? '—' }}</strong></div>
+                  <div class="metric"><span>Output tokens</span><strong>{{ metrics.outputTokens ?? '—' }}</strong></div>
+                  <div class="metric"><span>Total tokens</span><strong>{{ metrics.totalTokens ?? '—' }}</strong></div>
+                  <div class="metric"><span>Request body</span><strong>{{ metrics.requestBytes | number }} B</strong></div>
+                  <div class="metric"><span>Response body</span><strong>{{ metrics.responseBytes | number }} B</strong></div>
+                  <div class="metric"><span>AI response time</span><strong>{{ metrics.interpretMs | number:'1.0-0' }} ms</strong></div>
+                  <div class="metric"><span>Local query</span><strong>{{ metrics.queryMs | number:'1.0-0' }} ms</strong></div>
+                </div>
+              }
+              @if (turnTab(turn) === 'rows' && turn.state === 'empty') { <p class="empty-result">No matching rows.</p> }
+              @if (turnTab(turn) === 'rows' && turn.rows?.length) { <ag-grid-angular class="ag-theme-quartz chat-grid" [rowData]="gridRows(turn.rows)" [columnDefs]="columnsFor(turn.rows)" [defaultColDef]="{ sortable: true, resizable: true }" /> }
+            </ion-card-content>
+          </ion-card>
         }
-        <p class="storage-warning">API keys are stored in this browser origin’s local storage. Scripts running on this origin can read them. Chat requests go directly to the selected AI provider. Remove an endpoint here to delete its key.</p>
-        @if (!providerFormVisible()) { <ion-button (click)="providerFormVisible.set(true)">Add AI provider</ion-button> }
-        @if (providerFormVisible()) {
+      </section>
+    }
+  </ion-content>
+
+  <ion-footer class="composer-footer">
+    <ion-toolbar>
+      <ion-grid class="ion-grid-layout composer-grid">
+        <ion-row>
+          <ion-col class="composer-question">
+            <ion-item class="composer-input-item" lines="none"><ion-input aria-label="Ask about Chinook data" placeholder="Ask about Chinook schema and data" [value]="question()" (ionInput)="question.set($event.detail.value || '')" (keyup.enter)="submit()" /></ion-item>
+          </ion-col>
+          <ion-col class="composer-provider">
+            <ion-select class="provider-select" aria-label="AI provider" interface="popover" [value]="providerChoice()" (ionChange)="selectProvider($event.detail.value)" placeholder="AI provider">
+              @for (provider of providers.providers(); track provider.id) {
+                <ion-select-option [value]="provider.id">{{ provider.name }}</ion-select-option>
+              }
+              <ion-select-option value="__add_provider__">Add new AI provider</ion-select-option>
+            </ion-select>
+          </ion-col>
+          <ion-col class="composer-send"><ion-button fill="solid" color="primary" [disabled]="!selectedProvider() || seedState() !== 'ready' || !question().trim() || submitting()" (click)="submit()"><ion-icon slot="start" name="send-outline" />Send</ion-button></ion-col>
+        </ion-row>
+      </ion-grid>
+    </ion-toolbar>
+  </ion-footer>
+
+  <ion-modal [isOpen]="providerModalOpen()" (didDismiss)="closeProviderModal()">
+    <ng-template>
+      <ion-header>
+        <ion-toolbar>
+          <ion-title>AI providers</ion-title>
+          <ion-buttons slot="end"><ion-button (click)="closeProviderModal()">Done</ion-button></ion-buttons>
+        </ion-toolbar>
+      </ion-header>
+      <ion-content class="provider-modal-content ion-padding">
+        @if (providers.providers().length) {
+          <h2>Saved providers</h2>
+          @for (provider of providers.providers(); track provider.id) {
+            <ion-item>
+              <ion-label><strong>{{ provider.name }}</strong><p>{{ provider.model }} · {{ provider.baseUrl }}</p><p>Key {{ keyMask(provider) }}</p></ion-label>
+              <ion-button slot="end" fill="clear" (click)="edit(provider)">Edit</ion-button>
+              <ion-button slot="end" fill="clear" color="danger" (click)="removeProvider(provider)">Remove</ion-button>
+            </ion-item>
+          }
+        }
+        <h2>{{ editingId() ? 'Edit provider' : 'Add AI provider' }}</h2>
         <ion-item><ion-label>Provider</ion-label><ion-select aria-label="Provider" [value]="presetName()" (ionChange)="choosePreset($event.detail.value)">@for (preset of ['DeepSeek', 'OpenAI', 'Anthropic']; track preset) {<ion-select-option [value]="preset">{{ preset }}</ion-select-option>}</ion-select></ion-item>
         <ion-item><ion-label position="stacked">Name</ion-label><ion-input aria-label="Provider name" [value]="draft().name" (ionInput)="updateDraft('name', $event.detail.value || '')" /></ion-item>
         <ion-item><ion-label>Protocol</ion-label><ion-select aria-label="Protocol" [value]="draft().protocol" (ionChange)="updateDraft('protocol', $event.detail.value)"><ion-select-option value="openai-chat">OpenAI-compatible Chat Completions</ion-select-option><ion-select-option value="anthropic-messages">Anthropic Messages</ion-select-option></ion-select></ion-item>
         <ion-item><ion-label position="stacked">Base URL</ion-label><ion-input aria-label="Base URL" [value]="draft().baseUrl" (ionInput)="updateDraft('baseUrl', $event.detail.value || '')" /></ion-item>
         <ion-item><ion-label position="stacked">Model</ion-label><ion-input aria-label="Model" [value]="draft().model" (ionInput)="updateDraft('model', $event.detail.value || '')" /></ion-item>
         <ion-item><ion-label position="stacked">API key</ion-label><ion-input aria-label="API key" type="password" [value]="draft().apiKey" (ionInput)="updateDraft('apiKey', $event.detail.value || '')" /></ion-item>
-        <ion-button class="ion-margin-top" (click)="saveProvider()">{{ editingId() ? 'Save provider' : 'Add AI provider' }}</ion-button>
-        }
-      </ion-card-content>
-    </ion-card>
-
-    @if (seedState() === 'loading') { <ion-item><ion-spinner name="dots" /><ion-label class="ion-padding-start">Loading local Chinook data…</ion-label></ion-item> }
-    @if (seedState() === 'error') { <ion-item color="danger"><ion-label>{{ seedError() }}</ion-label></ion-item> }
-
-    @for (turn of turns(); track turn.id) {
-      <section class="turn"><strong>You</strong><p class="question-bubble">{{ turn.question }}</p>
-        @if (turn.state === 'loading') { <ion-spinner name="dots" /><span class="ion-padding-start">Interpreting and querying…</span> }
-        @if (turn.state === 'error') { <ion-text color="danger">{{ turn.error }}</ion-text> }
-        @if (turn.dtql) {
-          <ion-segment [value]="turnTab(turn)" (ionChange)="selectTurnTab(turn.id, $event.detail.value)">
-            <ion-segment-button value="rows">Rows {{ turn.rows?.length || 0 }}</ion-segment-button>
-            <ion-segment-button value="dtql">DTQL</ion-segment-button>
-            <ion-segment-button value="metrics">Metrics</ion-segment-button>
-          </ion-segment>
-          @if (turnTab(turn) === 'dtql') { <p class="dtql">{{ turn.dtql }}</p> }
-          @if (turnTab(turn) === 'metrics' && turn.metrics; as metrics) { <div class="metrics"><strong>Provider tokens</strong><p>@if (metrics.totalTokens !== undefined) { Input {{ metrics.inputTokens ?? 'Unavailable' }} · Output {{ metrics.outputTokens ?? 'Unavailable' }} · Total {{ metrics.totalTokens }} } @else { Unavailable }</p><strong>Browser ↔ AI provider</strong><p>Request body {{ metrics.requestBytes }} B · Response body {{ metrics.responseBytes }} B · Interpret {{ metrics.interpretMs | number:'1.0-0' }} ms</p><strong>Local query</strong><p>{{ metrics.queryMs | number:'1.0-0' }} ms</p></div> }
-          @if (turnTab(turn) === 'rows' && turn.state === 'empty') { <ion-text color="medium">No matching rows.</ion-text> }
-          @if (turnTab(turn) === 'rows' && turn.rows?.length) { <ag-grid-angular class="ag-theme-quartz chat-grid" [rowData]="gridRows(turn.rows)" [columnDefs]="columnsFor(turn.rows)" [defaultColDef]="{ sortable: true, resizable: true }" /> }
-        }
-      </section>
-    }
-
-  </ion-content>
-
-  <ion-toolbar class="composer"><ion-item><ion-input aria-label="Ask about Chinook data" placeholder="Ask about Chinook data" [value]="question()" (ionInput)="question.set($event.detail.value || '')" (keyup.enter)="submit()" /><ion-button slot="end" [disabled]="!selectedProvider() || seedState() !== 'ready' || !question().trim() || submitting()" (click)="submit()">Send</ion-button></ion-item></ion-toolbar>
+        @if (providerError()) { <ion-text color="danger"><p class="provider-error">{{ providerError() }}</p></ion-text> }
+        <ion-button class="save-provider" (click)="saveProvider()">{{ editingId() ? 'Save provider' : 'Add AI provider' }}</ion-button>
+        <p class="storage-warning">API keys are stored in this browser origin’s local storage. Scripts running on this origin can read them. Chat requests go directly to the selected AI provider. Remove an endpoint here to delete its key.</p>
+      </ion-content>
+    </ng-template>
+  </ion-modal>
 </div>
