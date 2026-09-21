@@ -1,11 +1,11 @@
 ---
 format: https://specscore.md/plan-specification
-status: Approved
+status: Executing
 ---
 
 # Plan: Browser Chat Phase 5 FK JOIN exploration
 
-**Status:** Approved
+**Status:** Executing
 **Source Feature:** browser-chat-phase-5
 **Date:** 2026-09-21
 **Owner:** alex
@@ -31,35 +31,35 @@ Consume the already-merged recursive `@dalgo/core` JOIN parser/executor by updat
 
 ### Task 1: Land browser Phase 4 bookmark and tag lifecycle
 
-**Status:** planning
+**Status:** in_progress
 **Verifies:** browser-chat-phase-5#ac:lifecycle-and-failure
 
 Implement or integrate the browser's project-scoped Phase 4 bookmark/tag storage and UI before Phase 5 releases. Verify immutable RecordSet references, cross-session reuse and session deletion semantics, then include joined RecordSets in the same lifecycle checks.
 
 ### Task 2: Pin the shared JOIN runtime and FK schema
 
-**Status:** planning
+**Status:** complete
 **Verifies:** browser-chat-phase-5#ac:fk-discovery, browser-chat-phase-5#ac:valid-join
 
 Update the pinned DALgo core commit and verify its recursive parser/executor with the installed IndexedDB adapter. Create `tools/generate-chinook-chat-schema.mjs`, generate and check in a versioned FK manifest from the pinned SQLite schema, and test regeneration plus synthetic composites, ambiguous and self relationships.
 
 ### Task 3: Derive and execute a candidate
 
-**Status:** planning
+**Status:** complete
 **Verifies:** browser-chat-phase-5#ac:valid-join, browser-chat-phase-5#ac:chain-and-lineage, browser-chat-phase-5#ac:lifecycle-and-failure
 
 Build pure relation-instance traversal, edge identity, active-edge suppression, collision-safe aliases, ON construction, inherited-clause qualification and duplicate-safe projection. Validate derived DTQL, execute through DALgo, store parent/edge metadata transactionally and restore it without query reruns.
 
 ### Task 4: Browser candidate controls and details
 
-**Status:** planning
+**Status:** complete
 **Verifies:** browser-chat-phase-5#ac:keyboard-details, browser-chat-phase-5#ac:chain-and-lineage
 
 Place grouped choices below each result grid, wire focus and pointer/keyboard actions, and show exact relationship details in the existing Selected workspace. Keep grid and composer focus behavior intact, with pending/error states for application.
 
 ### Task 5: Chat command route and ambiguity
 
-**Status:** planning
+**Status:** complete
 **Verifies:** browser-chat-phase-5#ac:agent-ambiguity, browser-chat-phase-5#ac:lifecycle-and-failure
 
 Resolve join requests against the current result's candidate IDs and call the same application operation. Show available choices when target text is ambiguous; never accept a model-authored ON condition.

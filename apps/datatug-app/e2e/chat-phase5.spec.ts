@@ -85,6 +85,7 @@ test('FK JOIN candidates execute against real Chinook, chain, persist, and accep
   await page.reload();
   await expect(third.getByRole('tab', { name: 'Rows 5' })).toBeVisible();
   await expect(third.locator('.join-candidates')).toContainText('Related tables');
+  expect(providerCalls).toBe(1);
 
   await third.getByRole('button', { name: 'Bookmark result' }).click();
   const workspace = page.getByLabel('Chat workspace');
