@@ -14,22 +14,31 @@ interface Fixture {
 export class ChinookChatDataService {
   private database?: IndexedDbDatabase;
   private scope?: string;
+  private databaseName?: string;
 
   async ensureSeed(storeId: string, projectId: string): Promise<void> {
     const scope = `${storeId}:${projectId}`;
     if (this.scope !== scope) {
       await this.database?.close();
       this.scope = scope;
-      this.database = new IndexedDbDatabase({ name: `datatug-chat:${encodeURIComponent(scope)}` });
+      this.database = undefined;
+      this.databaseName = undefined;
     }
     if (projectId !== 'datatug-demo-project') {
       throw new Error('This local Chat trial has Chinook data only for datatug-demo-project.');
     }
-    const database = this.requireDatabase();
     const response = await fetch('assets/chinook-phase1.json');
     if (!response.ok) throw new Error('The local Chinook seed fixture is unavailable.');
     const fixture = await response.json() as Fixture;
     if (scope !== this.scope) return;
+    const databaseName = `datatug-chat:${encodeURIComponent(scope)}:${encodeURIComponent(fixture.version)}`;
+    if (this.databaseName !== databaseName) {
+      await this.database?.close();
+      if (scope !== this.scope) return;
+      this.database = new IndexedDbDatabase({ name: databaseName });
+      this.databaseName = databaseName;
+    }
+    const database = this.requireDatabase();
     const seeded = await database.get<{ version?: unknown }>(key('_chatMeta', 'chinook-version'));
     if (seeded.exists && seeded.data.version === fixture.version) return;
     await database.runReadwriteTransaction(async (transaction) => {

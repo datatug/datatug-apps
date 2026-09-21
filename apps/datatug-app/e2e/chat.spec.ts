@@ -11,6 +11,7 @@ async function scrollGridToLastRow(grid: Locator): Promise<void> {
 
 test('Chat persists a selected endpoint and renders seeded Chinook rows from deterministic DTQL', async ({ page }) => {
   await page.addInitScript(() => {
+    if (localStorage.getItem('datatug.chat.providers.v1')) return;
     localStorage.setItem('datatug.chat.providers.v1', JSON.stringify([{
       id: 'fake-deepseek', name: 'DeepSeek', protocol: 'openai-chat',
       baseUrl: 'https://api.deepseek.com', model: 'deepseek-flash', apiKey: 'test-key-not-a-secret',
@@ -68,10 +69,13 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
 
   await page.getByLabel('Ask about Chinook data').fill('Return malformed DTQL');
   await page.getByRole('button', { name: 'Send' }).click();
-  await expect(page.getByText(/DTQL|from/i).last()).toBeVisible();
+  await expect(page.locator('.turn').last().locator('ion-text[color="danger"]')).toHaveText(/DTQL|from/i);
 
   await page.reload();
   await expect(page.getByText('DeepSeek · deepseek-flash').nth(1)).toBeVisible();
+  await page.getByRole('button', { name: 'Edit' }).click();
+  await expect(page.getByRole('button', { name: 'Save provider' })).toBeVisible();
+  await expect(page.getByLabel('API key')).toHaveValue('test-key-not-a-secret');
 
   await page.goto('/store/evil.example/project/datatug-demo-project/chat');
   await expect(page.getByText('Loading local Chinook data…')).toBeHidden({ timeout: 30_000 });

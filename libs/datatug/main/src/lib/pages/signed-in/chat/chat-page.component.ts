@@ -60,6 +60,7 @@ export class ChatPageComponent {
   }
 
   edit(provider: ChatProvider): void {
+    this.providerFormVisible.set(true);
     this.editingId.set(provider.id);
     this.presetName.set(provider.name in providerPresets ? provider.name : 'DeepSeek');
     this.draft.set({ name: provider.name, protocol: provider.protocol, baseUrl: provider.baseUrl, model: provider.model, apiKey: provider.apiKey });
@@ -112,12 +113,15 @@ export class ChatPageComponent {
   }
 
   private async seed(): Promise<void> {
+    const scope = `${this.storeId()}:${this.projectId()}`;
     this.seedState.set('loading');
     this.seedError.set(undefined);
     try {
       await this.data.ensureSeed(this.storeId(), this.projectId());
+      if (scope !== `${this.storeId()}:${this.projectId()}`) return;
       this.seedState.set('ready');
     } catch (error) {
+      if (scope !== `${this.storeId()}:${this.projectId()}`) return;
       this.seedError.set(error instanceof Error ? error.message : 'The local Chinook database is unavailable.');
       this.seedState.set('error');
     }
