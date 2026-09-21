@@ -20,6 +20,8 @@
   </ion-header>
 
   <ion-content class="chat-content">
+    <div class="chat-workspace-layout">
+    <div class="chat-history">
     @if (sessionState() === 'loading') { <ion-item><ion-spinner name="dots" /><ion-label class="ion-padding-start">Restoring chat session…</ion-label></ion-item> }
     @if (sessionError()) { <ion-item color="danger"><ion-label>{{ sessionError() }}</ion-label></ion-item> }
     @if (sessionState() === 'error') { <ion-button class="ion-margin" (click)="retrySessions()">Retry loading chats</ion-button> }
@@ -31,6 +33,7 @@
         <div class="question-row"><strong>You</strong><p class="question-bubble">{{ turn.question }}</p></div>
         @if (turn.state === 'loading') { <div class="turn-status"><ion-spinner name="dots" /><span>Interpreting and querying…</span></div> }
         @if (turn.state === 'error') { <ion-text color="danger">{{ turn.error }}</ion-text> }
+        @if (turn.actionSummary) { <p class="workspace-action-summary">{{ turn.actionSummary }}</p> }
         @if (turn.dtql) {
           <ion-card class="result-card">
             <ion-card-content>
@@ -57,16 +60,87 @@
                 </div>
               }
               @if (turnTab(turn) === 'rows' && turn.state === 'empty') { <p class="empty-result">No matching rows.</p> }
-              @if (turnTab(turn) === 'rows' && turn.rows?.length) { <ag-grid-angular class="ag-theme-quartz chat-grid" [rowData]="gridRows(turn.rows)" [columnDefs]="columnsFor(turn.rows)" [defaultColDef]="{ sortable: true, resizable: true }" /> }
+              @if (turnTab(turn) === 'rows' && turn.rows?.length) {
+                <div class="result-actions">
+                  @if (resultReference(turn); as reference) {
+                    <ion-button size="small" fill="clear" (click)="toggleAttachment(reference)">{{ attached(reference) ? 'Detach result' : 'Attach result' }}</ion-button>
+                    <ion-button size="small" fill="clear" (click)="workspaceAction({ kind: 'dock', reference })">Dock result</ion-button>
+                  }
+                </div>
+                <ag-grid-angular class="ag-theme-quartz chat-grid" [rowData]="gridRows(turn.rows)" [columnDefs]="columnsFor(turn.rows)" [defaultColDef]="{ sortable: true, resizable: true }" [rowSelection]="{ mode: 'multiRow', checkboxes: true, headerCheckbox: false }" (selectionChanged)="onGridSelection(turn, $event)" (cellClicked)="onGridCell(turn, $event)" />
+              }
             </ion-card-content>
           </ion-card>
         }
       </section>
     }
+    </div>
+
+    <aside class="workspace-panel" aria-label="Chat workspace">
+      <ion-segment [value]="workspace().activeTab" (ionChange)="setWorkspaceTab($event.detail.value)">
+        <ion-segment-button value="project">Project</ion-segment-button>
+        <ion-segment-button value="selected">Selected</ion-segment-button>
+        <ion-segment-button value="docked">Docked {{ workspace().docks.length }}</ion-segment-button>
+      </ion-segment>
+      <div class="workspace-body">
+        @if (workspace().activeTab === 'project') {
+          <ion-item><ion-label><strong>{{ projectId() }}</strong><p>Project</p></ion-label><ion-button slot="end" fill="clear" (click)="toggleAttachment(projectReference())">{{ attached(projectReference()) ? 'Detach' : 'Attach' }}</ion-button></ion-item>
+          @if (seedState() === 'ready') {
+            <ion-item><ion-label><strong>Chinook</strong><p>Local data source · main schema</p></ion-label><ion-button slot="end" fill="clear" (click)="toggleAttachment(sourceReference())">{{ attached(sourceReference()) ? 'Detach' : 'Attach' }}</ion-button></ion-item>
+            <div class="workspace-group-label">Tables</div>
+            @for (table of tables; track table.name) {
+              <ion-item class="workspace-table"><ion-label>{{ table.name }}<p>{{ table.fields.length }} columns</p></ion-label><ion-button slot="end" fill="clear" (click)="toggleAttachment(tableReference(table.schema, table.name))">{{ attached(tableReference(table.schema, table.name)) ? 'Detach' : 'Attach' }}</ion-button></ion-item>
+            }
+          }
+        }
+        @if (workspace().activeTab === 'selected') {
+          @if (savedSelections().length) {
+            <div class="workspace-group-label">Saved selections</div>
+            @for (item of savedSelections(); track item.id) {
+              <ion-button size="small" [fill]="item.id === workspace().currentSelectionId ? 'solid' : 'clear'" (click)="workspaceAction({ kind: 'focusSelection', selectionId: item.id })">{{ item.title }}</ion-button>
+            }
+          }
+          @if (currentSelection(); as selection) {
+            <h3>{{ selection.title }}</h3>
+            <p>{{ selection.rows.length }} row{{ selection.rows.length === 1 ? '' : 's' }} · {{ selection.columns.length }} column{{ selection.columns.length === 1 ? '' : 's' }}</p>
+            <div class="workspace-actions">
+              @if (selectionReference(); as reference) {
+                <ion-button size="small" (click)="toggleAttachment(reference)">{{ attached(reference) ? 'Detach' : 'Attach to chat' }}</ion-button>
+                <ion-button size="small" fill="outline" (click)="workspaceAction({ kind: 'dockCurrent' })">Dock</ion-button>
+              }
+            </div>
+            @if (selectedRows().length === 1) {
+              <dl class="selected-fields">
+                @for (entry of selectedEntries(); track entry.key) { <div><dt>{{ entry.key }}</dt><dd>{{ entry.value ?? '—' }}</dd></div> }
+              </dl>
+            } @else if (selectedRows().length) {
+              <ag-grid-angular class="ag-theme-quartz workspace-grid" [rowData]="selectedRows()" [columnDefs]="columnsFor(selectedRows(), selection.columns)" />
+            } @else { <p>This selection has no rows.</p> }
+          } @else { <p class="workspace-empty">Select rows or a cell in a result grid to inspect them here.</p> }
+        }
+        @if (workspace().activeTab === 'docked') {
+          @for (dock of workspace().docks; track dock.id) {
+            <section class="dock-item">
+              <div class="dock-title"><strong>{{ dock.title }}</strong><ion-button size="small" fill="clear" (click)="workspaceAction({ kind: 'undock', dockId: dock.id })">Undock</ion-button></div>
+              @if (dockRows(dock).length) { <ag-grid-angular class="ag-theme-quartz workspace-grid" [rowData]="dockRows(dock)" [columnDefs]="columnsFor(dockRows(dock), dockColumns(dock))" /> }
+              @else { <p>No rows in this dock.</p> }
+            </section>
+          } @empty { <p class="workspace-empty">Dock a result or selection to keep it here for this chat session.</p> }
+        }
+      </div>
+    </aside>
+    </div>
   </ion-content>
 
   <ion-footer class="composer-footer">
     <ion-toolbar>
+      @if (workspace().attachments.length) {
+        <div class="attachment-chips" aria-label="Attached context">
+          @for (reference of workspace().attachments; track reference.kind + reference.objectId) {
+            <ion-button size="small" fill="outline" (click)="workspaceAction({ kind: 'detach', reference })">{{ reference.title }} ×</ion-button>
+          }
+        </div>
+      }
       <ion-grid class="ion-grid-layout composer-grid">
         <ion-row>
           <ion-col class="composer-question">
@@ -83,6 +157,7 @@
           <ion-col class="composer-send"><ion-button fill="solid" color="primary" [disabled]="!selectedProvider() || seedState() !== 'ready' || sessionState() !== 'ready' || !question().trim() || submitting() || sessionBusy()" (click)="submit()"><ion-icon slot="start" name="send-outline" />Send</ion-button></ion-col>
         </ion-row>
       </ion-grid>
+      <div class="chat-status-bar">{{ projectId() }} · {{ activeSessionTitle() }} · {{ turns().length }} turns · {{ workspace().attachments.length }} attached · {{ currentSelection()?.rows?.length || 0 }} selected · {{ submitting() ? 'working' : sessionState() }}</div>
     </ion-toolbar>
   </ion-footer>
 

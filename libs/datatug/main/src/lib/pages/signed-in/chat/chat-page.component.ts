@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { AgGridAngular } from 'ag-grid-angular';
-import { AllCommunityModule, ModuleRegistry, type ColDef } from 'ag-grid-community';
+import { AllCommunityModule, ModuleRegistry, type CellClickedEvent, type ColDef, type SelectionChangedEvent } from 'ag-grid-community';
 import {
   IonAlert, IonButton, IonButtons, IonCard, IonCardContent, IonCol, IonContent, IonFooter, IonGrid, IonHeader,
   IonIcon, IonInput, IonItem, IonLabel, IonMenuButton, IonModal,
@@ -16,6 +16,9 @@ import { ChinookChatDataService } from '../../../chat/chinook-chat-data.service'
 import { ChatProviderService, providerPresets } from '../../../chat/chat-provider.service';
 import { ChatProvider, ChatTurn, CHINOOK_SCHEMA } from '../../../chat/chat.types';
 import { ChatSession, ChatSessionService } from '../../../chat/chat-session.service';
+import {
+  ChatContextReference, ChatDock, ChatWorkspaceAction, emptyChatWorkspace,
+} from '../../../chat/chat-workspace';
 import { chatDtqlYaml, chatSQLite } from '../../../chat/chat-query-format';
 import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
 
@@ -35,6 +38,12 @@ addIcons({ sendOutline });
   ],
 })
 export class ChatPageComponent {
+  private cellAnchor?: { recordSetId: string; sourceRow: number; column: string };
+  private readonly gridRowCache = new WeakMap<readonly Record<string, unknown>[], Record<string, unknown>[]>();
+  private readonly gridColumnCache = new WeakMap<readonly Record<string, unknown>[], Map<string, ColDef[]>>();
+  private readonly dockRowCache = new Map<string, {
+    state: ReturnType<typeof emptyChatWorkspace>; turns: readonly ChatTurn[]; rows: Record<string, unknown>[];
+  }>();
   private readonly route = inject(ActivatedRoute);
   private readonly interpreter = inject(ChatInterpretService);
   private readonly data = inject(ChinookChatDataService);
@@ -47,6 +56,19 @@ export class ChatPageComponent {
   readonly seedError = signal<string | undefined>(undefined);
   readonly turns = signal<readonly ChatTurn[]>([]);
   readonly sessions = signal<readonly ChatSession[]>([]);
+  readonly workspace = signal(emptyChatWorkspace());
+  readonly savedSelections = computed(() => Object.values(this.workspace().selections));
+  readonly tables = CHINOOK_SCHEMA.tables;
+  readonly currentSelection = computed(() => {
+    const state = this.workspace();
+    return state.currentSelectionId ? state.selections[state.currentSelectionId] : undefined;
+  });
+  readonly selectedRows = computed(() => {
+    const selection = this.currentSelection();
+    const view = selection && this.workspace().views[selection.viewId];
+    const turn = this.turns().find((item) => item.recordSetId === view?.recordSetId);
+    return selection && turn?.rows ? selection.rows.map((index) => turn.rows?.[index]).filter((row): row is Record<string, unknown> => !!row) : [];
+  });
   readonly activeSessionId = signal('');
   readonly activeSessionTitle = computed(() => this.sessions().find((session) => session.id === this.activeSessionId())?.title || 'Chat session');
   readonly sessionBusy = signal(false);
@@ -93,6 +115,7 @@ export class ChatPageComponent {
       this.activeSessionId.set(session.id);
       this.turns.set([]);
       this.turnTabs.set({});
+      this.workspace.set(session.workspace || emptyChatWorkspace());
       this.sessionState.set('ready');
       this.sessionError.set(undefined);
     } catch (error) {
@@ -120,6 +143,7 @@ export class ChatPageComponent {
       await this.sessionStore.activate(scope, id);
       if (scope !== this.scope()) return;
       this.turns.set(restored.turns);
+      this.workspace.set(restored.session.workspace || emptyChatWorkspace());
       this.turnTabs.set({});
       await this.refreshSessions();
       if (scope !== this.scope()) return;
@@ -173,11 +197,13 @@ export class ChatPageComponent {
       if (action.kind === 'clear') {
         await this.sessionStore.clear(scope, action.id);
         if (scope === this.scope() && action.id === this.activeSessionId()) this.turns.set([]);
+        if (scope === this.scope() && action.id === this.activeSessionId()) this.workspace.set(emptyChatWorkspace());
       } else {
         await this.sessionStore.delete(scope, action.id);
         if (scope === this.scope() && action.id === this.activeSessionId()) {
           this.activeSessionId.set('');
           this.turns.set([]);
+          this.workspace.set(emptyChatWorkspace());
         }
       }
       if (scope === this.scope()) await this.restoreSessions();
@@ -256,7 +282,7 @@ export class ChatPageComponent {
     this.submitting.set(true);
     let id: string | undefined;
     try {
-      const context = this.sessionStore.context(this.turns());
+      const context = this.sessionStore.context(this.turns(), this.workspace(), this.projectId());
       const pending = await this.sessionStore.appendQuestion(scope, sessionId, question);
       id = pending.id;
       if (scope === this.scope() && sessionId === this.activeSessionId()) {
@@ -266,6 +292,18 @@ export class ChatPageComponent {
       }
       const interpretation = await this.interpreter.interpret(question, provider, context);
       if (scope !== this.scope()) throw new Error('The project changed before this result could be queried.');
+      if (interpretation.workspaceAction) {
+        const completed = await this.sessionStore.completeWorkspaceAction(
+          scope, sessionId, id, interpretation.workspaceAction, interpretation.metrics,
+        );
+        if (scope === this.scope() && sessionId === this.activeSessionId()) {
+          this.workspace.set(completed.workspace);
+          this.replaceTurn(id, completed.turn);
+          await this.refreshSessions();
+        }
+        return;
+      }
+      if (!interpretation.dtql) throw new Error('The AI provider did not return a query or workspace action.');
       const bound = await this.sessionStore.bindRecordSet(scope, sessionId, interpretation.dtql);
       if (scope !== this.scope()) throw new Error('The project changed before this result could be queried.');
       const queryStarted = performance.now();
@@ -304,12 +342,159 @@ export class ChatPageComponent {
       : '••••';
   }
 
-  columnsFor(rows: readonly Record<string, unknown>[]): ColDef[] {
-    return Object.keys(rows[0] || {}).map((field) => ({ field, sortable: true, resizable: true, minWidth: 120 }));
+  columnsFor(rows: readonly Record<string, unknown>[], visibleColumns?: readonly string[]): ColDef[] {
+    const fields = visibleColumns || Object.keys(rows[0] || {});
+    const key = fields.join('\u0000');
+    let byFields = this.gridColumnCache.get(rows);
+    if (!byFields) {
+      byFields = new Map();
+      this.gridColumnCache.set(rows, byFields);
+    }
+    let columns = byFields.get(key);
+    if (!columns) {
+      columns = fields.map((field) => ({ field, sortable: true, resizable: true, minWidth: 120 }));
+      byFields.set(key, columns);
+    }
+    return columns;
   }
 
   gridRows(rows: readonly Record<string, unknown>[]): Record<string, unknown>[] {
-    return [...rows];
+    let gridRows = this.gridRowCache.get(rows);
+    if (!gridRows) {
+      gridRows = rows.map((row, index) => ({ ...row, __sourceRowIndex: index }));
+      this.gridRowCache.set(rows, gridRows);
+    }
+    return gridRows;
+  }
+
+  async workspaceAction(action: ChatWorkspaceAction): Promise<void> {
+    if (this.submitting() || this.sessionBusy() || this.sessionState() !== 'ready') return;
+    const scope = this.scope();
+    const sessionId = this.activeSessionId();
+    this.sessionBusy.set(true);
+    try {
+      const state = await this.sessionStore.workspaceAction(scope, sessionId, action);
+      if (scope === this.scope() && sessionId === this.activeSessionId()) this.workspace.set(state);
+    } catch (error) {
+      this.showSessionError(error);
+    } finally {
+      this.sessionBusy.set(false);
+    }
+  }
+
+  setWorkspaceTab(tab: string | number | undefined): void {
+    if (tab === 'project' || tab === 'selected' || tab === 'docked') void this.workspaceAction({ kind: 'setTab', tab });
+  }
+
+  projectReference(): ChatContextReference {
+    return { kind: 'project', projectId: this.projectId(), objectId: this.projectId(), title: this.projectId() };
+  }
+
+  sourceReference(): ChatContextReference {
+    return { kind: 'source', projectId: this.projectId(), sourceId: 'chinook', objectId: 'chinook', title: 'Chinook' };
+  }
+
+  tableReference(schema: string, name: string): ChatContextReference {
+    return { kind: 'table', projectId: this.projectId(), sourceId: 'chinook', objectId: `${schema}.${name}`, title: name };
+  }
+
+  attached(reference: ChatContextReference): boolean {
+    return this.workspace().attachments.some((item) => item.kind === reference.kind && item.objectId === reference.objectId && item.sourceId === reference.sourceId);
+  }
+
+  toggleAttachment(reference: ChatContextReference): void {
+    void this.workspaceAction({ kind: this.attached(reference) ? 'detach' : 'attach', reference });
+  }
+
+  onGridSelection(turn: ChatTurn, event: SelectionChangedEvent): void {
+    if (!turn.recordSetId) return;
+    if (!['checkboxSelected', 'rowClicked', 'spaceKey', 'keyboardSelectAll', 'uiSelectAll'].includes(event.source)) return;
+    const rows = event.api.getSelectedNodes().map((node) => (node.data as { __sourceRowIndex?: number } | undefined)?.__sourceRowIndex)
+      .filter((index): index is number => Number.isInteger(index));
+    if (rows.length) void this.workspaceAction({ kind: 'select', recordSetId: turn.recordSetId, rows, title: `${rows.length} selected rows` });
+    else if (this.currentSelection()) void this.workspaceAction({ kind: 'clearSelection' });
+  }
+
+  onGridCell(turn: ChatTurn, event: CellClickedEvent): void {
+    const index = (event.data as { __sourceRowIndex?: number } | undefined)?.__sourceRowIndex;
+    const column = event.column.getColId();
+    if (!turn.recordSetId || !Number.isInteger(index) || index === undefined || !turn.columns?.includes(column)) return;
+    const pointer = event.event;
+    const shifted = pointer instanceof MouseEvent && pointer.shiftKey && this.cellAnchor?.recordSetId === turn.recordSetId;
+    if (shifted && this.cellAnchor && turn.columns) {
+      const anchor = this.cellAnchor;
+      const displayCount = event.api.getDisplayedRowCount();
+      let anchorDisplay = -1;
+      for (let displayed = 0; displayed < displayCount; displayed++) {
+        if ((event.api.getDisplayedRowAtIndex(displayed)?.data as { __sourceRowIndex?: number } | undefined)?.__sourceRowIndex === anchor.sourceRow) {
+          anchorDisplay = displayed;
+          break;
+        }
+      }
+      const targetDisplay = event.node.rowIndex;
+      const startColumn = turn.columns.indexOf(anchor.column);
+      const endColumn = turn.columns.indexOf(column);
+      if (anchorDisplay >= 0 && targetDisplay !== null && startColumn >= 0 && endColumn >= 0) {
+        const rows: number[] = [];
+        for (let displayed = Math.min(anchorDisplay, targetDisplay); displayed <= Math.max(anchorDisplay, targetDisplay); displayed++) {
+          const source = (event.api.getDisplayedRowAtIndex(displayed)?.data as { __sourceRowIndex?: number } | undefined)?.__sourceRowIndex;
+          if (source !== undefined) rows.push(source);
+        }
+        const columns = turn.columns.slice(Math.min(startColumn, endColumn), Math.max(startColumn, endColumn) + 1);
+        void this.workspaceAction({
+          kind: 'select', recordSetId: turn.recordSetId, rows, columns,
+          ranges: [{ rowIndices: rows, columns }], title: `${rows.length} × ${columns.length} cells`,
+        });
+        return;
+      }
+    }
+    this.cellAnchor = { recordSetId: turn.recordSetId, sourceRow: index, column };
+    void this.workspaceAction({
+      kind: 'select', recordSetId: turn.recordSetId, rows: [index], columns: [column],
+      ranges: [{ rowIndices: [index], columns: [column] }],
+      title: `${column} · row ${index + 1}`,
+    });
+  }
+
+  selectionReference(): ChatContextReference | undefined {
+    const selection = this.currentSelection();
+    return selection ? { kind: 'selection', projectId: this.projectId(), sourceId: 'chinook', objectId: selection.id, title: selection.title } : undefined;
+  }
+
+  resultReference(turn: ChatTurn): ChatContextReference | undefined {
+    return turn.recordSetId ? {
+      kind: 'recordset', projectId: this.projectId(), sourceId: 'chinook', objectId: turn.recordSetId,
+      title: turn.question.slice(0, 60),
+    } : undefined;
+  }
+
+  selectedEntries(): readonly { key: string; value: unknown }[] {
+    const row = this.selectedRows()[0];
+    const selection = this.currentSelection();
+    return row && selection ? selection.columns.map((key) => ({ key, value: row[key] })) : [];
+  }
+
+  dockRows(dock: ChatDock): Record<string, unknown>[] {
+    const state = this.workspace();
+    const turns = this.turns();
+    const cached = this.dockRowCache.get(dock.id);
+    if (cached?.state === state && cached.turns === turns) return cached.rows;
+    const selection = dock.reference.kind === 'selection' ? state.selections[dock.reference.objectId] : undefined;
+    const view = selection ? state.views[selection.viewId] : dock.reference.kind === 'view' ? state.views[dock.reference.objectId] : undefined;
+    const recordSetId = view?.recordSetId || (dock.reference.kind === 'recordset' ? dock.reference.objectId : undefined);
+    const source = turns.find((turn) => turn.recordSetId === recordSetId)?.rows;
+    const rows = source ? (selection?.rows || view?.rowIndices || source.map((_, index) => index))
+      .map((index) => source[index]).filter((row): row is Record<string, unknown> => !!row) : [];
+    if (this.dockRowCache.size > 32) this.dockRowCache.clear();
+    this.dockRowCache.set(dock.id, { state, turns, rows });
+    return rows;
+  }
+
+  dockColumns(dock: ChatDock): readonly string[] | undefined {
+    const state = this.workspace();
+    const selection = dock.reference.kind === 'selection' ? state.selections[dock.reference.objectId] : undefined;
+    const view = selection ? state.views[selection.viewId] : dock.reference.kind === 'view' ? state.views[dock.reference.objectId] : undefined;
+    return selection?.columns || view?.columns;
   }
 
   turnTab(turn: ChatTurn): 'rows' | 'dtql' | 'sql' | 'metrics' {
@@ -344,6 +529,7 @@ export class ChatPageComponent {
     this.projectId.set(projectId);
     this.turns.set([]);
     this.sessions.set([]);
+    this.workspace.set(emptyChatWorkspace());
     this.activeSessionId.set('');
     void this.seed();
     void this.restoreSessions();
@@ -371,6 +557,7 @@ export class ChatPageComponent {
       const restored = await this.sessionStore.load(scope, selected.id);
       if (scope !== this.scope()) return;
       this.turns.set(restored.turns);
+      this.workspace.set(restored.session.workspace || emptyChatWorkspace());
       this.turnTabs.set({});
       this.sessionState.set('ready');
       this.sessionError.set(undefined);

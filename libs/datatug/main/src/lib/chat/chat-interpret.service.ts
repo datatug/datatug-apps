@@ -1,14 +1,18 @@
 import { Injectable } from '@angular/core';
 import { ChatMetrics, ChatProvider, CHINOOK_SCHEMA_PROMPT } from './chat.types';
+import { ChatWorkspaceAction } from './chat-workspace';
 
-const instructions = `You translate one question about Chinook into one DTQL action.
-Return only a JSON object with a single dtql property containing the DTQL object. No prose or Markdown.
+const instructions = `You translate one question about Chinook into one DTQL or workspace action.
+Return only a JSON object with a single dtql or workspaceAction property. No prose or Markdown.
 Use from, where, orderBy and limit as needed. Always include a limit from 1 to 1000.
 For example: {"dtql":{"from":{"schema":"main","name":"Customer"},"where":{"op":"==","left":{"field":"City"},"right":{"value":"Prague"}},"limit":50}}
 For descending order: {"dtql":{"from":{"schema":"main","name":"Invoice"},"orderBy":[{"field":"InvoiceId","desc":true}],"limit":100}}
 Each orderBy item uses field and optional desc boolean. Never use direction, column, sort, or order keys.
 Do not use SQL, joins, aggregation, or unsupported fields. The browser validates the action before running it.
 For a follow-up that needs identifiers from a previous RecordSet, use where op "In" with right.recordSet {"id":"the RecordSet ID from context","field":"the source column"}. The left field is the target table's matching identifier. For example, to find customers from saved invoices: {"dtql":{"from":{"schema":"main","name":"Customer"},"where":{"op":"In","left":{"field":"CustomerId"},"right":{"recordSet":{"id":"saved RecordSet ID","field":"CustomerId"}}},"limit":100}}. The browser substitutes saved values locally. Never invent or include result values in the action.
+For a related query over an attached or docked Selection, use right.selection with its ID and source column in the same In predicate. DataTug resolves the selected values locally.
+For a local selection request, return {"workspaceAction":{"kind":"select","recordSetId":"the saved RecordSet ID","column":"City","equals":"Prague","limit":5}}. For "dock them", return {"workspaceAction":{"kind":"dockCurrent"}}. The browser applies these actions to saved results without another database query.
+Other workspace actions: {"kind":"clearSelection"}, {"kind":"sortView","viewId":"existing View ID","column":"Total","descending":true}, {"kind":"undock","dockId":"existing dock ID"}, and {"kind":"attach"} or {"kind":"detach"} with reference {"kind":"table|source|project|recordset|view|selection","projectId":"current project","sourceId":"chinook when applicable","objectId":"exact object ID","title":"short label"}. To dock a known result/View/Selection, use {"kind":"dock","reference":...}. Use exact IDs from context, never invent IDs. Browsing or focusing an item does not attach it.
 ${CHINOOK_SCHEMA_PROMPT}`;
 
 function object(value: unknown): Record<string, unknown> | undefined {
@@ -38,7 +42,11 @@ function providerUrl(provider: ChatProvider): URL {
   return url;
 }
 
-function dtqlFromContent(content: unknown): string {
+export type ChatInterpretation =
+  | { readonly dtql: string; readonly workspaceAction?: never; readonly metrics: Omit<ChatMetrics, 'queryMs'> }
+  | { readonly dtql?: never; readonly workspaceAction: ChatWorkspaceAction; readonly metrics: Omit<ChatMetrics, 'queryMs'> };
+
+function actionFromContent(content: unknown): { dtql: string; workspaceAction?: never } | { dtql?: never; workspaceAction: ChatWorkspaceAction } {
   if (typeof content !== 'string' || content.length > 12000) {
     throw new Error('The AI provider did not return one DTQL action.');
   }
@@ -49,8 +57,12 @@ function dtqlFromContent(content: unknown): string {
     throw new Error('The AI provider returned invalid DTQL JSON.');
   }
   const dtql = object(object(parsed)?.['dtql']);
-  if (!dtql) throw new Error('The AI provider did not return one DTQL action.');
-  return JSON.stringify(dtql);
+  const workspaceAction = object(object(parsed)?.['workspaceAction']);
+  if (dtql && !workspaceAction) return { dtql: JSON.stringify(dtql) };
+  if (workspaceAction && !dtql && typeof workspaceAction['kind'] === 'string') {
+    return { workspaceAction: workspaceAction as unknown as ChatWorkspaceAction };
+  }
+  throw new Error('The AI provider did not return one DTQL or workspace action.');
 }
 
 async function boundedResponseText(response: Response): Promise<string> {
@@ -86,7 +98,7 @@ async function boundedResponseText(response: Response): Promise<string> {
 
 @Injectable({ providedIn: 'root' })
 export class ChatInterpretService {
-  async interpret(question: string, provider: ChatProvider, context = ''): Promise<{ dtql: string; metrics: Omit<ChatMetrics, 'queryMs'> }> {
+  async interpret(question: string, provider: ChatProvider, context = ''): Promise<ChatInterpretation> {
     if (new TextEncoder().encode(question.trim()).byteLength > 1000) {
       throw new Error('Question must be 1000 bytes or fewer.');
     }
@@ -134,7 +146,7 @@ export class ChatInterpretService {
     const outputTokens = isAnthropic ? usage?.['output_tokens'] : usage?.['completion_tokens'];
     const totalTokens = usage?.['total_tokens'];
     return {
-      dtql: dtqlFromContent(content),
+      ...actionFromContent(content),
       metrics: {
         inputTokens: typeof inputTokens === 'number' ? inputTokens : undefined,
         outputTokens: typeof outputTokens === 'number' ? outputTokens : undefined,

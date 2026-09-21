@@ -2,6 +2,118 @@
   margin: 1.25rem;
 }
 
+.chat-workspace-layout {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.chat-history {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: auto;
+}
+
+.workspace-panel {
+  border-left: 1px solid var(--ion-color-light-shade);
+  display: flex;
+  flex: 0 0 360px;
+  flex-direction: column;
+  max-width: 60%;
+  min-width: 280px;
+  overflow: auto;
+  resize: horizontal;
+}
+
+.workspace-panel ion-segment {
+  flex: 0 0 auto;
+}
+
+.workspace-body {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 0.75rem;
+}
+
+.workspace-body ion-item {
+  --padding-start: 0.35rem;
+}
+
+.workspace-body ion-item p {
+  color: var(--ion-color-medium-shade);
+  font-size: 0.8rem;
+}
+
+.workspace-group-label {
+  color: var(--ion-color-medium-shade);
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin: 1rem 0 0.25rem;
+  text-transform: uppercase;
+}
+
+.workspace-empty {
+  color: var(--ion-color-medium-shade);
+  padding: 1rem 0.5rem;
+}
+
+.workspace-actions,
+.result-actions,
+.dock-title,
+.attachment-chips {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.dock-title {
+  justify-content: space-between;
+}
+
+.dock-item {
+  border-bottom: 1px solid var(--ion-color-light-shade);
+  padding: 0.5rem 0 1rem;
+}
+
+.workspace-grid {
+  height: 230px;
+  width: 100%;
+}
+
+.selected-fields > div {
+  border-bottom: 1px solid var(--ion-color-light-shade);
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: minmax(90px, 1fr) 2fr;
+  padding: 0.45rem 0;
+}
+
+.selected-fields dt {
+  color: var(--ion-color-medium-shade);
+}
+
+.selected-fields dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.attachment-chips {
+  padding: 0 0.25rem 0.4rem;
+}
+
+.chat-status-bar {
+  color: var(--ion-color-medium-shade);
+  font-size: 0.75rem;
+  padding: 0.1rem 0.5rem 0;
+}
+
+.workspace-action-summary {
+  color: var(--ion-color-medium-shade);
+  margin: 0.5rem 0;
+}
+
 .question-row {
   align-items: baseline;
   display: flex;
@@ -135,6 +247,23 @@
 }
 
 @media (max-width: 540px) {
+  .chat-workspace-layout {
+    flex-direction: column;
+  }
+
+  .chat-history {
+    min-height: 55%;
+  }
+
+  .workspace-panel {
+    border-left: 0;
+    border-top: 1px solid var(--ion-color-light-shade);
+    flex-basis: 45%;
+    max-width: none;
+    min-width: 0;
+    resize: none;
+  }
+
   .turn {
     margin: 0.75rem;
   }
