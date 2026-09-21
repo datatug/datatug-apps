@@ -4,9 +4,25 @@
       <ion-buttons slot="start"><ion-menu-button /></ion-buttons>
       <sneat-datatug-page-title pageTitle="Chat" />
     </ion-toolbar>
+    <ion-toolbar class="session-toolbar">
+      <ion-select aria-label="Chat session" interface="popover" [value]="activeSessionId()" [selectedText]="activeSessionTitle()" (ionChange)="switchSession($event.detail.value)" [disabled]="sessionState() === 'loading' || submitting() || sessionBusy() || !sessions().length">
+        @for (session of sessions(); track session.id) {
+          <ion-select-option [value]="session.id">{{ session.title }}</ion-select-option>
+        }
+      </ion-select>
+      <ion-buttons slot="end">
+        <ion-button (click)="newSession()" [disabled]="sessionState() === 'loading' || submitting() || sessionBusy()">New</ion-button>
+        <ion-button (click)="openRename()" [disabled]="!activeSessionId() || submitting() || sessionBusy()">Rename</ion-button>
+        <ion-button (click)="askSessionAction('clear')" [disabled]="!activeSessionId() || submitting() || sessionBusy()">Clear</ion-button>
+        <ion-button color="danger" (click)="askSessionAction('delete')" [disabled]="!activeSessionId() || submitting() || sessionBusy()">Delete</ion-button>
+      </ion-buttons>
+    </ion-toolbar>
   </ion-header>
 
   <ion-content class="chat-content">
+    @if (sessionState() === 'loading') { <ion-item><ion-spinner name="dots" /><ion-label class="ion-padding-start">Restoring chat session…</ion-label></ion-item> }
+    @if (sessionError()) { <ion-item color="danger"><ion-label>{{ sessionError() }}</ion-label></ion-item> }
+    @if (sessionState() === 'error') { <ion-button class="ion-margin" (click)="retrySessions()">Retry loading chats</ion-button> }
     @if (seedState() === 'loading') { <ion-item><ion-spinner name="dots" /><ion-label class="ion-padding-start">Loading local Chinook data…</ion-label></ion-item> }
     @if (seedState() === 'error') { <ion-item color="danger"><ion-label>{{ seedError() }}</ion-label></ion-item> }
 
@@ -64,13 +80,25 @@
               <ion-select-option value="__add_provider__">Add new AI provider</ion-select-option>
             </ion-select>
           </ion-col>
-          <ion-col class="composer-send"><ion-button fill="solid" color="primary" [disabled]="!selectedProvider() || seedState() !== 'ready' || !question().trim() || submitting()" (click)="submit()"><ion-icon slot="start" name="send-outline" />Send</ion-button></ion-col>
+          <ion-col class="composer-send"><ion-button fill="solid" color="primary" [disabled]="!selectedProvider() || seedState() !== 'ready' || sessionState() !== 'ready' || !question().trim() || submitting() || sessionBusy()" (click)="submit()"><ion-icon slot="start" name="send-outline" />Send</ion-button></ion-col>
         </ion-row>
       </ion-grid>
     </ion-toolbar>
   </ion-footer>
 
-  <ion-modal [isOpen]="providerModalOpen()" (didDismiss)="closeProviderModal()">
+  <ion-alert [isOpen]="!!sessionAction()" [header]="sessionAlertHeader()" [message]="sessionAlertMessage()" [buttons]="sessionAlertButtons" (didDismiss)="sessionAction.set(undefined)" />
+
+  <ion-modal [isOpen]="renameModalOpen()" (didDismiss)="renameModalOpen.set(false)">
+    <ng-template>
+      <ion-header><ion-toolbar><ion-title>Rename chat</ion-title><ion-buttons slot="end"><ion-button (click)="renameModalOpen.set(false)">Cancel</ion-button></ion-buttons></ion-toolbar></ion-header>
+      <ion-content class="ion-padding">
+        <ion-item><ion-label position="stacked">Session name</ion-label><ion-input aria-label="Session name" [value]="sessionTitleDraft()" (ionInput)="sessionTitleDraft.set($event.detail.value || '')" /></ion-item>
+        <ion-button (click)="saveRename()">Save name</ion-button>
+      </ion-content>
+    </ng-template>
+  </ion-modal>
+
+  <ion-modal class="provider-modal" [isOpen]="providerModalOpen()" (didDismiss)="closeProviderModal()">
     <ng-template>
       <ion-header>
         <ion-toolbar>

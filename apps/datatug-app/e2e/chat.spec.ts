@@ -158,6 +158,22 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
   await page.getByLabel('Ask about Chinook data').fill('Show nobody from nowhere');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.getByText('No matching rows.')).toBeVisible();
+  const emptyColumns = await page.evaluate(async () => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('datatug-chat-sessions');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const records = await new Promise<{ data: { rows: unknown[]; columns: string[] } }[]>((resolve, reject) => {
+      const request = database.transaction('ChatRecordSets', 'readonly').objectStore('ChatRecordSets').getAll();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    database.close();
+    return records.find((record) => record.data.rows.length === 0)?.data.columns;
+  });
+  expect(emptyColumns).toContain('CustomerId');
+  expect(emptyColumns).toContain('City');
 
   await page.getByLabel('Ask about Chinook data').fill('Return malformed DTQL');
   await page.getByRole('button', { name: 'Send' }).click();
@@ -206,7 +222,7 @@ test('composer can add a provider and restore it after reload', async ({ page })
   await expect(page.getByText('Enter a name, base URL, model, and API key.')).toBeVisible();
   await page.getByLabel('API key').fill('test-key-not-a-secret');
   await page.getByRole('button', { name: 'Add AI provider' }).click();
-  await expect(page.locator('ion-modal')).toBeHidden();
+  await expect(page.locator('ion-modal.provider-modal')).toBeHidden();
   await expect(page.locator('ion-footer').getByLabel('AI provider')).toHaveAttribute('aria-label', /DeepSeek/);
   await page.reload();
   await expect(page.locator('ion-footer').getByLabel('AI provider')).toHaveAttribute('aria-label', /DeepSeek/);

@@ -147,3 +147,12 @@
     min-width: 0;
   }
 }
+.session-toolbar ion-select {
+  max-width: min(45vw, 360px);
+  min-width: 160px;
+  padding-left: 1rem;
+}
+
+.session-toolbar ion-buttons {
+  flex-wrap: wrap;
+}

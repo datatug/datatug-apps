@@ -8,6 +8,7 @@ For example: {"dtql":{"from":{"schema":"main","name":"Customer"},"where":{"op":"
 For descending order: {"dtql":{"from":{"schema":"main","name":"Invoice"},"orderBy":[{"field":"InvoiceId","desc":true}],"limit":100}}
 Each orderBy item uses field and optional desc boolean. Never use direction, column, sort, or order keys.
 Do not use SQL, joins, aggregation, or unsupported fields. The browser validates the action before running it.
+For a follow-up that needs identifiers from a previous RecordSet, use where op "In" with right.recordSet {"id":"the RecordSet ID from context","field":"the source column"}. The left field is the target table's matching identifier. For example, to find customers from saved invoices: {"dtql":{"from":{"schema":"main","name":"Customer"},"where":{"op":"In","left":{"field":"CustomerId"},"right":{"recordSet":{"id":"saved RecordSet ID","field":"CustomerId"}}},"limit":100}}. The browser substitutes saved values locally. Never invent or include result values in the action.
 ${CHINOOK_SCHEMA_PROMPT}`;
 
 function object(value: unknown): Record<string, unknown> | undefined {
@@ -85,7 +86,7 @@ async function boundedResponseText(response: Response): Promise<string> {
 
 @Injectable({ providedIn: 'root' })
 export class ChatInterpretService {
-  async interpret(question: string, provider: ChatProvider): Promise<{ dtql: string; metrics: Omit<ChatMetrics, 'queryMs'> }> {
+  async interpret(question: string, provider: ChatProvider, context = ''): Promise<{ dtql: string; metrics: Omit<ChatMetrics, 'queryMs'> }> {
     if (new TextEncoder().encode(question.trim()).byteLength > 1000) {
       throw new Error('Question must be 1000 bytes or fewer.');
     }
@@ -96,9 +97,12 @@ export class ChatInterpretService {
     }
     const url = providerUrl(provider);
     const isAnthropic = provider.protocol === 'anthropic-messages';
+    const system = context
+      ? `${instructions}\nPrevious session queries and RecordSet metadata (no result values):\n${context}`
+      : instructions;
     const requestBody = JSON.stringify(isAnthropic
-      ? { model: provider.model, max_tokens: 1024, system: instructions, messages: [{ role: 'user', content: question }] }
-      : { model: provider.model, max_tokens: 1024, messages: [{ role: 'system', content: instructions }, { role: 'user', content: question }] });
+      ? { model: provider.model, max_tokens: 1024, system, messages: [{ role: 'user', content: question }] }
+      : { model: provider.model, max_tokens: 1024, messages: [{ role: 'system', content: system }, { role: 'user', content: question }] });
     const headers = new Headers({ 'Content-Type': 'application/json' });
     if (isAnthropic) {
       headers.set('x-api-key', provider.apiKey);
