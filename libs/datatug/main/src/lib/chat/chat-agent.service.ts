@@ -5,7 +5,7 @@ import { ChatProvider, CHINOOK_SCHEMA_PROMPT } from './chat.types';
 @Injectable({ providedIn: 'root' })
 export class ChatAgentService {
   async interpret(storeId: string, question: string, provider: ChatProvider): Promise<string> {
-    const agentUrl = new URL(buildAgentUrl(storeId, '/chat/interpret'));
+    const agentUrl = new URL(buildAgentUrl(storeId, '/chat/interpret'), window.location.href);
     const hostname = agentUrl.hostname.replace(/^\[|\]$/g, '');
     if (!['http:', 'https:'].includes(agentUrl.protocol) || !['localhost', '127.0.0.1', '::1'].includes(hostname)) {
       throw new Error('This local Chat trial sends API keys only to a loopback DataTug agent. Choose a localhost store.');

@@ -101,7 +101,9 @@ export class ChatPageComponent {
   }
 
   keyMask(provider: ChatProvider): string {
-    return provider.apiKey.length > 4 ? `••••••••${provider.apiKey.slice(-4)}` : '••••';
+    return provider.apiKey.length > 9
+      ? `${provider.apiKey.slice(0, 5)}••••${provider.apiKey.slice(-4)}`
+      : '••••';
   }
 
   columnsFor(rows: readonly Record<string, unknown>[]): ColDef[] {

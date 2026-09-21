@@ -84,6 +84,7 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
 
   await page.reload();
   await expect(page.getByText('DeepSeek · deepseek-flash').nth(1)).toBeVisible();
+  await expect(page.getByText('key test-••••cret')).toBeVisible();
   await page.getByRole('button', { name: 'Edit' }).click();
   await expect(page.getByRole('button', { name: 'Save provider' })).toBeVisible();
   await expect(page.getByLabel('API key')).toHaveValue('test-key-not-a-secret');
