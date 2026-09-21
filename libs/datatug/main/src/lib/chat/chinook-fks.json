@@ -1,0 +1,197 @@
+{
+  "version": "sha256:35870853e8213c650d439d42eb6c2683f7ae7da7116d13a84ab99d69289dd5bc",
+  "source": {
+    "repository": "https://github.com/datatug/chinook-database",
+    "revision": "6334395117e2478a2712e083be614721341c26c9",
+    "sha256": "f82efedb6c5c40734609e168bc5be5616a2eca6b90ed0048451a8674625e03a3"
+  },
+  "foreignKeys": [
+    {
+      "id": "main.Album(ArtistId)>main.Artist(ArtistId)",
+      "source": {
+        "schema": "main",
+        "table": "Album",
+        "fields": [
+          "ArtistId"
+        ]
+      },
+      "target": {
+        "schema": "main",
+        "table": "Artist",
+        "fields": [
+          "ArtistId"
+        ]
+      }
+    },
+    {
+      "id": "main.Customer(SupportRepId)>main.Employee(EmployeeId)",
+      "source": {
+        "schema": "main",
+        "table": "Customer",
+        "fields": [
+          "SupportRepId"
+        ]
+      },
+      "target": {
+        "schema": "main",
+        "table": "Employee",
+        "fields": [
+          "EmployeeId"
+        ]
+      }
+    },
+    {
+      "id": "main.Employee(ReportsTo)>main.Employee(EmployeeId)",
+      "source": {
+        "schema": "main",
+        "table": "Employee",
+        "fields": [
+          "ReportsTo"
+        ]
+      },
+      "target": {
+        "schema": "main",
+        "table": "Employee",
+        "fields": [
+          "EmployeeId"
+        ]
+      }
+    },
+    {
+      "id": "main.Invoice(CustomerId)>main.Customer(CustomerId)",
+      "source": {
+        "schema": "main",
+        "table": "Invoice",
+        "fields": [
+          "CustomerId"
+        ]
+      },
+      "target": {
+        "schema": "main",
+        "table": "Customer",
+        "fields": [
+          "CustomerId"
+        ]
+      }
+    },
+    {
+      "id": "main.InvoiceLine(InvoiceId)>main.Invoice(InvoiceId)",
+      "source": {
+        "schema": "main",
+        "table": "InvoiceLine",
+        "fields": [
+          "InvoiceId"
+        ]
+      },
+      "target": {
+        "schema": "main",
+        "table": "Invoice",
+        "fields": [
+          "InvoiceId"
+        ]
+      }
+    },
+    {
+      "id": "main.InvoiceLine(TrackId)>main.Track(TrackId)",
+      "source": {
+        "schema": "main",
+        "table": "InvoiceLine",
+        "fields": [
+          "TrackId"
+        ]
+      },
+      "target": {
+        "schema": "main",
+        "table": "Track",
+        "fields": [
+          "TrackId"
+        ]
+      }
+    },
+    {
+      "id": "main.PlaylistTrack(PlaylistId)>main.Playlist(PlaylistId)",
+      "source": {
+        "schema": "main",
+        "table": "PlaylistTrack",
+        "fields": [
+          "PlaylistId"
+        ]
+      },
+      "target": {
+        "schema": "main",
+        "table": "Playlist",
+        "fields": [
+          "PlaylistId"
+        ]
+      }
+    },
+    {
+      "id": "main.PlaylistTrack(TrackId)>main.Track(TrackId)",
+      "source": {
+        "schema": "main",
+        "table": "PlaylistTrack",
+        "fields": [
+          "TrackId"
+        ]
+      },
+      "target": {
+        "schema": "main",
+        "table": "Track",
+        "fields": [
+          "TrackId"
+        ]
+      }
+    },
+    {
+      "id": "main.Track(AlbumId)>main.Album(AlbumId)",
+      "source": {
+        "schema": "main",
+        "table": "Track",
+        "fields": [
+          "AlbumId"
+        ]
+      },
+      "target": {
+        "schema": "main",
+        "table": "Album",
+        "fields": [
+          "AlbumId"
+        ]
+      }
+    },
+    {
+      "id": "main.Track(GenreId)>main.Genre(GenreId)",
+      "source": {
+        "schema": "main",
+        "table": "Track",
+        "fields": [
+          "GenreId"
+        ]
+      },
+      "target": {
+        "schema": "main",
+        "table": "Genre",
+        "fields": [
+          "GenreId"
+        ]
+      }
+    },
+    {
+      "id": "main.Track(MediaTypeId)>main.MediaType(MediaTypeId)",
+      "source": {
+        "schema": "main",
+        "table": "Track",
+        "fields": [
+          "MediaTypeId"
+        ]
+      },
+      "target": {
+        "schema": "main",
+        "table": "MediaType",
+        "fields": [
+          "MediaTypeId"
+        ]
+      }
+    }
+  ]
+}

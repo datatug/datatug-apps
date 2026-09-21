@@ -12,6 +12,7 @@ Canonical index of all plans in this repository. Each plan is a single Markdown 
 |---|---|---|---|---|
 | [browser-chat-phase-1](browser-chat-phase-1/README.md) | Draft | browser-chat-phase-1 | 2026-09-21 | alex |
 | [browser-chat-phase-4-bookmarks](browser-chat-phase-4-bookmarks/README.md) | Implemented | browser-chat-phase-4-bookmarks | 2026-09-21 | alex |
+| [browser-chat-phase-5](browser-chat-phase-5/README.md) | Implemented | browser-chat-phase-5 | 2026-09-21 | alex |
 
 ## Recently Closed
 

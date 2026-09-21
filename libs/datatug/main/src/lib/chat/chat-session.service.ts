@@ -1,7 +1,7 @@
 import { Injectable, InjectionToken, inject } from '@angular/core';
 import { type Database, type ReadwriteTransaction, key } from '@dalgo/core';
 import { IndexedDbDatabase } from '@dalgo/indexeddb';
-import { ChatMetrics, ChatTurn } from './chat.types';
+import { ChatJoinChoice, ChatJoinLineage, ChatMetrics, ChatTurn } from './chat.types';
 import {
   applyChatWorkspaceAction, chatBookmarkRows, ChatBookmark, ChatRecordSetData, ChatWorkspaceAction, ChatWorkspaceState,
   emptyChatWorkspace,
@@ -43,6 +43,7 @@ export interface ChatQuery {
   readonly executedAt: string;
   readonly columns: readonly string[];
   readonly rowCount: number;
+  readonly join?: ChatJoinLineage;
 }
 
 export interface ChatRecordSet {
@@ -55,6 +56,7 @@ export interface ChatRecordSet {
   readonly rows: readonly Record<string, unknown>[];
   readonly createdAt: string;
   readonly metrics: ChatMetrics;
+  readonly join?: ChatJoinLineage;
 }
 
 interface StoredTurn extends Omit<ChatTurn, 'rows'> {
@@ -74,6 +76,7 @@ export interface CompletedChatQuery {
   readonly columns: readonly string[];
   readonly metrics: ChatMetrics;
   readonly source: string;
+  readonly join?: ChatJoinLineage;
 }
 
 const sessionKey = (id: string) => key('ChatSessions', id);
@@ -152,7 +155,8 @@ export class ChatSessionService {
         queryId: data.queryId, recordSetId: data.recordSetId,
         dtql: data.dtql, generatedDtql: data.generatedDtql,
         dtqlYaml: data.dtqlYaml, sql: data.sql,
-        error: data.error, metrics: data.metrics, actionSummary: data.actionSummary,
+        error: data.error, metrics: data.metrics, actionSummary: data.actionSummary, join: data.join,
+        joinChoices: data.joinChoices,
       };
       return data.state === 'loading'
         ? { ...turn, state: 'error' as const, error: 'This request was interrupted. Ask it again to retry.' }
@@ -175,6 +179,23 @@ export class ChatSessionService {
       });
     });
     return turn;
+  }
+
+  /** Read only a parent that belongs to this project, session and Chinook source. */
+  async joinParent(scope: string, sessionId: string, recordSetId: string): Promise<{ query: ChatQuery; recordSet: ChatRecordSet }> {
+    const session = await this.requireSession(scope, sessionId);
+    if (!session.recordSetIds.includes(recordSetId)) throw new Error('The selected result is not in this chat session.');
+    const stored = await this.database.get<ChatRecordSet>(recordSetKey(recordSetId));
+    if (!stored.exists || stored.data.sessionId !== sessionId || stored.data.source !== `${scope}/chinook` ||
+        !session.queryIds.includes(stored.data.queryId)) {
+      throw new Error('The selected result is unavailable in this project.');
+    }
+    const query = await this.database.get<ChatQuery>(queryKey(stored.data.queryId));
+    if (!query.exists || query.data.sessionId !== sessionId || query.data.source !== stored.data.source ||
+        query.data.id !== stored.data.queryId) {
+      throw new Error('The selected query is unavailable in this project.');
+    }
+    return { query: query.data, recordSet: stored.data };
   }
 
   async bindRecordSet(scope: string, sessionId: string, generatedDtql: string): Promise<{ dtql: string; parentRecordSetId?: string }> {
@@ -377,11 +398,13 @@ export class ChatSessionService {
       id: queryId, sessionId, turnId, dtql: result.dtql, generatedDtql: result.generatedDtql,
       parentRecordSetId: result.parentRecordSetId, dtqlYaml: result.dtqlYaml,
       sql: result.sql, source: result.source, executedAt: timestamp, columns, rowCount: result.rows.length,
+      join: result.join,
     };
     const snapshot: ChatRecordSet = {
       id: recordSetId, sessionId, queryId, parentRecordSetId: result.parentRecordSetId,
       source: result.source, columns,
       rows: result.rows.map((row) => ({ ...row })), createdAt: timestamp, metrics: result.metrics,
+      join: result.join,
     };
     const replacement: StoredTurn = await this.database.runReadwriteTransaction(async (tx) => {
       const session = await this.sessionInTransaction(tx, scope, sessionId);
@@ -389,11 +412,21 @@ export class ChatSessionService {
       if (!stored.exists || stored.data.sessionId !== sessionId || stored.data.state !== 'loading') {
         throw new Error('The pending chat request is no longer available.');
       }
+      if (result.parentRecordSetId) {
+        if (!session.recordSetIds.includes(result.parentRecordSetId)) {
+          throw new Error('The parent RecordSet is not in this chat session.');
+        }
+        const parent = await tx.get<ChatRecordSet>(recordSetKey(result.parentRecordSetId));
+        if (!parent.exists || parent.data.sessionId !== sessionId || parent.data.source !== result.source) {
+          throw new Error('The parent RecordSet is unavailable in this project.');
+        }
+      }
+      if (result.join && !result.parentRecordSetId) throw new Error('A JOIN result requires a parent RecordSet.');
       const turn: StoredTurn = {
         ...stored.data, state: result.rows.length ? 'result' : 'empty',
         dtql: result.dtql, generatedDtql: result.generatedDtql,
         dtqlYaml: result.dtqlYaml, sql: result.sql,
-        metrics: result.metrics, queryId, recordSetId,
+        metrics: result.metrics, queryId, recordSetId, join: result.join,
       };
       await tx.insert(queryKey(queryId), query);
       await tx.insert(recordSetKey(recordSetId), snapshot);
@@ -408,14 +441,14 @@ export class ChatSessionService {
     return { ...replacement, rows: snapshot.rows, columns: snapshot.columns };
   }
 
-  async failQuestion(scope: string, sessionId: string, turnId: string, message: string): Promise<ChatTurn> {
+  async failQuestion(scope: string, sessionId: string, turnId: string, message: string, joinChoices?: readonly ChatJoinChoice[]): Promise<ChatTurn> {
     return this.database.runReadwriteTransaction(async (tx) => {
       const session = await this.sessionInTransaction(tx, scope, sessionId);
       const stored = await tx.get<StoredTurn>(turnKey(turnId));
       if (!stored.exists || stored.data.sessionId !== sessionId || stored.data.state !== 'loading') {
         throw new Error('The pending chat request is no longer available.');
       }
-      const turn: StoredTurn = { ...stored.data, state: 'error', error: message };
+      const turn: StoredTurn = { ...stored.data, state: 'error', error: message, joinChoices };
       await tx.set(turnKey(turnId), turn);
       await tx.set(sessionKey(sessionId), { ...session, updatedAt: now() });
       return turn;

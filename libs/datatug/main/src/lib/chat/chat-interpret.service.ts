@@ -2,13 +2,14 @@ import { Injectable } from '@angular/core';
 import { ChatMetrics, ChatProvider, CHINOOK_SCHEMA_PROMPT } from './chat.types';
 import { ChatWorkspaceAction } from './chat-workspace';
 
-const instructions = `You translate one question about Chinook into one DTQL or workspace action.
-Return only a JSON object with a single dtql or workspaceAction property. No prose or Markdown.
+const instructions = `You translate one question about Chinook into one DTQL, workspace action, or FK JOIN candidate action.
+Return only a JSON object with a single dtql, workspaceAction, or joinCandidate property. No prose or Markdown.
 Use from, where, orderBy and limit as needed. Always include a limit from 1 to 1000.
 For example: {"dtql":{"from":{"schema":"main","name":"Customer"},"where":{"op":"==","left":{"field":"City"},"right":{"value":"Prague"}},"limit":50}}
 For descending order: {"dtql":{"from":{"schema":"main","name":"Invoice"},"orderBy":[{"field":"InvoiceId","desc":true}],"limit":100}}
 Each orderBy item uses field and optional desc boolean. Never use direction, column, sort, or order keys.
-Do not use SQL, joins, aggregation, or unsupported fields. The browser validates the action before running it.
+Do not generate SQL, JOIN clauses, ON predicates, aggregation, or unsupported fields. The browser validates the action before running it.
+For a JOIN request with one exact edge, choose its candidate ID from the supplied relationship metadata and return {"joinCandidate":{"recordSetId":"exact RecordSet ID","candidateId":"exact candidate ID"}}. Use the latest successful RecordSet unless the user names a different exact ID. The browser handles ambiguous targets locally and resolves relationships from its foreign-key manifest. Never invent an ID or predicate.
 For a follow-up that needs identifiers from a previous RecordSet, use where op "In" with right.recordSet {"id":"the RecordSet ID from context","field":"the source column"}. The left field is the target table's matching identifier. For example, to find customers from saved invoices: {"dtql":{"from":{"schema":"main","name":"Customer"},"where":{"op":"In","left":{"field":"CustomerId"},"right":{"recordSet":{"id":"saved RecordSet ID","field":"CustomerId"}}},"limit":100}}. The browser substitutes saved values locally. Never invent or include result values in the action.
 For a related query over an attached or docked Selection, use right.selection with its ID and source column in the same In predicate. For an attached or docked Bookmark use right.bookmark with its ID and source column. DataTug resolves the selected values locally; never include result values.
 For a local selection request, return {"workspaceAction":{"kind":"select","recordSetId":"the saved RecordSet ID","column":"City","equals":"Prague","limit":5}}. For "dock them", return {"workspaceAction":{"kind":"dockCurrent"}}. The browser applies these actions to saved results without another database query.
@@ -43,10 +44,14 @@ function providerUrl(provider: ChatProvider): URL {
 }
 
 export type ChatInterpretation =
-  | { readonly dtql: string; readonly workspaceAction?: never; readonly metrics: Omit<ChatMetrics, 'queryMs'> }
-  | { readonly dtql?: never; readonly workspaceAction: ChatWorkspaceAction; readonly metrics: Omit<ChatMetrics, 'queryMs'> };
+  | { readonly dtql: string; readonly workspaceAction?: never; readonly joinCandidate?: never; readonly metrics: Omit<ChatMetrics, 'queryMs'> }
+  | { readonly dtql?: never; readonly workspaceAction: ChatWorkspaceAction; readonly joinCandidate?: never; readonly metrics: Omit<ChatMetrics, 'queryMs'> }
+  | { readonly dtql?: never; readonly workspaceAction?: never; readonly joinCandidate: { readonly recordSetId: string; readonly candidateId: string }; readonly metrics: Omit<ChatMetrics, 'queryMs'> };
 
-function actionFromContent(content: unknown): { dtql: string; workspaceAction?: never } | { dtql?: never; workspaceAction: ChatWorkspaceAction } {
+function actionFromContent(content: unknown):
+  | { dtql: string; workspaceAction?: never; joinCandidate?: never }
+  | { dtql?: never; workspaceAction: ChatWorkspaceAction; joinCandidate?: never }
+  | { dtql?: never; workspaceAction?: never; joinCandidate: { recordSetId: string; candidateId: string } } {
   if (typeof content !== 'string' || content.length > 12000) {
     throw new Error('The AI provider did not return one DTQL action.');
   }
@@ -56,13 +61,21 @@ function actionFromContent(content: unknown): { dtql: string; workspaceAction?: 
   } catch {
     throw new Error('The AI provider returned invalid DTQL JSON.');
   }
-  const dtql = object(object(parsed)?.['dtql']);
-  const workspaceAction = object(object(parsed)?.['workspaceAction']);
-  if (dtql && !workspaceAction) return { dtql: JSON.stringify(dtql) };
-  if (workspaceAction && !dtql && typeof workspaceAction['kind'] === 'string') {
+  const root = object(parsed);
+  const dtql = object(root?.['dtql']);
+  const workspaceAction = object(root?.['workspaceAction']);
+  const joinCandidate = object(root?.['joinCandidate']);
+  if (dtql && Object.keys(root || {}).length === 1) return { dtql: JSON.stringify(dtql) };
+  if (workspaceAction && Object.keys(root || {}).length === 1 && typeof workspaceAction['kind'] === 'string') {
     return { workspaceAction: workspaceAction as unknown as ChatWorkspaceAction };
   }
-  throw new Error('The AI provider did not return one DTQL or workspace action.');
+  if (joinCandidate && Object.keys(root || {}).length === 1 &&
+      Object.keys(joinCandidate).sort().join(',') === 'candidateId,recordSetId' &&
+      typeof joinCandidate['recordSetId'] === 'string' && typeof joinCandidate['candidateId'] === 'string' &&
+      joinCandidate['recordSetId'].length <= 100 && joinCandidate['candidateId'].length <= 1000) {
+    return { joinCandidate: { recordSetId: joinCandidate['recordSetId'], candidateId: joinCandidate['candidateId'] } };
+  }
+  throw new Error('The AI provider did not return one valid DTQL, workspace, or JOIN action.');
 }
 
 async function boundedResponseText(response: Response): Promise<string> {
