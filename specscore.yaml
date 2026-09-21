@@ -6,6 +6,12 @@ project:
     org: datatug
     repo: datatug-apps
 
+plans_repo: datatug/datatug-apps
+
+projects:
+  - ../datatug
+  - ../../../../../datatug/datatug
+
 # Reviewer gates (event-keyed per the reviewer-gates contract / loader).
 # specstudio:specify guards gates.feature.approved.
 gates:

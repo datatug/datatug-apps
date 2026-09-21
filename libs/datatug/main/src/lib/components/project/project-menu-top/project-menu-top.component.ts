@@ -21,6 +21,10 @@ import {
 import { DatatugUserService } from '../../../services/base/datatug-user-service';
 import { IProjectSummary } from '../../../models/definition/project';
 import { IProjectContext } from '../../../nav/nav-models';
+import { addIcons } from 'ionicons';
+import { chatbubblesOutline } from 'ionicons/icons';
+
+addIcons({ chatbubblesOutline });
 
 interface IProjectTopLevelPage {
   path: ProjectTopLevelPage;
@@ -74,6 +78,11 @@ export class ProjectMenuTopComponent implements OnDestroy {
   ];
 
   public readonly projTopLevelPages: IProjectTopLevelPage[] = [
+    {
+      path: 'chat',
+      title: 'Chat',
+      icon: 'chatbubbles-outline',
+    },
     {
       path: 'overview',
       title: 'Overview',

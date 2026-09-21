@@ -1,0 +1,149 @@
+.turn {
+  margin: 1.25rem;
+}
+
+.question-row {
+  align-items: baseline;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.question-bubble {
+  background: rgba(var(--ion-color-primary-rgb), 0.1);
+  border-radius: 1rem;
+  margin: 0 0 0.9rem;
+  padding: 0.65rem 0.9rem;
+  white-space: pre-wrap;
+}
+
+.result-card {
+  margin: 0;
+}
+
+.result-card ion-card-content {
+  padding: 0.8rem;
+}
+
+.result-card ion-segment {
+  margin-bottom: 0.8rem;
+}
+
+.chat-grid {
+  height: 420px;
+  width: 100%;
+}
+
+.dtql {
+  background: var(--ion-color-light);
+  border: 1px solid var(--ion-color-light-shade);
+  border-radius: 0.5rem;
+  color: var(--ion-text-color);
+  font-family: monospace;
+  line-height: 1.5;
+  margin: 0;
+  overflow-wrap: anywhere;
+  padding: 1rem;
+  white-space: pre-wrap;
+}
+
+.metrics-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+}
+
+.metric {
+  background: var(--ion-color-light);
+  border-radius: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  padding: 0.85rem;
+}
+
+.metric span {
+  color: var(--ion-color-medium-shade);
+  font-size: 0.8rem;
+}
+
+.metric strong {
+  font-size: 1.2rem;
+}
+
+.composer-footer {
+  border-top: 1px solid var(--ion-color-light-shade);
+  margin-bottom: 20px;
+}
+
+.composer-footer ion-toolbar {
+  --padding-bottom: 0.6rem;
+  --padding-start: 0.75rem;
+  --padding-end: 0.75rem;
+  --padding-top: 0.6rem;
+}
+
+.composer-grid ion-row {
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.composer-question {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.composer-provider {
+  flex: 0 0 116px;
+}
+
+.composer-send {
+  flex: 0 0 104px;
+}
+
+.composer-input-item {
+  --background: var(--ion-color-light);
+  --inner-padding-end: 0;
+  --padding-start: 0;
+  border: 1px solid var(--ion-color-light-shade);
+  border-radius: 0.6rem;
+}
+
+.composer-input-item ion-input {
+  --padding-start: 0.75rem;
+  --padding-end: 0.75rem;
+  min-width: 0;
+}
+
+.provider-select {
+  --padding-start: 0.5rem;
+  --padding-end: 0.5rem;
+  background: var(--ion-color-light);
+  border: 1px solid var(--ion-color-light-shade);
+  border-radius: 0.6rem;
+  min-height: 2.8rem;
+  width: 100%;
+}
+
+.composer-send ion-button {
+  --padding-start: 0.85rem;
+  --padding-end: 0.85rem;
+  margin: 0;
+  width: 100%;
+}
+
+.storage-warning {
+  color: var(--ion-color-medium-shade);
+}
+
+@media (max-width: 540px) {
+  .turn {
+    margin: 0.75rem;
+  }
+
+  .composer-provider {
+    flex-basis: 96px;
+  }
+
+  .composer-send ion-button {
+    min-width: 0;
+  }
+}

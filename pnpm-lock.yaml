@@ -70,6 +70,12 @@ importers:
       '@capacitor/core':
         specifier: 8.1.0
         version: 8.1.0
+      '@dalgo/core':
+        specifier: github:dal-go/dalgo-js#e93dcf9d330e64b4741a4509d383f0020f70e203
+        version: https://codeload.github.com/dal-go/dalgo-js/tar.gz/e93dcf9d330e64b4741a4509d383f0020f70e203
+      '@dalgo/indexeddb':
+        specifier: github:dal-go/dalgo-http-adapters#519665be7bab21bae3c388eb2395afb8b6df1be9&path:/packages/indexeddb
+        version: https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/519665be7bab21bae3c388eb2395afb8b6df1be9#path:/packages/indexeddb(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/e93dcf9d330e64b4741a4509d383f0020f70e203)
       '@firebase/auth':
         specifier: 1.12.1
         version: 1.12.1(@firebase/app@0.14.9)
@@ -166,6 +172,12 @@ importers:
       '@sneat/wormhole':
         specifier: ^0.0.6
         version: 0.0.6(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2)
+      ag-grid-angular:
+        specifier: 36.2.0
+        version: 36.2.0(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))
+      ag-grid-community:
+        specifier: 36.2.0
+        version: 36.2.0
       angularx-qrcode:
         specifier: 22.0.1
         version: 22.0.1(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))
@@ -1966,6 +1978,18 @@ packages:
 
   '@dabh/diagnostics@2.0.8':
     resolution: {integrity: sha512-R4MSXTVnuMzGD7bzHdW2ZhhdPC/igELENcq5IjEverBvq5hn1SXCWcsi6eSsdWP0/Ur+SItRRjAktmdoX/8R/Q==}
+
+  '@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/e93dcf9d330e64b4741a4509d383f0020f70e203':
+    resolution: {gitHosted: true, integrity: sha512-p+OyFCOTMNX7RUp0BB5+hp9G+KRVY9F6Iy5FRCx5pB9iF6OiD+J5cgM+oqiDZoMvzHJuBBz83qBPNlMVy7epQQ==, tarball: https://codeload.github.com/dal-go/dalgo-js/tar.gz/e93dcf9d330e64b4741a4509d383f0020f70e203}
+    version: 0.1.0
+    engines: {node: '>=20'}
+
+  '@dalgo/indexeddb@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/519665be7bab21bae3c388eb2395afb8b6df1be9#path:/packages/indexeddb':
+    resolution: {gitHosted: true, integrity: sha512-EtYCb/hij2MzP/C5seshCy/r0t5GSJbujSMrmx6LRi/suoqZFnTIYX0xv0MwuOP/NxcBiHPlsLNsmnMNLqi+Og==, path: /packages/indexeddb, tarball: https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/519665be7bab21bae3c388eb2395afb8b6df1be9}
+    version: 0.1.0
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@dalgo/core': ^0.1.0
 
   '@discoveryjs/json-ext@1.1.0':
     resolution: {integrity: sha512-Xc3VhU02wqZ1HvHRJUwL09HkZSTvidqY5Ya0NXBSYOxAp+Ln9dcJr9fySI+CkONzP3PekQo9WdzCv0PGER/mOA==}
@@ -6110,6 +6134,21 @@ packages:
   adjust-sourcemap-loader@4.0.0:
     resolution: {integrity: sha512-OXwN5b9pCUXNQHJpwwD2qP40byEmSgzj8B4ydSN0uMNYWiFmJ6x6KwUllMmfk8Rwu/HJDFR7U8ubsWBoN0Xp0A==}
     engines: {node: '>=8.9'}
+
+  ag-charts-types@14.2.0:
+    resolution: {integrity: sha512-4pDV6/4zbzPN7t607Gr1o6DO9RhmPafQGr+hIpTJBaerbaMoC+WOO3v/wkxFbvCNrHKOexEKSfNTH7PaAR4UzA==}
+
+  ag-grid-angular@36.2.0:
+    resolution: {integrity: sha512-efr4sZVLUX9y+5sLdwub9IV0vqpSpkKknZPLoLvF4+pRbCXUjneybiI9uiFTJCOk/xIvIFdNhUYPbVgb/rVceA==}
+    peerDependencies:
+      '@angular/common': 22.1.3
+      '@angular/core': 22.1.3
+
+  ag-grid-community@36.2.0:
+    resolution: {integrity: sha512-tK0Toj7t0fV/OMLPnDc0xlYKAqDbnCT3iJodYSn2TJ541caU8jPdYwWhMdW+AP2+pUNwFiJVgc04eJNfvBPsWw==}
+
+  ag-stack@36.2.0:
+    resolution: {integrity: sha512-f3XT2htFs9dUPcHni2z9ak69QNta5ODEpooHuuNvbjN98JkokpEqRQ9YLQHQJFdCcgi9Ybs/j3zkkvmNRamIPg==}
 
   agent-base@6.0.2:
     resolution: {integrity: sha512-RZNwNclF7+MS/8bDg70amg32dyeZGZxiDuQmZxKLAlQjr3jGyLx+4Kkk58UO7D2QdgFIQCovuSuZESne6RG6XQ==}
@@ -11608,6 +11647,11 @@ packages:
     resolution: {integrity: sha512-vIYeF1u3CjlhAFekPPAk2h/Kv4T3mAkMox5OymRiJQB0spDP10LHvt+K7G9Ny6NuuMAb25/6n1qyUjAcGNf/AA==}
     engines: {node: '>= 6'}
 
+  yaml@2.8.2:
+    resolution: {integrity: sha512-mplynKqc1C2hTVYxd0PU2xQAc22TI1vShAYGksCCfxbn/dFwnHTNi1bvYsBTkhdUNtGIf5xNOg938rrSSYvS9A==}
+    engines: {node: '>= 14.6'}
+    hasBin: true
+
   yaml@2.8.3:
     resolution: {integrity: sha512-AvbaCLOO2Otw/lW5bmh9d/WEdcDFdQp2Z2ZUH3pX9U2ihyUY0nvLv7J6TrWowklRGPYbB/IuIMfYgxaCPg5Bpg==}
     engines: {node: '>= 14.6'}
@@ -13682,6 +13726,14 @@ snapshots:
       '@so-ric/colorspace': 1.1.6
       enabled: 2.0.0
       kuler: 2.0.0
+
+  '@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/e93dcf9d330e64b4741a4509d383f0020f70e203':
+    dependencies:
+      yaml: 2.8.2
+
+  '@dalgo/indexeddb@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/519665be7bab21bae3c388eb2395afb8b6df1be9#path:/packages/indexeddb(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/e93dcf9d330e64b4741a4509d383f0020f70e203)':
+    dependencies:
+      '@dalgo/core': https://codeload.github.com/dal-go/dalgo-js/tar.gz/e93dcf9d330e64b4741a4509d383f0020f70e203
 
   '@discoveryjs/json-ext@1.1.0': {}
 
@@ -17680,6 +17732,22 @@ snapshots:
     dependencies:
       loader-utils: 2.0.4
       regex-parser: 2.3.1
+
+  ag-charts-types@14.2.0: {}
+
+  ag-grid-angular@36.2.0(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)):
+    dependencies:
+      '@angular/common': 22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2)
+      '@angular/core': 22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)
+      ag-grid-community: 36.2.0
+      tslib: 2.8.1
+
+  ag-grid-community@36.2.0:
+    dependencies:
+      ag-charts-types: 14.2.0
+      ag-stack: 36.2.0
+
+  ag-stack@36.2.0: {}
 
   agent-base@6.0.2(supports-color@7.2.0):
     dependencies:
@@ -24222,6 +24290,8 @@ snapshots:
       yaml: 2.8.3
 
   yaml@1.10.3: {}
+
+  yaml@2.8.2: {}
 
   yaml@2.8.3: {}
 
