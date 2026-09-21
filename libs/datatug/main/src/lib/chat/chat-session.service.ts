@@ -3,7 +3,7 @@ import { type Database, type ReadwriteTransaction, key } from '@dalgo/core';
 import { IndexedDbDatabase } from '@dalgo/indexeddb';
 import { ChatMetrics, ChatTurn } from './chat.types';
 import {
-  applyChatWorkspaceAction, ChatRecordSetData, ChatWorkspaceAction, ChatWorkspaceState,
+  applyChatWorkspaceAction, chatBookmarkRows, ChatBookmark, ChatRecordSetData, ChatWorkspaceAction, ChatWorkspaceState,
   emptyChatWorkspace,
 } from './chat-workspace';
 
@@ -13,8 +13,8 @@ export const CHAT_SESSION_DATABASE = new InjectionToken<Database>('Chat session 
   providedIn: 'root',
   factory: () => new IndexedDbDatabase({
     name: 'datatug-chat-sessions',
-    version: 1,
-    collections: ['ChatSessions', 'ChatTurns', 'ChatQueries', 'ChatRecordSets'],
+    version: 2,
+    collections: ['ChatSessions', 'ChatTurns', 'ChatQueries', 'ChatRecordSets', 'ChatBookmarks'],
   }),
 });
 
@@ -80,7 +80,26 @@ const sessionKey = (id: string) => key('ChatSessions', id);
 const turnKey = (id: string) => key('ChatTurns', id);
 const queryKey = (id: string) => key('ChatQueries', id);
 const recordSetKey = (id: string) => key('ChatRecordSets', id);
+const bookmarkKey = (id: string) => key('ChatBookmarks', id);
 const now = () => new Date().toISOString();
+
+function projectIdFromScope(scope: string): string {
+  const parsed = JSON.parse(scope) as unknown;
+  if (!Array.isArray(parsed) || typeof parsed[1] !== 'string') throw new Error('The chat project identity is invalid.');
+  return parsed[1];
+}
+function validTitle(value: string): string {
+  const title = value.trim().slice(0, 100);
+  if (!title) throw new Error('Enter a bookmark name up to 100 characters.');
+  return title;
+}
+function normalizeTag(tag: string): string { return tag.trim().toLowerCase(); }
+function normalizeTags(tags: readonly string[]): readonly string[] {
+  const seen = new Set<string>();
+  return tags.map((tag) => normalizeTag(tag).slice(0, 60)).filter((tag) => tag &&
+    ![...tag].some((character) => character.charCodeAt(0) < 32) &&
+    !seen.has(normalizeTag(tag)) && !!seen.add(normalizeTag(tag)));
+}
 
 @Injectable({ providedIn: 'root' })
 export class ChatSessionService {
@@ -171,14 +190,15 @@ export class ChatSessionService {
     if (!where || typeof where !== 'object' || Array.isArray(where)) return { dtql: generatedDtql };
     const condition = where as Record<string, unknown>;
     const right = condition['right'];
-    if (!right || typeof right !== 'object' || Array.isArray(right) || (!('recordSet' in right) && !('selection' in right))) {
+    if (!right || typeof right !== 'object' || Array.isArray(right) || (!('recordSet' in right) && !('selection' in right) && !('bookmark' in right))) {
       return { dtql: generatedDtql };
     }
     if (condition['op'] !== 'In') throw new Error('A saved RecordSet reference requires the In operator.');
     const rightObject = right as Record<string, unknown>;
     if (Object.keys(rightObject).length !== 1) throw new Error('The saved context reference has unexpected fields.');
     const isSelection = 'selection' in rightObject;
-    const reference = rightObject[isSelection ? 'selection' : 'recordSet'];
+    const isBookmark = 'bookmark' in rightObject;
+    const reference = rightObject[isSelection ? 'selection' : isBookmark ? 'bookmark' : 'recordSet'];
     if (!reference || typeof reference !== 'object' || Array.isArray(reference)) throw new Error('The saved RecordSet reference is invalid.');
     const { id, field } = reference as Record<string, unknown>;
     if (Object.keys(reference).sort().join(',') !== 'field,id' || typeof id !== 'string' || typeof field !== 'string') {
@@ -198,6 +218,18 @@ export class ChatSessionService {
       if (!availableToChat) throw new Error('Attach or dock this Selection before using it in a follow-up query.');
       recordSetId = view.recordSetId;
       selectedRows = selection.rows;
+    }
+    if (isBookmark) {
+      const attached = session.workspace?.attachments.some((ref) => ref.kind === 'bookmark' && ref.objectId === id) ||
+        session.workspace?.docks.some((dock) => dock.reference.kind === 'bookmark' && dock.reference.objectId === id);
+      if (!attached) throw new Error('Attach or dock this Bookmark before using it in a follow-up query.');
+      const saved = await this.database.get<ChatBookmark>(bookmarkKey(id));
+      if (!saved.exists || saved.data.scope !== scope) throw new Error('The referenced Bookmark is unavailable.');
+      if (!saved.data.recordSet.columns.includes(field)) throw new Error('The referenced Bookmark has no such column.');
+      const rows = chatBookmarkRows(saved.data);
+      const values = [...new Set(rows.filter((row) => Object.prototype.hasOwnProperty.call(row, field)).map((row) => row[field]))];
+      if (!values.length || values.length > 1000 || values.some((value) => value !== null && typeof value !== 'string' && typeof value !== 'boolean' && !(typeof value === 'number' && Number.isFinite(value)))) throw new Error('The referenced Bookmark has no supported identifier values.');
+      return { dtql: JSON.stringify({ ...action, where: { ...condition, right: { values } } }) };
     }
     if (!session.recordSetIds.includes(recordSetId)) throw new Error('The referenced RecordSet is not in this chat session.');
     const stored = await this.database.get<ChatRecordSet>(recordSetKey(recordSetId));
@@ -220,8 +252,19 @@ export class ChatSessionService {
   }
 
   async workspaceAction(scope: string, sessionId: string, action: ChatWorkspaceAction): Promise<ChatWorkspaceState> {
+    if (action.kind === 'deleteBookmark') await this.assertBookmarkUnused(scope, action.bookmarkId);
     return this.database.runReadwriteTransaction(async (tx) => {
       const session = await this.sessionInTransaction(tx, scope, sessionId);
+      if (action.kind === 'bookmark') {
+        const state = await this.createBookmark(tx, scope, session, action);
+        await tx.set(sessionKey(sessionId), { ...session, workspace: state, updatedAt: now() });
+        return state;
+      }
+      if (action.kind === 'renameBookmark' || action.kind === 'addBookmarkTag' || action.kind === 'removeBookmarkTag' || action.kind === 'deleteBookmark') {
+        const state = await this.updateBookmark(tx, scope, session, action);
+        await tx.set(sessionKey(sessionId), { ...session, workspace: state, updatedAt: now() });
+        return state;
+      }
       const records = await this.recordsForAction(tx, session, action);
       const result = applyChatWorkspaceAction(scope, session.workspace, records, action);
       await tx.set(sessionKey(sessionId), { ...session, workspace: result.state, updatedAt: now() });
@@ -229,18 +272,89 @@ export class ChatSessionService {
     });
   }
 
+  async listBookmarks(scope: string, search = '', tags: readonly string[] = []): Promise<readonly ChatBookmark[]> {
+    const page = await this.database.query<ChatBookmark>({ source: { kind: 'collection', name: 'ChatBookmarks' }, filters: [{ field: 'scope', operator: '==', value: scope }], orders: [{ field: 'updatedAt', direction: 'desc' }] });
+    const needle = search.trim().toLowerCase();
+    const required = tags.map(normalizeTag).filter(Boolean);
+    return page.records.map((record) => record.data).filter((bookmark) =>
+      (!needle || `${bookmark.title} ${bookmark.tags.join(' ')}`.toLowerCase().includes(needle)) &&
+      required.every((tag) => bookmark.tags.some((saved) => normalizeTag(saved) === tag)),
+    );
+  }
+
+  private async createBookmark(tx: ReadwriteTransaction, scope: string, session: ChatSession,
+    action: Extract<ChatWorkspaceAction, { kind: 'bookmark' }>): Promise<ChatWorkspaceState> {
+    const ref = action.reference;
+    const projectId = projectIdFromScope(scope);
+    if (!['recordset', 'view', 'selection'].includes(ref.kind) || ref.projectId !== projectId) throw new Error('Choose a result, View, or Selection from this project to bookmark.');
+    const state = session.workspace || emptyChatWorkspace();
+    let recordSetId = ref.objectId;
+    let view: ChatBookmark['view'];
+    let selection: ChatBookmark['selection'];
+    if (ref.kind === 'view') { view = state.views[ref.objectId]; if (!view) throw new Error('The View is unavailable.'); recordSetId = view.recordSetId; }
+    if (ref.kind === 'selection') { selection = state.selections[ref.objectId]; view = selection && state.views[selection.viewId]; if (!selection || !view) throw new Error('The Selection is unavailable.'); recordSetId = view.recordSetId; }
+    if (!session.recordSetIds.includes(recordSetId)) throw new Error('The RecordSet is unavailable.');
+    const stored = await tx.get<ChatRecordSet>(recordSetKey(recordSetId));
+    if (!stored.exists || stored.data.sessionId !== session.id) throw new Error('The RecordSet is unavailable.');
+    const included = selection ? new Set(selection.rows) : view ? new Set(view.rowIndices) : undefined;
+    const columns = selection?.columns || view?.columns || stored.data.columns;
+    const cells = selection?.ranges.length ? new Set(selection.ranges.flatMap((range) =>
+      range.rowIndices.flatMap((row) => range.columns.map((column) => `${row}\u0000${column}`)))) : undefined;
+    const rows = stored.data.rows.map((row, index) => {
+      if (included && !included.has(index)) return {};
+      return Object.fromEntries(columns.filter((column) => !cells || cells.has(`${index}\u0000${column}`))
+        .map((column) => [column, row[column]]));
+    });
+    const timestamp = now();
+    const title = validTitle(action.title || ref.title || `${stored.data.rows.length} rows`);
+    const bookmark: ChatBookmark = {
+      id: crypto.randomUUID(), scope, projectId, title, tags: normalizeTags(action.tags || []), target: ref.kind as ChatBookmark['target'],
+      recordSet: { id: crypto.randomUUID(), source: stored.data.source, columns: [...columns], rows },
+      view: view && { ...view, id: crypto.randomUUID(), recordSetId: '' },
+      selection: selection && { ...selection, id: crypto.randomUUID(), viewId: '', rows: [...selection.rows], columns: [...selection.columns], ranges: selection.ranges.map((range) => ({ rowIndices: [...range.rowIndices], columns: [...range.columns] })) },
+      createdAt: timestamp, updatedAt: timestamp,
+    };
+    if (bookmark.view) (bookmark.view as { recordSetId: string }).recordSetId = bookmark.recordSet.id;
+    if (bookmark.selection && bookmark.view) (bookmark.selection as { viewId: string }).viewId = bookmark.view.id;
+    await tx.insert(bookmarkKey(bookmark.id), bookmark);
+    return { ...state, activeTab: 'bookmarks' };
+  }
+
+  private async updateBookmark(tx: ReadwriteTransaction, scope: string, session: ChatSession,
+    action: Extract<ChatWorkspaceAction, { kind: 'renameBookmark' | 'addBookmarkTag' | 'removeBookmarkTag' | 'deleteBookmark' }>): Promise<ChatWorkspaceState> {
+    const stored = await tx.get<ChatBookmark>(bookmarkKey(action.bookmarkId));
+    if (!stored.exists || stored.data.scope !== scope) throw new Error('This Bookmark is unavailable in the current project.');
+    if (action.kind === 'deleteBookmark') {
+      const references = [...(session.workspace?.attachments || []), ...(session.workspace?.docks || []).map((dock) => dock.reference)];
+      if (references.some((reference) => reference.kind === 'bookmark' && reference.objectId === action.bookmarkId)) {
+        throw new Error('Detach or undock this Bookmark before deleting it.');
+      }
+      await tx.delete(bookmarkKey(action.bookmarkId));
+      return { ...(session.workspace || emptyChatWorkspace()), activeTab: 'bookmarks' };
+    }
+    const bookmark = stored.data;
+    const tags = action.kind === 'renameBookmark' ? bookmark.tags : action.kind === 'addBookmarkTag'
+      ? normalizeTags([...bookmark.tags, action.tag]) : bookmark.tags.filter((tag) => normalizeTag(tag) !== normalizeTag(action.tag));
+    await tx.set(bookmarkKey(bookmark.id), { ...bookmark, title: action.kind === 'renameBookmark' ? validTitle(action.title) : bookmark.title, tags, updatedAt: now() });
+    return { ...(session.workspace || emptyChatWorkspace()), activeTab: 'bookmarks' };
+  }
+
   async completeWorkspaceAction(
     scope: string, sessionId: string, turnId: string, action: ChatWorkspaceAction,
     metrics: Omit<ChatMetrics, 'queryMs'>,
   ): Promise<{ turn: ChatTurn; workspace: ChatWorkspaceState }> {
+    if (action.kind === 'deleteBookmark') await this.assertBookmarkUnused(scope, action.bookmarkId);
     return this.database.runReadwriteTransaction(async (tx) => {
       const session = await this.sessionInTransaction(tx, scope, sessionId);
       const stored = await tx.get<StoredTurn>(turnKey(turnId));
       if (!stored.exists || stored.data.sessionId !== sessionId || stored.data.state !== 'loading') {
         throw new Error('The pending chat request is no longer available.');
       }
-      const records = await this.recordsForAction(tx, session, action);
-      const result = applyChatWorkspaceAction(scope, session.workspace, records, action);
+      const state = action.kind === 'bookmark' ? await this.createBookmark(tx, scope, session, action)
+        : action.kind === 'renameBookmark' || action.kind === 'addBookmarkTag' || action.kind === 'removeBookmarkTag' || action.kind === 'deleteBookmark'
+          ? await this.updateBookmark(tx, scope, session, action)
+          : undefined;
+      const result = state ? { state } : applyChatWorkspaceAction(scope, session.workspace, await this.recordsForAction(tx, session, action), action);
       const summary = action.kind === 'select'
         ? `Selected ${result.state.selections[result.state.currentSelectionId || '']?.rows.length || 0} rows.`
         : action.kind === 'dockCurrent' || action.kind === 'dock' ? `Docked ${result.reference?.title || 'selection'}.`
@@ -346,7 +460,7 @@ export class ChatSessionService {
     });
   }
 
-  context(turns: readonly ChatTurn[], workspace?: ChatWorkspaceState, projectId = ''): string {
+  context(turns: readonly ChatTurn[], workspace?: ChatWorkspaceState, projectId = '', bookmarks: readonly ChatBookmark[] = []): string {
     const history = turns.filter((turn) => turn.dtql && turn.recordSetId).slice(-3).map((turn) =>
       `Question: ${turn.question.slice(0, 200)}\nDTQL: ${(turn.generatedDtql || turn.dtql)?.slice(0, 1000)}\n` +
       `RecordSet: ${turn.recordSetId}; columns: ${turn.columns?.join(', ') || ''}; rows: ${turn.rows?.length || 0}`,
@@ -356,6 +470,12 @@ export class ChatSessionService {
       if (!refs.some((ref) => ref.kind === dock.reference.kind && ref.objectId === dock.reference.objectId)) refs.push(dock.reference);
     }
     const attached = refs.map((ref) => {
+      if (ref.kind === 'bookmark') {
+        const bookmark = bookmarks.find((item) => item.id === ref.objectId && item.projectId === projectId);
+        return bookmark
+          ? `Attached Bookmark: ${bookmark.title}; id: ${bookmark.id}; project: ${projectId}; columns: ${(bookmark.selection?.columns || bookmark.view?.columns || bookmark.recordSet.columns).join(', ')}; rows: ${chatBookmarkRows(bookmark).length}; tags: ${bookmark.tags.join(', ')}`
+          : `Attached Bookmark: ${ref.title}; unavailable`;
+      }
       if (ref.kind !== 'selection') return `Attached ${ref.kind}: ${ref.title}; id: ${ref.objectId}; project: ${ref.projectId}; source: ${ref.sourceId || ''}`;
       const selection = workspace?.selections[ref.objectId];
       return selection
@@ -377,15 +497,32 @@ export class ChatSessionService {
     return stored.data;
   }
 
+  /** A bookmark may not leave an attachment/dock dangling in another durable session. */
+  private async assertBookmarkUnused(scope: string, bookmarkId: string): Promise<void> {
+    const sessions = await this.database.query<ChatSession>({
+      source: { kind: 'collection', name: 'ChatSessions' }, filters: [{ field: 'scope', operator: '==', value: scope }], orders: [],
+    });
+    const referenced = sessions.records.some(({ data: session }) => [
+      ...(session.workspace?.attachments || []), ...(session.workspace?.docks || []).map((dock) => dock.reference),
+    ].some((reference) => reference.kind === 'bookmark' && reference.objectId === bookmarkId));
+    if (referenced) throw new Error('Detach or undock this Bookmark from every chat before deleting it.');
+  }
+
   private async recordsForAction(
     tx: ReadwriteTransaction, session: ChatSession, action: ChatWorkspaceAction,
   ): Promise<ReadonlyMap<string, ChatRecordSetData>> {
     const id = action.kind === 'select' ? action.recordSetId
       : action.kind === 'sortView' ? session.workspace?.views[action.viewId]?.recordSetId
-        : (action.kind === 'attach' || action.kind === 'dock') && action.reference.kind === 'recordset'
+        : (action.kind === 'attach' || action.kind === 'dock') && (action.reference.kind === 'recordset' || action.reference.kind === 'bookmark')
           ? action.reference.objectId : undefined;
     const records = new Map<string, ChatRecordSetData>();
     if (!id) return records;
+    if ((action.kind === 'attach' || action.kind === 'dock') && action.reference.kind === 'bookmark') {
+      const saved = await tx.get<ChatBookmark>(bookmarkKey(id));
+      if (!saved.exists || saved.data.scope !== session.scope) throw new Error('The referenced Bookmark is unavailable.');
+      records.set(id, saved.data.recordSet);
+      return records;
+    }
     if (!session.recordSetIds.includes(id)) throw new Error('The referenced RecordSet is not in this chat session.');
     const stored = await tx.get<ChatRecordSet>(recordSetKey(id));
     if (!stored.exists || stored.data.sessionId !== session.id) throw new Error('The referenced RecordSet is unavailable.');
