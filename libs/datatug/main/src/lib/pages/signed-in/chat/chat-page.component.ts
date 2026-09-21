@@ -1,5 +1,5 @@
 import { DecimalPipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { AgGridAngular } from 'ag-grid-angular';
@@ -14,12 +14,15 @@ import { sendOutline } from 'ionicons/icons';
 import { ChatInterpretService } from '../../../chat/chat-interpret.service';
 import { ChinookChatDataService } from '../../../chat/chinook-chat-data.service';
 import { ChatProviderService, providerPresets } from '../../../chat/chat-provider.service';
-import { ChatProvider, ChatTurn, CHINOOK_SCHEMA } from '../../../chat/chat.types';
+import { ChatJoinChoice, ChatProvider, ChatTurn, CHINOOK_SCHEMA } from '../../../chat/chat.types';
+import { isJoinedDTQLQuery } from '@dalgo/core';
 import { ChatSession, ChatSessionService } from '../../../chat/chat-session.service';
 import {
   chatBookmarkRows, ChatBookmark, ChatContextReference, ChatDock, ChatWorkspaceAction, emptyChatWorkspace,
 } from '../../../chat/chat-workspace';
 import { chatDtqlYaml, chatSQLite } from '../../../chat/chat-query-format';
+import { ChatJoinService } from '../../../chat/chat-join.service';
+import { ChatJoinAmbiguityError, ChatJoinCandidate, ambiguousChatJoinRequest, chatJoinCandidateLabel, validateChatJoinChoice } from '../../../chat/chat-joins';
 import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -38,6 +41,10 @@ addIcons({ sendOutline });
   ],
 })
 export class ChatPageComponent {
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly joiner = inject(ChatJoinService);
+  private readonly candidateCache = new WeakMap<ChatTurn, readonly ChatJoinCandidate[]>();
+  private readonly candidateErrors = new WeakMap<ChatTurn, string>();
   private cellAnchor?: { recordSetId: string; sourceRow: number; column: string };
   private readonly gridRowCache = new WeakMap<readonly Record<string, unknown>[], Record<string, unknown>[]>();
   private readonly gridColumnCache = new WeakMap<readonly Record<string, unknown>[], Map<string, ColDef[]>>();
@@ -100,6 +107,7 @@ export class ChatPageComponent {
   readonly presetName = signal('DeepSeek');
   readonly draft = signal<Omit<ChatProvider, 'id'>>({ ...providerPresets['DeepSeek'], apiKey: '' });
   readonly selectedProvider = computed(() => this.providers.providers().find((item) => item.id === this.providers.selectedId()));
+  readonly focusedJoin = signal<{ turnId: string; candidateId: string } | undefined>(undefined);
 
   constructor() {
     this.route.paramMap.subscribe(() => this.updateScope());
@@ -287,7 +295,7 @@ export class ChatPageComponent {
     this.submitting.set(true);
     let id: string | undefined;
     try {
-      const context = this.sessionStore.context(this.turns(), this.workspace(), this.projectId(), this.allBookmarks());
+      const context = this.sessionStore.context(this.turns(), this.workspace(), this.projectId(), this.allBookmarks()) + this.joinContext();
       const pending = await this.sessionStore.appendQuestion(scope, sessionId, question);
       id = pending.id;
       if (scope === this.scope() && sessionId === this.activeSessionId()) {
@@ -295,8 +303,23 @@ export class ChatPageComponent {
         this.turns.update((turns) => [...turns, pending]);
         await this.refreshSessions();
       }
+      const latest = this.turns().filter((turn) => turn.dtql && turn.recordSetId).at(-1);
+      if (latest?.recordSetId) {
+        const ambiguity = ambiguousChatJoinRequest(question, latest.recordSetId, this.candidatesFor(latest));
+        if (ambiguity) throw ambiguity;
+      }
       const interpretation = await this.interpreter.interpret(question, provider, context);
       if (scope !== this.scope()) throw new Error('The project changed before this result could be queried.');
+      if (interpretation.joinCandidate) {
+        const { recordSetId, candidateId } = interpretation.joinCandidate;
+        this.assertJoinChoice(question, recordSetId, candidateId);
+        const completed = await this.joiner.apply(scope, sessionId, recordSetId, candidateId, id, dataScope, interpretation.metrics);
+        if (scope === this.scope() && sessionId === this.activeSessionId()) {
+          this.replaceTurn(id, completed);
+          await this.refreshSessions();
+        }
+        return;
+      }
       if (interpretation.workspaceAction) {
         const completed = await this.sessionStore.completeWorkspaceAction(
           scope, sessionId, id, interpretation.workspaceAction, interpretation.metrics,
@@ -316,7 +339,9 @@ export class ChatPageComponent {
       const result = await this.sessionStore.completeQuery(scope, sessionId, id, {
         dtql: bound.dtql, generatedDtql: interpretation.dtql, parentRecordSetId: bound.parentRecordSetId,
         dtqlYaml: chatDtqlYaml(query), sql: chatSQLite(query), rows,
-        columns: rows.length ? Object.keys(rows[0]) : [...(CHINOOK_SCHEMA.tables.find((table) => `${table.schema}.${table.name}` === query.source.name)?.fields || [])],
+        columns: rows.length ? Object.keys(rows[0]) : isJoinedDTQLQuery(query) ?
+          (query.columns?.map((column) => column.as || (column.expression?.kind === 'field' ? column.expression.field.field : '')).filter(Boolean) || []) :
+          [...(CHINOOK_SCHEMA.tables.find((table) => `${table.schema}.${table.name}` === query.source.name)?.fields || [])],
         metrics: { ...interpretation.metrics, queryMs: performance.now() - queryStarted },
         source: `${scope}/chinook`,
       });
@@ -328,7 +353,8 @@ export class ChatPageComponent {
       const message = error instanceof Error ? error.message : 'Unable to answer that question.';
       if (id) {
         try {
-          const failed = await this.sessionStore.failQuestion(scope, sessionId, id, message);
+          const failed = await this.sessionStore.failQuestion(scope, sessionId, id, message,
+            error instanceof ChatJoinAmbiguityError ? error.choices : undefined);
           if (scope === this.scope() && sessionId === this.activeSessionId()) this.replaceTurn(id, failed);
         } catch (saveError) {
           this.showSessionError(saveError);
@@ -339,6 +365,127 @@ export class ChatPageComponent {
     } finally {
       this.submitting.set(false);
     }
+  }
+
+  applyJoinChoice(choice: ChatJoinChoice): void {
+    const parent = this.turns().find((turn) => turn.recordSetId === choice.recordSetId);
+    const candidate = parent && this.candidatesFor(parent).find((item) => item.id === choice.candidateId);
+    if (parent && candidate) void this.applyJoin(parent, candidate);
+    else this.sessionError.set('That relationship is no longer available. Refresh the result and choose a current edge.');
+  }
+
+  private joinContext(): string {
+    const recent = this.turns().filter((turn) => turn.recordSetId && turn.dtql).slice(-3);
+    if (!recent.length) return '';
+    const lines = recent.map((turn, index) => {
+      const candidates = this.candidatesFor(turn);
+      return `RecordSet ${turn.recordSetId}${index === recent.length - 1 ? ' (latest)' : ''}: ` +
+        candidates.map((candidate) => JSON.stringify({
+          candidateId: candidate.id, source: candidate.sourceAlias, target: candidate.targetTable,
+          sourceFields: candidate.sourceFields, targetFields: candidate.targetFields,
+        })).join('; ');
+    });
+    return `\nForeign-key JOIN candidates (metadata only; use exact IDs):\n${lines.join('\n')}`.slice(0, 6000);
+  }
+
+  private assertJoinChoice(question: string, recordSetId: string, candidateId: string): void {
+    const successful = this.turns().filter((turn) => turn.recordSetId && turn.dtql);
+    const latest = successful[successful.length - 1];
+    const parent = successful.find((turn) => turn.recordSetId === recordSetId);
+    if (!parent || !latest?.recordSetId) throw new Error('The selected result is unavailable in this chat session.');
+    validateChatJoinChoice(question, recordSetId, latest.recordSetId, candidateId, this.candidatesFor(parent));
+  }
+
+  candidatesFor(turn: ChatTurn): readonly ChatJoinCandidate[] {
+    if (!turn.dtql || !turn.recordSetId) return [];
+    let candidates = this.candidateCache.get(turn);
+    if (!candidates) {
+      try { candidates = this.joiner.candidates(turn.dtql); }
+      catch (error) {
+        candidates = [];
+        this.candidateErrors.set(turn, error instanceof Error ? error.message : 'The saved query cannot be read with the current schema.');
+      }
+      this.candidateCache.set(turn, candidates);
+    }
+    return candidates;
+  }
+
+  candidateError(turn: ChatTurn): string | undefined {
+    this.candidatesFor(turn);
+    return this.candidateErrors.get(turn);
+  }
+
+  joinGroups(turn: ChatTurn): readonly { source: string; candidates: readonly ChatJoinCandidate[] }[] {
+    const groups = new Map<string, ChatJoinCandidate[]>();
+    for (const candidate of this.candidatesFor(turn)) {
+      const key = `${candidate.sourcePath.join('.')}|${candidate.sourceAlias}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)?.push(candidate);
+    }
+    return [...groups.values()].map((candidates) => ({ source: `${candidates[0].sourceAlias} · ${candidates[0].sourceTable}`, candidates }));
+  }
+
+  joinLabel(candidate: ChatJoinCandidate, turn: ChatTurn): string {
+    return chatJoinCandidateLabel(candidate, this.candidatesFor(turn));
+  }
+
+  selectedJoin(turn: ChatTurn): ChatJoinCandidate | undefined {
+    return this.candidatesFor(turn).find((candidate) => candidate.id === this.focusedJoin()?.candidateId && this.focusedJoin()?.turnId === turn.id);
+  }
+
+  focusJoin(turn: ChatTurn, candidate: ChatJoinCandidate): void {
+    this.focusedJoin.set({ turnId: turn.id, candidateId: candidate.id });
+    this.workspace.update((state) => ({ ...state, activeTab: 'selected' }));
+  }
+
+  onJoinKeys(event: KeyboardEvent, turn: ChatTurn): void {
+    const groups = this.joinGroups(turn);
+    if (!groups.length || !['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', ' ', 'Escape'].includes(event.key)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.key === 'Escape') {
+      const grid = [...this.host.nativeElement.querySelectorAll<HTMLElement>('.chat-grid')]
+        .find((item) => item.dataset['turnId'] === turn.id);
+      grid?.querySelector<HTMLElement>('.ag-cell[tabindex], .ag-header-cell[tabindex]')?.focus();
+      return;
+    }
+    const selected = this.selectedJoin(turn) || groups[0].candidates[0];
+    const groupIndex = Math.max(0, groups.findIndex((group) => group.candidates.includes(selected)));
+    const candidateIndex = groups[groupIndex].candidates.indexOf(selected);
+    if (event.key === ' ') { void this.applyJoin(turn, selected); return; }
+    if (event.key === 'Enter') { this.focusJoin(turn, selected); return; }
+    const nextGroup = event.key === 'ArrowUp' ? Math.max(0, groupIndex - 1) :
+      event.key === 'ArrowDown' ? Math.min(groups.length - 1, groupIndex + 1) : groupIndex;
+    const nextCandidate = event.key === 'ArrowLeft' ? Math.max(0, candidateIndex - 1) :
+      event.key === 'ArrowRight' ? Math.min(groups[nextGroup].candidates.length - 1, candidateIndex + 1) : candidateIndex;
+    this.focusJoin(turn, groups[nextGroup].candidates[Math.min(nextCandidate, groups[nextGroup].candidates.length - 1)]);
+  }
+
+  async applyJoin(parent: ChatTurn, candidate: ChatJoinCandidate): Promise<void> {
+    if (!parent.recordSetId || this.seedState() !== 'ready' || this.sessionState() !== 'ready' || this.submitting() || this.sessionBusy()) return;
+    const scope = this.scope();
+    const sessionId = this.activeSessionId();
+    const question = `Join ${candidate.sourceAlias} to ${candidate.targetTable} via ${candidate.sourceFields.join(', ')}`;
+    this.submitting.set(true);
+    let id: string | undefined;
+    try {
+      const pending = await this.sessionStore.appendQuestion(scope, sessionId, question);
+      id = pending.id;
+      if (scope === this.scope() && sessionId === this.activeSessionId()) this.turns.update((turns) => [...turns, pending]);
+      const completed = await this.joiner.apply(scope, sessionId, parent.recordSetId, candidate.id, id, `${this.storeId()}:${this.projectId()}`);
+      if (scope === this.scope() && sessionId === this.activeSessionId()) {
+        this.replaceTurn(id, completed);
+        await this.refreshSessions();
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to apply the relationship.';
+      if (id) {
+        try {
+          const failed = await this.sessionStore.failQuestion(scope, sessionId, id, message);
+          if (scope === this.scope() && sessionId === this.activeSessionId()) this.replaceTurn(id, failed);
+        } catch (saveError) { this.showSessionError(saveError); }
+      } else this.showSessionError(error);
+    } finally { this.submitting.set(false); }
   }
 
   keyMask(provider: ChatProvider): string {
@@ -357,7 +504,10 @@ export class ChatPageComponent {
     }
     let columns = byFields.get(key);
     if (!columns) {
-      columns = fields.map((field) => ({ field, sortable: true, resizable: true, minWidth: 120 }));
+      columns = fields.map((field) => ({
+        colId: field, headerName: field, valueGetter: (params) => params.data?.[field],
+        sortable: true, resizable: true, minWidth: 120,
+      }));
       byFields.set(key, columns);
     }
     return columns;

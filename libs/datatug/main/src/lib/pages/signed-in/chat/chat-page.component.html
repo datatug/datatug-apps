@@ -33,6 +33,13 @@
         <div class="question-row"><strong>You</strong><p class="question-bubble">{{ turn.question }}</p></div>
         @if (turn.state === 'loading') { <div class="turn-status"><ion-spinner name="dots" /><span>Interpreting and querying…</span></div> }
         @if (turn.state === 'error') { <ion-text color="danger">{{ turn.error }}</ion-text> }
+        @if (turn.joinChoices?.length) {
+          <div class="join-choices" aria-label="Choose a relationship">
+            @for (choice of turn.joinChoices; track choice.candidateId) {
+              <ion-button size="small" fill="outline" (click)="applyJoinChoice(choice)" [disabled]="submitting() || sessionBusy()">{{ choice.label }}</ion-button>
+            }
+          </div>
+        }
         @if (turn.actionSummary) { <p class="workspace-action-summary">{{ turn.actionSummary }}</p> }
         @if (turn.dtql) {
           <ion-card class="result-card">
@@ -68,7 +75,26 @@
                     <ion-button size="small" fill="clear" (click)="workspaceAction({ kind: 'bookmark', reference })">Bookmark result</ion-button>
                   }
                 </div>
-                <ag-grid-angular class="ag-theme-quartz chat-grid" [rowData]="gridRows(turn.rows)" [columnDefs]="columnsFor(turn.rows)" [defaultColDef]="{ sortable: true, resizable: true }" [rowSelection]="{ mode: 'multiRow', checkboxes: true, headerCheckbox: false }" (selectionChanged)="onGridSelection(turn, $event)" (cellClicked)="onGridCell(turn, $event)" />
+                <ag-grid-angular class="ag-theme-quartz chat-grid" [attr.data-turn-id]="turn.id" [rowData]="gridRows(turn.rows)" [columnDefs]="columnsFor(turn.rows)" [defaultColDef]="{ sortable: true, resizable: true }" [rowSelection]="{ mode: 'multiRow', checkboxes: true, headerCheckbox: false }" (selectionChanged)="onGridSelection(turn, $event)" (cellClicked)="onGridCell(turn, $event)" />
+              }
+              @if (turnTab(turn) === 'rows' && turn.recordSetId) {
+                <section class="join-candidates" tabindex="0" aria-label="Related tables" (keydown)="onJoinKeys($event, turn)">
+                  <h3>Related tables</h3>
+                  @if (candidateError(turn); as error) { <ion-text color="danger"><p>{{ error }}</p></ion-text> }
+                  @for (group of joinGroups(turn); track group.source) {
+                    <div class="join-source-row"><strong>{{ group.source }}</strong>
+                      <div class="join-edges">
+                        @for (candidate of group.candidates; track candidate.id) {
+                          <ion-button size="small" [fill]="selectedJoin(turn)?.id === candidate.id ? 'solid' : 'outline'" (click)="focusJoin(turn, candidate)" [disabled]="submitting() || sessionBusy()">{{ joinLabel(candidate, turn) }}</ion-button>
+                        }
+                      </div>
+                    </div>
+                  } @empty { @if (!candidateError(turn)) { <p class="join-empty">No further foreign-key relationships from this result.</p> } }
+                  @if (selectedJoin(turn); as candidate) {
+                    <ion-button size="small" (click)="applyJoin(turn, candidate)" [disabled]="submitting() || sessionBusy()">Join {{ candidate.targetTable }}</ion-button>
+                    <span class="join-hint">Arrow keys choose a relationship · Enter shows details · Space joins</span>
+                  }
+                </section>
               }
             </ion-card-content>
           </ion-card>
@@ -96,6 +122,24 @@
           }
         }
         @if (workspace().activeTab === 'selected') {
+          @if (focusedJoin(); as focus) {
+            @for (turn of turns(); track turn.id) {
+              @if (turn.id === focus.turnId && selectedJoin(turn); as candidate) {
+                <section class="join-details">
+                  <h3>{{ candidate.sourceAlias }} → {{ candidate.targetTable }}</h3>
+                  <p>{{ candidate.cardinality === 'many-to-one' ? 'Many to one' : 'One to many' }} · Chinook foreign key</p>
+                  <dl class="selected-fields">
+                    <div><dt>Source</dt><dd>{{ candidate.sourceTable }} ({{ candidate.sourceAlias }})</dd></div>
+                    <div><dt>Source fields</dt><dd>{{ candidate.sourceFields.join(', ') }}</dd></div>
+                    <div><dt>Target</dt><dd>{{ candidate.targetSchema }}.{{ candidate.targetTable }}</dd></div>
+                    <div><dt>Target fields</dt><dd>{{ candidate.targetFields.join(', ') }}</dd></div>
+                    <div><dt>Evidence</dt><dd>{{ candidate.foreignKeyId }}</dd></div>
+                  </dl>
+                  <ion-button size="small" (click)="applyJoin(turn, candidate)" [disabled]="submitting() || sessionBusy()">Join {{ candidate.targetTable }}</ion-button>
+                </section>
+              }
+            }
+          }
           @if (savedSelections().length) {
             <div class="workspace-group-label">Saved selections</div>
             @for (item of savedSelections(); track item.id) {

@@ -24,6 +24,29 @@ export interface ChatTurn {
   readonly error?: string;
   readonly metrics?: ChatMetrics;
   readonly actionSummary?: string;
+  readonly join?: ChatJoinLineage;
+  readonly joinChoices?: readonly ChatJoinChoice[];
+}
+
+export interface ChatJoinChoice {
+  readonly recordSetId: string;
+  readonly candidateId: string;
+  readonly label: string;
+}
+
+/** Immutable FK evidence captured when a joined result is created. */
+export interface ChatJoinLineage {
+  readonly candidateId: string;
+  readonly manifestVersion: string;
+  readonly foreignKeyId: string;
+  readonly direction: 'forward' | 'reverse';
+  readonly sourcePath: readonly number[];
+  readonly sourceAlias: string;
+  readonly targetAlias: string;
+  readonly sourceTable: string;
+  readonly targetTable: string;
+  readonly sourceFields: readonly string[];
+  readonly targetFields: readonly string[];
 }
 
 export interface ChatMetrics {
@@ -99,4 +122,4 @@ export const CHINOOK_SCHEMA = {
 export const CHINOOK_SCHEMA_PROMPT = `Chinook schema (use DTQL only):
 ${CHINOOK_SCHEMA.tables.map(({ name, fields }) => `main.${name}(${fields.join(', ')})`).join('\n')}
 Orders means invoices. Track.ArtistName is derived from Album and Artist.
-Return one bounded single-source DTQL query. Joins and aggregation are not supported yet.`;
+Return one bounded single-source DTQL query, or use a supplied FK candidate ID for a JOIN request. Do not generate JOIN clauses or aggregation.`;

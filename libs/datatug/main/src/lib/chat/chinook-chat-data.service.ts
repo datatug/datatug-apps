@@ -1,5 +1,8 @@
 import { Injectable } from '@angular/core';
-import { key, parseDTQL, type DTQLSchema, type StructuredQuery } from '@dalgo/core';
+import {
+  executeJoinedDTQLQuery, isJoinedDTQLQuery, key, parseDTQL,
+  type DTQLSchema, type ParsedDTQLQuery,
+} from '@dalgo/core';
 import { IndexedDbDatabase } from '@dalgo/indexeddb';
 import { CHINOOK_SCHEMA } from './chat.types';
 
@@ -76,10 +79,22 @@ export class ChinookChatDataService {
     });
   }
 
-  async query(scope: string, dtql: string): Promise<{ rows: readonly Record<string, unknown>[]; query: StructuredQuery<Record<string, unknown>> }> {
+  async query(scope: string, dtql: string): Promise<{ rows: readonly Record<string, unknown>[]; query: ParsedDTQLQuery<Record<string, unknown>> }> {
     if (scope !== this.scope) throw new Error('The project changed before this result could be queried.');
     const query = parseDTQL(dtql, CHINOOK_SCHEMA as unknown as DTQLSchema, { maxLimit: 1000 });
-    const page = await this.requireDatabase().query(query);
+    const database = this.requireDatabase();
+    const page = isJoinedDTQLQuery(query)
+      ? await executeJoinedDTQLQuery(database, query, {
+        schema: CHINOOK_SCHEMA,
+        resolveSource: (relation) => {
+          const schema = relation.schema || 'main';
+          if (!CHINOOK_SCHEMA.tables.some((table) => table.schema === schema && table.name === relation.name)) {
+            throw new Error(`The JOIN source ${schema}.${relation.name} is unavailable.`);
+          }
+          return { kind: 'collection', name: `${schema}.${relation.name}` };
+        },
+      })
+      : await database.query(query);
     if (scope !== this.scope) throw new Error('The project changed before this result could be shown.');
     return { rows: page.records.map((record) => record.data as Record<string, unknown>), query };
   }
