@@ -32,17 +32,17 @@ export interface ChatMetrics {
 export const CHINOOK_SCHEMA = {
   tables: [
     {
-      schema: 'chinook',
+      schema: 'main',
       name: 'Customer',
       fields: ['CustomerId', 'FirstName', 'LastName', 'City', 'Country', 'Email'],
     },
     {
-      schema: 'chinook',
+      schema: 'main',
       name: 'Invoice',
       fields: ['InvoiceId', 'CustomerId', 'InvoiceDate', 'BillingCity', 'BillingCountry', 'Total'],
     },
     {
-      schema: 'chinook',
+      schema: 'main',
       name: 'Track',
       fields: ['TrackId', 'Name', 'AlbumId', 'GenreId', 'Milliseconds', 'UnitPrice', 'ArtistName'],
     },
@@ -50,7 +50,7 @@ export const CHINOOK_SCHEMA = {
 } as const;
 
 export const CHINOOK_SCHEMA_PROMPT = `Chinook schema (use DTQL only):
-chinook.Invoice(InvoiceId, CustomerId, InvoiceDate, BillingCity, BillingCountry, Total) — orders means invoices.
-chinook.Customer(CustomerId, FirstName, LastName, City, Country, Email).
-chinook.Track(TrackId, Name, AlbumId, GenreId, Milliseconds, UnitPrice, ArtistName) — ArtistName is derived from Album/Artist.
+main.Invoice(InvoiceId, CustomerId, InvoiceDate, BillingCity, BillingCountry, Total) — orders means invoices.
+main.Customer(CustomerId, FirstName, LastName, City, Country, Email).
+main.Track(TrackId, Name, AlbumId, GenreId, Milliseconds, UnitPrice, ArtistName) — ArtistName is derived from Album/Artist.
 Return one bounded single-source DTQL query.`;

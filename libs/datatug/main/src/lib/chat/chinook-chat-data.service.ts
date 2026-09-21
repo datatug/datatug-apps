@@ -28,25 +28,30 @@ export class ChinookChatDataService {
     if (projectId !== 'datatug-demo-project') {
       throw new Error('This local Chat trial has Chinook data only for datatug-demo-project.');
     }
-    const databaseName = `datatug-chat:v2:${encodeURIComponent(scope)}:${encodeURIComponent(fixtureVersion)}`;
+    const databaseName = 'chinook';
     if (this.databaseName !== databaseName) {
       await this.database?.close();
       if (scope !== this.scope) return;
-      this.database = new IndexedDbDatabase({ name: databaseName, collections: ['chinook.Customer', 'chinook.Invoice', 'chinook.Track', 'chinook._meta'] });
+      this.database = new IndexedDbDatabase({ name: databaseName, collections: [
+        { name: 'main.Customer', storeName: 'Customer' },
+        { name: 'main.Invoice', storeName: 'Invoice' },
+        { name: 'main.Track', storeName: 'Track' },
+        { name: 'main._meta', storeName: '_meta' },
+      ] });
       this.databaseName = databaseName;
     }
     const database = this.requireDatabase();
-    const seeded = await database.get<{ version?: unknown }>(key('chinook._meta', 'chinook-version'));
+    const seeded = await database.get<{ version?: unknown }>(key('main._meta', 'chinook-version'));
     if (seeded.exists && seeded.data.version === fixtureVersion) return;
     const response = await fetch('assets/chinook-phase1.json');
     if (!response.ok) throw new Error('The local Chinook seed fixture is unavailable.');
     const fixture = await response.json() as Fixture;
     if (fixture.version !== fixtureVersion) throw new Error('The local Chinook seed fixture version is unexpected.');
     await database.runReadwriteTransaction(async (transaction) => {
-      for (const customer of fixture.customers) await transaction.set(key('chinook.Customer', Number(customer['CustomerId'])), customer);
-      for (const invoice of fixture.invoices) await transaction.set(key('chinook.Invoice', Number(invoice['InvoiceId'])), invoice);
-      for (const track of fixture.tracks) await transaction.set(key('chinook.Track', Number(track['TrackId'])), track);
-      await transaction.set(key('chinook._meta', 'chinook-version'), { version: fixtureVersion });
+      for (const customer of fixture.customers) await transaction.set(key('main.Customer', Number(customer['CustomerId'])), customer);
+      for (const invoice of fixture.invoices) await transaction.set(key('main.Invoice', Number(invoice['InvoiceId'])), invoice);
+      for (const track of fixture.tracks) await transaction.set(key('main.Track', Number(track['TrackId'])), track);
+      await transaction.set(key('main._meta', 'chinook-version'), { version: fixtureVersion });
     });
   }
 
