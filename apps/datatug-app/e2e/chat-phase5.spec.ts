@@ -130,7 +130,7 @@ test('FK JOIN candidates execute against real Chinook, chain, persist, and accep
   await third.getByRole('button', { name: 'Bookmark result' }).click();
   const workspace = page.getByLabel('Chat workspace');
   await expect(workspace.getByRole('tab', { name: /Bookmarks/ })).toHaveAttribute('aria-selected', 'true');
-  const joinedBookmark = workspace.locator('.bookmark-item').filter({ hasText: 'Join Employee' });
+  const joinedBookmark = workspace.locator('.bookmark-item').filter({ hasText: 'to Employee via' });
   await joinedBookmark.getByRole('button', { name: 'Attach' }).click();
   page.once('dialog', (dialog) => dialog.accept('joined'));
   await joinedBookmark.getByRole('button', { name: 'Tag' }).click();
