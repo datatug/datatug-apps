@@ -5,11 +5,22 @@ import { CHINOOK_SCHEMA } from './chat.types';
 
 interface Fixture {
   readonly version: string;
-  readonly customers: readonly Record<string, unknown>[];
-  readonly invoices: readonly Record<string, unknown>[];
-  readonly tracks: readonly Record<string, unknown>[];
+  readonly tables: Readonly<Record<string, readonly Record<string, unknown>[]>>;
 }
-const fixtureVersion = 'chinook-sqlite-6334395117e2478a2712e083be614721341c26c9';
+const fixtureVersion = 'chinook-sqlite-6334395117e2478a2712e083be614721341c26c9-all-11-v2';
+const tableKeys = {
+  Artist: 'ArtistId',
+  Album: 'AlbumId',
+  Track: 'TrackId',
+  Genre: 'GenreId',
+  MediaType: 'MediaTypeId',
+  Playlist: 'PlaylistId',
+  PlaylistTrack: 'PlaylistId:TrackId',
+  Customer: 'CustomerId',
+  Employee: 'EmployeeId',
+  Invoice: 'InvoiceId',
+  InvoiceLine: 'InvoiceLineId',
+} as const;
 
 @Injectable({ providedIn: 'root' })
 export class ChinookChatDataService {
@@ -32,25 +43,35 @@ export class ChinookChatDataService {
     if (this.databaseName !== databaseName) {
       await this.database?.close();
       if (scope !== this.scope) return;
-      this.database = new IndexedDbDatabase({ name: databaseName, collections: [
-        { name: 'main.Customer', storeName: 'Customer' },
-        { name: 'main.Invoice', storeName: 'Invoice' },
-        { name: 'main.Track', storeName: 'Track' },
-        { name: 'main._meta', storeName: '_meta' },
-      ] });
+      this.database = new IndexedDbDatabase({
+        name: databaseName,
+        version: 2,
+        collections: [
+          ...Object.keys(tableKeys).map((table) => ({ name: `main.${table}`, storeName: table })),
+          { name: 'main._meta', storeName: '_meta' },
+        ],
+      });
       this.databaseName = databaseName;
     }
     const database = this.requireDatabase();
     const seeded = await database.get<{ version?: unknown }>(key('main._meta', 'chinook-version'));
     if (seeded.exists && seeded.data.version === fixtureVersion) return;
-    const response = await fetch('assets/chinook-phase1.json');
+    const response = await fetch('assets/chinook-full.json');
     if (!response.ok) throw new Error('The local Chinook seed fixture is unavailable.');
     const fixture = await response.json() as Fixture;
     if (fixture.version !== fixtureVersion) throw new Error('The local Chinook seed fixture version is unexpected.');
+    for (const table of Object.keys(tableKeys)) {
+      if (!Array.isArray(fixture.tables?.[table])) throw new Error(`The local Chinook fixture is missing ${table}.`);
+    }
     await database.runReadwriteTransaction(async (transaction) => {
-      for (const customer of fixture.customers) await transaction.set(key('main.Customer', Number(customer['CustomerId'])), customer);
-      for (const invoice of fixture.invoices) await transaction.set(key('main.Invoice', Number(invoice['InvoiceId'])), invoice);
-      for (const track of fixture.tracks) await transaction.set(key('main.Track', Number(track['TrackId'])), track);
+      for (const [table, primaryKey] of Object.entries(tableKeys)) {
+        for (const record of fixture.tables[table]) {
+          const id = primaryKey === 'PlaylistId:TrackId'
+            ? `${record['PlaylistId']}:${record['TrackId']}`
+            : Number(record[primaryKey]);
+          await transaction.set(key(`main.${table}`, id), record);
+        }
+      }
       await transaction.set(key('main._meta', 'chinook-version'), { version: fixtureVersion });
     });
   }

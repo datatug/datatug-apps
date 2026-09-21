@@ -33,24 +33,63 @@ export const CHINOOK_SCHEMA = {
   tables: [
     {
       schema: 'main',
-      name: 'Customer',
-      fields: ['CustomerId', 'FirstName', 'LastName', 'City', 'Country', 'Email'],
+      name: 'Artist',
+      fields: ['ArtistId', 'Name'],
     },
     {
       schema: 'main',
-      name: 'Invoice',
-      fields: ['InvoiceId', 'CustomerId', 'InvoiceDate', 'BillingCity', 'BillingCountry', 'Total'],
+      name: 'Album',
+      fields: ['AlbumId', 'Title', 'ArtistId'],
     },
     {
       schema: 'main',
       name: 'Track',
-      fields: ['TrackId', 'Name', 'AlbumId', 'GenreId', 'Milliseconds', 'UnitPrice', 'ArtistName'],
+      fields: ['TrackId', 'Name', 'AlbumId', 'MediaTypeId', 'GenreId', 'Composer', 'Milliseconds', 'Bytes', 'UnitPrice', 'ArtistName'],
+    },
+    {
+      schema: 'main',
+      name: 'Genre',
+      fields: ['GenreId', 'Name'],
+    },
+    {
+      schema: 'main',
+      name: 'MediaType',
+      fields: ['MediaTypeId', 'Name'],
+    },
+    {
+      schema: 'main',
+      name: 'Playlist',
+      fields: ['PlaylistId', 'Name'],
+    },
+    {
+      schema: 'main',
+      name: 'PlaylistTrack',
+      fields: ['PlaylistId', 'TrackId'],
+    },
+    {
+      schema: 'main',
+      name: 'Customer',
+      fields: ['CustomerId', 'FirstName', 'LastName', 'Company', 'Address', 'City', 'State', 'Country', 'PostalCode', 'Phone', 'Fax', 'Email', 'SupportRepId'],
+    },
+    {
+      schema: 'main',
+      name: 'Employee',
+      fields: ['EmployeeId', 'LastName', 'FirstName', 'Title', 'ReportsTo', 'BirthDate', 'HireDate', 'Address', 'City', 'State', 'Country', 'PostalCode', 'Phone', 'Fax', 'Email'],
+    },
+    {
+      schema: 'main',
+      name: 'Invoice',
+      fields: ['InvoiceId', 'CustomerId', 'InvoiceDate', 'BillingAddress', 'BillingCity', 'BillingState', 'BillingCountry', 'BillingPostalCode', 'Total'],
+    },
+    {
+      schema: 'main',
+      name: 'InvoiceLine',
+      fields: ['InvoiceLineId', 'InvoiceId', 'TrackId', 'UnitPrice', 'Quantity'],
     },
   ],
 } as const;
 
 export const CHINOOK_SCHEMA_PROMPT = `Chinook schema (use DTQL only):
-main.Invoice(InvoiceId, CustomerId, InvoiceDate, BillingCity, BillingCountry, Total) — orders means invoices.
-main.Customer(CustomerId, FirstName, LastName, City, Country, Email).
-main.Track(TrackId, Name, AlbumId, GenreId, Milliseconds, UnitPrice, ArtistName) — ArtistName is derived from Album/Artist.
-Return one bounded single-source DTQL query.`;
+${CHINOOK_SCHEMA.tables.map(({ name, fields }) => `main.${name}(${fields.join(', ')})`).join('\n')}
+Orders means invoices. Track.ArtistName is derived from Album and Artist.
+Return one bounded single-source DTQL query. Joins and aggregation are not supported yet.`;

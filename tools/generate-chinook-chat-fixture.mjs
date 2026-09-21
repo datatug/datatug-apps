@@ -19,21 +19,31 @@ if (actualSha256 !== expectedSha256) {
 }
 
 const fixture = {
-  version: 'chinook-sqlite-6334395117e2478a2712e083be614721341c26c9',
+  version: 'chinook-sqlite-6334395117e2478a2712e083be614721341c26c9-all-11-v2',
   source: {
     repository: 'https://github.com/datatug/chinook-database',
     revision: '6334395117e2478a2712e083be614721341c26c9',
     sha256: actualSha256,
     license: 'MIT',
   },
-  customers: sqliteJson('SELECT * FROM Customer ORDER BY CustomerId'),
-  invoices: sqliteJson('SELECT * FROM Invoice ORDER BY InvoiceId'),
-  tracks: sqliteJson(`SELECT Track.*, Artist.Name AS ArtistName
-    FROM Track
-    LEFT JOIN Album ON Album.AlbumId = Track.AlbumId
-    LEFT JOIN Artist ON Artist.ArtistId = Album.ArtistId
-    ORDER BY Track.TrackId`),
+  tables: Object.fromEntries([
+    ['Artist', 'ArtistId'],
+    ['Album', 'AlbumId'],
+    ['Genre', 'GenreId'],
+    ['MediaType', 'MediaTypeId'],
+    ['Playlist', 'PlaylistId'],
+    ['PlaylistTrack', 'PlaylistId, TrackId'],
+    ['Customer', 'CustomerId'],
+    ['Employee', 'EmployeeId'],
+    ['Invoice', 'InvoiceId'],
+    ['InvoiceLine', 'InvoiceLineId'],
+  ].map(([table, order]) => [table, sqliteJson(`SELECT * FROM ${table} ORDER BY ${order}`)])),
 };
+fixture.tables.Track = sqliteJson(`SELECT Track.*, Artist.Name AS ArtistName
+  FROM Track
+  LEFT JOIN Album ON Album.AlbumId = Track.AlbumId
+  LEFT JOIN Artist ON Artist.ArtistId = Album.ArtistId
+  ORDER BY Track.TrackId`);
 
 mkdirSync(dirname(resolve(outputPath)), { recursive: true });
 writeFileSync(outputPath, `${JSON.stringify(fixture)}\n`);

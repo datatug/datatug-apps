@@ -13,9 +13,10 @@ function cell(grid: Locator, row: number, column: string): Locator {
 }
 
 test('Chat persists a selected endpoint and renders seeded Chinook rows from deterministic DTQL', async ({ page }) => {
+  test.setTimeout(90_000);
   let fixtureRequests = 0;
   page.on('request', (request) => {
-    if (request.url().endsWith('/assets/chinook-phase1.json')) fixtureRequests += 1;
+    if (request.url().endsWith('/assets/chinook-full.json')) fixtureRequests += 1;
   });
   await page.addInitScript(() => {
     if (sessionStorage.getItem('chat-provider-test-seeded')) return;
@@ -37,6 +38,8 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
       'Show customers from Brazil': { from: { schema: 'main', name: 'Customer' }, where: { op: '==', left: { field: 'Country' }, right: { value: 'Brazil' } }, orderBy: [{ field: 'CustomerId' }], limit: 50 },
       'Show the newest 30 invoices': { from: { schema: 'main', name: 'Invoice' }, orderBy: [{ field: 'InvoiceId', desc: true }], limit: 30 },
       'Show 10 tracks by AC/DC': { from: { schema: 'main', name: 'Track' }, where: { op: '==', left: { field: 'ArtistName' }, right: { value: 'AC/DC' } }, orderBy: [{ field: 'TrackId' }], limit: 10 },
+      'Show 10 artists': { from: { name: 'Artist' }, orderBy: [{ field: 'ArtistId' }], limit: 10 },
+      'Show 10 invoice lines': { from: { schema: 'main', name: 'InvoiceLine' }, orderBy: [{ field: 'InvoiceLineId' }], limit: 10 },
       'Show nobody from nowhere': { from: { schema: 'main', name: 'Customer' }, where: { op: '==', left: { field: 'City' }, right: { value: 'Nowhere' } }, limit: 50 },
       'Return malformed DTQL': 'not valid DTQL',
     };
@@ -69,18 +72,23 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
     database.close();
     return Object.fromEntries(names.map((storeName, index) => [storeName, counts[index]]));
   });
-  expect(stores).toEqual({ Customer: 59, Invoice: 412, Track: 3503, _meta: 1 });
+  expect(stores).toEqual({
+    Album: 347, Artist: 275, Customer: 59, Employee: 8, Genre: 25,
+    Invoice: 412, InvoiceLine: 2240, MediaType: 5, Playlist: 18,
+    PlaylistTrack: 8715, Track: 3503, _meta: 1,
+  });
   for (const [question, count] of [
     ['Show last 100 orders', 100], ['Show 50 customers from Prague', 2],
     ['Show the last 20 invoices', 20], ['Show customers from Brazil', 5],
     ['Show the newest 30 invoices', 30], ['Show 10 tracks by AC/DC', 10],
+    ['Show 10 artists', 10], ['Show 10 invoice lines', 10],
   ] as const) {
     await page.getByLabel('Ask about Chinook data').fill(question);
     await page.getByRole('button', { name: 'Send' }).click();
     await expect(page.getByRole('tab', { name: `Rows ${count}` }).last()).toBeVisible();
   }
   const grids = page.locator('ag-grid-angular');
-  await expect(grids).toHaveCount(6);
+  await expect(grids).toHaveCount(8);
   await expect(grids.first()).toBeVisible();
   await expect(page.locator('.question-bubble').first()).toHaveText('Show last 100 orders');
   await expect(page.locator('.turn').first().getByText('Rows 100', { exact: true })).toBeVisible();
@@ -109,6 +117,8 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
   await expect(cell(grids.nth(5), 0, 'TrackId')).toHaveText('1');
   await scrollGridToLastRow(grids.nth(5));
   await expect(cell(grids.nth(5), 9, 'TrackId')).toHaveText('14');
+  await expect(cell(grids.nth(6), 0, 'ArtistId')).toHaveText('1');
+  await expect(cell(grids.nth(7), 0, 'InvoiceLineId')).toHaveText('1');
 
   await page.getByLabel('Ask about Chinook data').fill('Show nobody from nowhere');
   await page.getByRole('button', { name: 'Send' }).click();
@@ -142,4 +152,61 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
   await page.goto('/store/localhost:8989/project/a-different-project/chat');
   await expect(page.getByText('This local Chat trial has Chinook data only for datatug-demo-project.')).toBeVisible();
   await expect(page.getByText('Show last 100 orders')).toHaveCount(0);
+});
+
+test('existing three-table Chinook database upgrades in place to all eleven tables', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.goto('/store/localhost:8989/project/a-different-project/chat');
+  await page.evaluate(async () => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('chinook', 1);
+      request.onupgradeneeded = () => {
+        for (const name of ['Customer', 'Invoice', 'Track', '_meta']) {
+          request.result.createObjectStore(name, { keyPath: 'path' });
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction(['Customer', '_meta'], 'readwrite');
+      transaction.objectStore('Customer').put({ path: 'legacy-preserved', data: { CustomerId: 99999 } });
+      transaction.objectStore('_meta').put({
+        path: 'main._meta/chinook-version',
+        data: { version: 'chinook-sqlite-6334395117e2478a2712e083be614721341c26c9' },
+      });
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
+    database.close();
+  });
+
+  await page.goto('/store/localhost:8989/project/datatug-demo-project/chat');
+  await expect(page.getByText('API keys are stored in this browser origin')).toBeVisible();
+  await expect(page.getByText('Loading local Chinook data…')).toBeHidden({ timeout: 45_000 });
+  const upgraded = await page.evaluate(async () => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('chinook');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const transaction = database.transaction(['Customer', 'PlaylistTrack', '_meta'], 'readonly');
+    const get = <T>(request: IDBRequest<T>) => new Promise<T>((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const [legacy, playlistTracks, marker] = await Promise.all([
+      get(transaction.objectStore('Customer').get('legacy-preserved')),
+      get(transaction.objectStore('PlaylistTrack').count()),
+      get(transaction.objectStore('_meta').get('main._meta/chinook-version')),
+    ]);
+    const result = { version: database.version, stores: Array.from(database.objectStoreNames), legacy, playlistTracks, marker };
+    database.close();
+    return result;
+  });
+  expect(upgraded.version).toBe(2);
+  expect(upgraded.stores).toHaveLength(12);
+  expect(upgraded.legacy).toEqual({ path: 'legacy-preserved', data: { CustomerId: 99999 } });
+  expect(upgraded.playlistTracks).toBe(8715);
+  expect(upgraded.marker.data.version).toBe('chinook-sqlite-6334395117e2478a2712e083be614721341c26c9-all-11-v2');
 });
