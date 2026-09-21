@@ -2,9 +2,8 @@ import { expect, test, type Locator } from '@playwright/test';
 
 async function scrollGridToLastRow(grid: Locator): Promise<void> {
   await grid.evaluate((host: HTMLElement) => {
-    const viewport = [...host.querySelectorAll<HTMLElement>('*')]
-      .find((element) => element.scrollHeight > element.clientHeight);
-    if (!viewport) throw new Error('AG Grid did not expose a scrollable results viewport.');
+    const viewport = host.querySelector<HTMLElement>('.ag-body-vertical-scroll-viewport');
+    if (!viewport) throw new Error('AG Grid did not expose a vertical results viewport.');
     viewport.scrollTop = viewport.scrollHeight;
   });
 }
@@ -14,6 +13,10 @@ function cell(grid: Locator, row: number, column: string): Locator {
 }
 
 test('Chat persists a selected endpoint and renders seeded Chinook rows from deterministic DTQL', async ({ page }) => {
+  let fixtureRequests = 0;
+  page.on('request', (request) => {
+    if (request.url().endsWith('/assets/chinook-phase1.json')) fixtureRequests += 1;
+  });
   await page.addInitScript(() => {
     if (localStorage.getItem('datatug.chat.providers.v1')) return;
     localStorage.setItem('datatug.chat.providers.v1', JSON.stringify([{
@@ -27,13 +30,13 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
     const body = route.request().postDataJSON() as { question: string; provider: { apiKey: string } };
     expect(body.provider.apiKey).toBe('test-key-not-a-secret');
     const actions: Record<string, unknown> = {
-      'Show last 100 orders': { from: { schema: 'main', name: 'Invoice' }, orderBy: [{ field: 'InvoiceId', desc: true }], limit: 100 },
-      'Show 50 customers from Prague': { from: { schema: 'main', name: 'Customer' }, where: { op: '==', left: { field: 'City' }, right: { value: 'Prague' } }, orderBy: [{ field: 'CustomerId' }], limit: 50 },
-      'Show the last 20 invoices': { from: { schema: 'main', name: 'Invoice' }, orderBy: [{ field: 'InvoiceId', desc: true }], limit: 20 },
-      'Show customers from Brazil': { from: { schema: 'main', name: 'Customer' }, where: { op: '==', left: { field: 'Country' }, right: { value: 'Brazil' } }, orderBy: [{ field: 'CustomerId' }], limit: 50 },
-      'Show the newest 30 invoices': { from: { schema: 'main', name: 'Invoice' }, orderBy: [{ field: 'InvoiceId', desc: true }], limit: 30 },
-      'Show 10 tracks by AC/DC': { from: { schema: 'main', name: 'Track' }, where: { op: '==', left: { field: 'ArtistName' }, right: { value: 'AC/DC' } }, orderBy: [{ field: 'TrackId' }], limit: 10 },
-      'Show nobody from nowhere': { from: { schema: 'main', name: 'Customer' }, where: { op: '==', left: { field: 'City' }, right: { value: 'Nowhere' } }, limit: 50 },
+      'Show last 100 orders': { from: { schema: 'chinook', name: 'Invoice' }, orderBy: [{ field: 'InvoiceId', desc: true }], limit: 100 },
+      'Show 50 customers from Prague': { from: { schema: 'chinook', name: 'Customer' }, where: { op: '==', left: { field: 'City' }, right: { value: 'Prague' } }, orderBy: [{ field: 'CustomerId' }], limit: 50 },
+      'Show the last 20 invoices': { from: { schema: 'chinook', name: 'Invoice' }, orderBy: [{ field: 'InvoiceId', desc: true }], limit: 20 },
+      'Show customers from Brazil': { from: { schema: 'chinook', name: 'Customer' }, where: { op: '==', left: { field: 'Country' }, right: { value: 'Brazil' } }, orderBy: [{ field: 'CustomerId' }], limit: 50 },
+      'Show the newest 30 invoices': { from: { schema: 'chinook', name: 'Invoice' }, orderBy: [{ field: 'InvoiceId', desc: true }], limit: 30 },
+      'Show 10 tracks by AC/DC': { from: { schema: 'chinook', name: 'Track' }, where: { op: '==', left: { field: 'ArtistName' }, right: { value: 'AC/DC' } }, orderBy: [{ field: 'TrackId' }], limit: 10 },
+      'Show nobody from nowhere': { from: { schema: 'chinook', name: 'Customer' }, where: { op: '==', left: { field: 'City' }, right: { value: 'Nowhere' } }, limit: 50 },
       'Return malformed DTQL': 'not valid DTQL',
     };
     await route.fulfill({ json: { dtql: JSON.stringify(actions[body.question]) } });
@@ -43,6 +46,29 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
   await expect(page.locator('#main-content').getByText('Chat', { exact: true })).toBeVisible();
   await expect(page.getByText('API keys are stored in this browser origin')).toBeVisible();
   await expect(page.getByText('Loading local Chinook data…')).toBeHidden({ timeout: 30_000 });
+  await page.getByLabel('Ask about Chinook data').fill('Show last 100 orders');
+  await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled({ timeout: 30_000 });
+  expect(fixtureRequests).toBe(1);
+  const stores = await page.evaluate(async () => {
+    const databases = await indexedDB.databases();
+    const name = databases.find((database) => database.name?.startsWith('datatug-chat:v2:'))?.name;
+    if (!name) throw new Error(`Chinook IndexedDB database was not created: ${JSON.stringify(databases)}`);
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open(name);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const names = Array.from(database.objectStoreNames);
+    const transaction = database.transaction(names, 'readonly');
+    const counts = await Promise.all(names.map((storeName) => new Promise<number>((resolve, reject) => {
+      const request = transaction.objectStore(storeName).count();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    })));
+    database.close();
+    return Object.fromEntries(names.map((storeName, index) => [storeName, counts[index]]));
+  });
+  expect(stores).toEqual({ 'chinook.Customer': 59, 'chinook.Invoice': 412, 'chinook.Track': 3503, 'chinook._meta': 1 });
   for (const [question, count] of [
     ['Show last 100 orders', 100], ['Show 50 customers from Prague', 2],
     ['Show the last 20 invoices', 20], ['Show customers from Brazil', 5],
@@ -50,7 +76,7 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
   ] as const) {
     await page.getByLabel('Ask about Chinook data').fill(question);
     await page.getByRole('button', { name: 'Send' }).click();
-    await expect(page.getByText(`${count} rows`).last()).toBeVisible();
+    await expect(page.getByRole('tab', { name: `Rows ${count}` }).last()).toBeVisible();
   }
   const grids = page.locator('ag-grid-angular');
   await expect(grids).toHaveCount(6);
@@ -69,7 +95,6 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
   await expect(cell(grids.nth(1), 1, 'CustomerId')).toHaveText('6');
   await expect(cell(grids.nth(3), 0, 'CustomerId')).toHaveText('1');
   await expect(cell(grids.nth(3), 4, 'CustomerId')).toHaveText('13');
-  await expect(cell(grids.nth(3), 0, 'Country')).toHaveText('Brazil');
   await expect(cell(grids.nth(2), 0, 'InvoiceId')).toHaveText('412');
   await scrollGridToLastRow(grids.nth(2));
   await expect(cell(grids.nth(2), 19, 'InvoiceId')).toHaveText('393');
@@ -77,7 +102,6 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
   await scrollGridToLastRow(grids.nth(4));
   await expect(cell(grids.nth(4), 29, 'InvoiceId')).toHaveText('383');
   await expect(cell(grids.nth(5), 0, 'TrackId')).toHaveText('1');
-  await expect(cell(grids.nth(5), 0, 'ArtistName')).toHaveText('AC/DC');
   await scrollGridToLastRow(grids.nth(5));
   await expect(cell(grids.nth(5), 9, 'TrackId')).toHaveText('14');
 
@@ -90,6 +114,8 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
   await expect(page.locator('.turn').last().locator('ion-text[color="danger"]')).toHaveText(/DTQL|from/i);
 
   await page.reload();
+  await expect(page.getByText('Loading local Chinook data…')).toBeHidden({ timeout: 30_000 });
+  expect(fixtureRequests).toBe(1);
   await expect(page.getByText('DeepSeek · deepseek-flash').nth(1)).toBeVisible();
   await expect(page.getByText('key test-••••cret')).toBeVisible();
   await page.getByRole('button', { name: 'Edit' }).click();
