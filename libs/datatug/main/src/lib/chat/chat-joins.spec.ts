@@ -60,6 +60,8 @@ describe('Chat FK JOIN discovery', () => {
     expect(chained.query.from.joins[0].from.joins[0].from.name).toBe('B');
     expect(chained.query.from.joins).toHaveLength(1);
     expect(() => deriveChatJoin(base, composite.id, schema, { ...manifest, version: 'test-v2' })).toThrow(/no longer available/);
+    expect(() => validateChatJoinChoice('Join A', 'rs', 'rs', composite.id,
+      discoverChatJoinCandidates(base, { ...manifest, version: 'test-v2' }))).toThrow(/foreign-key metadata is no longer available/);
   });
 
   it('keeps repeated relation aliases distinct and refuses an ambiguous agent target', () => {

@@ -33,6 +33,15 @@ test('FK JOIN candidates execute against real Chinook, chain, persist, and accep
       expect(recordSetId).toBeTruthy();
       expect(candidate).toBeTruthy();
       action = { joinCandidate: { recordSetId, candidateId: JSON.parse(`"${candidate}"`) } };
+    } else if (question === 'Join with stale FK metadata') {
+      const system = request.messages[0].content;
+      const recordSetId = system.match(/RecordSet ([0-9a-f-]{36}) \(latest\)/)?.[1];
+      const encoded = system.match(/"candidateId":"((?:[^"\\]|\\.)*)"/)?.[1];
+      expect(recordSetId).toBeTruthy();
+      expect(encoded).toBeTruthy();
+      const identity = JSON.parse(JSON.parse(`"${encoded}"`)) as unknown[];
+      identity[0] = 'sha256:previous-schema';
+      action = { joinCandidate: { recordSetId, candidateId: JSON.stringify(identity) } };
     } else {
       throw new Error(`Unexpected question: ${question}`);
     }
@@ -49,10 +58,22 @@ test('FK JOIN candidates execute against real Chinook, chain, persist, and accep
   await first.locator('.join-candidates').focus();
   await first.locator('.join-candidates').press('Enter');
   await expect(page.getByLabel('Chat workspace').locator('.join-details')).toContainText('CustomerId');
+  await first.locator('.join-candidates').press('ArrowRight');
+  await expect(first.locator('.join-candidates ion-button[fill="solid"]')).toContainText('InvoiceLine');
+  await first.locator('.join-candidates').press('ArrowLeft');
+  await expect(first.locator('.join-candidates ion-button[fill="solid"]')).toContainText('Customer');
+  await first.locator('.join-candidates').press('Escape');
+  await expect(first.locator('.chat-grid .ag-cell:focus, .chat-grid .ag-header-cell:focus')).toHaveCount(1);
+  await first.locator('.join-candidates').focus();
   await first.locator('.join-candidates').press('Space');
   const second = page.locator('.turn').nth(1);
   await expect(second.getByRole('tab', { name: 'Rows 5' })).toBeVisible();
   await expect(second.locator('.join-candidates')).toContainText('Employee');
+  await second.locator('.join-candidates').focus();
+  await second.locator('.join-candidates').press('ArrowDown');
+  await expect(second.locator('.join-candidates ion-button[fill="solid"]')).toContainText('Employee');
+  await second.locator('.join-candidates').press('ArrowUp');
+  await expect(second.locator('.join-candidates ion-button[fill="solid"]')).not.toContainText('Employee');
   await second.locator('.join-candidates').getByRole('button', { name: /Employee/ }).first().click();
   await second.locator('.join-candidates').getByRole('button', { name: 'Join Employee' }).click();
   const third = page.locator('.turn').nth(2);
@@ -82,10 +103,29 @@ test('FK JOIN candidates execute against real Chinook, chain, persist, and accep
   expect(withCustomer?.rows.every((row) => row['Customer.CustomerId'] === row['CustomerId'])).toBe(true);
   const withEmployee = snapshot.find((row) => row.columns.includes('Employee.FirstName'));
   expect(withEmployee?.rows.every((row) => row['Employee.EmployeeId'] === row['Customer.SupportRepId'])).toBe(true);
+  const joinedRecordSetId = withEmployee?.id || '';
+  expect(joinedRecordSetId).toBeTruthy();
   await page.reload();
   await expect(third.getByRole('tab', { name: 'Rows 5' })).toBeVisible();
   await expect(third.locator('.join-candidates')).toContainText('Related tables');
   expect(providerCalls).toBe(1);
+  await page.getByLabel('Ask about Chinook data').fill('Join with stale FK metadata');
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect(page.locator('.turn').last()).toContainText('foreign-key metadata is no longer available');
+  await expect(third.getByRole('tab', { name: 'Rows 5' })).toBeVisible();
+  const restoredJoin = await page.evaluate(async (id) => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('datatug-chat-sessions'); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+    });
+    const record = await new Promise<{ data: { rows: unknown[]; join?: { manifestVersion: string } } }>((resolve, reject) => {
+      const request = database.transaction('ChatRecordSets', 'readonly').objectStore('ChatRecordSets').get(id);
+      request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+    });
+    database.close();
+    return record.data;
+  }, joinedRecordSetId);
+  expect(restoredJoin.rows).toHaveLength(5);
+  expect(restoredJoin.join?.manifestVersion).toBe(withEmployee?.join?.manifestVersion);
 
   await third.getByRole('button', { name: 'Bookmark result' }).click();
   const workspace = page.getByLabel('Chat workspace');

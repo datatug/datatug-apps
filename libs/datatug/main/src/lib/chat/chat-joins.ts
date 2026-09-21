@@ -180,7 +180,18 @@ export function validateChatJoinChoice(
     throw new Error('The JOIN must use the latest result, or name an exact saved RecordSet ID.');
   }
   const candidate = candidates.find((item) => item.id === candidateId);
-  if (!candidate) throw new Error('The requested relationship is unavailable. Choose a current foreign-key candidate.');
+  if (!candidate) {
+    try {
+      const identity = JSON.parse(candidateId) as unknown;
+      if (Array.isArray(identity) && typeof identity[0] === 'string' &&
+          candidates.some((item) => item.manifestVersion !== identity[0])) {
+        throw new Error('Cannot JOIN: foreign-key metadata is no longer available. Refresh this result.');
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('Cannot JOIN:')) throw error;
+    }
+    throw new Error('The requested relationship is unavailable. Choose a current foreign-key candidate.');
+  }
   const peers = candidates.filter((item) => item.targetTable === candidate.targetTable);
   if (peers.length < 2) return candidate;
   const exact = matchedEdges(question, peers);
