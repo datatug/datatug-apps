@@ -18,7 +18,8 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
     if (request.url().endsWith('/assets/chinook-phase1.json')) fixtureRequests += 1;
   });
   await page.addInitScript(() => {
-    if (localStorage.getItem('datatug.chat.providers.v1')) return;
+    if (sessionStorage.getItem('chat-provider-test-seeded')) return;
+    sessionStorage.setItem('chat-provider-test-seeded', 'true');
     localStorage.setItem('datatug.chat.providers.v1', JSON.stringify([{
       id: 'fake-deepseek', name: 'DeepSeek', protocol: 'openai-chat',
       baseUrl: 'https://api.deepseek.com', model: 'deepseek-flash', apiKey: 'test-key-not-a-secret',
@@ -39,7 +40,7 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
       'Show nobody from nowhere': { from: { schema: 'chinook', name: 'Customer' }, where: { op: '==', left: { field: 'City' }, right: { value: 'Nowhere' } }, limit: 50 },
       'Return malformed DTQL': 'not valid DTQL',
     };
-    await route.fulfill({ json: { dtql: JSON.stringify(actions[body.question]) } });
+    await route.fulfill({ json: { dtql: JSON.stringify(actions[body.question]), usage: { inputTokens: 21, outputTokens: 9, totalTokens: 30 } } });
   });
 
   await page.goto('/store/localhost:8989/project/datatug-demo-project/chat', { waitUntil: 'domcontentloaded' });
@@ -88,6 +89,10 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
   await expect(page.locator('.turn').first().locator('.dtql')).toBeVisible();
   await page.locator('.turn').first().getByText('Rows 100', { exact: true }).click();
   await expect(page.locator('.turn').first().locator('ag-grid-angular')).toBeVisible();
+  await page.locator('.turn').first().getByText('Metrics', { exact: true }).click();
+  await expect(page.locator('.turn').first().getByText('Input 21 · Output 9 · Total 30')).toBeVisible();
+  await expect(page.locator('.turn').first().getByText(/Request \d+ B · Response \d+ B/)).toBeVisible();
+  await page.locator('.turn').first().getByText('Rows 100', { exact: true }).click();
   await expect(cell(grids.nth(0), 0, 'InvoiceId')).toHaveText('412');
   await scrollGridToLastRow(grids.nth(0));
   await expect(cell(grids.nth(0), 99, 'InvoiceId')).toHaveText('313');
@@ -115,12 +120,18 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
 
   await page.reload();
   await expect(page.getByText('Loading local Chinook data…')).toBeHidden({ timeout: 30_000 });
+  await page.getByLabel('Ask about Chinook data').fill('Show last 100 orders');
+  await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled({ timeout: 30_000 });
   expect(fixtureRequests).toBe(1);
   await expect(page.getByText('DeepSeek · deepseek-flash').nth(1)).toBeVisible();
   await expect(page.getByText('key test-••••cret')).toBeVisible();
   await page.getByRole('button', { name: 'Edit' }).click();
   await expect(page.getByRole('button', { name: 'Save provider' })).toBeVisible();
   await expect(page.getByLabel('API key')).toHaveValue('test-key-not-a-secret');
+  await page.getByLabel('Provider name').fill('My DeepSeek');
+  await page.getByRole('button', { name: 'Save provider' }).click();
+  await page.reload();
+  await expect(page.getByText('My DeepSeek · deepseek-flash').nth(1)).toBeVisible();
 
   await page.goto('/store/evil.example/project/datatug-demo-project/chat');
   await expect(page.getByText('Loading local Chinook data…')).toBeHidden({ timeout: 30_000 });
