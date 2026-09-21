@@ -12,6 +12,13 @@ function cell(grid: Locator, row: number, column: string): Locator {
   return grid.locator(`.ag-row[row-index="${row}"] .ag-cell[col-id="${column}"]`);
 }
 
+test('project side menu opens Chat', async ({ page }) => {
+  await page.goto('/store/localhost:8989/project/datatug-demo-project/environments');
+  await page.locator('ion-menu').getByText('Chat', { exact: true }).click();
+  await expect(page).toHaveURL(/\/store\/localhost:8989\/project\/datatug-demo-project\/chat$/);
+  await expect(page.locator('#main-content').getByText(/Chat\s*@\s*(DataTug Demo Project 1|datatug-demo-project)/)).toBeVisible();
+});
+
 test('Chat persists a selected endpoint and renders seeded Chinook rows from deterministic DTQL', async ({ page }) => {
   test.setTimeout(90_000);
   let fixtureRequests = 0;
