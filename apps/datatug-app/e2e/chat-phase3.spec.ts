@@ -66,7 +66,8 @@ test('Chat workspace restores explicit context, selection, dock and a selected f
   await page.goto('/store/localhost:8989/project/datatug-demo-project/chat');
   await expect(page.getByText('Loading local Chinook data…')).toBeHidden({ timeout: 45_000 });
   const workspace = page.getByLabel('Chat workspace');
-  await expect(workspace.getByText('Chinook', { exact: true })).toBeVisible();
+  await workspace.locator('ion-segment-button[value="project"]').click();
+  await expect(workspace.getByText('Chinook', { exact: true })).toBeVisible({ timeout: 45_000 });
   await expect(workspace.locator('.workspace-table')).toHaveCount(11);
   await workspace.locator('.workspace-table').filter({ hasText: 'Customer' }).getByRole('button', { name: 'Attach' }).click();
   await expect(page.getByLabel('Attached context')).toContainText('Customer');

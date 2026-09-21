@@ -176,17 +176,18 @@ jobs:
       # `datatug serve` itself; it does not fetch this dependency. `datatug
       # demo` normally does (apps/datatugapp/commands/cmd_demo.go
       # downloadSQLiteSource), but that command then blocks forever serving
-      # the demo project, so it can't be used as a CI step — this replicates
-      # its keyless download of the same fixture file to the same path
+      # the demo project, so it can't be used as a CI step — this downloads
+      # a pinned copy of the same fixture file to the same path
       # (`~/datatug/dbs/chinook-local.sqlite`) that
       # environments/local/catalogs/chinook-local/chinook-local.db.json in
-      # datatug-demo-projects declares, without the `serve` call. Required
-      # setup step: no continue-on-error.
-      - name: Fetch Chinook SQLite fixture (keyless, same source `datatug demo` uses)
+      # datatug-demo-projects declares, without the `serve` call. Verify the
+      # content: github.com/.../blob?raw=true can return HTML with HTTP 200.
+      - name: Fetch and verify pinned Chinook SQLite fixture
         run: |
           mkdir -p "$HOME/datatug/dbs"
           curl -fsSL -o "$HOME/datatug/dbs/chinook-local.sqlite" \
-            "https://github.com/datatug/chinook-database/blob/master/ChinookDatabase/DataSources/Chinook_Sqlite.sqlite?raw=true"
+            "https://raw.githubusercontent.com/datatug/chinook-database/6334395117e2478a2712e083be614721341c26c9/ChinookDatabase/DataSources/Chinook_Sqlite.sqlite"
+          echo "f82efedb6c5c40734609e168bc5be5616a2eca6b90ed0048451a8674625e03a3  $HOME/datatug/dbs/chinook-local.sqlite" | sha256sum --check
 
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps chromium

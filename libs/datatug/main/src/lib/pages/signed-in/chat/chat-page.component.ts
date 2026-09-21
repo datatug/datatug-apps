@@ -17,7 +17,7 @@ import { ChatProviderService, providerPresets } from '../../../chat/chat-provide
 import { ChatProvider, ChatTurn, CHINOOK_SCHEMA } from '../../../chat/chat.types';
 import { ChatSession, ChatSessionService } from '../../../chat/chat-session.service';
 import {
-  ChatContextReference, ChatDock, ChatWorkspaceAction, emptyChatWorkspace,
+  chatBookmarkRows, ChatBookmark, ChatContextReference, ChatDock, ChatWorkspaceAction, emptyChatWorkspace,
 } from '../../../chat/chat-workspace';
 import { chatDtqlYaml, chatSQLite } from '../../../chat/chat-query-format';
 import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
@@ -58,6 +58,11 @@ export class ChatPageComponent {
   readonly sessions = signal<readonly ChatSession[]>([]);
   readonly workspace = signal(emptyChatWorkspace());
   readonly savedSelections = computed(() => Object.values(this.workspace().selections));
+  readonly bookmarks = signal<readonly ChatBookmark[]>([]);
+  readonly allBookmarks = signal<readonly ChatBookmark[]>([]);
+  readonly bookmarkSearch = signal('');
+  readonly bookmarkTags = signal('');
+  readonly openBookmark = signal<ChatBookmark | undefined>(undefined);
   readonly tables = CHINOOK_SCHEMA.tables;
   readonly currentSelection = computed(() => {
     const state = this.workspace();
@@ -282,7 +287,7 @@ export class ChatPageComponent {
     this.submitting.set(true);
     let id: string | undefined;
     try {
-      const context = this.sessionStore.context(this.turns(), this.workspace(), this.projectId());
+      const context = this.sessionStore.context(this.turns(), this.workspace(), this.projectId(), this.allBookmarks());
       const pending = await this.sessionStore.appendQuestion(scope, sessionId, question);
       id = pending.id;
       if (scope === this.scope() && sessionId === this.activeSessionId()) {
@@ -374,7 +379,10 @@ export class ChatPageComponent {
     this.sessionBusy.set(true);
     try {
       const state = await this.sessionStore.workspaceAction(scope, sessionId, action);
-      if (scope === this.scope() && sessionId === this.activeSessionId()) this.workspace.set(state);
+      if (scope === this.scope() && sessionId === this.activeSessionId()) {
+        this.workspace.set(state);
+        await this.refreshBookmarks();
+      }
     } catch (error) {
       this.showSessionError(error);
     } finally {
@@ -383,7 +391,38 @@ export class ChatPageComponent {
   }
 
   setWorkspaceTab(tab: string | number | undefined): void {
-    if (tab === 'project' || tab === 'selected' || tab === 'docked') void this.workspaceAction({ kind: 'setTab', tab });
+    if (tab === 'project' || tab === 'selected' || tab === 'docked' || tab === 'bookmarks') void this.workspaceAction({ kind: 'setTab', tab });
+  }
+
+  bookmarkReference(bookmark: ChatBookmark): ChatContextReference {
+    return { kind: 'bookmark', projectId: this.projectId(), sourceId: 'chinook', objectId: bookmark.id, title: bookmark.title };
+  }
+
+  async refreshBookmarks(): Promise<void> {
+    const scope = this.scope();
+    const tags = this.bookmarkTags().split(',').map((tag) => tag.trim()).filter(Boolean);
+    const [all, bookmarks] = await Promise.all([
+      this.sessionStore.listBookmarks(scope), this.sessionStore.listBookmarks(scope, this.bookmarkSearch(), tags),
+    ]);
+    if (scope === this.scope()) {
+      this.allBookmarks.set(all);
+      this.bookmarks.set(bookmarks);
+    }
+  }
+
+  filterBookmarks(): void { void this.refreshBookmarks(); }
+  bookmarkCurrent(): void {
+    const selection = this.currentSelection();
+    const reference = this.selectionReference();
+    if (selection && reference) void this.workspaceAction({ kind: 'bookmark', reference, title: selection.title });
+  }
+  renameBookmark(bookmark: ChatBookmark): void { const title = window.prompt('Bookmark name', bookmark.title); if (title !== null) void this.workspaceAction({ kind: 'renameBookmark', bookmarkId: bookmark.id, title }); }
+  addBookmarkTag(bookmark: ChatBookmark): void { const tag = window.prompt('Tag'); if (tag !== null) void this.workspaceAction({ kind: 'addBookmarkTag', bookmarkId: bookmark.id, tag }); }
+  removeBookmarkTag(bookmark: ChatBookmark, tag: string): void { void this.workspaceAction({ kind: 'removeBookmarkTag', bookmarkId: bookmark.id, tag }); }
+  deleteBookmark(bookmark: ChatBookmark): void { if (window.confirm(`Delete bookmark “${bookmark.title}”?`)) void this.workspaceAction({ kind: 'deleteBookmark', bookmarkId: bookmark.id }); }
+  showBookmark(bookmark: ChatBookmark): void { this.openBookmark.set(bookmark); }
+  bookmarkRows(bookmark: ChatBookmark): Record<string, unknown>[] {
+    return [...chatBookmarkRows(bookmark)];
   }
 
   projectReference(): ChatContextReference {
@@ -461,6 +500,12 @@ export class ChatPageComponent {
     return selection ? { kind: 'selection', projectId: this.projectId(), sourceId: 'chinook', objectId: selection.id, title: selection.title } : undefined;
   }
 
+  viewReference(): ChatContextReference | undefined {
+    const selection = this.currentSelection();
+    const view = selection && this.workspace().views[selection.viewId];
+    return view ? { kind: 'view', projectId: this.projectId(), sourceId: 'chinook', objectId: view.id, title: view.title } : undefined;
+  }
+
   resultReference(turn: ChatTurn): ChatContextReference | undefined {
     return turn.recordSetId ? {
       kind: 'recordset', projectId: this.projectId(), sourceId: 'chinook', objectId: turn.recordSetId,
@@ -475,6 +520,10 @@ export class ChatPageComponent {
   }
 
   dockRows(dock: ChatDock): Record<string, unknown>[] {
+    if (dock.reference.kind === 'bookmark') {
+      const bookmark = this.allBookmarks().find((item) => item.id === dock.reference.objectId);
+      return bookmark ? [...this.bookmarkRows(bookmark)] : [];
+    }
     const state = this.workspace();
     const turns = this.turns();
     const cached = this.dockRowCache.get(dock.id);
@@ -529,6 +578,9 @@ export class ChatPageComponent {
     this.projectId.set(projectId);
     this.turns.set([]);
     this.sessions.set([]);
+    this.bookmarks.set([]);
+    this.allBookmarks.set([]);
+    this.openBookmark.set(undefined);
     this.workspace.set(emptyChatWorkspace());
     this.activeSessionId.set('');
     void this.seed();
@@ -558,6 +610,7 @@ export class ChatPageComponent {
       if (scope !== this.scope()) return;
       this.turns.set(restored.turns);
       this.workspace.set(restored.session.workspace || emptyChatWorkspace());
+      await this.refreshBookmarks();
       this.turnTabs.set({});
       this.sessionState.set('ready');
       this.sessionError.set(undefined);

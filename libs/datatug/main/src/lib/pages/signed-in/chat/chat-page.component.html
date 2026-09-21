@@ -65,6 +65,7 @@
                   @if (resultReference(turn); as reference) {
                     <ion-button size="small" fill="clear" (click)="toggleAttachment(reference)">{{ attached(reference) ? 'Detach result' : 'Attach result' }}</ion-button>
                     <ion-button size="small" fill="clear" (click)="workspaceAction({ kind: 'dock', reference })">Dock result</ion-button>
+                    <ion-button size="small" fill="clear" (click)="workspaceAction({ kind: 'bookmark', reference })">Bookmark result</ion-button>
                   }
                 </div>
                 <ag-grid-angular class="ag-theme-quartz chat-grid" [rowData]="gridRows(turn.rows)" [columnDefs]="columnsFor(turn.rows)" [defaultColDef]="{ sortable: true, resizable: true }" [rowSelection]="{ mode: 'multiRow', checkboxes: true, headerCheckbox: false }" (selectionChanged)="onGridSelection(turn, $event)" (cellClicked)="onGridCell(turn, $event)" />
@@ -81,6 +82,7 @@
         <ion-segment-button value="project">Project</ion-segment-button>
         <ion-segment-button value="selected">Selected</ion-segment-button>
         <ion-segment-button value="docked">Docked {{ workspace().docks.length }}</ion-segment-button>
+        <ion-segment-button value="bookmarks">Bookmarks {{ bookmarks().length }}</ion-segment-button>
       </ion-segment>
       <div class="workspace-body">
         @if (workspace().activeTab === 'project') {
@@ -107,6 +109,8 @@
               @if (selectionReference(); as reference) {
                 <ion-button size="small" (click)="toggleAttachment(reference)">{{ attached(reference) ? 'Detach' : 'Attach to chat' }}</ion-button>
                 <ion-button size="small" fill="outline" (click)="workspaceAction({ kind: 'dockCurrent' })">Dock</ion-button>
+                <ion-button size="small" fill="outline" (click)="bookmarkCurrent()">Bookmark selection</ion-button>
+                @if (viewReference(); as view) { <ion-button size="small" fill="outline" (click)="workspaceAction({ kind: 'bookmark', reference: view })">Bookmark view</ion-button> }
               }
             </div>
             @if (selectedRows().length === 1) {
@@ -126,6 +130,27 @@
               @else { <p>No rows in this dock.</p> }
             </section>
           } @empty { <p class="workspace-empty">Dock a result or selection to keep it here for this chat session.</p> }
+        }
+        @if (workspace().activeTab === 'bookmarks') {
+          <div class="bookmark-filter">
+            <ion-input aria-label="Search bookmarks" placeholder="Search bookmarks" [value]="bookmarkSearch()" (ionInput)="bookmarkSearch.set($event.detail.value || ''); filterBookmarks()" />
+            <ion-input aria-label="Filter bookmark tags" placeholder="Tags, all required" [value]="bookmarkTags()" (ionInput)="bookmarkTags.set($event.detail.value || ''); filterBookmarks()" />
+          </div>
+          @for (bookmark of bookmarks(); track bookmark.id) {
+            <section class="bookmark-item">
+              <div class="dock-title"><strong>{{ bookmark.title }}</strong><span>{{ bookmark.target }} · {{ bookmarkRows(bookmark).length }}</span></div>
+              <div class="bookmark-tags">@for (tag of bookmark.tags; track tag) { <ion-button size="small" fill="clear" (click)="removeBookmarkTag(bookmark, tag)">{{ tag }} ×</ion-button> }</div>
+              <div class="workspace-actions">
+                <ion-button size="small" (click)="showBookmark(bookmark)">Open</ion-button>
+                <ion-button size="small" (click)="toggleAttachment(bookmarkReference(bookmark))">{{ attached(bookmarkReference(bookmark)) ? 'Detach' : 'Attach' }}</ion-button>
+                <ion-button size="small" fill="outline" (click)="workspaceAction({ kind: 'dock', reference: bookmarkReference(bookmark) })">Dock</ion-button>
+                <ion-button size="small" fill="clear" (click)="renameBookmark(bookmark)">Rename</ion-button>
+                <ion-button size="small" fill="clear" (click)="addBookmarkTag(bookmark)">Tag</ion-button>
+                <ion-button size="small" fill="clear" color="danger" (click)="deleteBookmark(bookmark)">Delete</ion-button>
+              </div>
+            </section>
+          } @empty { <p class="workspace-empty">Bookmark a result or selection to reuse it in another chat session.</p> }
+          @if (openBookmark(); as bookmark) { <section class="bookmark-open"><div class="dock-title"><strong>{{ bookmark.title }}</strong><ion-button size="small" fill="clear" (click)="openBookmark.set(undefined)">Close</ion-button></div><ag-grid-angular class="ag-theme-quartz workspace-grid" [rowData]="bookmarkRows(bookmark)" [columnDefs]="columnsFor(bookmarkRows(bookmark))" /></section> }
         }
       </div>
     </aside>

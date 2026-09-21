@@ -1,4 +1,4 @@
-import { applyChatWorkspaceAction, ChatRecordSetData, emptyChatWorkspace } from './chat-workspace';
+import { applyChatWorkspaceAction, chatBookmarkRows, ChatBookmark, ChatRecordSetData, emptyChatWorkspace } from './chat-workspace';
 
 const scope = JSON.stringify(['localhost:8989', 'datatug-demo-project']);
 const record: ChatRecordSetData = {
@@ -12,6 +12,20 @@ const record: ChatRecordSetData = {
 const records = new Map([[record.id, record]]);
 
 describe('Chat workspace actions', () => {
+  it('masks bookmarked selection columns and exact cell ranges', () => {
+    const base: ChatBookmark = {
+      id: 'bm-1', scope, projectId: 'datatug-demo-project', title: 'Customers', tags: [], target: 'selection',
+      recordSet: record, createdAt: '2026-09-21', updatedAt: '2026-09-21',
+      selection: { id: 'sel-1', viewId: 'view-1', title: 'Selected', rows: [0, 2], columns: ['CustomerId'], ranges: [], createdAt: '2026-09-21' },
+    };
+    expect(chatBookmarkRows(base)).toEqual([{ CustomerId: 10 }, { CustomerId: 30 }]);
+    const selection = base.selection;
+    if (!selection) throw new Error('The test selection is missing.');
+    expect(chatBookmarkRows({ ...base, selection: {
+      ...selection, columns: ['CustomerId', 'City'],
+      ranges: [{ rowIndices: [0], columns: ['CustomerId'] }, { rowIndices: [2], columns: ['City'] }],
+    } })).toEqual([{ CustomerId: 10 }, { City: 'Prague' }]);
+  });
   it('retains multiple selections over immutable source row positions', () => {
     const first = applyChatWorkspaceAction(scope, emptyChatWorkspace(), records, {
       kind: 'select', recordSetId: 'rs-1', column: 'City', equals: 'Prague', orderBy: 'Total', descending: true, limit: 1,
@@ -74,5 +88,14 @@ describe('Chat workspace actions', () => {
     expect(sorted.selections[selectionId].ranges[0].rowIndices).toEqual([2, 0]);
     const focused = applyChatWorkspaceAction(scope, sorted, records, { kind: 'focusSelection', selectionId }).state;
     expect(focused.currentSelectionId).toBe(selectionId);
+  });
+
+  it('accepts a project-scoped bookmark reference for the same shared attach and dock actions', () => {
+    const bookmark = { kind: 'bookmark' as const, projectId: 'datatug-demo-project', sourceId: 'chinook', objectId: 'bookmark-1', title: 'Prague customers' };
+    const bookmarkRecords = new Map([[bookmark.objectId, { ...record, id: bookmark.objectId }]]);
+    const attached = applyChatWorkspaceAction(scope, undefined, bookmarkRecords, { kind: 'attach', reference: bookmark }).state;
+    const docked = applyChatWorkspaceAction(scope, attached, bookmarkRecords, { kind: 'dock', reference: bookmark }).state;
+    expect(docked.attachments).toEqual([bookmark]);
+    expect(docked.docks[0].reference).toEqual(bookmark);
   });
 });

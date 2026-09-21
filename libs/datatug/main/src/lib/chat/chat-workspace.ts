@@ -1,7 +1,7 @@
 import { CHINOOK_SCHEMA } from './chat.types';
 
-export type ChatWorkspaceTab = 'project' | 'selected' | 'docked';
-export type ChatContextKind = 'project' | 'source' | 'table' | 'query' | 'recordset' | 'view' | 'selection';
+export type ChatWorkspaceTab = 'project' | 'selected' | 'docked' | 'bookmarks';
+export type ChatContextKind = 'project' | 'source' | 'table' | 'query' | 'recordset' | 'view' | 'selection' | 'bookmark';
 
 export interface ChatContextReference {
   readonly kind: ChatContextKind;
@@ -59,6 +59,36 @@ export interface ChatRecordSetData {
   readonly rows: readonly Record<string, unknown>[];
 }
 
+/** A project-owned, self-contained copy.  It deliberately never points at a session. */
+export interface ChatBookmark {
+  readonly id: string;
+  readonly scope: string;
+  readonly projectId: string;
+  readonly title: string;
+  readonly tags: readonly string[];
+  readonly target: 'recordset' | 'view' | 'selection';
+  readonly recordSet: ChatRecordSetData;
+  readonly view?: ChatRecordSetView;
+  readonly selection?: ChatSelection;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+/** One effective snapshot view for display and local follow-up binding. */
+export function chatBookmarkRows(bookmark: ChatBookmark): readonly Record<string, unknown>[] {
+  const { selection, view, recordSet } = bookmark;
+  const indices = selection?.rows || view?.rowIndices || recordSet.rows.map((_, index) => index);
+  const columns = selection?.columns || view?.columns || recordSet.columns;
+  const cells = selection?.ranges.length ? new Set(selection.ranges.flatMap((range) =>
+    range.rowIndices.flatMap((row) => range.columns.map((column) => `${row}\u0000${column}`)))) : undefined;
+  return indices.flatMap((index) => {
+    const row = recordSet.rows[index];
+    if (!row) return [];
+    return [Object.fromEntries(columns.filter((column) => !cells || cells.has(`${index}\u0000${column}`))
+      .map((column) => [column, row[column]]))];
+  });
+}
+
 export type ChatWorkspaceAction =
   | { readonly kind: 'select'; readonly recordSetId: string; readonly viewId?: string; readonly rows?: readonly number[];
       readonly column?: string; readonly equals?: string; readonly contains?: string; readonly orderBy?: string;
@@ -67,6 +97,10 @@ export type ChatWorkspaceAction =
   | { readonly kind: 'attach' | 'detach' | 'dock'; readonly reference: ChatContextReference; readonly title?: string }
   | { readonly kind: 'dockCurrent'; readonly title?: string }
   | { readonly kind: 'undock'; readonly dockId: string }
+  | { readonly kind: 'bookmark'; readonly reference: ChatContextReference; readonly title?: string; readonly tags?: readonly string[] }
+  | { readonly kind: 'renameBookmark'; readonly bookmarkId: string; readonly title: string }
+  | { readonly kind: 'addBookmarkTag' | 'removeBookmarkTag'; readonly bookmarkId: string; readonly tag: string }
+  | { readonly kind: 'deleteBookmark'; readonly bookmarkId: string }
   | { readonly kind: 'focusSelection'; readonly selectionId: string }
   | { readonly kind: 'sortView'; readonly viewId: string; readonly column: string; readonly descending?: boolean }
   | { readonly kind: 'clearSelection' }
@@ -124,6 +158,9 @@ function validateReference(
       return;
     case 'selection':
       if (!state.selections[ref.objectId]) throw new Error('The referenced Selection is unavailable.');
+      return;
+    case 'bookmark':
+      if (!records.has(ref.objectId)) throw new Error('The referenced Bookmark is unavailable.');
       return;
     case 'query':
       throw new Error('This project does not expose saved queries to Chat yet.');
@@ -230,7 +267,7 @@ export function applyChatWorkspaceAction(
       return { state: { ...state, views: { ...state.views, [view.id]: { ...view, rowIndices: rows } }, selections } };
     }
     case 'setTab':
-      if (!['project', 'selected', 'docked'].includes(action.tab)) throw new Error('Unknown workspace tab.');
+      if (!['project', 'selected', 'docked', 'bookmarks'].includes(action.tab)) throw new Error('Unknown workspace tab.');
       return { state: { ...state, activeTab: action.tab } };
     case 'attach':
       validateReference(scope, state, records, action.reference);
@@ -255,7 +292,7 @@ export function applyChatWorkspaceAction(
     }
     case 'dock': {
       validateReference(scope, state, records, action.reference);
-      if (!['recordset', 'view', 'selection'].includes(action.reference.kind)) throw new Error('Only a result, View, or Selection can be docked.');
+      if (!['recordset', 'view', 'selection', 'bookmark'].includes(action.reference.kind)) throw new Error('Only a result, View, Selection, or Bookmark can be docked.');
       const alreadyDocked = state.docks.some((dock) => sameReference(dock.reference, action.reference));
       if (!alreadyDocked && state.attachments.length + state.docks.length >= 12) {
         throw new Error('Detach or undock an item before adding more chat context.');
@@ -270,5 +307,11 @@ export function applyChatWorkspaceAction(
     case 'undock':
       if (!state.docks.some((dock) => dock.id === action.dockId)) throw new Error('This docked item is unavailable.');
       return { state: { ...state, docks: state.docks.filter((dock) => dock.id !== action.dockId) } };
+    case 'bookmark':
+    case 'renameBookmark':
+    case 'addBookmarkTag':
+    case 'removeBookmarkTag':
+    case 'deleteBookmark':
+      throw new Error('Bookmark actions must be applied by the project bookmark service.');
   }
 }
