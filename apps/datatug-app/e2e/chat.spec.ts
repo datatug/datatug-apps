@@ -206,7 +206,7 @@ test('composer can add a provider and restore it after reload', async ({ page })
   await expect(page.getByText('Enter a name, base URL, model, and API key.')).toBeVisible();
   await page.getByLabel('API key').fill('test-key-not-a-secret');
   await page.getByRole('button', { name: 'Add AI provider' }).click();
-  await expect(page.locator('ion-modal')).toBeHidden();
+  await expect(page.locator('ion-modal.provider-modal')).toBeHidden();
   await expect(page.locator('ion-footer').getByLabel('AI provider')).toHaveAttribute('aria-label', /DeepSeek/);
   await page.reload();
   await expect(page.locator('ion-footer').getByLabel('AI provider')).toHaveAttribute('aria-label', /DeepSeek/);

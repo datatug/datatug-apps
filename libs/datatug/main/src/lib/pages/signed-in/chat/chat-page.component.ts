@@ -5,7 +5,7 @@ import { ActivatedRoute } from '@angular/router';
 import { AgGridAngular } from 'ag-grid-angular';
 import { AllCommunityModule, ModuleRegistry, type ColDef } from 'ag-grid-community';
 import {
-  IonButton, IonButtons, IonCard, IonCardContent, IonCol, IonContent, IonFooter, IonGrid, IonHeader,
+  IonAlert, IonButton, IonButtons, IonCard, IonCardContent, IonCol, IonContent, IonFooter, IonGrid, IonHeader,
   IonIcon, IonInput, IonItem, IonLabel, IonMenuButton, IonModal,
   IonRow, IonSelect, IonSelectOption, IonSegment, IonSegmentButton, IonSpinner, IonText, IonTextarea, IonTitle, IonToolbar,
 } from '@ionic/angular';
@@ -14,7 +14,8 @@ import { sendOutline } from 'ionicons/icons';
 import { ChatInterpretService } from '../../../chat/chat-interpret.service';
 import { ChinookChatDataService } from '../../../chat/chinook-chat-data.service';
 import { ChatProviderService, providerPresets } from '../../../chat/chat-provider.service';
-import { ChatProvider, ChatTurn } from '../../../chat/chat.types';
+import { ChatProvider, ChatTurn, CHINOOK_SCHEMA } from '../../../chat/chat.types';
+import { ChatSession, ChatSessionService } from '../../../chat/chat-session.service';
 import { chatDtqlYaml, chatSQLite } from '../../../chat/chat-query-format';
 import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
 
@@ -30,13 +31,14 @@ addIcons({ sendOutline });
     FormsModule, DecimalPipe, AgGridAngular, IonHeader, IonToolbar, IonButtons, IonMenuButton,
     IonTitle, IonContent, IonCard, IonCardContent, IonFooter, IonModal, IonGrid, IonRow, IonCol,
     IonSelect, IonSelectOption, IonIcon, IonInput, IonButton, IonItem, IonLabel, IonText,
-    IonSpinner, IonSegment, IonSegmentButton, IonTextarea, SneatDatatugPageTitleComponent,
+    IonSpinner, IonSegment, IonSegmentButton, IonTextarea, IonAlert, SneatDatatugPageTitleComponent,
   ],
 })
 export class ChatPageComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly interpreter = inject(ChatInterpretService);
   private readonly data = inject(ChinookChatDataService);
+  private readonly sessionStore = inject(ChatSessionService);
   readonly providers = inject(ChatProviderService);
 
   readonly storeId = signal(this.route.snapshot.paramMap.get('storeId') || this.route.parent?.snapshot.paramMap.get('storeId') || '');
@@ -44,6 +46,22 @@ export class ChatPageComponent {
   readonly seedState = signal<'loading' | 'ready' | 'error'>('loading');
   readonly seedError = signal<string | undefined>(undefined);
   readonly turns = signal<readonly ChatTurn[]>([]);
+  readonly sessions = signal<readonly ChatSession[]>([]);
+  readonly activeSessionId = signal('');
+  readonly activeSessionTitle = computed(() => this.sessions().find((session) => session.id === this.activeSessionId())?.title || 'Chat session');
+  readonly sessionState = signal<'loading' | 'ready' | 'error'>('loading');
+  readonly sessionError = signal<string | undefined>(undefined);
+  readonly renameModalOpen = signal(false);
+  readonly sessionTitleDraft = signal('');
+  readonly sessionAction = signal<{ kind: 'clear' | 'delete'; id: string } | undefined>(undefined);
+  readonly sessionAlertHeader = computed(() => this.sessionAction()?.kind === 'clear' ? 'Clear chat?' : 'Delete chat?');
+  readonly sessionAlertMessage = computed(() => this.sessionAction()?.kind === 'clear'
+    ? 'Remove this chat’s messages and saved results? The chat will remain.'
+    : 'Remove this chat and all its saved results?');
+  readonly sessionAlertButtons = [
+    { text: 'Cancel', role: 'cancel' },
+    { text: 'Confirm', role: 'confirm', handler: () => { void this.confirmSessionAction(); } },
+  ];
   readonly turnTabs = signal<Readonly<Record<string, 'rows' | 'dtql' | 'sql' | 'metrics'>>>({});
   readonly question = signal('');
   readonly submitting = signal(false);
@@ -59,6 +77,92 @@ export class ChatPageComponent {
     this.route.paramMap.subscribe(() => this.updateScope());
     this.route.parent?.paramMap.subscribe(() => this.updateScope());
     void this.seed();
+    void this.restoreSessions();
+  }
+
+  async newSession(): Promise<void> {
+    if (this.submitting()) return;
+    try {
+      const scope = this.scope();
+      const session = await this.sessionStore.create(scope);
+      if (scope !== this.scope()) return;
+      await this.refreshSessions();
+      this.activeSessionId.set(session.id);
+      this.turns.set([]);
+      this.turnTabs.set({});
+      this.sessionState.set('ready');
+      this.sessionError.set(undefined);
+    } catch (error) {
+      this.showSessionError(error);
+    }
+  }
+
+  retrySessions(): void {
+    void this.restoreSessions();
+  }
+
+  async switchSession(id: string): Promise<void> {
+    if (!id || id === this.activeSessionId() || this.submitting()) return;
+    const scope = this.scope();
+    try {
+      this.sessionState.set('loading');
+      const restored = await this.sessionStore.load(scope, id);
+      await this.sessionStore.activate(scope, id);
+      if (scope !== this.scope()) return;
+      this.activeSessionId.set(id);
+      this.turns.set(restored.turns);
+      this.turnTabs.set({});
+      await this.refreshSessions();
+      this.sessionState.set('ready');
+      this.sessionError.set(undefined);
+    } catch (error) {
+      this.showSessionError(error);
+      this.sessionState.set(this.activeSessionId() ? 'ready' : 'error');
+    }
+  }
+
+  openRename(): void {
+    const session = this.sessions().find((item) => item.id === this.activeSessionId());
+    if (!session) return;
+    this.sessionTitleDraft.set(session.title);
+    this.renameModalOpen.set(true);
+  }
+
+  async saveRename(): Promise<void> {
+    try {
+      await this.sessionStore.rename(this.scope(), this.activeSessionId(), this.sessionTitleDraft());
+      await this.refreshSessions();
+      this.renameModalOpen.set(false);
+      this.sessionError.set(undefined);
+    } catch (error) {
+      this.showSessionError(error);
+    }
+  }
+
+  askSessionAction(kind: 'clear' | 'delete'): void {
+    const id = this.activeSessionId();
+    if (id && !this.submitting()) this.sessionAction.set({ kind, id });
+  }
+
+  async confirmSessionAction(): Promise<void> {
+    const action = this.sessionAction();
+    if (!action) return;
+    const scope = this.scope();
+    try {
+      if (action.kind === 'clear') {
+        await this.sessionStore.clear(scope, action.id);
+        if (scope === this.scope() && action.id === this.activeSessionId()) this.turns.set([]);
+      } else {
+        await this.sessionStore.delete(scope, action.id);
+        if (scope === this.scope() && action.id === this.activeSessionId()) {
+          this.activeSessionId.set('');
+          this.turns.set([]);
+        }
+      }
+      if (scope === this.scope()) await this.restoreSessions();
+    } catch (error) {
+      this.showSessionError(error);
+    }
   }
 
   choosePreset(name: string): void {
@@ -122,20 +226,46 @@ export class ChatPageComponent {
   async submit(): Promise<void> {
     const question = this.question().trim();
     const provider = this.selectedProvider();
-    if (!question || !provider || this.seedState() !== 'ready' || this.submitting()) return;
-    const scope = `${this.storeId()}:${this.projectId()}`;
-    this.question.set('');
+    if (!question || !provider || this.seedState() !== 'ready' || this.sessionState() !== 'ready' || !this.activeSessionId() || this.submitting()) return;
+    const scope = this.scope();
+    const sessionId = this.activeSessionId();
     this.submitting.set(true);
-    const id = crypto.randomUUID();
-    this.turns.update((turns) => [...turns, { id, question, state: 'loading' }]);
+    let id: string | undefined;
     try {
-      const interpretation = await this.interpreter.interpret(question, provider);
-      if (scope !== `${this.storeId()}:${this.projectId()}`) throw new Error('The project changed before this result could be queried.');
+      const context = this.sessionStore.context(this.turns());
+      const pending = await this.sessionStore.appendQuestion(scope, sessionId, question);
+      id = pending.id;
+      if (scope === this.scope() && sessionId === this.activeSessionId()) {
+        this.question.set('');
+        this.turns.update((turns) => [...turns, pending]);
+        await this.refreshSessions();
+      }
+      const interpretation = await this.interpreter.interpret(question, provider, context);
+      if (scope !== this.scope()) throw new Error('The project changed before this result could be queried.');
       const queryStarted = performance.now();
-      const { rows, query } = await this.data.query(scope, interpretation.dtql);
-      this.replaceTurn(id, { id, question, dtql: interpretation.dtql, dtqlYaml: chatDtqlYaml(query), sql: chatSQLite(query), rows, state: rows.length ? 'result' : 'empty', metrics: { ...interpretation.metrics, queryMs: performance.now() - queryStarted } });
+      const { rows, query } = await this.data.query(`${this.storeId()}:${this.projectId()}`, interpretation.dtql);
+      const result = await this.sessionStore.completeQuery(scope, sessionId, id, {
+        dtql: interpretation.dtql, dtqlYaml: chatDtqlYaml(query), sql: chatSQLite(query), rows,
+        columns: rows.length ? Object.keys(rows[0]) : [...(CHINOOK_SCHEMA.tables.find((table) => table.name === query.source.name)?.fields || [])],
+        metrics: { ...interpretation.metrics, queryMs: performance.now() - queryStarted },
+        source: `${scope}/chinook`,
+      });
+      if (scope === this.scope() && sessionId === this.activeSessionId()) {
+        this.replaceTurn(id, result);
+        await this.refreshSessions();
+      }
     } catch (error) {
-      this.replaceTurn(id, { id, question, state: 'error', error: error instanceof Error ? error.message : 'Unable to answer that question.' });
+      const message = error instanceof Error ? error.message : 'Unable to answer that question.';
+      if (id) {
+        try {
+          const failed = await this.sessionStore.failQuestion(scope, sessionId, id, message);
+          if (scope === this.scope() && sessionId === this.activeSessionId()) this.replaceTurn(id, failed);
+        } catch (saveError) {
+          this.showSessionError(saveError);
+        }
+      } else {
+        this.showSessionError(error);
+      }
     } finally {
       this.submitting.set(false);
     }
@@ -165,15 +295,15 @@ export class ChatPageComponent {
   }
 
   private async seed(): Promise<void> {
-    const scope = `${this.storeId()}:${this.projectId()}`;
+    const scope = this.scope();
     this.seedState.set('loading');
     this.seedError.set(undefined);
     try {
       await this.data.ensureSeed(this.storeId(), this.projectId());
-      if (scope !== `${this.storeId()}:${this.projectId()}`) return;
+      if (scope !== this.scope()) return;
       this.seedState.set('ready');
     } catch (error) {
-      if (scope !== `${this.storeId()}:${this.projectId()}`) return;
+      if (scope !== this.scope()) return;
       this.seedError.set(error instanceof Error ? error.message : 'The local Chinook database is unavailable.');
       this.seedState.set('error');
     }
@@ -186,7 +316,50 @@ export class ChatPageComponent {
     this.storeId.set(storeId);
     this.projectId.set(projectId);
     this.turns.set([]);
+    this.sessions.set([]);
+    this.activeSessionId.set('');
     void this.seed();
+    void this.restoreSessions();
+  }
+
+  private scope(): string {
+    return JSON.stringify([this.storeId(), this.projectId()]);
+  }
+
+  private async restoreSessions(): Promise<void> {
+    const scope = this.scope();
+    this.sessionState.set('loading');
+    try {
+      let sessions = await this.sessionStore.list(scope);
+      if (!sessions.length) {
+        await this.sessionStore.create(scope);
+        sessions = await this.sessionStore.list(scope);
+      }
+      if (scope !== this.scope()) return;
+      this.sessions.set(sessions);
+      const selectedId = this.activeSessionId();
+      const selected = sessions.find((session) => session.id === selectedId) || sessions[0];
+      const restored = await this.sessionStore.load(scope, selected.id);
+      if (scope !== this.scope()) return;
+      this.activeSessionId.set(selected.id);
+      this.turns.set(restored.turns);
+      this.turnTabs.set({});
+      this.sessionState.set('ready');
+      this.sessionError.set(undefined);
+    } catch (error) {
+      this.showSessionError(error);
+      this.sessionState.set('error');
+    }
+  }
+
+  private async refreshSessions(): Promise<void> {
+    const scope = this.scope();
+    const sessions = await this.sessionStore.list(scope);
+    if (scope === this.scope()) this.sessions.set(sessions);
+  }
+
+  private showSessionError(error: unknown): void {
+    this.sessionError.set(error instanceof Error ? error.message : 'Could not save this chat session.');
   }
 
   private replaceTurn(id: string, replacement: ChatTurn): void {

@@ -85,7 +85,7 @@ async function boundedResponseText(response: Response): Promise<string> {
 
 @Injectable({ providedIn: 'root' })
 export class ChatInterpretService {
-  async interpret(question: string, provider: ChatProvider): Promise<{ dtql: string; metrics: Omit<ChatMetrics, 'queryMs'> }> {
+  async interpret(question: string, provider: ChatProvider, context = ''): Promise<{ dtql: string; metrics: Omit<ChatMetrics, 'queryMs'> }> {
     if (new TextEncoder().encode(question.trim()).byteLength > 1000) {
       throw new Error('Question must be 1000 bytes or fewer.');
     }
@@ -96,9 +96,12 @@ export class ChatInterpretService {
     }
     const url = providerUrl(provider);
     const isAnthropic = provider.protocol === 'anthropic-messages';
+    const system = context
+      ? `${instructions}\nPrevious session queries and RecordSet metadata (no result values):\n${context}`
+      : instructions;
     const requestBody = JSON.stringify(isAnthropic
-      ? { model: provider.model, max_tokens: 1024, system: instructions, messages: [{ role: 'user', content: question }] }
-      : { model: provider.model, max_tokens: 1024, messages: [{ role: 'system', content: instructions }, { role: 'user', content: question }] });
+      ? { model: provider.model, max_tokens: 1024, system, messages: [{ role: 'user', content: question }] }
+      : { model: provider.model, max_tokens: 1024, messages: [{ role: 'system', content: system }, { role: 'user', content: question }] });
     const headers = new Headers({ 'Content-Type': 'application/json' });
     if (isAnthropic) {
       headers.set('x-api-key', provider.apiKey);
