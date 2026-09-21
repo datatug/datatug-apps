@@ -1,3 +1,4 @@
+import { DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
@@ -6,7 +7,7 @@ import { AllCommunityModule, ModuleRegistry, type ColDef } from 'ag-grid-communi
 import {
   IonBadge, IonButton, IonButtons, IonCard, IonCardContent, IonCardHeader,
   IonCardTitle, IonContent, IonHeader, IonInput, IonItem, IonLabel, IonMenuButton,
-  IonSelect, IonSelectOption, IonSpinner, IonText, IonTitle, IonToolbar,
+  IonSelect, IonSelectOption, IonSegment, IonSegmentButton, IonSpinner, IonText, IonTitle, IonToolbar,
 } from '@ionic/angular';
 import { ChatAgentService } from '../../../chat/chat-agent.service';
 import { ChinookChatDataService } from '../../../chat/chinook-chat-data.service';
@@ -21,10 +22,10 @@ ModuleRegistry.registerModules([AllCommunityModule]);
   styleUrls: ['./chat-page.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
-    FormsModule, AgGridAngular, IonHeader, IonToolbar, IonButtons, IonMenuButton,
+    FormsModule, DecimalPipe, AgGridAngular, IonHeader, IonToolbar, IonButtons, IonMenuButton,
     IonTitle, IonContent, IonCard, IonCardHeader, IonCardTitle, IonCardContent,
     IonSelect, IonSelectOption, IonInput, IonButton, IonItem, IonLabel, IonText,
-    IonSpinner, IonBadge,
+    IonSpinner, IonBadge, IonSegment, IonSegmentButton,
   ],
 })
 export class ChatPageComponent {
@@ -38,6 +39,7 @@ export class ChatPageComponent {
   readonly seedState = signal<'loading' | 'ready' | 'error'>('loading');
   readonly seedError = signal<string | undefined>(undefined);
   readonly turns = signal<readonly ChatTurn[]>([]);
+  readonly turnTabs = signal<Readonly<Record<string, 'rows' | 'dtql' | 'metrics'>>>({});
   readonly question = signal('');
   readonly submitting = signal(false);
   readonly providerFormVisible = signal(this.providers.providers().length === 0);
@@ -89,10 +91,11 @@ export class ChatPageComponent {
     const id = crypto.randomUUID();
     this.turns.update((turns) => [...turns, { id, question, state: 'loading' }]);
     try {
-      const dtql = await this.agent.interpret(this.storeId(), question, provider);
+      const interpretation = await this.agent.interpret(this.storeId(), question, provider);
       if (scope !== `${this.storeId()}:${this.projectId()}`) throw new Error('The project changed before this result could be queried.');
-      const rows = await this.data.query(scope, dtql);
-      this.replaceTurn(id, { id, question, dtql, rows, state: rows.length ? 'result' : 'empty' });
+      const queryStarted = performance.now();
+      const rows = await this.data.query(scope, interpretation.dtql);
+      this.replaceTurn(id, { id, question, dtql: interpretation.dtql, rows, state: rows.length ? 'result' : 'empty', metrics: { ...interpretation.metrics, queryMs: performance.now() - queryStarted } });
     } catch (error) {
       this.replaceTurn(id, { id, question, state: 'error', error: error instanceof Error ? error.message : 'Unable to answer that question.' });
     } finally {
@@ -112,6 +115,15 @@ export class ChatPageComponent {
 
   gridRows(rows: readonly Record<string, unknown>[]): Record<string, unknown>[] {
     return [...rows];
+  }
+
+  turnTab(turn: ChatTurn): 'rows' | 'dtql' | 'metrics' {
+    return this.turnTabs()[turn.id] || 'rows';
+  }
+
+  selectTurnTab(turnId: string, tab: string | number | undefined): void {
+    if (tab !== 'rows' && tab !== 'dtql' && tab !== 'metrics') return;
+    this.turnTabs.update((tabs) => ({ ...tabs, [turnId]: tab }));
   }
 
   private async seed(): Promise<void> {

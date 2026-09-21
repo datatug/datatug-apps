@@ -55,6 +55,13 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
   const grids = page.locator('ag-grid-angular');
   await expect(grids).toHaveCount(6);
   await expect(grids.first()).toBeVisible();
+  await expect(page.locator('.question-bubble').first()).toHaveText('Show last 100 orders');
+  await expect(page.locator('.turn').first().getByText('Rows 100', { exact: true })).toBeVisible();
+  await expect(page.locator('.turn').first().locator('.dtql')).toHaveCount(0);
+  await page.locator('.turn').first().getByText('DTQL', { exact: true }).click();
+  await expect(page.locator('.turn').first().locator('.dtql')).toBeVisible();
+  await page.locator('.turn').first().getByText('Rows 100', { exact: true }).click();
+  await expect(page.locator('.turn').first().locator('ag-grid-angular')).toBeVisible();
   await expect(cell(grids.nth(0), 0, 'InvoiceId')).toHaveText('412');
   await scrollGridToLastRow(grids.nth(0));
   await expect(cell(grids.nth(0), 99, 'InvoiceId')).toHaveText('313');

@@ -1,6 +1,8 @@
 .chat-content { --padding-bottom: 76px; }
 .storage-warning { color: var(--ion-color-medium); font-size: 0.85rem; margin: 12px 0; }
+.turn { margin: 1rem; }
 .turn p { margin: 0.5rem 0 0; }
+.question-bubble { background: rgba(var(--ion-color-primary-rgb), 0.1); border-radius: 1rem; display: inline-block; padding: 0.5rem 0.75rem; }
 .dtql { font-family: monospace; white-space: pre-wrap; color: var(--ion-color-medium-shade); }
 .chat-grid { height: 420px; width: 100%; }
 .composer { border-top: 1px solid var(--ion-color-step-150); margin-bottom: 3rem; position: relative; z-index: 2; }

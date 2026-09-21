@@ -16,6 +16,17 @@ export interface ChatTurn {
   readonly dtql?: string;
   readonly rows?: readonly Record<string, unknown>[];
   readonly error?: string;
+  readonly metrics?: ChatMetrics;
+}
+
+export interface ChatMetrics {
+  readonly inputTokens?: number;
+  readonly outputTokens?: number;
+  readonly totalTokens?: number;
+  readonly requestBytes: number;
+  readonly responseBytes: number;
+  readonly interpretMs: number;
+  readonly queryMs: number;
 }
 
 export const CHINOOK_SCHEMA = {
