@@ -1,11 +1,11 @@
 ---
 format: https://specscore.md/plan-specification
-status: Executing
+status: Implemented
 ---
 
 # Plan: Browser Chat Phase 5 FK JOIN exploration
 
-**Status:** Executing
+**Status:** Implemented
 **Source Feature:** browser-chat-phase-5
 **Date:** 2026-09-21
 **Owner:** alex
@@ -31,7 +31,7 @@ Consume the already-merged recursive `@dalgo/core` JOIN parser/executor by updat
 
 ### Task 1: Land browser Phase 4 bookmark and tag lifecycle
 
-**Status:** in_progress
+**Status:** complete
 **Verifies:** browser-chat-phase-5#ac:lifecycle-and-failure
 
 Implement or integrate the browser's project-scoped Phase 4 bookmark/tag storage and UI before Phase 5 releases. Verify immutable RecordSet references, cross-session reuse and session deletion semantics, then include joined RecordSets in the same lifecycle checks.
@@ -66,7 +66,7 @@ Resolve join requests against the current result's candidate IDs and call the sa
 
 ### Task 6: End-to-end validation and release
 
-**Status:** planning
+**Status:** complete
 **Verifies:** browser-chat-phase-5#ac:browser-proof, browser-chat-phase-5#ac:fk-discovery, browser-chat-phase-5#ac:valid-join, browser-chat-phase-5#ac:chain-and-lineage, browser-chat-phase-5#ac:agent-ambiguity, browser-chat-phase-5#ac:lifecycle-and-failure
 
 Run synthetic tests, actual Chinook IndexedDB browser journey, reload/project/session and Phase 4 bookmark/tag regressions, Nx build/lint and independent adversarial review. Address findings, land with WB, verify exact remote main and required checks, then verify the configured Cloudflare deployment. The Phase 4 receipt and joined-RecordSet bookmark/tag acceptance are release gates.

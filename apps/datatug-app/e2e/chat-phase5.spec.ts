@@ -35,9 +35,10 @@ test('FK JOIN candidates execute against real Chinook, chain, persist, and accep
       action = { joinCandidate: { recordSetId, candidateId: JSON.parse(`"${candidate}"`) } };
     } else if (question === 'Join with stale FK metadata') {
       const system = request.messages[0].content;
-      const recordSetId = system.match(/RecordSet ([0-9a-f-]{36}) \(latest\)/)?.[1];
-      const encoded = system.match(/"candidateId":"((?:[^"\\]|\\.)*)"/)?.[1];
-      expect(recordSetId).toBeTruthy();
+      const latest = system.match(/RecordSet ([0-9a-f-]{36}) \(latest\): ([^\n]*)/);
+      const recordSetId = latest?.[1];
+      const encoded = latest?.[2].match(/"candidateId":"((?:[^"\\]|\\.)*)"/)?.[1];
+      expect(latest).toBeTruthy();
       expect(encoded).toBeTruthy();
       const identity = JSON.parse(JSON.parse(`"${encoded}"`)) as unknown[];
       identity[0] = 'sha256:previous-schema';
@@ -117,14 +118,14 @@ test('FK JOIN candidates execute against real Chinook, chain, persist, and accep
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open('datatug-chat-sessions'); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
     });
-    const record = await new Promise<{ data: { rows: unknown[]; join?: { manifestVersion: string } } }>((resolve, reject) => {
-      const request = database.transaction('ChatRecordSets', 'readonly').objectStore('ChatRecordSets').get(id);
+    const records = await new Promise<{ data: { id: string; rows: unknown[]; join?: { manifestVersion: string } } }[]>((resolve, reject) => {
+      const request = database.transaction('ChatRecordSets', 'readonly').objectStore('ChatRecordSets').getAll();
       request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
     });
     database.close();
-    return record.data;
+    return records.find((record) => record.data.id === id)?.data;
   }, joinedRecordSetId);
-  expect(restoredJoin.rows).toHaveLength(5);
+  expect(restoredJoin?.rows).toHaveLength(5);
   expect(restoredJoin.join?.manifestVersion).toBe(withEmployee?.join?.manifestVersion);
 
   await third.getByRole('button', { name: 'Bookmark result' }).click();
