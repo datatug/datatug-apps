@@ -9,6 +9,10 @@ async function scrollGridToLastRow(grid: Locator): Promise<void> {
   });
 }
 
+function cell(grid: Locator, row: number, column: string): Locator {
+  return grid.locator(`.ag-row[row-index="${row}"] .ag-cell[col-id="${column}"]`);
+}
+
 test('Chat persists a selected endpoint and renders seeded Chinook rows from deterministic DTQL', async ({ page }) => {
   await page.addInitScript(() => {
     if (localStorage.getItem('datatug.chat.providers.v1')) return;
@@ -51,17 +55,24 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
   const grids = page.locator('ag-grid-angular');
   await expect(grids).toHaveCount(6);
   await expect(grids.first()).toBeVisible();
-  await expect(grids.nth(0)).toContainText('412');
+  await expect(cell(grids.nth(0), 0, 'InvoiceId')).toHaveText('412');
   await scrollGridToLastRow(grids.nth(0));
-  await expect(grids.nth(0)).toContainText('313');
-  await expect(grids.nth(1)).toContainText('5');
-  await expect(grids.nth(1)).toContainText('6');
-  await expect(grids.nth(3)).toContainText('Brazil');
+  await expect(cell(grids.nth(0), 99, 'InvoiceId')).toHaveText('313');
+  await expect(cell(grids.nth(1), 0, 'CustomerId')).toHaveText('5');
+  await expect(cell(grids.nth(1), 1, 'CustomerId')).toHaveText('6');
+  await expect(cell(grids.nth(3), 0, 'CustomerId')).toHaveText('1');
+  await expect(cell(grids.nth(3), 4, 'CustomerId')).toHaveText('13');
+  await expect(cell(grids.nth(3), 0, 'Country')).toHaveText('Brazil');
+  await expect(cell(grids.nth(2), 0, 'InvoiceId')).toHaveText('412');
+  await scrollGridToLastRow(grids.nth(2));
+  await expect(cell(grids.nth(2), 19, 'InvoiceId')).toHaveText('393');
+  await expect(cell(grids.nth(4), 0, 'InvoiceId')).toHaveText('412');
   await scrollGridToLastRow(grids.nth(4));
-  await expect(grids.nth(4)).toContainText('383');
-  await expect(grids.nth(5)).toContainText('1');
+  await expect(cell(grids.nth(4), 29, 'InvoiceId')).toHaveText('383');
+  await expect(cell(grids.nth(5), 0, 'TrackId')).toHaveText('1');
+  await expect(cell(grids.nth(5), 0, 'ArtistName')).toHaveText('AC/DC');
   await scrollGridToLastRow(grids.nth(5));
-  await expect(grids.nth(5)).toContainText('14');
+  await expect(cell(grids.nth(5), 9, 'TrackId')).toHaveText('14');
 
   await page.getByLabel('Ask about Chinook data').fill('Show nobody from nowhere');
   await page.getByRole('button', { name: 'Send' }).click();
