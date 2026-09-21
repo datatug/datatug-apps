@@ -5,16 +5,16 @@
       <sneat-datatug-page-title pageTitle="Chat" />
     </ion-toolbar>
     <ion-toolbar class="session-toolbar">
-      <ion-select aria-label="Chat session" interface="popover" [value]="activeSessionId()" [selectedText]="activeSessionTitle()" (ionChange)="switchSession($event.detail.value)" [disabled]="sessionState() === 'loading' || submitting() || !sessions().length">
+      <ion-select aria-label="Chat session" interface="popover" [value]="activeSessionId()" [selectedText]="activeSessionTitle()" (ionChange)="switchSession($event.detail.value)" [disabled]="sessionState() === 'loading' || submitting() || sessionBusy() || !sessions().length">
         @for (session of sessions(); track session.id) {
           <ion-select-option [value]="session.id">{{ session.title }}</ion-select-option>
         }
       </ion-select>
       <ion-buttons slot="end">
-        <ion-button (click)="newSession()" [disabled]="sessionState() === 'loading' || submitting()">New</ion-button>
-        <ion-button (click)="openRename()" [disabled]="sessionState() !== 'ready' || submitting()">Rename</ion-button>
-        <ion-button (click)="askSessionAction('clear')" [disabled]="sessionState() !== 'ready' || submitting()">Clear</ion-button>
-        <ion-button color="danger" (click)="askSessionAction('delete')" [disabled]="sessionState() !== 'ready' || submitting()">Delete</ion-button>
+        <ion-button (click)="newSession()" [disabled]="sessionState() === 'loading' || submitting() || sessionBusy()">New</ion-button>
+        <ion-button (click)="openRename()" [disabled]="!activeSessionId() || submitting() || sessionBusy()">Rename</ion-button>
+        <ion-button (click)="askSessionAction('clear')" [disabled]="!activeSessionId() || submitting() || sessionBusy()">Clear</ion-button>
+        <ion-button color="danger" (click)="askSessionAction('delete')" [disabled]="!activeSessionId() || submitting() || sessionBusy()">Delete</ion-button>
       </ion-buttons>
     </ion-toolbar>
   </ion-header>
@@ -80,7 +80,7 @@
               <ion-select-option value="__add_provider__">Add new AI provider</ion-select-option>
             </ion-select>
           </ion-col>
-          <ion-col class="composer-send"><ion-button fill="solid" color="primary" [disabled]="!selectedProvider() || seedState() !== 'ready' || sessionState() !== 'ready' || !question().trim() || submitting()" (click)="submit()"><ion-icon slot="start" name="send-outline" />Send</ion-button></ion-col>
+          <ion-col class="composer-send"><ion-button fill="solid" color="primary" [disabled]="!selectedProvider() || seedState() !== 'ready' || sessionState() !== 'ready' || !question().trim() || submitting() || sessionBusy()" (click)="submit()"><ion-icon slot="start" name="send-outline" />Send</ion-button></ion-col>
         </ion-row>
       </ion-grid>
     </ion-toolbar>

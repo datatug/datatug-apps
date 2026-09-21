@@ -16,6 +16,7 @@ export interface ChatTurn {
   readonly queryId?: string;
   readonly recordSetId?: string;
   readonly dtql?: string;
+  readonly generatedDtql?: string;
   readonly dtqlYaml?: string;
   readonly sql?: string;
   readonly rows?: readonly Record<string, unknown>[];

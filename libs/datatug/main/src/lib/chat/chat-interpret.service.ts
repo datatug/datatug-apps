@@ -8,6 +8,7 @@ For example: {"dtql":{"from":{"schema":"main","name":"Customer"},"where":{"op":"
 For descending order: {"dtql":{"from":{"schema":"main","name":"Invoice"},"orderBy":[{"field":"InvoiceId","desc":true}],"limit":100}}
 Each orderBy item uses field and optional desc boolean. Never use direction, column, sort, or order keys.
 Do not use SQL, joins, aggregation, or unsupported fields. The browser validates the action before running it.
+For a follow-up that needs identifiers from a previous RecordSet, use where op "In" with right.recordSet {"id":"the RecordSet ID from context","field":"the source column"}. The left field is the target table's matching identifier. For example, to find customers from saved invoices: {"dtql":{"from":{"schema":"main","name":"Customer"},"where":{"op":"In","left":{"field":"CustomerId"},"right":{"recordSet":{"id":"saved RecordSet ID","field":"CustomerId"}}},"limit":100}}. The browser substitutes saved values locally. Never invent or include result values in the action.
 ${CHINOOK_SCHEMA_PROMPT}`;
 
 function object(value: unknown): Record<string, unknown> | undefined {

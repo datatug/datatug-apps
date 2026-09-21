@@ -17,15 +17,23 @@ test('Chat restores isolated DALgo sessions and immutable result snapshots', asy
     const body = route.request().postDataJSON() as { messages: { content: string }[] };
     const question = body.messages.at(-1)?.content;
     const previous = body.messages[0]?.content || '';
-    if (question === 'Show 3 albums') {
-      continuationHasMetadata = previous.includes('RecordSet:') && previous.includes('"Artist"');
-      expect(previous).not.toContain('Modified after snapshot');
+    if (question === 'Show the customers associated with those orders') {
+      continuationHasMetadata = previous.includes('RecordSet:') && previous.includes('"Invoice"');
+      expect(previous).not.toContain('99999');
+      const recordSetId = previous.match(/RecordSet: ([0-9a-f-]{36})/)?.[1];
+      expect(recordSetId).toBeTruthy();
+      await route.fulfill({ json: { choices: [{ message: { content: JSON.stringify({ dtql: {
+        from: { schema: 'main', name: 'Customer' },
+        where: { op: 'In', left: { field: 'CustomerId' }, right: { recordSet: { id: recordSetId, field: 'CustomerId' } } },
+        limit: 100,
+      } }) } }] } });
+      return;
     }
-    const table = question === 'Show 5 genres' ? 'Genre' : question === 'Show 3 albums' ? 'Album' : 'Artist';
-    const limit = table === 'Genre' ? 5 : table === 'Album' ? 3 : 10;
+    const table = question === 'Show 5 genres' ? 'Genre' : 'Invoice';
+    const limit = table === 'Genre' ? 5 : 20;
     const field = `${table}Id`;
     await route.fulfill({ json: {
-      choices: [{ message: { content: JSON.stringify({ dtql: { from: { schema: 'main', name: table }, orderBy: [{ field }], limit } }) } }],
+      choices: [{ message: { content: JSON.stringify({ dtql: { from: { schema: 'main', name: table }, orderBy: [{ field, desc: table === 'Invoice' }], limit } }) } }],
       usage: { prompt_tokens: 20, completion_tokens: 8, total_tokens: 28 },
     } });
   });
@@ -38,9 +46,9 @@ test('Chat restores isolated DALgo sessions and immutable result snapshots', asy
     await page.getByRole('button', { name: 'Send' }).click();
     await expect(page.getByRole('tab', { name: `Rows ${rows}` }).last()).toBeVisible();
   };
-  await ask('Show 10 artists', 10);
-  const firstName = await page.locator('.turn').first().locator('.ag-row[row-index="0"] .ag-cell[col-id="Name"]').textContent();
-  expect(firstName).toBeTruthy();
+  await ask('Show last 20 invoices', 20);
+  const firstCustomerId = await page.locator('.turn').first().locator('.ag-row[row-index="0"] .ag-cell[col-id="CustomerId"]').textContent();
+  expect(firstCustomerId).toBeTruthy();
 
   const databaseCounts = async () => page.evaluate(async () => {
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -67,18 +75,18 @@ test('Chat restores isolated DALgo sessions and immutable result snapshots', asy
       request.onerror = () => reject(request.error);
     });
     await new Promise<void>((resolve, reject) => {
-      const tx = database.transaction('Artist', 'readwrite');
-      const store = tx.objectStore('Artist');
-      const request = store.get('main.Artist/1');
-      request.onsuccess = () => store.put({ ...request.result, data: { ...request.result.data, Name: 'Modified after snapshot' } });
+      const tx = database.transaction('Invoice', 'readwrite');
+      const store = tx.objectStore('Invoice');
+      const request = store.get('main.Invoice/412');
+      request.onsuccess = () => store.put({ ...request.result, data: { ...request.result.data, CustomerId: 99999 } });
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
     database.close();
   });
   await page.reload();
-  await expect(page.getByRole('tab', { name: 'Rows 10' })).toBeVisible();
-  await expect(page.locator('.turn').first().locator('.ag-row[row-index="0"] .ag-cell[col-id="Name"]')).toHaveText(firstName || '');
+  await expect(page.getByRole('tab', { name: 'Rows 20' })).toBeVisible();
+  await expect(page.locator('.turn').first().locator('.ag-row[row-index="0"] .ag-cell[col-id="CustomerId"]')).toHaveText(firstCustomerId || '');
   expect(providerCalls).toBe(1);
 
   await page.getByRole('button', { name: 'New', exact: true }).click();
@@ -86,16 +94,41 @@ test('Chat restores isolated DALgo sessions and immutable result snapshots', asy
   await ask('Show 5 genres', 5);
   expect(await databaseCounts()).toEqual({ ChatSessions: 2, ChatTurns: 2, ChatQueries: 2, ChatRecordSets: 2 });
   await page.locator('.session-toolbar ion-select').click({ timeout: 5000 });
-  await page.getByRole('radio', { name: 'Show 10 artists' }).click();
-  await expect(page.locator('.question-bubble')).toHaveText('Show 10 artists');
-  await ask('Show 3 albums', 3);
+  await page.getByRole('radio', { name: 'Show last 20 invoices' }).click();
+  await expect(page.locator('.question-bubble')).toHaveText('Show last 20 invoices');
+  await page.getByLabel('Ask about Chinook data').fill('Show the customers associated with those orders');
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect(page.locator('.turn').last().getByRole('tab', { name: /Rows \d+/ })).toBeVisible();
+  await expect.poll(async () => (await databaseCounts())['ChatQueries']).toBe(3);
+  await page.reload();
+  await expect(page.locator('.turn').last().getByRole('tab', { name: /Rows \d+/ })).toBeVisible();
+  const queries = await page.evaluate(async () => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('datatug-chat-sessions');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const queries = await new Promise<{ data: { dtql: string; parentRecordSetId?: string } }[]>((resolve, reject) => {
+      const request = database.transaction('ChatQueries', 'readonly').objectStore('ChatQueries').getAll();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    database.close();
+    return queries.map((query) => query.data);
+  });
+  const related = queries.find((query) => query.parentRecordSetId);
+  const bound = related ? { parentRecordSetId: related.parentRecordSetId, dtql: JSON.parse(related.dtql) as { where: { right: { values: number[] } } } } : null;
+  expect(queries).toEqual(expect.arrayContaining([expect.objectContaining({ parentRecordSetId: expect.any(String) })]));
+  expect(bound?.parentRecordSetId).toBeTruthy();
+  expect(bound?.dtql.where.right.values).toContain(Number(firstCustomerId));
+  expect(bound?.dtql.where.right.values).not.toContain(99999);
   expect(continuationHasMetadata).toBe(true);
   expect(providerCalls).toBe(3);
 
   await page.getByRole('button', { name: 'Rename' }).click();
-  await page.getByLabel('Session name').fill('Artist research');
+  await page.getByLabel('Session name').fill('Invoice research');
   await page.getByRole('button', { name: 'Save name' }).click();
-  await expect(page.getByRole('button', { name: /Chat session, Artist research/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Chat session, Invoice research/ })).toBeVisible();
   await page.reload();
   await expect(page.locator('.question-bubble')).toHaveCount(2);
   expect(providerCalls).toBe(3);
@@ -153,4 +186,8 @@ test('Chat reports a missing persisted RecordSet without rerunning its query', a
   await expect(page.getByText('This chat session has missing saved messages or result snapshots.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Retry loading chats' })).toBeVisible();
   expect(providerCalls).toBe(1);
+  await page.getByRole('button', { name: 'Delete' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Confirm' }).click();
+  await expect(page.getByText('This chat session has missing saved messages or result snapshots.')).toBeHidden();
+  await expect(page.getByRole('button', { name: /Chat session, New chat/ })).toBeVisible();
 });

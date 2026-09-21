@@ -49,6 +49,7 @@ export class ChatPageComponent {
   readonly sessions = signal<readonly ChatSession[]>([]);
   readonly activeSessionId = signal('');
   readonly activeSessionTitle = computed(() => this.sessions().find((session) => session.id === this.activeSessionId())?.title || 'Chat session');
+  readonly sessionBusy = signal(false);
   readonly sessionState = signal<'loading' | 'ready' | 'error'>('loading');
   readonly sessionError = signal<string | undefined>(undefined);
   readonly renameModalOpen = signal(false);
@@ -81,12 +82,14 @@ export class ChatPageComponent {
   }
 
   async newSession(): Promise<void> {
-    if (this.submitting()) return;
+    if (this.submitting() || this.sessionBusy()) return;
+    this.sessionBusy.set(true);
+    const scope = this.scope();
     try {
-      const scope = this.scope();
       const session = await this.sessionStore.create(scope);
       if (scope !== this.scope()) return;
       await this.refreshSessions();
+      if (scope !== this.scope()) return;
       this.activeSessionId.set(session.id);
       this.turns.set([]);
       this.turnTabs.set({});
@@ -94,6 +97,8 @@ export class ChatPageComponent {
       this.sessionError.set(undefined);
     } catch (error) {
       this.showSessionError(error);
+    } finally {
+      this.sessionBusy.set(false);
     }
   }
 
@@ -102,22 +107,29 @@ export class ChatPageComponent {
   }
 
   async switchSession(id: string): Promise<void> {
-    if (!id || id === this.activeSessionId() || this.submitting()) return;
+    if (!id || id === this.activeSessionId() || this.submitting() || this.sessionBusy()) return;
     const scope = this.scope();
+    this.sessionBusy.set(true);
+    this.activeSessionId.set(id);
+    this.turns.set([]);
+    this.turnTabs.set({});
     try {
       this.sessionState.set('loading');
       const restored = await this.sessionStore.load(scope, id);
+      if (scope !== this.scope()) return;
       await this.sessionStore.activate(scope, id);
       if (scope !== this.scope()) return;
-      this.activeSessionId.set(id);
       this.turns.set(restored.turns);
       this.turnTabs.set({});
       await this.refreshSessions();
+      if (scope !== this.scope()) return;
       this.sessionState.set('ready');
       this.sessionError.set(undefined);
     } catch (error) {
       this.showSessionError(error);
-      this.sessionState.set(this.activeSessionId() ? 'ready' : 'error');
+      this.sessionState.set('error');
+    } finally {
+      this.sessionBusy.set(false);
     }
   }
 
@@ -129,25 +141,34 @@ export class ChatPageComponent {
   }
 
   async saveRename(): Promise<void> {
+    if (this.sessionBusy() || this.submitting()) return;
+    const scope = this.scope();
+    const id = this.activeSessionId();
+    this.sessionBusy.set(true);
     try {
-      await this.sessionStore.rename(this.scope(), this.activeSessionId(), this.sessionTitleDraft());
+      await this.sessionStore.rename(scope, id, this.sessionTitleDraft());
+      if (scope !== this.scope() || id !== this.activeSessionId()) return;
       await this.refreshSessions();
+      if (scope !== this.scope() || id !== this.activeSessionId()) return;
       this.renameModalOpen.set(false);
       this.sessionError.set(undefined);
     } catch (error) {
       this.showSessionError(error);
+    } finally {
+      this.sessionBusy.set(false);
     }
   }
 
   askSessionAction(kind: 'clear' | 'delete'): void {
     const id = this.activeSessionId();
-    if (id && !this.submitting()) this.sessionAction.set({ kind, id });
+    if (id && !this.submitting() && !this.sessionBusy()) this.sessionAction.set({ kind, id });
   }
 
   async confirmSessionAction(): Promise<void> {
     const action = this.sessionAction();
-    if (!action) return;
+    if (!action || this.sessionBusy() || this.submitting()) return;
     const scope = this.scope();
+    this.sessionBusy.set(true);
     try {
       if (action.kind === 'clear') {
         await this.sessionStore.clear(scope, action.id);
@@ -162,6 +183,8 @@ export class ChatPageComponent {
       if (scope === this.scope()) await this.restoreSessions();
     } catch (error) {
       this.showSessionError(error);
+    } finally {
+      this.sessionBusy.set(false);
     }
   }
 
@@ -226,9 +249,10 @@ export class ChatPageComponent {
   async submit(): Promise<void> {
     const question = this.question().trim();
     const provider = this.selectedProvider();
-    if (!question || !provider || this.seedState() !== 'ready' || this.sessionState() !== 'ready' || !this.activeSessionId() || this.submitting()) return;
+    if (!question || !provider || this.seedState() !== 'ready' || this.sessionState() !== 'ready' || !this.activeSessionId() || this.submitting() || this.sessionBusy()) return;
     const scope = this.scope();
     const sessionId = this.activeSessionId();
+    const dataScope = `${this.storeId()}:${this.projectId()}`;
     this.submitting.set(true);
     let id: string | undefined;
     try {
@@ -242,11 +266,14 @@ export class ChatPageComponent {
       }
       const interpretation = await this.interpreter.interpret(question, provider, context);
       if (scope !== this.scope()) throw new Error('The project changed before this result could be queried.');
+      const bound = await this.sessionStore.bindRecordSet(scope, sessionId, interpretation.dtql);
+      if (scope !== this.scope()) throw new Error('The project changed before this result could be queried.');
       const queryStarted = performance.now();
-      const { rows, query } = await this.data.query(`${this.storeId()}:${this.projectId()}`, interpretation.dtql);
+      const { rows, query } = await this.data.query(dataScope, bound.dtql);
       const result = await this.sessionStore.completeQuery(scope, sessionId, id, {
-        dtql: interpretation.dtql, dtqlYaml: chatDtqlYaml(query), sql: chatSQLite(query), rows,
-        columns: rows.length ? Object.keys(rows[0]) : [...(CHINOOK_SCHEMA.tables.find((table) => table.name === query.source.name)?.fields || [])],
+        dtql: bound.dtql, generatedDtql: interpretation.dtql, parentRecordSetId: bound.parentRecordSetId,
+        dtqlYaml: chatDtqlYaml(query), sql: chatSQLite(query), rows,
+        columns: rows.length ? Object.keys(rows[0]) : [...(CHINOOK_SCHEMA.tables.find((table) => `${table.schema}.${table.name}` === query.source.name)?.fields || [])],
         metrics: { ...interpretation.metrics, queryMs: performance.now() - queryStarted },
         source: `${scope}/chinook`,
       });
@@ -339,9 +366,10 @@ export class ChatPageComponent {
       this.sessions.set(sessions);
       const selectedId = this.activeSessionId();
       const selected = sessions.find((session) => session.id === selectedId) || sessions[0];
+      this.activeSessionId.set(selected.id);
+      this.turns.set([]);
       const restored = await this.sessionStore.load(scope, selected.id);
       if (scope !== this.scope()) return;
-      this.activeSessionId.set(selected.id);
       this.turns.set(restored.turns);
       this.turnTabs.set({});
       this.sessionState.set('ready');

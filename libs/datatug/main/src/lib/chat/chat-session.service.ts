@@ -30,6 +30,8 @@ export interface ChatQuery {
   readonly sessionId: string;
   readonly turnId: string;
   readonly dtql: string;
+  readonly generatedDtql: string;
+  readonly parentRecordSetId?: string;
   readonly dtqlYaml: string;
   readonly sql: string;
   readonly source: string;
@@ -42,6 +44,7 @@ export interface ChatRecordSet {
   readonly id: string;
   readonly sessionId: string;
   readonly queryId: string;
+  readonly parentRecordSetId?: string;
   readonly source: string;
   readonly columns: readonly string[];
   readonly rows: readonly Record<string, unknown>[];
@@ -58,6 +61,8 @@ interface StoredTurn extends Omit<ChatTurn, 'rows'> {
 
 export interface CompletedChatQuery {
   readonly dtql: string;
+  readonly generatedDtql: string;
+  readonly parentRecordSetId?: string;
   readonly dtqlYaml: string;
   readonly sql: string;
   readonly rows: readonly Record<string, unknown>[];
@@ -120,7 +125,8 @@ export class ChatSessionService {
       const turn: ChatTurn = {
         id: data.id, question: data.question, state: data.state,
         queryId: data.queryId, recordSetId: data.recordSetId,
-        dtql: data.dtql, dtqlYaml: data.dtqlYaml, sql: data.sql,
+        dtql: data.dtql, generatedDtql: data.generatedDtql,
+        dtqlYaml: data.dtqlYaml, sql: data.sql,
         error: data.error, metrics: data.metrics,
       };
       return data.state === 'loading'
@@ -146,17 +152,61 @@ export class ChatSessionService {
     return turn;
   }
 
+  async bindRecordSet(scope: string, sessionId: string, generatedDtql: string): Promise<{ dtql: string; parentRecordSetId?: string }> {
+    let action: Record<string, unknown>;
+    try {
+      const parsed = JSON.parse(generatedDtql) as unknown;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { dtql: generatedDtql };
+      action = parsed as Record<string, unknown>;
+    } catch {
+      return { dtql: generatedDtql };
+    }
+    const where = action['where'];
+    if (!where || typeof where !== 'object' || Array.isArray(where)) return { dtql: generatedDtql };
+    const condition = where as Record<string, unknown>;
+    const right = condition['right'];
+    if (!right || typeof right !== 'object' || Array.isArray(right) || !('recordSet' in right)) return { dtql: generatedDtql };
+    if (condition['op'] !== 'In') throw new Error('A saved RecordSet reference requires the In operator.');
+    const rightObject = right as Record<string, unknown>;
+    if (Object.keys(rightObject).length !== 1) throw new Error('The saved RecordSet reference has unexpected fields.');
+    const reference = rightObject['recordSet'];
+    if (!reference || typeof reference !== 'object' || Array.isArray(reference)) throw new Error('The saved RecordSet reference is invalid.');
+    const { id, field } = reference as Record<string, unknown>;
+    if (Object.keys(reference).sort().join(',') !== 'field,id' || typeof id !== 'string' || typeof field !== 'string') {
+      throw new Error('The saved RecordSet reference needs an ID and source column.');
+    }
+    const session = await this.requireSession(scope, sessionId);
+    if (!session.recordSetIds.includes(id)) throw new Error('The referenced RecordSet is not in this chat session.');
+    const stored = await this.database.get<ChatRecordSet>(recordSetKey(id));
+    if (!stored.exists || stored.data.sessionId !== sessionId || stored.data.source !== `${scope}/chinook`) {
+      throw new Error('The referenced RecordSet is unavailable for this data source.');
+    }
+    if (!stored.data.columns.includes(field)) throw new Error('The referenced RecordSet has no such column.');
+    const values = [...new Set(stored.data.rows.map((row) => row[field]))];
+    if (!values.length) throw new Error('The referenced RecordSet has no values to use in this follow-up.');
+    if (values.length > 1000 || values.some((value) => value !== null && typeof value !== 'string' &&
+        typeof value !== 'boolean' && !(typeof value === 'number' && Number.isFinite(value)))) {
+      throw new Error('The referenced RecordSet has too many or unsupported identifier values.');
+    }
+    return {
+      dtql: JSON.stringify({ ...action, where: { ...condition, right: { values } } }),
+      parentRecordSetId: id,
+    };
+  }
+
   async completeQuery(scope: string, sessionId: string, turnId: string, result: CompletedChatQuery): Promise<ChatTurn> {
     const timestamp = now();
     const queryId = crypto.randomUUID();
     const recordSetId = crypto.randomUUID();
     const columns = result.columns;
     const query: ChatQuery = {
-      id: queryId, sessionId, turnId, dtql: result.dtql, dtqlYaml: result.dtqlYaml,
+      id: queryId, sessionId, turnId, dtql: result.dtql, generatedDtql: result.generatedDtql,
+      parentRecordSetId: result.parentRecordSetId, dtqlYaml: result.dtqlYaml,
       sql: result.sql, source: result.source, executedAt: timestamp, columns, rowCount: result.rows.length,
     };
     const snapshot: ChatRecordSet = {
-      id: recordSetId, sessionId, queryId, source: result.source, columns,
+      id: recordSetId, sessionId, queryId, parentRecordSetId: result.parentRecordSetId,
+      source: result.source, columns,
       rows: result.rows.map((row) => ({ ...row })), createdAt: timestamp, metrics: result.metrics,
     };
     const replacement: StoredTurn = await this.database.runReadwriteTransaction(async (tx) => {
@@ -167,7 +217,8 @@ export class ChatSessionService {
       }
       const turn: StoredTurn = {
         ...stored.data, state: result.rows.length ? 'result' : 'empty',
-        dtql: result.dtql, dtqlYaml: result.dtqlYaml, sql: result.sql,
+        dtql: result.dtql, generatedDtql: result.generatedDtql,
+        dtqlYaml: result.dtqlYaml, sql: result.sql,
         metrics: result.metrics, queryId, recordSetId,
       };
       await tx.insert(queryKey(queryId), query);
@@ -237,7 +288,7 @@ export class ChatSessionService {
 
   context(turns: readonly ChatTurn[]): string {
     return turns.filter((turn) => turn.dtql && turn.recordSetId).slice(-5).map((turn) =>
-      `Question: ${turn.question.slice(0, 200)}\nDTQL: ${turn.dtql?.slice(0, 2000)}\n` +
+      `Question: ${turn.question.slice(0, 200)}\nDTQL: ${(turn.generatedDtql || turn.dtql)?.slice(0, 2000)}\n` +
       `RecordSet: ${turn.recordSetId}; columns: ${turn.columns?.join(', ') || ''}; rows: ${turn.rows?.length || 0}`,
     ).join('\n\n').slice(0, 7000);
   }
