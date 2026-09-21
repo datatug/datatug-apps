@@ -74,8 +74,8 @@ importers:
         specifier: file:../../dal-go/dalgo-js
         version: file:../../dal-go/dalgo-js
       '@dalgo/indexeddb':
-        specifier: 0.1.0
-        version: 0.1.0(@dalgo/core@file:../../dal-go/dalgo-js)
+        specifier: file:../../dal-go/dalgo-http-adapters/packages/indexeddb
+        version: file:../../dal-go/dalgo-http-adapters/packages/indexeddb(@dalgo/core@file:../../dal-go/dalgo-js)
       '@firebase/auth':
         specifier: 1.12.1
         version: 1.12.1(@firebase/app@0.14.9)
@@ -1983,9 +1983,8 @@ packages:
     resolution: {directory: ../../dal-go/dalgo-js, type: directory}
     engines: {node: '>=20'}
 
-  '@dalgo/indexeddb@0.1.0':
-    resolution: {integrity: sha512-k9zwR8c5L2Xq4cuGuDycoVo7pl+Z3yxWJqlqwABtu0S+PyPiHxj8V+ukiatTG0mmTa8FN4CKwasxPgLJo/N90w==}
-    version: 0.1.0
+  '@dalgo/indexeddb@file:../../dal-go/dalgo-http-adapters/packages/indexeddb':
+    resolution: {directory: ../../dal-go/dalgo-http-adapters/packages/indexeddb, type: directory}
     engines: {node: '>=20'}
     peerDependencies:
       '@dalgo/core': ^0.1.0
@@ -13730,7 +13729,7 @@ snapshots:
     dependencies:
       yaml: 2.8.2
 
-  '@dalgo/indexeddb@0.1.0(@dalgo/core@file:../../dal-go/dalgo-js)':
+  '@dalgo/indexeddb@file:../../dal-go/dalgo-http-adapters/packages/indexeddb(@dalgo/core@file:../../dal-go/dalgo-js)':
     dependencies:
       '@dalgo/core': file:../../dal-go/dalgo-js
 
