@@ -222,7 +222,9 @@ test.describe('Incidentius Task 3 — real persisted Houston journey', () => {
           .startsWith(`${agentOrigin}/datatug/incidents/INC-1/events?`) &&
         response.ok(),
     );
-    await detailPage.locator('ion-button', { hasText: 'Resolution Record' }).click();
+    await detailPage
+      .locator('ion-button', { hasText: 'Resolution Record' })
+      .click();
     await recordDetailResponse;
     await recordEventsResponse;
     await expect(page).toHaveURL(
@@ -231,13 +233,19 @@ test.describe('Incidentius Task 3 — real persisted Houston journey', () => {
     await expect(
       recordPage.locator('ion-title', { hasText: 'Resolution Record' }),
     ).toBeVisible();
-    await expect(recordPage.getByRole('heading', { name: title })).toBeVisible();
+    await expect(
+      recordPage.getByRole('heading', { name: title }),
+    ).toBeVisible();
 
-    await recordPage.locator('ion-button', { hasText: 'Back to incident' }).click();
+    await recordPage
+      .locator('ion-button', { hasText: 'Back to incident' })
+      .click();
     await expect(page).toHaveURL(
       new RegExp(`/incidents/${DEMO_PROJECT_ID}/INC-1\\?`),
     );
-    await expect(detailPage.getByRole('heading', { name: title })).toBeVisible();
+    await expect(
+      detailPage.getByRole('heading', { name: title }),
+    ).toBeVisible();
 
     const coldDetailResponse = page.waitForResponse(
       (response) =>
@@ -263,6 +271,37 @@ test.describe('Incidentius Task 3 — real persisted Houston journey', () => {
       activePage(page).getByRole('paragraph').filter({ hasText: description }),
     ).toBeVisible();
     await expect(activePage(page).getByText('incident.created')).toBeVisible();
+
+    await activePage(page)
+      .getByTestId('incident-compare-query')
+      .locator('input')
+      .fill('customer-invoices');
+    const compareResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        response.url() === `${agentOrigin}/datatug/compare`,
+    );
+    await activePage(page).getByTestId('incident-compare-run').click();
+    const compareResponse = await compareResponsePromise;
+    const compareRequest = compareResponse.request().postDataJSON() as {
+      queryId?: unknown;
+      mutationId?: unknown;
+      left?: { kind?: unknown; cohortRole?: unknown; storeId?: unknown };
+      right?: { kind?: unknown; cohortRole?: unknown };
+      incident?: { incidentId?: unknown };
+    };
+    expect(compareRequest).toMatchObject({
+      queryId: 'customer-invoices',
+      mutationId: expect.any(String),
+      left: { kind: 'facts', storeId: 'local', cohortRole: 'affected' },
+      right: { kind: 'facts', cohortRole: 'control' },
+      incident: { incidentId: 'INC-1' },
+    });
+    await expect(
+      activePage(page).getByTestId('incident-compare-panel'),
+    ).toContainText(
+      /Matching|no current-policy-visible facts|native field IN|SOURCE_UNAVAILABLE|the incident has no|saved query/i,
+    );
 
     const persistedListResponse = page.waitForResponse(
       (response) =>
