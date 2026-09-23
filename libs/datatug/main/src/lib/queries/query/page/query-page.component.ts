@@ -451,11 +451,19 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   );
   public readonly running = signal(false);
   public readonly federatedProgress = signal<FederatedQueryProgress | undefined>(undefined);
+  public readonly resultPageIndex = signal(0);
+  public readonly resultPageSize = 100;
   /** In-memory OVDB credential for the current query only. */
   public readonly ovdbToken = signal('');
   public readonly accessBlockers = signal<readonly string[]>([]);
   public readonly runError = signal<string | undefined>(undefined);
   public readonly runResult = signal<RunQueryResponse | undefined>(undefined);
+  public readonly visibleResultRows = computed(() => {
+    const rows = this.runResult()?.recordset.rows ?? [];
+    const start = this.resultPageIndex() * this.resultPageSize;
+    return rows.slice(start, start + this.resultPageSize);
+  });
+  public readonly resultPageEnd = computed(() => Math.min((this.resultPageIndex() + 1) * this.resultPageSize, this.runResult()?.recordset.rows.length ?? 0));
   private readonly lastRunBindingRoles = signal<
     ReadonlyMap<string, ResolvedBinding['role']>
   >(new Map());
@@ -1460,6 +1468,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     if (!projectId || !queryId) {
       return;
     }
+    this.resultPageIndex.set(0);
     const definition = this.queryDef();
     if (definition?.federation) {
       if (this.running()) return;

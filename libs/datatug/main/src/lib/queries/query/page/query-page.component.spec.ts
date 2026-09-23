@@ -335,6 +335,37 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     expect(component.runResult()).toEqual(response);
   });
 
+  it('shows only one result page at a time for a large federated recordset', async () => {
+    const definition: IQueryDef = {
+      ...queryDef,
+      id: 'many-sales',
+      request: { queryType: QueryType.DTQL, text: 'from: Invoice' },
+      federation: { ovdbBaseUrl: 'http://127.0.0.1:50501', tables: [] },
+      parameters: [],
+    };
+    component = await createComponent({}, definition);
+    federatedRunMock.mockResolvedValue({
+      recordset: {
+        columns: [{ name: 'id', type: 'integer' }],
+        rows: Array.from({ length: 205 }, (_, index) => [{ type: 'integer', value: String(index + 1) }]),
+      },
+      limitations: [], bindingsApplied: [], truncated: false,
+      provenance: { source: 'direct OVDB', queryId: 'many-sales', mode: 'live', observedAt: '2026-09-23T00:00:00Z', executionProfile: 'protected' },
+    } satisfies RunQueryResponse);
+    component.runQuery();
+    await Promise.resolve();
+    expect(component.visibleResultRows()).toHaveLength(100);
+    expect(component.visibleResultRows()[0][0].value).toBe('1');
+    component.resultPageIndex.set(2);
+    expect(component.visibleResultRows()).toHaveLength(5);
+    expect(component.visibleResultRows()[0][0].value).toBe('201');
+    expect(component.resultPageEnd()).toBe(205);
+    await vi.waitFor(() => expect(component.running()).toBe(false));
+    component.runQuery();
+    await Promise.resolve();
+    expect(component.resultPageIndex()).toBe(0);
+  });
+
   it('binds a parameter from context when no selection binding is present', async () => {
     component = await createComponent({});
     investigationContext.addValue({

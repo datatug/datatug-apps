@@ -346,6 +346,13 @@
 
     <ion-card>
       <ion-card-content style="overflow-x: auto">
+        @if (result.recordset.rows.length > resultPageSize) {
+          <div aria-label="Result pages">
+            <ion-button fill="clear" [disabled]="resultPageIndex() === 0" (click)="resultPageIndex.update(page => page - 1)">Previous</ion-button>
+            Rows {{ resultPageIndex() * resultPageSize + 1 }}–{{ resultPageEnd() }} of {{ result.recordset.rows.length }}
+            <ion-button fill="clear" [disabled]="(resultPageIndex() + 1) * resultPageSize >= result.recordset.rows.length" (click)="resultPageIndex.update(page => page + 1)">Next</ion-button>
+          </div>
+        }
         <table
           class="run-result-table"
           style="width: 100%; border-collapse: collapse"
@@ -366,7 +373,7 @@
             </tr>
           </thead>
           <tbody>
-            @for (row of result.recordset.rows; track $index) {
+            @for (row of visibleResultRows(); track $index) {
               <tr>
                 @for (cell of row; track $index) {
                   <td

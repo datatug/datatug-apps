@@ -1,6 +1,6 @@
 import {
-  executeJoinedDTQLQuery, executeRecordLookupPages, executeRecordLookups, isJoinedDTQLQuery, key, parseDTQL,
-  type JoinedQueryProgress, type QueryExecutor, type QueryPage, type QueryRelation, type StructuredQuery,
+  executeJoinedDTQLQuery, executeJoinedDTQLQueryPages, executeRecordLookupPages, executeRecordLookups, isJoinedDTQLQuery, key, parseDTQL,
+  type DTQLExpression, type JoinedQueryExecutionOptions, type JoinedQueryProgress, type QueryExecutor, type QueryPage, type QueryRelation, type StructuredQuery,
 } from '@dalgo/core';
 import { IndexedDbDatabase } from '@dalgo/indexeddb';
 import type { RunQueryResponse, TypedValue } from '@sneat/datatug-semantic';
@@ -9,6 +9,10 @@ import type { IQueryDef, ITextQueryRequest } from '../models/definition/query-de
 type Data = Record<string, unknown>;
 interface OvdbRecord { readonly key: string; readonly data: Data }
 interface OvdbPage { readonly records: readonly OvdbRecord[]; readonly nextCursor?: unknown }
+
+function containsAggregate(expression: DTQLExpression): boolean {
+  return expression.kind === 'aggregate' || (expression.kind === 'binary' && (containsAggregate(expression.left) || containsAggregate(expression.right)));
+}
 
 export interface FederatedQueryProgress {
   readonly rowsLoaded: number;
@@ -166,7 +170,7 @@ export async function runFederatedQuery(definition: IQueryDef, onProgress?: (pro
           provenance: { source: `${baseUrl} (direct OVDB)`, queryId: definition.id, mode: 'live', observedAt: new Date().toISOString(), executionProfile: 'protected' },
         };
       }
-      const result = await executeJoinedDTQLQuery(executorFor(parsed.from), parsed, {
+      const executionOptions: JoinedQueryExecutionOptions = {
         schema: { tables: config.tables },
         resolveSource: (relation) => ({ kind: 'collection', name: `${relation.database}.${relation.name}` }),
         resolveExecutor: executorFor,
@@ -186,8 +190,16 @@ export async function runFederatedQuery(definition: IQueryDef, onProgress?: (pro
           if (item.phase === 'process') rowsProcessed = item.rows;
           onProgress({ rowsLoaded, rowsProcessed, requestsCompleted: 0, requestsInFlight: 0, requestsPending: 0 });
         } } : {}),
-      });
-      let records = result.records;
+      };
+      let records: QueryPage<Data>['records'];
+      if (parsed.from.joins.length === 1 && parsed.groupBy === undefined && parsed.having === undefined && parsed.orders.length === 0 &&
+          !(parsed.columns ?? []).some((column) => column.expression !== undefined && containsAggregate(column.expression))) {
+        const paged: QueryPage<Data>['records'][number][] = [];
+        for await (const page of executeJoinedDTQLQueryPages(parsed, executionOptions)) paged.push(...page.records);
+        records = paged;
+      } else {
+        records = (await executeJoinedDTQLQuery(executorFor(parsed.from), parsed, executionOptions)).records;
+      }
       for (const lookup of config.lookups ?? []) {
         if (!/^[A-Za-z0-9_-]+$/.test(lookup.database) || !/^[A-Za-z0-9_-]+$/.test(lookup.collection)) throw new Error('Lookup database and collection names must be simple identifiers.');
         records = await executeRecordLookups(records, {
