@@ -11,6 +11,10 @@ import { Routes } from '@angular/router';
 // `datatug-app-routes.spec.ts` for the regression guard.
 export const routes: Routes = [
   {
+    path: 'chat',
+    loadComponent: () => import('./cli-chat-page.component').then((m) => m.CliChatPageComponent),
+  },
+  {
     path: 'hello-world',
     loadChildren: () =>
       import('./hello-world-page.component').then(
