@@ -51,11 +51,12 @@ async function sendPendingPage(): Promise<void> {
 }
 
 async function readPage(index: number): Promise<TypedValue[][]> {
-  if (!outputDb || !Number.isSafeInteger(index) || index < 0) throw new Error('Result page is unavailable.');
+  const db = outputDb;
+  if (!db || !Number.isSafeInteger(index) || index < 0) throw new Error('Result page is unavailable.');
   const start = index * 100 + 1;
   if (!Number.isSafeInteger(start)) throw new Error('Result page is out of range.');
   return await new Promise<TypedValue[][]>((resolve, reject) => {
-    const transaction = outputDb!.transaction('rows', 'readonly');
+    const transaction = db.transaction('rows', 'readonly');
     const request = transaction.objectStore('rows').getAll(IDBKeyRange.bound(start, start + 99));
     request.onsuccess = () => resolve(request.result as TypedValue[][]);
     request.onerror = () => reject(request.error ?? new Error('Cannot read result page.'));
@@ -109,10 +110,11 @@ self.onmessage = (event: MessageEvent<
   rowsStored = 0;
   resultReady = false;
   controller = new AbortController();
+  const runController = controller;
   activeRun = (async () => {
     try {
       await closeOutput();
-      const result = await runFederatedQuery(message.definition, (progress) => self.postMessage({ type: 'progress', progress }), message.token, storeRows, controller!.signal,
+      const result = await runFederatedQuery(message.definition, (progress) => self.postMessage({ type: 'progress', progress }), message.token, storeRows, runController.signal,
         message.mode ?? 'full', (first: FederatedQueryResult) => {
           if (!resultReady && !closing) { resultReady = true; self.postMessage({ type: 'result', result: first }); }
           void sendPendingPage();

@@ -9,7 +9,7 @@ import { deleteQueryDatabase, queryStorageError } from './federated-query-storag
 
 type Data = Record<string, unknown>;
 interface OvdbRecord { readonly key: string; readonly data: Data }
-interface OvdbPage { readonly records: readonly OvdbRecord[]; readonly nextPageToken?: string; readonly snapshotExpiresAt?: string }
+interface OvdbPage { readonly records: readonly OvdbRecord[]; readonly nextPageToken?: string; readonly snapshotToken?: string; readonly snapshotExpiresAt?: string }
 
 function containsAggregate(expression: DTQLExpression): boolean {
   return expression.kind === 'aggregate' || (expression.kind === 'binary' && (containsAggregate(expression.left) || containsAggregate(expression.right)));
@@ -121,7 +121,10 @@ export async function runFederatedQuery(definition: IQueryDef, onProgress?: (pro
             if (!promise) {
               promise = fetchLookup(lookup, cacheKey);
               cache.set(cacheKey, promise);
-              if (cache.size > 1000) cache.delete(cache.keys().next().value!);
+              if (cache.size > 1000) {
+                const oldest = cache.keys().next().value;
+                if (oldest !== undefined) cache.delete(oldest);
+              }
               promise.catch(() => cache.delete(cacheKey));
             }
             return promise;
@@ -197,13 +200,15 @@ export async function runFederatedQuery(definition: IQueryDef, onProgress?: (pro
         if (remaining === 0) return;
         const pageSize = Math.min(remaining ?? (mode === 'visible' ? 100 : 500), mode === 'visible' ? 100 : 500);
         let pageToken: string | undefined;
+        let snapshotToken: string | undefined;
+        const body = JSON.stringify({
+          from: { name: relation.name, ...(relation.schema ? { schema: relation.schema } : {}) },
+          ...(ordered.length ? { orderBy: ordered.map((item) => ({ field: item.field, ...(item.direction === 'desc' ? { desc: true } : {}) })) } : {}),
+        });
+        try {
         for (;;) {
           signal?.throwIfAborted();
           if (pageToken === undefined) { stage = 'preparing'; report(); }
-          const body = JSON.stringify({
-            from: { name: relation.name, ...(relation.schema ? { schema: relation.schema } : {}) },
-            ...(ordered.length ? { orderBy: ordered.map((item) => ({ field: item.field, ...(item.direction === 'desc' ? { desc: true } : {}) })) } : {}),
-          });
           const response = await fetch(`${baseUrl}/v1/databases/${encodeURIComponent(relation.database || '')}/dtql`, {
             method: 'POST', headers: { 'Content-Type': 'application/yaml', Accept: 'application/json', 'OVDB-Page-Size': String(pageSize), ...(pageToken ? { 'OVDB-Page-Token': pageToken } : {}), ...authHeaders }, body, redirect: 'error', signal,
           });
@@ -213,7 +218,9 @@ export async function runFederatedQuery(definition: IQueryDef, onProgress?: (pro
           if (response.status === 422) throw new Error(`OVDB ${relation.database} does not support this snapshot query.`);
           if (!response.ok) throw new Error(`OVDB ${relation.database} query failed (${response.status}).`);
           const page = await response.json() as OvdbPage;
-          if (!Array.isArray(page.records) || page.records.length > pageSize || (page.nextPageToken !== undefined && (!page.nextPageToken || typeof page.nextPageToken !== 'string'))) throw new Error(`OVDB ${relation.database} returned an invalid page.`);
+          if (!Array.isArray(page.records) || page.records.length > pageSize || (page.nextPageToken !== undefined && (!page.nextPageToken || typeof page.nextPageToken !== 'string')) ||
+            (page.snapshotToken !== undefined && (!page.snapshotToken || typeof page.snapshotToken !== 'string'))) throw new Error(`OVDB ${relation.database} returned an invalid page.`);
+          if (page.snapshotToken) snapshotToken = page.snapshotToken;
           const records = remaining === undefined ? page.records : page.records.slice(0, remaining);
           rowsLoaded += records.length;
           stage = 'loading';
@@ -223,6 +230,20 @@ export async function runFederatedQuery(definition: IQueryDef, onProgress?: (pro
           if (remaining === 0 || !page.nextPageToken) break;
           if (page.nextPageToken === pageToken) throw new Error(`OVDB ${relation.database} did not advance its snapshot page token.`);
           pageToken = page.nextPageToken;
+        }
+        } finally {
+          if (snapshotToken) {
+            // A completed snapshot still occupies server capacity until explicitly released.
+            // Use a fresh signal because cancellation must not abort the release request.
+            try {
+              await fetch(`${baseUrl}/v1/databases/${encodeURIComponent(relation.database || '')}/dtql`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/yaml', Accept: 'application/json', 'OVDB-Page-Size': String(pageSize),
+                  'OVDB-Page-Token': snapshotToken, 'OVDB-Page-Close': 'true', ...authHeaders },
+                body, redirect: 'error', signal: AbortSignal.timeout(5000),
+              });
+            } catch { /* The server also expires abandoned snapshots. */ }
+          }
         }
       };
       const executorFor = (relation: QueryRelation): QueryExecutor => ({

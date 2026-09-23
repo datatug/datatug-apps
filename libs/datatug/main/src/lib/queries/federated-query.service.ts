@@ -59,11 +59,12 @@ export class FederatedQueryService {
   }
 
   getPage(index: number): Promise<TypedValue[][]> {
-    if (!this.worker) return Promise.reject(new Error('The result pages are unavailable.'));
+    const worker = this.worker;
+    if (!worker) return Promise.reject(new Error('The result pages are unavailable.'));
     const requestId = ++this.nextRequestId;
     return new Promise<TypedValue[][]>((resolve, reject) => {
       this.pageRequests.set(requestId, { resolve, reject });
-      this.worker!.postMessage({ type: 'page', index, requestId });
+      worker.postMessage({ type: 'page', index, requestId });
     });
   }
 

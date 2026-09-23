@@ -34,9 +34,11 @@ describe('visible browser query execution', () => {
       if (url.endsWith('/dtql')) {
         sourceRequests.push(new Headers(init.headers));
         const token = new Headers(init.headers).get('OVDB-Page-Token');
+        if (new Headers(init.headers).get('OVDB-Page-Close') === 'true') return new Response(null, { status: 204 });
         const first = token === null;
         return response({
           records: Array.from({ length: first ? 100 : 5 }, (_, index) => ({ key: String(index + (first ? 1 : 101)), data: { id: index + (first ? 1 : 101), country_id: index + (first ? 1 : 101) } })),
+          snapshotToken: 'immutable-snapshot',
           ...(first ? { nextPageToken: 'immutable-page-2' } : {}),
         });
       }
@@ -59,9 +61,11 @@ describe('visible browser query execution', () => {
     gates.shift()?.();
     await run;
     expect(pages).toEqual([100, 5]);
-    expect(sourceRequests).toHaveLength(2);
+    expect(sourceRequests).toHaveLength(3);
     expect(sourceRequests[1].get('OVDB-Page-Token')).toBe('immutable-page-2');
     expect(sourceRequests[1].get('Authorization')).toBe('Bearer secret');
+    expect(sourceRequests[2].get('OVDB-Page-Token')).toBe('immutable-snapshot');
+    expect(sourceRequests[2].get('OVDB-Page-Close')).toBe('true');
     expect(progress.at(-1)).toMatchObject({ requestsCompleted: 105, rowsLoaded: 105 });
   });
 
@@ -73,9 +77,14 @@ describe('visible browser query execution', () => {
       queueMicrotask(() => request.onsuccess?.());
       return request;
     } });
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => url.endsWith('/dtql')
-      ? response({ records: Array.from({ length: 100 }, (_, index) => ({ key: String(index), data: { id: index, country_id: index } })), nextPageToken: 'next' })
-      : response({ data: { name: 'Alpha' } })));
+    const requests: Headers[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+      if (!url.endsWith('/dtql')) return response({ data: { name: 'Alpha' } });
+      const headers = new Headers(init.headers);
+      requests.push(headers);
+      if (headers.get('OVDB-Page-Close') === 'true') return new Response(null, { status: 204 });
+      return response({ records: Array.from({ length: 100 }, (_, index) => ({ key: String(index), data: { id: index, country_id: index } })), nextPageToken: 'next', snapshotToken: 'cancelled-snapshot' });
+    }));
     const controller = new AbortController();
     let release!: () => void;
     let ready!: () => void;
@@ -88,5 +97,7 @@ describe('visible browser query execution', () => {
     await expect(run).rejects.toBeDefined();
     expect(deleted).toHaveLength(1);
     expect(deleted[0]).toMatch(/^datatug-federated-/);
+    expect(requests.at(-1)?.get('OVDB-Page-Token')).toBe('cancelled-snapshot');
+    expect(requests.at(-1)?.get('OVDB-Page-Close')).toBe('true');
   });
 });
