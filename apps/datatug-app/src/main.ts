@@ -31,6 +31,9 @@ import { buildInfo } from './build-info';
 import { datatugAppEnvironmentConfig } from './environments/environment';
 import { registerIonicons } from './register-ionicons';
 import { registerPosthog } from './register-posthog';
+import { captureCliChatCapability } from './app/cli-chat-capability';
+
+captureCliChatCapability();
 
 if (datatugAppEnvironmentConfig.posthog) {
   registerPosthog(datatugAppEnvironmentConfig.posthog);
