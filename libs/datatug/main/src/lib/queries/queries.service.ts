@@ -91,6 +91,7 @@ interface IWireQueryItem {
   dbModel?: string;
   targets?: IQueryTarget[];
   recordsets?: IRecordsetDef[];
+  federation?: IQueryDef['federation'];
 }
 
 interface IWireQueryFolder {

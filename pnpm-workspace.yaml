@@ -33,7 +33,7 @@ packages:
 # pnpm 10+ reads settings from here (the package.json "pnpm" field is no longer read).
 # Allow these dependencies to run their install/build scripts.
 allowBuilds:
-  '@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/16e58cbfc17ebefc539e66e0eee27311b54c9a6b': true
+  '@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/073d4cd607504e2fc136e4d8a15c17343a4d0a9e': true
   '@dalgo/indexeddb@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/519665be7bab21bae3c388eb2395afb8b6df1be9#path:/packages/indexeddb': true
   '@firebase/util': true
   '@parcel/watcher': true

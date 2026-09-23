@@ -108,6 +108,7 @@ import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatu
 import { DatatugExecutorModule } from '../../../executor/datatug-executor.module';
 import { DatatugQueriesServicesModule } from '../../datatug-queries-services.module';
 import { QueriesService } from '../../queries.service';
+import { FederatedQueryService, type FederatedQueryProgress } from '../../federated-query.service';
 import { QueryContextSqlService } from '../../query-context-sql.service';
 import {
   isQueryChanged,
@@ -359,6 +360,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private readonly router = inject(Router);
   private readonly queryContextSqlService = inject(QueryContextSqlService);
   private readonly queriesService = inject(QueriesService);
+  private readonly federatedQuery = inject(FederatedQueryService);
   private readonly semanticApi = inject(SemanticApiService);
   private readonly agentContext = inject(AgentContextService);
   private readonly investigationContext = inject(InvestigationContextService);
@@ -448,6 +450,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     hasBlockingBindings(this.bindings()),
   );
   public readonly running = signal(false);
+  public readonly federatedProgress = signal<FederatedQueryProgress | undefined>(undefined);
+  /** In-memory OVDB credential for the current query only. */
+  public readonly ovdbToken = signal('');
   public readonly accessBlockers = signal<readonly string[]>([]);
   public readonly runError = signal<string | undefined>(undefined);
   public readonly runResult = signal<RunQueryResponse | undefined>(undefined);
@@ -601,6 +606,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.queryState = queryState;
       // Signal write (zoneless-safe, unlike the plain-field write just
       // above) — see `queryDef`'s own doc comment.
+      if (this.queryDef()?.id !== queryState.def?.id) this.ovdbToken.set('');
       this.queryDef.set(queryState.def);
       if (this.queryState.environments && !this.queryState.activeEnv) {
         this.setActiveEnv(this.queryState.environments[0].id);
@@ -1452,6 +1458,20 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const projectId = this.project?.ref.projectId;
     const queryId = this.queryId;
     if (!projectId || !queryId) {
+      return;
+    }
+    const definition = this.queryDef();
+    if (definition?.federation) {
+      if (this.running()) return;
+      this.running.set(true);
+      this.federatedProgress.set(undefined);
+      this.runError.set(undefined);
+      this.runResult.set(undefined);
+      this.federatedQuery.run(definition, (progress) => this.federatedProgress.set(progress), this.ovdbToken().trim()).then((result) => {
+        if (this.queryDef() === definition && this.queryId === queryId) this.runResult.set(result);
+      }).catch((error: unknown) => {
+        if (this.queryDef() === definition && this.queryId === queryId) this.runError.set(error instanceof Error ? error.message : 'The direct OVDB query failed.');
+      }).finally(() => this.running.set(false));
       return;
     }
     // Checked before requiring `environment`/`securityContextId` below: a

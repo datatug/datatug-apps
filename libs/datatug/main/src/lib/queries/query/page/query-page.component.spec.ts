@@ -14,6 +14,7 @@ import {
   AgentContextService,
   InvestigationContextService,
   SemanticApiService,
+  type RunQueryResponse,
 } from '@sneat/datatug-semantic';
 import { Observable, Subject, of, throwError } from 'rxjs';
 
@@ -35,6 +36,7 @@ import { QueriesService } from '../../queries.service';
 import { Coordinator } from '../../../executor/coordinator';
 import { QueryEditorStateService } from '../../query-editor-state-service';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
+import { FederatedQueryService } from '../../federated-query.service';
 
 function agentContextStub(securityContextId: string | undefined = 'sctx-1') {
   return {
@@ -146,6 +148,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
   let component: QueryPageComponent;
   let runFixture: ComponentFixture<QueryPageComponent>;
   let runQueryMock: ReturnType<typeof vi.fn>;
+  let federatedRunMock: ReturnType<typeof vi.fn>;
   let agentContext: ReturnType<typeof agentContextStub>;
   let investigationContext: InvestigationContextService;
 
@@ -188,6 +191,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       configurable: true,
     });
     runQueryMock = vi.fn();
+    federatedRunMock = vi.fn();
     agentContext = agentContextStub();
     await TestBed.configureTestingModule({
       imports: [QueryPageComponent],
@@ -261,6 +265,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
         },
         { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn() } },
         { provide: SemanticApiService, useValue: { runQuery: runQueryMock } },
+        { provide: FederatedQueryService, useValue: { run: federatedRunMock } },
         { provide: AgentContextService, useValue: agentContext },
       ],
     })
@@ -302,6 +307,32 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
 
   beforeEach(() => {
     sessionStorage.clear();
+  });
+
+  it('runs a federated query in the browser and exposes its download and lookup progress', async () => {
+    const definition: IQueryDef = {
+      ...queryDef,
+      id: 'sales',
+      request: { queryType: QueryType.DTQL, text: 'from: Invoice' },
+      federation: { ovdbBaseUrl: 'http://127.0.0.1:50501', tables: [] },
+      parameters: [],
+    };
+    component = await createComponent({}, definition);
+    const response: RunQueryResponse = {
+      recordset: { columns: [{ name: 'country', type: 'string' }], rows: [[{ type: 'string', value: 'Alpha' }]] },
+      limitations: [], bindingsApplied: [], truncated: false,
+      provenance: { source: 'direct OVDB', queryId: 'sales', mode: 'live', observedAt: '2026-09-23T00:00:00Z', executionProfile: 'protected' },
+    };
+    federatedRunMock.mockImplementation((_definition: IQueryDef, onProgress: (progress: unknown) => void) => {
+      onProgress({ rowsLoaded: 103, rowsProcessed: 100, requestsCompleted: 2, requestsInFlight: 0, requestsPending: 0 });
+      return Promise.resolve(response);
+    });
+    component.runQuery();
+    await Promise.resolve();
+    expect(federatedRunMock).toHaveBeenCalledOnce();
+    expect(runQueryMock).not.toHaveBeenCalled();
+    expect(component.federatedProgress()).toEqual({ rowsLoaded: 103, rowsProcessed: 100, requestsCompleted: 2, requestsInFlight: 0, requestsPending: 0 });
+    expect(component.runResult()).toEqual(response);
   });
 
   it('binds a parameter from context when no selection binding is present', async () => {
