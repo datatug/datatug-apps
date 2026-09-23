@@ -337,6 +337,30 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     expect(component.runResult()).toEqual(response);
   });
 
+  it('defaults a flat left join to visible rows and lets the user switch to full result', async () => {
+    const definition: IQueryDef = {
+      ...queryDef, id: 'detail-join',
+      request: { queryType: QueryType.DTQL, text: JSON.stringify({
+        from: { database: 'sales', name: 'Invoice', alias: 'i', joins: [{
+          type: 'left', from: { database: 'geo', name: 'Country', alias: 'c' },
+          on: [{ left: { field: 'country_id', source: 'i' }, op: '==', right: { field: 'id', source: 'c' } }],
+        }] },
+        columns: [{ field: 'id', source: 'i' }, { field: 'name', source: 'c' }],
+      }) },
+      federation: { ovdbBaseUrl: 'http://127.0.0.1:50501', tables: [
+        { database: 'sales', name: 'Invoice', fields: ['id', 'country_id'] },
+        { database: 'geo', name: 'Country', fields: ['id', 'name'] },
+      ] },
+    };
+    component = await createComponent({}, definition);
+    expect(component.federatedMode()).toBe('visible');
+    expect(component.ovdbDestination()).toBe('http://127.0.0.1:50501');
+    federatedRunMock.mockResolvedValue({ recordset: { columns: [], rows: [] }, limitations: [], bindingsApplied: [], truncated: false });
+    component.federatedMode.set('full');
+    component.runQuery();
+    expect(federatedRunMock).toHaveBeenCalledWith(definition, expect.any(Function), '', 'full', expect.any(Function));
+  });
+
   it('shows only one result page at a time for a large federated recordset', async () => {
     const definition: IQueryDef = {
       ...queryDef,

@@ -5,16 +5,37 @@ import {
 import { IndexedDbDatabase } from '@dalgo/indexeddb';
 import type { RunQueryResponse, TypedValue } from '@sneat/datatug-semantic';
 import type { IQueryDef, ITextQueryRequest } from '../models/definition/query-def';
+import { deleteQueryDatabase, queryStorageError } from './federated-query-storage';
 
 type Data = Record<string, unknown>;
 interface OvdbRecord { readonly key: string; readonly data: Data }
-interface OvdbPage { readonly records: readonly OvdbRecord[]; readonly nextCursor?: unknown }
+interface OvdbPage { readonly records: readonly OvdbRecord[]; readonly nextPageToken?: string; readonly snapshotExpiresAt?: string }
 
 function containsAggregate(expression: DTQLExpression): boolean {
   return expression.kind === 'aggregate' || (expression.kind === 'binary' && (containsAggregate(expression.left) || containsAggregate(expression.right)));
 }
 
+export function federatedVisibleMode(definition: IQueryDef): { supported: boolean; defaultMode: FederatedQueryMode; reason?: string } {
+  const config = definition.federation;
+  if (!config) return { supported: false, defaultMode: 'full' };
+  try {
+    const parsed = parseDTQL((definition.request as ITextQueryRequest).text, { tables: config.tables });
+    if (!isJoinedDTQLQuery(parsed)) return { supported: false, defaultMode: 'full', reason: 'Visible rows requires a cross-source detail query.' };
+    const global = parsed.groupBy !== undefined || parsed.having !== undefined || parsed.orders.length > 0 ||
+      (parsed.columns ?? []).some((column) => column.expression !== undefined && containsAggregate(column.expression));
+    if (global) return { supported: false, defaultMode: 'full', reason: 'Aggregates and global ordering require Full result.' };
+    const lookup = parsed.from.joins.length === 0 && (config.lookups?.length ?? 0) > 0 &&
+      parsed.filters.length === 0 && parsed.columns === undefined && parsed.offset === undefined;
+    const flatJoin = parsed.from.joins.length === 1 && parsed.from.joins[0].from.joins.length === 0;
+    if (!lookup && !flatJoin) return { supported: false, defaultMode: 'full', reason: 'Visible rows supports direct lookups or one flat join.' };
+    return { supported: true, defaultMode: lookup || parsed.from.joins[0]?.type === 'left' ? 'visible' : 'full' };
+  } catch {
+    return { supported: false, defaultMode: 'full', reason: 'Visible rows is unavailable until this query can be parsed.' };
+  }
+}
+
 export interface FederatedQueryProgress {
+  readonly stage: 'preparing' | 'loading' | 'processing' | 'lookup' | 'complete';
   readonly rowsLoaded: number;
   readonly rowsProcessed: number;
   readonly requestsCompleted: number;
@@ -22,8 +43,11 @@ export interface FederatedQueryProgress {
   readonly requestsPending: number;
 }
 
-export type FederatedQueryResult = RunQueryResponse & { readonly totalRows?: number };
+type Lookup = NonNullable<NonNullable<IQueryDef['federation']>['lookups']>[number];
+
+export type FederatedQueryResult = RunQueryResponse & { readonly totalRows?: number; readonly hasMore?: boolean };
 export type FederatedOutputPage = (rows: readonly (readonly TypedValue[])[]) => Promise<void>;
+export type FederatedQueryMode = 'full' | 'visible';
 
 function typed(value: unknown): TypedValue {
   if (value === null || value === undefined) return { type: 'null', value: null };
@@ -42,8 +66,18 @@ function ovdbBaseUrl(raw: string): string {
   return url.href.replace(/\/$/, '');
 }
 
+function retryDelay(attempt: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(signal.reason); return; }
+    const timer = setTimeout(done, 200 * (attempt + 1));
+    function done(): void { signal?.removeEventListener('abort', abort); resolve(); }
+    function abort(): void { clearTimeout(timer); reject(signal?.reason); }
+    signal?.addEventListener('abort', abort, { once: true });
+  });
+}
+
 /** Runs each leaf against OVDB directly and merges/aggregates in this runtime. */
-export async function runFederatedQuery(definition: IQueryDef, onProgress?: (progress: FederatedQueryProgress) => void, token = '', onOutputPage?: FederatedOutputPage, signal?: AbortSignal): Promise<FederatedQueryResult> {
+export async function runFederatedQuery(definition: IQueryDef, onProgress?: (progress: FederatedQueryProgress) => void, token = '', onOutputPage?: FederatedOutputPage, signal?: AbortSignal, mode: FederatedQueryMode = 'full', onPageReady?: (result: FederatedQueryResult) => void, waitForNextPage?: () => Promise<void>): Promise<FederatedQueryResult> {
     const config = definition.federation;
     if (!config) throw new Error('This query has no direct OVDB configuration.');
     const baseUrl = ovdbBaseUrl(config.ovdbBaseUrl);
@@ -57,13 +91,81 @@ export async function runFederatedQuery(definition: IQueryDef, onProgress?: (pro
       for (const joined of relation.joins) visit(joined.from);
     };
     visit(parsed.from);
-    const storeName = `datatug-federated-${crypto.randomUUID()}`;
+    const storeName = `datatug-federated-${Date.now()}-${crypto.randomUUID()}`;
     const cache = new IndexedDbDatabase({ name: storeName, version: 1, collections: relations.map((relation) => ({
       name: `${relation.database}.${relation.name}`, storeName: `${relation.database}_${relation.name}`,
     })) });
     try {
       let rowsLoaded = 0;
       let rowsProcessed = 0;
+      let lookupCompleted = 0;
+      let lookupInFlight = 0;
+      let lookupPending = 0;
+      let stage: FederatedQueryProgress['stage'] = 'loading';
+      const report = (): void => onProgress?.({ stage, rowsLoaded, rowsProcessed, requestsCompleted: lookupCompleted, requestsInFlight: lookupInFlight, requestsPending: lookupPending });
+      const lookupOptions = (lookup: Lookup) => {
+        if (!/^[A-Za-z0-9_-]+$/.test(lookup.database) || !/^[A-Za-z0-9_-]+$/.test(lookup.collection)) throw new Error('Lookup database and collection names must be simple identifiers.');
+        let stageCompleted = 0;
+        const cache = new Map<string, Promise<Data>>();
+        return {
+          ...(lookup.concurrency === undefined ? {} : { concurrency: lookup.concurrency }),
+          keyOf: (row: QueryPage<Data>['records'][number]) => {
+            const value = row.data[lookup.fromColumn];
+            if ((typeof value !== 'number' || !Number.isSafeInteger(value)) && typeof value !== 'string') throw new Error(`Lookup column ${lookup.fromColumn} needs a string or safe integer.`);
+            return value;
+          },
+          fetch: async (value: string | number): Promise<Data> => {
+            stage = 'lookup';
+            const cacheKey = String(value);
+            let promise = cache.get(cacheKey);
+            if (!promise) {
+              promise = fetchLookup(lookup, cacheKey);
+              cache.set(cacheKey, promise);
+              if (cache.size > 1000) cache.delete(cache.keys().next().value!);
+              promise.catch(() => cache.delete(cacheKey));
+            }
+            return promise;
+          },
+          merge: (row: QueryPage<Data>['records'][number], data: Data): Data => {
+            const merged = { ...row.data };
+            for (const field of lookup.fields) merged[field.target] = data[field.source] ?? null;
+            return merged;
+          },
+          onProgress: (item: { requestsCompleted: number; requestsInFlight: number; requestsPending: number }): void => {
+            stage = 'lookup';
+            lookupCompleted += item.requestsCompleted - stageCompleted;
+            stageCompleted = item.requestsCompleted;
+            lookupInFlight = item.requestsInFlight;
+            lookupPending = item.requestsPending;
+            report();
+          },
+        };
+      };
+      const fetchLookup = async (lookup: Lookup, value: string): Promise<Data> => {
+        const url = `${baseUrl}/v1/databases/${lookup.database}/records/${lookup.collection}/${encodeURIComponent(value)}`;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          signal?.throwIfAborted();
+          const timeout = new AbortController();
+          const timer = setTimeout(() => timeout.abort(), 15000);
+          try {
+            const response = await fetch(url, { headers: { Accept: 'application/json', ...authHeaders }, redirect: 'error', signal: signal ? AbortSignal.any([signal, timeout.signal]) : timeout.signal });
+            if (!response.ok) {
+              if ([408, 429, 502, 503, 504].includes(response.status) && attempt < 2) { await retryDelay(attempt, signal); continue; }
+              throw new Error(`OVDB lookup ${lookup.database}/${lookup.collection} failed (${response.status}).`);
+            }
+            const record = await response.json() as OvdbRecord;
+            if (!record.data || typeof record.data !== 'object' || Array.isArray(record.data)) throw new Error('OVDB lookup returned invalid JSON data.');
+            return record.data;
+          } catch (error) {
+            signal?.throwIfAborted();
+            if (attempt === 2) throw error;
+            if (!timeout.signal.aborted && !(error instanceof TypeError)) throw error;
+            await retryDelay(attempt, signal);
+          } finally { clearTimeout(timer); }
+        }
+        throw new Error('OVDB lookup retries exhausted.');
+      };
+
       let outputNames: string[] | undefined;
       let totalOutputRows = 0;
       const firstOutputRows: TypedValue[][] = [];
@@ -75,52 +177,52 @@ export async function runFederatedQuery(definition: IQueryDef, onProgress?: (pro
         for (const row of converted) if (firstOutputRows.length < 100) firstOutputRows.push(row);
         totalOutputRows += converted.length;
         await onOutputPage?.(converted);
+        if (mode === 'visible') {
+          onPageReady?.(pagedResponse());
+          if (rows.length === 100) await waitForNextPage?.();
+        }
       };
       const pagedResponse = (): FederatedQueryResult => ({
         recordset: {
           columns: (outputNames ?? definition.recordsets?.[0]?.columns.map((column) => column.name) ?? []).map((name) => ({ name, type: 'unknown' })),
           rows: firstOutputRows,
         },
-        totalRows: totalOutputRows,
+        ...(mode === 'visible' ? { hasMore: true } : { totalRows: totalOutputRows }),
         limitations: [], bindingsApplied: [], truncated: false,
         provenance: { source: `${baseUrl} (direct OVDB)`, queryId: definition.id, mode: 'live', observedAt: new Date().toISOString(), executionProfile: 'protected' },
       });
       const fetchPages = async function* (relation: QueryRelation, query: StructuredQuery<Data>): AsyncIterable<OvdbPage> {
         const ordered = query.orders;
-        const bounded = query.limit !== undefined && query.limit <= 500;
-        if (!bounded && ordered.length > 0 && (ordered.length !== 1 || ordered[0]?.field !== 'id' || ordered[0]?.direction !== 'asc')) {
-          throw new Error(`Large OVDB scans of ${relation.name} require ascending id order.`);
-        }
-        let lastId: string | number | undefined;
         let remaining = query.limit;
+        if (remaining === 0) return;
+        const pageSize = Math.min(remaining ?? (mode === 'visible' ? 100 : 500), mode === 'visible' ? 100 : 500);
+        let pageToken: string | undefined;
         for (;;) {
           signal?.throwIfAborted();
-          const limit = Math.min(remaining ?? 500, 500);
-          const order = bounded ? ordered : [{ field: 'id', direction: 'asc' as const }];
+          if (pageToken === undefined) { stage = 'preparing'; report(); }
           const body = JSON.stringify({
             from: { name: relation.name, ...(relation.schema ? { schema: relation.schema } : {}) },
-            orderBy: order.map((item) => ({ field: item.field, ...(item.direction === 'desc' ? { desc: true } : {}) })),
-            limit,
-            ...(lastId === undefined ? {} : { where: { op: '>', left: { field: 'id' }, right: { value: lastId } } }),
+            ...(ordered.length ? { orderBy: ordered.map((item) => ({ field: item.field, ...(item.direction === 'desc' ? { desc: true } : {}) })) } : {}),
           });
           const response = await fetch(`${baseUrl}/v1/databases/${encodeURIComponent(relation.database || '')}/dtql`, {
-            method: 'POST', headers: { 'Content-Type': 'application/yaml', Accept: 'application/json', ...authHeaders }, body, redirect: 'error', signal,
+            method: 'POST', headers: { 'Content-Type': 'application/yaml', Accept: 'application/json', 'OVDB-Page-Size': String(pageSize), ...(pageToken ? { 'OVDB-Page-Token': pageToken } : {}), ...authHeaders }, body, redirect: 'error', signal,
           });
+          if (response.status === 410) throw new Error(`OVDB ${relation.database} source snapshot expired. Run the query again.`);
+          if (response.status === 413) throw new Error(`OVDB ${relation.database} source snapshot exceeds the server limit.`);
+          if (response.status === 503) throw new Error(`OVDB ${relation.database} cannot prepare a source snapshot right now.`);
+          if (response.status === 422) throw new Error(`OVDB ${relation.database} does not support this snapshot query.`);
           if (!response.ok) throw new Error(`OVDB ${relation.database} query failed (${response.status}).`);
           const page = await response.json() as OvdbPage;
-          if (!Array.isArray(page.records) || page.records.length > limit || page.nextCursor !== undefined) throw new Error(`OVDB ${relation.database} returned an invalid page.`);
-          rowsLoaded += page.records.length;
-          onProgress?.({ rowsLoaded, rowsProcessed, requestsCompleted: 0, requestsInFlight: 0, requestsPending: 0 });
-          yield page;
-          if (page.records.length < limit || bounded) break;
-          remaining = remaining === undefined ? undefined : remaining - page.records.length;
-          if (remaining === 0) break;
-          const id = page.records.at(-1)?.data.id;
-          if ((typeof id !== 'number' || !Number.isSafeInteger(id)) && typeof id !== 'string') throw new Error(`OVDB ${relation.database} needs a stable id field for paging.`);
-          if (lastId !== undefined && (typeof id !== typeof lastId || (typeof id === 'number' && typeof lastId === 'number' && id <= lastId) || (typeof id === 'string' && typeof lastId === 'string' && id <= lastId))) {
-            throw new Error(`OVDB ${relation.database} did not advance its id cursor.`);
-          }
-          lastId = id;
+          if (!Array.isArray(page.records) || page.records.length > pageSize || (page.nextPageToken !== undefined && (!page.nextPageToken || typeof page.nextPageToken !== 'string'))) throw new Error(`OVDB ${relation.database} returned an invalid page.`);
+          const records = remaining === undefined ? page.records : page.records.slice(0, remaining);
+          rowsLoaded += records.length;
+          stage = 'loading';
+          report();
+          yield { records };
+          remaining = remaining === undefined ? undefined : remaining - records.length;
+          if (remaining === 0 || !page.nextPageToken) break;
+          if (page.nextPageToken === pageToken) throw new Error(`OVDB ${relation.database} did not advance its snapshot page token.`);
+          pageToken = page.nextPageToken;
         }
       };
       const executorFor = (relation: QueryRelation): QueryExecutor => ({
@@ -143,6 +245,11 @@ export async function runFederatedQuery(definition: IQueryDef, onProgress?: (pro
       const streamedLookup = parsed.from.joins.length === 0 && (config.lookups?.length ?? 0) > 0 &&
         parsed.filters.length === 0 && parsed.orders.length === 0 && parsed.columns === undefined && parsed.groupBy === undefined &&
         parsed.having === undefined && parsed.offset === undefined;
+      const pagedJoin = parsed.from.joins.length === 1 && parsed.groupBy === undefined && parsed.having === undefined && parsed.orders.length === 0 &&
+        !(parsed.columns ?? []).some((column) => column.expression !== undefined && containsAggregate(column.expression));
+      if (mode === 'visible' && !federatedVisibleMode(definition).supported) {
+        throw new Error(federatedVisibleMode(definition).reason ?? 'Visible rows is unavailable for this query. Choose Full result.');
+      }
       if (streamedLookup) {
         let pages: AsyncIterable<QueryPage<Data>> = (async function* () {
           const relation = parsed.from;
@@ -158,37 +265,15 @@ export async function runFederatedQuery(definition: IQueryDef, onProgress?: (pro
             yield { records: page.records.map((row) => ({ key: key(`${relation.database}.${relation.name}`, row.key), exists: true as const, data: row.data })) };
           }
         })();
-        for (const lookup of config.lookups ?? []) {
-          if (!/^[A-Za-z0-9_-]+$/.test(lookup.database) || !/^[A-Za-z0-9_-]+$/.test(lookup.collection)) throw new Error('Lookup database and collection names must be simple identifiers.');
-          pages = executeRecordLookupPages(pages, {
-            ...(lookup.concurrency === undefined ? {} : { concurrency: lookup.concurrency }),
-            keyOf: (row) => {
-              const value = row.data[lookup.fromColumn];
-              if ((typeof value !== 'number' || !Number.isSafeInteger(value)) && typeof value !== 'string') throw new Error(`Lookup column ${lookup.fromColumn} needs a string or safe integer.`);
-              return value;
-            },
-            fetch: async (value) => {
-              const response = await fetch(`${baseUrl}/v1/databases/${lookup.database}/records/${lookup.collection}/${encodeURIComponent(String(value))}`, { headers: { Accept: 'application/json', ...authHeaders }, redirect: 'error', signal });
-              if (!response.ok) throw new Error(`OVDB lookup ${lookup.database}/${lookup.collection} failed (${response.status}).`);
-              const record = await response.json() as OvdbRecord;
-              if (!record.data || typeof record.data !== 'object' || Array.isArray(record.data)) throw new Error('OVDB lookup returned invalid JSON data.');
-              return record.data;
-            },
-            merge: (row, data) => {
-              const merged = { ...row.data };
-              for (const field of lookup.fields) merged[field.target] = data[field.source] ?? null;
-              return merged;
-            },
-            onProgress: (item) => onProgress?.({ rowsLoaded, rowsProcessed, requestsCompleted: item.requestsCompleted, requestsInFlight: item.requestsInFlight, requestsPending: item.requestsPending }),
-          });
-        }
+        for (const lookup of config.lookups ?? []) pages = executeRecordLookupPages(pages, lookupOptions(lookup));
         const records: QueryPage<Data>['records'][number][] = [];
         for await (const page of pages) {
           if (onOutputPage) await emitOutput(page.records);
           else records.push(...page.records);
           rowsProcessed += page.records.length;
-          onProgress?.({ rowsLoaded, rowsProcessed, requestsCompleted: rowsProcessed, requestsInFlight: 0, requestsPending: 0 });
+          report();
         }
+        stage = 'complete'; report();
         if (onOutputPage) return pagedResponse();
         const names = records.length ? Object.keys(records[0].data) : (definition.recordsets?.[0]?.columns.map((column) => column.name) ?? []);
         return {
@@ -214,40 +299,18 @@ export async function runFederatedQuery(definition: IQueryDef, onProgress?: (pro
           }
         },
         ...(onProgress ? { onProgress: (item: JoinedQueryProgress) => {
-          if (item.phase === 'process') rowsProcessed = item.rows;
-          onProgress({ rowsLoaded, rowsProcessed, requestsCompleted: 0, requestsInFlight: 0, requestsPending: 0 });
+          if (item.phase === 'process') { rowsProcessed = item.rows; stage = 'processing'; }
+          report();
         } } : {}),
       };
       let records: QueryPage<Data>['records'];
-      if (parsed.from.joins.length === 1 && parsed.groupBy === undefined && parsed.having === undefined && parsed.orders.length === 0 &&
-          !(parsed.columns ?? []).some((column) => column.expression !== undefined && containsAggregate(column.expression))) {
+      if (pagedJoin) {
         if (onOutputPage) {
-          let pages: AsyncIterable<QueryPage<Data>> = executeJoinedDTQLQueryPages(parsed, executionOptions);
-          for (const lookup of config.lookups ?? []) {
-            if (!/^[A-Za-z0-9_-]+$/.test(lookup.database) || !/^[A-Za-z0-9_-]+$/.test(lookup.collection)) throw new Error('Lookup database and collection names must be simple identifiers.');
-            pages = executeRecordLookupPages(pages, {
-              ...(lookup.concurrency === undefined ? {} : { concurrency: lookup.concurrency }),
-              keyOf: (row) => {
-                const value = row.data[lookup.fromColumn];
-                if ((typeof value !== 'number' || !Number.isSafeInteger(value)) && typeof value !== 'string') throw new Error(`Lookup column ${lookup.fromColumn} needs a string or safe integer.`);
-                return value;
-              },
-              fetch: async (value) => {
-                const response = await fetch(`${baseUrl}/v1/databases/${lookup.database}/records/${lookup.collection}/${encodeURIComponent(String(value))}`, { headers: { Accept: 'application/json', ...authHeaders }, redirect: 'error', signal });
-                if (!response.ok) throw new Error(`OVDB lookup ${lookup.database}/${lookup.collection} failed (${response.status}).`);
-                const record = await response.json() as OvdbRecord;
-                if (!record.data || typeof record.data !== 'object' || Array.isArray(record.data)) throw new Error('OVDB lookup returned invalid JSON data.');
-                return record.data;
-              },
-              merge: (row, data) => {
-                const merged = { ...row.data };
-                for (const field of lookup.fields) merged[field.target] = data[field.source] ?? null;
-                return merged;
-              },
-              onProgress: (item) => onProgress?.({ rowsLoaded, rowsProcessed, requestsCompleted: item.requestsCompleted, requestsInFlight: item.requestsInFlight, requestsPending: item.requestsPending }),
-            });
-          }
+          let pages: AsyncIterable<QueryPage<Data>> = executeJoinedDTQLQueryPages(parsed,
+            mode === 'visible' ? { ...executionOptions, pageSize: 100 } as JoinedQueryExecutionOptions : executionOptions);
+          for (const lookup of config.lookups ?? []) pages = executeRecordLookupPages(pages, lookupOptions(lookup));
           for await (const page of pages) await emitOutput(page.records);
+          stage = 'complete'; report();
           return pagedResponse();
         }
         const paged: QueryPage<Data>['records'][number][] = [];
@@ -256,30 +319,8 @@ export async function runFederatedQuery(definition: IQueryDef, onProgress?: (pro
       } else {
         records = (await executeJoinedDTQLQuery(executorFor(parsed.from), parsed, executionOptions)).records;
       }
-      for (const lookup of config.lookups ?? []) {
-        if (!/^[A-Za-z0-9_-]+$/.test(lookup.database) || !/^[A-Za-z0-9_-]+$/.test(lookup.collection)) throw new Error('Lookup database and collection names must be simple identifiers.');
-        records = await executeRecordLookups(records, {
-          ...(lookup.concurrency === undefined ? {} : { concurrency: lookup.concurrency }),
-          keyOf: (row) => {
-            const value = row.data[lookup.fromColumn];
-            if ((typeof value !== 'number' || !Number.isSafeInteger(value)) && typeof value !== 'string') throw new Error(`Lookup column ${lookup.fromColumn} needs a string or safe integer.`);
-            return value;
-          },
-          fetch: async (value) => {
-            const response = await fetch(`${baseUrl}/v1/databases/${lookup.database}/records/${lookup.collection}/${encodeURIComponent(String(value))}`, { headers: { Accept: 'application/json', ...authHeaders }, redirect: 'error', signal });
-            if (!response.ok) throw new Error(`OVDB lookup ${lookup.database}/${lookup.collection} failed (${response.status}).`);
-            const record = await response.json() as OvdbRecord;
-            if (!record.data || typeof record.data !== 'object' || Array.isArray(record.data)) throw new Error('OVDB lookup returned invalid JSON data.');
-            return record.data;
-          },
-          merge: (row, data) => {
-            const merged = { ...row.data };
-            for (const field of lookup.fields) merged[field.target] = data[field.source] ?? null;
-            return merged;
-          },
-          onProgress: (item) => onProgress?.({ rowsLoaded, rowsProcessed, requestsCompleted: item.requestsCompleted, requestsInFlight: item.requestsInFlight, requestsPending: item.requestsPending }),
-        });
-      }
+      for (const lookup of config.lookups ?? []) records = await executeRecordLookups(records, lookupOptions(lookup));
+      stage = 'complete'; report();
       const names = records.length ? Object.keys(records[0].data) : (definition.recordsets?.[0]?.columns.map((column) => column.name) ?? []);
       return {
         recordset: {
@@ -289,13 +330,10 @@ export async function runFederatedQuery(definition: IQueryDef, onProgress?: (pro
         limitations: [], bindingsApplied: [], truncated: false,
         provenance: { source: `${baseUrl} (direct OVDB)`, queryId: definition.id, mode: 'live', observedAt: new Date().toISOString(), executionProfile: 'protected' },
       };
+    } catch (error) {
+      throw queryStorageError(error);
     } finally {
       await cache.close();
-      await new Promise<void>((resolve, reject) => {
-        const request = indexedDB.deleteDatabase(storeName);
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error ?? new Error('Cannot remove the temporary query table.'));
-        request.onblocked = () => reject(new Error('The temporary query table is still open.'));
-      });
+      await deleteQueryDatabase(storeName);
     }
   }

@@ -233,8 +233,18 @@
         <ion-input aria-label="OVDB bearer token" type="password" autocomplete="off"
           [value]="ovdbToken()" (ionInput)="ovdbToken.set($event.detail.value || '')" />
       </ion-item>
+      <p class="ion-padding-horizontal">This token is sent to {{ ovdbDestination() }} for this run.</p>
     }
 
+    @if (queryDef()?.federation) {
+      <ion-item>
+        <ion-select label="Result mode" [value]="federatedMode()" (ionChange)="federatedMode.set($event.detail.value)" [disabled]="running()">
+          <ion-select-option value="full">Full result</ion-select-option>
+          <ion-select-option value="visible" [disabled]="!visibleModeSupport().supported">Visible rows</ion-select-option>
+        </ion-select>
+      </ion-item>
+      <p class="ion-padding-horizontal">@if (visibleModeSupport().supported) { Visible rows loads the first result page, then computes later pages as you request them. } @else { {{ visibleModeSupport().reason }} }</p>
+    }
     <ion-item lines="none">
       <ion-buttons>
         <ion-button
@@ -260,9 +270,10 @@
     </ion-item>
   </ion-card>
 
-  @if (running() && federatedProgress(); as progress) {
+  @if ((running() || resultPageLoading()) && federatedProgress(); as progress) {
     <p role="status" aria-live="polite">
-      Loaded {{ progress.rowsLoaded }} rows; processed {{ progress.rowsProcessed }} rows.
+      {{ progress.stage === 'preparing' ? 'Preparing source snapshot' : progress.stage === 'loading' ? 'Loading sources' : progress.stage === 'processing' ? 'Processing rows' : progress.stage === 'lookup' ? 'Looking up records' : 'Query complete' }}:
+      loaded {{ progress.rowsLoaded }} rows; processed {{ progress.rowsProcessed }} rows.
       HTTP lookups: {{ progress.requestsCompleted }} completed,
       {{ progress.requestsInFlight }} in flight, {{ progress.requestsPending }} pending.
     </p>
@@ -346,11 +357,11 @@
 
     <ion-card>
       <ion-card-content style="overflow-x: auto">
-        @if (resultTotalRows() > resultPageSize) {
+        @if (resultTotalRows() > resultPageSize || resultHasMore() || resultPageIndex() > 0) {
           <div aria-label="Result pages">
             <ion-button fill="clear" [disabled]="resultPageLoading() || resultPageIndex() === 0" (click)="changeResultPage(-1)">Previous</ion-button>
-            Rows {{ resultPageIndex() * resultPageSize + 1 }}–{{ resultPageEnd() }} of {{ resultTotalRows() }}
-            <ion-button fill="clear" [disabled]="resultPageLoading() || (resultPageIndex() + 1) * resultPageSize >= resultTotalRows()" (click)="changeResultPage(1)">Next</ion-button>
+            Rows {{ resultPageIndex() * resultPageSize + 1 }}–{{ resultPageIndex() * resultPageSize + visibleResultRows().length }} @if (!resultHasMore()) { of {{ resultTotalRows() }} }
+            <ion-button fill="clear" [disabled]="resultPageLoading() || (!resultHasMore() && (resultPageIndex() + 1) * resultPageSize >= resultTotalRows())" (click)="changeResultPage(1)">Next</ion-button>
           </div>
         }
         <table
