@@ -44,14 +44,15 @@ test('CLI chat deep link restores, sends, and follows terminal updates', async (
 });
 
 test('browser connects to a real local CLI bridge', async ({ page }) => {
-  test.skip(!process.env.DATATUG_BRIDGE_SMOKE_LINK_FILE, 'Requires a running local CLI bridge.');
+  const linkFile = process.env.DATATUG_BRIDGE_SMOKE_LINK_FILE;
+  test.skip(!linkFile, 'Requires a running local CLI bridge.');
   let changes = 0;
   page.on('websocket', (socket) => {
     if (socket.url().endsWith('/v1/chat/events')) socket.on('framereceived', ({ payload }) => {
       if (String(payload).includes('changed')) changes += 1;
     });
   });
-  const link = readFileSync(process.env.DATATUG_BRIDGE_SMOKE_LINK_FILE!, 'utf8');
+  const link = readFileSync(linkFile || '', 'utf8');
   const fragment = new URL(link).hash;
   await page.goto(`/chat${fragment}`);
   await expect(page.getByLabel('Message to CLI chat')).toBeEnabled();
