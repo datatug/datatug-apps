@@ -22,6 +22,9 @@ export interface FederatedQueryProgress {
   readonly requestsPending: number;
 }
 
+export type FederatedQueryResult = RunQueryResponse & { readonly totalRows?: number };
+export type FederatedOutputPage = (rows: readonly (readonly TypedValue[])[]) => Promise<void>;
+
 function typed(value: unknown): TypedValue {
   if (value === null || value === undefined) return { type: 'null', value: null };
   if (typeof value === 'string') return { type: 'string', value };
@@ -40,7 +43,7 @@ function ovdbBaseUrl(raw: string): string {
 }
 
 /** Runs each leaf against OVDB directly and merges/aggregates in this runtime. */
-export async function runFederatedQuery(definition: IQueryDef, onProgress?: (progress: FederatedQueryProgress) => void, token = ''): Promise<RunQueryResponse> {
+export async function runFederatedQuery(definition: IQueryDef, onProgress?: (progress: FederatedQueryProgress) => void, token = '', onOutputPage?: FederatedOutputPage): Promise<FederatedQueryResult> {
     const config = definition.federation;
     if (!config) throw new Error('This query has no direct OVDB configuration.');
     const baseUrl = ovdbBaseUrl(config.ovdbBaseUrl);
@@ -61,6 +64,26 @@ export async function runFederatedQuery(definition: IQueryDef, onProgress?: (pro
     try {
       let rowsLoaded = 0;
       let rowsProcessed = 0;
+      let outputNames: string[] | undefined;
+      let totalOutputRows = 0;
+      const firstOutputRows: TypedValue[][] = [];
+      const emitOutput = async (rows: QueryPage<Data>['records']): Promise<void> => {
+        if (!outputNames && rows.length) outputNames = Object.keys(rows[0].data);
+        const names = outputNames ?? [];
+        const converted = rows.map((row) => names.map((name) => typed(row.data[name])));
+        for (const row of converted) if (firstOutputRows.length < 100) firstOutputRows.push(row);
+        totalOutputRows += converted.length;
+        await onOutputPage?.(converted);
+      };
+      const pagedResponse = (): FederatedQueryResult => ({
+        recordset: {
+          columns: (outputNames ?? definition.recordsets?.[0]?.columns.map((column) => column.name) ?? []).map((name) => ({ name, type: 'unknown' })),
+          rows: firstOutputRows,
+        },
+        totalRows: totalOutputRows,
+        limitations: [], bindingsApplied: [], truncated: false,
+        provenance: { source: `${baseUrl} (direct OVDB)`, queryId: definition.id, mode: 'live', observedAt: new Date().toISOString(), executionProfile: 'protected' },
+      });
       const fetchPages = async function* (relation: QueryRelation, query: StructuredQuery<Data>): AsyncIterable<OvdbPage> {
         const ordered = query.orders;
         const bounded = query.limit !== undefined && query.limit <= 500;
@@ -159,10 +182,12 @@ export async function runFederatedQuery(definition: IQueryDef, onProgress?: (pro
         }
         const records: QueryPage<Data>['records'][number][] = [];
         for await (const page of pages) {
-          records.push(...page.records);
+          if (onOutputPage) await emitOutput(page.records);
+          else records.push(...page.records);
           rowsProcessed += page.records.length;
           onProgress?.({ rowsLoaded, rowsProcessed, requestsCompleted: rowsProcessed, requestsInFlight: 0, requestsPending: 0 });
         }
+        if (onOutputPage) return pagedResponse();
         const names = records.length ? Object.keys(records[0].data) : (definition.recordsets?.[0]?.columns.map((column) => column.name) ?? []);
         return {
           recordset: { columns: names.map((name) => ({ name, type: 'unknown' })), rows: records.map((row) => names.map((name) => typed(row.data[name]))) },
@@ -194,6 +219,10 @@ export async function runFederatedQuery(definition: IQueryDef, onProgress?: (pro
       let records: QueryPage<Data>['records'];
       if (parsed.from.joins.length === 1 && parsed.groupBy === undefined && parsed.having === undefined && parsed.orders.length === 0 &&
           !(parsed.columns ?? []).some((column) => column.expression !== undefined && containsAggregate(column.expression))) {
+        if (onOutputPage && !(config.lookups?.length)) {
+          for await (const page of executeJoinedDTQLQueryPages(parsed, executionOptions)) await emitOutput(page.records);
+          return pagedResponse();
+        }
         const paged: QueryPage<Data>['records'][number][] = [];
         for await (const page of executeJoinedDTQLQueryPages(parsed, executionOptions)) paged.push(...page.records);
         records = paged;

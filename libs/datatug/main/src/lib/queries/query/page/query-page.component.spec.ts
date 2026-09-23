@@ -149,6 +149,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
   let runFixture: ComponentFixture<QueryPageComponent>;
   let runQueryMock: ReturnType<typeof vi.fn>;
   let federatedRunMock: ReturnType<typeof vi.fn>;
+  let federatedGetPageMock: ReturnType<typeof vi.fn>;
   let agentContext: ReturnType<typeof agentContextStub>;
   let investigationContext: InvestigationContextService;
 
@@ -192,6 +193,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     });
     runQueryMock = vi.fn();
     federatedRunMock = vi.fn();
+    federatedGetPageMock = vi.fn();
     agentContext = agentContextStub();
     await TestBed.configureTestingModule({
       imports: [QueryPageComponent],
@@ -265,7 +267,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
         },
         { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn() } },
         { provide: SemanticApiService, useValue: { runQuery: runQueryMock } },
-        { provide: FederatedQueryService, useValue: { run: federatedRunMock } },
+        { provide: FederatedQueryService, useValue: { run: federatedRunMock, getPage: federatedGetPageMock, dispose: vi.fn() } },
         { provide: AgentContextService, useValue: agentContext },
       ],
     })
@@ -364,6 +366,32 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     component.runQuery();
     await Promise.resolve();
     expect(component.resultPageIndex()).toBe(0);
+  });
+
+  it('fetches a browser-worker result page without retaining all output rows', async () => {
+    const definition: IQueryDef = {
+      ...queryDef,
+      id: 'paged-sales',
+      request: { queryType: QueryType.DTQL, text: 'from: Invoice' },
+      federation: { ovdbBaseUrl: 'http://127.0.0.1:50501', tables: [] },
+      parameters: [],
+    };
+    component = await createComponent({}, definition);
+    federatedRunMock.mockResolvedValue({
+      recordset: { columns: [{ name: 'id', type: 'integer' }], rows: [[{ type: 'integer', value: '1' }]] },
+      totalRows: 120_000,
+      limitations: [], bindingsApplied: [], truncated: false,
+      provenance: { source: 'direct OVDB', queryId: 'paged-sales', mode: 'live', observedAt: '2026-09-23T00:00:00Z', executionProfile: 'protected' },
+    });
+    federatedGetPageMock.mockResolvedValue([[{ type: 'integer', value: '101' }]]);
+    component.runQuery();
+    await Promise.resolve();
+    expect(component.resultTotalRows()).toBe(120_000);
+    expect(component.visibleResultRows()).toHaveLength(1);
+    await component.changeResultPage(1);
+    expect(federatedGetPageMock).toHaveBeenCalledWith(1);
+    expect(component.visibleResultRows()).toEqual([[{ type: 'integer', value: '101' }]]);
+    expect(component.resultPageEnd()).toBe(200);
   });
 
   it('binds a parameter from context when no selection binding is present', async () => {
