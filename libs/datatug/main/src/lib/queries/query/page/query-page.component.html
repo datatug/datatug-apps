@@ -227,6 +227,14 @@
       </ion-item>
     }
 
+    @if (queryDef()?.federation) {
+      <ion-item>
+        <ion-label position="stacked">OVDB bearer token (optional)</ion-label>
+        <ion-input aria-label="OVDB bearer token" type="password" autocomplete="off"
+          [value]="ovdbToken()" (ionInput)="ovdbToken.set($event.detail.value || '')" />
+      </ion-item>
+    }
+
     <ion-item lines="none">
       <ion-buttons>
         <ion-button
@@ -251,6 +259,14 @@
       </ion-buttons>
     </ion-item>
   </ion-card>
+
+  @if (running() && federatedProgress(); as progress) {
+    <p role="status" aria-live="polite">
+      Loaded {{ progress.rowsLoaded }} rows; processed {{ progress.rowsProcessed }} rows.
+      HTTP lookups: {{ progress.requestsCompleted }} completed,
+      {{ progress.requestsInFlight }} in flight, {{ progress.requestsPending }} pending.
+    </p>
+  }
 
   @if (accessBlockers().length) {
     <ul aria-label="Access blockers">
@@ -330,6 +346,13 @@
 
     <ion-card>
       <ion-card-content style="overflow-x: auto">
+        @if (resultTotalRows() > resultPageSize) {
+          <div aria-label="Result pages">
+            <ion-button fill="clear" [disabled]="resultPageLoading() || resultPageIndex() === 0" (click)="changeResultPage(-1)">Previous</ion-button>
+            Rows {{ resultPageIndex() * resultPageSize + 1 }}–{{ resultPageEnd() }} of {{ resultTotalRows() }}
+            <ion-button fill="clear" [disabled]="resultPageLoading() || (resultPageIndex() + 1) * resultPageSize >= resultTotalRows()" (click)="changeResultPage(1)">Next</ion-button>
+          </div>
+        }
         <table
           class="run-result-table"
           style="width: 100%; border-collapse: collapse"
@@ -350,7 +373,7 @@
             </tr>
           </thead>
           <tbody>
-            @for (row of result.recordset.rows; track $index) {
+            @for (row of visibleResultRows(); track $index) {
               <tr>
                 @for (cell of row; track $index) {
                   <td
@@ -365,7 +388,7 @@
                 }
               </tr>
             }
-            @if (!result.recordset.rows.length) {
+            @if (!resultTotalRows()) {
               <tr>
                 <td
                   [attr.colspan]="result.recordset.columns.length"

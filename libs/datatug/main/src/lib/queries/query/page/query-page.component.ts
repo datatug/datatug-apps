@@ -108,6 +108,7 @@ import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatu
 import { DatatugExecutorModule } from '../../../executor/datatug-executor.module';
 import { DatatugQueriesServicesModule } from '../../datatug-queries-services.module';
 import { QueriesService } from '../../queries.service';
+import { FederatedQueryService, type FederatedQueryProgress, type FederatedQueryResult } from '../../federated-query.service';
 import { QueryContextSqlService } from '../../query-context-sql.service';
 import {
   isQueryChanged,
@@ -359,6 +360,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private readonly router = inject(Router);
   private readonly queryContextSqlService = inject(QueryContextSqlService);
   private readonly queriesService = inject(QueriesService);
+  private readonly federatedQuery = inject(FederatedQueryService);
   private readonly semanticApi = inject(SemanticApiService);
   private readonly agentContext = inject(AgentContextService);
   private readonly investigationContext = inject(InvestigationContextService);
@@ -448,9 +450,25 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     hasBlockingBindings(this.bindings()),
   );
   public readonly running = signal(false);
+  public readonly federatedProgress = signal<FederatedQueryProgress | undefined>(undefined);
+  public readonly resultPageIndex = signal(0);
+  public readonly resultPageSize = 100;
+  public readonly resultPageLoading = signal(false);
+  private readonly resultPageRows = signal<RunQueryResponse['recordset']['rows']>([]);
+  /** In-memory OVDB credential for the current query only. */
+  public readonly ovdbToken = signal('');
   public readonly accessBlockers = signal<readonly string[]>([]);
   public readonly runError = signal<string | undefined>(undefined);
-  public readonly runResult = signal<RunQueryResponse | undefined>(undefined);
+  public readonly runResult = signal<FederatedQueryResult | undefined>(undefined);
+  public readonly resultTotalRows = computed(() => this.runResult()?.totalRows ?? this.runResult()?.recordset.rows.length ?? 0);
+  public readonly visibleResultRows = computed(() => {
+    const result = this.runResult();
+    if (result?.totalRows !== undefined) return this.resultPageRows();
+    const rows = result?.recordset.rows ?? [];
+    const start = this.resultPageIndex() * this.resultPageSize;
+    return rows.slice(start, start + this.resultPageSize);
+  });
+  public readonly resultPageEnd = computed(() => Math.min((this.resultPageIndex() + 1) * this.resultPageSize, this.resultTotalRows()));
   private readonly lastRunBindingRoles = signal<
     ReadonlyMap<string, ResolvedBinding['role']>
   >(new Map());
@@ -601,6 +619,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.queryState = queryState;
       // Signal write (zoneless-safe, unlike the plain-field write just
       // above) — see `queryDef`'s own doc comment.
+      if (this.queryDef()?.id !== queryState.def?.id) this.ovdbToken.set('');
       this.queryDef.set(queryState.def);
       if (this.queryState.environments && !this.queryState.activeEnv) {
         this.setActiveEnv(this.queryState.environments[0].id);
@@ -619,6 +638,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   };
 
   ngOnDestroy(): void {
+    void this.federatedQuery.dispose().catch(() => undefined);
     if (this.destroyed) {
       this.destroyed.next();
       this.destroyed.complete();
@@ -1454,6 +1474,25 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     if (!projectId || !queryId) {
       return;
     }
+    this.resultPageIndex.set(0);
+    this.resultPageRows.set([]);
+    const definition = this.queryDef();
+    if (definition?.federation) {
+      if (this.running()) return;
+      this.running.set(true);
+      this.federatedProgress.set(undefined);
+      this.runError.set(undefined);
+      this.runResult.set(undefined);
+      this.federatedQuery.run(definition, (progress) => this.federatedProgress.set(progress), this.ovdbToken().trim()).then((result) => {
+        if (this.queryDef() === definition && this.queryId === queryId) {
+          this.resultPageRows.set(result.recordset.rows);
+          this.runResult.set(result);
+        }
+      }).catch((error: unknown) => {
+        if (this.queryDef() === definition && this.queryId === queryId) this.runError.set(error instanceof Error ? error.message : 'The direct OVDB query failed.');
+      }).finally(() => this.running.set(false));
+      return;
+    }
     // Checked before requiring `environment`/`securityContextId` below: a
     // GitHub-store project has no live agent connection, so
     // `agentContext.securityContextId()` never resolves for one — the old
@@ -1535,6 +1574,24 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       },
       { project: projectId, environment, securityContextId },
     );
+  }
+
+  public async changeResultPage(delta: number): Promise<void> {
+    const next = this.resultPageIndex() + delta;
+    if (next < 0 || next * this.resultPageSize >= this.resultTotalRows()) return;
+    const result = this.runResult();
+    this.resultPageIndex.set(next);
+    if (result?.totalRows === undefined) return;
+    this.resultPageRows.set([]);
+    this.resultPageLoading.set(true);
+    try {
+      const rows = await this.federatedQuery.getPage(next);
+      if (this.resultPageIndex() === next && this.runResult() === result) this.resultPageRows.set(rows);
+    } catch (error) {
+      this.runError.set(error instanceof Error ? error.message : 'Cannot load result page.');
+    } finally {
+      if (this.resultPageIndex() === next) this.resultPageLoading.set(false);
+    }
   }
 
   /** api-contract.md "Bounded lookups and HTTP" — the user's explicit choice to view a

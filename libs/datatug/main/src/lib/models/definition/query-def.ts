@@ -37,6 +37,17 @@ export interface IQueryDef extends IQueryItem {
   dbModel?: string;
   targets?: IQueryTarget[];
   recordsets?: IRecordsetDef[];
+  federation?: {
+    readonly ovdbBaseUrl: string;
+    readonly tables: readonly { readonly name: string; readonly database?: string; readonly schema?: string; readonly fields: readonly string[] }[];
+    readonly lookups?: readonly {
+      readonly database: string;
+      readonly collection: string;
+      readonly fromColumn: string;
+      readonly fields: readonly { readonly source: string; readonly target: string }[];
+      readonly concurrency?: number;
+    }[];
+  };
   widgets?: IWidgetRef[];
 }
 

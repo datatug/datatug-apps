@@ -76,6 +76,10 @@ export interface IGithubWireQueryItem {
   parameters?: IParameterDef[];
   dbModel?: string;
   recordsets?: IRecordsetDef[];
+  federation?: {
+    readonly ovdbBaseUrl: string;
+    readonly tables: readonly { readonly name: string; readonly schema?: string; readonly fields: readonly string[] }[];
+  };
 }
 
 export interface IGithubWireQueryFolder {
@@ -689,6 +693,7 @@ export class GithubProjectReaderService {
                   text,
                   parameters: def?.parameters,
                   recordsets: def?.recordsets,
+                  federation: def?.federation,
                   dbModel: def?.dbModel,
                   draft: def?.draft,
                 }),
