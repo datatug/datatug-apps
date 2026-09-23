@@ -267,7 +267,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
         },
         { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn() } },
         { provide: SemanticApiService, useValue: { runQuery: runQueryMock } },
-        { provide: FederatedQueryService, useValue: { run: federatedRunMock, getPage: federatedGetPageMock, dispose: vi.fn() } },
+        { provide: FederatedQueryService, useValue: { run: federatedRunMock, getPage: federatedGetPageMock, dispose: vi.fn().mockResolvedValue(undefined) } },
         { provide: AgentContextService, useValue: agentContext },
       ],
     })

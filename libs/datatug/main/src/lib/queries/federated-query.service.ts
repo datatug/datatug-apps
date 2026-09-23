@@ -25,10 +25,12 @@ export class FederatedQueryService {
         | { type: 'error'; message: string }
         | { type: 'page'; requestId: number; rows: TypedValue[][] }
         | { type: 'page-error'; requestId: number; message: string }
+        | { type: 'cleanup-error'; message: string }
         | { type: 'closed' }
       >) => {
         const message = event.data;
         if (message.type === 'progress') { onProgress?.(message.progress); return; }
+        if (message.type === 'cleanup-error') return;
         if (message.type === 'page' || message.type === 'page-error') {
           const pending = this.pageRequests.get(message.requestId);
           this.pageRequests.delete(message.requestId);
@@ -38,14 +40,14 @@ export class FederatedQueryService {
         }
         if (message.type === 'closed') { worker.terminate(); if (this.worker === worker) this.worker = undefined; return; }
         if (message.type === 'result') {
-          if (message.result.totalRows === undefined) void this.dispose();
+          if (message.result.totalRows === undefined) void this.dispose().catch(() => undefined);
           resolve(message.result);
         } else {
-          void this.dispose();
+          void this.dispose().catch(() => undefined);
           reject(new Error(message.message));
         }
       };
-      worker.onerror = (event) => { void this.dispose(); reject(new Error(event.message || 'The query worker failed.')); };
+      worker.onerror = (event) => { void this.dispose().catch(() => undefined); reject(new Error(event.message || 'The query worker failed.')); };
       worker.postMessage({ type: 'run', definition, token });
     });
   }
@@ -65,14 +67,17 @@ export class FederatedQueryService {
     this.worker = undefined;
     for (const pending of this.pageRequests.values()) pending.reject(new Error('The result was closed.'));
     this.pageRequests.clear();
-    await new Promise<void>((resolve) => {
-      const timeout = setTimeout(() => { worker.terminate(); resolve(); }, 3000);
-      worker.addEventListener('message', function onClosed(event: MessageEvent<{ type: string }>) {
+    await new Promise<void>((resolve, reject) => {
+      let cleanupError: Error | undefined;
+      const timeout = setTimeout(() => { worker.terminate(); reject(new Error('The result worker did not finish cleaning up.')); }, 10000);
+      worker.addEventListener('message', function onClosed(event: MessageEvent<{ type: string; message?: string }>) {
+        if (event.data.type === 'cleanup-error') { cleanupError = new Error(event.data.message || 'Cannot remove temporary output.'); return; }
         if (event.data.type !== 'closed') return;
         clearTimeout(timeout);
         worker.removeEventListener('message', onClosed);
         worker.terminate();
-        resolve();
+        if (cleanupError) reject(cleanupError);
+        else resolve();
       });
       worker.postMessage({ type: 'close' });
     });

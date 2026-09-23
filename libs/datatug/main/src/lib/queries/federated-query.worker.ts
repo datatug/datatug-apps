@@ -4,6 +4,9 @@ import { runFederatedQuery } from './federated-query-executor';
 
 let outputDb: IDBDatabase | undefined;
 let outputName: string | undefined;
+let activeRun: Promise<void> | undefined;
+let controller: AbortController | undefined;
+let closing = false;
 
 async function openOutput(): Promise<IDBDatabase> {
   if (outputDb) return outputDb;
@@ -19,7 +22,9 @@ async function openOutput(): Promise<IDBDatabase> {
 
 async function storeRows(rows: readonly (readonly TypedValue[])[]): Promise<void> {
   if (!rows.length) return;
+  if (closing) throw new Error('The query was cancelled.');
   const db = await openOutput();
+  if (closing) throw new Error('The query was cancelled.');
   await new Promise<void>((resolve, reject) => {
     const transaction = db.transaction('rows', 'readwrite');
     for (const row of rows) transaction.objectStore('rows').add(row);
@@ -46,13 +51,13 @@ async function closeOutput(): Promise<void> {
   outputDb = undefined;
   if (!outputName) return;
   const name = outputName;
-  outputName = undefined;
   await new Promise<void>((resolve, reject) => {
     const request = indexedDB.deleteDatabase(name);
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error ?? new Error('Cannot remove temporary output table.'));
     request.onblocked = () => reject(new Error('Temporary output table is still open.'));
   });
+  outputName = undefined;
 }
 
 self.onmessage = (event: MessageEvent<
@@ -67,11 +72,32 @@ self.onmessage = (event: MessageEvent<
       .catch((error: unknown) => self.postMessage({ type: 'page-error', requestId: message.requestId, message: error instanceof Error ? error.message : 'Cannot read result page.' }));
     return;
   }
-  if (message.type === 'close') { void closeOutput().then(() => self.postMessage({ type: 'closed' })); return; }
-  void closeOutput().then(() => runFederatedQuery(message.definition, (progress) => self.postMessage({ type: 'progress', progress }), message.token, storeRows))
-    .then((result) => self.postMessage({ type: 'result', result }))
-    .catch(async (error: unknown) => {
+  if (message.type === 'close') {
+    closing = true;
+    controller?.abort();
+    void (async () => {
+      await activeRun;
+      try { await closeOutput(); }
+      catch (error) { self.postMessage({ type: 'cleanup-error', message: error instanceof Error ? error.message : 'Cannot remove temporary output.' }); }
+      self.postMessage({ type: 'closed' });
+    })();
+    return;
+  }
+  closing = false;
+  controller = new AbortController();
+  activeRun = (async () => {
+    try {
       await closeOutput();
-      self.postMessage({ type: 'error', message: error instanceof Error ? error.message : 'The query failed.' });
-    });
+      const result = await runFederatedQuery(message.definition, (progress) => self.postMessage({ type: 'progress', progress }), message.token, storeRows, controller!.signal);
+      if (!closing) self.postMessage({ type: 'result', result });
+    } catch (error) {
+      let messageText = error instanceof Error ? error.message : 'The query failed.';
+      try { await closeOutput(); }
+      catch (cleanupError) { messageText += `; cleanup failed: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`; }
+      if (!closing) self.postMessage({ type: 'error', message: messageText });
+    } finally {
+      activeRun = undefined;
+      controller = undefined;
+    }
+  })();
 };

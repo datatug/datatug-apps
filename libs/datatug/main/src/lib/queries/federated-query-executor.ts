@@ -43,7 +43,7 @@ function ovdbBaseUrl(raw: string): string {
 }
 
 /** Runs each leaf against OVDB directly and merges/aggregates in this runtime. */
-export async function runFederatedQuery(definition: IQueryDef, onProgress?: (progress: FederatedQueryProgress) => void, token = '', onOutputPage?: FederatedOutputPage): Promise<FederatedQueryResult> {
+export async function runFederatedQuery(definition: IQueryDef, onProgress?: (progress: FederatedQueryProgress) => void, token = '', onOutputPage?: FederatedOutputPage, signal?: AbortSignal): Promise<FederatedQueryResult> {
     const config = definition.federation;
     if (!config) throw new Error('This query has no direct OVDB configuration.');
     const baseUrl = ovdbBaseUrl(config.ovdbBaseUrl);
@@ -68,6 +68,7 @@ export async function runFederatedQuery(definition: IQueryDef, onProgress?: (pro
       let totalOutputRows = 0;
       const firstOutputRows: TypedValue[][] = [];
       const emitOutput = async (rows: QueryPage<Data>['records']): Promise<void> => {
+        signal?.throwIfAborted();
         if (!outputNames && rows.length) outputNames = Object.keys(rows[0].data);
         const names = outputNames ?? [];
         const converted = rows.map((row) => names.map((name) => typed(row.data[name])));
@@ -93,6 +94,7 @@ export async function runFederatedQuery(definition: IQueryDef, onProgress?: (pro
         let lastId: string | number | undefined;
         let remaining = query.limit;
         for (;;) {
+          signal?.throwIfAborted();
           const limit = Math.min(remaining ?? 500, 500);
           const order = bounded ? ordered : [{ field: 'id', direction: 'asc' as const }];
           const body = JSON.stringify({
@@ -102,7 +104,7 @@ export async function runFederatedQuery(definition: IQueryDef, onProgress?: (pro
             ...(lastId === undefined ? {} : { where: { op: '>', left: { field: 'id' }, right: { value: lastId } } }),
           });
           const response = await fetch(`${baseUrl}/v1/databases/${encodeURIComponent(relation.database || '')}/dtql`, {
-            method: 'POST', headers: { 'Content-Type': 'application/yaml', Accept: 'application/json', ...authHeaders }, body, redirect: 'error',
+            method: 'POST', headers: { 'Content-Type': 'application/yaml', Accept: 'application/json', ...authHeaders }, body, redirect: 'error', signal,
           });
           if (!response.ok) throw new Error(`OVDB ${relation.database} query failed (${response.status}).`);
           const page = await response.json() as OvdbPage;
@@ -166,7 +168,7 @@ export async function runFederatedQuery(definition: IQueryDef, onProgress?: (pro
               return value;
             },
             fetch: async (value) => {
-              const response = await fetch(`${baseUrl}/v1/databases/${lookup.database}/records/${lookup.collection}/${encodeURIComponent(String(value))}`, { headers: { Accept: 'application/json', ...authHeaders }, redirect: 'error' });
+              const response = await fetch(`${baseUrl}/v1/databases/${lookup.database}/records/${lookup.collection}/${encodeURIComponent(String(value))}`, { headers: { Accept: 'application/json', ...authHeaders }, redirect: 'error', signal });
               if (!response.ok) throw new Error(`OVDB lookup ${lookup.database}/${lookup.collection} failed (${response.status}).`);
               const record = await response.json() as OvdbRecord;
               if (!record.data || typeof record.data !== 'object' || Array.isArray(record.data)) throw new Error('OVDB lookup returned invalid JSON data.');
@@ -219,8 +221,33 @@ export async function runFederatedQuery(definition: IQueryDef, onProgress?: (pro
       let records: QueryPage<Data>['records'];
       if (parsed.from.joins.length === 1 && parsed.groupBy === undefined && parsed.having === undefined && parsed.orders.length === 0 &&
           !(parsed.columns ?? []).some((column) => column.expression !== undefined && containsAggregate(column.expression))) {
-        if (onOutputPage && !(config.lookups?.length)) {
-          for await (const page of executeJoinedDTQLQueryPages(parsed, executionOptions)) await emitOutput(page.records);
+        if (onOutputPage) {
+          let pages: AsyncIterable<QueryPage<Data>> = executeJoinedDTQLQueryPages(parsed, executionOptions);
+          for (const lookup of config.lookups ?? []) {
+            if (!/^[A-Za-z0-9_-]+$/.test(lookup.database) || !/^[A-Za-z0-9_-]+$/.test(lookup.collection)) throw new Error('Lookup database and collection names must be simple identifiers.');
+            pages = executeRecordLookupPages(pages, {
+              ...(lookup.concurrency === undefined ? {} : { concurrency: lookup.concurrency }),
+              keyOf: (row) => {
+                const value = row.data[lookup.fromColumn];
+                if ((typeof value !== 'number' || !Number.isSafeInteger(value)) && typeof value !== 'string') throw new Error(`Lookup column ${lookup.fromColumn} needs a string or safe integer.`);
+                return value;
+              },
+              fetch: async (value) => {
+                const response = await fetch(`${baseUrl}/v1/databases/${lookup.database}/records/${lookup.collection}/${encodeURIComponent(String(value))}`, { headers: { Accept: 'application/json', ...authHeaders }, redirect: 'error', signal });
+                if (!response.ok) throw new Error(`OVDB lookup ${lookup.database}/${lookup.collection} failed (${response.status}).`);
+                const record = await response.json() as OvdbRecord;
+                if (!record.data || typeof record.data !== 'object' || Array.isArray(record.data)) throw new Error('OVDB lookup returned invalid JSON data.');
+                return record.data;
+              },
+              merge: (row, data) => {
+                const merged = { ...row.data };
+                for (const field of lookup.fields) merged[field.target] = data[field.source] ?? null;
+                return merged;
+              },
+              onProgress: (item) => onProgress?.({ rowsLoaded, rowsProcessed, requestsCompleted: item.requestsCompleted, requestsInFlight: item.requestsInFlight, requestsPending: item.requestsPending }),
+            });
+          }
+          for await (const page of pages) await emitOutput(page.records);
           return pagedResponse();
         }
         const paged: QueryPage<Data>['records'][number][] = [];
@@ -239,7 +266,7 @@ export async function runFederatedQuery(definition: IQueryDef, onProgress?: (pro
             return value;
           },
           fetch: async (value) => {
-            const response = await fetch(`${baseUrl}/v1/databases/${lookup.database}/records/${lookup.collection}/${encodeURIComponent(String(value))}`, { headers: { Accept: 'application/json', ...authHeaders }, redirect: 'error' });
+            const response = await fetch(`${baseUrl}/v1/databases/${lookup.database}/records/${lookup.collection}/${encodeURIComponent(String(value))}`, { headers: { Accept: 'application/json', ...authHeaders }, redirect: 'error', signal });
             if (!response.ok) throw new Error(`OVDB lookup ${lookup.database}/${lookup.collection} failed (${response.status}).`);
             const record = await response.json() as OvdbRecord;
             if (!record.data || typeof record.data !== 'object' || Array.isArray(record.data)) throw new Error('OVDB lookup returned invalid JSON data.');

@@ -638,7 +638,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   };
 
   ngOnDestroy(): void {
-    void this.federatedQuery.dispose();
+    void this.federatedQuery.dispose().catch(() => undefined);
     if (this.destroyed) {
       this.destroyed.next();
       this.destroyed.complete();
