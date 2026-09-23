@@ -73,10 +73,12 @@ self.onmessage = (event: MessageEvent<
     return;
   }
   if (message.type === 'close') {
+    const wasRunning = activeRun !== undefined;
     closing = true;
     controller?.abort();
     void (async () => {
       await activeRun;
+      if (wasRunning) self.postMessage({ type: 'cancelled' });
       try { await closeOutput(); }
       catch (error) { self.postMessage({ type: 'cleanup-error', message: error instanceof Error ? error.message : 'Cannot remove temporary output.' }); }
       self.postMessage({ type: 'closed' });

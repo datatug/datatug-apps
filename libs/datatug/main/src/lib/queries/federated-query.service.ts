@@ -26,11 +26,13 @@ export class FederatedQueryService {
         | { type: 'page'; requestId: number; rows: TypedValue[][] }
         | { type: 'page-error'; requestId: number; message: string }
         | { type: 'cleanup-error'; message: string }
+        | { type: 'cancelled' }
         | { type: 'closed' }
       >) => {
         const message = event.data;
         if (message.type === 'progress') { onProgress?.(message.progress); return; }
         if (message.type === 'cleanup-error') return;
+        if (message.type === 'cancelled') { reject(new Error('The query was cancelled.')); return; }
         if (message.type === 'page' || message.type === 'page-error') {
           const pending = this.pageRequests.get(message.requestId);
           this.pageRequests.delete(message.requestId);
