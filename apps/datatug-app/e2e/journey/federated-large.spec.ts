@@ -4,7 +4,11 @@ import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { expect, test } from './fixtures/agent-server';
 
-const rowCount = 120_000;
+const largeRun = process.env['DATATUG_LARGE_E2E'] === '1';
+const rowCount = largeRun ? 120_000 : 205;
+const sourcePageSize = largeRun ? 500 : 25;
+const visibleSourcePageSize = Math.min(100, sourcePageSize);
+const alphaRowIndex = rowCount % 2;
 const queryId = 'large-invoices-country-join';
 
 function startOvdb(): Promise<{
@@ -70,7 +74,7 @@ function startOvdb(): Promise<{
         response.end('{}');
         return;
       }
-      const count = Math.min(pageSize, rowCount - offset);
+      const count = Math.min(pageSize, sourcePageSize, rowCount - offset);
       const records = Array.from({ length: count }, (_, index) => {
         const id = rowCount - offset - index;
         return {
@@ -109,7 +113,7 @@ function startOvdb(): Promise<{
   });
 }
 
-test('pages a cross-database join on demand and stores 120,000 rows in Full result', async ({
+test('pages a cross-database join on demand and stores the full result', async ({
   page,
   incidentAgentServer,
 }) => {
@@ -190,11 +194,14 @@ columns:
     await expect(
       page
         .locator('table.run-result-table tbody tr')
-        .first()
+        .nth(alphaRowIndex)
         .locator('td')
         .nth(2),
     ).toContainText('Alpha');
-    expect(ovdb.counts).toMatchObject({ invoices: 1, countries: 1 });
+    expect(ovdb.counts).toMatchObject({
+      invoices: Math.ceil(100 / visibleSourcePageSize),
+      countries: 1,
+    });
 
     ovdb.setCountryName('Gamma');
     await pages.getByText('Next').click();
@@ -202,14 +209,14 @@ columns:
     await expect(
       page
         .locator('table.run-result-table tbody tr')
-        .first()
+        .nth(alphaRowIndex)
         .locator('td')
         .nth(2),
     ).toContainText('Alpha');
-    expect(ovdb.counts.invoices).toBe(2);
+    expect(ovdb.counts.invoices).toBe(Math.ceil(200 / visibleSourcePageSize));
     await pages.getByText('Previous').click();
     await expect(pages).toContainText('Rows 1–100');
-    expect(ovdb.counts.invoices).toBe(2);
+    expect(ovdb.counts.invoices).toBe(Math.ceil(200 / visibleSourcePageSize));
 
     await page.locator('ion-select[label="Result mode"]').click();
     await page.getByRole('radio', { name: 'Full result' }).click();
@@ -233,17 +240,22 @@ columns:
       });
     });
     await page.locator('ion-button').filter({ hasText: 'Run query' }).click();
-    await expect(pages).toContainText('Rows 1–100 of 120000', {
+    await expect(pages).toContainText(`Rows 1–100 of ${rowCount}`, {
       timeout: 90_000,
     });
     await expect(
       page
         .locator('table.run-result-table tbody tr')
-        .first()
+        .nth(alphaRowIndex)
         .locator('td')
         .nth(2),
     ).toContainText('Gamma');
-    expect(ovdb.counts).toMatchObject({ invoices: 242, countries: 2 });
+    expect(ovdb.counts).toMatchObject({
+      invoices:
+        Math.ceil(200 / visibleSourcePageSize) +
+        Math.ceil(rowCount / sourcePageSize),
+      countries: 2,
+    });
     expect(ovdb.counts.closed).toBeGreaterThanOrEqual(4);
     const progress = await page.evaluate(
       () =>
@@ -252,7 +264,9 @@ columns:
     );
     expect(
       progress.some((item) =>
-        item.includes('loaded 120002 rows; processed 120000 rows'),
+        item.includes(
+          `loaded ${rowCount + 2} rows; processed ${rowCount} rows`,
+        ),
       ),
     ).toBe(true);
 
