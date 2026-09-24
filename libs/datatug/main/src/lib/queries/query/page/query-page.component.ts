@@ -1598,16 +1598,21 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.resultPageIndex.set(next);
       return;
     }
+    const previousRows = this.resultPageRows();
     this.resultPageRows.set([]);
     this.resultPageLoading.set(true);
     try {
       const rows = await this.federatedQuery.getPage(next);
       const current = this.runResult();
       if (current && result && current.provenance.observedAt === result.provenance.observedAt && current.provenance.queryId === result.provenance.queryId) {
-        if (rows.length === 0 && next > 0) this.runResult.set({ ...current, totalRows: next * this.resultPageSize, hasMore: false });
+        if (rows.length === 0 && next > 0) {
+          this.resultPageRows.set(previousRows);
+          this.runResult.set({ ...current, totalRows: next * this.resultPageSize, hasMore: false });
+        }
         else { this.resultPageIndex.set(next); this.resultPageRows.set(rows); if (current.hasMore && rows.length < this.resultPageSize) this.runResult.set({ ...current, totalRows: next * this.resultPageSize + rows.length, hasMore: false }); }
       }
     } catch (error) {
+      this.resultPageRows.set(previousRows);
       this.runError.set(error instanceof Error ? error.message : 'Cannot load result page.');
     } finally {
       this.resultPageLoading.set(false);
