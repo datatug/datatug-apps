@@ -9,6 +9,10 @@ test('CLI chat deep link restores, sends, and follows terminal updates', async (
     { ID: 'grid-1', Role: 'DataTug', Kind: 'grid', Text: '', RecordSetID: 'rs-1' },
   ];
   const sent: { text: string; sessionId: string }[] = [];
+  await page.route('http://127.0.0.1:3284/datatug/projects/project_summary**', async (route) => {
+    expect(route.request().headers()['x-datatug-chat-capability']).toBe(token);
+    await route.fulfill({ json: { id: 'demo-project-1', title: 'Demo project 1', access: 'private' } });
+  });
   await page.route('http://127.0.0.1:3284/v1/chat/**', async (route) => {
     expect(route.request().headers()['x-datatug-chat-capability']).toBe(token);
     if (route.request().method() === 'POST') {
@@ -20,26 +24,44 @@ test('CLI chat deep link restores, sends, and follows terminal updates', async (
     }
     await route.fulfill({ json: {
       ID: 'dtcs-1', Title: 'Customer analysis', Messages: messages,
-      RecordSets: { 'rs-1': { Title: 'Customers', Result: { Columns: ['Count'], Rows: [{ Key: '', Data: { Count: 3 } }] } } },
+      RecordSets: { 'rs-1': { Title: 'Customers', Result: { Columns: ['Count'], Rows: [{ Key: 'three', Data: { Count: 3 } }, { Key: 'one', Data: { Count: 1 } }] } } },
     } });
   });
-  await page.goto(`/chat#h=127.0.0.1:3284&t=${token}`);
-  await expect(page).toHaveURL(/\/chat$/);
+  const projectChat = '/store/http-127.0.0.1:3284/project/demo-project-1/chat';
+  await page.goto(`${projectChat}#h=127.0.0.1:3284&t=${token}`);
+  await expect(page).toHaveURL(new RegExp(`${projectChat}$`));
   await expect(page.getByText('Three customers.')).toBeVisible();
-  await expect(page.getByRole('cell', { name: '3' })).toBeVisible();
+  await expect(page.getByRole('gridcell', { name: '3' })).toBeVisible();
+  await page.getByRole('columnheader', { name: 'Count' }).click();
+  await expect(page.getByRole('columnheader', { name: 'Count' })).toHaveAttribute('aria-sort', 'ascending');
+  await expect(page.getByRole('navigation', { name: 'menu' }).getByText('Chat', { exact: true })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'menu' }).getByText('Demo project 1')).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'menu' }).getByText('Overview', { exact: true }).locator('..')).toHaveAttribute('aria-disabled', 'true');
+  await expect(page.locator('ion-footer').getByLabel('Message to CLI chat')).toBeVisible();
+  const footer = await page.locator('ion-footer').boundingBox();
+  expect(footer).not.toBeNull();
+  expect(Math.abs((footer?.y || 0) + (footer?.height || 0) - (page.viewportSize()?.height || 0))).toBeLessThan(4);
+  const userCard = await page.locator('.message-card.from-user').first().boundingBox();
+  const botCard = await page.locator('.message-card:not(.from-user)').first().boundingBox();
+  expect(userCard && botCard && userCard.x > botCard.x).toBeTruthy();
   await page.getByLabel('Message to CLI chat').fill('Show their names');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.getByText('Sent through the CLI.')).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: 'Count' })).toHaveAttribute('aria-sort', 'ascending');
   expect(sent).toEqual([{ text: 'Show their names', sessionId: 'dtcs-1' }]);
   messages.push({ ID: 'terminal-3', Role: 'DataTug', Kind: 'text', Text: 'From the terminal.', RecordSetID: '' });
   await expect(page.getByText('From the terminal.')).toBeVisible();
 
   const newerToken = 'b'.repeat(64);
+  await page.route('http://127.0.0.1:3285/datatug/projects/project_summary**', async (route) => {
+    expect(route.request().headers()['x-datatug-chat-capability']).toBe(newerToken);
+    await route.fulfill({ json: { id: 'another-project', title: 'Another project', access: 'private' } });
+  });
   await page.route('http://127.0.0.1:3285/v1/chat/session', async (route) => {
     expect(route.request().headers()['x-datatug-chat-capability']).toBe(newerToken);
     await route.fulfill({ json: { ID: 'dtcs-2', Title: 'Another CLI', Messages: [], RecordSets: {} } });
   });
-  await page.goto(`/chat#h=127.0.0.1:3285&t=${newerToken}`);
+  await page.goto(`/store/http-127.0.0.1:3285/project/another-project/chat#h=127.0.0.1:3285&t=${newerToken}`);
   await expect(page.getByRole('banner').getByText('Another CLI')).toBeVisible();
 });
 
@@ -53,8 +75,8 @@ test('browser connects to a real local CLI bridge', async ({ page }) => {
     });
   });
   const link = readFileSync(linkFile || '', 'utf8');
-  const fragment = new URL(link).hash;
-  await page.goto(`/chat${fragment}`);
+  const bridgeURL = new URL(link);
+  await page.goto(`${bridgeURL.pathname}${bridgeURL.hash}`);
   await expect(page.getByLabel('Message to CLI chat')).toBeEnabled();
   await expect.poll(() => changes).toBeGreaterThan(0);
   const beforeSend = changes;

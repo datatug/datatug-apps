@@ -1,4 +1,5 @@
 import { Routes } from '@angular/router';
+import { cliChatCapability } from './cli-chat-capability';
 
 // Task 13 (S108, spec/research/2026-09-09-layered-acl-reconciliation.md,
 // datatug/datatug): the read-only worktree
@@ -10,6 +11,11 @@ import { Routes } from '@angular/router';
 // competing convention is exactly what Task 15 was created to avoid. See
 // `datatug-app-routes.spec.ts` for the regression guard.
 export const routes: Routes = [
+  {
+    path: 'store/:storeId/project/:projectId/chat',
+    canMatch: [() => !!cliChatCapability()],
+    loadComponent: () => import('./cli-chat-page.component').then((m) => m.CliChatPageComponent),
+  },
   {
     path: 'chat',
     loadComponent: () => import('./cli-chat-page.component').then((m) => m.CliChatPageComponent),
