@@ -1,6 +1,6 @@
 import { bootstrapApplication } from '@angular/platform-browser';
 import { provideZonelessChangeDetection } from '@angular/core';
-import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
 import { provideRouter, RouteReuseStrategy } from '@angular/router';
 import { IonicRouteStrategy } from '@ionic/angular/common';
@@ -32,6 +32,7 @@ import { datatugAppEnvironmentConfig } from './environments/environment';
 import { registerIonicons } from './register-ionicons';
 import { registerPosthog } from './register-posthog';
 import { captureCliChatCapability } from './app/cli-chat-capability';
+import { cliChatProjectInterceptor } from './app/cli-chat-project.interceptor';
 
 captureCliChatCapability();
 
@@ -42,7 +43,7 @@ if (datatugAppEnvironmentConfig.posthog) {
 bootstrapApplication(DatatugAppComponent, {
   providers: [
     provideZonelessChangeDetection(),
-    provideHttpClient(),
+    provideHttpClient(withInterceptors([cliChatProjectInterceptor])),
     provideIonicAngular(),
     provideAnimationsAsync(),
     { provide: LOGGER_FACTORY, useValue: loggerFactory },

@@ -25,6 +25,9 @@
       }
     </ion-select>
   }
+  @if (!projects?.length && currentProjectId) {
+    <ion-label>{{ projectLabel() }}</ion-label>
+  }
   @if (currentStoreId === "firestore" && !projects?.length) {
     <ion-buttons slot="end" class="ion-margin-end">
       <ion-button

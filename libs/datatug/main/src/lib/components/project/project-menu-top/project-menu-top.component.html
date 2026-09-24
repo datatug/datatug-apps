@@ -15,7 +15,7 @@
   <ion-item
     (click)="goProjPage($event, page.path)"
     tappable
-    [disabled]="!project?.ref"
+    [disabled]="!project?.ref || (cliBridgeChat && page.path !== 'chat')"
   >
     <!--		[routerLink]="projectPageUrl(page.path)" routerDirection="root"-->
     <ion-icon slot="start" [name]="page.icon" />

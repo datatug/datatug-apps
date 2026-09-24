@@ -5,7 +5,8 @@ import {
   Output,
   SimpleChanges,
   inject,
-  input
+  input,
+  signal,
 } from '@angular/core';
 import {
   IonButton,
@@ -51,6 +52,7 @@ export class MenuProjectSelectorComponent implements OnChanges {
   currentProjectId?: string;
   currentProject?: IProjectContext;
   project?: IProjectContext; // TODO(not_sure): should it be not input and take value from context?
+  readonly projectLabel = signal('');
 
   @Output() projectChanged = new EventEmitter<IProjectContext>();
 
@@ -74,6 +76,7 @@ export class MenuProjectSelectorComponent implements OnChanges {
   private setProject = (project: IProjectContext | undefined): void => {
     this.project = project;
     this.currentProjectId = project?.ref?.projectId;
+    this.projectLabel.set(project?.summary?.title || project?.brief?.title || project?.ref?.projectId || '');
   };
 
   ngOnChanges(changes: SimpleChanges): void {
