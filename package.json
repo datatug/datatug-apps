@@ -57,7 +57,7 @@
     "@sneat/random": "0.0.4",
     "@sneat/space-models": "0.27.6",
     "@sneat/space-services": "0.27.6",
-    "@sneat/ui": "0.27.6",
+    "@sneat/ui": "0.27.27",
     "@sneat/wormhole": "^0.0.6",
     "ag-grid-angular": "36.2.0",
     "ag-grid-community": "36.2.0",

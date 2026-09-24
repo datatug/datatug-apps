@@ -25,7 +25,7 @@ overrides:
   '@sneat/logging': 0.27.25
   '@sneat/space-models': 0.27.6
   '@sneat/space-services': 0.27.6
-  '@sneat/ui': 0.27.6
+  '@sneat/ui': 0.27.27
 packages:
   - '.'
   - 'landings/incidentius'
@@ -64,7 +64,7 @@ minimumReleaseAgeExclude:
   - '@sneat/logging@0.5.0 || 0.26.4 || 0.27.25'
   - '@sneat/space-models@0.5.0 || 0.26.4'
   - '@sneat/space-services@0.5.0 || 0.26.4'
-  - '@sneat/ui@0.5.0 || 0.26.4'
+  - '@sneat/ui@0.5.0 || 0.26.4 || 0.27.27'
   - '@ingitdb/client-github@0.1.2'
   - '@sneat/api-public@0.26.4'
   - '@sneat/core-public@0.26.4 || 0.27.23'
