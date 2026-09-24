@@ -109,6 +109,7 @@ import { DatatugExecutorModule } from '../../../executor/datatug-executor.module
 import { DatatugQueriesServicesModule } from '../../datatug-queries-services.module';
 import { QueriesService } from '../../queries.service';
 import { FederatedQueryService, type FederatedQueryProgress, type FederatedQueryResult } from '../../federated-query.service';
+import { federatedVisibleMode } from '../../federated-query-executor';
 import { QueryContextSqlService } from '../../query-context-sql.service';
 import {
   isQueryChanged,
@@ -453,6 +454,15 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly federatedProgress = signal<FederatedQueryProgress | undefined>(undefined);
   public readonly resultPageIndex = signal(0);
   public readonly resultPageSize = 100;
+  public readonly federatedMode = signal<'full' | 'visible'>('full');
+  public readonly visibleModeSupport = computed(() => {
+    const definition = this.queryDef();
+    return definition ? federatedVisibleMode(definition) : { supported: false, defaultMode: 'full' as const };
+  });
+  public readonly ovdbDestination = computed(() => {
+    try { return new URL(this.queryDef()?.federation?.ovdbBaseUrl ?? '').origin; }
+    catch { return 'the configured OVDB endpoint'; }
+  });
   public readonly resultPageLoading = signal(false);
   private readonly resultPageRows = signal<RunQueryResponse['recordset']['rows']>([]);
   /** In-memory OVDB credential for the current query only. */
@@ -461,9 +471,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly runError = signal<string | undefined>(undefined);
   public readonly runResult = signal<FederatedQueryResult | undefined>(undefined);
   public readonly resultTotalRows = computed(() => this.runResult()?.totalRows ?? this.runResult()?.recordset.rows.length ?? 0);
+  public readonly resultHasMore = computed(() => this.runResult()?.hasMore === true);
   public readonly visibleResultRows = computed(() => {
     const result = this.runResult();
-    if (result?.totalRows !== undefined) return this.resultPageRows();
+    if (result?.totalRows !== undefined || result?.hasMore) return this.resultPageRows();
     const rows = result?.recordset.rows ?? [];
     const start = this.resultPageIndex() * this.resultPageSize;
     return rows.slice(start, start + this.resultPageSize);
@@ -620,6 +631,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       // Signal write (zoneless-safe, unlike the plain-field write just
       // above) — see `queryDef`'s own doc comment.
       if (this.queryDef()?.id !== queryState.def?.id) this.ovdbToken.set('');
+      if (queryState.def && this.queryDef()?.id !== queryState.def.id) this.federatedMode.set(federatedVisibleMode(queryState.def).defaultMode);
       this.queryDef.set(queryState.def);
       if (this.queryState.environments && !this.queryState.activeEnv) {
         this.setActiveEnv(this.queryState.environments[0].id);
@@ -1483,7 +1495,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.federatedProgress.set(undefined);
       this.runError.set(undefined);
       this.runResult.set(undefined);
-      this.federatedQuery.run(definition, (progress) => this.federatedProgress.set(progress), this.ovdbToken().trim()).then((result) => {
+      this.federatedQuery.run(definition, (progress) => this.federatedProgress.set(progress), this.ovdbToken().trim(), this.federatedMode(), (totalRows) => {
+        if (this.queryDef() === definition && this.queryId === queryId) this.runResult.update((result) => result ? { ...result, totalRows, hasMore: false } : result);
+      }).then((result) => {
         if (this.queryDef() === definition && this.queryId === queryId) {
           this.resultPageRows.set(result.recordset.rows);
           this.runResult.set(result);
@@ -1578,19 +1592,30 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   public async changeResultPage(delta: number): Promise<void> {
     const next = this.resultPageIndex() + delta;
-    if (next < 0 || next * this.resultPageSize >= this.resultTotalRows()) return;
+    if (next < 0 || (next * this.resultPageSize >= this.resultTotalRows() && !this.resultHasMore())) return;
     const result = this.runResult();
-    this.resultPageIndex.set(next);
-    if (result?.totalRows === undefined) return;
+    if (!result?.hasMore && result?.totalRows === undefined) {
+      this.resultPageIndex.set(next);
+      return;
+    }
+    const previousRows = this.resultPageRows();
     this.resultPageRows.set([]);
     this.resultPageLoading.set(true);
     try {
       const rows = await this.federatedQuery.getPage(next);
-      if (this.resultPageIndex() === next && this.runResult() === result) this.resultPageRows.set(rows);
+      const current = this.runResult();
+      if (current && result && current.provenance.observedAt === result.provenance.observedAt && current.provenance.queryId === result.provenance.queryId) {
+        if (rows.length === 0 && next > 0) {
+          this.resultPageRows.set(previousRows);
+          this.runResult.set({ ...current, totalRows: next * this.resultPageSize, hasMore: false });
+        }
+        else { this.resultPageIndex.set(next); this.resultPageRows.set(rows); if (current.hasMore && rows.length < this.resultPageSize) this.runResult.set({ ...current, totalRows: next * this.resultPageSize + rows.length, hasMore: false }); }
+      }
     } catch (error) {
+      this.resultPageRows.set(previousRows);
       this.runError.set(error instanceof Error ? error.message : 'Cannot load result page.');
     } finally {
-      if (this.resultPageIndex() === next) this.resultPageLoading.set(false);
+      this.resultPageLoading.set(false);
     }
   }
 
