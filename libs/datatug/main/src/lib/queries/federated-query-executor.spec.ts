@@ -37,7 +37,7 @@ describe('visible browser query execution', () => {
         if (new Headers(init.headers).get('OVDB-Page-Close') === 'true') return new Response(null, { status: 204 });
         const first = token === null;
         return response({
-          records: Array.from({ length: first ? 100 : 5 }, (_, index) => ({ key: String(index + (first ? 1 : 101)), data: { id: index + (first ? 1 : 101), country_id: index + (first ? 1 : 101) } })),
+          records: Array.from({ length: first ? 100 : 5 }, (_, index) => ({ key: String(index + (first ? 1 : 101)), data: { id: index + (first ? 1 : 101), country_id: index % 2 } })),
           snapshotToken: 'immutable-snapshot',
           ...(first ? { nextPageToken: 'immutable-page-2' } : {}),
         });
@@ -56,8 +56,10 @@ describe('visible browser query execution', () => {
     await ready;
     expect(pages).toEqual([100]);
     expect(sourceRequests).toHaveLength(1);
-    expect(lookups).toBe(100);
-    expect(progress.at(-1)?.requestsCompleted).toBe(100);
+    expect(lookups).toBe(2);
+    expect(progress.some((item) => item.requestsPending === 2)).toBe(true);
+    expect(progress.some((item) => item.requestsInFlight === 2)).toBe(true);
+    expect(progress.at(-1)).toMatchObject({ requestsCompleted: 2, requestsInFlight: 0, requestsPending: 0 });
     gates.shift()?.();
     await run;
     expect(pages).toEqual([100, 5]);
@@ -66,7 +68,8 @@ describe('visible browser query execution', () => {
     expect(sourceRequests[1].get('Authorization')).toBe('Bearer secret');
     expect(sourceRequests[2].get('OVDB-Page-Token')).toBe('immutable-snapshot');
     expect(sourceRequests[2].get('OVDB-Page-Close')).toBe('true');
-    expect(progress.at(-1)).toMatchObject({ requestsCompleted: 105, rowsLoaded: 105 });
+    expect(lookups).toBe(2);
+    expect(progress.at(-1)).toMatchObject({ requestsCompleted: 2, requestsInFlight: 0, requestsPending: 0, rowsLoaded: 105 });
   });
 
   it('releases scratch storage when a paused visible run is cancelled', async () => {

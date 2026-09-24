@@ -48,6 +48,7 @@ fails CI hard just because the binary wasn't provisioned for that job.
 | `DATATUG_BIN` | Path to a built `datatug` binary. | — |
 | `DATATUG_CLI_DIR` | Path to a `datatug-cli` checkout; used to `go build` a binary on demand when `DATATUG_BIN` is not set. | — |
 | `DATATUG_DEMO_DIR` | Path to `datatug-demo-projects/demo-project-1`. | `../datatug-demo-projects/demo-project-1` relative to this repo (tried at 1–3 directory levels up, to cover both a plain sibling checkout and a nested `.worktrees/<task>` checkout) |
+| `DATATUG_LARGE_E2E` | Set to `1` to run the cross-source join journey with 120,000 rows instead of the CI default of 205 rows and 25-row source pages. | Unset |
 
 If neither `DATATUG_BIN` nor `DATATUG_CLI_DIR` is set, or the demo project
 can't be found, every journey test is skipped with a message naming exactly
@@ -61,7 +62,7 @@ runs this suite in CI. It:
 
 1. Checks out this repo, plus `datatug/datatug-cli` at a **pinned release
    tag** (`env.DATATUG_CLI_REF` at the top of the job — currently
-   `v0.30.0`) and `datatug/datatug-demo-projects` at `main`, both nested
+   `v0.46.0`) and `datatug/datatug-demo-projects` at `main`, both nested
    under the workspace (`actions/checkout`'s `path:` cannot escape the
    primary checkout).
 2. Sets up Go from `datatug-cli/go.mod` and builds `datatug` from the CLI
