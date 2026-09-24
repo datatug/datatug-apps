@@ -105,21 +105,38 @@ export async function runFederatedQuery(definition: IQueryDef, onProgress?: (pro
       const report = (): void => onProgress?.({ stage, rowsLoaded, rowsProcessed, requestsCompleted: lookupCompleted, requestsInFlight: lookupInFlight, requestsPending: lookupPending });
       const lookupOptions = (lookup: Lookup) => {
         if (!/^[A-Za-z0-9_-]+$/.test(lookup.database) || !/^[A-Za-z0-9_-]+$/.test(lookup.collection)) throw new Error('Lookup database and collection names must be simple identifiers.');
-        let stageCompleted = 0;
         const cache = new Map<string, Promise<Data>>();
-        return {
+        const pendingKeys = new Set<string>();
+        const keyOf = (row: QueryPage<Data>['records'][number]): string | number => {
+          const value = row.data[lookup.fromColumn];
+          if ((typeof value !== 'number' || !Number.isSafeInteger(value)) && typeof value !== 'string') throw new Error(`Lookup column ${lookup.fromColumn} needs a string or safe integer.`);
+          return value;
+        };
+        const schedule = (rows: QueryPage<Data>['records']): void => {
+          for (const row of rows) {
+            const value = String(keyOf(row));
+            if (cache.has(value) || pendingKeys.has(value)) continue;
+            pendingKeys.add(value);
+            lookupPending++;
+          }
+          report();
+        };
+        const options = {
           ...(lookup.concurrency === undefined ? {} : { concurrency: lookup.concurrency }),
-          keyOf: (row: QueryPage<Data>['records'][number]) => {
-            const value = row.data[lookup.fromColumn];
-            if ((typeof value !== 'number' || !Number.isSafeInteger(value)) && typeof value !== 'string') throw new Error(`Lookup column ${lookup.fromColumn} needs a string or safe integer.`);
-            return value;
-          },
+          keyOf,
           fetch: async (value: string | number): Promise<Data> => {
             stage = 'lookup';
             const cacheKey = String(value);
             let promise = cache.get(cacheKey);
             if (!promise) {
-              promise = fetchLookup(lookup, cacheKey);
+              if (pendingKeys.delete(cacheKey)) lookupPending--;
+              lookupInFlight++;
+              report();
+              promise = fetchLookup(lookup, cacheKey).finally(() => {
+                lookupInFlight--;
+                lookupCompleted++;
+                report();
+              });
               cache.set(cacheKey, promise);
               if (cache.size > 1000) {
                 const oldest = cache.keys().next().value;
@@ -134,15 +151,22 @@ export async function runFederatedQuery(definition: IQueryDef, onProgress?: (pro
             for (const field of lookup.fields) merged[field.target] = data[field.source] ?? null;
             return merged;
           },
-          onProgress: (item: { requestsCompleted: number; requestsInFlight: number; requestsPending: number }): void => {
-            stage = 'lookup';
-            lookupCompleted += item.requestsCompleted - stageCompleted;
-            stageCompleted = item.requestsCompleted;
-            lookupInFlight = item.requestsInFlight;
-            lookupPending = item.requestsPending;
-            report();
-          },
         };
+        return { options, schedule };
+      };
+      const applyLookups = (source: AsyncIterable<QueryPage<Data>>): AsyncIterable<QueryPage<Data>> => {
+        let pages = source;
+        for (const lookup of config.lookups ?? []) {
+          const handler = lookupOptions(lookup);
+          const prepared = (async function* (input: AsyncIterable<QueryPage<Data>>) {
+            for await (const page of input) {
+              handler.schedule(page.records);
+              yield page;
+            }
+          })(pages);
+          pages = executeRecordLookupPages(prepared, handler.options);
+        }
+        return pages;
       };
       const fetchLookup = async (lookup: Lookup, value: string): Promise<Data> => {
         const url = `${baseUrl}/v1/databases/${lookup.database}/records/${lookup.collection}/${encodeURIComponent(value)}`;
@@ -286,7 +310,7 @@ export async function runFederatedQuery(definition: IQueryDef, onProgress?: (pro
             yield { records: page.records.map((row) => ({ key: key(`${relation.database}.${relation.name}`, row.key), exists: true as const, data: row.data })) };
           }
         })();
-        for (const lookup of config.lookups ?? []) pages = executeRecordLookupPages(pages, lookupOptions(lookup));
+        pages = applyLookups(pages);
         const records: QueryPage<Data>['records'][number][] = [];
         for await (const page of pages) {
           if (onOutputPage) await emitOutput(page.records);
@@ -329,7 +353,7 @@ export async function runFederatedQuery(definition: IQueryDef, onProgress?: (pro
         if (onOutputPage) {
           let pages: AsyncIterable<QueryPage<Data>> = executeJoinedDTQLQueryPages(parsed,
             mode === 'visible' ? { ...executionOptions, pageSize: 100 } as JoinedQueryExecutionOptions : executionOptions);
-          for (const lookup of config.lookups ?? []) pages = executeRecordLookupPages(pages, lookupOptions(lookup));
+          pages = applyLookups(pages);
           for await (const page of pages) await emitOutput(page.records);
           stage = 'complete'; report();
           return pagedResponse();
@@ -340,7 +364,11 @@ export async function runFederatedQuery(definition: IQueryDef, onProgress?: (pro
       } else {
         records = (await executeJoinedDTQLQuery(executorFor(parsed.from), parsed, executionOptions)).records;
       }
-      for (const lookup of config.lookups ?? []) records = await executeRecordLookups(records, lookupOptions(lookup));
+      for (const lookup of config.lookups ?? []) {
+        const handler = lookupOptions(lookup);
+        handler.schedule(records);
+        records = await executeRecordLookups(records, handler.options);
+      }
       stage = 'complete'; report();
       const names = records.length ? Object.keys(records[0].data) : (definition.recordsets?.[0]?.columns.map((column) => column.name) ?? []);
       return {
