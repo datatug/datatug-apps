@@ -10,6 +10,7 @@ import { IonTitle } from '@ionic/angular/ion-title';
 import { IonToolbar } from '@ionic/angular/ion-toolbar';
 import { MenuController } from '@ionic/angular/menu-controller';
 import { ErrorLogger } from '@sneat/core';
+import { ResizableMenuDirective } from '@sneat/ui';
 import { PRODUCT_PROFILE } from '@datatug/product-profiles';
 
 @Component({
@@ -21,6 +22,7 @@ import { PRODUCT_PROFILE } from '@datatug/product-profiles';
     IonApp,
     IonSplitPane,
     IonMenu,
+    ResizableMenuDirective,
     IonHeader,
     IonToolbar,
     IonTitle,

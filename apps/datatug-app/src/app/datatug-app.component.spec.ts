@@ -1,8 +1,10 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { provideRouter, Router } from '@angular/router';
 import { MenuController } from '@ionic/angular/menu-controller';
 import { ErrorLogger } from '@sneat/core';
+import { ResizableMenuDirective } from '@sneat/ui';
 import { PRODUCT_PROFILE, PRODUCT_PROFILES } from '@datatug/product-profiles';
 
 import { DatatugAppComponent } from './datatug-app.component';
@@ -35,6 +37,17 @@ describe('AppComponent', () => {
 
   it('should create the app', () => {
     expect(fixture.componentInstance).toBeTruthy();
+  });
+
+  it('enables the shared resizable menu with DataTug-specific width storage', () => {
+    fixture.detectChanges();
+
+    const menu = fixture.debugElement.query(By.directive(ResizableMenuDirective));
+
+    expect(menu).toBeTruthy();
+    expect(menu.injector.get(ResizableMenuDirective).sneatResizableMenuStorageKey).toBe(
+      'datatug.menu.width',
+    );
   });
 
   it('renders the brand as a link to the home route', () => {

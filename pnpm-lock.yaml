@@ -31,7 +31,7 @@ overrides:
   '@sneat/logging': 0.27.25
   '@sneat/space-models': 0.27.6
   '@sneat/space-services': 0.27.6
-  '@sneat/ui': 0.27.6
+  '@sneat/ui': 0.27.27
 
 importers:
 
@@ -167,8 +167,8 @@ importers:
         specifier: 0.27.6
         version: 0.27.6(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(@ionic/angular@9.0.0(6ff9fc4b486d8c68e67889d2ebc5db9b))(@sneat/extension-contactus-contract@0.12.5(b166a10983d8640de731a116aba871a9))(firebase@12.10.0)
       '@sneat/ui':
-        specifier: 0.27.6
-        version: 0.27.6(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(@ionic/angular@9.0.0(6ff9fc4b486d8c68e67889d2ebc5db9b))(@sneat/logging@0.27.25(92be4c455de5a6d6441f43f7647faa20))
+        specifier: 0.27.27
+        version: 0.27.27(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(@ionic/angular@9.0.0(6ff9fc4b486d8c68e67889d2ebc5db9b))(@sneat/logging@0.27.25(92be4c455de5a6d6441f43f7647faa20))
       '@sneat/wormhole':
         specifier: ^0.0.6
         version: 0.0.6(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2)
@@ -5541,8 +5541,8 @@ packages:
       '@ionic/angular':
         optional: true
 
-  '@sneat/ui@0.27.6':
-    resolution: {integrity: sha512-SKhIFEwCBbXxXVD79G7abLJBPnzyIBxK+Kde44JkLoxrl98De83ik/Lb99eCD0VDstvxObBZPA1EfDPt4KArfA==}
+  '@sneat/ui@0.27.27':
+    resolution: {integrity: sha512-0lj7jI4B6ojCjf/ElTmtJwvyyPNZzHJy/wFm+JzWZYX4v1z3LWp2SMwURbOa99ZGv3OshYGveop2jPKneOK2Sg==}
     peerDependencies:
       '@angular/common': 22.1.3
       '@angular/core': 22.1.3
@@ -17032,7 +17032,7 @@ snapshots:
     optionalDependencies:
       '@ionic/angular': 9.0.0(6ff9fc4b486d8c68e67889d2ebc5db9b)
 
-  '@sneat/ui@0.27.6(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(@ionic/angular@9.0.0(6ff9fc4b486d8c68e67889d2ebc5db9b))(@sneat/logging@0.27.25(92be4c455de5a6d6441f43f7647faa20))':
+  '@sneat/ui@0.27.27(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(@ionic/angular@9.0.0(6ff9fc4b486d8c68e67889d2ebc5db9b))(@sneat/logging@0.27.25(92be4c455de5a6d6441f43f7647faa20))':
     dependencies:
       '@angular/common': 22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2)
       '@angular/core': 22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)
