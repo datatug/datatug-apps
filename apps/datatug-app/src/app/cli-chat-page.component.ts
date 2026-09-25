@@ -62,6 +62,7 @@ interface CliProjectObject { Reference: ContextReference; Columns: string[]; Col
 interface CliCatalog { ID: string; Title: string; Objects: CliProjectObject[] }
 interface CliSavedQuery { ID: string; Title: string; Type: string; Tags: string[]; Parameters: { ID: string; Title: string; Required: boolean; DefaultValue: string }[] }
 interface CliSettings { versions: number; environment: string; database: string }
+interface CliHTTPSetting { kind: string; name: string; scope: string; origin: string }
 interface CliCellDetail { Title: string; Column: string; Value: unknown; Row: Record<string, unknown>; Qualified: string; DBType: string; Related: { ConstraintID: string; Target: string; Columns: string[]; Rows: { Data: Record<string, unknown> }[] }[] }
 interface WorkspaceAction { kind: string; reference?: ContextReference; recordSetId?: string; viewId?: string; title?: string; rows?: number[]; columns?: string[]; ranges?: { firstRow: number; lastRow: number; firstCol: number; lastCol: number }[]; dockId?: string; bookmarkId?: string; tag?: string }
 
@@ -99,10 +100,31 @@ interface CliSession {
         <section class="tool-drawer" aria-label="Chat tools">
           <div><strong>Connection</strong><p>{{ catalog()?.Title || 'Current project' }} · {{ settings()?.environment || 'Environment unavailable' }} · {{ settings()?.database || 'Database unavailable' }}</p><small>Connection switching is coming soon in the CLI.</small></div>
           <div><strong>Result versions to keep</strong><label><input type="number" min="1" max="100" [value]="settings()?.versions || 1" #versionsInput /> <button type="button" (click)="saveVersions(versionsInput.value)">Save</button></label></div>
+          <form class="http-request-form" (submit)="$event.preventDefault(); sendHTTPRequest()">
+            <strong>HTTP request</strong>
+            <label>Method <select aria-label="HTTP method" [value]="httpMethod()" (change)="httpMethod.set($any($event.target).value)">@for (method of httpMethods; track method) { <option [value]="method">{{ method }}</option> }</select></label>
+            <label>URL <input aria-label="HTTP URL" type="url" placeholder="https://example.com/api" [value]="httpURL()" (input)="httpURL.set($any($event.target).value)" required /></label>
+            <label>Request headers <textarea aria-label="HTTP headers" placeholder="Accept: application/json" [value]="httpHeadersDraft()" (input)="httpHeadersDraft.set($any($event.target).value)"></textarea></label>
+            <label>Body <textarea aria-label="HTTP body" [value]="httpBody()" (input)="httpBody.set($any($event.target).value)" [disabled]="httpMethod() === 'GET' || httpMethod() === 'HEAD'"></textarea></label>
+            <button type="submit" [disabled]="!session() || !httpURL().trim() || busy()">Send HTTP request</button>
+          </form>
+          <div class="http-settings"><strong>HTTP headers and cookies</strong>
+            <button type="button" (click)="loadHTTPSettings()">Show settings for URL</button>
+            @for (setting of httpSettings(); track setting.kind + setting.name + setting.scope + setting.origin) {
+              <div>{{ setting.kind }} {{ setting.name }} = [saved] · {{ setting.scope }} @if (setting.origin) { · {{ setting.origin }} }
+                @if (setting.scope !== 'default') { <button type="button" (click)="removeHTTPSetting(setting)">Remove</button> }
+              </div>
+            }
+            <label>Kind <select aria-label="HTTP setting kind" [value]="httpSettingKind()" (change)="httpSettingKind.set($any($event.target).value)"><option value="header">Header</option><option value="cookie">Cookie</option></select></label>
+            <label>Name <input aria-label="HTTP setting name" [value]="httpSettingName()" (input)="httpSettingName.set($any($event.target).value)" /></label>
+            <label>Value <input aria-label="HTTP setting value" type="password" [value]="httpSettingValue()" (input)="httpSettingValue.set($any($event.target).value)" /></label>
+            <label>Scope <select aria-label="HTTP setting scope" [value]="httpSettingScope()" (change)="httpSettingScope.set($any($event.target).value)"><option value="project">This project</option><option value="cli">CLI wide</option></select></label>
+            <button type="button" (click)="saveHTTPSetting()" [disabled]="!httpSettingName() || !httpSettingValue()">Save HTTP setting</button>
+          </div>
           <div><strong>Saved project queries</strong>
             <label>Search <input type="search" [value]="querySearch()" (input)="querySearch.set($any($event.target).value)" /></label>
             @for (query of matchingQueries(); track query.ID) {
-              <div class="saved-query"><span>{{ query.Title || query.ID }} · {{ query.Type }}</span>@if (query.Type === 'DTQL') { <button type="button" (click)="runSavedDTQL(query)">Run</button> }</div>
+              <div class="saved-query"><span>{{ query.Title || query.ID }} · {{ query.Type }}</span>@if (query.Type === 'DTQL' || query.Type === 'HTTP') { <button type="button" (click)="runSavedQuery(query)">Run</button> }</div>
             } @empty { <p>No saved queries available.</p> }
           </div>
         </section>
@@ -302,80 +324,20 @@ interface CliSession {
       </ion-toolbar></ion-footer>
     </div>
   `,
-  styles: [`
-    .chat-content { --background: var(--ion-background-color); }
-    .session-bar { display: flex; align-items: center; gap: .5rem; padding: .35rem .75rem; border-bottom: 1px solid var(--ion-color-light-shade); }
-    .session-bar label { display: flex; align-items: center; gap: .5rem; min-width: 0; }
-    .session-bar select { min-width: 0; max-width: 22rem; padding: .35rem; }
-    .session-bar button { border: 1px solid var(--ion-color-light-shade); border-radius: .4rem; padding: .35rem .5rem; background: transparent; color: var(--ion-color-primary); cursor: pointer; }
-    .tool-drawer { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; padding: .75rem; border-bottom: 1px solid var(--ion-color-light-shade); }
-    .tool-drawer > div { border: 1px solid var(--ion-color-light-shade); border-radius: .5rem; padding: .6rem; min-width: 0; }
-    .tool-drawer p { margin: .4rem 0; overflow-wrap: anywhere; }
-    .tool-drawer input { max-width: 10rem; }
-    .saved-query { display: flex; justify-content: space-between; margin-top: .3rem; }
-    .chat-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 360px); height: 100%; min-height: 0; }
-    .chat-history { display: flex; flex-direction: column; gap: 1rem; min-width: 0; min-height: 0; overflow-y: auto; padding: 1.25rem; }
-    .message-card, .result-card { background: var(--ion-card-background, var(--ion-background-color)); border: 1px solid var(--ion-color-light-shade); border-radius: 1rem; box-shadow: 0 2px 12px rgba(0, 0, 0, .06); padding: .8rem 1rem; }
-    .message-card { align-self: flex-start; max-width: min(85%, 680px); white-space: pre-wrap; }
-    .message-card.from-user { align-self: flex-end; background: rgba(var(--ion-color-primary-rgb), .1); }
-    .message-card p { margin: .4rem 0 0; }
-    .result-card { align-self: flex-start; max-width: 100%; width: min(100%, 900px); }
-    .card-heading { font-weight: 600; margin-bottom: .75rem; }
-    .version-badge { color: var(--ion-color-medium); font-weight: 400; margin-left: .5rem; }
-    .result-grid { height: min(420px, 48vh); width: 100%; }
-    .result-tabs { display: flex; gap: .25rem; margin: .5rem 0; }
-    .result-tabs button { border: 0; border-radius: .35rem; padding: .4rem .6rem; background: transparent; cursor: pointer; }
-    .result-tabs button[aria-selected="true"] { background: rgba(var(--ion-color-primary-rgb), .14); }
-    .http-summary { color: var(--ion-color-medium); font-size: .8rem; margin-top: .4rem; overflow-wrap: anywhere; }
-    .message-card pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 24rem; overflow: auto; }
-    .markdown-body { overflow-wrap: anywhere; }
-    .markdown-body :first-child { margin-top: 0; }
-    .markdown-body :last-child { margin-bottom: 0; }
-    .markdown-body pre { padding: .5rem; background: var(--ion-color-light); border-radius: .4rem; }
-    .chart-row { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(80px, 3fr) auto; align-items: center; gap: .5rem; margin: .35rem 0; }
-    .chart-track { height: .8rem; border-radius: .3rem; background: var(--ion-color-light); overflow: hidden; }
-    .chart-track div { height: 100%; background: var(--ion-color-primary); }
-    .join-candidates { border-top: 1px solid var(--ion-color-light-shade); margin-top: .75rem; padding-top: .75rem; }
-    .composer-footer { background: var(--ion-background-color); }
-    .composer { align-items: end; display: flex; gap: .5rem; margin: 0 auto; max-width: 1080px; padding: .5rem 1rem; }
-    .composer ion-item { flex: 1; min-width: 0; }
-    .context-panel { border-left: 1px solid var(--ion-color-light-shade); min-width: 0; min-height: 0; overflow-y: auto; background: var(--ion-card-background, var(--ion-background-color)); }
-    .context-tabs { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--ion-color-light-shade); padding: .5rem; gap: .25rem; }
-    .context-tabs button { flex: 1 1 40%; padding: .55rem .25rem; border-radius: .5rem; background: transparent; color: var(--ion-text-color); cursor: pointer; }
-    .context-tabs button[aria-selected="true"] { background: rgba(var(--ion-color-primary-rgb), .14); color: var(--ion-color-primary); font-weight: 600; }
-    .context-body { display: flex; flex-direction: column; gap: .75rem; padding: .75rem; }
-    .context-card { border: 1px solid var(--ion-color-light-shade); border-radius: .75rem; padding: .75rem; overflow: hidden; }
-    .project-group { margin-bottom: .5rem; }
-    .project-group summary { cursor: pointer; font-weight: 600; padding: .35rem; }
-    .project-section { margin-left: .65rem; }
-    .project-section > summary { color: var(--ion-color-medium); }
-    .project-columns summary { font-size: .85rem; }
-    .project-group .context-card { margin: .5rem 0; }
-    .context-card-title { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; }
-    .context-card-title small { color: var(--ion-color-medium); }
-    .context-card p, .context-card pre { overflow-wrap: anywhere; white-space: pre-wrap; font-size: .85rem; }
-    .context-card pre { max-height: 12rem; overflow: auto; }
-    .card-actions { display: flex; flex-wrap: wrap; gap: .25rem; margin: .4rem 0; }
-    .card-actions button, .context-card > button, .context-card-title button, .attachment-chips button { color: var(--ion-color-primary); background: transparent; border: 1px solid var(--ion-color-light-shade); border-radius: .4rem; padding: .3rem .5rem; cursor: pointer; }
-    .context-grid { height: 220px; width: 100%; }
-    .context-empty { color: var(--ion-color-medium); padding: .5rem; }
-    .selected-values div { display: flex; justify-content: space-between; gap: .5rem; border-top: 1px solid var(--ion-color-light-shade); padding: .3rem 0; }
-    .inspector-tabs { display: flex; gap: .2rem; flex-wrap: wrap; margin: .5rem 0; }
-    .inspector-tabs button { border: 0; border-radius: .35rem; padding: .35rem; background: transparent; cursor: pointer; }
-    .inspector-tabs button[aria-selected="true"] { background: rgba(var(--ion-color-primary-rgb), .14); }
-    .selected-values dt { font-weight: 600; }
-    .selected-values dd { margin: 0; overflow-wrap: anywhere; }
-    .cell-detail { border-top: 1px solid var(--ion-color-light-shade); margin-top: .7rem; padding-top: .7rem; }
-    .cell-detail pre { max-height: 12rem; overflow: auto; }
-    .bookmark-search { display: flex; flex-direction: column; gap: .25rem; }
-    .bookmark-search input { padding: .5rem; border: 1px solid var(--ion-color-light-shade); border-radius: .4rem; }
-    .attachment-chips { display: flex; flex-wrap: wrap; gap: .25rem; padding: .5rem 1rem 0; }
-    @media (max-width: 760px) { .tool-drawer { grid-template-columns: 1fr; } .chat-layout { display: block; overflow-y: auto; } .context-panel { border-left: 0; border-top: 1px solid var(--ion-color-light-shade); overflow: visible; } .chat-history { overflow: visible; padding: .75rem; } .message-card { max-width: 95%; } }
-  `],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CliChatPageComponent implements OnInit, OnDestroy {
   readonly httpTabs = ['Rendered', 'Raw', 'Headers'];
+  readonly httpMethods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
+  readonly httpMethod = signal('GET');
+  readonly httpURL = signal('');
+  readonly httpHeadersDraft = signal('');
+  readonly httpBody = signal('');
+  readonly httpSettings = signal<CliHTTPSetting[]>([]);
+  readonly httpSettingKind = signal('header');
+  readonly httpSettingName = signal('');
+  readonly httpSettingValue = signal('');
+  readonly httpSettingScope = signal('project');
   readonly httpTabsById = signal<Record<string, string>>({});
   readonly resultTabs = ['Table', 'Charts', 'Current row'];
   readonly resultTabsById = signal<Record<string, string>>({});
@@ -640,7 +602,7 @@ export class CliChatPageComponent implements OnInit, OnDestroy {
     finally { this.busy.set(false); }
   }
 
-  runSavedDTQL(query: CliSavedQuery): void {
+  runSavedQuery(query: CliSavedQuery): void {
     const variables: Record<string, string> = {};
     for (const parameter of query.Parameters || []) {
       const value = window.prompt(parameter.Title || parameter.ID, parameter.DefaultValue || '');
@@ -648,19 +610,72 @@ export class CliChatPageComponent implements OnInit, OnDestroy {
       if (parameter.Required && !value.trim()) { this.error.set(`${parameter.Title || parameter.ID} is required.`); return; }
       variables[parameter.ID] = value;
     }
-    void this.executeSavedDTQL(query.ID, variables);
+    void this.executeSavedQuery(query.ID, query.Type, variables);
   }
-  private async executeSavedDTQL(queryId: string, variables: Record<string, string>): Promise<void> {
+  private async executeSavedQuery(queryId: string, type: string, variables: Record<string, string>): Promise<void> {
     const sessionId = this.session()?.ID;
     const address = this.address;
     const token = this.token;
     if (!sessionId || this.busy()) return;
     this.busy.set(true);
     try {
-      const response = await fetch(`${address}/queries`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-DataTug-Chat-Capability': token }, body: JSON.stringify({ sessionId, action: 'run_dtql', queryId, variables }) });
+      const response = await fetch(`${address}/queries`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-DataTug-Chat-Capability': token }, body: JSON.stringify({ sessionId, action: type === 'HTTP' ? 'run_http' : 'run_dtql', queryId, variables }) });
       if (!response.ok) throw new Error(await response.text());
       if (address === this.address && token === this.token) await this.refresh();
     } catch (error) { if (address === this.address && token === this.token) this.error.set(`Could not run query: ${error instanceof Error ? error.message : 'unknown error'}`); }
+    finally { this.busy.set(false); }
+  }
+
+  async sendHTTPRequest(): Promise<void> {
+    const sessionId = this.session()?.ID;
+    const address = this.address;
+    const token = this.token;
+    if (!sessionId || this.busy()) return;
+    const headers: Record<string, string> = {};
+    for (const line of this.httpHeadersDraft().split('\n').map((item) => item.trim()).filter(Boolean)) {
+      const separator = line.indexOf(':');
+      if (separator < 1) { this.error.set(`Invalid HTTP header: ${line}`); return; }
+      headers[line.slice(0, separator).trim()] = line.slice(separator + 1).trim();
+    }
+    this.busy.set(true);
+    try {
+      const response = await fetch(`${address}/http`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-DataTug-Chat-Capability': token }, body: JSON.stringify({ sessionId, method: this.httpMethod(), url: this.httpURL().trim(), headers, body: this.httpBody() }) });
+      if (!response.ok) throw new Error(await response.text());
+      if (address === this.address && token === this.token) await this.refresh();
+    } catch (error) { if (address === this.address && token === this.token) this.error.set(`Could not send HTTP request: ${error instanceof Error ? error.message : 'unknown error'}`); }
+    finally { this.busy.set(false); }
+  }
+
+  async loadHTTPSettings(): Promise<void> {
+    const sessionId = this.session()?.ID;
+    if (!sessionId) return;
+    const address = this.address, token = this.token;
+    try {
+      const origin = encodeURIComponent(this.httpURL().trim());
+      const response = await fetch(`${address}/http_settings?origin=${origin}`, { headers: { 'X-DataTug-Chat-Capability': token, 'X-DataTug-Chat-Session': sessionId }, cache: 'no-store' });
+      if (!response.ok) throw new Error(await response.text());
+      if (address === this.address && token === this.token) this.httpSettings.set(await response.json() as CliHTTPSetting[]);
+    } catch (error) { if (address === this.address && token === this.token) this.error.set(`Could not load HTTP settings: ${error instanceof Error ? error.message : 'unknown error'}`); }
+  }
+
+  async saveHTTPSetting(): Promise<void> {
+    await this.changeHTTPSetting('set', { kind: this.httpSettingKind(), name: this.httpSettingName().trim(), scope: this.httpSettingScope(), origin: this.httpURL().trim() }, this.httpSettingValue());
+  }
+
+  async removeHTTPSetting(setting: CliHTTPSetting): Promise<void> {
+    await this.changeHTTPSetting('remove', setting, '');
+  }
+
+  private async changeHTTPSetting(action: string, setting: CliHTTPSetting, value: string): Promise<void> {
+    const sessionId = this.session()?.ID;
+    const address = this.address, token = this.token;
+    if (!sessionId || this.busy()) return;
+    this.busy.set(true);
+    try {
+      const response = await fetch(`${address}/http_settings`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-DataTug-Chat-Capability': token }, body: JSON.stringify({ sessionId, action, ...setting, value }) });
+      if (!response.ok) throw new Error(await response.text());
+      if (address === this.address && token === this.token) { this.httpSettingValue.set(''); await this.loadHTTPSettings(); }
+    } catch (error) { if (address === this.address && token === this.token) this.error.set(`Could not change HTTP setting: ${error instanceof Error ? error.message : 'unknown error'}`); }
     finally { this.busy.set(false); }
   }
 

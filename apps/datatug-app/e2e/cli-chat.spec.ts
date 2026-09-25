@@ -14,6 +14,8 @@ test('CLI chat deep link restores, sends, and follows terminal updates', async (
   let sessionTitle = 'Customer analysis';
   let savedQueryTitle = '';
   let ranQueryId = '';
+  let sentHTTP: Record<string, unknown> | undefined;
+  const httpSettings: { kind: string; name: string; scope: string; origin: string }[] = [];
   let savedVersions = 0;
   const actions: { kind: string; title?: string; reference?: { kind: string; objectId: string } }[] = [];
   const workspace = { activeTab: 'Project', attachments: [] as { kind: string; objectId: string; title: string }[], selections: {} as Record<string, unknown>, views: {} as Record<string, unknown>, currentSelectionId: '', docks: [] as { id: string; reference: { kind: string; objectId: string }; title: string }[], exportBucket: [] as string[] };
@@ -53,10 +55,26 @@ test('CLI chat deep link restores, sends, and follows terminal updates', async (
       if (route.request().method() === 'POST') {
         const body = route.request().postDataJSON();
         if (body.action === 'save') savedQueryTitle = body.save.Title;
-        if (body.action === 'run_dtql') ranQueryId = body.queryId;
+        if (body.action === 'run_dtql' || body.action === 'run_http') ranQueryId = `${body.action}:${body.queryId}`;
         await route.fulfill({ status: 204 });
       }
-      else await route.fulfill({ json: [{ ID: 'customers-query', Title: 'Customers query', Type: 'DTQL', Tags: [], Parameters: [] }] });
+      else await route.fulfill({ json: [{ ID: 'customers-query', Title: 'Customers query', Type: 'DTQL', Tags: [], Parameters: [] }, { ID: 'api-query', Title: 'API query', Type: 'HTTP', Tags: [], Parameters: [] }] });
+      return;
+    }
+    if (route.request().url().endsWith('/http')) {
+      sentHTTP = route.request().postDataJSON();
+      messages.push({ ID: 'http-user-2', Role: 'You', Kind: 'text', Text: '/http post https://api.example.test/data', RecordSetID: '' });
+      messages.push({ ID: 'http-answer-2', Role: 'DataTug', Kind: 'text', Text: 'HTTP 200 OK', RecordSetID: '', HTTPResponseID: 'http-response-1' });
+      await route.fulfill({ status: 204 });
+      return;
+    }
+    if (route.request().url().includes('/http_settings')) {
+      if (route.request().method() === 'POST') {
+        const setting = route.request().postDataJSON();
+        if (setting.action === 'set') httpSettings.push({ kind: setting.kind, name: setting.name, scope: setting.scope, origin: setting.origin });
+        else httpSettings.splice(httpSettings.findIndex((item) => item.name === setting.name), 1);
+        await route.fulfill({ status: 204 });
+      } else await route.fulfill({ json: httpSettings });
       return;
     }
     if (route.request().url().includes('/cell_detail?')) {
@@ -137,11 +155,27 @@ test('CLI chat deep link restores, sends, and follows terminal updates', async (
   await expect(page.getByLabel('Chat session')).toHaveValue('dtcs-1');
   await page.getByRole('button', { name: 'Tools' }).click();
   await expect(page.getByRole('region', { name: 'Chat tools' })).toContainText('Customers query');
-  await page.getByRole('region', { name: 'Chat tools' }).getByRole('button', { name: 'Run' }).click();
-  await expect.poll(() => ranQueryId).toBe('customers-query');
+  const tools = page.getByRole('region', { name: 'Chat tools' });
+  await tools.locator('.saved-query').filter({ hasText: 'Customers query' }).getByRole('button', { name: 'Run' }).click();
+  await expect.poll(() => ranQueryId).toBe('run_dtql:customers-query');
+  await tools.locator('.saved-query').filter({ hasText: 'API query' }).getByRole('button', { name: 'Run' }).click();
+  await expect.poll(() => ranQueryId).toBe('run_http:api-query');
+  await tools.getByLabel('HTTP method').selectOption('POST');
+  await tools.getByLabel('HTTP URL').fill('https://api.example.test/data');
+  await tools.getByLabel('HTTP headers').fill('Accept: application/json');
+  await tools.getByLabel('HTTP body').fill('{"limit":3}');
+  await tools.getByRole('button', { name: 'Send HTTP request' }).click();
+  await expect.poll(() => sentHTTP).toMatchObject({ sessionId: 'dtcs-1', method: 'POST', url: 'https://api.example.test/data', headers: { Accept: 'application/json' }, body: '{"limit":3}' });
+  await tools.getByLabel('HTTP setting name').fill('Authorization');
+  await tools.getByLabel('HTTP setting value').fill('Bearer private');
+  await tools.getByRole('button', { name: 'Save HTTP setting' }).click();
+  await expect(tools.getByText('header Authorization = [saved]', { exact: false })).toBeVisible();
+  await expect(tools.getByLabel('HTTP setting value')).toHaveValue('');
+  await tools.getByRole('button', { name: 'Remove' }).click();
+  await expect(tools.getByText('header Authorization = [saved]', { exact: false })).toHaveCount(0);
   await expect(page.getByRole('region', { name: 'Chat tools' })).toContainText('chinook');
   await page.getByRole('region', { name: 'Chat tools' }).getByRole('spinbutton').fill('4');
-  await page.getByRole('region', { name: 'Chat tools' }).getByRole('button', { name: 'Save' }).click();
+  await page.getByRole('region', { name: 'Chat tools' }).getByRole('button', { name: 'Save', exact: true }).click();
   await expect.poll(() => savedVersions).toBe(4);
   await page.getByRole('button', { name: 'Hide tools' }).click();
   page.once('dialog', (dialog) => dialog.accept('Renamed from browser'));
@@ -217,10 +251,10 @@ test('CLI chat deep link restores, sends, and follows terminal updates', async (
   await expect(page.getByText('changed', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Tools' }).click();
   await page.getByRole('region', { name: 'Chat tools' }).getByRole('spinbutton').fill('1');
-  await page.getByRole('region', { name: 'Chat tools' }).getByRole('button', { name: 'Save' }).click();
+  await page.getByRole('region', { name: 'Chat tools' }).getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Query result' })).toHaveCount(1);
   await page.getByRole('region', { name: 'Chat tools' }).getByRole('spinbutton').fill('2');
-  await page.getByRole('region', { name: 'Chat tools' }).getByRole('button', { name: 'Save' }).click();
+  await page.getByRole('region', { name: 'Chat tools' }).getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Query result' })).toHaveCount(2);
 
   const newerToken = 'b'.repeat(64);
