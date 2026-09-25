@@ -8,6 +8,11 @@ import { decodeTypedValue } from '@sneat/datatug-semantic';
 import { Observable, catchError, map, of } from 'rxjs';
 import { buildAgentUrl } from '../services/repo/agent-url';
 import {
+  type CompareRequest,
+  type CompareResult,
+  type CompareRowsPage,
+} from './incident-compare';
+import {
   CreateIncidentRequest,
   AppendIncidentEventRequest,
   AppendIncidentEventResponse,
@@ -180,6 +185,59 @@ export class IncidentClientService {
         ),
       );
   }
+
+  compare(
+    context: IncidentRequestContext,
+    request: CompareRequest,
+  ): Observable<IncidentApiResult<CompareResult>> {
+    return this.http
+      .post<CompareResult>(
+        buildAgentUrl(context.agentStoreId, '/compare'),
+        request,
+      )
+      .pipe(
+        map(
+          (response): IncidentApiResult<CompareResult> => ({
+            kind: 'ok',
+            data: requireCompareResult(response),
+          }),
+        ),
+        catchError((err: unknown) =>
+          of(toIncidentApiResult<CompareResult>(err)),
+        ),
+      );
+  }
+
+  compareRows(
+    context: IncidentRequestContext,
+    comparisonId: string,
+    state: 'matched' | 'added' | 'removed' | 'changed',
+    after?: string,
+  ): Observable<IncidentApiResult<CompareRowsPage>> {
+    let params = new HttpParams()
+      .set('comparisonId', comparisonId)
+      .set('state', state)
+      .set('securityContextId', context.scope.securityContextId);
+    if (after) {
+      params = params.set('after', after);
+    }
+    return this.http
+      .get<CompareRowsPage>(
+        buildAgentUrl(context.agentStoreId, '/compare/rows'),
+        { params },
+      )
+      .pipe(
+        map(
+          (response): IncidentApiResult<CompareRowsPage> => ({
+            kind: 'ok',
+            data: requireCompareRowsPage(response),
+          }),
+        ),
+        catchError((err: unknown) =>
+          of(toIncidentApiResult<CompareRowsPage>(err)),
+        ),
+      );
+  }
 }
 
 function incidentScopeParams(scope: IncidentScope): HttpParams {
@@ -188,6 +246,32 @@ function incidentScopeParams(scope: IncidentScope): HttpParams {
     .set('project', scope.project)
     .set('environment', scope.environment)
     .set('securityContextId', scope.securityContextId);
+}
+
+function requireCompareResult(value: unknown): CompareResult {
+  if (
+    !isRecord(value) ||
+    !isRecord(value['summary']) ||
+    !Array.isArray(value['columns']) ||
+    !Array.isArray(value['key']) ||
+    !Array.isArray(value['added']) ||
+    !Array.isArray(value['removed']) ||
+    !Array.isArray(value['changed'])
+  ) {
+    throw new Error('Invalid compare response.');
+  }
+  return value as CompareResult;
+}
+
+function requireCompareRowsPage(value: unknown): CompareRowsPage {
+  if (
+    !isRecord(value) ||
+    typeof value['comparisonId'] !== 'string' ||
+    !Array.isArray(value['rows'])
+  ) {
+    throw new Error('Invalid compare rows response.');
+  }
+  return value as CompareRowsPage;
 }
 
 function decodeIncidentStream(response: string): IncidentStreamItem[] {
