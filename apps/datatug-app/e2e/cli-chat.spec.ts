@@ -11,8 +11,10 @@ test('CLI chat deep link restores, sends, and follows terminal updates', async (
   ];
   const sent: { text: string; sessionId: string }[] = [];
   let sessionTitle = 'Customer analysis';
+  let savedQueryTitle = '';
+  let savedVersions = 0;
   const actions: { kind: string; title?: string; reference?: { kind: string; objectId: string } }[] = [];
-  const workspace = { activeTab: 'Project', attachments: [] as { kind: string; objectId: string; title: string }[], selections: {} as Record<string, unknown>, views: {} as Record<string, unknown>, currentSelectionId: '', docks: [] as { id: string; reference: { kind: string; objectId: string }; title: string }[] };
+  const workspace = { activeTab: 'Project', attachments: [] as { kind: string; objectId: string; title: string }[], selections: {} as Record<string, unknown>, views: {} as Record<string, unknown>, currentSelectionId: '', docks: [] as { id: string; reference: { kind: string; objectId: string }; title: string }[], exportBucket: [] as string[] };
   const bookmarks: Record<string, unknown> = {};
   const result = { ID: 'rs-1', Title: 'Customers', Result: { Columns: ['Count'], Rows: [{ Key: 'three', Data: { Count: 3 } }, { Key: 'one', Data: { Count: 1 } }] } };
   bookmarks['untagged'] = { ID: 'untagged', Title: 'Untagged result', ProjectID: 'demo-project-1', SourceID: '', TargetKind: 'recordset', Tags: null, Snapshot: { RecordSet: result } };
@@ -37,9 +39,32 @@ test('CLI chat deep link restores, sends, and follows terminal updates', async (
       }
       return;
     }
+    if (route.request().url().endsWith('/settings')) {
+      if (route.request().method() === 'POST') { savedVersions = route.request().postDataJSON().versions; await route.fulfill({ status: 204 }); }
+      else await route.fulfill({ json: { versions: 3, environment: 'local', database: 'chinook' } });
+      return;
+    }
+    if (route.request().url().endsWith('/queries')) {
+      if (route.request().method() === 'POST') {
+        savedQueryTitle = route.request().postDataJSON().save.Title;
+        await route.fulfill({ status: 204 });
+      }
+      else await route.fulfill({ json: [{ ID: 'customers-query', Title: 'Customers query', Type: 'DTQL', Tags: [], Parameters: [] }] });
+      return;
+    }
+    if (route.request().url().includes('/cell_detail?')) {
+      expect(route.request().headers()['x-datatug-chat-session']).toBe('dtcs-1');
+      await route.fulfill({ json: { Title: 'Customers', Column: 'Count', Value: 3, Row: { Count: 3 }, Qualified: 'main.Customers.Count', DBType: 'integer', Related: [] } });
+      return;
+    }
     if (route.request().url().includes('/join_candidates')) {
       expect(route.request().headers()['x-datatug-chat-session']).toBe('dtcs-1');
       await route.fulfill({ json: [{ ID: 'fk-1', Source: { Alias: 'c', Relation: 'Customers' }, Target: { Schema: 'main', Relation: 'Orders' }, Cardinality: 'one-to-many', ConstraintID: 'fk-orders', Fields: [] }] });
+      return;
+    }
+    if (route.request().url().includes('/export?')) {
+      expect(route.request().headers()['x-datatug-chat-session']).toBe('dtcs-1');
+      await route.fulfill({ contentType: 'text/csv', body: 'Count\n3\n1\n' });
       return;
     }
     if (route.request().url().endsWith('/results')) {
@@ -62,6 +87,9 @@ test('CLI chat deep link restores, sends, and follows terminal updates', async (
         workspace.currentSelectionId = 'selection-1';
       }
       if (action.kind === 'dock') workspace.docks.push({ id: 'dock-1', reference: action.reference, title: action.reference.title });
+      if (action.kind === 'bucket_add') workspace.exportBucket.push(action.recordSetId);
+      if (action.kind === 'bucket_remove') workspace.exportBucket = workspace.exportBucket.filter((id) => id !== action.recordSetId);
+      if (action.kind === 'bucket_clear') workspace.exportBucket = [];
       if (action.kind === 'bookmark_create') bookmarks['bookmark-1'] = { ID: 'bookmark-1', Title: action.title || action.reference.title, ProjectID: 'demo-project-1', SourceID: '', TargetKind: action.reference.kind, Tags: [], Snapshot: { RecordSet: result } };
       await route.fulfill({ status: 204 });
       return;
@@ -89,7 +117,20 @@ test('CLI chat deep link restores, sends, and follows terminal updates', async (
   await expect(httpCard.getByText('hello http')).toBeVisible();
   await httpCard.getByRole('tab', { name: 'Headers' }).click();
   await expect(httpCard.getByText('Content-Type: text/plain')).toBeVisible();
+  let savePrompt = 0;
+  const answerSavePrompt = (dialog: import('@playwright/test').Dialog) => { void dialog.accept(savePrompt++ === 0 ? 'Saved HTTP request' : 'api, demo'); };
+  page.on('dialog', answerSavePrompt);
+  await httpCard.getByRole('button', { name: 'Save query' }).click();
+  await expect.poll(() => savedQueryTitle).toBe('Saved HTTP request');
+  page.off('dialog', answerSavePrompt);
   await expect(page.getByLabel('Chat session')).toHaveValue('dtcs-1');
+  await page.getByRole('button', { name: 'Tools' }).click();
+  await expect(page.getByRole('region', { name: 'Chat tools' })).toContainText('Customers query');
+  await expect(page.getByRole('region', { name: 'Chat tools' })).toContainText('chinook');
+  await page.getByRole('region', { name: 'Chat tools' }).getByRole('spinbutton').fill('4');
+  await page.getByRole('region', { name: 'Chat tools' }).getByRole('button', { name: 'Save' }).click();
+  await expect.poll(() => savedVersions).toBe(4);
+  await page.getByRole('button', { name: 'Hide tools' }).click();
   page.once('dialog', (dialog) => dialog.accept('Renamed from browser'));
   await page.getByRole('button', { name: 'Rename' }).click();
   await expect(page.getByRole('banner').getByText('Renamed from browser')).toBeVisible();
@@ -103,13 +144,21 @@ test('CLI chat deep link restores, sends, and follows terminal updates', async (
   await expect(page.getByText('Select a row or cell in a result table')).toBeVisible();
   expect(actions.map((action) => action.kind)).toEqual(['attach', 'set_tab']);
   await page.getByRole('gridcell', { name: '3' }).click();
-  await expect(page.getByRole('complementary', { name: 'Chat workspace' }).getByText('3')).toBeVisible();
+  await expect(page.getByRole('complementary', { name: 'Chat workspace' }).locator('.selected-values dd').first()).toHaveText('3');
+  await expect(page.getByRole('region', { name: 'Cell detail' })).toContainText('main.Customers.Count');
   await page.getByRole('complementary', { name: 'Chat workspace' }).getByRole('button', { name: 'Dock' }).click();
   await page.getByRole('tab', { name: 'Docked 1' }).click();
   await expect(page.getByRole('complementary', { name: 'Chat workspace' }).getByRole('gridcell', { name: '3' })).toBeVisible();
   await page.getByRole('tab', { name: 'Bookmarks 1' }).click();
   await expect(page.getByRole('complementary', { name: 'Chat workspace' }).getByText('Untagged result')).toBeVisible();
   const resultCard = page.getByRole('region', { name: 'Query result' });
+  await resultCard.getByRole('button', { name: 'Add to export bucket' }).click();
+  await page.getByRole('tab', { name: 'Docked 1' }).click();
+  await expect(page.getByRole('region', { name: 'Export bucket' })).toContainText('Customers');
+  page.once('dialog', (dialog) => dialog.accept('csv'));
+  const download = page.waitForEvent('download');
+  await resultCard.getByRole('button', { name: 'Download', exact: true }).click();
+  expect((await download).suggestedFilename()).toBe('datatug-chat-export.csv');
   await resultCard.getByRole('tab', { name: 'Charts' }).click();
   await expect(resultCard.locator('.chart-row')).toHaveCount(2);
   await resultCard.getByRole('tab', { name: 'Current row' }).click();

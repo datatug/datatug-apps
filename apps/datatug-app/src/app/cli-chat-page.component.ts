@@ -7,7 +7,6 @@ import { IonButtons } from '@ionic/angular/ion-buttons';
 import { IonContent } from '@ionic/angular/ion-content';
 import { IonFooter } from '@ionic/angular/ion-footer';
 import { IonHeader } from '@ionic/angular/ion-header';
-import { IonInput } from '@ionic/angular/ion-input';
 import { IonItem } from '@ionic/angular/ion-item';
 import { IonLabel } from '@ionic/angular/ion-label';
 import { IonMenuButton } from '@ionic/angular/ion-menu-button';
@@ -28,12 +27,14 @@ interface CliMessage {
   RecordSetID: string;
   HTTPResponseID?: string;
 }
-interface CliHTTPResponse { URL: string; StatusCode: number; ContentType: string; Headers: Record<string, string[]>; Body: string }
+interface CliHTTPResponse { URL: string; Method?: string; RequestHasQuery?: boolean; StatusCode: number; ContentType: string; Headers: Record<string, string[]>; Body: string }
 
 interface CliRecordSet {
   ID: string;
   Title: string;
   DTQL?: string;
+  Database?: string;
+  Parameters?: Record<string, unknown>;
   HTTPResponseID?: string;
   RefreshParentID?: string;
   Result: { Columns: string[]; Rows: { Key: string; Data: Record<string, unknown> }[] };
@@ -56,7 +57,10 @@ interface CliWorkspace {
 interface CliBookmark { ID: string; Title: string; ProjectID: string; SourceID: string; TargetKind: string; Tags: string[]; Snapshot: { RecordSet: CliRecordSet; View?: CliView; Selection?: CliSelection } }
 interface CliProjectObject { Reference: ContextReference; Columns: string[]; ColumnTypes: Record<string, string>; QueryType: string; QueryText: string; Issue: string }
 interface CliCatalog { ID: string; Title: string; Objects: CliProjectObject[] }
-interface WorkspaceAction { kind: string; reference?: ContextReference; recordSetId?: string; viewId?: string; title?: string; rows?: number[]; columns?: string[]; dockId?: string; bookmarkId?: string; tag?: string }
+interface CliSavedQuery { ID: string; Title: string; Type: string; Tags: string[]; Parameters: { ID: string; Title: string; Required: boolean; DefaultValue: string }[] }
+interface CliSettings { versions: number; environment: string; database: string }
+interface CliCellDetail { Title: string; Column: string; Value: unknown; Row: Record<string, unknown>; Qualified: string; DBType: string; Related: { ConstraintID: string; Target: string; Columns: string[]; Rows: { Data: Record<string, unknown> }[] }[] }
+interface WorkspaceAction { kind: string; reference?: ContextReference; recordSetId?: string; viewId?: string; title?: string; rows?: number[]; columns?: string[]; ranges?: { firstRow: number; lastRow: number; firstCol: number; lastCol: number }[]; dockId?: string; bookmarkId?: string; tag?: string }
 
 interface CliSession {
   ID: string;
@@ -71,7 +75,7 @@ interface CliSession {
 @Component({
   selector: 'datatug-cli-chat-page',
   standalone: true,
-  imports: [FormsModule, AgGridAngular, IonButton, IonButtons, IonContent, IonFooter, IonHeader, IonInput, IonItem, IonLabel, IonMenuButton, IonSpinner, IonText, IonTextarea, IonTitle, IonToolbar],
+  imports: [FormsModule, AgGridAngular, IonButton, IonButtons, IonContent, IonFooter, IonHeader, IonItem, IonLabel, IonMenuButton, IonSpinner, IonText, IonTextarea, IonTitle, IonToolbar],
   template: `
     <div class="ion-page">
       <ion-header><ion-toolbar>
@@ -84,7 +88,22 @@ interface CliSession {
         </select></label>
         <button type="button" (click)="sessionAction('new')" [disabled]="sessionBusy()">New</button>
         <button type="button" (click)="renameSession()" [disabled]="!session() || sessionBusy()">Rename</button>
+        <button type="button" (click)="confirmSessionAction('clear')" [disabled]="!session() || sessionBusy()">Clear</button>
+        <button type="button" (click)="confirmSessionAction('delete')" [disabled]="!session() || sessionBusy()">Delete</button>
+        <button type="button" (click)="toolsOpen.set(!toolsOpen())">{{ toolsOpen() ? 'Hide tools' : 'Tools' }}</button>
       </div>
+      @if (toolsOpen()) {
+        <section class="tool-drawer" aria-label="Chat tools">
+          <div><strong>Connection</strong><p>{{ catalog()?.Title || 'Current project' }} · {{ settings()?.environment || 'Environment unavailable' }} · {{ settings()?.database || 'Database unavailable' }}</p><small>Connection switching is coming soon in the CLI.</small></div>
+          <div><strong>Result versions to keep</strong><label><input type="number" min="1" max="100" [value]="settings()?.versions || 1" #versionsInput /> <button type="button" (click)="saveVersions(versionsInput.value)">Save</button></label></div>
+          <div><strong>Saved project queries</strong>
+            <label>Search <input type="search" [value]="querySearch()" (input)="querySearch.set($any($event.target).value)" /></label>
+            @for (query of matchingQueries(); track query.ID) {
+              <div class="saved-query"><span>{{ query.Title || query.ID }} · {{ query.Type }}</span></div>
+            } @empty { <p>No saved queries available.</p> }
+          </div>
+        </section>
+      }
       <ion-content class="chat-content" [scrollY]="false">
         <div class="chat-layout">
         <div class="chat-history">
@@ -99,6 +118,9 @@ interface CliSession {
                     <button type="button" (click)="toggleAttachment(resultReference(message.RecordSetID, result))">{{ attached(resultReference(message.RecordSetID, result)) ? 'Detach' : 'Attach' }}</button>
                     <button type="button" (click)="workspaceAction({kind: 'dock', reference: resultReference(message.RecordSetID, result)})">Dock</button>
                     <button type="button" (click)="bookmarkResult(message.RecordSetID, result)">Bookmark</button>
+                    <button type="button" (click)="workspaceAction({kind: bucketContains(message.RecordSetID) ? 'bucket_remove' : 'bucket_add', recordSetId: message.RecordSetID})">{{ bucketContains(message.RecordSetID) ? 'Remove from export bucket' : 'Add to export bucket' }}</button>
+                    <button type="button" (click)="downloadResult(message.RecordSetID)">Download</button>
+                    @if (result.DTQL || result.HTTPResponseID) { <button type="button" (click)="saveResultQuery(result)">Save query</button> }
                     @if (result.DTQL && !result.HTTPResponseID) { <button type="button" (click)="resultAction('refresh', message.RecordSetID)">Refresh</button> }
                     <button type="button" (click)="toggleJoins(message.RecordSetID)">Related tables</button>
                   </div>
@@ -138,6 +160,7 @@ interface CliSession {
                 <strong>{{ message.Role === 'You' ? 'You' : 'DataTug' }}</strong>
                 @if (httpResponse(message.HTTPResponseID || ''); as response) {
                   <div class="http-summary">{{ response.StatusCode }} · {{ response.URL }}</div>
+                  <button type="button" (click)="saveHTTPQuery(response)">Save query</button>
                   <div class="result-tabs" role="tablist" aria-label="HTTP response views">
                     @for (tab of httpTabs; track tab) { <button type="button" role="tab" [attr.aria-selected]="httpTab(message.ID) === tab" (click)="setHttpTab(message.ID, tab)">{{ tab }}</button> }
                   </div>
@@ -191,6 +214,19 @@ interface CliSession {
                         <dl class="selected-values"><div><dt>Column</dt><dd>{{ column }}</dd></div><div><dt>Type</dt><dd>{{ columnType(column) || 'Unknown' }}</dd></div></dl>
                       }
                     }
+                    @if (cellDetail(); as detail) {
+                      <section class="cell-detail" aria-label="Cell detail">
+                        <div class="context-card-title"><strong>{{ detail.Column }}</strong><button type="button" (click)="copyCellDetail(detail)">Copy value</button></div>
+                        <p>Type: {{ detail.DBType || 'Unknown' }} · Source: {{ detail.Qualified || 'Unavailable' }}</p>
+                        <pre>{{ detail.Value ?? 'NULL' }}</pre>
+                        @for (related of detail.Related || []; track related.ConstraintID) {
+                          <strong>FK {{ related.ConstraintID }} → {{ related.Target }}</strong>
+                          @for (row of related.Rows || []; track $index) {
+                            <dl class="selected-values">@for (column of related.Columns || []; track column) { <div><dt>{{ column }}</dt><dd>{{ row.Data[column] ?? 'NULL' }}</dd></div> }</dl>
+                          } @empty { <p>No matching records.</p> }
+                        }
+                      </section>
+                    }
                     @if (inspectorTab() === 'Current recordset') {
                       <p>{{ record.Title }} · {{ record.Result.Rows.length }} rows · {{ record.Result.Columns.length }} columns</p>
                       <dl class="selected-values">@for (column of record.Result.Columns; track column) { <div><dt>{{ column }}</dt><dd>{{ columnType(column) || 'Type unavailable' }}</dd></div> }</dl>
@@ -206,6 +242,11 @@ interface CliSession {
               } @else { <p class="context-empty">Select a row or cell in a result table to inspect it here.</p> }
             }
             @if (activeTab() === 'Docked') {
+              <section class="context-card" aria-label="Export bucket">
+                <div class="context-card-title"><strong>Export bucket</strong><small>{{ exportBucket().length }} results</small></div>
+                @for (id of exportBucket(); track id) { <p>{{ recordSet(id)?.Title || id }}</p> }
+                <div class="card-actions"><button type="button" (click)="downloadResult('')" [disabled]="!exportBucket().length">Download bucket</button><button type="button" (click)="workspaceAction({kind: 'bucket_clear'})" [disabled]="!exportBucket().length">Clear bucket</button></div>
+              </section>
               @for (dock of docks(); track dock.id) {
                 <section class="context-card">
                   <div class="context-card-title"><strong>{{ dock.title }}</strong><button type="button" (click)="workspaceAction({kind: 'undock', dockId: dock.id})">Undock</button></div>
@@ -257,6 +298,11 @@ interface CliSession {
     .session-bar label { display: flex; align-items: center; gap: .5rem; min-width: 0; }
     .session-bar select { min-width: 0; max-width: 22rem; padding: .35rem; }
     .session-bar button { border: 1px solid var(--ion-color-light-shade); border-radius: .4rem; padding: .35rem .5rem; background: transparent; color: var(--ion-color-primary); cursor: pointer; }
+    .tool-drawer { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; padding: .75rem; border-bottom: 1px solid var(--ion-color-light-shade); }
+    .tool-drawer > div { border: 1px solid var(--ion-color-light-shade); border-radius: .5rem; padding: .6rem; min-width: 0; }
+    .tool-drawer p { margin: .4rem 0; overflow-wrap: anywhere; }
+    .tool-drawer input { max-width: 10rem; }
+    .saved-query { display: flex; justify-content: space-between; margin-top: .3rem; }
     .chat-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 360px); height: 100%; min-height: 0; }
     .chat-history { display: flex; flex-direction: column; gap: 1rem; min-width: 0; min-height: 0; overflow-y: auto; padding: 1.25rem; }
     .message-card, .result-card { background: var(--ion-card-background, var(--ion-background-color)); border: 1px solid var(--ion-color-light-shade); border-radius: 1rem; box-shadow: 0 2px 12px rgba(0, 0, 0, .06); padding: .8rem 1rem; }
@@ -302,10 +348,12 @@ interface CliSession {
     .inspector-tabs button[aria-selected="true"] { background: rgba(var(--ion-color-primary-rgb), .14); }
     .selected-values dt { font-weight: 600; }
     .selected-values dd { margin: 0; overflow-wrap: anywhere; }
+    .cell-detail { border-top: 1px solid var(--ion-color-light-shade); margin-top: .7rem; padding-top: .7rem; }
+    .cell-detail pre { max-height: 12rem; overflow: auto; }
     .bookmark-search { display: flex; flex-direction: column; gap: .25rem; }
     .bookmark-search input { padding: .5rem; border: 1px solid var(--ion-color-light-shade); border-radius: .4rem; }
     .attachment-chips { display: flex; flex-wrap: wrap; gap: .25rem; padding: .5rem 1rem 0; }
-    @media (max-width: 760px) { .chat-layout { display: block; overflow-y: auto; } .context-panel { border-left: 0; border-top: 1px solid var(--ion-color-light-shade); overflow: visible; } .chat-history { overflow: visible; padding: .75rem; } .message-card { max-width: 95%; } }
+    @media (max-width: 760px) { .tool-drawer { grid-template-columns: 1fr; } .chat-layout { display: block; overflow-y: auto; } .context-panel { border-left: 0; border-top: 1px solid var(--ion-color-light-shade); overflow: visible; } .chat-history { overflow: visible; padding: .75rem; } .message-card { max-width: 95%; } }
   `],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -324,6 +372,12 @@ export class CliChatPageComponent implements OnInit, OnDestroy {
   readonly sessions = signal<{ id: string; title: string }[]>([]);
   readonly sessionBusy = signal(false);
   readonly catalog = signal<CliCatalog | undefined>(undefined);
+  readonly settings = signal<CliSettings | undefined>(undefined);
+  readonly savedQueries = signal<CliSavedQuery[]>([]);
+  readonly querySearch = signal('');
+  readonly matchingQueries = computed(() => this.savedQueries().filter((query) => `${query.Title} ${query.ID} ${query.Type} ${(query.Tags || []).join(' ')}`.toLowerCase().includes(this.querySearch().toLowerCase())));
+  readonly toolsOpen = signal(false);
+  readonly cellDetail = signal<CliCellDetail | undefined>(undefined);
   readonly projectGroups = computed(() => {
     const catalog = this.catalog();
     const objects = catalog?.Objects || [];
@@ -350,6 +404,7 @@ export class CliChatPageComponent implements OnInit, OnDestroy {
   readonly activeTab = computed(() => this.session()?.Workspace?.activeTab || 'Project');
   readonly attachments = computed(() => this.session()?.Workspace?.attachments || []);
   readonly docks = computed(() => this.session()?.Workspace?.docks || []);
+  readonly exportBucket = computed(() => this.session()?.Workspace?.exportBucket || []);
   readonly bookmarks = computed(() => Object.values(this.session()?.Bookmarks || {}).filter((bookmark) => bookmark.Title.toLowerCase().includes(this.bookmarkSearch().toLowerCase()) && (!this.bookmarkTagFilter() || bookmark.Tags?.some((tag) => tag.toLowerCase().includes(this.bookmarkTagFilter().toLowerCase())))));
   readonly currentSelection = computed(() => {
     const workspace = this.session()?.Workspace;
@@ -369,6 +424,8 @@ export class CliChatPageComponent implements OnInit, OnDestroy {
   private readonly columnCache = new WeakMap<CliRecordSet, ColDef[]>();
   private readonly rawHttpCache = new WeakMap<CliHTTPResponse, string>();
   private readonly projectionCache = new Map<string, { record: CliRecordSet; signature: string; rows: Record<string, unknown>[]; columns: ColDef[] }>();
+  private rangeAnchor?: { recordSetId: string; displayRow: number; column: string };
+  private cellRequestSerial = 0;
   private readonly onHashChange = (): void => {
     if (!location.hash.startsWith('#h=')) return;
     captureCliChatCapability();
@@ -377,10 +434,15 @@ export class CliChatPageComponent implements OnInit, OnDestroy {
     this.socket = undefined;
     this.session.set(undefined);
     this.catalog.set(undefined);
+    this.settings.set(undefined);
+    this.savedQueries.set([]);
     this.sessions.set([]);
     this.joinCandidates.set({});
     this.joinsOpen.set({});
-    if (this.address) { void this.refresh(); void this.loadCatalog(); void this.loadSessions(); this.connectEvents(); }
+    this.cellDetail.set(undefined);
+    this.cellRequestSerial++;
+    this.rangeAnchor = undefined;
+    if (this.address) { void this.refresh(); void this.loadCatalog(); void this.loadSessions(); void this.loadSettings(); void this.loadQueries(); this.connectEvents(); }
   };
 
   constructor() { this.configureBridge(); }
@@ -406,6 +468,8 @@ export class CliChatPageComponent implements OnInit, OnDestroy {
     void this.refresh();
     void this.loadCatalog();
     void this.loadSessions();
+    void this.loadSettings();
+    void this.loadQueries();
     this.connectEvents();
     this.timer = setInterval(() => {
       if (!this.socket || this.socket.readyState === WebSocket.CLOSED) this.connectEvents();
@@ -423,7 +487,7 @@ export class CliChatPageComponent implements OnInit, OnDestroy {
     if (this.socket && this.socket.readyState !== WebSocket.CLOSED) return;
     const socket = new WebSocket(this.address.replace('http://', 'ws://') + '/events', ['datatug-chat', this.token]);
     this.socket = socket;
-    socket.onmessage = () => { void this.refresh(); void this.loadSessions(); };
+    socket.onmessage = () => { void this.refresh(); void this.loadSessions(); void this.loadQueries(); };
     socket.onclose = () => { if (this.socket === socket) this.socket = undefined; };
     socket.onerror = () => socket.close();
   }
@@ -464,6 +528,104 @@ export class CliChatPageComponent implements OnInit, OnDestroy {
     return '';
   }
   bookmarkReference(bookmark: CliBookmark): ContextReference { return { kind: 'bookmark', objectId: bookmark.ID, title: bookmark.Title, projectId: bookmark.ProjectID, sourceId: bookmark.SourceID }; }
+  bucketContains(id: string): boolean { return this.exportBucket().includes(id); }
+
+  saveResultQuery(result: CliRecordSet): void {
+    if (result.HTTPResponseID) {
+      const response = this.httpResponse(result.HTTPResponseID);
+      if (response) this.saveHTTPQuery(response);
+      return;
+    }
+    if (!result.DTQL || Object.keys(result.Parameters || {}).length) { this.error.set('This result cannot be saved as a reusable query.'); return; }
+    this.promptSaveQuery('DTQL', result.DTQL, result.Title, result.Database || '');
+  }
+  saveHTTPQuery(response: CliHTTPResponse): void {
+    if (response.RequestHasQuery || (response.Method && response.Method !== 'GET')) { this.error.set('Only GET requests without URL parameters can be saved as project queries.'); return; }
+    this.promptSaveQuery('HTTP', response.URL, response.URL, '');
+  }
+  private promptSaveQuery(type: 'DTQL' | 'HTTP', text: string, suggestedTitle: string, database: string): void {
+    const title = window.prompt('Project query name', suggestedTitle)?.trim();
+    if (!title) return;
+    const tagsText = window.prompt('Tags, separated by commas', '');
+    if (tagsText === null) return;
+    const tags = [...new Set(tagsText.split(',').map((tag) => tag.trim()).filter(Boolean))];
+    void this.saveQuery({ Title: title, Tags: tags, Type: type, Text: text, Database: database });
+  }
+  private async saveQuery(save: { Title: string; Tags: string[]; Type: string; Text: string; Database: string }): Promise<void> {
+    const sessionId = this.session()?.ID;
+    const address = this.address;
+    const token = this.token;
+    if (!sessionId || this.busy()) return;
+    this.busy.set(true);
+    try {
+      const response = await fetch(`${address}/queries`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-DataTug-Chat-Capability': token }, body: JSON.stringify({ sessionId, action: 'save', save }) });
+      if (!response.ok) throw new Error(await response.text());
+      if (address === this.address && token === this.token) await this.loadQueries();
+    } catch (error) { if (address === this.address && token === this.token) this.error.set(`Could not save query: ${error instanceof Error ? error.message : 'unknown error'}`); }
+    finally { this.busy.set(false); }
+  }
+
+  private async loadQueries(): Promise<void> {
+    const address = this.address;
+    const token = this.token;
+    if (!address) return;
+    try {
+      const response = await fetch(`${address}/queries`, { headers: { 'X-DataTug-Chat-Capability': token }, cache: 'no-store' });
+      if (!response.ok) return;
+      const queries = await response.json() as CliSavedQuery[];
+      if (address === this.address && token === this.token) this.savedQueries.set(queries || []);
+    } catch { /* Saved project queries are optional for this CLI project. */ }
+  }
+
+  private async loadSettings(): Promise<void> {
+    const address = this.address;
+    const token = this.token;
+    const sessionId = this.session()?.ID;
+    if (!address || !sessionId) return;
+    try {
+      const response = await fetch(`${address}/settings`, { headers: { 'X-DataTug-Chat-Capability': token, 'X-DataTug-Chat-Session': sessionId }, cache: 'no-store' });
+      if (!response.ok) return;
+      const settings = await response.json() as CliSettings;
+      if (address === this.address && token === this.token && sessionId === this.session()?.ID) this.settings.set(settings);
+    } catch { /* Chat remains available if settings cannot be read. */ }
+  }
+  async saveVersions(value: string): Promise<void> {
+    const versions = Number(value);
+    const sessionId = this.session()?.ID;
+    const address = this.address;
+    const token = this.token;
+    if (!sessionId || !Number.isInteger(versions) || versions < 1 || versions > 100) { this.error.set('Choose 1 to 100 result versions.'); return; }
+    try {
+      const response = await fetch(`${address}/settings`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-DataTug-Chat-Capability': token }, body: JSON.stringify({ sessionId, versions }) });
+      if (!response.ok) throw new Error(await response.text());
+      if (address === this.address && token === this.token) await this.loadSettings();
+    } catch (error) { this.error.set(`Settings update failed: ${error instanceof Error ? error.message : 'unknown error'}`); }
+  }
+
+  async downloadResult(recordSetId: string): Promise<void> {
+    const sessionId = this.session()?.ID;
+    const address = this.address;
+    const token = this.token;
+    if (!sessionId) return;
+    const format = window.prompt('Download format: csv, json, yaml, ingr, dbf, sqlite, or xlsx', 'csv')?.toLowerCase().trim();
+    if (!format) return;
+    if (!['csv', 'json', 'yaml', 'ingr', 'dbf', 'sqlite', 'xlsx'].includes(format)) { this.error.set('Choose a supported download format.'); return; }
+    try {
+      const query = new URLSearchParams({ format });
+      if (recordSetId) query.set('recordSetId', recordSetId);
+      const response = await fetch(`${address}/export?${query}`, { headers: { 'X-DataTug-Chat-Capability': token, 'X-DataTug-Chat-Session': sessionId }, cache: 'no-store' });
+      if (!response.ok) throw new Error(await response.text());
+      if (address !== this.address || token !== this.token || sessionId !== this.session()?.ID) return;
+      const blob = await response.blob();
+      const extension = !recordSetId && format !== 'xlsx' && format !== 'sqlite' ? 'zip' : format;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `datatug-chat-export.${extension}`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) { this.error.set(`Download failed: ${error instanceof Error ? error.message : 'unknown error'}`); }
+  }
   attached(reference: ContextReference): boolean { return this.attachments().some((item) => item.kind === reference.kind && item.objectId === reference.objectId && item.sourceId === reference.sourceId); }
   toggleAttachment(reference: ContextReference): void { void this.workspaceAction({ kind: this.attached(reference) ? 'detach' : 'attach', reference }); }
   setTab(tab: string): void { void this.workspaceAction({ kind: 'set_tab', title: tab }); }
@@ -529,8 +691,49 @@ export class CliChatPageComponent implements OnInit, OnDestroy {
     const column = event.column?.getColId();
     if (row === undefined || !column || !result.Result.Columns.includes(column)) return;
     this.currentRowsById.update((rows) => ({ ...rows, [id]: row }));
+    const displayRow = event.rowIndex ?? row;
+    const displayedColumns = event.api.getAllDisplayedColumns().map((item) => item.getColId()).filter((name) => result.Result.Columns.includes(name));
+    const displayColumn = displayedColumns.indexOf(column);
+    if ((event.event as MouseEvent | undefined)?.shiftKey && this.rangeAnchor?.recordSetId === id) {
+      const firstRow = Math.min(this.rangeAnchor.displayRow, displayRow);
+      const lastRow = Math.max(this.rangeAnchor.displayRow, displayRow);
+      const anchorColumn = displayedColumns.indexOf(this.rangeAnchor.column);
+      if (anchorColumn < 0) { this.rangeAnchor = undefined; return; }
+      const firstCol = Math.min(anchorColumn, displayColumn);
+      const lastCol = Math.max(anchorColumn, displayColumn);
+      const rows: number[] = [];
+      for (let index = firstRow; index <= lastRow; index++) {
+        const sourceIndex = (event.api.getDisplayedRowAtIndex(index)?.data as { __sourceIndex?: number } | undefined)?.__sourceIndex;
+        if (sourceIndex !== undefined) rows.push(sourceIndex);
+      }
+      const columns = displayedColumns.slice(firstCol, lastCol + 1);
+      const ranges = rows.flatMap((index) => columns.map((name) => ({ firstRow: index, lastRow: index, firstCol: result.Result.Columns.indexOf(name), lastCol: result.Result.Columns.indexOf(name) })));
+      this.rangeAnchor = undefined;
+      this.cellDetail.set(undefined);
+      this.cellRequestSerial++;
+      void this.workspaceAction({ kind: 'select', recordSetId: id, rows, columns, ranges, title: `${result.Title}: ${rows.length} rows` });
+      return;
+    }
+    this.rangeAnchor = { recordSetId: id, displayRow, column };
     void this.workspaceAction({ kind: 'select', recordSetId: id, rows: [row], columns: [column], title: `${result.Title}: ${column}` });
+    void this.loadCellDetail(id, row, column);
   }
+
+  private async loadCellDetail(recordSetId: string, row: number, column: string): Promise<void> {
+    const serial = ++this.cellRequestSerial;
+    const address = this.address;
+    const token = this.token;
+    const sessionId = this.session()?.ID;
+    if (!sessionId) return;
+    try {
+      const query = new URLSearchParams({ recordSetId, row: String(row), column });
+      const response = await fetch(`${address}/cell_detail?${query}`, { headers: { 'X-DataTug-Chat-Capability': token, 'X-DataTug-Chat-Session': sessionId }, cache: 'no-store' });
+      if (!response.ok) throw new Error(await response.text());
+      const detail = await response.json() as CliCellDetail;
+      if (serial === this.cellRequestSerial && address === this.address && token === this.token && sessionId === this.session()?.ID) this.cellDetail.set(detail);
+    } catch (error) { if (serial === this.cellRequestSerial && address === this.address && token === this.token) this.error.set(`Cell detail unavailable: ${error instanceof Error ? error.message : 'unknown error'}`); }
+  }
+  copyCellDetail(detail: CliCellDetail): void { void navigator.clipboard.writeText(detail.Value == null ? 'NULL' : String(detail.Value)); }
 
   async toggleJoins(id: string): Promise<void> {
     const opening = !this.joinsOpen()[id];
@@ -621,7 +824,11 @@ export class CliChatPageComponent implements OnInit, OnDestroy {
     const title = window.prompt('Chat name', this.session()?.Title || '');
     if (title?.trim()) void this.sessionAction('rename', title);
   }
-  async sessionAction(action: 'new' | 'switch' | 'rename', value = ''): Promise<void> {
+  confirmSessionAction(action: 'clear' | 'delete'): void {
+    const description = action === 'clear' ? 'Clear this chat and remove its messages and result snapshots?' : 'Delete this chat and its result snapshots?';
+    if (window.confirm(description)) void this.sessionAction(action, 'confirm');
+  }
+  async sessionAction(action: 'new' | 'switch' | 'rename' | 'clear' | 'delete', value = ''): Promise<void> {
     const sessionId = this.session()?.ID;
     const address = this.address;
     const token = this.token;
@@ -690,6 +897,7 @@ export class CliChatPageComponent implements OnInit, OnDestroy {
         }
       }
       this.session.set(session);
+      if (previous?.ID !== session.ID) { this.cellDetail.set(undefined); this.cellRequestSerial++; this.rangeAnchor = undefined; void this.loadSettings(); }
       this.error.set('');
     } catch {
       if (serial !== this.refreshSerial || address !== this.address || token !== this.token) return;
