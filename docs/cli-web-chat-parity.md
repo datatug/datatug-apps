@@ -15,19 +15,19 @@ persistence.
 | Project identity and navigation | Header, F3 project picker | Project route and side menu | Partial: browser project routes outside chat require a fuller local project API |
 | Session title, list, new, switch, rename | F4 and slash commands | Session bar backed by CLI | Yes |
 | Clear and delete session | Slash commands with confirmation | Confirmed controls in session bar | Yes |
-| Composer and attached-context chips | Multiline input, chip navigation | Multiline input and removable chips | Partial: browser chips have no TUI-style keyboard selection |
-| Project workspace tab | Expandable source/object tree with metadata | Source groups and project object cards with metadata and attach | Partial: no schema-level tree |
-| Selected workspace tab | Current row/column/recordset inspector, durable selection | Row/column/recordset cards and durable selection | Partial: no FK attribution in column inspector |
-| Docked workspace tab | Projected grids, attach, undock | Projected AG Grid cards and undock | Partial: fewer grid keyboard actions |
-| Bookmarks workspace tab | Search/tag filter, preview, attach, dock, rename/tag/delete | Search/tag filter, preview, attach, dock, rename/tag/delete | Yes for core bookmark actions; keyboard flows differ |
+| Composer and attached-context chips | Multiline input, chip navigation | Multiline input and focusable removable chips | Yes; browser uses Tab and Shift+Tab |
+| Project workspace tab | Expandable source/kind/object tree with metadata | Expandable source/kind/schema/object and column cards with metadata and attach | Yes for catalog objects and actions; web adds schema grouping, keyboard navigation differs |
+| Selected workspace tab | Current row/column/recordset inspector, durable selection | Row/column/recordset cards, source attribution, durable selection | Yes for current selection data; presentation differs |
+| Docked workspace tab | Projected grids, attach, undock | Projected AG Grid cards and undock | Yes for data and actions; browser uses AG Grid navigation |
+| Bookmarks workspace tab | Search/tag filter, preview, attach, dock, rename/tag/delete | Search/tag filter, preview, attach, dock, rename/tag/delete | Yes; browser uses focusable controls |
 | Attachment state and workspace tab sync | Durable session workspace | Same CLI workspace actions; WebSocket refresh | Yes |
 | Result table sorting | TUI grid | AG Grid | Yes, browser sort is presentation-only |
-| Row/cell/range selection with source-row identity | TUI grid selection | AG Grid click and Shift-click writes CLI workspace | Yes for selection state; keyboard flows differ |
-| Result charts and current-row view | Grid view switcher | Table, numeric bar chart, current row | Partial: chart styles differ |
-| JOIN candidates and applying a JOIN | Grid join pane | Related-table cards and JOIN action | Yes for discovery and execution; keyboard navigation differs |
-| Result refresh, version badges | Ctrl+R, version indicators | Refresh action, refreshed badge, new result card | Partial: no history folding or change comparison |
+| Row/cell/range selection with source-row identity | TUI grid selection | AG Grid click and Shift-click writes CLI workspace | Yes for selection state; interaction follows browser conventions |
+| Result charts and current-row view | Grid view switcher | Table, numeric bar chart, current row | Yes for view data; chart styling follows web theme |
+| JOIN candidates and applying a JOIN | Grid join pane | Related-table cards and JOIN action | Yes for discovery and execution |
+| Result refresh, version badges | Ctrl+R, version indicators | Refresh action, changed/unchanged badges, retained-version folding | Yes for retained history and comparison |
 | Cell detail and related-record preview | Enter overlay | Selected card shows source, type, value, copy, and FK preview | Yes for data; presentation differs |
-| HTTP result rendered/raw/header views | Focused HTTP response block | Message card with rendered text, raw body, and headers | Partial: rendered text has no Markdown styling |
+| HTTP result rendered/raw/header views | Focused HTTP response block | Message card with sanitized Markdown, raw body, and headers | Yes for supported response views |
 | Export current/bucket | Grid keys and slash commands | Download format picker, result and bucket controls | Yes for formats and scoped snapshots; browser download capped at 16 MiB |
 | Save project query | Grid or HTTP response overlay | Save query prompts for result or HTTP response | Yes for savable results; dialog presentation differs |
 | Saved query picker and execution | `/query` picker and parameter form | Searchable inventory and parameter prompts for DTQL in Tools | Partial: saved HTTP query execution awaits explicit destination authorization |

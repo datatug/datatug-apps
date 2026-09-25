@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, signal
 import { FormsModule } from '@angular/forms';
 import { AgGridAngular } from 'ag-grid-angular';
 import { AllCommunityModule, ModuleRegistry, type CellClickedEvent, type ColDef, type SelectionChangedEvent } from 'ag-grid-community';
+import { Marked } from 'marked';
 import { IonButton } from '@ionic/angular/ion-button';
 import { IonButtons } from '@ionic/angular/ion-buttons';
 import { IonContent } from '@ionic/angular/ion-content';
@@ -18,6 +19,7 @@ import { IonToolbar } from '@ionic/angular/ion-toolbar';
 import { captureCliChatCapability, cliChatCapability } from './cli-chat-capability';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
+const chatMarkdown = new Marked({ renderer: { html: () => '', image: ({ text }) => text } });
 
 interface CliMessage {
   ID: string;
@@ -27,11 +29,12 @@ interface CliMessage {
   RecordSetID: string;
   HTTPResponseID?: string;
 }
-interface CliHTTPResponse { URL: string; Method?: string; RequestHasQuery?: boolean; StatusCode: number; ContentType: string; Headers: Record<string, string[]>; Body: string }
+interface CliHTTPResponse { ID?: string; CreatedAt?: string; RefreshParentID?: string; URL: string; Method?: string; RequestHasQuery?: boolean; StatusCode: number; ContentType: string; Headers: Record<string, string[]>; Body: string }
 
 interface CliRecordSet {
   ID: string;
   Title: string;
+  CreatedAt?: string;
   DTQL?: string;
   Database?: string;
   Parameters?: Record<string, unknown>;
@@ -109,11 +112,11 @@ interface CliSession {
         <div class="chat-history">
           @if (error()) { <ion-text color="danger"><p role="alert">{{ error() }}</p></ion-text> }
           @if (!session() && !error()) { <ion-spinner aria-label="Connecting to CLI chat" /> }
-          @for (message of session()?.Messages || []; track message.ID) {
+          @for (message of visibleMessages(); track message.ID) {
             @if (message.Kind === 'grid') {
               @if (recordSet(message.RecordSetID); as result) {
                 <section class="result-card" aria-label="Query result">
-                  <div class="card-heading">{{ result.Title }} @if (result.RefreshParentID) { <small class="version-badge">Refreshed result</small> }</div>
+                  <div class="card-heading">{{ result.Title }} @if (resultVersionBadge(result); as badge) { <small class="version-badge">{{ badge }}</small> }</div>
                   <div class="card-actions">
                     <button type="button" (click)="toggleAttachment(resultReference(message.RecordSetID, result))">{{ attached(resultReference(message.RecordSetID, result)) ? 'Detach' : 'Attach' }}</button>
                     <button type="button" (click)="workspaceAction({kind: 'dock', reference: resultReference(message.RecordSetID, result)})">Dock</button>
@@ -160,14 +163,17 @@ interface CliSession {
                 <strong>{{ message.Role === 'You' ? 'You' : 'DataTug' }}</strong>
                 @if (httpResponse(message.HTTPResponseID || ''); as response) {
                   <div class="http-summary">{{ response.StatusCode }} · {{ response.URL }}</div>
+                  @if (httpVersionBadge(response); as badge) { <small class="version-badge">{{ badge }}</small> }
                   <button type="button" (click)="saveHTTPQuery(response)">Save query</button>
                   <div class="result-tabs" role="tablist" aria-label="HTTP response views">
                     @for (tab of httpTabs; track tab) { <button type="button" role="tab" [attr.aria-selected]="httpTab(message.ID) === tab" (click)="setHttpTab(message.ID, tab)">{{ tab }}</button> }
                   </div>
                   @if (httpTab(message.ID) === 'Raw') { <pre>{{ rawHttp(response) }}</pre> }
                   @else if (httpTab(message.ID) === 'Headers') { <pre>{{ httpHeaders(response) }}</pre> }
+                  @else if (message.Kind === 'markdown' || response.ContentType?.includes('markdown')) { <div class="markdown-body" [innerHTML]="renderMarkdown(message.Text)"></div> }
                   @else { <p>{{ message.Text }}</p> }
-                } @else { <p>{{ message.Text }}</p> }
+                } @else if (message.Kind === 'markdown') { <div class="markdown-body" [innerHTML]="renderMarkdown(message.Text)"></div> }
+                @else { <p>{{ message.Text }}</p> }
               </article>
             }
           }
@@ -184,14 +190,18 @@ interface CliSession {
               @for (group of projectGroups(); track group.id) {
                 <details class="project-group" open>
                   <summary>{{ group.title }} · {{ group.objects.length }}</summary>
-                  @for (object of group.objects; track object.Reference.kind + object.Reference.objectId) {
+                  @for (section of group.sections; track section.id) {
+                    <details class="project-section" open><summary>{{ section.title }} · {{ section.objects.length }}</summary>
+                  @for (object of section.objects; track object.Reference.kind + object.Reference.objectId) {
                     <section class="context-card">
                       <div class="context-card-title"><strong>{{ object.Reference.title }}</strong><small>{{ object.Reference.kind }}</small></div>
                       @if (object.Issue) { <p role="status">{{ object.Issue }}</p> }
-                      @if (object.Columns.length) { <p>{{ object.Columns.join(', ') }}</p> }
+                      @if (object.Columns.length) { <details class="project-columns"><summary>{{ object.Columns.length }} columns</summary><dl class="selected-values">@for (column of object.Columns; track column) { <div><dt>{{ column }}</dt><dd>{{ object.ColumnTypes[column] || 'Type unavailable' }}</dd></div> }</dl></details> }
                       @if (object.QueryText) { <pre>{{ object.QueryText }}</pre> }
                       <button type="button" (click)="toggleAttachment(object.Reference)">{{ attached(object.Reference) ? 'Detach' : 'Attach' }}</button>
                     </section>
+                  }
+                    </details>
                   }
                 </details>
               } @empty { <p class="context-empty">No project objects available.</p> }
@@ -211,7 +221,7 @@ interface CliSession {
                     }
                     @if (inspectorTab() === 'Current column') {
                       @for (column of selection.columns || []; track column) {
-                        <dl class="selected-values"><div><dt>Column</dt><dd>{{ column }}</dd></div><div><dt>Type</dt><dd>{{ columnType(column) || 'Unknown' }}</dd></div></dl>
+                        <dl class="selected-values"><div><dt>Column</dt><dd>{{ column }}</dd></div><div><dt>Type</dt><dd>{{ cellDetail()?.Column === column ? (cellDetail()?.DBType || 'Unknown') : (columnType(column) || 'Unknown') }}</dd></div><div><dt>Source</dt><dd>{{ cellDetail()?.Column === column ? (cellDetail()?.Qualified || 'Unavailable') : 'Select a cell to inspect' }}</dd></div></dl>
                       }
                     }
                     @if (cellDetail(); as detail) {
@@ -318,6 +328,10 @@ interface CliSession {
     .result-tabs button[aria-selected="true"] { background: rgba(var(--ion-color-primary-rgb), .14); }
     .http-summary { color: var(--ion-color-medium); font-size: .8rem; margin-top: .4rem; overflow-wrap: anywhere; }
     .message-card pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 24rem; overflow: auto; }
+    .markdown-body { overflow-wrap: anywhere; }
+    .markdown-body :first-child { margin-top: 0; }
+    .markdown-body :last-child { margin-bottom: 0; }
+    .markdown-body pre { padding: .5rem; background: var(--ion-color-light); border-radius: .4rem; }
     .chart-row { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(80px, 3fr) auto; align-items: center; gap: .5rem; margin: .35rem 0; }
     .chart-track { height: .8rem; border-radius: .3rem; background: var(--ion-color-light); overflow: hidden; }
     .chart-track div { height: 100%; background: var(--ion-color-primary); }
@@ -333,6 +347,9 @@ interface CliSession {
     .context-card { border: 1px solid var(--ion-color-light-shade); border-radius: .75rem; padding: .75rem; overflow: hidden; }
     .project-group { margin-bottom: .5rem; }
     .project-group summary { cursor: pointer; font-weight: 600; padding: .35rem; }
+    .project-section { margin-left: .65rem; }
+    .project-section > summary { color: var(--ion-color-medium); }
+    .project-columns summary { font-size: .85rem; }
     .project-group .context-card { margin: .5rem 0; }
     .context-card-title { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; }
     .context-card-title small { color: var(--ion-color-medium); }
@@ -373,6 +390,17 @@ export class CliChatPageComponent implements OnInit, OnDestroy {
   readonly sessionBusy = signal(false);
   readonly catalog = signal<CliCatalog | undefined>(undefined);
   readonly settings = signal<CliSettings | undefined>(undefined);
+  readonly visibleMessages = computed(() => {
+    const session = this.session();
+    if (!session) return [];
+    const keep = Math.max(1, this.settings()?.versions || 2);
+    const hiddenRecords = this.hiddenVersions(session.RecordSets, keep);
+    const hiddenHTTP = this.hiddenVersions(session.HTTPResponses, keep);
+    return session.Messages.filter((message) => {
+      const record = session.RecordSets[message.RecordSetID];
+      return !hiddenRecords.has(message.RecordSetID) && !hiddenHTTP.has(message.HTTPResponseID || '') && !hiddenHTTP.has(record?.HTTPResponseID || '');
+    });
+  });
   readonly savedQueries = signal<CliSavedQuery[]>([]);
   readonly querySearch = signal('');
   readonly matchingQueries = computed(() => this.savedQueries().filter((query) => `${query.Title} ${query.ID} ${query.Type} ${(query.Tags || []).join(' ')}`.toLowerCase().includes(this.querySearch().toLowerCase())));
@@ -382,15 +410,22 @@ export class CliChatPageComponent implements OnInit, OnDestroy {
     const catalog = this.catalog();
     const objects = catalog?.Objects || [];
     const sourceNames = new Map(objects.filter((item) => item.Reference.kind === 'source').map((item) => [item.Reference.objectId, item.Reference.title]));
-    const groups = new Map<string, { id: string; title: string; objects: CliProjectObject[] }>();
+    const groups = new Map<string, { id: string; title: string; objects: CliProjectObject[]; sections: { id: string; title: string; objects: CliProjectObject[] }[] }>();
     for (const object of objects) {
       const id = object.Reference.sourceId || 'project';
       let group = groups.get(id);
       if (!group) {
-        group = { id, title: id === 'project' ? catalog?.Title || 'Project' : sourceNames.get(id) || id, objects: [] };
+        group = { id, title: id === 'project' ? catalog?.Title || 'Project' : sourceNames.get(id) || id, objects: [], sections: [] };
         groups.set(id, group);
       }
       group.objects.push(object);
+      const kind = object.Reference.kind;
+      const kindTitle = kind === 'table' ? 'Tables' : kind === 'project_view' ? 'Views' : kind === 'query' ? 'Queries' : 'Project';
+      const schema = kind === 'table' || kind === 'project_view' ? object.Reference.objectId.split('.')[0] : '';
+      const sectionId = schema && object.Reference.objectId.includes('.') ? `${kindTitle} · ${schema}` : kindTitle;
+      let section = group.sections.find((item) => item.id === sectionId);
+      if (!section) { section = { id: sectionId, title: sectionId, objects: [] }; group.sections.push(section); }
+      section.objects.push(object);
     }
     return [...groups.values()];
   });
@@ -423,6 +458,7 @@ export class CliChatPageComponent implements OnInit, OnDestroy {
   private readonly rowCache = new WeakMap<CliRecordSet, Record<string, unknown>[]>();
   private readonly columnCache = new WeakMap<CliRecordSet, ColDef[]>();
   private readonly rawHttpCache = new WeakMap<CliHTTPResponse, string>();
+  private readonly markdownCache = new Map<string, string>();
   private readonly projectionCache = new Map<string, { record: CliRecordSet; signature: string; rows: Record<string, unknown>[]; columns: ColDef[] }>();
   private rangeAnchor?: { recordSetId: string; displayRow: number; column: string };
   private cellRequestSerial = 0;
@@ -487,7 +523,7 @@ export class CliChatPageComponent implements OnInit, OnDestroy {
     if (this.socket && this.socket.readyState !== WebSocket.CLOSED) return;
     const socket = new WebSocket(this.address.replace('http://', 'ws://') + '/events', ['datatug-chat', this.token]);
     this.socket = socket;
-    socket.onmessage = () => { void this.refresh(); void this.loadSessions(); void this.loadQueries(); };
+    socket.onmessage = () => { void this.refresh(); void this.loadSessions(); void this.loadQueries(); void this.loadSettings(); };
     socket.onclose = () => { if (this.socket === socket) this.socket = undefined; };
     socket.onerror = () => socket.close();
   }
@@ -506,8 +542,47 @@ export class CliChatPageComponent implements OnInit, OnDestroy {
     this.rawHttpCache.set(response, text);
     return text;
   }
+  renderMarkdown(value: string): string {
+    const cached = this.markdownCache.get(value);
+    if (cached !== undefined) return cached;
+    const rendered = chatMarkdown.parse(value, { async: false }) as string;
+    this.markdownCache.set(value, rendered);
+    return rendered;
+  }
   httpHeaders(response: CliHTTPResponse): string { return Object.entries(response.Headers || {}).map(([name, values]) => `${name}: ${values.join(', ')}`).join('\n'); }
   resultTab(id: string): string { return this.resultTabsById()[id] || 'Table'; }
+  private hiddenVersions<T extends { ID?: string; CreatedAt?: string; RefreshParentID?: string }>(items: Record<string, T>, keep: number): Set<string> {
+    const groups = new Map<string, { id: string; value: T }[]>();
+    for (const [id, value] of Object.entries(items)) {
+      let root = id;
+      const seen = new Set<string>();
+      while (!seen.has(root)) {
+        seen.add(root);
+        const parent = items[root]?.RefreshParentID;
+        if (!parent || !items[parent]) break;
+        root = parent;
+      }
+      const group = groups.get(root) || [];
+      group.push({ id, value });
+      groups.set(root, group);
+    }
+    const hidden = new Set<string>();
+    for (const group of groups.values()) {
+      group.sort((a, b) => (b.value.CreatedAt || '').localeCompare(a.value.CreatedAt || ''));
+      for (const entry of group.slice(keep)) hidden.add(entry.id);
+    }
+    return hidden;
+  }
+  resultVersionBadge(result: CliRecordSet): string {
+    const previous = this.recordSet(result.RefreshParentID || '');
+    if (!previous) return '';
+    return JSON.stringify([result.Result.Columns, result.Result.Rows]) === JSON.stringify([previous.Result.Columns, previous.Result.Rows]) ? 'unchanged' : 'changed';
+  }
+  httpVersionBadge(response: CliHTTPResponse): string {
+    const previous = this.httpResponse(response.RefreshParentID || '');
+    if (!previous) return '';
+    return response.StatusCode === previous.StatusCode && response.ContentType === previous.ContentType && response.Body === previous.Body ? 'unchanged' : 'changed';
+  }
   setResultTab(id: string, tab: string): void { this.resultTabsById.update((tabs) => ({ ...tabs, [id]: tab })); }
   currentResultRow(id: string, result: CliRecordSet): { Key: string; Data: Record<string, unknown> } | undefined { return result.Result.Rows[this.currentRowsById()[id] || 0]; }
   chartSeries(result: CliRecordSet): { label: string; value: number; percent: number }[] | undefined {

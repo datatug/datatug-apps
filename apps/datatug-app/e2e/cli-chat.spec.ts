@@ -8,6 +8,7 @@ test('CLI chat deep link restores, sends, and follows terminal updates', async (
     { ID: 'answer-1', Role: 'DataTug', Kind: 'text', Text: 'Three customers.', RecordSetID: '' },
     { ID: 'grid-1', Role: 'DataTug', Kind: 'grid', Text: '', RecordSetID: 'rs-1' },
     { ID: 'http-1', Role: 'DataTug', Kind: 'text', Text: 'HTTP fetched', RecordSetID: '', HTTPResponseID: 'http-response-1' },
+    { ID: 'markdown-1', Role: 'DataTug', Kind: 'markdown', Text: '**Bold answer** and [unsafe link](javascript:alert(1)) <img src="https://example.test/tracker"> ![remote](https://example.test/markdown-tracker)', RecordSetID: '' },
   ];
   const sent: { text: string; sessionId: string }[] = [];
   let sessionTitle = 'Customer analysis';
@@ -17,8 +18,11 @@ test('CLI chat deep link restores, sends, and follows terminal updates', async (
   const actions: { kind: string; title?: string; reference?: { kind: string; objectId: string } }[] = [];
   const workspace = { activeTab: 'Project', attachments: [] as { kind: string; objectId: string; title: string }[], selections: {} as Record<string, unknown>, views: {} as Record<string, unknown>, currentSelectionId: '', docks: [] as { id: string; reference: { kind: string; objectId: string }; title: string }[], exportBucket: [] as string[] };
   const bookmarks: Record<string, unknown> = {};
-  const result = { ID: 'rs-1', Title: 'Customers', Result: { Columns: ['Count'], Rows: [{ Key: 'three', Data: { Count: 3 } }, { Key: 'one', Data: { Count: 1 } }] } };
+  const result = { ID: 'rs-1', Title: 'Customers', CreatedAt: '2026-09-25T09:00:00Z', Result: { Columns: ['Count'], Rows: [{ Key: 'three', Data: { Count: 3 } }, { Key: 'one', Data: { Count: 1 } }] } };
+  const recordSets: Record<string, typeof result & { RefreshParentID?: string }> = { 'rs-1': result };
   bookmarks['untagged'] = { ID: 'untagged', Title: 'Untagged result', ProjectID: 'demo-project-1', SourceID: '', TargetKind: 'recordset', Tags: null, Snapshot: { RecordSet: result } };
+  const remoteImages: string[] = [];
+  await page.route('https://example.test/**', async (route) => { remoteImages.push(route.request().url()); await route.abort(); });
   await page.route('http://127.0.0.1:3284/datatug/projects/project_summary**', async (route) => {
     expect(route.request().headers()['x-datatug-chat-capability']).toBe(token);
     await route.fulfill({ json: { id: 'demo-project-1', title: 'Demo project 1', access: 'private' } });
@@ -26,7 +30,7 @@ test('CLI chat deep link restores, sends, and follows terminal updates', async (
   await page.route('http://127.0.0.1:3284/v1/chat/**', async (route) => {
     expect(route.request().headers()['x-datatug-chat-capability']).toBe(token);
     if (route.request().url().endsWith('/catalog')) {
-      await route.fulfill({ json: { ID: 'demo-project-1', Title: 'Demo project 1', Objects: [{ Reference: { kind: 'table', objectId: 'customers', title: 'Customers', projectId: 'demo-project-1' }, Columns: ['CustomerId', 'Name'], ColumnTypes: { CustomerId: 'integer', Name: 'text' }, QueryType: '', QueryText: '', Issue: '' }, { Reference: { kind: 'query', objectId: 'top-customers', title: 'Top customers', projectId: 'demo-project-1' }, Columns: null, ColumnTypes: null, QueryType: 'dtql', QueryText: 'from: customers', Issue: '' }] } });
+      await route.fulfill({ json: { ID: 'demo-project-1', Title: 'Demo project 1', Objects: [{ Reference: { kind: 'source', objectId: 'chinook', title: 'Chinook', projectId: 'demo-project-1' }, Columns: [], ColumnTypes: {} }, { Reference: { kind: 'table', sourceId: 'chinook', objectId: 'main.Customers', title: 'Customers', projectId: 'demo-project-1' }, Columns: ['CustomerId', 'Name'], ColumnTypes: { CustomerId: 'integer', Name: 'text' }, QueryType: '', QueryText: '', Issue: '' }, { Reference: { kind: 'project_view', sourceId: 'chinook', objectId: 'main.CustomerView', title: 'Customer view', projectId: 'demo-project-1' }, Columns: ['Name'], ColumnTypes: { Name: 'text' }, QueryType: '', QueryText: '', Issue: '' }, { Reference: { kind: 'query', objectId: 'top-customers', title: 'Top customers', projectId: 'demo-project-1' }, Columns: null, ColumnTypes: null, QueryType: 'dtql', QueryText: 'from: customers', Issue: '' }] } });
       return;
     }
     if (route.request().url().endsWith('/sessions')) {
@@ -42,7 +46,7 @@ test('CLI chat deep link restores, sends, and follows terminal updates', async (
     }
     if (route.request().url().endsWith('/settings')) {
       if (route.request().method() === 'POST') { savedVersions = route.request().postDataJSON().versions; await route.fulfill({ status: 204 }); }
-      else await route.fulfill({ json: { versions: 3, environment: 'local', database: 'chinook' } });
+      else await route.fulfill({ json: { versions: savedVersions || 3, environment: 'local', database: 'chinook' } });
       return;
     }
     if (route.request().url().endsWith('/queries')) {
@@ -106,7 +110,7 @@ test('CLI chat deep link restores, sends, and follows terminal updates', async (
     }
     await route.fulfill({ json: {
       ID: 'dtcs-1', Title: sessionTitle, Messages: messages,
-      RecordSets: { 'rs-1': result }, Workspace: workspace, Bookmarks: bookmarks,
+      RecordSets: recordSets, Workspace: workspace, Bookmarks: bookmarks,
       HTTPResponses: { 'http-response-1': { URL: 'https://example.test/data', StatusCode: 200, ContentType: 'text/plain', Headers: { 'Content-Type': ['text/plain'] }, Body: 'aGVsbG8gaHR0cA==' } },
     } });
   });
@@ -114,6 +118,10 @@ test('CLI chat deep link restores, sends, and follows terminal updates', async (
   await page.goto(`${projectChat}#h=127.0.0.1:3284&t=${token}`);
   await expect(page).toHaveURL(new RegExp(`${projectChat}$`));
   await expect(page.getByText('Three customers.')).toBeVisible();
+  await expect(page.locator('[data-message-id="markdown-1"] .markdown-body strong')).toHaveText('Bold answer');
+  await expect(page.locator('[data-message-id="markdown-1"] a')).not.toHaveAttribute('href', 'javascript:alert(1)');
+  await expect(page.locator('[data-message-id="markdown-1"] img')).toHaveCount(0);
+  expect(remoteImages).toEqual([]);
   await expect(page.getByRole('gridcell', { name: '3' })).toBeVisible();
   const httpCard = page.locator('[data-message-id="http-1"]');
   await httpCard.getByRole('tab', { name: 'Raw' }).click();
@@ -142,6 +150,10 @@ test('CLI chat deep link restores, sends, and follows terminal updates', async (
   await page.getByRole('columnheader', { name: 'Count' }).click();
   await expect(page.getByRole('region', { name: 'Query result' }).getByRole('columnheader', { name: 'Count' })).toHaveAttribute('aria-sort', 'ascending');
   const customersProjectCard = page.getByRole('complementary', { name: 'Chat workspace' }).locator('.context-card').filter({ has: page.getByText('Customers', { exact: true }) });
+  const chinookGroup = page.locator('.project-group').filter({ has: page.locator('summary', { hasText: 'Chinook' }) });
+  await expect(chinookGroup.locator('.project-section').filter({ has: page.locator('summary', { hasText: 'Tables · main' }) })).toContainText('Customers');
+  await expect(chinookGroup.locator('.project-section').filter({ has: page.locator('summary', { hasText: 'Views · main' }) })).toContainText('Customer view');
+  await expect(chinookGroup).toContainText('CustomerId');
   await expect(customersProjectCard.getByText('Customers', { exact: true })).toBeVisible();
   await customersProjectCard.getByRole('button', { name: 'Attach' }).click();
   await expect(page.getByLabel('Attached context').getByText('Customers')).toBeVisible();
@@ -199,6 +211,17 @@ test('CLI chat deep link restores, sends, and follows terminal updates', async (
   await page.locator('.chat-history').evaluate((element) => { element.scrollTop = element.scrollHeight; });
   const panelAfterScroll = await page.getByRole('complementary', { name: 'Chat workspace' }).boundingBox();
   expect(panelBeforeScroll?.y).toBe(panelAfterScroll?.y);
+  recordSets['rs-2'] = { ...result, ID: 'rs-2', CreatedAt: '2026-09-25T09:01:00Z', RefreshParentID: 'rs-1', Result: { Columns: ['Count'], Rows: [{ Key: 'four', Data: { Count: 4 } }] } };
+  messages.push({ ID: 'grid-2', Role: 'DataTug', Kind: 'grid', Text: '', RecordSetID: 'rs-2' });
+  await expect(page.getByRole('region', { name: 'Query result' })).toHaveCount(2);
+  await expect(page.getByText('changed', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Tools' }).click();
+  await page.getByRole('region', { name: 'Chat tools' }).getByRole('spinbutton').fill('1');
+  await page.getByRole('region', { name: 'Chat tools' }).getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('region', { name: 'Query result' })).toHaveCount(1);
+  await page.getByRole('region', { name: 'Chat tools' }).getByRole('spinbutton').fill('2');
+  await page.getByRole('region', { name: 'Chat tools' }).getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('region', { name: 'Query result' })).toHaveCount(2);
 
   const newerToken = 'b'.repeat(64);
   await page.route('http://127.0.0.1:3285/datatug/projects/project_summary**', async (route) => {
