@@ -1,0 +1,21 @@
+{
+  "name": "datatug-embed",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/datatug/embed/src",
+  "projectType": "library",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "outputs": ["{workspaceRoot}/dist/libs/datatug/embed"],
+      "options": { "command": "vite build --config libs/datatug/embed/vite.config.ts" }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": { "command": "vitest run --config libs/datatug/embed/vite.config.ts" }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": { "command": "tsc --noEmit --project libs/datatug/embed/tsconfig.json" }
+    }
+  }
+}
