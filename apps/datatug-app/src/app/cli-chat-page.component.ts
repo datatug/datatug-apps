@@ -99,7 +99,7 @@ interface CliSession {
           <div><strong>Saved project queries</strong>
             <label>Search <input type="search" [value]="querySearch()" (input)="querySearch.set($any($event.target).value)" /></label>
             @for (query of matchingQueries(); track query.ID) {
-              <div class="saved-query"><span>{{ query.Title || query.ID }} · {{ query.Type }}</span></div>
+              <div class="saved-query"><span>{{ query.Title || query.ID }} · {{ query.Type }}</span>@if (query.Type === 'DTQL') { <button type="button" (click)="runSavedDTQL(query)">Run</button> }</div>
             } @empty { <p>No saved queries available.</p> }
           </div>
         </section>
@@ -562,6 +562,30 @@ export class CliChatPageComponent implements OnInit, OnDestroy {
       if (!response.ok) throw new Error(await response.text());
       if (address === this.address && token === this.token) await this.loadQueries();
     } catch (error) { if (address === this.address && token === this.token) this.error.set(`Could not save query: ${error instanceof Error ? error.message : 'unknown error'}`); }
+    finally { this.busy.set(false); }
+  }
+
+  runSavedDTQL(query: CliSavedQuery): void {
+    const variables: Record<string, string> = {};
+    for (const parameter of query.Parameters || []) {
+      const value = window.prompt(parameter.Title || parameter.ID, parameter.DefaultValue || '');
+      if (value === null) return;
+      if (parameter.Required && !value.trim()) { this.error.set(`${parameter.Title || parameter.ID} is required.`); return; }
+      variables[parameter.ID] = value;
+    }
+    void this.executeSavedDTQL(query.ID, variables);
+  }
+  private async executeSavedDTQL(queryId: string, variables: Record<string, string>): Promise<void> {
+    const sessionId = this.session()?.ID;
+    const address = this.address;
+    const token = this.token;
+    if (!sessionId || this.busy()) return;
+    this.busy.set(true);
+    try {
+      const response = await fetch(`${address}/queries`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-DataTug-Chat-Capability': token }, body: JSON.stringify({ sessionId, action: 'run_dtql', queryId, variables }) });
+      if (!response.ok) throw new Error(await response.text());
+      if (address === this.address && token === this.token) await this.refresh();
+    } catch (error) { if (address === this.address && token === this.token) this.error.set(`Could not run query: ${error instanceof Error ? error.message : 'unknown error'}`); }
     finally { this.busy.set(false); }
   }
 

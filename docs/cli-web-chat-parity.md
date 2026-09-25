@@ -30,7 +30,7 @@ persistence.
 | HTTP result rendered/raw/header views | Focused HTTP response block | Message card with rendered text, raw body, and headers | Partial: rendered text has no Markdown styling |
 | Export current/bucket | Grid keys and slash commands | Download format picker, result and bucket controls | Yes for formats and scoped snapshots; browser download capped at 16 MiB |
 | Save project query | Grid or HTTP response overlay | Save query prompts for result or HTTP response | Yes for savable results; dialog presentation differs |
-| Saved query picker and execution | `/query` picker and parameter form | Searchable inventory in Tools; execution unavailable | Pending explicit HTTP destination authorization because saved HTTP queries can send configured credentials |
+| Saved query picker and execution | `/query` picker and parameter form | Searchable inventory and parameter prompts for DTQL in Tools | Partial: saved HTTP query execution awaits explicit destination authorization |
 | Result retention settings | `/settings versions` | Tools panel versions control | Yes |
 | Connection preview | `/connect` read-only overlay | Tools panel read-only preview | Yes; connection switching is unimplemented in both |
 | HTTP request form and header/cookie settings | `/http` dialog and commands | Unavailable | Pending explicit HTTP destination authorization because requests can send configured credentials |

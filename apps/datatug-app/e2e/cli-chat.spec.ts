@@ -12,6 +12,7 @@ test('CLI chat deep link restores, sends, and follows terminal updates', async (
   const sent: { text: string; sessionId: string }[] = [];
   let sessionTitle = 'Customer analysis';
   let savedQueryTitle = '';
+  let ranQueryId = '';
   let savedVersions = 0;
   const actions: { kind: string; title?: string; reference?: { kind: string; objectId: string } }[] = [];
   const workspace = { activeTab: 'Project', attachments: [] as { kind: string; objectId: string; title: string }[], selections: {} as Record<string, unknown>, views: {} as Record<string, unknown>, currentSelectionId: '', docks: [] as { id: string; reference: { kind: string; objectId: string }; title: string }[], exportBucket: [] as string[] };
@@ -46,7 +47,9 @@ test('CLI chat deep link restores, sends, and follows terminal updates', async (
     }
     if (route.request().url().endsWith('/queries')) {
       if (route.request().method() === 'POST') {
-        savedQueryTitle = route.request().postDataJSON().save.Title;
+        const body = route.request().postDataJSON();
+        if (body.action === 'save') savedQueryTitle = body.save.Title;
+        if (body.action === 'run_dtql') ranQueryId = body.queryId;
         await route.fulfill({ status: 204 });
       }
       else await route.fulfill({ json: [{ ID: 'customers-query', Title: 'Customers query', Type: 'DTQL', Tags: [], Parameters: [] }] });
@@ -126,6 +129,8 @@ test('CLI chat deep link restores, sends, and follows terminal updates', async (
   await expect(page.getByLabel('Chat session')).toHaveValue('dtcs-1');
   await page.getByRole('button', { name: 'Tools' }).click();
   await expect(page.getByRole('region', { name: 'Chat tools' })).toContainText('Customers query');
+  await page.getByRole('region', { name: 'Chat tools' }).getByRole('button', { name: 'Run' }).click();
+  await expect.poll(() => ranQueryId).toBe('customers-query');
   await expect(page.getByRole('region', { name: 'Chat tools' })).toContainText('chinook');
   await page.getByRole('region', { name: 'Chat tools' }).getByRole('spinbutton').fill('4');
   await page.getByRole('region', { name: 'Chat tools' }).getByRole('button', { name: 'Save' }).click();
