@@ -101,6 +101,45 @@ orderBy: [{field: FirstName, source: c}]
     });
   });
 
+  describe('a join derived from a result filtered on null', () => {
+    const customerFilter = (op: string): string => JSON.stringify({
+      from: { schema: 'main', name: 'Customer' }, where: { op, left: { field: 'Company' }, right: { value: null } }, orderBy: [{ field: 'CustomerId' }], limit: 10,
+    });
+    /** Runs the filtered Customer result, then the join the Chat derives from it to Invoice. */
+    const joinInvoices = async (op: string): Promise<{ parent: unknown[]; joined: unknown[] }> => {
+      const parent = await service.query(scope, customerFilter(op));
+      const edge = discoverChatJoinCandidates(parent.query).find((item) => item.targetTable === 'Invoice' && item.direction === 'reverse');
+      const derived = deriveChatJoin(parent.query, edge?.id ?? '', CHINOOK_SCHEMA);
+      const { rows } = await service.query(scope, derived.dtql);
+      return {
+        parent: parent.rows.map((row) => row['CustomerId']),
+        joined: rows.map((row) => `${row['CustomerId']}:${row['Invoice.InvoiceId']}`).sort(),
+      };
+    };
+
+    it('keeps the customers without a company when the filter was == null', async () => {
+      expect(await joinInvoices('==')).toEqual({ parent: [2, 3], joined: ['2:1', '3:4', '3:5'] });
+    });
+
+    it('keeps the customers with a company when the filter was != null', async () => {
+      expect(await joinInvoices('!=')).toEqual({ parent: [1, 4], joined: ['1:3', '4:2'] });
+    });
+
+    it('returns no rows from a join that keeps the comparison with null, which is why it is rewritten', async () => {
+      const rows = (await service.query(scope, `from:
+  schema: main
+  name: Customer
+  alias: Customer
+  joins:
+    - from: {schema: main, name: Invoice, alias: Invoice}
+      on: [{left: {field: CustomerId, source: Customer}, op: '==', right: {field: CustomerId, source: Invoice}}]
+where: {op: '==', left: {field: Company, source: Customer}, right: {value: null}}
+columns: [{field: CustomerId, source: Customer}]
+`)).rows;
+      expect(rows).toEqual([]);
+    });
+  });
+
   describe('grouped queries', () => {
     const grouped = `${invoiceToCustomer}columns:
   - {field: Country, source: c, as: country}

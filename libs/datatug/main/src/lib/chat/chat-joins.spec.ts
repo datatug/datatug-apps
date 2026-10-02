@@ -108,3 +108,92 @@ describe('Chat FK JOIN discovery', () => {
     expect(chatSQLite(joined.query)).toContain('"Invoice"."CustomerId" = "Customer"."CustomerId"');
   });
 });
+
+describe('Chat JOIN carries null filters as explicit null tests', () => {
+  const field = (source: string, name: string) => ({ kind: 'field', field: { source, field: name } });
+  const invoiceBase = (where: unknown) => parseDTQL({ from: { schema: 'main', name: 'Invoice' }, where, limit: 10 }, CHINOOK_SCHEMA);
+  const deriveFirst = (query: ReturnType<typeof parseDTQL>) => {
+    const edge = discoverChatJoinCandidates(query).find((item) => item.targetTable === 'Customer' && item.direction === 'forward');
+    return deriveChatJoin(query, edge?.id ?? '', CHINOOK_SCHEMA);
+  };
+
+  it('turns field == null into is-null, qualified by the source it was written against', () => {
+    const joined = deriveFirst(invoiceBase({ op: '==', left: { field: 'BillingState' }, right: { value: null } }));
+    expect(joined.query.filters).toEqual([{ kind: 'is-null', operand: field('Invoice', 'BillingState') }]);
+    expect(JSON.parse(joined.dtql).where).toEqual({ isNull: { field: 'BillingState', source: 'Invoice' } });
+    expect(chatSQLite(joined.query)).toContain('"Invoice"."BillingState" IS NULL');
+  });
+
+  it('turns field != null into is-not-null', () => {
+    const joined = deriveFirst(invoiceBase({ op: '!=', left: { field: 'BillingState' }, right: { value: null } }));
+    expect(joined.query.filters).toEqual([{ kind: 'is-not-null', operand: field('Invoice', 'BillingState') }]);
+    expect(chatSQLite(joined.query)).toContain('"Invoice"."BillingState" IS NOT NULL');
+  });
+
+  it('leaves comparisons with a value, and membership lists, untouched', () => {
+    const equal = deriveFirst(invoiceBase({ op: '==', left: { field: 'BillingCountry' }, right: { value: 'Canada' } }));
+    expect(equal.query.filters).toEqual([{ field: { source: 'Invoice', field: 'BillingCountry' }, operator: '==', value: 'Canada' }]);
+    const other = deriveFirst(invoiceBase({ op: '!=', left: { field: 'BillingCountry' }, right: { value: 'Canada' } }));
+    expect(other.query.filters).toEqual([{ field: { source: 'Invoice', field: 'BillingCountry' }, operator: '!=', value: 'Canada' }]);
+    const list = deriveFirst(invoiceBase({ op: 'In', left: { field: 'BillingCountry' }, right: { values: ['Canada', 'USA'] } }));
+    expect(list.query.filters).toEqual([{ field: { source: 'Invoice', field: 'BillingCountry' }, operator: 'in', value: ['Canada', 'USA'] }]);
+  });
+
+  it('rewrites null comparisons inside and/or groups of a joined parent, and leaves the others', () => {
+    const parent = parseDTQL(`from:
+  schema: main
+  name: Invoice
+  alias: i
+  joins:
+    - from: {schema: main, name: Customer, alias: c}
+      on: [{left: {field: CustomerId, source: i}, op: '==', right: {field: CustomerId, source: c}}]
+where:
+  and:
+    - {op: '==', left: {field: BillingState, source: i}, right: {value: null}}
+    - or:
+      - {op: '!=', left: {field: Company, source: c}, right: {value: null}}
+      - {op: '>', left: {field: Total, source: i}, right: {value: 5}}
+      - {op: '==', left: {field: Country, source: c}, right: {value: Canada}}
+columns: [{field: InvoiceId, source: i}]
+`, CHINOOK_SCHEMA);
+    const edge = discoverChatJoinCandidates(parent).find((item) => item.sourceAlias === 'i' && item.targetTable === 'InvoiceLine');
+    const joined = deriveChatJoin(parent, edge?.id ?? '', CHINOOK_SCHEMA);
+    expect(joined.query.filters).toEqual([{
+      kind: 'and', conditions: [
+        { kind: 'is-null', operand: field('i', 'BillingState') },
+        { kind: 'or', conditions: [
+          { kind: 'is-not-null', operand: field('c', 'Company') },
+          { left: field('i', 'Total'), operator: '>', right: { kind: 'literal', value: 5 } },
+          { left: field('c', 'Country'), operator: '==', right: { kind: 'literal', value: 'Canada' } },
+        ] },
+      ],
+    }]);
+  });
+
+  it('rewrites a null written on the left, and leaves null comparisons over an expression as they are', () => {
+    const parent = parseDTQL(`from:
+  schema: main
+  name: Invoice
+  alias: i
+  joins:
+    - from: {schema: main, name: Customer, alias: c}
+      on: [{left: {field: CustomerId, source: i}, op: '==', right: {field: CustomerId, source: c}}]
+where:
+  and:
+    - {op: '!=', left: {value: null}, right: {field: Company, source: c}}
+    - {op: '==', left: {binary: {op: '+', left: {field: Total, source: i}, right: {value: 1}}}, right: {value: null}}
+    - {op: '==', left: {value: null}, right: {value: null}}
+columns: [{field: InvoiceId, source: i}]
+`, CHINOOK_SCHEMA);
+    const edge = discoverChatJoinCandidates(parent).find((item) => item.sourceAlias === 'i' && item.targetTable === 'InvoiceLine');
+    const [group] = deriveChatJoin(parent, edge?.id ?? '', CHINOOK_SCHEMA).query.filters as readonly { conditions: readonly { kind?: string }[] }[];
+    expect(group.conditions.map((condition) => condition.kind)).toEqual(['is-not-null', undefined, undefined]);
+  });
+
+  it('keeps an existing null test through a chain of derived joins', () => {
+    const first = deriveFirst(invoiceBase({ op: '==', left: { field: 'BillingState' }, right: { value: null } }));
+    const edge = discoverChatJoinCandidates(first.query).find((item) => item.sourceAlias === 'Invoice' && item.targetTable === 'InvoiceLine');
+    const second = deriveChatJoin(first.query, edge?.id ?? '', CHINOOK_SCHEMA);
+    expect(second.query.filters).toEqual(first.query.filters);
+  });
+});

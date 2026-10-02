@@ -1,7 +1,7 @@
 import {
   isJoinedDTQLQuery, parseDTQL, serializeJoinedDTQL, stringifyJoinedDTQL,
-  type DTQLSchema, type JoinedDTQLQuery, type ParsedDTQLQuery, type QueryColumn,
-  type QueryJoin, type QueryRelation,
+  type DTQLCondition, type DTQLExpression, type DTQLQueryFilter, type DTQLSchema, type JoinedDTQLQuery,
+  type ParsedDTQLQuery, type QueryColumn, type QueryJoin, type QueryRelation,
 } from '@dalgo/core';
 import manifestData from './chinook-fks.json';
 import { ChatJoinChoice, ChatJoinLineage } from './chat.types';
@@ -201,13 +201,39 @@ export function validateChatJoinChoice(
   return candidate;
 }
 
+type ChatFilter = DTQLQueryFilter | DTQLCondition;
+
+const isNullLiteral = (expression: DTQLExpression): boolean => expression.kind === 'literal' && expression.value === null;
+
+/**
+ * In a joined query `x == null` never holds (SQL's three-valued logic), while the legacy single-source
+ * filter the user saw first matches the null rows. A condition carried into a join therefore says what
+ * it meant with the engine's explicit null tests: `field == null` becomes is-null, `field != null`
+ * is-not-null. Other conditions are carried unchanged.
+ */
+function carriedCondition(condition: DTQLCondition): DTQLCondition {
+  if ('conditions' in condition) {
+    return { ...condition, conditions: condition.conditions.map(carriedCondition) };
+  }
+  if (!('operator' in condition) || (condition.operator !== '==' && condition.operator !== '!=')) return condition;
+  const operand = isNullLiteral(condition.right) ? condition.left : isNullLiteral(condition.left) ? condition.right : undefined;
+  if (operand?.kind !== 'field') return condition;
+  return { kind: condition.operator === '==' ? 'is-null' : 'is-not-null', operand };
+}
+
+function carriedFilter(filter: ChatFilter): ChatFilter {
+  if (!('field' in filter)) return carriedCondition(filter);
+  if (filter.value !== null || (filter.operator !== '==' && filter.operator !== '!=')) return filter;
+  return { kind: filter.operator === '==' ? 'is-null' : 'is-not-null', operand: { kind: 'field', field: filter.field } };
+}
+
 function joinedBase(query: ParsedDTQLQuery<Data>): JoinedDTQLQuery {
-  if (isJoinedDTQLQuery(query)) return query;
+  if (isJoinedDTQLQuery(query)) return { ...query, filters: query.filters.map(carriedFilter) };
   if (query.filters.length > 1) throw new Error('This result has unsupported filter groups for an interactive JOIN.');
   const source = aliasOf(relationFromQuery(query));
   return {
     kind: 'joined-dtql', from: relationFromQuery(query),
-    filters: query.filters.map((filter) => ({ ...filter, field: { source, field: filter.field } })),
+    filters: query.filters.map((filter) => carriedFilter({ ...filter, field: { source, field: filter.field } })),
     orders: query.orders.map((order) => ({ ...order, field: { source, field: order.field } })),
     limit: query.limit, offset: query.offset,
   };
