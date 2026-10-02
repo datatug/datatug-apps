@@ -1,6 +1,7 @@
 import {
   isJoinedDTQLQuery, stringifyJoinedDTQL,
-  type DTQLExpression, type JoinedDTQLQuery, type ParsedDTQLQuery, type QueryRelation,
+  type DTQLCondition, type DTQLExpression, type DTQLQueryFilter, type DTQLQueryOrder, type JoinedDTQLQuery,
+  type ParsedDTQLQuery, type QueryRelation,
 } from '@dalgo/core';
 import { CHINOOK_SCHEMA } from './chat.types';
 
@@ -108,6 +109,47 @@ function expressionSql(expression: DTQLExpression, fieldSql: (source: string, fi
   }
 }
 
+type FieldSql = (source: string, field: string) => string;
+
+const sqlOperators: Readonly<Record<string, string>> = { '==': '=', '!=': '<>', in: 'IN', 'not-in': 'NOT IN' };
+
+/**
+ * A WHERE or HAVING condition. The join-aware engine follows Go's null
+ * semantics, which are SQL's: a comparison with NULL never holds (so `== null`
+ * matches nothing and an `In` list containing null still only matches its
+ * other members), and `!= null` means "is not null".
+ */
+function conditionSql(condition: DTQLCondition, fieldSql: FieldSql): string {
+  if ('kind' in condition) {
+    return `(${condition.conditions.map((child) => conditionSql(child, fieldSql)).join(condition.kind === 'and' ? ' AND ' : ' OR ')})`;
+  }
+  const right = condition.right;
+  if (condition.operator === '!=' && right.kind === 'literal' && right.value === null) {
+    return `${expressionSql(condition.left, fieldSql)} IS NOT NULL`;
+  }
+  const operator = sqlOperators[condition.operator] ?? condition.operator;
+  return `${expressionSql(condition.left, fieldSql)} ${operator} ${expressionSql(right, fieldSql)}`;
+}
+
+/** The parser keeps `field <op> literal` as a compact filter; everything else is already a condition. */
+function filterSql(filter: DTQLQueryFilter | DTQLCondition, fieldSql: FieldSql): string {
+  if (!('field' in filter)) return conditionSql(filter, fieldSql);
+  const membership = (filter.operator === 'in' || filter.operator === 'not-in') && Array.isArray(filter.value);
+  return conditionSql({
+    left: { kind: 'field', field: filter.field },
+    operator: filter.operator,
+    right: membership
+      ? { kind: 'values', values: filter.value as readonly (string | number | boolean | null)[] }
+      : { kind: 'literal', value: filter.value as string | number | boolean | null },
+  }, fieldSql);
+}
+
+/** An order key is either a plain field or, as in Go, any expression (an aggregate, arithmetic, a select alias). */
+function orderSql(order: DTQLQueryOrder, fieldSql: FieldSql): string {
+  const key = order.expression === undefined ? fieldSql(order.field.source, order.field.field) : expressionSql(order.expression, fieldSql);
+  return `${key} ${order.direction.toUpperCase()}`;
+}
+
 function relationSql(relation: QueryRelation): string {
   const alias = relation.alias || relation.name;
   let sql = `${identifier(relation.schema || 'main')}.${identifier(relation.name)} AS ${identifier(alias)}`;
@@ -156,31 +198,10 @@ function joinedSQLite(query: JoinedDTQLQuery): string {
     return [`${expressionSql(column.expression, fieldSql)}${column.as ? ` AS ${identifier(column.as)}` : ''}`];
   });
   const lines = [`SELECT ${columns?.length ? columns.join(', ') : '*'}`, `FROM ${relationSql(query.from)}`];
-  if (query.filters.length) {
-    const conditions = query.filters.map((filter) => {
-      const field = fieldSql(filter.field.source, filter.field.field);
-      if (filter.operator === 'in') {
-        const values = filter.value as readonly unknown[];
-        const nonNull = values.filter((value) => value !== null);
-        const parts = [];
-        if (nonNull.length) parts.push(`${field} IN (${nonNull.map(sqliteValue).join(', ')})`);
-        if (values.length !== nonNull.length) parts.push(`${field} IS NULL`);
-        return parts.length > 1 ? `(${parts.join(' OR ')})` : parts[0] || '1 = 0';
-      }
-      if (filter.value === null && (filter.operator === '==' || filter.operator === '!=')) {
-        return `${field} IS ${filter.operator === '!=' ? 'NOT ' : ''}NULL`;
-      }
-      const operator = filter.operator === '==' ? '=' : filter.operator === '!=' ? '<>' : filter.operator;
-      return `${field} ${operator} ${sqliteValue(filter.value)}`;
-    });
-    lines.push(`WHERE ${conditions.join(' AND ')}`);
-  }
+  if (query.filters.length) lines.push(`WHERE ${query.filters.map((filter) => filterSql(filter, fieldSql)).join(' AND ')}`);
   if (query.groupBy?.length) lines.push(`GROUP BY ${query.groupBy.map((expression) => expressionSql(expression, fieldSql)).join(', ')}`);
-  if (query.having) {
-    const operator = query.having.operator === '==' ? '=' : query.having.operator === '!=' ? '<>' : query.having.operator;
-    lines.push(`HAVING ${expressionSql(query.having.left, fieldSql)} ${operator} ${expressionSql(query.having.right, fieldSql)}`);
-  }
-  if (query.orders.length) lines.push(`ORDER BY ${query.orders.map((order) => `${fieldSql(order.field.source, order.field.field)} ${order.direction.toUpperCase()}`).join(', ')}`);
+  if (query.having) lines.push(`HAVING ${conditionSql(query.having, fieldSql)}`);
+  if (query.orders.length) lines.push(`ORDER BY ${query.orders.map((order) => orderSql(order, fieldSql)).join(', ')}`);
   if (query.limit !== undefined) lines.push(`LIMIT ${query.limit}`);
   if (query.offset !== undefined) lines.push(`OFFSET ${query.offset}`);
   return `${lines.join('\n')};`;
