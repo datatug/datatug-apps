@@ -1,0 +1,8 @@
+{
+  "about": "The one pin for the DataTug demo bundle. Change `commit` only together with a regenerated bundle (pnpm demo:bundle).",
+  "demoProjects": {
+    "repository": "https://github.com/datatug/datatug-demo-projects",
+    "commit": "0e5b98f86f37f00a3c3be5bbbb515d15620c63c6",
+    "project": "demo-project-1"
+  }
+}

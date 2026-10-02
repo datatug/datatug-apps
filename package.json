@@ -10,7 +10,14 @@
     "e2e:error-dialog": "playwright test -c apps/datatug-app/playwright.error-dialog.config.ts",
     "check:zoneless": "node tools/check-zoneless-fields.mjs",
     "test:check-zoneless-fields": "node --test tools/__tests__/check-zoneless-fields.test.mjs",
-    "test:wrangler-routes": "node --test scripts/wrangler-routes.test.mjs"
+    "test:wrangler-routes": "node --test scripts/wrangler-routes.test.mjs",
+    "demo:up": "node tools/demo-stack/up.mjs up",
+    "demo:down": "node tools/demo-stack/up.mjs down",
+    "demo:status": "node tools/demo-stack/up.mjs status",
+    "demo:e2e": "node tools/demo-stack/up.mjs e2e",
+    "demo:bundle": "node tools/demo-bundle/generate.mjs",
+    "demo:bundle:check": "node tools/demo-bundle/generate.mjs --check",
+    "test:demo-tools": "node --test tools/__tests__/demo-bundle.test.mjs"
   },
   "private": true,
   "dependencies": {

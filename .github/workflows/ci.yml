@@ -52,6 +52,16 @@ jobs:
       - name: test:wrangler-routes (preserve production app hostnames)
         run: pnpm run test:wrangler-routes
 
+      # The /demo bundle (saved query, schema, data files) is generated from one pinned commit of
+      # datatug-demo-projects. This offline check fails when the committed bundle, its data files and the
+      # pin disagree; `pnpm demo:bundle:check -- --source` (needs a demo-projects checkout) also rebuilds
+      # from the pinned commit. See docs/demo-route.md.
+      - name: demo:bundle:check (bundle matches its pin and its own hashes)
+        run: pnpm run demo:bundle:check
+
+      - name: test:demo-tools (the bundle drift check's own tests)
+        run: pnpm run test:demo-tools
+
       - name: nx build affected
         run: pnpm nx affected --target=build --base=${{ env.NX_BASE }} --parallel=8
 

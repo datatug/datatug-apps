@@ -1,0 +1,552 @@
+{
+  "bundleVersion": 1,
+  "generatedBy": "tools/demo-bundle/generate.mjs",
+  "pin": {
+    "repository": "https://github.com/datatug/datatug-demo-projects",
+    "commit": "0e5b98f86f37f00a3c3be5bbbb515d15620c63c6",
+    "project": "demo-project-1",
+    "chinook": {
+      "repository": "https://github.com/datatug/chinook-database",
+      "revision": "6334395117e2478a2712e083be614721341c26c9",
+      "path": "ChinookDatabase/DataSources/Chinook_Sqlite.sqlite",
+      "sha256": "f82efedb6c5c40734609e168bc5be5616a2eca6b90ed0048451a8674625e03a3"
+    }
+  },
+  "attribution": [
+    {
+      "id": "world-bank",
+      "what": "Population, total (SP.POP.TOTL), World Development Indicators",
+      "text": "Data (c) The World Bank, made available under Creative Commons Attribution 4.0 International (CC BY 4.0). Modified: only the most recent observation per country is kept, re-keyed by ISO 3166-1 alpha-2 code. The World Bank does not endorse this data or its changes.",
+      "license": "CC BY 4.0",
+      "url": "https://data.worldbank.org/indicator/SP.POP.TOTL"
+    },
+    {
+      "id": "chinook",
+      "what": "Chinook sample database (Invoice)",
+      "text": "Copyright (c) 2008-2017 Luis Rocha, MIT license.",
+      "license": "MIT",
+      "url": "https://github.com/lerocha/chinook-database"
+    },
+    {
+      "id": "geonames",
+      "what": "Country reference data (ISO codes and names behind the alias table)",
+      "text": "Country records derive from the GeoNames geographical database, (c) GeoNames, licensed under CC BY 4.0. Derived and modified; GeoNames does not endorse it.",
+      "license": "CC BY 4.0",
+      "url": "https://www.geonames.org/"
+    }
+  ],
+  "schema": {
+    "chinook": {
+      "Album": [
+        "AlbumId",
+        "Title",
+        "ArtistId"
+      ],
+      "Artist": [
+        "ArtistId",
+        "Name"
+      ],
+      "Customer": [
+        "CustomerId",
+        "FirstName",
+        "LastName",
+        "Company",
+        "Address",
+        "City",
+        "State",
+        "Country",
+        "PostalCode",
+        "Phone",
+        "Fax",
+        "Email",
+        "SupportRepId"
+      ],
+      "Employee": [
+        "EmployeeId",
+        "LastName",
+        "FirstName",
+        "Title",
+        "ReportsTo",
+        "BirthDate",
+        "HireDate",
+        "Address",
+        "City",
+        "State",
+        "Country",
+        "PostalCode",
+        "Phone",
+        "Fax",
+        "Email"
+      ],
+      "Genre": [
+        "GenreId",
+        "Name"
+      ],
+      "Invoice": [
+        "InvoiceId",
+        "CustomerId",
+        "InvoiceDate",
+        "BillingAddress",
+        "BillingCity",
+        "BillingState",
+        "BillingCountry",
+        "BillingPostalCode",
+        "Total"
+      ],
+      "InvoiceLine": [
+        "InvoiceLineId",
+        "InvoiceId",
+        "TrackId",
+        "UnitPrice",
+        "Quantity"
+      ],
+      "MediaType": [
+        "MediaTypeId",
+        "Name"
+      ],
+      "Playlist": [
+        "PlaylistId",
+        "Name"
+      ],
+      "PlaylistTrack": [
+        "PlaylistId",
+        "TrackId"
+      ],
+      "Track": [
+        "TrackId",
+        "Name",
+        "AlbumId",
+        "MediaTypeId",
+        "GenreId",
+        "Composer",
+        "Milliseconds",
+        "Bytes",
+        "UnitPrice"
+      ]
+    }
+  },
+  "entities": {
+    "Country": {
+      "fields": [
+        {
+          "id": "Name",
+          "mappings": [
+            {
+              "source": "chinook",
+              "collection": "Customer",
+              "column": "Country"
+            },
+            {
+              "source": "support-notes",
+              "collection": "support-notes",
+              "column": "Country"
+            },
+            {
+              "source": "chinook",
+              "collection": "Invoice",
+              "column": "BillingCountry"
+            },
+            {
+              "source": "geo",
+              "collection": "country_aliases",
+              "column": "alias"
+            }
+          ]
+        },
+        {
+          "id": "Currency",
+          "mappings": []
+        },
+        {
+          "id": "alpha2",
+          "mappings": [
+            {
+              "source": "geo",
+              "collection": "countries",
+              "column": "iso2"
+            }
+          ]
+        },
+        {
+          "id": "alpha3",
+          "mappings": [
+            {
+              "source": "geo",
+              "collection": "countries",
+              "column": "iso3"
+            },
+            {
+              "source": "geo",
+              "collection": "population_wb",
+              "column": "iso3"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "queries": {
+    "sales/chinook-sales-per-capita": {
+      "id": "chinook-sales-per-capita",
+      "title": "Chinook sales per capita by country",
+      "purpose": "Which countries buy the most music relative to their population? Chinook invoices, country alias, World Bank population.",
+      "dtql": "# Which countries buy the most music relative to their population?\n#\n#   Invoice (Chinook, BillingCountry is a name such as \"USA\")\n#     -> country_aliases (alias -> ISO country key)\n#        -> population_wb (World Bank SP.POP.TOTL, latest year)\n#\n# Three sources, one nested join, then grouped. No AI is involved: the same\n# document always returns the same rows. Totals are floating point: the exact\n# `money` policy is unavailable here for two separate reasons. It requires the\n# streaming plan (one flat join, no `orderBy`), and it rejects REAL inputs\n# (Chinook stores Total as REAL; money needs strings or whole minor units), so\n# a flat plan alone would not fix it. Consumers should round for display.\nfrom:\n  database: chinook\n  name: Invoice\n  alias: i\n  joins:\n    - from:\n        database: geo\n        name: country_aliases\n        alias: a\n        joins:\n          - from: {database: geo, name: population_wb, alias: p}\n            on: [{left: {field: country, source: a}, op: '==', right: {field: country, source: p}}]\n      on: [{left: {field: BillingCountry, source: i}, op: '==', right: {field: alias, source: a}}]\ngroupBy: [{field: alias, source: a}, {field: year, source: p}, {field: population, source: p}]\ncolumns:\n  - {field: alias, source: a, as: country}\n  - {aggregate: {function: sum, args: [{field: Total, source: i}]}, as: totalSales}\n  - {field: population, source: p, as: population}\n  - {field: year, source: p, as: populationYear}\n  - {binary: {op: '*', left: {binary: {op: '/', left: {aggregate: {function: sum, args: [{field: Total, source: i}]}}, right: {field: population, source: p}}}, right: {value: 1000000}}, as: salesPerMillion}\norderBy:\n  - binary: {op: '*', left: {binary: {op: '/', left: {aggregate: {function: sum, args: [{field: Total, source: i}]}}, right: {field: population, source: p}}}, right: {value: 1000000}}\n    desc: true\n",
+      "federation": {
+        "ovdbBaseUrl": "http://127.0.0.1:50501",
+        "tables": [
+          {
+            "name": "Invoice",
+            "database": "chinook",
+            "fields": [
+              "BillingCountry",
+              "Total"
+            ]
+          },
+          {
+            "name": "country_aliases",
+            "database": "geo",
+            "fields": [
+              "alias",
+              "country"
+            ]
+          },
+          {
+            "name": "population_wb",
+            "database": "geo",
+            "fields": [
+              "country",
+              "year",
+              "population"
+            ]
+          }
+        ]
+      },
+      "recordsets": [
+        {
+          "columns": [
+            {
+              "name": "country",
+              "type": "string"
+            },
+            {
+              "name": "totalSales",
+              "type": "number"
+            },
+            {
+              "name": "population",
+              "type": "number"
+            },
+            {
+              "name": "populationYear",
+              "type": "number"
+            },
+            {
+              "name": "salesPerMillion",
+              "type": "number"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "data": [
+    {
+      "id": "chinook.Invoice",
+      "file": "chinook/Invoice.json",
+      "rows": 412,
+      "columns": [
+        "InvoiceId",
+        "BillingCountry",
+        "Total"
+      ],
+      "sha256": "4b6ab77784f87f5e802a86513c562acb7f0999fa354686356b0c94061f224021",
+      "origin": "Chinook SQLite https://github.com/datatug/chinook-database @ 6334395117e2478a2712e083be614721341c26c9 (sha256 f82efedb6c5c40734609e168bc5be5616a2eca6b90ed0048451a8674625e03a3); columns the saved query declares, key = InvoiceId as text"
+    },
+    {
+      "id": "geo.country_aliases",
+      "file": "geo/country_aliases.json",
+      "rows": 24,
+      "columns": [
+        "alias",
+        "country",
+        "source"
+      ],
+      "sha256": "75d070e29dd4dbbeb1c7f29be54be0cadf17038e7dc87a3dc3541bb34ff82920",
+      "origin": "demo-project-1/data/geo/country_aliases/$records/*.json @ 0e5b98f86f37f00a3c3be5bbbb515d15620c63c6"
+    },
+    {
+      "id": "geo.population_wb",
+      "file": "geo/population_wb.json",
+      "rows": 216,
+      "columns": [
+        "country",
+        "year",
+        "population",
+        "fetched_at",
+        "indicator",
+        "iso3",
+        "source_updated",
+        "source_url"
+      ],
+      "sha256": "bbb4a29ce3a67760470c7e022f6fd0190dfeffaad74bf3751c321dbe68d0938d",
+      "origin": "demo-project-1/data/geo/population_wb/$records/*.json @ 0e5b98f86f37f00a3c3be5bbbb515d15620c63c6"
+    }
+  ],
+  "sourceBlobs": {
+    "demo-project-1/data/geo/country_aliases/$records/argentina.json": "af0ae76c55f97b95c308a0ef68326ec22cef94b8",
+    "demo-project-1/data/geo/country_aliases/$records/australia.json": "82bb0a5e2a4104323dda640717645e39383981e6",
+    "demo-project-1/data/geo/country_aliases/$records/austria.json": "01819a29e95d442ec8ca9f73711238100b4342be",
+    "demo-project-1/data/geo/country_aliases/$records/belgium.json": "e87f7a6ac1093b5ddc853341f50e9191d5ecd1bb",
+    "demo-project-1/data/geo/country_aliases/$records/brazil.json": "dd4ae0e7b8d8e179519d5365f7a4410ba3535d65",
+    "demo-project-1/data/geo/country_aliases/$records/canada.json": "40a0ebd23869862903422e5bbe552a06b42ba143",
+    "demo-project-1/data/geo/country_aliases/$records/chile.json": "c101d55dfc3736855d898665c78effe3b0aa13bd",
+    "demo-project-1/data/geo/country_aliases/$records/czech-republic.json": "caabc7a3bde0ad0edc62c90a14fdea0eee707ba4",
+    "demo-project-1/data/geo/country_aliases/$records/denmark.json": "f1cbd40fd4d296e4ecb1bba8c512c7a3a037592b",
+    "demo-project-1/data/geo/country_aliases/$records/finland.json": "931c953e4adf3c73757a514ff413d2210c42e353",
+    "demo-project-1/data/geo/country_aliases/$records/france.json": "47182cc2fef514e565e4f62461e75f91f713f529",
+    "demo-project-1/data/geo/country_aliases/$records/germany.json": "e324fe7cdb2b136485f1e872603a40c20531e213",
+    "demo-project-1/data/geo/country_aliases/$records/hungary.json": "77ef2ebba1b9ae7a44ff4deb5352c5b1d39e85bf",
+    "demo-project-1/data/geo/country_aliases/$records/india.json": "97bb6c42319e33988e65aed2a83e9f20c59828e7",
+    "demo-project-1/data/geo/country_aliases/$records/ireland.json": "95c6f94e6d43b27e0c63a7236636e643b7ab7ec6",
+    "demo-project-1/data/geo/country_aliases/$records/italy.json": "f4533064c6968348d1e2da45e5cc549c1aa10e50",
+    "demo-project-1/data/geo/country_aliases/$records/netherlands.json": "4f90268d8ed9001564184c73b396f3443c88c8d8",
+    "demo-project-1/data/geo/country_aliases/$records/norway.json": "775e6bd63bfed2d70e2252e83f721337e37c4cae",
+    "demo-project-1/data/geo/country_aliases/$records/poland.json": "c0aea1c98ab47b6cbba3a4a4c8179b71bda12411",
+    "demo-project-1/data/geo/country_aliases/$records/portugal.json": "0ecc4c8a0603751084add248e71ef3e9460047c4",
+    "demo-project-1/data/geo/country_aliases/$records/spain.json": "c29f984643efe7f785d7fa621d73be500957bfd9",
+    "demo-project-1/data/geo/country_aliases/$records/sweden.json": "d673321639cbd43b7787be4a9c45dee36e802c59",
+    "demo-project-1/data/geo/country_aliases/$records/united-kingdom.json": "7d5139069dc5cb6a57fd2144978c0982445f1929",
+    "demo-project-1/data/geo/country_aliases/$records/usa.json": "353b835aa0c7b083eae6c8f7859725bae3e268f8",
+    "demo-project-1/data/geo/population_wb/$records/ad.json": "471894f4ab5abb5097cce38fde47b0f985f5ad21",
+    "demo-project-1/data/geo/population_wb/$records/ae.json": "881e855cef1210f8fbb3fd14c8436ccf69023380",
+    "demo-project-1/data/geo/population_wb/$records/af.json": "cdd66146202bf5a69941d34e95e046aa83e44f5a",
+    "demo-project-1/data/geo/population_wb/$records/ag.json": "93a3c3e7ef5d983a64088ffd0047899f189f9518",
+    "demo-project-1/data/geo/population_wb/$records/al.json": "4e29fbb943616ca27924e455b316224b37b897a9",
+    "demo-project-1/data/geo/population_wb/$records/am.json": "d340600dc159565494a2db00ce7773498fa54745",
+    "demo-project-1/data/geo/population_wb/$records/ao.json": "a988e8a8d4433518a617e1b4b4047e6072ce70c1",
+    "demo-project-1/data/geo/population_wb/$records/ar.json": "b1ba299e18b491977ee5cb4f631099f370125a6d",
+    "demo-project-1/data/geo/population_wb/$records/as.json": "33d90e7ea8ff37562252d045dd12cf374bdfb141",
+    "demo-project-1/data/geo/population_wb/$records/at.json": "a187b504ee33b48b0903ddf299464e157f105cc7",
+    "demo-project-1/data/geo/population_wb/$records/au.json": "42729873f8b9113a2c8e822e90f0a35b9ec586b3",
+    "demo-project-1/data/geo/population_wb/$records/aw.json": "61850e42b627ab662090c8ccf0a12722dbef922d",
+    "demo-project-1/data/geo/population_wb/$records/az.json": "270de88b6221c8778e1af7f122e3f27ebdd631b0",
+    "demo-project-1/data/geo/population_wb/$records/ba.json": "37cce9d7a7f6fb6d201976df16f6b6d129e5a1f6",
+    "demo-project-1/data/geo/population_wb/$records/bb.json": "737c914eaf2a0ace6340113e34cf0450586a6895",
+    "demo-project-1/data/geo/population_wb/$records/bd.json": "3fa0028d87abf802a5984bc4daed94908235b7fb",
+    "demo-project-1/data/geo/population_wb/$records/be.json": "0692af300187459d9d16c435acfcc2aabb7b0d0b",
+    "demo-project-1/data/geo/population_wb/$records/bf.json": "54218bab493b2518c58e1928dfe8e422d0569b21",
+    "demo-project-1/data/geo/population_wb/$records/bg.json": "f525ea8e351aefced515771fa43eb6b2dc3ce68d",
+    "demo-project-1/data/geo/population_wb/$records/bh.json": "52a0a7e77d51a3e900988a81fe1ef60f88887bff",
+    "demo-project-1/data/geo/population_wb/$records/bi.json": "4eb67b4ac7705ecec82666e7aa4831f7da6285da",
+    "demo-project-1/data/geo/population_wb/$records/bj.json": "414aca570b32d20047e11240637971c8d71df743",
+    "demo-project-1/data/geo/population_wb/$records/bm.json": "fefe7620359a4c731bfc21166cee5ee3c8f4d2e3",
+    "demo-project-1/data/geo/population_wb/$records/bn.json": "d872c83d675b9c2af9597fd7f09e3f0fa798f2a1",
+    "demo-project-1/data/geo/population_wb/$records/bo.json": "aa68455b03c2302f343c162361348ae74941aa42",
+    "demo-project-1/data/geo/population_wb/$records/br.json": "8dfebdc86fe5bfad9563ee0c180caf0d1d54989b",
+    "demo-project-1/data/geo/population_wb/$records/bs.json": "36fe9657ea37a0182fd292dd6d4d5ffdfec1ea6f",
+    "demo-project-1/data/geo/population_wb/$records/bt.json": "a06fedf038ba3b6d6ffe7eefa3dfaf24f73bda45",
+    "demo-project-1/data/geo/population_wb/$records/bw.json": "9594c5f15a20aa1b80f4175a7c1b668cd64b9be0",
+    "demo-project-1/data/geo/population_wb/$records/by.json": "ff781ac1457a2c53ff018fffb5f23ca758f8732f",
+    "demo-project-1/data/geo/population_wb/$records/bz.json": "a61c2c53922cbf6fb1e3c88dce5b8023e2bcca7c",
+    "demo-project-1/data/geo/population_wb/$records/ca.json": "dc3cd98370fc4da9bf10051f6cf7904478afc66f",
+    "demo-project-1/data/geo/population_wb/$records/cd.json": "d387caa5ac4cdaa87cc3f5eb5151444d64de5403",
+    "demo-project-1/data/geo/population_wb/$records/cf.json": "e05f0822fe5fdc16572eef3ea1e60b496fb5d467",
+    "demo-project-1/data/geo/population_wb/$records/cg.json": "caeec8095c0cce14a13e1a6164b85f57a312b4b5",
+    "demo-project-1/data/geo/population_wb/$records/ch.json": "d578b957de6d84c288be0028c6845715329193e3",
+    "demo-project-1/data/geo/population_wb/$records/ci.json": "6381306474efb5d09e50247b6765aa378a698ebf",
+    "demo-project-1/data/geo/population_wb/$records/cl.json": "499576e21d44be148008d37acd846540fe268a03",
+    "demo-project-1/data/geo/population_wb/$records/cm.json": "fe6e641e54d5f3ec737cddbbd336d05318025e8b",
+    "demo-project-1/data/geo/population_wb/$records/cn.json": "fd10fad3637f013e462b8c4f3cbe29e4c990b847",
+    "demo-project-1/data/geo/population_wb/$records/co.json": "0234f852f7ead50adef5d8198386ef060ba9a25d",
+    "demo-project-1/data/geo/population_wb/$records/cr.json": "0348cfd14a81bfdac78a006546636b08c65a03e3",
+    "demo-project-1/data/geo/population_wb/$records/cu.json": "b4bdce698287f57e76bd1812c9f5d25702bd709d",
+    "demo-project-1/data/geo/population_wb/$records/cv.json": "ae53c2dd96eb3153f6435b1f53c5efffec8d01a7",
+    "demo-project-1/data/geo/population_wb/$records/cw.json": "38d2a3055adec1a0bf73feaa05b2f62e051fa175",
+    "demo-project-1/data/geo/population_wb/$records/cy.json": "cc459bff3abbfd3cf2a8661406757cc11f56804e",
+    "demo-project-1/data/geo/population_wb/$records/cz.json": "06b139bec6abad4ded9c317887cb78e7b41fba36",
+    "demo-project-1/data/geo/population_wb/$records/de.json": "d7f9288e10e81a12b5034f10879f49fdcbe318fa",
+    "demo-project-1/data/geo/population_wb/$records/dj.json": "3a764984a5ccf1cb89bb478ed3d5a030fc530dd1",
+    "demo-project-1/data/geo/population_wb/$records/dk.json": "1340b8366e04e38473ffb146b725277fe7c8c5f5",
+    "demo-project-1/data/geo/population_wb/$records/dm.json": "46e7cfa3141c461fdfb5debe90482116c3371de7",
+    "demo-project-1/data/geo/population_wb/$records/do.json": "2ac4b6c362c0c25685d3e15339a26f77616b39fe",
+    "demo-project-1/data/geo/population_wb/$records/dz.json": "099b4b2b2cb03dda92338525d74f283c063fb2c7",
+    "demo-project-1/data/geo/population_wb/$records/ec.json": "ad63c719eb9d02b03fc7976b7677431392d33518",
+    "demo-project-1/data/geo/population_wb/$records/ee.json": "8b0a1bb12b4c84d0f5506aa6b60e997cd91ee1d6",
+    "demo-project-1/data/geo/population_wb/$records/eg.json": "bbc7076b5c7578628d078001db0287eadabc5508",
+    "demo-project-1/data/geo/population_wb/$records/er.json": "e93292f0a64384b3ed07aa506e84735249e0ff18",
+    "demo-project-1/data/geo/population_wb/$records/es.json": "48e9597076c3629e57265f78fe6ae02bbb508724",
+    "demo-project-1/data/geo/population_wb/$records/et.json": "3aed8f8f844d01e7014e73d76ed21843a3de48b3",
+    "demo-project-1/data/geo/population_wb/$records/fi.json": "9fb57f216b8d8088dd80f812d1b1744125e8ab8a",
+    "demo-project-1/data/geo/population_wb/$records/fj.json": "1fbe63a4c90a2cea4ac52bcfa11ef5f35b1c4118",
+    "demo-project-1/data/geo/population_wb/$records/fm.json": "da4835dacc2b16a1d729975bc84d6e9a2b91ee6d",
+    "demo-project-1/data/geo/population_wb/$records/fo.json": "cfd6f15009f3098fd0b57a99182999b6d3eca92f",
+    "demo-project-1/data/geo/population_wb/$records/fr.json": "5e4b8f8cb535cc839e2adab1004ce5f4a360c03f",
+    "demo-project-1/data/geo/population_wb/$records/ga.json": "1a36da3eecdf7bde2984ffe61c316fe31784a2c8",
+    "demo-project-1/data/geo/population_wb/$records/gb.json": "eaf8d26432ad241882e7bb81e0820d2748baea82",
+    "demo-project-1/data/geo/population_wb/$records/gd.json": "9f61588c0db3c7ee09189b1b630facc6264f4357",
+    "demo-project-1/data/geo/population_wb/$records/ge.json": "4ed3c23aa6da3e066d8b8081e58dc321f7934158",
+    "demo-project-1/data/geo/population_wb/$records/gh.json": "793d294d4af90ce9e18c90fcc733c0dc28041eee",
+    "demo-project-1/data/geo/population_wb/$records/gi.json": "4126be76dce8fb48eeb9c0f36705f697abbd4eb0",
+    "demo-project-1/data/geo/population_wb/$records/gl.json": "0f9a233743080c102be7410f11b4dcd29fa64dc9",
+    "demo-project-1/data/geo/population_wb/$records/gm.json": "535b381c117d0e42f43f4e2100698236097ef0d1",
+    "demo-project-1/data/geo/population_wb/$records/gn.json": "4b03053ba3c36371b0d629f2529b00a0a990d8e2",
+    "demo-project-1/data/geo/population_wb/$records/gq.json": "fb08cc60766ca40b61c0a50cca13898c6427deb5",
+    "demo-project-1/data/geo/population_wb/$records/gr.json": "19e61a53b433ac6cc564250356fb89739ceff05d",
+    "demo-project-1/data/geo/population_wb/$records/gt.json": "fac66606e484c5d8f03a3af24137cf2bc324dd87",
+    "demo-project-1/data/geo/population_wb/$records/gu.json": "9fb033e519df045b415fc3467b35ba6f61114e94",
+    "demo-project-1/data/geo/population_wb/$records/gw.json": "4443a3e8592a122468537c30044b13925074da5d",
+    "demo-project-1/data/geo/population_wb/$records/gy.json": "4a031988e57d082aa2230a0b729af599792ddf72",
+    "demo-project-1/data/geo/population_wb/$records/hk.json": "f0e2706e82753b67326255a5cffbba2be1b5bb0d",
+    "demo-project-1/data/geo/population_wb/$records/hn.json": "72aa992393a637e32269355ae9990496268a720c",
+    "demo-project-1/data/geo/population_wb/$records/hr.json": "03da054b9fa0e2efe6c248c2177a046d06c02ab8",
+    "demo-project-1/data/geo/population_wb/$records/ht.json": "08f3956ff2f6069c269ee6308f58b36997290d6e",
+    "demo-project-1/data/geo/population_wb/$records/hu.json": "3e32066214feb072321391b6c5c3faa9ba5e6a3c",
+    "demo-project-1/data/geo/population_wb/$records/id.json": "fe84ca5e554147db428bd99abce3e04af656675e",
+    "demo-project-1/data/geo/population_wb/$records/ie.json": "1b7c6d5737a5e872cff4fa9f273eb58752282cd4",
+    "demo-project-1/data/geo/population_wb/$records/il.json": "e4ab8d592090d656823a2273157ddfc6512d3f4c",
+    "demo-project-1/data/geo/population_wb/$records/im.json": "63867d3a28cfa64e5fcf288abac8936974cce60b",
+    "demo-project-1/data/geo/population_wb/$records/in.json": "f7cd1eb876ac0898deabae2cbf282a1d07179a8a",
+    "demo-project-1/data/geo/population_wb/$records/iq.json": "d313a326438c7c9349496c8690a7e2098adac89b",
+    "demo-project-1/data/geo/population_wb/$records/ir.json": "1e60c319c247cb34c22093ef1b3b4f543a77c660",
+    "demo-project-1/data/geo/population_wb/$records/is.json": "440d3ed88a3572f8b0f1ed111025808ce167af61",
+    "demo-project-1/data/geo/population_wb/$records/it.json": "3a558aed8224182501b2b5fd9b298f87548dd99a",
+    "demo-project-1/data/geo/population_wb/$records/jm.json": "28a37de0c76cc83653e0f154538c2301cfab4678",
+    "demo-project-1/data/geo/population_wb/$records/jo.json": "857bcfbe684880b8ca93f433b5275b8e764f8996",
+    "demo-project-1/data/geo/population_wb/$records/jp.json": "36dacef243bcbdadcbf8c686fca0d826ad633deb",
+    "demo-project-1/data/geo/population_wb/$records/ke.json": "2ee3e7d9d79b73648776b2b3d102f2185b1cac24",
+    "demo-project-1/data/geo/population_wb/$records/kg.json": "ec64838fc254890a3e12a027e7aa771343a49ad8",
+    "demo-project-1/data/geo/population_wb/$records/kh.json": "24b86a908ff6d32718a495cdc2bf955c1f516ff9",
+    "demo-project-1/data/geo/population_wb/$records/ki.json": "edd01c9b500c16df4e0c4595782edf00d4cbe4e6",
+    "demo-project-1/data/geo/population_wb/$records/km.json": "b67e9c8149f60fc950e3fbd3bb7f7f566e11246d",
+    "demo-project-1/data/geo/population_wb/$records/kn.json": "2054b4f52bb642e4ccbc4699efbe930169f67215",
+    "demo-project-1/data/geo/population_wb/$records/kp.json": "a59e2e9ccf6c6044ecbc4387bc209f469559d543",
+    "demo-project-1/data/geo/population_wb/$records/kr.json": "d26fb751ae2f4b06db447d98f15e9103325f8d29",
+    "demo-project-1/data/geo/population_wb/$records/kw.json": "e90a63b3e85d82e5ce49d3c83242a8f2e69f5435",
+    "demo-project-1/data/geo/population_wb/$records/ky.json": "cc14da754a7a09489ddfba46d22a73b6c56cb04b",
+    "demo-project-1/data/geo/population_wb/$records/kz.json": "fe7fbe66f3ccbced20062ca7015558f2ac00c624",
+    "demo-project-1/data/geo/population_wb/$records/la.json": "b8e75b97e544e9c052aeed35e7995c6374ab3ba6",
+    "demo-project-1/data/geo/population_wb/$records/lb.json": "b51e0b0d5d4d682cceecad8c9d732cdcf2dbfa9f",
+    "demo-project-1/data/geo/population_wb/$records/lc.json": "9e75762c05ec71452c2571ffbc643b066c25db41",
+    "demo-project-1/data/geo/population_wb/$records/li.json": "24269c24ceb06cb353705a257a7dad34cd806d11",
+    "demo-project-1/data/geo/population_wb/$records/lk.json": "d4d87ff6c3e088e98e6918756b734b7b9cddd6f7",
+    "demo-project-1/data/geo/population_wb/$records/lr.json": "0d8e3c7e3f9237445805c71ab60ebe9f2e7eef70",
+    "demo-project-1/data/geo/population_wb/$records/ls.json": "f6920eb1431f8a10a5dc2e26d6b3fe40a72539be",
+    "demo-project-1/data/geo/population_wb/$records/lt.json": "54e94ab7c01b28ed46db1cfdd0d20fdcc61b7f76",
+    "demo-project-1/data/geo/population_wb/$records/lu.json": "0f5ae8fbe3750fe623ae3e403e1cf13a630755f1",
+    "demo-project-1/data/geo/population_wb/$records/lv.json": "acbfd90a18b9d4039f39311e30ebd644d743f840",
+    "demo-project-1/data/geo/population_wb/$records/ly.json": "26a813f5c02a7b05d9290750e4f31382742dad94",
+    "demo-project-1/data/geo/population_wb/$records/ma.json": "894db4fe210feaa46c41f7870c14f33102231c24",
+    "demo-project-1/data/geo/population_wb/$records/mc.json": "e5cd02684bf0362d1b2fa77cfb93e19aa725df61",
+    "demo-project-1/data/geo/population_wb/$records/md.json": "090e901ff8e6b7c24a36f9a5670c2e0b39d18fcb",
+    "demo-project-1/data/geo/population_wb/$records/me.json": "2f472d7beeeeea41a979613608626d327c7c59a4",
+    "demo-project-1/data/geo/population_wb/$records/mf.json": "01841b437262bbb4dc0a1f5e17f006d60a511d95",
+    "demo-project-1/data/geo/population_wb/$records/mg.json": "1552858c91d67cd52abb9993e0e1e70d7652179d",
+    "demo-project-1/data/geo/population_wb/$records/mh.json": "414c874ad6da3c35c1fb9f8650e69a0ead47f638",
+    "demo-project-1/data/geo/population_wb/$records/mk.json": "bb20c59edc2283b787da24b69ba8ee8ee6646feb",
+    "demo-project-1/data/geo/population_wb/$records/ml.json": "fa836c7910647075163d150eb8676525bbd432fb",
+    "demo-project-1/data/geo/population_wb/$records/mm.json": "b5b99a9d20854899334e9b5a0d26ad26a801c375",
+    "demo-project-1/data/geo/population_wb/$records/mn.json": "088bdd8fec25811754856c4e61b5f0c19d970605",
+    "demo-project-1/data/geo/population_wb/$records/mo.json": "24b0132890da0b178f0c8cc03ec2d21ed5bcfef6",
+    "demo-project-1/data/geo/population_wb/$records/mp.json": "76145afbfdaa9d9328cbf01855e3d1198b946dbf",
+    "demo-project-1/data/geo/population_wb/$records/mr.json": "d5c9716601ff8863c25b3d7fd11c4ebc1a23d8ea",
+    "demo-project-1/data/geo/population_wb/$records/mt.json": "b0a01bdb4eb8127dedd53d9c913740a7271ecb98",
+    "demo-project-1/data/geo/population_wb/$records/mu.json": "9128c946512c34d0bf56ec083a26bfcbde356e88",
+    "demo-project-1/data/geo/population_wb/$records/mv.json": "195ac58c73035186f811eaafa8e7c3dde04a8025",
+    "demo-project-1/data/geo/population_wb/$records/mw.json": "496dc02d8a5f09fa2dbe02b2a2b1d9b26799b86e",
+    "demo-project-1/data/geo/population_wb/$records/mx.json": "d7ae019f7cc070dce15247c02b406b682adad436",
+    "demo-project-1/data/geo/population_wb/$records/my.json": "fcd5075a39f25885d11f755075f085ed9734cf4b",
+    "demo-project-1/data/geo/population_wb/$records/mz.json": "050de4c6d8653761eb2b0942d3cdca13b9e11625",
+    "demo-project-1/data/geo/population_wb/$records/na.json": "24449227a2d2eb2c96c630350b70c126c698d511",
+    "demo-project-1/data/geo/population_wb/$records/nc.json": "25ff0a800242c0c95cf83a7de9ec49714fda8021",
+    "demo-project-1/data/geo/population_wb/$records/ne.json": "186309c126342a66d7843dd2aea99c03b4e6390e",
+    "demo-project-1/data/geo/population_wb/$records/ng.json": "296ca411e01592fcf9788f947fedd2119a975a14",
+    "demo-project-1/data/geo/population_wb/$records/ni.json": "033312aacd5d7528efc0190b12b92c76101f522d",
+    "demo-project-1/data/geo/population_wb/$records/nl.json": "4f32e31aa254c704f1db3fe9e284b45fbc2fad3d",
+    "demo-project-1/data/geo/population_wb/$records/no.json": "1d209f71e664ee56a3205d49e17fc01edd5e577a",
+    "demo-project-1/data/geo/population_wb/$records/np.json": "55d88bb6492725c838fc182bbf5534d1e8f4d27e",
+    "demo-project-1/data/geo/population_wb/$records/nr.json": "243f533a71d3a7ad4efa901099c30eb625e34256",
+    "demo-project-1/data/geo/population_wb/$records/nz.json": "4c15387fdfc383cd3a83ca202f412d899510681b",
+    "demo-project-1/data/geo/population_wb/$records/om.json": "878a3e595bac7f8dfbbc9d953d9a94d4d1a046c4",
+    "demo-project-1/data/geo/population_wb/$records/pa.json": "ebadbf1d8e6d3be1e1b9cbca9eaf4a90cb9f6e50",
+    "demo-project-1/data/geo/population_wb/$records/pe.json": "3c14ab0288d7c6f06aaf38b78bef9df630d5ba4b",
+    "demo-project-1/data/geo/population_wb/$records/pf.json": "666a21332812e4bc1b50fd8f7a6c854fc2c6b438",
+    "demo-project-1/data/geo/population_wb/$records/pg.json": "e3fc6f6d9defa9c6c48163c57e1460913fc5c60b",
+    "demo-project-1/data/geo/population_wb/$records/ph.json": "88f04024761f5371a840a00e5c6c699e9f3472d6",
+    "demo-project-1/data/geo/population_wb/$records/pk.json": "378d181c94c8a2f038744258adfc2df5c5c8458c",
+    "demo-project-1/data/geo/population_wb/$records/pl.json": "f8b848676a7d4d315f46a5514dde4897bfa560d0",
+    "demo-project-1/data/geo/population_wb/$records/pr.json": "b39246b0f75b201815c27f7236d36239df9a6862",
+    "demo-project-1/data/geo/population_wb/$records/ps.json": "f5207a89b951118f0d3088907d07c0cb6b2a43e6",
+    "demo-project-1/data/geo/population_wb/$records/pt.json": "1069e73bf2a914e4346e576d754610494f99323b",
+    "demo-project-1/data/geo/population_wb/$records/pw.json": "d09b2bd1c713acb1432ec36dbc1a682c497cb233",
+    "demo-project-1/data/geo/population_wb/$records/py.json": "8b29b6c90c940d48c29a8be1e0e2e2e621f3237e",
+    "demo-project-1/data/geo/population_wb/$records/qa.json": "f04862bba1205fca1c96820f187a378a62d27413",
+    "demo-project-1/data/geo/population_wb/$records/ro.json": "d2c076fe7c49a0a4755d1786941f803b81d9f4d2",
+    "demo-project-1/data/geo/population_wb/$records/rs.json": "86e6257ebe102c520978f5bbe1c738538c54c1fe",
+    "demo-project-1/data/geo/population_wb/$records/ru.json": "d0310cbfbfc34ab2235764fcaa65e01aca4294a8",
+    "demo-project-1/data/geo/population_wb/$records/rw.json": "49b56ceb6f1cae207d12a4c1ed2f3a118cf1fd4d",
+    "demo-project-1/data/geo/population_wb/$records/sa.json": "e0793d4266b9b28696d0631e2f0b19a568d64eeb",
+    "demo-project-1/data/geo/population_wb/$records/sb.json": "08b0c39b6712598b9d6bc7bdc887ffb140bc7d34",
+    "demo-project-1/data/geo/population_wb/$records/sc.json": "08fddb388636a5ff5b05d5142beb5d1ab1a61084",
+    "demo-project-1/data/geo/population_wb/$records/sd.json": "583642643c2057f41b7dd22a3a3e9731b27f2e01",
+    "demo-project-1/data/geo/population_wb/$records/se.json": "785b8ebe4489d4d8020f48b81542f78cbd17af72",
+    "demo-project-1/data/geo/population_wb/$records/sg.json": "9c32113d6e20d3f9a980efdf45df688786d78ba7",
+    "demo-project-1/data/geo/population_wb/$records/si.json": "bc83990dd7842e141ae17158251d82152bb2a0b7",
+    "demo-project-1/data/geo/population_wb/$records/sk.json": "e30d83c019934b9437ef523a56a90a0a2488b478",
+    "demo-project-1/data/geo/population_wb/$records/sl.json": "ffd86bdab115589c9fbda2900bf7ff77875ebc6b",
+    "demo-project-1/data/geo/population_wb/$records/sm.json": "f8ee0ad8a15811704c31d26cd81b70feac904824",
+    "demo-project-1/data/geo/population_wb/$records/sn.json": "53bd4d305c730e6133158cf6491e362bd3143e4b",
+    "demo-project-1/data/geo/population_wb/$records/so.json": "b5cfdb06601dec8525816b5408a3dc548e90c6e5",
+    "demo-project-1/data/geo/population_wb/$records/sr.json": "fa364469cad5c5d2c51faa43f514ba56f76f808b",
+    "demo-project-1/data/geo/population_wb/$records/ss.json": "64197b4f5852cc1ccd9730cdc5d9b59d71bcc0d1",
+    "demo-project-1/data/geo/population_wb/$records/st.json": "08ba5c6b5bbf53bf0990024cbceda5b2e415764b",
+    "demo-project-1/data/geo/population_wb/$records/sv.json": "b01bba2cfa098e9207130784b18d0a2979c4aa25",
+    "demo-project-1/data/geo/population_wb/$records/sx.json": "0a37890f57462545a7a9b25c6e52673a67996960",
+    "demo-project-1/data/geo/population_wb/$records/sy.json": "c21763e572dc6a455dadbc0bb510d241dc266ebf",
+    "demo-project-1/data/geo/population_wb/$records/sz.json": "ce24ce9c4293c15042366ee3f2a6d5b91394172b",
+    "demo-project-1/data/geo/population_wb/$records/tc.json": "a4725a5824e5d280b5c58942662e901226e35bf2",
+    "demo-project-1/data/geo/population_wb/$records/td.json": "21ef4a3e95b3590c30ebe353c7292317387118a2",
+    "demo-project-1/data/geo/population_wb/$records/tg.json": "e091241a4f0960a459a5de8b4b8a1b032de3ad29",
+    "demo-project-1/data/geo/population_wb/$records/th.json": "2af538361e2d53f19d44316d4c1b4f6f4f5945dd",
+    "demo-project-1/data/geo/population_wb/$records/tj.json": "06a95b0d1431ce229d76d63de10a0892b91b98b1",
+    "demo-project-1/data/geo/population_wb/$records/tl.json": "971e101f3fa3c3047038ab4c85a74aaaa31607e5",
+    "demo-project-1/data/geo/population_wb/$records/tm.json": "bed8d4ff1fa89ae52e52cafb0dccd3e9a460bbd1",
+    "demo-project-1/data/geo/population_wb/$records/tn.json": "117f7ca746e7722e5cc535d6fe7193b79fa365d7",
+    "demo-project-1/data/geo/population_wb/$records/to.json": "73742f98e73878b013647a5cbe4444d082b4db40",
+    "demo-project-1/data/geo/population_wb/$records/tr.json": "6a6c7c96383217eaad1677f529ac7263b849547c",
+    "demo-project-1/data/geo/population_wb/$records/tt.json": "7a24bb79451897b2094e8f3f9405d8a60964e1d3",
+    "demo-project-1/data/geo/population_wb/$records/tv.json": "4cccc8dae9c85aaead2fae7ed8601f9202d513f8",
+    "demo-project-1/data/geo/population_wb/$records/tz.json": "5cc52631fc656909a734f6216fd6a0bcb50e38b1",
+    "demo-project-1/data/geo/population_wb/$records/ua.json": "48af55d7ca631b9ba15a506a786345c6481d121f",
+    "demo-project-1/data/geo/population_wb/$records/ug.json": "56443b1d08dc48b4f25c43221db2ff90a59b4d23",
+    "demo-project-1/data/geo/population_wb/$records/us.json": "b6fd910f6b1d04bec352a51251638135befe5257",
+    "demo-project-1/data/geo/population_wb/$records/uy.json": "01468e7d9490cbaff121fe0ff5e172d875c62100",
+    "demo-project-1/data/geo/population_wb/$records/uz.json": "19aee1e02d5c0e34fa0a746c0636d8487e64451a",
+    "demo-project-1/data/geo/population_wb/$records/vc.json": "bfa25a89885aa5e2d16a43972fd1c148ed0b6edf",
+    "demo-project-1/data/geo/population_wb/$records/ve.json": "21e796c8c1acfbb1484306a3c111a8e5a299b919",
+    "demo-project-1/data/geo/population_wb/$records/vg.json": "8590231adfe96cdbedcbc1324e99b0ed6dd212c1",
+    "demo-project-1/data/geo/population_wb/$records/vi.json": "9b0061fce9b9037f8e718e6307e000c4bf25d837",
+    "demo-project-1/data/geo/population_wb/$records/vn.json": "32785c525bd7eaa5cd65bd94f75d94eac22708e4",
+    "demo-project-1/data/geo/population_wb/$records/vu.json": "44c6c8aa822bafdba866a8757924c69f3f850264",
+    "demo-project-1/data/geo/population_wb/$records/ws.json": "50eaa6bfc3925ebc903e923f94c275a5d0fc8c47",
+    "demo-project-1/data/geo/population_wb/$records/xk.json": "47430327498f076d634df24caa181e30dadfae4b",
+    "demo-project-1/data/geo/population_wb/$records/ye.json": "03dfbaf6bcec7dc102d8a570c6d36b134eea6244",
+    "demo-project-1/data/geo/population_wb/$records/za.json": "71c66b157c297c1bec92b02081b003a9663cc639",
+    "demo-project-1/data/geo/population_wb/$records/zm.json": "73ae2d2304663c490903b3d0164b74f22c7d831e",
+    "demo-project-1/data/geo/population_wb/$records/zw.json": "fa37806629fbe9712d5c4ff9a13ef412dc19bf95",
+    "demo-project-1/dbmodels/chinook/main/tables/Album/main.Album.columns.json": "b247ebb8154851fdd18dd36538ff756c492117fc",
+    "demo-project-1/dbmodels/chinook/main/tables/Artist/main.Artist.columns.json": "beb7557ec0479ed617ae1b71192d3e4ad420ffac",
+    "demo-project-1/dbmodels/chinook/main/tables/Customer/main.Customer.columns.json": "87648f8f2494dea62a79431795b5a8c77a55981b",
+    "demo-project-1/dbmodels/chinook/main/tables/Employee/main.Employee.columns.json": "3da027ba3f67b6ea91eb699656bf62ed6247914b",
+    "demo-project-1/dbmodels/chinook/main/tables/Genre/main.Genre.columns.json": "eda1445af2cee210ef521a233d27510d44d43cf6",
+    "demo-project-1/dbmodels/chinook/main/tables/Invoice/main.Invoice.columns.json": "284fcbc805fc8fb7c938357c3f1ba0c8f7cda324",
+    "demo-project-1/dbmodels/chinook/main/tables/InvoiceLine/main.InvoiceLine.columns.json": "a5afd8097ae0dba0c9cdb31fa810f32c9d7cfe0c",
+    "demo-project-1/dbmodels/chinook/main/tables/MediaType/main.MediaType.columns.json": "ab7063cf2720cffab4aac07dd0bb7bc2065d833f",
+    "demo-project-1/dbmodels/chinook/main/tables/Playlist/main.Playlist.columns.json": "74cd599bd1807b836c17aab4a56e9349abfd810d",
+    "demo-project-1/dbmodels/chinook/main/tables/PlaylistTrack/main.PlaylistTrack.columns.json": "34452072ca826af5c3861ab96947aee750886d63",
+    "demo-project-1/dbmodels/chinook/main/tables/Track/main.Track.columns.json": "1812f7966242f63399dbdd6ba4fdd47b935ae8e9",
+    "demo-project-1/entities/Country/Country.entity.json": "ab2aa4ed17ed03f1c350c0d47c5415e3369dce46",
+    "demo-project-1/fixtures/chinook/phase1-acceptance.json": "78ae201728884a5a64cf65dcd13c29a8a81283d8",
+    "demo-project-1/queries/sales/chinook-sales-per-capita.query.dtql": "05b4ab41790287b9f45424e2e6af2baf2ecb9545",
+    "demo-project-1/queries/sales/chinook-sales-per-capita.query.json": "19d01cd0a9bed6adf74a491e34eff6cb9ec1cd90"
+  }
+}
