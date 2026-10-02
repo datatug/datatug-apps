@@ -3,16 +3,26 @@
 // this spec feeds both the same documents and compares their verdicts, and checks that the numbers the schemas
 // declare are the numbers in project-file-limits.ts.
 import Ajv2020 from 'ajv/dist/2020';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import catalogSchema from './schemas/https-json-catalog.schema.json';
 import questionsSchema from './schemas/prepared-questions.schema.json';
 import { validateHttpsJsonCatalog } from './https-json-catalog';
 import { validatePreparedQuestions } from './prepared-questions';
+import type { ValidationResult } from './project-file-problems';
 import * as limits from './project-file-limits';
 
 /** `RegExp.source` spells a pattern the one way JavaScript does, so patterns written differently still compare equal. */
 const same = (pattern: string, expected: RegExp): void =>
-  expect(new RegExp(pattern).source).toBe(expected.source);
+  expect(new RegExp(pattern, 'u').source).toBe(expected.source);
+
+const fixtureRoot = join(
+  dirname(fileURLToPath(import.meta.url)),
+  'fixtures',
+  'chinook-demo',
+);
 
 const ajv = new Ajv2020({ strict: true, allErrors: true });
 const questionsSchemaValidate = ajv.compile(questionsSchema);
@@ -391,13 +401,17 @@ describe('the schemas declare the numbers of project-file-limits.ts', () => {
       expect(url.maxLength).toBe(limits.MAX_URL_LENGTH);
     }
     same(p.homepage.pattern, limits.HTTPS_URL_PATTERN);
+    for (const link of [p.homepage, p.upstream.properties.repository]) {
+      same(link.allOf[0].pattern, limits.URL_NO_BRACES_PATTERN);
+    }
+    expect(p.$schema.minLength).toBe(1);
     for (const template of [p.urlTemplate, p.fallbackUrlTemplate]) {
-      const [shape, braces, hasTable] = template.allOf.map(
+      const [shape, onePlaceholder, plain] = template.allOf.map(
         (rule) => rule.pattern,
       );
       same(shape, limits.HTTPS_URL_PATTERN);
-      same(braces, limits.URL_TEMPLATE_BRACES_PATTERN);
-      same(hasTable, limits.URL_TEMPLATE_HAS_TABLE_PATTERN);
+      same(onePlaceholder, limits.URL_TEMPLATE_ONE_PLACEHOLDER_PATTERN);
+      same(plain, limits.URL_TEMPLATE_PLAIN_PATTERN);
     }
     expect(p.keys.maxProperties).toBe(limits.MAX_TABLES);
     expect(p.sha256.maxProperties).toBe(limits.MAX_TABLES);
@@ -455,5 +469,271 @@ describe('the schemas declare the numbers of project-file-limits.ts', () => {
     expect(
       names.filter((name) => /html|markup|format|script/i.test(name)),
     ).toEqual([]);
+  });
+});
+
+describe('mutation agreement: the schema and the validator cannot drift apart in either direction', () => {
+  // Every document is a small change to a valid one: a value set at every path, a key deleted, a key added.
+  // The schema may accept what a validator refuses only for a rule a schema cannot state (an address that
+  // resolves to a private host, a repeated id, a query that does not exist, the allow-list, a checksum for
+  // every keyed table). The validator must never accept what the schema refuses.
+  const VALIDATOR_ONLY_CODES = new Set([
+    'unsafe-address',
+    'checksum-missing',
+    'duplicate',
+    'unknown-query',
+    'outside-allowed-prefixes',
+  ]);
+  const cp = (...codes: number[]): string => String.fromCodePoint(...codes);
+  const SPOOF = `a${cp(0x202e)}b`;
+  const values: unknown[] = [
+    null,
+    true,
+    0,
+    1,
+    1.5,
+    -1,
+    '',
+    ' ',
+    'x',
+    'insight',
+    'en',
+    cp(0x1f600).repeat(150),
+    cp(0x1f600).repeat(201),
+    'a'.repeat(200),
+    'a'.repeat(201),
+    '\ud800',
+    'a b',
+    'a\tb',
+    'a\u007fb',
+    SPOOF,
+    cp(0xfeff),
+    cp(0x2028),
+    cp(0x200d),
+    cp(0xe0041),
+    [],
+    {},
+    ['insight'],
+    ['insight', 'insight'],
+    { en: 'x' },
+    { en: '' },
+    { ru: 'x' },
+    { en: 'x', EN: 'y' },
+    { en: 'x', 'pt-BR': 'y' },
+    { en: 'x', constructor: 'y' },
+    'https://chinookdb.com/data/{table}',
+    'https://a.b/{table}',
+    'https://a.b',
+    'https://a.b/',
+    'https://a',
+    'https://localhost/{table}',
+    'https://a.b/x',
+    'https://a.b/x\n',
+    'https://a.b/{table}\n',
+    'https://a-.b/{table}',
+    'https://a.b/{table}?q={table}',
+    'https://a.b:1/{table}',
+    'https://a..b/{table}',
+    'https://1.2.3.4/{table}',
+    'https://a.b/%{table}',
+    'https://a.b/%2e{table}',
+    'https://a.b/.%2{table}',
+    'https://a.b/{table}/{table}',
+    'https://a.b/{table}{table}',
+    'https://a.b/{x}/{table}',
+    'https://a.b/./{table}',
+    'https://a.b/../{table}',
+    'https://a.b//{table}',
+    'http://a.b/{table}',
+    'https://u:p@a.b/{table}',
+    'https://[::1]/{table}',
+    'https://a.b/{table}#x',
+    'https://a.b/x y/{table}',
+    'a'.repeat(64),
+    'a'.repeat(40),
+    'A'.repeat(64),
+    '0'.repeat(65),
+    'sales/x',
+    'a/../b',
+    '/a',
+    'a/',
+    'a//b',
+    'x'.repeat(65),
+    '-',
+    'https-json',
+    'MIT',
+    { Invoice: 'InvoiceId' },
+    { Invoice: 'a'.repeat(64) },
+    { _x: 'y' },
+    { x: '_y' },
+    Object.fromEntries(Array.from({ length: 101 }, (_, i) => ['t' + i, 'k'])),
+    Array.from({ length: 51 }, () => 'w'),
+    Array.from({ length: 9 }, () => 'insight'),
+  ];
+  const extraKeys = [
+    'x',
+    '$schema',
+    '__proto__',
+    'constructor',
+    'ru',
+    'EN',
+    'wordings',
+    'followUps',
+    'upstream',
+    'label',
+    'homepage',
+    'fallbackUrlTemplate',
+    'id',
+  ];
+
+  const pathsOf = (node: unknown, path: string[] = []): string[][] => {
+    const found: string[][] = [path];
+    if (node && typeof node === 'object') {
+      for (const key of Object.keys(node))
+        found.push(
+          ...pathsOf((node as Record<string, unknown>)[key], [...path, key]),
+        );
+    }
+    return found;
+  };
+  const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+  const setAt = (
+    doc: unknown,
+    path: string[],
+    value: unknown,
+    remove = false,
+  ): unknown => {
+    if (path.length === 0) return value;
+    const copy = clone(doc) as Record<string, unknown>;
+    let target = copy;
+    for (const key of path.slice(0, -1))
+      target = target[key] as Record<string, unknown>;
+    const last = path[path.length - 1];
+    if (remove) {
+      if (Array.isArray(target)) target.splice(Number(last), 1);
+      else delete target[last];
+    } else {
+      target[last] = value;
+    }
+    return copy;
+  };
+  const addKey = (
+    doc: unknown,
+    path: string[],
+    key: string,
+    value: unknown,
+  ): unknown => {
+    const copy = clone(doc);
+    let target = copy as Record<string, unknown>;
+    for (const step of path) target = target[step] as Record<string, unknown>;
+    Object.defineProperty(target, key, {
+      value,
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    });
+    return copy;
+  };
+
+  function disagreements(
+    base: unknown,
+    schema: (doc: unknown) => boolean,
+    validate: (doc: unknown) => ValidationResult<unknown>,
+  ): { documents: number; wrong: string[] } {
+    let documents = 0;
+    const wrong: string[] = [];
+    const check = (doc: unknown, how: string): void => {
+      documents++;
+      const fromSchema = schema(doc);
+      const result = validate(doc);
+      if (fromSchema === result.ok) return;
+      if (!fromSchema && result.ok) {
+        wrong.push(`validator accepts what the schema refuses: ${how}`);
+      } else if (fromSchema && !result.ok) {
+        const codes = result.errors.map((e) => e.code);
+        if (!codes.every((code) => VALIDATOR_ONLY_CODES.has(code))) {
+          wrong.push(
+            `schema accepts what the validator refuses (${codes.join(',')}): ${how}`,
+          );
+        }
+      }
+    };
+    for (const path of pathsOf(base)) {
+      const name = path.join('/');
+      for (const value of values)
+        check(
+          setAt(base, path, value),
+          `set /${name} = ${JSON.stringify(value)?.slice(0, 60)}`,
+        );
+      if (path.length) check(setAt(base, path, null, true), `delete /${name}`);
+      const current = path.reduce<unknown>(
+        (node, key) => (node as Record<string, unknown>)[key],
+        base,
+      );
+      if (current && typeof current === 'object' && !Array.isArray(current)) {
+        for (const key of extraKeys) {
+          for (const value of ['x', '', { en: 'x' }, [], 1])
+            check(
+              addKey(base, path, key, value),
+              `add /${name}/${key} = ${JSON.stringify(value)}`,
+            );
+        }
+      }
+    }
+    return { documents, wrong };
+  }
+
+  const baseQuestions = JSON.parse(
+    readFileSync(join(fixtureRoot, 'ai/prepared-questions.json'), 'utf8'),
+  ) as unknown;
+  const baseCatalog = JSON.parse(
+    readFileSync(
+      join(fixtureRoot, 'web/catalogs/chinook/chinook.db.json'),
+      'utf8',
+    ),
+  ) as unknown;
+
+  it('prepared questions: over a thousand mutated documents, no drift', () => {
+    const { documents, wrong } = disagreements(
+      baseQuestions,
+      (doc) => questionsSchemaValidate(doc) as boolean,
+      (doc) => validatePreparedQuestions(doc),
+    );
+    expect(documents).toBeGreaterThan(1000);
+    expect(wrong).toEqual([]);
+  });
+
+  it('https-json catalog: over a thousand mutated documents, no drift', () => {
+    const { documents, wrong } = disagreements(
+      baseCatalog,
+      (doc) => catalogSchemaValidate(doc) as boolean,
+      (doc) => validateHttpsJsonCatalog(doc, { trust: 'untrusted' }),
+    );
+    expect(documents).toBeGreaterThan(1000);
+    expect(wrong).toEqual([]);
+  });
+
+  it('would notice a drift: a validator that accepted one more thing would be reported', () => {
+    const lax = (doc: unknown): ValidationResult<unknown> => {
+      const record = doc as Record<string, unknown>;
+      return typeof record === 'object' &&
+        record !== null &&
+        record['driver'] === 'https-json' &&
+        !('keys' in record)
+        ? { ok: true, value: doc }
+        : validateHttpsJsonCatalog(doc, { trust: 'untrusted' });
+    };
+    const { wrong } = disagreements(
+      baseCatalog,
+      (doc) => catalogSchemaValidate(doc) as boolean,
+      lax,
+    );
+    expect(
+      wrong.some((line) =>
+        line.startsWith(
+          'validator accepts what the schema refuses: delete /keys',
+        ),
+      ),
+    ).toBe(true);
   });
 });

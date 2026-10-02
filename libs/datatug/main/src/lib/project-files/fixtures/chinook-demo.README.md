@@ -48,17 +48,11 @@ schemas and validators.
 
 ## Attribution
 
-- Project files: CC0-1.0, as `datatug-demo-projects`.
-- **World Bank Open Data** (`data/geo/.web/population_wb.json`): indicator SP.POP.TOTL, "Population,
-  total", (c) The World Bank, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Modified: the
-  most recent observation per country, re-keyed by ISO 3166-1 alpha-2 code, and merged into one file. The
-  World Bank does not endorse this data or its changes. Each record's `source_url` is the API call that
-  returns it.
-- **GeoNames** (behind the alias table): CC BY 4.0, derived and modified; see `data/geo/DATA-LICENSE.md` in
-  `datatug/chinook-demo`.
-- **Chinook Database** (`external/chinookdb.com/data/json/chinook.Invoice.json`): MIT, Copyright Luis Rocha;
-  upstream `lerocha/chinook-database` at `7f67772503d71ba90f19283c38e93923addb43fa`. ChinookDB.com is an
-  independent hosted resource and is not the official upstream project.
+The fixture carries its own notices, as design 5.3 asks: `chinook-demo/NOTICE.md` (the Chinook MIT permission
+text with the upstream copyright line, copied from `LICENSE.md` of `lerocha/chinook-database` at
+`7f67772503d71ba90f19283c38e93923addb43fa`, and the World Bank attribution: source, modified, no endorsement)
+and `chinook-demo/data/geo/DATA-LICENSE.md` (World Bank and GeoNames, CC BY 4.0, copied unchanged from
+`datatug-demo-projects`). Project files are CC0-1.0. Both are in the manifest.
 
 ## Changing it
 

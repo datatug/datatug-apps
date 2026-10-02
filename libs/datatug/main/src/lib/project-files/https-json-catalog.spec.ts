@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { MAX_PROJECT_FILE_BYTES, MAX_TABLES } from './project-file-limits';
 import {
   parseHttpsJsonCatalog,
+  tableUrls,
   validateHttpsJsonCatalog,
   type ProjectTrust,
 } from './https-json-catalog';
@@ -204,11 +205,18 @@ describe('addresses: the rules of 3.6 for every project', () => {
         urlTemplate: 'https://chinookdb.com/data/json/chinook.{name}.json',
       }),
       '/urlTemplate',
-      'pattern',
+      'missing-placeholder',
     );
     refusedAt(
       catalog({
         urlTemplate: 'https://chinookdb.com/data/{table}/{table2}.json',
+      }),
+      '/urlTemplate',
+      'pattern',
+    );
+    refusedAt(
+      catalog({
+        urlTemplate: 'https://chinookdb.com/data/{table}/{table}.json',
       }),
       '/urlTemplate',
       'pattern',
@@ -282,10 +290,6 @@ describe('the allow-list of address prefixes (3.6): a trusted project only', () 
     [
       'the right repository at a short commit',
       'https://cdn.jsdelivr.net/gh/datatug/chinookdb@0b6bb6b/public/data/json/chinook.{table}.json',
-    ],
-    [
-      'a dot-dot out of the prefix',
-      'https://chinookdb.com/data/../x/chinook.{table}.json',
     ],
     [
       'a look-alike host',
@@ -506,5 +510,126 @@ describe('parseHttpsJsonCatalog: the text of the file', () => {
     expect(
       errorsOf(parseHttpsJsonCatalog(text, { trust: 'trusted' }))[0].code,
     ).toBe('outside-allowed-prefixes');
+  });
+});
+
+describe('labels that look like other labels, and the template that cannot become a different address (review r1)', () => {
+  it.each([
+    0x202e, 0x2066, 0x2069, 0x200f, 0x2028, 0x2029, 0x200b, 0xfeff, 0xe0041,
+  ])('refuses U+%s in a label', (code) => {
+    refusedAt(
+      catalog({ label: `Chinook${String.fromCodePoint(code)}DB` }),
+      '/label',
+      'pattern',
+    );
+  });
+
+  it('counts a label in code points', () => {
+    expect(
+      trusted(catalog({ label: String.fromCodePoint(0x1f600).repeat(80) })).ok,
+    ).toBe(true);
+    refusedAt(
+      catalog({ label: String.fromCodePoint(0x1f600).repeat(81) }),
+      '/label',
+      'length',
+    );
+  });
+
+  it('refuses an empty $schema', () => {
+    refusedAt(catalog({ $schema: '' }), '/$schema', 'length');
+  });
+
+  it.each(['homepage'])('refuses a placeholder or any brace in %s', (key) => {
+    refusedAt(
+      catalog({ [key]: 'https://chinookdb.com/{table}' }),
+      `/${key}`,
+      'pattern',
+    );
+    refusedAt(
+      catalog({ [key]: 'https://chinookdb.com/{x}' }),
+      `/${key}`,
+      'pattern',
+    );
+  });
+
+  it('refuses a placeholder or any brace in upstream.repository', () => {
+    const upstream = {
+      repository: 'https://github.com/{table}/x',
+      revision: '7f67772503d71ba90f19283c38e93923addb43fa',
+      licence: 'MIT',
+    };
+    refusedAt(catalog({ upstream }), '/upstream/repository', 'pattern');
+  });
+
+  // Blocker B1: the template the reviewer used, checked here as a whole catalog, for a trusted project.
+  const COMMIT = '0b6bb6ba22f680c9fb2fea9ec8107a8638dd8dc4';
+  it.each([
+    `https://cdn.jsdelivr.net/gh/datatug/chinookdb@${COMMIT}/.%2{table}/.%2{table}/evil/repo@main/x.json`,
+    'https://chinookdb.com/data/.%2{table}/x.json',
+    `https://cdn.jsdelivr.net/gh/datatug/chinookdb@${COMMIT}/%2{table}%2{table}/%2{table}%2{table}/evil/repo@main/{table}.json`,
+  ])(
+    'refuses the encoded-dot template %s, whatever the tables are called',
+    (template) => {
+      const keys = { Invoice: 'InvoiceId', e: 'Id', E: 'Id', a2e: 'Id' };
+      const sha256 = Object.fromEntries(Object.keys(keys).map((k) => [k, SHA]));
+      for (const trust of ['trusted', 'untrusted'] as const) {
+        for (const key of ['urlTemplate', 'fallbackUrlTemplate']) {
+          const found = errorsOf(
+            validateHttpsJsonCatalog(
+              catalog({ [key]: template, keys, sha256 }),
+              { trust },
+            ),
+          ).filter((e) => e.path === `/${key}`);
+          expect(found.length, `${trust} ${key}`).toBeGreaterThan(0);
+        }
+      }
+    },
+  );
+
+  it('accepts a fallback address only through the checked expansion: tableUrls', () => {
+    const result = trusted(catalog());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const urls = tableUrls(result.value, 'Invoice', 'trusted');
+    expect(urls.primary.ok && urls.primary.url.href).toBe(
+      'https://chinookdb.com/data/json/chinook.Invoice.json',
+    );
+    expect(urls.fallback?.ok && urls.fallback.url.href).toBe(
+      `https://cdn.jsdelivr.net/gh/datatug/chinookdb@${COMMIT}/public/data/json/chinook.Invoice.json`,
+    );
+    const bad = tableUrls(result.value, 'in/valid', 'trusted');
+    expect(bad.primary.ok).toBe(false);
+    expect(bad.fallback?.ok).toBe(false);
+    const noFallback = tableUrls(
+      without(
+        result.value as unknown as Record<string, unknown>,
+        'fallbackUrlTemplate',
+      ) as never,
+      'Invoice',
+      'trusted',
+    );
+    expect(noFallback.fallback).toBeUndefined();
+  });
+
+  it('expands under the same trust it was validated with: an outside address passes untrusted, not trusted', () => {
+    const result = untrusted(
+      without(
+        catalog({ urlTemplate: 'https://example.org/{table}.json' }),
+        'fallbackUrlTemplate',
+      ),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(tableUrls(result.value, 'Invoice', 'untrusted').primary.ok).toBe(
+      true,
+    );
+    expect(tableUrls(result.value, 'Invoice', 'trusted').primary.ok).toBe(
+      false,
+    );
+  });
+
+  it('is a BOM-tolerant file reader too', () => {
+    const text = String.fromCodePoint(0xfeff) + JSON.stringify(catalog());
+    expect(parseHttpsJsonCatalog(text, { trust: 'trusted' }).ok).toBe(true);
   });
 });

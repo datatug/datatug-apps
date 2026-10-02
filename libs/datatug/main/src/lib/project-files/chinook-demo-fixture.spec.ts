@@ -11,8 +11,8 @@ import { describe, expect, it } from 'vitest';
 import {
   validateHttpsJsonCatalog,
   parseHttpsJsonCatalog,
+  tableUrls,
 } from './https-json-catalog';
-import { expandUrlTemplate } from './project-address-rules';
 import { parsePreparedQuestions } from './prepared-questions';
 import catalogSchema from './schemas/https-json-catalog.schema.json';
 import questionsSchema from './schemas/prepared-questions.schema.json';
@@ -63,13 +63,36 @@ describe('the manifest', () => {
     expect(entry.origin).not.toBe('');
   });
 
-  it('holds the 22 files of design 4.3, rows 1 to 22 (row 23 is the GitHub API call)', () => {
-    // 1 project, 1 prepared questions, 2 query, 3 web, 11 columns, 1 entity, 2 geo tables, 1 Invoice file.
-    expect(manifest.files).toHaveLength(22);
+  it('holds the 22 files of design 4.3, rows 1 to 22, and the two licence files of 5.3', () => {
+    // 1 project, 1 prepared questions, 2 query, 3 web, 11 columns, 1 entity, 2 geo tables, 1 Invoice file
+    // (rows 1 to 22; row 23 is the GitHub API call), then NOTICE.md and data/geo/DATA-LICENSE.md.
+    expect(manifest.files).toHaveLength(24);
     const dbmodels = manifest.files.filter((file) =>
       file.path.startsWith('dbmodels/chinook/main/tables/'),
     );
     expect(dbmodels).toHaveLength(11);
+  });
+
+  // Review r1: design 5.3 asks for the MIT permission text with the upstream copyright line, copied.
+  it('carries the Chinook MIT notice with the upstream copyright line, and the World Bank attribution', () => {
+    const notice = read('NOTICE.md');
+    expect(notice).toContain('Copyright (c) 2008-2024 Luis Rocha');
+    expect(notice).toContain(
+      'Permission is hereby granted, free of charge, to any person obtaining a copy of this software',
+    );
+    expect(notice).toContain(
+      'THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND',
+    );
+    expect(notice).toContain('7f67772503d71ba90f19283c38e93923addb43fa');
+    expect(notice).toContain('ChinookDB.com is an independent hosted resource');
+    expect(notice).toContain('The World Bank does not endorse');
+    const dataLicence = read('data/geo/DATA-LICENSE.md');
+    expect(dataLicence).toContain('World Bank Open Data — CC BY 4.0');
+    expect(dataLicence).toContain('**Modified.**');
+    expect(dataLicence).toContain('GeoNames — CC BY 4.0');
+    const listed = manifest.files.map((file) => file.path);
+    expect(listed).toContain('NOTICE.md');
+    expect(listed).toContain('data/geo/DATA-LICENSE.md');
   });
 
   it('records the Invoice file the project declares', () => {
@@ -174,8 +197,12 @@ describe('web/catalogs/chinook/chinook.db.json, the https-json catalog', () => {
       expect(result.value.homepage).toBe('https://chinookdb.com');
       expect(result.value.keys).toEqual({ Invoice: 'InvoiceId' });
       expect(result.value.fallbackUrlTemplate).toContain(`@${MIRROR_COMMIT}/`);
-      expect(expandUrlTemplate(result.value.urlTemplate, 'Invoice')).toBe(
+      const urls = tableUrls(result.value, 'Invoice', 'trusted');
+      expect(urls.primary.ok && urls.primary.url.href).toBe(
         'https://chinookdb.com/data/json/chinook.Invoice.json',
+      );
+      expect(urls.fallback?.ok && urls.fallback.url.href).toBe(
+        `https://cdn.jsdelivr.net/gh/datatug/chinookdb@${MIRROR_COMMIT}/public/data/json/chinook.Invoice.json`,
       );
     }
   });

@@ -498,3 +498,112 @@ describe('parsePreparedQuestions: the text of the file', () => {
     expect(errorsOf(result)[0].code).toBe('unknown-query');
   });
 });
+
+describe('texts that look like other texts (review r1)', () => {
+  const cp = (...codes: number[]): string => String.fromCodePoint(...codes);
+  const spoofing: [string, string][] = [
+    ['a right-to-left override', cp(0x202e)],
+    ['a left-to-right override', cp(0x202d)],
+    ['a right-to-left embedding', cp(0x202b)],
+    ['a left-to-right embedding', cp(0x202a)],
+    ['a pop directional formatting', cp(0x202c)],
+    ['a left-to-right isolate', cp(0x2066)],
+    ['a right-to-left isolate', cp(0x2067)],
+    ['a first strong isolate', cp(0x2068)],
+    ['a pop directional isolate', cp(0x2069)],
+    ['a left-to-right mark', cp(0x200e)],
+    ['a right-to-left mark', cp(0x200f)],
+    ['an Arabic letter mark', cp(0x061c)],
+    ['a zero-width space', cp(0x200b)],
+    ['a word joiner', cp(0x2060)],
+    ['an invisible separator', cp(0x2063)],
+    ['a line separator', cp(0x2028)],
+    ['a paragraph separator', cp(0x2029)],
+    ['a byte order mark inside the text', cp(0xfeff)],
+    ['an interlinear annotation anchor', cp(0xfff9)],
+    ['a tag character', cp(0xe0041)],
+    ['a C1 control (next line)', cp(0x85)],
+    ['a C1 control (the last one)', cp(0x9f)],
+  ];
+
+  it.each(spoofing)(
+    'refuses %s in a question, a title and a wording',
+    (_name, character) => {
+      const text = `pay${character}pal`;
+      refusedAt(
+        file([question({ question: { en: text } })]),
+        '/questions/0/question/en',
+        'pattern',
+      );
+      refusedAt(
+        file([question({ title: { en: 'T', ru: text } })]),
+        '/questions/0/title/ru',
+        'pattern',
+      );
+      refusedAt(
+        file([question({ wordings: [text] })]),
+        '/questions/0/wordings/0',
+        'pattern',
+      );
+    },
+  );
+
+  it('keeps the zero-width joiners that emoji sequences and some scripts need', () => {
+    const family = `${cp(0x1f468)}${cp(0x200d)}${cp(0x1f469)}${cp(0x200d)}${cp(0x1f467)}`;
+    expect(
+      validatePreparedQuestions(file([question({ title: { en: family } })])).ok,
+    ).toBe(true);
+    expect(
+      validatePreparedQuestions(
+        file([question({ title: { en: `a${cp(0x200c)}b` } })]),
+      ).ok,
+    ).toBe(true);
+  });
+
+  it('counts a text in code points, as the JSON Schema does: 150 emoji are 150, not 300', () => {
+    const emoji = cp(0x1f600);
+    expect(
+      validatePreparedQuestions(
+        file([question({ title: { en: emoji.repeat(150) } })]),
+      ).ok,
+    ).toBe(true);
+    expect(
+      validatePreparedQuestions(
+        file([question({ title: { en: emoji.repeat(200) } })]),
+      ).ok,
+    ).toBe(true);
+    refusedAt(
+      file([question({ title: { en: emoji.repeat(201) } })]),
+      '/questions/0/title/en',
+      'length',
+    );
+  });
+
+  it('refuses an empty $schema, as the JSON Schema does', () => {
+    refusedAt(file([question()], { $schema: '' }), '/$schema', 'length');
+  });
+});
+
+describe('a byte order mark at the start of the file', () => {
+  it('is dropped before parsing, so a file saved with one is read', () => {
+    const text = String.fromCodePoint(0xfeff) + JSON.stringify(file());
+    expect(parsePreparedQuestions(text).ok).toBe(true);
+  });
+
+  it('counts toward the size cap', () => {
+    const body = JSON.stringify(file());
+    const padded =
+      String.fromCodePoint(0xfeff) +
+      body +
+      ' '.repeat(MAX_PROJECT_FILE_BYTES - body.length - 2);
+    expect(errorsOf(parsePreparedQuestions(padded))[0].code).toBe('too-large');
+  });
+
+  it('is not accepted in the middle of the text', () => {
+    expect(
+      errorsOf(
+        parsePreparedQuestions(`{"version":${String.fromCodePoint(0xfeff)}1}`),
+      )[0].code,
+    ).toBe('not-json');
+  });
+});

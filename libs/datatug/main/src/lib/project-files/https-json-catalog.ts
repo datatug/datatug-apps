@@ -7,8 +7,11 @@
 // prefixes. Labels are shown as text; a link is shown only if it is https.
 
 import {
-  checkAllowedDataAddress,
   checkProjectAddress,
+  checkUrlTemplate,
+  expandUrlTemplate,
+  type ExpandedUrl,
+  type ProjectTrust,
 } from './project-address-rules';
 import {
   GIT_REVISION_PATTERN,
@@ -23,8 +26,9 @@ import {
   PLAIN_TEXT_PATTERN,
   SHA256_PATTERN,
   TABLE_PLACEHOLDER,
-  URL_TEMPLATE_BRACES_PATTERN,
-  URL_TEMPLATE_HAS_TABLE_PATTERN,
+  URL_NO_BRACES_PATTERN,
+  URL_TEMPLATE_ONE_PLACEHOLDER_PATTERN,
+  URL_TEMPLATE_PLAIN_PATTERN,
 } from './project-file-limits';
 import {
   parseProjectFileText,
@@ -32,6 +36,8 @@ import {
   type PlainRecord,
   type ValidationResult,
 } from './project-file-problems';
+
+export type { ProjectTrust } from './project-address-rules';
 
 export const HTTPS_JSON_DRIVER = 'https-json';
 
@@ -59,9 +65,6 @@ export interface HttpsJsonCatalog {
   readonly sha256: Readonly<Record<string, string>>;
   readonly upstream?: HttpsJsonUpstream;
 }
-
-/** Whether the project is on the app's own list (3.6). Always chosen by the caller, never defaulted. */
-export type ProjectTrust = 'trusted' | 'untrusted';
 
 export interface HttpsJsonCatalogOptions {
   readonly trust: ProjectTrust;
@@ -181,7 +184,7 @@ export function parseHttpsJsonCatalog(
   return parsed.ok ? validateHttpsJsonCatalog(parsed.value, options) : parsed;
 }
 
-/** A link: https, no credentials, no local host; no placeholder. Shown only when it passes. */
+/** A link: https, no credentials, no local host; no brace. Shown only when it passes. */
 function checkLink(
   raw: unknown,
   path: string,
@@ -189,13 +192,17 @@ function checkLink(
 ): string | undefined {
   const text = checkAddressShape(raw, path, problems);
   if (text === undefined) return undefined;
-  if (text.includes(TABLE_PLACEHOLDER)) {
-    problems.add(path, 'pattern', 'must not contain a placeholder');
+  if (!URL_NO_BRACES_PATTERN.test(text)) {
+    problems.add(path, 'pattern', 'must not contain a placeholder or a brace');
     return undefined;
   }
   return checkSafe(text, path, problems);
 }
 
+/**
+ * A URL template, held to the fixed pattern of `checkUrlTemplate`: one `{table}`, no `%` or `?`, the placeholder
+ * in a path segment that cannot become a dot segment, and, for a trusted project, an allowed prefix.
+ */
 function checkTemplate(
   raw: unknown,
   path: string,
@@ -204,15 +211,7 @@ function checkTemplate(
 ): string | undefined {
   const text = checkAddressShape(raw, path, problems);
   if (text === undefined) return undefined;
-  if (!URL_TEMPLATE_BRACES_PATTERN.test(text)) {
-    problems.add(
-      path,
-      'pattern',
-      `the only brace allowed is ${TABLE_PLACEHOLDER}`,
-    );
-    return undefined;
-  }
-  if (!URL_TEMPLATE_HAS_TABLE_PATTERN.test(text)) {
+  if (!text.includes(TABLE_PLACEHOLDER)) {
     problems.add(
       path,
       'missing-placeholder',
@@ -220,16 +219,31 @@ function checkTemplate(
     );
     return undefined;
   }
-  const safe = checkSafe(text, path, problems);
-  if (safe === undefined) return undefined;
+  if (!URL_TEMPLATE_ONE_PLACEHOLDER_PATTERN.test(text)) {
+    problems.add(
+      path,
+      'pattern',
+      `${TABLE_PLACEHOLDER} must appear exactly once and no other brace is allowed`,
+    );
+    return undefined;
+  }
+  if (!URL_TEMPLATE_PLAIN_PATTERN.test(text)) {
+    problems.add(path, 'pattern', 'a template must not contain % or ?');
+    return undefined;
+  }
+  const unsafe = checkUrlTemplate(text, 'untrusted');
+  if (unsafe) {
+    problems.add(path, 'unsafe-address', unsafe);
+    return undefined;
+  }
   if (options.trust === 'trusted') {
-    const outside = checkAllowedDataAddress(safe);
+    const outside = checkUrlTemplate(text, 'trusted');
     if (outside) {
       problems.add(path, 'outside-allowed-prefixes', outside);
       return undefined;
     }
   }
-  return safe;
+  return text;
 }
 
 function checkAddressShape(
@@ -329,4 +343,29 @@ function checkUpstream(
     licence !== undefined
     ? { repository, revision, licence }
     : undefined;
+}
+
+/** The two addresses to read one table's rows from, each checked as the browser would request it. */
+export interface TableUrls {
+  readonly primary: ExpandedUrl;
+  /** Absent when the catalog has no `fallbackUrlTemplate`. Its rows count only if their SHA-256 equals the project's. */
+  readonly fallback?: ExpandedUrl;
+}
+
+/**
+ * The way to a fetchable URL for a table of a validated catalog: expands both templates and re-checks the
+ * expanded, parsed addresses (`expandUrlTemplate`). `trust` must be the same as the one the catalog was
+ * validated with.
+ */
+export function tableUrls(
+  catalog: HttpsJsonCatalog,
+  table: string,
+  trust: ProjectTrust,
+): TableUrls {
+  return {
+    primary: expandUrlTemplate(catalog.urlTemplate, table, trust),
+    ...(catalog.fallbackUrlTemplate !== undefined && {
+      fallback: expandUrlTemplate(catalog.fallbackUrlTemplate, table, trust),
+    }),
+  };
 }

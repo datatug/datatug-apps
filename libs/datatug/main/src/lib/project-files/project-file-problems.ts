@@ -96,7 +96,8 @@ export class ProblemCollector {
       this.add(path, 'type', 'must be a string');
       return undefined;
     }
-    if (value.length < min || value.length > max) {
+    const length = codePointLength(value);
+    if (length < min || length > max) {
       this.add(
         path,
         'length',
@@ -133,13 +134,20 @@ export class ProblemCollector {
   }
 }
 
+/** Counts code points, which is how a JSON Schema counts `minLength` and `maxLength`. */
+export const codePointLength = (text: string): number =>
+  text.length - (text.match(/[\ud800-\udbff][\udc00-\udfff]/g)?.length ?? 0);
+
 /** Counts UTF-8 bytes of a string, which is what the size caps of 3.6 are measured in. */
 export const utf8Length = (text: string): number =>
   new TextEncoder().encode(text).length;
 
 /**
  * Size cap and JSON syntax for a project file's text, shared by both validators. The cap is on the bytes
- * received (3.6), so it is checked here and not on a header.
+ * received (3.6), so it is checked here and not on a header. A byte order mark at the start is dropped (some
+ * editors write one); it counts toward the cap. This function only measures text that is already in memory:
+ * the caller (G-A2) must stop reading the response once it has more than `maxBytes`, on the stream, rather
+ * than download the whole body and measure it afterwards.
  */
 export function parseProjectFileText(
   text: string,
@@ -158,7 +166,12 @@ export function parseProjectFileText(
     };
   }
   try {
-    return { ok: true, value: JSON.parse(text) as unknown };
+    return {
+      ok: true,
+      value: JSON.parse(
+        text.startsWith('\ufeff') ? text.slice(1) : text,
+      ) as unknown,
+    };
   } catch {
     return {
       ok: false,

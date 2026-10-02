@@ -31,9 +31,18 @@ export const QUERY_REF_PATTERN =
   /^[A-Za-z0-9][A-Za-z0-9._-]*(\/[A-Za-z0-9][A-Za-z0-9._-]*)*$/;
 /** A language code such as `en`, `ru` or `pt-BR`. */
 export const LANGUAGE_PATTERN = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$/;
-/** Text shown to a visitor: no control characters (rendered as text, never as HTML, but kept to one line). */
-// eslint-disable-next-line no-control-regex -- refusing control characters is the point
-export const PLAIN_TEXT_PATTERN = /^[^\u0000-\u001f\u007f]*$/;
+/**
+ * Text shown to a visitor. Rendered as text, never as HTML, but kept to one line and free of characters that
+ * make one string look like another: C0 and C1 controls, the Arabic letter mark, zero-width space and the
+ * left-to-right and right-to-left marks, the line and paragraph separators, every bidirectional override and
+ * isolate (U+202A to U+202E, U+2066 to U+2069) and the rest of U+2060 to U+206F, the byte order mark,
+ * interlinear annotation characters and the tag characters (U+E0000 to U+E007F). The zero-width joiners
+ * (U+200C, U+200D) stay: emoji sequences and some scripts need them.
+ */
+export const PLAIN_TEXT_PATTERN = new RegExp(
+  String.raw`^[^\u0000-\u001f\u007f-\u009f\u061c\u200b\u200e\u200f\u2028-\u202e\u2060-\u206f\ufeff\ufff9-\ufffb\u{e0000}-\u{e007f}]*$`,
+  'u',
+);
 /** A table or column name. No leading underscore, so `__proto__` can never be a key. */
 export const NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 export const SHA256_PATTERN = /^[0-9a-f]{64}$/;
@@ -47,8 +56,11 @@ export const GIT_REVISION_PATTERN = /^[0-9a-f]{40}$/;
  */
 export const HTTPS_URL_PATTERN =
   /^https:\/\/[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(\/[!"$-[\]-~]*)?$/;
-/** A URL template may use the placeholder `{table}`, and no other brace. */
-export const URL_TEMPLATE_BRACES_PATTERN = /^(?:[^{}]|\{table\})*$/;
-export const URL_TEMPLATE_HAS_TABLE_PATTERN = /\{table\}/;
+/** A link, not a template: no brace. */
+export const URL_NO_BRACES_PATTERN = /^[^{}]*$/;
+/** A URL template has `{table}` exactly once and no other brace. */
+export const URL_TEMPLATE_ONE_PLACEHOLDER_PATTERN = /^[^{}]*\{table\}[^{}]*$/;
+/** A URL template has no `%` (so no encoded dot segment) and no query. */
+export const URL_TEMPLATE_PLAIN_PATTERN = /^[^%?]*$/;
 
 export const TABLE_PLACEHOLDER = '{table}';

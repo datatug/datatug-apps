@@ -9,7 +9,8 @@
   "properties": {
     "$schema": {
       "type": "string",
-      "maxLength": 300
+      "maxLength": 300,
+      "minLength": 1
     },
     "version": {
       "const": 1
@@ -46,7 +47,7 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 200,
-                "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+                "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200b\\u200e\\u200f\\u2028-\\u202e\\u2060-\\u206f\\ufeff\\ufff9-\\ufffb\\u{e0000}-\\u{e007f}]*$"
               }
             },
             "required": ["en"],
@@ -55,7 +56,7 @@
               "type": "string",
               "minLength": 1,
               "maxLength": 200,
-              "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+              "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200b\\u200e\\u200f\\u2028-\\u202e\\u2060-\\u206f\\ufeff\\ufff9-\\ufffb\\u{e0000}-\\u{e007f}]*$"
             }
           },
           "title": {
@@ -69,7 +70,7 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 200,
-                "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+                "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200b\\u200e\\u200f\\u2028-\\u202e\\u2060-\\u206f\\ufeff\\ufff9-\\ufffb\\u{e0000}-\\u{e007f}]*$"
               }
             },
             "required": ["en"],
@@ -78,7 +79,7 @@
               "type": "string",
               "minLength": 1,
               "maxLength": 200,
-              "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+              "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200b\\u200e\\u200f\\u2028-\\u202e\\u2060-\\u206f\\ufeff\\ufff9-\\ufffb\\u{e0000}-\\u{e007f}]*$"
             }
           },
           "wordings": {
@@ -88,7 +89,7 @@
               "type": "string",
               "minLength": 1,
               "maxLength": 200,
-              "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+              "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200b\\u200e\\u200f\\u2028-\\u202e\\u2060-\\u206f\\ufeff\\ufff9-\\ufffb\\u{e0000}-\\u{e007f}]*$"
             }
           },
           "followUps": {

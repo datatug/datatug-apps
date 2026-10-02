@@ -2,6 +2,12 @@
   "fixture": "chinook-demo",
   "files": [
     {
+      "path": "NOTICE.md",
+      "bytes": 2809,
+      "sha256": "97cda60c70d78fe651c1d0c88a65bf26d74a40544ac0cf551709b8c4f76b497c",
+      "origin": "new (design 5.3): upstream Chinook LICENSE.md at lerocha/chinook-database 7f67772503d71ba90f19283c38e93923addb43fa, copied; World Bank and GeoNames statement"
+    },
+    {
       "path": "ai/prepared-questions.json",
       "bytes": 915,
       "sha256": "fa30d99bf420aa5d564dfc7bd4b5f487d22e7a2b885be772d50fb10b6acc1313",
@@ -18,6 +24,12 @@
       "bytes": 63539,
       "sha256": "c704ebd4364ecf918f921bb68edf580182c031e0ea1e1b9c00ba2ec38ea9bb1c",
       "origin": "generated from datatug-demo-projects@0e5b98f demo-project-1/data/geo/population_wb/$records/*.json"
+    },
+    {
+      "path": "data/geo/DATA-LICENSE.md",
+      "bytes": 3524,
+      "sha256": "da3ecf6ff05bbe45e1de9982951267e6a7d1a1d99dc868f686ed7f27be6d0310",
+      "origin": "datatug-demo-projects@0e5b98f demo-project-1/data/geo/DATA-LICENSE.md"
     },
     {
       "path": "datatug-project.json",
