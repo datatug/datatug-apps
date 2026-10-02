@@ -4,37 +4,101 @@ import { Observable, forkJoin, of, throwError } from 'rxjs';
 import { catchError, map, shareReplay, switchMap } from 'rxjs/operators';
 import { IParameterDef } from '../../../models/definition/parameter';
 import { IRecordsetDef } from '../../../models/definition/recordset';
+import {
+  GithubProjectIdError,
+  IGithubProjectId,
+  readGithubProjectId,
+  splitGithubProjectId,
+} from '../../../nav/github-project-address';
 
 /**
  * `projectId` format every GitHub-store caller already relies on:
- * `"repo@org"` or `"repo@org@folder"` — `folder` is the repo-relative
- * directory the project's `datatug-project.json` lives in, defaulting to
- * `"datatug"` for the historical convention (see
- * `datatug-store.service.github.ts`'s own `buildGithubProjectSummaryUrl`,
- * which this supersedes as the ONE place this split happens — that
- * function, and `entity.service.ts`'s old `getEntityFromGithub`, each used
- * to do their own two-part `split('@')`, silently dropping a third
- * `@folder` segment where present).
+ * `"repo@org"`, `"repo@org@folder"` or `"repo@org@folder@ref"` — `folder` is
+ * the repo-relative directory the project's `datatug-project.json` lives in,
+ * defaulting to `"datatug"` for the historical convention (an empty folder,
+ * `"repo@org@"`, is the repo root), and `ref` is a branch, tag or commit SHA
+ * other than the default branch (absent = the default branch). See
+ * `nav/github-project-address.ts` and design `demo-as-github-project.md`
+ * 3.3. This is the ONE place this split happens — `datatug-store.service.github.ts`'s
+ * `buildGithubProjectSummaryUrl` and `entity.service.ts`'s old
+ * `getEntityFromGithub` each used to do their own two-part `split('@')`.
  */
-export interface IGithubProjectId {
-  readonly repo: string;
-  readonly org: string;
-  readonly folder: string;
-}
+export type { IGithubProjectId };
 
+/**
+ * Splits a project id (lenient, never throws). Owner and repo are
+ * lower-cased (one project, one id); folder and ref keep their case. Reading
+ * a project from GitHub goes through the strict reading instead
+ * (`readGithubProjectId`), see {@link buildGithubRawUrl}.
+ */
 export function parseGithubProjectId(projectId: string): IGithubProjectId {
-  const [repo, org, folder = 'datatug'] = projectId.split('@');
-  return { repo, org, folder };
+  return splitGithubProjectId(projectId);
 }
 
-/** Raw-content URL for one file at `relativePath` (repo-relative, project-folder-prefixed). */
+/**
+ * The branch every read of a project uses until task G-A2 moves reads, the
+ * tree listing included, to the default branch (`HEAD`) or a resolved commit.
+ * It is what the reader has always used, so no existing project changes.
+ */
+export const GITHUB_READER_DEFAULT_BRANCH = 'main';
+
+/**
+ * Raw-content URL for one file at `relativePath` (repo-relative to the
+ * project's folder). An empty folder is the repo root (no doubled slash). A
+ * three-part id reads branch `main`, exactly as before; the explicit ref of a
+ * four-part id (a branch, tag or commit) is used when there is one.
+ *
+ * Every folder and file segment is URL-encoded and none may be `.` or `..`;
+ * an id that is not valid (see `readGithubProjectId`) or such a path throws
+ * a {@link GithubProjectIdError} instead of building a URL.
+ */
 export function buildGithubRawUrl(
   projectId: string,
   relativePath: string,
 ): string {
-  const { repo, org, folder } = parseGithubProjectId(projectId);
-  const path = relativePath ? `${folder}/${relativePath}` : folder;
-  return `https://raw.githubusercontent.com/${org}/${repo}/main/${path}`;
+  const reading = readGithubProjectId(projectId);
+  if (!reading.ok) {
+    throw new GithubProjectIdError(
+      reading.reason,
+      `not a valid GitHub project id (${reading.reason}): ${projectId}`,
+    );
+  }
+  const { repo, org, folder, ref } = reading.id;
+  const fileSegments = (relativePath ?? '').split('/').filter(Boolean);
+  if (fileSegments.some((s) => s === '.' || s === '..')) {
+    throw new GithubProjectIdError(
+      'path',
+      `not a valid project file path: ${relativePath}`,
+    );
+  }
+  const path = [...(folder ? folder.split('/') : []), ...fileSegments]
+    .map((s) => encodeURIComponent(s))
+    .join('/');
+  const revision = ref ? encodeURIComponent(ref) : GITHUB_READER_DEFAULT_BRANCH;
+  return `https://raw.githubusercontent.com/${org}/${repo}/${revision}/${path}`;
+}
+
+/**
+ * Throws a {@link GithubProjectIdError} unless the reader can read this
+ * project today: a valid id, and no ref. Files at a ref but a listing from
+ * `main` would be a project mixed from two versions, so a four-part id is
+ * refused until task G-A2 reads files and tree from one resolved commit.
+ */
+export function assertReadableGithubProjectId(projectId: string): IGithubProjectId {
+  const reading = readGithubProjectId(projectId);
+  if (!reading.ok) {
+    throw new GithubProjectIdError(
+      reading.reason,
+      `not a valid GitHub project id (${reading.reason}): ${projectId}`,
+    );
+  }
+  if (reading.id.ref !== undefined) {
+    throw new GithubProjectIdError(
+      'ref-not-supported',
+      `reading a GitHub project at a branch, tag or commit (${reading.id.ref}) is not supported yet`,
+    );
+  }
+  return reading.id;
 }
 
 /** One entry of a directory listing, as {@link GithubProjectReaderService.listDirectory} reports it. */
@@ -193,11 +257,17 @@ export class GithubProjectReaderService {
   // ---------------------------------------------------------------------
 
   private getTree(projectId: string): Observable<IGithubGitTreeEntry[]> {
-    const { org, repo } = parseGithubProjectId(projectId);
+    let id: IGithubProjectId;
+    try {
+      id = assertReadableGithubProjectId(projectId);
+    } catch (err) {
+      return throwError(() => err);
+    }
+    const { org, repo } = id;
     const key = `${org}/${repo}`;
     let cached = this.treeCache.get(key);
     if (!cached) {
-      const url = `https://api.github.com/repos/${org}/${repo}/git/trees/main?recursive=1`;
+      const url = `https://api.github.com/repos/${org}/${repo}/git/trees/${GITHUB_READER_DEFAULT_BRANCH}?recursive=1`;
       cached = this.http.get<IGithubGitTreeResponse>(url).pipe(
         map((res) => res.tree || []),
         catchError((err) => this.handleApiError<IGithubGitTreeEntry[]>(err, [])),
@@ -264,9 +334,15 @@ export class GithubProjectReaderService {
     relativePath: string,
   ): Observable<T | undefined> {
     const key = `json:${projectId}:${relativePath}`;
+    let url: string;
+    try {
+      assertReadableGithubProjectId(projectId);
+      url = buildGithubRawUrl(projectId, relativePath);
+    } catch (err) {
+      return throwError(() => err);
+    }
     let cached = this.fileCache.get(key) as Observable<T | undefined> | undefined;
     if (!cached) {
-      const url = buildGithubRawUrl(projectId, relativePath);
       cached = this.http.get<T>(url).pipe(
         catchError((err) => this.handleFileError<T>(err)),
         shareReplay(1),
@@ -282,9 +358,15 @@ export class GithubProjectReaderService {
     relativePath: string,
   ): Observable<string | undefined> {
     const key = `text:${projectId}:${relativePath}`;
+    let url: string;
+    try {
+      assertReadableGithubProjectId(projectId);
+      url = buildGithubRawUrl(projectId, relativePath);
+    } catch (err) {
+      return throwError(() => err);
+    }
     let cached = this.fileCache.get(key) as Observable<string | undefined> | undefined;
     if (!cached) {
-      const url = buildGithubRawUrl(projectId, relativePath);
       cached = this.http.get(url, { responseType: 'text' }).pipe(
         catchError((err) => this.handleFileError<string>(err)),
         shareReplay(1),

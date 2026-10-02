@@ -1,11 +1,12 @@
 import { IFolder, IFolderItem } from '../../models/definition/folder';
 import { IProjectSummary } from '../../models/definition/project';
 import { IDatatugStoreService } from './datatug-store.service.interface';
-import { Observable, of } from 'rxjs';
+import { Observable, of, throwError } from 'rxjs';
 import { map, mergeMap, shareReplay } from 'rxjs/operators';
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import {
+  assertReadableGithubProjectId,
   buildGithubRawUrl,
   GithubProjectReaderService,
 } from './github/github-project-reader.service';
@@ -45,7 +46,13 @@ export class DatatugStoreGithubService implements IDatatugStoreService {
       headers?: Record<string, string>;
     }
 
-    const url = buildGithubProjectSummaryUrl(projectId);
+    let url: string;
+    try {
+      assertReadableGithubProjectId(projectId);
+      url = buildGithubProjectSummaryUrl(projectId);
+    } catch (err) {
+      return throwError(() => err);
+    }
 
     const connectTo: Observable<urlAndHeaders> = of({ url });
     // if (storeId.startsWith(GITLAB_REPO_PREFIX)) {

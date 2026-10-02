@@ -6,6 +6,7 @@ import {
   buildGithubProjectSummaryUrl,
   DatatugStoreGithubService,
 } from './datatug-store.service.github';
+import { GithubProjectIdError } from '../../nav/github-project-address';
 import { GithubProjectReaderService } from './github/github-project-reader.service';
 
 describe('buildGithubProjectSummaryUrl', () => {
@@ -103,6 +104,32 @@ describe('DatatugStoreGithubService.watchProjectItem', () => {
     expect(error).not.toHaveBeenCalled();
     expect(complete).toHaveBeenCalledTimes(1);
     expect(next).toHaveBeenCalledWith(null);
+    expect(httpGet).not.toHaveBeenCalled();
+  });
+});
+
+describe('DatatugStoreGithubService.getProjectSummary: ids it cannot read', () => {
+  function createService(httpGet: ReturnType<typeof vi.fn>) {
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: HttpClient, useValue: { get: httpGet } },
+        { provide: GithubProjectReaderService, useValue: {} },
+      ],
+    });
+    return TestBed.inject(DatatugStoreGithubService);
+  }
+
+  it.each([
+    ['a four-part id (reading at a ref is not supported yet)', 'r@o@d@v1.0.0', 'ref-not-supported'],
+    ['a folder that leaves the repo', 'chinook-demo@datatug@../../../datatug/datatug-demo-projects/main/demo-project-1', 'folder'],
+    ['an id with one part', 'abc', 'parts'],
+  ])('%s errors and requests nothing', (_name, projectId, reason) => {
+    const httpGet = vi.fn();
+    const service = createService(httpGet);
+    let error: unknown;
+    service.getProjectSummary(projectId).subscribe({ error: (e: unknown) => (error = e) });
+    expect(error).toBeInstanceOf(GithubProjectIdError);
+    expect((error as GithubProjectIdError).reason).toBe(reason);
     expect(httpGet).not.toHaveBeenCalled();
   });
 });
