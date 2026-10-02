@@ -1,4 +1,4 @@
-import { DecimalPipe } from '@angular/common';
+import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, ElementRef, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
@@ -21,6 +21,7 @@ import {
   chatBookmarkRows, ChatBookmark, ChatContextReference, ChatDock, ChatWorkspaceAction, emptyChatWorkspace,
 } from '../../../chat/chat-workspace';
 import { chatDtqlYaml, chatSQLite } from '../../../chat/chat-query-format';
+import { chatErrorView, type ChatErrorView } from '../../../chat/chat-error-message';
 import { ChatJoinService } from '../../../chat/chat-join.service';
 import { ChatJoinAmbiguityError, ChatJoinCandidate, ambiguousChatJoinRequest, chatJoinCandidateLabel, validateChatJoinChoice } from '../../../chat/chat-joins';
 import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
@@ -34,7 +35,7 @@ addIcons({ sendOutline });
   styleUrls: ['./chat-page.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
-    FormsModule, DecimalPipe, AgGridAngular, IonHeader, IonToolbar, IonButtons, IonMenuButton,
+    FormsModule, DecimalPipe, NgTemplateOutlet, AgGridAngular, IonHeader, IonToolbar, IonButtons, IonMenuButton,
     IonTitle, IonContent, IonCard, IonCardContent, IonFooter, IonModal, IonGrid, IonRow, IonCol,
     IonSelect, IonSelectOption, IonIcon, IonInput, IonButton, IonItem, IonLabel, IonText,
     IonSpinner, IonSegment, IonSegmentButton, IonTextarea, IonAlert, SneatDatatugPageTitleComponent,
@@ -44,7 +45,7 @@ export class ChatPageComponent {
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly joiner = inject(ChatJoinService);
   private readonly candidateCache = new WeakMap<ChatTurn, readonly ChatJoinCandidate[]>();
-  private readonly candidateErrors = new WeakMap<ChatTurn, string>();
+  private readonly candidateErrors = new WeakMap<ChatTurn, ChatErrorView>();
   private cellAnchor?: { recordSetId: string; sourceRow: number; column: string };
   private readonly gridRowCache = new WeakMap<readonly Record<string, unknown>[], Record<string, unknown>[]>();
   private readonly gridColumnCache = new WeakMap<readonly Record<string, unknown>[], Map<string, ColDef[]>>();
@@ -108,6 +109,11 @@ export class ChatPageComponent {
   readonly draft = signal<Omit<ChatProvider, 'id'>>({ ...providerPresets['DeepSeek'], apiKey: '' });
   readonly selectedProvider = computed(() => this.providers.providers().find((item) => item.id === this.providers.selectedId()));
   readonly focusedJoin = signal<{ turnId: string; candidateId: string } | undefined>(undefined);
+  /** Plain-language text for a failed chat session or local data load; the raw message is kept as the technical detail. */
+  readonly sessionErrorView = computed(() => this.failureOf(this.sessionError(), 'Something went wrong with this chat session.'));
+  readonly seedErrorView = computed(() => this.failureOf(this.seedError(), 'The local Chinook data could not be loaded.'));
+  /** Plain-language text for a failed turn; the stored `turn.error` keeps the engine's own message. */
+  readonly errorView = chatErrorView;
 
   constructor() {
     this.route.paramMap.subscribe(() => this.updateScope());
@@ -403,14 +409,19 @@ export class ChatPageComponent {
       try { candidates = this.joiner.candidates(turn.dtql); }
       catch (error) {
         candidates = [];
-        this.candidateErrors.set(turn, error instanceof Error ? error.message : 'The saved query cannot be read with the current schema.');
+        this.candidateErrors.set(turn, chatErrorView(error instanceof Error ? error.message : 'The saved query cannot be read with the current schema.'));
       }
       this.candidateCache.set(turn, candidates);
     }
     return candidates;
   }
 
-  candidateError(turn: ChatTurn): string | undefined {
+  /** Why the related-table choices could not be built, in plain language with the technical text on demand. */
+  private failureOf(raw: string | undefined, fallback: string): ChatErrorView | undefined {
+    return raw ? chatErrorView(raw, fallback) : undefined;
+  }
+
+  candidateError(turn: ChatTurn): ChatErrorView | undefined {
     this.candidatesFor(turn);
     return this.candidateErrors.get(turn);
   }

@@ -1,7 +1,7 @@
 import {
   isJoinedDTQLQuery, parseDTQL, serializeJoinedDTQL, stringifyJoinedDTQL,
-  type DTQLSchema, type JoinedDTQLQuery, type ParsedDTQLQuery, type QueryColumn,
-  type QueryJoin, type QueryRelation,
+  type DTQLComparison, type DTQLCondition, type DTQLExpression, type DTQLNullTest, type DTQLQueryFilter, type DTQLSchema, type JoinedDTQLQuery,
+  type ParsedDTQLQuery, type QueryColumn, type QueryJoin, type QueryRelation,
 } from '@dalgo/core';
 import manifestData from './chinook-fks.json';
 import { ChatJoinChoice, ChatJoinLineage } from './chat.types';
@@ -201,13 +201,82 @@ export function validateChatJoinChoice(
   return candidate;
 }
 
+type ChatFilter = DTQLQueryFilter | DTQLCondition;
+
+const isNullLiteral = (expression: DTQLExpression): boolean => expression.kind === 'literal' && expression.value === null;
+
+/**
+ * What a result the user sees means, once it is joined. The relational executor follows SQL's three-valued
+ * logic, so `x == null` never holds there, while the first, single-source result is read by an adapter that
+ * treats null as an ordinary value, the lowest one. A condition carried into a join says what the user saw
+ * with explicit null tests. This covers a relation-model parent whose `field == null` / `field != null`
+ * is written with the field on either side; it is rewritten at any depth of its and/or groups.
+ */
+function carriedCondition(condition: DTQLCondition): DTQLCondition {
+  if ('conditions' in condition) {
+    return { ...condition, conditions: condition.conditions.map(carriedCondition) };
+  }
+  if (!('operator' in condition) || (condition.operator !== '==' && condition.operator !== '!=')) return condition;
+  const operand = isNullLiteral(condition.right) ? condition.left : isNullLiteral(condition.left) ? condition.right : undefined;
+  if (operand?.kind !== 'field') return condition;
+  return { kind: condition.operator === '==' ? 'is-null' : 'is-not-null', operand };
+}
+
+function carriedFilter(filter: ChatFilter): ChatFilter {
+  if (!('field' in filter)) return carriedCondition(filter);
+  if (filter.value !== null || (filter.operator !== '==' && filter.operator !== '!=')) return filter;
+  return { kind: filter.operator === '==' ? 'is-null' : 'is-not-null', operand: { kind: 'field', field: filter.field } };
+}
+
+function comparison(filter: DTQLQueryFilter, values?: readonly unknown[]): DTQLComparison {
+  return {
+    left: { kind: 'field', field: filter.field }, operator: filter.operator,
+    right: values
+      ? { kind: 'values', values: values as readonly (string | number | boolean | null)[] }
+      : { kind: 'literal', value: filter.value as string | number | boolean | null },
+  };
+}
+
+/**
+ * A single-source filter, as the adapter runs it, in the joined executor. Null is the lowest value there:
+ * `== null` and `In [.., null]` match the null rows, `!= x`, `< x`, `<= x` and `NotIn [x]` keep them, `!= null`,
+ * `> null` and `NotIn [.., null]` drop them. The joined executor keeps only `!= x` on its own, so the rest
+ * are spelled out; every other comparison already means the same in both.
+ */
+function carriedSingleSourceFilter(filter: DTQLQueryFilter): ChatFilter {
+  const operand: DTQLExpression = { kind: 'field', field: filter.field };
+  const isNull: DTQLNullTest = { kind: 'is-null', operand };
+  const isNotNull: DTQLNullTest = { kind: 'is-not-null', operand };
+  const { operator, value } = filter;
+  if (operator === 'in' || operator === 'not-in') {
+    const values = value as readonly unknown[];
+    const members = values.filter((item) => item !== null);
+    const hasNull = members.length !== values.length;
+    if (operator === 'in') {
+      if (!hasNull) return filter;
+      return members.length ? { kind: 'or', conditions: [comparison(filter, members), isNull] } : isNull;
+    }
+    if (!hasNull) return { kind: 'or', conditions: [comparison(filter, members), isNull] };
+    return members.length ? { kind: 'and', conditions: [comparison(filter, members), isNotNull] } : isNotNull;
+  }
+  if (value === null) {
+    switch (operator) {
+      case '==': case '<=': return isNull;
+      case '!=': case '>': return isNotNull;
+      case '>=': return { kind: 'or', conditions: [isNull, isNotNull] };
+      default: return filter;
+    }
+  }
+  return operator === '<' || operator === '<=' ? { kind: 'or', conditions: [comparison(filter), isNull] } : filter;
+}
+
 function joinedBase(query: ParsedDTQLQuery<Data>): JoinedDTQLQuery {
-  if (isJoinedDTQLQuery(query)) return query;
+  if (isJoinedDTQLQuery(query)) return { ...query, filters: query.filters.map(carriedFilter) };
   if (query.filters.length > 1) throw new Error('This result has unsupported filter groups for an interactive JOIN.');
   const source = aliasOf(relationFromQuery(query));
   return {
     kind: 'joined-dtql', from: relationFromQuery(query),
-    filters: query.filters.map((filter) => ({ ...filter, field: { source, field: filter.field } })),
+    filters: query.filters.map((filter) => carriedSingleSourceFilter({ ...filter, field: { source, field: filter.field } })),
     orders: query.orders.map((order) => ({ ...order, field: { source, field: order.field } })),
     limit: query.limit, offset: query.offset,
   };

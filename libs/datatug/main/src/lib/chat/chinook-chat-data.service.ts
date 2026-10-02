@@ -10,7 +10,7 @@ interface Fixture {
   readonly version: string;
   readonly tables: Readonly<Record<string, readonly Record<string, unknown>[]>>;
 }
-const fixtureVersion = 'chinook-sqlite-6334395117e2478a2712e083be614721341c26c9-all-11-v2';
+export const CHINOOK_FIXTURE_VERSION = 'chinook-sqlite-6334395117e2478a2712e083be614721341c26c9-all-11-v2';
 const tableKeys = {
   Artist: 'ArtistId',
   Album: 'AlbumId',
@@ -58,11 +58,11 @@ export class ChinookChatDataService {
     }
     const database = this.requireDatabase();
     const seeded = await database.get<{ version?: unknown }>(key('main._meta', 'chinook-version'));
-    if (seeded.exists && seeded.data.version === fixtureVersion) return;
+    if (seeded.exists && seeded.data.version === CHINOOK_FIXTURE_VERSION) return;
     const response = await fetch('assets/chinook-full.json');
     if (!response.ok) throw new Error('The local Chinook seed fixture is unavailable.');
     const fixture = await response.json() as Fixture;
-    if (fixture.version !== fixtureVersion) throw new Error('The local Chinook seed fixture version is unexpected.');
+    if (fixture.version !== CHINOOK_FIXTURE_VERSION) throw new Error('The local Chinook seed fixture version is unexpected.');
     for (const table of Object.keys(tableKeys)) {
       if (!Array.isArray(fixture.tables?.[table])) throw new Error(`The local Chinook fixture is missing ${table}.`);
     }
@@ -75,7 +75,7 @@ export class ChinookChatDataService {
           await transaction.set(key(`main.${table}`, id), record);
         }
       }
-      await transaction.set(key('main._meta', 'chinook-version'), { version: fixtureVersion });
+      await transaction.set(key('main._meta', 'chinook-version'), { version: CHINOOK_FIXTURE_VERSION });
     });
   }
 

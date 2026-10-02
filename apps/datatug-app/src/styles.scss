@@ -120,6 +120,201 @@ ion-item ion-buttons[slot='end'] {
   }
 }
 
+// Chat workspace panel, docks, saved selections, result metrics and the composer. Scoped to the page host and kept
+// here, like the JOIN controls above, so the page's own component stylesheet stays well under its budget.
+sneat-datatug-chat-page {
+  .workspace-panel {
+    border-left: 1px solid var(--ion-color-light-shade);
+    display: flex;
+    flex: 0 0 360px;
+    flex-direction: column;
+    max-width: 60%;
+    min-width: 280px;
+    overflow: auto;
+    resize: horizontal;
+
+    ion-segment {
+      flex: 0 0 auto;
+    }
+  }
+
+  .workspace-body {
+    flex: 1 1 auto;
+    overflow: auto;
+    padding: 0.75rem;
+
+    ion-item {
+      --padding-start: 0.35rem;
+    }
+
+    ion-item p {
+      color: var(--ion-color-medium-shade);
+      font-size: 0.8rem;
+    }
+  }
+
+  .workspace-group-label {
+    color: var(--ion-color-medium-shade);
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin: 1rem 0 0.25rem;
+    text-transform: uppercase;
+  }
+
+  .workspace-empty {
+    color: var(--ion-color-medium-shade);
+    padding: 1rem 0.5rem;
+  }
+
+  .workspace-actions,
+  .result-actions,
+  .dock-title,
+  .attachment-chips {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+  }
+
+  .dock-title {
+    justify-content: space-between;
+  }
+
+  .dock-item {
+    border-bottom: 1px solid var(--ion-color-light-shade);
+    padding: 0.5rem 0 1rem;
+  }
+
+  .workspace-grid {
+    height: 230px;
+    width: 100%;
+  }
+
+  .selected-fields > div {
+    border-bottom: 1px solid var(--ion-color-light-shade);
+    display: grid;
+    gap: 0.5rem;
+    grid-template-columns: minmax(90px, 1fr) 2fr;
+    padding: 0.45rem 0;
+  }
+
+  .selected-fields dt {
+    color: var(--ion-color-medium-shade);
+  }
+
+  .selected-fields dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .attachment-chips {
+    padding: 0 0.25rem 0.4rem;
+  }
+
+  .metrics-grid {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  }
+
+  .metric {
+    background: var(--ion-color-light);
+    border-radius: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    padding: 0.85rem;
+
+    span {
+      color: var(--ion-color-medium-shade);
+      font-size: 0.8rem;
+    }
+
+    strong {
+      font-size: 1.2rem;
+    }
+  }
+
+  .composer-footer {
+    border-top: 1px solid var(--ion-color-light-shade);
+    margin-bottom: 20px;
+
+    ion-toolbar {
+      --padding-bottom: 0.6rem;
+      --padding-start: 0.75rem;
+      --padding-end: 0.75rem;
+      --padding-top: 0.6rem;
+    }
+  }
+
+  .composer-grid ion-row {
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .composer-question {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .composer-provider {
+    flex: 0 0 116px;
+  }
+
+  .composer-send {
+    flex: 0 0 104px;
+  }
+
+  .composer-input-item {
+    --background: var(--ion-color-light);
+    --inner-padding-end: 0;
+    --padding-start: 0;
+    border: 1px solid var(--ion-color-light-shade);
+    border-radius: 0.6rem;
+
+    ion-input {
+      --padding-start: 0.75rem;
+      --padding-end: 0.75rem;
+      min-width: 0;
+    }
+  }
+
+  .provider-select {
+    --padding-start: 0.5rem;
+    --padding-end: 0.5rem;
+    background: var(--ion-color-light);
+    border: 1px solid var(--ion-color-light-shade);
+    border-radius: 0.6rem;
+    min-height: 2.8rem;
+    width: 100%;
+  }
+
+  .composer-send ion-button {
+    --padding-start: 0.85rem;
+    --padding-end: 0.85rem;
+    margin: 0;
+    width: 100%;
+  }
+
+  @media (max-width: 540px) {
+    .workspace-panel {
+      border-left: 0;
+      border-top: 1px solid var(--ion-color-light-shade);
+      flex-basis: 45%;
+      max-width: none;
+      min-width: 0;
+      resize: none;
+    }
+
+    .composer-provider {
+      flex-basis: 96px;
+    }
+
+    .composer-send ion-button {
+      min-width: 0;
+    }
+  }
+}
+
 // S159 (founder screenshot, 2026-09-10): "Storegithub.com" rendered with no
 // gap on the project page. Root cause verified live (measured computed
 // styles + bounding boxes in Chromium): it is Ionic's own default, not an
