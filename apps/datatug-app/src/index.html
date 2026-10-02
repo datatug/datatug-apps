@@ -21,17 +21,28 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
 
     <!-- Hand-off from the sites (/demo?q=… and /project/github.com/<owner>/<repo>/chat?msg=…): take the visitor's
-         question out of the address bar before Google Analytics can read the URL. The same path test and storage
-         key as in src/app/demo-handoff-capture.ts, which parses what is kept here (its spec runs this script to
-         keep them in step). Any other path is untouched. -->
+         question out of the address bar before Google Analytics can read the URL. The same address rules and
+         storage key as in src/app/demo-handoff-path.ts and demo-handoff-capture.ts, which parses what is kept here
+         (their specs run this script to keep them in step): matrix parameters, a trailing slash and letter case do
+         not change what a hand-off address is, exactly as the router matches them; a path with an outlet group `(` is not
+         one. Any other path is untouched. -->
     <script id="datatug-handoff-stash">
       (function () {
-        var p = location.pathname;
-        if (location.search && /^\/(?:demo|project\/github\.com\/[^/]+\/[^/]+(?:\/tree\/[^/]+\/-)?\/chat)\/?$/.test(p)) {
+        var p = location.pathname, s = p.split('/').slice(1), i;
+        if (!location.search || p.indexOf('(') >= 0) return;
+        if (s[s.length - 1] === '') s.pop();
+        for (i = 0; i < s.length; i++) {
+          s[i] = s[i].split(';')[0];
+          try { s[i] = decodeURIComponent(s[i]); } catch (e) {}
+          s[i] = s[i].toLowerCase();
+        }
+        if (s[0] === 'demo' ? s.length === 1 : s[0] === 'project' && s[1] === 'github.com' && s[2] && s[3] &&
+            (s.length === 5 ? s[4] === 'chat' : s.length === 8 && s[4] === 'tree' && s[5] && s[6] === '-' && s[7] === 'chat')) {
           window.__datatugHandoffSearch = location.search;
           // So that a reload before the app has started does not lose the question.
           try { sessionStorage.setItem('datatug.demo.handoff.v1', p.replace(/\/$/, '') + location.search); } catch (e) {}
-          history.replaceState(history.state, '', p + location.hash);
+          // A browser that refuses must not stop the page: the app still reads the question from the stash.
+          try { history.replaceState(history.state, '', p + location.hash); } catch (e) {}
         }
       })();
     </script>

@@ -164,6 +164,17 @@ describe('demo hand-off capture', () => {
         'abc\nd',
       );
     });
+    it('collapses runs of blank lines into one and trims, keeping a single blank line', () => {
+      const q = (text: string) =>
+        parseHandoffSearch('?q=' + encodeURIComponent(text)).question;
+      expect(q('a\n\n\n\nb')).toBe('a\n\nb');
+      expect(q('a\n\nb')).toBe('a\n\nb');
+      expect(q('a\nb')).toBe('a\nb');
+      expect(q('a\n \t\n  \n\nb')).toBe('a\n\nb');
+      expect(q('a\r\n\r\n\r\n\r\nb')).toBe('a\n\nb');
+      expect(q('\n\n\n  hello \n\n\n')).toBe('hello');
+      expect(q('a\n\n\n\n' + 'b\n\n\n\nc')).toBe('a\n\nb\n\nc');
+    });
     it('survives a malformed percent sequence', () => {
       expect(parseHandoffSearch('?q=100%25%ZZ%E0%A4').question).toContain(
         '100%',
@@ -231,12 +242,39 @@ describe('demo hand-off capture', () => {
         expect(isHandoffPath(path)).toBe(true);
       }
     });
+    it('ignores matrix parameters, as the router does', () => {
+      for (const path of [
+        '/demo;x=1',
+        '/demo;x=1/',
+        '/demo;a=1;b=2',
+        '/project/github.com/o/r/chat;x=1',
+        '/project/github.com;x=1/o;y=2/r/chat',
+        '/project/github.com/o/r/tree;a=1/abc123/-;b=2/chat',
+      ]) {
+        expect(isHandoffPath(path), path).toBe(true);
+      }
+    });
+    it('matches the literal segments in any letter case', () => {
+      for (const path of [
+        '/Demo',
+        '/DEMO/',
+        '/dEmO;x=1',
+        '/Project/GitHub.com/o/r/Chat',
+        '/PROJECT/GITHUB.COM/o/r/TREE/abc/-/CHAT',
+        '/%64emo',
+      ]) {
+        expect(isHandoffPath(path), path).toBe(true);
+      }
+    });
     it('rejects everything else', () => {
       for (const path of [
         '/',
+        '',
         '/demos',
         '/demo/other',
-        '/Demo',
+        '/demo//',
+        '/demo;x=1/other',
+        '/;x=1',
         '/chat',
         '/hello-world',
         '/store/github.com/project/p/chat',
@@ -248,8 +286,13 @@ describe('demo hand-off capture', () => {
         '/project/github.com/o/r/tree/abc123/chat',
         '/project/github.com/o/r/tree/abc123/dir/-/chat',
         '/project/github.com/o/r/tree/-/chat',
+        '/project/github.com/o/r/tree//-/chat',
+        '/demo(menu:x)',
+        '/demo/(menu:x)',
+        '/Demo(menu:x/y)',
+        '/project/github.com/o/r/chat(menu:x)',
       ]) {
-        expect(isHandoffPath(path)).toBe(false);
+        expect(isHandoffPath(path), path).toBe(false);
       }
     });
   });
@@ -310,10 +353,37 @@ describe('demo hand-off capture', () => {
       },
     );
 
+    it('does not fail when the browser refuses to rewrite the address: the question is still held and shown', () => {
+      const f = pageLoad('/demo', search);
+      (f.env.history as { replaceState: () => void }).replaceState = () => {
+        throw new DOMException('refused', 'SecurityError');
+      };
+      expect(() => captureDemoHandoff(f.env)).not.toThrow();
+      expect(demoHandoff(undefined, '/demo')?.question).toBe('Which countries');
+      expect(f.store.get(DEMO_HANDOFF_KEY)).toBe('/demo' + search);
+    });
+
+    it.each([
+      '/demo;x=1',
+      '/Demo',
+      '/DEMO/',
+      '/project/github.com/datatug/chinook-demo/chat;x=1',
+      '/PROJECT/github.com/o/r/Chat',
+    ])('strips the query for %s as well (the router matches it)', (path) => {
+      const f = pageLoad(path, search);
+      captureDemoHandoff(f.env);
+      expect(f.replaced).toEqual([path]);
+      expect(demoHandoff(undefined, path)?.question).toBe(
+        isEchoTrusted(path) ? 'Which countries' : '',
+      );
+    });
+
     it('leaves every other path alone, whatever its query', () => {
       for (const [path, query] of [
         ['/', '?q=x'],
         ['/demo/other', '?q=x'],
+        ['/demo;x=1/other', '?q=x'],
+        ['/demo(menu:x)', '?q=x'],
         ['/store/x/project/y/chat', '?scenario=a'],
         ['/no-such-route', '?q=x'],
       ]) {
@@ -448,6 +518,10 @@ describe('demo hand-off capture', () => {
       '/project/github.com/DATATUG/CHINOOK-DEMO/chat',
       '/project/github.com/datatug/chinook%2Ddemo/chat',
       '/project/github.com/datatug/chinook-demo/tree/HEAD/-/chat',
+      '/Demo',
+      '/demo;x=1',
+      '/PROJECT/GITHUB.COM/datatug/chinook-demo/CHAT',
+      '/project/github.com/datatug/chinook-demo/chat;x=1',
     ])('%s is trusted', (path) => {
       expect(isEchoTrusted(path)).toBe(true);
     });
@@ -556,7 +630,13 @@ describe('demo hand-off capture', () => {
     const script =
       /<script id="datatug-handoff-stash">([\s\S]*?)<\/script>/.exec(html)?.[1];
 
-    function run(pathname: string, search: string, hash = '', blocked = false) {
+    function run(
+      pathname: string,
+      search: string,
+      hash = '',
+      blocked = false,
+      refuseReplace = false,
+    ) {
       const replaced: string[] = [];
       const win: Record<string, unknown> = {};
       const kept = new Map<string, string>();
@@ -567,8 +647,10 @@ describe('demo hand-off capture', () => {
       const location = { pathname, search, hash };
       const history = {
         state: null,
-        replaceState: (_s: unknown, _t: string, url: string) =>
-          replaced.push(url),
+        replaceState: (_s: unknown, _t: string, url: string) => {
+          if (refuseReplace) throw new DOMException('refused', 'SecurityError');
+          replaced.push(url);
+        },
       };
       new Function(
         'location',
@@ -593,21 +675,41 @@ describe('demo hand-off capture', () => {
         '/demo/',
         '/demos',
         '/demo/other',
+        '/demo//',
         '/Demo',
+        '/DEMO/',
+        '/%64emo',
+        '/demo;x=1',
+        '/demo;x=1/',
+        '/demo;x=1/other',
+        '/demo(menu:x)',
+        '/demo/(menu:x)',
+        '/Demo(menu:x/y)',
+        '/project/github.com/o/r/chat(menu:x)',
+        '/project/github.com/a%28b/r/chat',
+        '/;x=1',
         '/',
         '/chat',
         '/hello-world',
         '/store/github.com/project/p/chat',
         '/project/github.com/datatug/chinook-demo/chat',
         '/project/github.com/o/r/chat/',
+        '/project/github.com/o/r/chat;x=1',
+        '/project/github.com;x=1/o;y=2/r/chat',
+        '/Project/GitHub.com/o/r/Chat',
         '/project/github.com/o/r',
         '/project/github.com/o/r/chat/x',
         '/project/github.com/o/chat',
         '/project/gitlab.com/o/r/chat',
         '/project/github.com//r/chat',
         '/project/github.com/o/r/tree/abc123/-/chat',
+        '/project/github.com/o/r/tree;a=1/abc123/-;b=2/chat',
+        '/PROJECT/GITHUB.COM/o/r/TREE/abc123/-/CHAT',
         '/project/github.com/o/r/tree/abc123/chat',
         '/project/github.com/o/r/tree/abc123/dir/-/chat',
+        '/project/github.com/o/r/tree//-/chat',
+        '/project/github.com/o%2Fx/r/chat',
+        '/project/github.com/%E0%A4%A/r/chat',
       ];
       for (const path of paths) {
         const result = run(path, '?q=x&lang=ru', '#h');
@@ -642,6 +744,29 @@ describe('demo hand-off capture', () => {
       const result = run('/demo', '?q=a+b', '', true);
       expect(result.replaced).toEqual(['/demo']);
       expect(result.stash).toBe('?q=a+b');
+    });
+
+    it('does not throw, and still stashes the question, when the browser refuses to rewrite the address', () => {
+      const result = run('/demo', '?q=a+b', '', false, true);
+      expect(result.replaced).toEqual([]);
+      expect(result.stash).toBe('?q=a+b');
+      expect(result.kept).toEqual(new Map([[DEMO_HANDOFF_KEY, '/demo?q=a+b']]));
+    });
+
+    it('strips the query of a matrix-parameter address and keeps it for the reload under that same path', () => {
+      const first = run('/demo;x=1', '?q=Matrix+one', '#h');
+      expect(first.replaced).toEqual(['/demo;x=1#h']);
+      expect(first.kept).toEqual(
+        new Map([[DEMO_HANDOFF_KEY, '/demo;x=1?q=Matrix+one']]),
+      );
+      const reload = pageLoad('/demo;x=1', '', {
+        store: first.kept,
+        navigation: 'reload',
+      });
+      captureDemoHandoff(reload.env);
+      expect(
+        demoHandoff(() => reload.env.storage(), '/demo;x=1')?.question,
+      ).toBe('Matrix one');
     });
 
     it('a reload before the app has started loses nothing: the stored copy is read once the app runs', () => {

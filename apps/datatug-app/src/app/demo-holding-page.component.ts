@@ -2,15 +2,19 @@ import {
   CUSTOM_ELEMENTS_SCHEMA,
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   ElementRef,
   afterNextRender,
+  inject,
   viewChild,
 } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { DOCUMENT } from '@angular/common';
+import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import {
   captureDemoHandoff,
   demoHandoff,
   isEchoTrusted,
+  isHandoffPath,
 } from './demo-handoff-capture';
 import {
   DEMO_HOLDING_STRINGS,
@@ -56,6 +60,7 @@ import {
           @if (question) {
             <blockquote
               class="ph-no-capture"
+              dir="auto"
               [attr.aria-label]="strings.questionLabel"
               [textContent]="question"
             ></blockquote>
@@ -119,6 +124,48 @@ export class DemoHoldingPageComponent {
     viewChild.required<ElementRef<HTMLElement>>('heading');
 
   constructor() {
+    this.showInPageLanguage();
     afterNextRender(() => this.heading().nativeElement.focus());
+  }
+
+  /**
+   * The tab title and the document language follow the page's language while it is shown (a screen reader reads
+   * the Russian page with a Russian voice; the tab says what the page is) and are put back when the visitor
+   * goes elsewhere: the app's other pages set neither.
+   *
+   * "Goes elsewhere" is a router navigation to an address that is not a hand-off address, not the component's
+   * destruction: the Ionic outlet keeps a page in its stack on a forward navigation (so that Back can return to
+   * it), and a kept page is never destroyed. Coming back to a hand-off address re-applies them. The destroy
+   * restore is the backstop for a page that is removed without a navigation.
+   */
+  private showInPageLanguage(): void {
+    const doc = inject(DOCUMENT);
+    const root = doc.documentElement;
+    let saved: { title: string; lang: string | null } | undefined;
+    const apply = (): void => {
+      if (saved) return;
+      saved = { title: doc.title, lang: root.getAttribute('lang') };
+      doc.title = this.trusted
+        ? this.strings.heading
+        : this.strings.neutralHeading;
+      root.setAttribute('lang', this.lang);
+    };
+    const restore = (): void => {
+      if (!saved) return;
+      doc.title = saved.title;
+      if (saved.lang === null) root.removeAttribute('lang');
+      else root.setAttribute('lang', saved.lang);
+      saved = undefined;
+    };
+    apply();
+    const navigations = inject(Router).events.subscribe((event) => {
+      if (!(event instanceof NavigationEnd)) return;
+      if (isHandoffPath(event.urlAfterRedirects.split(/[?#]/)[0])) apply();
+      else restore();
+    });
+    inject(DestroyRef).onDestroy(() => {
+      navigations.unsubscribe();
+      restore();
+    });
   }
 }

@@ -152,9 +152,11 @@ describe('DatatugNavContextService — environment persists across a reload with
  * wrong" toast (and reported to Sentry) on the holding page. An address with no store has no project.
  */
 describe('DatatugNavContextService — a /project/ address with no /store/ segment', () => {
-  it('has no current project and logs no error', () => {
+  /** The nav context of a page load at `url`, with every collaborator stubbed. */
+  function at(url: string) {
     const logError = vi.fn();
-    window.history.replaceState({}, '', '/project/github.com/datatug/chinook-demo/chat');
+    const getFull = vi.fn(() => of({ environments: [] }));
+    window.history.replaceState({}, '', url);
     TestBed.configureTestingModule({
       providers: [
         DatatugNavContextService,
@@ -166,16 +168,54 @@ describe('DatatugNavContextService — a /project/ address with no /store/ segme
         { provide: Router, useValue: { events: of(), navigate: vi.fn() } },
         {
           provide: ProjectService,
-          useValue: { watchProjectSummary: vi.fn(() => of(undefined)), getFull: vi.fn() },
+          useValue: { watchProjectSummary: vi.fn(() => of(undefined)), getFull },
         },
         { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn(() => of(undefined)) } },
         { provide: ErrorLogger, useValue: { logError, logErrorHandler: vi.fn(() => vi.fn()) } },
       ],
     });
     const service = TestBed.inject(DatatugNavContextService);
-    let project: unknown = 'not emitted';
-    service.currentProject.subscribe((p) => (project = p));
+    const seen: Record<string, unknown> = {};
+    service.currentProject.subscribe((p) => (seen['project'] = p));
+    service.currentEnv.subscribe((e) => (seen['env'] = e));
+    service.currentStoreId.subscribe((id) => (seen['store'] = id));
+    service.currentEnvDbTable.subscribe((t) => (seen['table'] = t));
+    return { logError, getFull, seen };
+  }
+
+  it('has no current project and logs no error', () => {
+    const { logError, seen } = at('/project/github.com/datatug/chinook-demo/chat');
     expect(logError).not.toHaveBeenCalled();
-    expect(project).toBeUndefined();
+    expect(seen['project']).toBeUndefined();
+  });
+
+  // A repository (or owner) whose name is the same as a path word the nav context looks for must not be read
+  // as a store, an environment or a table: that raised the red "Something went wrong" toast on the holding page.
+  it.each([
+    '/project/github.com/store/x/chat',
+    '/project/github.com/datatug/store/chat',
+    '/project/github.com/o/r/tree/store/-/chat',
+    '/project/github.com/env/x/chat',
+    '/project/github.com/table/x/chat',
+    '/project/github.com/o/r/tree/table/-/chat',
+    '/Project/GitHub.com/Store/X/Chat',
+    '/project/github.com/store/x/chat;a=1',
+    '/%70roject/github.com/store/x/chat',
+    'http://localhost:3000/project/github.com/store/x/chat',
+  ])('%s names no store, project, environment or table, and logs no error', (url) => {
+    const { logError, getFull, seen } = at(url);
+    expect(logError).not.toHaveBeenCalled();
+    expect(getFull).not.toHaveBeenCalled();
+    expect(seen['store']).toBeUndefined();
+    expect(seen['project']).toBeUndefined();
+    expect(seen['env']).toBeUndefined();
+    expect(seen['table']).toBeUndefined();
+  });
+
+  it('still reads a real store and project address as before', () => {
+    const { seen } = at('/store/localhost:8989/project/p1/env/local');
+    expect(seen['store']).toBe('localhost:8989');
+    expect(seen['project']).toMatchObject({ ref: { projectId: 'p1', storeId: 'localhost:8989' } });
+    expect(seen['env']).toMatchObject({ id: 'local' });
   });
 });

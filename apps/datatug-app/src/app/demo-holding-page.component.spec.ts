@@ -1,6 +1,6 @@
-import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideRouter, RouterLink } from '@angular/router';
+import { CUSTOM_ELEMENTS_SCHEMA, Component } from '@angular/core';
+import { provideRouter, Router, RouterLink } from '@angular/router';
 import {
   captureDemoHandoff,
   DEMO_HANDOFF_KEY,
@@ -86,7 +86,7 @@ describe('DemoHoldingPageComponent', () => {
     handOff('?scenario=jazz-artists&q=Which+jazz+artists%3F&lang=en');
     const fixture = await render();
     expect(text(fixture, '[role=status] > p')).toBe(
-      'This is the question you asked. The live demo opens here soon.',
+      'This is the question you asked. The live demo is not open yet; it opens here soon.',
     );
     expect(text(fixture, 'blockquote')).toBe('Which jazz artists?');
     expect(text(fixture, 'h1')).toBe(DEMO_HOLDING_STRINGS.en.heading);
@@ -105,7 +105,7 @@ describe('DemoHoldingPageComponent', () => {
     );
     const fixture = await render();
     expect(text(fixture, '[role=status] > p')).toBe(
-      'Это ваш вопрос. Живое демо скоро откроется здесь.',
+      'Это ваш вопрос. Живое демо ещё не открыто, скоро оно появится здесь.',
     );
     expect(text(fixture, 'blockquote')).toBe(
       'Какие страны слушают больше всего джаза?',
@@ -118,10 +118,13 @@ describe('DemoHoldingPageComponent', () => {
   });
 
   it.each([
-    ['', 'The live demo opens here soon.'],
-    ['?lang=en', 'The live demo opens here soon.'],
-    ['?lang=ru', 'Живое демо скоро откроется здесь.'],
-    ['?scenario=jazz-artists&lang=ru', 'Живое демо скоро откроется здесь.'],
+    ['', 'The live demo is not open yet; it opens here soon.'],
+    ['?lang=en', 'The live demo is not open yet; it opens here soon.'],
+    ['?lang=ru', 'Живое демо ещё не открыто, скоро оно появится здесь.'],
+    [
+      '?scenario=jazz-artists&lang=ru',
+      'Живое демо ещё не открыто, скоро оно появится здесь.',
+    ],
   ])(
     'with no question (%s) says only that the demo opens soon',
     async (search, sentence) => {
@@ -202,6 +205,16 @@ describe('DemoHoldingPageComponent', () => {
     expect(document.activeElement).toBe(heading);
   });
 
+  it('lets the browser pick the direction of the quote from its text, and shows a long run of blank lines as one', async () => {
+    handOff('?q=' + encodeURIComponent('first\n\n\n\n\nsecond'));
+    const fixture = await render();
+    const quote = (fixture.nativeElement as HTMLElement).querySelector(
+      'blockquote',
+    );
+    expect(quote?.getAttribute('dir')).toBe('auto');
+    expect(quote?.textContent).toBe('first\n\nsecond');
+  });
+
   it('keeps the question out of analytics autocapture', async () => {
     handOff('?q=Hello');
     const fixture = await render();
@@ -226,6 +239,158 @@ describe('DemoHoldingPageComponent', () => {
       DEMO_HOLDING_STRINGS.en.openDemoProject,
     );
     expect(site.textContent?.trim()).toBe(DEMO_HOLDING_STRINGS.en.backToSite);
+  });
+});
+
+describe('DemoHoldingPageComponent: the link back to the site', () => {
+  beforeEach(() => {
+    resetDemoHandoffForTests();
+    window.sessionStorage.clear();
+  });
+  afterEach(
+    () => delete (document as unknown as { referrer?: string }).referrer,
+  );
+
+  it('goes back to the Russian pages of datatug.ai for a visitor who came from them', async () => {
+    Object.defineProperty(document, 'referrer', {
+      configurable: true,
+      value: 'https://datatug.ai/ru/some/page?q=secret',
+    });
+    handOff('?q=Hi&lang=ru');
+    const fixture = await render();
+    const links = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('.links a'),
+    );
+    expect(links[links.length - 1].getAttribute('href')).toBe(
+      'https://datatug.ai/ru/',
+    );
+  });
+});
+
+describe('DemoHoldingPageComponent: the tab title and the document language', () => {
+  const root = document.documentElement;
+
+  beforeEach(() => {
+    resetDemoHandoffForTests();
+    window.sessionStorage.clear();
+    document.title = 'DataTug.app';
+    root.setAttribute('lang', 'en');
+  });
+  afterEach(() => root.setAttribute('lang', 'en'));
+
+  it.each([
+    ['en', 'DataTug live demo'],
+    ['ru', 'Живое демо DataTug'],
+  ] as const)(
+    'while shown, the title and <html lang> follow the page language (%s)',
+    async (lang, title) => {
+      handOff(`?q=Hi&lang=${lang}`);
+      const fixture = await render();
+      expect(document.title).toBe(title);
+      expect(root.getAttribute('lang')).toBe(lang);
+      fixture.destroy();
+    },
+  );
+
+  it('uses the neutral title on another repository address', async () => {
+    handOff('?msg=Hi&lang=ru', '/project/github.com/someone/else/chat');
+    const fixture = await render();
+    expect(document.title).toBe('DataTug');
+    expect(root.getAttribute('lang')).toBe('ru');
+    fixture.destroy();
+  });
+
+  it('puts both back when the visitor leaves the page', async () => {
+    handOff('?q=Hi&lang=ru');
+    const fixture = await render();
+    expect(document.title).not.toBe('DataTug.app');
+    fixture.destroy();
+    expect(document.title).toBe('DataTug.app');
+    expect(root.getAttribute('lang')).toBe('en');
+  });
+
+  it('removes <html lang> again when there was none', async () => {
+    root.removeAttribute('lang');
+    handOff('?q=Hi&lang=ru');
+    const fixture = await render();
+    expect(root.getAttribute('lang')).toBe('ru');
+    fixture.destroy();
+    expect(root.hasAttribute('lang')).toBe(false);
+  });
+
+  describe('a visitor who leaves through a navigation, with the page kept alive (the Ionic outlet keeps it for Back)', () => {
+    async function renderWithRoutes() {
+      await TestBed.configureTestingModule({
+        imports: [DemoHoldingPageComponent],
+        providers: [
+          provideRouter([
+            { path: 'demo', component: OtherPage },
+            { path: 'Demo', component: OtherPage },
+            { path: 'store/:id/project/:pid', component: OtherPage },
+            { path: 'project/github.com/:o/:r/chat', component: OtherPage },
+          ]),
+        ],
+        schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      })
+        .overrideComponent(DemoHoldingPageComponent, {
+          set: { imports: [RouterLink], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+        })
+        .compileComponents();
+      const fixture = TestBed.createComponent(DemoHoldingPageComponent);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      return { fixture, router: TestBed.inject(Router) };
+    }
+
+    it('puts the title and language back on navigating away, without the component being destroyed, and re-applies them on coming back', async () => {
+      handOff('?q=Hi&lang=ru');
+      const { fixture, router } = await renderWithRoutes();
+      expect(document.title).toBe('Живое демо DataTug');
+      expect(root.getAttribute('lang')).toBe('ru');
+
+      await router.navigateByUrl('/store/github.com/project/p1'); // the page's own "Open the demo project" link
+      expect(document.title).toBe('DataTug.app');
+      expect(root.getAttribute('lang')).toBe('en');
+
+      await router.navigateByUrl('/demo?lang=ru'); // Back
+      expect(document.title).toBe('Живое демо DataTug');
+      expect(root.getAttribute('lang')).toBe('ru');
+
+      await router.navigateByUrl('/store/github.com/project/p1');
+      expect(document.title).toBe('DataTug.app');
+      fixture.destroy(); // the backstop: nothing left to restore, and no double restore
+      expect(document.title).toBe('DataTug.app');
+      expect(root.getAttribute('lang')).toBe('en');
+    });
+
+    it('stays applied while the visitor moves between hand-off addresses', async () => {
+      handOff('?q=Hi&lang=ru');
+      const { fixture, router } = await renderWithRoutes();
+      await router.navigateByUrl('/Demo;x=1');
+      await router.navigateByUrl(
+        '/project/github.com/datatug/chinook-demo/chat',
+      );
+      expect(document.title).toBe('Живое демо DataTug');
+      expect(root.getAttribute('lang')).toBe('ru');
+      fixture.destroy();
+      expect(document.title).toBe('DataTug.app');
+    });
+
+    it('a title set by the next page is not overwritten by a late restore', async () => {
+      handOff('?q=Hi&lang=ru');
+      const { fixture, router } = await renderWithRoutes();
+      await router.navigateByUrl('/store/github.com/project/p1');
+      document.title = 'Some project';
+      fixture.destroy();
+      expect(document.title).toBe('Some project');
+    });
+  });
+
+  it('a bare visit is English', async () => {
+    const fixture = await render();
+    expect(document.title).toBe('DataTug live demo');
+    expect(root.getAttribute('lang')).toBe('en');
+    fixture.destroy();
   });
 });
 
@@ -336,6 +501,29 @@ describe('siteUrlFor (the back-to-the-site link)', () => {
     expect(siteUrlFor('https://datatug.ai')).toBe('https://datatug.ai/');
   });
 
+  it('a visitor from the Russian pages of datatug.ai returns to its Russian home page, and only to that', () => {
+    for (const referrer of [
+      'https://datatug.ai/ru/',
+      'https://datatug.ai/ru',
+      'https://datatug.ai/ru/pricing?q=secret#x',
+      'https://datatug.ai/ru/a/b/c',
+    ])
+      expect(siteUrlFor(referrer), referrer).toBe('https://datatug.ai/ru/');
+    for (const referrer of [
+      'https://datatug.ai/en/',
+      'https://datatug.ai/ruby/',
+      'https://datatug.ai/rus/',
+      'https://datatug.ai/pricing/ru/',
+      'https://datatug.ai/',
+    ])
+      expect(siteUrlFor(referrer), referrer).toBe('https://datatug.ai/');
+    // datatug.io has no Russian home page to return to.
+    expect(siteUrlFor('https://datatug.io/ru/')).toBe('https://datatug.io/');
+    // Other origins never get a path.
+    expect(siteUrlFor('https://evil.example/ru/')).toBe(SITE_URL);
+    expect(siteUrlFor('https://datatug.ai.evil.example/ru/')).toBe(SITE_URL);
+  });
+
   it.each([
     '',
     'not a url',
@@ -355,3 +543,6 @@ describe('siteUrlFor (the back-to-the-site link)', () => {
     expect(siteUrlFor(referrer)).toBe(SITE_URL);
   });
 });
+
+@Component({ selector: 'sneat-stub-other-page', template: '' })
+class OtherPage {}

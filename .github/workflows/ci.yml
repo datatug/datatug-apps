@@ -99,6 +99,22 @@ jobs:
       - name: nx e2e affected
         run: pnpm nx affected --target=e2e --parallel=1 --base=${{ env.NX_BASE }}
 
+      # G-0 hand-off suite (apps/datatug-app/e2e/demo-handoff.spec.ts): the holding page for /demo and the
+      # project chat, and proof that the visitor's question reaches no analytics or error report. It needs the
+      # PRODUCTION build (real Sentry DSN and analytics: playwright.demo-handoff.config.ts serves
+      # `serve:production`), so it is its own target rather than part of "e2e" above, which serves the
+      # development build. Same Playwright install, same job, so no extra runner start-up.
+      - name: nx e2e-demo-handoff affected
+        run: pnpm nx affected --target=e2e-demo-handoff --parallel=1 --base=${{ env.NX_BASE }}
+
+      - name: Upload demo hand-off e2e report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: demo-handoff-e2e-playwright-report
+          path: coverage/apps/datatug-app-demo-handoff-e2e/report
+          if-no-files-found: ignore
+
   # Walks user journeys J1-J4 (apps/datatug-app/e2e/journey/**, project
   # "journey" in playwright.config.ts) against a REAL `datatug serve` agent
   # built from a pinned datatug-cli release — no HTTP route interception.

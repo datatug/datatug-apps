@@ -1,5 +1,8 @@
-import { Routes } from '@angular/router';
+import { inject } from '@angular/core';
+import { Router, Routes, UrlTree } from '@angular/router';
+import { PRODUCT_PROFILE } from '@datatug/product-profiles';
 import { cliChatCapability } from './cli-chat-capability';
+import { handoffUrlMatcher } from './demo-handoff-path';
 
 // Task 13 (S108, spec/research/2026-09-09-layered-acl-reconciliation.md,
 // datatug/datatug): the read-only worktree
@@ -18,22 +21,27 @@ import { cliChatCapability } from './cli-chat-capability';
 // the address bar before analytics starts, and which addresses may show it back (isEchoTrusted: `/demo` and the
 // demo project's own chat; any other repository gets neutral wording and no question). Registered ahead of the
 // root feature routes; every other path is matched exactly as before.
+//
+// One route with a matcher, not three `path`s: Angular's literal segments are case-sensitive, and `/Demo` must
+// show the page too, as must `/demo;x=1` (the router ignores matrix parameters). demo-handoff-path.ts holds the
+// rules, which index.html's inline script repeats so that the query is stripped for exactly these addresses.
+//
+// Only the DataTug product profile has the page: app.incidentius.com serves the same bundle and has no demo, so
+// there the same addresses go to `/` (and on to that profile's home) instead of failing to match, which would
+// raise NG04002, a Sentry event and the crash-report dialog. (A route guard, not a component, so product-profiles'
+// rule that a component never branches on the profile's identity is not what this is.)
 const demoHoldingPage = () => import('./demo-holding-page.component').then((m) => m.DemoHoldingPageComponent);
+
+/** The hand-off page belongs to the DataTug product profile only. */
+export const datatugProfileOnly = (): boolean => inject(PRODUCT_PROFILE).id === 'datatug';
+
+/** `canMatch` of the hand-off route: matches under the DataTug profile, sends every other profile to the root. */
+export const handoffOrRoot = (): boolean | UrlTree => datatugProfileOnly() || inject(Router).parseUrl('/');
 
 export const routes: Routes = [
   {
-    path: 'demo',
-    pathMatch: 'full',
-    loadComponent: demoHoldingPage,
-  },
-  {
-    path: 'project/github.com/:owner/:repo/chat',
-    pathMatch: 'full',
-    loadComponent: demoHoldingPage,
-  },
-  {
-    path: 'project/github.com/:owner/:repo/tree/:ref/-/chat',
-    pathMatch: 'full',
+    matcher: handoffUrlMatcher,
+    canMatch: [handoffOrRoot],
     loadComponent: demoHoldingPage,
   },
   {
