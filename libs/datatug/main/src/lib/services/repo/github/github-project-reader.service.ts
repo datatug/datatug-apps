@@ -4,37 +4,48 @@ import { Observable, forkJoin, of, throwError } from 'rxjs';
 import { catchError, map, shareReplay, switchMap } from 'rxjs/operators';
 import { IParameterDef } from '../../../models/definition/parameter';
 import { IRecordsetDef } from '../../../models/definition/recordset';
+import {
+  GITHUB_DEFAULT_BRANCH_REF,
+  IGithubProjectId,
+  splitGithubProjectId,
+} from '../../../nav/github-project-address';
 
 /**
  * `projectId` format every GitHub-store caller already relies on:
- * `"repo@org"` or `"repo@org@folder"` — `folder` is the repo-relative
- * directory the project's `datatug-project.json` lives in, defaulting to
- * `"datatug"` for the historical convention (see
- * `datatug-store.service.github.ts`'s own `buildGithubProjectSummaryUrl`,
- * which this supersedes as the ONE place this split happens — that
- * function, and `entity.service.ts`'s old `getEntityFromGithub`, each used
- * to do their own two-part `split('@')`, silently dropping a third
- * `@folder` segment where present).
+ * `"repo@org"`, `"repo@org@folder"` or `"repo@org@folder@ref"` — `folder` is
+ * the repo-relative directory the project's `datatug-project.json` lives in,
+ * defaulting to `"datatug"` for the historical convention (an empty folder,
+ * `"repo@org@"`, is the repo root), and `ref` is a branch, tag or commit SHA
+ * other than the default branch (absent = the default branch). See
+ * `nav/github-project-address.ts` and design `demo-as-github-project.md`
+ * 3.3. This is the ONE place this split happens — `datatug-store.service.github.ts`'s
+ * `buildGithubProjectSummaryUrl` and `entity.service.ts`'s old
+ * `getEntityFromGithub` each used to do their own two-part `split('@')`.
  */
-export interface IGithubProjectId {
-  readonly repo: string;
-  readonly org: string;
-  readonly folder: string;
-}
+export type { IGithubProjectId };
 
+/**
+ * Splits a project id. Owner and repo are lower-cased (one project, one id);
+ * folder and ref keep their case. Never throws.
+ */
 export function parseGithubProjectId(projectId: string): IGithubProjectId {
-  const [repo, org, folder = 'datatug'] = projectId.split('@');
-  return { repo, org, folder };
+  return splitGithubProjectId(projectId);
 }
 
-/** Raw-content URL for one file at `relativePath` (repo-relative, project-folder-prefixed). */
+/**
+ * Raw-content URL for one file at `relativePath` (repo-relative to the
+ * project's folder). An empty folder is the repo root (no doubled slash); the
+ * default branch is spelled `HEAD` (whatever it is called), a ref of the id is
+ * used when there is one.
+ */
 export function buildGithubRawUrl(
   projectId: string,
   relativePath: string,
 ): string {
-  const { repo, org, folder } = parseGithubProjectId(projectId);
-  const path = relativePath ? `${folder}/${relativePath}` : folder;
-  return `https://raw.githubusercontent.com/${org}/${repo}/main/${path}`;
+  const { repo, org, folder, ref } = parseGithubProjectId(projectId);
+  const path = [folder, relativePath].filter(Boolean).join('/');
+  const revision = ref ? encodeURIComponent(ref) : GITHUB_DEFAULT_BRANCH_REF;
+  return `https://raw.githubusercontent.com/${org}/${repo}/${revision}/${path}`;
 }
 
 /** One entry of a directory listing, as {@link GithubProjectReaderService.listDirectory} reports it. */

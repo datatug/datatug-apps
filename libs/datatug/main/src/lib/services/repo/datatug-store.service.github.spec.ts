@@ -11,7 +11,7 @@ import { GithubProjectReaderService } from './github/github-project-reader.servi
 describe('buildGithubProjectSummaryUrl', () => {
   it('defaults to a "datatug" folder when none is given', () => {
     expect(buildGithubProjectSummaryUrl('my-repo@my-org')).toBe(
-      'https://raw.githubusercontent.com/my-org/my-repo/main/datatug/datatug-project.json',
+      'https://raw.githubusercontent.com/my-org/my-repo/HEAD/datatug/datatug-project.json',
     );
   });
 
@@ -19,7 +19,7 @@ describe('buildGithubProjectSummaryUrl', () => {
     expect(
       buildGithubProjectSummaryUrl('my-repo@my-org@some-folder'),
     ).toBe(
-      'https://raw.githubusercontent.com/my-org/my-repo/main/some-folder/datatug-project.json',
+      'https://raw.githubusercontent.com/my-org/my-repo/HEAD/some-folder/datatug-project.json',
     );
   });
 
@@ -30,7 +30,7 @@ describe('buildGithubProjectSummaryUrl', () => {
         'datatug-demo-projects@datatug@demo-project-1',
       ),
     ).toBe(
-      'https://raw.githubusercontent.com/datatug/datatug-demo-projects/main/demo-project-1/datatug-project.json',
+      'https://raw.githubusercontent.com/datatug/datatug-demo-projects/HEAD/demo-project-1/datatug-project.json',
     );
   });
 });

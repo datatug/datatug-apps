@@ -125,10 +125,45 @@ describe('GithubProjectReaderService', () => {
       });
     });
 
-    it('builds a project-folder-relative raw URL', () => {
+    it('builds a project-folder-relative raw URL (the default branch is HEAD)', () => {
       expect(buildGithubRawUrl(PROJECT_ID, 'entities/Album/Album.entity.json')).toBe(
-        'https://raw.githubusercontent.com/datatug/datatug-demo-projects/main/demo-project-1/entities/Album/Album.entity.json',
+        'https://raw.githubusercontent.com/datatug/datatug-demo-projects/HEAD/demo-project-1/entities/Album/Album.entity.json',
       );
+    });
+
+    it.each([
+      // [project id, relative path, raw URL]
+      ['r@o', 'datatug-project.json', 'https://raw.githubusercontent.com/o/r/HEAD/datatug/datatug-project.json'],
+      ['r@o@d', 'datatug-project.json', 'https://raw.githubusercontent.com/o/r/HEAD/d/datatug-project.json'],
+      ['r@o@a/b', 'x/y.json', 'https://raw.githubusercontent.com/o/r/HEAD/a/b/x/y.json'],
+      // An empty folder is the repo root: no doubled slash.
+      ['r@o@', 'datatug-project.json', 'https://raw.githubusercontent.com/o/r/HEAD/datatug-project.json'],
+      ['chinook-demo@datatug@', 'queries/q.json', 'https://raw.githubusercontent.com/datatug/chinook-demo/HEAD/queries/q.json'],
+      // A ref, a tag or a commit SHA.
+      ['r@o@@v1.0.0', 'datatug-project.json', 'https://raw.githubusercontent.com/o/r/v1.0.0/datatug-project.json'],
+      ['r@o@d@v1.0.0', 'datatug-project.json', 'https://raw.githubusercontent.com/o/r/v1.0.0/d/datatug-project.json'],
+      ['r@o@d@0123456789abcdef0123456789abcdef01234567', 'p.json', 'https://raw.githubusercontent.com/o/r/0123456789abcdef0123456789abcdef01234567/d/p.json'],
+      ['r@o@d@HEAD', 'p.json', 'https://raw.githubusercontent.com/o/r/HEAD/d/p.json'],
+      // Lower-cased owner and repo; folder and ref keep their case.
+      ['Repo@Org@Dir@Feature', 'p.json', 'https://raw.githubusercontent.com/org/repo/Feature/Dir/p.json'],
+      // A ref is one path segment: it cannot reach another path.
+      ['r@o@d@a/../b', 'p.json', 'https://raw.githubusercontent.com/o/r/a%2F..%2Fb/d/p.json'],
+      // The project folder itself only.
+      ['r@o@', '', 'https://raw.githubusercontent.com/o/r/HEAD/'],
+    ])('builds the raw URL of %s / %s', (projectId, relativePath, expected) => {
+      expect(buildGithubRawUrl(projectId, relativePath)).toBe(expected);
+    });
+
+    it('splits the optional fourth part and lower-cases owner and repo', () => {
+      expect(parseGithubProjectId('r@o@')).toStrictEqual({ repo: 'r', org: 'o', folder: '' });
+      expect(parseGithubProjectId('r@o@@v1')).toStrictEqual({ repo: 'r', org: 'o', folder: '', ref: 'v1' });
+      expect(parseGithubProjectId('Repo@Org@Dir@v1')).toStrictEqual({
+        repo: 'repo',
+        org: 'org',
+        folder: 'Dir',
+        ref: 'v1',
+      });
+      expect(parseGithubProjectId('r@o@d@HEAD')).toStrictEqual({ repo: 'r', org: 'o', folder: 'd' });
     });
   });
 
@@ -196,7 +231,7 @@ describe('GithubProjectReaderService', () => {
 
       httpMock
         .expectOne(
-          'https://raw.githubusercontent.com/datatug/datatug-demo-projects/main/demo-project-1/datatug-project.json',
+          'https://raw.githubusercontent.com/datatug/datatug-demo-projects/HEAD/demo-project-1/datatug-project.json',
         )
         .flush({ id: 'datatug-demo-project' });
 
