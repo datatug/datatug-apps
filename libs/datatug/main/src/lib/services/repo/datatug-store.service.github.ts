@@ -1,7 +1,7 @@
 import { IFolder, IFolderItem } from '../../models/definition/folder';
 import { IProjectSummary } from '../../models/definition/project';
 import { IDatatugStoreService } from './datatug-store.service.interface';
-import { Observable, defer, of, throwError } from 'rxjs';
+import { Observable, of, throwError } from 'rxjs';
 import { map, shareReplay, switchMap } from 'rxjs/operators';
 import { Injectable, inject } from '@angular/core';
 import {
@@ -67,44 +67,42 @@ export class DatatugStoreGithubService implements IDatatugStoreService {
 
     // Through the reader: the same commit as the listing and every other file, one cache, one request (the old
     // second, separate read of this file could come from a different commit than the rest of the page).
-    // `defer`: `shareReplay` drops a failed read and the next subscriber reads again, instead of getting the same
+    // The reader's observable is lazy (a read starts on subscription, a failed one is read again by the next
+    // subscriber), and `shareReplay` drops a failed read: the next subscriber reads again, instead of getting the same
     // failure back until the page is reloaded.
-    cached = defer(() =>
-      this.githubReader.getRawJson<IProjectSummary>(
-        projectId,
-        'datatug-project.json',
-      ),
-    ).pipe(
-      switchMap((p) =>
-        p
-          ? of(p)
-          : this.githubReader
-              .readInfo(projectId)
-              .pipe(
-                switchMap((info) =>
-                  throwError(
-                    () =>
-                      new GithubProjectNotFoundError(
-                        projectId,
-                        info.state === 'moved' ? 'moved' : 'missing',
-                      ),
+    cached = this.githubReader
+      .getRawJson<IProjectSummary>(projectId, 'datatug-project.json')
+      .pipe(
+        switchMap((p) =>
+          p
+            ? of(p)
+            : this.githubReader
+                .readInfo(projectId)
+                .pipe(
+                  switchMap((info) =>
+                    throwError(
+                      () =>
+                        new GithubProjectNotFoundError(
+                          projectId,
+                          info.state === 'moved' ? 'moved' : 'missing',
+                        ),
+                    ),
                   ),
                 ),
-              ),
-      ),
-      map((p) => {
-        if (p.id === projectId) {
-          return p;
-        }
-        if (p.id) {
-          console.warn(
-            `Request project info with projectId=${projectId} but response JSON have id=${p.id}`,
-          );
-        }
-        return { ...p, id: projectId };
-      }),
-      shareReplay(1),
-    );
+        ),
+        map((p) => {
+          if (p.id === projectId) {
+            return p;
+          }
+          if (p.id) {
+            console.warn(
+              `Request project info with projectId=${projectId} but response JSON have id=${p.id}`,
+            );
+          }
+          return { ...p, id: projectId };
+        }),
+        shareReplay(1),
+      );
     this.summaryCache.set(projectId, cached);
     return cached;
   }

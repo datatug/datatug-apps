@@ -9,7 +9,7 @@ import {
   GITHUB_API_BASE,
   IGithubRepoWire,
   githubApiHeaders,
-  toGithubRepo,
+  requireGithubRepo,
 } from './github-api';
 import {
   GithubProjectReaderService,
@@ -180,15 +180,7 @@ export class GithubProjectCreateService {
         headers: githubApiHeaders(token),
       })
       .pipe(
-        map((wire) => {
-          const found = toGithubRepo(wire);
-          if (!found) {
-            throw new Error(
-              `GitHub did not return the repository ${org}/${repo}`,
-            );
-          }
-          return found.defaultBranch;
-        }),
+        map((wire) => requireGithubRepo(wire, `${org}/${repo}`).defaultBranch),
       );
   }
 
