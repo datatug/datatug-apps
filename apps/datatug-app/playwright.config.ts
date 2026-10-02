@@ -65,7 +65,17 @@ export default defineConfig({
       // 'error-dialog.spec.ts' and adds 'journey/**' — journey/ has its own
       // project below (real agent, no interception) and must not also run
       // under this default project.
-      testIgnore: ['enterprise-sso.spec.ts', 'error-dialog.spec.ts', 'journey/**'],
+      testIgnore: ['enterprise-sso.spec.ts', 'error-dialog.spec.ts', 'journey/**', 'demo/**'],
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      // The demo (datatug.app/demo): hand-off URL -> trace -> grid and chart -> follow-up, against the local
+      // demo stack (`pnpm demo:up`, or `pnpm demo:e2e` which starts it, runs this project and stops it).
+      // No route interception for the data path: the browser reads the demo project's real OVDB server.
+      // See e2e/demo/README.md. Specs in e2e/demo/ never need this config edited.
+      name: 'demo',
+      testDir: './e2e/demo',
+      fullyParallel: false,
       use: { ...devices['Desktop Chrome'] },
     },
     {
