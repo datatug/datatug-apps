@@ -334,6 +334,77 @@ describe('navigating to a short address', () => {
     });
   });
 
+  describe('letter case: the fixed segments match in any case and redirect to the lower-case address (review B1)', () => {
+    it.each([
+      [
+        '/Project/GitHub.com/datatug/chinook-demo/Chat',
+        '/project/github.com/datatug/chinook-demo/chat',
+      ],
+      [
+        '/PROJECT/github.com/datatug/chinook-demo/chat?lang=ru',
+        '/project/github.com/datatug/chinook-demo/chat?lang=ru',
+      ],
+      [
+        '/project/github.com/datatug/chinook-demo/Chat?msg=x#top',
+        '/project/github.com/datatug/chinook-demo/chat?msg=x#top',
+      ],
+      [
+        '/project/github.com/datatug/chinook-demo/Tree/HEAD/-/chat',
+        '/project/github.com/datatug/chinook-demo/chat',
+      ],
+      [
+        '/project/github.com/datatug/chinook-demo/Tree/HEAD/-/Chat?a=1&a=2',
+        '/project/github.com/datatug/chinook-demo/chat?a=1&a=2',
+      ],
+      [
+        '/project/github.com/datatug/chinook-demo/Queries',
+        '/project/github.com/datatug/chinook-demo/queries',
+      ],
+    ])('%s -> %s, through one redirect, never to a route that matches nothing', async (typed, canonical) => {
+      const result = await visit(typed);
+      expect(result.ok).toBe(true);
+      expect(result.url).toBe(canonical);
+      expect(result.component).toBe(PageStub);
+      expect(result.projectId).toBe('chinook-demo@datatug@');
+    });
+  });
+
+  describe('a folder with parentheses stays that folder through a redirect (review minor 3)', () => {
+    it('a letter-case redirect', async () => {
+      const result = await visit(
+        '/project/github.com/Acme/demo/tree/HEAD/a%28b%29/-/queries',
+      );
+      expect(result.url).toBe(
+        '/project/github.com/acme/demo/tree/HEAD/a%28b%29/-/queries',
+      );
+      expect(result.component).toBe(PageStub);
+      expect(result.projectId).toBe('demo@acme@a(b)');
+    });
+
+    it('a default-branch redirect, query and fragment kept', async () => {
+      const result = await visit(
+        '/project/github.com/o/r/tree/main/a%28b%29/-/queries?x=1#f',
+      );
+      expect(result.url).toBe(
+        '/project/github.com/o/r/tree/HEAD/a%28b%29/-/queries?x=1#f',
+      );
+      expect(result.component).toBe(PageStub);
+      expect(result.projectId).toBe('r@o@a(b)');
+    });
+
+    it('an unmatched closing parenthesis, and a folder that is only parentheses', async () => {
+      for (const folder of ['a%29b', '%28%29']) {
+        const result = await visit(
+          `/project/github.com/O/r/tree/HEAD/${folder}/-/queries`,
+        );
+        expect(result.projectId, folder).toBe(
+          `r@o@${decodeURIComponent(folder)}`,
+        );
+        TestBed.resetTestingModule();
+      }
+    });
+  });
+
   it.each([
     ['/project/github.com/o/r/', '/project/github.com/o/r'],
     ['/project/github.com/o/r/chat/', '/project/github.com/o/r/chat'],

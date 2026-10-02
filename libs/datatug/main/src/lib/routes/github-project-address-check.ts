@@ -1,7 +1,8 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, InjectionToken, inject, signal } from '@angular/core';
 import { ToastController } from '@ionic/angular';
 import { firstValueFrom } from 'rxjs';
 import {
+  asciiLowerCase,
   GITHUB_DEFAULT_BRANCH_REF,
   GITHUB_STORE_ID,
   IGithubProjectParts,
@@ -40,28 +41,58 @@ export type ShortGithubAddress =
       readonly locatorLength: number;
     };
 
+/** The encoded path of an address, as the one place that knows the shapes (`parseProjectUrl`) reads it. */
+const encodedPath = (segments: readonly string[]): string =>
+  '/' + segments.map((s) => encodeURIComponent(s)).join('/');
+
+/** How many of the (already normalised) segments are the project locator, given what follows it. */
+const locatorLengthOf = (
+  segments: readonly string[],
+  parts: IProjectUrlParts,
+): number =>
+  segments.length - (parts.rest === '' ? 0 : parts.rest.split('/').length - 1);
+
 /**
  * Reads the segments as the router has them (percent-decoded) with `parseProjectUrl`, the one place that knows the
  * shapes. Each segment is encoded again first, so a `%2F` or a `%` in a segment reads as the text it came from.
+ *
+ * The fixed segments (`project`, `github.com`, `tree`, and the first page, which is always a lower-case name) are
+ * read in any letter case, as the hand-off route's matcher and index.html's script read them, and are another
+ * spelling of the canonical address (`isCanonical` is false: the route redirects). Only ASCII letters are folded,
+ * so no look-alike letter ever passes for one of them. Owner and repository are lower-cased by `parseProjectUrl`.
  */
 export function readShortGithubAddress(
   segments: readonly string[],
 ): ShortGithubAddress {
-  if (segments[0] !== 'project' || segments[1] !== GITHUB_STORE_ID) {
+  if (
+    segments.length < 2 ||
+    asciiLowerCase(segments[0]) !== 'project' ||
+    asciiLowerCase(segments[1]) !== GITHUB_STORE_ID
+  ) {
     return { kind: 'not-short-github' };
   }
-  const parsed = parseProjectUrl(
-    '/' + segments.map((s) => encodeURIComponent(s)).join('/'),
-  );
+  const normalised = [...segments];
+  normalised[0] = 'project';
+  normalised[1] = GITHUB_STORE_ID;
+  if (normalised[4] !== undefined && asciiLowerCase(normalised[4]) === 'tree') {
+    normalised[4] = 'tree';
+  }
+  let parsed = parseProjectUrl(encodedPath(normalised));
   if (!parsed.ok) {
     return { kind: 'refused', reason: parsed.reason };
   }
-  const pageSegments =
-    parsed.rest === '' ? 0 : parsed.rest.split('/').length - 1;
+  let locatorLength = locatorLengthOf(normalised, parsed);
+  const page = normalised[locatorLength];
+  if (page !== undefined && asciiLowerCase(page) !== page) {
+    normalised[locatorLength] = asciiLowerCase(page);
+    parsed = parseProjectUrl(encodedPath(normalised)) as IProjectUrlParts;
+    locatorLength = locatorLengthOf(normalised, parsed);
+  }
+  const respelled = normalised.some((segment, i) => segment !== segments[i]);
   return {
     kind: 'project',
-    parts: parsed,
-    locatorLength: segments.length - pageSegments,
+    parts: respelled ? { ...parsed, isCanonical: false } : parsed,
+    locatorLength,
   };
 }
 
@@ -195,12 +226,31 @@ function defaultBranchPath(
   return replaced.canonicalPath;
 }
 
+/**
+ * How long the check waits for GitHub to say whether a project file is there, before it lets the project open and
+ * the pages show their own loading or error state. A host that does not answer must not leave a blank page: the
+ * pages' own reads give up after 40 s, the old form of the address shows its state at once.
+ */
+export const GITHUB_PROBE_TIMEOUT_MS = 3000;
+
+/** Resolves after `ms` milliseconds. A token so that a test says when the time is up. */
+export const GITHUB_PROBE_TIMER = new InjectionToken<
+  (ms: number) => Promise<void>
+>('GITHUB_PROBE_TIMER', {
+  providedIn: 'root',
+  factory: () => (ms) =>
+    new Promise<void>((resolve) => setTimeout(resolve, ms)),
+});
+
 /** The decisions, in the order of the design. Injectable so the router glue stays a one-liner and a test fakes the network. */
 @Injectable({ providedIn: 'root' })
 export class GithubAddressCheck {
   private readonly branches = inject(GithubDefaultBranchLookup);
   private readonly notices = inject(GithubAddressNotices);
   private readonly store = inject(DatatugStoreGithubService);
+  private readonly timer = inject(GITHUB_PROBE_TIMER);
+  /** Repositories and refs the visitor has been told about (once each for the life of the page). */
+  private readonly told = new Set<string>();
   /** Projects whose first read ended in anything but "not found" (a project that was there is not asked about again). */
   private readonly probed = new Set<string>();
 
@@ -229,11 +279,15 @@ export class GithubAddressCheck {
           path: defaultBranchPath(parts, { ...github, ref: github.ref }),
         };
       } else if (lookup.kind === 'refused') {
-        this.notices.defaultBranchUnknown(
-          github.owner,
-          github.repo,
-          github.ref,
-        );
+        const key = `${github.owner}/${github.repo}@${github.ref}`;
+        if (!this.told.has(key)) {
+          this.told.add(key);
+          this.notices.defaultBranchUnknown(
+            github.owner,
+            github.repo,
+            github.ref,
+          );
+        }
       }
     }
     if (!this.probed.has(parts.projectId)) {
@@ -256,15 +310,18 @@ export class GithubAddressCheck {
     return { kind: 'open' };
   }
 
-  /** `'missing'` or `'moved'` when GitHub says there is no project at this id; undefined otherwise, errors included. */
-  private async probe(
-    projectId: string,
-  ): Promise<'missing' | 'moved' | undefined> {
-    try {
-      await firstValueFrom(this.store.getProjectSummary(projectId));
-      return undefined;
-    } catch (err) {
-      return err instanceof GithubProjectNotFoundError ? err.reason : undefined;
-    }
+  /**
+   * `'missing'` or `'moved'` when GitHub says there is no project at this id; undefined otherwise, errors included,
+   * and when GitHub has not answered within `GITHUB_PROBE_TIMEOUT_MS` (the project opens, and its pages show
+   * their own loading or error state).
+   */
+  private probe(projectId: string): Promise<'missing' | 'moved' | undefined> {
+    const answer = firstValueFrom(this.store.getProjectSummary(projectId)).then(
+      () => undefined,
+      (err: unknown) =>
+        err instanceof GithubProjectNotFoundError ? err.reason : undefined,
+    );
+    const timeUp = this.timer(GITHUB_PROBE_TIMEOUT_MS).then(() => undefined);
+    return Promise.race([answer, timeUp]);
   }
 }

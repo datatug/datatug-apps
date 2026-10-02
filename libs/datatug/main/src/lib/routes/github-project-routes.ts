@@ -5,6 +5,8 @@ import {
   Routes,
   UrlMatcher,
   UrlSegment,
+  UrlSegmentGroup,
+  UrlTree,
 } from '@angular/router';
 import { PRODUCT_PROFILE } from '@datatug/product-profiles';
 import {
@@ -30,6 +32,11 @@ import {
 //      and either redirects to the canonical spelling, or says there is a problem (an address that cannot be a
 //      project, or no project file there), or does not match so that route 2 takes the address;
 //   2. the project.
+//
+// The fixed segments (`project`, `github.com`, `tree`, the first page) are read in any letter case and redirect to
+// the lower-case address (`readShortGithubAddress`): the hand-off route and index.html read them so, and an address
+// that either of them lets through must never reach the router's "no route matches" failure. A redirect is built
+// from segments, not parsed from a string (`urlTreeOfPath`).
 
 const paths = (segments: readonly UrlSegment[]): string[] =>
   segments.map((segment) => segment.path);
@@ -55,6 +62,26 @@ export const githubAddressMatcher: UrlMatcher = (segments) =>
     ? null
     : { consumed: segments };
 
+/**
+ * The URL tree of a canonical path, built from its segments and not parsed from the string: the router's parser
+ * reads `(` as the start of an outlet group, so a folder called `a(b)` would open another project. Each segment is
+ * decoded here and the serializer encodes it again, parentheses included.
+ */
+export function urlTreeOfPath(
+  path: string,
+  queryParams: Record<string, string | string[]>,
+  fragment: string | null,
+): UrlTree {
+  const segments = path
+    .split('/')
+    .slice(1)
+    .map((segment) => new UrlSegment(decodeURIComponent(segment), {}));
+  const primary = new UrlSegmentGroup(segments, {});
+  const root = new UrlSegmentGroup([], { primary });
+  primary.parent = root;
+  return new UrlTree(root, { ...queryParams }, fragment);
+}
+
 /** The short route belongs to the DataTug product profile only. */
 export const datatugProfileForShortRoute = (): boolean =>
   inject(PRODUCT_PROFILE).id === 'datatug';
@@ -74,10 +101,11 @@ export const githubAddressCanMatch: CanMatchFn = async (_route, segments) => {
   const decision = await check.decide(paths(segments));
   switch (decision.kind) {
     case 'redirect': {
-      const target = router.parseUrl(decision.path);
-      target.queryParams = { ...(typed?.queryParams ?? {}) };
-      target.fragment = typed?.fragment ?? null;
-      return target;
+      return urlTreeOfPath(
+        decision.path,
+        typed?.queryParams ?? {},
+        typed?.fragment ?? null,
+      );
     }
     case 'problem':
       state.problem.set(decision.problem);
