@@ -1,4 +1,5 @@
 import { IEnvironmentConfig, IFirebaseEmulatorConfig } from '@sneat/core';
+import type { DatatugDemoConfig } from './demo-config';
 
 const useNgrok = window.location.hostname.includes('.ngrok.');
 const useSSL = useNgrok || window.location.hostname == 'local-app.sneat.ws';
@@ -35,4 +36,10 @@ export const datatugAppEnvironmentConfig: IEnvironmentConfig = {
     appId: 'emulator-does-not-need-app-id',
     measurementId: 'G-PROVIDE_IF_NEEDED',
   },
+};
+
+// Development: the demo is on, so that its behaviours can be built and tried locally. This file is never
+// deployed: every build that ships replaces it (production: environment.prod.ts, SSO e2e: environment.sso-e2e.ts).
+export const datatugDemoConfig: DatatugDemoConfig = {
+  enabled: true,
 };
