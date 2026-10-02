@@ -1,15 +1,47 @@
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Injectable, inject } from '@angular/core';
-import { Observable, forkJoin, of, throwError } from 'rxjs';
-import { catchError, map, shareReplay, switchMap } from 'rxjs/operators';
+import { Injectable, InjectionToken, inject } from '@angular/core';
+import { Observable, defer, forkJoin, from, of, throwError } from 'rxjs';
+import { map, switchMap } from 'rxjs/operators';
 import { IParameterDef } from '../../../models/definition/parameter';
 import { IRecordsetDef } from '../../../models/definition/recordset';
 import {
+  GITHUB_DEFAULT_BRANCH_REF,
+  GITHUB_STORE_ID,
   GithubProjectIdError,
   IGithubProjectId,
+  isTrustedProjectAddress,
   readGithubProjectId,
   splitGithubProjectId,
 } from '../../../nav/github-project-address';
+import {
+  GITHUB_API_HOST,
+  GITHUB_MIRROR_HOST,
+  GITHUB_RAW_HOST,
+  GithubFetch,
+  githubGet,
+} from './github-http';
+import {
+  GITHUB_RESOLVE_TTL_MS,
+  IGithubFileStore,
+  createLazyGithubFileStore,
+} from './github-file-store-api';
+import {
+  GITHUB_RATE_LIMIT_MESSAGE,
+  GithubFileTooLargeError,
+  GithubProjectNotFoundError,
+  GithubReadBudget,
+  GithubReadError,
+  MAX_PROJECT_FILE_BYTES,
+  MAX_TREE_BYTES,
+} from './github-read-limits';
+
+export {
+  GITHUB_RATE_LIMIT_MESSAGE,
+  GithubFileTooLargeError,
+  GithubProjectNotFoundError,
+  GithubReadBudget,
+  GithubReadError,
+};
+export { GithubReadLimitError } from './github-read-limits';
 
 /**
  * `projectId` format every GitHub-store caller already relies on:
@@ -35,18 +67,40 @@ export function parseGithubProjectId(projectId: string): IGithubProjectId {
   return splitGithubProjectId(projectId);
 }
 
+function readableId(projectId: string): IGithubProjectId {
+  const reading = readGithubProjectId(projectId);
+  if (!reading.ok) {
+    throw new GithubProjectIdError(
+      reading.reason,
+      `not a valid GitHub project id (${reading.reason}): ${projectId}`,
+    );
+  }
+  return reading.id;
+}
+
 /**
- * The branch every read of a project uses until task G-A2 moves reads, the
- * tree listing included, to the default branch (`HEAD`) or a resolved commit.
- * It is what the reader has always used, so no existing project changes.
+ * The repo-relative path of a file of the project, every segment URL-encoded. An empty folder is the repo root (no
+ * doubled slash). No file segment may be `.` or `..`: throws a {@link GithubProjectIdError} instead.
  */
-export const GITHUB_READER_DEFAULT_BRANCH = 'main';
+function projectFilePath(folder: string, relativePath: string): string {
+  const fileSegments = (relativePath ?? '').split('/').filter(Boolean);
+  if (fileSegments.some((s) => s === '.' || s === '..')) {
+    throw new GithubProjectIdError(
+      'path',
+      `not a valid project file path: ${relativePath}`,
+    );
+  }
+  return [...(folder ? folder.split('/') : []), ...fileSegments]
+    .map((s) => encodeURIComponent(s))
+    .join('/');
+}
 
 /**
  * Raw-content URL for one file at `relativePath` (repo-relative to the
- * project's folder). An empty folder is the repo root (no doubled slash). A
- * three-part id reads branch `main`, exactly as before; the explicit ref of a
- * four-part id (a branch, tag or commit) is used when there is one.
+ * project's folder). An empty folder is the repo root (no doubled slash).
+ * The revision is `revision` when given (the commit the reader pinned), else
+ * the explicit ref of a four-part id (a branch, tag or commit), else `HEAD`:
+ * the default branch, whatever it is called.
  *
  * Every folder and file segment is URL-encoded and none may be `.` or `..`;
  * an id that is not valid (see `readGithubProjectId`) or such a path throws
@@ -55,50 +109,21 @@ export const GITHUB_READER_DEFAULT_BRANCH = 'main';
 export function buildGithubRawUrl(
   projectId: string,
   relativePath: string,
+  revision?: string,
 ): string {
-  const reading = readGithubProjectId(projectId);
-  if (!reading.ok) {
-    throw new GithubProjectIdError(
-      reading.reason,
-      `not a valid GitHub project id (${reading.reason}): ${projectId}`,
-    );
-  }
-  const { repo, org, folder, ref } = reading.id;
-  const fileSegments = (relativePath ?? '').split('/').filter(Boolean);
-  if (fileSegments.some((s) => s === '.' || s === '..')) {
-    throw new GithubProjectIdError(
-      'path',
-      `not a valid project file path: ${relativePath}`,
-    );
-  }
-  const path = [...(folder ? folder.split('/') : []), ...fileSegments]
-    .map((s) => encodeURIComponent(s))
-    .join('/');
-  const revision = ref ? encodeURIComponent(ref) : GITHUB_READER_DEFAULT_BRANCH;
-  return `https://raw.githubusercontent.com/${org}/${repo}/${revision}/${path}`;
+  const { repo, org, folder, ref } = readableId(projectId);
+  const path = projectFilePath(folder, relativePath);
+  const rev = encodeURIComponent(revision ?? ref ?? GITHUB_DEFAULT_BRANCH_REF);
+  return `https://raw.githubusercontent.com/${org}/${repo}/${rev}/${path}`;
 }
 
 /**
- * Throws a {@link GithubProjectIdError} unless the reader can read this
- * project today: a valid id, and no ref. Files at a ref but a listing from
- * `main` would be a project mixed from two versions, so a four-part id is
- * refused until task G-A2 reads files and tree from one resolved commit.
+ * Throws a {@link GithubProjectIdError} unless the id is a valid GitHub
+ * project id. Any ref is readable: files and listing both come from the one
+ * commit the reader resolves for the id (design 4.5).
  */
 export function assertReadableGithubProjectId(projectId: string): IGithubProjectId {
-  const reading = readGithubProjectId(projectId);
-  if (!reading.ok) {
-    throw new GithubProjectIdError(
-      reading.reason,
-      `not a valid GitHub project id (${reading.reason}): ${projectId}`,
-    );
-  }
-  if (reading.id.ref !== undefined) {
-    throw new GithubProjectIdError(
-      'ref-not-supported',
-      `reading a GitHub project at a branch, tag or commit (${reading.id.ref}) is not supported yet`,
-    );
-  }
-  return reading.id;
+  return readableId(projectId);
 }
 
 /** One entry of a directory listing, as {@link GithubProjectReaderService.listDirectory} reports it. */
@@ -119,11 +144,7 @@ interface IGithubGitTreeResponse {
   readonly truncated?: boolean;
 }
 
-/** Shown to the user (via `ErrorLoggerService`) instead of GitHub's own opaque
- * `403` body — `handleApiError`'s own doc comment explains why 403 specifically
- * means "rate limited" for this unauthenticated, read-only client. */
-export const GITHUB_RATE_LIMIT_MESSAGE =
-  'GitHub API rate limit reached for this browser — please wait a few minutes and try again (unauthenticated requests to api.github.com are capped at 60/hour).';
+
 
 /** Wire shape one query item's own `.query.json` (or legacy `.sql.json`) file decodes
  * to — deliberately the SAME flat shape `queries.service.ts`'s own (un-exported)
@@ -210,6 +231,96 @@ interface IGithubEntityFile {
   [key: string]: unknown;
 }
 
+/** The `fetch` every read of a GitHub project goes through. Injected so a test answers without a network. */
+export const GITHUB_FETCH = new InjectionToken<GithubFetch>('GITHUB_FETCH', {
+  providedIn: 'root',
+  factory: () => (url, init) => globalThis.fetch(url, init),
+});
+
+/** The clock the reader's 5-minute memory of a resolved commit uses (ms since the epoch). */
+export const GITHUB_CLOCK = new InjectionToken<() => number>('GITHUB_CLOCK', {
+  providedIn: 'root',
+  factory: () => () => Date.now(),
+});
+
+/**
+ * The persistent cache: a database of its own, opened on first use from a chunk of its own (see
+ * `github-file-store.ts`). Provide `NO_GITHUB_FILE_STORE` to read with no cache.
+ */
+export const GITHUB_FILE_STORE = new InjectionToken<IGithubFileStore>(
+  'GITHUB_FILE_STORE',
+  {
+    providedIn: 'root',
+    factory: () =>
+      createLazyGithubFileStore(() =>
+        import('./github-file-store').then((m) =>
+          m.openGithubFileStore(globalThis.indexedDB, () => Date.now()),
+        ),
+      ),
+  },
+);
+
+/**
+ * Which commit a read of a project came to use (design 4.5, the degrade table):
+ * - `given`: a full commit SHA in the id; no call was made. Never taken for a trusted project.
+ * - `resolved`: GitHub answered which commit the ref (or the default branch) is now, or answered within the last
+ *   5 minutes.
+ * - `remembered`: the resolve call was refused or failed; an earlier answer is used. It may not be the latest.
+ * - `unresolved`: refused or failed, nothing remembered. Reads are of `HEAD` (or the ref) as it is, kept in memory
+ *   for this visit only.
+ * - `missing`: the repository or the ref does not exist.
+ * - `moved`: GitHub answered with a redirect (a renamed or moved repository). Refused.
+ */
+export type GithubCommitState =
+  | 'given'
+  | 'resolved'
+  | 'remembered'
+  | 'unresolved'
+  | 'missing'
+  | 'moved';
+
+export interface IGithubCommitResolution {
+  readonly state: GithubCommitState;
+  /** The commit every file and the listing of the project are read at; absent for `unresolved`, `missing`, `moved`. */
+  readonly sha?: string;
+}
+
+/** What the "sources" line of a run says about where the project came from (design 4.5, 4.6). */
+export interface IGithubReadInfo {
+  readonly org: string;
+  readonly repo: string;
+  readonly state: GithubCommitState;
+  /** The commit read, when there is one. */
+  readonly commit?: string;
+  /** Some file was served by the jsDelivr mirror, not by GitHub's file host. */
+  readonly fromMirror: boolean;
+  /** The commit may not be the latest: remembered, or not resolved at all. */
+  readonly mayBeStale: boolean;
+}
+
+export interface IGithubReadOptions {
+  /** Counts the files one run reads and refuses the one past the limit (design 3.6: 40 per run). */
+  readonly budget?: GithubReadBudget;
+}
+
+/** A 40-character commit SHA. */
+const COMMIT_SHA = /^[0-9a-f]{40}$/i;
+
+/** The listing of a commit is kept in the file cache under this name; no file path can be it (`#` is encoded). */
+const TREE_CACHE_PATH = '#tree';
+
+/** Everything read for one `owner/repo@ref` during this page load: one commit, one listing, the files. */
+interface IGithubSession {
+  readonly org: string;
+  readonly repo: string;
+  readonly ref?: string;
+  readonly commit: Promise<IGithubCommitResolution>;
+  mirrorUsed: boolean;
+  tree?: Promise<IGithubGitTreeEntry[]>;
+  readonly files: Map<string, Promise<string | undefined>>;
+  readonly json: Map<string, Promise<unknown>>;
+}
+
 /**
  * Read-only project-file reader for the GitHub store (`STORE_ID_GITHUB_COM`
  * / `STORE_TYPE_GITHUB`) — every project page's data source when a project
@@ -223,59 +334,197 @@ interface IGithubEntityFile {
  * ruling 2026-09-11: "Not a single page is loading from side menu without
  * error").
  *
- * Two request shapes only:
- *  - ONE `api.github.com` call per repo ({@link getTree} — the git Trees
- *    API, recursive), giving every file/folder path in the repo up front;
- *    every subsequent "list a directory" ({@link listDirectory}) is then a
- *    pure in-memory filter over that cached tree, not a further API call.
- *    This is deliberately NOT the contents API (`GET .../contents/<path>`),
- *    which would cost one `api.github.com` call PER FOLDER — this app's own
- *    side menu alone visits a dozen-plus folders (environments, each
- *    catalog's dbmodel schema/tables, entities, six query folders, boards),
- *    and unauthenticated `api.github.com` access is capped at 60
- *    requests/hour per client IP (shared across every viewer behind that
- *    IP, e.g. a CI runner) — {@link GITHUB_RATE_LIMIT_MESSAGE}.
- *  - `raw.githubusercontent.com` for every file's actual content
- *    ({@link getRawJson}/{@link getRawText}) — a CDN, not the rate-limited
- *    core API.
- * Both are cached per `(org/repo)` or `(projectId, path)` for the lifetime
- * of this singleton (`providedIn: 'root'`), so navigating between project
- * pages never re-fetches the same directory or file twice in one session.
+ * How a project is read (design `demo-as-github-project.md` 4.5):
+ *  1. ONE call resolves the commit: `api.github.com/repos/<o>/<r>/commits/<ref or HEAD>`. A full SHA in the id
+ *     skips it (never for a trusted project: a trusted run reads what GitHub says the default branch is now).
+ *     The answer is remembered for 5 minutes, across page loads.
+ *  2. The listing (`git/trees/<sha>?recursive=1`, ONE call per repo; every "list a directory" is a filter over it,
+ *     never the contents API, which costs a rate-limited call per folder — unauthenticated `api.github.com` access
+ *     is capped at 60 requests/hour per IP, {@link GITHUB_RATE_LIMIT_MESSAGE}) and every file
+ *     (`raw.githubusercontent.com/<o>/<r>/<sha>/<path>`) come from that one commit, so a push in the middle of a
+ *     visit cannot mix two versions.
+ *  3. What was read is kept in a database of its own, keyed by commit: a commit's files never change, so a browser
+ *     never fetches one twice. Bounded (20 MB, 20 repos, two commits per repo).
+ *  4. A refused, failed or timed-out read from the file host is tried again from jsDelivr, same commit.
+ *  5. When the resolve call fails, the reads degrade, never stop: see {@link GithubCommitState}.
+ * Also: no credentials, no redirect followed (a renamed or moved repository is "No DataTug project here"), a
+ * 256 KB cap per project file checked on the bytes received, at most 40 distinct files per run
+ * ({@link GithubReadBudget}).
+ *
+ * Everything is also cached in memory per `(org/repo@ref)` for the lifetime of this singleton
+ * (`providedIn: 'root'`), so navigating between project pages never re-reads the same directory or file twice in
+ * one session.
  */
 @Injectable({ providedIn: 'root' })
 export class GithubProjectReaderService {
-  private readonly http = inject(HttpClient);
+  private readonly fetchFn = inject(GITHUB_FETCH);
+  private readonly now = inject(GITHUB_CLOCK);
+  private readonly store = inject(GITHUB_FILE_STORE);
 
-  private readonly treeCache = new Map<
-    string,
-    Observable<IGithubGitTreeEntry[]>
-  >();
-  private readonly fileCache = new Map<string, Observable<unknown>>();
+  private readonly sessions = new Map<string, IGithubSession>();
+
+  // ---------------------------------------------------------------------
+  // The commit: one per repo and ref, resolved once
+  // ---------------------------------------------------------------------
+
+  private session(id: IGithubProjectId, projectId: string): IGithubSession {
+    const key = `${id.org}/${id.repo}@${id.ref ?? GITHUB_DEFAULT_BRANCH_REF}`;
+    let session = this.sessions.get(key);
+    if (!session) {
+      session = {
+        org: id.org,
+        repo: id.repo,
+        ref: id.ref,
+        commit: this.resolveCommit(id, projectId),
+        mirrorUsed: false,
+        files: new Map(),
+        json: new Map(),
+      };
+      this.sessions.set(key, session);
+    }
+    return session;
+  }
+
+  private async resolveCommit(
+    id: IGithubProjectId,
+    projectId: string,
+  ): Promise<IGithubCommitResolution> {
+    const { org, repo, ref } = id;
+    if (
+      ref &&
+      COMMIT_SHA.test(ref) &&
+      !isTrustedProjectAddress({ storeId: GITHUB_STORE_ID, projectId })
+    ) {
+      return { state: 'given', sha: ref.toLowerCase() };
+    }
+    const memoKey = `${org}/${repo}@${ref ?? GITHUB_DEFAULT_BRANCH_REF}`;
+    const memo = await this.store.getResolved(memoKey).catch(() => undefined);
+    const now = this.now();
+    if (memo) {
+      const age = now - memo.at;
+      if (age >= 0 && age < GITHUB_RESOLVE_TTL_MS) {
+        return { state: 'resolved', sha: memo.sha };
+      }
+    }
+    const out = await githubGet(
+      this.fetchFn,
+      `https://${GITHUB_API_HOST}/repos/${org}/${repo}/commits/${encodeURIComponent(ref ?? GITHUB_DEFAULT_BRANCH_REF)}`,
+      {
+        maxBytes: 1024,
+        accept: 'application/vnd.github.sha',
+        detectMoved: true,
+      },
+    );
+    if (out.kind === 'ok') {
+      const sha = out.text.trim().toLowerCase();
+      if (COMMIT_SHA.test(sha)) {
+        await this.store.putResolved(memoKey, { sha, at: now }).catch(() => undefined);
+        return { state: 'resolved', sha };
+      }
+    } else if (out.kind === 'moved') {
+      return { state: 'moved' };
+    } else if (out.kind === 'missing') {
+      return { state: 'missing' };
+    }
+    return memo
+      ? { state: 'remembered', sha: memo.sha }
+      : { state: 'unresolved' };
+  }
+
+  /**
+   * Where a project is read from: the commit and how it was found, and whether the mirror had to be used. The
+   * commit is resolved when this emits, so the answer is complete once the project has been read.
+   */
+  public readInfo(projectId: string): Observable<IGithubReadInfo> {
+    let session: IGithubSession;
+    try {
+      session = this.session(readableId(projectId), projectId);
+    } catch (err) {
+      return throwError(() => err);
+    }
+    return defer(() =>
+      from(
+        session.commit.then(
+          (c): IGithubReadInfo => ({
+            org: session.org,
+            repo: session.repo,
+            state: c.state,
+            commit: c.sha,
+            fromMirror: session.mirrorUsed,
+            mayBeStale: c.state === 'remembered' || c.state === 'unresolved',
+          }),
+        ),
+      ),
+    );
+  }
 
   // ---------------------------------------------------------------------
   // Low-level: tree (directory listing) + raw file content
   // ---------------------------------------------------------------------
 
   private getTree(projectId: string): Observable<IGithubGitTreeEntry[]> {
-    let id: IGithubProjectId;
+    let session: IGithubSession;
     try {
-      id = assertReadableGithubProjectId(projectId);
+      session = this.session(readableId(projectId), projectId);
     } catch (err) {
       return throwError(() => err);
     }
-    const { org, repo } = id;
-    const key = `${org}/${repo}`;
-    let cached = this.treeCache.get(key);
-    if (!cached) {
-      const url = `https://api.github.com/repos/${org}/${repo}/git/trees/${GITHUB_READER_DEFAULT_BRANCH}?recursive=1`;
-      cached = this.http.get<IGithubGitTreeResponse>(url).pipe(
-        map((res) => res.tree || []),
-        catchError((err) => this.handleApiError<IGithubGitTreeEntry[]>(err, [])),
-        shareReplay(1),
-      );
-      this.treeCache.set(key, cached);
+    if (!session.tree) {
+      const tree = this.loadTree(session);
+      session.tree = tree;
+      tree.catch(() => {
+        if (session.tree === tree) {
+          session.tree = undefined;
+        }
+      });
     }
-    return cached;
+    return from(session.tree);
+  }
+
+  private async loadTree(session: IGithubSession): Promise<IGithubGitTreeEntry[]> {
+    const commit = await session.commit;
+    if (commit.state === 'missing' || commit.state === 'moved') {
+      return [];
+    }
+    const commitKey = commit.sha
+      ? `${session.org}/${session.repo}@${commit.sha}`
+      : undefined;
+    if (commitKey) {
+      const hit = await this.store.getFile(commitKey, TREE_CACHE_PATH).catch(() => undefined);
+      if (hit?.text) {
+        return JSON.parse(hit.text) as IGithubGitTreeEntry[];
+      }
+    }
+    const revision = commit.sha ?? session.ref ?? GITHUB_DEFAULT_BRANCH_REF;
+    const out = await githubGet(
+      this.fetchFn,
+      `https://${GITHUB_API_HOST}/repos/${session.org}/${session.repo}/git/trees/${encodeURIComponent(revision)}?recursive=1`,
+      { maxBytes: MAX_TREE_BYTES, detectMoved: true },
+    );
+    switch (out.kind) {
+      case 'ok': {
+        const response = JSON.parse(out.text) as IGithubGitTreeResponse;
+        const tree = (response.tree || []).map(({ path, type }) => ({ path, type }));
+        if (commitKey) {
+          await this.store
+            .putFile(commitKey, TREE_CACHE_PATH, {
+              text: JSON.stringify(tree),
+              bytes: out.bytes,
+            })
+            .catch(() => undefined);
+        }
+        return tree;
+      }
+      case 'missing':
+      case 'moved':
+        return [];
+      case 'refused':
+        throw new Error(GITHUB_RATE_LIMIT_MESSAGE);
+      case 'too-large':
+        throw new GithubFileTooLargeError('the project listing', MAX_TREE_BYTES);
+      default:
+        throw new GithubReadError('the project listing', [GITHUB_API_HOST]);
+    }
   }
 
   /**
@@ -286,15 +535,16 @@ export class GithubProjectReaderService {
    * `api.github.com` call every time. A path that doesn't exist in the repo
    * (e.g. this project has no `widgets/` folder at all) resolves to an
    * empty list, never an error — the caller's page renders its own empty
-   * state (founder ruling item 2).
+   * state (founder ruling item 2). A project at the repo root (`folder` is
+   * empty) lists from the root of the repo.
    */
   public listDirectory(
     projectId: string,
     relativePath: string,
   ): Observable<IGithubDirEntry[]> {
     const { folder } = parseGithubProjectId(projectId);
-    const base = relativePath ? `${folder}/${relativePath}` : folder;
-    const prefix = `${base}/`;
+    const base = [folder, relativePath].filter(Boolean).join('/');
+    const prefix = base ? `${base}/` : '';
     return this.getTree(projectId).pipe(
       map((tree) => {
         const children = new Map<string, 'file' | 'dir'>();
@@ -317,95 +567,167 @@ export class GithubProjectReaderService {
           }
         }
         return [...children.entries()]
-          .map(([name, type]) => ({ name, path: `${base}/${name}`, type }))
+          .map(([name, type]) => ({
+            name,
+            path: base ? `${base}/${name}` : name,
+            type,
+          }))
           .sort((a, b) => a.name.localeCompare(b.name));
       }),
     );
   }
 
+  /** One file's text at the session's commit, from memory, the cache, the file host or the mirror. */
+  private readText(
+    session: IGithubSession,
+    path: string,
+  ): Promise<string | undefined> {
+    let read = session.files.get(path);
+    if (!read) {
+      read = this.loadText(session, path);
+      session.files.set(path, read);
+      const memo = read;
+      read.catch(() => {
+        if (session.files.get(path) === memo) {
+          session.files.delete(path);
+        }
+      });
+    }
+    return read;
+  }
+
+  private async loadText(
+    session: IGithubSession,
+    path: string,
+  ): Promise<string | undefined> {
+    const commit = await session.commit;
+    if (commit.state === 'missing' || commit.state === 'moved') {
+      return undefined;
+    }
+    const { org, repo } = session;
+    const commitKey = commit.sha ? `${org}/${repo}@${commit.sha}` : undefined;
+    if (commitKey) {
+      const hit = await this.store.getFile(commitKey, path).catch(() => undefined);
+      if (hit) {
+        return hit.text ?? undefined;
+      }
+    }
+    // Pinned: the commit. Not resolved: the ref as it is now (`HEAD` is the default branch, whatever it is called).
+    const revision = commit.sha ?? session.ref ?? GITHUB_DEFAULT_BRANCH_REF;
+    const raw = await githubGet(
+      this.fetchFn,
+      `https://${GITHUB_RAW_HOST}/${org}/${repo}/${encodeURIComponent(revision)}/${path}`,
+      { maxBytes: MAX_PROJECT_FILE_BYTES },
+    );
+    const hosts = [GITHUB_RAW_HOST];
+    let out = raw;
+    if (raw.kind === 'refused' || raw.kind === 'down') {
+      // A limit, a block, an outage: the same bytes from different infrastructure. Without a commit, jsDelivr's
+      // unversioned address is the default branch (up to 12 hours old).
+      hosts.push(GITHUB_MIRROR_HOST);
+      const version = commit.sha ?? session.ref;
+      out = await githubGet(
+        this.fetchFn,
+        `https://${GITHUB_MIRROR_HOST}/gh/${org}/${repo}${version ? `@${encodeURIComponent(version)}` : ''}/${path}`,
+        { maxBytes: MAX_PROJECT_FILE_BYTES },
+      );
+      session.mirrorUsed ||= out.kind === 'ok';
+    }
+    switch (out.kind) {
+      case 'ok':
+        if (commitKey) {
+          await this.store
+            .putFile(commitKey, path, { text: out.text, bytes: out.bytes })
+            .catch(() => undefined);
+        }
+        return out.text;
+      case 'missing':
+        // Absent at a commit stays absent: remembered too, so a warm load asks for nothing. Only on the word of
+        // GitHub's own file host.
+        if (commitKey && out === raw) {
+          await this.store
+            .putFile(commitKey, path, { text: null, bytes: 0 })
+            .catch(() => undefined);
+        }
+        return undefined;
+      case 'moved':
+        return undefined;
+      case 'too-large':
+        throw new GithubFileTooLargeError(
+          decodeURIComponent(path),
+          MAX_PROJECT_FILE_BYTES,
+        );
+      default:
+        throw new GithubReadError(decodeURIComponent(path), hosts);
+    }
+  }
+
+  /** The session and repo-relative path of one file read; throws for an invalid id or path, or a run past its limit. */
+  private prepare(
+    projectId: string,
+    relativePath: string,
+    options: IGithubReadOptions | undefined,
+  ): { session: IGithubSession; path: string } {
+    const id = readableId(projectId);
+    const path = projectFilePath(id.folder, relativePath);
+    options?.budget?.take(path);
+    return { session: this.session(id, projectId), path };
+  }
+
   /**
    * `GET`s and JSON-decodes one file at `relativePath` (project-folder-relative)
-   * from `raw.githubusercontent.com`. A missing file resolves to `undefined`
+   * from the project's commit. A missing file resolves to `undefined`
    * (never an error) — most callers here treat that as "this project doesn't
    * have one", not a failure.
    */
   public getRawJson<T>(
     projectId: string,
     relativePath: string,
+    options?: IGithubReadOptions,
   ): Observable<T | undefined> {
-    const key = `json:${projectId}:${relativePath}`;
-    let url: string;
+    let target: { session: IGithubSession; path: string };
     try {
-      assertReadableGithubProjectId(projectId);
-      url = buildGithubRawUrl(projectId, relativePath);
+      target = this.prepare(projectId, relativePath, options);
     } catch (err) {
       return throwError(() => err);
     }
-    let cached = this.fileCache.get(key) as Observable<T | undefined> | undefined;
-    if (!cached) {
-      cached = this.http.get<T>(url).pipe(
-        catchError((err) => this.handleFileError<T>(err)),
-        shareReplay(1),
-      );
-      this.fileCache.set(key, cached);
+    const { session, path } = target;
+    let parsed = session.json.get(path) as Promise<T | undefined> | undefined;
+    if (!parsed) {
+      parsed = this.readText(session, path).then((text) => {
+        if (text === undefined) {
+          return undefined;
+        }
+        try {
+          return JSON.parse(text) as T;
+        } catch {
+          throw new Error(`${decodeURIComponent(path)} is not valid JSON`);
+        }
+      });
+      session.json.set(path, parsed);
+      const memo = parsed;
+      parsed.catch(() => {
+        if (session.json.get(path) === memo) {
+          session.json.delete(path);
+        }
+      });
     }
-    return cached;
+    return from(parsed);
   }
 
   /** Same as {@link getRawJson}, but for a plain-text body (a query's `.sql`/`.dtql`/`.http` sidecar). */
   public getRawText(
     projectId: string,
     relativePath: string,
+    options?: IGithubReadOptions,
   ): Observable<string | undefined> {
-    const key = `text:${projectId}:${relativePath}`;
-    let url: string;
+    let target: { session: IGithubSession; path: string };
     try {
-      assertReadableGithubProjectId(projectId);
-      url = buildGithubRawUrl(projectId, relativePath);
+      target = this.prepare(projectId, relativePath, options);
     } catch (err) {
       return throwError(() => err);
     }
-    let cached = this.fileCache.get(key) as Observable<string | undefined> | undefined;
-    if (!cached) {
-      cached = this.http.get(url, { responseType: 'text' }).pipe(
-        catchError((err) => this.handleFileError<string>(err)),
-        shareReplay(1),
-      );
-      this.fileCache.set(key, cached);
-    }
-    return cached;
-  }
-
-  /**
-   * `404` (a folder/file this project simply doesn't have) maps to the
-   * caller's own "empty" fallback — never an error, so an absent
-   * `widgets/`/`servers/`... folder renders that page's empty state, per
-   * founder ruling item 2. `403` (this unauthenticated client's
-   * `api.github.com` quota exhausted, `GITHUB_RATE_LIMIT_MESSAGE`) and
-   * every other status propagate as a real, user-visible error.
-   */
-  private handleApiError<T>(err: unknown, emptyValue: T): Observable<T> {
-    if (err instanceof HttpErrorResponse) {
-      if (err.status === 404) {
-        return of(emptyValue);
-      }
-      if (err.status === 403) {
-        return throwError(() => new Error(GITHUB_RATE_LIMIT_MESSAGE));
-      }
-    }
-    return throwError(() => err);
-  }
-
-  private handleFileError<T>(err: unknown): Observable<T | undefined> {
-    if (err instanceof HttpErrorResponse) {
-      if (err.status === 404) {
-        return of(undefined);
-      }
-      if (err.status === 403) {
-        return throwError(() => new Error(GITHUB_RATE_LIMIT_MESSAGE));
-      }
-    }
-    return throwError(() => err);
+    return from(this.readText(target.session, target.path));
   }
 
   // ---------------------------------------------------------------------
@@ -719,7 +1041,7 @@ export class GithubProjectReaderService {
     return this.getTree(projectId).pipe(
       switchMap((tree) => {
         const { folder } = parseGithubProjectId(projectId);
-        const queriesPrefix = `${folder}/queries/`;
+        const queriesPrefix = folder ? `${folder}/queries/` : 'queries/';
         const wantsFolder = id.includes('/');
         const wantFolderName = wantsFolder ? id.slice(0, id.lastIndexOf('/')) : '';
         const wantBareId = wantsFolder ? id.slice(id.lastIndexOf('/') + 1) : id;

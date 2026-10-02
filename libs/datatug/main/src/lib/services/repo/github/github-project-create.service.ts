@@ -22,9 +22,9 @@ export const REGISTER_GITHUB_PROJECT_ENDPOINT =
 export const DEFAULT_GITHUB_PROJECT_FOLDER = 'datatug';
 
 /**
- * Branch new project files are committed to. The app's GitHub reader builds
- * raw URLs against `main` (`buildGithubRawUrl`), so creating on any other
- * branch would produce a project the app cannot read.
+ * Branch new project files are committed to. The app's GitHub reader reads
+ * the repo's default branch (`HEAD`), so a project committed to a branch that
+ * is not the default is not seen by it.
  */
 export const GITHUB_PROJECT_BRANCH = 'main';
 

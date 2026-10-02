@@ -1,22 +1,23 @@
-import { provideHttpClient } from '@angular/common/http';
-import {
-  HttpTestingController,
-  provideHttpClientTesting,
-} from '@angular/common/http/testing';
+import { firstValueFrom } from 'rxjs';
 import { TestBed } from '@angular/core/testing';
 
 import { GithubProjectIdError } from '../../../nav/github-project-address';
+import { FakeGithub, fakeSha } from './github-fake-backend.test';
+import { NO_GITHUB_FILE_STORE } from './github-file-store-api';
 import {
   assertReadableGithubProjectId,
   buildGithubRawUrl,
+  GITHUB_CLOCK,
+  GITHUB_FETCH,
+  GITHUB_FILE_STORE,
   GITHUB_RATE_LIMIT_MESSAGE,
   GithubProjectReaderService,
   parseGithubProjectId,
 } from './github-project-reader.service';
 
 const PROJECT_ID = 'datatug-demo-projects@datatug@demo-project-1';
-const TREE_URL =
-  'https://api.github.com/repos/datatug/datatug-demo-projects/git/trees/main?recursive=1';
+const REPO = 'datatug/datatug-demo-projects';
+const SHA = fakeSha(0xa1);
 
 // A trimmed, representative subset of demo-project-1's real tree — enough
 // to exercise directory listing, catalog-tables schema/table resolution,
@@ -97,22 +98,34 @@ const DEMO_TREE = {
   ],
 };
 
+
+/** The files of `DEMO_TREE`, each with `{}` unless a test gives it a body. */
+function demoFiles(bodies: Record<string, string> = {}): Record<string, string> {
+  const files: Record<string, string> = {};
+  for (const entry of DEMO_TREE.tree) {
+    if (entry.type === 'blob') {
+      files[entry.path] = '{}';
+    }
+  }
+  return { ...files, ...bodies };
+}
+
+function setup(bodies: Record<string, string> = {}) {
+  const gh = new FakeGithub();
+  gh.addRepo(REPO, SHA, demoFiles(bodies));
+  TestBed.configureTestingModule({
+    providers: [
+      { provide: GITHUB_FETCH, useValue: gh.fetch },
+      { provide: GITHUB_CLOCK, useValue: () => 1_000_000 },
+      { provide: GITHUB_FILE_STORE, useValue: NO_GITHUB_FILE_STORE },
+    ],
+  });
+  return { gh, service: TestBed.inject(GithubProjectReaderService) };
+}
+
+const first = <T>(o: Parameters<typeof firstValueFrom<T>>[0]) => firstValueFrom(o);
+
 describe('GithubProjectReaderService', () => {
-  let service: GithubProjectReaderService;
-  let httpMock: HttpTestingController;
-
-  beforeEach(() => {
-    TestBed.configureTestingModule({
-      providers: [provideHttpClient(), provideHttpClientTesting()],
-    });
-    service = TestBed.inject(GithubProjectReaderService);
-    httpMock = TestBed.inject(HttpTestingController);
-  });
-
-  afterEach(() => {
-    httpMock.verify();
-  });
-
   describe('parseGithubProjectId / buildGithubRawUrl', () => {
     it('splits repo@org@folder and defaults folder to "datatug"', () => {
       expect(parseGithubProjectId('my-repo@my-org')).toEqual({
@@ -127,34 +140,34 @@ describe('GithubProjectReaderService', () => {
       });
     });
 
-    it('builds a project-folder-relative raw URL (branch main, exactly as before)', () => {
+    it('builds a project-folder-relative raw URL (HEAD: the default branch, whatever it is called)', () => {
       expect(buildGithubRawUrl(PROJECT_ID, 'entities/Album/Album.entity.json')).toBe(
-        'https://raw.githubusercontent.com/datatug/datatug-demo-projects/main/demo-project-1/entities/Album/Album.entity.json',
+        'https://raw.githubusercontent.com/datatug/datatug-demo-projects/HEAD/demo-project-1/entities/Album/Album.entity.json',
       );
     });
 
     it.each([
       // [project id, relative path, raw URL]
-      ['r@o', 'datatug-project.json', 'https://raw.githubusercontent.com/o/r/main/datatug/datatug-project.json'],
-      ['r@o@d', 'datatug-project.json', 'https://raw.githubusercontent.com/o/r/main/d/datatug-project.json'],
-      ['r@o@a/b', 'x/y.json', 'https://raw.githubusercontent.com/o/r/main/a/b/x/y.json'],
+      ['r@o', 'datatug-project.json', 'https://raw.githubusercontent.com/o/r/HEAD/datatug/datatug-project.json'],
+      ['r@o@d', 'datatug-project.json', 'https://raw.githubusercontent.com/o/r/HEAD/d/datatug-project.json'],
+      ['r@o@a/b', 'x/y.json', 'https://raw.githubusercontent.com/o/r/HEAD/a/b/x/y.json'],
       // An empty folder is the repo root: no doubled slash.
-      ['r@o@', 'datatug-project.json', 'https://raw.githubusercontent.com/o/r/main/datatug-project.json'],
-      ['chinook-demo@datatug@', 'queries/q.json', 'https://raw.githubusercontent.com/datatug/chinook-demo/main/queries/q.json'],
+      ['r@o@', 'datatug-project.json', 'https://raw.githubusercontent.com/o/r/HEAD/datatug-project.json'],
+      ['chinook-demo@datatug@', 'queries/q.json', 'https://raw.githubusercontent.com/datatug/chinook-demo/HEAD/queries/q.json'],
       // The explicit ref of a four-part id: a tag or a commit SHA.
       ['r@o@@v1.0.0', 'datatug-project.json', 'https://raw.githubusercontent.com/o/r/v1.0.0/datatug-project.json'],
       ['r@o@d@v1.0.0', 'datatug-project.json', 'https://raw.githubusercontent.com/o/r/v1.0.0/d/datatug-project.json'],
       ['r@o@d@0123456789abcdef0123456789abcdef01234567', 'p.json', 'https://raw.githubusercontent.com/o/r/0123456789abcdef0123456789abcdef01234567/d/p.json'],
-      // HEAD is the default branch: no ref, so the reader's branch.
-      ['r@o@d@HEAD', 'p.json', 'https://raw.githubusercontent.com/o/r/main/d/p.json'],
-      ['r@o@d@', 'p.json', 'https://raw.githubusercontent.com/o/r/main/d/p.json'],
+      // HEAD is the default branch: no ref.
+      ['r@o@d@HEAD', 'p.json', 'https://raw.githubusercontent.com/o/r/HEAD/d/p.json'],
+      ['r@o@d@', 'p.json', 'https://raw.githubusercontent.com/o/r/HEAD/d/p.json'],
       // Lower-cased owner and repo; folder and ref keep their case.
       ['Repo@Org@Dir@Feature', 'p.json', 'https://raw.githubusercontent.com/org/repo/Feature/Dir/p.json'],
       // Every folder and file segment is encoded (the same bytes on the wire for a space or a non-ASCII letter).
-      ['r@o@my dir', 'a b/é.json', 'https://raw.githubusercontent.com/o/r/main/my%20dir/a%20b/%C3%A9.json'],
+      ['r@o@my dir', 'a b/é.json', 'https://raw.githubusercontent.com/o/r/HEAD/my%20dir/a%20b/%C3%A9.json'],
       // Empty file segments are dropped, never a doubled slash.
-      ['r@o@d', '/x//y.json', 'https://raw.githubusercontent.com/o/r/main/d/x/y.json'],
-      ['r@o@', '', 'https://raw.githubusercontent.com/o/r/main/'],
+      ['r@o@d', '/x//y.json', 'https://raw.githubusercontent.com/o/r/HEAD/d/x/y.json'],
+      ['r@o@', '', 'https://raw.githubusercontent.com/o/r/HEAD/'],
     ])('builds the raw URL of %s / %s', (projectId, relativePath, expected) => {
       expect(buildGithubRawUrl(projectId, relativePath)).toBe(expected);
     });
@@ -205,6 +218,16 @@ describe('GithubProjectReaderService', () => {
       },
     );
 
+    it('reads the given revision instead of HEAD or the ref', () => {
+      const sha = '0123456789abcdef0123456789abcdef01234567';
+      expect(buildGithubRawUrl('r@o@d', 'p.json', sha)).toBe(
+        `https://raw.githubusercontent.com/o/r/${sha}/d/p.json`,
+      );
+      expect(buildGithubRawUrl('r@o@d@v1', 'p.json', sha)).toBe(
+        `https://raw.githubusercontent.com/o/r/${sha}/d/p.json`,
+      );
+    });
+
     it('splits the optional fourth part and lower-cases owner and repo', () => {
       expect(parseGithubProjectId('r@o@')).toStrictEqual({ repo: 'r', org: 'o', folder: '' });
       expect(parseGithubProjectId('r@o@@v1')).toStrictEqual({ repo: 'r', org: 'o', folder: '', ref: 'v1' });
@@ -218,34 +241,50 @@ describe('GithubProjectReaderService', () => {
     });
   });
 
-  describe('a project id the reader cannot read yet', () => {
-    it('refuses a four-part id (files at a ref, listing from main would be a mixed project)', () => {
-      const id = 'datatug-demo-projects@datatug@demo-project-1@v1.0.0';
-      expect(() => assertReadableGithubProjectId(id)).toThrow(/not supported yet/);
-      for (const call of [
-        () => service.getRawJson(id, 'datatug-project.json'),
-        () => service.getRawText(id, 'queries/a.sql'),
-        () => service.listDirectory(id, 'entities'),
-      ]) {
-        let error: unknown;
-        call().subscribe({ error: (e: unknown) => (error = e) });
-        expect(error).toBeInstanceOf(GithubProjectIdError);
-        expect((error as GithubProjectIdError).reason).toBe('ref-not-supported');
-      }
-      // Nothing was requested.
-      httpMock.expectNone(() => true);
+  describe('a project id the reader reads at a ref', () => {
+    // Design 4.5: files and listing both come from ONE commit, so a ref is no longer refused (G-A2 closes the
+    // "mixed project" the four-part id used to be refused for).
+    it('reads a four-part id at the commit it names, with no resolve call', async () => {
+      const { gh, service } = setup({
+        'demo-project-1/datatug-project.json': '{"id":"x"}',
+      });
+      const id = `${PROJECT_ID}@${SHA}`;
+      expect(assertReadableGithubProjectId(id).ref).toBe(SHA);
+      await first(service.getRawJson(id, 'datatug-project.json'));
+      await first(service.listDirectory(id, 'entities'));
+      expect(gh.urls()).toEqual([
+        `https://raw.githubusercontent.com/${REPO}/${SHA}/demo-project-1/datatug-project.json`,
+        `https://api.github.com/repos/${REPO}/git/trees/${SHA}?recursive=1`,
+      ]);
+    });
+
+    it('resolves a branch or tag to a commit, then reads everything at it', async () => {
+      const { gh, service } = setup();
+      gh.push(REPO, fakeSha(0xb2), demoFiles());
+      const id = `${PROJECT_ID}@main`;
+      await first(service.getRawJson(id, 'datatug-project.json'));
+      expect(gh.urls('api.github.com')[0]).toBe(
+        `https://api.github.com/repos/${REPO}/commits/main`,
+      );
+      expect(gh.urls('raw.githubusercontent.com')).toEqual([
+        `https://raw.githubusercontent.com/${REPO}/${fakeSha(0xb2)}/demo-project-1/datatug-project.json`,
+      ]);
     });
 
     it('refuses an invalid id with an error, not a request', () => {
+      const { gh, service } = setup();
       for (const id of ['abc', 'r@o@..', 'r@o@a/../b']) {
         let error: unknown;
         service.getRawJson(id, 'x.json').subscribe({ error: (e: unknown) => (error = e) });
         expect(error).toBeInstanceOf(GithubProjectIdError);
+        let listed: unknown;
+        service.listDirectory(id, 'x').subscribe({ error: (e: unknown) => (listed = e) });
+        expect(listed).toBeInstanceOf(GithubProjectIdError);
       }
-      httpMock.expectNone(() => true);
+      expect(gh.count()).toBe(0);
     });
 
-    it('still reads a three-part id from main, as before', () => {
+    it('still reads a three-part id, as before', () => {
       assertReadableGithubProjectId(PROJECT_ID);
       assertReadableGithubProjectId('r@o');
       assertReadableGithubProjectId('chinook-demo@datatug@');
@@ -253,127 +292,148 @@ describe('GithubProjectReaderService', () => {
   });
 
   describe('listDirectory', () => {
-    it('lists immediate children of a folder, files and dirs, from ONE tree fetch', () => {
-      let result: { name: string; type: string }[] | undefined;
-      service.listDirectory(PROJECT_ID, 'environments').subscribe((r) => (result = r));
-
-      httpMock.expectOne(TREE_URL).flush(DEMO_TREE);
+    it('lists immediate children of a folder, files and dirs, from ONE tree fetch', async () => {
+      const { gh, service } = setup();
+      const result = await first(service.listDirectory(PROJECT_ID, 'environments'));
 
       // Sorted with `localeCompare` (case-insensitive, alphabetical) — 'local'
       // sorts before 'QA' there, unlike a naive ASCII/uppercase-first sort.
       expect(result).toEqual([
-        {
-          name: 'local',
-          path: 'demo-project-1/environments/local',
-          type: 'dir',
-        },
+        { name: 'local', path: 'demo-project-1/environments/local', type: 'dir' },
         { name: 'QA', path: 'demo-project-1/environments/QA', type: 'dir' },
       ]);
-    });
-
-    it('reuses the cached tree for a second directory (no second HTTP call)', () => {
-      service.listDirectory(PROJECT_ID, 'environments').subscribe();
-      httpMock.expectOne(TREE_URL).flush(DEMO_TREE);
-
-      let entities: { name: string }[] | undefined;
-      service.listDirectory(PROJECT_ID, 'entities').subscribe((r) => (entities = r));
-      httpMock.expectNone(TREE_URL);
-
-      expect(entities?.map((e) => e.name)).toEqual([
-        'Album',
-        'entities-summary.json',
-        'Track',
+      // The commit, then the listing at that commit.
+      expect(gh.urls()).toEqual([
+        `https://api.github.com/repos/${REPO}/commits/HEAD`,
+        `https://api.github.com/repos/${REPO}/git/trees/${SHA}?recursive=1`,
       ]);
     });
 
-    it('resolves to an empty list for a folder this project does not have (404)', () => {
-      let result: unknown[] | undefined;
-      service.listDirectory(PROJECT_ID, 'widgets').subscribe((r) => (result = r));
+    it('reuses the cached tree for a second directory (no second HTTP call)', async () => {
+      const { gh, service } = setup();
+      await first(service.listDirectory(PROJECT_ID, 'environments'));
+      gh.reset();
 
-      httpMock.expectOne(TREE_URL).flush(null, { status: 404, statusText: 'Not Found' });
-
-      expect(result).toEqual([]);
+      const entities = await first(service.listDirectory(PROJECT_ID, 'entities'));
+      expect(gh.count()).toBe(0);
+      expect(entities.map((e) => e.name)).toEqual(['Album', 'entities-summary.json', 'Track']);
     });
 
-    it('surfaces a friendly message on a 403 (rate limited)', () => {
-      let error: Error | undefined;
-      service.listDirectory(PROJECT_ID, 'entities').subscribe({
-        error: (e) => (error = e),
+    it('lists a project at the repo root (an empty folder): the prefix is not "/"', async () => {
+      const gh = new FakeGithub();
+      gh.addRepo('datatug/chinook-demo', SHA, {
+        'datatug-project.json': '{}',
+        'queries/q.query.json': '{}',
+        'entities/Country/Country.entity.json': '{}',
+        'README.md': '',
       });
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: GITHUB_FETCH, useValue: gh.fetch },
+          { provide: GITHUB_FILE_STORE, useValue: NO_GITHUB_FILE_STORE },
+        ],
+      });
+      const service = TestBed.inject(GithubProjectReaderService);
+      const id = 'chinook-demo@datatug@';
 
-      httpMock.expectOne(TREE_URL).flush(null, { status: 403, statusText: 'Forbidden' });
+      expect(await first(service.listDirectory(id, ''))).toEqual([
+        { name: 'datatug-project.json', path: 'datatug-project.json', type: 'file' },
+        { name: 'entities', path: 'entities', type: 'dir' },
+        { name: 'queries', path: 'queries', type: 'dir' },
+        { name: 'README.md', path: 'README.md', type: 'file' },
+      ]);
+      expect(await first(service.listDirectory(id, 'entities'))).toEqual([
+        { name: 'Country', path: 'entities/Country', type: 'dir' },
+      ]);
+      expect(await first(service.listEntityIds(id))).toEqual(['Country']);
+      const queries = await first(service.getQueriesFolder(id));
+      expect(queries.items?.map((i) => i.id)).toEqual(['q']);
+    });
 
-      expect(error?.message).toBe(GITHUB_RATE_LIMIT_MESSAGE);
+    it('resolves to an empty list for a folder this project does not have', async () => {
+      const { service } = setup();
+      expect(await first(service.listDirectory(PROJECT_ID, 'widgets'))).toEqual([]);
+    });
+
+    it('resolves to an empty list when the repository does not exist (404)', async () => {
+      const { service } = setup();
+      expect(await first(service.listDirectory('r@o@d', 'entities'))).toEqual([]);
+    });
+
+    it('surfaces a friendly message on a 403 of the listing (rate limited)', async () => {
+      const { gh, service } = setup();
+      // The commit is resolved, the listing is refused.
+      gh.fail.api = (url) => (url.pathname.includes('/git/trees/') ? 403 : undefined);
+      await expect(first(service.listDirectory(PROJECT_ID, 'entities'))).rejects.toThrow(
+        GITHUB_RATE_LIMIT_MESSAGE,
+      );
     });
   });
 
   describe('getRawJson / getRawText', () => {
-    it('decodes JSON on success', () => {
-      let result: { id: string } | undefined;
-      service
-        .getRawJson<{ id: string }>(PROJECT_ID, 'datatug-project.json')
-        .subscribe((r) => (result = r));
-
-      httpMock
-        .expectOne(
-          'https://raw.githubusercontent.com/datatug/datatug-demo-projects/main/demo-project-1/datatug-project.json',
-        )
-        .flush({ id: 'datatug-demo-project' });
+    it('decodes JSON on success, from the pinned commit', async () => {
+      const { gh, service } = setup({
+        'demo-project-1/datatug-project.json': '{"id":"datatug-demo-project"}',
+      });
+      const result = await first(
+        service.getRawJson<{ id: string }>(PROJECT_ID, 'datatug-project.json'),
+      );
 
       expect(result).toEqual({ id: 'datatug-demo-project' });
+      expect(gh.urls('raw.githubusercontent.com')).toEqual([
+        `https://raw.githubusercontent.com/${REPO}/${SHA}/demo-project-1/datatug-project.json`,
+      ]);
     });
 
-    it('resolves to undefined on 404 (never an error)', () => {
-      let result: unknown = 'not-set';
-      let errored = false;
-      service.getRawJson(PROJECT_ID, 'entities/Missing/Missing.entity.json').subscribe({
-        next: (r) => (result = r),
-        error: () => (errored = true),
-      });
-
-      httpMock
-        .expectOne((r) => r.url.endsWith('entities/Missing/Missing.entity.json'))
-        .flush(null, { status: 404, statusText: 'Not Found' });
-
-      expect(errored).toBe(false);
-      expect(result).toBeUndefined();
+    it('resolves to undefined on 404 (never an error)', async () => {
+      const { service } = setup();
+      expect(
+        await first(service.getRawJson(PROJECT_ID, 'entities/Missing/Missing.entity.json')),
+      ).toBeUndefined();
     });
 
-    it('surfaces GITHUB_RATE_LIMIT_MESSAGE on a 403', () => {
-      let error: Error | undefined;
-      service.getRawText(PROJECT_ID, 'queries/albums/albums_by_title.sql').subscribe({
-        error: (e) => (error = e),
-      });
-
-      httpMock
-        .expectOne((r) => r.url.endsWith('queries/albums/albums_by_title.sql'))
-        .flush(null, { status: 403, statusText: 'Forbidden' });
-
-      expect(error?.message).toBe(GITHUB_RATE_LIMIT_MESSAGE);
+    it('says so when a file is not JSON', async () => {
+      const { service } = setup({ 'demo-project-1/datatug-project.json': '<html>' });
+      await expect(first(service.getRawJson(PROJECT_ID, 'datatug-project.json'))).rejects.toThrow(
+        /not valid JSON/,
+      );
     });
 
-    it('caches a file so a second read does not re-fetch it', () => {
-      service.getRawJson(PROJECT_ID, 'datatug-project.json').subscribe();
-      httpMock
-        .expectOne((r) => r.url.endsWith('datatug-project.json'))
-        .flush({ id: 'x' });
+    it('names the hosts when none of them answers (a 403 of the file host, the mirror down)', async () => {
+      const { gh, service } = setup();
+      gh.fail.raw = 403;
+      gh.fail.mirror = 503;
+      await expect(
+        first(service.getRawText(PROJECT_ID, 'queries/albums/albums_by_title.sql')),
+      ).rejects.toThrow(/raw\.githubusercontent\.com and cdn\.jsdelivr\.net did not answer/);
+    });
 
-      service.getRawJson(PROJECT_ID, 'datatug-project.json').subscribe();
-      httpMock.expectNone((r) => r.url.endsWith('datatug-project.json'));
+    it('caches a file so a second read does not re-fetch it', async () => {
+      const { gh, service } = setup();
+      await first(service.getRawJson(PROJECT_ID, 'datatug-project.json'));
+      const requests = gh.count();
+      await first(service.getRawJson(PROJECT_ID, 'datatug-project.json'));
+      await first(service.getRawText(PROJECT_ID, 'datatug-project.json'));
+      expect(gh.count()).toBe(requests);
+    });
+
+    it('does not remember a failed read: a second try asks again', async () => {
+      const { gh, service } = setup();
+      gh.fail.raw = 500;
+      gh.fail.mirror = 500;
+      await expect(first(service.getRawText(PROJECT_ID, 'datatug-project.json'))).rejects.toThrow();
+      gh.fail.raw = undefined;
+      expect(await first(service.getRawText(PROJECT_ID, 'datatug-project.json'))).toBe('{}');
     });
   });
 
   describe('getCatalogTables', () => {
-    it('resolves the dbModel, then schema, then table folders into ICatalogTables', () => {
-      let result: { tables: unknown[]; views: unknown[] } | undefined;
-      service
-        .getCatalogTables(PROJECT_ID, 'local', 'chinook-local')
-        .subscribe((r) => (result = r));
-
-      httpMock
-        .expectOne((r) => r.url.endsWith('chinook-local.db.json'))
-        .flush({ driver: 'sqlite3', dbModel: 'chinook' });
-      httpMock.expectOne(TREE_URL).flush(DEMO_TREE);
+    it('resolves the dbModel, then schema, then table folders into ICatalogTables', async () => {
+      const { service } = setup({
+        'demo-project-1/environments/local/catalogs/chinook-local/chinook-local.db.json':
+          '{"driver":"sqlite3","dbModel":"chinook"}',
+      });
+      const result = await first(service.getCatalogTables(PROJECT_ID, 'local', 'chinook-local'));
 
       expect(result).toEqual({
         tables: [
@@ -384,56 +444,38 @@ describe('GithubProjectReaderService', () => {
       });
     });
 
-    it('resolves to an empty catalog when the catalog file has no dbModel', () => {
-      let result: { tables: unknown[]; views: unknown[] } | undefined;
-      service
-        .getCatalogTables(PROJECT_ID, 'local', 'unknown-catalog')
-        .subscribe((r) => (result = r));
-
-      httpMock
-        .expectOne((r) => r.url.endsWith('unknown-catalog.db.json'))
-        .flush(null, { status: 404, statusText: 'Not Found' });
-
-      expect(result).toEqual({ tables: [], views: [] });
+    it('resolves to an empty catalog when the catalog file has no dbModel', async () => {
+      const { service } = setup();
+      expect(await first(service.getCatalogTables(PROJECT_ID, 'local', 'unknown-catalog'))).toEqual({
+        tables: [],
+        views: [],
+      });
     });
   });
 
   describe('listEntityIds', () => {
-    it('lists entities/ subfolder names, not entities-summary.json', () => {
-      let result: string[] | undefined;
-      service.listEntityIds(PROJECT_ID).subscribe((r) => (result = r));
-
-      httpMock.expectOne(TREE_URL).flush(DEMO_TREE);
-
-      expect(result).toEqual(['Album', 'Track']);
+    it('lists entities/ subfolder names, not entities-summary.json', async () => {
+      const { service } = setup();
+      expect(await first(service.listEntityIds(PROJECT_ID))).toEqual(['Album', 'Track']);
     });
   });
 
   describe('getQueriesFolder', () => {
-    it('builds the recursive folder tree, one folder per queries/ subfolder', () => {
-      let result:
-        | { id: string; folders?: { id: string; items?: { id: string; type: string }[] }[] }
-        | undefined;
-      service.getQueriesFolder(PROJECT_ID).subscribe((r) => (result = r));
+    it('builds the recursive folder tree, one folder per queries/ subfolder', async () => {
+      const { service } = setup({
+        'demo-project-1/queries/albums/albums_by_title.sql.json': '{"title":"Albums by title"}',
+        'demo-project-1/queries/customers/customer-invoices.query.json':
+          '{"id":"customer-invoices","title":"Customer invoices","type":"DTQL"}',
+      });
+      const result = await first(service.getQueriesFolder(PROJECT_ID));
 
-      httpMock.expectOne(TREE_URL).flush(DEMO_TREE);
-      // One def-file raw fetch per query item found in the tree.
-      httpMock
-        .expectOne((r) => r.url.endsWith('albums/albums_by_title.sql.json'))
-        .flush({ title: 'Albums by title' });
-      httpMock
-        .expectOne((r) => r.url.endsWith('customers/customer-invoices.query.json'))
-        .flush({ id: 'customer-invoices', title: 'Customer invoices', type: 'DTQL' });
-
-      expect(result?.id).toBe('~');
-      expect(result?.folders?.map((f) => f.id).sort()).toEqual(['albums', 'customers']);
-      const albums = result?.folders?.find((f) => f.id === 'albums');
+      expect(result.id).toBe('~');
+      expect(result.folders?.map((f) => f.id).sort()).toEqual(['albums', 'customers']);
+      const albums = result.folders?.find((f) => f.id === 'albums');
       // Legacy `.sql.json` (no "id" field) falls back to the filename-derived
       // bare id — `albums_by_title.sql.json` -> `albums_by_title`.
-      expect(albums?.items).toEqual([
-        { id: 'albums_by_title', title: 'Albums by title', type: 'SQL' },
-      ]);
-      const customers = result?.folders?.find((f) => f.id === 'customers');
+      expect(albums?.items).toEqual([{ id: 'albums_by_title', title: 'Albums by title', type: 'SQL' }]);
+      const customers = result.folders?.find((f) => f.id === 'customers');
       expect(customers?.items?.[0]).toMatchObject({
         id: 'customer-invoices',
         title: 'Customer invoices',
@@ -447,17 +489,13 @@ describe('GithubProjectReaderService', () => {
   });
 
   describe('getQuery', () => {
-    it('resolves a bare id, fetching both the definition and its sidecar body', () => {
-      let result: { id: string; type: string; text?: string } | undefined;
-      service.getQuery(PROJECT_ID, 'customer-invoices').subscribe((r) => (result = r));
-
-      httpMock.expectOne(TREE_URL).flush(DEMO_TREE);
-      httpMock
-        .expectOne((r) => r.url.endsWith('customers/customer-invoices.query.json'))
-        .flush({ id: 'customer-invoices', title: 'Customer invoices', type: 'DTQL' });
-      httpMock
-        .expectOne((r) => r.url.endsWith('customers/customer-invoices.query.dtql'))
-        .flush('from:\n  name: Invoice\n');
+    it('resolves a bare id, fetching both the definition and its sidecar body', async () => {
+      const { service } = setup({
+        'demo-project-1/queries/customers/customer-invoices.query.json':
+          '{"id":"customer-invoices","title":"Customer invoices","type":"DTQL"}',
+        'demo-project-1/queries/customers/customer-invoices.query.dtql': 'from:\n  name: Invoice\n',
+      });
+      const result = await first(service.getQuery(PROJECT_ID, 'customer-invoices'));
 
       expect(result).toMatchObject({
         id: 'customer-invoices',
@@ -466,34 +504,22 @@ describe('GithubProjectReaderService', () => {
       });
     });
 
-    it('resolves a folder-qualified id the same way', () => {
-      let result: { id: string } | undefined;
-      service
-        .getQuery(PROJECT_ID, 'customers/customer-invoices')
-        .subscribe((r) => (result = r));
-
-      httpMock.expectOne(TREE_URL).flush(DEMO_TREE);
-      httpMock
-        .expectOne((r) => r.url.endsWith('customers/customer-invoices.query.json'))
-        .flush({ id: 'customer-invoices', type: 'DTQL' });
-      httpMock
-        .expectOne((r) => r.url.endsWith('customers/customer-invoices.query.dtql'))
-        .flush('body');
-
-      expect(result?.id).toBe('customer-invoices');
+    it('resolves a folder-qualified id the same way', async () => {
+      const { service } = setup({
+        'demo-project-1/queries/customers/customer-invoices.query.json':
+          '{"id":"customer-invoices","type":"DTQL"}',
+        'demo-project-1/queries/customers/customer-invoices.query.dtql': 'body',
+      });
+      const result = await first(service.getQuery(PROJECT_ID, 'customers/customer-invoices'));
+      expect(result.id).toBe('customer-invoices');
     });
 
-    it('resolves the legacy "<id>.sql.json" shape, body = def filename minus ".json"', () => {
-      let result: { id: string; type: string; text?: string } | undefined;
-      service.getQuery(PROJECT_ID, 'albums_by_title').subscribe((r) => (result = r));
-
-      httpMock.expectOne(TREE_URL).flush(DEMO_TREE);
-      httpMock
-        .expectOne((r) => r.url.endsWith('albums/albums_by_title.sql.json'))
-        .flush({ title: 'Albums by title' });
-      httpMock
-        .expectOne((r) => r.url.endsWith('albums/albums_by_title.sql'))
-        .flush('SELECT * FROM Album');
+    it('resolves the legacy "<id>.sql.json" shape, body = def filename minus ".json"', async () => {
+      const { service } = setup({
+        'demo-project-1/queries/albums/albums_by_title.sql.json': '{"title":"Albums by title"}',
+        'demo-project-1/queries/albums/albums_by_title.sql': 'SELECT * FROM Album',
+      });
+      const result = await first(service.getQuery(PROJECT_ID, 'albums_by_title'));
 
       expect(result).toMatchObject({
         id: 'albums_by_title',
@@ -502,28 +528,21 @@ describe('GithubProjectReaderService', () => {
       });
     });
 
-    it('errors for an id with no matching query file (never a thrown 404 from a guessed URL)', () => {
-      let error: Error | undefined;
-      service.getQuery(PROJECT_ID, 'does-not-exist').subscribe({
-        error: (e) => (error = e),
-      });
-
-      httpMock.expectOne(TREE_URL).flush(DEMO_TREE);
-
-      expect(error?.message).toContain('does-not-exist');
+    it('errors for an id with no matching query file (never a thrown 404 from a guessed URL)', async () => {
+      const { service } = setup();
+      await expect(first(service.getQuery(PROJECT_ID, 'does-not-exist'))).rejects.toThrow(
+        /does-not-exist/,
+      );
     });
   });
 
   describe('getBoard', () => {
-    it('injects the requested id (the file itself only has a title)', () => {
-      let result: { id: string; title?: string } | undefined;
-      service.getBoard(PROJECT_ID, 'board1').subscribe((r) => (result = r));
-
-      httpMock
-        .expectOne((r) => r.url.endsWith('boards/board1/board.json'))
-        .flush({ title: '1st board' });
-
-      expect(result).toEqual({ id: 'board1', title: '1st board' });
+    it('injects the requested id (the file itself only has a title)', async () => {
+      const { service } = setup({ 'demo-project-1/boards/board1/board.json': '{"title":"1st board"}' });
+      expect(await first(service.getBoard(PROJECT_ID, 'board1'))).toEqual({
+        id: 'board1',
+        title: '1st board',
+      });
     });
   });
 });

@@ -5,6 +5,12 @@
 /** A project file read from GitHub: at most 256 KB (3.6), counted in bytes of the text received. */
 export const MAX_PROJECT_FILE_BYTES = 256 * 1024;
 
+/** A data file a project points at (3.6): at most 5 MB, counted in bytes received. */
+export const MAX_DATA_FILE_BYTES = 5 * 1024 * 1024;
+
+/** Files one run may read from a project (3.6). */
+export const MAX_FILES_PER_RUN = 40;
+
 /** Prepared questions (5.2a). */
 export const MAX_QUESTIONS = 20;
 export const MAX_WORDINGS = 50;

@@ -1,4 +1,3 @@
-import { HttpClient } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import { of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
@@ -7,12 +6,15 @@ import {
   DatatugStoreGithubService,
 } from './datatug-store.service.github';
 import { GithubProjectIdError } from '../../nav/github-project-address';
-import { GithubProjectReaderService } from './github/github-project-reader.service';
+import {
+  GithubProjectNotFoundError,
+  GithubProjectReaderService,
+} from './github/github-project-reader.service';
 
 describe('buildGithubProjectSummaryUrl', () => {
   it('defaults to a "datatug" folder when none is given', () => {
     expect(buildGithubProjectSummaryUrl('my-repo@my-org')).toBe(
-      'https://raw.githubusercontent.com/my-org/my-repo/main/datatug/datatug-project.json',
+      'https://raw.githubusercontent.com/my-org/my-repo/HEAD/datatug/datatug-project.json',
     );
   });
 
@@ -20,7 +22,7 @@ describe('buildGithubProjectSummaryUrl', () => {
     expect(
       buildGithubProjectSummaryUrl('my-repo@my-org@some-folder'),
     ).toBe(
-      'https://raw.githubusercontent.com/my-org/my-repo/main/some-folder/datatug-project.json',
+      'https://raw.githubusercontent.com/my-org/my-repo/HEAD/some-folder/datatug-project.json',
     );
   });
 
@@ -31,7 +33,7 @@ describe('buildGithubProjectSummaryUrl', () => {
         'datatug-demo-projects@datatug@demo-project-1',
       ),
     ).toBe(
-      'https://raw.githubusercontent.com/datatug/datatug-demo-projects/main/demo-project-1/datatug-project.json',
+      'https://raw.githubusercontent.com/datatug/datatug-demo-projects/HEAD/demo-project-1/datatug-project.json',
     );
   });
 });
@@ -47,24 +49,23 @@ describe('buildGithubProjectSummaryUrl', () => {
  * the implemented root-folder path and an arbitrary unimplemented one.
  */
 describe('DatatugStoreGithubService.watchProjectItem', () => {
-  function createService(httpGet: ReturnType<typeof vi.fn>) {
+  function createService(getRawJson: ReturnType<typeof vi.fn>) {
     TestBed.configureTestingModule({
       providers: [
-        { provide: HttpClient, useValue: { get: httpGet } },
-        { provide: GithubProjectReaderService, useValue: {} },
+        { provide: GithubProjectReaderService, useValue: { getRawJson } },
       ],
     });
     return TestBed.inject(DatatugStoreGithubService);
   }
 
   it('"/folders/~" emits the real root folder once, with no error', () => {
-    const httpGet = vi.fn(() =>
+    const getRawJson = vi.fn(() =>
       of({
         id: 'datatug-demo-projects@datatug@demo-project-1',
         boards: [{ id: 'board1', title: '1st board' }],
       }),
     );
-    const service = createService(httpGet);
+    const service = createService(getRawJson);
 
     const next = vi.fn();
     const error = vi.fn();
@@ -88,8 +89,8 @@ describe('DatatugStoreGithubService.watchProjectItem', () => {
   });
 
   it('any other folder path emits absent (null) once, with no error — never "not implemented"', () => {
-    const httpGet = vi.fn();
-    const service = createService(httpGet);
+    const getRawJson = vi.fn();
+    const service = createService(getRawJson);
 
     const next = vi.fn();
     const error = vi.fn();
@@ -104,32 +105,68 @@ describe('DatatugStoreGithubService.watchProjectItem', () => {
     expect(error).not.toHaveBeenCalled();
     expect(complete).toHaveBeenCalledTimes(1);
     expect(next).toHaveBeenCalledWith(null);
-    expect(httpGet).not.toHaveBeenCalled();
+    expect(getRawJson).not.toHaveBeenCalled();
   });
 });
 
 describe('DatatugStoreGithubService.getProjectSummary: ids it cannot read', () => {
-  function createService(httpGet: ReturnType<typeof vi.fn>) {
+  function createService(getRawJson: ReturnType<typeof vi.fn>) {
     TestBed.configureTestingModule({
       providers: [
-        { provide: HttpClient, useValue: { get: httpGet } },
-        { provide: GithubProjectReaderService, useValue: {} },
+        { provide: GithubProjectReaderService, useValue: { getRawJson } },
       ],
     });
     return TestBed.inject(DatatugStoreGithubService);
   }
 
   it.each([
-    ['a four-part id (reading at a ref is not supported yet)', 'r@o@d@v1.0.0', 'ref-not-supported'],
+    ['a four-part id with an unsafe ref', 'r@o@d@a/../b', 'ref'],
     ['a folder that leaves the repo', 'chinook-demo@datatug@../../../datatug/datatug-demo-projects/main/demo-project-1', 'folder'],
     ['an id with one part', 'abc', 'parts'],
   ])('%s errors and requests nothing', (_name, projectId, reason) => {
-    const httpGet = vi.fn();
-    const service = createService(httpGet);
+    const getRawJson = vi.fn();
+    const service = createService(getRawJson);
     let error: unknown;
     service.getProjectSummary(projectId).subscribe({ error: (e: unknown) => (error = e) });
     expect(error).toBeInstanceOf(GithubProjectIdError);
     expect((error as GithubProjectIdError).reason).toBe(reason);
-    expect(httpGet).not.toHaveBeenCalled();
+    expect(getRawJson).not.toHaveBeenCalled();
+  });
+});
+
+describe('DatatugStoreGithubService.getProjectSummary: reads through the reader (one commit, one cache)', () => {
+  function createService(
+    getRawJson: ReturnType<typeof vi.fn>,
+    state: 'missing' | 'moved' = 'missing',
+  ) {
+    TestBed.configureTestingModule({
+      providers: [
+        {
+          provide: GithubProjectReaderService,
+          useValue: { getRawJson, readInfo: () => of({ state }) },
+        },
+      ],
+    });
+    return TestBed.inject(DatatugStoreGithubService);
+  }
+
+  it('reads datatug-project.json once and reads a four-part id (the reader pins its commit)', () => {
+    const getRawJson = vi.fn(() => of({ id: 'x', title: 'T' }));
+    const service = createService(getRawJson);
+    const id = 'r@o@d@v1.0.0';
+    let summary: unknown;
+    service.getProjectSummary(id).subscribe((p) => (summary = p));
+    service.getProjectSummary(id).subscribe();
+    expect(getRawJson).toHaveBeenCalledTimes(1);
+    expect(getRawJson).toHaveBeenCalledWith(id, 'datatug-project.json');
+    expect(summary).toEqual({ id, title: 'T' });
+  });
+
+  it.each(['missing', 'moved'] as const)('a project that is %s is "No DataTug project here"', (state) => {
+    const service = createService(vi.fn(() => of(undefined)), state);
+    let error: unknown;
+    service.getProjectSummary('r@o@d').subscribe({ error: (e: unknown) => (error = e) });
+    expect(error).toBeInstanceOf(GithubProjectNotFoundError);
+    expect((error as GithubProjectNotFoundError).reason).toBe(state);
   });
 });
