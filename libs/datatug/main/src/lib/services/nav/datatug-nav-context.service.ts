@@ -37,6 +37,26 @@ const reStore = /\/store\/(.+?)($|\/)/,
   reEnvDb = /\/env\/\w+\/db\/(.+?)(?:\/|$)/,
   reTable = /\/table\/(.+?)(?:\/|$)/;
 
+/**
+ * Whether the URL's first path segment is `project`: the hand-off address
+ * `/project/github.com/<owner>/<repo>/chat` (datatug-app's demo holding page). No route of this app starts with
+ * `project` (the routes that carry a store start `/store/<id>/`), so such an address names no store, project,
+ * environment or table, whatever its owner or repository is called: a repository called `store`, `env` or
+ * `table` must not be read as one. Matrix parameters, letter case and percent-encoding are ignored, as the
+ * router ignores them.
+ */
+function startsWithProjectSegment(url: string): boolean {
+  const path =
+    /^(?:[a-z][a-z0-9+.-]*:\/\/[^/?#]*)?([^?#]*)/i.exec(url)?.[1] ?? '';
+  let first = path.split('/')[1]?.split(/[;(]/)[0] ?? '';
+  try {
+    first = decodeURIComponent(first);
+  } catch {
+    // Keep the raw segment.
+  }
+  return first.toLowerCase() === 'project';
+}
+
 // `providedIn: 'root'` — this holds the single URL-derived nav state for the
 // whole app; a module-listed provider hands every importing standalone
 // component its own copy, each running its own NavigationEnd subscription,
@@ -246,8 +266,10 @@ export class DatatugNavContextService {
     //}
   }
 
-  private processUrl(url: string): void {
+  private processUrl(rawUrl: string): void {
     // console.log('DatatugNavContextService.processUrl():', url);
+    // An address that names no store, project, environment or table reads as the bare root: all of them clear.
+    const url = startsWithProjectSegment(rawUrl) ? '/' : rawUrl;
     try {
       this.processStore(url);
       this.processProject(url);

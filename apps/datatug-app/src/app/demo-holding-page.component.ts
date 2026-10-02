@@ -2,10 +2,13 @@ import {
   CUSTOM_ELEMENTS_SCHEMA,
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   ElementRef,
   afterNextRender,
+  inject,
   viewChild,
 } from '@angular/core';
+import { DOCUMENT } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import {
   captureDemoHandoff,
@@ -56,6 +59,7 @@ import {
           @if (question) {
             <blockquote
               class="ph-no-capture"
+              dir="auto"
               [attr.aria-label]="strings.questionLabel"
               [textContent]="question"
             ></blockquote>
@@ -119,6 +123,28 @@ export class DemoHoldingPageComponent {
     viewChild.required<ElementRef<HTMLElement>>('heading');
 
   constructor() {
+    this.showInPageLanguage();
     afterNextRender(() => this.heading().nativeElement.focus());
+  }
+
+  /**
+   * The tab title and the document language follow the page's language while it is shown (a screen reader reads
+   * the Russian page with a Russian voice; the tab says what the page is), and are put back when the visitor
+   * leaves: the app's other pages set neither.
+   */
+  private showInPageLanguage(): void {
+    const doc = inject(DOCUMENT);
+    const root = doc.documentElement;
+    const previousTitle = doc.title;
+    const previousLang = root.getAttribute('lang');
+    doc.title = this.trusted
+      ? this.strings.heading
+      : this.strings.neutralHeading;
+    root.setAttribute('lang', this.lang);
+    inject(DestroyRef).onDestroy(() => {
+      doc.title = previousTitle;
+      if (previousLang === null) root.removeAttribute('lang');
+      else root.setAttribute('lang', previousLang);
+    });
   }
 }

@@ -8,34 +8,33 @@
 //      URL when gtag.js has loaded, possibly before any bundle runs), strips the query from the address bar and
 //      keeps it twice: in `window.__datatugHandoffSearch` and, so that a reload before the app has started
 //      does not lose the question either, in sessionStorage under DEMO_HANDOFF_KEY (the path and the raw query
-//      string, so that it is only ever applied to the same path). Its path test is the same expression as
-//      HANDOFF_PATH below; demo-handoff-capture.spec.ts runs the real script to prove it.
+//      string, so that it is only ever applied to the same path). Its path test repeats the rules of
+//      demo-handoff-path.ts (which the router's matcher uses too) in ES5; demo-handoff-capture.spec.ts runs the
+//      real script against that function to prove they agree.
 //   2. `captureDemoHandoff()`, called by the holding page (demo-holding-page.component.ts, a lazy chunk, so none
 //      of this code is in the initial bundle): parses the stash (or, after a reload, what sessionStorage
 //      kept) and holds the result in module memory. Should the stash be missing on a first visit, it parses and
 //      strips the live query string itself. Blocked storage never leaves the question in the URL; it only means
 //      that a reload shows the no-question copy.
 //
-// Only the path shapes below are touched; every other URL is left exactly as it is.
+// Only the hand-off addresses (demo-handoff-path.ts) are touched; every other URL is left exactly as it is.
 //
 // Which hand-offs are shown back. `/demo` and the project chat of the demo project itself
 // (`datatug/chinook-demo`, default branch) show the visitor's question. The project chat of any other repository
 // does not: a message chosen by whoever made the link must not be displayed inside datatug.app's pages under
 // someone else's repository address. For those the query is still taken out of the address bar and kept out of
 // every report; only the language is kept, for the neutral page. See isEchoTrusted().
+import {
+  handoffTarget,
+  isHandoffPath,
+  routeSegments,
+} from './demo-handoff-path';
+
+export { isHandoffPath };
+
 export const DEMO_HANDOFF_KEY = 'datatug.demo.handoff.v1';
 export const DEMO_HANDOFF_STASH = '__datatugHandoffSearch';
 export const DEMO_QUESTION_MAX_BYTES = 1000;
-
-/**
- * `/demo`, or the chat of a GitHub project (`…/chat`, or `…/tree/<ref>/-/chat` at the repository root): the places
- * a hand-off lands.
- */
-export const HANDOFF_PATH =
-  /^\/(?:demo|project\/github\.com\/[^/]+\/[^/]+(?:\/tree\/[^/]+\/-)?\/chat)\/?$/;
-
-const PROJECT_CHAT_PATH =
-  /^\/project\/github\.com\/([^/]+)\/([^/]+)(?:\/tree\/([^/]+)\/-)?\/chat\/?$/;
 
 /** The demo project: the only repository whose chat address may show a message that came in a link. */
 const TRUSTED_OWNER = 'datatug';
@@ -53,18 +52,6 @@ export interface DemoHandoff {
 
 let current: DemoHandoff | undefined;
 
-export function isHandoffPath(pathname: string): boolean {
-  return HANDOFF_PATH.test(pathname);
-}
-
-function decoded(segment: string): string | undefined {
-  try {
-    return decodeURIComponent(segment).toLowerCase();
-  } catch {
-    return undefined;
-  }
-}
-
 /**
  * Whether the hand-off at this path may be shown back to the visitor: `/demo`, or the chat of
  * `datatug/chinook-demo` (owner and repository decoded, lower-cased, each compared for exact equality) on its
@@ -72,14 +59,13 @@ function decoded(segment: string): string | undefined {
  * (`chinook-demo-evil`, `tree/<sha>`), is not.
  */
 export function isEchoTrusted(pathname: string): boolean {
-  if (/^\/demo\/?$/.test(pathname)) return true;
-  const match = PROJECT_CHAT_PATH.exec(pathname);
-  if (!match) return false;
-  const [, owner, repo, ref] = match;
+  const target = handoffTarget(routeSegments(pathname));
+  if (!target) return false;
+  if (target.kind === 'demo') return true;
   return (
-    decoded(owner) === TRUSTED_OWNER &&
-    decoded(repo) === TRUSTED_REPO &&
-    (ref === undefined || ref === 'HEAD')
+    target.owner.toLowerCase() === TRUSTED_OWNER &&
+    target.repo.toLowerCase() === TRUSTED_REPO &&
+    (target.ref === undefined || target.ref === 'HEAD')
   );
 }
 
@@ -116,17 +102,23 @@ export function truncateToBytes(
 // Control characters other than tab and line feed have no place in a question that is shown back as text.
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHARACTERS = /[\u0000-\u0008\u000B-\u001F\u007F]/g;
+// Two or more blank lines in a row (a line of only spaces and tabs counts as blank): shown as a single blank line.
+const BLANK_LINE_RUNS = /(?:[ \t]*\n){3,}/g;
 
 /**
  * Parses a hand-off query string.
- * - the question is `msg`, else `q` (a blank `msg` does not hide a real `q`), trimmed, cut at 1000 bytes;
+ * - the question is `msg`, else `q` (a blank `msg` does not hide a real `q`), trimmed, runs of blank lines
+ *   collapsed to one, cut at 1000 bytes;
  * - `lang` is `en` or `ru`, anything else is `en`;
  * - `scenario` and every other parameter are ignored.
  */
 export function parseHandoffSearch(search: string): DemoHandoff {
   const params = new URLSearchParams(search);
   const clean = (value: string | null): string =>
-    (value ?? '').replace(CONTROL_CHARACTERS, '').trim();
+    (value ?? '')
+      .replace(CONTROL_CHARACTERS, '')
+      .replace(BLANK_LINE_RUNS, '\n\n')
+      .trim();
   const raw = clean(params.get('msg')) || clean(params.get('q'));
   const { text, truncated } = truncateToBytes(raw, DEMO_QUESTION_MAX_BYTES);
   const lang: DemoLang =
@@ -180,8 +172,13 @@ export function captureDemoHandoff(env: CaptureEnv = defaultEnv()): void {
   // Read the live query string before stripping it: after replaceState `location.search` is empty.
   const search = typeof stashed === 'string' ? stashed : loc.search;
   if (loc.search) {
-    // Strip first and unconditionally: nothing below may leave the question in the URL.
-    history.replaceState(history.state, '', loc.pathname + loc.hash);
+    // Strip first and unconditionally: nothing below may leave the question in the URL. A browser that refuses
+    // (a SecurityError, an exotic embedding) must not stop the page from showing what it has.
+    try {
+      history.replaceState(history.state, '', loc.pathname + loc.hash);
+    } catch {
+      // The address keeps its query; the question is still held in memory below.
+    }
   }
   if (search) {
     const parsed = parseHandoffSearch(search);

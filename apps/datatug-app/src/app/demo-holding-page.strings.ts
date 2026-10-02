@@ -27,8 +27,8 @@ export const DEMO_HOLDING_STRINGS: Readonly<
   en: {
     heading: 'DataTug live demo',
     withQuestion:
-      'This is the question you asked. The live demo opens here soon.',
-    withoutQuestion: 'The live demo opens here soon.',
+      'This is the question you asked. The live demo is not open yet; it opens here soon.',
+    withoutQuestion: 'The live demo is not open yet; it opens here soon.',
     shortened: 'Your question was long, so only the beginning is shown.',
     questionLabel: 'Your question',
     neutralHeading: 'DataTug',
@@ -38,8 +38,9 @@ export const DEMO_HOLDING_STRINGS: Readonly<
   },
   ru: {
     heading: 'Живое демо DataTug',
-    withQuestion: 'Это ваш вопрос. Живое демо скоро откроется здесь.',
-    withoutQuestion: 'Живое демо скоро откроется здесь.',
+    withQuestion:
+      'Это ваш вопрос. Живое демо ещё не открыто, скоро оно появится здесь.',
+    withoutQuestion: 'Живое демо ещё не открыто, скоро оно появится здесь.',
     shortened: 'Вопрос длинный, поэтому показано только его начало.',
     questionLabel: 'Ваш вопрос',
     neutralHeading: 'DataTug',
@@ -65,11 +66,23 @@ const ALLOWED_SITE_ORIGINS: readonly string[] = [
   'https://datatug.ai',
 ];
 
-/** The site the visitor came from when it is one of ours, else datatug.io. Only an origin is ever used. */
+/** The Russian home page of datatug.ai: the one path, besides `/`, a referrer may send the visitor back to. */
+const RU_HOME_PATH = '/ru/';
+
+/**
+ * The site the visitor came from when it is one of ours, else datatug.io. Only an origin is ever used, plus, for
+ * a visitor who came from the Russian pages of datatug.ai (`/ru` or anything under `/ru/`), that site's Russian
+ * home page. Nothing else of the referrer (no other path, query or fragment) is ever used.
+ */
 export function siteUrlFor(referrer: string): string {
   try {
-    const { origin } = new URL(referrer);
-    if (ALLOWED_SITE_ORIGINS.includes(origin)) return origin + '/';
+    const { origin, pathname } = new URL(referrer);
+    if (ALLOWED_SITE_ORIGINS.includes(origin)) {
+      const russian =
+        origin === 'https://datatug.ai' &&
+        (pathname === '/ru' || pathname.startsWith(RU_HOME_PATH));
+      return origin + (russian ? RU_HOME_PATH : '/');
+    }
   } catch {
     // No referrer, or not a URL.
   }

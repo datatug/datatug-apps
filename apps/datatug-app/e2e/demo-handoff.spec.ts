@@ -23,12 +23,13 @@ const SCENARIO = 'countries-music-per-capita';
 const SENTENCE = {
   en: {
     withQuestion:
-      'This is the question you asked. The live demo opens here soon.',
-    without: 'The live demo opens here soon.',
+      'This is the question you asked. The live demo is not open yet; it opens here soon.',
+    without: 'The live demo is not open yet; it opens here soon.',
   },
   ru: {
-    withQuestion: 'Это ваш вопрос. Живое демо скоро откроется здесь.',
-    without: 'Живое демо скоро откроется здесь.',
+    withQuestion:
+      'Это ваш вопрос. Живое демо ещё не открыто, скоро оно появится здесь.',
+    without: 'Живое демо ещё не открыто, скоро оно появится здесь.',
   },
 };
 
@@ -168,6 +169,12 @@ test.describe('the hand-off holding page', () => {
             ),
           ).toBeUndefined();
 
+          // The tab title and the document language follow the page's language.
+          await expect(page).toHaveTitle(
+            lang === 'en' ? 'DataTug live demo' : 'Живое демо DataTug',
+          );
+          await expect(page.locator('html')).toHaveAttribute('lang', lang);
+
           // The address bar no longer carries the question, the scenario or the language.
           expect(
             new URL(page.url()).pathname + new URL(page.url()).search,
@@ -301,6 +308,63 @@ test.describe('the hand-off holding page', () => {
     );
   });
 
+  for (const path of ['/demo;x=1', '/Demo', '/DEMO/', '/demo;x=1/']) {
+    test(`${path}?q=… (matrix parameter, letter case, trailing slash) shows the same page and strips the query`, async ({
+      page,
+      context,
+      baseURL,
+    }) => {
+      const origin = new URL(baseURL ?? '').origin;
+      const external = await stubExternal(context, (o) => o === origin);
+      const errors = consoleErrors(page);
+      await page.goto(
+        `${path}?scenario=${SCENARIO}&q=${encodeURIComponent(EN_QUESTION)}&lang=en`,
+      );
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible({
+        timeout: 20_000,
+      });
+      await expect(page.locator('blockquote')).toHaveText(EN_QUESTION);
+      await expect(page.locator('#demo-holding-message')).toContainText(
+        SENTENCE.en.withQuestion,
+      );
+      expect(new URL(page.url()).search).toBe('');
+      expect(page.url()).not.toContain(MARKER);
+      await page.waitForTimeout(1500);
+      await expect(page.locator(SENTRY_DIALOG)).toHaveCount(0);
+      expect(dialogRequested(external)).toBe(false);
+      expect(errors).toEqual([]);
+    });
+  }
+
+  test('a visitor who came from the Russian pages of datatug.ai goes back to its Russian home page', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const origin = new URL(baseURL ?? '').origin;
+    await stubExternal(context, (o) => o === origin);
+    await page.goto('/demo?q=Hi&lang=ru', {
+      referer: 'https://datatug.ai/ru/some/page?q=secret',
+    });
+    await expect(
+      page.getByRole('link', { name: 'Назад на сайт' }),
+    ).toHaveAttribute('href', 'https://datatug.ai/ru/');
+  });
+
+  test('blank lines in the question are collapsed and the quote picks its own text direction', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const origin = new URL(baseURL ?? '').origin;
+    await stubExternal(context, (o) => o === origin);
+    await page.goto(`/demo?q=${encodeURIComponent('one\n\n\n\n\ntwo')}`);
+    await expect(page.locator('blockquote')).toHaveText('one\n\ntwo', {
+      timeout: 20_000,
+    });
+    await expect(page.locator('blockquote')).toHaveAttribute('dir', 'auto');
+  });
+
   test('a long question is cut at 1000 bytes and says so', async ({
     page,
     context,
@@ -367,6 +431,7 @@ test.describe('the hand-off holding page', () => {
 
   for (const path of [
     '/project/github.com/someone/else/chat',
+    '/project/github.com/store/x/chat', // an owner called `store` is not a store: no error toast
     '/project/github.com/datatug/chinook-demo-evil/chat',
     '/project/github.com/datatug/chinook-demo/tree/0123abcd4567ef89/-/chat',
   ]) {
@@ -521,6 +586,68 @@ test.describe('the question reaches no analytics or error report', () => {
       ),
     ).toBe(true);
     expect(leaks(external)).toEqual([]);
+  });
+});
+
+test.describe('the matrix-parameter address reaches no analytics either', () => {
+  const HOST = 'https://handoff.datatug.test';
+  test('/demo;x=1?q=…: Google Analytics, Sentry and PostHog never receive the question', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const external = await stubExternal(
+      context,
+      (o) => o === HOST || o === baseURL,
+    );
+    await context.route(`${HOST}/**`, async (route) => {
+      const url = new URL(route.request().url());
+      const response = await route.fetch({
+        url: (baseURL ?? '') + url.pathname + url.search,
+      });
+      await route.fulfill({ response });
+    });
+    await context.route(
+      'https://www.googletagmanager.com/**',
+      async (route) => {
+        external.push({ url: route.request().url(), method: 'GET', body: '' });
+        await route.fulfill({
+          status: 200,
+          contentType: 'text/javascript',
+          body: `(function(){var dl=window.dataLayer=window.dataLayer||[];
+          function report(args){new Image().src='https://www.google-analytics.com/g/collect?dl='+encodeURIComponent(location.href)+'&cmd='+encodeURIComponent(JSON.stringify(Array.prototype.slice.call(args)));}
+          dl.slice().forEach(report);var push=dl.push;dl.push=function(a){report(a);return push.apply(dl,arguments);};})();`,
+        });
+      },
+    );
+    await page.goto(
+      `${HOST}/demo;x=1?scenario=${SCENARIO}&q=${encodeURIComponent(EN_QUESTION)}&lang=en`,
+    );
+    await expect(page.locator('blockquote')).toHaveText(EN_QUESTION, {
+      timeout: 20_000,
+    });
+    await page.evaluate(() =>
+      setTimeout(() => {
+        throw new Error('G-0 probe: an uncaught error on the holding page');
+      }),
+    );
+    await page.waitForTimeout(3000);
+    const hosts = new Set(
+      external.map((request) => new URL(request.url).hostname),
+    );
+    expect([...hosts].some((h) => h.includes('google-analytics.com'))).toBe(
+      true,
+    );
+    expect([...hosts].some((h) => h.includes('sentry.io'))).toBe(true);
+    const leaked = external.filter((request) =>
+      [request.url, request.body].some(
+        (text) =>
+          text.includes(MARKER) ||
+          text.includes(encodeURIComponent(MARKER)) ||
+          text.includes(SCENARIO),
+      ),
+    );
+    expect(leaked.map((r) => r.url.slice(0, 120))).toEqual([]);
   });
 });
 
