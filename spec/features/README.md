@@ -17,6 +17,7 @@ Feature specifications for this project.
 | [Browser Chat Phase 1](browser-chat-phase-1/README.md) | Draft | Browser Chat translates questions to validated DTQL and queries a versioned local 11-table Chinook IndexedDB dataset through DALgo, rendering structured rows in AG Grid. |
 | [Browser Chat Phase 4 Bookmarks](browser-chat-phase-4-bookmarks/README.md) | Approved | Project-scoped durable bookmarks for browser Chat RecordSets, Views and selections. |
 | [Browser Chat Phase 5 FK JOIN exploration](browser-chat-phase-5/README.md) | Approved | Discover and apply deterministic FK JOIN candidates from browser Chat result grids. |
+| [Demo Investigation](demo-investigation/README.md) | Draft | The anonymous /demo route: a visitor arrives with a question from datatug.ai or datatug.io and watches DataTug answer it from a real in-browser run of a saved cross-source query, with an inspectable trace and no AI. |
 
 ## Open Questions
 
