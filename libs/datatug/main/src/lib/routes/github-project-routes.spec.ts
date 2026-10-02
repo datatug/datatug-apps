@@ -334,6 +334,16 @@ describe('navigating to a short address', () => {
     });
   });
 
+  it.each([
+    ['/project/github.com/o/r/', '/project/github.com/o/r'],
+    ['/project/github.com/o/r/chat/', '/project/github.com/o/r/chat'],
+  ])('a trailing slash (%s) is dropped by the router: the canonical address %s opens, with no second navigation', async (typed, canonical) => {
+    const result = await visit(typed);
+    expect(result.url).toBe(canonical);
+    expect(result.component).toBe(PageStub);
+    expect(result.projectId).toBe('r@o@');
+  });
+
   describe('what is not supported shows a page that says so, at the address as typed', () => {
     it.each([
       ['/project/github.com/o/r/blob/main/dir/file.txt', 'file-link'],
