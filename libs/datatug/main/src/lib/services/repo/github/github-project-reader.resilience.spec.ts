@@ -251,6 +251,7 @@ describe('GithubProjectReaderService: the review of round 1', () => {
       putFile: () => new Promise(() => undefined),
       getResolved: () => new Promise(() => undefined),
       putResolved: () => new Promise(() => undefined),
+      dropResolved: () => new Promise(() => undefined),
       forgetResolved: () => new Promise(() => undefined),
     });
 
@@ -453,61 +454,67 @@ describe('GithubProjectReaderService: the review of round 1', () => {
       ).toEqual([apiUrl('commits/HEAD')]);
     });
 
-    it('the resolve call is refused when asking again: the read degrades to HEAD, as when nothing is remembered', async () => {
+    it('the resolve call is refused when asking again: the remembered commit is kept for the visit, and the 404 is absent', async () => {
       gh.fail.api = (url) =>
         url.pathname.includes('/commits/') ? 403 : undefined;
       const reader = browser.load();
       expect(
         await first(reader.getRawJson(DEMO_ID, 'datatug-project.json')),
-      ).toEqual({ id: 'new' });
+      ).toBeUndefined();
       expect(await first(reader.readInfo(DEMO_ID))).toMatchObject({
-        state: 'unresolved',
-        mayBeStale: true,
+        state: 'resolved',
+        commit: SHA_1,
       });
       expect(gh.urls('raw.githubusercontent.com')).toEqual([
         rawUrl(SHA_1, 'demo-project-1/datatug-project.json'),
-        rawUrl('HEAD', 'demo-project-1/datatug-project.json'),
       ]);
     });
 
-    it.each([
-      [
-        'the project file',
-        'b/datatug-project.json',
-        'b',
-        'datatug-project.json',
-      ],
-      ['another file', 'b/widgets/x.json', 'b', 'widgets/x.json'],
-    ])(
-      'the commit is alive and %s really is not there: asks once more, says missing, and does not ask again',
-      async (_name, repoPath, folder, file) => {
-        const bare = new FakeGithub();
-        bare.addRepo(REPO, SHA_1, { 'a/datatug-project.json': '{}' });
-        const other = new Browser(bare);
-        await first(other.load().listDirectory(ID_A, ''));
-        bare.reset();
+    it('the commit is alive and the project file really is not there: asks once more, says missing, and does not ask again', async () => {
+      const bare = new FakeGithub();
+      bare.addRepo(REPO, SHA_1, { 'a/datatug-project.json': '{}' });
+      const other = new Browser(bare);
+      await first(other.load().listDirectory(ID_A, ''));
+      bare.reset();
 
-        const reader = other.load();
-        const id = `projects@datatug@${folder}`;
-        expect(await first(reader.getRawJson(id, file))).toBeUndefined();
-        expect(await first(reader.getRawJson(id, file))).toBeUndefined();
-        expect(await first(reader.readInfo(id))).toMatchObject({
-          state: 'resolved',
-          commit: SHA_1,
-        });
-        expect(bare.urls()).toEqual([
-          rawUrl(SHA_1, repoPath, REPO),
-          apiUrl('commits/HEAD', REPO),
-          rawUrl(SHA_1, repoPath, REPO),
-        ]);
-        // The project file is the one answer that is not kept: it is about to be created.
-        expect(await other.store.getFile(`${REPO}@${SHA_1}`, repoPath)).toEqual(
-          file === 'datatug-project.json'
-            ? undefined
-            : { text: null, bytes: 0 },
-        );
-      },
-    );
+      const reader = other.load();
+      const id = 'projects@datatug@b';
+      expect(
+        await first(reader.getRawJson(id, 'datatug-project.json')),
+      ).toBeUndefined();
+      expect(
+        await first(reader.getRawJson(id, 'datatug-project.json')),
+      ).toBeUndefined();
+      expect(await first(reader.readInfo(id))).toMatchObject({
+        state: 'resolved',
+        commit: SHA_1,
+      });
+      expect(bare.urls()).toEqual([
+        rawUrl(SHA_1, 'b/datatug-project.json', REPO),
+        apiUrl('commits/HEAD', REPO),
+      ]);
+      // The project file is the one answer that is not kept: it is about to be created.
+      expect(
+        await other.store.getFile(`${REPO}@${SHA_1}`, 'b/datatug-project.json'),
+      ).toBeUndefined();
+    });
+
+    it('the commit is alive and another file is not there: absent, with no question, and remembered as absent', async () => {
+      const bare = new FakeGithub();
+      bare.addRepo(REPO, SHA_1, { 'a/datatug-project.json': '{}' });
+      const other = new Browser(bare);
+      await first(other.load().listDirectory(ID_A, ''));
+      bare.reset();
+
+      const reader = other.load();
+      expect(
+        await first(reader.getRawJson('projects@datatug@b', 'widgets/x.json')),
+      ).toBeUndefined();
+      expect(bare.urls()).toEqual([rawUrl(SHA_1, 'b/widgets/x.json', REPO)]);
+      expect(
+        await other.store.getFile(`${REPO}@${SHA_1}`, 'b/widgets/x.json'),
+      ).toEqual({ text: null, bytes: 0 });
+    });
 
     it('a commit that GitHub answered for just now is not doubted: a missing project file is missing, with no second question', async () => {
       const bare = new FakeGithub();

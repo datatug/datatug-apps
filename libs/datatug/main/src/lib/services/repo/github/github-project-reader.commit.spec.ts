@@ -370,6 +370,10 @@ describe('GithubProjectReaderService: the commit, the cache, the failover (desig
           'demo-project-1/entities/Track/Track.entity.json': '{}',
         }),
       );
+      // An optional file that is not there is probed in the middle of the visit: it is absent, and nothing moves.
+      expect(
+        await first(reader.getRawText(DEMO_ID, 'widgets/none.json')),
+      ).toBeUndefined();
       const entities = (
         await first(reader.listDirectory(DEMO_ID, 'entities'))
       ).map((e) => e.name);
@@ -764,6 +768,7 @@ describe('GithubProjectReaderService: the commit, the cache, the failover (desig
         putFile: () => Promise.reject(new Error('blocked')),
         getResolved: () => Promise.reject(new Error('blocked')),
         putResolved: () => Promise.reject(new Error('blocked')),
+        dropResolved: () => Promise.reject(new Error('blocked')),
         forgetResolved: () => Promise.reject(new Error('blocked')),
       });
       await readLikeThePages(reader);

@@ -25,7 +25,10 @@ import { IProjectContext, parseDatatugStoreRef } from '../../nav/nav-models';
 import { DatatugNavService } from '../../services/nav/datatug-nav.service';
 import { DatatugServicesProjectModule } from '../../services/project/datatug-services-project.module';
 import { ProjectService } from '../../services/project/project.service';
-import { IGithubRepo } from '../../services/repo/github/github-api';
+import {
+  GithubRepoError,
+  IGithubRepo,
+} from '../../services/repo/github/github-api';
 import {
   GithubOAuthService,
   GithubSignInRedirecting,
@@ -249,7 +252,9 @@ export class NewProjectFormComponent implements ViewDidEnter {
           error: (err) => {
             this.isCreating.set(false);
             this.formError.set(
-              `Failed to create the repository "${name}" on GitHub.`,
+              err instanceof GithubRepoError
+                ? err.message
+                : `Failed to create the repository "${name}" on GitHub.`,
             );
             this.errorLogger.logError(err, 'Failed to create a GitHub repo');
           },
@@ -283,7 +288,9 @@ export class NewProjectFormComponent implements ViewDidEnter {
         error: (err) => {
           this.isCreating.set(false);
           this.formError.set(
-            `Failed to create the project in ${fullName}. Check that your GitHub access allows writing to it.`,
+            err instanceof GithubRepoError
+              ? err.message
+              : `Failed to create the project in ${fullName}. Check that your GitHub access allows writing to it.`,
           );
           this.errorLogger.logError(
             err,

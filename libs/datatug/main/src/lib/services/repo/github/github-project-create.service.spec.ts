@@ -9,6 +9,7 @@ import { ErrorLogger } from '@sneat/core';
 import { of, throwError } from 'rxjs';
 
 import { DatatugStoreGithubService } from '../datatug-store.service.github';
+import { GithubRepoError } from './github-api';
 import { GithubProjectReaderService } from './github-project-reader.service';
 import {
   DEFAULT_GITHUB_PROJECT_FOLDER,
@@ -319,6 +320,24 @@ describe('GithubProjectCreateService', () => {
     expect(errors.map((e) => e.message)).toEqual([
       'GitHub did not return the repository datatug/demo-projects',
     ]);
+  });
+
+  it('commits nothing when GitHub does not say which branch is the default one, and says so (no assumed main)', () => {
+    const errors: Error[] = [];
+    service
+      .createProject(
+        { org: 'datatug', repo: 'demo-projects', title: 'My project' },
+        TOKEN,
+      )
+      .subscribe({ error: (e) => errors.push(e) });
+    httpMock
+      .expectOne((r) => r.method === 'GET' && r.url === REPO_URL)
+      .flush({ full_name: 'datatug/demo-projects' });
+    expect(errors.map((e) => e.message)).toEqual([
+      'GitHub did not return the default branch of datatug/demo-projects, so DataTug cannot tell which branch to commit to.',
+    ]);
+    expect(errors[0]).toBeInstanceOf(GithubRepoError);
+    httpMock.expectNone((r) => r.method === 'PUT');
   });
 
   it('once the files are committed, the reader and the summary service forget the repository, before the project is registered or opened', async () => {
