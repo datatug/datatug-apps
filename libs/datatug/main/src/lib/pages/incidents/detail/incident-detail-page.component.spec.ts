@@ -167,7 +167,13 @@ describe('IncidentDetailPageComponent', () => {
         },
         {
           provide: IncidentClientService,
-          useValue: { get: getSpy, events: eventsSpy, append: appendSpy },
+          useValue: {
+            get: getSpy,
+            events: eventsSpy,
+            append: appendSpy,
+            compare: vi.fn(),
+            compareRows: vi.fn(),
+          },
         },
       ],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],

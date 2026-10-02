@@ -1,10 +1,4 @@
-import {
-  Component,
-  DestroyRef,
-  computed,
-  inject,
-  signal,
-} from '@angular/core';
+import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
@@ -27,9 +21,7 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/angular';
-import {
-  routingParamStoreId,
-} from '../../../core/datatug-routing-params';
+import { routingParamStoreId } from '../../../core/datatug-routing-params';
 import { IncidentClientService } from '../../../incidents/incident-client.service';
 import { useIncidentPageReads } from '../../../incidents/incident-page-reads';
 import { incidentContextQueryParams } from '../../../incidents/incident-route-context';
@@ -39,6 +31,7 @@ import {
   IncidentRequestContext,
 } from '../../../incidents/models';
 import { IncidentReadPanelsComponent } from './incident-read-panels.component';
+import { IncidentComparePanelComponent } from './incident-compare-panel.component';
 import { agentBaseUrl } from '../../../services/repo/agent-url';
 
 /**
@@ -72,6 +65,7 @@ import { agentBaseUrl } from '../../../services/repo/agent-url';
     IonItem,
     IonLabel,
     IonNote,
+    IncidentComparePanelComponent,
     IncidentReadPanelsComponent,
   ],
 })
