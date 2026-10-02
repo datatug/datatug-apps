@@ -30,6 +30,27 @@ describe('chatErrorView', () => {
     expect(view).toEqual({ summary: 'The AI provider rejected the request (HTTP 401).' });
   });
 
+  it.each([
+    'where groups require an aliased or joined relation model',
+    'unsupported where operator ~=',
+    'where.right.value must be a portable scalar',
+    'Unexpected end of JSON input',
+    'Failed to execute transaction on IDBDatabase: closing',
+  ])('gives the engine or library message "%s" the plain fallback, with the raw text as detail', (raw) => {
+    const view = chatErrorView(raw);
+    expect(view.summary).toMatch(/rephras/i);
+    expect(view.summary).not.toContain(raw);
+    expect(view.detail).toBe(raw);
+  });
+
+  it('uses the summary of the place that shows the failure when the message is not DataTug’s own sentence', () => {
+    expect(chatErrorView('Unexpected end of JSON input', 'The local data could not be loaded.'))
+      .toEqual({ summary: 'The local data could not be loaded.', detail: 'Unexpected end of JSON input' });
+    expect(chatErrorView('x\ny', 'The local data could not be loaded.').summary).toBe('The local data could not be loaded.');
+    expect(chatErrorView('Cannot JOIN: foreign-key metadata is no longer available. Refresh this result.', 'Unused.'))
+      .toEqual({ summary: 'Cannot JOIN: foreign-key metadata is no longer available. Refresh this result.' });
+  });
+
   it('hides a long or multi-line message behind the technical detail', () => {
     const raw = 'Nested mappings are not allowed in compact mappings at line 3, column 4:\n  from: {a: b: c}\n';
     const view = chatErrorView(raw);

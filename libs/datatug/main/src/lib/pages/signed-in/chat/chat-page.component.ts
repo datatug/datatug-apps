@@ -109,6 +109,9 @@ export class ChatPageComponent {
   readonly draft = signal<Omit<ChatProvider, 'id'>>({ ...providerPresets['DeepSeek'], apiKey: '' });
   readonly selectedProvider = computed(() => this.providers.providers().find((item) => item.id === this.providers.selectedId()));
   readonly focusedJoin = signal<{ turnId: string; candidateId: string } | undefined>(undefined);
+  /** Plain-language text for a failed chat session or local data load; the raw message is kept as the technical detail. */
+  readonly sessionErrorView = computed(() => this.failureOf(this.sessionError(), 'Something went wrong with this chat session.'));
+  readonly seedErrorView = computed(() => this.failureOf(this.seedError(), 'The local Chinook data could not be loaded.'));
   /** Plain-language text for a failed turn; the stored `turn.error` keeps the engine's own message. */
   readonly errorView = chatErrorView;
 
@@ -414,6 +417,10 @@ export class ChatPageComponent {
   }
 
   /** Why the related-table choices could not be built, in plain language with the technical text on demand. */
+  private failureOf(raw: string | undefined, fallback: string): ChatErrorView | undefined {
+    return raw ? chatErrorView(raw, fallback) : undefined;
+  }
+
   candidateError(turn: ChatTurn): ChatErrorView | undefined {
     this.candidatesFor(turn);
     return this.candidateErrors.get(turn);

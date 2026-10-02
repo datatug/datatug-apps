@@ -35,10 +35,10 @@
     <div class="chat-workspace-layout">
     <div class="chat-history">
     @if (sessionState() === 'loading') { <ion-item><ion-spinner name="dots" /><ion-label class="ion-padding-start">Restoring chat session…</ion-label></ion-item> }
-    @if (sessionError()) { <ion-item color="danger"><ion-label>{{ sessionError() }}</ion-label></ion-item> }
+    @if (sessionErrorView(); as failure) { <div class="ion-padding"><ng-container [ngTemplateOutlet]="failureView" [ngTemplateOutletContext]="{ $implicit: failure }" /></div> }
     @if (sessionState() === 'error') { <ion-button class="ion-margin" (click)="retrySessions()">Retry loading chats</ion-button> }
     @if (seedState() === 'loading') { <ion-item><ion-spinner name="dots" /><ion-label class="ion-padding-start">Loading local Chinook data…</ion-label></ion-item> }
-    @if (seedState() === 'error') { <ion-item color="danger"><ion-label>{{ seedError() }}</ion-label></ion-item> }
+    @if (seedState() === 'error' && seedErrorView(); as failure) { <div class="ion-padding"><ng-container [ngTemplateOutlet]="failureView" [ngTemplateOutletContext]="{ $implicit: failure }" /></div> }
 
     @for (turn of turns(); track turn.id) {
       <section class="turn">

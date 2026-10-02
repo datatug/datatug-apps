@@ -117,4 +117,29 @@ describe('ChatPageComponent failed turns', () => {
       expect(relatedError()?.querySelector('details')).toBeNull();
     });
   });
+
+  describe('when the chat session or the local data cannot be loaded', () => {
+    const alert = (): HTMLElement | null => (fixture.nativeElement as HTMLElement).querySelector('.chat-history > .ion-padding .turn-error');
+
+    it('shows a library failure while restoring the session in plain language, with the raw text on demand', async () => {
+      store.list.mockRejectedValueOnce(new Error('Failed to execute transaction on IDBDatabase: closing'));
+      await render([]);
+      expect(alert()?.querySelector('ion-text')?.textContent).toBe('Something went wrong with this chat session.');
+      expect(alert()?.querySelector('details.error-detail pre')?.textContent).toBe('Failed to execute transaction on IDBDatabase: closing');
+    });
+
+    it('shows a failure of the local Chinook data in plain language, with the raw text on demand', async () => {
+      data.ensureSeed.mockRejectedValueOnce(new Error('QuotaExceededError: the quota has been exceeded'));
+      await render([]);
+      expect(alert()?.querySelector('ion-text')?.textContent).toBe('The local Chinook data could not be loaded.');
+      expect(alert()?.querySelector('details.error-detail pre')?.textContent).toBe('QuotaExceededError: the quota has been exceeded');
+    });
+
+    it('shows DataTug’s own sentence as it is, with no technical detail', async () => {
+      data.ensureSeed.mockRejectedValueOnce(new Error('The local Chinook seed fixture is unavailable.'));
+      await render([]);
+      expect(alert()?.querySelector('ion-text')?.textContent).toBe('The local Chinook seed fixture is unavailable.');
+      expect(alert()?.querySelector('details')).toBeNull();
+    });
+  });
 });

@@ -17,13 +17,24 @@ const engineSummaries: Readonly<Record<string, string>> = {
 };
 const genericEngineSummary = 'That question could not be turned into a query DataTug can run. Try rephrasing it, or ask for something simpler.';
 
-export function chatErrorView(raw: string | undefined): ChatErrorView {
+/**
+ * DataTug writes its own messages as one complete sentence: a capital letter, a closing full stop,
+ * question mark, exclamation mark or bracket. Anything else is the engine's or a library's wording
+ * (`where groups require an aliased or joined relation model`, `Unexpected end of JSON input`).
+ */
+const ownSentence = /^[A-Z][^\n]*[.?!)]$/;
+
+/**
+ * `fallback` is the summary for a message that is not one of DataTug's own sentences; it defaults to the one
+ * for a question. Other places that show a failure (the chat session, the local data) pass their own.
+ */
+export function chatErrorView(raw: string | undefined, fallback?: string): ChatErrorView {
   const message = raw?.trim();
   if (!message) return { summary: 'Unable to answer that question.' };
   const code = engineError.exec(message)?.[1];
   if (code) return { summary: engineSummaries[code] ?? genericEngineSummary, detail: message };
   if (message.length > longMessage || message.includes('\n')) {
-    return { summary: 'Something went wrong while answering that question.', detail: message };
+    return { summary: fallback ?? 'Something went wrong while answering that question.', detail: message };
   }
-  return { summary: message };
+  return ownSentence.test(message) ? { summary: message } : { summary: fallback ?? genericEngineSummary, detail: message };
 }
