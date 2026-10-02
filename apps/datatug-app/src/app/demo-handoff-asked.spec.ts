@@ -44,13 +44,79 @@ function env(
   };
 }
 
-const shows = (path: string, e?: AskedEnv): boolean =>
-  showsHoldingPage(routeSegments(path), e);
+const shows = (path: string, e?: AskedEnv, routerSearch?: string): boolean =>
+  showsHoldingPage(routeSegments(path), e, routerSearch);
 
 describe('which hand-off addresses show the holding page', () => {
   beforeEach(() => {
     resetHandoffAskedForTests();
     removed.length = 0;
+  });
+
+  // Review r2, B1: an address that the router matches but index.html's script did not take the question out of
+  // (the script reads the path its own way) arrives with the question in the navigation's query and no stash.
+  describe('a question in the navigation query that the script did not take out (review r2, B1)', () => {
+    it('is asked: the router matched a hand-off address with a question in its query, and there is no stash', () => {
+      expect(shows(CHAT, env({ navigation: 'navigate' }), '?msg=Hello')).toBe(
+        true,
+      );
+    });
+
+    it('and the query is stashed for the holding page, which captures it from there and takes it out of the address', () => {
+      const e = env({ navigation: 'navigate' });
+      expect(shows(CHAT, e, '?msg=Hello&lang=ru')).toBe(true);
+      expect(e.stash[DEMO_HANDOFF_STASH]).toBe('?msg=Hello&lang=ru');
+      expect(removed).toEqual([]);
+    });
+
+    it('counts q, the old name, as a question too', () => {
+      expect(shows(CHAT, env({ navigation: 'navigate' }), '?q=Hello')).toBe(
+        true,
+      );
+    });
+
+    it('a blank question, or no question, is not one: the chat page, and a stored copy is forgotten as for any bare visit', () => {
+      for (const search of ['', '?msg=', '?msg=%20%0A', '?lang=ru&x=1']) {
+        resetHandoffAskedForTests();
+        removed.length = 0;
+        const e = env({ navigation: 'navigate', stored: CHAT + '?msg=Old' });
+        expect(shows(CHAT, e, search), search).toBe(false);
+        expect(removed, search).toEqual([DEMO_HANDOFF_KEY]);
+        expect(DEMO_HANDOFF_STASH in e.stash).toBe(false);
+      }
+    });
+
+    it('what the script stashed wins over what the router has', () => {
+      const e = env({ stash: '?lang=ru', navigation: 'navigate' });
+      expect(shows(CHAT, e, '?msg=Hello')).toBe(false);
+      expect(DEMO_HANDOFF_STASH in e.stash).toBe(false);
+    });
+
+    it('is asked again for the same address later in the page, whatever was settled before (an in-app navigation)', () => {
+      expect(shows(CHAT, env({ navigation: 'navigate' }))).toBe(false);
+      expect(shows(CHAT, env({ navigation: 'navigate' }), '?msg=Later')).toBe(
+        true,
+      );
+    });
+
+    it('/demo needs no question, and its query is stashed as well, for the holding page to capture', () => {
+      const e = env({ navigation: 'navigate' });
+      expect(shows('/demo', e, '?q=Hello')).toBe(true);
+      expect(e.stash[DEMO_HANDOFF_STASH]).toBe('?q=Hello');
+      const none = env({ navigation: 'navigate' });
+      expect(shows('/demo', none, '')).toBe(true);
+      expect(DEMO_HANDOFF_STASH in none.stash).toBe(false);
+    });
+
+    it("a trusted and an untrusted repository are alike here: whether the question is shown back is the capture's to say", () => {
+      expect(
+        shows(
+          '/project/github.com/someone/else/chat',
+          env({ navigation: 'navigate' }),
+          '?msg=Hello',
+        ),
+      ).toBe(true);
+    });
   });
 
   // Review S1 and minor 6 of G-A1b: on main a fresh bare visit removed the question kept in the tab, so a reload

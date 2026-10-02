@@ -119,6 +119,56 @@ async function shot(page: Page, name: string): Promise<void> {
   await page.screenshot({ path: join(dir, `${name}.png`) });
 }
 
+const HANDOFF_HOST = 'https://handoff.datatug.test';
+
+/**
+ * Serves the production build as if it lived on an https host that is not localhost (so the app turns its
+ * analytics and error reporting on, as in production), and stands in for Google Analytics with a script that
+ * reports what gtag.js reports: the page location and every command.
+ */
+async function onProductionLikeHost(
+  context: BrowserContext,
+  baseURL: string,
+): Promise<External[]> {
+  const external = await stubExternal(
+    context,
+    (o) => o === HANDOFF_HOST || o === baseURL,
+  );
+  await context.route(`${HANDOFF_HOST}/**`, async (route) => {
+    const url = new URL(route.request().url());
+    const response = await route.fetch({
+      url: baseURL + url.pathname + url.search,
+    });
+    await route.fulfill({ response });
+  });
+  await context.route(
+    'https://www.googletagmanager.com/**',
+    async (route) => {
+      external.push({ url: route.request().url(), method: 'GET', body: '' });
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/javascript',
+        body: `(function(){var dl=window.dataLayer=window.dataLayer||[];
+        function report(args){new Image().src='https://www.google-analytics.com/g/collect?dl='+encodeURIComponent(location.href)+'&cmd='+encodeURIComponent(JSON.stringify(Array.prototype.slice.call(args)));}
+        dl.slice().forEach(report);var push=dl.push;dl.push=function(a){report(a);return push.apply(dl,arguments);};})();`,
+      });
+    },
+  );
+  return external;
+}
+
+const leaks = (external: External[]): string[] =>
+  external
+    .filter((request) =>
+      [request.url, request.body].some(
+        (text) =>
+          text.includes(MARKER) ||
+          text.includes(encodeURIComponent(MARKER)) ||
+          text.includes(SCENARIO),
+      ),
+    )
+    .map((request) => request.method + ' ' + request.url.slice(0, 120));
+
 const VIEWPORTS = [
   { name: '390', width: 390, height: 844 },
   { name: '1440', width: 1440, height: 900 },
@@ -830,54 +880,6 @@ test.describe('the hand-off holding page', () => {
 test.describe('the question reaches no analytics or error report', () => {
   const HOST = 'https://handoff.datatug.test';
 
-  /**
-   * Serves the production build as if it lived on an https host that is not localhost (so the app turns its
-   * analytics and error reporting on, as in production), and stands in for Google Analytics with a script that
-   * reports what gtag.js reports: the page location and every command.
-   */
-  async function onProductionLikeHost(
-    context: BrowserContext,
-    baseURL: string,
-  ): Promise<External[]> {
-    const external = await stubExternal(
-      context,
-      (o) => o === HOST || o === baseURL,
-    );
-    await context.route(`${HOST}/**`, async (route) => {
-      const url = new URL(route.request().url());
-      const response = await route.fetch({
-        url: baseURL + url.pathname + url.search,
-      });
-      await route.fulfill({ response });
-    });
-    await context.route(
-      'https://www.googletagmanager.com/**',
-      async (route) => {
-        external.push({ url: route.request().url(), method: 'GET', body: '' });
-        await route.fulfill({
-          status: 200,
-          contentType: 'text/javascript',
-          body: `(function(){var dl=window.dataLayer=window.dataLayer||[];
-          function report(args){new Image().src='https://www.google-analytics.com/g/collect?dl='+encodeURIComponent(location.href)+'&cmd='+encodeURIComponent(JSON.stringify(Array.prototype.slice.call(args)));}
-          dl.slice().forEach(report);var push=dl.push;dl.push=function(a){report(a);return push.apply(dl,arguments);};})();`,
-        });
-      },
-    );
-    return external;
-  }
-
-  const leaks = (external: External[]): string[] =>
-    external
-      .filter((request) =>
-        [request.url, request.body].some(
-          (text) =>
-            text.includes(MARKER) ||
-            text.includes(encodeURIComponent(MARKER)) ||
-            text.includes(SCENARIO),
-        ),
-      )
-      .map((request) => request.method + ' ' + request.url.slice(0, 120));
-
   test('control: the same stand-in for Google Analytics does see a query that is NOT stripped (so it is not blind)', async ({
     page,
     context,
@@ -1016,6 +1018,310 @@ test.describe('a question on a project address that is not a hand-off address is
       ).not.toContain(MARKER);
     });
   }
+});
+
+test.describe('an address that the router reads another way than the inline script leaves no question behind (review r2, B1)', () => {
+  const HOST = HANDOFF_HOST;
+  const hasMarker = (text: string): boolean => {
+    let decoded = text;
+    for (let i = 0; i < 3; i++) {
+      try {
+        decoded = decodeURIComponent(decoded);
+      } catch {
+        break;
+      }
+    }
+    return text.includes(MARKER) || decoded.includes(MARKER);
+  };
+
+  /** Everything the page did with the address after it was loaded, and where the question could have gone. */
+  async function openAndWatch(
+    page: Page,
+    context: BrowserContext,
+    baseURL: string,
+    path: string,
+    ready: () => Promise<void>,
+  ) {
+    const external = await onProductionLikeHost(context, baseURL);
+    await page.addInitScript(() => {
+      const log: string[] = ((window as unknown as { __urls: string[] }).__urls =
+        []);
+      for (const name of ['pushState', 'replaceState'] as const) {
+        const original = history[name].bind(history);
+        history[name] = (state: unknown, title: string, url?: string | URL | null) => {
+          log.push(`${name} ${String(url)}`);
+          original(state, title, url);
+          log.push(`${name} -> ${location.href}`);
+        };
+      }
+      addEventListener('popstate', () => log.push(`popstate ${location.href}`));
+    });
+    const requests: string[] = [];
+    page.on('request', (request) => {
+      if (!request.isNavigationRequest()) requests.push(request.url());
+    });
+    await page.goto(`${HOST}${path}`);
+    await ready();
+    // Make Sentry report something, so that its breadcrumbs and request URL are on the wire too.
+    await page.evaluate(() =>
+      setTimeout(() => {
+        throw new Error('R2 probe: an uncaught error');
+      }),
+    );
+    await page.waitForTimeout(2500);
+    return { external, requests };
+  }
+
+  /**
+   * The question is nowhere: not in the address, the history, the title, the storage, a request. The one place a
+   * hand-off address that may echo its question keeps it, as on main, is this tab's sessionStorage, so that a
+   * reload shows the holding page again (`keptForReload`).
+   */
+  async function expectNoQuestion(
+    page: Page,
+    watched: { external: External[]; requests: string[] },
+    keptForReload = false,
+  ) {
+    expect(hasMarker(page.url()), `address bar ${page.url()}`).toBe(false);
+    const state = await page.evaluate(() => ({
+      title: document.title,
+      session: JSON.stringify(Object.entries(sessionStorage)),
+      local: JSON.stringify(Object.entries(localStorage)),
+      recorded: (window as unknown as { __urls: string[] }).__urls,
+      // every entry of the session history (the Navigation API, in Chromium)
+      entries: (
+        window as unknown as {
+          navigation: { entries: () => { url: string }[] };
+        }
+      ).navigation
+        .entries()
+        .map((entry) => entry.url),
+    }));
+    expect(state.title.includes(MARKER)).toBe(false);
+    expect(hasMarker(state.session), 'sessionStorage').toBe(keptForReload);
+    expect(hasMarker(state.local), 'localStorage').toBe(false);
+    expect(state.recorded.filter(hasMarker), 'history calls').toEqual([]);
+    expect(state.entries.filter(hasMarker), 'history entries').toEqual([]);
+    expect(watched.requests.filter(hasMarker), 'own requests').toEqual([]);
+    expect(leaks(watched.external), 'third-party requests').toEqual([]);
+    // Not vacuous: Google Analytics reported the page, and Sentry received the probe.
+    const hosts = new Set(
+      watched.external.map((request) => new URL(request.url).hostname),
+    );
+    expect([...hosts].some((h) => h.includes('google-analytics.com'))).toBe(true);
+    expect([...hosts].some((h) => h.includes('sentry.io'))).toBe(true);
+  }
+
+  const query = `?msg=${encodeURIComponent(MARKER)}&lang=ru`;
+
+  // Hand-off addresses spelled so that the script did not recognise them: the holding page, as on main.
+  for (const [path, trusted] of [
+    ['//project/github.com/datatug/chinook-demo/chat', true],
+    ['//project/github.com/acme/demo/chat', false],
+    ['/(project/github.com/datatug/chinook-demo/chat)', true],
+    ['/(project/github.com/acme/demo/chat)', false],
+    ['///project/github.com/datatug/chinook-demo/chat', true],
+    ['//project/github.com/datatug/chinook-demo/tree/HEAD/-/chat', true],
+    ['/(project/github.com/acme/demo/tree/HEAD/-/chat)', false],
+    ['/project/github.com/datatug/chinook-demo/Tree/HEAD/-/chat', true],
+    ['/project/github.com/acme/demo/Tree/HEAD/-/chat', false],
+  ] as const) {
+    test(`${path}${'?msg=…'}: the holding page, ${trusted ? 'with the question' : 'with neutral wording'}, and the question nowhere else`, async ({
+      page,
+      context,
+      baseURL,
+    }) => {
+      const watched = await openAndWatch(
+        page,
+        context,
+        baseURL ?? '',
+        path + query,
+        async () => {
+          await expect(page.locator('#demo-holding-message')).toBeVisible({
+            timeout: 20_000,
+          });
+        },
+      );
+      if (trusted) {
+        await expect(page.locator('blockquote')).toHaveText(MARKER);
+      } else {
+        await expect(page.locator('blockquote')).toHaveCount(0);
+        await expect(page.locator('body')).not.toContainText(MARKER);
+      }
+      expect(new URL(page.url()).searchParams.get('lang')).toBeNull();
+      await expectNoQuestion(page, watched, trusted);
+    });
+  }
+
+  // Every other address under /project/github.com: the project, or the page that says what is wrong with the
+  // address, with the question dropped.
+  for (const path of [
+    '//project/github.com/acme/demo/queries',
+    '///project/github.com/acme/demo/queries',
+    '/(project/github.com/acme/demo/queries)',
+    '/project/github.com/acme/demo/queries',
+    '//project/github.com/acme/demo',
+    '/project;a=1/github.com/acme/demo/queries',
+    '/project/github.com/acme/demo/blob/main/x.txt',
+  ]) {
+    test(`${path}${'?msg=…&x=1'}: the address loses the question and keeps x=1, and the question is nowhere`, async ({
+      page,
+      context,
+      baseURL,
+    }) => {
+      const watched = await openAndWatch(
+        page,
+        context,
+        baseURL ?? '',
+        `${path}?msg=${encodeURIComponent(MARKER)}&x=1`,
+        async () => {
+          await expect(page.locator('ion-header').first()).toBeVisible({
+            timeout: 20_000,
+          });
+        },
+      );
+      await expect
+        .poll(() => new URL(page.url()).pathname)
+        .toMatch(
+          /^\/project\/github\.com\/acme\/demo(\/queries|\/blob\/main\/x\.txt)?$/,
+        );
+      await expectNoQuestion(page, watched);
+    });
+  }
+
+  // The question as a matrix parameter of the path (`…;msg=Q`) is not a query: index.html's script does not look
+  // for it (it would have to rewrite the path), so an analytics tag that reads the address before the router has
+  // started could see it. The router then drops it with the canonical redirect: the address and the history keep
+  // nothing of it.
+  for (const typed of [
+    '/project/github.com/acme/demo;msg=' + MARKER + '/queries',
+    '/project/github.com/acme/demo/queries;msg=' + MARKER,
+    '/project;q=' + MARKER + '/github.com/acme/demo/queries',
+  ]) {
+    test(`${typed}: the router's canonical redirect leaves it neither in the address nor in the history`, async ({
+      page,
+      context,
+      baseURL,
+    }) => {
+      await onProductionLikeHost(context, baseURL ?? '');
+      await page.goto(`${HOST}${typed}?x=1`);
+      await expect(page.locator('ion-header').first()).toBeVisible({
+        timeout: 20_000,
+      });
+      await expect
+        .poll(() => new URL(page.url()).pathname, { timeout: 20_000 })
+        .toBe('/project/github.com/acme/demo/queries');
+      await page.waitForTimeout(1500);
+      expect(new URL(page.url()).searchParams.get('x')).toBe('1');
+      const state = await page.evaluate(() => ({
+        title: document.title,
+        storage:
+          JSON.stringify(Object.entries(sessionStorage)) +
+          JSON.stringify(Object.entries(localStorage)),
+        entries: (
+          window as unknown as { navigation: { entries: () => { url: string }[] } }
+        ).navigation
+          .entries()
+          .map((entry) => entry.url),
+      }));
+      expect(hasMarker(page.url())).toBe(false);
+      expect(state.entries.filter(hasMarker)).toEqual([]);
+      expect(hasMarker(state.title + state.storage)).toBe(false);
+    });
+  }
+
+  test('the matrix parameters of a short address are dropped by the canonical redirect', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await onProductionLikeHost(context, baseURL ?? '');
+    for (const typed of [
+      '/project;a=1/github.com/acme/demo/queries',
+      '/project/github.com/acme/demo;b=2/queries',
+      '/project/github.com/acme/demo/queries;c=3',
+    ]) {
+      await page.goto(`${HOST}${typed}`);
+      await expect(page.locator('ion-header').first()).toBeVisible({
+        timeout: 20_000,
+      });
+      await expect
+        .poll(() => new URL(page.url()).pathname, { message: typed })
+        .toBe('/project/github.com/acme/demo/queries');
+    }
+  });
+
+  test('a folder with literal parentheses (as pasted from GitHub) shows the unsupported-address page, not folder a', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await onProductionLikeHost(context, baseURL ?? '');
+    await page.goto(
+      `${HOST}/project/github.com/Acme/demo/tree/HEAD/a(b)/-/queries`,
+    );
+    await expect(page.getByText('This address is not supported')).toBeVisible({
+      timeout: 20_000,
+    });
+  });
+
+  test('a path written as one group at the root, without a question, is the project chat, not the holding page', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await onProductionLikeHost(context, baseURL ?? '');
+    await page.goto(`${HOST}/(project/github.com/acme/demo/chat)`);
+    await expect(page.locator('ion-header').first()).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page.locator('#demo-holding-message')).toHaveCount(0);
+    await expect
+      .poll(() => new URL(page.url()).pathname)
+      .toBe('/project/github.com/acme/demo/chat');
+  });
+
+  // An in-app navigation: the page is already open, and the router is asked to go to a short address with a
+  // question. The router's own Back/Forward handling is the way into the router that a production build allows
+  // from outside (it has no debugging handle); the unit specs call `router.navigateByUrl` itself.
+  test('a navigation inside the app to a short address with a question ends without it, in the address and the history', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await onProductionLikeHost(context, baseURL ?? '');
+    await page.goto(`${HOST}/project/github.com/acme/demo/chat`);
+    await expect(page.locator('ion-header').first()).toBeVisible({
+      timeout: 20_000,
+    });
+    // Back and Forward are the browser telling the router that the address changed.
+    await page.evaluate(
+      (question) => {
+        history.pushState(
+          history.state,
+          '',
+          `/project/github.com/acme/demo/queries?msg=${encodeURIComponent(question)}&x=1`,
+        );
+        dispatchEvent(new PopStateEvent('popstate', { state: history.state }));
+      },
+      MARKER,
+    );
+    await expect
+      .poll(() => new URL(page.url()).pathname, { timeout: 20_000 })
+      .toBe('/project/github.com/acme/demo/queries');
+    await page.waitForTimeout(1500);
+    expect(new URL(page.url()).searchParams.has('msg')).toBe(false);
+    expect(new URL(page.url()).searchParams.get('x')).toBe('1');
+    const entries = await page.evaluate(() =>
+      (
+        window as unknown as { navigation: { entries: () => { url: string }[] } }
+      ).navigation
+        .entries()
+        .map((entry) => entry.url),
+    );
+    // the entry the test pushed itself carried the question; the router replaced it
+    expect(entries.filter(hasMarker)).toEqual([]);
+  });
 });
 
 test.describe('the matrix-parameter address reaches no analytics either', () => {

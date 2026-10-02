@@ -31,7 +31,11 @@ import {
   DEMO_HANDOFF_STASH,
   questionOfSearch,
 } from './demo-handoff-asked';
-import { handoffTargetOfPath, isHandoffPath } from './demo-handoff-path';
+import {
+  handoffTargetOfPath,
+  isHandoffPath,
+  routeSegments,
+} from './demo-handoff-path';
 
 export { isHandoffPath, DEMO_HANDOFF_KEY, DEMO_HANDOFF_STASH };
 
@@ -67,6 +71,16 @@ export function isTrustedHandoff(pathname: string): boolean {
         : `/tree/${encodeURIComponent(target.ref)}`),
   );
   return isTrustedProjectAddress(project);
+}
+
+/**
+ * This address with no query, for `history.replaceState`. A path that starts with `//` (`//project/…`, which the
+ * router reads as `/project/…`) is, to replaceState, an address on another host: it needs its origin.
+ */
+function withoutQuery(loc: Location): string {
+  return (
+    (loc.pathname.startsWith('//') ? loc.origin : '') + loc.pathname + loc.hash
+  );
 }
 
 /** What is kept for a reload: the path and the raw query string, so it is only applied to the same path. */
@@ -166,7 +180,7 @@ export function captureDemoHandoff(env: CaptureEnv = defaultEnv()): void {
     // Strip first and unconditionally: nothing below may leave the question in the URL. A browser that refuses
     // (a SecurityError, an exotic embedding) must not stop the page from showing what it has.
     try {
-      history.replaceState(history.state, '', loc.pathname + loc.hash);
+      history.replaceState(history.state, '', withoutQuery(loc));
     } catch {
       // The address keeps its query; the question is still held in memory below.
     }
@@ -208,6 +222,17 @@ function store(env: CaptureEnv, search: string | undefined): void {
 }
 
 /**
+ * Whether two paths are the same address for the router: `//project/…` as typed, kept for a reload, and the
+ * `/project/…` the router has since replaced it with, are one.
+ */
+function samePath(kept: string, pathname: string): boolean {
+  return (
+    JSON.stringify(routeSegments(kept)) ===
+    JSON.stringify(routeSegments(pathname))
+  );
+}
+
+/**
  * The hand-off for the holding page: the one captured in this page load, else the one kept for a reload, else
  * `undefined` (a bare visit, or storage is blocked after a reload: the page then shows its no-question copy in
  * English). A hand-off with only a language has an empty `question`. What storage holds is parsed like any
@@ -226,8 +251,7 @@ export function demoHandoff(
   try {
     const raw = storage().getItem(DEMO_HANDOFF_KEY) ?? '';
     const at = raw.indexOf('?');
-    if (at < 0 || raw.slice(0, at) !== pathname.replace(/\/$/, ''))
-      return undefined;
+    if (at < 0 || !samePath(raw.slice(0, at), pathname)) return undefined;
     return forPath(parseHandoffSearch(raw.slice(at)));
   } catch {
     return undefined;

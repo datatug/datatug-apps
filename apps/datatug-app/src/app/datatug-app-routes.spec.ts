@@ -176,6 +176,81 @@ describe('DataTug app routes', () => {
         expect((await visit('datatug.app', url)).component, 'no query').toBe(ProjectStub);
       });
 
+      // review r2, B1: the script reads the path its own way, so a spelling of the address that only the router
+      // understands arrives with the question still in the navigation's query, and no stash.
+      describe('a question in the navigation query that the script did not take out (review r2, B1)', () => {
+        it.each([
+          '//project/github.com/datatug/chinook-demo/chat',
+          '//project/github.com/acme/demo/chat',
+          '///project/github.com/acme/demo/chat',
+          '/(project/github.com/datatug/chinook-demo/chat)',
+          '/(project/github.com/acme/demo/chat)',
+          '/(project/github.com/acme/demo/tree/HEAD/-/chat)',
+          '//project/github.com/acme/demo/tree/HEAD/-/chat',
+          '/project/github.com/acme/demo/Tree/HEAD/-/chat',
+          '/demo',
+          '//demo',
+          '/(demo)',
+        ])('%s?msg=… is the holding page, and the question is stashed for it to capture', async (url) => {
+          const result = await visit('datatug.app', `${url}?msg=Q&lang=ru`);
+          expect(result.component).toBe(HandoffStub);
+          expect(
+            (window as unknown as Record<string, unknown>)[DEMO_HANDOFF_STASH],
+          ).toBe('?msg=Q&lang=ru');
+        });
+
+        it.each([
+          ['?q=Q', '?q=Q'],
+          ['?msg=A&msg=B', '?msg=A&msg=B'],
+          ['?msg=a%20b%26c', '?msg=a+b%26c'],
+        ])('the query %s is stashed as it was asked: %s', async (typed, stashed) => {
+          const result = await visit(
+            'datatug.app',
+            `//project/github.com/acme/demo/chat${typed}`,
+          );
+          expect(result.component).toBe(HandoffStub);
+          expect(
+            (window as unknown as Record<string, unknown>)[DEMO_HANDOFF_STASH],
+          ).toBe(stashed);
+        });
+
+        it.each([
+          '//project/github.com/acme/demo/chat',
+          '/(project/github.com/acme/demo/chat)',
+        ])('%s with no question, or a blank one, is the project: the chat page', async (url) => {
+          for (const search of ['', '?msg=', '?lang=ru']) {
+            TestBed.resetTestingModule();
+            resetHandoffAskedForTests();
+            expect((await visit('datatug.app', url + search)).component, search).toBe(ProjectStub);
+          }
+        });
+
+        it('every other address under a project is the project, question or not: the short route drops the question', async () => {
+          for (const url of [
+            '//project/github.com/acme/demo/queries',
+            '/(project/github.com/acme/demo/queries)',
+            '/project/github.com/acme/demo/chat/more',
+          ]) {
+            TestBed.resetTestingModule();
+            resetHandoffAskedForTests();
+            expect((await visit('datatug.app', url + '?msg=Q')).component, url).toBe(ProjectStub);
+            expect(
+              (window as unknown as Record<string, unknown>)[DEMO_HANDOFF_STASH],
+              url,
+            ).toBeUndefined();
+          }
+        });
+
+        it('at app.incidentius.com the same addresses go to the root, with the query dropped', async () => {
+          const result = await visit(
+            'app.incidentius.com',
+            '//project/github.com/acme/demo/chat?msg=Q',
+          );
+          expect(result.component).toBe(HomeStub);
+          expect(result.url).toBe('/');
+        });
+      });
+
       it('a reload of a question that was asked shows the holding page again; a fresh visit shows the project', async () => {
         const url = '/project/github.com/datatug/chinook-demo/chat';
         window.sessionStorage.setItem(DEMO_HANDOFF_KEY, url + '?msg=Hello');

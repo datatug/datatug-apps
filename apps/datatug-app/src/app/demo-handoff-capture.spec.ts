@@ -13,6 +13,12 @@ import {
   resetDemoHandoffForTests,
   truncateToBytes,
 } from './demo-handoff-capture';
+import { routeSegments } from './demo-handoff-path';
+
+const ORIGIN = 'https://app.test';
+/** The address that is given to history.replaceState: a path that starts with `//` needs its origin (review r2). */
+const toReplaceState = (path: string): string =>
+  (path.startsWith('//') ? ORIGIN : '') + path;
 
 const bytes = (text: string): number => new TextEncoder().encode(text).length;
 
@@ -50,7 +56,12 @@ function pageLoad(
     removeItem: (key: string) =>
       blocked === 'none' ? void store.delete(key) : thrower(),
   } as unknown as Storage;
-  const loc = { pathname, search, hash: options.hash ?? '' } as Location;
+  const loc = {
+    pathname,
+    search,
+    hash: options.hash ?? '',
+    origin: ORIGIN,
+  } as Location;
   const history = {
     state: { x: 1 },
     replaceState: (_state: unknown, _title: string, url: string) => {
@@ -326,6 +337,56 @@ describe('demo hand-off capture', () => {
         demoHandoff(undefined, '/project/github.com/datatug/chinook-demo/chat')
           ?.question,
       ).toBe('Hello');
+    });
+
+    // review r2, B1: spellings of the address that the router reads as a hand-off address
+    describe('an address written another way (review r2, B1)', () => {
+      it.each([
+        ['//project/github.com/datatug/chinook-demo/chat', true],
+        ['//project/github.com/acme/demo/chat', false],
+        ['///project/github.com/datatug/chinook-demo/tree/HEAD/-/chat', true],
+        ['/(project/github.com/datatug/chinook-demo/chat)', true],
+        ['/(project/github.com/acme/demo/chat)', false],
+        ['//demo', true],
+        ['/(demo)', true],
+      ])(
+        '%s: the query is taken out of the address (a `//` path with its origin), kept for the page, and shown back only where the address may echo it',
+        (path, shown) => {
+          const f = pageLoad(path, '?msg=Hello&lang=ru', { hash: '#x' });
+          captureDemoHandoff(f.env);
+          expect(f.replaced).toEqual([toReplaceState(path) + '#x']);
+          expect(demoHandoff(undefined, path)?.question).toBe(
+            shown ? 'Hello' : '',
+          );
+          expect(demoHandoff(undefined, path)?.lang).toBe('ru');
+        },
+      );
+
+      it('what the script kept under the typed path is found again under the path the router has put there since', () => {
+        const typed = '//project/github.com/datatug/chinook-demo/chat';
+        const first = pageLoad(typed, '?msg=Hello');
+        captureDemoHandoff(first.env);
+        resetDemoHandoffForTests();
+        const reload = pageLoad(
+          '/project/github.com/datatug/chinook-demo/chat',
+          '',
+          { store: first.store, navigation: 'reload' },
+        );
+        captureDemoHandoff(reload.env);
+        expect(
+          demoHandoff(
+            () => reload.env.storage(),
+            '/project/github.com/datatug/chinook-demo/chat',
+          )?.question,
+        ).toBe('Hello');
+        // another address is another address
+        expect(
+          demoHandoff(
+            () => reload.env.storage(),
+            '/project/github.com/datatug/other-demo/chat',
+          ),
+        ).toBeUndefined();
+      });
     });
 
     it('takes the query the inline script of index.html stashed, and forgets the stash', () => {
@@ -687,7 +748,7 @@ describe('demo hand-off capture', () => {
         setItem: (key: string, value: string) =>
           blocked ? thrower() : void kept.set(key, value),
       };
-      const location = { pathname, search, hash };
+      const location = { pathname, search, hash, origin: ORIGIN };
       const history = {
         state: null,
         replaceState: (_s: unknown, _t: string, url: string) => {
@@ -753,19 +814,44 @@ describe('demo hand-off capture', () => {
         '/project/github.com/o/r/tree//-/chat',
         '/project/github.com/o%2Fx/r/chat',
         '/project/github.com/%E0%A4%A/r/chat',
+        // review r2: spellings that the router's parser reads as the same address
+        '//demo',
+        '///demo/',
+        '/(demo)',
+        '/(Demo;x=1)/',
+        '/(demo//menu:x)',
+        '/(demo)(menu:x)',
+        '/(demo/other)',
+        '/demo//other',
+        '/demo///',
+        '//project/github.com/datatug/chinook-demo/chat',
+        '///project/github.com/o/r/chat/',
+        '/(project/github.com/o/r/chat)',
+        '/(PROJECT/github.com/acme/demo/tree/HEAD/-/chat)',
+        '/(project/github.com/o/r/chat//menu:x)',
+        '/(project/github.com/o/r/queries)',
+        '//project/github.com/o/r/queries',
+        '///project/github.com/o/r',
+        '/project//github.com/o/r/chat',
+        '/project/github.com/o/r//chat',
+        '/project/github.com/o/r/tree/HEAD/a(b)/-/chat',
       ];
       // Every other address under /project/github.com loses `msg` and `q` only (review S2): nothing is stashed
-      // or kept for it, and the rest of its query stays.
-      const underProject = (path: string) =>
-        /^\/project\/github\.com(?:[/;(]|$)/i.test(path);
+      // or kept for it, and the rest of its query stays. ("Under" as the router's parser reads the path.)
+      const underProject = (path: string) => {
+        const [first = '', second = ''] = routeSegments(path).map((s) =>
+          s.toLowerCase(),
+        );
+        return first === 'project' && second.split('(')[0] === 'github.com';
+      };
       for (const path of paths) {
         const result = run(path, '?q=x&lang=ru', '#h');
         expect(result.stash !== undefined, path).toBe(isHandoffPath(path));
         expect(result.replaced, path).toEqual(
           isHandoffPath(path)
-            ? [path + '#h']
+            ? [toReplaceState(path) + '#h']
             : underProject(path)
-              ? [path + '?lang=ru#h']
+              ? [toReplaceState(path) + '?lang=ru#h']
               : [],
         );
         if (!isHandoffPath(path)) expect(result.kept, path).toEqual(new Map());
@@ -854,6 +940,73 @@ describe('demo hand-off capture', () => {
         expect(result.kept).toEqual(
           new Map([[DEMO_HANDOFF_KEY, '/project/github.com/o/r/chat?msg=M&lang=ru&x=1']]),
         );
+      });
+    });
+
+    // review r2, B1: the script read these addresses differently from the router, so the question stayed in the
+    // address bar and the history, and went to analytics
+    describe('an address that the router reads as a hand-off address is one for the script too (review r2, B1)', () => {
+      it.each([
+        '//demo',
+        '///demo/',
+        '/(demo)',
+        '/(Demo;x=1)',
+        '//project/github.com/datatug/chinook-demo/chat',
+        '//project/github.com/acme/demo/chat',
+        '///project/github.com/acme/demo/chat/',
+        '/(project/github.com/datatug/chinook-demo/chat)',
+        '/(project/github.com/acme/demo/chat)',
+        '/(project/github.com/acme/demo/chat)/',
+        '/(Project/GitHub.com/acme/demo/tree/HEAD/-/chat)',
+        '//project/github.com/acme/demo/tree/HEAD/-/chat',
+        '/project/github.com/acme/demo/Tree/HEAD/-/chat',
+      ])('%s: the question is stashed, kept for a reload, and out of the address bar', (path) => {
+        expect(isHandoffPath(path)).toBe(true);
+        const result = run(path, '?msg=Q&lang=ru', '#h');
+        expect(result.stash).toBe('?msg=Q&lang=ru');
+        expect(result.replaced).toEqual([toReplaceState(path) + '#h']);
+        expect(result.kept).toEqual(
+          new Map([[DEMO_HANDOFF_KEY, path.replace(/\/$/, '') + '?msg=Q&lang=ru']]),
+        );
+      });
+
+      it.each([
+        '//project/github.com/acme/demo/queries',
+        '///project/github.com/acme/demo/queries',
+        '/(project/github.com/acme/demo/queries)',
+        '/(project/github.com/acme/demo/queries)/',
+        '//project/github.com/acme/demo',
+        '//project/github.com/acme/demo/tree/HEAD/dir/-/chat',
+        '/(project/github.com/acme/demo/chat//menu:x)',
+      ])('%s: the question is dropped, the rest of the query stays', (path) => {
+        const result = run(path, '?msg=Q&x=1', '#h');
+        expect(result.stash).toBeUndefined();
+        expect(result.replaced).toEqual([toReplaceState(path) + '?x=1#h']);
+        expect(result.kept).toEqual(new Map());
+      });
+
+      it('an address that is no project and no hand-off, written the same way, is left alone', () => {
+        for (const path of ['//no-such-route', '/(queries)', '///', '/(menu:x)']) {
+          const result = run(path, '?msg=Q');
+          expect(result.stash, path).toBeUndefined();
+          expect(result.replaced, path).toEqual([]);
+        }
+      });
+
+      it('a reload of a hand-off address written another way, after the script and before the app, shows the same question', () => {
+        const first = run('//project/github.com/datatug/chinook-demo/chat', '?msg=Early');
+        const reload = pageLoad(
+          '/project/github.com/datatug/chinook-demo/chat',
+          '',
+          { store: first.kept, navigation: 'reload' },
+        );
+        captureDemoHandoff(reload.env);
+        expect(
+          demoHandoff(
+            () => reload.env.storage(),
+            '/project/github.com/datatug/chinook-demo/chat',
+          )?.question,
+        ).toBe('Early');
       });
     });
 

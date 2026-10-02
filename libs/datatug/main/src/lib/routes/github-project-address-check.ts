@@ -242,6 +242,8 @@ export const GITHUB_PROBE_TIMER = new InjectionToken<
     new Promise<void>((resolve) => setTimeout(resolve, ms)),
 });
 
+const TIME_UP = Symbol('probe time is up');
+
 /** The decisions, in the order of the design. Injectable so the router glue stays a one-liner and a test fakes the network. */
 @Injectable({ providedIn: 'root' })
 export class GithubAddressCheck {
@@ -253,8 +255,19 @@ export class GithubAddressCheck {
   private readonly told = new Set<string>();
   /** Projects whose first read ended in anything but "not found" (a project that was there is not asked about again). */
   private readonly probed = new Set<string>();
+  /** Projects whose first read has not answered yet, though the time allowed is up: not waited for again. */
+  private readonly waiting = new Set<string>();
+  /** What a first read said, after the time allowed was up: told on the next navigation, once. */
+  private readonly late = new Map<string, 'missing' | 'moved'>();
 
-  async decide(segments: readonly string[]): Promise<AddressDecision> {
+  /**
+   * `matrixParameters`: the segments had matrix parameters (`/project;a=1/…`, `…/queries;msg=Q`). They are another
+   * spelling of the address, so the canonical one, which has none, replaces it.
+   */
+  async decide(
+    segments: readonly string[],
+    options: { readonly matrixParameters?: boolean } = {},
+  ): Promise<AddressDecision> {
     const address = readShortGithubAddress(segments);
     if (address.kind === 'not-short-github') {
       return { kind: 'open' };
@@ -266,7 +279,7 @@ export class GithubAddressCheck {
       };
     }
     const { parts } = address;
-    if (!parts.isCanonical) {
+    if (!parts.isCanonical || options.matrixParameters) {
       return { kind: 'redirect', path: parts.canonicalPath };
     }
     // A project at `/project/github.com/…` is always a GitHub project: its parts are always there.
@@ -291,7 +304,7 @@ export class GithubAddressCheck {
       }
     }
     if (!this.probed.has(parts.projectId)) {
-      const missing = await this.probe(parts.projectId);
+      const missing = await this.firstRead(parts.projectId);
       if (missing) {
         return {
           kind: 'problem',
@@ -305,7 +318,6 @@ export class GithubAddressCheck {
           },
         };
       }
-      this.probed.add(parts.projectId);
     }
     return { kind: 'open' };
   }
@@ -314,14 +326,46 @@ export class GithubAddressCheck {
    * `'missing'` or `'moved'` when GitHub says there is no project at this id; undefined otherwise, errors included,
    * and when GitHub has not answered within `GITHUB_PROBE_TIMEOUT_MS` (the project opens, and its pages show
    * their own loading or error state).
+   *
+   * The id counts as a project that is there only once GitHub has said so (or failed in another way than "not
+   * found"). A read that is still waiting when the time is up proves nothing: it is not waited for again, and what
+   * it says when it does answer is kept, so that "no project here" is shown on the next navigation.
    */
-  private probe(projectId: string): Promise<'missing' | 'moved' | undefined> {
+  private async firstRead(
+    projectId: string,
+  ): Promise<'missing' | 'moved' | undefined> {
+    const late = this.late.get(projectId);
+    if (late) {
+      this.late.delete(projectId);
+      return late;
+    }
+    if (this.waiting.has(projectId)) {
+      return undefined;
+    }
     const answer = firstValueFrom(this.store.getProjectSummary(projectId)).then(
       () => undefined,
       (err: unknown) =>
         err instanceof GithubProjectNotFoundError ? err.reason : undefined,
     );
-    const timeUp = this.timer(GITHUB_PROBE_TIMEOUT_MS).then(() => undefined);
-    return Promise.race([answer, timeUp]);
+    const timeUp = this.timer(GITHUB_PROBE_TIMEOUT_MS).then(
+      (): typeof TIME_UP => TIME_UP,
+    );
+    const first = await Promise.race([answer, timeUp]);
+    if (first === TIME_UP) {
+      this.waiting.add(projectId);
+      void answer.then((outcome) => {
+        this.waiting.delete(projectId);
+        if (outcome) {
+          this.late.set(projectId, outcome);
+        } else {
+          this.probed.add(projectId);
+        }
+      });
+      return undefined;
+    }
+    if (!first) {
+      this.probed.add(projectId);
+    }
+    return first;
   }
 }

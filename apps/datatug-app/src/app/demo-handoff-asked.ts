@@ -102,6 +102,9 @@ const keyOf = (segments: readonly string[]): string =>
  * 4. a reload or back/forward: the copy of the query kept in storage for this very address.
  * Blocked storage means no for 3 and 4: the question lives only in the page.
  *
+ * `routerSearch` is the query the router has for this navigation (review r2, B1). Normally empty: the script took
+ * the query out before the router started. A question in it, with no stash, is "asked" (and goes into the stash).
+ *
  * An answer of "no" that comes from 1 or 3 also forgets the question kept for this tab (the copy in storage, and
  * the stash, which only the holding page reads), as `captureDemoHandoff` did on main for a bare visit: otherwise a
  * reload would bring the holding page back, with a question the visitor did not ask this time.
@@ -109,6 +112,7 @@ const keyOf = (segments: readonly string[]): string =>
 export function handoffAsked(
   segments: readonly string[],
   env: AskedEnv = defaultEnv(),
+  routerSearch = '',
 ): boolean {
   const key = keyOf(segments);
   const stashed = env.stash[DEMO_HANDOFF_STASH];
@@ -120,6 +124,14 @@ export function handoffAsked(
       forgetQuestion(env);
     }
     return asked;
+  }
+  if (searchAsksQuestion(routerSearch)) {
+    // The router matched this address with a question in its query that the script did not take out (it reads
+    // the path its own way, and an address can be spelled in ways it does not): asked. Stashed, so that the
+    // holding page captures it and takes it out of the address as it does for every other hand-off.
+    env.stash[DEMO_HANDOFF_STASH] = routerSearch;
+    settled.set(key, true);
+    return true;
   }
   const known = settled.get(key);
   if (known !== undefined) return known;
@@ -149,11 +161,32 @@ export function handoffAsked(
  */
 export function showsHoldingPage(
   segments: readonly string[],
-  env?: AskedEnv,
+  env: AskedEnv = defaultEnv(),
+  routerSearch = '',
 ): boolean {
   const target = handoffTarget(segments);
   if (!target) return false;
-  return target.kind === 'demo' || handoffAsked(segments, env);
+  if (target.kind === 'demo') {
+    if (routerSearch && typeof env.stash[DEMO_HANDOFF_STASH] !== 'string') {
+      env.stash[DEMO_HANDOFF_STASH] = routerSearch;
+    }
+    return true;
+  }
+  return handoffAsked(segments, env, routerSearch);
+}
+
+/** The query of a navigation as a query string (`?a=1&b=2`; '' when it has none), as the capture parses it. */
+export function searchOfQueryParams(
+  queryParams: Record<string, string | string[] | undefined>,
+): string {
+  const search = new URLSearchParams();
+  for (const [name, value] of Object.entries(queryParams)) {
+    for (const each of Array.isArray(value) ? value : [value]) {
+      if (each !== undefined) search.append(name, each);
+    }
+  }
+  const text = search.toString();
+  return text === '' ? '' : `?${text}`;
 }
 
 /** For tests: forgets what this page load settled. */

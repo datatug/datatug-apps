@@ -399,6 +399,36 @@ describe('GithubAddressCheck.decide', () => {
       }
     });
 
+    // review r2, minor 4: matrix parameters on a short address are another spelling of the address
+    it.each([
+      [
+        '/project/github.com/acme/demo/queries',
+        '/project/github.com/acme/demo/queries',
+      ],
+      ['/project/github.com/acme/demo', '/project/github.com/acme/demo'],
+      [
+        '/project/github.com/acme/demo/tree/v1/dir/-/queries',
+        '/project/github.com/acme/demo/tree/v1/dir/-/queries',
+      ],
+    ])(
+      'matrix parameters on %s are dropped by a redirect to the canonical address, before GitHub is asked anything',
+      async (typed, canonical) => {
+        const decision = await check().decide(segs(typed), {
+          matrixParameters: true,
+        });
+        expect(decision).toEqual({ kind: 'redirect', path: canonical });
+        expect(branch).not.toHaveBeenCalled();
+        expect(summary).not.toHaveBeenCalled();
+      },
+    );
+
+    it("matrix parameters on an address that is no project are not the redirect's business: the problem page says so", async () => {
+      const decision = await check().decide(segs('/project/github.com/o'), {
+        matrixParameters: true,
+      });
+      expect(decision.kind).toBe('problem');
+    });
+
     it('the redirect target is itself canonical: it opens, it does not redirect again', async () => {
       for (const typed of [
         '/project/github.com/Datatug/Chinook-Demo/chat',
@@ -710,7 +740,7 @@ describe('GithubAddressCheck.decide', () => {
       );
     });
 
-    it('an answer that comes after the time is up changes nothing', async () => {
+    it('an answer that comes after the time is up, and is a project, is not asked for again', async () => {
       let answer: (value: unknown) => void = () => undefined;
       const late = new Promise((resolve) => (answer = resolve));
       const c = check(undefined, () => from(late));
@@ -718,7 +748,63 @@ describe('GithubAddressCheck.decide', () => {
       fireTimeout();
       expect((await deciding).kind).toBe('open');
       answer({ id: 'x' });
-      await Promise.resolve();
+      await late;
+      await new Promise((resolve) => setTimeout(resolve));
+      expect(await c.decide(segs('/project/github.com/o/r/chat'))).toEqual({
+        kind: 'open',
+      });
+      expect(summary).toHaveBeenCalledTimes(1);
+    });
+
+    // review r2, minor 1: a timed-out probe was cached as "the project exists" for the page's life
+    it.each([
+      ['missing', false],
+      ['moved', true],
+    ] as const)(
+      'an answer of "%s" that comes after the time is up is shown on the next navigation: the project is not taken for one that exists',
+      async (reason, moved) => {
+        let fail: (error: unknown) => void = () => undefined;
+        const late = new Promise((_resolve, reject) => (fail = reject));
+        const c = check(undefined, () => from(late));
+        const deciding = c.decide(segs('/project/github.com/o/r'));
+        fireTimeout();
+        expect((await deciding).kind).toBe('open');
+        fail(new GithubProjectNotFoundError('x', reason));
+        await late.catch(() => undefined);
+        await new Promise((resolve) => setTimeout(resolve));
+        const next = await c.decide(segs('/project/github.com/o/r/chat'));
+        expect(next).toEqual({
+          kind: 'problem',
+          problem: {
+            kind: 'not-found',
+            owner: 'o',
+            repo: 'r',
+            folder: '',
+            moved,
+          },
+        });
+        // that was said once; GitHub is asked again for the navigation after it (the repository may exist by then)
+        summary.mockImplementation(() => of({ id: 'x' }));
+        expect(await c.decide(segs('/project/github.com/o/r/chat'))).toEqual({
+          kind: 'open',
+        });
+        expect(summary).toHaveBeenCalledTimes(2);
+      },
+    );
+
+    it('while the first answer is still to come, navigations inside the project do not wait for it again', async () => {
+      const c = check(undefined, () => NEVER);
+      const first = c.decide(segs('/project/github.com/o/r'));
+      fireTimeout();
+      await first;
+      for (const typed of [
+        '/project/github.com/o/r/chat',
+        '/project/github.com/o/r/queries',
+      ]) {
+        expect(await c.decide(segs(typed))).toEqual({ kind: 'open' });
+      }
+      expect(summary).toHaveBeenCalledTimes(1);
+      expect(timerCalls).toHaveLength(1);
     });
   });
 

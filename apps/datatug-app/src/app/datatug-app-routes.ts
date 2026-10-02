@@ -2,7 +2,7 @@ import { inject } from '@angular/core';
 import { CanMatchFn, Router, Routes } from '@angular/router';
 import { PRODUCT_PROFILE } from '@datatug/product-profiles';
 import { cliChatCapability } from './cli-chat-capability';
-import { showsHoldingPage } from './demo-handoff-asked';
+import { searchOfQueryParams, showsHoldingPage } from './demo-handoff-asked';
 import { handoffUrlMatcher } from './demo-handoff-path';
 
 // Task 13 (S108, spec/research/2026-09-09-layered-acl-reconciliation.md,
@@ -49,10 +49,18 @@ export const datatugProfileOnly = (): boolean => inject(PRODUCT_PROFILE).id === 
  * address that arrived with a question, and no match (the router goes on to the project routes) for a project chat
  * address without one; under every other profile, the root.
  */
-export const handoffOrRoot: CanMatchFn = (_route, segments) =>
-  datatugProfileOnly()
-    ? showsHoldingPage(segments.map((segment) => segment.path))
-    : inject(Router).parseUrl('/');
+export const handoffOrRoot: CanMatchFn = (_route, segments) => {
+  const router = inject(Router);
+  if (!datatugProfileOnly()) return router.parseUrl('/');
+  // The query the router has is normally empty (index.html's script took it out of the address bar before the
+  // router started). It is not when the script reads the path another way than the router does: then a question in
+  // it is as good as one the script stashed (demo-handoff-asked.ts).
+  return showsHoldingPage(
+    segments.map((segment) => segment.path),
+    undefined,
+    searchOfQueryParams(router.getCurrentNavigation()?.extractedUrl.queryParams ?? {}),
+  );
+};
 
 export const routes: Routes = [
   {

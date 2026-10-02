@@ -4,3 +4,4 @@
 
 export * from './lib/github-project-address';
 export * from './lib/project-url';
+export * from './lib/outlet-group';
