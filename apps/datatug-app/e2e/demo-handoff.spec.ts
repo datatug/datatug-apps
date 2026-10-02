@@ -1162,7 +1162,8 @@ test.describe('an address that the router reads another way than the inline scri
     '/project/github.com/acme/demo/queries',
     '//project/github.com/acme/demo',
     '/project;a=1/github.com/acme/demo/queries',
-    '/project/github.com/acme/demo/blob/main/x.txt',
+    // (no file extension: the dev server of CI answers 404 to an address that looks like a file, with no SPA fallback)
+    '/project/github.com/acme/demo/blob/main/dir/notes',
   ]) {
     test(`${path}${'?msg=…&x=1'}: the address loses the question and keeps x=1, and the question is nowhere`, async ({
       page,
@@ -1183,7 +1184,7 @@ test.describe('an address that the router reads another way than the inline scri
       await expect
         .poll(() => new URL(page.url()).pathname)
         .toMatch(
-          /^\/project\/github\.com\/acme\/demo(\/queries|\/blob\/main\/x\.txt)?$/,
+          /^\/project\/github\.com\/acme\/demo(\/queries|\/blob\/main\/dir\/notes)?$/,
         );
       await expectNoQuestion(page, watched);
     });
