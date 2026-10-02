@@ -122,8 +122,9 @@ export class DemoInvestigationService {
     await this.persisting;
     if (outcome.state === 'failed') {
       this.error.set(outcome.reason);
-      this.phase.set(outcome.failure === 'source-unavailable' ? 'source-unavailable' : 'failed');
+      // Saved before it is announced: a visitor who reloads the moment the message appears must get it back.
       await this.save(() => this.store.failQuestion(DEMO_SCOPE, session.id, turn.id, outcome.reason));
+      if (generation === this.generation) this.phase.set(outcome.failure === 'source-unavailable' ? 'source-unavailable' : 'failed');
       return;
     }
     this.rows.set(outcome.rows);

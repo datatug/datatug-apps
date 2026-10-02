@@ -92,6 +92,23 @@ describe('DemoInvestigationService', () => {
     expect(reloaded.error()).toBeTruthy();
   });
 
+  it('saves a failure before announcing it, so a reload the moment the message appears still restores it', async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const saved: string[] = [];
+    const store = { failQuestion: async () => { await gate; saved.push('failure'); return undefined; } };
+    const service = build({ run: async () => { throw new TypeError('Failed to fetch'); } }, undefined, store as unknown as Partial<ChatSessionService>);
+    const started = service.start(scenario, 'q', true, staticRuntime());
+    for (let i = 0; i < 100 && !service.steps().some((step) => step.status === 'failed'); i++) await new Promise((done) => setTimeout(done, 20));
+    await new Promise((done) => setTimeout(done, 50));
+    expect(service.steps().some((step) => step.status === 'failed')).toBe(true);
+    expect(service.phase()).toBe('running'); // not announced while the failure is still being saved
+    release();
+    await started;
+    expect(saved).toEqual(['failure']);
+    expect(service.phase()).toBe('source-unavailable');
+  });
+
   it('a failure that is not about the source is a plain failure', async () => {
     const service = build({ run: async () => { throw new Error('join_aggregate exploded'); } });
     await service.start(scenario, 'q', true, staticRuntime());
