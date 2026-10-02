@@ -976,7 +976,9 @@ describe('projectUrl refuses what it cannot write exactly (design review S2)', (
     }
     expect(counts.accepted).toBeGreaterThan(1000);
     expect(counts.refused).toBeGreaterThan(1000);
-  });
+    // About 1 s on a laptop and 3.5 to 5.6 s on a CI runner that is running the rest of the package's specs at
+    // the same time (it failed on the default 5 s timeout), so give the exhaustive walk room.
+  }, 60_000);
 
   it('is the inverse of parseProjectUrl for every other store, or refuses', () => {
     const counts = { accepted: 0, refused: 0 };
