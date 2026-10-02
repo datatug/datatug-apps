@@ -45,6 +45,21 @@ export interface FederatedQueryProgress {
 
 type Lookup = NonNullable<NonNullable<IQueryDef['federation']>['lookups']>[number];
 
+/** One source scan that finished: what this run actually read from it. */
+export interface FederatedSourceLoaded {
+  readonly database: string;
+  readonly name: string;
+  readonly rows: number;
+  readonly requests: number;
+  readonly elapsedMs: number;
+}
+
+/** Optional seams: where HTTP goes (a static data adapter) and what the run reports about each source. */
+export interface FederatedQueryObserver {
+  readonly fetch?: typeof fetch;
+  readonly onSourceLoaded?: (event: FederatedSourceLoaded) => void;
+}
+
 export type FederatedQueryResult = RunQueryResponse & { readonly totalRows?: number; readonly hasMore?: boolean };
 export type FederatedOutputPage = (rows: readonly (readonly TypedValue[])[]) => Promise<void>;
 export type FederatedQueryMode = 'full' | 'visible';
@@ -77,7 +92,9 @@ function retryDelay(attempt: number, signal?: AbortSignal): Promise<void> {
 }
 
 /** Runs each leaf against OVDB directly and merges/aggregates in this runtime. */
-export async function runFederatedQuery(definition: IQueryDef, onProgress?: (progress: FederatedQueryProgress) => void, token = '', onOutputPage?: FederatedOutputPage, signal?: AbortSignal, mode: FederatedQueryMode = 'full', onPageReady?: (result: FederatedQueryResult) => void, waitForNextPage?: () => Promise<void>): Promise<FederatedQueryResult> {
+export async function runFederatedQuery(definition: IQueryDef, onProgress?: (progress: FederatedQueryProgress) => void, token = '', onOutputPage?: FederatedOutputPage, signal?: AbortSignal, mode: FederatedQueryMode = 'full', onPageReady?: (result: FederatedQueryResult) => void, waitForNextPage?: () => Promise<void>, observer?: FederatedQueryObserver): Promise<FederatedQueryResult> {
+    // Late-bound so a stubbed global fetch is honoured; an observer's fetch replaces it for this run only.
+    const httpFetch: typeof fetch = observer?.fetch ?? ((input, init) => fetch(input, init));
     const config = definition.federation;
     if (!config) throw new Error('This query has no direct OVDB configuration.');
     const baseUrl = ovdbBaseUrl(config.ovdbBaseUrl);
@@ -175,7 +192,7 @@ export async function runFederatedQuery(definition: IQueryDef, onProgress?: (pro
           const timeout = new AbortController();
           const timer = setTimeout(() => timeout.abort(), 15000);
           try {
-            const response = await fetch(url, { headers: { Accept: 'application/json', ...authHeaders }, redirect: 'error', signal: signal ? AbortSignal.any([signal, timeout.signal]) : timeout.signal });
+            const response = await httpFetch(url, { headers: { Accept: 'application/json', ...authHeaders }, redirect: 'error', signal: signal ? AbortSignal.any([signal, timeout.signal]) : timeout.signal });
             if (!response.ok) {
               if ([408, 429, 502, 503, 504].includes(response.status) && attempt < 2) { await retryDelay(attempt, signal); continue; }
               throw new Error(`OVDB lookup ${lookup.database}/${lookup.collection} failed (${response.status}).`);
@@ -225,6 +242,9 @@ export async function runFederatedQuery(definition: IQueryDef, onProgress?: (pro
         const pageSize = Math.min(remaining ?? (mode === 'visible' ? 100 : 500), mode === 'visible' ? 100 : 500);
         let pageToken: string | undefined;
         let snapshotToken: string | undefined;
+        let sourceRows = 0;
+        let sourceRequests = 0;
+        const sourceStarted = performance.now();
         const body = JSON.stringify({
           from: { name: relation.name, ...(relation.schema ? { schema: relation.schema } : {}) },
           ...(ordered.length ? { orderBy: ordered.map((item) => ({ field: item.field, ...(item.direction === 'desc' ? { desc: true } : {}) })) } : {}),
@@ -233,7 +253,7 @@ export async function runFederatedQuery(definition: IQueryDef, onProgress?: (pro
         for (;;) {
           signal?.throwIfAborted();
           if (pageToken === undefined) { stage = 'preparing'; report(); }
-          const response = await fetch(`${baseUrl}/v1/databases/${encodeURIComponent(relation.database || '')}/dtql`, {
+          const response = await httpFetch(`${baseUrl}/v1/databases/${encodeURIComponent(relation.database || '')}/dtql`, {
             method: 'POST', headers: { 'Content-Type': 'application/yaml', Accept: 'application/json', 'OVDB-Page-Size': String(pageSize), ...(pageToken ? { 'OVDB-Page-Token': pageToken } : {}), ...authHeaders }, body, redirect: 'error', signal,
           });
           if (response.status === 410) throw new Error(`OVDB ${relation.database} source snapshot expired. Run the query again.`);
@@ -241,17 +261,22 @@ export async function runFederatedQuery(definition: IQueryDef, onProgress?: (pro
           if (response.status === 503) throw new Error(`OVDB ${relation.database} cannot prepare a source snapshot right now.`);
           if (response.status === 422) throw new Error(`OVDB ${relation.database} does not support this snapshot query.`);
           if (!response.ok) throw new Error(`OVDB ${relation.database} query failed (${response.status}).`);
+          sourceRequests++;
           const page = await response.json() as OvdbPage;
           if (!Array.isArray(page.records) || page.records.length > pageSize || (page.nextPageToken !== undefined && (!page.nextPageToken || typeof page.nextPageToken !== 'string')) ||
             (page.snapshotToken !== undefined && (!page.snapshotToken || typeof page.snapshotToken !== 'string'))) throw new Error(`OVDB ${relation.database} returned an invalid page.`);
           if (page.snapshotToken) snapshotToken = page.snapshotToken;
           const records = remaining === undefined ? page.records : page.records.slice(0, remaining);
           rowsLoaded += records.length;
+          sourceRows += records.length;
           stage = 'loading';
           report();
           yield { records };
           remaining = remaining === undefined ? undefined : remaining - records.length;
-          if (remaining === 0 || !page.nextPageToken) break;
+          if (remaining === 0 || !page.nextPageToken) {
+            observer?.onSourceLoaded?.({ database: relation.database || '', name: relation.name, rows: sourceRows, requests: sourceRequests, elapsedMs: performance.now() - sourceStarted });
+            break;
+          }
           if (page.nextPageToken === pageToken) throw new Error(`OVDB ${relation.database} did not advance its snapshot page token.`);
           pageToken = page.nextPageToken;
         }
@@ -260,7 +285,7 @@ export async function runFederatedQuery(definition: IQueryDef, onProgress?: (pro
             // A completed snapshot still occupies server capacity until explicitly released.
             // Use a fresh signal because cancellation must not abort the release request.
             try {
-              await fetch(`${baseUrl}/v1/databases/${encodeURIComponent(relation.database || '')}/dtql`, {
+              await httpFetch(`${baseUrl}/v1/databases/${encodeURIComponent(relation.database || '')}/dtql`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/yaml', Accept: 'application/json', 'OVDB-Page-Size': String(pageSize),
                   'OVDB-Page-Token': snapshotToken, 'OVDB-Page-Close': 'true', ...authHeaders },
