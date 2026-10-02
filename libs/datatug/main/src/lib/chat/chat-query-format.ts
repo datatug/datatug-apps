@@ -18,9 +18,10 @@ export function chatDtqlYaml(query: ParsedChinookQuery): string {
   const lines = ['from:', `  schema: ${yamlScalar(schema)}`, `  name: ${yamlScalar(name)}`];
   const filter = query.filters[0];
   if (filter) {
-    lines.push('where:', `  op: ${yamlScalar(filter.operator === 'in' ? 'In' : filter.operator)}`,
+    const membership = filter.operator === 'in' || filter.operator === 'not-in';
+    lines.push('where:', `  op: ${yamlScalar(filter.operator === 'in' ? 'In' : filter.operator === 'not-in' ? 'NotIn' : filter.operator)}`,
       '  left:', `    field: ${yamlScalar(filter.field)}`, '  right:');
-    if (filter.operator === 'in') {
+    if (membership) {
       lines.push('    values:');
       for (const value of filter.value as readonly unknown[]) lines.push(`      - ${yamlScalar(value)}`);
     } else {
@@ -67,6 +68,7 @@ export function chatSQLite(query: ParsedChinookQuery): string {
   if (query.filters.length) {
     const conditions = query.filters.map((filter) => {
       const field = column(filter.field);
+      if (filter.operator === 'not-in') return `${field} NOT IN (${(filter.value as readonly unknown[]).map(sqliteValue).join(', ')})`;
       if (filter.operator === 'in') {
         const values = filter.value as readonly unknown[];
         const nonNull = values.filter((value) => value !== null);
@@ -117,11 +119,15 @@ const sqlOperators: Readonly<Record<string, string>> = { '==': '=', '!=': '<>', 
  * A WHERE or HAVING condition. The join-aware engine follows Go's null
  * semantics, which are SQL's: a comparison with NULL never holds (so `== null`
  * matches nothing and an `In` list containing null still only matches its
- * other members), and `!= null` means "is not null".
+ * other members), and `!= null` means "is not null". An explicit null test (`isNull` / `isNotNull`)
+ * is the way to select or exclude nulls, and is previewed as `IS NULL` / `IS NOT NULL`.
  */
 function conditionSql(condition: DTQLCondition, fieldSql: FieldSql): string {
-  if ('kind' in condition) {
+  if ('conditions' in condition) {
     return `(${condition.conditions.map((child) => conditionSql(child, fieldSql)).join(condition.kind === 'and' ? ' AND ' : ' OR ')})`;
+  }
+  if ('operand' in condition) {
+    return `${expressionSql(condition.operand, fieldSql)} IS ${condition.kind === 'is-not-null' ? 'NOT ' : ''}NULL`;
   }
   const right = condition.right;
   if (condition.operator === '!=' && right.kind === 'literal' && right.value === null) {

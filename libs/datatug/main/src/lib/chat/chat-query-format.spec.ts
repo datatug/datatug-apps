@@ -84,9 +84,59 @@ columns: [{field: Country, source: c}]
 `)).toContain(`WHERE "c"."Country" IN ('Canada', NULL)`);
   });
 
+  it('previews explicit null tests as IS NULL / IS NOT NULL, never as a comparison with NULL', () => {
+    const text = sql(joined + `where:
+  and:
+    - isNull: {field: Company, source: c}
+    - or:
+      - isNotNull: {field: Country, source: c}
+      - {op: '!=', left: {field: Total, source: i}, right: {value: 5}}
+columns: [{field: Country, source: c}]
+`);
+    expect(text).toContain(`WHERE ("c"."Company" IS NULL AND ("c"."Country" IS NOT NULL OR "i"."Total" <> 5))`);
+    expect(text).not.toContain('= NULL');
+    expect(sql(joined + `where: {isNull: {field: Company, source: c}}
+columns: [{field: Country, source: c}]
+`)).toContain('WHERE "c"."Company" IS NULL');
+    expect(sql(joined + totalSales + `having: {isNotNull: {aggregate: {function: max, args: [{field: Total, source: i}]}}}
+`)).toContain('HAVING MAX("i"."Total") IS NOT NULL');
+  });
+
+  it('previews != as <> for a value and as IS NOT NULL for null', () => {
+    const where = (op: string, value: string): string => sql(joined + `where: {op: '${op}', left: {field: Country, source: c}, right: {value: ${value}}}
+columns: [{field: Country, source: c}]
+`);
+    expect(where('!=', 'Canada')).toContain(`WHERE "c"."Country" <> 'Canada'`);
+    expect(where('!=', 'null')).toContain('WHERE "c"."Country" IS NOT NULL');
+    expect(where('!=', 'Canada')).not.toContain('!=');
+  });
+
   it('keeps the single-source preview, where null is a value', () => {
     const single = parseDTQL({ from: { schema: 'main', name: 'Customer' }, where: { op: '==', left: { field: 'Company' }, right: { value: null } }, limit: 5 }, schema);
     expect(chatSQLite(single)).toContain('"Company" IS NULL');
+  });
+});
+
+describe('chat preview of a single-source query', () => {
+  const single = (where: unknown): ReturnType<typeof parseDTQL> => parseDTQL({ from: { schema: 'main', name: 'Customer' }, where, limit: 5 }, schema);
+
+  it('previews != as <> and != null as IS NOT NULL, as the filter runs', () => {
+    expect(chatSQLite(single({ op: '!=', left: { field: 'Country' }, right: { value: 'Canada' } }))).toContain(`WHERE "Country" <> 'Canada'`);
+    expect(chatSQLite(single({ op: '!=', left: { field: 'Company' }, right: { value: null } }))).toContain('WHERE "Company" IS NOT NULL');
+  });
+
+  it('previews a NotIn list as NOT IN and shows it as editable DTQL that parses back', () => {
+    const query = single({ op: 'NotIn', left: { field: 'Country' }, right: { values: ['Canada', 'USA'] } });
+    expect(chatSQLite(query)).toContain(`WHERE "Country" NOT IN ('Canada', 'USA')`);
+    const yaml = chatDtqlYaml(query);
+    expect(yaml).toContain('op: "NotIn"');
+    expect(chatSQLite(parseDTQL(yaml, schema))).toBe(chatSQLite(query));
+  });
+
+  it('previews a null test, which the parser keeps on the join-aware model', () => {
+    const query = single({ isNotNull: { field: 'Company' } });
+    expect(chatSQLite(query)).toContain('WHERE "Customer"."Company" IS NOT NULL');
+    expect(chatDtqlYaml(query)).toContain('isNotNull:');
   });
 });
 
