@@ -12,7 +12,10 @@ import {
   GITHUB_REPO_PATTERN,
   GITHUB_STORE_ID,
   IGithubProjectId,
-  splitGithubProjectId,
+  isSafePathSegment,
+  isValidGithubFolder,
+  isValidGithubRef,
+  readGithubProjectId,
 } from './github-project-address';
 
 /**
@@ -223,10 +226,14 @@ export const getStoreId = (repo: string): string => {
 // ---------------------------------------------------------------------------
 // Project addresses (design `demo-as-github-project.md` 3.1, 3.3, 3.4, 3.4a)
 //
-// Two shapes of a project path exist, and these two functions are the one place that knows them:
+// Two shapes of a project path exist, and these functions are the one place that knows them:
 //   - GitHub projects: `/project/github.com/<owner>/<repo>[/tree/<ref>[/<dir>…]][/-/<page>…]` (canonical);
 //   - every store, GitHub included for as long as it is accepted: `/store/<storeId>/project/<projectId>[/<page>…]`.
 // Both are paths (a `Location.pathname`), never a path with a query string or a fragment.
+//
+// Contract: for every `{storeId, projectId}` and page that `projectUrl` accepts, `parseProjectUrl` reads the
+// returned path back as that same project (the canonical id) and page; everything else is refused, never turned
+// into the address of another project.
 // ---------------------------------------------------------------------------
 
 const PROJECT_FILE_NAME = 'datatug-project.json';
@@ -235,9 +242,9 @@ const PROJECT_FILE_NAME = 'datatug-project.json';
 export type ProjectUrlErrorReason =
   /** Not a project address at all (another route). Not an error to show. */
   | 'not-a-project-address'
-  /** The owner or the repo is not a name GitHub allows (this also covers `%2F`, unicode look-alikes). */
+  /** The owner or the repo is not a name GitHub allows (this also covers `%2F`, `.git.git`, unicode look-alikes). */
   | 'invalid-owner-or-repo'
-  /** A segment that cannot be part of a project locator: `.`/`..`, an encoded `/` or `%`, a control character, `?`, `#`, an empty segment, a `-` where a page was expected. */
+  /** A segment that cannot be part of a project locator or a page: `.`/`..`, an encoded `/` or `%`, a control character, leading or trailing whitespace, `?`, `#`, an empty segment, a `-` where a page was expected. */
   | 'invalid-path-segment'
   /** `@` in a directory or a ref: it separates the parts of the project id. */
   | 'at-sign-not-supported'
@@ -246,125 +253,202 @@ export type ProjectUrlErrorReason =
   /** `blob/…` of anything but the project file: a link to a file. */
   | 'file-link'
   /** `…/tree` with no ref. */
-  | 'missing-ref';
+  | 'missing-ref'
+  /** A spelling of the GitHub store id other than `github.com` or `github` (`GitHub.com`): never a different store. */
+  | 'unsupported-store-id'
+  /** `projectUrl` only: the id or the page has no exact address. */
+  | 'not-representable';
 
 export interface IProjectUrlError {
   readonly ok: false;
   readonly reason: ProjectUrlErrorReason;
 }
 
+/** What `projectUrl` throws. */
+export class ProjectUrlError extends Error {
+  constructor(public readonly reason: ProjectUrlErrorReason) {
+    super(`no exact project address (${reason})`);
+    this.name = 'ProjectUrlError';
+  }
+}
+
+/** The parts of a GitHub project: owner and repo lower case; `folder` as in the id (`''` = repo root); `ref` only when it is not the default branch. */
+export interface IGithubProjectParts {
+  readonly owner: string;
+  readonly repo: string;
+  readonly folder: string;
+  readonly ref?: string;
+}
+
 export interface IProjectUrlParts {
   readonly ok: true;
   readonly storeId: string;
   readonly projectId: string;
-  /** What follows the project locator, exactly as typed: `''`, or a path beginning with `/` (`/chat`). */
+  /** What follows the project locator: `''`, or a path beginning with `/` (`/chat`), every segment checked (not empty, not `.` or `..`). Left as typed (still percent-encoded). */
   readonly rest: string;
   /** `short` = `/project/github.com/…`; `legacy` = `/store/<storeId>/project/<projectId>`. */
   readonly shape: 'short' | 'legacy';
   /** The one address of this project and page (design 3.4a), `rest` kept. */
   readonly canonicalPath: string;
-  /** False when the typed path is another spelling of `canonicalPath` (case, `.git`, a trailing slash, `tree/HEAD`, a `blob/` link, the legacy GitHub shape). */
+  /** False when the typed path is another spelling of `canonicalPath` (case, `.git`, a trailing slash, `tree/HEAD`, a `blob/` link, the legacy GitHub shape). Always true for a non-GitHub store (one shape, left as typed). */
   readonly isCanonical: boolean;
   /**
-   * The ref typed in a short GitHub address when it is not `HEAD`: a branch, a tag or a SHA. When it names the
-   * repo's default branch the caller must (with one GitHub API call) rewrite it to `HEAD`; it cannot be known here.
+   * For a GitHub project: its parts, so that no caller splits the id again. `ref` is the typed branch, tag or
+   * commit when it is not `HEAD`; when it names the repo's default branch the caller must (with one GitHub API
+   * call) rewrite it to `HEAD`: it cannot be known here.
    */
-  readonly namedRef?: string;
+  readonly github?: IGithubProjectParts;
 }
 
 function isGithubStoreId(storeId: string): boolean {
   return storeId === GITHUB_STORE_ID || storeId === 'github';
 }
 
-/** What a project locator segment may not contain once decoded: it would re-split or re-route the path. */
-const UNSAFE_SEGMENT_CHARS = '/\\%?#';
-
-function isSafeSegment(segment: string): boolean {
-  if (segment === '' || segment === '.' || segment === '..') {
-    return false;
-  }
-  for (let i = 0; i < segment.length; i++) {
-    const code = segment.charCodeAt(i);
-    if (
-      code < 0x20 ||
-      code === 0x7f ||
-      UNSAFE_SEGMENT_CHARS.includes(segment[i])
-    ) {
-      return false;
-    }
-  }
-  return true;
-}
-
-/** A project locator segment, decoded once; `undefined` when it cannot be one. */
-function decodeLocatorSegment(raw: string): string | undefined {
+function decodeSegment(raw: string): string | undefined {
   try {
-    const decoded = decodeURIComponent(raw);
-    return isSafeSegment(decoded) ? decoded : undefined;
+    return decodeURIComponent(raw);
   } catch {
     return undefined;
   }
 }
 
-const encodeSegments = (segments: readonly string[]): string =>
-  segments.map((s) => encodeURIComponent(s)).join('/');
-
-/** Whether a GitHub id can be written as `/project/github.com/<owner>/<repo>[/tree/<ref>[/<dir>…]]`. */
-function isRepresentableAsShortGithubPath(p: IGithubProjectId): boolean {
-  const pathPart = (segment: string) =>
-    isSafeSegment(segment) && !segment.includes('@');
-  return (
-    GITHUB_OWNER_PATTERN.test(p.org ?? '') &&
-    GITHUB_REPO_PATTERN.test(p.repo ?? '') &&
-    !p.repo.endsWith('.git') &&
-    (p.folder === '' ||
-      p.folder.split('/').every((s) => s !== '-' && pathPart(s))) &&
-    (p.ref === undefined || pathPart(p.ref))
-  );
-}
-
-/** The canonical short path of a GitHub project id; `undefined` when the id cannot be written in that shape. */
-function shortGithubPath(projectId: string, rest: string): string | undefined {
-  const parts = splitGithubProjectId(projectId);
-  if (!isRepresentableAsShortGithubPath(parts)) {
-    return undefined;
-  }
-  const base = `/project/${GITHUB_STORE_ID}/${parts.org}/${parts.repo}`;
-  if (parts.ref === undefined && parts.folder === '') {
-    return base + rest;
-  }
-  const ref = encodeURIComponent(parts.ref ?? GITHUB_DEFAULT_BRANCH_REF);
-  const dir = parts.folder ? `/${encodeSegments(parts.folder.split('/'))}` : '';
-  return `${base}/tree/${ref}${dir}${rest ? '/-' + rest : ''}`;
-}
-
-function normalisePage(page?: string): string {
-  const trimmed = (page ?? '').replace(/^\/+/, '');
-  return trimmed ? '/' + trimmed : '';
+/** A project locator segment, decoded once; `undefined` when it cannot be one. */
+function decodeLocatorSegment(raw: string): string | undefined {
+  const decoded = decodeSegment(raw);
+  return isSafePathSegment(decoded) ? decoded : undefined;
 }
 
 /**
- * The one path of a project, and of one of its pages (`page` is `'chat'`, `'queries/x'`, with or without a
- * leading `/`). A GitHub project gets its short address (`/project/github.com/<owner>/<repo>…`); every other
- * store `/store/<storeId>/project/<projectId>`. A GitHub id that cannot be written in the short shape (an `@`-less
- * or odd id, a directory segment named `-`) keeps the `/store/…` shape, which still opens it.
+ * A page segment, as typed: it must decode, hold no control character, and (decoded, split at `/` and `\`) no
+ * empty, `.` or `..` piece. A `%2F` is how a host turns a name into a path, so it is judged as the path it becomes.
  */
-export function projectUrl(ref: IProjectRef, page?: string): string {
-  const rest = normalisePage(page);
-  if (isGithubStoreId(ref.storeId)) {
-    const short = shortGithubPath(ref.projectId, rest);
-    if (short !== undefined) {
-      return short;
+function isSafeRestSegment(raw: string): boolean {
+  const decoded = decodeSegment(raw);
+  if (decoded === undefined || decoded === '') {
+    return false;
+  }
+  for (let i = 0; i < decoded.length; i++) {
+    const code = decoded.charCodeAt(i);
+    if (code < 0x20 || code === 0x7f) {
+      return false;
     }
   }
-  return `/store/${getStoreId(ref.storeId)}/project/${ref.projectId}${rest}`;
+  return decoded
+    .split(/[\\/]/)
+    .every((p) => p !== '' && p !== '.' && p !== '..');
+}
+
+/** `''`, or `/seg/seg` for checked raw segments; `undefined` when a segment is not acceptable. */
+function restOf(segments: readonly string[]): string | undefined {
+  if (!segments.every(isSafeRestSegment)) {
+    return undefined;
+  }
+  return segments.length > 0 ? '/' + segments.join('/') : '';
+}
+
+const encodeSegments = (segments: readonly string[]): string =>
+  segments.map((s) => encodeURIComponent(s)).join('/');
+
+/** The canonical short path of a valid (strictly read) GitHub project and a checked `rest`. */
+function shortGithubPath(project: IGithubProjectId, rest: string): string {
+  const base = `/project/${GITHUB_STORE_ID}/${project.org}/${project.repo}`;
+  // A page that starts with `tree`, `blob` or `-` would read as part of the locator: spell the tree form out.
+  const ambiguous = /^\/(?:tree|blob|-)(?:\/|$)/.test(rest);
+  if (project.ref === undefined && project.folder === '' && !ambiguous) {
+    return base + rest;
+  }
+  const ref = encodeURIComponent(project.ref ?? GITHUB_DEFAULT_BRANCH_REF);
+  const dir = project.folder
+    ? `/${encodeSegments(project.folder.split('/'))}`
+    : '';
+  return `${base}/tree/${ref}${dir}${rest ? '/-' + rest : ''}`;
+}
+
+function githubParts(project: IGithubProjectId): IGithubProjectParts {
+  return {
+    owner: project.org,
+    repo: project.repo,
+    folder: project.folder,
+    ...(project.ref !== undefined ? { ref: project.ref } : {}),
+  };
+}
+
+/**
+ * The path of a project, and of one of its pages (`page` is `'chat'`, `'queries/x'`, with or without ONE leading
+ * `/`), or the reason there is none. A GitHub project gets its canonical short address
+ * (`/project/github.com/<owner>/<repo>…`); every other store `/store/<storeId>/project/<projectId>`.
+ *
+ * The address is returned only when `parseProjectUrl` reads it back as the same project and page: an id with
+ * more than four parts, a folder or ref holding a `/`, a `-` folder segment, a page with an empty or `..` segment,
+ * a case variant of the store id (`GitHub.com`) have no exact address and are refused. A GitHub id comes back in
+ * its canonical spelling (`r@o@datatug` is `r@o`).
+ */
+export function tryProjectUrl(
+  ref: IProjectRef,
+  page?: string,
+): string | IProjectUrlError {
+  const refused = (reason: ProjectUrlErrorReason): IProjectUrlError => ({
+    ok: false,
+    reason,
+  });
+  const typedPage =
+    typeof page === 'string' && page.startsWith('/')
+      ? page.slice(1)
+      : (page ?? '');
+  const rest = typedPage ? restOf(typedPage.split('/')) : '';
+  if (rest === undefined) {
+    return refused('invalid-path-segment');
+  }
+  const storeId = ref?.storeId;
+  const projectId = ref?.projectId;
+  if (typeof storeId !== 'string' || typeof projectId !== 'string') {
+    return refused('not-representable');
+  }
+  let candidate: string;
+  let expectedStoreId: string;
+  let expectedProjectId: string;
+  if (isGithubStoreId(storeId)) {
+    const reading = readGithubProjectId(projectId);
+    if (!reading.ok) {
+      return refused('not-representable');
+    }
+    candidate = shortGithubPath(reading.id, rest);
+    expectedStoreId = GITHUB_STORE_ID;
+    expectedProjectId = formatGithubProjectId(reading.id);
+  } else {
+    expectedStoreId = getStoreId(storeId);
+    expectedProjectId = projectId;
+    candidate = `/store/${expectedStoreId}/project/${projectId}${rest}`;
+  }
+  const back = parseProjectUrl(candidate);
+  if (!back.ok) {
+    return refused(back.reason);
+  }
+  if (
+    back.storeId !== expectedStoreId ||
+    back.projectId !== expectedProjectId ||
+    back.rest !== rest ||
+    back.canonicalPath !== candidate
+  ) {
+    return refused('not-representable');
+  }
+  return candidate;
+}
+
+/** {@link tryProjectUrl}, throwing a {@link ProjectUrlError} when there is no exact address. */
+export function projectUrl(ref: IProjectRef, page?: string): string {
+  const result = tryProjectUrl(ref, page);
+  if (typeof result !== 'string') {
+    throw new ProjectUrlError(result.reason);
+  }
+  return result;
 }
 
 /**
  * Reads a project path (a pathname: no query, no fragment) in either shape into the `{storeId, projectId}` pair
  * every page already reads from the route, plus what follows (`rest`), the one canonical spelling, and, for an
  * address that cannot be a project, why (`ok: false`). Pure: it makes no request, so whether a named ref is the
- * default branch is left to the caller (`namedRef`).
+ * default branch is left to the caller (`github.ref`).
  */
 export function parseProjectUrl(
   path: string,
@@ -393,6 +477,13 @@ export function parseProjectUrl(
   return notOurs;
 }
 
+/** Drops ONE trailing empty segment (a trailing slash); any further empty segment is then refused as a page segment. */
+function withoutTrailingSlash(segments: string[]): string[] {
+  return segments.length > 0 && segments[segments.length - 1] === ''
+    ? segments.slice(0, -1)
+    : segments;
+}
+
 function parseLegacyPath(
   path: string,
   segments: string[],
@@ -402,12 +493,12 @@ function parseLegacyPath(
   if (storeId === undefined || projectId === undefined) {
     return { ok: false, reason: 'invalid-path-segment' };
   }
-  const restSegments = segments.slice(4);
-  if (restSegments[restSegments.length - 1] === '') {
-    restSegments.pop();
+  const rest = restOf(withoutTrailingSlash(segments.slice(4)));
+  if (rest === undefined) {
+    return { ok: false, reason: 'invalid-path-segment' };
   }
-  const rest = restSegments.length > 0 ? '/' + restSegments.join('/') : '';
-  if (!isGithubStoreId(storeId)) {
+  const lowerStoreId = asciiLowerCase(storeId);
+  if (!isGithubStoreId(lowerStoreId)) {
     return {
       ok: true,
       storeId,
@@ -418,34 +509,35 @@ function parseLegacyPath(
       isCanonical: true,
     };
   }
-  const parts = projectId.split('@');
-  if (parts.length < 2 || parts.length > 4) {
+  // `GitHub.com` is neither this store nor another one: refused, so no spelling can pass for GitHub.
+  if (!isGithubStoreId(storeId)) {
+    return { ok: false, reason: 'unsupported-store-id' };
+  }
+  const reading = readGithubProjectId(projectId);
+  if (!reading.ok) {
+    const partCount = projectId.split('@').length;
     return {
       ok: false,
       reason:
-        parts.length < 2 ? 'not-a-project-address' : 'at-sign-not-supported',
+        reading.reason === 'owner-or-repo'
+          ? 'invalid-owner-or-repo'
+          : reading.reason === 'parts'
+            ? partCount < 2
+              ? 'not-a-project-address'
+              : 'at-sign-not-supported'
+            : 'invalid-path-segment',
     };
   }
-  const id = splitGithubProjectId(projectId);
-  if (
-    !GITHUB_OWNER_PATTERN.test(id.org ?? '') ||
-    !GITHUB_REPO_PATTERN.test(id.repo ?? '')
-  ) {
-    return { ok: false, reason: 'invalid-owner-or-repo' };
-  }
-  const canonicalId = formatGithubProjectId(id);
-  const shortPath = shortGithubPath(canonicalId, rest);
-  // An id the short shape cannot express (a directory segment named `-`) keeps its old address.
-  const canonicalPath = shortPath ?? path;
+  const canonicalPath = shortGithubPath(reading.id, rest);
   return {
     ok: true,
     storeId: GITHUB_STORE_ID,
-    projectId: canonicalId,
+    projectId: formatGithubProjectId(reading.id),
     rest,
     shape: 'legacy',
     canonicalPath,
     isCanonical: canonicalPath === path,
-    ...(id.ref ? { namedRef: id.ref } : {}),
+    github: githubParts(reading.id),
   };
 }
 
@@ -453,11 +545,7 @@ function parseShortGithubPath(
   path: string,
   segments: string[],
 ): IProjectUrlParts | IProjectUrlError {
-  const raw = segments.slice(2);
-  const trailingSlash = raw.length > 0 && raw[raw.length - 1] === '';
-  if (trailingSlash) {
-    raw.pop();
-  }
+  const raw = withoutTrailingSlash(segments.slice(2));
   if (raw.length < 2) {
     return { ok: false, reason: 'not-a-project-address' };
   }
@@ -470,11 +558,13 @@ function parseShortGithubPath(
   ) {
     repo = repo.slice(0, -4);
   }
+  // A repo name never ends in `.git` (so `r.git.git` is refused here), and both names are ASCII.
   if (
     owner === undefined ||
     repo === undefined ||
     !GITHUB_OWNER_PATTERN.test(owner) ||
-    !GITHUB_REPO_PATTERN.test(repo)
+    !GITHUB_REPO_PATTERN.test(repo) ||
+    asciiLowerCase(repo).endsWith('.git')
   ) {
     return { ok: false, reason: 'invalid-owner-or-repo' };
   }
@@ -485,11 +575,10 @@ function parseShortGithubPath(
 
   if (after[0] === 'tree' || after[0] === 'blob') {
     const isBlob = after[0] === 'blob';
-    const refSegment =
-      after[1] === undefined ? undefined : decodeLocatorSegment(after[1]);
     if (after[1] === undefined) {
       return { ok: false, reason: isBlob ? 'file-link' : 'missing-ref' };
     }
+    const refSegment = decodeLocatorSegment(after[1]);
     if (refSegment === undefined) {
       return { ok: false, reason: 'invalid-path-segment' };
     }
@@ -529,26 +618,34 @@ function parseShortGithubPath(
     return { ok: false, reason: 'invalid-path-segment' };
   }
 
-  const namedRef =
-    ref !== undefined && ref !== GITHUB_DEFAULT_BRANCH_REF ? ref : undefined;
+  const rest = restOf(restSegments);
+  if (rest === undefined) {
+    return { ok: false, reason: 'invalid-path-segment' };
+  }
   const folder = dirs.join('/');
-  const owned: IGithubProjectId = {
+  const named =
+    ref !== undefined && ref !== GITHUB_DEFAULT_BRANCH_REF ? ref : undefined;
+  if (
+    !isValidGithubFolder(folder) ||
+    (named !== undefined && !isValidGithubRef(named))
+  ) {
+    return { ok: false, reason: 'invalid-path-segment' };
+  }
+  const project: IGithubProjectId = {
     repo: asciiLowerCase(repo),
     org: asciiLowerCase(owner),
     folder,
-    ...(namedRef ? { ref: namedRef } : {}),
+    ...(named !== undefined ? { ref: named } : {}),
   };
-  const projectId = formatGithubProjectId(owned);
-  const rest = restSegments.length > 0 ? '/' + restSegments.join('/') : '';
-  const canonicalPath = shortGithubPath(projectId, rest) as string;
+  const canonicalPath = shortGithubPath(project, rest);
   return {
     ok: true,
     storeId: GITHUB_STORE_ID,
-    projectId,
+    projectId: formatGithubProjectId(project),
     rest,
     shape: 'short',
     canonicalPath,
     isCanonical: canonicalPath === path,
-    ...(namedRef ? { namedRef } : {}),
+    github: githubParts(project),
   };
 }

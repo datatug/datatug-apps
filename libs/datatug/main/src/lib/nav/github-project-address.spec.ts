@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   asciiLowerCase,
   formatGithubProjectId,
-  isTrustedGithubProject,
-  isTrustedGithubProjectId,
+  isTrustedProjectAddress,
+  isValidGithubFolder,
+  isValidGithubRef,
+  readGithubProjectId,
   splitGithubProjectId,
 } from './github-project-address';
 
@@ -65,151 +67,236 @@ describe('asciiLowerCase', () => {
   });
 });
 
-describe('isTrustedGithubProject (design 3.6)', () => {
-  it.each<[string, { owner: string; repo: string; ref?: string }]>([
-    ['the demo repo with no tree', { owner: 'datatug', repo: 'chinook-demo' }],
-    ['tree/HEAD', { owner: 'datatug', repo: 'chinook-demo', ref: 'HEAD' }],
-    ['mixed case owner and repo', { owner: 'Datatug', repo: 'Chinook-Demo' }],
-    [
-      'upper case, tree/HEAD',
-      { owner: 'DATATUG', repo: 'CHINOOK-DEMO', ref: 'HEAD' },
-    ],
-  ])('trusts %s', (_name, address) => {
-    expect(isTrustedGithubProject(address)).toBe(true);
+describe('readGithubProjectId (the strict reading)', () => {
+  it.each([
+    ['r@o', { repo: 'r', org: 'o', folder: 'datatug' }],
+    ['R@O@Dir', { repo: 'r', org: 'o', folder: 'Dir' }],
+    ['r@o@', { repo: 'r', org: 'o', folder: '' }],
+    ['r@o@a/b', { repo: 'r', org: 'o', folder: 'a/b' }],
+    ['r@o@my dir', { repo: 'r', org: 'o', folder: 'my dir' }],
+    ['r@o@@v1.0.0', { repo: 'r', org: 'o', folder: '', ref: 'v1.0.0' }],
+    ['r@o@d@HEAD', { repo: 'r', org: 'o', folder: 'd' }],
+    ['r@o@d@', { repo: 'r', org: 'o', folder: 'd' }],
+    ['.github@o@', { repo: '.github', org: 'o', folder: '' }],
+  ])('reads %s', (id, expected) => {
+    expect(readGithubProjectId(id)).toStrictEqual({ ok: true, id: expected });
   });
 
-  it.each<[string, { owner: string; repo: string; ref?: string }]>([
-    ['a tag', { owner: 'datatug', repo: 'chinook-demo', ref: 'v1.0.0' }],
-    [
-      'the default branch by its name',
-      { owner: 'datatug', repo: 'chinook-demo', ref: 'main' },
-    ],
-    [
-      'another branch',
-      { owner: 'datatug', repo: 'chinook-demo', ref: 'feature-x' },
-    ],
-    [
-      'a 40-character SHA',
-      { owner: 'datatug', repo: 'chinook-demo', ref: SHA },
-    ],
-    [
-      'a 40-character SHA, upper case',
-      { owner: 'datatug', repo: 'chinook-demo', ref: SHA.toUpperCase() },
-    ],
-    [
-      '"head" (a branch may be called that)',
-      { owner: 'datatug', repo: 'chinook-demo', ref: 'head' },
-    ],
-    ['"Head"', { owner: 'datatug', repo: 'chinook-demo', ref: 'Head' }],
-    ['an empty ref', { owner: 'datatug', repo: 'chinook-demo', ref: '' }],
-    [
-      '"HEAD " with a space',
-      { owner: 'datatug', repo: 'chinook-demo', ref: 'HEAD ' },
-    ],
-    ['another owner, same repo', { owner: 'someone', repo: 'chinook-demo' }],
-    [
-      'another owner, same repo, tree/HEAD',
-      { owner: 'someone', repo: 'chinook-demo', ref: 'HEAD' },
-    ],
-    [
-      'the same owner, another repo',
-      { owner: 'datatug', repo: 'datatug-demo-projects' },
-    ],
-    [
-      'a repo that begins with the trusted one',
-      { owner: 'datatug', repo: 'chinook-demo-x' },
-    ],
-    ['a look-alike repo', { owner: 'datatug', repo: 'chinook-demo-evil' }],
-    [
-      'an owner that begins with the trusted one',
-      { owner: 'datatug-x', repo: 'chinook-demo' },
-    ],
-    [
-      'a repo that ends with the trusted one',
-      { owner: 'datatug', repo: 'x-chinook-demo' },
-    ],
-    [
-      'an owner that ends with the trusted one',
-      { owner: 'x-datatug', repo: 'chinook-demo' },
-    ],
-    ['the repo with .git', { owner: 'datatug', repo: 'chinook-demo.git' }],
-    [
-      'the repo with a trailing slash',
-      { owner: 'datatug', repo: 'chinook-demo/' },
-    ],
-    ['the repo with a path', { owner: 'datatug', repo: 'chinook-demo/evil' }],
-    [
-      'owner and repo joined',
-      { owner: 'datatug/chinook-demo', repo: 'chinook-demo' },
-    ],
-    [
-      'owner/repo spelled in the owner',
-      { owner: 'datatug/chinook-demo', repo: '' },
-    ],
-    ['a space around the repo', { owner: 'datatug', repo: ' chinook-demo' }],
-    ['a newline after the repo', { owner: 'datatug', repo: 'chinook-demo\n' }],
-    ['a NUL after the repo', { owner: 'datatug', repo: 'chinook-demo\u0000' }],
-    [
-      'an encoded slash left in the repo',
-      { owner: 'datatug', repo: 'chinook-demo%2Fevil' },
-    ],
-    [
-      'an encoded name left in the owner',
-      { owner: 'datatu%67', repo: 'chinook-demo' },
-    ],
-    [
-      'the Kelvin sign for k in "chinook"',
-      { owner: 'datatug', repo: 'chinooK-demo' },
-    ],
-    ['a Cyrillic "с" for "c"', { owner: 'datatug', repo: 'сhinook-demo' }],
-    ['a Cyrillic "а" in "datatug"', { owner: 'dаtatug', repo: 'chinook-demo' }],
-    ['a Greek omicron for "o"', { owner: 'datatug', repo: 'chinοok-demo' }],
-    ['a full-width repo', { owner: 'datatug', repo: 'ｃhinook-demo' }],
-    [
-      'a zero-width space inside the repo',
-      { owner: 'datatug', repo: 'chinook​-demo' },
-    ],
-    ['a non-breaking hyphen', { owner: 'datatug', repo: 'chinook‑demo' }],
-    [
-      'a dotless i in the owner (case folding)',
-      { owner: 'datatugı', repo: 'chinook-demo' },
-    ],
-    ['an empty owner and repo', { owner: '', repo: '' }],
-  ])('does not trust %s', (_name, address) => {
-    expect(isTrustedGithubProject(address)).toBe(false);
+  it.each([
+    ['', 'parts'],
+    ['r', 'parts'],
+    ['r@o@d@v1@x', 'parts'],
+    ['r@o@@@', 'parts'],
+    ['r@@', 'owner-or-repo'],
+    ['@o@', 'owner-or-repo'],
+    ['r@o_x@', 'owner-or-repo'],
+    ['r@-o@', 'owner-or-repo'],
+    ['r.git@o@', 'owner-or-repo'],
+    ['r.GIT@o@', 'owner-or-repo'],
+    ['..@o@', 'owner-or-repo'],
+    ['r/x@o@', 'owner-or-repo'],
+    ['chinooK-demo@datatug@', 'owner-or-repo'],
+    ['r@o@..', 'folder'],
+    ['r@o@.', 'folder'],
+    ['r@o@-', 'folder'],
+    ['r@o@a/-/b', 'folder'],
+    ['r@o@a//b', 'folder'],
+    ['r@o@/a', 'folder'],
+    ['r@o@a/', 'folder'],
+    ['r@o@a\\b', 'folder'],
+    ['r@o@a?b', 'folder'],
+    ['r@o@a#b', 'folder'],
+    ['r@o@a%b', 'folder'],
+    ['r@o@\ta', 'folder'],
+    ['r@o@a ', 'folder'],
+    ['r@o@a\u0000', 'folder'],
+    ['r@o@a\u007f', 'folder'],
+    ['r@o@d@..', 'ref'],
+    ['r@o@d@a/b', 'ref'],
+    ['r@o@d@a b ', 'ref'],
+    ['r@o@d@a%b', 'ref'],
+  ])('refuses %j (%s)', (id, reason) => {
+    expect(readGithubProjectId(id)).toStrictEqual({ ok: false, reason });
   });
 
-  it('is false for anything that is not a parsed address', () => {
-    expect(isTrustedGithubProject(undefined as never)).toBe(false);
-    expect(isTrustedGithubProject(null as never)).toBe(false);
-    expect(isTrustedGithubProject({} as never)).toBe(false);
-    expect(isTrustedGithubProject({ owner: 'datatug' } as never)).toBe(false);
-    expect(isTrustedGithubProject({ owner: 1, repo: 2 } as never)).toBe(false);
-    expect(isTrustedGithubProject('datatug/chinook-demo' as never)).toBe(false);
+  it('refuses a non-string', () => {
+    for (const v of [
+      undefined,
+      null,
+      1,
+      ['r@o'],
+      { split: () => ['r', 'o'] },
+    ]) {
+      expect(readGithubProjectId(v)).toStrictEqual({
+        ok: false,
+        reason: 'parts',
+      });
+    }
+  });
+
+  it('validates folders and refs on their own', () => {
+    expect(isValidGithubFolder('')).toBe(true);
+    expect(isValidGithubFolder('a/b c')).toBe(true);
+    expect(isValidGithubFolder('..')).toBe(false);
+    expect(isValidGithubFolder(undefined)).toBe(false);
+    expect(isValidGithubRef('v1.0.0')).toBe(true);
+    expect(isValidGithubRef('')).toBe(false);
+    expect(isValidGithubRef('a@b')).toBe(false);
   });
 });
 
-describe('isTrustedGithubProjectId', () => {
+describe('isTrustedProjectAddress (design 3.6): the one trust function', () => {
+  const GH = 'github.com';
+  const trusted = (projectId: string, storeId = GH): boolean =>
+    isTrustedProjectAddress({ storeId, projectId });
+
   it.each([
-    ['chinook-demo@datatug@', true],
-    ['chinook-demo@datatug@@HEAD', true],
-    ['Chinook-Demo@Datatug@', true],
-    ['chinook-demo@datatug@@v1.0.0', false],
-    ['chinook-demo@datatug@@main', false],
-    [`chinook-demo@datatug@@${SHA}`, false],
-    ['chinook-demo-x@datatug@', false],
-    ['chinook-demo@datatug-x@', false],
-    ['chinook-demo@someone@', false],
-    ['chinook-demo.git@datatug@', false],
-    ['chinook-demo@datatug@@HEAD@extra', false],
-    ['chinook-demo@datatug@a@b@c', false],
-    ['chinook-demo', false],
-    ['', false],
-  ])('%s is %s', (id, expected) => {
-    expect(isTrustedGithubProjectId(id)).toBe(expected);
+    ['the demo repo, no ref', 'chinook-demo@datatug@'],
+    ['an explicit HEAD (tree/HEAD)', 'chinook-demo@datatug@@HEAD'],
+    ['an empty ref', 'chinook-demo@datatug@@'],
+    ['mixed case owner and repo', 'Chinook-Demo@Datatug@'],
+    ['upper case, with HEAD', 'CHINOOK-DEMO@DATATUG@@HEAD'],
+  ])('trusts %s', (_name, projectId) => {
+    expect(trusted(projectId)).toBe(true);
   });
 
-  it('is false for a non-string', () => {
-    expect(isTrustedGithubProjectId(undefined as never)).toBe(false);
+  it.each([
+    ['a tag', 'chinook-demo@datatug@@v1.0.0'],
+    ['the default branch by its name', 'chinook-demo@datatug@@main'],
+    ['another branch', 'chinook-demo@datatug@@feature-x'],
+    ['a 40-character SHA', `chinook-demo@datatug@@${SHA}`],
+    [
+      'a 40-character SHA, upper case',
+      `chinook-demo@datatug@@${SHA.toUpperCase()}`,
+    ],
+    ['"head" (a branch may be called that)', 'chinook-demo@datatug@@head'],
+    ['"Head"', 'chinook-demo@datatug@@Head'],
+    ['"HEAD " with a space', 'chinook-demo@datatug@@HEAD '],
+    ['"HEAD~1"', 'chinook-demo@datatug@@HEAD~1'],
+    ['"HEAD^"', 'chinook-demo@datatug@@HEAD^'],
+    ['another owner, same repo', 'chinook-demo@someone@'],
+    ['the same owner, another repo', 'datatug-demo-projects@datatug@'],
+    ['a repo that begins with the trusted one', 'chinook-demo-x@datatug@'],
+    ['a look-alike repo', 'chinook-demo-evil@datatug@'],
+    ['an owner that begins with the trusted one', 'chinook-demo@datatug-x@'],
+    ['a repo that ends with the trusted one', 'x-chinook-demo@datatug@'],
+    ['an owner that ends with the trusted one', 'chinook-demo@x-datatug@'],
+    ['the repo with .git', 'chinook-demo.git@datatug@'],
+    ['the repo with a trailing slash', 'chinook-demo/@datatug@'],
+    ['the repo with a path', 'chinook-demo/evil@datatug@'],
+    [
+      'owner and repo joined in the owner',
+      'chinook-demo@datatug/chinook-demo@',
+    ],
+    ['a space around the repo', ' chinook-demo@datatug@'],
+    ['a newline after the repo', 'chinook-demo\n@datatug@'],
+    ['a NUL after the repo', 'chinook-demo\u0000@datatug@'],
+    ['an encoded slash left in the repo', 'chinook-demo%2Fevil@datatug@'],
+    ['an encoded name left in the owner', 'chinook-demo@datatu%67@'],
+    ['the Kelvin sign for k in "chinook"', 'chinooK-demo@datatug@'],
+    ['a Cyrillic "с" for "c"', 'сhinook-demo@datatug@'],
+    ['a Cyrillic "а" in "datatug"', 'chinook-demo@dаtatug@'],
+    ['a Greek omicron for "o"', 'chinοok-demo@datatug@'],
+    ['a full-width repo', 'ｃhinook-demo@datatug@'],
+    ['a zero-width space inside the repo', 'chinook​-demo@datatug@'],
+    ['a non-breaking hyphen', 'chinook‑demo@datatug@'],
+    ['a dotless i in the owner', 'chinook-demo@datatugı@'],
+    [
+      'no folder part: the default folder "datatug" is not the root',
+      'chinook-demo@datatug',
+    ],
+    ['a folder of the trusted repo', 'chinook-demo@datatug@sub'],
+    ['the default folder named explicitly', 'chinook-demo@datatug@datatug'],
+    ['five parts', 'chinook-demo@datatug@@HEAD@x'],
+    ['five parts, empty', 'chinook-demo@datatug@@@'],
+    ['four parts with a ref after a folder', 'chinook-demo@datatug@sub@HEAD'],
+    ['no owner', 'chinook-demo'],
+    ['empty', ''],
+  ])('does not trust %s', (_name, projectId) => {
+    expect(trusted(projectId)).toBe(false);
+  });
+
+  it.each([
+    ['..', 'datatug/datatug-demo-projects/main/demo-project-1'],
+    ['../../../datatug/datatug-demo-projects/main/demo-project-1', ''],
+    ['..\\..\\..\\datatug\\datatug-demo-projects\\main\\demo-project-1', ''],
+    ['\t../../../datatug/datatug-demo-projects/main/demo-project-1', ''],
+    ['.', ''],
+    ['-', ''],
+    ['a/../b', ''],
+    ['a?b', ''],
+    ['a#b', ''],
+    ['a%2e%2e', ''],
+    ['a\n', ''],
+    [' a', ''],
+  ])('does not trust the trusted repo with the folder %j', (folder) => {
+    expect(trusted(`chinook-demo@datatug@${folder}`)).toBe(false);
+    expect(trusted(`chinook-demo@datatug@${folder}@HEAD`)).toBe(false);
+  });
+
+  it('requires the store to be exactly github.com', () => {
+    const id = 'chinook-demo@datatug@';
+    expect(trusted(id, 'github.com')).toBe(true);
+    for (const storeId of [
+      'http-localhost:8989',
+      'https-example.com',
+      'localhost:8989',
+      'firestore',
+      'github',
+      'GitHub.com',
+      'GITHUB.COM',
+      'github.com ',
+      ' github.com',
+      'github.com.evil.example',
+      'gitlab.com',
+      '',
+    ]) {
+      expect(trusted(id, storeId)).toBe(false);
+    }
+  });
+
+  it('reads only own properties, and only strings', () => {
+    expect(
+      isTrustedProjectAddress(
+        Object.create({
+          storeId: 'github.com',
+          projectId: 'chinook-demo@datatug@',
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      isTrustedProjectAddress(
+        Object.assign(Object.create({ projectId: 'chinook-demo@datatug@' }), {
+          storeId: 'github.com',
+        }),
+      ),
+    ).toBe(false);
+    for (const v of [
+      undefined,
+      null,
+      'github.com',
+      1,
+      [],
+      {},
+      { storeId: 'github.com' },
+      { projectId: 'chinook-demo@datatug@' },
+    ]) {
+      expect(isTrustedProjectAddress(v as never)).toBe(false);
+    }
+    expect(
+      isTrustedProjectAddress({
+        storeId: 'github.com',
+        projectId: ['chinook-demo@datatug@'],
+      } as never),
+    ).toBe(false);
+    expect(
+      isTrustedProjectAddress({
+        storeId: 'github.com',
+        projectId: { split: () => ['chinook-demo', 'datatug', ''] },
+      } as never),
+    ).toBe(false);
+    expect(
+      isTrustedProjectAddress({ ok: false, reason: 'file-link' } as never),
+    ).toBe(false);
   });
 });
