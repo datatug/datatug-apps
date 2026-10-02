@@ -6,6 +6,8 @@ import {
   PlatformLocation,
 } from '@angular/common';
 import { TestBed } from '@angular/core/testing';
+import { Component } from '@angular/core';
+import { Component } from '@angular/core';
 import { NavigationEnd, provideRouter, Router } from '@angular/router';
 import * as Sentry from '@sentry/browser';
 import posthog from 'posthog-js';
@@ -15,7 +17,6 @@ import {
   DEMO_HANDOFF_KEY,
   resetDemoHandoffForTests,
 } from './demo-handoff-capture';
-import { routes } from './datatug-app-routes';
 
 /**
  * The visitor's question must not leave the browser in any analytics or error report. These tests play a
@@ -51,6 +52,9 @@ function playHandoff(url: string): void {
   new Function(stash)(); // index.html, first script in <head>: runs on the real location and history
   captureDemoHandoff(); // main.ts, first statement
 }
+
+@Component({ selector: 'sneat-stub-page', template: '' })
+class StubPage {}
 
 describe('the visitor question never reaches an analytics or error report', () => {
   beforeEach(() => {
@@ -121,7 +125,9 @@ describe('the visitor question never reaches an analytics or error report', () =
     // TestBed swaps in a mock location by default; the router must read the real (happy-dom) one, as in the browser.
     TestBed.configureTestingModule({
       providers: [
-        provideRouter(routes),
+        // The route's own component is not under test (the real route table is: datatug-app-routes.spec.ts); a
+        // stub keeps this test from waiting for the lazy chunk, which is slow on a busy CI machine.
+        provideRouter([{ path: 'demo', component: StubPage }]),
         { provide: PlatformLocation, useClass: BrowserPlatformLocation },
       ],
     });
