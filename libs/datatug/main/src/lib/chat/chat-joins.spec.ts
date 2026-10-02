@@ -170,6 +170,24 @@ columns: [{field: InvoiceId, source: i}]
     }]);
   });
 
+  it('spells out how the single-source adapter treats null for lists and ordering comparisons', () => {
+    const where = (op: string, right: unknown) => deriveFirst(invoiceBase({ op, left: { field: 'BillingState' }, right })).query.filters;
+    const state = field('Invoice', 'BillingState');
+    const nullTest = (kind: string) => ({ kind, operand: state });
+    const values = (operator: string, list: unknown[]) => ({ left: state, operator, right: { kind: 'values', values: list } });
+    expect(where('In', { values: ['CA', null] })).toEqual([{ kind: 'or', conditions: [values('in', ['CA']), nullTest('is-null')] }]);
+    expect(where('In', { values: [null] })).toEqual([nullTest('is-null')]);
+    expect(where('NotIn', { values: ['CA'] })).toEqual([{ kind: 'or', conditions: [values('not-in', ['CA']), nullTest('is-null')] }]);
+    expect(where('NotIn', { values: ['CA', null] })).toEqual([{ kind: 'and', conditions: [values('not-in', ['CA']), nullTest('is-not-null')] }]);
+    expect(where('NotIn', { values: [null] })).toEqual([nullTest('is-not-null')]);
+    expect(where('<', { value: 'CA' })).toEqual([{ kind: 'or', conditions: [{ left: state, operator: '<', right: { kind: 'literal', value: 'CA' } }, nullTest('is-null')] }]);
+    expect(where('<=', { value: null })).toEqual([nullTest('is-null')]);
+    expect(where('>', { value: null })).toEqual([nullTest('is-not-null')]);
+    expect(where('>=', { value: null })).toEqual([{ kind: 'or', conditions: [nullTest('is-null'), nullTest('is-not-null')] }]);
+    expect(where('<', { value: null })).toEqual([{ field: { source: 'Invoice', field: 'BillingState' }, operator: '<', value: null }]);
+    expect(where('>=', { value: 'CA' })).toEqual([{ field: { source: 'Invoice', field: 'BillingState' }, operator: '>=', value: 'CA' }]);
+  });
+
   it('rewrites a null written on the left, and leaves null comparisons over an expression as they are', () => {
     const parent = parseDTQL(`from:
   schema: main

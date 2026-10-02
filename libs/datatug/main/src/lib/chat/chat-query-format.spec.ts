@@ -50,7 +50,7 @@ describe('chat SQLite preview of join-aware DTQL', () => {
       - {op: '==', left: {field: country}, right: {value: Canada}}
       - {op: '!=', left: {field: country}, right: {value: USA}}
 `);
-    expect(text).toContain(`HAVING (SUM("i"."Total") > 10 AND ("c"."Country" = 'Canada' OR "c"."Country" <> 'USA'))`);
+    expect(text).toContain(`HAVING (SUM("i"."Total") > 10 AND ("c"."Country" = 'Canada' OR ("c"."Country" <> 'USA' OR "c"."Country" IS NULL)))`);
   });
 
   it('renders and/or groups and list membership in WHERE', () => {
@@ -93,7 +93,7 @@ columns: [{field: Country, source: c}]
       - {op: '!=', left: {field: Total, source: i}, right: {value: 5}}
 columns: [{field: Country, source: c}]
 `);
-    expect(text).toContain(`WHERE ("c"."Company" IS NULL AND ("c"."Country" IS NOT NULL OR "i"."Total" <> 5))`);
+    expect(text).toContain(`WHERE ("c"."Company" IS NULL AND ("c"."Country" IS NOT NULL OR ("i"."Total" <> 5 OR "i"."Total" IS NULL)))`);
     expect(text).not.toContain('= NULL');
     expect(sql(joined + `where: {isNull: {field: Company, source: c}}
 columns: [{field: Country, source: c}]
@@ -102,11 +102,11 @@ columns: [{field: Country, source: c}]
 `)).toContain('HAVING MAX("i"."Total") IS NOT NULL');
   });
 
-  it('previews != as <> for a value and as IS NOT NULL for null', () => {
+  it('previews != for a value as <> that keeps the null rows, as the engine runs it, and != null as IS NOT NULL', () => {
     const where = (op: string, value: string): string => sql(joined + `where: {op: '${op}', left: {field: Country, source: c}, right: {value: ${value}}}
 columns: [{field: Country, source: c}]
 `);
-    expect(where('!=', 'Canada')).toContain(`WHERE "c"."Country" <> 'Canada'`);
+    expect(where('!=', 'Canada')).toContain(`WHERE ("c"."Country" <> 'Canada' OR "c"."Country" IS NULL)`);
     expect(where('!=', 'null')).toContain('WHERE "c"."Country" IS NOT NULL');
     expect(where('!=', 'Canada')).not.toContain('!=');
   });
@@ -120,14 +120,14 @@ columns: [{field: Country, source: c}]
 describe('chat preview of a single-source query', () => {
   const single = (where: unknown): ReturnType<typeof parseDTQL> => parseDTQL({ from: { schema: 'main', name: 'Customer' }, where, limit: 5 }, schema);
 
-  it('previews != as <> and != null as IS NOT NULL, as the filter runs', () => {
-    expect(chatSQLite(single({ op: '!=', left: { field: 'Country' }, right: { value: 'Canada' } }))).toContain(`WHERE "Country" <> 'Canada'`);
+  it('previews != as <> that keeps the null rows, and != null as IS NOT NULL, as the filter runs', () => {
+    expect(chatSQLite(single({ op: '!=', left: { field: 'Country' }, right: { value: 'Canada' } }))).toContain(`WHERE ("Country" <> 'Canada' OR "Country" IS NULL)`);
     expect(chatSQLite(single({ op: '!=', left: { field: 'Company' }, right: { value: null } }))).toContain('WHERE "Company" IS NOT NULL');
   });
 
   it('previews a NotIn list as NOT IN and shows it as editable DTQL that parses back', () => {
     const query = single({ op: 'NotIn', left: { field: 'Country' }, right: { values: ['Canada', 'USA'] } });
-    expect(chatSQLite(query)).toContain(`WHERE "Country" NOT IN ('Canada', 'USA')`);
+    expect(chatSQLite(query)).toContain(`WHERE ("Country" NOT IN ('Canada', 'USA') OR "Country" IS NULL)`);
     const yaml = chatDtqlYaml(query);
     expect(yaml).toContain('op: "NotIn"');
     expect(chatSQLite(parseDTQL(yaml, schema))).toBe(chatSQLite(query));

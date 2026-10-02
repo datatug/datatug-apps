@@ -50,6 +50,33 @@ function sqliteValue(value: unknown): string {
   return `'${String(value).replaceAll("'", "''")}'`;
 }
 
+/**
+ * One single-source filter as the adapter runs it: null is an ordinary value, the lowest one. `== null` and
+ * `In [.., null]` match the null rows; `!= x`, `< x`, `<= x` and `NotIn [x]` keep them; `!= null`, `> null`
+ * and `NotIn [.., null]` drop them. SQL's own comparison would leave every null row out, so those are spelled out.
+ */
+function adapterFilterSql(field: string, operator: string, value: unknown): string {
+  const isNull = `${field} IS NULL`;
+  const isNotNull = `${field} IS NOT NULL`;
+  if (operator === 'in' || operator === 'not-in') {
+    const values = value as readonly unknown[];
+    const members = values.filter((item) => item !== null);
+    const hasNull = members.length !== values.length;
+    const list = `${field} ${operator === 'in' ? 'IN' : 'NOT IN'} (${members.map(sqliteValue).join(', ')})`;
+    if (operator === 'in') return !hasNull ? list : members.length ? `(${list} OR ${isNull})` : isNull;
+    return !hasNull ? `(${list} OR ${isNull})` : members.length ? `(${list} AND ${isNotNull})` : isNotNull;
+  }
+  if (value === null) {
+    switch (operator) {
+      case '==': case '<=': return isNull;
+      case '!=': case '>': return isNotNull;
+      case '>=': return `(${isNull} OR ${isNotNull})`;
+    }
+  }
+  const comparison = `${field} ${operator === '==' ? '=' : operator === '!=' ? '<>' : operator} ${sqliteValue(value)}`;
+  return value !== null && (operator === '!=' || operator === '<' || operator === '<=') ? `(${comparison} OR ${isNull})` : comparison;
+}
+
 /** SQL for the local Chinook SQLite target, derived from the validated DTQL. */
 export function chatSQLite(query: ParsedChinookQuery): string {
   if (isJoinedDTQLQuery(query)) return joinedSQLite(query);
@@ -66,23 +93,7 @@ export function chatSQLite(query: ParsedChinookQuery): string {
     : '');
   const lines = [select, from];
   if (query.filters.length) {
-    const conditions = query.filters.map((filter) => {
-      const field = column(filter.field);
-      if (filter.operator === 'not-in') return `${field} NOT IN (${(filter.value as readonly unknown[]).map(sqliteValue).join(', ')})`;
-      if (filter.operator === 'in') {
-        const values = filter.value as readonly unknown[];
-        const nonNull = values.filter((value) => value !== null);
-        const parts = [];
-        if (nonNull.length) parts.push(`${field} IN (${nonNull.map(sqliteValue).join(', ')})`);
-        if (values.length !== nonNull.length) parts.push(`${field} IS NULL`);
-        return parts.length > 1 ? `(${parts.join(' OR ')})` : parts[0] || '1 = 0';
-      }
-      if (filter.value === null && (filter.operator === '==' || filter.operator === '!=')) {
-        return `${field} IS ${filter.operator === '!=' ? 'NOT ' : ''}NULL`;
-      }
-      const operator = filter.operator === '==' ? '=' : filter.operator === '!=' ? '<>' : filter.operator;
-      return `${field} ${operator} ${sqliteValue(filter.value)}`;
-    });
+    const conditions = query.filters.map((filter) => adapterFilterSql(column(filter.field), filter.operator, filter.value));
     lines.push(`WHERE ${conditions.join(' AND ')}`);
   }
   if (query.orders.length) {
@@ -113,28 +124,38 @@ function expressionSql(expression: DTQLExpression, fieldSql: (source: string, fi
 
 type FieldSql = (source: string, field: string) => string;
 
-const sqlOperators: Readonly<Record<string, string>> = { '==': '=', '!=': '<>', in: 'IN', 'not-in': 'NOT IN' };
+const sqlOperators: Readonly<Record<string, string>> = { '==': '=', in: 'IN', 'not-in': 'NOT IN' };
+
+const isNullLiteral = (expression: DTQLExpression): boolean => expression.kind === 'literal' && expression.value === null;
 
 /**
- * A WHERE or HAVING condition. The join-aware engine follows Go's null
- * semantics, which are SQL's: a comparison with NULL never holds (so `== null`
- * matches nothing and an `In` list containing null still only matches its
- * other members), and `!= null` means "is not null". An explicit null test (`isNull` / `isNotNull`)
- * is the way to select or exclude nulls, and is previewed as `IS NULL` / `IS NOT NULL`.
+ * A WHERE or HAVING condition as the join-aware engine runs it, which is SQL's three-valued logic with two
+ * exceptions. A comparison with NULL never holds, so WHERE `== null` matches nothing, `<` and `>` leave nulls
+ * out, and an `In` list containing null still only matches its other members. But `!=` is null-safe: it keeps
+ * the null rows (`null != "a"` is true) and `!= null` means "is not null". HAVING `==` is null-safe too:
+ * `== null` matches the null group. An explicit null test is the way to select or exclude nulls; it is
+ * previewed as `IS NULL` / `IS NOT NULL`.
  */
-function conditionSql(condition: DTQLCondition, fieldSql: FieldSql): string {
+function conditionSql(condition: DTQLCondition, fieldSql: FieldSql, having = false): string {
   if ('conditions' in condition) {
-    return `(${condition.conditions.map((child) => conditionSql(child, fieldSql)).join(condition.kind === 'and' ? ' AND ' : ' OR ')})`;
+    return `(${condition.conditions.map((child) => conditionSql(child, fieldSql, having)).join(condition.kind === 'and' ? ' AND ' : ' OR ')})`;
   }
   if ('operand' in condition) {
     return `${expressionSql(condition.operand, fieldSql)} IS ${condition.kind === 'is-not-null' ? 'NOT ' : ''}NULL`;
   }
-  const right = condition.right;
-  if (condition.operator === '!=' && right.kind === 'literal' && right.value === null) {
-    return `${expressionSql(condition.left, fieldSql)} IS NOT NULL`;
+  const left = expressionSql(condition.left, fieldSql);
+  const right = expressionSql(condition.right, fieldSql);
+  const nullTested = isNullLiteral(condition.right) ? left : isNullLiteral(condition.left) ? right : undefined;
+  if (condition.operator === '!=') {
+    if (nullTested !== undefined) return `${nullTested} IS NOT NULL`;
+    const other = condition.right.kind === 'literal' ? left : condition.left.kind === 'literal' ? right : undefined;
+    return other === undefined ? `${left} IS NOT ${right}` : `(${left} <> ${right} OR ${other} IS NULL)`;
   }
-  const operator = sqlOperators[condition.operator] ?? condition.operator;
-  return `${expressionSql(condition.left, fieldSql)} ${operator} ${expressionSql(right, fieldSql)}`;
+  if (having && condition.operator === '==') {
+    if (nullTested !== undefined) return `${nullTested} IS NULL`;
+    if (condition.left.kind !== 'literal' && condition.right.kind !== 'literal') return `${left} IS ${right}`;
+  }
+  return `${left} ${sqlOperators[condition.operator] ?? condition.operator} ${right}`;
 }
 
 /** The parser keeps `field <op> literal` as a compact filter; everything else is already a condition. */
@@ -206,7 +227,7 @@ function joinedSQLite(query: JoinedDTQLQuery): string {
   const lines = [`SELECT ${columns?.length ? columns.join(', ') : '*'}`, `FROM ${relationSql(query.from)}`];
   if (query.filters.length) lines.push(`WHERE ${query.filters.map((filter) => filterSql(filter, fieldSql)).join(' AND ')}`);
   if (query.groupBy?.length) lines.push(`GROUP BY ${query.groupBy.map((expression) => expressionSql(expression, fieldSql)).join(', ')}`);
-  if (query.having) lines.push(`HAVING ${conditionSql(query.having, fieldSql)}`);
+  if (query.having) lines.push(`HAVING ${conditionSql(query.having, fieldSql, true)}`);
   if (query.orders.length) lines.push(`ORDER BY ${query.orders.map((order) => orderSql(order, fieldSql)).join(', ')}`);
   if (query.limit !== undefined) lines.push(`LIMIT ${query.limit}`);
   if (query.offset !== undefined) lines.push(`OFFSET ${query.offset}`);
