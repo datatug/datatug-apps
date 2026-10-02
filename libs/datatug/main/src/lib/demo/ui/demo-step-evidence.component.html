@@ -1,0 +1,19 @@
+@if (step().decision; as decision) {
+  <p class="decision"><strong>{{ t(decision.question) }}</strong></p>
+  <dl class="facts">
+    <dt>{{ t('trace.mechanism') }}</dt><dd>{{ t('mechanism.' + decision.mechanism) }}</dd>
+    <dt>{{ t('trace.provenance') }}</dt><dd>{{ t('provenance.' + decision.provenance) }}</dd>
+  </dl>
+}
+@if (step().simulated; as simulated) { <p class="preview-note"><span class="tag">{{ t('trace.preview') }}</span> {{ message(simulated.reason) }}</p> }
+@for (evidence of step().evidence; track $index) {
+  <div class="evidence">
+    <p>{{ message(evidence.label) }}</p>
+    @if (dtql(evidence); as code) { <pre>{{ code }}</pre> }
+    @if (details(evidence).length) {
+      <dl class="facts small">
+        @for (row of details(evidence); track row.key) { <dt>{{ row.key }}</dt><dd>{{ row.value }}</dd> }
+      </dl>
+    }
+  </div>
+}

@@ -1,0 +1,26 @@
+<section class="trace" aria-labelledby="demo-trace-heading">
+  <h2 id="demo-trace-heading">{{ t('trace.heading') }}</h2>
+  <p class="sub">{{ t('trace.sub') }}</p>
+  <ol class="steps" data-testid="trace-steps">
+    @for (step of steps(); track step.id) {
+      <li class="step" data-testid="trace-step" [attr.data-kind]="step.kind" [attr.data-status]="step.status">
+        <button type="button" class="head" [attr.aria-expanded]="isOpen(step)" [attr.aria-controls]="'ev-' + step.id"
+          [attr.title]="isOpen(step) ? t('trace.collapse') : t('trace.expand')" (click)="toggle(step)">
+          <span class="mark" [attr.data-status]="step.status" aria-hidden="true">
+            @if (step.status === 'running') { <ion-spinner name="dots" /> } @else { {{ mark(step) }} }
+          </span>
+          <span class="text"><span class="sr">{{ t('status.' + step.status) }}. </span>{{ text(step) }}</span>
+          <span class="tags">
+            @if (step.simulated) { <span class="tag preview" [attr.title]="t('trace.previewHint')">{{ t('trace.preview') }}</span> }
+            @if (step.decision; as decision) { <sneat-datatug-demo-provenance [provenance]="decision.provenance" [lang]="lang()" /> }
+            @if (duration(step); as ms) { <span class="ms">{{ ms }}</span> }
+          </span>
+        </button>
+        @if (isOpen(step)) {
+          <sneat-datatug-demo-step-evidence [id]="'ev-' + step.id" role="region" [attr.aria-label]="t('trace.evidence')" [step]="step" [lang]="lang()" />
+        }
+      </li>
+    }
+  </ol>
+  @if (showNoAi()) { <p class="no-ai" data-testid="no-ai">{{ t('trace.noAi') }}</p> }
+</section>

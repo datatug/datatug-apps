@@ -1,4 +1,5 @@
 import { Routes } from '@angular/router';
+import { datatugDemoConfig } from '../environments/environment';
 import { cliChatCapability } from './cli-chat-capability';
 
 // Task 13 (S108, spec/research/2026-09-09-layered-acl-reconciliation.md,
@@ -11,6 +12,16 @@ import { cliChatCapability } from './cli-chat-capability';
 // competing convention is exactly what Task 15 was created to avoid. See
 // `datatug-app-routes.spec.ts` for the regression guard.
 export const routes: Routes = [
+  // The anonymous demo: datatug.app/demo?scenario=&q=&lang=, the hand-off from datatug.ai and datatug.io.
+  // Registered only when the `demoRoute` flag (environments/*, `datatugDemoConfig.enabled`) is on. Before the
+  // catch-all below, and with no auth guard: a visitor sees value before any sign-in prompt.
+  ...(datatugDemoConfig.enabled
+    ? [{
+      path: 'demo',
+      data: { demo: datatugDemoConfig },
+      loadComponent: () => import('@sneat/datatug-main').then((m) => m.DemoPageComponent),
+    }]
+    : []),
   {
     path: 'store/:storeId/project/:projectId/chat',
     canMatch: [() => !!cliChatCapability()],

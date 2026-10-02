@@ -1,4 +1,5 @@
 import { IEnvironmentConfig } from '@sneat/core';
+import type { DatatugDemoConfig } from './demo-config';
 
 // Shared Sneat identity pool — `sneat-eur3-1` — used by every Sneat product
 // (consumer + business). This is permanent per the 2026-06-09 single-identity
@@ -32,4 +33,13 @@ export const datatugAppEnvironmentConfig: IEnvironmentConfig = {
   sentry: {
     dsn: 'https://0ef31fd33eade94c7b5d66ed23e4228c@o4511531361370112.ingest.de.sentry.io/4511531364450384',
   },
+};
+
+// Production. `enabled` is the one-line decision for making datatug.app/demo public: `false` keeps the route
+// unregistered (decision D8, land dark); `true` serves it, reading the demo's data from the static JSON
+// published with the app (assets/demo-data) until a hosted OVDB database carries the reference data.
+export const datatugDemoConfig: DatatugDemoConfig = {
+  enabled: false,
+  dataSource: { kind: 'static' },
+  allowDataSourceOverride: false,
 };

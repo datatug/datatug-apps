@@ -1,4 +1,5 @@
 import { IEnvironmentConfig } from '@sneat/core';
+import type { DatatugDemoConfig } from './demo-config';
 
 export const datatugAppEnvironmentConfig: IEnvironmentConfig = {
   production: false,
@@ -21,4 +22,11 @@ export const datatugAppEnvironmentConfig: IEnvironmentConfig = {
     appId: 'emulator-does-not-need-app-id',
     measurementId: 'G-PROVIDE_IF_NEEDED',
   },
+};
+
+// The SSO e2e build does not exercise the demo.
+export const datatugDemoConfig: DatatugDemoConfig = {
+  enabled: false,
+  dataSource: { kind: 'static' },
+  allowDataSourceOverride: false,
 };

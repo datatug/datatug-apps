@@ -28,13 +28,16 @@ import { DATATUG_AGENT_BASE_URL } from '@sneat/datatug-semantic';
 import { routes } from './app/datatug-app-routes';
 import { DatatugAppComponent } from './app/datatug-app.component';
 import { buildInfo } from './build-info';
-import { datatugAppEnvironmentConfig } from './environments/environment';
+import { datatugAppEnvironmentConfig, datatugDemoConfig } from './environments/environment';
 import { registerIonicons } from './register-ionicons';
 import { registerPosthog } from './register-posthog';
 import { captureCliChatCapability } from './app/cli-chat-capability';
 import { cliChatProjectInterceptor } from './app/cli-chat-project.interceptor';
+import { captureDemoHandoff } from './app/demo-handoff-capture';
 
 captureCliChatCapability();
+// Before analytics: the visitor's question is taken out of the address bar, never reported as a page URL.
+if (datatugDemoConfig.enabled) captureDemoHandoff();
 
 if (datatugAppEnvironmentConfig.posthog) {
   registerPosthog(datatugAppEnvironmentConfig.posthog);

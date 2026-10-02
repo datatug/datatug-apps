@@ -1,0 +1,11 @@
+// One palette for light and dark: each colour keeps at least 3:1 against white and against a near-black
+// surface (the app's Ionic theme has no true dark surface yet), and each class has its own shape too.
+:host { display: inline-flex; color: #5d7fc9; }
+:host([data-prov='declared']) { color: #2f7de1; }
+:host([data-prov='human-confirmed']) { color: #1f9d6e; }
+:host([data-prov='verified']) { color: #1a8fb5; }
+:host([data-prov='observed']) { color: #b07a12; }
+:host([data-prov='inferred-from-data']) { color: #a8803a; }
+:host([data-prov='ai-suggested']) { color: #d4572e; }
+:host([data-prov='hypothesis']) { color: #7c8db3; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

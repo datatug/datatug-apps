@@ -1,0 +1,33 @@
+:host { display: block; }
+h2 { margin: 0 0 .25rem; font-size: 1.05rem; }
+.sub { margin: 0 0 .75rem; color: var(--ion-color-medium); font-size: .85rem; }
+.steps { list-style: none; margin: 0; padding: 0; }
+.step { border-top: 1px solid var(--ion-color-light-shade); animation: step-in .22s ease-out; }
+.step:first-child { border-top: 0; }
+@keyframes step-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .step { animation: none; } }
+.head {
+  display: grid; grid-template-columns: 1.5rem 1fr auto; gap: .5rem; align-items: start; width: 100%;
+  padding: .6rem .25rem; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.head:hover { background: rgba(var(--ion-color-primary-rgb), .05); }
+.head:focus-visible { outline: 2px solid var(--ion-color-primary); outline-offset: -2px; }
+.mark {
+  display: grid; place-items: center; width: 1.3rem; height: 1.3rem; border-radius: 50%; font-size: .8rem; font-weight: 700;
+  background: var(--ion-color-success); color: var(--ion-color-success-contrast); margin-top: .05rem;
+}
+.mark[data-status='warning'] { background: var(--ion-color-warning); color: var(--ion-color-warning-contrast); }
+.mark[data-status='failed'] { background: var(--ion-color-danger); color: var(--ion-color-danger-contrast); }
+.mark[data-status='running'], .mark[data-status='skipped'] { background: transparent; color: var(--ion-color-medium); }
+.mark ion-spinner { width: 1.3rem; height: 1.3rem; }
+.text { line-height: 1.4; overflow-wrap: anywhere; }
+.tags { display: flex; gap: .4rem; align-items: center; }
+.tag { font-size: .7rem; font-weight: 600; padding: .05rem .4rem; border-radius: .6rem; border: 1px solid currentColor; text-transform: uppercase; letter-spacing: .03em; }
+.preview { color: var(--ion-color-tertiary); }
+.ms { color: var(--ion-color-medium); font-size: .75rem; font-variant-numeric: tabular-nums; }
+.no-ai { margin: .75rem 0 0; font-weight: 600; color: var(--ion-color-success-shade); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (max-width: 560px) {
+  .head { grid-template-columns: 1.5rem 1fr; }
+  .tags { grid-column: 2; }
+}

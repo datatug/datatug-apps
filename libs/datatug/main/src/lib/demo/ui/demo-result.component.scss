@@ -1,0 +1,22 @@
+:host {
+  display: block;
+  --dt-grid-bg: var(--ion-card-background, var(--ion-background-color, #fff));
+  --dt-grid-fg: var(--ion-text-color, #222);
+  --dt-grid-muted: var(--ion-color-medium);
+  --dt-grid-header-bg: var(--ion-color-light);
+  --dt-grid-border: var(--ion-color-light-shade);
+  --dt-grid-row-hover: rgba(var(--ion-color-primary-rgb), .07);
+  --dt-grid-row-selected: rgba(var(--ion-color-primary-rgb), .16);
+  --dt-grid-accent: var(--ion-color-primary);
+}
+.head { display: flex; align-items: baseline; gap: .75rem; margin-bottom: .5rem; }
+h2 { margin: 0; font-size: 1.05rem; }
+.count { color: var(--ion-color-medium); font-size: .85rem; }
+.again { margin-left: auto; border: 0; background: none; padding: .1rem .2rem; color: var(--ion-color-primary); font: inherit; font-size: .85rem; cursor: pointer; text-decoration: underline; }
+.clear { margin-left: .25rem; border: 0; background: none; color: var(--ion-color-medium); font-size: 1.2rem; cursor: pointer; }
+.panes { display: grid; gap: 1.25rem; grid-template-columns: minmax(0, 1fr); }
+.chart-pane { order: -1; }
+.grid { width: 100%; height: 26rem; }
+.source { margin: .5rem 0 0; color: var(--ion-color-medium); font-size: .8rem; }
+:host ::ng-deep .linked-row { background: rgba(var(--ion-color-primary-rgb), .14); }
+:host ::ng-deep .primary-measure { font-weight: 700; }

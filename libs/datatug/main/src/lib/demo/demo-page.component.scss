@@ -1,0 +1,30 @@
+.demo { display: grid; gap: clamp(1rem, 3vw, 1.25rem); max-width: 1180px; margin: 0 auto; padding: 1rem clamp(.75rem, 3vw, 1rem) 3rem; }
+.session-note { margin: 0; color: var(--ion-color-medium); font-size: .85rem; }
+.loading, .running { display: flex; align-items: center; gap: .5rem; margin: 0; color: var(--ion-color-medium); }
+.question { justify-self: start; max-width: min(100%, 46rem); padding: .75rem 1rem; border-radius: .75rem; background: rgba(var(--ion-color-primary-rgb), .1); }
+.question p { margin: .15rem 0 0; font-size: 1.05rem; line-height: 1.4; overflow-wrap: anywhere; }
+.who { font-size: .75rem; font-weight: 600; text-transform: uppercase; color: var(--ion-color-medium); }
+.layout { display: grid; gap: 1.25rem; grid-template-columns: minmax(0, 1fr); align-items: start; }
+.trace-col, .result-col { display: grid; gap: 1.25rem; min-width: 0; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1100px) {
+  .layout { grid-template-columns: minmax(0, .85fr) minmax(0, 1.35fr); }
+  .trace-col { position: sticky; top: .5rem; }
+}
+sneat-datatug-demo-trace, sneat-datatug-demo-result, sneat-datatug-demo-observations, .followups, .keep, .problem, .attribution {
+  display: block; padding: 1rem; border-radius: .75rem; border: 1px solid var(--ion-color-light-shade);
+  background: var(--ion-card-background, var(--ion-background-color));
+}
+.followups h2, .keep h2 { margin: 0 0 .5rem; font-size: 1.05rem; }
+.chips { display: flex; flex-wrap: wrap; gap: .5rem; }
+.chip {
+  padding: .5rem .9rem; border: 1px solid var(--ion-color-primary); border-radius: 1.5rem; background: transparent;
+  color: var(--ion-color-primary); font: inherit; cursor: pointer;
+}
+.chip:hover:not(:disabled) { background: rgba(var(--ion-color-primary-rgb), .1); }
+.chip:focus-visible { outline: 2px solid var(--ion-color-primary); outline-offset: 2px; }
+.chip:disabled { opacity: .6; }
+.hint { margin: .5rem 0 0; color: var(--ion-color-medium); font-size: .8rem; }
+.keep { border-color: var(--ion-color-primary); background: rgba(var(--ion-color-primary-rgb), .06); }
+.keep p { margin: 0 0 .75rem; max-width: 40rem; }
+.problem { border-color: var(--ion-color-warning); }
+.attribution { font-size: .8rem; color: var(--ion-color-medium); }

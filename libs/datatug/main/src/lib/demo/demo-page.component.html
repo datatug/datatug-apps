@@ -1,0 +1,96 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start"><ion-menu-button /></ion-buttons>
+    <ion-title>{{ t('page.title') }}</ion-title>
+    <ion-buttons slot="end">
+      <ion-button size="small" fill="clear" [attr.aria-pressed]="lang() === 'en'" (click)="setLang('en')" data-testid="lang-en">EN</ion-button>
+      <ion-button size="small" fill="clear" [attr.aria-pressed]="lang() === 'ru'" (click)="setLang('ru')" data-testid="lang-ru">RU</ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  <main class="demo" [attr.lang]="lang()">
+    <p class="session-note">{{ t('page.sessionNote') }}</p>
+
+    @if (view() === 'booting') {
+      <p class="loading"><ion-spinner name="dots" /> {{ t('edge.loading') }}</p>
+    }
+
+    @if (view() === 'chooser') {
+      @if (chosenQuestion()) {
+        <div class="question" data-testid="question"><span class="who">{{ t('question.label') }}</span><p>{{ chosenQuestion() }}</p></div>
+      }
+      <sneat-datatug-demo-chooser [lang]="lang()" [notice]="notice()" (choose)="chooseScenario($event)" />
+    }
+
+    @if (view() === 'investigation') {
+      <div class="question" data-testid="question"><span class="who">{{ t('question.label') }}</span><p>{{ demo.question() }}</p></div>
+
+      <div class="layout">
+      <div class="trace-col">
+      @if (demo.steps().length) {
+        <sneat-datatug-demo-trace [steps]="demo.steps()" [lang]="lang()" [noAi]="demo.noAi" [done]="demo.phase() === 'done'" />
+      }
+
+      @if (demo.phase() === 'running') {
+        <p class="running" role="status" data-testid="running">
+          <ion-spinner name="dots" />
+          @if (slow()) { {{ t('edge.slow') }} } @else { {{ t('trace.running') }} }
+        </p>
+      }
+
+      @if (canRetry()) {
+        <div class="problem" role="alert" data-testid="problem" [attr.data-phase]="demo.phase()">
+          @switch (demo.phase()) {
+            @case ('source-unavailable') { <p>{{ t('edge.sourceDown', { source: runtimeLabel() }) }}</p> }
+            @case ('interrupted') { <p>{{ t('edge.interrupted') }}</p> }
+            @default { <p>{{ t('edge.failed', { reason: demo.error() ?? '' }) }}</p> }
+          }
+          <ion-button size="small" (click)="retry()" data-testid="retry">{{ t('edge.retry') }}</ion-button>
+        </div>
+      }
+
+      @if (demo.phase() === 'empty') { <p class="problem" role="status" data-testid="empty">{{ t('edge.empty') }}</p> }
+      </div>
+
+      @if (demo.phase() === 'done' && demo.rows().length) {
+        <div class="result-col" #resultColumn>
+        <sneat-datatug-demo-result [rows]="demo.rows()" [lang]="lang()" [populationYear]="demo.populationYear()" [pinned]="pinned()" (clearPinned)="clearPinned()" (runAgain)="retry()" />
+
+        <section class="followups" aria-labelledby="demo-followups">
+          <h2 id="demo-followups">{{ t('followup.heading') }}</h2>
+          <div class="chips">
+            <button type="button" class="chip" data-testid="followup-insight" [attr.aria-pressed]="demo.insight()" [disabled]="demo.insight()" (click)="askInsight()">{{ t('followup.insight') }}</button>
+          </div>
+          <p class="hint">{{ t('followup.more') }}</p>
+        </section>
+
+        @if (demo.insight()) {
+          <sneat-datatug-demo-observations [observations]="observations()" [lang]="lang()" [activeId]="activeObservation()" (show)="showRows($event)" />
+
+          <section class="keep" aria-labelledby="demo-keep" data-testid="keep">
+            <h2 id="demo-keep">{{ t('keep.heading') }}</h2>
+            <p>{{ t('keep.body') }}</p>
+            <ion-button (click)="signIn()" data-testid="keep-sign-in">{{ t('keep.signIn') }}</ion-button>
+          </section>
+        }
+        </div>
+        }
+      </div>
+
+      @if (demo.phase() === 'done' && demo.rows().length) {
+        <details class="attribution">
+          <summary>{{ t('attribution.heading') }}</summary>
+          <p>{{ t('attribution.pin', { project: bundle.pin.project, commit: bundle.pin.commit.slice(0, 10) }) }}</p>
+          <p>{{ t('attribution.source', { where: runtimeLabel() }) }}</p>
+          <ul>
+            @for (entry of bundle.attribution; track entry.id) {
+              <li><strong>{{ entry.what }}</strong>: {{ entry.text }} <a [href]="entry.url" target="_blank" rel="noopener noreferrer">{{ entry.license }}</a></li>
+            }
+          </ul>
+        </details>
+      }
+    }
+  </main>
+</ion-content>

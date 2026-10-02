@@ -1,4 +1,5 @@
 import { IEnvironmentConfig, IFirebaseEmulatorConfig } from '@sneat/core';
+import type { DatatugDemoConfig } from './demo-config';
 
 const useNgrok = window.location.hostname.includes('.ngrok.');
 const useSSL = useNgrok || window.location.hostname == 'local-app.sneat.ws';
@@ -35,4 +36,12 @@ export const datatugAppEnvironmentConfig: IEnvironmentConfig = {
     appId: 'emulator-does-not-need-app-id',
     measurementId: 'G-PROVIDE_IF_NEEDED',
   },
+};
+
+// Development and e2e: the demo route is on and reads from the demo project's OVDB server, which
+// `pnpm demo:up` starts on this port (it is the port the saved query names).
+export const datatugDemoConfig: DatatugDemoConfig = {
+  enabled: true,
+  dataSource: { kind: 'ovdb', baseUrl: 'http://127.0.0.1:50501' },
+  allowDataSourceOverride: true,
 };

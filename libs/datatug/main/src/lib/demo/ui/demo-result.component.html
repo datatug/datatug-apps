@@ -1,0 +1,20 @@
+<section class="result" aria-labelledby="demo-result-heading" data-testid="demo-result">
+  <div class="head">
+    <h2 id="demo-result-heading">{{ t('result.heading') }}</h2>
+    <span class="count" data-testid="row-count">{{ t('result.rows', { rows: rows().length }) }}</span>
+    <button type="button" class="again" data-testid="run-again" (click)="runAgain.emit()">{{ t('result.runAgain') }}</button>
+    @if (pinned().size) { <button type="button" class="clear" [attr.aria-label]="t('result.clearHighlight')" (click)="clearPinned.emit()">×</button> }
+  </div>
+  <div class="panes">
+    <div class="pane grid-pane" (mouseleave)="hover(null)">
+      <ag-grid-angular class="grid" [attr.aria-label]="t('result.gridAria')" data-testid="demo-grid"
+        [theme]="theme" [rowData]="gridRows()" [columnDefs]="columns()" [defaultColDef]="defaultColDef"
+        [getRowId]="getRowId" [getRowClass]="rowClass" [suppressRowVirtualisation]="true"
+        (gridReady)="onReady($event)" (cellMouseOver)="onCellHover($event)" />
+      @if (populationYear(); as year) { <p class="source">{{ t('result.population', { year }) }}</p> }
+    </div>
+    <div class="pane chart-pane">
+      <sneat-datatug-demo-chart [rows]="perCapita()" [lang]="lang()" [compareCountry]="largest()" [linked]="linked()" (hover)="hover($event)" />
+    </div>
+  </div>
+</section>

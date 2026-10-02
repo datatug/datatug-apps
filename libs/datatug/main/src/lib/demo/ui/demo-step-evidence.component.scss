@@ -1,0 +1,11 @@
+:host { display: block; margin: 0 0 .75rem 2rem; padding: .5rem .75rem; border-left: 3px solid var(--ion-color-light-shade); font-size: .88rem; }
+.decision { margin: 0 0 .25rem; }
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: .15rem .75rem; margin: .25rem 0 .5rem; }
+.facts dt { color: var(--ion-color-medium); }
+.facts dd { margin: 0; overflow-wrap: anywhere; }
+.facts.small { font-size: .8rem; }
+.evidence p { margin: .35rem 0 .15rem; }
+.evidence pre { margin: .25rem 0; padding: .5rem; overflow: auto; max-height: 14rem; font-size: .75rem; background: var(--ion-color-light); border-radius: .35rem; }
+.preview-note { margin: .25rem 0; }
+.tag { font-size: .7rem; font-weight: 600; padding: .05rem .4rem; border-radius: .6rem; border: 1px solid var(--ion-color-tertiary); color: var(--ion-color-tertiary); text-transform: uppercase; letter-spacing: .03em; }
+@media (max-width: 560px) { :host { margin-left: .5rem; } }

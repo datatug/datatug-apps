@@ -1,0 +1,20 @@
+:host { display: block; }
+.chart { margin: 0; }
+figcaption { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .75rem; margin-bottom: .5rem; }
+.note { color: var(--ion-color-medium); font-size: .8rem; }
+.bars { list-style: none; margin: 0; padding: 0; }
+.bar {
+  display: grid; grid-template-columns: 1.4rem minmax(5.5rem, 1fr) minmax(4rem, 3fr) 3.2rem; gap: .5rem; align-items: center;
+  padding: .22rem .3rem; border-radius: .35rem; outline: 0;
+}
+.bar:hover, .bar:focus-visible, .bar.linked { background: rgba(var(--ion-color-primary-rgb), .1); }
+.bar:focus-visible { box-shadow: 0 0 0 2px var(--ion-color-primary); }
+.rank { color: var(--ion-color-medium); font-size: .75rem; text-align: right; font-variant-numeric: tabular-nums; }
+.label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .9rem; }
+.track { height: .8rem; border-radius: .3rem; background: var(--ion-color-light); overflow: hidden; }
+.fill { display: block; height: 100%; background: var(--ion-color-primary); transition: width .4s ease-out; }
+.compare .fill { background: var(--ion-color-tertiary); }
+.compare .label, .compare .value { font-weight: 700; }
+.value { text-align: right; font-size: .85rem; font-variant-numeric: tabular-nums; }
+.gap { color: var(--ion-color-medium); text-align: center; line-height: .9; }
+@media (prefers-reduced-motion: reduce) { .fill { transition: none; } }

@@ -1,0 +1,19 @@
+<section class="chooser" aria-labelledby="demo-chooser-heading" data-testid="demo-chooser">
+  <h2 id="demo-chooser-heading">{{ t('chooser.heading') }}</h2>
+  <p class="notice" data-testid="chooser-notice">{{ notice() }}</p>
+  <p class="note">{{ t('chooser.note') }}</p>
+  <div class="cards">
+    @for (scenario of scenarios; track scenario.id) {
+      <ion-card [attr.data-scenario]="scenario.id" [class.unavailable]="!scenario.available">
+        <ion-card-content>
+          <p class="q">{{ question0(scenario) }}</p>
+          @if (scenario.available) {
+            <ion-button size="small" (click)="choose.emit(scenario)">{{ t('chooser.run') }}</ion-button>
+          } @else {
+            <span class="soon">{{ t('chooser.unavailable') }}</span>
+          }
+        </ion-card-content>
+      </ion-card>
+    }
+  </div>
+</section>

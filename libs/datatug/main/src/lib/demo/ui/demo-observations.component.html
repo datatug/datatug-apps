@@ -1,0 +1,12 @@
+<section class="observations" aria-labelledby="demo-obs-heading" data-testid="demo-observations">
+  <h2 id="demo-obs-heading">{{ t('observations.heading') }}</h2>
+  <p class="note" data-testid="observations-note">{{ t('observations.note') }}</p>
+  <ul>
+    @for (observation of observations(); track observation.id) {
+      <li [class.active]="activeId() === observation.id" data-testid="observation" [attr.data-observation]="observation.id">
+        <span class="text">{{ text(observation) }}</span>
+        <button type="button" (click)="show.emit(observation)" [attr.aria-pressed]="activeId() === observation.id">{{ t('observations.rows') }}</button>
+      </li>
+    }
+  </ul>
+</section>

@@ -1,0 +1,9 @@
+:host { display: block; }
+h2 { margin: 0 0 .25rem; font-size: 1.05rem; }
+.notice { margin: 0 0 .25rem; font-weight: 600; }
+.note { margin: 0 0 .5rem; color: var(--ion-color-medium); font-size: .85rem; }
+.cards { display: grid; gap: .5rem; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
+ion-card { margin: 0; }
+.q { margin: 0 0 .75rem; line-height: 1.4; }
+.unavailable { opacity: .7; }
+.soon { color: var(--ion-color-medium); font-size: .85rem; }

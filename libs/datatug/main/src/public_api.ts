@@ -19,3 +19,8 @@ export { DatatugMenuComponent } from './lib/menu/datatug-menu.component';
 export { ChatPageComponent } from './lib/pages/signed-in/chat/chat-page.component';
 export * from './lib/incidents/models';
 export { IncidentClientService } from './lib/incidents/incident-client.service';
+// The anonymous /demo route: the app passes the `demo` route data (see demo-config.ts) and captures the
+// hand-off before the router runs, storing it under DEMO_HANDOFF_STORAGE_KEY.
+export { DemoPageComponent } from './lib/demo/demo-page.component';
+export { DEMO_HANDOFF_STORAGE_KEY } from './lib/demo/demo-scenarios';
+export { parseDemoConfig, type DemoConfig, type DemoDataSource } from './lib/demo/demo-config';

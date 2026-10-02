@@ -1,0 +1,18 @@
+<figure class="chart" role="img" [attr.aria-label]="t('result.chartAria')" data-testid="demo-chart">
+  <figcaption>
+    <strong>{{ t('result.chart') }}</strong>
+    @if (compareBar(); as extra) { <span class="note">{{ t('result.chartNote', { highlight: extra.country }) }}</span> }
+  </figcaption>
+  <ol class="bars">
+    @for (bar of bars(); track bar.country) {
+      @if (bar.compare) { <li class="gap" aria-hidden="true">⋮</li> }
+      <li class="bar" data-testid="chart-bar" [attr.data-country]="bar.country" [class.compare]="bar.compare" [class.linked]="isLinked(bar)"
+        tabindex="0" (mouseenter)="hover.emit(bar.country)" (mouseleave)="hover.emit(null)" (focus)="hover.emit(bar.country)" (blur)="hover.emit(null)">
+        <span class="rank">{{ bar.rank }}</span>
+        <span class="label">{{ bar.country }}</span>
+        <span class="track"><span class="fill" [style.width.%]="bar.percent"></span></span>
+        <strong class="value">{{ value(bar) }}</strong>
+      </li>
+    }
+  </ol>
+</figure>
