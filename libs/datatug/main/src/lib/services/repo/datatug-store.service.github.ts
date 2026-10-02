@@ -34,9 +34,11 @@ export class DatatugStoreGithubService implements IDatatugStoreService {
   // reads the project summary (for its `boards` list), so without this a
   // page that renders both the project summary AND the folder tabs (the
   // project page itself) would fetch `datatug-project.json` twice.
+  // Kept with the reader's `visitEpoch` at the time: a summary read at a commit the visit has since moved away from
+  // (the reader asked GitHub again about a commit it only remembered, and was told another) is not served again.
   private readonly summaryCache = new Map<
     string,
-    Observable<IProjectSummary>
+    { readonly epoch: string; readonly summary: Observable<IProjectSummary> }
   >();
 
   /**
@@ -55,22 +57,23 @@ export class DatatugStoreGithubService implements IDatatugStoreService {
   }
 
   getProjectSummary(projectId: string): Observable<IProjectSummary> {
-    let cached = this.summaryCache.get(projectId);
-    if (cached) {
-      return cached;
+    const cached = this.summaryCache.get(projectId);
+    if (cached && cached.epoch === this.githubReader.visitEpoch(projectId)) {
+      return cached.summary;
     }
     try {
       assertReadableGithubProjectId(projectId);
     } catch (err) {
       return throwError(() => err);
     }
+    const epoch = this.githubReader.visitEpoch(projectId);
 
     // Through the reader: the same commit as the listing and every other file, one cache, one request (the old
     // second, separate read of this file could come from a different commit than the rest of the page).
     // The reader's observable is lazy (a read starts on subscription, a failed one is read again by the next
     // subscriber), and `shareReplay` drops a failed read: the next subscriber reads again, instead of getting the same
     // failure back until the page is reloaded.
-    cached = this.githubReader
+    const summary = this.githubReader
       .getRawJson<IProjectSummary>(projectId, 'datatug-project.json')
       .pipe(
         switchMap((p) =>
@@ -103,8 +106,8 @@ export class DatatugStoreGithubService implements IDatatugStoreService {
         }),
         shareReplay(1),
       );
-    this.summaryCache.set(projectId, cached);
-    return cached;
+    this.summaryCache.set(projectId, { epoch, summary });
+    return summary;
   }
 
   /**

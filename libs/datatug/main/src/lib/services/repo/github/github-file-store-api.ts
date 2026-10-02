@@ -112,7 +112,9 @@ export const setGithubTimer: GithubSetTimer = (fire, ms) => {
  *   empty at once instead of each waiting in turn; the cache is on again as soon as any call is answered, and is
  *   given up on for the rest of the visit when none has been within `openTimeoutMs` of the first call.
  * - Known to work: a database that now hangs (blocked by another tab, a browser that never answers) turns the cache
- *   off for the rest of the visit, so it costs one wait, not one per file.
+ *   off for the rest of the visit, so it costs one wait, not one per file. Only a call that began once the cache was
+ *   known to work can say so: the wait of a call that began before (while the cache was still opening) ends with an
+ *   empty answer for that call and changes nothing.
  * A call made `through` the guard (the deletion of a remembered answer, which must reach the database whenever it
  * can) is attempted even when the cache is off or paused, with the same wait.
  */
@@ -144,11 +146,14 @@ export function guardGithubFileStore(
     if ((state === 'off' || state === 'paused') && !through) {
       return Promise.resolve(empty);
     }
+    // Whether the cache was known to work when this call began: the wait of a call that began before says nothing about
+    // a cache proven since (a state never goes back to unproven, so for the opening it needs no such check).
+    const beganProven = state === 'proven';
     return new Promise<T>((resolve) => {
       const cancel = setTimer(() => {
         if (state === 'unproven') {
           state = 'paused';
-        } else if (state === 'proven') {
+        } else if (state === 'proven' && beganProven) {
           state = 'off';
         }
         resolve(empty);

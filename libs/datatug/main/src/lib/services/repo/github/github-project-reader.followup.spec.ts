@@ -14,6 +14,7 @@ import {
   type IGithubStoredFile,
 } from './github-file-store-api';
 import { openGithubFileStore } from './github-file-store';
+import { DatatugStoreGithubService } from '../datatug-store.service.github';
 import {
   GITHUB_CLOCK,
   GITHUB_FETCH,
@@ -22,7 +23,10 @@ import {
   GithubProjectReaderService,
   GithubReadError,
 } from './github-project-reader.service';
-import { GITHUB_RESOLVE_TIMEOUT_MS } from './github-read-limits';
+import {
+  GITHUB_RATE_LIMIT_MESSAGE,
+  GITHUB_RESOLVE_TIMEOUT_MS,
+} from './github-read-limits';
 
 // The follow-up of the second review of the GitHub reader (datatug-apps#180, review of #181): what a 404 at a
 // remembered commit proves, and what one visit may serve (design `demo-as-github-project.md` 4.5, steps 2 and 5).
@@ -383,37 +387,66 @@ describe('GithubProjectReaderService: the follow-up of the second review', () =>
         });
       });
 
-      it('the project file is 404 but a file was read at the commit from the network: it is absent, no question', async () => {
-        await remember();
-        const reader = browser.load();
-        expect(await first(reader.getRawJson(ID_B, 'x.json'))).toEqual({
-          x: 1,
-        });
-        expect(
-          await first(reader.getRawJson(ID_B, 'datatug-project.json')),
-        ).toBeUndefined();
-        expect(gh.urls()).toEqual([
-          rawUrl(SHA_1, 'b/x.json', REPO),
-          rawUrl(SHA_1, 'b/datatug-project.json', REPO),
-        ]);
-      });
+      it.each([
+        [
+          'a file read from the network',
+          async (reader: GithubProjectReaderService) =>
+            expect(await first(reader.getRawJson(ID_B, 'x.json'))).toEqual({
+              x: 1,
+            }),
+          [rawUrl(SHA_1, 'b/x.json', REPO)],
+        ],
+        [
+          'the listing read from the network',
+          async (reader: GithubProjectReaderService) =>
+            expect(
+              (await first(reader.listDirectory(ID_B, ''))).map((e) => e.name),
+            ).toEqual(['x.json']),
+          [apiUrl(`git/trees/${SHA_1}?recursive=1`, REPO)],
+        ],
+      ])(
+        'the project file is 404 after %s at the commit: asked once more all the same, the commit stands',
+        async (_name, readBefore, urlsBefore) => {
+          await remember();
+          const reader = browser.load();
+          await readBefore(reader);
+          expect(
+            await first(reader.getRawJson(ID_B, 'datatug-project.json')),
+          ).toBeUndefined();
+          expect(gh.urls()).toEqual([
+            ...urlsBefore,
+            rawUrl(SHA_1, 'b/datatug-project.json', REPO),
+            apiUrl('commits/HEAD', REPO),
+          ]);
+          expect(await first(reader.readInfo(ID_B))).toMatchObject({
+            state: 'resolved',
+            commit: SHA_1,
+            mayBeStale: false,
+          });
+        },
+      );
 
-      it('the project file is 404 but a file was read at the commit from the cache: it is absent, no question', async () => {
-        await first(browser.load().getRawJson(ID_B, 'x.json'));
+      it('the project file is 404 after a file and the listing came from the cache: asked once more all the same', async () => {
+        const warm = browser.load();
+        await first(warm.getRawJson(ID_B, 'x.json'));
+        await first(warm.listDirectory(ID_B, ''));
         gh.reset();
         const reader = browser.load();
         expect(await first(reader.getRawJson(ID_B, 'x.json'))).toEqual({
           x: 1,
         });
+        expect((await first(reader.listDirectory(ID_B, ''))).length).toBe(1);
+        expect(gh.urls()).toEqual([]);
         expect(
           await first(reader.getRawJson(ID_B, 'datatug-project.json')),
         ).toBeUndefined();
         expect(gh.urls()).toEqual([
           rawUrl(SHA_1, 'b/datatug-project.json', REPO),
+          apiUrl('commits/HEAD', REPO),
         ]);
       });
 
-      it('a file that is cached as absent does not make the commit read', async () => {
+      it('a file that is cached as absent does not make the project file any less doubted', async () => {
         await browser.store.putFile(`${REPO}@${SHA_1}`, 'b/nothing.json', {
           text: null,
           bytes: 0,
@@ -430,6 +463,53 @@ describe('GithubProjectReaderService: the follow-up of the second review', () =>
           rawUrl(SHA_1, 'b/datatug-project.json', REPO),
           apiUrl('commits/HEAD', REPO),
         ]);
+      });
+
+      it('asked once per commit in a visit: the project file of another folder of the repository, 404 too, is not asked about again', async () => {
+        await remember();
+        const reader = browser.load();
+        expect(
+          await first(reader.getRawJson(ID_B, 'datatug-project.json')),
+        ).toBeUndefined();
+        expect(
+          await first(
+            reader.getRawJson('projects@datatug@c', 'datatug-project.json'),
+          ),
+        ).toBeUndefined();
+        expect(gh.urls('api.github.com')).toEqual([
+          apiUrl('commits/HEAD', REPO),
+        ]);
+      });
+
+      it('a project pushed from elsewhere into a repository already viewed opens on the first try, for one API call (a regression against the reader before the commits)', async () => {
+        const viewed = 'projects@datatug@a';
+        await first(browser.load().getRawJson(viewed, 'datatug-project.json'));
+        await first(browser.load().listDirectory(viewed, ''));
+        gh.push(REPO, SHA_2, {
+          'a/datatug-project.json': '{}',
+          'b/x.json': '{"x":1}',
+          'b/datatug-project.json': '{"id":"new"}',
+        });
+        browser.time += 30_000;
+        gh.reset();
+
+        const reader = browser.load();
+        // The page of the project that was viewed (all from the cache), then the new one.
+        expect(
+          await first(reader.getRawJson(viewed, 'datatug-project.json')),
+        ).toEqual({});
+        expect((await first(reader.listDirectory(viewed, ''))).length).toBe(1);
+        expect(
+          await first(reader.getRawJson(ID_B, 'datatug-project.json')),
+        ).toEqual({ id: 'new' });
+
+        expect(gh.urls('api.github.com')).toEqual([
+          apiUrl('commits/HEAD', REPO),
+        ]);
+        expect(await first(reader.readInfo(ID_B))).toMatchObject({
+          state: 'resolved',
+          commit: SHA_2,
+        });
       });
 
       it('a commit GitHub answered for in this visit is not doubted', async () => {
@@ -507,7 +587,7 @@ describe('GithubProjectReaderService: the follow-up of the second review', () =>
       ).toEqual([apiUrl('commits/HEAD')]);
     });
 
-    it('the re-resolve is refused: the remembered commit is kept for the visit, the 404 is absent, nothing is persisted, and nobody asks again', async () => {
+    it('the re-resolve is refused: the remembered commit is kept for the visit, the project file is absent, the listing fails with the rate-limit error (not an empty list), and nothing is persisted', async () => {
       gh.fail.api = (url) =>
         url.pathname.includes('/commits/') ? 403 : undefined;
       const remembered = await browser.store.getResolved(`${DEMO_REPO}@HEAD`);
@@ -515,14 +595,16 @@ describe('GithubProjectReaderService: the follow-up of the second review', () =>
       expect(
         await first(reader.getRawJson(DEMO_ID, 'datatug-project.json')),
       ).toBeUndefined();
-      expect(await first(reader.listDirectory(DEMO_ID, 'entities'))).toEqual(
-        [],
-      );
+      await expect(
+        first(reader.listDirectory(DEMO_ID, 'entities')),
+      ).rejects.toThrow(GITHUB_RATE_LIMIT_MESSAGE);
 
+      // Every read goes to the one remembered commit, never to `HEAD`.
       expect(gh.urls()).toEqual([
         rawUrl(SHA_1, 'demo-project-1/datatug-project.json'),
         apiUrl('commits/HEAD'),
         apiUrl(`git/trees/${SHA_1}?recursive=1`),
+        apiUrl('commits/HEAD'), // an answer that was not given is not remembered: asked again
       ]);
       expect(await first(reader.readInfo(DEMO_ID))).toMatchObject({
         state: 'resolved',
@@ -537,6 +619,86 @@ describe('GithubProjectReaderService: the follow-up of the second review', () =>
           'demo-project-1/datatug-project.json',
         ),
       ).toBeUndefined();
+    });
+
+    it.each([
+      ['refused', 403, GITHUB_RATE_LIMIT_MESSAGE],
+      ['failing', 500, 'the project listing'],
+    ])(
+      'the re-resolve is %s: the listing read fails, and when GitHub answers again in the same visit the next read recovers at the new commit',
+      async (_name, status, message) => {
+        gh.fail.api = (url) =>
+          url.pathname.includes('/commits/') ? status : undefined;
+        const reader = browser.load();
+        const failure = await first(
+          reader.listDirectory(DEMO_ID, 'entities'),
+        ).then(
+          () => undefined,
+          (e: Error) => e,
+        );
+        expect(failure?.message).toContain(message);
+        if (status === 500) {
+          expect(failure).toBeInstanceOf(GithubReadError);
+        }
+        expect(gh.urls().some((u) => u.includes('/trees/HEAD'))).toBe(false);
+
+        gh.fail.api = undefined; // GitHub answers again, in the same visit
+        expect(
+          (await first(reader.listDirectory(DEMO_ID, 'entities'))).map(
+            (e) => e.name,
+          ),
+        ).toEqual(['Album', 'Track']);
+        expect(await first(reader.readInfo(DEMO_ID))).toMatchObject({
+          state: 'resolved',
+          commit: SHA_2,
+        });
+        expect(await first(reader.getRawJson(DEMO_ID, ENV))).toEqual({ v: 2 });
+      },
+    );
+
+    it('the re-resolve times out: the listing read fails with the read error, and no fallback to HEAD', async () => {
+      vi.useFakeTimers();
+      const hangingCommits: typeof gh.fetch = (url, init) =>
+        url.includes('/commits/')
+          ? hangUntilAborted(init)
+          : gh.fetch(url, init);
+      const store = new MemoryStore();
+      store.resolved.set(`${DEMO_REPO}@HEAD`, { sha: SHA_1, at: browser.time });
+      const reader = browser.load(store, hangingCommits);
+
+      const listing = first(reader.listDirectory(DEMO_ID, 'entities')).then(
+        () => undefined,
+        (e: Error) => e,
+      );
+      await vi.advanceTimersByTimeAsync(GITHUB_RESOLVE_TIMEOUT_MS);
+      expect(await listing).toBeInstanceOf(GithubReadError);
+      expect(gh.urls().some((u) => u.includes('/trees/HEAD'))).toBe(false);
+      expect(store.resolved.get(`${DEMO_REPO}@HEAD`)).toEqual({
+        sha: SHA_1,
+        at: browser.time,
+      });
+    });
+
+    it('a re-resolved commit is not marked as remembered: asking about it again is never repeated', async () => {
+      // SHA_2 does not have the project file of `b` either: 404 there is an absent file, not a reason to ask again.
+      gh.addRepo(REPO, SHA_1, { 'b/x.json': '{"x":1}' });
+      gh.rewrite(REPO, SHA_2, { 'b/x.json': '{"x":2}' });
+      await browser.store.putResolved(`${REPO}@HEAD`, {
+        sha: SHA_1,
+        at: browser.time,
+      });
+      gh.reset();
+      const reader = browser.load();
+      expect(
+        (await first(reader.listDirectory(ID_B, ''))).map((e) => e.name),
+      ).toEqual(['x.json']);
+      expect(
+        await first(reader.getRawJson(ID_B, 'datatug-project.json')),
+      ).toBeUndefined();
+      expect(await first(reader.getRawJson(ID_B, 'x.json'))).toEqual({ x: 2 });
+      expect(
+        gh.urls('api.github.com').filter((u) => u.includes('/commits/')),
+      ).toEqual([apiUrl('commits/HEAD', REPO)]);
     });
 
     it('the re-resolve times out: the same', async () => {
@@ -613,15 +775,43 @@ describe('GithubProjectReaderService: the follow-up of the second review', () =>
     ): Promise<string[]> =>
       (await first(reader.listDirectory(ID_B, ''))).map((e) => e.name);
 
-    it('the project file is 404, GitHub names another commit: the visit moves to it, and the listing read at the old one is not served after', async () => {
+    /** Lets whatever can complete without GitHub's answer complete (the cache and the file host answer at once). */
+    const settleReads = (): Promise<void> =>
+      new Promise((resolve) => setTimeout(resolve, 60));
+
+    it('the project file is 404, GitHub is asked which commit, and no other read is delivered at the old commit while the question is on its way: all of it is of the new one (M1)', async () => {
       const gate = gated(gh, (url) => url.includes('/commits/'));
       const reader = browser.load(browser.store, gate.fetch);
-      const project = first(reader.getRawJson(ID_B, 'datatug-project.json'));
+      const delivered: string[] = [];
+      const note =
+        (name: string) =>
+        <T>(value: T): T => {
+          delivered.push(name);
+          return value;
+        };
+      const project = first(
+        reader.getRawJson(ID_B, 'datatug-project.json'),
+      ).then(note('project'));
+      const listing = names(reader).then(note('listing'));
+      const file = first(reader.getRawJson(ID_B, 'x.json')).then(note('file'));
       await gate.reached; // the question about the commit is on its way
-      expect(await names(reader)).toEqual(['x.json']); // the listing of SHA_1, read meanwhile
+      await settleReads();
+      // The listing and the file have been read at SHA_1; neither is handed to the page, which is about to be told
+      // that the commit is another.
+      expect(delivered).toEqual([]);
+      const info = first(reader.readInfo(ID_B)).then(note('info'));
+      await settleReads();
+      expect(delivered).toEqual([]); // the sources line does not name a commit that is about to be replaced
 
       gate.release();
       expect(await project).toEqual({ id: 'b2' });
+      expect(await listing).toEqual([
+        'datatug-project.json',
+        'entities',
+        'x.json',
+      ]);
+      expect(await file).toEqual({ x: 2 });
+      expect(await info).toMatchObject({ state: 'resolved', commit: SHA_2 });
       expect(await names(reader)).toEqual([
         'datatug-project.json',
         'entities',
@@ -631,6 +821,83 @@ describe('GithubProjectReaderService: the follow-up of the second review', () =>
         state: 'resolved',
         commit: SHA_2,
       });
+    });
+
+    it('the same when the question was asked because a listing is 404: a file read from the cache and the project file complete meanwhile, and none is of the old commit', async () => {
+      // SHA_1 is gone (forced push): its listing is 404, and so is the project file at it, but a file is cached.
+      gh.rewrite(REPO, SHA_2, {
+        'a/datatug-project.json': '{}',
+        'b/x.json': '{"x":2}',
+        'b/datatug-project.json': '{"id":"b2"}',
+        'b/entities/E/E.entity.json': '{}',
+      });
+      await browser.store.putFile(`${REPO}@${SHA_1}`, 'b/x.json', {
+        text: '{"x":1}',
+        bytes: 7,
+      });
+      gh.reset();
+      const gate = gated(gh, (url) => url.includes('/commits/'));
+      const reader = browser.load(browser.store, gate.fetch);
+      const delivered: string[] = [];
+      const note =
+        (name: string) =>
+        <T>(value: T): T => {
+          delivered.push(name);
+          return value;
+        };
+      const listing = names(reader).then(note('listing'));
+      const project = first(
+        reader.getRawJson(ID_B, 'datatug-project.json'),
+      ).then(note('project'));
+      const file = first(reader.getRawJson(ID_B, 'x.json')).then(note('file'));
+      await gate.reached;
+      await settleReads();
+      expect(delivered).toEqual([]);
+
+      gate.release();
+      expect(await listing).toEqual([
+        'datatug-project.json',
+        'entities',
+        'x.json',
+      ]);
+      expect(await project).toEqual({ id: 'b2' });
+      expect(await file).toEqual({ x: 2 });
+      expect(await first(reader.readInfo(ID_B))).toMatchObject({
+        commit: SHA_2,
+      });
+    });
+
+    it('a question that GitHub does not answer holds the reads back for no longer than the time it is given, then they are delivered at the remembered commit', async () => {
+      vi.useFakeTimers();
+      const hangingCommits: typeof gh.fetch = (url, init) =>
+        url.includes('/commits/')
+          ? hangUntilAborted(init)
+          : gh.fetch(url, init);
+      const store = new MemoryStore();
+      store.resolved.set(`${REPO}@HEAD`, { sha: SHA_1, at: browser.time });
+      const reader = browser.load(store, hangingCommits);
+      const delivered: string[] = [];
+      const note =
+        (name: string) =>
+        <T>(value: T): T => {
+          delivered.push(name);
+          return value;
+        };
+      const project = first(
+        reader.getRawJson(ID_B, 'datatug-project.json'),
+      ).then(note('project'));
+      const listing = names(reader).then(note('listing'));
+      const file = first(reader.getRawJson(ID_B, 'x.json')).then(note('file'));
+      await vi.advanceTimersByTimeAsync(10); // the question is on its way
+      const info = first(reader.readInfo(ID_B)).then(note('info'));
+      await vi.advanceTimersByTimeAsync(GITHUB_RESOLVE_TIMEOUT_MS - 11);
+      expect(delivered).toEqual([]); // still waiting: the time is not up
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await project).toBeUndefined();
+      expect(await listing).toEqual(['x.json']);
+      expect(await file).toEqual({ x: 1 });
+      expect(await info).toMatchObject({ commit: SHA_1 });
     });
 
     it('a listing still on its way from the old commit when the visit moves is read again at the new one', async () => {
@@ -670,6 +937,65 @@ describe('GithubProjectReaderService: the follow-up of the second review', () =>
         commit: SHA_2,
         fromMirror: false,
       });
+    });
+
+    it('a file from the mirror whose answer comes after the visit moved is not what the sources line says of the new commit', async () => {
+      gh.fail.raw = (url) =>
+        url.pathname.includes(SHA_1) && url.pathname.endsWith('x.json')
+          ? 429
+          : undefined;
+      const gate = gated(gh, (url) => url.includes('cdn.jsdelivr.net'));
+      const reader = browser.load(browser.store, gate.fetch);
+      const file = first(reader.getRawJson(ID_B, 'x.json'));
+      await gate.reached; // the mirror is asked for the file at SHA_1
+      expect(
+        await first(reader.getRawJson(ID_B, 'datatug-project.json')),
+      ).toEqual({ id: 'b2' }); // the visit moves to SHA_2
+      gate.release(); // the mirror answers for SHA_1, late
+
+      expect(await file).toEqual({ x: 2 });
+      expect(await first(reader.readInfo(ID_B))).toMatchObject({
+        commit: SHA_2,
+        fromMirror: false,
+      });
+    });
+
+    it('a read at the old commit that fails after the visit moved is read again at the new one, not failed with the old one’s error', async () => {
+      gh.fail.raw = (url) =>
+        url.pathname.includes(SHA_1) && url.pathname.includes('E.entity')
+          ? 500
+          : undefined;
+      gh.fail.mirror = 500;
+      const gate = gated(
+        gh,
+        (url) =>
+          url.includes('raw.githubusercontent.com') && url.includes('E.entity'),
+      );
+      const reader = browser.load(browser.store, gate.fetch);
+      const entity = first(reader.getRawJson(ID_B, 'entities/E/E.entity.json'));
+      await gate.reached;
+      expect(
+        await first(reader.getRawJson(ID_B, 'datatug-project.json')),
+      ).toEqual({ id: 'b2' });
+      gate.release(); // the read at SHA_1 fails, now that the visit is at SHA_2
+
+      expect(await entity).toEqual({});
+      expect(gh.urls('raw.githubusercontent.com')).toContain(
+        rawUrl(SHA_2, 'b/entities/E/E.entity.json', REPO),
+      );
+    });
+
+    it('a read that fails at the commit the visit stays at is a failure, once', async () => {
+      gh.fail.raw = (url) =>
+        url.pathname.endsWith('x.json') ? 500 : undefined;
+      gh.fail.mirror = 500;
+      const reader = browser.load();
+      await expect(
+        first(reader.getRawJson(ID_B, 'x.json')),
+      ).rejects.toBeInstanceOf(GithubReadError);
+      expect(gh.urls('raw.githubusercontent.com')).toEqual([
+        rawUrl(SHA_1, 'b/x.json', REPO),
+      ]);
     });
 
     it('a listing 404 at a commit GitHub answered for in this visit is not doubted', async () => {
@@ -999,6 +1325,144 @@ describe('GithubProjectReaderService: the follow-up of the second review', () =>
       expect(error).toBeInstanceOf(GithubReadError);
       expect(gh.urls('cdn.jsdelivr.net')).toEqual([
         mirrorUrl(undefined, 'demo-project-1/widgets/none.json'),
+      ]);
+    });
+  });
+
+  describe('the project summary of the store service follows the commit of the reader', () => {
+    const SUMMARY_FILE = 'demo-project-1/datatug-project.json';
+    const titled = (title: string, extra: Record<string, string> = {}) =>
+      demoFiles({ [SUMMARY_FILE]: `{"title":"${title}"}`, ...extra });
+
+    it('a summary read at a commit that was only remembered is not kept once the visit has moved to another one', async () => {
+      gh.addRepo(DEMO_REPO, SHA_1, titled('one'));
+      const warm = browser.load();
+      await first(warm.getRawJson(DEMO_ID, 'datatug-project.json'));
+      gh.rewrite(DEMO_REPO, SHA_2, titled('two'));
+      browser.time += 60_000;
+      gh.reset();
+
+      const reader = browser.load();
+      const summaries = TestBed.inject(DatatugStoreGithubService);
+      // From the cache, at the remembered commit: the project as it was.
+      expect(await first(summaries.getProjectSummary(DEMO_ID))).toMatchObject({
+        title: 'one',
+      });
+      // The listing says the commit is gone; GitHub names the other one, and the visit moves to it.
+      expect(
+        (await first(reader.listDirectory(DEMO_ID, ''))).map((e) => e.name),
+      ).toEqual(['datatug-project.json', 'entities', 'environments']);
+      expect(await first(reader.readInfo(DEMO_ID))).toMatchObject({
+        commit: SHA_2,
+      });
+
+      expect(await first(summaries.getProjectSummary(DEMO_ID))).toMatchObject({
+        title: 'two',
+      });
+      // And is kept again from there on: one read, whoever asks.
+      gh.reset();
+      await first(summaries.getProjectSummary(DEMO_ID));
+      expect(gh.count()).toBe(0);
+    });
+
+    it('the epoch of the visit changes when the visit moves, and when the repository is forgotten, and not otherwise', async () => {
+      gh.addRepo(DEMO_REPO, SHA_1, titled('one'));
+      await first(browser.load().getRawJson(DEMO_ID, 'datatug-project.json'));
+      gh.rewrite(DEMO_REPO, SHA_2, titled('two'));
+      browser.time += 60_000;
+      const reader = browser.load();
+      const before = reader.visitEpoch(DEMO_ID);
+      await first(reader.getRawJson(DEMO_ID, 'datatug-project.json'));
+      expect(reader.visitEpoch(DEMO_ID)).toBe(before); // a read at the remembered commit is not a move
+      await first(reader.listDirectory(DEMO_ID, ''));
+      const moved = reader.visitEpoch(DEMO_ID);
+      expect(moved).not.toBe(before);
+      expect(reader.visitEpoch(DEMO_ID)).toBe(moved);
+      await reader.forget('datatug', 'datatug-demo-projects');
+      expect(reader.visitEpoch(DEMO_ID)).not.toBe(moved);
+      expect(() => reader.visitEpoch('not-a-project-id')).toThrow();
+
+      // Forgotten with no move before it: the visit starts afresh, which is a change all the same.
+      const other = browser.load();
+      await first(other.getRawJson(DEMO_ID, 'datatug-project.json'));
+      const unmoved = other.visitEpoch(DEMO_ID);
+      await other.forget('datatug', 'datatug-demo-projects');
+      expect(other.visitEpoch(DEMO_ID)).not.toBe(unmoved);
+    });
+  });
+
+  describe('API calls of a visit (design 4.5: one call for the commit, one for the listing)', () => {
+    const apiCalls = (): number => gh.count('api.github.com');
+    /** What the project pages read: the project file, the listing and an environment file. */
+    const pages = async (reader: GithubProjectReaderService): Promise<void> => {
+      await first(reader.getRawJson(DEMO_ID, 'datatug-project.json'));
+      await first(reader.listDirectory(DEMO_ID, ''));
+      await first(reader.getRawJson(DEMO_ID, ENV));
+    };
+    it('cold: 2; warm within 5 minutes: 0; warm after 5 minutes, nothing changed: 1', async () => {
+      await pages(browser.load());
+      expect(apiCalls()).toBe(2);
+
+      browser.time += 60_000;
+      gh.reset();
+      await pages(browser.load());
+      expect(apiCalls()).toBe(0);
+      expect(gh.count()).toBe(0);
+
+      browser.time += GITHUB_RESOLVE_TTL_MS;
+      gh.reset();
+      await pages(browser.load());
+      expect(gh.urls()).toEqual([apiUrl('commits/HEAD')]);
+    });
+
+    it('the project changed: 2 (the commit and the listing of the new one), and only the files that are read again', async () => {
+      await pages(browser.load());
+      push();
+      browser.time += GITHUB_RESOLVE_TTL_MS + 1;
+      gh.reset();
+      await pages(browser.load());
+      expect(gh.urls('api.github.com')).toEqual([
+        apiUrl('commits/HEAD'),
+        apiUrl(`git/trees/${SHA_2}?recursive=1`),
+      ]);
+    });
+
+    it('five new absent optional files on a warm visit: 0 API calls', async () => {
+      await pages(browser.load());
+      browser.time += 60_000;
+      gh.reset();
+      const warm = browser.load();
+      await pages(warm);
+      for (const name of ['a', 'b', 'c', 'd', 'e']) {
+        await first(warm.getRawJson(DEMO_ID, `widgets/${name}.json`));
+      }
+      expect(apiCalls()).toBe(0);
+    });
+
+    it('a repository with no project file: 1 call per page load, however warm', async () => {
+      const bare = 'datatug-demo-projects@datatug@nothing-here';
+      const counts: number[] = [];
+      for (const step of [0, 30_000, 30_000, GITHUB_RESOLVE_TTL_MS]) {
+        browser.time += step;
+        gh.reset();
+        const reader = browser.load();
+        await first(reader.getRawJson(bare, 'datatug-project.json'));
+        await first(reader.getRawJson(bare, 'datatug-project.json'));
+        counts.push(apiCalls());
+      }
+      expect(counts).toEqual([1, 1, 1, 1]);
+    });
+
+    it('a commit that is gone: 3 (the listing, the commit asked again, the listing of the new one)', async () => {
+      await first(browser.load().getRawJson(DEMO_ID, ENV)); // the commit remembered, no listing kept
+      gh.rewrite(DEMO_REPO, SHA_2, demoFiles());
+      browser.time += 60_000;
+      gh.reset();
+      await first(browser.load().listDirectory(DEMO_ID, ''));
+      expect(gh.urls('api.github.com')).toEqual([
+        apiUrl(`git/trees/${SHA_1}?recursive=1`),
+        apiUrl('commits/HEAD'),
+        apiUrl(`git/trees/${SHA_2}?recursive=1`),
       ]);
     });
   });

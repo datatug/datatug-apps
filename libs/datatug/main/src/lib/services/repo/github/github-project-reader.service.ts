@@ -330,8 +330,19 @@ function isProjectFile(path: string): boolean {
 /** What a read answers when the visit has moved to another commit while it was asking: read again. */
 const STALE = Symbol('stale commit');
 
+/** How many times a read that failed at an old commit is read again at the new one (the visit moves once, in practice). */
+const MAX_REREADS_AFTER_FAILURE = 3;
+
+/**
+ * What asking GitHub again about a remembered commit came to: the visit `moved` to another commit; the commit
+ * `stands` (GitHub named it again); or GitHub did not answer, `refused` (a limit) or `unanswered` (a failure, a timeout).
+ */
+type GithubDoubtOutcome = 'moved' | 'stands' | 'refused' | 'unanswered';
+
 /** A commit, and whether it is what an earlier answer said rather than what GitHub said in this visit. */
 interface IGithubResolvedCommit extends IGithubCommitResolution {
+  /** For `unresolved`: GitHub refused the call (a limit, a block), as opposed to failing or not answering. */
+  readonly refused?: boolean;
   /**
    * The commit is a remembered answer (of the last 5 minutes, or of an earlier visit when GitHub would not answer),
    * so it may be one that no longer exists.
@@ -417,11 +428,14 @@ interface IGithubSession {
  *     never fetches one twice. Bounded (20 MB, 20 repos, two commits per repo).
  *  4. A refused, failed or timed-out read from the file host is tried again from jsDelivr, same commit.
  *  5. When the resolve call fails, the reads degrade, never stop: see {@link GithubCommitState}.
- *  6. A commit that was only remembered (an answer of the last 5 minutes, or of an earlier visit) is doubted only when
- *     its listing is 404 or 422, or when the project file is 404 and nothing has been read at it in this visit; any
+ *  6. A commit that was only remembered (an answer of the last 5 minutes, or of an earlier visit) is doubted when
+ *     its listing is 404 or 422, or when the project file is 404 at it (whatever else was read or kept at it); any
  *     other 404 is an absent file. Doubting it asks GitHub again, once; if GitHub names another commit the whole visit
- *     moves to it (nothing read at the old one is served afterwards), if it does not answer the remembered commit is
- *     kept for the visit. What was remembered is dropped only when GitHub has answered.
+ *     moves to it (nothing read at the old one is served afterwards, and no read is delivered while the question is
+ *     on its way), if it names the same one the commit stands. If it does not answer (refused, failed, timed out) the
+ *     remembered commit is kept for the visit and the listing fails with the error of a refused listing, never an
+ *     empty list; an answer that was not given is not remembered, so a later read asks again. What was remembered is
+ *     dropped only when GitHub has answered.
  * Also: no credentials, no redirect followed (a renamed or moved repository is "No DataTug project here"), a
  * 256 KB cap per project file checked on the bytes received, at most 40 distinct files per run
  * ({@link GithubReadBudget}).
@@ -443,14 +457,13 @@ export class GithubProjectReaderService {
   private readonly sessions = new Map<string, IGithubSession>();
   /**
    * The answer of asking again about each remembered commit that was doubted: whether the visit moved to another
-   * commit (true) or the commit stands (false). Asked once per commit, whoever doubts it and however often.
+   * commit or the commit stands. Asked once per commit, whoever doubts it and however often, once GitHub has answered:
+   * an answer that was not given is not kept (see {@link askAgain}).
    */
   private readonly doubts = new WeakMap<
     IGithubResolvedCommit,
-    Promise<boolean>
+    Promise<GithubDoubtOutcome>
   >();
-  /** The commits something has been read at in this visit (from the cache or GitHub): they existed when read. */
-  private readonly confirmed = new WeakSet<IGithubResolvedCommit>();
   /** How many times each repository (`owner/repo`, lower case) has been forgotten: see {@link forget}. */
   private readonly generations = new Map<string, number>();
 
@@ -480,8 +493,25 @@ export class GithubProjectReaderService {
   // The commit: one per repo and ref, resolved once
   // ---------------------------------------------------------------------
 
+  private sessionKey(id: IGithubProjectId): string {
+    return `${id.org}/${id.repo}@${id.ref ?? GITHUB_DEFAULT_BRANCH_REF}`;
+  }
+
+  /**
+   * Changes whenever the commit this visit reads a project at is replaced: the visit moved to another commit (GitHub,
+   * asked again, named one), or the repository was forgotten. A caller that keeps something it read (the summary of
+   * the project) drops it when this is not what it was when it read it. Read-only: starts nothing. Throws for an id that
+   * is not valid.
+   */
+  public visitEpoch(projectId: string): string {
+    const id = readableId(projectId);
+    const repoKey = `${id.org}/${id.repo}`.toLowerCase();
+    const session = this.sessions.get(this.sessionKey(id));
+    return `${this.generation(repoKey)}.${session?.epoch ?? 0}`;
+  }
+
   private session(id: IGithubProjectId): IGithubSession {
-    const key = `${id.org}/${id.repo}@${id.ref ?? GITHUB_DEFAULT_BRANCH_REF}`;
+    const key = this.sessionKey(id);
     let session = this.sessions.get(key);
     if (!session) {
       const resolve = (fresh: boolean) => this.resolveCommit(id, fresh);
@@ -552,31 +582,22 @@ export class GithubProjectReaderService {
     }
     return memo
       ? { state: 'remembered', sha: memo.sha, remembered: true }
-      : { state: 'unresolved', remembered: false };
+      : { state: 'unresolved', remembered: false, refused: out.kind === 'refused' };
   }
 
   /**
-   * Whether a 404 for the project file at this commit is a reason to doubt the commit: it was only remembered, and
-   * nothing has been read at it in this visit (from the cache or from GitHub). A commit something was read at exists;
-   * then the file is simply not there, as is any other file that is 404 at a remembered commit.
-   */
-  private doubtedByProjectFile(commit: IGithubResolvedCommit): boolean {
-    return commit.remembered && !this.confirmed.has(commit);
-  }
-
-  /**
-   * GitHub answered 404 or 422 for a commit that was only remembered (its listing), or 404 for the project file at a
-   * commit nothing was read at: the repository may have been rewritten since the answer was kept, or the project may
-   * have been created after it. The question is asked again, once per commit (what is asked is never remembered
-   * before GitHub has answered it). True when GitHub names another commit: the visit has moved to it and the
-   * read must be redone. False when the commit stands: GitHub named the same one (it exists, so the 404 is
-   * an absent file) or did not answer (the refusal, the timeout: the remembered commit is kept for the visit, and
-   * nothing about it is remembered).
+   * GitHub answered 404 or 422 for the listing of a commit that was only remembered, or 404 for its project file: the
+   * repository may have been rewritten since the answer was kept, or the project may have been created after it. The
+   * question is asked again, once per commit (what is asked is never remembered before GitHub has answered it).
+   * `moved` when GitHub names another commit: the visit has moved to it and the read must be redone. `stands` when
+   * GitHub names the same one (it exists, so the 404 is an absent file). When GitHub does not answer (the refusal, the
+   * failure, the timeout) the remembered commit is kept for the visit, nothing about it is remembered, and the
+   * question is not either: the next read that doubts the commit asks again.
    */
   private doubt(
     session: IGithubSession,
     commit: IGithubResolvedCommit,
-  ): Promise<boolean> {
+  ): Promise<GithubDoubtOutcome> {
     let asked = this.doubts.get(commit);
     if (!asked) {
       asked = this.askAgain(session, commit);
@@ -588,17 +609,18 @@ export class GithubProjectReaderService {
   private async askAgain(
     session: IGithubSession,
     commit: IGithubResolvedCommit,
-  ): Promise<boolean> {
+  ): Promise<GithubDoubtOutcome> {
     const answer = await session.resolve(true);
     if (answer.state === 'unresolved') {
-      return false;
+      this.doubts.delete(commit); // not answered: not kept, so the next read asks again
+      return answer.refused ? 'refused' : 'unanswered';
     }
     if (answer.sha === commit.sha) {
       session.commit = Promise.resolve(answer); // the same commit, now known to be what GitHub says
-      return false;
+      return 'stands';
     }
     this.moveTo(session, answer);
-    return true;
+    return 'moved';
   }
 
   /**
@@ -634,16 +656,23 @@ export class GithubProjectReaderService {
     return defer(() => {
       const session = this.session(readableId(projectId));
       return from(
-        session.commit.then(
-          (c): IGithubReadInfo => ({
+        (async (): Promise<IGithubReadInfo> => {
+          let c = await session.commit;
+          const doubted = this.doubts.get(c);
+          if (doubted) {
+            // A question about the commit is on its way: it is not named before GitHub has answered (the wait is bounded).
+            await doubted;
+            c = await session.commit;
+          }
+          return {
             org: session.org,
             repo: session.repo,
             state: c.state,
             commit: c.sha,
             fromMirror: session.mirrorUsed,
             mayBeStale: c.state === 'remembered' || c.state === 'unresolved',
-          }),
-        ),
+          };
+        })(),
       );
     });
   }
@@ -672,23 +701,55 @@ export class GithubProjectReaderService {
     });
   }
 
-  private async loadTree(
+  /**
+   * Reads at the commit the session is at, and delivers only what is of the commit the visit stays at: a read that
+   * completes while GitHub is being asked whether that commit is still the one waits for the answer (bounded by the
+   * time the question is given), and a read the visit moved away from is read again at the new commit, whether it
+   * completed or failed. `read.done` is set in the same step as the answer.
+   */
+  private async readAtCommit<T>(
     session: IGithubSession,
-    read: IGithubRead<IGithubGitTreeEntry[]>,
-  ): Promise<IGithubGitTreeEntry[]> {
+    read: IGithubRead<T>,
+    readAt: (commit: IGithubResolvedCommit, epoch: number) => Promise<T | typeof STALE>,
+  ): Promise<T> {
+    let failures = 0;
     try {
       for (;;) {
         const epoch = session.epoch;
-        const tree = await this.loadTreeAt(session, await session.commit);
-        if (tree !== STALE && session.epoch === epoch) {
-          read.done = true;
-          return tree;
+        const commit = await session.commit;
+        let value: T | typeof STALE = STALE;
+        let failure: { readonly error: unknown } | undefined;
+        try {
+          value = await readAt(commit, epoch);
+        } catch (error) {
+          failure = { error };
+        }
+        await this.doubts.get(commit);
+        if (session.epoch === epoch) {
+          if (failure) {
+            throw failure.error;
+          }
+          if (value !== STALE) {
+            read.done = true;
+            return value;
+          }
+        } else if (failure && ++failures > MAX_REREADS_AFTER_FAILURE) {
+          throw failure.error;
         }
       }
     } catch (err) {
       read.done = true;
       throw err;
     }
+  }
+
+  private loadTree(
+    session: IGithubSession,
+    read: IGithubRead<IGithubGitTreeEntry[]>,
+  ): Promise<IGithubGitTreeEntry[]> {
+    return this.readAtCommit(session, read, (commit) =>
+      this.loadTreeAt(session, commit),
+    );
   }
 
   private async loadTreeAt(
@@ -705,7 +766,6 @@ export class GithubProjectReaderService {
       const hit = await this.store.getFile(commitKey, TREE_CACHE_PATH);
       const kept = hit?.text ? readCachedTree(hit.text) : undefined;
       if (kept) {
-        this.confirmed.add(commit);
         return kept;
       }
     }
@@ -722,7 +782,6 @@ export class GithubProjectReaderService {
           path,
           type,
         }));
-        this.confirmed.add(commit);
         if (commitKey) {
           await this.store.putFile(commitKey, TREE_CACHE_PATH, {
             text: JSON.stringify(tree),
@@ -731,12 +790,24 @@ export class GithubProjectReaderService {
         }
         return tree;
       }
-      case 'missing':
+      case 'missing': {
         // A remembered commit that the listing does not know may be gone: ask again which commit it is.
-        if (commit.remembered && (await this.doubt(session, commit))) {
+        const outcome = commit.remembered
+          ? await this.doubt(session, commit)
+          : 'stands';
+        if (outcome === 'moved') {
           return STALE;
         }
+        // GitHub was not asked or did not answer, and the listing of the commit is not to be had: not an empty
+        // project, a failed read (no fallback to `HEAD`: that is not the commit the rest of the visit reads).
+        if (outcome === 'refused') {
+          throw new Error(GITHUB_RATE_LIMIT_MESSAGE);
+        }
+        if (outcome === 'unanswered') {
+          throw new GithubReadError('the project listing', [GITHUB_API_HOST]);
+        }
         return [];
+      }
       case 'moved':
         return [];
       case 'refused':
@@ -822,30 +893,21 @@ export class GithubProjectReaderService {
     return read.promise;
   }
 
-  private async loadText(
+  private loadText(
     session: IGithubSession,
     path: string,
     read: IGithubRead<string | undefined>,
   ): Promise<string | undefined> {
-    try {
-      for (;;) {
-        const epoch = session.epoch;
-        const text = await this.loadTextAt(session, await session.commit, path);
-        if (text !== STALE && session.epoch === epoch) {
-          read.done = true;
-          return text;
-        }
-      }
-    } catch (err) {
-      read.done = true;
-      throw err;
-    }
+    return this.readAtCommit(session, read, (commit, epoch) =>
+      this.loadTextAt(session, commit, path, epoch),
+    );
   }
 
   private async loadTextAt(
     session: IGithubSession,
     commit: IGithubResolvedCommit,
     path: string,
+    epoch: number,
   ): Promise<string | undefined | typeof STALE> {
     if (commit.state === 'missing' || commit.state === 'moved') {
       return undefined;
@@ -855,9 +917,6 @@ export class GithubProjectReaderService {
     if (commitKey) {
       const hit = await this.store.getFile(commitKey, path);
       if (hit) {
-        if (hit.text !== null) {
-          this.confirmed.add(commit);
-        }
         return hit.text ?? undefined;
       }
     }
@@ -880,11 +939,13 @@ export class GithubProjectReaderService {
         `https://${GITHUB_MIRROR_HOST}/gh/${org}/${repo}${version ? `@${encodeURIComponent(version)}` : ''}/${path}`,
         { maxBytes: MAX_PROJECT_FILE_BYTES },
       );
-      session.mirrorUsed ||= out.kind === 'ok';
+      // Not when the visit has moved on meanwhile: the sources line is of the commit the visit is at.
+      if (out.kind === 'ok' && session.epoch === epoch) {
+        session.mirrorUsed = true;
+      }
     }
     switch (out.kind) {
       case 'ok':
-        this.confirmed.add(commit);
         if (commitKey) {
           await this.store.putFile(commitKey, path, {
             text: out.text,
@@ -912,12 +973,10 @@ export class GithubProjectReaderService {
           }
           return undefined;
         }
-        // The project file is 404 at a commit that was only remembered and nothing has been read at: the repository
-        // may have been rewritten, or the project created after the answer was kept. Ask once more which commit it is.
-        if (
-          this.doubtedByProjectFile(commit) &&
-          (await this.doubt(session, commit))
-        ) {
+        // The project file is 404 at a commit that was only remembered: the repository may have been rewritten, or
+        // the project created (pushed from elsewhere) after the answer was kept, whatever else was read at it. Ask
+        // once more which commit it is. Not answered: the commit stands for the visit, and the file is absent.
+        if (commit.remembered && (await this.doubt(session, commit)) === 'moved') {
           return STALE;
         }
         return undefined;

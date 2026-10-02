@@ -110,6 +110,43 @@ describe('guardGithubFileStore (a cache that does not answer is no cache)', () =
     expect(calls).toEqual(['getFile', 'getFile']);
   });
 
+  it('the wait of a call that began before the cache was heard from does not turn off a cache that has since been proven', async () => {
+    const timers = new ManualTimers();
+    // The timers of the waits of the calls, one each, in the order the calls were made.
+    const waits: (() => void)[] = [];
+    const setTimer: typeof timers.set = (fire, ms) => {
+      if (ms === GITHUB_STORE_TIMEOUT_MS) {
+        waits.push(fire);
+      }
+      return timers.set(fire, ms);
+    };
+    const answers: ((v: unknown) => void)[] = [];
+    let instant = false;
+    const { store: inner, calls } = spyStore(() =>
+      instant
+        ? Promise.resolve({ text: 'cached', bytes: 6 })
+        : new Promise((resolve) => answers.push(resolve)),
+    );
+    const store = guardGithubFileStore(inner, setTimer);
+
+    const first = store.getFile(KEY, 'f'); // page 1: the database is still opening
+    const second = store.getFile(KEY, 'g'); // page 2, a moment later: not heard from yet either
+    waits[0](); // the first wait ends: paused
+    expect(await first).toBeUndefined();
+
+    instant = true;
+    answers[0]({ text: 'late', bytes: 4 }); // the database opens: the cache works
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(await store.getFile(KEY, 'h')).toEqual({ text: 'cached', bytes: 6 });
+
+    waits[1](); // the second call's wait ends, though it began before the cache was proven
+    expect(await second).toBeUndefined();
+    const before = calls.length;
+    expect(await store.getFile(KEY, 'i')).toEqual({ text: 'cached', bytes: 6 });
+    expect(calls.length).toBe(before + 1); // the cache is still asked
+  });
+
   it('a first call that does not answer within the limit of the opening: the cache is off for the rest of the visit, and a later answer changes nothing', async () => {
     const timers = new ManualTimers();
     let answer: (v: unknown) => void = () => undefined;
