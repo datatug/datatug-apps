@@ -1,4 +1,5 @@
 import { IEnvironmentConfig } from '@sneat/core';
+import type { DatatugDemoConfig } from './demo-config';
 
 export const datatugAppEnvironmentConfig: IEnvironmentConfig = {
   production: false,
@@ -21,4 +22,10 @@ export const datatugAppEnvironmentConfig: IEnvironmentConfig = {
     appId: 'emulator-does-not-need-app-id',
     measurementId: 'G-PROVIDE_IF_NEEDED',
   },
+};
+
+// The SSO end-to-end build does not exercise the demo, and it is not the demo's own end-to-end build (that one
+// serves the development configuration): OFF.
+export const datatugDemoConfig: DatatugDemoConfig = {
+  enabled: false,
 };
