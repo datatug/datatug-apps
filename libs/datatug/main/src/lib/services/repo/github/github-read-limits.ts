@@ -20,6 +20,13 @@ export const MAX_TREE_BYTES = 8 * 1024 * 1024;
 export const GITHUB_REQUEST_TIMEOUT_MS = 20_000;
 
 /**
+ * How long the one call that resolves the commit may take. Shorter than the rest: when it does not answer, the
+ * reads go on at `HEAD` (the degrade table of design 4.5), so a hanging `api.github.com` delays a page by this, not
+ * by {@link GITHUB_REQUEST_TIMEOUT_MS}. The answer is a few bytes.
+ */
+export const GITHUB_RESOLVE_TIMEOUT_MS = 5_000;
+
+/**
  * Shown to the user (via `ErrorLoggerService`) instead of GitHub's own opaque `403` body: for this
  * unauthenticated, read-only client a `403` from the API means "rate limited".
  */

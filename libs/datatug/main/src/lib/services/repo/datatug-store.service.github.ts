@@ -1,12 +1,13 @@
 import { IFolder, IFolderItem } from '../../models/definition/folder';
 import { IProjectSummary } from '../../models/definition/project';
 import { IDatatugStoreService } from './datatug-store.service.interface';
-import { Observable, of, throwError } from 'rxjs';
+import { Observable, defer, of, throwError } from 'rxjs';
 import { map, shareReplay, switchMap } from 'rxjs/operators';
 import { Injectable, inject } from '@angular/core';
 import {
   assertReadableGithubProjectId,
   buildGithubRawUrl,
+  parseGithubProjectId,
   GithubProjectNotFoundError,
   GithubProjectReaderService,
 } from './github/github-project-reader.service';
@@ -33,7 +34,25 @@ export class DatatugStoreGithubService implements IDatatugStoreService {
   // reads the project summary (for its `boards` list), so without this a
   // page that renders both the project summary AND the folder tabs (the
   // project page itself) would fetch `datatug-project.json` twice.
-  private readonly summaryCache = new Map<string, Observable<IProjectSummary>>();
+  private readonly summaryCache = new Map<
+    string,
+    Observable<IProjectSummary>
+  >();
+
+  /**
+   * Drops the summaries of every project of a repository, so the next one is read again: a project was just created
+   * in it (`GithubProjectCreateService`), and what was kept for the address, "no project here" included, is out of
+   * date. The reader forgets the repository's commit separately (`GithubProjectReaderService.forget`).
+   */
+  forget(org: string, repo: string): void {
+    const wanted = `${org}/${repo}`.toLowerCase();
+    for (const projectId of [...this.summaryCache.keys()]) {
+      const id = parseGithubProjectId(projectId);
+      if (`${id.org}/${id.repo}` === wanted) {
+        this.summaryCache.delete(projectId);
+      }
+    }
+  }
 
   getProjectSummary(projectId: string): Observable<IProjectSummary> {
     let cached = this.summaryCache.get(projectId);
@@ -48,13 +67,20 @@ export class DatatugStoreGithubService implements IDatatugStoreService {
 
     // Through the reader: the same commit as the listing and every other file, one cache, one request (the old
     // second, separate read of this file could come from a different commit than the rest of the page).
-    cached = this.githubReader
-      .getRawJson<IProjectSummary>(projectId, 'datatug-project.json')
-      .pipe(
-        switchMap((p) =>
-          p
-            ? of(p)
-            : this.githubReader.readInfo(projectId).pipe(
+    // `defer`: `shareReplay` drops a failed read and the next subscriber reads again, instead of getting the same
+    // failure back until the page is reloaded.
+    cached = defer(() =>
+      this.githubReader.getRawJson<IProjectSummary>(
+        projectId,
+        'datatug-project.json',
+      ),
+    ).pipe(
+      switchMap((p) =>
+        p
+          ? of(p)
+          : this.githubReader
+              .readInfo(projectId)
+              .pipe(
                 switchMap((info) =>
                   throwError(
                     () =>
@@ -65,20 +91,20 @@ export class DatatugStoreGithubService implements IDatatugStoreService {
                   ),
                 ),
               ),
-        ),
-        map((p) => {
-          if (p.id === projectId) {
-            return p;
-          }
-          if (p.id) {
-            console.warn(
-              `Request project info with projectId=${projectId} but response JSON have id=${p.id}`,
-            );
-          }
-          return { ...p, id: projectId };
-        }),
-        shareReplay(1),
-      );
+      ),
+      map((p) => {
+        if (p.id === projectId) {
+          return p;
+        }
+        if (p.id) {
+          console.warn(
+            `Request project info with projectId=${projectId} but response JSON have id=${p.id}`,
+          );
+        }
+        return { ...p, id: projectId };
+      }),
+      shareReplay(1),
+    );
     this.summaryCache.set(projectId, cached);
     return cached;
   }

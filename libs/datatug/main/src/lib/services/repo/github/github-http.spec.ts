@@ -53,6 +53,22 @@ describe('githubGet', () => {
     expect(calls[1].headers).toEqual({ Accept: 'application/vnd.github.sha' });
   });
 
+  it('hands fetch the address that was checked, as the URL parser reads it, not the string it was given', async () => {
+    const urls: string[] = [];
+    const fetchFn: GithubFetch = async (url) => {
+      urls.push(url);
+      return new Response('ok');
+    };
+    await githubGet(
+      fetchFn,
+      'https://RAW.GithubUserContent.com:443/o/r/HEAD/a b.json?x=1#frag',
+      { maxBytes: 10 },
+    );
+    expect(urls).toEqual([
+      'https://raw.githubusercontent.com/o/r/HEAD/a%20b.json?x=1#frag',
+    ]);
+  });
+
   it.each([
     [301, true, { kind: 'moved' }],
     [302, true, { kind: 'moved' }],

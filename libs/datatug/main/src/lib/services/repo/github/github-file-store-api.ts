@@ -33,6 +33,12 @@ export interface IGithubFileStore {
   /** The commit remembered for `<owner>/<repo>@<ref>` (`HEAD` for the default branch). */
   getResolved(key: string): Promise<IGithubResolvedCommit | undefined>;
   putResolved(key: string, commit: IGithubResolvedCommit): Promise<void>;
+  /**
+   * Drops every remembered answer of one repository, whatever the ref (`repoKey` is `<owner>/<repo>`, lower case): the
+   * repository has changed under it (a project was created in it). Files and listings are keyed by commit and never
+   * change, so they stay.
+   */
+  forgetResolved(repoKey: string): Promise<void>;
 }
 
 /** No cache: every read goes to the network. Blocked storage, or a test that wants no cache. */
@@ -41,6 +47,7 @@ export const NO_GITHUB_FILE_STORE: IGithubFileStore = {
   putFile: () => Promise.resolve(),
   getResolved: () => Promise.resolve(undefined),
   putResolved: () => Promise.resolve(),
+  forgetResolved: () => Promise.resolve(),
 };
 
 /** How long the answer of the resolve call is trusted without asking again (design 4.5 step 1). */
@@ -62,5 +69,69 @@ export function createLazyGithubFileStore(
       get().then((s) => s.putFile(commitKey, path, file)),
     getResolved: (key) => get().then((s) => s.getResolved(key)),
     putResolved: (key, commit) => get().then((s) => s.putResolved(key, commit)),
+    forgetResolved: (repoKey) => get().then((s) => s.forgetResolved(repoKey)),
+  };
+}
+
+/** How long a call to the cache may take before the cache is given up for the rest of the visit. */
+export const GITHUB_STORE_TIMEOUT_MS = 1500;
+
+/** Starts a timer; returns what cancels it. Injected (see `GITHUB_TIMER`) so a test fires it by hand. */
+export type GithubSetTimer = (fire: () => void, ms: number) => () => void;
+
+export const setGithubTimer: GithubSetTimer = (fire, ms) => {
+  const timer = setTimeout(fire, ms);
+  return () => clearTimeout(timer);
+};
+
+/**
+ * The cache as the reader uses it: a call that fails, or does not answer within `timeoutMs`, answers as an empty cache
+ * would (nothing found, nothing kept). The first call that times out turns the cache off for the rest of the visit, so
+ * a database that hangs (blocked by another tab, a browser that never answers) costs one wait, not one per file. A
+ * late answer is ignored.
+ */
+export function guardGithubFileStore(
+  store: IGithubFileStore,
+  setTimer: GithubSetTimer = setGithubTimer,
+  timeoutMs: number = GITHUB_STORE_TIMEOUT_MS,
+): IGithubFileStore {
+  let off = false;
+  const guarded = <T>(call: () => Promise<T>, empty: T): Promise<T> => {
+    if (off) {
+      return Promise.resolve(empty);
+    }
+    return new Promise<T>((resolve) => {
+      const cancel = setTimer(() => {
+        off = true;
+        resolve(empty);
+      }, timeoutMs);
+      let answer: Promise<T>;
+      try {
+        answer = call();
+      } catch (err) {
+        answer = Promise.reject(err);
+      }
+      answer.then(
+        (value) => {
+          cancel();
+          resolve(value);
+        },
+        () => {
+          cancel();
+          resolve(empty);
+        },
+      );
+    });
+  };
+  return {
+    getFile: (commitKey, path) =>
+      guarded(() => store.getFile(commitKey, path), undefined),
+    putFile: (commitKey, path, file) =>
+      guarded(() => store.putFile(commitKey, path, file), undefined),
+    getResolved: (key) => guarded(() => store.getResolved(key), undefined),
+    putResolved: (key, commit) =>
+      guarded(() => store.putResolved(key, commit), undefined),
+    forgetResolved: (repoKey) =>
+      guarded(() => store.forgetResolved(repoKey), undefined),
   };
 }

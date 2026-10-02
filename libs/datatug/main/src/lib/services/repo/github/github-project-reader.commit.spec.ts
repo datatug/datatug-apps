@@ -21,6 +21,10 @@ import {
   GithubReadLimitError,
 } from './github-project-reader.service';
 import { MAX_PROJECT_FILE_BYTES } from './github-read-limits';
+import {
+  GITHUB_STORE_ID,
+  isTrustedProjectAddress,
+} from '../../../nav/github-project-address';
 import { DatatugStoreGithubService } from '../datatug-store.service.github';
 
 const DEMO_REPO = 'datatug/datatug-demo-projects';
@@ -68,10 +72,14 @@ function demoFiles(extra: Record<string, string> = {}): Record<string, string> {
   };
 }
 
-/** What the project pages read on a cold visit: the listing and a handful of files, some of them absent. */
+/**
+ * What the project pages read on a cold visit: the listing and a handful of files, some of them absent (unless
+ * `absent` is false: with the file host down, a file the mirror has not is not known to be absent, see M5).
+ */
 async function readLikeThePages(
   reader: GithubProjectReaderService,
   id = DEMO_ID,
+  absent = true,
 ): Promise<void> {
   await first(reader.getRawJson(id, 'datatug-project.json'));
   await first(reader.listEnvironmentIds(id));
@@ -80,8 +88,10 @@ async function readLikeThePages(
   await first(reader.getEntity(id, 'Album'));
   await first(reader.getQueriesFolder(id));
   await first(reader.getQuery(id, 'q'));
-  await first(reader.getRawJson(id, 'widgets/none.json')); // absent
-  await first(reader.getBoard(id, 'board1')); // absent
+  if (absent) {
+    await first(reader.getRawJson(id, 'widgets/none.json')); // absent
+    await first(reader.getBoard(id, 'board1')); // absent
+  }
 }
 
 describe('GithubProjectReaderService: the commit, the cache, the failover (design 4.5)', () => {
@@ -253,17 +263,21 @@ describe('GithubProjectReaderService: the commit, the cache, the failover (desig
         fromMirror: false,
         mayBeStale: true,
       });
-      // Nothing in the persistent cache: no commit to key it by. A new visit asks again.
-      gh.fail.api = undefined;
+      // Nothing in the persistent cache: no commit to key it by. A new visit, with the API still refusing, asks the
+      // file host again (it would not if anything had been kept).
       gh.reset();
       await first(browser.load().getRawJson(DEMO_ID, 'datatug-project.json'));
-      expect(gh.count('raw.githubusercontent.com')).toBe(1);
+      expect(gh.urls()).toEqual([
+        `https://api.github.com/repos/${DEMO_REPO}/commits/HEAD`,
+        rawUrl('HEAD', 'demo-project-1/datatug-project.json'),
+      ]);
       expect(
         await browser.store.getFile(
           `${DEMO_REPO}@HEAD`,
           'demo-project-1/datatug-project.json',
         ),
       ).toBeUndefined();
+      expect(await browser.store.getResolved(`${DEMO_REPO}@HEAD`)).toBeUndefined();
     });
 
     it('row 5: refused, nothing remembered, the file host fails: jsDelivr with no version, the default branch, not kept', async () => {
@@ -284,10 +298,21 @@ describe('GithubProjectReaderService: the commit, the cache, the failover (desig
         fromMirror: true,
         mayBeStale: true,
       });
-      gh.fail = { api: undefined, raw: undefined, mirror: undefined };
+      // A new visit, the API still refusing and the file host still failing: asked again, nothing was kept.
       gh.reset();
       await first(browser.load().getRawText(DEMO_ID, 'datatug-project.json'));
-      expect(gh.count('raw.githubusercontent.com')).toBe(1);
+      expect(gh.urls()).toEqual([
+        `https://api.github.com/repos/${DEMO_REPO}/commits/HEAD`,
+        rawUrl('HEAD', 'demo-project-1/datatug-project.json'),
+        mirrorUrl(undefined, 'demo-project-1/datatug-project.json'),
+      ]);
+      expect(await browser.store.getResolved(`${DEMO_REPO}@HEAD`)).toBeUndefined();
+      expect(
+        await browser.store.getFile(
+          `${DEMO_REPO}@HEAD`,
+          'demo-project-1/datatug-project.json',
+        ),
+      ).toBeUndefined();
     });
 
     it('row 6: all three fail: a failed step naming the hosts, and a later try asks again', async () => {
@@ -440,6 +465,20 @@ describe('GithubProjectReaderService: the commit, the cache, the failover (desig
     });
 
     it('the same repository at a commit of the address is not a trusted project: that commit is read, no resolve call', async () => {
+      // What guarantees it: no address with a ref other than HEAD is trusted (`isTrustedGithubProject`), so a commit in
+      // an id is only ever read for a project that is not trusted.
+      expect(
+        isTrustedProjectAddress({
+          storeId: GITHUB_STORE_ID,
+          projectId: `${CHINOOK_ID}@${SHA_2}`,
+        }),
+      ).toBe(false);
+      expect(
+        isTrustedProjectAddress({
+          storeId: GITHUB_STORE_ID,
+          projectId: CHINOOK_ID,
+        }),
+      ).toBe(true);
       const reader = browser.load();
       expect(
         await first(
@@ -467,7 +506,7 @@ describe('GithubProjectReaderService: the commit, the cache, the failover (desig
       ]);
     });
 
-    it('a trusted project never uses a remembered answer older than 5 minutes', async () => {
+    it('a trusted project asks GitHub again once the remembered answer is older than 5 minutes', async () => {
       await first(
         browser.load().getRawJson(CHINOOK_ID, 'datatug-project.json'),
       );
@@ -486,7 +525,7 @@ describe('GithubProjectReaderService: the commit, the cache, the failover (desig
     it('every request omits credentials, sends no referrer, and only the resolve and listing calls may see a redirect', async () => {
       const reader = browser.load();
       gh.fail.raw = 500; // so the mirror is used too
-      await readLikeThePages(reader);
+      await readLikeThePages(reader, DEMO_ID, false);
 
       expect(gh.requests.length).toBeGreaterThan(5);
       const hosts = new Set(gh.requests.map((r) => r.host));
@@ -725,6 +764,7 @@ describe('GithubProjectReaderService: the commit, the cache, the failover (desig
         putFile: () => Promise.reject(new Error('blocked')),
         getResolved: () => Promise.reject(new Error('blocked')),
         putResolved: () => Promise.reject(new Error('blocked')),
+        forgetResolved: () => Promise.reject(new Error('blocked')),
       });
       await readLikeThePages(reader);
       expect(await first(reader.readInfo(DEMO_ID))).toMatchObject({

@@ -45,21 +45,26 @@ export interface IGithubGetOptions {
   readonly timeoutMs?: number;
 }
 
-/** Whether `url` is an `https` address, with no user name or password, on one of the three hosts. */
-export function isAllowedGithubUrl(url: string): boolean {
+/** `url` as the URL parser reads it, when it is an `https` address with no user name or password on one of the three hosts. */
+function allowedGithubUrl(url: string): URL | undefined {
   let parsed: URL;
   try {
     parsed = new URL(url);
   } catch {
-    return false;
+    return undefined;
   }
-  return (
-    parsed.protocol === 'https:' &&
+  return parsed.protocol === 'https:' &&
     parsed.username === '' &&
     parsed.password === '' &&
     parsed.port === '' &&
     ALLOWED_HOSTS.has(parsed.hostname)
-  );
+    ? parsed
+    : undefined;
+}
+
+/** Whether `url` is an `https` address, with no user name or password, on one of the three hosts. */
+export function isAllowedGithubUrl(url: string): boolean {
+  return allowedGithubUrl(url) !== undefined;
 }
 
 /**
@@ -107,7 +112,8 @@ export async function githubGet(
   url: string,
   options: IGithubGetOptions,
 ): Promise<GithubOutcome> {
-  if (!isAllowedGithubUrl(url)) {
+  const parsed = allowedGithubUrl(url);
+  if (!parsed) {
     return { kind: 'down' };
   }
   const controller = new AbortController();
@@ -116,7 +122,8 @@ export async function githubGet(
     options.timeoutMs ?? GITHUB_REQUEST_TIMEOUT_MS,
   );
   try {
-    const response = await fetchFn(url, {
+    // The address that was checked, as parsed: what is sent is what was allowed, not the string that was given.
+    const response = await fetchFn(parsed.href, {
       method: 'GET',
       credentials: 'omit',
       redirect: options.detectMoved ? 'manual' : 'error',

@@ -2,6 +2,7 @@
 // the listing, raw file reads and the jsDelivr mirror from repositories built in memory, logs every request, and can
 // be told to refuse, fail or redirect any host. Not a spec itself (the name keeps it out of the library build).
 
+import type { GithubSetTimer } from './github-file-store-api';
 import {
   GITHUB_API_HOST,
   GITHUB_MIRROR_HOST,
@@ -22,8 +23,10 @@ export interface IFakeRepo {
   readonly commits: Map<string, IFakeCommit>;
   /** The commit the default branch points at. */
   head: string;
-  /** Branches and tags other than `HEAD`, by name. `main` follows the default branch. */
+  /** Branches and tags other than `HEAD`, by name. The default branch follows `head`. */
   readonly refs: Record<string, string>;
+  /** The name of the default branch (`main` unless the repository was added with another). */
+  readonly defaultBranch: string;
 }
 
 export function fakeSha(n: number): string {
@@ -45,11 +48,13 @@ export class FakeGithub {
     fullName: string,
     sha: string,
     files: Record<string, string>,
+    defaultBranch = 'main',
   ): IFakeRepo {
     const repo: IFakeRepo = {
       commits: new Map([[sha, { files }]]),
       head: sha,
-      refs: { main: sha },
+      refs: { [defaultBranch]: sha },
+      defaultBranch,
     };
     this.repos.set(fullName, repo);
     return repo;
@@ -60,7 +65,14 @@ export class FakeGithub {
     const repo = this.repos.get(fullName) as IFakeRepo;
     repo.commits.set(sha, { files });
     repo.head = sha;
-    repo.refs['main'] = sha;
+    repo.refs[repo.defaultBranch] = sha;
+  }
+
+  /** A forced push: the default branch moves to a new commit and every earlier commit is gone. */
+  rewrite(fullName: string, sha: string, files: Record<string, string>): void {
+    const repo = this.repos.get(fullName) as IFakeRepo;
+    repo.commits.clear();
+    this.push(fullName, sha, files);
   }
 
   count(host?: string): number {
@@ -214,5 +226,45 @@ export class FakeGithub {
         : new Response(text);
     }
     return notFound();
+  }
+}
+
+/**
+ * Timers a test fires by hand: what the reader's guard around the cache sets is recorded, never run, until
+ * `fireAll()`. `set` is the `GithubSetTimer` the reader is given.
+ */
+export class ManualTimers {
+  private nextId = 1;
+  private readonly pending = new Map<number, () => void>();
+  /** The delay of every timer ever set, in order. */
+  readonly delays: number[] = [];
+
+  readonly set: GithubSetTimer = (fire, ms) => {
+    const id = this.nextId++;
+    this.delays.push(ms);
+    this.pending.set(id, fire);
+    return () => {
+      this.pending.delete(id);
+    };
+  };
+
+  /** Timers set and neither fired nor cancelled. */
+  get count(): number {
+    return this.pending.size;
+  }
+
+  fireAll(): void {
+    const fires = [...this.pending.values()];
+    this.pending.clear();
+    for (const fire of fires) {
+      fire();
+    }
+  }
+
+  /** Resolves once at least `n` timers are waiting (the code under test has reached its first await). */
+  async waitFor(n = 1): Promise<void> {
+    for (let i = 0; i < 1000 && this.pending.size < n; i++) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
   }
 }

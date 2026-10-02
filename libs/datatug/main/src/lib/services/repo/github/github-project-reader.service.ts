@@ -5,10 +5,8 @@ import { IParameterDef } from '../../../models/definition/parameter';
 import { IRecordsetDef } from '../../../models/definition/recordset';
 import {
   GITHUB_DEFAULT_BRANCH_REF,
-  GITHUB_STORE_ID,
   GithubProjectIdError,
   IGithubProjectId,
-  isTrustedProjectAddress,
   readGithubProjectId,
   splitGithubProjectId,
 } from '../../../nav/github-project-address';
@@ -21,8 +19,11 @@ import {
 } from './github-http';
 import {
   GITHUB_RESOLVE_TTL_MS,
+  GithubSetTimer,
   IGithubFileStore,
   createLazyGithubFileStore,
+  guardGithubFileStore,
+  setGithubTimer,
 } from './github-file-store-api';
 import {
   GITHUB_RATE_LIMIT_MESSAGE,
@@ -30,6 +31,7 @@ import {
   GithubProjectNotFoundError,
   GithubReadBudget,
   GithubReadError,
+  GITHUB_RESOLVE_TIMEOUT_MS,
   MAX_PROJECT_FILE_BYTES,
   MAX_TREE_BYTES,
 } from './github-read-limits';
@@ -261,6 +263,15 @@ export const GITHUB_FILE_STORE = new InjectionToken<IGithubFileStore>(
 );
 
 /**
+ * The timer the reader gives its persistent cache to answer by (see `guardGithubFileStore`). Injected so a test fires
+ * it by hand instead of waiting.
+ */
+export const GITHUB_TIMER = new InjectionToken<GithubSetTimer>('GITHUB_TIMER', {
+  providedIn: 'root',
+  factory: () => setGithubTimer,
+});
+
+/**
  * Which commit a read of a project came to use (design 4.5, the degrade table):
  * - `given`: a full commit SHA in the id; no call was made. Never taken for a trusted project.
  * - `resolved`: GitHub answered which commit the ref (or the default branch) is now, or answered within the last
@@ -309,12 +320,52 @@ const COMMIT_SHA = /^[0-9a-f]{40}$/i;
 /** The listing of a commit is kept in the file cache under this name; no file path can be it (`#` is encoded). */
 const TREE_CACHE_PATH = '#tree';
 
+/** The file that makes a folder a project. A project that is not there yet is not remembered as absent. */
+const PROJECT_FILE_NAME = 'datatug-project.json';
+
+function isProjectFile(path: string): boolean {
+  return path === PROJECT_FILE_NAME || path.endsWith(`/${PROJECT_FILE_NAME}`);
+}
+
+/** What a read answers when the commit it was reading at was found not to exist and has been replaced: read again. */
+const STALE = Symbol('stale commit');
+
+/** A commit, and whether it is what an earlier answer said rather than what GitHub said in this visit. */
+interface IGithubResolvedCommit extends IGithubCommitResolution {
+  /**
+   * The commit is a remembered answer (of the last 5 minutes, or of an earlier visit when GitHub would not answer),
+   * so it may be one that no longer exists.
+   */
+  readonly remembered: boolean;
+}
+
+function isTreeEntry(entry: unknown): entry is IGithubGitTreeEntry {
+  const { path, type } = (entry ?? {}) as Partial<IGithubGitTreeEntry>;
+  return (
+    typeof path === 'string' &&
+    (type === 'blob' || type === 'tree' || type === 'commit')
+  );
+}
+
+/** A listing out of the cache, or `undefined` when what was kept is not a listing (then it is read again). */
+function readCachedTree(text: string): IGithubGitTreeEntry[] | undefined {
+  try {
+    const tree: unknown = JSON.parse(text);
+    return Array.isArray(tree) && tree.every(isTreeEntry) ? tree : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Everything read for one `owner/repo@ref` during this page load: one commit, one listing, the files. */
 interface IGithubSession {
   readonly org: string;
   readonly repo: string;
   readonly ref?: string;
-  readonly commit: Promise<IGithubCommitResolution>;
+  /** Asks again which commit the id names; `fresh` ignores what is remembered. */
+  readonly resolve: (fresh: boolean) => Promise<IGithubResolvedCommit>;
+  /** The commit every read of the session is at; replaced once, when a remembered commit proves not to exist. */
+  commit: Promise<IGithubResolvedCommit>;
   mirrorUsed: boolean;
   tree?: Promise<IGithubGitTreeEntry[]>;
   readonly files: Map<string, Promise<string | undefined>>;
@@ -359,23 +410,50 @@ interface IGithubSession {
 export class GithubProjectReaderService {
   private readonly fetchFn = inject(GITHUB_FETCH);
   private readonly now = inject(GITHUB_CLOCK);
-  private readonly store = inject(GITHUB_FILE_STORE);
+  // A cache that does not answer is no cache (see `guardGithubFileStore`): no read waits for it for long.
+  private readonly store = guardGithubFileStore(
+    inject(GITHUB_FILE_STORE),
+    inject(GITHUB_TIMER),
+  );
 
   private readonly sessions = new Map<string, IGithubSession>();
+  /** The commit each remembered commit that proved not to exist was replaced by (one replacement per commit). */
+  private readonly replacements = new WeakMap<
+    IGithubResolvedCommit,
+    Promise<IGithubResolvedCommit>
+  >();
+
+  /**
+   * Forgets what this browser knows of a repository, so the next read asks GitHub again which commit it is at: the
+   * visit's commit, files and listing, and the answer remembered for 5 minutes (at every ref). Called when a project
+   * was just committed to the repository, which would otherwise stay "missing" until the memory expires. Files and
+   * listings kept by commit are not touched: a commit's content never changes.
+   */
+  public async forget(org: string, repo: string): Promise<void> {
+    const repoKey = `${org}/${repo}`.toLowerCase();
+    for (const key of [...this.sessions.keys()]) {
+      if (key.startsWith(`${repoKey}@`)) {
+        this.sessions.delete(key);
+      }
+    }
+    await this.store.forgetResolved(repoKey);
+  }
 
   // ---------------------------------------------------------------------
   // The commit: one per repo and ref, resolved once
   // ---------------------------------------------------------------------
 
-  private session(id: IGithubProjectId, projectId: string): IGithubSession {
+  private session(id: IGithubProjectId): IGithubSession {
     const key = `${id.org}/${id.repo}@${id.ref ?? GITHUB_DEFAULT_BRANCH_REF}`;
     let session = this.sessions.get(key);
     if (!session) {
+      const resolve = (fresh: boolean) => this.resolveCommit(id, fresh);
       session = {
         org: id.org,
         repo: id.repo,
         ref: id.ref,
-        commit: this.resolveCommit(id, projectId),
+        resolve,
+        commit: resolve(false),
         mirrorUsed: false,
         files: new Map(),
         json: new Map(),
@@ -387,23 +465,22 @@ export class GithubProjectReaderService {
 
   private async resolveCommit(
     id: IGithubProjectId,
-    projectId: string,
-  ): Promise<IGithubCommitResolution> {
+    fresh: boolean,
+  ): Promise<IGithubResolvedCommit> {
     const { org, repo, ref } = id;
-    if (
-      ref &&
-      COMMIT_SHA.test(ref) &&
-      !isTrustedProjectAddress({ storeId: GITHUB_STORE_ID, projectId })
-    ) {
-      return { state: 'given', sha: ref.toLowerCase() };
+    if (ref && COMMIT_SHA.test(ref)) {
+      // A commit in the id is read as it is, with no call. No trusted project can have one: the trust decision
+      // (`isTrustedGithubProject`, nav/github-project-address.ts) refuses every ref but `HEAD`, so a trusted run
+      // never takes a commit from its address and always reads what GitHub says the default branch is now.
+      return { state: 'given', sha: ref.toLowerCase(), remembered: false };
     }
     const memoKey = `${org}/${repo}@${ref ?? GITHUB_DEFAULT_BRANCH_REF}`;
-    const memo = await this.store.getResolved(memoKey).catch(() => undefined);
+    const memo = fresh ? undefined : await this.store.getResolved(memoKey);
     const now = this.now();
     if (memo) {
       const age = now - memo.at;
       if (age >= 0 && age < GITHUB_RESOLVE_TTL_MS) {
-        return { state: 'resolved', sha: memo.sha };
+        return { state: 'resolved', sha: memo.sha, remembered: true };
       }
     }
     const out = await githubGet(
@@ -413,22 +490,43 @@ export class GithubProjectReaderService {
         maxBytes: 1024,
         accept: 'application/vnd.github.sha',
         detectMoved: true,
+        timeoutMs: GITHUB_RESOLVE_TIMEOUT_MS,
       },
     );
     if (out.kind === 'ok') {
       const sha = out.text.trim().toLowerCase();
       if (COMMIT_SHA.test(sha)) {
-        await this.store.putResolved(memoKey, { sha, at: now }).catch(() => undefined);
-        return { state: 'resolved', sha };
+        await this.store.putResolved(memoKey, { sha, at: now });
+        return { state: 'resolved', sha, remembered: false };
       }
     } else if (out.kind === 'moved') {
-      return { state: 'moved' };
+      return { state: 'moved', remembered: false };
     } else if (out.kind === 'missing') {
-      return { state: 'missing' };
+      return { state: 'missing', remembered: false };
     }
     return memo
-      ? { state: 'remembered', sha: memo.sha }
-      : { state: 'unresolved' };
+      ? { state: 'remembered', sha: memo.sha, remembered: true }
+      : { state: 'unresolved', remembered: false };
+  }
+
+  /**
+   * GitHub does not know the commit a read was at, which was only remembered: the repository was rewritten, or the
+   * project was created after the answer was kept. The memory is dropped and the commit is resolved again, once
+   * (what is resolved again is never remembered, so there is no second time); every read of the session then goes on
+   * at the new commit, those that were waiting for GitHub's answer about the old one included (they read again).
+   * What was already read from the cache stays: it is the old commit's own, whole. Called once per stale commit: a
+   * read that finds the commit already replaced does not call it (see `replacements`).
+   */
+  private replaceRememberedCommit(
+    session: IGithubSession,
+    stale: IGithubResolvedCommit,
+  ): Promise<IGithubResolvedCommit> {
+    const next = this.store
+      .forgetResolved(`${session.org}/${session.repo}`)
+      .then(() => session.resolve(true));
+    this.replacements.set(stale, next);
+    session.commit = next;
+    return next;
   }
 
   /**
@@ -436,14 +534,9 @@ export class GithubProjectReaderService {
    * commit is resolved when this emits, so the answer is complete once the project has been read.
    */
   public readInfo(projectId: string): Observable<IGithubReadInfo> {
-    let session: IGithubSession;
-    try {
-      session = this.session(readableId(projectId), projectId);
-    } catch (err) {
-      return throwError(() => err);
-    }
-    return defer(() =>
-      from(
+    return defer(() => {
+      const session = this.session(readableId(projectId));
+      return from(
         session.commit.then(
           (c): IGithubReadInfo => ({
             org: session.org,
@@ -454,8 +547,8 @@ export class GithubProjectReaderService {
             mayBeStale: c.state === 'remembered' || c.state === 'unresolved',
           }),
         ),
-      ),
-    );
+      );
+    });
   }
 
   // ---------------------------------------------------------------------
@@ -463,26 +556,36 @@ export class GithubProjectReaderService {
   // ---------------------------------------------------------------------
 
   private getTree(projectId: string): Observable<IGithubGitTreeEntry[]> {
-    let session: IGithubSession;
-    try {
-      session = this.session(readableId(projectId), projectId);
-    } catch (err) {
-      return throwError(() => err);
-    }
-    if (!session.tree) {
-      const tree = this.loadTree(session);
-      session.tree = tree;
-      tree.catch(() => {
-        if (session.tree === tree) {
-          session.tree = undefined;
-        }
-      });
-    }
-    return from(session.tree);
+    return defer(() => {
+      const session = this.session(readableId(projectId));
+      if (!session.tree) {
+        const tree = this.loadTree(session);
+        session.tree = tree;
+        tree.catch(() => {
+          if (session.tree === tree) {
+            session.tree = undefined;
+          }
+        });
+      }
+      return from(session.tree);
+    });
   }
 
-  private async loadTree(session: IGithubSession): Promise<IGithubGitTreeEntry[]> {
-    const commit = await session.commit;
+  private async loadTree(
+    session: IGithubSession,
+  ): Promise<IGithubGitTreeEntry[]> {
+    for (;;) {
+      const tree = await this.loadTreeAt(session, await session.commit);
+      if (tree !== STALE) {
+        return tree;
+      }
+    }
+  }
+
+  private async loadTreeAt(
+    session: IGithubSession,
+    commit: IGithubResolvedCommit,
+  ): Promise<IGithubGitTreeEntry[] | typeof STALE> {
     if (commit.state === 'missing' || commit.state === 'moved') {
       return [];
     }
@@ -490,9 +593,10 @@ export class GithubProjectReaderService {
       ? `${session.org}/${session.repo}@${commit.sha}`
       : undefined;
     if (commitKey) {
-      const hit = await this.store.getFile(commitKey, TREE_CACHE_PATH).catch(() => undefined);
-      if (hit?.text) {
-        return JSON.parse(hit.text) as IGithubGitTreeEntry[];
+      const hit = await this.store.getFile(commitKey, TREE_CACHE_PATH);
+      const kept = hit?.text ? readCachedTree(hit.text) : undefined;
+      if (kept) {
+        return kept;
       }
     }
     const revision = commit.sha ?? session.ref ?? GITHUB_DEFAULT_BRANCH_REF;
@@ -504,24 +608,36 @@ export class GithubProjectReaderService {
     switch (out.kind) {
       case 'ok': {
         const response = JSON.parse(out.text) as IGithubGitTreeResponse;
-        const tree = (response.tree || []).map(({ path, type }) => ({ path, type }));
+        const tree = (response.tree || []).map(({ path, type }) => ({
+          path,
+          type,
+        }));
         if (commitKey) {
-          await this.store
-            .putFile(commitKey, TREE_CACHE_PATH, {
-              text: JSON.stringify(tree),
-              bytes: out.bytes,
-            })
-            .catch(() => undefined);
+          await this.store.putFile(commitKey, TREE_CACHE_PATH, {
+            text: JSON.stringify(tree),
+            bytes: out.bytes,
+          });
         }
         return tree;
       }
       case 'missing':
+        if (this.replacements.has(commit)) {
+          return STALE; // another read found the commit gone while this one was asking
+        }
+        if (commit.remembered) {
+          await this.replaceRememberedCommit(session, commit);
+          return STALE;
+        }
+        return [];
       case 'moved':
         return [];
       case 'refused':
         throw new Error(GITHUB_RATE_LIMIT_MESSAGE);
       case 'too-large':
-        throw new GithubFileTooLargeError('the project listing', MAX_TREE_BYTES);
+        throw new GithubFileTooLargeError(
+          'the project listing',
+          MAX_TREE_BYTES,
+        );
       default:
         throw new GithubReadError('the project listing', [GITHUB_API_HOST]);
     }
@@ -600,14 +716,26 @@ export class GithubProjectReaderService {
     session: IGithubSession,
     path: string,
   ): Promise<string | undefined> {
-    const commit = await session.commit;
+    for (;;) {
+      const text = await this.loadTextAt(session, await session.commit, path);
+      if (text !== STALE) {
+        return text;
+      }
+    }
+  }
+
+  private async loadTextAt(
+    session: IGithubSession,
+    commit: IGithubResolvedCommit,
+    path: string,
+  ): Promise<string | undefined | typeof STALE> {
     if (commit.state === 'missing' || commit.state === 'moved') {
       return undefined;
     }
     const { org, repo } = session;
     const commitKey = commit.sha ? `${org}/${repo}@${commit.sha}` : undefined;
     if (commitKey) {
-      const hit = await this.store.getFile(commitKey, path).catch(() => undefined);
+      const hit = await this.store.getFile(commitKey, path);
       if (hit) {
         return hit.text ?? undefined;
       }
@@ -636,18 +764,33 @@ export class GithubProjectReaderService {
     switch (out.kind) {
       case 'ok':
         if (commitKey) {
-          await this.store
-            .putFile(commitKey, path, { text: out.text, bytes: out.bytes })
-            .catch(() => undefined);
+          await this.store.putFile(commitKey, path, {
+            text: out.text,
+            bytes: out.bytes,
+          });
         }
         return out.text;
       case 'missing':
-        // Absent at a commit stays absent: remembered too, so a warm load asks for nothing. Only on the word of
-        // GitHub's own file host.
-        if (commitKey && out === raw) {
-          await this.store
-            .putFile(commitKey, path, { text: null, bytes: 0 })
-            .catch(() => undefined);
+        if (out !== raw) {
+          // The file host would not answer and the mirror says no: the mirror lags behind GitHub (a commit pushed a
+          // moment ago is not there yet), so that is no word on the file. Only GitHub's own file host can say it is
+          // absent.
+          throw new GithubReadError(decodeURIComponent(path), hosts);
+        }
+        if (this.replacements.has(commit)) {
+          return STALE; // another read found the commit gone while this one was asking
+        }
+        if (commit.remembered) {
+          // Every file of a commit that does not exist is "missing", the project file included: ask once more which
+          // commit it is, instead of taking a remembered answer for the truth (a file that really is absent costs
+          // this one question per visit, and is then remembered as absent).
+          await this.replaceRememberedCommit(session, commit);
+          return STALE;
+        }
+        // Absent at a commit stays absent: remembered too, so a warm load asks for nothing. Not the project file: it
+        // is the one file that a visitor is about to create, and the answer that it is not there is for this visit.
+        if (commitKey && !isProjectFile(path)) {
+          await this.store.putFile(commitKey, path, { text: null, bytes: 0 });
         }
         return undefined;
       case 'moved':
@@ -671,48 +814,54 @@ export class GithubProjectReaderService {
     const id = readableId(projectId);
     const path = projectFilePath(id.folder, relativePath);
     options?.budget?.take(path);
-    return { session: this.session(id, projectId), path };
+    return { session: this.session(id), path };
   }
 
   /**
    * `GET`s and JSON-decodes one file at `relativePath` (project-folder-relative)
    * from the project's commit. A missing file resolves to `undefined`
    * (never an error) — most callers here treat that as "this project doesn't
-   * have one", not a failure.
+   * have one", not a failure. An empty file (or one of white space only) is
+   * `null`, which is what `HttpClient` made of it: callers keep their defaults.
+   *
+   * Lazy: nothing is read, and nothing counts against the run's budget, until
+   * something subscribes, and every subscription reads again what failed (so
+   * `retry()` works). A file already read in this visit is not read twice.
    */
   public getRawJson<T>(
     projectId: string,
     relativePath: string,
     options?: IGithubReadOptions,
-  ): Observable<T | undefined> {
-    let target: { session: IGithubSession; path: string };
-    try {
-      target = this.prepare(projectId, relativePath, options);
-    } catch (err) {
-      return throwError(() => err);
-    }
-    const { session, path } = target;
-    let parsed = session.json.get(path) as Promise<T | undefined> | undefined;
-    if (!parsed) {
-      parsed = this.readText(session, path).then((text) => {
-        if (text === undefined) {
-          return undefined;
-        }
-        try {
-          return JSON.parse(text) as T;
-        } catch {
-          throw new Error(`${decodeURIComponent(path)} is not valid JSON`);
-        }
-      });
-      session.json.set(path, parsed);
-      const memo = parsed;
-      parsed.catch(() => {
-        if (session.json.get(path) === memo) {
-          session.json.delete(path);
-        }
-      });
-    }
-    return from(parsed);
+  ): Observable<T | null | undefined> {
+    return defer(() => {
+      const { session, path } = this.prepare(projectId, relativePath, options);
+      let parsed = session.json.get(path) as
+        | Promise<T | null | undefined>
+        | undefined;
+      if (!parsed) {
+        parsed = this.readText(session, path).then((text) => {
+          if (text === undefined) {
+            return undefined;
+          }
+          if (text.trim() === '') {
+            return null;
+          }
+          try {
+            return JSON.parse(text) as T;
+          } catch {
+            throw new Error(`${decodeURIComponent(path)} is not valid JSON`);
+          }
+        });
+        session.json.set(path, parsed);
+        const memo = parsed;
+        parsed.catch(() => {
+          if (session.json.get(path) === memo) {
+            session.json.delete(path);
+          }
+        });
+      }
+      return from(parsed);
+    });
   }
 
   /** Same as {@link getRawJson}, but for a plain-text body (a query's `.sql`/`.dtql`/`.http` sidecar). */
@@ -721,13 +870,10 @@ export class GithubProjectReaderService {
     relativePath: string,
     options?: IGithubReadOptions,
   ): Observable<string | undefined> {
-    let target: { session: IGithubSession; path: string };
-    try {
-      target = this.prepare(projectId, relativePath, options);
-    } catch (err) {
-      return throwError(() => err);
-    }
-    return from(this.readText(target.session, target.path));
+    return defer(() => {
+      const { session, path } = this.prepare(projectId, relativePath, options);
+      return from(this.readText(session, path));
+    });
   }
 
   // ---------------------------------------------------------------------

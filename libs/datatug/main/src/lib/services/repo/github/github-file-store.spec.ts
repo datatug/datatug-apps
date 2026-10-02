@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { TestBed } from '@angular/core/testing';
 import { IndexedDbDatabase } from '@dalgo/indexeddb';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   CHAT_SESSION_DATABASE,
@@ -274,6 +274,69 @@ describe('the bounds of the cache (design 3.6): 20 MB and 20 repos, two commits 
       expect(await foreign.getFile(A1, 'f')).toBeUndefined();
     });
 
+    it('a blocked open that succeeds later is closed, and never holds up a later upgrade', async () => {
+      const req: Record<string, unknown> = {};
+      const factory = { open: () => req } as unknown as IDBFactory;
+      const store = openGithubFileStore(factory, () => 1);
+
+      const read = store.getFile(A1, 'f');
+      (req['onblocked'] as () => void)(); // another tab holds the database; the cache is off for now
+      expect(await read).toBeUndefined();
+
+      const late = {
+        close: vi.fn(),
+        onversionchange: undefined as unknown,
+        objectStoreNames: { contains: () => true },
+      };
+      req['result'] = late;
+      (req['onsuccess'] as () => void)(); // ... and then it opens, nobody listening
+      expect(late.close).toHaveBeenCalledTimes(1);
+      // Even a connection nobody asked for yields to a later upgrade.
+      expect(typeof late.onversionchange).toBe('function');
+      (late.onversionchange as () => void)();
+      expect(late.close).toHaveBeenCalledTimes(2);
+      expect(await store.getFile(A1, 'f')).toBeUndefined();
+    });
+
+    it('an open that fails is no cache, and a late success after the error is closed too', async () => {
+      const req: Record<string, unknown> = {};
+      const factory = { open: () => req } as unknown as IDBFactory;
+      const store = openGithubFileStore(factory, () => 1);
+      const read = store.getResolved('o/a@HEAD');
+      req['error'] = new Error('UnknownError');
+      (req['onerror'] as () => void)();
+      expect(await read).toBeUndefined();
+      const late = {
+        close: vi.fn(),
+        onversionchange: undefined as unknown,
+        objectStoreNames: { contains: () => true },
+      };
+      req['result'] = late;
+      (req['onsuccess'] as () => void)();
+      expect(late.close).toHaveBeenCalledTimes(1);
+    });
+
+    it('forgets the remembered answers of one repository at every ref, and of no other', async () => {
+      const { store } = open({ ...LIMITS, maxResolved: 10 });
+      for (const key of [
+        'o/a@HEAD',
+        'o/a@feature',
+        'o/a@v1.0',
+        'o/ab@HEAD',
+        'o/a-x@HEAD',
+        'p/a@HEAD',
+      ]) {
+        await store.putResolved(key, { sha: 's', at: 1 });
+      }
+      await store.forgetResolved('o/a');
+      expect(await store.getResolved('o/a@HEAD')).toBeUndefined();
+      expect(await store.getResolved('o/a@feature')).toBeUndefined();
+      expect(await store.getResolved('o/a@v1.0')).toBeUndefined();
+      expect(await store.getResolved('o/ab@HEAD')).toBeDefined();
+      expect(await store.getResolved('o/a-x@HEAD')).toBeDefined();
+      expect(await store.getResolved('p/a@HEAD')).toBeDefined();
+    });
+
     it('a store that fails to load is no store (the lazy loader)', async () => {
       const lazy = createLazyGithubFileStore(() =>
         Promise.reject(new Error('chunk failed to load')),
@@ -281,6 +344,8 @@ describe('the bounds of the cache (design 3.6): 20 MB and 20 repos, two commits 
       await lazy.putFile(A1, 'f', { text: 'x', bytes: 1 });
       expect(await lazy.getFile(A1, 'f')).toBeUndefined();
       expect(await lazy.getResolved('k')).toBeUndefined();
+      await lazy.putResolved('k', { sha: 's', at: 1 });
+      await lazy.forgetResolved('o/r');
     });
   });
 

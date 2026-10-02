@@ -2,10 +2,19 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { SneatApiService } from '@sneat/api';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
-import { Observable, forkJoin, of, throwError } from 'rxjs';
+import { Observable, forkJoin, from, of, throwError } from 'rxjs';
 import { catchError, map, switchMap } from 'rxjs/operators';
-import { GITHUB_API_BASE, githubApiHeaders } from './github-api';
-import { IGithubProjectId } from './github-project-reader.service';
+import { DatatugStoreGithubService } from '../datatug-store.service.github';
+import {
+  GITHUB_API_BASE,
+  IGithubRepoWire,
+  githubApiHeaders,
+  toGithubRepo,
+} from './github-api';
+import {
+  GithubProjectReaderService,
+  IGithubProjectId,
+} from './github-project-reader.service';
 
 /**
  * DataTug cloud endpoint that records a GitHub-hosted project in the user's
@@ -20,13 +29,6 @@ export const REGISTER_GITHUB_PROJECT_ENDPOINT =
  * default `parseGithubProjectId()` applies when reading a project back.
  */
 export const DEFAULT_GITHUB_PROJECT_FOLDER = 'datatug';
-
-/**
- * Branch new project files are committed to. The app's GitHub reader reads
- * the repo's default branch (`HEAD`), so a project committed to a branch that
- * is not the default is not seen by it.
- */
-export const GITHUB_PROJECT_BRANCH = 'main';
 
 /** Content of the `README.md` the CLI's `dtprojcreator` writes too. */
 export const GITHUB_PROJECT_README = `# DataTug Project
@@ -81,7 +83,7 @@ function toBase64(value: string): string {
  * this app's own GitHub reader expects:
  *
  * - `<folder>/datatug-project.json` — the project file (valid JSON: the reader
- *   parses it with `HttpClient`).
+ *   parses it with `JSON.parse`).
  * - `<folder>/README.md` — the project's own readme.
  */
 @Injectable({ providedIn: 'root' })
@@ -89,11 +91,16 @@ export class GithubProjectCreateService {
   private readonly http = inject(HttpClient);
   private readonly sneatApiService = inject(SneatApiService);
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
+  private readonly githubReader = inject(GithubProjectReaderService);
+  private readonly githubStore = inject(DatatugStoreGithubService);
 
   /**
-   * Creates the project files in `request`'s repository, registers the project
-   * in the user's DataTug index, and resolves with the project ref the app
-   * navigates to (`repo@org@folder`).
+   * Creates the project files in `request`'s repository (on its default
+   * branch, which is what the app's reader reads), makes the reader and the
+   * project summaries forget what this browser knew of the repository (so the
+   * project opens at once, instead of "No DataTug project here"), registers
+   * the project in the user's DataTug index, and resolves with the project ref
+   * the app navigates to (`repo@org@folder`).
    *
    * `token` is the GitHub access token the caller obtained through
    * `GithubOAuthService` — repository access is the user's own, and the token
@@ -112,24 +119,35 @@ export class GithubProjectCreateService {
       folder,
     };
     const message = `Create DataTug project "${request.title}"`;
-    return forkJoin([
-      this.putFile(
-        token,
-        request.org,
-        request.repo,
-        `${folder}/README.md`,
-        GITHUB_PROJECT_README,
-        message,
+    return this.defaultBranch(token, request.org, request.repo).pipe(
+      switchMap((branch) =>
+        forkJoin([
+          this.putFile(
+            token,
+            request.org,
+            request.repo,
+            branch,
+            `${folder}/README.md`,
+            GITHUB_PROJECT_README,
+            message,
+          ),
+          this.putFile(
+            token,
+            request.org,
+            request.repo,
+            branch,
+            `${folder}/${GITHUB_PROJECT_FILE_NAME}`,
+            this.projectFile(request.title),
+            message,
+          ),
+        ]),
       ),
-      this.putFile(
-        token,
-        request.org,
-        request.repo,
-        `${folder}/${GITHUB_PROJECT_FILE_NAME}`,
-        this.projectFile(request.title),
-        message,
+      // The repository has a new commit: whatever this browser remembered of it (the commit, "no project here" for
+      // this very address) is out of date. Forgotten before anything else is read or the app navigates.
+      switchMap(() =>
+        from(this.githubReader.forget(request.org, request.repo)),
       ),
-    ]).pipe(
+      map(() => this.githubStore.forget(request.org, request.repo)),
       // Registering the project only makes it appear in the user's project
       // list: the files are already committed, so a failure here must not fail
       // the creation — the project is still usable right away.
@@ -148,6 +166,32 @@ export class GithubProjectCreateService {
     );
   }
 
+  /**
+   * The branch the reader reads (`HEAD`): the repository's default branch, whatever it is called. Committing to a
+   * branch named `main` would not be seen by the reader in a repository whose default branch is `master` or `trunk`.
+   */
+  private defaultBranch(
+    token: string,
+    org: string,
+    repo: string,
+  ): Observable<string> {
+    return this.http
+      .get<IGithubRepoWire>(`${GITHUB_API_BASE}/repos/${org}/${repo}`, {
+        headers: githubApiHeaders(token),
+      })
+      .pipe(
+        map((wire) => {
+          const found = toGithubRepo(wire);
+          if (!found) {
+            throw new Error(
+              `GitHub did not return the repository ${org}/${repo}`,
+            );
+          }
+          return found.defaultBranch;
+        }),
+      );
+  }
+
   /** Records the project in the user's DataTug index (cloud side). */
   private registerProject(
     project: IGithubProjectId,
@@ -163,8 +207,8 @@ export class GithubProjectCreateService {
 
   /**
    * The project file content. Kept JSON (not YAML) because
-   * `DatatugStoreGithubService.getProjectSummary()` fetches it with
-   * `HttpClient`, which parses JSON.
+   * `DatatugStoreGithubService.getProjectSummary()` reads it through the
+   * GitHub reader, which parses JSON.
    */
   private projectFile(title: string): string {
     return JSON.stringify(
@@ -179,7 +223,7 @@ export class GithubProjectCreateService {
   }
 
   /**
-   * Creates or updates one file through the GitHub contents API. GitHub
+   * Creates or updates one file on `branch` through the GitHub contents API. GitHub
    * requires the current blob's `sha` to update an existing file, so the file
    * is looked up first (a 404 means "create").
    */
@@ -187,6 +231,7 @@ export class GithubProjectCreateService {
     token: string,
     org: string,
     repo: string,
+    branch: string,
     path: string,
     content: string,
     message: string,
@@ -196,7 +241,7 @@ export class GithubProjectCreateService {
     return this.http
       .get<{ sha?: string }>(url, {
         headers,
-        params: { ref: GITHUB_PROJECT_BRANCH },
+        params: { ref: branch },
       })
       .pipe(
         catchError((err: unknown) => {
@@ -209,7 +254,7 @@ export class GithubProjectCreateService {
           const body: Record<string, string> = {
             message,
             content: toBase64(content),
-            branch: GITHUB_PROJECT_BRANCH,
+            branch,
           };
           if (existing?.sha) {
             body['sha'] = existing.sha;

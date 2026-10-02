@@ -139,6 +139,10 @@ function open(factory: IDBFactory, version?: number): Promise<IDBDatabase> {
       version === undefined
         ? factory.open(GITHUB_FILE_STORE_DB)
         : factory.open(GITHUB_FILE_STORE_DB, version);
+    // Whether this open has been answered (opened or given up on). `blocked` gives it up, but the browser goes on
+    // with the open and may complete it later, once the other tab lets go: that connection is nobody's, and an open
+    // connection that nobody holds would stand in the way of a later upgrade of this database.
+    let answered = false;
     req.onupgradeneeded = () => {
       const db = req.result;
       for (const name of STORES) {
@@ -147,9 +151,25 @@ function open(factory: IDBFactory, version?: number): Promise<IDBDatabase> {
         }
       }
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-    req.onblocked = () => reject(new Error('blocked'));
+    req.onsuccess = () => {
+      const db = req.result;
+      // Never hold up a later build's upgrade of this database, whoever ends up with the connection.
+      db.onversionchange = () => db.close();
+      if (answered) {
+        db.close();
+        return;
+      }
+      answered = true;
+      resolve(db);
+    };
+    req.onerror = () => {
+      answered = true;
+      reject(req.error);
+    };
+    req.onblocked = () => {
+      answered = true;
+      reject(new Error('blocked'));
+    };
   });
 }
 
@@ -168,8 +188,6 @@ async function openDatabase(factory: IDBFactory): Promise<IDBDatabase> {
     db.close();
     throw new Error('the file cache has not the stores this build needs');
   }
-  // Never hold up a later build's upgrade of this database.
-  db.onversionchange = () => db.close();
   return db;
 }
 
@@ -288,6 +306,16 @@ export function openGithubFileStore(
             .get(key),
         )) as IResolvedRow | undefined;
         return row ? { sha: row.sha, at: row.at } : undefined;
+      }),
+
+    forgetResolved: (repoKey) =>
+      run<void>(undefined, async (database) => {
+        const tx = database.transaction(RESOLVED, 'readwrite');
+        // `<repo>@` up to, not including, `<repo>A` (`A` follows `@`): every ref of that repository, no other.
+        tx.objectStore(RESOLVED).delete(
+          IDBKeyRange.bound(`${repoKey}@`, `${repoKey}A`, false, true),
+        );
+        await done(tx);
       }),
 
     putResolved: (key, commit) =>
