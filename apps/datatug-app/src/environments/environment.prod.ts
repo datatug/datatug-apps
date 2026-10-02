@@ -1,4 +1,5 @@
 import { IEnvironmentConfig } from '@sneat/core';
+import type { DatatugDemoConfig } from './demo-config';
 
 // Shared Sneat identity pool — `sneat-eur3-1` — used by every Sneat product
 // (consumer + business). This is permanent per the 2026-06-09 single-identity
@@ -32,4 +33,11 @@ export const datatugAppEnvironmentConfig: IEnvironmentConfig = {
   sentry: {
     dsn: 'https://0ef31fd33eade94c7b5d66ed23e4228c@o4511531361370112.ingest.de.sentry.io/4511531364450384',
   },
+};
+
+// Production: OFF. The one-line decision that turns the demo on for everyone is task D-ON of
+// datatug/backstage docs/design/demo-as-github-project.md (8.0): a pull request setting this to `true`, opened and landed only
+// after the founder's yes. A browser can still opt in or out for itself (isDemoEnabled(), src/app/demo-flag.ts).
+export const datatugDemoConfig: DatatugDemoConfig = {
+  enabled: false,
 };
