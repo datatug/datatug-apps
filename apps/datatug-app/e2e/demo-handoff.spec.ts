@@ -543,6 +543,148 @@ test.describe('the hand-off holding page', () => {
       expect(errors).toEqual([]);
     });
   }
+
+  // G-A1b: the short project route and the holding page share the project chat address. With a question the
+  // holding page (the chat cannot run it yet, and it must not be lost); without one, the project's own chat page.
+  // The demo flag is off in this production build and is not consulted either way.
+  const TRUSTED = '/project/github.com/datatug/chinook-demo/chat';
+
+  test('the demo project chat address with no question is the project chat page, not the holding page, and keeps its URL', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const origin = new URL(baseURL ?? '').origin;
+    const external = await stubExternal(context, (o) => o === origin);
+    await page.goto(TRUSTED);
+    await expect(page.locator('ion-title', { hasText: 'Chat' })).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page.locator('#demo-holding-message')).toHaveCount(0);
+    await expect(page.locator('blockquote')).toHaveCount(0);
+    await expect(page).not.toHaveTitle('DataTug live demo');
+    expect(new URL(page.url()).pathname).toBe(TRUSTED);
+    await page.waitForTimeout(1500);
+    await expect(page.locator(SENTRY_DIALOG)).toHaveCount(0);
+    expect(dialogRequested(external)).toBe(false);
+  });
+
+  for (const query of ['?lang=ru', '?msg=', '?msg=%20%20&utm_source=x']) {
+    test(`the demo project chat address with ${query} (no question) is the project chat page, and its query is stripped`, async ({
+      page,
+      context,
+      baseURL,
+    }) => {
+      const origin = new URL(baseURL ?? '').origin;
+      await stubExternal(context, (o) => o === origin);
+      await page.goto(TRUSTED + query);
+      await expect(page.locator('ion-title', { hasText: 'Chat' })).toBeVisible({
+        timeout: 20_000,
+      });
+      await expect(page.locator('#demo-holding-message')).toHaveCount(0);
+      expect(new URL(page.url()).pathname + new URL(page.url()).search).toBe(
+        TRUSTED,
+      );
+    });
+  }
+
+  test('a project page other than the chat opens the project, question or not', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const origin = new URL(baseURL ?? '').origin;
+    await stubExternal(context, (o) => o === origin);
+    for (const url of [
+      '/project/github.com/datatug/chinook-demo',
+      '/project/github.com/datatug/chinook-demo/queries?msg=Hello',
+      '/project/github.com/datatug/chinook-demo/tree/HEAD/dir/-/chat',
+    ]) {
+      await page.goto(url);
+      await expect(page.locator('ion-header').first()).toBeVisible({
+        timeout: 20_000,
+      });
+      await page.waitForTimeout(500);
+      await expect(page.locator('#demo-holding-message'), url).toHaveCount(0);
+    }
+  });
+
+  test('a reload of a chat address that arrived with a question shows the holding page again, for the demo project and for any other repository', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const origin = new URL(baseURL ?? '').origin;
+    await stubExternal(context, (o) => o === origin);
+    await page.goto(`${TRUSTED}?msg=${encodeURIComponent(EN_QUESTION)}`);
+    await expect(page.locator('blockquote')).toHaveText(EN_QUESTION, {
+      timeout: 20_000,
+    });
+    await page.reload();
+    await expect(page.locator('blockquote')).toHaveText(EN_QUESTION, {
+      timeout: 20_000,
+    });
+
+    const other = '/project/github.com/someone/else/chat';
+    await page.goto(`${other}?msg=${encodeURIComponent(EN_QUESTION)}`);
+    await expect(page.locator('#demo-holding-message')).toHaveText(
+      'This page is not available yet.',
+      { timeout: 20_000 },
+    );
+    await page.reload();
+    await expect(page.locator('#demo-holding-message')).toHaveText(
+      'This page is not available yet.',
+      { timeout: 20_000 },
+    );
+    expect(await page.content()).not.toContain(MARKER);
+  });
+
+  test('a fresh visit to the bare chat address after a question, in the same tab, is the project chat page', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const origin = new URL(baseURL ?? '').origin;
+    await stubExternal(context, (o) => o === origin);
+    await page.goto(`${TRUSTED}?msg=${encodeURIComponent(EN_QUESTION)}`);
+    await expect(page.locator('blockquote')).toBeVisible({ timeout: 20_000 });
+    await page.goto(TRUSTED);
+    await expect(page.locator('ion-title', { hasText: 'Chat' })).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page.locator('#demo-holding-message')).toHaveCount(0);
+  });
+
+  test('a non-canonical spelling of a project address is replaced by the canonical one, query kept', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const origin = new URL(baseURL ?? '').origin;
+    await stubExternal(context, (o) => o === origin);
+    await page.goto('/project/github.com/Datatug/Chinook-Demo/tree/HEAD/-/queries?x=1');
+    await expect(page).toHaveURL(
+      /\/project\/github\.com\/datatug\/chinook-demo\/queries\?x=1(&|$)/,
+      { timeout: 20_000 },
+    );
+  });
+
+  test('the old form of a project address opens as before: no redirect', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const origin = new URL(baseURL ?? '').origin;
+    await stubExternal(context, (o) => o === origin);
+    await page.goto('/store/github.com/project/chinook-demo@datatug@/queries');
+    await expect(page.locator('ion-header').first()).toBeVisible({
+      timeout: 20_000,
+    });
+    await page.waitForTimeout(500);
+    expect(new URL(page.url()).pathname).toBe(
+      '/store/github.com/project/chinook-demo@datatug@/queries',
+    );
+  });
 });
 
 test.describe('the question reaches no analytics or error report', () => {
@@ -711,7 +853,7 @@ test.describe('the matrix-parameter address reaches no analytics either', () => 
 test.describe('every other route behaves as it does on main', () => {
   for (const path of [
     '/no-such-route-xyz?q=1',
-    '/project/github.com/datatug/chinook-demo',
+    // (`/project/github.com/datatug/chinook-demo` used to be here: since G-A1b it is the project, at its short address.)
     '/project/github.com/datatug/chinook-demo/chat/extra',
     '/demo/other?q=1',
     '/demo(menu:x)?q=1', // an outlet group: not a hand-off address, for the script and the router alike

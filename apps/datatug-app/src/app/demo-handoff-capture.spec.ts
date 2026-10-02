@@ -7,7 +7,7 @@ import {
   DEMO_HANDOFF_STASH,
   DEMO_QUESTION_MAX_BYTES,
   demoHandoff,
-  isEchoTrusted,
+  isTrustedHandoff,
   isHandoffPath,
   parseHandoffSearch,
   resetDemoHandoffForTests,
@@ -374,7 +374,7 @@ describe('demo hand-off capture', () => {
       captureDemoHandoff(f.env);
       expect(f.replaced).toEqual([path]);
       expect(demoHandoff(undefined, path)?.question).toBe(
-        isEchoTrusted(path) ? 'Which countries' : '',
+        isTrustedHandoff(path) ? 'Which countries' : '',
       );
     });
 
@@ -508,7 +508,7 @@ describe('demo hand-off capture', () => {
     });
   });
 
-  describe('which hand-offs are shown back (isEchoTrusted)', () => {
+  describe('which hand-offs are shown back (isTrustedHandoff)', () => {
     it.each([
       '/demo',
       '/demo/',
@@ -523,7 +523,7 @@ describe('demo hand-off capture', () => {
       '/PROJECT/GITHUB.COM/datatug/chinook-demo/CHAT',
       '/project/github.com/datatug/chinook-demo/chat;x=1',
     ])('%s is trusted', (path) => {
-      expect(isEchoTrusted(path)).toBe(true);
+      expect(isTrustedHandoff(path)).toBe(true);
     });
 
     it.each([
@@ -546,7 +546,50 @@ describe('demo hand-off capture', () => {
       '/demo/other',
       '/',
     ])('%s is not trusted', (path) => {
-      expect(isEchoTrusted(path)).toBe(false);
+      expect(isTrustedHandoff(path)).toBe(false);
+    });
+
+    // Issue #180: `toLowerCase()` turns the Kelvin sign U+212A into the ASCII `k`, so a trust decision on the
+    // lower-cased text would have accepted `chinooK-demo` (live on main). The decision is on the parsed address:
+    // owner and repo are ASCII, lower-cased A-Z only, and compared for exact equality.
+    describe('look-alike letters are never trusted (the Kelvin sign U+212A)', () => {
+      const KELVIN = '\u212A';
+
+      it('is the character the old check mistook for k', () => {
+        expect(KELVIN.toLowerCase()).toBe('k');
+      });
+
+      it.each([
+        `/project/github.com/datatug/chinoo${KELVIN}-demo/chat`,
+        `/project/github.com/datatug/CHINOO${KELVIN}-DEMO/chat`,
+        `/project/github.com/datatug/chinoo%E2%84%AA-demo/chat`,
+        `/project/github.com/datatug/chinook-demo/tree/HEAD/-/chat`.replace('chinook', `chinoo${KELVIN}`),
+        `/project/github.com/dataTUG/chinoo${KELVIN}-demo/chat`,
+        `/project/github.com/${KELVIN}datatug/chinook-demo/chat`,
+        `/project/github.com/datatug${KELVIN}/chinook-demo/chat`,
+        `/project/github.com/datatug/chinook-demo${KELVIN}/chat`,
+      ])('%s is not trusted', (path) => {
+        expect(isHandoffPath(path)).toBe(true);
+        expect(isTrustedHandoff(path)).toBe(false);
+      });
+
+      it('drops the question of such an address, keeps the language, and still strips the address bar', () => {
+        const path = `/project/github.com/datatug/chinoo${KELVIN}-demo/chat`;
+        const f = pageLoad(path, '?msg=Hello+there&lang=ru');
+        captureDemoHandoff(f.env);
+        expect(f.replaced).toEqual([path]);
+        expect(demoHandoff(undefined, path)).toEqual({
+          question: '',
+          lang: 'ru',
+          truncated: false,
+        });
+        expect(JSON.stringify([...f.store])).not.toContain('Hello');
+      });
+
+      it('plain ASCII spellings of the same repository are still trusted', () => {
+        expect(isTrustedHandoff('/project/github.com/datatug/chinook-demo/chat')).toBe(true);
+        expect(isTrustedHandoff('/project/github.com/DataTug/Chinook-Demo/chat')).toBe(true);
+      });
     });
 
     const msg = '?msg=Hello+there&lang=ru';
@@ -583,7 +626,7 @@ describe('demo hand-off capture', () => {
           truncated: false,
         });
         expect(JSON.stringify([...f.store])).not.toContain('Hello');
-        expect(f.store.get(DEMO_HANDOFF_KEY)).toBe(path + '?lang=ru');
+        expect(f.store.get(DEMO_HANDOFF_KEY)).toBe(path + '?lang=ru&asked=1');
       },
     );
 
