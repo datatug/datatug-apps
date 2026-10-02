@@ -287,6 +287,10 @@ describe('demo hand-off capture', () => {
         '/project/github.com/o/r/tree/abc123/dir/-/chat',
         '/project/github.com/o/r/tree/-/chat',
         '/project/github.com/o/r/tree//-/chat',
+        '/demo(menu:x)',
+        '/demo/(menu:x)',
+        '/Demo(menu:x/y)',
+        '/project/github.com/o/r/chat(menu:x)',
       ]) {
         expect(isHandoffPath(path), path).toBe(false);
       }
@@ -379,6 +383,7 @@ describe('demo hand-off capture', () => {
         ['/', '?q=x'],
         ['/demo/other', '?q=x'],
         ['/demo;x=1/other', '?q=x'],
+        ['/demo(menu:x)', '?q=x'],
         ['/store/x/project/y/chat', '?scenario=a'],
         ['/no-such-route', '?q=x'],
       ]) {
@@ -678,6 +683,10 @@ describe('demo hand-off capture', () => {
         '/demo;x=1/',
         '/demo;x=1/other',
         '/demo(menu:x)',
+        '/demo/(menu:x)',
+        '/Demo(menu:x/y)',
+        '/project/github.com/o/r/chat(menu:x)',
+        '/project/github.com/a%28b/r/chat',
         '/;x=1',
         '/',
         '/chat',

@@ -24,11 +24,7 @@
 // does not: a message chosen by whoever made the link must not be displayed inside datatug.app's pages under
 // someone else's repository address. For those the query is still taken out of the address bar and kept out of
 // every report; only the language is kept, for the neutral page. See isEchoTrusted().
-import {
-  handoffTarget,
-  isHandoffPath,
-  routeSegments,
-} from './demo-handoff-path';
+import { handoffTargetOfPath, isHandoffPath } from './demo-handoff-path';
 
 export { isHandoffPath };
 
@@ -59,7 +55,7 @@ let current: DemoHandoff | undefined;
  * (`chinook-demo-evil`, `tree/<sha>`), is not.
  */
 export function isEchoTrusted(pathname: string): boolean {
-  const target = handoffTarget(routeSegments(pathname));
+  const target = handoffTargetOfPath(pathname);
   if (!target) return false;
   if (target.kind === 'demo') return true;
   return (

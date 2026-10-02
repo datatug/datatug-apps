@@ -365,6 +365,63 @@ test.describe('the hand-off holding page', () => {
     await expect(page.locator('blockquote')).toHaveAttribute('dir', 'auto');
   });
 
+  test('leaving through the "Open the demo project" link puts the title and language back, and Back brings the page\'s own again', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const origin = new URL(baseURL ?? '').origin;
+    await stubExternal(context, (o) => o === origin);
+    await page.goto('/demo?q=hi&lang=ru');
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page).toHaveTitle('Живое демо DataTug');
+    await expect(page.locator('html')).toHaveAttribute('lang', 'ru');
+
+    await page.getByRole('link', { name: 'Открыть демо-проект' }).click();
+    await expect(page).toHaveURL(/\/store\/github\.com\/project\//);
+    // The app's own defaults (index.html): the page kept in the Ionic stack must not leave its own behind.
+    await expect(page).toHaveTitle('DataTug.app');
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+
+    await page.goBack();
+    await expect(page).toHaveURL(/\/demo$/);
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await expect(page).toHaveTitle('Живое демо DataTug');
+    await expect(page.locator('html')).toHaveAttribute('lang', 'ru');
+  });
+
+  test('on app.incidentius.com the hand-off addresses go to the root: no failed navigation, no crash dialog, query stripped', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const HOST = 'https://app.incidentius.com';
+    const external = await stubExternal(
+      context,
+      (o) => o === HOST || o === baseURL,
+    );
+    await context.route(`${HOST}/**`, async (route) => {
+      const url = new URL(route.request().url());
+      const response = await route.fetch({
+        url: (baseURL ?? '') + url.pathname + url.search,
+      });
+      await route.fulfill({ response });
+    });
+    const errors = consoleErrors(page);
+    await page.goto(
+      `${HOST}/demo?q=${encodeURIComponent(EN_QUESTION)}&lang=en`,
+    );
+    await expect(page).not.toHaveURL(/\/demo/, { timeout: 20_000 });
+    expect(new URL(page.url()).search).toBe('');
+    await page.waitForTimeout(1500);
+    await expect(page.locator(SENTRY_DIALOG)).toHaveCount(0);
+    expect(dialogRequested(external)).toBe(false);
+    expect(errors.filter((e) => e.includes('NG04002'))).toEqual([]);
+    await expect(page.locator('blockquote')).toHaveCount(0);
+  });
+
   test('a long question is cut at 1000 bytes and says so', async ({
     page,
     context,
@@ -657,6 +714,7 @@ test.describe('every other route behaves as it does on main', () => {
     '/project/github.com/datatug/chinook-demo',
     '/project/github.com/datatug/chinook-demo/chat/extra',
     '/demo/other?q=1',
+    '/demo(menu:x)?q=1', // an outlet group: not a hand-off address, for the script and the router alike
   ]) {
     test(`${path} still fails to match, asks for the crash-report dialog and rewrites the URL to /`, async ({
       page,

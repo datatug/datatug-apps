@@ -5,9 +5,11 @@ import {
   provideRouter,
   Router,
   UrlSegment,
+  UrlSegmentGroup,
 } from '@angular/router';
 import {
   handoffTarget,
+  handoffTargetOfPath,
   handoffUrlMatcher,
   isHandoffPath,
   routeSegments,
@@ -52,6 +54,10 @@ const ADDRESSES = [
   '/project/github.com/o/r/tree/abc123/chat',
   '/project/github.com/o/r/tree/abc123/dir/-/chat',
   '/project/github.com/o/r/tree/-/chat',
+  '/demo(menu:x)',
+  '/demo/(menu:x)',
+  '/Demo(menu:x/y)',
+  '/project/github.com/o/r/chat(menu:x)',
 ];
 
 // A browser address reaches the router through Angular's Location, which drops one trailing slash before the
@@ -68,12 +74,31 @@ describe('demo-handoff-path', () => {
       ['/demo', ['demo']],
       ['/demo/', ['demo']],
       ['/demo;x=1', ['demo']],
-      ['/demo(menu:x/y)', ['demo']],
       ['/a/b;c=d/e%20f', ['a', 'b', 'e f']],
       ['/%E0%A4%A', ['%E0%A4%A']],
       ['/demo//', ['demo', '']],
     ])('%j is %j', (pathname, expected) => {
       expect(routeSegments(pathname)).toEqual(expected);
+    });
+  });
+
+  describe('an address with an auxiliary-outlet group is not a hand-off address', () => {
+    it.each([
+      '/demo(menu:x)',
+      '/demo/(menu:x)',
+      '/Demo(menu:x/y)',
+      '/project/github.com/o/r/chat(menu:x)',
+      '/demo(',
+    ])('%s', (path) => {
+      expect(isHandoffPath(path)).toBe(false);
+      expect(handoffTargetOfPath(path)).toBeUndefined();
+    });
+    it('while the same address without the group is one', () => {
+      expect(isHandoffPath('/demo')).toBe(true);
+      expect(handoffTargetOfPath('/demo')).toEqual({ kind: 'demo' });
+    });
+    it('and an encoded parenthesis is just a character of a segment', () => {
+      expect(isHandoffPath('/project/github.com/a%28b/r/chat')).toBe(true);
     });
   });
 
@@ -117,17 +142,18 @@ describe('demo-handoff-path', () => {
     it.each(ADDRESSES)(
       'the matcher accepts %s exactly when isHandoffPath does (on the segments the router parsed)',
       (path) => {
-        let segments: UrlSegment[] | undefined;
+        let group: UrlSegmentGroup | undefined;
         try {
-          segments = serializer.parse(asTheRouterSeesIt(path)).root.children[
+          group = serializer.parse(asTheRouterSeesIt(path)).root.children[
             'primary'
-          ]?.segments;
+          ];
         } catch {
-          segments = undefined;
+          group = undefined;
         }
+        // The router hands the matcher the primary group's segments and the group itself.
         const matched =
-          !!segments &&
-          handoffUrlMatcher(segments, null as never, null as never) !== null;
+          !!group &&
+          handoffUrlMatcher(group.segments, group, null as never) !== null;
         expect(matched, path).toBe(isHandoffPath(path));
       },
     );
@@ -155,6 +181,8 @@ describe('demo-handoff-path', () => {
           providers: [
             provideRouter([
               { matcher: handoffUrlMatcher, component: HandoffStub },
+              // The app shell's side menu: a named outlet with an empty path, which the router adds an empty group for.
+              { path: '', outlet: 'menu', component: OtherStub },
               { path: '**', component: OtherStub },
             ]),
           ],

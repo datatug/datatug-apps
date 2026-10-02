@@ -7,7 +7,11 @@ import {
   ProductProfile,
   resolveProductProfile,
 } from '@datatug/product-profiles';
-import { datatugProfileOnly, routes } from './datatug-app-routes';
+import {
+  datatugProfileOnly,
+  handoffOrRoot,
+  routes,
+} from './datatug-app-routes';
 import { handoffUrlMatcher } from './demo-handoff-path';
 
 // Task 13 (S108) — see this file's own header comment in datatug-app-routes.ts.
@@ -23,14 +27,14 @@ describe('DataTug app routes', () => {
   });
 
   // G-0: a hand-off from the sites must never fail to match (Sentry's crash-report dialog, the question lost).
-  it('has one hand-off route: a matcher (case-insensitive, matrix parameters ignored), lazy, no flag, DataTug profile only', () => {
+  it('has the hand-off route: a matcher (case-insensitive, matrix parameters ignored), lazy, no flag, DataTug profile or the root', () => {
     const matching = routes.filter((r) => r.matcher);
     expect(matching.length).toBe(1);
     const route = matching[0];
     expect(route.matcher).toBe(handoffUrlMatcher);
     expect(route.path).toBeUndefined();
     expect(route.loadComponent).toBeTypeOf('function');
-    expect(route.canMatch).toEqual([datatugProfileOnly]);
+    expect(route.canMatch).toEqual([handoffOrRoot]);
     expect(route.canActivate).toBeUndefined();
     expect(route.children).toBeUndefined();
   });
@@ -59,37 +63,78 @@ describe('DataTug app routes', () => {
       expect(allowed(PRODUCT_PROFILES.datatug)).toBe(true);
     });
 
-    it('Incidentius (app.incidentius.com, the same bundle) does not: /demo matches nothing there, as on main', () => {
+    it('Incidentius (app.incidentius.com, the same bundle) does not: the hand-off page is not its to show', () => {
       expect(allowed(PRODUCT_PROFILES.incidentius)).toBe(false);
     });
 
+    /** Navigates the real routes (the hand-off page stood in for) under the profile of `hostname`. */
+    async function visit(hostname: string, url: string) {
+      TestBed.configureTestingModule({
+        providers: [
+          {
+            provide: PRODUCT_PROFILE,
+            useValue: resolveProductProfile({ hostname }),
+          },
+          provideRouter([
+            ...routes
+              .filter((r) => r.matcher)
+              .map((r) => ({ ...r, loadComponent: () => HandoffStub })),
+            { path: '', pathMatch: 'full', component: HomeStub },
+            // The app shell's side menu: a named outlet with an empty path, which the router adds an empty group for.
+            { path: '', outlet: 'menu', component: OtherStub },
+            { path: '**', component: OtherStub },
+          ]),
+        ],
+      });
+      const router = TestBed.inject(Router);
+      const ok = await router.navigateByUrl(url);
+      return {
+        ok,
+        component: router.routerState.snapshot.root.firstChild?.component,
+        url: router.url,
+      };
+    }
+
     it.each([
-      ['datatug.app', 'demo', true],
-      ['app.incidentius.com', 'demo', false],
-      ['app.incidentius.com', 'Demo;x=1', false],
-      ['an-unknown-host.example', 'demo', true], // an unrecognized host is the DataTug profile
+      ['datatug.app', '/demo', true],
+      ['datatug.app', '/Demo;x=1', true],
+      ['an-unknown-host.example', '/demo', true], // an unrecognized host is the DataTug profile
+    ])('at %s, %s lands on the hand-off page', async (hostname, url) => {
+      expect((await visit(hostname, url)).component).toBe(HandoffStub);
+    });
+
+    it.each([
+      '/demo',
+      '/Demo',
+      '/DEMO',
+      '/demo;x=1',
+      '/project/github.com/datatug/chinook-demo/chat',
+      '/Project/GitHub.com/o/r/tree/abc/-/Chat',
     ])(
-      'the real router at host %s with /%s lands on the hand-off page: %s',
-      async (hostname, url, handled) => {
-        const profile = resolveProductProfile({ hostname });
-        TestBed.configureTestingModule({
-          providers: [
-            { provide: PRODUCT_PROFILE, useValue: profile },
-            provideRouter([
-              // The real hand-off route, with a stand-in for the lazily loaded page.
-              ...routes
-                .filter((r) => r.matcher)
-                .map((r) => ({ ...r, loadComponent: () => HandoffStub })),
-              { path: '**', component: OtherStub },
-            ]),
-          ],
-        });
-        const router = TestBed.inject(Router);
-        await router.navigateByUrl('/' + url);
-        expect(
-          router.routerState.snapshot.root.firstChild?.component ===
-            HandoffStub,
-        ).toBe(handled);
+      'at app.incidentius.com, %s goes to the root: no failed navigation, no error',
+      async (url) => {
+        const result = await visit('app.incidentius.com', url);
+        expect(result.ok).toBe(true);
+        expect(result.component).toBe(HomeStub);
+        expect(result.url).toBe('/');
+      },
+    );
+
+    it('at app.incidentius.com, an address that is not a hand-off address is not redirected', async () => {
+      const result = await visit('app.incidentius.com', '/demo/other');
+      expect(result.component).toBe(OtherStub);
+      expect(result.url).toBe('/demo/other');
+    });
+
+    it.each(['/demo(menu:x)', '/demo/(menu:x)', '/Demo(menu:x/y)'])(
+      "an address with an outlet group (%s) is handled by neither profile's hand-off route",
+      async (url) => {
+        for (const hostname of ['datatug.app', 'app.incidentius.com']) {
+          TestBed.resetTestingModule();
+          const result = await visit(hostname, url).catch(() => undefined);
+          expect(result?.component, hostname).not.toBe(HandoffStub);
+          expect(result?.component, hostname).not.toBe(HomeStub);
+        }
       },
     );
   });
@@ -97,5 +142,7 @@ describe('DataTug app routes', () => {
 
 @Component({ selector: 'sneat-stub-handoff', template: '' })
 class HandoffStub {}
+@Component({ selector: 'sneat-stub-home', template: '' })
+class HomeStub {}
 @Component({ selector: 'sneat-stub-other', template: '' })
 class OtherStub {}

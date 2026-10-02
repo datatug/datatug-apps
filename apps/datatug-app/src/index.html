@@ -24,11 +24,12 @@
          question out of the address bar before Google Analytics can read the URL. The same address rules and
          storage key as in src/app/demo-handoff-path.ts and demo-handoff-capture.ts, which parses what is kept here
          (their specs run this script to keep them in step): matrix parameters, a trailing slash and letter case do
-         not change what a hand-off address is, exactly as the router matches them. Any other path is untouched. -->
+         not change what a hand-off address is, exactly as the router matches them; a path with an outlet group `(` is not
+         one. Any other path is untouched. -->
     <script id="datatug-handoff-stash">
       (function () {
-        var p = location.pathname, s = p.split('(')[0].split('/').slice(1), i;
-        if (!location.search) return;
+        var p = location.pathname, s = p.split('/').slice(1), i;
+        if (!location.search || p.indexOf('(') >= 0) return;
         if (s[s.length - 1] === '') s.pop();
         for (i = 0; i < s.length; i++) {
           s[i] = s[i].split(';')[0];

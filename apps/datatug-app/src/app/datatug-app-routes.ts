@@ -1,5 +1,5 @@
 import { inject } from '@angular/core';
-import { Routes } from '@angular/router';
+import { Router, Routes, UrlTree } from '@angular/router';
 import { PRODUCT_PROFILE } from '@datatug/product-profiles';
 import { cliChatCapability } from './cli-chat-capability';
 import { handoffUrlMatcher } from './demo-handoff-path';
@@ -26,18 +26,22 @@ import { handoffUrlMatcher } from './demo-handoff-path';
 // show the page too, as must `/demo;x=1` (the router ignores matrix parameters). demo-handoff-path.ts holds the
 // rules, which index.html's inline script repeats so that the query is stripped for exactly these addresses.
 //
-// Only the DataTug product profile has the page: app.incidentius.com serves the same bundle and `/demo` there
-// matches nothing, as on main. (A route guard, not a component, so product-profiles' rule that a component never
-// branches on the profile's identity is not what this is.)
+// Only the DataTug product profile has the page: app.incidentius.com serves the same bundle and has no demo, so
+// there the same addresses go to `/` (and on to that profile's home) instead of failing to match, which would
+// raise NG04002, a Sentry event and the crash-report dialog. (A route guard, not a component, so product-profiles'
+// rule that a component never branches on the profile's identity is not what this is.)
 const demoHoldingPage = () => import('./demo-holding-page.component').then((m) => m.DemoHoldingPageComponent);
 
 /** The hand-off page belongs to the DataTug product profile only. */
 export const datatugProfileOnly = (): boolean => inject(PRODUCT_PROFILE).id === 'datatug';
 
+/** `canMatch` of the hand-off route: matches under the DataTug profile, sends every other profile to the root. */
+export const handoffOrRoot = (): boolean | UrlTree => datatugProfileOnly() || inject(Router).parseUrl('/');
+
 export const routes: Routes = [
   {
     matcher: handoffUrlMatcher,
-    canMatch: [datatugProfileOnly],
+    canMatch: [handoffOrRoot],
     loadComponent: demoHoldingPage,
   },
   {
