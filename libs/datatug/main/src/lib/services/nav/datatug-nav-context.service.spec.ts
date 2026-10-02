@@ -144,3 +144,38 @@ describe('DatatugNavContextService — environment persists across a reload with
     expect(envId).toBeUndefined();
   });
 });
+
+/**
+ * G-0: the hand-off address `/project/github.com/<owner>/<repo>/chat` has a `/project/` segment and no
+ * `/store/` one. The nav context used to read `github.com` as a project id, fail to resolve any store for it
+ * (`storeId is a required parameter`) and log that as an error, which the app showed as a red "Something went
+ * wrong" toast (and reported to Sentry) on the holding page. An address with no store has no project.
+ */
+describe('DatatugNavContextService — a /project/ address with no /store/ segment', () => {
+  it('has no current project and logs no error', () => {
+    const logError = vi.fn();
+    window.history.replaceState({}, '', '/project/github.com/datatug/chinook-demo/chat');
+    TestBed.configureTestingModule({
+      providers: [
+        DatatugNavContextService,
+        { provide: AppContextService, useValue: { currentApp: of({ appCode: 'datatug' }) } },
+        {
+          provide: ProjectContextService,
+          useValue: { current: undefined, setCurrent: vi.fn(), current$: of(undefined) },
+        },
+        { provide: Router, useValue: { events: of(), navigate: vi.fn() } },
+        {
+          provide: ProjectService,
+          useValue: { watchProjectSummary: vi.fn(() => of(undefined)), getFull: vi.fn() },
+        },
+        { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn(() => of(undefined)) } },
+        { provide: ErrorLogger, useValue: { logError, logErrorHandler: vi.fn(() => vi.fn()) } },
+      ],
+    });
+    const service = TestBed.inject(DatatugNavContextService);
+    let project: unknown = 'not emitted';
+    service.currentProject.subscribe((p) => (project = p));
+    expect(logError).not.toHaveBeenCalled();
+    expect(project).toBeUndefined();
+  });
+});

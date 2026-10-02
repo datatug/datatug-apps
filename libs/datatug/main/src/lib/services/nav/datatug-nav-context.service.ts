@@ -275,6 +275,13 @@ export class DatatugNavContextService {
     }
     const currentProject = this.$currentProj.value;
     const currentStoreId = this.$currentStoreId.value;
+    if (!currentStoreId) {
+      // `/project/…` with no `/store/…` segment (the hand-off address `/project/github.com/<owner>/<repo>/chat`):
+      // `github.com` is not a project id, and no store means no project. Resolving one used to throw
+      // "storeId is a required parameter", logged as an error toast.
+      this.setCurrentProject(undefined);
+      return;
+    }
     if (
       !currentProject ||
       currentProject.ref.projectId !== id ||

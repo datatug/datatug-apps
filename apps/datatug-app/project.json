@@ -161,6 +161,13 @@
         "command": "pnpm e2e:sso"
       }
     },
+    "e2e-demo-handoff": {
+      "executor": "nx:run-commands",
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-app-demo-handoff-e2e"],
+      "options": {
+        "command": "pnpm e2e:demo-handoff"
+      }
+    },
     "e2e-error-dialog": {
       "executor": "nx:run-commands",
       "outputs": ["{workspaceRoot}/coverage/apps/datatug-app-error-dialog-e2e"],

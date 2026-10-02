@@ -10,7 +10,32 @@ import { cliChatCapability } from './cli-chat-capability';
 // #79) is the one store-id/agent-URL convention this app supports; a second,
 // competing convention is exactly what Task 15 was created to avoid. See
 // `datatug-app-routes.spec.ts` for the regression guard.
+
+// The places a hand-off from the sites lands: datatug.io's "Ask DataTug" button opens `/demo`, and the project
+// chat's `?msg=` is the shape the hand-off is moving to. Until the live demo can answer a question, they show one
+// holding page instead of failing to match any route, which opens Sentry's crash-report dialog and loses the
+// visitor's question. No flag and no sign-in. demo-handoff-capture.ts explains how the question is taken out of
+// the address bar before analytics starts, and which addresses may show it back (isEchoTrusted: `/demo` and the
+// demo project's own chat; any other repository gets neutral wording and no question). Registered ahead of the
+// root feature routes; every other path is matched exactly as before.
+const demoHoldingPage = () => import('./demo-holding-page.component').then((m) => m.DemoHoldingPageComponent);
+
 export const routes: Routes = [
+  {
+    path: 'demo',
+    pathMatch: 'full',
+    loadComponent: demoHoldingPage,
+  },
+  {
+    path: 'project/github.com/:owner/:repo/chat',
+    pathMatch: 'full',
+    loadComponent: demoHoldingPage,
+  },
+  {
+    path: 'project/github.com/:owner/:repo/tree/:ref/-/chat',
+    pathMatch: 'full',
+    loadComponent: demoHoldingPage,
+  },
   {
     path: 'store/:storeId/project/:projectId/chat',
     canMatch: [() => !!cliChatCapability()],
