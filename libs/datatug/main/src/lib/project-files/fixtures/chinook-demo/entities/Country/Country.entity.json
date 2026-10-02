@@ -1,0 +1,84 @@
+{
+  "id": "Country",
+  "extends": {
+    "def": "https://raw.githubusercontent.com/datatug/datatug-meta-iso/main/geo/country/country.json"
+  },
+  "fields": [
+    {
+      "id": "Name",
+      "type": "string",
+      "isKeyField": true,
+      "namePatterns": [
+        {
+          "type": "exact",
+          "value": "Country"
+        }
+      ],
+      "mappings": [
+        {
+          "source": "chinook",
+          "collection": "Customer",
+          "column": "Country"
+        },
+        {
+          "source": "support-notes",
+          "collection": "support-notes",
+          "column": "Country"
+        },
+        {
+          "source": "chinook",
+          "collection": "Invoice",
+          "column": "BillingCountry"
+        },
+        {
+          "source": "geo",
+          "collection": "country_aliases",
+          "column": "alias"
+        }
+      ]
+    },
+    {
+      "id": "Currency",
+      "type": "string"
+    },
+    {
+      "id": "alpha2",
+      "type": "string",
+      "namePatterns": [
+        {
+          "type": "exact",
+          "value": "iso2"
+        }
+      ],
+      "mappings": [
+        {
+          "source": "geo",
+          "collection": "countries",
+          "column": "iso2"
+        }
+      ]
+    },
+    {
+      "id": "alpha3",
+      "type": "string",
+      "namePatterns": [
+        {
+          "type": "exact",
+          "value": "iso3"
+        }
+      ],
+      "mappings": [
+        {
+          "source": "geo",
+          "collection": "countries",
+          "column": "iso3"
+        },
+        {
+          "source": "geo",
+          "collection": "population_wb",
+          "column": "iso3"
+        }
+      ]
+    }
+  ]
+}
