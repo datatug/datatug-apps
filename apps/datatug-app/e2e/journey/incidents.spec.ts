@@ -105,9 +105,11 @@ async function addCondition(
   await choose('Entity', 'Customer');
   await choose('Field', entry.field);
   await choose('Condition', entry.condition);
-  await activePage(page)
-    .locator('ion-input[label="Value"] input')
-    .fill(entry.value);
+  // in/like switch the Value input to type=text (it is type=number for an integer
+  // field); wait for that re-render before typing a list or a pattern.
+  const valueInput = activePage(page).locator('ion-input[label="Value"] input');
+  await expect(valueInput).toHaveAttribute('type', 'text');
+  await valueInput.fill(entry.value);
   await activePage(page)
     .locator('.investigation-context-page__form ion-button', {
       hasText: 'Add',
