@@ -13,7 +13,7 @@ import {
   projectUrl,
   ProjectUrlError,
   tryProjectUrl,
-} from './nav-models';
+} from './project-url';
 
 const SHA = '0123456789abcdef0123456789abcdef01234567';
 
@@ -769,6 +769,42 @@ describe('projectUrl', () => {
   });
 });
 
+describe('projectUrl writes the page as plain text, percent-encoded (issue #180)', () => {
+  it.each([
+    // [page, the written segments]
+    ['a b', '/a%20b'],
+    ['queries/a b', '/queries/a%20b'],
+    ['50%', '/50%25'],
+    ['a%20b', '/a%2520b'], // the text `a%20b`, not a space
+    ['x?y=1', '/x%3Fy%3D1'],
+    ['x#y', '/x%23y'],
+    ['é/ü', '/%C3%A9/%C3%BC'],
+    ['a\\b', '/a%5Cb'],
+    ['%2e%2e/x', '/%252e%252e/x'], // the text `%2e%2e`, which is not `..`
+    ["it's", "/it's"],
+  ])('page %j is written as %s, in both address shapes', (page, written) => {
+    const short = projectUrl({ storeId: 'github.com', projectId: 'r@o@' }, page);
+    expect(short).toBe('/project/github.com/o/r' + written);
+    const legacy = projectUrl({ storeId: 'localhost:8989', projectId: 'p' }, page);
+    expect(legacy).toBe('/store/localhost:8989/project/p' + written);
+    for (const url of [short, legacy]) {
+      expect(parsed(url)).toMatchObject({ rest: written, isCanonical: true });
+    }
+  });
+
+  it.each(['.', '..', 'a/../b', 'a/./b', '', '/', 'a//b', 'chat/', '\u0000', 'a\\..'])(
+    'still refuses the page %j',
+    (page) => {
+      if (page === '' || page === '/') {
+        // No page at all is the project itself.
+        expect(typeof tryProjectUrl({ storeId: 'github.com', projectId: 'r@o@' }, page)).toBe('string');
+        return;
+      }
+      expect(tryProjectUrl({ storeId: 'github.com', projectId: 'r@o@' }, page)).toMatchObject({ ok: false });
+    },
+  );
+});
+
 describe('projectUrl refuses what it cannot write exactly (design review S2)', () => {
   it.each([
     // [store, id, page]
@@ -790,7 +826,6 @@ describe('projectUrl refuses what it cannot write exactly (design review S2)', (
     ['github.com', 'r@o@', 'a//b'],
     ['github.com', 'r@o@', '..'],
     ['github.com', 'r@o@', 'a/../b'],
-    ['github.com', 'r@o@', '%2e%2e/x'],
     ['github.com', 'r@o@', '../../evil/repo'],
     ['github.com', 'r@o@d', 'a/./b'],
     ['GitHub.com', 'r@o@', undefined],
@@ -896,7 +931,14 @@ describe('projectUrl refuses what it cannot write exactly (design review S2)', (
         `${result} was built for ${JSON.stringify([storeId, projectId, page])} and does not parse: ${back.reason}`,
       );
     }
-    const wantRest = page ? '/' + page.replace(/^\//, '') : '';
+    const wantRest = page
+      ? '/' +
+        page
+          .replace(/^\//, '')
+          .split('/')
+          .map((segment) => encodeURIComponent(segment))
+          .join('/')
+      : '';
     const github = storeId === 'github.com' || storeId === 'github';
     const same =
       back.rest === wantRest &&

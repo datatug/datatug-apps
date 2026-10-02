@@ -6,6 +6,7 @@ import {
   isValidGithubFolder,
   isValidGithubRef,
   readGithubProjectId,
+  readNewProjectFolder,
   splitGithubProjectId,
 } from './github-project-address';
 
@@ -298,5 +299,65 @@ describe('isTrustedProjectAddress (design 3.6): the one trust function', () => {
     expect(
       isTrustedProjectAddress({ ok: false, reason: 'file-link' } as never),
     ).toBe(false);
+  });
+});
+
+describe('readNewProjectFolder: the new-project form\'s folder field (issue #180)', () => {
+  it.each([
+    // [typed, folder]
+    ['', 'datatug'],
+    ['   ', 'datatug'],
+    ['datatug', 'datatug'],
+    [' demo-project-1 ', 'demo-project-1'],
+    ['a/b', 'a/b'],
+    ['a/b/', 'a/b'],
+    ['a/b//', 'a/b'],
+    ['my project', 'my project'],
+    ['.hidden', '.hidden'],
+    ['a..b', 'a..b'],
+  ])('%j is the folder %j', (typed, folder) => {
+    expect(readNewProjectFolder(typed)).toEqual({ ok: true, folder });
+  });
+
+  it.each([
+    // [typed, why]
+    ['/', 'leading-slash'],
+    ['/datatug', 'leading-slash'],
+    ['  /a', 'leading-slash'],
+    ['//a', 'leading-slash'],
+    ['..', 'invalid'],
+    ['.', 'invalid'],
+    ['../x', 'invalid'],
+    ['a/../b', 'invalid'],
+    ['a/./b', 'invalid'],
+    ['a/..', 'invalid'],
+    ['a//b', 'invalid'],
+    ['a\\b', 'invalid'],
+    ['..\\x', 'invalid'],
+    ['-', 'invalid'],
+    ['a/-/b', 'invalid'],
+    ['a@b', 'invalid'],
+    ['a%2e%2e', 'invalid'],
+    ['a?b', 'invalid'],
+    ['a#b', 'invalid'],
+    ['a\u0000b', 'invalid'],
+    ['a\tb', 'invalid'],
+  ])('%j is refused (%s)', (typed, reason) => {
+    expect(readNewProjectFolder(typed)).toEqual({ ok: false, reason });
+  });
+
+  it('treats anything that is not text as blank', () => {
+    expect(readNewProjectFolder(undefined)).toEqual({ ok: true, folder: 'datatug' });
+    expect(readNewProjectFolder(42)).toEqual({ ok: true, folder: 'datatug' });
+  });
+
+  it('only ever returns a folder the reader accepts', () => {
+    for (const typed of ['a', 'a/b', 'a b', '.x', 'x.', 'é']) {
+      const reading = readNewProjectFolder(typed);
+      expect(reading.ok).toBe(true);
+      if (reading.ok) {
+        expect(readGithubProjectId('r@o@' + reading.folder).ok).toBe(true);
+      }
+    }
   });
 });

@@ -19,6 +19,7 @@
     "@acrodata/code-editor": "*",
     "@datatug/board-models": "*",
     "@datatug/product-profiles": "*",
+    "@datatug/project-address": "*",
     "@sneat/auth-core": "0.27.6",
     "@sneat/auth-models": "0.27.6",
     "@sneat/auth-ui": "0.27.20",
