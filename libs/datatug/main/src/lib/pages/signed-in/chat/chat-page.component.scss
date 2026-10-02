@@ -158,6 +158,20 @@
   white-space: pre-wrap;
 }
 
+.error-detail {
+  margin-top: 0.4rem;
+
+  summary {
+    color: var(--ion-color-medium);
+    cursor: pointer;
+    font-size: 0.85rem;
+  }
+
+  pre {
+    margin-top: 0.4rem;
+  }
+}
+
 .metrics-grid {
   display: grid;
   gap: 0.75rem;

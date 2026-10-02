@@ -32,7 +32,18 @@
       <section class="turn">
         <div class="question-row"><strong>You</strong><p class="question-bubble">{{ turn.question }}</p></div>
         @if (turn.state === 'loading') { <div class="turn-status"><ion-spinner name="dots" /><span>Interpreting and querying…</span></div> }
-        @if (turn.state === 'error') { <ion-text color="danger">{{ turn.error }}</ion-text> }
+        @if (turn.state === 'error') {
+          @let failure = errorView(turn.error);
+          <div class="turn-error" role="alert">
+            <ion-text color="danger">{{ failure.summary }}</ion-text>
+            @if (failure.detail) {
+              <details class="error-detail">
+                <summary>Technical details</summary>
+                <pre class="dtql">{{ failure.detail }}</pre>
+              </details>
+            }
+          </div>
+        }
         @if (turn.joinChoices?.length) {
           <div class="join-choices" aria-label="Choose a relationship">
             @for (choice of turn.joinChoices; track choice.candidateId) {

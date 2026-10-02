@@ -21,6 +21,7 @@ import {
   chatBookmarkRows, ChatBookmark, ChatContextReference, ChatDock, ChatWorkspaceAction, emptyChatWorkspace,
 } from '../../../chat/chat-workspace';
 import { chatDtqlYaml, chatSQLite } from '../../../chat/chat-query-format';
+import { chatErrorView } from '../../../chat/chat-error-message';
 import { ChatJoinService } from '../../../chat/chat-join.service';
 import { ChatJoinAmbiguityError, ChatJoinCandidate, ambiguousChatJoinRequest, chatJoinCandidateLabel, validateChatJoinChoice } from '../../../chat/chat-joins';
 import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
@@ -108,6 +109,8 @@ export class ChatPageComponent {
   readonly draft = signal<Omit<ChatProvider, 'id'>>({ ...providerPresets['DeepSeek'], apiKey: '' });
   readonly selectedProvider = computed(() => this.providers.providers().find((item) => item.id === this.providers.selectedId()));
   readonly focusedJoin = signal<{ turnId: string; candidateId: string } | undefined>(undefined);
+  /** Plain-language text for a failed turn; the stored `turn.error` keeps the engine's own message. */
+  readonly errorView = chatErrorView;
 
   constructor() {
     this.route.paramMap.subscribe(() => this.updateScope());
