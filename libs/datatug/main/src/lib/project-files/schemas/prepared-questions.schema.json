@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:datatug:schema:prepared-questions:1",
+  "title": "DataTug prepared questions (ai/prepared-questions.json)",
+  "description": "Which wordings run which saved query, per language, and the follow-ups. Design: demo-as-github-project.md 5.2a. Every string is shown to a visitor as text, never as HTML. A project file is at most 262144 bytes (checked by the reader on the bytes received). Rules a schema cannot state, enforced by the validators: question ids are unique; `query` names a saved query that exists in the project.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "questions"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "maxLength": 300
+    },
+    "version": {
+      "const": 1
+    },
+    "questions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "query", "question", "title"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]{1,64}$",
+            "maxLength": 64,
+            "description": "Unique among the questions of the file."
+          },
+          "query": {
+            "type": "string",
+            "maxLength": 200,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)*$",
+            "description": "The id of a saved query that exists in the project, as folder/id."
+          },
+          "question": {
+            "type": "object",
+            "description": "The question per language; `en` is required. The texts always count as wordings.",
+            "propertyNames": {
+              "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$"
+            },
+            "properties": {
+              "en": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+              }
+            },
+            "required": ["en"],
+            "maxProperties": 20,
+            "additionalProperties": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+            }
+          },
+          "title": {
+            "type": "object",
+            "description": "A short title per language; `en` is required.",
+            "propertyNames": {
+              "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$"
+            },
+            "properties": {
+              "en": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+              }
+            },
+            "required": ["en"],
+            "maxProperties": 20,
+            "additionalProperties": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+            }
+          },
+          "wordings": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+            }
+          },
+          "followUps": {
+            "type": "array",
+            "maxItems": 8,
+            "uniqueItems": true,
+            "items": {
+              "enum": ["insight"]
+            }
+          }
+        }
+      }
+    }
+  }
+}

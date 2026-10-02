@@ -1,0 +1,137 @@
+{
+  "fixture": "chinook-demo",
+  "files": [
+    {
+      "path": "ai/prepared-questions.json",
+      "bytes": 915,
+      "sha256": "fa30d99bf420aa5d564dfc7bd4b5f487d22e7a2b885be772d50fb10b6acc1313",
+      "origin": "new (design 5.2a)"
+    },
+    {
+      "path": "data/geo/.web/country_aliases.json",
+      "bytes": 3892,
+      "sha256": "1612d2486e5b9d3910f79e0938c182ec61d3c8def323dbc42e6f7233b376d784",
+      "origin": "generated from datatug-demo-projects@0e5b98f demo-project-1/data/geo/country_aliases/$records/*.json"
+    },
+    {
+      "path": "data/geo/.web/population_wb.json",
+      "bytes": 63539,
+      "sha256": "c704ebd4364ecf918f921bb68edf580182c031e0ea1e1b9c00ba2ec38ea9bb1c",
+      "origin": "generated from datatug-demo-projects@0e5b98f demo-project-1/data/geo/population_wb/$records/*.json"
+    },
+    {
+      "path": "datatug-project.json",
+      "bytes": 502,
+      "sha256": "a08d16fa19c1394a965ba979f41da6501cd88fd18b98f32b748b061b49e68d11",
+      "origin": "datatug-demo-projects@0e5b98f demo-project-1/datatug-project.json"
+    },
+    {
+      "path": "dbmodels/chinook/main/tables/Album/main.Album.columns.json",
+      "bytes": 549,
+      "sha256": "79939527ab58f62e17df7f17498feacfd829123d83256863c1e5342dc4a70cf2",
+      "origin": "datatug-demo-projects@0e5b98f demo-project-1/dbmodels/chinook/main/tables/Album/main.Album.columns.json"
+    },
+    {
+      "path": "dbmodels/chinook/main/tables/Artist/main.Artist.columns.json",
+      "bytes": 379,
+      "sha256": "5c94796d9665779b87eea56e55a755b861fcb8fd709018cd08566675c9e5541b",
+      "origin": "datatug-demo-projects@0e5b98f demo-project-1/dbmodels/chinook/main/tables/Artist/main.Artist.columns.json"
+    },
+    {
+      "path": "dbmodels/chinook/main/tables/Customer/main.Customer.columns.json",
+      "bytes": 2271,
+      "sha256": "40ae7e53cb8ff523defdee806a8c0baf519037860c2c6f100dc3f573063f9aad",
+      "origin": "datatug-demo-projects@0e5b98f demo-project-1/dbmodels/chinook/main/tables/Customer/main.Customer.columns.json"
+    },
+    {
+      "path": "dbmodels/chinook/main/tables/Employee/main.Employee.columns.json",
+      "bytes": 2604,
+      "sha256": "6c7369e3c5caa6e04113e4b4b89e642d20d5b5535cbf9ab5852dc7ee457f3724",
+      "origin": "datatug-demo-projects@0e5b98f demo-project-1/dbmodels/chinook/main/tables/Employee/main.Employee.columns.json"
+    },
+    {
+      "path": "dbmodels/chinook/main/tables/Genre/main.Genre.columns.json",
+      "bytes": 378,
+      "sha256": "336948efb7b470445dd2402af0ea16f1dcc1106e2c858fc5f07aba52f8c60b7b",
+      "origin": "datatug-demo-projects@0e5b98f demo-project-1/dbmodels/chinook/main/tables/Genre/main.Genre.columns.json"
+    },
+    {
+      "path": "dbmodels/chinook/main/tables/Invoice/main.Invoice.columns.json",
+      "bytes": 1619,
+      "sha256": "b837f78f300aacc137860a26d2c89964233309e82648666988e5109ce56d3f5b",
+      "origin": "datatug-demo-projects@0e5b98f demo-project-1/dbmodels/chinook/main/tables/Invoice/main.Invoice.columns.json"
+    },
+    {
+      "path": "dbmodels/chinook/main/tables/InvoiceLine/main.InvoiceLine.columns.json",
+      "bytes": 897,
+      "sha256": "55da30dd41ee2f16c12cb836e48de23258049a6cef79ef15474f76b34d5916ce",
+      "origin": "datatug-demo-projects@0e5b98f demo-project-1/dbmodels/chinook/main/tables/InvoiceLine/main.InvoiceLine.columns.json"
+    },
+    {
+      "path": "dbmodels/chinook/main/tables/MediaType/main.MediaType.columns.json",
+      "bytes": 382,
+      "sha256": "a0b96a69e6de71126af53b7f9b0eae85ee0a444b667042ff0ac2e5a2524f240f",
+      "origin": "datatug-demo-projects@0e5b98f demo-project-1/dbmodels/chinook/main/tables/MediaType/main.MediaType.columns.json"
+    },
+    {
+      "path": "dbmodels/chinook/main/tables/Playlist/main.Playlist.columns.json",
+      "bytes": 381,
+      "sha256": "4522b619cf93c673504d2496369a809414bffb10602087cba2d7156dc0b55d58",
+      "origin": "datatug-demo-projects@0e5b98f demo-project-1/dbmodels/chinook/main/tables/Playlist/main.Playlist.columns.json"
+    },
+    {
+      "path": "dbmodels/chinook/main/tables/PlaylistTrack/main.PlaylistTrack.columns.json",
+      "bytes": 399,
+      "sha256": "e54be96a4a178f93e1af7fb152313bbfae62e1729eec4017869f1d96ccab08f3",
+      "origin": "datatug-demo-projects@0e5b98f demo-project-1/dbmodels/chinook/main/tables/PlaylistTrack/main.PlaylistTrack.columns.json"
+    },
+    {
+      "path": "dbmodels/chinook/main/tables/Track/main.Track.columns.json",
+      "bytes": 1573,
+      "sha256": "e82adf054dd22772cbbb405c5fd0db0792a9b1e2398d040ef8d1a169ef1dff0a",
+      "origin": "datatug-demo-projects@0e5b98f demo-project-1/dbmodels/chinook/main/tables/Track/main.Track.columns.json"
+    },
+    {
+      "path": "entities/Country/Country.entity.json",
+      "bytes": 1655,
+      "sha256": "7524cbad5f9090573eb0ca32f71d338d59afa6ba51c3268bd181a6ce6f75e065",
+      "origin": "datatug-demo-projects@0e5b98f demo-project-1/entities/Country/Country.entity.json"
+    },
+    {
+      "path": "external/chinookdb.com/data/json/chinook.Invoice.json",
+      "bytes": 115781,
+      "sha256": "88eb7faede360988e9c0f8f8d107e5093db5e712141de14d868f8947b43c373c",
+      "origin": "chinookdb.com /data/json/chinook.Invoice.json (datatug/chinookdb public/data/json/chinook.Invoice.json at 0b6bb6ba22f680c9fb2fea9ec8107a8638dd8dc4)"
+    },
+    {
+      "path": "queries/sales/chinook-sales-per-capita.query.dtql",
+      "bytes": 1878,
+      "sha256": "0075fff4bf6dbfa70a97abc6b0f39c5728058ce7254b59a43ed3b363e2f2d2de",
+      "origin": "datatug-demo-projects@0e5b98f demo-project-1/queries/sales/chinook-sales-per-capita.query.dtql"
+    },
+    {
+      "path": "queries/sales/chinook-sales-per-capita.query.json",
+      "bytes": 922,
+      "sha256": "c6a49c33cdc9b610c5b2deb9b6c3ece55be76d758f08cb63ae6b593290942534",
+      "origin": "datatug-demo-projects@0e5b98f demo-project-1/queries/sales/chinook-sales-per-capita.query.json"
+    },
+    {
+      "path": "web/catalogs/chinook/chinook.db.json",
+      "bytes": 632,
+      "sha256": "0816abf60133169656ca7b7dcba8cd0f6064e18427405f2983ec6c8a88fd8e67",
+      "origin": "new (design 5.2a)"
+    },
+    {
+      "path": "web/catalogs/geo/geo.db.json",
+      "bytes": 39,
+      "sha256": "981fe665dbb792f89e98a22cf650d3b916d46c847623de40d326c1f698b4a1c2",
+      "origin": "new (design 5.2a)"
+    },
+    {
+      "path": "web/web.env.json",
+      "bytes": 146,
+      "sha256": "719beb95d54d7d678348cf361c379e2fff5d4f5fcf22bce4755b833c8e31a90e",
+      "origin": "new (design 5.2a)"
+    }
+  ]
+}
