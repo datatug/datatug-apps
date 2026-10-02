@@ -32,7 +32,25 @@ export interface IGithubRepoWire {
   readonly default_branch?: string;
 }
 
-/** Maps a GitHub repository payload to {@link IGithubRepo}, or undefined when incomplete. */
+/**
+ * A repository payload that cannot be used, and what is missing from it. The message is shown to the user (the new
+ * project form), so it says what GitHub did not return rather than guessing: in particular there is no default
+ * branch to assume, since a project committed to the wrong branch would not be the one the reader reads (`HEAD`).
+ */
+export class GithubRepoError extends Error {
+  constructor(
+    public readonly missing: 'full-name' | 'default-branch',
+    message: string,
+  ) {
+    super(message);
+    this.name = 'GithubRepoError';
+  }
+}
+
+/**
+ * Maps a GitHub repository payload to {@link IGithubRepo}, or undefined when incomplete: no full name, or no
+ * default branch (never assumed to be `main`, see {@link GithubRepoError}).
+ */
 export function toGithubRepo(
   wire: IGithubRepoWire,
 ): IGithubRepo | undefined {
@@ -41,12 +59,42 @@ export function toGithubRepo(
     (wire.owner?.login && wire.name
       ? `${wire.owner.login}/${wire.name}`
       : undefined);
-  if (!fullName) {
+  if (!fullName || !wire.default_branch) {
     return undefined;
   }
   return {
     fullName,
     private: !!wire.private,
-    defaultBranch: wire.default_branch || 'main',
+    defaultBranch: wire.default_branch,
   };
+}
+
+/**
+ * The same, for a repository the caller needs in full: throws a {@link GithubRepoError} naming what GitHub did not
+ * return. `name` is what the caller calls the repository (`owner/repo`, or the name given for a new one);
+ * `created` says the repository has just been made, so the message does not let the user make it twice.
+ */
+export function requireGithubRepo(
+  wire: IGithubRepoWire,
+  name: string,
+  created = false,
+): IGithubRepo {
+  const repo = toGithubRepo(wire);
+  if (repo) {
+    return repo;
+  }
+  const hasName = !!wire.full_name || (!!wire.owner?.login && !!wire.name);
+  const lead = created ? `GitHub created ${name}, but` : 'GitHub';
+  if (hasName) {
+    throw new GithubRepoError(
+      'default-branch',
+      `${lead} did not return the default branch of ${name}, so DataTug cannot tell which branch to commit to.`,
+    );
+  }
+  throw new GithubRepoError(
+    'full-name',
+    created
+      ? `${lead} did not return its full name`
+      : `GitHub did not return the repository ${name}`,
+  );
 }

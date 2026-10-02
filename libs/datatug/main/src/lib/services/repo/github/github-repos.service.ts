@@ -7,6 +7,7 @@ import {
   githubApiHeaders,
   IGithubRepo,
   IGithubRepoWire,
+  requireGithubRepo,
   toGithubRepo,
 } from './github-api';
 
@@ -60,15 +61,7 @@ export class GithubReposService {
         { headers: githubApiHeaders(token) },
       )
       .pipe(
-        map((repo) => {
-          const created = toGithubRepo(repo);
-          if (!created) {
-            throw new Error(
-              `GitHub created ${name} but did not return its full name`,
-            );
-          }
-          return created;
-        }),
+        map((repo) => requireGithubRepo(repo, name, true)),
       );
   }
 }

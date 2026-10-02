@@ -235,14 +235,17 @@ export class FakeGithub {
  */
 export class ManualTimers {
   private nextId = 1;
-  private readonly pending = new Map<number, () => void>();
+  private readonly pending = new Map<
+    number,
+    { fire: () => void; ms: number }
+  >();
   /** The delay of every timer ever set, in order. */
   readonly delays: number[] = [];
 
   readonly set: GithubSetTimer = (fire, ms) => {
     const id = this.nextId++;
     this.delays.push(ms);
-    this.pending.set(id, fire);
+    this.pending.set(id, { fire, ms });
     return () => {
       this.pending.delete(id);
     };
@@ -256,8 +259,18 @@ export class ManualTimers {
   fireAll(): void {
     const fires = [...this.pending.values()];
     this.pending.clear();
-    for (const fire of fires) {
+    for (const { fire } of fires) {
       fire();
+    }
+  }
+
+  /** Fires, and forgets, only the waiting timers that were set for `ms`. */
+  fireWith(ms: number): void {
+    for (const [id, timer] of [...this.pending]) {
+      if (timer.ms === ms) {
+        this.pending.delete(id);
+        timer.fire();
+      }
     }
   }
 

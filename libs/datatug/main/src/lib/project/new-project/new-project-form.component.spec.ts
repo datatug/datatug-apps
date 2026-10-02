@@ -2,11 +2,12 @@ import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { PopoverController } from '@ionic/angular';
 import { ErrorLogger } from '@sneat/core';
-import { Subject, of } from 'rxjs';
+import { Subject, of, throwError } from 'rxjs';
 
 import { NewProjectFormComponent } from './new-project-form.component';
 import { DatatugNavService } from '../../services/nav/datatug-nav.service';
 import { ProjectService } from '../../services/project/project.service';
+import { GithubRepoError } from '../../services/repo/github/github-api';
 import { GithubProjectCreateService } from '../../services/repo/github/github-project-create.service';
 import { GithubOAuthService } from '../../services/repo/github/github-oauth.service';
 import { GithubReposService } from '../../services/repo/github/github-repos.service';
@@ -335,6 +336,50 @@ describe('NewProjectFormComponent creating in a GitHub repo', () => {
       expect.objectContaining({ org: 'datatug', repo: 'my-projects' }),
       'gho_token',
     );
+  });
+
+  it('shows what GitHub did not return when it made the repository but sent no default branch', () => {
+    oauth.isSignedIn = true;
+    oauth.accessToken = 'gho_token';
+    (component as unknown as { selectedRepo: { set: (v: string) => void } }).selectedRepo.set(
+      '__new__',
+    );
+    component.newRepoName = 'my-projects';
+    repos.createRepo = vi.fn(() =>
+      throwError(
+        () =>
+          new GithubRepoError(
+            'default-branch',
+            'GitHub created my-projects, but did not return the default branch of my-projects, so DataTug cannot tell which branch to commit to.',
+          ),
+      ),
+    );
+    component.store = 'github';
+
+    component.create();
+
+    expect(formErrorOf(component)).toContain('did not return the default branch');
+    expect(createProject).not.toHaveBeenCalled();
+  });
+
+  it('shows what GitHub did not return when the chosen repository has no default branch', () => {
+    oauth.isSignedIn = true;
+    oauth.accessToken = 'gho_token';
+    (component as unknown as { selectedRepo: { set: (v: string) => void } }).selectedRepo.set(
+      'datatug/demo-projects',
+    );
+    component.store = 'github';
+    component.title = 'My project';
+
+    component.create();
+    createProject$.error(
+      new GithubRepoError(
+        'default-branch',
+        'GitHub did not return the default branch of datatug/demo-projects, so DataTug cannot tell which branch to commit to.',
+      ),
+    );
+
+    expect(formErrorOf(component)).toContain('did not return the default branch');
   });
 
   it('requires a name before creating a new repository', () => {

@@ -52,7 +52,7 @@ describe('DatatugStoreGithubService.watchProjectItem', () => {
   function createService(getRawJson: ReturnType<typeof vi.fn>) {
     TestBed.configureTestingModule({
       providers: [
-        { provide: GithubProjectReaderService, useValue: { getRawJson } },
+        { provide: GithubProjectReaderService, useValue: { getRawJson, visitEpoch: () => '0.0' } },
       ],
     });
     return TestBed.inject(DatatugStoreGithubService);
@@ -113,7 +113,7 @@ describe('DatatugStoreGithubService.getProjectSummary: ids it cannot read', () =
   function createService(getRawJson: ReturnType<typeof vi.fn>) {
     TestBed.configureTestingModule({
       providers: [
-        { provide: GithubProjectReaderService, useValue: { getRawJson } },
+        { provide: GithubProjectReaderService, useValue: { getRawJson, visitEpoch: () => '0.0' } },
       ],
     });
     return TestBed.inject(DatatugStoreGithubService);
@@ -143,7 +143,11 @@ describe('DatatugStoreGithubService.getProjectSummary: reads through the reader 
       providers: [
         {
           provide: GithubProjectReaderService,
-          useValue: { getRawJson, readInfo: () => of({ state }) },
+          useValue: {
+            getRawJson,
+            visitEpoch: () => '0.0',
+            readInfo: () => of({ state }),
+          },
         },
       ],
     });
@@ -168,5 +172,43 @@ describe('DatatugStoreGithubService.getProjectSummary: reads through the reader 
     service.getProjectSummary('r@o@d').subscribe({ error: (e: unknown) => (error = e) });
     expect(error).toBeInstanceOf(GithubProjectNotFoundError);
     expect((error as GithubProjectNotFoundError).reason).toBe(state);
+  });
+});
+
+describe('DatatugStoreGithubService.getProjectSummary: the summary follows the commit of the reader', () => {
+  it('a summary read before the reader moved to another commit is read again, once; until it moves again it is kept', () => {
+    let epoch = '0.0';
+    let title = 'at the old commit';
+    const getRawJson = vi.fn(() => of({ id: 'r@o@d', title }));
+    TestBed.configureTestingModule({
+      providers: [
+        {
+          provide: GithubProjectReaderService,
+          useValue: { getRawJson, visitEpoch: () => epoch },
+        },
+      ],
+    });
+    const service = TestBed.inject(DatatugStoreGithubService);
+    const titles: string[] = [];
+    const read = () =>
+      service
+        .getProjectSummary('r@o@d')
+        .subscribe((p) => titles.push(p.title as string));
+
+    read();
+    read();
+    expect(getRawJson).toHaveBeenCalledTimes(1);
+
+    epoch = '0.1'; // the visit moved to another commit
+    title = 'at the new commit';
+    read();
+    read();
+    expect(getRawJson).toHaveBeenCalledTimes(2);
+    expect(titles).toEqual([
+      'at the old commit',
+      'at the old commit',
+      'at the new commit',
+      'at the new commit',
+    ]);
   });
 });
