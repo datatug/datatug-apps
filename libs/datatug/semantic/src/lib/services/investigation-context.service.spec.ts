@@ -656,6 +656,185 @@ describe('InvestigationContextService', () => {
     restarted.setScope(scopeA);
     expect(restarted.items()).toEqual([]);
   });
+
+  describe('`in` and `like` conditions (founder 2026-10-02: "add both `in` and `like`")', () => {
+    afterEach(() => {
+      sessionStorage.clear();
+    });
+
+    const field = { entity: 'Customer', field: 'Country' };
+
+    it('stores an `in` item as a typed values list with no `value`, deduped by typed equality', () => {
+      const service = createService();
+      service.setScope(scopeA);
+      const added = service.addValue({
+        entityField: field,
+        values: ['DE', 'FR', 'DE', ' FR'],
+        label: 'Customer.Country in (DE, FR,  FR)',
+        source: 'manual',
+        condition: 'in',
+      });
+      expect(added.condition).toBe('in');
+      expect(added.value).toBeUndefined();
+      expect(added.values).toEqual([
+        { type: 'string', value: 'DE' },
+        { type: 'string', value: 'FR' },
+        { type: 'string', value: ' FR' },
+      ]);
+    });
+
+    it('treats the same `in` set in a different order as the same item (idempotent add), but 5 and "5" stay distinct', () => {
+      const service = createService();
+      service.setScope(scopeA);
+      const first = service.addValue({
+        entityField: field,
+        values: ['DE', 'FR'],
+        label: 'a',
+        source: 'manual',
+        condition: 'in',
+      });
+      const second = service.addValue({
+        entityField: field,
+        values: ['FR', 'DE'],
+        label: 'b',
+        source: 'manual',
+        condition: 'in',
+      });
+      expect(second).toEqual(first);
+      service.addValue({
+        entityField: field,
+        values: [5],
+        label: 'c',
+        source: 'manual',
+        condition: 'in',
+      });
+      service.addValue({
+        entityField: field,
+        values: ['5'],
+        label: 'd',
+        source: 'manual',
+        condition: 'in',
+      });
+      expect(service.items()).toHaveLength(3);
+    });
+
+    it('an `in` item and an `==` item on the same field are different items', () => {
+      const service = createService();
+      service.setScope(scopeA);
+      service.addValue({
+        entityField: field,
+        values: ['DE'],
+        label: 'a',
+        source: 'manual',
+        condition: 'in',
+      });
+      service.addValue({
+        entityField: field,
+        value: 'DE',
+        label: 'b',
+        source: 'manual',
+      });
+      expect(service.items()).toHaveLength(2);
+    });
+
+    it('stores `like` with a string pattern and dedupes the same pattern', () => {
+      const service = createService();
+      service.setScope(scopeA);
+      const input = {
+        entityField: { entity: 'Customer', field: 'Name' },
+        value: 'Ab%',
+        label: "Customer.Name like 'Ab%'",
+        source: 'manual',
+        condition: 'like' as const,
+      };
+      const first = service.addValue(input);
+      expect(first.value).toEqual({ type: 'string', value: 'Ab%' });
+      expect(service.addValue(input)).toEqual(first);
+      expect(service.items()).toHaveLength(1);
+    });
+
+    it.each([
+      ['in with no values', { condition: 'in' as const }],
+      ['in with an empty list', { condition: 'in' as const, values: [] }],
+      ['in with a scalar value', { condition: 'in' as const, value: 'a' }],
+      [
+        '== with a list',
+        { condition: '==' as const, value: 'a', values: ['a'] },
+      ],
+      ['like with a number', { condition: 'like' as const, value: 5 }],
+      ['> with no value', { condition: '>' as const }],
+    ])('rejects %s', (_name, extra) => {
+      const service = createService();
+      service.setScope(scopeA);
+      expect(() =>
+        service.addValue({
+          entityField: field,
+          label: 'x',
+          source: 'manual',
+          ...extra,
+        }),
+      ).toThrow();
+      expect(service.items()).toHaveLength(0);
+    });
+
+    it('contextItemToFact emits `values` and no `value` for `in`, and `like` as a scalar fact', () => {
+      const service = createService();
+      service.setScope(scopeA);
+      const inItem = service.addValue({
+        entityField: field,
+        values: [1, 2],
+        label: 'x',
+        source: 'manual',
+        condition: 'in',
+      });
+      const inFact = contextItemToFact(inItem);
+      expect(inFact).toMatchObject({
+        condition: 'in',
+        values: [
+          { type: 'integer', value: '1' },
+          { type: 'integer', value: '2' },
+        ],
+      });
+      expect('value' in inFact).toBe(false);
+      const likeFact = contextItemToFact(
+        service.addValue({
+          entityField: { entity: 'Customer', field: 'Name' },
+          value: 'A_%',
+          label: 'y',
+          source: 'manual',
+          condition: 'like',
+        }),
+      );
+      expect(likeFact).toMatchObject({
+        condition: 'like',
+        value: { type: 'string', value: 'A_%' },
+      });
+      expect('values' in likeFact && likeFact.values !== undefined).toBe(false);
+    });
+
+    it('persists and restores `in` and `like` items through sessionStorage', () => {
+      const service = createService();
+      service.setScope(scopeA);
+      service.addValue({
+        entityField: field,
+        values: ['DE', 'FR'],
+        label: 'Customer.Country in (DE, FR)',
+        source: 'manual',
+        condition: 'in',
+      });
+      service.addValue({
+        entityField: { entity: 'Customer', field: 'Name' },
+        value: 'Ab%',
+        label: "Customer.Name like 'Ab%'",
+        source: 'manual',
+        condition: 'like',
+      });
+      const restored = createService();
+      restored.setScope(scopeA);
+      expect(restored.items().map((i) => i.condition)).toEqual(['in', 'like']);
+      expect(restored.items()[0].values).toHaveLength(2);
+    });
+  });
 });
 
 describe('scopesEqual', () => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Fact, TypedValue } from '../../contract/types';
 import {
   BindingParameterRef,
+  explainSkippedCondition,
   hasBlockingBindings,
   isBindingRunnable,
   resolveBindings,
@@ -624,5 +625,121 @@ describe('hasBlockingBindings', () => {
       contextFacts: [],
     });
     expect(hasBlockingBindings(clean)).toBe(false);
+  });
+});
+
+describe('resolveBindings — `in` and `like` condition facts', () => {
+  const params: BindingParameterRef[] = [
+    { id: 'CustomerId', meta: customerIdMeta },
+  ];
+
+  it('an `in` context fact never binds a (scalar) parameter and is reported skipped', () => {
+    const [binding] = resolveBindings({
+      parameters: params,
+      selectionFacts: [],
+      contextFacts: [
+        {
+          id: 'in-fact',
+          entity: 'Customer',
+          field: 'ID',
+          condition: 'in',
+          values: [integer5, integer7],
+          origin: 'context',
+          enabled: true,
+        },
+      ],
+    });
+    expect(binding.value).toBeUndefined();
+    expect(binding.origin).toBeUndefined();
+    expect(binding.skippedConditionFacts).toEqual([
+      {
+        factId: 'in-fact',
+        condition: 'in',
+        explanation: explainSkippedCondition('in'),
+      },
+    ]);
+  });
+
+  it('a `like` context fact never binds and is reported skipped with the existing explanation', () => {
+    const [binding] = resolveBindings({
+      parameters: params,
+      selectionFacts: [],
+      contextFacts: [
+        {
+          id: 'like-fact',
+          entity: 'Customer',
+          field: 'ID',
+          condition: 'like',
+          value: { type: 'string', value: '5%' },
+          origin: 'context',
+          enabled: true,
+        },
+      ],
+    });
+    expect(binding.value).toBeUndefined();
+    expect(binding.skippedConditionFacts?.[0]).toEqual({
+      factId: 'like-fact',
+      condition: 'like',
+      explanation:
+        'skipped: condition `like` is not supported for parameter binding',
+    });
+  });
+
+  it('an `in` fact neither conflicts with a selection value nor blocks it; the selection binds and the `in` fact is still reported', () => {
+    const [binding] = resolveBindings({
+      parameters: params,
+      selectionFacts: [
+        {
+          id: 'sel',
+          entity: 'Customer',
+          field: 'ID',
+          value: integer5,
+          origin: 'selection',
+          enabled: true,
+        },
+      ],
+      contextFacts: [
+        {
+          id: 'in-fact',
+          entity: 'Customer',
+          field: 'ID',
+          condition: 'in',
+          values: [integer7],
+          origin: 'context',
+          enabled: true,
+        },
+      ],
+    });
+    expect(binding.value).toEqual(integer5);
+    expect(binding.origin).toBe('selection');
+    expect(binding.skippedConditionFacts?.[0]?.factId).toBe('in-fact');
+  });
+
+  it('an equality fact still binds when an `in` fact exists for the same field', () => {
+    const [binding] = resolveBindings({
+      parameters: params,
+      selectionFacts: [],
+      contextFacts: [
+        {
+          id: 'eq',
+          entity: 'Customer',
+          field: 'ID',
+          value: integer5,
+          origin: 'context',
+          enabled: true,
+        },
+        {
+          id: 'in-fact',
+          entity: 'Customer',
+          field: 'ID',
+          condition: 'in',
+          values: [integer7],
+          origin: 'context',
+          enabled: true,
+        },
+      ],
+    });
+    expect(binding.value).toEqual(integer5);
+    expect(binding.origin).toBe('context');
   });
 });

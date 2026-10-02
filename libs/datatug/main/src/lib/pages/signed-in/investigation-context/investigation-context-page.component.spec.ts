@@ -11,7 +11,7 @@ import {
   MockSemanticApi,
   SemanticApiService,
 } from '@sneat/datatug-semantic';
-import { of } from 'rxjs';
+import { of, Subject } from 'rxjs';
 
 import { InvestigationContextPageComponent } from './investigation-context-page.component';
 import {
@@ -383,6 +383,153 @@ describe('InvestigationContextPageComponent', () => {
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       expect((component as any).valueInput()).toBe('');
+    });
+
+    describe('`in` and `like` conditions (founder 2026-10-02: "add both `in` and `like`")', () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const internals = () => component as any;
+
+      function pick(entity: string, field: string, condition: string) {
+        fireIonEvent(formEls().entitySelect, 'ionChange', entity);
+        fixture.detectChanges();
+        fireIonEvent(formEls().fieldSelect, 'ionChange', field);
+        fireIonEvent(formEls().conditionSelect, 'ionChange', condition);
+        fixture.detectChanges();
+      }
+
+      it('offers every operator, including in and like, before a field type is known', () => {
+        expect(optionTexts(formEls().conditionSelect)).toEqual([
+          '==',
+          '!=',
+          '>',
+          '>=',
+          '<',
+          '<=',
+          'in',
+          'like',
+        ]);
+      });
+
+      it('offers like only for text-typed fields — Subject-driven so the field list arrives after first render (zoneless: no detectChanges after the emit)', async () => {
+        const fields = new Subject<IRecord<IEntity>>();
+        entityService.getEntity.mockReturnValueOnce(
+          fields as unknown as ReturnType<typeof entityService.getEntity>,
+        );
+        fireIonEvent(formEls().entitySelect, 'ionChange', 'Customer');
+        await fixture.whenStable();
+
+        fields.next({
+          id: 'Customer',
+          dbo: { id: 'Customer', fields: CUSTOMER_FIELDS } as IEntity,
+        });
+        await fixture.whenStable();
+        expect(optionTexts(formEls().fieldSelect)).toEqual(['ID', 'Name']);
+
+        fireIonEvent(formEls().fieldSelect, 'ionChange', 'ID');
+        await fixture.whenStable();
+        expect(optionTexts(formEls().conditionSelect)).toEqual([
+          '==',
+          '!=',
+          '>',
+          '>=',
+          '<',
+          '<=',
+          'in',
+        ]);
+
+        fireIonEvent(formEls().fieldSelect, 'ionChange', 'Name');
+        await fixture.whenStable();
+        expect(optionTexts(formEls().conditionSelect)).toContain('like');
+      });
+
+      it('switching from a text field to a numeric one drops a now-invalid like choice', () => {
+        pick('Customer', 'Name', 'like');
+        expect(internals().selectedCondition()).toBe('like');
+        fireIonEvent(formEls().fieldSelect, 'ionChange', 'ID');
+        fixture.detectChanges();
+        expect(internals().selectedCondition()).toBeUndefined();
+      });
+
+      it('Add with `in` stores a typed values list (trimmed, deduped, parsed per field type), no single value, and renders readably', () => {
+        pick('Customer', 'ID', 'in');
+        fireIonEvent(formEls().valueInput, 'ionInput', ' 1, 2,,2 ,3\n4 ');
+        fixture.detectChanges();
+        expect(internals().inTokens()).toEqual(['1', '2', '3', '4']);
+        expect(
+          fixture.nativeElement.querySelector(
+            '[data-testid="in-values-preview"]',
+          ),
+        ).toBeTruthy();
+        expect(internals().canAdd()).toBe(true);
+
+        formEls().addButton.dispatchEvent(new Event('click'));
+        fixture.detectChanges();
+
+        const added = context.items()[0];
+        expect(added.condition).toBe('in');
+        expect(added.value).toBeUndefined();
+        expect(added.values).toEqual([
+          { type: 'integer', value: '1' },
+          { type: 'integer', value: '2' },
+          { type: 'integer', value: '3' },
+          { type: 'integer', value: '4' },
+        ]);
+        expect(added.label).toBe('Customer.ID in (1, 2, 3, 4)');
+        const html = (
+          fixture.nativeElement.querySelector(
+            '.investigation-context-page__item',
+          ) as HTMLElement
+        ).innerHTML;
+        expect(html).toContain('Customer.ID in (1, 2, 3, 4)');
+        expect(internals().valueInput()).toBe('');
+      });
+
+      it('`in` rejects an empty list and a non-numeric member of a numeric field', () => {
+        pick('Customer', 'ID', 'in');
+        fireIonEvent(formEls().valueInput, 'ionInput', ' , ,\n');
+        fixture.detectChanges();
+        expect(internals().canAdd()).toBe(false);
+
+        fireIonEvent(formEls().valueInput, 'ionInput', '1, abc');
+        fixture.detectChanges();
+        expect(internals().valueError()).toBe('"abc" is not a number');
+        expect(internals().canAdd()).toBe(false);
+        formEls().addButton.dispatchEvent(new Event('click'));
+        expect(context.items()).toEqual([]);
+      });
+
+      it('Add with `like` stores the raw pattern as a string and renders it readably', () => {
+        pick('Customer', 'Name', 'like');
+        fireIonEvent(formEls().valueInput, 'ionInput', 'Ab%_');
+        fixture.detectChanges();
+        formEls().addButton.dispatchEvent(new Event('click'));
+        fixture.detectChanges();
+
+        const added = context.items()[0];
+        expect(added.condition).toBe('like');
+        expect(added.value).toEqual({ type: 'string', value: 'Ab%_' });
+        expect(added.values).toBeUndefined();
+        expect(added.label).toBe("Customer.Name like 'Ab%_'");
+      });
+
+      it('sends an `in` item to queries/applicable as a values-only wire fact', async () => {
+        pick('Customer', 'ID', 'in');
+        fireIonEvent(formEls().valueInput, 'ionInput', '1,2');
+        fixture.detectChanges();
+        formEls().addButton.dispatchEvent(new Event('click'));
+        fixture.detectChanges();
+        TestBed.tick();
+        await fixture.whenStable();
+
+        const call = mock.calls.find(
+          (c) => c.method === 'getApplicableQueries',
+        );
+        const sent = (call?.request as { values: Record<string, unknown>[] })
+          .values[0];
+        expect(sent['condition']).toBe('in');
+        expect(sent['values']).toHaveLength(2);
+        expect('value' in sent).toBe(false);
+      });
     });
 
     it('adds the selected cohort role and named overlay without treating the overlay as an automatic binding', () => {

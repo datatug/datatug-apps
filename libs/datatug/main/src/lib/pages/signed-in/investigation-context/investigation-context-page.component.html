@@ -70,7 +70,7 @@
         [value]="selectedCondition()"
         (ionChange)="onConditionChange($event.detail.value)"
       >
-        @for (condition of conditions; track condition) {
+        @for (condition of conditions(); track condition) {
           <ion-select-option [value]="condition">{{
             condition
           }}</ion-select-option>
@@ -123,13 +123,33 @@
         label="Value"
         aria-label="Value"
         label-placement="stacked"
-        placeholder="Enter a value"
+        [placeholder]="
+          selectedCondition() === 'in'
+            ? 'a, b, c (comma-separated)'
+            : selectedCondition() === 'like'
+              ? 'Pattern, e.g. Ab%  (% any run, _ one char)'
+              : 'Enter a value'
+        "
         [type]="valueInputType()"
         [value]="valueInput()"
         (ionInput)="onValueChange($event.detail.value)"
         (keyup.enter)="add()"
       />
     </ion-item>
+    @if (selectedCondition() === 'in' && inTokens().length) {
+      <ion-item lines="none" data-testid="in-values-preview">
+        <ion-label color="medium"
+          >{{ inTokens().length }} value{{
+            inTokens().length === 1 ? '' : 's'
+          }}: {{ inTokens().join(', ') }}</ion-label
+        >
+      </ion-item>
+    }
+    @if (valueError(); as message) {
+      <ion-item lines="none">
+        <ion-text color="danger" role="alert">{{ message }}</ion-text>
+      </ion-item>
+    }
     <ion-item lines="none">
       <ion-button
         aria-label="Add context variable"

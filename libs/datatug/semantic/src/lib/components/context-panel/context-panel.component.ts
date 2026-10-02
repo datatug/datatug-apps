@@ -28,7 +28,12 @@ import {
   linkOutline,
 } from 'ionicons/icons';
 import { forkJoin } from 'rxjs';
-import { displayTypedValue, toFact, toTypedValue } from '../../../contract/adapt';
+import {
+  displayTypedValue,
+  factValues,
+  toFact,
+  toTypedValue,
+} from '../../../contract/adapt';
 import { tryDecodeErrorEnvelope } from '../../../contract/decoders';
 import {
   Candidate,
@@ -383,8 +388,8 @@ export class ContextPanelComponent {
         (v) =>
           v.entity === item.entity &&
           v.field === item.field &&
-          v.value.type === item.value.type &&
-          v.value.value === item.value.value,
+          (v.condition ?? '==') === item.condition &&
+          JSON.stringify(factValues(v)) === JSON.stringify(factValues(item)),
       );
       if (!isDuplicate) {
         values.push(contextItemToFact(item));

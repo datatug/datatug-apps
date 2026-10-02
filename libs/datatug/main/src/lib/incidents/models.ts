@@ -55,6 +55,12 @@ export interface IncidentCanonicalProjectScope extends IncidentProjectScope {
   readonly environment: string;
 }
 
+/** The operators an incident's canonical context can carry. Lead assumption (2026-10-02,
+ * context-variable `in`/`like` change): the incident store's fact validator
+ * (`incident-client.service.ts`) accepts only the original six, so `in` and `like`
+ * are excluded here until the incident contract is extended. */
+export type IncidentFactCondition = Exclude<ContextCondition, 'in' | 'like'>;
+
 export type IncidentFactValue = TypedValue | { readonly redacted: true };
 
 export interface IncidentFactView {
@@ -65,7 +71,7 @@ export interface IncidentFactView {
   readonly origin: 'selection' | 'context' | 'manual';
   readonly physical?: PhysicalRef;
   readonly mapping?: 'declared' | 'inferred';
-  readonly condition?: ContextCondition;
+  readonly condition?: IncidentFactCondition;
   readonly enabled: boolean;
   readonly role?: FactRole;
   readonly layer?: FactLayer;

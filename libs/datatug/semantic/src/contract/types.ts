@@ -53,28 +53,34 @@ export type FactLayer =
   | `question:${string}`;
 
 /** Comparison operator a {@link Fact} (or an Investigation Context item built from one —
- * see `InvestigationContextService`'s `ContextItem`) may carry — founder ruling
- * 2026-09-10 (S156): "should have form to add context variable for selected
- * Entity.Field with conditions like ==, >, >=, etc." Operator set is a lead assumption
- * recorded in the hub Feature (`spec/features/investigation-context`
- * REQ:context-variable-conditions) and carried into the transport appendix
- * (`spec/features/core-investigation-loop/api-contract.md`, `Fact.condition`
- * paragraph), pending founder confirmation. `'=='` is the default. */
-export type ContextCondition = '==' | '!=' | '>' | '>=' | '<' | '<=';
+ * see `InvestigationContextService`'s `ContextItem`) may carry.
+ *
+ * Founder rulings: 2026-09-10 (S156) "should have form to add context variable for
+ * selected Entity.Field with conditions like ==, >, >=, etc."; 2026-10-02 "why in/like
+ * are not included? Is it hard to support them? They are often needed" then "add both
+ * `in` and `like`". The operator set is carried into the hub Feature
+ * (`spec/features/investigation-context` REQ:context-variable-conditions) and the
+ * transport appendix (`spec/features/core-investigation-loop/api-contract.md`,
+ * `Fact.condition` paragraph). `'=='` is the default. */
+export type ContextCondition =
+  | '=='
+  | '!='
+  | '>'
+  | '>='
+  | '<'
+  | '<='
+  | 'in'
+  | 'like';
 
-/** A semantic value the browser suggests to the server — never an access credential; the
- * server revalidates `physical`/`mapping` against authorized project metadata. */
-export interface Fact {
+/** Every operator that takes exactly one {@link TypedValue} in `Fact.value` (all but
+ * `'in'`). `'like'` is among them: its `value` is a `string` TypedValue holding a SQL
+ * LIKE pattern. */
+export type ScalarContextCondition = Exclude<ContextCondition, 'in'>;
+
+interface FactBase {
   readonly id: string;
   readonly entity: string;
   readonly field: string;
-  readonly value: TypedValue;
-  /** OPTIONAL; absent means `'=='` — matches every fact produced before this field
-   * existed. See api-contract.md's `Fact.condition` paragraph for the compatibility
-   * rule an agent that does not implement conditions must follow (leave the parameter
-   * unbound and report it unbound, never apply a non-`'=='` fact as equality). Lead
-   * assumption 2026-09-10, pending founder confirmation. */
-  readonly condition?: ContextCondition;
   readonly origin: FactOrigin;
   readonly physical?: PhysicalRef;
   readonly mapping?: FactMapping;
@@ -84,6 +90,31 @@ export interface Fact {
   readonly layer?: FactLayer;
   readonly enabled: boolean;
 }
+
+/** A fact carrying one value. `condition` is OPTIONAL; absent means `'=='`. See
+ * api-contract.md's `Fact.condition` paragraph for the rule an agent that does not
+ * implement a condition must follow (leave the parameter unbound and report it unbound,
+ * never apply a non-`'=='` fact as equality). `values` must be absent. */
+export interface ScalarFact extends FactBase {
+  readonly value: TypedValue;
+  readonly condition?: ScalarContextCondition;
+  readonly values?: undefined;
+}
+
+/** A membership fact (`field in (v1, v2, ...)`): wire shape is `condition: 'in'` plus a
+ * non-empty `values` list of same-typed TypedValues, and NO `value` key. Chosen over
+ * overloading `value` (a list-valued TypedValue would break every consumer that treats
+ * `TypedValue` as a scalar) and over repeating one `==` fact per member (facts are
+ * ANDed/ambiguity-checked per field, so that would read as a conflict, not a set). */
+export interface InFact extends FactBase {
+  readonly condition: 'in';
+  readonly values: readonly TypedValue[];
+  readonly value?: undefined;
+}
+
+/** A semantic value the browser suggests to the server — never an access credential; the
+ * server revalidates `physical`/`mapping` against authorized project metadata. */
+export type Fact = ScalarFact | InFact;
 
 /** Reports an applied restriction — never the rejected rows/values themselves. An empty
  * `hiddenColumns` list with a generic `policy` label is how a protected name stays hidden. */

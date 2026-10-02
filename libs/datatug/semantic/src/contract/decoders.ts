@@ -224,6 +224,8 @@ const FACT_CONDITIONS: readonly ContextCondition[] = [
   '>=',
   '<',
   '<=',
+  'in',
+  'like',
 ];
 const FACT_ROLES = [
   'affected',
@@ -265,6 +267,7 @@ export function decodeFact(v: unknown, path = 'fact'): Fact {
       'entity',
       'field',
       'value',
+      'values',
       'condition',
       'origin',
       'physical',
@@ -275,14 +278,10 @@ export function decodeFact(v: unknown, path = 'fact'): Fact {
     ],
     path,
   );
-  return {
+  const base = {
     id: requireString(obj['id'], `${path}.id`),
     entity: requireString(obj['entity'], `${path}.entity`),
     field: requireString(obj['field'], `${path}.field`),
-    value: decodeTypedValue(obj['value'], `${path}.value`),
-    condition: optional(obj['condition'], `${path}.condition`, (x, p) =>
-      requireEnum(x, FACT_CONDITIONS, p),
-    ),
     origin: requireEnum(obj['origin'], FACT_ORIGINS, `${path}.origin`),
     physical: optional(obj['physical'], `${path}.physical`, decodePhysicalRef),
     mapping: optional(obj['mapping'], `${path}.mapping`, (x, p) =>
@@ -294,6 +293,46 @@ export function decodeFact(v: unknown, path = 'fact'): Fact {
     layer: optional(obj['layer'], `${path}.layer`, decodeFactLayer),
     enabled: requireBoolean(obj['enabled'], `${path}.enabled`),
   };
+  const condition = optional(obj['condition'], `${path}.condition`, (x, p) =>
+    requireEnum(x, FACT_CONDITIONS, p),
+  );
+  if (condition === 'in') {
+    if (obj['value'] !== undefined) {
+      fail(
+        `${path}.value`,
+        'must be absent when condition is "in"; use values',
+      );
+    }
+    if (obj['values'] === undefined) {
+      fail(`${path}.values`, 'is required when condition is "in"');
+    }
+    const values = requireArray(obj['values'], `${path}.values`).map((x, i) =>
+      decodeTypedValue(x, `${path}.values[${i}]`),
+    );
+    if (values.length === 0) {
+      fail(`${path}.values`, 'must be a non-empty list');
+    }
+    const kind = values[0].type;
+    const mixed = values.findIndex((x) => x.type !== kind);
+    if (mixed >= 0) {
+      fail(
+        `${path}.values[${mixed}]`,
+        `type "${values[mixed].type}" differs from "${kind}"; an "in" list holds one type`,
+      );
+    }
+    return { ...base, condition, values };
+  }
+  if (obj['values'] !== undefined) {
+    fail(`${path}.values`, 'is only allowed when condition is "in"');
+  }
+  if (obj['value'] === undefined) {
+    fail(`${path}.value`, 'is required');
+  }
+  const value = decodeTypedValue(obj['value'], `${path}.value`);
+  if (condition === 'like' && value.type !== 'string') {
+    fail(`${path}.value`, 'a "like" pattern must be a string TypedValue');
+  }
+  return { ...base, value, condition };
 }
 
 export function decodeLimitation(v: unknown, path = 'limitation'): Limitation {

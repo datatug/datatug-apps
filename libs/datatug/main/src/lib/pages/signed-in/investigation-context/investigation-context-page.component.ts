@@ -47,6 +47,7 @@ import {
   normalizedFactLayer,
   SemanticApiService,
   SemanticValue,
+  describeCondition,
   tryDecodeErrorEnvelope,
 } from '@sneat/datatug-semantic';
 import { getStoreId, IProjectContext } from '../../../nav/nav-models';
@@ -64,9 +65,8 @@ import { incidentContextQueryParams } from '../../../incidents/incident-route-co
 
 addIcons({ closeOutline, linkOutline });
 
-/** The condition dropdown's fixed option list — founder ruling 2026-09-10 (S156):
- * "conditions like ==, >, >=, etc."; the lead's own assumption note for the exact set
- * (api-contract.md/hub spec still only models `==`, recorded as a follow-up). */
+/** The condition dropdown's fixed option list — founder rulings 2026-09-10 (S156):
+ * "conditions like ==, >, >=, etc."; 2026-10-02: "add both `in` and `like`". */
 const CONDITIONS: readonly ContextCondition[] = [
   '==',
   '!=',
@@ -74,7 +74,26 @@ const CONDITIONS: readonly ContextCondition[] = [
   '>=',
   '<',
   '<=',
+  'in',
+  'like',
 ];
+
+/** Field types `like` is offered for (lead assumption: text-typed only; an unknown field
+ * type also gets it). */
+const TEXT_DATA_TYPES = new Set<DataType>(['string', 'text']);
+
+/** Splits an `in` entry on commas and newlines, trimming and dropping empty and
+ * duplicate tokens (first occurrence wins). */
+export function parseInList(raw: string): string[] {
+  const out: string[] = [];
+  for (const token of raw.split(/[,\n]/u)) {
+    const t = token.trim();
+    if (t && !out.includes(t)) {
+      out.push(t);
+    }
+  }
+  return out;
+}
 const FACT_ROLES: readonly FactRole[] = [
   'affected',
   'healthy_control',
@@ -247,16 +266,40 @@ export class InvestigationContextPageComponent implements OnDestroy {
   protected readonly selectedLayerKind = signal<LayerKind>('canonical');
   protected readonly selectedLayerId = signal('');
   protected readonly valueInput = signal('');
-  protected readonly conditions = CONDITIONS;
   protected readonly factRoles = FACT_ROLES;
   protected readonly layerKinds = LAYER_KINDS;
 
   protected readonly selectedFieldType = computed<DataType | undefined>(
     () => this.fields().find((f) => f.id === this.selectedField())?.type,
   );
+  /** Condition options for the chosen field: `like` only for text-typed (or still
+   * unknown) fields. */
+  protected readonly conditions = computed<readonly ContextCondition[]>(() => {
+    const type = this.selectedFieldType();
+    return type && !TEXT_DATA_TYPES.has(type)
+      ? CONDITIONS.filter((c) => c !== 'like')
+      : CONDITIONS;
+  });
+  /** `in`/`like` values are free text (commas, `%`), so never a native number/date input. */
   protected readonly valueInputType = computed(() =>
-    inputTypeForDataType(this.selectedFieldType()),
+    this.selectedCondition() === 'in' || this.selectedCondition() === 'like'
+      ? 'text'
+      : inputTypeForDataType(this.selectedFieldType()),
   );
+  /** The parsed `in` members (trimmed, deduped), empty for any other condition. */
+  protected readonly inTokens = computed(() =>
+    this.selectedCondition() === 'in' ? parseInList(this.valueInput()) : [],
+  );
+  /** Why the entered `in` list cannot be added (a member that is not a number for a
+   * numeric field), or undefined. */
+  protected readonly valueError = computed<string | undefined>(() => {
+    const type = this.selectedFieldType();
+    if (!type || !NUMERIC_DATA_TYPES.has(type)) {
+      return undefined;
+    }
+    const bad = this.inTokens().find((t) => !Number.isFinite(Number(t)));
+    return bad === undefined ? undefined : `"${bad}" is not a number`;
+  });
   /** Add button stays disabled until Entity, Field, Condition and Value are all set —
    * task S156 item 1. */
   protected readonly canAdd = computed(
@@ -266,7 +309,9 @@ export class InvestigationContextPageComponent implements OnDestroy {
       !!this.selectedCondition() &&
       (this.selectedLayerKind() === 'canonical' ||
         this.selectedLayerId().trim().length > 0) &&
-      this.valueInput().trim().length > 0,
+      (this.selectedCondition() === 'in'
+        ? this.inTokens().length > 0 && !this.valueError()
+        : this.valueInput().trim().length > 0),
   );
 
   protected readonly makeIncidentQueryParams = computed(() => {
@@ -465,6 +510,13 @@ export class InvestigationContextPageComponent implements OnDestroy {
 
   protected onFieldChange(fieldId: string | null | undefined): void {
     this.selectedField.set(fieldId || undefined);
+    // `like` is not offered for a non-text field — drop a now-invalid choice.
+    if (
+      this.selectedCondition() === 'like' &&
+      !this.conditions().includes('like')
+    ) {
+      this.selectedCondition.set(undefined);
+    }
   }
 
   protected onConditionChange(
@@ -500,10 +552,15 @@ export class InvestigationContextPageComponent implements OnDestroy {
     const field = this.selectedField();
     const condition = this.selectedCondition();
     const raw = this.valueInput().trim();
-    if (!entity || !field || !condition || !raw) {
+    if (!entity || !field || !condition || !raw || !this.canAdd()) {
       return;
     }
-    const value = toSemanticValue(raw, this.selectedFieldType());
+    const fieldType = this.selectedFieldType();
+    const members = condition === 'in' ? this.inTokens() : [raw];
+    // `like` is always a string pattern, whatever the field's declared type.
+    const semanticValues = members.map((m) =>
+      condition === 'like' ? m : toSemanticValue(m, fieldType),
+    );
     const layerKind = this.selectedLayerKind();
     const layer =
       layerKind === 'canonical'
@@ -511,8 +568,13 @@ export class InvestigationContextPageComponent implements OnDestroy {
         : (`${layerKind}:${this.selectedLayerId().trim()}` as FactLayer);
     this.context.addValue({
       entityField: { entity, field },
-      value,
-      label: `${entity}.${field} ${condition} ${raw}`,
+      ...(condition === 'in'
+        ? { values: semanticValues }
+        : { value: semanticValues[0] }),
+      label: `${entity}.${field} ${describeCondition(
+        condition,
+        members.map((m) => ({ type: 'string' as const, value: m })),
+      )}`,
       source: 'manual',
       condition,
       ...(this.selectedRole() ? { role: this.selectedRole() } : {}),

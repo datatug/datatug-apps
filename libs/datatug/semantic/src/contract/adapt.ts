@@ -8,7 +8,13 @@
 // rows are rendered (unwrap) — not throughout the whole app. Task 15 owns
 // converting the UI-local state itself to Fact-shaped typed storage.
 
-import { Fact, FactOrigin, PhysicalRef, TypedValue } from './types';
+import {
+  ContextCondition,
+  Fact,
+  FactOrigin,
+  PhysicalRef,
+  TypedValue,
+} from './types';
 
 export type SemanticValue = string | number | boolean | null;
 
@@ -73,7 +79,11 @@ export function displayTypedValue(tv: TypedValue): string {
  * `InvestigationContextService`'s pre-existing `contextItemId()` scheme (`entity.field=value`)
  * so the same semantic value produces the same id whether it reaches the wire from a grid
  * selection or from the Investigation Context basket. */
-export function buildFactId(entity: string, field: string, value: TypedValue): string {
+export function buildFactId(
+  entity: string,
+  field: string,
+  value: TypedValue,
+): string {
   return `${entity}.${field}=${displayTypedValue(value)}`;
 }
 
@@ -99,4 +109,26 @@ export function toFact(
     enabled,
     ...(physical ? { physical } : {}),
   };
+}
+
+/** The typed values a fact carries: `values` for an `in` fact, otherwise the single
+ * `value` as a one-element list. */
+export function factValues(fact: Fact): readonly TypedValue[] {
+  return fact.condition === 'in' ? fact.values : [fact.value];
+}
+
+/** Human-readable `field in (a, b)` / `field like 'x%'` / `field >= 5` text for a
+ * condition and its values — used for context-item labels. */
+export function describeCondition(
+  condition: ContextCondition,
+  values: readonly TypedValue[],
+): string {
+  const text = (v: TypedValue): string => String(v.value);
+  if (condition === 'in') {
+    return `in (${values.map(text).join(', ')})`;
+  }
+  if (condition === 'like') {
+    return `like '${values.map(text).join('')}'`;
+  }
+  return `${condition} ${values.map(text).join('')}`;
 }
