@@ -451,6 +451,68 @@ describe('IncidentCreatePageComponent', () => {
     ).toMatchObject({ condition: '>=' });
   });
 
+  describe('enabled in/like items', () => {
+    const base = {
+      origin: 'context' as const,
+      enabled: true,
+      source: 'manual',
+      addedAt: '2026-09-13T08:00:00Z',
+    };
+    const eqItem: ContextItem = {
+      ...base,
+      id: 'Customer.ID:integer="5"',
+      entity: 'Customer',
+      field: 'ID',
+      value: { type: 'integer', value: '5' },
+      label: 'Customer.ID = 5',
+      condition: '==',
+    };
+    const inItem: ContextItem = {
+      ...base,
+      id: 'Customer.ID in',
+      entity: 'Customer',
+      field: 'ID',
+      values: [
+        { type: 'integer', value: '1' },
+        { type: 'integer', value: '2' },
+      ],
+      label: 'Customer.ID in (1, 2)',
+      condition: 'in',
+    };
+    const likeItem: ContextItem = {
+      ...base,
+      id: 'Customer.Name like',
+      entity: 'Customer',
+      field: 'Name',
+      value: { type: 'string', value: 'A%' },
+      label: 'Customer.Name like A%',
+      condition: 'like',
+    };
+
+    it.each([
+      ['in', inItem],
+      ['like', likeItem],
+    ])(
+      'blocks submit and shows the error for an enabled %s item',
+      (_n, item) => {
+        investigationItems.set([eqItem, item]);
+        peek(fixture.componentInstance).title = 'Blocked';
+        peek(fixture.componentInstance).submit();
+        expect(createSpy).not.toHaveBeenCalled();
+        expect(peek(fixture.componentInstance).errorMessage()).toContain(
+          'cannot carry "in" or "like"',
+        );
+      },
+    );
+
+    it('counts only the facts the incident can carry', () => {
+      investigationItems.set([eqItem, inItem, likeItem]);
+      fixture.detectChanges();
+      const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+      expect(text).toMatch(/1\s+enabled Investigation Context\s+fact\s+will/);
+    });
+  });
+
   it('preserves role and named layer while leaving the original Investigation Context unchanged', () => {
     const overlay: ContextItem = {
       id: 'Customer.ID@hypothesis:H17:integer="11"',

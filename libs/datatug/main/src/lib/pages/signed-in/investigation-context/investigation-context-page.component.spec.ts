@@ -512,7 +512,12 @@ describe('InvestigationContextPageComponent', () => {
         expect(added.label).toBe("Customer.Name like 'Ab%_'");
       });
 
-      it('withholds an `in` item from queries/applicable until an agent supports it', async () => {
+      it('withholds an `in` item from queries/applicable until an agent supports it, still sending the sendable item', async () => {
+        pick('Customer', 'ID', '==');
+        fireIonEvent(formEls().valueInput, 'ionInput', '5');
+        fixture.detectChanges();
+        formEls().addButton.dispatchEvent(new Event('click'));
+        fixture.detectChanges();
         pick('Customer', 'ID', 'in');
         fireIonEvent(formEls().valueInput, 'ionInput', '1,2');
         fixture.detectChanges();
@@ -521,17 +526,95 @@ describe('InvestigationContextPageComponent', () => {
         TestBed.tick();
         await fixture.whenStable();
 
-        expect(context.items()[0].condition).toBe('in');
-        const sentFacts = mock.calls
-          .filter((c) => c.method === 'getApplicableQueries')
-          .flatMap(
-            (c) => (c.request as { values: Record<string, unknown>[] }).values,
-          );
+        expect(context.items().map((i) => i.condition)).toEqual(['==', 'in']);
+        const calls = mock.calls.filter(
+          (c) => c.method === 'getApplicableQueries',
+        );
+        expect(calls.length).toBeGreaterThan(0);
+        const sentFacts = calls.flatMap(
+          (c) => (c.request as { values: Record<string, unknown>[] }).values,
+        );
+        expect(sentFacts.some((f) => f['field'] === 'ID')).toBe(true);
         expect(
           sentFacts.some(
             (f) => f['condition'] === 'in' || Array.isArray(f['values']),
           ),
         ).toBe(false);
+      });
+
+      it('clears the Value text when the condition crosses between list, pattern and scalar modes, but keeps it between two scalar comparators', () => {
+        pick('Customer', 'ID', 'in');
+        fireIonEvent(formEls().valueInput, 'ionInput', '1, 2');
+        fireIonEvent(formEls().conditionSelect, 'ionChange', '==');
+        fixture.detectChanges();
+        expect(internals().valueInput()).toBe('');
+        expect(internals().canAdd()).toBe(false);
+
+        fireIonEvent(formEls().valueInput, 'ionInput', '7');
+        fireIonEvent(formEls().conditionSelect, 'ionChange', '>');
+        expect(internals().valueInput()).toBe('7');
+
+        fireIonEvent(formEls().conditionSelect, 'ionChange', 'in');
+        expect(internals().valueInput()).toBe('');
+
+        fireIonEvent(formEls().valueInput, 'ionInput', '1, 2');
+        fireIonEvent(formEls().conditionSelect, 'ionChange', '<');
+        expect(internals().valueInput()).toBe('');
+        formEls().addButton.dispatchEvent(new Event('click'));
+        expect(context.items()).toEqual([]);
+
+        pick('Customer', 'Name', 'like');
+        fireIonEvent(formEls().valueInput, 'ionInput', 'Ab%');
+        fireIonEvent(formEls().conditionSelect, 'ionChange', '==');
+        expect(internals().valueInput()).toBe('');
+      });
+
+      it('clears the Value text when the field changes to a different data type, keeps it for the same type', () => {
+        pick('Customer', 'ID', '==');
+        fireIonEvent(formEls().valueInput, 'ionInput', '12');
+        fireIonEvent(formEls().fieldSelect, 'ionChange', 'ID');
+        expect(internals().valueInput()).toBe('12');
+        fireIonEvent(formEls().fieldSelect, 'ionChange', 'Name');
+        expect(internals().valueInput()).toBe('');
+      });
+
+      it('`in` on a boolean field rejects a list mixing booleans and other words, and accepts a uniform one', async () => {
+        entityService.getEntity.mockReturnValueOnce(
+          of({
+            id: 'Invoice',
+            dbo: {
+              id: 'Invoice',
+              fields: [{ id: 'Paid', type: 'boolean' }],
+            } as IEntity,
+          }) as unknown as ReturnType<typeof entityService.getEntity>,
+        );
+        pick('Invoice', 'Paid', 'in');
+        fireIonEvent(formEls().valueInput, 'ionInput', 'true, yes');
+        fixture.detectChanges();
+        expect(internals().valueError()).toMatch(/one type of value/);
+        expect(internals().canAdd()).toBe(false);
+
+        fireIonEvent(formEls().valueInput, 'ionInput', 'true, false');
+        fixture.detectChanges();
+        expect(internals().valueError()).toBeUndefined();
+        expect(internals().canAdd()).toBe(true);
+        formEls().addButton.dispatchEvent(new Event('click'));
+        expect(context.items()[0].values).toEqual([
+          { type: 'boolean', value: true },
+          { type: 'boolean', value: false },
+        ]);
+      });
+
+      it('`in` on a numeric field widens "1, 2.5" to numbers and stores it', () => {
+        pick('Customer', 'ID', 'in');
+        fireIonEvent(formEls().valueInput, 'ionInput', '1, 2.5');
+        fixture.detectChanges();
+        expect(internals().valueError()).toBeUndefined();
+        formEls().addButton.dispatchEvent(new Event('click'));
+        expect(context.items()[0].values).toEqual([
+          { type: 'number', value: 1 },
+          { type: 'number', value: 2.5 },
+        ]);
       });
     });
 

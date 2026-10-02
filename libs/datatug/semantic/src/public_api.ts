@@ -29,6 +29,7 @@ export {
   scopeKey,
   scopesEqual,
   SemanticParameterRef,
+  unifyInListTypes,
 } from './lib/services/investigation-context.service';
 export {
   BindingBlockReason,

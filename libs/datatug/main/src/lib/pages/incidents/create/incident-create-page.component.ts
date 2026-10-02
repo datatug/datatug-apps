@@ -163,8 +163,10 @@ export class IncidentCreatePageComponent {
     ) {
       return 0;
     }
-    return this.investigationContext.items().filter((item) => item.enabled)
-      .length;
+    // Only what the incident can carry; the blocking error covers the rest.
+    return this.investigationContext
+      .items()
+      .filter((item) => item.enabled && isIncidentCompatible(item)).length;
   });
   private readonly committedIncident = signal<CommittedIncident | undefined>(
     undefined,

@@ -577,7 +577,17 @@ export class InvestigationContextService {
       if (!Array.isArray(parsed)) {
         return [];
       }
-      return parsed.map(decodeStoredContextItem);
+      // One undecodable item (written by an older build, hand-edited) is dropped on
+      // its own; it must not discard the rest of the scope's basket.
+      const items: ContextItem[] = [];
+      parsed.forEach((stored, index) => {
+        try {
+          items.push(decodeStoredContextItem(stored, index));
+        } catch {
+          // dropped
+        }
+      });
+      return items;
     } catch {
       // sessionStorage unavailable (private mode, SSR, or a full quota) or corrupted
       // JSON — start empty rather than throwing.
@@ -692,6 +702,26 @@ function fromStoredValue(item: ContextItem): SemanticValue {
   }
 }
 
+/** Makes an `in` member list single-typed, as the wire contract requires (the decoder
+ * rejects a mixed list). Lane assumption: `integer` and `number` members are widened to
+ * `number` (so "1, 2.5" on a numeric field works); any other mix (e.g. `boolean` +
+ * `string` from "true, yes") is rejected with a clear message rather than silently
+ * coerced. Throws on a mixed list. */
+export function unifyInListTypes(values: readonly TypedValue[]): TypedValue[] {
+  const kinds = new Set(values.map((v) => v.type));
+  if (kinds.size <= 1) {
+    return [...values];
+  }
+  if ([...kinds].every((k) => k === 'integer' || k === 'number')) {
+    return values.map((v) =>
+      v.type === 'integer' ? { type: 'number', value: Number(v.value) } : v,
+    );
+  }
+  throw new Error(
+    `an "in" list must hold one type of value, got ${[...kinds].join(' and ')}`,
+  );
+}
+
 /** Validates an input's value/values against its condition and returns the typed list
  * (one element for every scalar condition). Throws on a shape the wire contract would
  * reject: `in` needs a non-empty `values`, no `value`; every other condition needs a
@@ -707,7 +737,9 @@ function typedValuesForInput(
     if (!input.values?.length) {
       throw new Error('addValue: "in" needs a non-empty values list');
     }
-    return dedupeTypedValues(input.values.map((v) => toTypedValue(v)));
+    return dedupeTypedValues(
+      unifyInListTypes(input.values.map((v) => toTypedValue(v))),
+    );
   }
   if (input.values !== undefined) {
     throw new Error(

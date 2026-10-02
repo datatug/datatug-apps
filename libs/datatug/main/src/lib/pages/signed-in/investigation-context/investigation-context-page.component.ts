@@ -49,7 +49,9 @@ import {
   SemanticApiService,
   SemanticValue,
   describeCondition,
+  toTypedValue,
   tryDecodeErrorEnvelope,
+  unifyInListTypes,
 } from '@sneat/datatug-semantic';
 import { getStoreId, IProjectContext } from '../../../nav/nav-models';
 import { DatatugCoreModule } from '../../../core/datatug-core.module';
@@ -82,6 +84,12 @@ const CONDITIONS: readonly ContextCondition[] = [
 /** Field types `like` is offered for (lead assumption: text-typed only; an unknown field
  * type also gets it). */
 const TEXT_DATA_TYPES = new Set<DataType>(['string', 'text']);
+
+function conditionMode(
+  condition: ContextCondition | null | undefined,
+): 'in' | 'like' | 'scalar' {
+  return condition === 'in' || condition === 'like' ? condition : 'scalar';
+}
 
 /** Splits an `in` entry on commas and newlines, trimming and dropping empty and
  * duplicate tokens (first occurrence wins). */
@@ -295,11 +303,22 @@ export class InvestigationContextPageComponent implements OnDestroy {
    * numeric field), or undefined. */
   protected readonly valueError = computed<string | undefined>(() => {
     const type = this.selectedFieldType();
-    if (!type || !NUMERIC_DATA_TYPES.has(type)) {
-      return undefined;
+    if (type && NUMERIC_DATA_TYPES.has(type)) {
+      const bad = this.inTokens().find((t) => !Number.isFinite(Number(t)));
+      if (bad !== undefined) {
+        return `"${bad}" is not a number`;
+      }
     }
-    const bad = this.inTokens().find((t) => !Number.isFinite(Number(t)));
-    return bad === undefined ? undefined : `"${bad}" is not a number`;
+    try {
+      // The members must end up one type (the wire contract); e.g. "true, yes" on a
+      // boolean field would be boolean + string.
+      unifyInListTypes(
+        this.inTokens().map((t) => toTypedValue(toSemanticValue(t, type))),
+      );
+    } catch (err) {
+      return err instanceof Error ? err.message : String(err);
+    }
+    return undefined;
   });
   /** Add button stays disabled until Entity, Field, Condition and Value are all set —
    * task S156 item 1. */
@@ -510,7 +529,13 @@ export class InvestigationContextPageComponent implements OnDestroy {
   }
 
   protected onFieldChange(fieldId: string | null | undefined): void {
+    const previousType = this.selectedFieldType();
     this.selectedField.set(fieldId || undefined);
+    // Text typed for one data type must not leak into another (e.g. "1, 2" into a
+    // string field as a scalar).
+    if (this.selectedFieldType() !== previousType) {
+      this.valueInput.set('');
+    }
     // `like` is not offered for a non-text field — drop a now-invalid choice.
     if (
       this.selectedCondition() === 'like' &&
@@ -523,6 +548,11 @@ export class InvestigationContextPageComponent implements OnDestroy {
   protected onConditionChange(
     condition: ContextCondition | null | undefined,
   ): void {
+    // Keep the text between two scalar comparators; reset it when crossing between the
+    // list (`in`), pattern (`like`) and scalar modes, where it means something else.
+    if (conditionMode(this.selectedCondition()) !== conditionMode(condition)) {
+      this.valueInput.set('');
+    }
     this.selectedCondition.set(condition || undefined);
   }
 

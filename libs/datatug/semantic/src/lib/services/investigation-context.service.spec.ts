@@ -834,6 +834,101 @@ describe('InvestigationContextService', () => {
       expect(restored.items().map((i) => i.condition)).toEqual(['in', 'like']);
       expect(restored.items()[0].values).toHaveLength(2);
     });
+
+    describe('single-type `in` lists', () => {
+      const addIn = (
+        service: InvestigationContextService,
+        values: (string | number | boolean | null)[],
+      ) =>
+        service.addValue({
+          entityField: field,
+          values,
+          label: 'x',
+          source: 'manual',
+          condition: 'in',
+        });
+
+      it('widens integer + number members to number', () => {
+        const service = createService();
+        service.setScope(scopeA);
+        const item = addIn(service, [1, 2.5]);
+        expect(item.values).toEqual([
+          { type: 'number', value: 1 },
+          { type: 'number', value: 2.5 },
+        ]);
+      });
+
+      it('dedupes members that collapse after widening', () => {
+        const service = createService();
+        service.setScope(scopeA);
+        expect(addIn(service, [1, 1.5, 1]).values).toHaveLength(2);
+      });
+
+      it('rejects a mixed list (boolean + string) with a clear message', () => {
+        const service = createService();
+        service.setScope(scopeA);
+        expect(() => addIn(service, [true, 'yes'])).toThrow(
+          /one type of value, got boolean and string/,
+        );
+        expect(service.items()).toEqual([]);
+      });
+
+      it('round-trips every accepted shape through sessionStorage', () => {
+        const service = createService();
+        service.setScope(scopeA);
+        addIn(service, [1, 2]);
+        addIn(service, [1, 2.5]);
+        addIn(service, ['a', 'b']);
+        addIn(service, [true, false]);
+        const before = service.items();
+        expect(before).toHaveLength(4);
+        const restored = createService();
+        restored.setScope(scopeA);
+        expect(restored.items().map((i) => i.values)).toEqual(
+          before.map((i) => i.values),
+        );
+      });
+    });
+
+    it('restore drops one undecodable item and keeps the rest of the basket', () => {
+      const service = createService();
+      service.setScope(scopeA);
+      service.addValue({
+        entityField: field,
+        value: 'DE',
+        label: 'Customer.Country = DE',
+        source: 'manual',
+      });
+      service.addValue({
+        entityField: field,
+        values: ['FR', 'IT'],
+        label: 'Customer.Country in (FR, IT)',
+        source: 'manual',
+        condition: 'in',
+      });
+      service.addValue({
+        entityField: field,
+        value: 'PL',
+        label: 'Customer.Country = PL',
+        source: 'manual',
+      });
+      const key = sessionStorage.key(0);
+      if (!key) throw new Error('Expected persisted context key.');
+      const persisted = JSON.parse(sessionStorage.getItem(key) || '[]');
+      // A mixed-type `in` list: the decoder rejects it.
+      persisted[1].values = [
+        { type: 'boolean', value: true },
+        { type: 'string', value: 'yes' },
+      ];
+      sessionStorage.setItem(key, JSON.stringify(persisted));
+
+      const restarted = createService();
+      restarted.setScope(scopeA);
+      expect(restarted.items().map((i) => i.label)).toEqual([
+        'Customer.Country = DE',
+        'Customer.Country = PL',
+      ]);
+    });
   });
 });
 
