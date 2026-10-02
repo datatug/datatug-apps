@@ -754,13 +754,107 @@ describe('demo hand-off capture', () => {
         '/project/github.com/o%2Fx/r/chat',
         '/project/github.com/%E0%A4%A/r/chat',
       ];
+      // Every other address under /project/github.com loses `msg` and `q` only (review S2): nothing is stashed
+      // or kept for it, and the rest of its query stays.
+      const underProject = (path: string) =>
+        /^\/project\/github\.com(?:[/;(]|$)/i.test(path);
       for (const path of paths) {
         const result = run(path, '?q=x&lang=ru', '#h');
         expect(result.stash !== undefined, path).toBe(isHandoffPath(path));
         expect(result.replaced, path).toEqual(
-          isHandoffPath(path) ? [path + '#h'] : [],
+          isHandoffPath(path)
+            ? [path + '#h']
+            : underProject(path)
+              ? [path + '?lang=ru#h']
+              : [],
         );
+        if (!isHandoffPath(path)) expect(result.kept, path).toEqual(new Map());
       }
+    });
+
+    describe('every other address under /project/github.com loses msg and q, and only those (review S2)', () => {
+      it.each([
+        // [path, search, hash, what the address becomes]
+        [
+          '/project/github.com/o/r?msg=M&x=1',
+          '/project/github.com/o/r?x=1',
+        ],
+        [
+          '/project/github.com/o/r/tree/HEAD/dir/-/chat?msg=M',
+          '/project/github.com/o/r/tree/HEAD/dir/-/chat',
+        ],
+        [
+          '/project/github.com/o/r/queries?msg=M',
+          '/project/github.com/o/r/queries',
+        ],
+        ['/project/github.com/o/r/queries?q=M&b=2', '/project/github.com/o/r/queries?b=2'],
+        ['/Project/GitHub.com/o/r/Queries?a=1&MSG=keep&msg=M&q=N', '/Project/GitHub.com/o/r/Queries?a=1&MSG=keep'],
+        ['/project/github.com/o/r/chat/extra?msg=M&lang=ru', '/project/github.com/o/r/chat/extra?lang=ru'],
+        ['/project/github.com/o/r/queries?m%73g=M&x=%20y', '/project/github.com/o/r/queries?x=%20y'],
+        ['/project/github.com/o/r/queries?%71=M&x=1', '/project/github.com/o/r/queries?x=1'],
+        ['/project/github.com/o/r/queries?msg&x=1', '/project/github.com/o/r/queries?x=1'],
+        ['/project/github.com/o/r/queries?msg=A&msg=B&q=C', '/project/github.com/o/r/queries'],
+        ['/project/github.com/o/r;m=1/queries?msg=M', '/project/github.com/o/r;m=1/queries'],
+        ['/project/github.com/o/r/queries?x=1&&y=2&msg=M', '/project/github.com/o/r/queries?x=1&&y=2'],
+      ])('%s becomes %s', (path, becomes) => {
+        const [bare, query] = path.split('?');
+        const result = run(bare, '?' + query, '#h');
+        expect(result.replaced).toEqual([becomes + '#h']);
+        expect(result.stash).toBeUndefined();
+        expect(result.kept).toEqual(new Map());
+        // and what is left has neither, as the parser of the app reads a query
+        const left = new URLSearchParams(
+          result.replaced[0].split('#')[0].split('?')[1] ?? '',
+        );
+        expect(left.has('msg')).toBe(false);
+        expect(left.has('q')).toBe(false);
+      });
+
+      it.each([
+        '/project/github.com/o/r?x=1&MSG=1&Q=2&msgx=3&xq=4',
+        '/project/github.com/o/r/queries?lang=ru',
+      ])('%s: nothing to take out, so the address is not rewritten', (path) => {
+        const [bare, query] = path.split('?');
+        expect(run(bare, '?' + query, '#h').replaced).toEqual([]);
+      });
+
+      it.each([
+        '/no-such-route?msg=M',
+        '/queries?q=M',
+        '/store/github.com/project/p@o@/chat?msg=M',
+        '/project/gitlab.com/o/r?msg=M',
+        '/projects/github.com/o/r?msg=M',
+        '/demo/other?q=M',
+        '/',
+      ])('%s is left exactly as it is', (path) => {
+        const [bare, query] = path.split('?');
+        const result = run(bare, '?' + query, '#h');
+        expect(result.replaced).toEqual([]);
+        expect(result.stash).toBeUndefined();
+      });
+
+      it('does nothing for an address with no query at all', () => {
+        expect(run('/project/github.com/o/r/queries', '').replaced).toEqual([]);
+      });
+
+      it('does not throw when the browser refuses to rewrite the address', () => {
+        expect(() =>
+          run('/project/github.com/o/r', '?msg=M', '', false, true),
+        ).not.toThrow();
+      });
+
+      it('a hand-off address is handled as before: the whole query goes, the question is stashed and kept', () => {
+        const result = run(
+          '/project/github.com/o/r/chat',
+          '?msg=M&lang=ru&x=1',
+          '#h',
+        );
+        expect(result.replaced).toEqual(['/project/github.com/o/r/chat#h']);
+        expect(result.stash).toBe('?msg=M&lang=ru&x=1');
+        expect(result.kept).toEqual(
+          new Map([[DEMO_HANDOFF_KEY, '/project/github.com/o/r/chat?msg=M&lang=ru&x=1']]),
+        );
+      });
     });
 
     it('stashes the raw query string for the TypeScript side to parse', () => {

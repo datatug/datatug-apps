@@ -16,6 +16,9 @@ import { routeSegments } from './demo-handoff-path';
 
 const CHAT = '/project/github.com/datatug/chinook-demo/chat';
 
+/** Keys removed from sessionStorage through the env made by `env()`. */
+const removed: string[] = [];
+
 function env(
   options: {
     stash?: string;
@@ -34,6 +37,7 @@ function env(
       return {
         getItem: (key: string) =>
           key === DEMO_HANDOFF_KEY ? (options.stored ?? null) : null,
+        removeItem: (key: string) => void removed.push(key),
       } as unknown as Storage;
     },
     navigationType: () => options.navigation,
@@ -44,7 +48,86 @@ const shows = (path: string, e?: AskedEnv): boolean =>
   showsHoldingPage(routeSegments(path), e);
 
 describe('which hand-off addresses show the holding page', () => {
-  beforeEach(() => resetHandoffAskedForTests());
+  beforeEach(() => {
+    resetHandoffAskedForTests();
+    removed.length = 0;
+  });
+
+  // Review S1 and minor 6 of G-A1b: on main a fresh bare visit removed the question kept in the tab, so a reload
+  // shows the project chat; the answer "no question" must do the same, and the stash must not outlive it.
+  describe('an answer of "no question" forgets the question kept for this tab', () => {
+    it('a fresh visit with no query removes the stored copy, so a reload no longer shows the page', () => {
+      const stored = CHAT + '?msg=Hello';
+      expect(shows(CHAT, env({ stored, navigation: 'navigate' }))).toBe(false);
+      expect(removed).toEqual([DEMO_HANDOFF_KEY]);
+    });
+
+    it('a visit with a query that is no question removes the stored copy, and the stash', () => {
+      const e = env({
+        stash: '?lang=ru',
+        stored: CHAT + '?msg=Hello',
+        navigation: 'navigate',
+      });
+      expect(shows(CHAT, e)).toBe(false);
+      expect(removed).toEqual([DEMO_HANDOFF_KEY]);
+      expect(DEMO_HANDOFF_STASH in e.stash).toBe(false);
+    });
+
+    it('the same for an address that may not echo its question (an untrusted repository)', () => {
+      const path = '/project/github.com/someone/else/chat';
+      expect(
+        shows(
+          path,
+          env({
+            stored: path + '?lang=en&asked=1',
+            navigation: 'navigate',
+          }),
+        ),
+      ).toBe(false);
+      expect(removed).toEqual([DEMO_HANDOFF_KEY]);
+    });
+
+    it('a question that was asked is kept, and its stash is left for the holding page', () => {
+      const e = env({ stash: '?msg=Hello', navigation: 'navigate' });
+      expect(shows(CHAT, e)).toBe(true);
+      expect(removed).toEqual([]);
+      expect(e.stash[DEMO_HANDOFF_STASH]).toBe('?msg=Hello');
+    });
+
+    it('a reload and Back keep it: that is how the page comes back', () => {
+      for (const navigation of ['reload', 'back_forward']) {
+        resetHandoffAskedForTests();
+        expect(
+          shows(CHAT, env({ stored: CHAT + '?msg=Hello', navigation })),
+          navigation,
+        ).toBe(true);
+      }
+      expect(removed).toEqual([]);
+    });
+
+    it('/demo keeps its stash: the page reads the language from it', () => {
+      const e = env({ stash: '?lang=ru', navigation: 'navigate' });
+      expect(shows('/demo', e)).toBe(true);
+      expect(e.stash[DEMO_HANDOFF_STASH]).toBe('?lang=ru');
+      expect(removed).toEqual([]);
+    });
+
+    it('blocked storage does not throw, and the answer is still no', () => {
+      expect(shows(CHAT, env({ blocked: true, navigation: 'navigate' }))).toBe(
+        false,
+      );
+      expect(shows(CHAT, env({ blocked: true, stash: '?lang=ru' }))).toBe(
+        false,
+      );
+    });
+
+    it('asking again about the same address, from the same page load, does not remove anything more', () => {
+      const e = env({ navigation: 'navigate' });
+      shows(CHAT, e);
+      shows(CHAT, e);
+      expect(removed).toEqual([DEMO_HANDOFF_KEY]);
+    });
+  });
 
   describe('/demo: always, whatever the query or storage says', () => {
     it.each(['/demo', '/Demo', '/demo/', '/demo;x=1'])('%s', (path) => {

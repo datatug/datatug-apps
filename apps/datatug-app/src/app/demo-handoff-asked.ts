@@ -78,6 +78,15 @@ function defaultEnv(): AskedEnv {
   };
 }
 
+/** Removes the copy of the query kept for this tab; blocked storage is not an error. */
+function forgetQuestion(env: AskedEnv): void {
+  try {
+    env.storage().removeItem(DEMO_HANDOFF_KEY);
+  } catch {
+    // Storage is blocked: nothing was kept.
+  }
+}
+
 /** What this page load has already been told about an address: it stays the answer for as long as the page lives. */
 const settled = new Map<string, boolean>();
 
@@ -92,6 +101,10 @@ const keyOf = (segments: readonly string[]): string =>
  *    visit in this tab left in storage;
  * 4. a reload or back/forward: the copy of the query kept in storage for this very address.
  * Blocked storage means no for 3 and 4: the question lives only in the page.
+ *
+ * An answer of "no" that comes from 1 or 3 also forgets the question kept for this tab (the copy in storage, and
+ * the stash, which only the holding page reads), as `captureDemoHandoff` did on main for a bare visit: otherwise a
+ * reload would bring the holding page back, with a question the visitor did not ask this time.
  */
 export function handoffAsked(
   segments: readonly string[],
@@ -102,11 +115,19 @@ export function handoffAsked(
   if (typeof stashed === 'string') {
     const asked = searchAsksQuestion(stashed);
     settled.set(key, asked);
+    if (!asked) {
+      delete env.stash[DEMO_HANDOFF_STASH];
+      forgetQuestion(env);
+    }
     return asked;
   }
   const known = settled.get(key);
   if (known !== undefined) return known;
-  if (env.navigationType() === 'navigate') return false;
+  if (env.navigationType() === 'navigate') {
+    settled.set(key, false);
+    forgetQuestion(env);
+    return false;
+  }
   try {
     const raw = env.storage().getItem(DEMO_HANDOFF_KEY) ?? '';
     const at = raw.indexOf('?');

@@ -588,6 +588,9 @@ test.describe('the hand-off holding page', () => {
     });
   }
 
+  // Review minor 11: what only a project page has. The problem page ("No DataTug project here", "This address is not
+  // supported") also has a header, so a header proves nothing. The stand-in for GitHub answers with `{}`, which is a
+  // project file the pages read; the page that opens is the project's own, with the title of its page.
   test('a project page other than the chat opens the project, question or not', async ({
     page,
     context,
@@ -595,19 +598,87 @@ test.describe('the hand-off holding page', () => {
   }) => {
     const origin = new URL(baseURL ?? '').origin;
     await stubExternal(context, (o) => o === origin);
-    for (const url of [
-      '/project/github.com/datatug/chinook-demo',
-      '/project/github.com/datatug/chinook-demo/queries?msg=Hello',
-      '/project/github.com/datatug/chinook-demo/tree/HEAD/dir/-/chat',
+    for (const [url, title] of [
+      ['/project/github.com/datatug/chinook-demo/queries?msg=Hello', 'Queries'],
+      ['/project/github.com/datatug/chinook-demo/tree/HEAD/dir/-/chat', 'Chat'],
+      ['/project/github.com/datatug/chinook-demo', ''],
     ]) {
       await page.goto(url);
-      await expect(page.locator('ion-header').first()).toBeVisible({
-        timeout: 20_000,
-      });
+      if (title) {
+        await expect(
+          page.locator('ion-title', { hasText: title }),
+          url,
+        ).toBeVisible({ timeout: 20_000 });
+      } else {
+        await expect(page.locator('ion-header').first()).toBeVisible({
+          timeout: 20_000,
+        });
+      }
       await page.waitForTimeout(500);
       await expect(page.locator('#demo-holding-message'), url).toHaveCount(0);
+      await expect(
+        page.getByRole('heading', {
+          name: /No DataTug project here|This address is not supported/,
+        }),
+        url,
+      ).toHaveCount(0);
     }
   });
+
+  // Review B1: the fixed segments of a hand-off address match in any letter case, as they do on main. With a
+  // question: the holding page, as on main. Without: the project's chat at its canonical lower-case address, through
+  // one redirect, never the crash page (NG04002).
+  for (const typed of [
+    '/Project/GitHub.com/datatug/chinook-demo/chat',
+    '/PROJECT/github.com/datatug/chinook-demo/chat?lang=ru',
+    '/project/github.com/datatug/chinook-demo/Chat',
+    '/project/github.com/datatug/chinook-demo/Tree/HEAD/-/chat',
+  ]) {
+    const [path, ownQuery] = typed.split('?');
+    const join = (more: string): string =>
+      path + '?' + [ownQuery, more].filter(Boolean).join('&');
+
+    test(`${typed} without a question is the project chat at ${TRUSTED}, and never the crash page`, async ({
+      page,
+      context,
+      baseURL,
+    }) => {
+      const origin = new URL(baseURL ?? '').origin;
+      const external = await stubExternal(context, (o) => o === origin);
+      const errors = consoleErrors(page);
+      await page.goto(typed);
+      await expect(page.locator('ion-title', { hasText: 'Chat' })).toBeVisible({
+        timeout: 20_000,
+      });
+      expect(new URL(page.url()).pathname + new URL(page.url()).search).toBe(
+        TRUSTED,
+      );
+      await expect(page.locator('#demo-holding-message')).toHaveCount(0);
+      await page.waitForTimeout(1500);
+      await expect(page.locator(SENTRY_DIALOG)).toHaveCount(0);
+      expect(dialogRequested(external)).toBe(false);
+      expect(errors.filter((e) => e.includes('NG04002'))).toEqual([]);
+    });
+
+    test(`${typed} with a question shows the holding page with the question, as on main`, async ({
+      page,
+      context,
+      baseURL,
+    }) => {
+      const origin = new URL(baseURL ?? '').origin;
+      const external = await stubExternal(context, (o) => o === origin);
+      const errors = consoleErrors(page);
+      await page.goto(join(`msg=${encodeURIComponent(EN_QUESTION)}`));
+      await expect(page.locator('blockquote')).toHaveText(EN_QUESTION, {
+        timeout: 20_000,
+      });
+      expect(new URL(page.url()).search).toBe('');
+      await page.waitForTimeout(1500);
+      await expect(page.locator(SENTRY_DIALOG)).toHaveCount(0);
+      expect(dialogRequested(external)).toBe(false);
+      expect(errors).toEqual([]);
+    });
+  }
 
   test('a reload of a chat address that arrived with a question shows the holding page again, for the demo project and for any other repository', async ({
     page,
@@ -654,6 +725,75 @@ test.describe('the hand-off holding page', () => {
     });
     await expect(page.locator('#demo-holding-message')).toHaveCount(0);
   });
+
+  // Review S1: a bare visit forgets the question kept for the tab, so a reload shows the project chat.
+  for (const [what, path] of [
+    ['the demo project', TRUSTED],
+    ['another repository', '/project/github.com/someone/else/chat'],
+  ]) {
+    test(`a question, then the bare chat address of ${what}, then a reload: still the project chat`, async ({
+      page,
+      context,
+      baseURL,
+    }) => {
+      const origin = new URL(baseURL ?? '').origin;
+      await stubExternal(context, (o) => o === origin);
+      await page.goto(`${path}?msg=${encodeURIComponent(EN_QUESTION)}`);
+      await expect(page.locator('#demo-holding-message')).toBeVisible({
+        timeout: 20_000,
+      });
+      await page.goto(path);
+      await expect(page.locator('ion-title', { hasText: 'Chat' })).toBeVisible({
+        timeout: 20_000,
+      });
+      await expect(page.locator('#demo-holding-message')).toHaveCount(0);
+      expect(
+        await page.evaluate(() => sessionStorage.getItem('datatug.demo.handoff.v1')),
+      ).toBeNull();
+      expect(
+        await page.evaluate(
+          () => (window as unknown as Record<string, unknown>)['__datatugHandoffSearch'],
+        ),
+      ).toBeUndefined();
+
+      await page.reload();
+      await expect(page.locator('ion-title', { hasText: 'Chat' })).toBeVisible({
+        timeout: 20_000,
+      });
+      await expect(page.locator('#demo-holding-message')).toHaveCount(0);
+      expect(await page.content()).not.toContain(MARKER);
+    });
+
+    test(`the same in a second tab opened from the first (it starts with a copy of the first tab's storage): ${what}`, async ({
+      page,
+      context,
+      baseURL,
+    }) => {
+      const origin = new URL(baseURL ?? '').origin;
+      await stubExternal(context, (o) => o === origin);
+      await page.goto(`${path}?msg=${encodeURIComponent(EN_QUESTION)}`);
+      await expect(page.locator('#demo-holding-message')).toBeVisible({
+        timeout: 20_000,
+      });
+      const [second] = await Promise.all([
+        context.waitForEvent('page'),
+        page.evaluate((url) => window.open(url, '_blank'), origin + path),
+      ]);
+      await expect(second.locator('ion-title', { hasText: 'Chat' })).toBeVisible({
+        timeout: 20_000,
+      });
+      await second.reload();
+      await expect(second.locator('ion-title', { hasText: 'Chat' })).toBeVisible({
+        timeout: 20_000,
+      });
+      await expect(second.locator('#demo-holding-message')).toHaveCount(0);
+      // and the first tab, reloaded, still has its own question
+      await page.reload();
+      await expect(page.locator('#demo-holding-message')).toBeVisible({
+        timeout: 20_000,
+      });
+    });
+  }
 
   test('a non-canonical spelling of a project address is replaced by the canonical one, query kept', async ({
     page,
@@ -786,6 +926,96 @@ test.describe('the question reaches no analytics or error report', () => {
     ).toBe(true);
     expect(leaks(external)).toEqual([]);
   });
+});
+
+test.describe('a question on a project address that is not a hand-off address is dropped, and reaches no analytics (review S2)', () => {
+  const HOST = 'https://handoff.datatug.test';
+
+  for (const path of [
+    '/project/github.com/datatug/chinook-demo/tree/HEAD/dir/-/chat',
+    '/project/github.com/datatug/chinook-demo/queries',
+    '/project/github.com/datatug/chinook-demo',
+    '/Project/GitHub.com/datatug/chinook-demo/tree/HEAD/dir/-/Chat',
+  ]) {
+    test(`${path}?msg=…&x=1: the address bar loses msg and keeps x=1, and nothing outgoing carries it`, async ({
+      page,
+      context,
+      baseURL,
+    }) => {
+      const external = await stubExternal(
+        context,
+        (o) => o === HOST || o === baseURL,
+      );
+      await context.route(`${HOST}/**`, async (route) => {
+        const url = new URL(route.request().url());
+        const response = await route.fetch({
+          url: (baseURL ?? '') + url.pathname + url.search,
+        });
+        await route.fulfill({ response });
+      });
+      await context.route(
+        'https://www.googletagmanager.com/**',
+        async (route) => {
+          external.push({
+            url: route.request().url(),
+            method: 'GET',
+            body: '',
+          });
+          await route.fulfill({
+            status: 200,
+            contentType: 'text/javascript',
+            body: `(function(){var dl=window.dataLayer=window.dataLayer||[];
+          function report(args){new Image().src='https://www.google-analytics.com/g/collect?dl='+encodeURIComponent(location.href)+'&cmd='+encodeURIComponent(JSON.stringify(Array.prototype.slice.call(args)));}
+          dl.slice().forEach(report);var push=dl.push;dl.push=function(a){report(a);return push.apply(dl,arguments);};})();`,
+          });
+        },
+      );
+      await page.goto(
+        `${HOST}${path}?msg=${encodeURIComponent(MARKER)}&q=${encodeURIComponent(MARKER)}&x=1#frag`,
+      );
+      await expect(page.locator('ion-header').first()).toBeVisible({
+        timeout: 20_000,
+      });
+      await page.evaluate(() =>
+        setTimeout(() => {
+          throw new Error('S2 probe: an uncaught error on a project page');
+        }),
+      );
+      await page.waitForTimeout(3000);
+
+      const url = new URL(page.url());
+      expect(url.searchParams.has('msg')).toBe(false);
+      expect(url.searchParams.has('q')).toBe(false);
+      expect(url.searchParams.get('x')).toBe('1');
+      // The queries page rewrites its own address (adds its default query, drops the fragment), on the old form
+      // of the address too; every other page leaves the fragment where the script left it.
+      if (!path.endsWith('/queries')) expect(url.hash).toBe('#frag');
+      expect(page.url()).not.toContain(MARKER);
+      // Not vacuous: the stand-in for Google Analytics saw page commands, Sentry received the probe.
+      const hosts = new Set(
+        external.map((request) => new URL(request.url).hostname),
+      );
+      expect([...hosts].some((h) => h.includes('google-analytics.com'))).toBe(
+        true,
+      );
+      expect([...hosts].some((h) => h.includes('sentry.io'))).toBe(true);
+      const leaked = external.filter((request) =>
+        [request.url, request.body].some(
+          (text) =>
+            text.includes(MARKER) || text.includes(encodeURIComponent(MARKER)),
+        ),
+      );
+      expect(leaked.map((r) => r.url.slice(0, 120))).toEqual([]);
+      // nothing keeps it in the tab either
+      expect(
+        await page.evaluate(
+          () =>
+            JSON.stringify(Object.entries(sessionStorage)) +
+            JSON.stringify(Object.entries(localStorage)),
+        ),
+      ).not.toContain(MARKER);
+    });
+  }
 });
 
 test.describe('the matrix-parameter address reaches no analytics either', () => {
