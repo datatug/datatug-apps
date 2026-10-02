@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { captureDemoHandoff, DEMO_HANDOFF_KEY } from './demo-handoff-capture';
 
 function fakes(pathname: string, search: string, hash = '') {
@@ -10,10 +12,16 @@ function fakes(pathname: string, search: string, hash = '') {
 }
 
 describe('demo hand-off capture', () => {
-  it('uses the key the demo page reads', async () => {
-    // The shell is eager and cannot import the lazy-loaded library, so the two keys are written twice and compared here.
-    const { DEMO_HANDOFF_STORAGE_KEY } = await import('@sneat/datatug-main');
-    expect(DEMO_HANDOFF_KEY).toBe(DEMO_HANDOFF_STORAGE_KEY);
+  it('uses the key the demo page reads', () => {
+    // The shell is eager and cannot import the lazy-loaded library, so the key is written twice and the two are compared
+    // here from the library's source (importing the whole library just for a string is slow and not needed).
+    let dir = process.cwd();
+    while (!existsSync(join(dir, 'libs/datatug/main/src/lib/demo/demo-scenarios.ts'))) {
+      if (dirname(dir) === dir) throw new Error('repository root not found');
+      dir = dirname(dir);
+    }
+    const source = readFileSync(join(dir, 'libs/datatug/main/src/lib/demo/demo-scenarios.ts'), 'utf8');
+    expect(/DEMO_HANDOFF_STORAGE_KEY = '([^']+)'/.exec(source)?.[1]).toBe(DEMO_HANDOFF_KEY);
   });
 
   it('stores the query string and removes it from the address bar', () => {
