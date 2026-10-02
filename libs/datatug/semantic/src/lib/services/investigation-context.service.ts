@@ -112,6 +112,17 @@ interface ContextItemDisplay {
   readonly selectedForBinding?: boolean;
 }
 
+/** Whether an agent can be sent this context item as a wire fact. No datatug-cli agent
+ * understands `in` or `like` yet (v0.46.0 answers 400 `unknown field "values"`, which
+ * fails the whole applicable-queries call), so per the api-contract rule that an
+ * unsupported condition stays unbound the client withholds them (lane/lead assumption —
+ * drop this once an agent supports them). */
+export function isAgentSendableCondition(
+  item: Pick<ContextItem, 'condition'>,
+): boolean {
+  return item.condition !== 'in' && item.condition !== 'like';
+}
+
 /** Narrows a {@link ContextItem} to the exact wire {@link Fact} shape — the boundary
  * where a context basket entry becomes a request payload for `queries/applicable`/
  * `exec/run_query`. `condition` is included only when it differs from the default

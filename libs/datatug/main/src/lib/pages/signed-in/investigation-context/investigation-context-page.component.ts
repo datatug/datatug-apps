@@ -41,6 +41,7 @@ import {
   FactLayer,
   FactRole,
   contextItemToFact,
+  isAgentSendableCondition,
   InvestigationContextService,
   isFactSelectedForBinding,
   isOverlayFact,
@@ -698,7 +699,7 @@ export class InvestigationContextPageComponent implements OnDestroy {
       !projectId ||
       !environment ||
       !securityContextId ||
-      !enabledItems.length
+      !enabledItems.some(isAgentSendableCondition)
     ) {
       // Guarded (skip if already at the target value) — this runs inside an
       // `effect()`; see ContextPanelComponent's identical guard/comment for why an
@@ -716,7 +717,9 @@ export class InvestigationContextPageComponent implements OnDestroy {
     // straight from InvestigationContextService; contextItemToFact() narrows off the
     // UI-local fields (label/source/addedAt) and carries `condition` through only when
     // it isn't the default `'=='` (S162 — api-contract.md's Fact.condition paragraph).
-    const values = enabledItems.map(contextItemToFact);
+    const values = enabledItems
+      .filter(isAgentSendableCondition)
+      .map(contextItemToFact);
     const requestScope = { project: projectId, environment, securityContextId };
     this.semanticApi
       .getApplicableQueries({ ...requestScope, values })

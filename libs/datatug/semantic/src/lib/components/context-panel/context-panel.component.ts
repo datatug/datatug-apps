@@ -47,6 +47,7 @@ import { SemanticSelection } from '../../models/models';
 import { AgentContextService } from '../../services/agent-context.service';
 import {
   contextItemToFact,
+  isAgentSendableCondition,
   InvestigationContextService,
 } from '../../services/investigation-context.service';
 import { SemanticApiService } from '../../services/semantic-api.service';
@@ -384,6 +385,9 @@ export class ContextPanelComponent {
     // detection see it, same as before). contextItemToFact() narrows to the exact wire
     // shape, carrying `condition` through when it isn't the default `'=='`.
     for (const item of this.context.items().filter((i) => i.enabled)) {
+      if (!isAgentSendableCondition(item)) {
+        continue;
+      }
       const isDuplicate = values.some(
         (v) =>
           v.entity === item.entity &&

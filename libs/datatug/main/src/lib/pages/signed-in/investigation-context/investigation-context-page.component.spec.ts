@@ -512,7 +512,7 @@ describe('InvestigationContextPageComponent', () => {
         expect(added.label).toBe("Customer.Name like 'Ab%_'");
       });
 
-      it('sends an `in` item to queries/applicable as a values-only wire fact', async () => {
+      it('withholds an `in` item from queries/applicable until an agent supports it', async () => {
         pick('Customer', 'ID', 'in');
         fireIonEvent(formEls().valueInput, 'ionInput', '1,2');
         fixture.detectChanges();
@@ -521,14 +521,17 @@ describe('InvestigationContextPageComponent', () => {
         TestBed.tick();
         await fixture.whenStable();
 
-        const call = mock.calls.find(
-          (c) => c.method === 'getApplicableQueries',
-        );
-        const sent = (call?.request as { values: Record<string, unknown>[] })
-          .values[0];
-        expect(sent['condition']).toBe('in');
-        expect(sent['values']).toHaveLength(2);
-        expect('value' in sent).toBe(false);
+        expect(context.items()[0].condition).toBe('in');
+        const sentFacts = mock.calls
+          .filter((c) => c.method === 'getApplicableQueries')
+          .flatMap(
+            (c) => (c.request as { values: Record<string, unknown>[] }).values,
+          );
+        expect(
+          sentFacts.some(
+            (f) => f['condition'] === 'in' || Array.isArray(f['values']),
+          ),
+        ).toBe(false);
       });
     });
 

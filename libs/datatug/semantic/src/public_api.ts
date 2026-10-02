@@ -22,6 +22,7 @@ export {
   ContextCondition,
   ContextItem,
   contextItemToFact,
+  isAgentSendableCondition,
   ContextItemInput,
   ContextScope,
   ParameterBinding,
