@@ -19,6 +19,18 @@
     </ion-toolbar>
   </ion-header>
 
+  <ng-template #failureView let-failure>
+    <div class="turn-error" role="alert">
+      <ion-text color="danger">{{ failure.summary }}</ion-text>
+      @if (failure.detail) {
+        <details class="error-detail">
+          <summary>Technical details</summary>
+          <pre class="dtql">{{ failure.detail }}</pre>
+        </details>
+      }
+    </div>
+  </ng-template>
+
   <ion-content class="chat-content">
     <div class="chat-workspace-layout">
     <div class="chat-history">
@@ -32,18 +44,7 @@
       <section class="turn">
         <div class="question-row"><strong>You</strong><p class="question-bubble">{{ turn.question }}</p></div>
         @if (turn.state === 'loading') { <div class="turn-status"><ion-spinner name="dots" /><span>Interpreting and querying…</span></div> }
-        @if (turn.state === 'error') {
-          @let failure = errorView(turn.error);
-          <div class="turn-error" role="alert">
-            <ion-text color="danger">{{ failure.summary }}</ion-text>
-            @if (failure.detail) {
-              <details class="error-detail">
-                <summary>Technical details</summary>
-                <pre class="dtql">{{ failure.detail }}</pre>
-              </details>
-            }
-          </div>
-        }
+        @if (turn.state === 'error') { <ng-container [ngTemplateOutlet]="failureView" [ngTemplateOutletContext]="{ $implicit: errorView(turn.error) }" /> }
         @if (turn.joinChoices?.length) {
           <div class="join-choices" aria-label="Choose a relationship">
             @for (choice of turn.joinChoices; track choice.candidateId) {
@@ -91,7 +92,7 @@
               @if (turnTab(turn) === 'rows' && turn.recordSetId) {
                 <section class="join-candidates" tabindex="0" aria-label="Related tables" (keydown)="onJoinKeys($event, turn)">
                   <h3>Related tables</h3>
-                  @if (candidateError(turn); as error) { <ion-text color="danger"><p>{{ error }}</p></ion-text> }
+                  @if (candidateError(turn); as failure) { <ng-container [ngTemplateOutlet]="failureView" [ngTemplateOutletContext]="{ $implicit: failure }" /> }
                   @for (group of joinGroups(turn); track group.source) {
                     <div class="join-source-row"><strong>{{ group.source }}</strong>
                       <div class="join-edges">

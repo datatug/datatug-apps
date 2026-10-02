@@ -1,4 +1,4 @@
-import { DecimalPipe } from '@angular/common';
+import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { CUSTOM_ELEMENTS_SCHEMA, provideZonelessChangeDetection, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap } from '@angular/router';
@@ -30,6 +30,7 @@ describe('ChatPageComponent failed turns', () => {
       ({ id, question: 'Sales by country?', state: 'error', error: message })),
   };
   const data = { ensureSeed: vi.fn(async () => undefined), query: vi.fn() };
+  const joiner = { candidates: vi.fn((): unknown[] => []) };
   const interpreter = { interpret: vi.fn(async () => ({ dtql: '{}', metrics: { requestBytes: 0, responseBytes: 0, interpretMs: 0 } })) };
 
   const text = (): string => (fixture.nativeElement as HTMLElement).textContent ?? '';
@@ -46,20 +47,23 @@ describe('ChatPageComponent failed turns', () => {
         { provide: ChatSessionService, useValue: store },
         { provide: ChinookChatDataService, useValue: data },
         { provide: ChatInterpretService, useValue: interpreter },
-        { provide: ChatJoinService, useValue: { candidates: () => [] } },
+        { provide: ChatJoinService, useValue: joiner },
         {
           provide: ChatProviderService,
           useValue: { providers: signal([{ id: 'p1', name: 'Test', protocol: 'openai-chat', baseUrl: 'https://ai.example.test', model: 'm', apiKey: 'k' }]), selectedId: signal('p1') },
         },
       ],
     }).overrideComponent(ChatPageComponent, {
-      set: { imports: [DecimalPipe], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+      set: { imports: [DecimalPipe, NgTemplateOutlet], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
     });
     fixture = TestBed.createComponent(ChatPageComponent);
     await fixture.whenStable();
   }
 
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    joiner.candidates.mockImplementation(() => []);
+  });
 
   it('shows a saved engine failure in plain language, with the engine text behind an expandable detail', async () => {
     await render([failedTurn]);
@@ -89,5 +93,28 @@ describe('ChatPageComponent failed turns', () => {
     expect(store.failQuestion).toHaveBeenCalledWith(expect.any(String), 's1', 'new', engineError, undefined);
     expect(text()).toMatch(/needs totals or counts/);
     expect(details()?.querySelector('pre')?.textContent).toBe(engineError);
+  });
+
+  describe('when the related tables cannot be built for a saved result', () => {
+    const result: ChatTurn = { id: 'r1', question: 'Customers?', state: 'result', recordSetId: 'rs1', dtql: '{}', rows: [{ CustomerId: 1 }] };
+    const relatedError = (): HTMLElement | null => (fixture.nativeElement as HTMLElement).querySelector('.join-candidates .turn-error');
+
+    it('explains an engine error in plain language, with the engine text behind an expandable detail', async () => {
+      const raw = 'join_scope at from.joins[0].on[0].left: forward alias c';
+      joiner.candidates.mockImplementation(() => { throw new Error(raw); });
+      await render([result]);
+      expect(relatedError()?.querySelector('ion-text')?.textContent).toMatch(/table or column that is not available/);
+      expect(relatedError()?.querySelector('ion-text')?.textContent).not.toContain('join_scope');
+      expect(relatedError()?.querySelector('details.error-detail summary')?.textContent).toContain('Technical details');
+      expect(relatedError()?.querySelector('details.error-detail pre')?.textContent).toBe(raw);
+      expect(text()).not.toContain('No further foreign-key relationships');
+    });
+
+    it('shows an already plain failure as it is, with no technical detail', async () => {
+      joiner.candidates.mockImplementation(() => { throw 'not an Error'; });
+      await render([result]);
+      expect(relatedError()?.querySelector('ion-text')?.textContent).toContain('The saved query cannot be read with the current schema.');
+      expect(relatedError()?.querySelector('details')).toBeNull();
+    });
   });
 });
