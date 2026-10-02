@@ -1,5 +1,6 @@
 import type { TypedValue } from '@sneat/datatug-semantic';
 import type { IQueryDef } from '../models/definition/query-def';
+import { createStaticOvdbFetch, type StaticOvdbSource } from '../demo/data/static-ovdb-fetch';
 import { runFederatedQuery, type FederatedQueryMode, type FederatedQueryResult } from './federated-query-executor';
 import { deleteQueryDatabase, queryStorageError } from './federated-query-storage';
 
@@ -73,7 +74,7 @@ async function closeOutput(): Promise<void> {
 }
 
 self.onmessage = (event: MessageEvent<
-  | { type: 'run'; definition: IQueryDef; token: string; mode?: FederatedQueryMode }
+  | { type: 'run'; definition: IQueryDef; token: string; mode?: FederatedQueryMode; staticSource?: StaticOvdbSource }
   | { type: 'page'; index: number; requestId: number }
   | { type: 'close' }
 >): void => {
@@ -118,7 +119,11 @@ self.onmessage = (event: MessageEvent<
         message.mode ?? 'full', (first: FederatedQueryResult) => {
           if (!resultReady && !closing) { resultReady = true; self.postMessage({ type: 'result', result: first }); }
           void sendPendingPage();
-        }, () => new Promise<void>((resolve) => { resumePage = resolve; if (pendingPage) { resumePage(); resumePage = undefined; } }));
+        }, () => new Promise<void>((resolve) => { resumePage = resolve; if (pendingPage) { resumePage(); resumePage = undefined; } }),
+        {
+          ...(message.staticSource ? { fetch: createStaticOvdbFetch(message.staticSource) } : {}),
+          onSourceLoaded: (event) => self.postMessage({ type: 'source', event }),
+        });
       if (!closing && !resultReady) self.postMessage({ type: 'result', result: visibleMode ? { ...result, totalRows: rowsStored, hasMore: false } : result });
       if (!closing && visibleMode) { self.postMessage({ type: 'finished', totalRows: result.totalRows ?? rowsStored }); void sendPendingPage(); }
     } catch (error) {

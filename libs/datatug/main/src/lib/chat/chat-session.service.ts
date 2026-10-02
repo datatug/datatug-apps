@@ -2,6 +2,7 @@ import { Injectable, InjectionToken, inject } from '@angular/core';
 import { type Database, type ReadwriteTransaction, key } from '@dalgo/core';
 import { IndexedDbDatabase } from '@dalgo/indexeddb';
 import { ChatJoinChoice, ChatJoinLineage, ChatMetrics, ChatTurn } from './chat.types';
+import type { TraceStep } from './chat-trace.types';
 import {
   applyChatWorkspaceAction, chatBookmarkRows, ChatBookmark, ChatRecordSetData, ChatWorkspaceAction, ChatWorkspaceState,
   emptyChatWorkspace,
@@ -13,8 +14,10 @@ export const CHAT_SESSION_DATABASE = new InjectionToken<Database>('Chat session 
   providedIn: 'root',
   factory: () => new IndexedDbDatabase({
     name: 'datatug-chat-sessions',
-    version: 2,
-    collections: ['ChatSessions', 'ChatTurns', 'ChatQueries', 'ChatRecordSets', 'ChatBookmarks'],
+    // Version 3 adds ChatTraceSteps. The adapter creates missing object stores on upgrade, so a version 2
+    // database keeps every session, turn and bookmark and gains the new collection.
+    version: 3,
+    collections: ['ChatSessions', 'ChatTurns', 'ChatQueries', 'ChatRecordSets', 'ChatBookmarks', 'ChatTraceSteps'],
   }),
 });
 
@@ -28,6 +31,8 @@ export interface ChatSession {
   readonly queryIds: readonly string[];
   readonly recordSetIds: readonly string[];
   readonly workspace?: ChatWorkspaceState;
+  /** `investigation`: a session whose turns carry traces. Absent means an ordinary chat. */
+  readonly kind?: 'chat' | 'investigation';
 }
 
 export interface ChatQuery {
@@ -84,6 +89,7 @@ const turnKey = (id: string) => key('ChatTurns', id);
 const queryKey = (id: string) => key('ChatQueries', id);
 const recordSetKey = (id: string) => key('ChatRecordSets', id);
 const bookmarkKey = (id: string) => key('ChatBookmarks', id);
+const traceKey = (id: string) => key('ChatTraceSteps', id);
 const now = () => new Date().toISOString();
 
 function projectIdFromScope(scope: string): string {
@@ -117,12 +123,12 @@ export class ChatSessionService {
     return page.records.map((record) => record.data);
   }
 
-  async create(scope: string): Promise<ChatSession> {
+  async create(scope: string, kind: 'chat' | 'investigation' = 'chat', title = 'New chat'): Promise<ChatSession> {
     const timestamp = now();
     const session: ChatSession = {
-      id: crypto.randomUUID(), scope, title: 'New chat', createdAt: timestamp,
+      id: crypto.randomUUID(), scope, title, createdAt: timestamp,
       updatedAt: timestamp, turnIds: [], queryIds: [], recordSetIds: [],
-      workspace: emptyChatWorkspace(),
+      workspace: emptyChatWorkspace(), ...(kind === 'chat' ? {} : { kind }),
     };
     await this.database.runReadwriteTransaction((tx) => tx.insert(sessionKey(session.id), session));
     return session;
@@ -156,7 +162,7 @@ export class ChatSessionService {
         dtql: data.dtql, generatedDtql: data.generatedDtql,
         dtqlYaml: data.dtqlYaml, sql: data.sql,
         error: data.error, metrics: data.metrics, actionSummary: data.actionSummary, join: data.join,
-        joinChoices: data.joinChoices,
+        joinChoices: data.joinChoices, traceStepIds: data.traceStepIds,
       };
       return data.state === 'loading'
         ? { ...turn, state: 'error' as const, error: 'This request was interrupted. Ask it again to retry.' }
@@ -360,6 +366,45 @@ export class ChatSessionService {
     return { ...(session.workspace || emptyChatWorkspace()), activeTab: 'bookmarks' };
   }
 
+  /** Add one investigation step to a turn, in the same transaction that links it from the turn. */
+  async appendTraceStep(scope: string, step: TraceStep): Promise<TraceStep> {
+    await this.database.runReadwriteTransaction(async (tx) => {
+      const session = await this.sessionInTransaction(tx, scope, step.sessionId);
+      const stored = await tx.get<StoredTurn>(turnKey(step.turnId));
+      if (!stored.exists || stored.data.sessionId !== step.sessionId || !session.turnIds.includes(step.turnId)) {
+        throw new Error('The chat request for this trace step is no longer available.');
+      }
+      await tx.insert(traceKey(step.id), step);
+      await tx.set(turnKey(step.turnId), { ...stored.data, traceStepIds: [...(stored.data.traceStepIds ?? []), step.id] });
+    });
+    return step;
+  }
+
+  /** Replace a step in place (a running step finishing, or gaining evidence). The step keeps its id and place. */
+  async updateTraceStep(scope: string, step: TraceStep): Promise<TraceStep> {
+    await this.database.runReadwriteTransaction(async (tx) => {
+      await this.sessionInTransaction(tx, scope, step.sessionId);
+      const stored = await tx.get<TraceStep>(traceKey(step.id));
+      if (!stored.exists || stored.data.sessionId !== step.sessionId || stored.data.turnId !== step.turnId) {
+        throw new Error('This trace step is unavailable in this chat session.');
+      }
+      await tx.set(traceKey(step.id), step);
+    });
+    return step;
+  }
+
+  /** Every trace step of a session, ordered by turn and then by step index. */
+  async loadTrace(scope: string, sessionId: string): Promise<readonly TraceStep[]> {
+    const session = await this.requireSession(scope, sessionId);
+    const turns = await this.database.getMany<StoredTurn>(session.turnIds.map(turnKey));
+    const ids = turns.flatMap((turn) => turn.exists && turn.data.sessionId === sessionId ? turn.data.traceStepIds ?? [] : []);
+    const steps = await this.database.getMany<TraceStep>(ids.map(traceKey));
+    if (steps.some((step) => !step.exists || step.data.sessionId !== sessionId)) {
+      throw new Error('This chat session has missing or foreign trace steps.');
+    }
+    return steps.map((step) => step.exists ? step.data : undefined).filter((step): step is TraceStep => !!step);
+  }
+
   async completeWorkspaceAction(
     scope: string, sessionId: string, turnId: string, action: ChatWorkspaceAction,
     metrics: Omit<ChatMetrics, 'queryMs'>,
@@ -474,6 +519,7 @@ export class ChatSessionService {
   async clear(scope: string, id: string): Promise<void> {
     await this.database.runReadwriteTransaction(async (tx) => {
       const session = await this.sessionInTransaction(tx, scope, id);
+      await this.deleteTraceSteps(tx, session);
       for (const turnId of session.turnIds) await tx.delete(turnKey(turnId));
       for (const queryId of session.queryIds) await tx.delete(queryKey(queryId));
       for (const recordSetId of session.recordSetIds) await tx.delete(recordSetKey(recordSetId));
@@ -486,6 +532,7 @@ export class ChatSessionService {
   async delete(scope: string, id: string): Promise<void> {
     await this.database.runReadwriteTransaction(async (tx) => {
       const session = await this.sessionInTransaction(tx, scope, id);
+      await this.deleteTraceSteps(tx, session);
       for (const turnId of session.turnIds) await tx.delete(turnKey(turnId));
       for (const queryId of session.queryIds) await tx.delete(queryKey(queryId));
       for (const recordSetId of session.recordSetIds) await tx.delete(recordSetKey(recordSetId));
@@ -561,6 +608,13 @@ export class ChatSessionService {
     if (!stored.exists || stored.data.sessionId !== session.id) throw new Error('The referenced RecordSet is unavailable.');
     records.set(id, stored.data);
     return records;
+  }
+
+  private async deleteTraceSteps(tx: ReadwriteTransaction, session: ChatSession): Promise<void> {
+    for (const turnId of session.turnIds) {
+      const stored = await tx.get<StoredTurn>(turnKey(turnId));
+      if (stored.exists) for (const stepId of stored.data.traceStepIds ?? []) await tx.delete(traceKey(stepId));
+    }
   }
 
   private async sessionInTransaction(tx: ReadwriteTransaction, scope: string, id: string): Promise<ChatSession> {

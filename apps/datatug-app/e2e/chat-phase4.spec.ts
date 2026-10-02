@@ -73,10 +73,11 @@ test('Bookmarks migrate, preserve scoped snapshots, and support cross-session fo
     });
     const tx = database.transaction(['ChatSessions', 'ChatBookmarks'], 'readonly');
     const legacy = await new Promise<unknown>((resolve, reject) => { const request = tx.objectStore('ChatSessions').get('legacy-session'); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
-    const result = { version: database.version, bookmarkStore: database.objectStoreNames.contains('ChatBookmarks'), legacy };
+    const result = { version: database.version, bookmarkStore: database.objectStoreNames.contains('ChatBookmarks'), traceStore: database.objectStoreNames.contains('ChatTraceSteps'), legacy };
     database.close(); return result;
   });
-  expect(upgraded).toEqual({ version: 2, bookmarkStore: true, legacy: { path: 'legacy-session', data: { scope: 'legacy' } } });
+  // Version 3 added ChatTraceSteps (the demo investigation trace); the upgrade keeps every older store and record.
+  expect(upgraded).toEqual({ version: 3, bookmarkStore: true, traceStore: true, legacy: { path: 'legacy-session', data: { scope: 'legacy' } } });
 
   const recordBookmark = workspace.locator('.bookmark-item').filter({ hasText: 'Show 10 customers' });
   page.once('dialog', (dialog) => dialog.accept(' ROCK '));

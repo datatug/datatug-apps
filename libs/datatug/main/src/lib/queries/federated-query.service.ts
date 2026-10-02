@@ -1,11 +1,18 @@
 import { Injectable } from '@angular/core';
 import type { TypedValue } from '@sneat/datatug-semantic';
 import type { IQueryDef } from '../models/definition/query-def';
-import type { FederatedQueryMode, FederatedQueryProgress, FederatedQueryResult } from './federated-query-executor';
+import type { StaticOvdbSource } from '../demo/data/static-ovdb-fetch';
+import type { FederatedQueryMode, FederatedQueryProgress, FederatedQueryResult, FederatedSourceLoaded } from './federated-query-executor';
 import { cleanupOrphanedQueryDatabases } from './federated-query-storage';
 
 export type { FederatedQueryProgress } from './federated-query-executor';
-export type { FederatedQueryResult } from './federated-query-executor';
+export type { FederatedQueryResult, FederatedSourceLoaded } from './federated-query-executor';
+
+/** Optional extras for one run: a per-source report, and a static data adapter to read from instead of an OVDB server. */
+export interface FederatedRunExtras {
+  readonly onSourceLoaded?: (event: FederatedSourceLoaded) => void;
+  readonly staticSource?: StaticOvdbSource;
+}
 
 /** Keeps download, merge, and calculation off the browser UI thread. */
 @Injectable({ providedIn: 'root' })
@@ -14,7 +21,7 @@ export class FederatedQueryService {
   private nextRequestId = 0;
   private readonly pageRequests = new Map<number, { resolve: (rows: TypedValue[][]) => void; reject: (error: Error) => void }>();
 
-  async run(definition: IQueryDef, onProgress?: (progress: FederatedQueryProgress) => void, token = '', mode: FederatedQueryMode = 'full', onFinished?: (totalRows: number) => void): Promise<FederatedQueryResult> {
+  async run(definition: IQueryDef, onProgress?: (progress: FederatedQueryProgress) => void, token = '', mode: FederatedQueryMode = 'full', onFinished?: (totalRows: number) => void, extras: FederatedRunExtras = {}): Promise<FederatedQueryResult> {
     await this.dispose();
     if (typeof Worker === 'undefined') throw new Error('This browser does not support query workers. Run this query in a supported browser to avoid locking the page.');
     await cleanupOrphanedQueryDatabases();
@@ -23,6 +30,7 @@ export class FederatedQueryService {
       this.worker = worker;
       worker.onmessage = (event: MessageEvent<
         | { type: 'progress'; progress: FederatedQueryProgress }
+        | { type: 'source'; event: FederatedSourceLoaded }
         | { type: 'result'; result: FederatedQueryResult }
         | { type: 'error'; message: string }
         | { type: 'page'; requestId: number; rows: TypedValue[][] }
@@ -34,6 +42,7 @@ export class FederatedQueryService {
       >) => {
         const message = event.data;
         if (message.type === 'progress') { onProgress?.(message.progress); return; }
+        if (message.type === 'source') { extras.onSourceLoaded?.(message.event); return; }
         if (message.type === 'finished') { onFinished?.(message.totalRows); return; }
         if (message.type === 'cleanup-error') return;
         if (message.type === 'cancelled') { reject(new Error('The query was cancelled.')); return; }
@@ -54,7 +63,7 @@ export class FederatedQueryService {
         }
       };
       worker.onerror = (event) => { void this.dispose().catch(() => undefined); reject(new Error(event.message || 'The query worker failed.')); };
-      worker.postMessage({ type: 'run', definition, token, mode });
+      worker.postMessage({ type: 'run', definition, token, mode, ...(extras.staticSource ? { staticSource: extras.staticSource } : {}) });
     });
   }
 
