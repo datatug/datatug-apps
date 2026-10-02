@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:datatug:schema:https-json-catalog:1",
+  "title": "DataTug https-json catalog (<catalog>.db.json)",
+  "description": "A catalog whose rows are plain JSON row arrays served over https, one file per table. Design: demo-as-github-project.md 4.8 and 5.2a. Addresses must be https, without credentials or a port (the pattern says so); the validators also refuse loopback, private and link-local hosts, and, for a trusted project, any address that does not begin with one of the app's own prefixes (3.6); a schema cannot state those. A template is held to a fixed pattern, and the app builds a fetchable URL only through the expansion function, which checks the expanded, parsed address again. When fallbackUrlTemplate is given, `sha256` must have an entry for every table in `keys`. A project file is at most 262144 bytes.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["driver", "urlTemplate", "keys", "sha256"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "maxLength": 300,
+      "minLength": 1
+    },
+    "driver": {
+      "const": "https-json"
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200b\\u200e\\u200f\\u2028-\\u202e\\u2060-\\u206f\\ufeff\\ufff9-\\ufffb\\u{e0000}-\\u{e007f}]*$",
+      "description": "Shown as text, never as HTML."
+    },
+    "homepage": {
+      "type": "string",
+      "minLength": 9,
+      "maxLength": 2048,
+      "pattern": "^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(/[!\"$-[\\]-~]*)?$",
+      "description": "Linked only because it is https.",
+      "allOf": [
+        {
+          "pattern": "^[^{}]*$"
+        }
+      ]
+    },
+    "urlTemplate": {
+      "type": "string",
+      "minLength": 9,
+      "maxLength": 2048,
+      "allOf": [
+        {
+          "pattern": "^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(/[!\"$-[\\]-~]*)?$"
+        },
+        {
+          "pattern": "^[^{}]*\\{table\\}[^{}]*$"
+        },
+        {
+          "pattern": "^[^%?]*$"
+        }
+      ],
+      "description": "Address of one table's rows. {table} appears exactly once, in a path segment; no %, ? or # anywhere (so no encoded dot segment can be spelled)."
+    },
+    "fallbackUrlTemplate": {
+      "type": "string",
+      "minLength": 9,
+      "maxLength": 2048,
+      "allOf": [
+        {
+          "pattern": "^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(/[!\"$-[\\]-~]*)?$"
+        },
+        {
+          "pattern": "^[^{}]*\\{table\\}[^{}]*$"
+        },
+        {
+          "pattern": "^[^%?]*$"
+        }
+      ],
+      "description": "Read when urlTemplate does not answer; its rows are accepted only when their SHA-256 equals the project's."
+    },
+    "keys": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 100,
+      "propertyNames": {
+        "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+        "maxLength": 64
+      },
+      "description": "Table name to its primary-key column."
+    },
+    "sha256": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 100,
+      "propertyNames": {
+        "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$",
+        "maxLength": 64
+      },
+      "description": "Table name to the lower-case hexadecimal SHA-256 of that table's file as served."
+    },
+    "upstream": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "revision", "licence"],
+      "properties": {
+        "repository": {
+          "type": "string",
+          "minLength": 9,
+          "maxLength": 2048,
+          "pattern": "^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(/[!\"$-[\\]-~]*)?$",
+          "allOf": [
+            {
+              "pattern": "^[^{}]*$"
+            }
+          ]
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$",
+          "maxLength": 40
+        },
+        "licence": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200b\\u200e\\u200f\\u2028-\\u202e\\u2060-\\u206f\\ufeff\\ufff9-\\ufffb\\u{e0000}-\\u{e007f}]*$"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "id": "datatug-demo-project",
+  "title": "DataTug Demo Project 1",
+  "created": {
+    "at": "2020-11-02T22:22:13.1313277Z"
+  },
+  "access": "public",
+  "boards": [
+    {
+      "id": "board1",
+      "title": "1st board"
+    }
+  ],
+  "dbModels": [
+    {
+      "id": "chinook",
+      "numberOf": {
+        "schemas": 1,
+        "tables": 11,
+        "views": 0
+      }
+    }
+  ],
+  "environments": [
+    {
+      "id": "local"
+    },
+    {
+      "id": "dev"
+    },
+    {
+      "id": "prod"
+    }
+  ]
+}
