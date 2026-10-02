@@ -181,10 +181,7 @@ export function readGithubProjectId(
 /** Thrown when an id cannot be used to read a project from GitHub. */
 export class GithubProjectIdError extends Error {
   constructor(
-    public readonly reason:
-      | GithubProjectIdProblem
-      | 'path'
-      | 'ref-not-supported',
+    public readonly reason: GithubProjectIdProblem | 'path',
     message: string,
   ) {
     super(message);

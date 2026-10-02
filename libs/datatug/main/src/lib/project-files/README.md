@@ -30,9 +30,10 @@ code yet; none of it is exported from the library barrel.
   It returns a `CheckedDataUrl` (`.href`), which nothing else makes; `tableUrls(catalog, table, trust)` does it for
   both templates of a catalog. A bare string must never reach `fetch`.
 - **The size cap is the caller's to enforce on the stream.** `parse*` measure text that is already in memory
-  (256 KB, in bytes, a leading byte order mark counted and then dropped). The fetching code (G-A2) must stop
-  reading a response once it has more than the cap, and refuse redirects; downloading the whole body and
-  measuring afterwards would not bound memory.
+  (256 KB, in bytes, a leading byte order mark counted and then dropped). The fetching code of the GitHub
+  reader (`services/repo/github/github-http.ts`, `readBodyLimited`) stops reading a response as soon as it has
+  more than the cap and cancels the transfer, and refuses redirects; downloading the whole body and measuring
+  afterwards would not bound memory.
 - **A jsDelivr pin is only as trustworthy as the trusted project's own file.** The allow-list accepts any
   40-hex commit under `datatug/chinookdb`, and GitHub serves a fork's commits through the parent
   repository's address (design 3.6). That is why the prefix is accepted for a trusted project only, whose

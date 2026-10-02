@@ -82,11 +82,116 @@ function getQueryBodyText(page: Page): Promise<string | undefined> {
   });
 }
 
+/** Every request the page makes to the three hosts a GitHub project is read from. */
+function watchGithubRequests(page: Page): string[] {
+  const urls: string[] = [];
+  page.on('request', (request) => {
+    const { hostname } = new URL(request.url());
+    if (
+      ['api.github.com', 'raw.githubusercontent.com', 'cdn.jsdelivr.net'].includes(hostname)
+    ) {
+      urls.push(request.url());
+    }
+  });
+  return urls;
+}
+
+/**
+ * G-A2 (design `demo-as-github-project.md` 4.5): the requests of a cold visit and a warm one, against the real
+ * GitHub. Anonymous `api.github.com` access is 60 requests per hour per address, so the budget IS the acceptance:
+ * a cold visit resolves the commit (1 call) and lists the repo (1 call); every file is read at that one commit;
+ * nothing else is asked of GitHub, and no mirror is used. A warm visit (same browser, within 5 minutes) asks
+ * nothing of GitHub at all.
+ */
+test.describe('GitHub-store project — request budget (G-A2)', () => {
+  const SHA_IN_URL = /^https:\/\/raw\.githubusercontent\.com\/[^/]+\/[^/]+\/([0-9a-f]{40})\//;
+
+  async function cachedFileCount(page: Page): Promise<number> {
+    return page.evaluate(
+      () =>
+        new Promise<number>((resolve) => {
+          const open = indexedDB.open('datatug-github-files');
+          open.onerror = () => resolve(0);
+          open.onsuccess = () => {
+            const db = open.result;
+            if (!db.objectStoreNames.contains('files')) {
+              db.close();
+              resolve(0);
+              return;
+            }
+            const count = db.transaction('files').objectStore('files').count();
+            count.onsuccess = () => {
+              db.close();
+              resolve(count.result);
+            };
+            count.onerror = () => {
+              db.close();
+              resolve(0);
+            };
+          };
+        }),
+    );
+  }
+
+  test('a cold visit: 2 calls to the API and every file at one commit; a warm visit: nothing', async ({
+    page,
+  }) => {
+    const github = watchGithubRequests(page);
+    const errors = installErrorLoggerWatch(page);
+
+    await page.goto(PROJECT_URL);
+    await expect(
+      activePage(page).getByRole('tab', { name: 'Boards' }),
+    ).toBeVisible({ timeout: 20_000 });
+    await page.locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Entities' }).click();
+    await expect(activePage(page).getByText('Album', { exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    const api = github.filter((u) => new URL(u).hostname === 'api.github.com');
+    const raw = github.filter((u) => new URL(u).hostname === 'raw.githubusercontent.com');
+    console.log(`cold: api.github.com=${api.length} raw=${raw.length} requests=${github.length}`);
+    expect(api.length).toBeLessThanOrEqual(2);
+    expect(api.some((u) => u.includes('/commits/HEAD'))).toBe(true);
+    expect(api.filter((u) => u.includes('/git/trees/'))).toHaveLength(1);
+    expect(github.some((u) => u.includes('cdn.jsdelivr.net'))).toBe(false);
+    expect(raw.length).toBeGreaterThan(0);
+    const commits = new Set(raw.map((u) => SHA_IN_URL.exec(u)?.[1]));
+    expect(commits.size).toBe(1);
+    expect(commits.has(undefined)).toBe(false);
+    // The listing was read at that very commit, never at a branch.
+    expect(api.find((u) => u.includes('/git/trees/'))).toContain(`/git/trees/${[...commits][0]}?`);
+    // Each file at most once.
+    expect(new Set(raw).size).toBe(raw.length);
+
+    // Everything read is in the cache (the files and the listing) before the page is loaded again.
+    await expect
+      .poll(() => cachedFileCount(page), { timeout: 10_000 })
+      .toBeGreaterThanOrEqual(raw.length + 1);
+
+    // Warm: the same browser, a new page load, within the 5 minutes the resolved commit is remembered.
+    github.length = 0;
+    await page.goto(PROJECT_URL);
+    await expect(
+      activePage(page).getByRole('tab', { name: 'Boards' }),
+    ).toBeVisible({ timeout: 20_000 });
+    await page.locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Entities' }).click();
+    await expect(activePage(page).getByText('Album', { exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+    console.log(`warm: requests=${github.length}`);
+    expect(github).toEqual([]);
+
+    expect(errors).toEqual([]);
+  });
+});
+
 test.describe('GitHub-store project — every side-menu page loads without error', () => {
   test('project page, environments, entities, queries, boards, servers all render their real content', async ({
     page,
   }) => {
     const errors = installErrorLoggerWatch(page);
+    const github = watchGithubRequests(page);
 
     // --- Project page ---------------------------------------------------
     await page.goto(PROJECT_URL);
@@ -182,6 +287,17 @@ test.describe('GitHub-store project — every side-menu page loads without error
         timeout: 15_000,
       });
     }
+
+    // The whole walk of the side menu, read at ONE commit: 2 calls to the API (the commit, the listing), every
+    // file once, no mirror (design 4.5).
+    const raw = github.filter((u) => u.startsWith('https://raw.githubusercontent.com/'));
+    console.log(
+      `full walk: api.github.com=${github.filter((u) => u.startsWith('https://api.github.com/')).length} raw=${raw.length}`,
+    );
+    expect(github.filter((u) => u.startsWith('https://api.github.com/'))).toHaveLength(2);
+    expect(github.filter((u) => u.startsWith('https://cdn.jsdelivr.net/'))).toEqual([]);
+    expect(new Set(raw).size).toBe(raw.length);
+    expect(new Set(raw.map((u) => u.split('/')[5])).size).toBe(1);
 
     expect(errors).toEqual([]);
   });

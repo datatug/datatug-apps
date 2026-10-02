@@ -1,10 +1,18 @@
 import { HttpClient } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import { Firestore } from 'firebase/firestore';
-import { of } from 'rxjs';
 
 import { DatatugFoldersService } from './datatug-folders.service';
 import { DatatugStoreServiceFactory } from '../../services/repo/datatug-store-service-factory.service';
+import {
+  FakeGithub,
+  fakeSha,
+} from '../../services/repo/github/github-fake-backend.test';
+import { NO_GITHUB_FILE_STORE } from '../../services/repo/github/github-file-store-api';
+import {
+  GITHUB_FETCH,
+  GITHUB_FILE_STORE,
+} from '../../services/repo/github/github-project-reader.service';
 
 describe('DatatugFoldersService', () => {
   describe('with a stubbed store service factory', () => {
@@ -102,36 +110,51 @@ describe('DatatugFoldersService', () => {
    */
   describe('with the real store service factory, for a GitHub-store project', () => {
     let service: DatatugFoldersService;
-    let httpGet: ReturnType<typeof vi.fn>;
+    let github: FakeGithub;
 
     beforeEach(() => {
-      httpGet = vi.fn(() =>
-        of({
+      // The project file is read through the GitHub reader (one commit, one cache), over a fake of GitHub.
+      github = new FakeGithub();
+      github.addRepo('datatug/datatug-demo-projects', fakeSha(1), {
+        'demo-project-1/datatug-project.json': JSON.stringify({
           id: 'datatug-demo-projects@datatug@demo-project-1',
           title: 'DataTug Demo Project 1',
           boards: [{ id: 'board1', title: '1st board' }],
         }),
-      );
+      });
       TestBed.configureTestingModule({
         providers: [
-          { provide: HttpClient, useValue: { get: httpGet } },
+          { provide: GITHUB_FETCH, useValue: github.fetch },
+          { provide: GITHUB_FILE_STORE, useValue: NO_GITHUB_FILE_STORE },
           { provide: Firestore, useValue: {} },
         ],
       });
       service = TestBed.inject(DatatugFoldersService);
     });
 
-    it('emits the real root folder once, with no error, for a GitHub-store project', () => {
+    it('emits the real root folder once, with no error, for a GitHub-store project', async () => {
       const next = vi.fn();
       const error = vi.fn();
       const complete = vi.fn();
-      service
-        .watchFolder({
-          storeId: 'github.com',
-          projectId: 'datatug-demo-projects@datatug@demo-project-1',
-          id: '~',
-        })
-        .subscribe({ next, error, complete });
+      await new Promise<void>((resolve) =>
+        service
+          .watchFolder({
+            storeId: 'github.com',
+            projectId: 'datatug-demo-projects@datatug@demo-project-1',
+            id: '~',
+          })
+          .subscribe({
+            next,
+            error: (e) => {
+              error(e);
+              resolve();
+            },
+            complete: () => {
+              complete();
+              resolve();
+            },
+          }),
+      );
 
       expect(error).not.toHaveBeenCalled();
       expect(complete).toHaveBeenCalledTimes(1);
@@ -162,7 +185,7 @@ describe('DatatugFoldersService', () => {
       // Never even reaches out for a folder this store can't answer for —
       // matching `watchProjectItem()`'s own doc comment (only `/folders/~`
       // is implemented).
-      expect(httpGet).not.toHaveBeenCalled();
+      expect(github.count()).toBe(0);
     });
   });
 });
