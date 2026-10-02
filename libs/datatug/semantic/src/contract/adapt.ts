@@ -79,11 +79,7 @@ export function displayTypedValue(tv: TypedValue): string {
  * `InvestigationContextService`'s pre-existing `contextItemId()` scheme (`entity.field=value`)
  * so the same semantic value produces the same id whether it reaches the wire from a grid
  * selection or from the Investigation Context basket. */
-export function buildFactId(
-  entity: string,
-  field: string,
-  value: TypedValue,
-): string {
+export function buildFactId(entity: string, field: string, value: TypedValue): string {
   return `${entity}.${field}=${displayTypedValue(value)}`;
 }
 
