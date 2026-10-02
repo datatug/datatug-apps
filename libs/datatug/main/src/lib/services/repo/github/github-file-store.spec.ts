@@ -337,6 +337,18 @@ describe('the bounds of the cache (design 3.6): 20 MB and 20 repos, two commits 
       expect(await store.getResolved('p/a@HEAD')).toBeDefined();
     });
 
+    it('drops the remembered answer of one ref only, not the other refs of the repository', async () => {
+      const { store } = open({ ...LIMITS, maxResolved: 10 });
+      for (const key of ['o/a@HEAD', 'o/a@feature', 'o/ab@feature']) {
+        await store.putResolved(key, { sha: 's', at: 1 });
+      }
+      await store.dropResolved('o/a@feature');
+      await store.dropResolved('o/a@never-there');
+      expect(await store.getResolved('o/a@feature')).toBeUndefined();
+      expect(await store.getResolved('o/a@HEAD')).toBeDefined();
+      expect(await store.getResolved('o/ab@feature')).toBeDefined();
+    });
+
     it('a store that fails to load is no store (the lazy loader)', async () => {
       const lazy = createLazyGithubFileStore(() =>
         Promise.reject(new Error('chunk failed to load')),
@@ -345,6 +357,7 @@ describe('the bounds of the cache (design 3.6): 20 MB and 20 repos, two commits 
       expect(await lazy.getFile(A1, 'f')).toBeUndefined();
       expect(await lazy.getResolved('k')).toBeUndefined();
       await lazy.putResolved('k', { sha: 's', at: 1 });
+      await lazy.dropResolved('k');
       await lazy.forgetResolved('o/r');
     });
   });

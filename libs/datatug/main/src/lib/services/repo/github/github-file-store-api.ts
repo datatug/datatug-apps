@@ -34,6 +34,12 @@ export interface IGithubFileStore {
   getResolved(key: string): Promise<IGithubResolvedCommit | undefined>;
   putResolved(key: string, commit: IGithubResolvedCommit): Promise<void>;
   /**
+   * Drops the remembered answer of one ref only (`key` as for `getResolved`): GitHub has answered that the ref no
+   * longer exists (or the repository moved), so the earlier answer is of no use. The other refs of the repository
+   * keep theirs.
+   */
+  dropResolved(key: string): Promise<void>;
+  /**
    * Drops every remembered answer of one repository, whatever the ref (`repoKey` is `<owner>/<repo>`, lower case): the
    * repository has changed under it (a project was created in it). Files and listings are keyed by commit and never
    * change, so they stay.
@@ -47,6 +53,7 @@ export const NO_GITHUB_FILE_STORE: IGithubFileStore = {
   putFile: () => Promise.resolve(),
   getResolved: () => Promise.resolve(undefined),
   putResolved: () => Promise.resolve(),
+  dropResolved: () => Promise.resolve(),
   forgetResolved: () => Promise.resolve(),
 };
 
@@ -69,12 +76,24 @@ export function createLazyGithubFileStore(
       get().then((s) => s.putFile(commitKey, path, file)),
     getResolved: (key) => get().then((s) => s.getResolved(key)),
     putResolved: (key, commit) => get().then((s) => s.putResolved(key, commit)),
+    dropResolved: (key) => get().then((s) => s.dropResolved(key)),
     forgetResolved: (repoKey) => get().then((s) => s.forgetResolved(repoKey)),
   };
 }
 
-/** How long a call to the cache may take before the cache is given up for the rest of the visit. */
+/**
+ * How long a read waits for one call to the cache. Past it the read goes on from the network, as it would with an
+ * empty cache; whether the cache is given up on is decided by {@link guardGithubFileStore}.
+ */
 export const GITHUB_STORE_TIMEOUT_MS = 1500;
+
+/**
+ * How long the cache has to answer its first call at all before it is given up on for the visit. The first call
+ * carries the loading of the cache's own chunk and the opening of the database, which on a slow device takes longer
+ * than a read can be held up for ({@link GITHUB_STORE_TIMEOUT_MS}): reads do not wait for it, but an answer that
+ * arrives within this limit switches the cache back on for the calls that come after.
+ */
+export const GITHUB_STORE_OPEN_TIMEOUT_MS = 5000;
 
 /** Starts a timer; returns what cancels it. Injected (see `GITHUB_TIMER`) so a test fires it by hand. */
 export type GithubSetTimer = (fire: () => void, ms: number) => () => void;
@@ -86,25 +105,62 @@ export const setGithubTimer: GithubSetTimer = (fire, ms) => {
 
 /**
  * The cache as the reader uses it: a call that fails, or does not answer within `timeoutMs`, answers as an empty cache
- * would (nothing found, nothing kept). The first call that times out turns the cache off for the rest of the visit, so
- * a database that hangs (blocked by another tab, a browser that never answers) costs one wait, not one per file. A
- * late answer is ignored.
+ * would (nothing found, nothing kept); a late answer is never applied to a call that has already completed.
+ *
+ * What a call that does not answer in time means depends on what is known of the cache:
+ * - Not heard from yet (the first call, which loads the cache and opens its database): the calls that follow answer
+ *   empty at once instead of each waiting in turn; the cache is on again as soon as any call is answered, and is
+ *   given up on for the rest of the visit when none has been within `openTimeoutMs` of the first call.
+ * - Known to work: a database that now hangs (blocked by another tab, a browser that never answers) turns the cache
+ *   off for the rest of the visit, so it costs one wait, not one per file.
+ * A call made `through` the guard (the deletion of a remembered answer, which must reach the database whenever it
+ * can) is attempted even when the cache is off or paused, with the same wait.
  */
 export function guardGithubFileStore(
   store: IGithubFileStore,
   setTimer: GithubSetTimer = setGithubTimer,
   timeoutMs: number = GITHUB_STORE_TIMEOUT_MS,
+  openTimeoutMs: number = GITHUB_STORE_OPEN_TIMEOUT_MS,
 ): IGithubFileStore {
-  let off = false;
-  const guarded = <T>(call: () => Promise<T>, empty: T): Promise<T> => {
-    if (off) {
+  type State = 'unproven' | 'proven' | 'paused' | 'off';
+  let state: State = 'unproven';
+  let openLimit: (() => void) | undefined;
+  let openLimitStarted = false;
+
+  /** The database answered something: it works. Too late to matter once it has been given up on. */
+  const answered = (): void => {
+    openLimit?.();
+    openLimit = undefined;
+    if (state === 'unproven' || state === 'paused') {
+      state = 'proven';
+    }
+  };
+
+  const guarded = <T>(
+    call: () => Promise<T>,
+    empty: T,
+    through = false,
+  ): Promise<T> => {
+    if ((state === 'off' || state === 'paused') && !through) {
       return Promise.resolve(empty);
     }
     return new Promise<T>((resolve) => {
       const cancel = setTimer(() => {
-        off = true;
+        if (state === 'unproven') {
+          state = 'paused';
+        } else if (state === 'proven') {
+          state = 'off';
+        }
         resolve(empty);
       }, timeoutMs);
+      if (state === 'unproven' && !openLimitStarted) {
+        openLimitStarted = true;
+        // Cancelled by the first answer, so it fires only when the cache never answered.
+        openLimit = setTimer(() => {
+          openLimit = undefined;
+          state = 'off';
+        }, openTimeoutMs);
+      }
       let answer: Promise<T>;
       try {
         answer = call();
@@ -115,10 +171,12 @@ export function guardGithubFileStore(
         (value) => {
           cancel();
           resolve(value);
+          answered();
         },
         () => {
           cancel();
           resolve(empty);
+          answered();
         },
       );
     });
@@ -131,7 +189,9 @@ export function guardGithubFileStore(
     getResolved: (key) => guarded(() => store.getResolved(key), undefined),
     putResolved: (key, commit) =>
       guarded(() => store.putResolved(key, commit), undefined),
+    dropResolved: (key) =>
+      guarded(() => store.dropResolved(key), undefined, true),
     forgetResolved: (repoKey) =>
-      guarded(() => store.forgetResolved(repoKey), undefined),
+      guarded(() => store.forgetResolved(repoKey), undefined, true),
   };
 }

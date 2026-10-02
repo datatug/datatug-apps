@@ -308,6 +308,13 @@ export function openGithubFileStore(
         return row ? { sha: row.sha, at: row.at } : undefined;
       }),
 
+    dropResolved: (key) =>
+      run<void>(undefined, async (database) => {
+        const tx = database.transaction(RESOLVED, 'readwrite');
+        tx.objectStore(RESOLVED).delete(key);
+        await done(tx);
+      }),
+
     forgetResolved: (repoKey) =>
       run<void>(undefined, async (database) => {
         const tx = database.transaction(RESOLVED, 'readwrite');
