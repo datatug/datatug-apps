@@ -1,7 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import { Firestore } from 'firebase/firestore';
-import { of } from 'rxjs';
 
 import { DatatugFoldersService } from './datatug-folders.service';
 import { DatatugStoreServiceFactory } from '../../services/repo/datatug-store-service-factory.service';
