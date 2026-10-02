@@ -37,6 +37,7 @@ import {
   Fact,
   FactLayer,
   FactRole,
+  ScalarFact,
   TypedValue,
 } from '../../contract/types';
 
@@ -158,7 +159,7 @@ function typedValuesEqual(a: TypedValue, b: TypedValue): boolean {
   return a.type === b.type && a.value === b.value;
 }
 
-function distinctValues(facts: readonly Fact[]): TypedValue[] {
+function distinctValues(facts: readonly ScalarFact[]): TypedValue[] {
   const out: TypedValue[] = [];
   for (const fact of facts) {
     if (!out.some((v) => typedValuesEqual(v, fact.value))) {
@@ -169,7 +170,7 @@ function distinctValues(facts: readonly Fact[]): TypedValue[] {
 }
 
 function factIdForValue(
-  facts: readonly Fact[],
+  facts: readonly ScalarFact[],
   value: TypedValue,
 ): string | undefined {
   return (
@@ -182,7 +183,7 @@ function contextFactKey(fact: Fact, scopeKey: string): string {
 }
 
 function cohortOptionsFor(
-  facts: readonly Fact[],
+  facts: readonly ScalarFact[],
   scopeKey: string,
 ): CohortBindingOption[] {
   return facts.map((fact) => ({
@@ -202,7 +203,7 @@ function factsFor(facts: readonly Fact[], meta: EntityFieldRef): Fact[] {
 
 /** Absent `condition` means `'=='` (api-contract.md's `Fact.condition` paragraph —
  * "matching every fact produced before this field existed"). */
-function isEqualityCondition(fact: Fact): boolean {
+function isEqualityCondition(fact: Fact): fact is ScalarFact {
   return !fact.condition || fact.condition === '==';
 }
 
@@ -213,7 +214,7 @@ function isEqualityCondition(fact: Fact): boolean {
 function equalityFactsFor(
   facts: readonly Fact[],
   meta: EntityFieldRef,
-): Fact[] {
+): ScalarFact[] {
   return factsFor(facts, meta).filter(isEqualityCondition);
 }
 
@@ -304,7 +305,11 @@ export function resolveBindings(
     // is never filtered by `condition`; only *context* facts are (see
     // `equalityFactsFor`/`skippedConditionFactsFor` below), per api-contract.md's
     // `Fact.condition` paragraph.
-    const selectionFacts = factsFor(input.selectionFacts, meta);
+    // An `in` selection fact has no single value to bind and the selection tier never
+    // produces one (grid/panel selections are equality), so it is not a candidate here.
+    const selectionFacts = factsFor(input.selectionFacts, meta).filter(
+      (f): f is ScalarFact => f.condition !== 'in',
+    );
     const selectionValues = distinctValues(selectionFacts);
     const skippedConditionFacts = skippedConditionFactsFor(
       input.contextFacts,

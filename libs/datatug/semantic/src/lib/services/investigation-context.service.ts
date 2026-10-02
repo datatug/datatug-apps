@@ -7,7 +7,12 @@ import {
   TypedValue,
 } from '../../contract/types';
 import { decodeFact } from '../../contract/decoders';
-import { toTypedValue, SemanticValue } from '../../contract/adapt';
+import {
+  describeCondition,
+  factValues,
+  toTypedValue,
+  SemanticValue,
+} from '../../contract/adapt';
 import { DATATUG_AGENT_BASE_URL } from '../tokens/datatug-agent-base-url.token';
 import { EntityFieldRef } from '../models/models';
 
@@ -63,7 +68,7 @@ export function scopesEqual(
  * equality (api-contract.md's compatibility rule). */
 export type { ContextCondition } from '../../contract/types';
 
-const DEFAULT_CONDITION: ContextCondition = '==';
+const DEFAULT_CONDITION = '==' as const;
 
 /** Input to {@link InvestigationContextService.addValue} — a UI-local semantic value
  * (grid cell, related-lookup row, manual entry). Wrapped as a wire {@link Fact}
@@ -71,7 +76,12 @@ const DEFAULT_CONDITION: ContextCondition = '==';
  * ("InvestigationContextService holds Fact[] (contract shape) per scope"). */
 export interface ContextItemInput {
   readonly entityField: EntityFieldRef;
-  readonly value: SemanticValue;
+  /** The single value; required for every condition except `'in'`. For `'like'` it must
+   * be a string (the SQL LIKE pattern). */
+  readonly value?: SemanticValue;
+  /** The member list; required and non-empty when `condition === 'in'`, forbidden
+   * otherwise. Duplicates are dropped (typed equality), order is kept. */
+  readonly values?: readonly SemanticValue[];
   readonly label: string;
   /** Where this value came from, e.g. `"grid"`, a related-lookup id, `"manual"` for the
    * Investigation Context page's own "Add a context variable" form. */
@@ -87,7 +97,9 @@ export interface ContextItemInput {
  * `entity`/`field`/`value`/`condition`/`origin`/`enabled` need no re-wrapping — see
  * {@link contextItemToFact} for the exact narrowing used before it reaches
  * `queries/applicable`/`exec/run_query`) plus UI-local display metadata. */
-export interface ContextItem extends Fact {
+export type ContextItem = Fact & ContextItemDisplay;
+
+interface ContextItemDisplay {
   readonly label: string;
   readonly source: string;
   readonly addedAt: string;
@@ -100,6 +112,17 @@ export interface ContextItem extends Fact {
   readonly selectedForBinding?: boolean;
 }
 
+/** Whether an agent can be sent this context item as a wire fact. No datatug-cli agent
+ * understands `in` or `like` yet (v0.46.0 answers 400 `unknown field "values"`, which
+ * fails the whole applicable-queries call), so per the api-contract rule that an
+ * unsupported condition stays unbound the client withholds them (lane/lead assumption —
+ * drop this once an agent supports them). */
+export function isAgentSendableCondition(
+  item: Pick<ContextItem, 'condition'>,
+): boolean {
+  return item.condition !== 'in' && item.condition !== 'like';
+}
+
 /** Narrows a {@link ContextItem} to the exact wire {@link Fact} shape — the boundary
  * where a context basket entry becomes a request payload for `queries/applicable`/
  * `exec/run_query`. `condition` is included only when it differs from the default
@@ -108,17 +131,23 @@ export interface ContextItem extends Fact {
  * this preserves for an agent that doesn't implement conditions (it must leave a
  * non-`'=='` fact unbound and report it unbound, never apply it as equality). */
 export function contextItemToFact(item: ContextItem): Fact {
-  return {
+  const base = {
     id: item.id,
     entity: item.entity,
     field: item.field,
-    value: item.value,
     origin: item.origin,
     enabled: item.enabled,
     ...(item.physical ? { physical: item.physical } : {}),
     ...(item.mapping ? { mapping: item.mapping } : {}),
     ...(item.role ? { role: item.role } : {}),
     ...(item.layer ? { layer: item.layer } : {}),
+  };
+  if (item.condition === 'in') {
+    return { ...base, condition: 'in', values: item.values };
+  }
+  return {
+    ...base,
+    value: item.value,
     ...(item.condition !== DEFAULT_CONDITION
       ? { condition: item.condition }
       : {}),
@@ -150,10 +179,31 @@ function typedValuesEqual(a: TypedValue, b: TypedValue): boolean {
   return a.type === b.type && a.value === b.value;
 }
 
+function typedValueSetsEqual(
+  a: readonly TypedValue[],
+  b: readonly TypedValue[],
+): boolean {
+  return (
+    a.length === b.length &&
+    a.every((x) => b.some((y) => typedValuesEqual(x, y)))
+  );
+}
+
+/** Drops typed duplicates, keeping first-seen order. */
+function dedupeTypedValues(values: readonly TypedValue[]): TypedValue[] {
+  const out: TypedValue[] = [];
+  for (const v of values) {
+    if (!out.some((x) => typedValuesEqual(x, v))) {
+      out.push(v);
+    }
+  }
+  return out;
+}
+
 function itemMatches(
   item: ContextItem,
   entityField: EntityFieldRef,
-  value: TypedValue,
+  values: readonly TypedValue[],
   condition: ContextCondition,
   layer: FactLayer | undefined,
 ): boolean {
@@ -162,13 +212,13 @@ function itemMatches(
     item.field === entityField.field &&
     item.condition === condition &&
     normalizedFactLayer(item.layer) === normalizedFactLayer(layer) &&
-    typedValuesEqual(item.value, value)
+    typedValueSetsEqual(factValues(item), values)
   );
 }
 
 function contextItemId(
   entityField: EntityFieldRef,
-  value: TypedValue,
+  values: readonly TypedValue[],
   condition: ContextCondition,
   layer: FactLayer | undefined,
 ): string {
@@ -178,11 +228,20 @@ function contextItemId(
   // when it isn't the default (`'=='`) so every pre-existing id (grid/related-lookup
   // adds, always equality) is byte-for-byte unchanged — e.g. `Age > 5` and `Age >= 5`
   // get distinct ids from each other and from the default-equality `Age = 5`, while
-  // `Age = 5` keeps the exact id it always had.
+  // `Age = 5` keeps the exact id it always had. An `in` id lists its members sorted, so
+  // the same set typed in a different order is the same item.
   const conditionTag = condition === DEFAULT_CONDITION ? '' : condition;
   const layerTag =
     normalizedFactLayer(layer) === 'canonical' ? '' : `@${layer}`;
-  return `${entityField.entity}.${entityField.field}${conditionTag}${layerTag}:${value.type}=${JSON.stringify(value.value)}`;
+  const head = `${entityField.entity}.${entityField.field}${conditionTag}${layerTag}`;
+  if (condition === 'in') {
+    const members = values
+      .map((v) => `${v.type}=${JSON.stringify(v.value)}`)
+      .toSorted();
+    return `${head}:[${members.join(',')}]`;
+  }
+  const value = values[0];
+  return `${head}:${value.type}=${JSON.stringify(value.value)}`;
 }
 
 export function normalizedFactLayer(layer: FactLayer | undefined): FactLayer {
@@ -307,49 +366,41 @@ export class InvestigationContextService {
    * unstored item) if no scope is active yet. */
   addValue(input: ContextItemInput): ContextItem {
     const scope = this.scopeSignal();
-    const typedValue = toTypedValue(input.value);
     const condition = input.condition ?? DEFAULT_CONDITION;
+    const typedValues = typedValuesForInput(input, condition);
     const layer = input.layer;
-    if (!scope) {
-      // No scope yet — nothing to key storage by. Same shape as a stored item so
-      // callers don't need a special case, but never persisted.
-      return {
-        id: contextItemId(input.entityField, typedValue, condition, layer),
+    const id = contextItemId(input.entityField, typedValues, condition, layer);
+    const build = (): ContextItem => {
+      const common = {
+        id,
         entity: input.entityField.entity,
         field: input.entityField.field,
-        value: typedValue,
-        origin: 'context',
+        origin: 'context' as const,
         enabled: true,
         label: input.label,
         source: input.source,
         addedAt: new Date().toISOString(),
-        condition,
         ...(input.role ? { role: input.role } : {}),
         ...(layer ? { layer } : {}),
       };
+      return condition === 'in'
+        ? { ...common, condition, values: typedValues }
+        : { ...common, condition, value: typedValues[0] };
+    };
+    if (!scope) {
+      // No scope yet — nothing to key storage by. Same shape as a stored item so
+      // callers don't need a special case, but never persisted.
+      return build();
     }
     const key = scopeKey(scope);
     const existingItems = this.basketsSignal().get(key) ?? [];
     const existing = existingItems.find((item) =>
-      itemMatches(item, input.entityField, typedValue, condition, layer),
+      itemMatches(item, input.entityField, typedValues, condition, layer),
     );
     if (existing) {
       return existing;
     }
-    const item: ContextItem = {
-      id: contextItemId(input.entityField, typedValue, condition, layer),
-      entity: input.entityField.entity,
-      field: input.entityField.field,
-      value: typedValue,
-      origin: 'context',
-      enabled: true,
-      label: input.label,
-      source: input.source,
-      addedAt: new Date().toISOString(),
-      condition,
-      ...(input.role ? { role: input.role } : {}),
-      ...(layer ? { layer } : {}),
-    };
+    const item = build();
     this.setBasket(key, [...existingItems, item]);
     return item;
   }
@@ -428,7 +479,7 @@ export class InvestigationContextService {
       role,
       selectedForBinding: undefined,
       id: source.id,
-      label: `${source.entity}.${source.field} ${source.condition} ${String(source.value.value)}`,
+      label: `${source.entity}.${source.field} ${describeCondition(source.condition, factValues(source))}`,
       source: `promoted from ${layer}`,
       addedAt: new Date().toISOString(),
     };
@@ -526,7 +577,17 @@ export class InvestigationContextService {
       if (!Array.isArray(parsed)) {
         return [];
       }
-      return parsed.map(decodeStoredContextItem);
+      // One undecodable item (written by an older build, hand-edited) is dropped on
+      // its own; it must not discard the rest of the scope's basket.
+      const items: ContextItem[] = [];
+      parsed.forEach((stored, index) => {
+        try {
+          items.push(decodeStoredContextItem(stored, index));
+        } catch {
+          // dropped
+        }
+      });
+      return items;
     } catch {
       // sessionStorage unavailable (private mode, SSR, or a full quota) or corrupted
       // JSON — start empty rather than throwing.
@@ -564,6 +625,7 @@ function decodeStoredContextItem(value: unknown, index: number): ContextItem {
     'entity',
     'field',
     'value',
+    'values',
     'condition',
     'origin',
     'physical',
@@ -595,13 +657,19 @@ function decodeStoredContextItem(value: unknown, index: number): ContextItem {
   ) {
     throw new Error(`context[${index}] has invalid display metadata`);
   }
-  return {
-    ...fact,
-    condition: fact.condition ?? DEFAULT_CONDITION,
+  const display = {
     label,
     source,
     addedAt,
-    ...(selectedForBinding ? { selectedForBinding: true } : {}),
+    ...(selectedForBinding ? { selectedForBinding: true as const } : {}),
+  };
+  if (fact.condition === 'in') {
+    return { ...fact, ...display };
+  }
+  return {
+    ...fact,
+    condition: fact.condition ?? DEFAULT_CONDITION,
+    ...display,
   };
 }
 
@@ -614,7 +682,7 @@ function normalizedAgentUrl(agentUrl: string): string {
  * wrap/unwrap edge, mirroring `../../contract/adapt.ts`'s `fromTypedValue` without a
  * decimal/date/datetime special case callers here have never needed. */
 function fromStoredValue(item: ContextItem): SemanticValue {
-  const v = item.value;
+  const v = factValues(item)[0];
   switch (v.type) {
     case 'string':
       return v.value;
@@ -632,4 +700,58 @@ function fromStoredValue(item: ContextItem): SemanticValue {
       // bindingsFor() label; resolveBindings() consumes the typed value directly).
       return v.value as string;
   }
+}
+
+/** Makes an `in` member list single-typed, as the wire contract requires (the decoder
+ * rejects a mixed list). Lane assumption: `integer` and `number` members are widened to
+ * `number` (so "1, 2.5" on a numeric field works); any other mix (e.g. `boolean` +
+ * `string` from "true, yes") is rejected with a clear message rather than silently
+ * coerced. Throws on a mixed list. */
+export function unifyInListTypes(values: readonly TypedValue[]): TypedValue[] {
+  const kinds = new Set(values.map((v) => v.type));
+  if (kinds.size <= 1) {
+    return [...values];
+  }
+  if ([...kinds].every((k) => k === 'integer' || k === 'number')) {
+    return values.map((v) =>
+      v.type === 'integer' ? { type: 'number', value: Number(v.value) } : v,
+    );
+  }
+  throw new Error(
+    `an "in" list must hold one type of value, got ${[...kinds].join(' and ')}`,
+  );
+}
+
+/** Validates an input's value/values against its condition and returns the typed list
+ * (one element for every scalar condition). Throws on a shape the wire contract would
+ * reject: `in` needs a non-empty `values`, no `value`; every other condition needs a
+ * `value`, no `values`; `like` needs a string pattern. */
+function typedValuesForInput(
+  input: ContextItemInput,
+  condition: ContextCondition,
+): TypedValue[] {
+  if (condition === 'in') {
+    if (input.value !== undefined) {
+      throw new Error('addValue: "in" takes values, not value');
+    }
+    if (!input.values?.length) {
+      throw new Error('addValue: "in" needs a non-empty values list');
+    }
+    return dedupeTypedValues(
+      unifyInListTypes(input.values.map((v) => toTypedValue(v))),
+    );
+  }
+  if (input.values !== undefined) {
+    throw new Error(
+      `addValue: values is only allowed with "in", not "${condition}"`,
+    );
+  }
+  if (input.value === undefined) {
+    throw new Error(`addValue: "${condition}" needs a value`);
+  }
+  const typed = toTypedValue(input.value);
+  if (condition === 'like' && typed.type !== 'string') {
+    throw new Error('addValue: a "like" pattern must be a string');
+  }
+  return [typed];
 }

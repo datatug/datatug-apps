@@ -13,6 +13,8 @@ import {
   AgentContextService,
   type ContextScope,
   contextItemToFact,
+  type ContextItem,
+  type ScalarFact,
   InvestigationContextService,
 } from '@sneat/datatug-semantic';
 import { RandomIdService } from '@sneat/random';
@@ -45,6 +47,7 @@ import {
 import {
   CreateIncidentRequest,
   IncidentDetail,
+  IncidentFactCondition,
   IncidentFactInput,
   IncidentRequestContext,
 } from '../../../incidents/models';
@@ -160,8 +163,10 @@ export class IncidentCreatePageComponent {
     ) {
       return 0;
     }
-    return this.investigationContext.items().filter((item) => item.enabled)
-      .length;
+    // Only what the incident can carry; the blocking error covers the rest.
+    return this.investigationContext
+      .items()
+      .filter((item) => item.enabled && isIncidentCompatible(item)).length;
   });
   private readonly committedIncident = signal<CommittedIncident | undefined>(
     undefined,
@@ -289,6 +294,16 @@ export class IncidentCreatePageComponent {
       );
       return;
     }
+    if (
+      this.investigationContext
+        .items()
+        .some((item) => item.enabled && !isIncidentCompatible(item))
+    ) {
+      this.errorMessage.set(
+        'Incidents cannot carry "in" or "like" conditions yet. Disable or remove those context variables before creating the incident.',
+      );
+      return;
+    }
     this.errorMessage.set(undefined);
     this.isSubmitting.set(true);
     const scopeKey = this.currentScopeKey();
@@ -331,9 +346,11 @@ export class IncidentCreatePageComponent {
     return {
       facts: this.investigationContext
         .items()
-        .filter((item) => item.enabled)
+        .filter((item) => item.enabled && isIncidentCompatible(item))
         .map((item): IncidentFactInput => {
-          const fact = contextItemToFact(item);
+          const fact = contextItemToFact(item) as ScalarFact & {
+            readonly condition?: IncidentFactCondition;
+          };
           return {
             id: fact.id,
             entity: fact.entity,
@@ -579,4 +596,10 @@ export class IncidentCreatePageComponent {
     this.selectedTargetKey = this.targetKey(context);
     this.selectedInvestigationScope = investigationScope;
   }
+}
+
+/** `in`/`like` context variables cannot be stored on an incident yet — see
+ * {@link IncidentFactCondition}. */
+function isIncidentCompatible(item: ContextItem): boolean {
+  return item.condition !== 'in' && item.condition !== 'like';
 }

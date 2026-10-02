@@ -463,6 +463,64 @@ describe('ContextPanelComponent', () => {
         ]),
       );
     });
+
+    it('withholds enabled `in` and `like` context items from the applicable-queries request', async () => {
+      mock = new MockSemanticApi({
+        related: { related: [], truncated: false },
+        applicable: { applicable: [], notYet: [] },
+      });
+      await TestBed.configureTestingModule({
+        imports: [ContextPanelComponent],
+        providers: [
+          { provide: SemanticApiService, useValue: mock as unknown as SemanticApiService },
+          { provide: AgentContextService, useValue: agentContextStub() },
+        ],
+      }).compileComponents();
+
+      context = TestBed.inject(InvestigationContextService);
+      context.setScope({
+        project: 'demo-project-1',
+        environment: 'production',
+        securityContextId: 'sctx-1',
+      });
+      context.addValue({
+        entityField: { entity: 'Country', field: 'Code' },
+        values: ['CA', 'US'],
+        label: 'Country.Code in (CA, US)',
+        source: 'manual',
+        condition: 'in',
+      });
+      context.addValue({
+        entityField: { entity: 'Country', field: 'Name' },
+        value: 'Can%',
+        label: "Country.Name like 'Can%'",
+        source: 'manual',
+        condition: 'like',
+      });
+
+      fixture = TestBed.createComponent(ContextPanelComponent);
+      fixture.componentRef.setInput('project', 'demo-project-1');
+      fixture.componentRef.setInput('environment', 'production');
+      fixture.componentRef.setInput('selection', {
+        entity: 'Customer',
+        field: 'ID',
+        value: 5,
+        label: 'Customer.ID = 5',
+        source: 'grid',
+      });
+      fixture.detectChanges();
+      TestBed.tick();
+      fixture.detectChanges();
+
+      const call = mock.calls.find((c) => c.method === 'getApplicableQueries');
+      const values = (
+        call?.request as { values: { entity: string; condition?: string }[] }
+      ).values;
+      expect(values.map((v) => v.entity)).toEqual(['Customer']);
+      expect(values.some((v) => v.condition === 'in' || v.condition === 'like')).toBe(
+        false,
+      );
+    });
   });
 
   describe('J4 — restricted principal: related counts can be withheld', () => {

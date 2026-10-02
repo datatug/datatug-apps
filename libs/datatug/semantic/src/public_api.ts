@@ -22,12 +22,14 @@ export {
   ContextCondition,
   ContextItem,
   contextItemToFact,
+  isAgentSendableCondition,
   ContextItemInput,
   ContextScope,
   ParameterBinding,
   scopeKey,
   scopesEqual,
   SemanticParameterRef,
+  unifyInListTypes,
 } from './lib/services/investigation-context.service';
 export {
   BindingBlockReason,

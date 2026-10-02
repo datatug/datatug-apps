@@ -430,7 +430,7 @@ describe('decoders reject what the appendix forbids (no coercion, no unknown fie
     expect(fact.condition).toBeUndefined();
   });
 
-  it('Fact.condition: decodes each of the six comparison operators verbatim (S162)', () => {
+  it('Fact.condition: decodes each of the six scalar comparison operators verbatim (S162)', () => {
     for (const condition of ['==', '!=', '>', '>=', '<', '<='] as const) {
       const fact = decodeFact({
         id: `Customer.Age${condition}21`,
@@ -457,6 +457,69 @@ describe('decoders reject what the appendix forbids (no coercion, no unknown fie
         enabled: true,
       }),
     ).toThrow(ContractDecodeError);
+  });
+
+  describe('Fact.condition "in" / "like" (founder 2026-10-02: "add both `in` and `like`")', () => {
+    const base = {
+      id: 'f',
+      entity: 'Customer',
+      field: 'Name',
+      origin: 'context',
+      enabled: true,
+    };
+    const s = (value: string) => ({ type: 'string', value });
+    const i = (value: string) => ({ type: 'integer', value });
+
+    const accept: [string, Record<string, unknown>][] = [
+      ['like with a string pattern', { condition: 'like', value: s('Ab%') }],
+      ['in with a one-element list', { condition: 'in', values: [s('a')] }],
+      [
+        'in with a same-typed list',
+        { condition: 'in', values: [i('1'), i('2'), i('3')] },
+      ],
+    ];
+    it.each(accept)('accepts %s', (_name, extra) => {
+      const fact = decodeFact({ ...base, ...extra });
+      expect(fact.condition).toBe(extra['condition']);
+      if (fact.condition === 'in') {
+        expect(fact.values).toEqual(extra['values']);
+        expect(fact.value).toBeUndefined();
+      }
+    });
+
+    const reject: [string, Record<string, unknown>][] = [
+      ['in with an empty list', { condition: 'in', values: [] }],
+      ['in with no list', { condition: 'in' }],
+      ['in with a null list', { condition: 'in', values: null }],
+      ['in with a non-array list', { condition: 'in', values: s('a') }],
+      [
+        'in with a scalar value instead of a list',
+        { condition: 'in', value: s('a') },
+      ],
+      [
+        'in carrying both value and values',
+        { condition: 'in', value: s('a'), values: [s('a')] },
+      ],
+      [
+        'in with mixed member types',
+        { condition: 'in', values: [s('1'), i('2')] },
+      ],
+      [
+        'in with an invalid member',
+        { condition: 'in', values: [{ type: 'integer', value: 'x' }] },
+      ],
+      ['== with a list', { condition: '==', value: s('a'), values: [s('a')] }],
+      ['absent condition with a list', { value: s('a'), values: [s('a')] }],
+      ['like with a list', { condition: 'like', values: [s('a%')] }],
+      ['like with a non-string value', { condition: 'like', value: i('5') }],
+      ['like with no value', { condition: 'like' }],
+      ['a scalar condition with no value', { condition: '>' }],
+    ];
+    it.each(reject)('rejects %s', (_name, extra) => {
+      expect(() => decodeFact({ ...base, ...extra })).toThrow(
+        ContractDecodeError,
+      );
+    });
   });
 
   it('agent-info: rejects a missing required field', () => {

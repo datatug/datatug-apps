@@ -84,6 +84,46 @@ async function addNamedOverlay(
   ).toBeVisible();
 }
 
+/** Adds one canonical context variable through the /variables form (no layer, no role). */
+async function addCondition(
+  page: Page,
+  agentStoreId: string,
+  entry: { field: string; condition: string; value: string },
+): Promise<void> {
+  const projectUrl = `/store/${agentStoreId}/project/${DEMO_PROJECT_ID}`;
+  // Visit the environment page first, exactly as addNamedOverlay does: the basket is
+  // keyed by project + environment + security context, and /variables opened cold has
+  // no environment, so an added variable is not stored and the list stays empty.
+  await page.goto(`${projectUrl}/env/${DEMO_ENV_ID}`);
+  await expect(
+    activePage(page).getByRole('heading', { name: 'Servers', exact: true }),
+  ).toBeVisible({ timeout: 15_000 });
+  await page.goto(`${projectUrl}/variables`);
+  await expect(
+    activePage(page).getByText('Add a context variable', { exact: true }),
+  ).toBeVisible({ timeout: 15_000 });
+  const choose = async (label: string, option: string): Promise<void> => {
+    await activePage(page).locator(`ion-select[label="${label}"]`).click();
+    await page
+      .locator('ion-popover')
+      .getByText(option, { exact: true })
+      .click();
+  };
+  await choose('Entity', 'Customer');
+  await choose('Field', entry.field);
+  await choose('Condition', entry.condition);
+  // in/like switch the Value input to type=text (it is type=number for an integer
+  // field); wait for that re-render before typing a list or a pattern.
+  const valueInput = activePage(page).locator('ion-input[label="Value"] input');
+  await expect(valueInput).toHaveAttribute('type', 'text');
+  await valueInput.fill(entry.value);
+  await activePage(page)
+    .locator('.investigation-context-page__form ion-button', {
+      hasText: 'Add',
+    })
+    .click();
+}
+
 test.describe('Incidentius Task 3 — real persisted Houston journey', () => {
   test('creates through stale-context recovery, opens server detail, cold reloads, and remains listed', async ({
     incidentAgentServer,
@@ -297,6 +337,47 @@ test.describe('Incidentius Task 4 — real context overlay decisions', () => {
     await expect(
       activePage(page).getByTestId('incident-context-fact-count'),
     ).toContainText('1 enabled Investigation Context fact');
+  });
+
+  test('adds an `in` and a `like` context variable and lists both readably', async ({
+    incidentAgentServer,
+    page,
+  }) => {
+    await addCondition(page, incidentAgentServer.storeId, {
+      field: 'ID',
+      condition: 'in',
+      value: '1, 2, 3',
+    });
+    await expect(
+      activePage(page).getByText('Customer.ID in (1, 2, 3)', { exact: false }),
+    ).toBeVisible();
+    // Like is offered for the text-typed Email field only.
+    await activePage(page).locator('ion-select[label="Field"]').click();
+    await page
+      .locator('ion-popover')
+      .getByText('Email', { exact: true })
+      .click();
+    await activePage(page).locator('ion-select[label="Condition"]').click();
+    await page
+      .locator('ion-popover')
+      .getByText('like', { exact: true })
+      .click();
+    await activePage(page)
+      .locator('ion-input[label="Value"] input')
+      .fill('%@example.com');
+    await activePage(page)
+      .locator('.investigation-context-page__form ion-button', {
+        hasText: 'Add',
+      })
+      .click();
+    await expect(
+      activePage(page).getByText("Customer.Email like '%@example.com'", {
+        exact: false,
+      }),
+    ).toBeVisible();
+    await expect(
+      activePage(page).getByText('Customer.ID in (1, 2, 3)', { exact: false }),
+    ).toBeVisible();
   });
 
   test('promotes and rejects named overlays through real idempotent append events and keeps both after reload', async ({
