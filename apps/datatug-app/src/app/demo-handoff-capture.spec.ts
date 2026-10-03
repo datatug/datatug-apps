@@ -9,11 +9,12 @@ import {
   demoHandoff,
   isTrustedHandoff,
   isHandoffPath,
+  liveHandoffSearch,
   parseHandoffSearch,
   resetDemoHandoffForTests,
   truncateToBytes,
 } from './demo-handoff-capture';
-import { routeSegments } from './demo-handoff-path';
+import { handoffTargetOfPath, routeSegments } from './demo-handoff-path';
 
 const ORIGIN = 'https://app.test';
 /** The address that is given to history.replaceState: a path that starts with `//` needs its origin (review r2). */
@@ -66,7 +67,13 @@ function pageLoad(
     state: { x: 1 },
     replaceState: (_state: unknown, _title: string, url: string) => {
       replaced.push(url);
-      (loc as { search: string }).search = '';
+      // what the browser does: the address bar becomes what it was given
+      const at = url.replace(ORIGIN, '');
+      const hash = at.indexOf('#');
+      const query = at.slice(0, hash < 0 ? undefined : hash).indexOf('?');
+      (loc as { search: string }).search =
+        query < 0 ? '' : at.slice(query, hash < 0 ? undefined : hash);
+      (loc as { hash: string }).hash = hash < 0 ? '' : at.slice(hash);
     },
   } as unknown as History;
   const env: CaptureEnv = {
@@ -569,6 +576,134 @@ describe('demo hand-off capture', () => {
     });
   });
 
+  // Founder ruling 2026-10-03: the question travels after `#`, on a page of its own.
+  describe('capture of the start-chat address (founder ruling 2026-10-03)', () => {
+    const TRUSTED = '/project/github.com/datatug/chinook-demo/start-chat';
+    const OTHER = '/project/github.com/acme/demo/start-chat';
+    const M = 'Which countries listen most?';
+
+    it('takes msg and lang from the fragment, removes the fragment, and keeps them for this tab', () => {
+      const f = pageLoad(TRUSTED, '', { hash: '#msg=Which+countries+listen+most%3F&lang=ru' });
+      captureDemoHandoff(f.env);
+      expect(f.replaced).toEqual([TRUSTED]);
+      expect(demoHandoff(undefined, TRUSTED)).toEqual({ question: M, lang: 'ru', truncated: false });
+      expect(f.store.get(DEMO_HANDOFF_KEY)).toBe(TRUSTED + '?msg=Which+countries+listen+most%3F&lang=ru');
+    });
+
+    it('q is an alias of msg, in the fragment and in the query', () => {
+      for (const [search, hash] of [['', '#q=Hello'], ['?q=Hello', '']]) {
+        resetDemoHandoffForTests();
+        const f = pageLoad(TRUSTED, search, { hash });
+        captureDemoHandoff(f.env);
+        expect(demoHandoff(undefined, TRUSTED)?.question, search + hash).toBe('Hello');
+      }
+    });
+
+    it('takes them from the query too (the form post of a site with no script), keeping the other query keys', () => {
+      const f = pageLoad(TRUSTED, '?utm_source=x&msg=Hello&lang=ru&a=1', {});
+      captureDemoHandoff(f.env);
+      expect(f.replaced).toEqual([TRUSTED + '?utm_source=x&a=1']);
+      expect(demoHandoff(undefined, TRUSTED)).toEqual({ question: 'Hello', lang: 'ru', truncated: false });
+    });
+
+    it('the fragment wins over the query, and the whole fragment goes, other content included', () => {
+      const f = pageLoad(TRUSTED, '?msg=FromQuery&x=1', { hash: '#msg=FromFragment&top' });
+      captureDemoHandoff(f.env);
+      expect(f.replaced).toEqual([TRUSTED + '?x=1']);
+      expect(demoHandoff(undefined, TRUSTED)?.question).toBe('FromFragment');
+    });
+
+    it('a fragment with no question is removed too, and nothing is kept', () => {
+      const f = pageLoad(TRUSTED, '?x=1', { hash: '#top' });
+      captureDemoHandoff(f.env);
+      expect(f.replaced).toEqual([TRUSTED + '?x=1']);
+      expect(f.store.size).toBe(0);
+    });
+
+    it('an address with nothing to strip is not rewritten', () => {
+      const f = pageLoad(TRUSTED, '?x=1', {});
+      captureDemoHandoff(f.env);
+      expect(f.replaced).toEqual([]);
+    });
+
+    it('a path that starts with // is rewritten with its origin, as replaceState needs', () => {
+      const f = pageLoad('/' + TRUSTED, '', { hash: '#msg=Hello' });
+      captureDemoHandoff(f.env);
+      expect(f.replaced).toEqual([ORIGIN + '/' + TRUSTED]);
+      expect(demoHandoff(undefined, '/' + TRUSTED)?.question).toBe('Hello');
+    });
+
+    it('takes what the inline script stashed, and there is nothing left to strip', () => {
+      const f = pageLoad(TRUSTED, '', { stashed: '?msg=Hello&lang=ru' });
+      captureDemoHandoff(f.env);
+      expect(f.replaced).toEqual([]);
+      expect(f.stash[DEMO_HANDOFF_STASH]).toBeUndefined();
+      expect(demoHandoff(undefined, TRUSTED)).toEqual({ question: 'Hello', lang: 'ru', truncated: false });
+      expect(f.store.get(DEMO_HANDOFF_KEY)).toBe(TRUSTED + '?msg=Hello&lang=ru');
+    });
+
+    it('another repository gets neutral wording: the question is dropped, the language kept, a mark stored', () => {
+      const f = pageLoad(OTHER, '', { hash: '#msg=Hello&lang=ru' });
+      captureDemoHandoff(f.env);
+      expect(f.replaced).toEqual([OTHER]);
+      expect(demoHandoff(undefined, OTHER)).toEqual({ question: '', lang: 'ru', truncated: false });
+      expect(f.store.get(DEMO_HANDOFF_KEY)).toBe(OTHER + '?lang=ru&asked=1');
+      expect(JSON.stringify([...f.store])).not.toContain('Hello');
+    });
+
+    it('a folder or another ref of the demo repository is not trusted either', () => {
+      for (const path of [
+        '/project/github.com/datatug/chinook-demo/tree/abc123/-/start-chat',
+        '/project/github.com/datatug/chinook-demo/tree/HEAD/sub/-/start-chat',
+      ]) {
+        resetDemoHandoffForTests();
+        expect(isTrustedHandoff(path), path).toBe(false);
+        const f = pageLoad(path, '', { hash: '#msg=Hello' });
+        captureDemoHandoff(f.env);
+        expect(demoHandoff(undefined, path)?.question, path).toBe('');
+      }
+      expect(isTrustedHandoff('/project/github.com/datatug/chinook-demo/tree/HEAD/-/start-chat')).toBe(true);
+    });
+
+    it('a reload shows the same question from the tab store; a fresh visit to the bare address shows none', () => {
+      const first = pageLoad(TRUSTED, '', { hash: '#msg=Hello' });
+      captureDemoHandoff(first.env);
+      resetDemoHandoffForTests();
+      const reload = pageLoad(TRUSTED, '', { store: first.store, navigation: 'reload' });
+      captureDemoHandoff(reload.env);
+      expect(demoHandoff(() => reload.env.storage(), TRUSTED)?.question).toBe('Hello');
+      resetDemoHandoffForTests();
+      const fresh = pageLoad(TRUSTED, '', { store: first.store, navigation: 'navigate' });
+      captureDemoHandoff(fresh.env);
+      expect(demoHandoff(() => fresh.env.storage(), TRUSTED)).toBeUndefined();
+    });
+
+    it('is still stripped when storage is blocked, and the question lives in memory for this load', () => {
+      const f = pageLoad(TRUSTED, '', { hash: '#msg=Hello', blocked: 'everything' });
+      captureDemoHandoff(f.env);
+      expect(f.replaced).toEqual([TRUSTED]);
+      expect(demoHandoff(() => f.env.storage(), TRUSTED)?.question).toBe('Hello');
+    });
+
+    it('liveHandoffSearch: the hand-off keys of the fragment and query of a start-chat address, the query elsewhere', () => {
+      const at = (pathname: string, search: string, hash: string) => ({ pathname, search, hash }) as Location;
+      expect(liveHandoffSearch(at(TRUSTED, '?utm_source=x', ''))).toBe('');
+      expect(liveHandoffSearch(at(TRUSTED, '', '#top'))).toBe('');
+      expect(liveHandoffSearch(at(TRUSTED, '?x=1&q=A', '#msg=B&lang=ru'))).toBe('?msg=B&lang=ru&q=A');
+      expect(liveHandoffSearch(at('/demo', '?q=A', '#x'))).toBe('?q=A');
+      expect(liveHandoffSearch(at('/queries', '?q=A', ''))).toBe('?q=A');
+    });
+
+    it('a start-chat address is a hand-off path for every spelling the router reads as one; /chat with a fragment is not touched', () => {
+      for (const path of [TRUSTED, TRUSTED + '/', TRUSTED + ';x=1', '/(' + TRUSTED.slice(1) + ')']) {
+        expect(handoffTargetOfPath(path)?.kind, path).toBe('start-chat');
+      }
+      const f = pageLoad('/project/github.com/datatug/chinook-demo/chat', '', { hash: '#msg=Hello' });
+      captureDemoHandoff(f.env);
+      expect(f.replaced).toEqual([]);
+    });
+  });
+
   describe('which hand-offs are shown back (isTrustedHandoff)', () => {
     it.each([
       '/demo',
@@ -847,8 +982,11 @@ describe('demo hand-off capture', () => {
       for (const path of paths) {
         const result = run(path, '?q=x&lang=ru', '#h');
         expect(result.stash !== undefined, path).toBe(isHandoffPath(path));
+        const startChat = handoffTargetOfPath(path)?.kind === 'start-chat';
         expect(result.replaced, path).toEqual(
-          isHandoffPath(path)
+          startChat
+            ? [toReplaceState(path)] // the fragment goes too: it is where a start-chat question travels
+            : isHandoffPath(path)
             ? [toReplaceState(path) + '#h']
             : underProject(path)
               ? [toReplaceState(path) + '?lang=ru#h']
@@ -1007,6 +1145,131 @@ describe('demo hand-off capture', () => {
             '/project/github.com/datatug/chinook-demo/chat',
           )?.question,
         ).toBe('Early');
+      });
+    });
+
+    // Founder ruling 2026-10-03: `…/start-chat#msg=<q>&lang=<l>`.
+    describe('the start-chat address: the question after #', () => {
+      const P = '/project/github.com/acme/demo/start-chat';
+
+      it('stashes msg and lang from the fragment, keeps them for a reload under the same path, and takes the fragment out', () => {
+        const result = run(P, '', '#msg=Which+countries%3F&lang=ru');
+        expect(result.stash).toBe('?msg=Which+countries%3F&lang=ru');
+        expect(result.replaced).toEqual([P]);
+        expect(result.kept).toEqual(new Map([[DEMO_HANDOFF_KEY, P + '?msg=Which+countries%3F&lang=ru']]));
+      });
+
+      it('q is read like msg, and only msg, q and lang are kept; the fragment is taken out whole', () => {
+        const result = run(P, '', '#q=Hi&scenario=x&lang=en&top');
+        expect(result.stash).toBe('?q=Hi&lang=en');
+        expect(result.replaced).toEqual([P]);
+      });
+
+      it('reads the query too (a form post), fragment first, and keeps its other keys', () => {
+        const result = run(P, '?utm_source=x&msg=FromQuery&b=2&lang=ru', '#msg=FromFragment');
+        expect(result.stash).toBe('?msg=FromFragment&msg=FromQuery&lang=ru');
+        expect(result.replaced).toEqual([P + '?utm_source=x&b=2']);
+        // and the app parses the stash like any query string: the fragment's question comes first
+        expect(new URLSearchParams(result.stash as string).get('msg')).toBe('FromFragment');
+      });
+
+      it('keys are read as the app reads them: percent-decoded, case-sensitive', () => {
+        const result = run(P, '?m%73g=Q&MSG=kept&x=1', '');
+        expect(result.stash).toBe('?m%73g=Q');
+        expect(result.replaced).toEqual([P + '?MSG=kept&x=1']);
+      });
+
+      it('a fragment with no question is removed and nothing is stashed or kept', () => {
+        const result = run(P, '?x=1', '#top');
+        expect(result).toEqual({ replaced: [P + '?x=1'], stash: undefined, kept: new Map() });
+      });
+
+      it('a bare address, or one with a query that holds none of the keys, is not touched', () => {
+        expect(run(P, '', '').replaced).toEqual([]);
+        expect(run(P, '?x=1&y=2', '').replaced).toEqual([]);
+      });
+
+      it.each([
+        ['/project/github.com/acme/demo/tree/HEAD/-/start-chat'],
+        ['/project/github.com/acme/demo/tree/HEAD/dir/-/start-chat'],
+        ['/project/github.com/acme/demo/tree/abc/a/b/-/start-chat'],
+        ['//project/github.com/acme/demo/start-chat'],
+        ['///project/github.com/acme/demo/start-chat/'],
+        ['/(project/github.com/acme/demo/start-chat)'],
+        ['/(Project/GitHub.com/acme/demo/tree/HEAD/d/-/START-CHAT)/'],
+        ['/Project/GitHub.com/acme/demo/Start-Chat;x=1'],
+        ['/project/github.com/datatug/chinook-demo/start-chat'],
+      ])('%s is handled: the question is stashed, kept, and out of the address bar', (path) => {
+        expect(handoffTargetOfPath(path)?.kind).toBe('start-chat');
+        const result = run(path, '', '#msg=Q&lang=ru');
+        expect(result.stash).toBe('?msg=Q&lang=ru');
+        expect(result.replaced).toEqual([toReplaceState(path)]);
+        expect(result.kept).toEqual(new Map([[DEMO_HANDOFF_KEY, path.replace(/\/$/, '') + '?msg=Q&lang=ru']]));
+      });
+
+      it.each([
+        '/project/github.com/acme/demo/start-chat/extra',
+        '/project/github.com/acme/demo/tree/HEAD/start-chat',
+        '/project/github.com/acme/demo/tree/HEAD/a/-/b/-/start-chat',
+        '/project/github.com/acme/demo/tree/-/start-chat',
+        '/project/gitlab.com/acme/demo/start-chat',
+        '/project/github.com/acme/start-chat',
+        '/start-chat',
+        '/start-chat/x',
+        '/store/github.com/project/p@o@/start-chat',
+        '/project/github.com/acme/demo/start-chat(menu:x)',
+        '/project/github.com/acme/demo/tree/HEAD/a(b)/-/start-chat',
+        '/demo',
+        '/project/github.com/acme/demo/chat',
+        '/project/github.com/acme/demo/queries',
+      ])('%s with a question in its fragment is left exactly as it is', (path) => {
+        const result = run(path, '', '#msg=Q&lang=ru');
+        expect(result, path).toEqual({ replaced: [], stash: undefined, kept: new Map() });
+      });
+
+      it('agrees with the TypeScript on every spelling: stashed exactly when handoffTargetOfPath says start-chat', () => {
+        for (const path of [
+          '/project/github.com/o/r/start-chat',
+          '/project/github.com/o/r/start-chat/',
+          '/project/github.com/o/r/start-chat/x',
+          '/project/github.com/o/r/tree/HEAD/d/-/start-chat',
+          '/project/github.com/o/r/tree/HEAD/start-chat',
+          '/project/github.com/o/r/tree/-/start-chat',
+          '/project/github.com/o/r/tree//-/start-chat',
+          '/project/github.com/o/r/tree/HEAD/a/-/b/-/start-chat',
+          '/project/github.com/o%2Fx/r/start-chat',
+          '/project/github.com/o/r/start-chat//',
+          '/project//github.com/o/r/start-chat',
+          '//project/github.com/o/r/start-chat',
+          '/(project/github.com/o/r/start-chat)',
+          '/(project/github.com/o/r/start-chat//menu:x)',
+          '/(project/github.com/o/r/tree/HEAD/-/start-chat)(menu:x)',
+          '/project/github.com/o/r/start-chat(menu:x)',
+          '/project/github.com/o/r/chat',
+          '/demo',
+          '/',
+        ]) {
+          const result = run(path, '', '#msg=Q');
+          expect(result.stash !== undefined, path).toBe(handoffTargetOfPath(path)?.kind === 'start-chat');
+        }
+      });
+
+      it('strips the address even when sessionStorage is blocked, and does not throw when the browser refuses', () => {
+        expect(run(P, '', '#msg=Q', true).replaced).toEqual([P]);
+        expect(() => run(P, '', '#msg=Q', false, true)).not.toThrow();
+        expect(run(P, '', '#msg=Q', false, true).stash).toBe('?msg=Q');
+      });
+
+      it('a reload before the app has started loses nothing', () => {
+        const first = run('/project/github.com/datatug/chinook-demo/start-chat', '', '#msg=Early&lang=ru');
+        const reload = pageLoad('/project/github.com/datatug/chinook-demo/start-chat', '', {
+          store: first.kept,
+          navigation: 'reload',
+        });
+        captureDemoHandoff(reload.env);
+        expect(
+          demoHandoff(() => reload.env.storage(), '/project/github.com/datatug/chinook-demo/start-chat'),
+        ).toEqual({ question: 'Early', lang: 'ru', truncated: false });
       });
     });
 

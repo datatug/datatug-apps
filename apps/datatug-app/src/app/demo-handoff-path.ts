@@ -22,7 +22,15 @@ import {
 // matches nothing and the navigation fails, as on main), so nothing may claim to handle it. Its query is left
 // alone, exactly as for any other address that is not a hand-off.
 
-/** What a hand-off address points at. `owner`, `repo` and `ref` are the decoded segments, in their original case. */
+/**
+ * What a hand-off address points at. `owner`, `repo`, `ref` and `dir` are the decoded segments, in their original
+ * case.
+ * - `demo`: `/demo`, the address datatug.io's Ask button still links to.
+ * - `start-chat`: the confirmation page, `…/start-chat` or `…/tree/<ref>[/<dir>…]/-/start-chat`. Its question
+ *   travels after `#` (founder ruling 2026-10-03; design demo-as-github-project.md, 3.1).
+ * - `chat`: the OLD hand-off address `…/chat?msg=…`, which is an ordinary project page unless it arrived with a
+ *   question, in which case it is moved to the `start-chat` page of the same project.
+ */
 export type HandoffTarget =
   | { readonly kind: 'demo' }
   | {
@@ -31,7 +39,19 @@ export type HandoffTarget =
       readonly repo: string;
       /** The `tree/<ref>` segment of `…/tree/<ref>/-/chat`; undefined for `…/chat`. */
       readonly ref?: string;
+    }
+  | {
+      readonly kind: 'start-chat';
+      readonly owner: string;
+      readonly repo: string;
+      /** The `tree/<ref>` segment; undefined for the short form. */
+      readonly ref?: string;
+      /** The folder segments between the ref and `/-/`; empty for the repository root. */
+      readonly dir: readonly string[];
     };
+
+/** The last segment of the page the old hand-off address moves to, and of every address of the confirmation page. */
+export const START_CHAT_PAGE = 'start-chat';
 
 function decoded(segment: string): string {
   try {
@@ -86,7 +106,34 @@ export function handoffTarget(
     rest[3] === 'chat'
   )
     return chat(segments[5]);
+  const startChat = (ref?: string, dir: string[] = []): HandoffTarget => ({
+    kind: 'start-chat',
+    owner: segments[2],
+    repo: segments[3],
+    ref,
+    dir,
+  });
+  if (rest.length === 1 && rest[0] === START_CHAT_PAGE) return startChat();
+  // `tree/<ref>[/<dir>…]/-/start-chat`: the first `-` ends the project locator, so no folder segment is one.
+  if (
+    rest.length >= 4 &&
+    rest[0] === 'tree' &&
+    rest[1] &&
+    rest[rest.length - 2] === '-' &&
+    rest[rest.length - 1] === START_CHAT_PAGE &&
+    !rest.slice(2, -2).includes('-')
+  )
+    return startChat(segments[5], segments.slice(6, -2));
   return undefined;
+}
+
+/**
+ * The segments of the `start-chat` page of the same project, for an old hand-off address (`…/chat`,
+ * `…/tree/<ref>/-/chat`): its last segment is replaced. Matrix parameters, a trailing slash and any group at the
+ * root are not carried over; the result is the one spelling of the address.
+ */
+export function startChatSegmentsOf(segments: readonly string[]): string[] {
+  return [...segments.slice(0, -1), START_CHAT_PAGE];
 }
 
 /** What a URL path (`location.pathname`) points at, or undefined when it is not a hand-off address. */

@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { datatugDemoConfig as devConfig } from '../environments/environment';
 import { datatugDemoConfig as prodConfig } from '../environments/environment.prod';
 import { datatugDemoConfig as ssoConfig } from '../environments/environment.sso-e2e';
-import { showsHoldingPage } from './demo-handoff-asked';
+import { handoffDecision } from './demo-handoff-asked';
 import { isTrustedHandoff, isHandoffPath } from './demo-handoff-capture';
 import { routeSegments } from './demo-handoff-path';
 import {
@@ -216,6 +216,9 @@ describe('the demo flag (G-F1)', () => {
       '/project/github.com/Datatug/Chinook-Demo/chat',
       '/project/github.com/datatug/chinook-demo/tree/HEAD/-/chat',
       '/project/github.com/datatug/chinook-demo/tree/abc123/-/chat',
+      '/project/github.com/datatug/chinook-demo/start-chat',
+      '/project/github.com/datatug/chinook-demo/tree/abc123/-/start-chat',
+      '/project/github.com/someone/else/start-chat',
       '/project/github.com/datatug/chinook-demo-evil/chat',
       '/project/github.com/someone/else/chat',
       '/store/x/project/y/chat',
@@ -225,7 +228,7 @@ describe('the demo flag (G-F1)', () => {
       isTrustedHandoff(p),
       isHandoffPath(p),
       // which page a hand-off address gets is not the flag's either (it is decided by whether a question was asked)
-      showsHoldingPage(routeSegments(p)),
+      handoffDecision(routeSegments(p)),
     ];
     const baseline = PATHS.map(answers);
 

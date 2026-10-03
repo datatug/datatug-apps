@@ -6,6 +6,7 @@ import {
   ElementRef,
   afterNextRender,
   inject,
+  signal,
   viewChild,
 } from '@angular/core';
 import { DOCUMENT } from '@angular/common';
@@ -15,18 +16,57 @@ import {
   demoHandoff,
   isTrustedHandoff,
   isHandoffPath,
+  liveHandoffSearch,
 } from './demo-handoff-capture';
 import {
   DEMO_HOLDING_STRINGS,
   DEMO_PROJECT_PATH,
+  DemoHoldingStrings,
   siteUrlFor,
 } from './demo-holding-page.strings';
+import type { DemoLang } from './demo-handoff-capture';
+
+/** What the page shows for the address it is on; read again when a hand-off arrives while the page is open. */
+interface HoldingView {
+  readonly trusted: boolean;
+  readonly lang: DemoLang;
+  readonly strings: DemoHoldingStrings;
+  readonly question: string;
+  readonly truncated: boolean;
+}
 
 /**
- * Where a hand-off from the sites lands until the live demo can answer it: `/demo` and
- * `/project/github.com/<owner>/<repo>/chat`. It shows the visitor's question back as plain text, says plainly
- * that the demo is not open yet, and links to the demo project and back to the site. It opens no database and
- * reads no project.
+ * Takes the hand-off of the current address (index.html's first script has already taken the question out of the
+ * address bar and stashed it; otherwise the live address is read and cleaned) and works out what to show.
+ * `/demo` and the demo project's own start-chat address say that the live demo opens here soon and show the
+ * question back. Any other repository's address (see isTrustedHandoff) gets neutral wording: it must not claim to
+ * be a demo, and it carries no question (the capture dropped it).
+ */
+function readView(): HoldingView {
+  captureDemoHandoff();
+  const handoff = demoHandoff();
+  const lang = handoff?.lang ?? 'en';
+  return {
+    trusted: isTrustedHandoff(window.location.pathname),
+    lang,
+    strings: DEMO_HOLDING_STRINGS[lang],
+    question: handoff?.question ?? '',
+    truncated: handoff?.truncated ?? false,
+  };
+}
+
+/**
+ * Where a hand-off from the sites lands until the live demo can answer it: `/demo` and the project's confirmation
+ * page, `/project/github.com/<owner>/<repo>/start-chat#msg=…` (founder ruling 2026-10-03; the old `…/chat?msg=…`
+ * is moved there by the route table). It shows the visitor's question back as plain text, says plainly that the
+ * demo is not open yet, and links to the demo project and back to the site. It opens no database and reads no
+ * project. A start-chat address with no question (nothing to confirm) shows the same page without one.
+ *
+ * TODO(G-A4b): this is the confirmation page of the design (demo-as-github-project.md 3.1, 6.5). While the demo is
+ * off, a "Start" button would have nothing to run, so there is none. When the chat can run a question, "Start"
+ * goes in the template next to the question (trusted project and a question only: it runs `question`, in `lang`,
+ * and nothing runs before the click), gated by the demo flag read where the flag is read (demo-flag.ts), not here:
+ * demo-flag.spec.ts forbids this file to import it.
  *
  * The `ion-header`, `ion-toolbar`, `ion-title` and `ion-content` elements are the app shell's own (datatug-app
  * .component.html imports and so registers all four before any route renders). They are used here as plain
@@ -45,35 +85,42 @@ import {
       </ion-toolbar>
     </ion-header>
     <ion-content class="ion-padding">
-      <div class="holding" [attr.lang]="lang">
+      @let v = view();
+      <div class="holding" [attr.lang]="v.lang">
         <h1 #heading tabindex="-1" aria-describedby="demo-holding-message">
-          {{ trusted ? strings.heading : strings.neutralHeading }}
+          {{ v.trusted ? v.strings.heading : v.strings.neutralHeading }}
         </h1>
         <div id="demo-holding-message" role="status">
-          @if (!trusted) {
-            <p>{{ strings.neutralMessage }}</p>
+          @if (!v.trusted) {
+            <p>{{ v.strings.neutralMessage }}</p>
           } @else {
             <p>
-              {{ question ? strings.withQuestion : strings.withoutQuestion }}
+              {{
+                v.question
+                  ? v.strings.withQuestion
+                  : v.strings.withoutQuestion
+              }}
             </p>
           }
-          @if (question) {
+          @if (v.question) {
             <blockquote
               class="ph-no-capture"
               dir="auto"
-              [attr.aria-label]="strings.questionLabel"
-              [textContent]="question"
+              [attr.aria-label]="v.strings.questionLabel"
+              [textContent]="v.question"
             ></blockquote>
-            @if (truncated) {
-              <p class="note">{{ strings.shortened }}</p>
+            @if (v.truncated) {
+              <p class="note">{{ v.strings.shortened }}</p>
             }
           }
         </div>
         <p class="links">
-          @if (trusted) {
-            <a [routerLink]="demoProjectPath">{{ strings.openDemoProject }}</a>
+          @if (v.trusted) {
+            <a [routerLink]="demoProjectPath">{{
+              v.strings.openDemoProject
+            }}</a>
           }
-          <a [href]="siteUrl">{{ strings.backToSite }}</a>
+          <a [href]="siteUrl">{{ v.strings.backToSite }}</a>
         </p>
       </div>
     </ion-content>
@@ -108,16 +155,7 @@ import {
   `,
 })
 export class DemoHoldingPageComponent {
-  // index.html's first script has already taken the query out of the address bar and stashed it; this parses it.
-  private readonly handoff = (captureDemoHandoff(), demoHandoff());
-  // `/demo` and the demo project's own chat address say that the live demo opens here soon and show the question
-  // back. Any other repository's chat address (see isTrustedHandoff) gets neutral wording: it must not claim to be
-  // a demo, and it carries no question (the capture dropped it).
-  protected readonly trusted = isTrustedHandoff(window.location.pathname);
-  protected readonly lang = this.handoff?.lang ?? 'en';
-  protected readonly strings = DEMO_HOLDING_STRINGS[this.lang];
-  protected readonly question = this.handoff?.question ?? '';
-  protected readonly truncated = this.handoff?.truncated ?? false;
+  protected readonly view = signal(readView());
   protected readonly demoProjectPath = DEMO_PROJECT_PATH;
   protected readonly siteUrl = siteUrlFor(document.referrer);
   private readonly heading =
@@ -143,12 +181,10 @@ export class DemoHoldingPageComponent {
     const root = doc.documentElement;
     let saved: { title: string; lang: string | null } | undefined;
     const apply = (): void => {
-      if (saved) return;
-      saved = { title: doc.title, lang: root.getAttribute('lang') };
-      doc.title = this.trusted
-        ? this.strings.heading
-        : this.strings.neutralHeading;
-      root.setAttribute('lang', this.lang);
+      saved ??= { title: doc.title, lang: root.getAttribute('lang') };
+      const { trusted, strings, lang } = this.view();
+      doc.title = trusted ? strings.heading : strings.neutralHeading;
+      root.setAttribute('lang', lang);
     };
     const restore = (): void => {
       if (!saved) return;
@@ -160,8 +196,11 @@ export class DemoHoldingPageComponent {
     apply();
     const navigations = inject(Router).events.subscribe((event) => {
       if (!(event instanceof NavigationEnd)) return;
-      if (isHandoffPath(event.urlAfterRedirects.split(/[?#]/)[0])) apply();
-      else restore();
+      if (!isHandoffPath(event.urlAfterRedirects.split(/[?#]/)[0])) return restore();
+      // A hand-off that arrives while the page is open (a link pasted into a tab that is already here changes only
+      // the fragment: no reload, so index.html's script did not run): take it, and take it out of the address.
+      if (liveHandoffSearch()) this.view.set(readView());
+      apply();
     });
     inject(DestroyRef).onDestroy(() => {
       navigations.unsubscribe();
