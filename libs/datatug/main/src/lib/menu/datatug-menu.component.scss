@@ -9,3 +9,22 @@ ion-label.current {
 ion-item.no-border {
   --border-width: 0;
 }
+
+// "Powered by DALgo" credit under the build info: muted, but a real link (focusable, underlined on hover/focus).
+.powered-by {
+  margin: 0;
+  padding: 4px 16px 12px;
+  font-size: 0.75rem;
+  color: var(--ion-color-medium);
+
+  a {
+    color: inherit;
+    text-decoration: none;
+
+    &:hover,
+    &:focus-visible {
+      color: var(--ion-color-primary);
+      text-decoration: underline;
+    }
+  }
+}

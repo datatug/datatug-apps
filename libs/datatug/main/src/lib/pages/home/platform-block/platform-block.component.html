@@ -1,0 +1,48 @@
+<ion-card data-testid="platform-block">
+  <ion-card-content>
+    <section aria-labelledby="platform-block-title">
+      <h2 id="platform-block-title">{{ title }}</h2>
+      <p class="lede">{{ lede }}</p>
+      <ul class="parts" aria-label="The parts of DataTug">
+        @for (part of parts; track part.id) {
+          <li
+            class="part"
+            [class.multi]="part.chips.length > 1"
+            [attr.data-part]="part.id"
+          >
+            <h3 class="name">
+              <ion-icon [name]="part.icon" aria-hidden="true" />
+              @if (part.href) {
+                <a
+                  [href]="part.href"
+                  target="_blank"
+                  rel="noopener"
+                  data-part-link
+                  >{{ part.name }}<span aria-hidden="true"> ↗</span
+                  ><span class="sr-only"> (opens in a new tab)</span></a
+                >
+              } @else {
+                <span aria-current="page">{{ part.name }}</span>
+                <span class="here">You are here</span>
+              }
+            </h3>
+            <p class="line">{{ part.line }}</p>
+            <ul class="chips" aria-label="Status">
+              @for (chip of part.chips; track chip.feature) {
+                <li [attr.data-status]="chip.status">
+                  @if (chip.label) {
+                    <span class="chip-name">{{ chip.label }}</span>
+                  }
+                  <span class="chip"
+                    ><i class="dot" aria-hidden="true"></i
+                    >{{ statusLabel[chip.status] }}</span
+                  >
+                </li>
+              }
+            </ul>
+          </li>
+        }
+      </ul>
+    </section>
+  </ion-card-content>
+</ion-card>
