@@ -7,6 +7,7 @@ import {
   readGithubProjectId,
 } from './github-project-address';
 import {
+  DEMO_PROJECT_REF,
   getStoreId,
   IProjectUrlParts,
   parseProjectUrl,
@@ -803,6 +804,57 @@ describe('projectUrl writes the page as plain text, percent-encoded (issue #180)
       expect(tryProjectUrl({ storeId: 'github.com', projectId: 'r@o@' }, page)).toMatchObject({ ok: false });
     },
   );
+});
+
+describe('DEMO_PROJECT_REF (G-A1c)', () => {
+  it('is the demo project at its short address, and the trusted project', () => {
+    expect(DEMO_PROJECT_REF).toEqual({ storeId: 'github.com', projectId: 'chinook-demo@datatug@' });
+    expect(projectUrl(DEMO_PROJECT_REF)).toBe('/project/github.com/datatug/chinook-demo');
+    expect(projectUrl(DEMO_PROJECT_REF, 'chat')).toBe('/project/github.com/datatug/chinook-demo/chat');
+    expect(isTrustedProjectAddress(DEMO_PROJECT_REF)).toBe(true);
+  });
+});
+
+describe('projectUrl writes a page given as segments (G-A1c)', () => {
+  const github = { storeId: 'github.com', projectId: 'r@o@' };
+  const agent = { storeId: 'localhost:8989', projectId: 'p' };
+  it.each([
+    // [segments, the written page]
+    [[], ''],
+    [['chat'], '/chat'],
+    [['env', 'local', 'db', 'main', 'table', 'dbo.Customer'], '/env/local/db/main/table/dbo.Customer'],
+    // An element is ONE segment, whatever it holds: a folder-qualified query id keeps its slash as `%2F`.
+    [['query', 'customers/customer-invoices'], '/query/customers%2Fcustomer-invoices'],
+    [['query', 'a b'], '/query/a%20b'],
+    [['query', '50%'], '/query/50%25'],
+    [['servers', 'db', 'sqlite3', '-'], '/servers/db/sqlite3/-'],
+  ])('segments %j are written as %j, in both address shapes', (segments, written) => {
+    const short = projectUrl(github, segments);
+    expect(short).toBe('/project/github.com/o/r' + written);
+    const legacy = projectUrl(agent, segments);
+    expect(legacy).toBe('/store/localhost:8989/project/p' + written);
+    for (const url of [short, legacy]) {
+      expect(parsed(url)).toMatchObject({ rest: written, isCanonical: true });
+    }
+  });
+
+  it('writes the same address for the segments and for the plain-text page that splits into them', () => {
+    expect(projectUrl(github, ['queries', 'folder', 'q1'])).toBe(projectUrl(github, 'queries/folder/q1'));
+    expect(projectUrl(agent, ['queries', 'folder', 'q1'])).toBe(projectUrl(agent, 'queries/folder/q1'));
+  });
+
+  it.each([[['.']], [['..']], [['a', '']], [['']], [['a', '..']], [['\u0000']], [['a', 3 as unknown as string]]])(
+    'refuses the segments %j',
+    (segments) => {
+      expect(tryProjectUrl(github, segments)).toMatchObject({ ok: false });
+      expect(tryProjectUrl(agent, segments)).toMatchObject({ ok: false });
+    },
+  );
+
+  it('reads no page from null, and refuses a page that is neither text nor segments', () => {
+    expect(projectUrl(github, null as unknown as string)).toBe('/project/github.com/o/r');
+    expect(tryProjectUrl(github, 3 as unknown as string)).toMatchObject({ ok: false });
+  });
 });
 
 describe('projectUrl refuses what it cannot write exactly (design review S2)', () => {

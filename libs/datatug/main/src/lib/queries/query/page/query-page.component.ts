@@ -100,6 +100,7 @@ import {
   IProjectContext,
   newProjectContextFromRef,
 } from '../../../nav/nav-models';
+import { projectPageHref } from '../../../nav/project-page-href';
 import { ProjectTracker } from '../../../services/nav/contexts/project.tracker';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { DatatugServicesNavModule } from '../../../services/nav/datatug-services-nav.module';
@@ -396,6 +397,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   public queryFolderPath = '';
+
+  /** Where the back button goes with no history: the project's queries, in the folder of this query. */
+  public get queriesBackHref(): string {
+    return `${projectPageHref(this.project?.ref, 'queries')}?folder=${this.queryFolderPath}`;
+  }
   public envId?: string;
   public envDbServerId?: string;
   // noinspection SqlDialectInspection,SqlNoDataSourceInspection

@@ -32,11 +32,31 @@ import { ProjectService } from '../project/project.service';
 import { EnvironmentService } from '../unsorted/environment.service';
 import { IDatatugNavContext } from '../../nav/nav-models';
 
-const reStore = /\/store\/(.+?)($|\/)/,
-  reProj = /\/project\/(.+?)($|\/)/,
-  reEnv = /\/env\/(.+?)(?:\/|$)/,
-  reEnvDb = /\/env\/\w+\/db\/(.+?)(?:\/|$)/,
+// What follows the project in its address (`parseProjectUrl().rest`: `/env/<env>/db/<db>/table/<table>`, as typed).
+const reEnv = /^\/env\/(.+?)(?:\/|$)/,
+  reEnvDb = /^\/env\/\w+\/db\/(.+?)(?:\/|$)/,
   reTable = /\/table\/(.+?)(?:\/|$)/;
+
+/** What an address names: the store, and (when it is a project address) the project and what follows it. */
+interface IAddressedLocation {
+  readonly storeId?: string;
+  readonly projectId?: string;
+  /** `''`, or a path starting with `/`: the page of the project, as typed. */
+  readonly rest: string;
+}
+
+/** The store of a store address (`/store/<storeId>…`), or none. A project address is read by `parseProjectUrl`. */
+function storeIdOfStorePath(path: string): string | undefined {
+  const segments = path.split('/');
+  if (segments[1] !== 'store' || !segments[2]) {
+    return undefined;
+  }
+  try {
+    return decodeURIComponent(segments[2]);
+  } catch {
+    return segments[2];
+  }
+}
 
 /** The path of a URL as typed (`https://host/a/b?x#y` and `/a/b?x#y` both give `/a/b`). */
 function pathOf(url: string): string {
@@ -272,69 +292,62 @@ export class DatatugNavContextService {
   }
 
   /**
-   * The URL as the regular expressions below read it. A short GitHub address that the short project route has
+   * What a URL names: its store, project and the page after the project. A short GitHub address that the short project route has
    * opened (the router state has its `storeId` and `projectId`, so a hand-off address that shows the holding page is
-   * not one) is read as the old form of the same project and page: `/store/github.com/project/<id>/<page…>`.
-   * Any other `/project/…` address names no store, project, environment or table: it reads as the bare root, and
-   * all of them clear.
+   * not one) names its project and page as the old form of it does. Any other `/project/…` address names no store,
+   * project, environment or table (the hand-off address `/project/github.com/<owner>/<repo>/chat` has no store: resolving
+   * one used to throw "storeId is a required parameter", logged as an error toast), and all of them clear.
+   * `parseProjectUrl` is the one reader of both shapes.
    */
-  private legacyShapeOf(rawUrl: string): string {
-    if (!startsWithProjectSegment(rawUrl)) {
-      return rawUrl;
-    }
-    const parsed = parseProjectUrl(pathOf(rawUrl));
-    if (parsed.ok) {
-      let leaf = this.router.routerState?.snapshot?.root;
-      while (leaf?.firstChild) {
-        leaf = leaf.firstChild;
+  private locationOf(rawUrl: string): IAddressedLocation {
+    const path = pathOf(rawUrl);
+    const parsed = parseProjectUrl(path);
+    if (startsWithProjectSegment(rawUrl)) {
+      if (parsed.ok) {
+        let leaf = this.router.routerState?.snapshot?.root;
+        while (leaf?.firstChild) {
+          leaf = leaf.firstChild;
+        }
+        if (
+          leaf?.paramMap.get('projectId') === parsed.projectId &&
+          leaf.paramMap.get('storeId') === parsed.storeId
+        ) {
+          return parsed;
+        }
       }
-      if (
-        leaf?.paramMap.get('projectId') === parsed.projectId &&
-        leaf.paramMap.get('storeId') === parsed.storeId
-      ) {
-        return `/store/${parsed.storeId}/project/${parsed.projectId}${parsed.rest}`;
-      }
+      return { rest: '' };
     }
-    return '/';
+    return parsed.ok
+      ? parsed
+      : { storeId: storeIdOfStorePath(path), rest: '' };
   }
 
   private processUrl(rawUrl: string): void {
     // console.log('DatatugNavContextService.processUrl():', url);
-    const url = this.legacyShapeOf(rawUrl);
+    const where = this.locationOf(rawUrl);
     try {
-      this.processStore(url);
-      this.processProject(url);
-      this.processEnvironment(url);
-      this.processEnvDb(url);
-      this.processEnvDbTable(url);
+      this.processStore(where);
+      this.processProject(where);
+      this.processEnvironment(where.rest);
+      this.processEnvDb(where.rest);
+      this.processEnvDbTable(where.rest);
     } catch (e) {
       this.errorLogger.logError(e, 'Failed to process URL');
     }
   }
 
-  private processStore(url: string): void {
-    const m = url.match(reStore);
-    // console.log('processStore', url, m);
-    const storeId = m && m[1];
-    this.$currentStoreId.next(storeId || undefined);
+  private processStore(where: IAddressedLocation): void {
+    this.$currentStoreId.next(where.storeId || undefined);
   }
 
-  private processProject(url: string): void {
-    const m = url.match(reProj);
-    const id = m && m[1];
+  private processProject(where: IAddressedLocation): void {
+    const id = where.projectId;
     if (!id) {
       this.setCurrentProject(undefined);
       return;
     }
     const currentProject = this.$currentProj.value;
     const currentStoreId = this.$currentStoreId.value;
-    if (!currentStoreId) {
-      // `/project/…` with no `/store/…` segment (the hand-off address `/project/github.com/<owner>/<repo>/chat`):
-      // `github.com` is not a project id, and no store means no project. Resolving one used to throw
-      // "storeId is a required parameter", logged as an error toast.
-      this.setCurrentProject(undefined);
-      return;
-    }
     if (
       !currentProject ||
       currentProject.ref.projectId !== id ||

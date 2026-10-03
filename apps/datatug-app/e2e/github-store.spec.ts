@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { installFakeGithub } from './helpers/fake-github';
 import { activePage } from './journey/helpers/active-page';
 
 /**
@@ -31,13 +32,34 @@ import { activePage } from './journey/helpers/active-page';
  *    at all (confirmed by reading them), so once the flag is on they need
  *    no GitHub-specific work.
  */
+/**
+ * `DATATUG_E2E_GITHUB_FAKE=<a checkout of datatug/datatug-demo-projects>` serves that checkout in place of the three
+ * hosts (see `helpers/fake-github.ts`): no network, no share of the 60 anonymous API requests an hour. Unset, this
+ * file talks to the real GitHub, as it always did.
+ */
+const GITHUB_FAKE_DIR = process.env['DATATUG_E2E_GITHUB_FAKE'];
+
 test.skip(
-  process.env['DATATUG_E2E_OFFLINE'] === '1',
+  process.env['DATATUG_E2E_OFFLINE'] === '1' && !GITHUB_FAKE_DIR,
   'requires network access to github.com/api.github.com/raw.githubusercontent.com — set DATATUG_E2E_OFFLINE=1 to skip',
 );
 
+test.beforeEach(async ({ context }) => {
+  if (GITHUB_FAKE_DIR) {
+    await installFakeGithub(context, [
+      { fullName: 'datatug/datatug-demo-projects', dir: GITHUB_FAKE_DIR },
+    ]);
+  }
+});
+
 const PROJECT_ID = 'datatug-demo-projects@datatug@demo-project-1';
-const PROJECT_URL = `/store/github.com/project/${PROJECT_ID}`;
+// G-A1c (design `demo-as-github-project.md` 3.1, 3.4): a GitHub project is at its short address. This project is
+// `datatug/datatug-demo-projects`, folder `demo-project-1`, default branch (`HEAD`); its pages follow the `/-/`
+// that ends the locator. The old address of the same project, `OLD_PROJECT_URL`, keeps working.
+const PROJECT_URL =
+  '/project/github.com/datatug/datatug-demo-projects/tree/HEAD/demo-project-1';
+const PAGES_URL = `${PROJECT_URL}/-`;
+const OLD_PROJECT_URL = `/store/github.com/project/${PROJECT_ID}`;
 
 /** `ErrorLoggerService.logError()`'s own, fixed console.error prefix
  * (`@sneat/logging`'s `error-logger.service.ts`: `console.error(
@@ -331,7 +353,7 @@ test.describe('GitHub-store project — every side-menu page loads without error
     ).toBeVisible({ timeout: 20_000 });
 
     // --- Queries page, direct ?tab=personal navigation ----------------------
-    await page.goto(`${PROJECT_URL}/queries?tab=personal`);
+    await page.goto(`${PAGES_URL}/queries?tab=personal`);
     await expect(
       activePage(page).getByText(
         'This project is browsed read-only from GitHub',
@@ -485,7 +507,7 @@ test.describe('GitHub-store project — every side-menu page loads without error
     const errors = installErrorLoggerWatch(page);
 
     await page.goto(
-      `${PROJECT_URL}/query/artists%2Fartists_with_albums?id=artists%2Fartists_with_albums&editor=text&env=local`,
+      `${PAGES_URL}/query/artists%2Fartists_with_albums?id=artists%2Fartists_with_albums&editor=text&env=local`,
     );
 
     // Query text — `artists_with_albums.sql`'s real body (no store menu
@@ -549,7 +571,7 @@ test.describe('GitHub-store project — every side-menu page loads without error
     });
 
     await page.goto(
-      `${PROJECT_URL}/query/artists/artists_with_albums?id=artists%2Fartists_with_albums&editor=text&env=local`,
+      `${PAGES_URL}/query/artists/artists_with_albums?id=artists%2Fartists_with_albums&editor=text&env=local`,
     );
 
     // The page-title component's own "{Page title} @ {Project title}"
@@ -629,10 +651,10 @@ test.describe('GitHub-store project — every side-menu page loads without error
       .locator('ion-label')
       .click();
 
-    // The real route: `/store/:storeId/project/:projectId/servers/db/
-    // :dbDriver/:dbServerId` — `'-'` is the host-less placeholder id.
+    // The real route, at the project's short address (G-A1c): `…/-/servers/db/:dbDriver/:dbServerId` —
+    // `'-'` is the host-less placeholder id.
     await expect(page).toHaveURL(
-      new RegExp(`${PROJECT_URL.replace(/[.]/g, '\\.')}/servers/db/sqlite3/-$`),
+      new RegExp(`${PAGES_URL.replace(/[.]/g, '\\.')}/servers/db/sqlite3/-$`),
     );
 
     // Scoped to `sneat-datatug-dbserver` (`DbserverPageComponent`'s own
@@ -700,5 +722,70 @@ test.describe('GitHub-store project — every side-menu page loads without error
 
     expect(errors).toEqual([]);
     expect(consoleErrors.filter((text) => text.includes('NG04002'))).toEqual([]);
+  });
+});
+
+/**
+ * G-A1c (design `demo-as-github-project.md` 3.4): every in-app link of a GitHub project is at its short address,
+ * whichever address the project was opened at; the old address keeps working (redirecting it is G-A1d, held).
+ */
+test.describe('GitHub-store project — addresses (G-A1c)', () => {
+  const pathOf = (page: Page): string => new URL(page.url()).pathname;
+
+  test('the side menu of a project opened at its short address links to short addresses', async ({
+    page,
+  }) => {
+    const errors = installErrorLoggerWatch(page);
+    await page.goto(PROJECT_URL);
+    await expect(
+      activePage(page).getByRole('tab', { name: 'Boards' }),
+    ).toBeVisible({ timeout: 20_000 });
+
+    for (const [item, page_] of [
+      ['Entities', 'entities'],
+      ['Queries', 'queries'],
+      ['Servers', 'servers'],
+    ] as const) {
+      await page
+        .locator('sneat-datatug-project-menu-top ion-item', { hasText: item })
+        .click();
+      await expect
+        .poll(() => pathOf(page), { timeout: 15_000 })
+        .toBe(`${PAGES_URL}/${page_}`);
+    }
+    expect(errors).toEqual([]);
+  });
+
+  test('the old address of the same project still opens it, and its in-app links are short addresses', async ({
+    page,
+  }) => {
+    const errors = installErrorLoggerWatch(page);
+    await page.goto(OLD_PROJECT_URL);
+    await expect(
+      activePage(page).getByRole('tab', { name: 'Boards' }),
+    ).toBeVisible({ timeout: 20_000 });
+    // Opened as it was typed: no redirect (G-A1d is held).
+    expect(pathOf(page)).toBe(OLD_PROJECT_URL);
+
+    await page
+      .locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Entities' })
+      .click();
+    await expect
+      .poll(() => pathOf(page), { timeout: 15_000 })
+      .toBe(`${PAGES_URL}/entities`);
+    await expect(activePage(page).getByText('Album', { exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+    expect(errors).toEqual([]);
+  });
+
+  test("the home page's demo entry opens the demo project at /project/github.com/datatug/chinook-demo", async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await page.getByText('DataTug Demo Project @ GitHub').click();
+    await expect
+      .poll(() => pathOf(page), { timeout: 15_000 })
+      .toBe('/project/github.com/datatug/chinook-demo');
   });
 });

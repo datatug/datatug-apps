@@ -149,4 +149,32 @@ describe('EntityEditPage re-targets the back button once the project arrives (zo
       '/store/firestore/project/p1/entities',
     );
   });
+
+  // G-A1c: the address is the one `projectUrl()` writes, so a GitHub project goes back to its short address.
+  it.each([
+    [
+      'an agent project',
+      { projectId: 'datatug-demo-project', storeId: 'localhost:8989' },
+      '/store/localhost:8989/project/datatug-demo-project/entities',
+    ],
+    [
+      'a GitHub project',
+      { projectId: 'chinook-demo@datatug@', storeId: 'github.com' },
+      '/project/github.com/datatug/chinook-demo/entities',
+    ],
+    [
+      'a GitHub project in a folder',
+      { projectId: 'r@o@d', storeId: 'github.com' },
+      '/project/github.com/o/r/tree/HEAD/d/-/entities',
+    ],
+  ])(
+    'points the back button at the entities list of %s',
+    async (_name, ref, href) => {
+      fixture.detectChanges();
+      currentProject$.next({ ref } as IProjectContext);
+      await fixture.whenStable();
+
+      expect(findBackButton().defaultHref).toBe(href);
+    },
+  );
 });

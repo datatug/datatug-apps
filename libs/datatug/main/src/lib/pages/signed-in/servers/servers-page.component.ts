@@ -40,7 +40,7 @@ import {
   IProjDbServerSummary,
 } from '../../../models/definition/apis/database';
 import { IEnvironmentFull } from '../../../models/definition/environments';
-import { getStoreId } from '../../../nav/nav-models';
+import { tryProjectUrl } from '../../../nav/nav-models';
 import { ProjectContextService } from '../../../services/project/project-context.service';
 import { ProjectService } from '../../../services/project/project.service';
 import { DatatugServicesProjectModule } from '../../../services/project/datatug-services-project.module';
@@ -267,9 +267,9 @@ export class ServersPageComponent implements OnDestroy {
    * project/:projectId/servers/db/:dbDriver/:dbServerId`
    * (`datatug-routing-proj.ts`'s `'servers'` entry, now `loadChildren` into
    * `ServersPageRoutingModule`) — same `store/<id>/project/<id>/...` shape
-   * every other project sub-page link uses (`getStoreId()`,
+   * every other project sub-page link uses (`projectUrl()`,
    * `nav/nav-models.ts`; c.f. `DatatugNavService.projectPageUrl()`/
-   * `goCatalog()`). `getDbServerId()` (database.ts) supplies the
+   * `goCatalog()`; a GitHub project is at its short address). `getDbServerId()` (database.ts) supplies the
    * `:dbServerId` segment, including the host-less placeholder.
    */
   goDbServer(dbServer: IProjDbServerSummary): void {
@@ -277,17 +277,21 @@ export class ServersPageComponent implements OnDestroy {
     if (!target) {
       return;
     }
+    const url = tryProjectUrl(target, [
+      'servers',
+      'db',
+      dbServer.dbServer.driver,
+      getDbServerId(dbServer.dbServer),
+    ]);
+    if (typeof url !== 'string') {
+      this.errorLogger.logError(
+        new Error(`no exact address for the project (${url.reason})`),
+        'Failed to navigate to DB server page',
+      );
+      return;
+    }
     this.navCtrl
-      .navigateForward([
-        'store',
-        getStoreId(target.storeId),
-        'project',
-        target.projectId,
-        'servers',
-        'db',
-        dbServer.dbServer.driver,
-        getDbServerId(dbServer.dbServer),
-      ])
+      .navigateForward(url)
       .catch((err) =>
         this.errorLogger.logError(err, 'Failed to navigate to DB server page'),
       );

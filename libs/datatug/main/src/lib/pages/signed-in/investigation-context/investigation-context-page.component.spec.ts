@@ -130,6 +130,7 @@ describe('InvestigationContextPageComponent', () => {
   let mock: MockSemanticApi;
   let context: InvestigationContextService;
   let navigateSpy: ReturnType<typeof vi.fn>;
+  let navigateByUrlSpy: ReturnType<typeof vi.fn>;
   let entityService: ReturnType<typeof entityServiceStub>;
 
   async function create(
@@ -137,6 +138,7 @@ describe('InvestigationContextPageComponent', () => {
   ) {
     mock = new MockSemanticApi(fixtures);
     navigateSpy = vi.fn(() => Promise.resolve(true));
+    navigateByUrlSpy = vi.fn(() => Promise.resolve(true));
     entityService = entityServiceStub();
 
     await TestBed.configureTestingModule({
@@ -154,7 +156,14 @@ describe('InvestigationContextPageComponent', () => {
             currentEnv: of({ id: 'production' }),
           },
         },
-        { provide: Router, useValue: { navigate: navigateSpy, events: of() } },
+        {
+          provide: Router,
+          useValue: {
+            navigate: navigateSpy,
+            navigateByUrl: navigateByUrlSpy,
+            events: of(),
+          },
+        },
         {
           provide: NavController,
           useValue: { navigateForward: vi.fn(() => Promise.resolve(true)) },
@@ -844,17 +853,9 @@ describe('InvestigationContextPageComponent', () => {
       ) as HTMLElement;
       applicable.dispatchEvent(new Event('click'));
 
-      expect(navigateSpy).toHaveBeenCalledWith(
-        [
-          '/store',
-          'localhost:8989',
-          'project',
-          'demo-project',
-          'query',
-          'customer-purchases-by-genre',
-        ],
+      expect(navigateByUrlSpy).toHaveBeenCalledWith(
+        '/store/localhost:8989/project/demo-project/query/customer-purchases-by-genre?id=customer-purchases-by-genre',
         {
-          queryParams: { id: 'customer-purchases-by-genre' },
           state: {
             bindings: APPLICABLE.applicable[0].bindings,
             targets: APPLICABLE.applicable[0].targets,
@@ -927,19 +928,11 @@ describe('InvestigationContextPageComponent', () => {
       ) as HTMLElement;
       applicable.dispatchEvent(new Event('click'));
 
-      expect(navigateSpy).toHaveBeenCalledWith(
-        [
-          '/store',
-          'localhost:8989',
-          'project',
-          'demo-project',
-          'query',
-          // Single `%2F`-encoded segment — see the matching
-          // EnvDbTablePageComponent.onOpenQuery spec for why.
-          'customers%2Fcustomer-invoices',
-        ],
+      // The query id is one `%2F`-encoded page segment — see the matching EnvDbTablePageComponent.onOpenQuery
+      // spec for why — and the raw id is the `id` query parameter (encoded as a query value).
+      expect(navigateByUrlSpy).toHaveBeenCalledWith(
+        '/store/localhost:8989/project/demo-project/query/customers%2Fcustomer-invoices?id=customers%2Fcustomer-invoices',
         {
-          queryParams: { id: 'customers/customer-invoices' },
           state: {
             bindings: FOLDER_QUALIFIED_APPLICABLE.applicable[0].bindings,
             targets: FOLDER_QUALIFIED_APPLICABLE.applicable[0].targets,
@@ -947,6 +940,45 @@ describe('InvestigationContextPageComponent', () => {
               FOLDER_QUALIFIED_APPLICABLE.applicable[0].selectedSource,
           },
         },
+      );
+    });
+
+    // G-A1c: the query page is at the address `projectUrl()` writes for the project: a GitHub project's short one,
+    // and for a project that has no exact address nothing is navigated to.
+    function openApplicableOf(ref: { storeId: string; projectId: string }) {
+      (
+        component as unknown as {
+          project: { set(project: { ref: typeof ref }): void };
+        }
+      ).project.set({ ref });
+      const items: HTMLElement[] = Array.from(
+        fixture.nativeElement.querySelectorAll('ion-item[button="true"]'),
+      );
+      (
+        items.find((el) =>
+          el.textContent?.includes('customers/customer-invoices'),
+        ) as HTMLElement
+      ).dispatchEvent(new Event('click'));
+    }
+
+    it('opens the query of a GitHub project at its short address', () => {
+      openApplicableOf({ storeId: 'github.com', projectId: 'chinook-demo@datatug@' });
+
+      expect(navigateByUrlSpy).toHaveBeenCalledWith(
+        '/project/github.com/datatug/chinook-demo/query/customers%2Fcustomer-invoices?id=customers%2Fcustomer-invoices',
+        expect.any(Object),
+      );
+    });
+
+    it('navigates nowhere, and says so, for a project that has no exact address', () => {
+      openApplicableOf({ storeId: 'localhost:8989', projectId: '50%' });
+
+      expect(navigateByUrlSpy).not.toHaveBeenCalled();
+      expect(
+        (TestBed.inject(ErrorLogger) as unknown as { logError: ReturnType<typeof vi.fn> }).logError,
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({ message: expect.stringContaining('no exact address') }),
+        'Failed to open applicable query',
       );
     });
   });

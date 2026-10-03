@@ -1,3 +1,4 @@
+import { DEMO_PROJECT_REF, projectUrl } from '@datatug/project-address';
 import type { DemoLang } from './demo-handoff-capture';
 
 /**
@@ -50,13 +51,8 @@ export const DEMO_HOLDING_STRINGS: Readonly<
   },
 };
 
-/** The demo project exactly as the home page's "DataTug Demo Project @ GitHub" entry opens it today. */
-export const DEMO_PROJECT_PATH: readonly string[] = [
-  '/store',
-  'github.com',
-  'project',
-  'datatug-demo-projects@datatug@demo-project-1',
-];
+/** The demo project exactly as the home page's "DataTug Demo Project @ GitHub" entry opens it: its short address. */
+export const DEMO_PROJECT_PATH: string = projectUrl(DEMO_PROJECT_REF);
 
 export const SITE_URL = 'https://datatug.io/';
 

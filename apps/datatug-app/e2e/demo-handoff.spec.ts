@@ -322,16 +322,13 @@ test.describe('the hand-off holding page', () => {
             new URL(page.url()).pathname + new URL(page.url()).search,
           ).toBe('/demo');
 
-          // Two links: the demo project as the home page opens it today, and the site.
+          // Two links: the demo project as the home page opens it (its short address, G-A1c), and the site.
           await expect(
             page.getByRole('link', {
               name:
                 lang === 'en' ? 'Open the demo project' : 'Открыть демо-проект',
             }),
-          ).toHaveAttribute(
-            'href',
-            '/store/github.com/project/datatug-demo-projects@datatug@demo-project-1',
-          );
+          ).toHaveAttribute('href', '/project/github.com/datatug/chinook-demo');
           await expect(
             page.getByRole('link', {
               name: lang === 'en' ? 'Back to the site' : 'Назад на сайт',
@@ -522,7 +519,8 @@ test.describe('the hand-off holding page', () => {
     await expect(page.locator('html')).toHaveAttribute('lang', 'ru');
 
     await page.getByRole('link', { name: 'Открыть демо-проект' }).click();
-    await expect(page).toHaveURL(/\/store\/github\.com\/project\//);
+    // The demo project at its short address (G-A1c), as the home page opens it.
+    await expect(page).toHaveURL(/\/project\/github\.com\/datatug\/chinook-demo$/);
     // The app's own defaults (index.html): the page kept in the Ionic stack must not leave its own behind.
     await expect(page).toHaveTitle('DataTug.app');
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');

@@ -230,9 +230,9 @@ describe('DemoHoldingPageComponent', () => {
     const [project, site] = Array.from(
       (fixture.nativeElement as HTMLElement).querySelectorAll('.links a'),
     ) as HTMLAnchorElement[];
-    expect(project.getAttribute('href')).toBe(DEMO_PROJECT_PATH.join('/'));
+    expect(project.getAttribute('href')).toBe(DEMO_PROJECT_PATH);
     expect(project.getAttribute('href')).toBe(
-      '/store/github.com/project/datatug-demo-projects@datatug@demo-project-1',
+      '/project/github.com/datatug/chinook-demo',
     );
     expect(site.getAttribute('href')).toBe(SITE_URL);
     expect(project.textContent?.trim()).toBe(

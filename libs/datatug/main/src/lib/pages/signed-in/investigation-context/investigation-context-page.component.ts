@@ -53,7 +53,7 @@ import {
   tryDecodeErrorEnvelope,
   unifyInListTypes,
 } from '@sneat/datatug-semantic';
-import { getStoreId, IProjectContext } from '../../../nav/nav-models';
+import { IProjectContext, tryProjectUrl } from '../../../nav/nav-models';
 import { DatatugCoreModule } from '../../../core/datatug-core.module';
 import { IEntityFieldDef } from '../../../models/definition/metapedia/entity';
 import { DataType } from '../../../models/definition/types';
@@ -679,27 +679,24 @@ export class InvestigationContextPageComponent implements OnDestroy {
     if (!project) {
       return;
     }
+    // `candidate.queryId` may be folder-qualified (e.g. `customers/customer-invoices`, per `queries/applicable`'s
+    // `Candidate.queryId` contract, datatug-cli#219): `projectUrl()` writes it as one encoded page segment. See
+    // `EnvDbTablePageComponent.onOpenQuery`'s matching comment for why.
+    const url = tryProjectUrl(project.ref, ['query', candidate.queryId]);
+    if (typeof url !== 'string') {
+      this.errorLogger.logError(
+        new Error(`no exact address for the project (${url.reason})`),
+        'Failed to open applicable query',
+      );
+      return;
+    }
     this.router
-      .navigate(
-        [
-          '/store',
-          getStoreId(project.ref.storeId),
-          'project',
-          project.ref.projectId,
-          'query',
-          // `encodeURIComponent` — `candidate.queryId` may be folder-qualified
-          // (e.g. `customers/customer-invoices`, per `queries/applicable`'s
-          // `Candidate.queryId` contract, datatug-cli#219). See
-          // `EnvDbTablePageComponent.onOpenQuery`'s matching comment for why.
-          encodeURIComponent(candidate.queryId),
-        ],
+      .navigateByUrl(
+        // QueryPageComponent.trackQueryParams() resolves the query it opens from the
+        // `id` query-string param, not the `:queryId` path segment — see
+        // EnvDbTablePageComponent.onOpenQuery's own comment on this contract.
+        `${url}?id=${encodeURIComponent(candidate.queryId)}`,
         {
-          // QueryPageComponent.trackQueryParams() resolves the query it opens from the
-          // `id` query-string param, not the `:queryId` path segment — see
-          // EnvDbTablePageComponent.onOpenQuery's own comment on this contract.
-          // `id` is passed RAW (not encoded) — it's a query-string value, already
-          // form-encoded on the way out.
-          queryParams: { id: candidate.queryId },
           state: {
             bindings: candidate.bindings,
             targets: candidate.targets,

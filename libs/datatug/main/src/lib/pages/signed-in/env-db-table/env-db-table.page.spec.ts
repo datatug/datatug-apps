@@ -120,7 +120,11 @@ describe('EnvDbTablePage', () => {
 describe('EnvDbTablePage — semantic markers and cell selection', () => {
   let component: EnvDbTablePageComponent;
   let getSemanticColumnsMock: ReturnType<typeof vi.fn>;
-  let routerMock: { navigate: ReturnType<typeof vi.fn> };
+  let logErrorMock: ReturnType<typeof vi.fn>;
+  let routerMock: {
+    navigate: ReturnType<typeof vi.fn>;
+    navigateByUrl: ReturnType<typeof vi.fn>;
+  };
 
   const project: IProjectContext = {
     ref: { storeId: 'localhost:8989', projectId: 'demo-project' },
@@ -143,7 +147,11 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
     semanticColumns: unknown[] = [],
   ): Promise<EnvDbTablePageComponent> {
     getSemanticColumnsMock = vi.fn(() => of({ columns: semanticColumns }));
-    routerMock = { navigate: vi.fn(() => Promise.resolve(true)) };
+    logErrorMock = vi.fn();
+    routerMock = {
+      navigate: vi.fn(() => Promise.resolve(true)),
+      navigateByUrl: vi.fn(() => Promise.resolve(true)),
+    };
     await TestBed.configureTestingModule({
       imports: [EnvDbTablePageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -151,7 +159,7 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
         {
           provide: ErrorLogger,
           useValue: {
-            logError: vi.fn(),
+            logError: logErrorMock,
             logErrorHandler: vi.fn(() => vi.fn()),
           },
         },
@@ -375,17 +383,9 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
       state: 'runnable',
     });
 
-    expect(routerMock.navigate).toHaveBeenCalledWith(
-      [
-        '/store',
-        'localhost:8989',
-        'project',
-        'demo-project',
-        'query',
-        'customer-invoices',
-      ],
+    expect(routerMock.navigateByUrl).toHaveBeenCalledWith(
+      '/store/localhost:8989/project/demo-project/query/customer-invoices?id=customer-invoices',
       {
-        queryParams: { id: 'customer-invoices' },
         state: {
           bindings: [
             {
@@ -413,26 +413,54 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
       state: 'runnable',
     });
 
-    expect(routerMock.navigate).toHaveBeenCalledWith(
-      [
-        '/store',
-        'localhost:8989',
-        'project',
-        'demo-project',
-        'query',
-        // A single, `%2F`-encoded segment — an un-encoded `customers/customer-invoices`
-        // here would split into two path segments and never match the
-        // `query/:queryId` route (single param).
-        'customers%2Fcustomer-invoices',
-      ],
+    // A single, `%2F`-encoded segment — an un-encoded `customers/customer-invoices` here would split into two path
+    // segments and never match the `query/:queryId` route (single param) — and the raw id as the `id` query value.
+    expect(routerMock.navigateByUrl).toHaveBeenCalledWith(
+      '/store/localhost:8989/project/demo-project/query/customers%2Fcustomer-invoices?id=customers%2Fcustomer-invoices',
       {
-        queryParams: { id: 'customers/customer-invoices' },
         state: {
           bindings: [],
           targets: [],
           selectedSource: undefined,
         },
       },
+    );
+  });
+
+  // G-A1c: the query page is at the address `projectUrl()` writes, a GitHub project's short address included.
+  it.each([
+    ['a GitHub project', { storeId: 'github.com', projectId: 'chinook-demo@datatug@' }, '/project/github.com/datatug/chinook-demo/query/customers%2Fcustomer-invoices?id=customers%2Fcustomer-invoices'],
+    ['a GitHub project in a folder', { storeId: 'github', projectId: 'r@o@d' }, '/project/github.com/o/r/tree/HEAD/d/-/query/customers%2Fcustomer-invoices?id=customers%2Fcustomer-invoices'],
+  ])('onOpenQuery opens the query of %s at its address', async (_name, ref, address) => {
+    component = await createComponent();
+    component.project = { ref };
+
+    component.onOpenQuery({
+      queryId: 'customers/customer-invoices',
+      bindings: [],
+      targets: [],
+      state: 'runnable',
+    });
+
+    expect(routerMock.navigateByUrl).toHaveBeenCalledWith(address, expect.any(Object));
+    expect(logErrorMock).not.toHaveBeenCalled();
+  });
+
+  it('onOpenQuery navigates nowhere, and says so, for a project that has no exact address', async () => {
+    component = await createComponent();
+    component.project = { ref: { storeId: 'localhost:8989', projectId: '50%' } };
+
+    component.onOpenQuery({
+      queryId: 'customer-invoices',
+      bindings: [],
+      targets: [],
+      state: 'runnable',
+    });
+
+    expect(routerMock.navigateByUrl).not.toHaveBeenCalled();
+    expect(logErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining('no exact address') }),
+      'Failed to open query',
     );
   });
 
@@ -447,7 +475,7 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
       state: 'runnable',
     });
 
-    expect(routerMock.navigate).not.toHaveBeenCalled();
+    expect(routerMock.navigateByUrl).not.toHaveBeenCalled();
   });
 });
 

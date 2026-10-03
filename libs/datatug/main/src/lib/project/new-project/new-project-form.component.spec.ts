@@ -309,7 +309,7 @@ describe('NewProjectFormComponent creating in a GitHub repo', () => {
 
     expect(nav.goProject).toHaveBeenCalledWith(
       expect.objectContaining({
-        ref: { projectId: 'demo-projects@datatug@datatug', storeId: 'github.com' },
+        ref: { projectId: 'demo-projects@datatug', storeId: 'github.com' },
       }),
     );
   });

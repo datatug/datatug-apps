@@ -2,11 +2,7 @@
   <ion-toolbar>
     <ion-buttons slot="start">
       <ion-menu-button />
-      <ion-back-button
-        defaultHref="/store/{{ project?.ref?.storeId }}/project/{{
-          project?.ref?.projectId
-        }}/queries?folder={{ queryFolderPath }}"
-      />
+      <ion-back-button [defaultHref]="queriesBackHref" />
     </ion-buttons>
     <ion-title>Query</ion-title>
     <ion-buttons slot="end">

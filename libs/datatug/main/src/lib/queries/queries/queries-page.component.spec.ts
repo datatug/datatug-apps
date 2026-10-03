@@ -233,6 +233,58 @@ describe('QueriesPage -> QueriesTab project hand-off', () => {
   });
 });
 
+// G-A1c: where the back button goes with no history is the project's address `projectUrl()` writes.
+describe('QueriesPage back button (G-A1c)', () => {
+  async function backHrefOf(project: IProjectContext | undefined): Promise<string> {
+    await TestBed.configureTestingModule({
+      imports: [QueriesPageComponent],
+      providers: [
+        {
+          provide: ErrorLogger,
+          useValue: { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) },
+        },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            queryParamMap: of({ get: () => null }),
+            paramMap: of({ get: () => null }),
+            snapshot: { paramMap: { get: () => null }, params: {} },
+          },
+        },
+        {
+          provide: Router,
+          useValue: { navigate: vi.fn(() => Promise.resolve(true)), events: of() },
+        },
+        { provide: DatatugNavContextService, useValue: { currentProject: of(project) } },
+        { provide: QueriesService, useValue: { getQueriesFolder: vi.fn(() => NEVER) } },
+        { provide: DatatugNavService, useValue: { goQuery: vi.fn() } },
+      ],
+    })
+      .overrideComponent(QueriesPageComponent, {
+        set: { template: '', imports: [], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+      })
+      .compileComponents();
+    const fixture = TestBed.createComponent(QueriesPageComponent);
+    fixture.detectChanges();
+    // The page itself only ever reads `project` (nothing in it sets one), so the test sets it.
+    fixture.componentInstance.project = project;
+    return fixture.componentInstance.defaultBackHref;
+  }
+
+  it.each([
+    ['an agent project', { storeId: 'localhost:8989', projectId: 'datatug-demo-project' }, '/store/localhost:8989/project/datatug-demo-project'],
+    ['an agent project given as http-localhost:8989', { storeId: 'http-localhost:8989', projectId: 'p1' }, '/store/http-localhost:8989/project/p1'],
+    ['a GitHub project', { storeId: 'github.com', projectId: 'chinook-demo@datatug@' }, '/project/github.com/datatug/chinook-demo'],
+    ['a GitHub project in a folder', { storeId: 'github.com', projectId: 'r@o@d' }, '/project/github.com/o/r/tree/HEAD/d'],
+  ])('is the project overview of %s', async (_name, ref, href) => {
+    expect(await backHrefOf({ ref } as IProjectContext)).toBe(href);
+  });
+
+  it('is the root while there is no project', async () => {
+    expect(await backHrefOf(undefined)).toBe('/');
+  });
+});
+
 /** Stand-in for `SqlEditorComponent` (`sneat-datatug-sql`) — same selector
  * and `sql` input, no `@acrodata/code-editor` dependency — so the describe
  * below can render `QueriesTabComponent`'s REAL template (needed to prove
