@@ -26,6 +26,8 @@ export interface ChatTurn {
   readonly actionSummary?: string;
   readonly join?: ChatJoinLineage;
   readonly joinChoices?: readonly ChatJoinChoice[];
+  /** Ids of this turn's investigation trace steps, in order (see chat-trace.types.ts). */
+  readonly traceStepIds?: readonly string[];
 }
 
 export interface ChatJoinChoice {
