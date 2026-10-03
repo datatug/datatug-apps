@@ -28,6 +28,20 @@ export const getStoreId = (repo: string): string => {
   return (repo || '').replace(/(https?):\/\//, '$1-');
 };
 
+/**
+ * The demo project, which the app's home page and the hand-off page open: `datatug/chinook-demo`, at the root of
+ * its repository, on the default branch (address `/project/github.com/datatug/chinook-demo`). The same project as
+ * the one trusted project of `isTrustedProjectAddress` (design 3.6).
+ */
+export const DEMO_PROJECT_REF: IProjectRef = {
+  storeId: GITHUB_STORE_ID,
+  projectId: formatGithubProjectId({
+    org: 'datatug',
+    repo: 'chinook-demo',
+    folder: '',
+  }),
+};
+
 // ---------------------------------------------------------------------------
 // Project addresses (design `demo-as-github-project.md` 3.1, 3.3, 3.4, 3.4a)
 //
@@ -154,6 +168,28 @@ function restOf(segments: readonly string[]): string | undefined {
 const encodeSegments = (segments: readonly string[]): string =>
   segments.map((s) => encodeURIComponent(s)).join('/');
 
+/**
+ * A page of a project, as plain text: `'chat'`, `'queries/x'` (split at each `/`), or its segments
+ * (`['query', id]`), each ONE segment even when it holds a `/`.
+ */
+export type ProjectPage = string | readonly string[];
+
+/** The plain-text segments of a page (none for no page), or `undefined` when `page` is not a page. */
+function pageSegmentsOf(
+  page: ProjectPage | undefined,
+): readonly string[] | undefined {
+  if (page === undefined || page === null) {
+    return [];
+  }
+  if (typeof page !== 'string') {
+    return Array.isArray(page) && page.every((s) => typeof s === 'string')
+      ? page
+      : undefined;
+  }
+  const typed = page.startsWith('/') ? page.slice(1) : page;
+  return typed ? typed.split('/') : [];
+}
+
 /** The canonical short path of a valid (strictly read) GitHub project and a checked `rest`. */
 function shortGithubPath(project: IGithubProjectId, rest: string): string {
   const base = `/project/${GITHUB_STORE_ID}/${project.org}/${project.repo}`;
@@ -180,8 +216,9 @@ function githubParts(project: IGithubProjectId): IGithubProjectParts {
 
 /**
  * The path of a project, and of one of its pages (`page` is `'chat'`, `'queries/x'`, with or without ONE leading
- * `/`; plain text, each segment is percent-encoded: pass `'query/a b'`, never `'query/a%20b'`), or the reason there
- * is none. A GitHub project gets its canonical short address
+ * `/`; plain text, each segment is percent-encoded: pass `'query/a b'`, never `'query/a%20b'`; or the segments as an
+ * array, `['query', 'customers/invoices']`, where an element is ONE segment whatever it holds, so a `/` in it is
+ * written `%2F`: how a folder-qualified query id is addressed), or the reason there is none. A GitHub project gets its canonical short address
  * (`/project/github.com/<owner>/<repo>…`); every other store `/store/<storeId>/project/<projectId>`.
  *
  * The address is returned only when `parseProjectUrl` reads it back as the same project and page: an id with
@@ -191,21 +228,21 @@ function githubParts(project: IGithubProjectId): IGithubProjectParts {
  */
 export function tryProjectUrl(
   ref: IProjectRef,
-  page?: string,
+  page?: ProjectPage,
 ): string | IProjectUrlError {
   const refused = (reason: ProjectUrlErrorReason): IProjectUrlError => ({
     ok: false,
     reason,
   });
-  const typedPage =
-    typeof page === 'string' && page.startsWith('/')
-      ? page.slice(1)
-      : (page ?? '');
+  const pageSegments = pageSegmentsOf(page);
   // `page` is plain text: every segment is percent-encoded here (a space, `%`, `?`, `#` or non-ASCII letter in a
   // page is written, never left to be read as something else), and the result must read back as this very page.
-  const rest = typedPage
-    ? restOf(typedPage.split('/').map((s) => encodeURIComponent(s)))
-    : '';
+  const rest =
+    pageSegments === undefined
+      ? undefined
+      : pageSegments.length > 0
+        ? restOf(pageSegments.map((s) => encodeURIComponent(s)))
+        : '';
   if (rest === undefined) {
     return refused('invalid-path-segment');
   }
@@ -246,7 +283,7 @@ export function tryProjectUrl(
 }
 
 /** {@link tryProjectUrl}, throwing a {@link ProjectUrlError} when there is no exact address. */
-export function projectUrl(ref: IProjectRef, page?: string): string {
+export function projectUrl(ref: IProjectRef, page?: ProjectPage): string {
   const result = tryProjectUrl(ref, page);
   if (typeof result !== 'string') {
     throw new ProjectUrlError(result.reason);
