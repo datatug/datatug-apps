@@ -48,6 +48,7 @@ fails CI hard just because the binary wasn't provisioned for that job.
 | `DATATUG_BIN` | Path to a built `datatug` binary. | — |
 | `DATATUG_CLI_DIR` | Path to a `datatug-cli` checkout; used to `go build` a binary on demand when `DATATUG_BIN` is not set. | — |
 | `DATATUG_DEMO_DIR` | Path to `datatug-demo-projects/demo-project-1`. | `../datatug-demo-projects/demo-project-1` relative to this repo (tried at 1–3 directory levels up, to cover both a plain sibling checkout and a nested `.worktrees/<task>` checkout) |
+| `DATATUG_E2E_GITHUB_FAKE` | Used by `github-store.spec.ts` only: a checkout of `datatug/datatug-demo-projects`, served in place of `api.github.com`, `raw.githubusercontent.com` and `cdn.jsdelivr.net` (`helpers/fake-github.ts`): no network, none of the 60 anonymous API requests an hour. Unset, that spec reads the real GitHub. | Unset |
 | `DATATUG_LARGE_E2E` | Set to `1` to run the cross-source join journey with 120,000 rows instead of the CI default of 205 rows and 25-row source pages. | Unset |
 
 If neither `DATATUG_BIN` nor `DATATUG_CLI_DIR` is set, or the demo project
