@@ -81,6 +81,27 @@ const ADDRESSES = [
   '/project/github.com/o/r/chat//',
   '/project/github.com/o/r/chat(menu:x)/',
   '/project/github.com/o/r/tree/HEAD/a(b)/-/chat',
+  // the confirmation page (founder ruling 2026-10-03): `start-chat`, with a folder or a ref
+  '/project/github.com/datatug/chinook-demo/start-chat',
+  '/project/github.com/datatug/chinook-demo/start-chat/',
+  '/project/github.com/datatug/chinook-demo/start-chat;x=1',
+  '/Project/GitHub.com/O/R/Start-Chat',
+  '/project/github.com/o/r/tree/abc123/-/start-chat',
+  '/project/github.com/o/r/tree/HEAD/dir/-/start-chat',
+  '/project/github.com/o/r/tree/abc123/a/b/-/start-chat',
+  '/project/github.com/o/r/tree/abc123/a/-/b/-/start-chat',
+  '/project/github.com/o/r/tree/abc123/start-chat',
+  '/project/github.com/o/r/tree/-/start-chat',
+  '/project/github.com/o/r/tree/abc123//-/start-chat',
+  '/project/github.com/o/r/start-chat/extra',
+  '/project/github.com/o/start-chat',
+  '/project/gitlab.com/o/r/start-chat',
+  '/start-chat',
+  '//project/github.com/o/r/start-chat',
+  '/(project/github.com/o/r/start-chat)',
+  '/(project/github.com/o/r/tree/HEAD/d/-/start-chat)',
+  '/project/github.com/o/r/start-chat(menu:x)',
+  '/project/github.com/o/r/tree/HEAD/a(b)/-/start-chat',
 ];
 
 // A browser address reaches the router through Angular's Location, which drops one trailing slash before the
@@ -173,6 +194,14 @@ describe('demo-handoff-path', () => {
         '///project/github.com/acme/demo/tree/HEAD/-/chat/',
         { kind: 'chat', owner: 'acme', repo: 'demo', ref: 'HEAD' },
       ],
+      [
+        '//project/github.com/acme/demo/start-chat',
+        { kind: 'start-chat', owner: 'acme', repo: 'demo', ref: undefined, dir: [] },
+      ],
+      [
+        '/(project/github.com/acme/demo/tree/HEAD/d/-/start-chat)/',
+        { kind: 'start-chat', owner: 'acme', repo: 'demo', ref: 'HEAD', dir: ['d'] },
+      ],
     ])('%s', (path, target) => {
       expect(handoffTargetOfPath(path)).toEqual(target);
     });
@@ -197,8 +226,53 @@ describe('demo-handoff-path', () => {
         ]),
       ).toEqual({ kind: 'chat', owner: 'O', repo: 'R', ref: 'Ab' });
     });
+    it('reads the start-chat address, at the root, on a ref, and in a folder', () => {
+      expect(
+        handoffTarget(['project', 'github.com', 'o', 'r', 'start-chat']),
+      ).toEqual({ kind: 'start-chat', owner: 'o', repo: 'r', ref: undefined, dir: [] });
+      expect(
+        handoffTarget([
+          'Project',
+          'GitHub.com',
+          'O',
+          'R',
+          'tree',
+          'Ab',
+          '-',
+          'START-CHAT',
+        ]),
+      ).toEqual({ kind: 'start-chat', owner: 'O', repo: 'R', ref: 'Ab', dir: [] });
+      expect(
+        handoffTarget([
+          'project',
+          'github.com',
+          'o',
+          'r',
+          'tree',
+          'HEAD',
+          'a',
+          'B',
+          '-',
+          'start-chat',
+        ]),
+      ).toEqual({ kind: 'start-chat', owner: 'o', repo: 'r', ref: 'HEAD', dir: ['a', 'B'] });
+    });
+    it('the old chat address keeps its shape: no folder', () => {
+      expect(
+        handoffTarget(['project', 'github.com', 'o', 'r', 'tree', 'x', 'd', '-', 'chat']),
+      ).toBeUndefined();
+    });
     it.each([
       [[]],
+      [['project', 'github.com', 'o', 'r', 'start-chat', 'x']],
+      [['project', 'github.com', 'o', 'r', 'tree', 'x', 'start-chat']],
+      [['project', 'github.com', 'o', 'r', 'tree', '', '-', 'start-chat']],
+      [['project', 'github.com', 'o', 'r', 'tree', '-', 'start-chat']],
+      [['project', 'github.com', 'o', 'r', 'tree', 'x', 'a', '-', 'b', '-', 'start-chat']],
+      [['project', 'github.com', '', 'r', 'start-chat']],
+      [['project', 'github.com', 'o', '', 'start-chat']],
+      [['project', 'gitlab.com', 'o', 'r', 'start-chat']],
+      [['start-chat']],
       [['demo', 'x']],
       [['project']],
       [['project', 'github.com', 'o', 'r']],

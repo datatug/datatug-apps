@@ -20,21 +20,36 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
 
-    <!-- Hand-off from the sites (/demo?q=… and /project/github.com/<owner>/<repo>/chat?msg=…): take the visitor's
-         question out of the address bar before Google Analytics can read the URL. The same address rules and
-         storage key as in src/app/demo-handoff-path.ts and demo-handoff-capture.ts, which parses what is kept here
-         (their specs run this script to keep them in step): matrix parameters, a trailing slash, letter case, extra
-         leading slashes (`//demo`) and a path written as one group at the root (`/(demo)`) do not change what a
-         hand-off address is, exactly as the router's parser reads them (`s` is the path as the router has it); a
-         path with an outlet group `(` is not one. Any other path is untouched, except that every other address under
-         /project/github.com loses `msg` and `q` (the question is dropped, never kept: nothing reads it there yet), the
+    <!-- Hand-off from the sites (/demo?q=…, the project page /project/github.com/<owner>/<repo>/start-chat#msg=…, and
+         the old /project/github.com/<owner>/<repo>/chat?msg=…): take the visitor's question out of the address bar
+         before Google Analytics can read the URL. The same address rules and storage key as in
+         src/app/demo-handoff-path.ts and demo-handoff-capture.ts, which parses what is kept here (their specs run
+         this script to keep them in step): matrix parameters, a trailing slash, letter case, extra leading slashes
+         (`//demo`) and a path written as one group at the root (`/(demo)`) do not change what a hand-off address is,
+         exactly as the router's parser reads them (`s` is the path as the router has it); a path with an outlet group
+         `(` is not one. A start-chat address (`…/start-chat`, `…/tree/<ref>[/<dir>…]/-/start-chat`) carries the question
+         after `#` (founder ruling 2026-10-03): the whole fragment and the `msg`, `q` and `lang` keys of its query go
+         (the other query keys stay), and those keys, fragment first, are kept. On `/demo` and the old chat address the
+         whole query goes and is kept. Any other path is untouched, except that every other address under
+         /project/github.com loses `msg` and `q` (the question is dropped, never kept: nothing reads it there), the
          rest of its query and its fragment staying. -->
     <script id="datatug-handoff-stash">
       (function () {
         // `u`: a path that starts with `//` is, to history.replaceState, an address on another host; it needs its origin.
-        var p = location.pathname, g = /^\/\(([^()]*)\)/.exec(p), i, kept, u = p.slice(0, 2) === '//' ? location.origin : '',
-            s = (g ? g[1] : p.replace(/\/$/, '')).replace(/^\/+/, '').split('/');
-        if (!location.search) return;
+        var p = location.pathname, g = /^\/\(([^()]*)\)/.exec(p), i, kept, got, left, taken, n, u = p.slice(0, 2) === '//' ? location.origin : '',
+            s = (g ? g[1] : p.replace(/\/$/, '')).replace(/^\/+/, '').split('/'),
+            h = location.hash, q = location.search, page = 'start-chat';
+        if (!q && !h) return;
+        // The key of a `name=value` pair as URLSearchParams reads it.
+        function keyOf(pair) {
+          var key = pair.split('=')[0].replace(/\+/g, ' ');
+          try { key = decodeURIComponent(key); } catch (e) {}
+          return key;
+        }
+        function ours(pair) {
+          var key = keyOf(pair);
+          return key === 'msg' || key === 'q' || key === 'lang';
+        }
         i = s.indexOf('');
         if (i >= 0 && i < s.length - 1) s.length = i;
         for (i = 0; i < s.length; i++) {
@@ -42,21 +57,39 @@
           try { s[i] = decodeURIComponent(s[i]); } catch (e) {}
           s[i] = s[i].toLowerCase();
         }
-        if ((g ? g[1].indexOf('//') < 0 : p.indexOf('(') < 0) && (s[0] === 'demo' ? s.length === 1 : s[0] === 'project' && s[1] === 'github.com' && s[2] && s[3] &&
-            (s.length === 5 ? s[4] === 'chat' : s.length === 8 && s[4] === 'tree' && s[5] && s[6] === '-' && s[7] === 'chat'))) {
-          window.__datatugHandoffSearch = location.search;
+        n = s.length;
+        if ((g ? g[1].indexOf('//') < 0 : p.indexOf('(') < 0) && s[0] === 'project' && s[1] === 'github.com' && s[2] && s[3] &&
+            (n === 5 ? s[4] === page : n >= 8 && s[4] === 'tree' && s[5] && s[n - 2] === '-' && s[n - 1] === page && s.slice(6, n - 2).indexOf('-') < 0)) {
+          // The confirmation page: the question is after `#`, or (a form post with no script) in the query.
+          got = []; left = []; taken = 0;
+          h.slice(1).split('&').forEach(function (pair) { if (ours(pair)) got.push(pair); });
+          if (q) q.slice(1).split('&').forEach(function (pair) {
+            if (ours(pair)) { got.push(pair); taken++; } else left.push(pair);
+          });
+          if (got.length) {
+            window.__datatugHandoffSearch = '?' + got.join('&');
+            // So that a reload before the app has started does not lose the question.
+            try { sessionStorage.setItem('datatug.demo.handoff.v1', p.replace(/\/$/, '') + window.__datatugHandoffSearch); } catch (e) {}
+          }
+          if (h || taken) {
+            try { history.replaceState(history.state, '', u + p + (left.length ? '?' + left.join('&') : '')); } catch (e) {}
+          }
+        } else if (!q) {
+          return;
+        } else if ((g ? g[1].indexOf('//') < 0 : p.indexOf('(') < 0) && (s[0] === 'demo' ? n === 1 : s[0] === 'project' && s[1] === 'github.com' && s[2] && s[3] &&
+            (n === 5 ? s[4] === 'chat' : n === 8 && s[4] === 'tree' && s[5] && s[6] === '-' && s[7] === 'chat'))) {
+          window.__datatugHandoffSearch = q;
           // So that a reload before the app has started does not lose the question.
-          try { sessionStorage.setItem('datatug.demo.handoff.v1', p.replace(/\/$/, '') + location.search); } catch (e) {}
+          try { sessionStorage.setItem('datatug.demo.handoff.v1', p.replace(/\/$/, '') + q); } catch (e) {}
           // A browser that refuses must not stop the page: the app still reads the question from the stash.
-          try { history.replaceState(history.state, '', u + p + location.hash); } catch (e) {}
+          try { history.replaceState(history.state, '', u + p + h); } catch (e) {}
         } else if (s[0] === 'project' && s[1] && s[1].split('(')[0] === 'github.com') {
-          kept = location.search.slice(1).split('&').filter(function (pair) {
-            var key = pair.split('=')[0].replace(/\+/g, ' ');
-            try { key = decodeURIComponent(key); } catch (e) {}
+          kept = q.slice(1).split('&').filter(function (pair) {
+            var key = keyOf(pair);
             return key !== 'msg' && key !== 'q';
           });
-          if (kept.length !== location.search.slice(1).split('&').length) {
-            try { history.replaceState(history.state, '', u + p + (kept.length ? '?' + kept.join('&') : '') + location.hash); } catch (e) {}
+          if (kept.length !== q.slice(1).split('&').length) {
+            try { history.replaceState(history.state, '', u + p + (kept.length ? '?' + kept.join('&') : '') + h); } catch (e) {}
           }
         }
       })();

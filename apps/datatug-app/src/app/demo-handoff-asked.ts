@@ -1,15 +1,22 @@
-import { handoffTarget, routeSegments } from './demo-handoff-path';
+import {
+  handoffTarget,
+  routeSegments,
+  startChatSegmentsOf,
+} from './demo-handoff-path';
 
 // Whether a hand-off address arrived WITH a question, decided where the route table is read (the eager bundle),
 // from what index.html's inline script kept of the query: it takes the query out of the address bar before the
 // router ever sees it, so the router cannot ask the URL. This file is small on purpose (no parsing of trust, no
 // storage writes, no reporting): demo-handoff-capture.ts, which is a lazy chunk, holds the rest.
 //
-// Which addresses show the holding page (datatug-app-routes.ts):
-//   - `/demo` (and `/Demo`, …): always. There is nothing else at that address.
-//   - the project chat address of a GitHub project (`…/chat`, `…/tree/<ref>/-/chat`): only when it arrived with a
-//     question (`msg`, or the old `q`). The same address without one is the project's own chat page, as for every
-//     other page of a project opened at its short address.
+// What each hand-off address gets (datatug-app-routes.ts), see handoffDecision():
+//   - `/demo` (and `/Demo`, …): the holding page, always. There is nothing else at that address.
+//   - `…/start-chat`, `…/tree/<ref>[/<dir>…]/-/start-chat` (founder ruling 2026-10-03): the confirmation page,
+//     always. It is a page of its own: with a question (kept from the fragment `#msg=…`) or without.
+//   - the OLD hand-off address, the project chat (`…/chat`, `…/tree/<ref>/-/chat`): only when it arrived with a
+//     question (`msg`, or the old `q`), and then it is MOVED to the start-chat page of the same project. The same
+//     address without a question is the project's own chat page, as for every other page of a project opened at
+//     its short address; the chat page never reads a question.
 // The flag of demo-flag.ts is deliberately NOT read: it is decided independently of the hand-off code (see
 // demo-flag.spec.ts), and until the chat can run a question the holding page is the only way not to lose it.
 
@@ -155,24 +162,41 @@ export function handoffAsked(
   }
 }
 
+/** What the route table does with a hand-off address. */
+export type HandoffDecision =
+  /** Not a hand-off address, or the old chat address without a question: the route does not match. */
+  | { readonly kind: 'none' }
+  /** The confirmation / holding page is the page of this very address. */
+  | { readonly kind: 'page' }
+  /** The old chat address arrived with a question: go (replacing it) to start-chat of the same project. */
+  | {
+      readonly kind: 'move-to-start-chat';
+      /** The segments of the new address, owner, repo and ref in their original case. */
+      readonly segments: readonly string[];
+    };
+
 /**
- * Whether the holding page is the page of this hand-off address. `/demo` always; a project chat address only when
- * it arrived with a question. Not a hand-off address: no.
+ * What the route table does with this address (see the header). The question itself is never in the address by
+ * now: for `/demo` and the old chat address it is in the stash (the page captures it from there), for start-chat
+ * the page reads and strips its own address (demo-handoff-capture.ts).
  */
-export function showsHoldingPage(
+export function handoffDecision(
   segments: readonly string[],
   env: AskedEnv = defaultEnv(),
   routerSearch = '',
-): boolean {
+): HandoffDecision {
   const target = handoffTarget(segments);
-  if (!target) return false;
+  if (!target) return { kind: 'none' };
+  if (target.kind === 'start-chat') return { kind: 'page' };
   if (target.kind === 'demo') {
     if (routerSearch && typeof env.stash[DEMO_HANDOFF_STASH] !== 'string') {
       env.stash[DEMO_HANDOFF_STASH] = routerSearch;
     }
-    return true;
+    return { kind: 'page' };
   }
-  return handoffAsked(segments, env, routerSearch);
+  return handoffAsked(segments, env, routerSearch)
+    ? { kind: 'move-to-start-chat', segments: startChatSegmentsOf(segments) }
+    : { kind: 'none' };
 }
 
 /** The query of a navigation as a query string (`?a=1&b=2`; '' when it has none), as the capture parses it. */

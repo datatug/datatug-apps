@@ -6,8 +6,8 @@ import {
   DEMO_HANDOFF_STASH,
   questionOfSearch,
   resetHandoffAskedForTests,
+  handoffDecision,
   searchAsksQuestion,
-  showsHoldingPage,
 } from './demo-handoff-asked';
 import { routeSegments } from './demo-handoff-path';
 
@@ -44,8 +44,11 @@ function env(
   };
 }
 
+const decide = (path: string, e?: AskedEnv, routerSearch?: string) =>
+  handoffDecision(routeSegments(path), e, routerSearch);
+/** Whether the hand-off rules take this address at all (its own page, or a move to the page that has it). */
 const shows = (path: string, e?: AskedEnv, routerSearch?: string): boolean =>
-  showsHoldingPage(routeSegments(path), e, routerSearch);
+  decide(path, e, routerSearch).kind !== 'none';
 
 describe('which hand-off addresses show the holding page', () => {
   beforeEach(() => {
@@ -361,6 +364,75 @@ describe('which hand-off addresses show the holding page', () => {
   });
 });
 
+describe('the decision for an address (founder ruling 2026-10-03: start-chat is the confirmation page)', () => {
+  const START_CHAT = '/project/github.com/datatug/chinook-demo/start-chat';
+  beforeEach(() => {
+    resetHandoffAskedForTests();
+    removed.length = 0;
+  });
+
+  it('start-chat is always its own page, with or without a question, on a fresh visit or a reload', () => {
+    for (const navigation of ['navigate', 'reload', 'back_forward', undefined]) {
+      expect(decide(START_CHAT, env({ navigation })), String(navigation)).toEqual({ kind: 'page' });
+      expect(
+        decide(START_CHAT, env({ navigation, stash: '?msg=Hello' })),
+        String(navigation),
+      ).toEqual({ kind: 'page' });
+    }
+  });
+
+  it('start-chat in a folder or on a ref is its own page too', () => {
+    expect(decide(START_CHAT.replace('/start-chat', '/tree/abc/-/start-chat'), env())).toEqual({ kind: 'page' });
+    expect(decide(START_CHAT.replace('/start-chat', '/tree/HEAD/d/e/-/start-chat'), env())).toEqual({ kind: 'page' });
+  });
+
+  it('start-chat takes nothing out of storage and puts nothing in the stash: the page captures the address itself', () => {
+    const e = env({ navigation: 'navigate', stash: undefined });
+    decide(START_CHAT, e, '?msg=Hello');
+    expect(e.stash[DEMO_HANDOFF_STASH]).toBeUndefined();
+    expect(removed).toEqual([]);
+  });
+
+  it('/demo is its own page, and a question in its navigation query is stashed', () => {
+    const e = env({ navigation: 'navigate' });
+    expect(decide('/demo', e, '?q=Hello')).toEqual({ kind: 'page' });
+    expect(e.stash[DEMO_HANDOFF_STASH]).toBe('?q=Hello');
+  });
+
+  it('the old chat address that arrived with a question is moved to start-chat of the same project', () => {
+    expect(decide(CHAT, env({ stash: '?msg=Hello' }))).toEqual({
+      kind: 'move-to-start-chat',
+      segments: ['project', 'github.com', 'datatug', 'chinook-demo', 'start-chat'],
+    });
+  });
+
+  it('the move keeps the ref and the letter case of the owner, repo and ref, and drops the rest of the old spelling', () => {
+    expect(
+      decide('//Project/github.com/Acme/Demo/tree/Rel-1/-/chat/', env({ stash: '?q=Hello' })),
+    ).toEqual({
+      kind: 'move-to-start-chat',
+      segments: ['Project', 'github.com', 'Acme', 'Demo', 'tree', 'Rel-1', '-', 'start-chat'],
+    });
+  });
+
+  it('the old chat address without a question is nothing for these rules: it is the project chat page', () => {
+    expect(decide(CHAT, env({ navigation: 'navigate' }))).toEqual({ kind: 'none' });
+  });
+
+  it('the move leaves the question in the stash for the page it moves to', () => {
+    const e = env({ stash: '?msg=Hello&lang=ru' });
+    decide(CHAT, e);
+    expect(e.stash[DEMO_HANDOFF_STASH]).toBe('?msg=Hello&lang=ru');
+  });
+
+  it.each(['/', '/chat', '/project/github.com/o/r', '/project/github.com/o/r/queries', '/start-chat'])(
+    '%s is not a hand-off address',
+    (path) => {
+      expect(decide(path, env({ stash: '?msg=x' }))).toEqual({ kind: 'none' });
+    },
+  );
+});
+
 describe('the page load it is asked about (the defaults: window, sessionStorage, navigation timing)', () => {
   beforeEach(() => {
     resetHandoffAskedForTests();
@@ -376,28 +448,28 @@ describe('the page load it is asked about (the defaults: window, sessionStorage,
   it('reads the stash on window', () => {
     (window as unknown as Record<string, unknown>)[DEMO_HANDOFF_STASH] =
       '?q=Hello';
-    expect(showsHoldingPage(routeSegments(CHAT))).toBe(true);
+    expect(handoffDecision(routeSegments(CHAT)).kind !== 'none').toBe(true);
   });
 
   it('a reload (the navigation timing says so) reads sessionStorage', () => {
     vi.spyOn(performance, 'getEntriesByType').mockReturnValue([
       { type: 'reload' } as PerformanceEntry,
     ]);
-    expect(showsHoldingPage(routeSegments(CHAT))).toBe(true);
+    expect(handoffDecision(routeSegments(CHAT)).kind !== 'none').toBe(true);
   });
 
   it('a navigation (the navigation timing says so) ignores sessionStorage', () => {
     vi.spyOn(performance, 'getEntriesByType').mockReturnValue([
       { type: 'navigate' } as PerformanceEntry,
     ]);
-    expect(showsHoldingPage(routeSegments(CHAT))).toBe(false);
+    expect(handoffDecision(routeSegments(CHAT)).kind !== 'none').toBe(false);
   });
 
   it('a browser with no navigation timing is read as a reload: sessionStorage is used', () => {
     vi.spyOn(performance, 'getEntriesByType').mockImplementation(() => {
       throw new Error('unsupported');
     });
-    expect(showsHoldingPage(routeSegments(CHAT))).toBe(true);
+    expect(handoffDecision(routeSegments(CHAT)).kind !== 'none').toBe(true);
   });
 });
 

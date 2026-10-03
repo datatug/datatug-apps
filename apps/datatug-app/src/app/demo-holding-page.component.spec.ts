@@ -492,6 +492,116 @@ describe('DemoHoldingPageComponent on the project chat address', () => {
   });
 });
 
+describe('DemoHoldingPageComponent on the start-chat address (founder ruling 2026-10-03)', () => {
+  const MSG = 'A question after the hash <b>x</b>';
+  const setUrl = (url: string): void =>
+    (
+      window as unknown as { happyDOM: { setURL(url: string): void } }
+    ).happyDOM.setURL(url);
+
+  beforeEach(() => {
+    resetDemoHandoffForTests();
+    window.sessionStorage.clear();
+    document.title = 'DataTug.app';
+  });
+
+  it.each([
+    '/project/github.com/datatug/chinook-demo/start-chat',
+    '/project/github.com/Datatug/Chinook-Demo/start-chat',
+    '/project/github.com/datatug/chinook-demo/tree/HEAD/-/start-chat',
+  ])('the demo project (%s) shows the question back', async (path) => {
+    handOff(`?msg=${encodeURIComponent(MSG)}&lang=en`, path);
+    const fixture = await render();
+    expect(text(fixture, 'blockquote')).toBe(MSG);
+    expect(text(fixture, '[role=status] > p')).toBe(DEMO_HOLDING_STRINGS.en.withQuestion);
+    expect(text(fixture, 'h1')).toBe(DEMO_HOLDING_STRINGS.en.heading);
+    expect(document.title).not.toContain('after the hash');
+  });
+
+  it.each([
+    '/project/github.com/someone/else/start-chat',
+    '/project/github.com/datatug/chinook-demo/tree/0123abcd4567ef89/-/start-chat',
+    '/project/github.com/datatug/chinook-demo/tree/HEAD/some/dir/-/start-chat',
+  ])('any other address (%s) shows neutral wording and never the question', async (path) => {
+    handOff(`?msg=${encodeURIComponent(MSG)}&lang=ru`, path);
+    const fixture = await render();
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('blockquote')).toBeNull();
+    expect(root.textContent).not.toContain('after the hash');
+    expect(text(fixture, '[role=status] > p')).toBe(DEMO_HOLDING_STRINGS.ru.neutralMessage);
+  });
+
+  it('a bare start-chat address, nothing to confirm, shows the no-question page', async () => {
+    const path = '/project/github.com/datatug/chinook-demo/start-chat';
+    setUrl(`https://datatug.app${path}`);
+    const fixture = await render();
+    expect(text(fixture, '[role=status] > p')).toBe(DEMO_HOLDING_STRINGS.en.withoutQuestion);
+    expect((fixture.nativeElement as HTMLElement).querySelector('blockquote')).toBeNull();
+  });
+
+  // Pasting `…/start-chat#msg=…` into a tab that is already on the page changes only the fragment: the browser does
+  // not reload, index.html's script does not run again, and the router navigates to the same route. The page must
+  // take the question from the address then, and take it out of the address.
+  it('an unrelated query key on the address (utm_source) does not make the page forget the question kept for a reload', async () => {
+    const path = '/project/github.com/datatug/chinook-demo/start-chat';
+    handOff('?msg=Kept&lang=en', path);
+    setUrl(`https://datatug.app${path}?utm_source=x`);
+    await TestBed.configureTestingModule({
+      imports: [DemoHoldingPageComponent],
+      providers: [
+        provideRouter([{ path: 'project/github.com/:o/:r/start-chat', component: OtherPage }]),
+      ],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+    })
+      .overrideComponent(DemoHoldingPageComponent, {
+        set: { imports: [RouterLink], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+      })
+      .compileComponents();
+    const fixture = TestBed.createComponent(DemoHoldingPageComponent);
+    fixture.detectChanges();
+    await TestBed.inject(Router).navigateByUrl(`${path}?utm_source=x`);
+    await fixture.whenStable();
+    expect(text(fixture, 'blockquote')).toBe('Kept');
+    expect(window.sessionStorage.getItem(DEMO_HANDOFF_KEY)).toContain('msg=Kept');
+    fixture.destroy();
+  });
+
+  it('a fragment arriving while the page is open is taken, shown, and removed from the address', async () => {
+    const path = '/project/github.com/datatug/chinook-demo/start-chat';
+    setUrl(`https://datatug.app${path}`);
+    await TestBed.configureTestingModule({
+      imports: [DemoHoldingPageComponent],
+      providers: [
+        provideRouter([{ path: 'project/github.com/:o/:r/start-chat', component: OtherPage }]),
+      ],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+    })
+      .overrideComponent(DemoHoldingPageComponent, {
+        set: { imports: [RouterLink], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+      })
+      .compileComponents();
+    const fixture = TestBed.createComponent(DemoHoldingPageComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(text(fixture, '[role=status] > p')).toBe(DEMO_HOLDING_STRINGS.en.withoutQuestion);
+
+    setUrl(`https://datatug.app${path}#msg=${encodeURIComponent(MSG)}&lang=ru`);
+    await TestBed.inject(Router).navigateByUrl(`${path}#msg=${encodeURIComponent(MSG)}&lang=ru`);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(text(fixture, 'blockquote')).toBe(MSG);
+    expect(text(fixture, '[role=status] > p')).toBe(DEMO_HOLDING_STRINGS.ru.withQuestion);
+    expect(text(fixture, 'h1')).toBe(DEMO_HOLDING_STRINGS.ru.heading);
+    expect(document.title).toBe(DEMO_HOLDING_STRINGS.ru.heading);
+    expect(window.location.hash).toBe('');
+    expect(window.location.href).not.toContain('after');
+    // and what was kept for a reload is under this very address
+    expect(window.sessionStorage.getItem(DEMO_HANDOFF_KEY)).toContain(path + '?msg=');
+    fixture.destroy();
+  });
+});
+
 describe('siteUrlFor (the back-to-the-site link)', () => {
   it('returns to the sites it knows, as an origin only', () => {
     expect(siteUrlFor('https://datatug.io/ru/some/page?q=secret#x')).toBe(
