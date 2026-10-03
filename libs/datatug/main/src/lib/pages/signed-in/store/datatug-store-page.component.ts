@@ -36,11 +36,16 @@ import { filter, takeUntil, tap } from 'rxjs/operators';
 import { IProjectBase } from '../../../models/definition/project';
 import { projectsBriefFromDictToFlatList } from '../../../models/interfaces';
 import {
+  DEMO_PROJECT_REF,
+  formatGithubProjectId,
+} from '../../../nav/github-project-address';
+import {
   IDatatugStoreContext,
   IProjectContext,
   parseDatatugStoreRef,
   storeIdToDisplayLabel,
 } from '../../../nav/nav-models';
+import { projectPageHref } from '../../../nav/project-page-href';
 import { NewProjectService } from '../../../project/new-project/new-project.service';
 import { DatatugUserService } from '../../../services/base/datatug-user-service';
 import { StoreTracker } from '../../../services/nav/contexts/store.tracker';
@@ -74,16 +79,12 @@ function isGithubStoreId(storeId: string | null | undefined): boolean {
 
 /**
  * The one GitHub project every fresh install can open without first
- * connecting a real repository. Deliberately kept in sync BY HAND with
- * `pages/home/my-projects/my-datatug-projects.component.ts`'s own
- * `demoProjects` field: that field isn't exported (it's a plain component
- * instance property), and this stream's scope is this `store/` folder only
- * — it does not extend to editing that lane's component to export a shared
- * constant. See the S137 report for the follow-up this leaves open.
+ * connecting a real repository: the demo project, the same one the home
+ * page's "Demo projects" entry opens (`DEMO_PROJECT_REF`, G-A1c).
  */
 export const GITHUB_DEMO_PROJECTS: IProjectBase[] = [
   {
-    id: 'datatug-demo-projects@datatug@demo-project-1',
+    id: DEMO_PROJECT_REF.projectId,
     title: 'DataTug Demo Project @ GitHub',
     access: 'public',
   },
@@ -432,6 +433,13 @@ export class DatatugStorePageComponent
     this.newProjectService.openNewProjectDialog();
   }
 
+  /** The address of a project of this store, for its row's link: a GitHub project at its short address. */
+  protected projectLink(project: IProjectBase): string {
+    return projectPageHref(
+      this.storeId ? { storeId: this.storeId, projectId: project.id } : undefined,
+    );
+  }
+
   /** Bound to the "Open a GitHub project" form's owner/repository/folder
    * inputs via `(ionInput)` — not `(ionChange)`, which only fires on blur:
    * with a one-way `[value]="githubOwner()"` binding, any Angular change
@@ -487,7 +495,11 @@ export class DatatugStorePageComponent
       return;
     }
     this.githubFormError.set(undefined);
-    const projectId = `${repository}@${owner}@${folder}`;
+    const projectId = formatGithubProjectId({
+      repo: repository,
+      org: owner,
+      folder,
+    });
     const storeId = this.storeId || STORE_ID_GITHUB_COM;
     const projectContext: IProjectContext = {
       ref: { projectId, storeId },

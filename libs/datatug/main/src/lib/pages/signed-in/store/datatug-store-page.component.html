@@ -64,7 +64,7 @@
                 <ion-item
                   tappable
                   (click)="goProject(project, $event)"
-                  [routerLink]="'project/' + project.id"
+                  [routerLink]="projectLink(project)"
                 >
                   <ion-label>
                     <h3>{{ project.title || project.id }}</h3>

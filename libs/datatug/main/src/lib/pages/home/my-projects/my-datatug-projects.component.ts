@@ -32,6 +32,7 @@ import { ISneatAuthState, SneatAuthStateService } from '@sneat/auth-core';
 import { STORE_TYPE_GITHUB } from '@sneat/core';
 import { NewProjectService } from '../../../project/new-project/new-project.service';
 import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
+import { DEMO_PROJECT_REF } from '../../../nav/github-project-address';
 import { IProjectContext } from '../../../nav/nav-models';
 import { LoadingItemsComponent } from '../loading-items-component';
 
@@ -68,12 +69,12 @@ export class MyDatatugProjectsComponent implements OnDestroy {
 
   private readonly destroyed = new Subject<void>();
   public projects?: IProjectAndStore[];
-  // https://github.com/datatug/datatug-demo-projects/blob/main/demo-project-1/datatug-project.json
-  // — see DatatugStoreGithubService.getProjectSummary() for how the "repo@org@folder"
-  // id below is turned into that raw-content URL.
+  // https://github.com/datatug/chinook-demo/blob/main/datatug-project.json — the project is at the root of its
+  // repository; its id (`chinook-demo@datatug@`, the empty folder is the root) and its address
+  // (`/project/github.com/datatug/chinook-demo`) come from `DEMO_PROJECT_REF`.
   public demoProjects: IDatatugProjectBriefWithIdAndStoreRef[] = [
     {
-      id: 'datatug-demo-projects@datatug@demo-project-1',
+      id: DEMO_PROJECT_REF.projectId,
       access: 'public',
       store: { ref: { type: STORE_TYPE_GITHUB, id: 'github.com' } },
       title: 'DataTug Demo Project @ GitHub',

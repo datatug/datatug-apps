@@ -1,5 +1,5 @@
 import type { Params } from '@angular/router';
-import { getStoreId } from '../nav/nav-models';
+import { tryProjectUrl } from '../nav/nav-models';
 import type {
   IncidentArtifactRef,
   IncidentDetail,
@@ -63,14 +63,27 @@ export function incidentHypotheses(
   }));
 }
 
+/**
+ * Router commands for a page of a project of the serving agent: the project's address from `projectUrl()`'s rules
+ * (`tryProjectUrl`), then the page's segments, each left raw for the router to encode (a folder-qualified id keeps
+ * its `/` as one segment). A project with no exact address has no page to link to: the root.
+ */
+function projectCommands(
+  agentStoreId: string,
+  projectId: string,
+  ...page: string[]
+): readonly string[] {
+  const address = tryProjectUrl({ storeId: agentStoreId, projectId });
+  return typeof address === 'string' ? [address, ...page] : ['/'];
+}
+
 export function incidentProjectTargets(
   projects: readonly IncidentProjectRef[] | undefined,
   agentStoreId: string,
 ): readonly IncidentProjectTarget[] {
-  const storeId = getStoreId(agentStoreId);
   return (projects ?? []).map((project) => ({
     project,
-    routerLink: ['/store', storeId, 'project', project.projectId],
+    routerLink: projectCommands(agentStoreId, project.projectId),
   }));
 }
 
@@ -84,7 +97,6 @@ function evidenceTarget(
   ref: IncidentArtifactRef,
   agentStoreId: string,
 ): IncidentEvidenceTarget {
-  const storeId = getStoreId(agentStoreId);
   switch (ref.kind) {
     case 'query': {
       const artifact = ref.artifact;
@@ -94,14 +106,12 @@ function evidenceTarget(
       return {
         kind: ref.kind,
         label: `query ${artifact.id}`,
-        routerLink: [
-          '/store',
-          storeId,
-          'project',
+        routerLink: projectCommands(
+          agentStoreId,
           artifact.projectId,
           'query',
           artifact.id,
-        ],
+        ),
         queryParams: { id: artifact.id },
       };
     }
@@ -113,14 +123,12 @@ function evidenceTarget(
       return {
         kind: ref.kind,
         label: `board ${artifact.id}`,
-        routerLink: [
-          '/store',
-          storeId,
-          'project',
+        routerLink: projectCommands(
+          agentStoreId,
           artifact.projectId,
           'board',
           artifact.id,
-        ],
+        ),
       };
     }
     case 'project': {
@@ -131,7 +139,7 @@ function evidenceTarget(
       return {
         kind: ref.kind,
         label: `project ${project.projectId}`,
-        routerLink: ['/store', storeId, 'project', project.projectId],
+        routerLink: projectCommands(agentStoreId, project.projectId),
       };
     }
     case 'compare':

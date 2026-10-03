@@ -5,7 +5,7 @@ import { provideAnimationsAsync } from '@angular/platform-browser/animations/asy
 import { provideRouter, RouteReuseStrategy } from '@angular/router';
 import { IonicRouteStrategy } from '@ionic/angular/common';
 import { provideIonicAngular } from '@ionic/angular/provide';
-import { DefaultSneatAppApiBaseUrl, getStoreUrl, SneatApiBaseUrl } from '@sneat/api';
+import { DefaultSneatAppApiBaseUrl, SneatApiBaseUrl } from '@sneat/api';
 import { provideSneatAuthenticatedProviders } from '@sneat/app-auth';
 import { provideGithubRedirectCapture } from './github-redirect-capture';
 import { TelegramAuthService } from '@sneat/auth-core';
@@ -25,6 +25,7 @@ import {
 } from '@sneat/logging';
 import { RANDOM_ID_OPTIONS, RandomIdService } from '@sneat/random';
 import { DATATUG_AGENT_BASE_URL } from '@sneat/datatug-semantic';
+import { agentBaseUrlOfPath } from './app/agent-base-url';
 import { routes } from './app/datatug-app-routes';
 import { DatatugAppComponent } from './app/datatug-app.component';
 import { buildInfo } from './build-info';
@@ -79,7 +80,7 @@ bootstrapApplication(DatatugAppComponent, {
     // `libs/datatug/semantic`'s SemanticApiService is `providedIn: 'root'` and reads
     // this token once, synchronously, the first time something injects the service —
     // so this factory resolves the store id from the current URL's `/store/<id>`
-    // segment (same shape DatatugNavContextService.processStore parses) at that
+    // segment (same shape DatatugNavContextService reads with `parseProjectUrl`) at that
     // moment, via `getStoreUrl()` (@sneat/api) so the semantic client hits the exact
     // same origin every other agent call resolves via S2's `buildAgentUrl()`
     // (libs/datatug/main/.../agent-url.ts — that lib is route-lazy-loaded, and
@@ -99,11 +100,9 @@ bootstrapApplication(DatatugAppComponent, {
     // it has to reproduce it rather than return `undefined`.
     {
       provide: DATATUG_AGENT_BASE_URL,
-      useFactory: (): string => {
-        const match = location.pathname.match(/\/store\/([^/]+)/);
-        const storeId = match ? decodeURIComponent(match[1]) : 'localhost:8989';
-        return `${getStoreUrl(storeId)}/datatug`;
-      },
+      // `agentBaseUrlOfPath()` (app/agent-base-url.ts) reads the address with `parseProjectUrl`, and gives a GitHub
+      // project, at either of its addresses, no agent (it used to get the default local agent on its short address).
+      useFactory: (): string => agentBaseUrlOfPath(location.pathname),
     },
     // Before the platform's auth bootstrap: whoever reads Firebase's pending
     // redirect result first gets it, and the platform reads it during start-up.

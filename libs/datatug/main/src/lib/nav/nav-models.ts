@@ -220,5 +220,6 @@ export type {
   IGithubProjectParts,
   IProjectUrlError,
   IProjectUrlParts,
+  ProjectPage,
   ProjectUrlErrorReason,
 } from '@datatug/project-address';

@@ -22,6 +22,7 @@ import {
 import { readNewProjectFolder } from '@datatug/project-address';
 import { STORE_ID_GITHUB_COM } from '@sneat/core';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
+import { formatGithubProjectId } from '../../nav/github-project-address';
 import { IProjectContext, parseDatatugStoreRef } from '../../nav/nav-models';
 import { DatatugNavService } from '../../services/nav/datatug-nav.service';
 import { DatatugServicesProjectModule } from '../../services/project/datatug-services-project.module';
@@ -296,9 +297,13 @@ export class NewProjectFormComponent implements ViewDidEnter {
       )
       .subscribe({
         next: (project) => {
-          // The app's GitHub reader addresses a project as `repo@org@folder`.
+          // The app's GitHub reader addresses a project by its id: `formatGithubProjectId()` writes the one id of it.
           this.dismissAndGo({
-            projectId: `${project.repo}@${project.org}@${project.folder}`,
+            projectId: formatGithubProjectId({
+              repo: project.repo,
+              org: project.org,
+              folder: project.folder,
+            }),
             storeId: STORE_ID_GITHUB_COM,
           });
         },

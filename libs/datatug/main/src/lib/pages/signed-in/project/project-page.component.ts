@@ -39,6 +39,7 @@ import {
   IProjectContext,
   parseDatatugStoreRef,
   storeIdToDisplayLabel,
+  tryProjectUrl,
 } from '../../../nav/nav-models';
 import { ProjectTracker } from '../../../services/nav/contexts/project.tracker';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
@@ -218,7 +219,14 @@ export class ProjectPageComponent
       );
       return;
     }
-    const url = `project/${project.ref.projectId}/${projItemType}s`;
+    const url = tryProjectUrl(project.ref, `${projItemType}s`);
+    if (typeof url !== 'string') {
+      this.errorLogger.logError(
+        new Error(`no exact address for the project (${url.reason})`),
+        'Failed to navigate to project item page: ' + projItemType,
+      );
+      return;
+    }
     this.navController
       .navigateForward(url, {
         state: {

@@ -42,7 +42,11 @@ import {
   IDatatugUserState,
 } from '../../../services/base/datatug-user-service';
 
-const DEMO_PROJECT_ID = 'datatug-demo-projects@datatug@demo-project-1';
+// The demo project listed under the GitHub store: the root of datatug/chinook-demo (G-A1c; the home page's entry).
+const DEMO_PROJECT_ID = 'chinook-demo@datatug@';
+// What the "Open a GitHub project" form is pre-filled with (datatug/datatug-demo-projects, folder demo-project-1).
+const FORM_DEFAULT_PROJECT_ID =
+  'datatug-demo-projects@datatug@demo-project-1';
 
 // Real-template imports for the `describe('project list gating ...')` block
 // below, minus `DatatugServicesStoreModule` (the real component's own
@@ -312,12 +316,40 @@ describe('StorePageComponent', () => {
     });
   });
 
+  // G-A1c: the link of a project row is the address `projectUrl()` writes for it.
+  describe('projectLink', () => {
+    const linkOf = (storeId: string | null, id: string): string =>
+      (
+        component as unknown as {
+          projectLink(project: { id: string }): string;
+        }
+      ).projectLink.call(Object.assign(component, { storeId }), { id });
+
+    it.each([
+      ['github.com', 'chinook-demo@datatug@', '/project/github.com/datatug/chinook-demo'],
+      ['github', 'chinook-demo@datatug@', '/project/github.com/datatug/chinook-demo'],
+      [
+        'github.com',
+        'datatug-demo-projects@datatug@demo-project-1',
+        '/project/github.com/datatug/datatug-demo-projects/tree/HEAD/demo-project-1',
+      ],
+      ['firestore', 'p1', '/store/firestore/project/p1'],
+      ['http-localhost:8989', 'datatug-demo-project', '/store/http-localhost:8989/project/datatug-demo-project'],
+      ['localhost:8989', 'datatug-demo-project', '/store/localhost:8989/project/datatug-demo-project'],
+      // Nothing to link to: no store yet, or a project with no exact address.
+      [null, 'p1', '/'],
+      ['localhost:8989', '50%', '/'],
+    ])('the row of %s project %s links to %s', (storeId, id, link) => {
+      expect(linkOf(storeId, id)).toBe(link);
+    });
+  });
+
   describe('openGithubProject', () => {
     beforeEach(() => {
       component.storeId = 'github.com';
     });
 
-    it('builds <repository>@<owner>@<folder> from the form fields (defaults) and navigates to the project page', () => {
+    it('builds the project id of <repository>, <owner> and <folder> from the form fields (defaults) and navigates to the project page', () => {
       const nav = TestBed.inject(DatatugNavService) as {
         goProject: ReturnType<typeof vi.fn>;
       };
@@ -327,7 +359,7 @@ describe('StorePageComponent', () => {
       expect(nav.goProject).toHaveBeenCalledTimes(1);
       const projectContext = nav.goProject.mock.calls[0][0];
       expect(projectContext.ref).toEqual({
-        projectId: DEMO_PROJECT_ID,
+        projectId: FORM_DEFAULT_PROJECT_ID,
         storeId: 'github.com',
       });
       expect(component.githubFormError()).toBeUndefined();
@@ -345,6 +377,24 @@ describe('StorePageComponent', () => {
 
       const projectContext = nav.goProject.mock.calls[0][0];
       expect(projectContext.ref.projectId).toBe('my-repo@my-org@my-folder');
+    });
+
+    it.each([
+      // [owner, repository, folder, the project id]: the one id of the project (owner and repo in lower case,
+      // the default folder dropped), whatever the form was filled with.
+      ['My-Org', 'My-Repo', 'My-Folder', 'my-repo@my-org@My-Folder'],
+      ['datatug', 'chinook-demo', 'datatug', 'chinook-demo@datatug'],
+    ])('writes the one id of the project for %s/%s in %s', (owner, repo, folder, id) => {
+      const nav = TestBed.inject(DatatugNavService) as {
+        goProject: ReturnType<typeof vi.fn>;
+      };
+
+      component.updateGithubField('owner', owner);
+      component.updateGithubField('repository', repo);
+      component.updateGithubField('folder', folder);
+      component.openGithubProject(new Event('submit'));
+
+      expect(nav.goProject.mock.calls[0][0].ref.projectId).toBe(id);
     });
 
     it('rejects an empty field without navigating', () => {

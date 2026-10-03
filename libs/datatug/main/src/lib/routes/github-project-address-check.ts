@@ -3,12 +3,13 @@ import { ToastController } from '@ionic/angular';
 import { firstValueFrom } from 'rxjs';
 import {
   asciiLowerCase,
-  GITHUB_DEFAULT_BRANCH_REF,
+  formatGithubProjectId,
   GITHUB_STORE_ID,
   IGithubProjectParts,
   IProjectUrlParts,
   parseProjectUrl,
   ProjectUrlErrorReason,
+  projectUrl,
 } from '@datatug/project-address';
 import { DatatugStoreGithubService } from '../services/repo/datatug-store.service.github';
 import { githubGet } from '../services/repo/github/github-http';
@@ -208,22 +209,27 @@ export type AddressDecision =
   | { readonly kind: 'problem'; readonly problem: GithubAddressProblem };
 
 /**
- * The path of the same project and page with the ref `HEAD` instead of the named one, in its canonical spelling.
- * `parts` is a canonical address that names a ref, so its path has `/tree/<encoded ref>` right after the repository,
- * and the same path with `HEAD` there is an address that parses.
+ * The path of the same project and page with the ref `HEAD` instead of the named one (the project at the default
+ * branch has no ref in its id), in its canonical spelling: what `projectUrl` writes for that project and page.
+ * `parts` is a canonical address that names a ref.
  */
 function defaultBranchPath(
   parts: IProjectUrlParts,
   github: IGithubProjectParts & { readonly ref: string },
 ): string {
-  const prefix = `/project/${GITHUB_STORE_ID}/${github.owner}/${github.repo}/tree/`;
-  const named = prefix + encodeURIComponent(github.ref);
-  const replaced = parseProjectUrl(
-    prefix +
-      GITHUB_DEFAULT_BRANCH_REF +
-      parts.canonicalPath.slice(named.length),
-  ) as IProjectUrlParts;
-  return replaced.canonicalPath;
+  const page = parts.rest ? parts.rest.slice(1).split('/') : [];
+  return projectUrl(
+    {
+      storeId: parts.storeId,
+      projectId: formatGithubProjectId({
+        repo: github.repo,
+        org: github.owner,
+        folder: github.folder,
+      }),
+    },
+    // `rest` is as typed (percent-encoded, and already judged by `parseProjectUrl`): `projectUrl` takes plain text.
+    page.map((segment) => decodeURIComponent(segment)),
+  );
 }
 
 /**

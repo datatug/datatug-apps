@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { ErrorLogger } from '@sneat/core';
-import { of } from 'rxjs';
+import { NEVER, of } from 'rxjs';
 
 import { DatatugNavContextService } from './datatug-nav-context.service';
 import { AppContextService } from '../../core/services/app-context.service';
@@ -321,4 +321,143 @@ describe('DatatugNavContextService — a short GitHub project address opened by 
     expect(logError).not.toHaveBeenCalled();
     expect(seen['project']).toBeUndefined();
   });
+});
+
+/**
+ * G-A1c (design `demo-as-github-project.md` 3.4): the nav context reads the store, project and the page after it
+ * from an address with `parseProjectUrl`, the one reader of both shapes, not with regular expressions over the whole
+ * URL: a query string is no part of an environment or a table, and a name that is a path word is not that word.
+ */
+describe('DatatugNavContextService — reads the address with parseProjectUrl (G-A1c)', () => {
+  function at(url: string, params?: Record<string, string>) {
+    const logError = vi.fn();
+    window.history.replaceState({}, '', url);
+    TestBed.configureTestingModule({
+      providers: [
+        DatatugNavContextService,
+        { provide: AppContextService, useValue: { currentApp: of({ appCode: 'datatug' }) } },
+        {
+          provide: ProjectContextService,
+          useValue: { current: undefined, setCurrent: vi.fn(), current$: of(undefined) },
+        },
+        {
+          provide: Router,
+          useValue: {
+            events: of(),
+            navigate: vi.fn(),
+            ...(params
+              ? {
+                  routerState: {
+                    snapshot: {
+                      root: {
+                        firstChild: {
+                          paramMap: { get: (name: string) => params[name] ?? null },
+                        },
+                      },
+                    },
+                  },
+                }
+              : {}),
+          },
+        },
+        {
+          provide: ProjectService,
+          // A table's project is never answered: the lookup of its metadata is no part of reading the address.
+          useValue: { watchProjectSummary: vi.fn(() => of(undefined)), getFull: vi.fn(() => NEVER) },
+        },
+        // An environment's summary is never answered: reading it is no part of reading the address.
+        { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn(() => NEVER) } },
+        { provide: ErrorLogger, useValue: { logError, logErrorHandler: vi.fn(() => vi.fn()) } },
+      ],
+    });
+    const service = TestBed.inject(DatatugNavContextService);
+    const seen: Record<string, unknown> = {};
+    service.currentProject.subscribe((p) => (seen['project'] = p));
+    service.currentEnv.subscribe((e) => (seen['env'] = e));
+    service.currentStoreId.subscribe((id) => (seen['store'] = id));
+    service.currentEnvDb.subscribe((db) => (seen['db'] = db));
+    service.currentEnvDbTable.subscribe((t) => (seen['table'] = t));
+    return { logError, seen };
+  }
+
+  beforeEach(() => sessionStorage.clear());
+
+  it.each([
+    // [address, store, project, environment, database, table]
+    [
+      '/store/localhost:8989/project/p1/env/local/db/chinook-local/table/main.Customer',
+      'localhost:8989', 'p1', 'local', 'chinook-local', { schema: 'main', name: 'Customer' },
+    ],
+    [
+      // The query string and the fragment are no part of the table.
+      '/store/localhost:8989/project/p1/env/local/db/chinook-local/table/main.Customer?tab=1#x',
+      'localhost:8989', 'p1', 'local', 'chinook-local', { schema: 'main', name: 'Customer' },
+    ],
+    [
+      // The whole URL, as `location.href` has it.
+      'http://localhost:3000/store/http-localhost:8989/project/p1/env/local?x=1',
+      'http-localhost:8989', 'p1', 'local', '', undefined,
+    ],
+    [
+      // The project, when its id needs percent-encoding, is the project the route carries.
+      '/store/localhost:8989/project/my%20project/env/local',
+      'localhost:8989', 'my project', 'local', '', undefined,
+    ],
+    [
+      // An old-form GitHub address is the project at its one id.
+      '/store/github.com/project/datatug-demo-projects@datatug@demo-project-1/env/local/db/chinook/table/main.Album',
+      'github.com', 'datatug-demo-projects@datatug@demo-project-1', 'local', 'chinook', { schema: 'main', name: 'Album' },
+    ],
+    [
+      '/store/github.com/project/Repo@Org@datatug/env/local',
+      'github.com', 'repo@org', 'local', '', undefined,
+    ],
+  ])('%s', (url, storeId, projectId, envId, dbId, table) => {
+    const { logError, seen } = at(url);
+    expect(logError).not.toHaveBeenCalled();
+    expect(seen['store']).toBe(storeId);
+    expect(seen['project']).toMatchObject({ ref: { storeId, projectId } });
+    expect(seen['env']).toMatchObject({ id: envId });
+    expect(seen['db']).toEqual({ id: dbId });
+    expect(seen['table']).toEqual(table ? expect.objectContaining(table) : undefined);
+  });
+
+  it('reads the page of a short GitHub address, as at the old address of the project', () => {
+    const { seen } = at(
+      '/project/github.com/o/r/tree/HEAD/d/-/env/local/db/chinook/table/main.Album?x=1',
+      { storeId: 'github.com', projectId: 'r@o@d' },
+    );
+    expect(seen['store']).toBe('github.com');
+    expect(seen['project']).toMatchObject({ ref: { storeId: 'github.com', projectId: 'r@o@d' } });
+    expect(seen['env']).toMatchObject({ id: 'local' });
+    expect(seen['db']).toEqual({ id: 'chinook' });
+    expect(seen['table']).toMatchObject({ schema: 'main', name: 'Album' });
+  });
+
+  it.each([
+    // A store page names its store and no project.
+    ['/store/localhost:8989', 'localhost:8989'],
+    ['/store/http-localhost:8989', 'http-localhost:8989'],
+    ['/store/github.com?x=1', 'github.com'],
+    ['/store/a%20b', 'a b'],
+    // A project address that cannot be read still names its store.
+    ['/store/localhost:8989/project/p1/%E0%A4%A', 'localhost:8989'],
+    ['/store/%E0%A4%A/project/p', '%E0%A4%A'],
+  ])('%s is the store %s and no project', (url, storeId) => {
+    const { logError, seen } = at(url);
+    expect(logError).not.toHaveBeenCalled();
+    expect(seen['store']).toBe(storeId);
+    expect(seen['project']).toBeUndefined();
+  });
+
+  it.each(['/', '/my', '/incidents', '/store', '/store/', '/storefront/x', '/chat'])(
+    '%s names no store, project, environment or table',
+    (url) => {
+      const { logError, seen } = at(url);
+      expect(logError).not.toHaveBeenCalled();
+      expect(seen['store']).toBeUndefined();
+      expect(seen['project']).toBeUndefined();
+      expect(seen['table']).toBeUndefined();
+    },
+  );
 });

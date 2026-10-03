@@ -34,6 +34,7 @@ import {
   IEntityFieldDef,
 } from '../../../models/definition/metapedia/entity';
 import { IProjectContext } from '../../../nav/nav-models';
+import { projectPageHref } from '../../../nav/project-page-href';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
 import { EntityService } from '../../../services/unsorted/entity.service';
@@ -105,11 +106,7 @@ export class EntityEditPageComponent implements OnDestroy {
         next: (currentProject) => {
           try {
             this.project.set(currentProject);
-            this.backUrl.set(
-              currentProject
-                ? `/store/${currentProject.ref.storeId}/project/${currentProject.ref.projectId}/entities`
-                : '/',
-            );
+            this.backUrl.set(projectPageHref(currentProject?.ref, 'entities'));
           } catch (e) {
             this.errorLogger.logError(e, 'Failed to process current project');
           }

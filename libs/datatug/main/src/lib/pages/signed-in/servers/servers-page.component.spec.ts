@@ -534,22 +534,14 @@ describe('ServersPage numbers add up (S153 — GitHub-store demo project)', () =
  * db/:dbDriver/:dbServerId`), so clicking any DB server row threw
  * `NG04002` for every store/project (founder report, 2026-09-10, 100%
  * reproducible). These tests call the component method directly (not a
- * dispatched DOM click) and assert the exact array now passed to
- * `NavController.navigateForward()`.
+ * dispatched DOM click) and assert the exact address now passed to
+ * `NavController.navigateForward()`: the one `projectUrl()` writes (G-A1c:
+ * a GitHub project at its short address, every other store as before).
  */
-describe('ServersPage.goDbServer() navigation target (S160, NG04002 regression)', () => {
-  let component: ServersPageComponent;
-  let fixture: ComponentFixture<ServersPageComponent>;
-  let navigateForward: ReturnType<typeof vi.fn>;
-
-  const target: IProjectRef = {
-    storeId: STORE_ID_GITHUB_COM,
-    projectId: 'datatug-demo-projects@datatug@demo-project-1',
-  };
-
-  beforeEach(async () => {
-    navigateForward = vi.fn(() => Promise.resolve(true));
-
+describe('ServersPage.goDbServer() navigation target (S160, NG04002 regression; G-A1c addresses)', () => {
+  async function setup(target: IProjectRef) {
+    const navigateForward = vi.fn(() => Promise.resolve(true));
+    const logError = vi.fn();
     await TestBed.configureTestingModule({
       imports: [ServersPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -564,10 +556,7 @@ describe('ServersPage.goDbServer() navigation target (S160, NG04002 regression)'
         },
         {
           provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
+          useValue: { logError, logErrorHandler: vi.fn(() => vi.fn()) },
         },
         { provide: ModalController, useValue: { create: vi.fn() } },
         { provide: NavController, useValue: { navigateForward } },
@@ -589,48 +578,78 @@ describe('ServersPage.goDbServer() navigation target (S160, NG04002 regression)'
       })
       .compileComponents();
 
-    fixture = TestBed.createComponent(ServersPageComponent);
-    component = fixture.componentInstance;
+    const fixture = TestBed.createComponent(ServersPageComponent);
     fixture.detectChanges();
+    return { component: fixture.componentInstance, navigateForward, logError };
+  }
+
+  const oldDemo: IProjectRef = {
+    storeId: STORE_ID_GITHUB_COM,
+    projectId: 'datatug-demo-projects@datatug@demo-project-1',
+  };
+  const withHostAndPort: IProjDbServerSummary = {
+    dbServer: { driver: 'sqlserver', host: 'localhost', port: 1433 },
+    databasesCount: 1,
+  };
+  const hostLess: IProjDbServerSummary = {
+    dbServer: { driver: 'sqlite3', host: '' },
+    databasesCount: 5,
+  };
+
+  it.each([
+    // [name, project, server, the address navigated to]
+    [
+      'a GitHub project (in a folder) with a host and a port',
+      oldDemo,
+      withHostAndPort,
+      '/project/github.com/datatug/datatug-demo-projects/tree/HEAD/demo-project-1/-/servers/db/sqlserver/localhost%3A1433',
+    ],
+    [
+      "the GitHub demo project's host-less sqlite3 server (no host at all)",
+      oldDemo,
+      hostLess,
+      `/project/github.com/datatug/datatug-demo-projects/tree/HEAD/demo-project-1/-/servers/db/sqlite3/${DB_SERVER_ID_NO_HOST}`,
+    ],
+    [
+      'the project at the root of a GitHub repository',
+      { storeId: STORE_ID_GITHUB_COM, projectId: 'chinook-demo@datatug@' },
+      hostLess,
+      `/project/github.com/datatug/chinook-demo/servers/db/sqlite3/${DB_SERVER_ID_NO_HOST}`,
+    ],
+    [
+      'an agent project with a host and a port (unchanged)',
+      { storeId: 'localhost:8989', projectId: 'datatug-demo-project' },
+      withHostAndPort,
+      '/store/localhost:8989/project/datatug-demo-project/servers/db/sqlserver/localhost%3A1433',
+    ],
+    [
+      'an agent project given as http-localhost:8989 (unchanged)',
+      { storeId: 'http-localhost:8989', projectId: 'p1' },
+      hostLess,
+      `/store/http-localhost:8989/project/p1/servers/db/sqlite3/${DB_SERVER_ID_NO_HOST}`,
+    ],
+  ])('navigates for %s', async (_name, target, server, address) => {
+    const { component, navigateForward, logError } = await setup(target);
+
+    component.goDbServer(server);
+
+    expect(navigateForward).toHaveBeenCalledTimes(1);
+    expect(navigateForward).toHaveBeenCalledWith(address);
+    expect(logError).not.toHaveBeenCalled();
   });
 
-  it('navigates to /store/<storeId>/project/<projectId>/servers/db/<driver>/<host:port> for a server with a host and a port', () => {
-    const dbServer: IProjDbServerSummary = {
-      dbServer: { driver: 'sqlserver', host: 'localhost', port: 1433 },
-      databasesCount: 1,
-    };
+  it('navigates nowhere, and says so, for a project that has no exact address', async () => {
+    const { component, navigateForward, logError } = await setup({
+      storeId: 'localhost:8989',
+      projectId: '50%',
+    });
 
-    component.goDbServer(dbServer);
+    component.goDbServer(withHostAndPort);
 
-    expect(navigateForward).toHaveBeenCalledWith([
-      'store',
-      STORE_ID_GITHUB_COM,
-      'project',
-      'datatug-demo-projects@datatug@demo-project-1',
-      'servers',
-      'db',
-      'sqlserver',
-      'localhost:1433',
-    ]);
-  });
-
-  it('navigates with the host-less placeholder id for the GitHub demo project\'s sqlite3 server (no host at all)', () => {
-    const dbServer: IProjDbServerSummary = {
-      dbServer: { driver: 'sqlite3', host: '' },
-      databasesCount: 5,
-    };
-
-    component.goDbServer(dbServer);
-
-    expect(navigateForward).toHaveBeenCalledWith([
-      'store',
-      STORE_ID_GITHUB_COM,
-      'project',
-      'datatug-demo-projects@datatug@demo-project-1',
-      'servers',
-      'db',
-      'sqlite3',
-      DB_SERVER_ID_NO_HOST,
-    ]);
+    expect(navigateForward).not.toHaveBeenCalled();
+    expect(logError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining('no exact address') }),
+      'Failed to navigate to DB server page',
+    );
   });
 });

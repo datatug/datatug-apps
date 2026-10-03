@@ -136,6 +136,24 @@ describe('SqlEditorPage', () => {
   it('should create', () => {
     expect(component).toBeTruthy();
   });
+
+  // G-A1c: where the back button goes with no history: the project's queries (its address is the one
+  // `projectUrl()` writes), in the folder of this query.
+  it.each([
+    ['an agent project', { storeId: 'localhost:8989', projectId: 'datatug-demo-project' }, 'customers', '/store/localhost:8989/project/datatug-demo-project/queries?folder=customers'],
+    ['an agent project, query in no folder', { storeId: 'localhost:8989', projectId: 'p1' }, '', '/store/localhost:8989/project/p1/queries?folder='],
+    ['a GitHub project', { storeId: 'github.com', projectId: 'chinook-demo@datatug@' }, 'sales', '/project/github.com/datatug/chinook-demo/queries?folder=sales'],
+    ['a GitHub project in a folder', { storeId: 'github.com', projectId: 'r@o@d' }, 'sales', '/project/github.com/o/r/tree/HEAD/d/-/queries?folder=sales'],
+  ])('the back button goes to the queries of %s', (_name, ref, folder, href) => {
+    component.project = { ref };
+    component.queryFolderPath = folder;
+    expect(component.queriesBackHref).toBe(href);
+  });
+
+  it('the back button goes to the root while there is no project', () => {
+    component.queryFolderPath = 'sales';
+    expect(component.queriesBackHref).toBe('/?folder=sales');
+  });
 });
 
 // REQ:parameter-auto-binding, REQ:no-hidden-filters (INTEGRATION.md §6), Task 15 item 3

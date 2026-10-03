@@ -26,7 +26,8 @@ import {
   ViewWillEnter,
 } from '@ionic/angular';
 import { DatatugCoreModule } from '../../core/datatug-core.module';
-import { getStoreId, IProjectContext } from '../../nav/nav-models';
+import { IProjectContext } from '../../nav/nav-models';
+import { projectPageHref } from '../../nav/project-page-href';
 import { DatatugServicesNavModule } from '../../services/nav/datatug-services-nav.module';
 import { DatatugQueriesServicesModule } from '../datatug-queries-services.module';
 import { QueriesTabComponent } from './queries-tab.component';
@@ -111,11 +112,7 @@ export class QueriesPageComponent
   public project?: IProjectContext;
 
   public get defaultBackHref(): string {
-    return this.project
-      ? `/store/${getStoreId(this.project.ref.storeId)}/project/${
-          this.project.ref.projectId
-        }`
-      : '/';
+    return projectPageHref(this.project?.ref);
   }
 
   constructor() {

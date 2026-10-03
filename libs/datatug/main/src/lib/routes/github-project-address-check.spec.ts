@@ -473,6 +473,17 @@ describe('GithubAddressCheck.decide', () => {
         '/project/github.com/o/r/tree/trunk/datatug',
         '/project/github.com/o/r/tree/HEAD/datatug',
       ],
+      // The page and the folder keep their percent-encoding (G-A1c: the address is written by `projectUrl`).
+      [
+        'main',
+        '/project/github.com/o/r/tree/main/-/queries/a%2Fb',
+        '/project/github.com/o/r/queries/a%2Fb',
+      ],
+      [
+        'main',
+        '/project/github.com/o/r/tree/main/Dir%20x/-/queries/a%20b%3Fc',
+        '/project/github.com/o/r/tree/HEAD/Dir%20x/-/queries/a%20b%3Fc',
+      ],
     ])(
       '%s is the default branch: %s redirects to %s',
       async (name, typed, canonical) => {

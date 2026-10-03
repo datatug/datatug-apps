@@ -64,9 +64,9 @@ import {
 import { ISelectResponse } from '../../../dto/execute';
 import { IForeignKey, IIndex } from '../../../models/definition/apis/database';
 import {
-  getStoreId,
   IEnvDbTableContext,
   IProjectContext,
+  tryProjectUrl,
 } from '../../../nav/nav-models';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import {
@@ -596,39 +596,30 @@ from ${this.tableFromClause(currentTable)}`;
     if (!project) {
       return;
     }
+    // The query id is its own page segment, written by `projectUrl()` percent-encoded: `request.queryId` may be
+    // folder-qualified (e.g. `customers/customer-invoices`, the shape `queries/applicable`'s `Candidate.queryId`
+    // returns as of datatug-cli#219), and an un-encoded one would land as `.../query/customers/customer-invoices` —
+    // two extra segments the `query/:queryId` route (single param) does not match.
+    const url = tryProjectUrl(project.ref, ['query', request.queryId]);
+    if (typeof url !== 'string') {
+      this.errorLogger.logError(
+        new Error(`no exact address for the project (${url.reason})`),
+        'Failed to open query',
+      );
+      return;
+    }
     this.router
-      .navigate(
-        [
-          '/store',
-          getStoreId(project.ref.storeId),
-          'project',
-          project.ref.projectId,
-          'query',
-          // `encodeURIComponent` — `request.queryId` may be folder-qualified
-          // (e.g. `customers/customer-invoices`, the shape `queries/applicable`'s
-          // `Candidate.queryId` returns as of datatug-cli#219). `router.navigate()`
-          // splits a *string* command containing `/` into several path segments
-          // regardless of its position in the array, so an un-encoded
-          // folder-qualified id would land as `.../query/customers/customer-invoices`
-          // — two extra segments the `query/:queryId` route (single param) does not
-          // match. Encoding keeps it one segment; Angular's router decodes it back
-          // to the raw id for anything that reads the `:queryId` param (nothing
-          // does today — see `id` queryParam below, which is the actual contract).
-          encodeURIComponent(request.queryId),
-        ],
+      .navigateByUrl(
+        // QueryPageComponent.trackQueryParams() resolves the query it opens from
+        // the `id` *query-string* param (`route.queryParamMap`), not the
+        // `:queryId` *path* segment above — the same contract
+        // DatatugNavService.goQuery() (the queries-list page's own "open a
+        // query" path) already follows. Without this, the path segment is
+        // cosmetic only and the page opens a blank/new query instead of
+        // `request.queryId`. Found while writing this stream's J2/J3 journey
+        // e2e (plan task 10) against the real app.
+        `${url}?id=${encodeURIComponent(request.queryId)}`,
         {
-          // QueryPageComponent.trackQueryParams() resolves the query it opens from
-          // the `id` *query-string* param (`route.queryParamMap`), not the
-          // `:queryId` *path* segment above — the same contract
-          // DatatugNavService.goQuery() (the queries-list page's own "open a
-          // query" path) already follows. Without this, the path segment is
-          // cosmetic only and the page opens a blank/new query instead of
-          // `request.queryId`. Found while writing this stream's J2/J3 journey
-          // e2e (plan task 10) against the real app.
-          // `id` is passed RAW (not encoded) here — it's a query-string value,
-          // not a path segment, and `HttpClient`/`Router` already form-encode
-          // query-string values on the way out.
-          queryParams: { id: request.queryId },
           // `targets`/`selectedSource` carry a needs-target Candidate's authorized
           // options through to the query page's target selector (plan Task 12 item 3;
           // api-contract.md "needs-target").

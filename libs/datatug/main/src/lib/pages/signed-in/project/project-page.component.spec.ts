@@ -114,6 +114,62 @@ describe('ProjectPage', () => {
   it('should create', () => {
     expect(component).toBeTruthy();
   });
+
+  // G-A1c: the page of a project's items folder is at the address `projectUrl()` writes (this method has no caller
+  // yet; its old path, `project/<id>/<items>`, matched no route).
+  describe('goProjFolder', () => {
+    const goProjFolder = (item: string) =>
+      (
+        component as unknown as { goProjFolder(item: string): void }
+      ).goProjFolder(item);
+    const setProject = (ref: { storeId: string; projectId: string }) =>
+      (
+        component as unknown as {
+          project: { set(project: { ref: typeof ref }): void };
+        }
+      ).project.set({ ref });
+
+    it.each([
+      ['an agent project', { storeId: 'localhost:8989', projectId: 'p1' }, '/store/localhost:8989/project/p1/entitys'],
+      ['a GitHub project', { storeId: 'github.com', projectId: 'chinook-demo@datatug@' }, '/project/github.com/datatug/chinook-demo/entitys'],
+    ])('opens the folder of %s at its address', (_name, ref, address) => {
+      const navController = TestBed.inject(NavController) as unknown as {
+        navigateForward: ReturnType<typeof vi.fn>;
+      };
+      setProject(ref);
+
+      goProjFolder('entity');
+
+      expect(navController.navigateForward).toHaveBeenCalledWith(address, {
+        state: { project: { ref } },
+      });
+    });
+
+    it('navigates nowhere, and says so, for a project that has no exact address', () => {
+      const navController = TestBed.inject(NavController) as unknown as {
+        navigateForward: ReturnType<typeof vi.fn>;
+      };
+      setProject({ storeId: 'localhost:8989', projectId: '50%' });
+
+      goProjFolder('entity');
+
+      expect(navController.navigateForward).not.toHaveBeenCalled();
+      expect(
+        (TestBed.inject(ErrorLogger) as unknown as { logError: ReturnType<typeof vi.fn> }).logError,
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({ message: expect.stringContaining('no exact address') }),
+        'Failed to navigate to project item page: entity',
+      );
+    });
+
+    it('does nothing for a page with no project', () => {
+      const navController = TestBed.inject(NavController) as unknown as {
+        navigateForward: ReturnType<typeof vi.fn>;
+      };
+      goProjFolder('entity');
+      expect(navController.navigateForward).not.toHaveBeenCalled();
+    });
+  });
 });
 
 /**

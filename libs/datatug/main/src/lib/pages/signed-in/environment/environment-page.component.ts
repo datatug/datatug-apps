@@ -26,7 +26,11 @@ import {
 } from '../../../models/definition/environments';
 import { IProjEnv } from '../../../models/definition/project';
 import { IDatatugProjectBriefWithIdAndStoreRef } from '../../../models/interfaces';
-import { IProjectContext } from '../../../nav/nav-models';
+import {
+  getStoreId,
+  IProjectContext,
+  tryProjectUrl,
+} from '../../../nav/nav-models';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
 import { DatatugServicesNavModule } from '../../../services/nav/datatug-services-nav.module';
@@ -107,7 +111,14 @@ export class EnvironmentPageComponent {
   project?: IProjectContext;
   env?: IEnvironmentSummary;
   dbCols = [{ field: 'id', sortable: true, filter: true }];
-  public defaultBackUrl = '/store/localhost:8989';
+  /**
+   * Where the back button goes with no history: the store page of the project's own store (a GitHub project's is
+   * `/store/github.com`), and, until the project is known, the default local agent's, as it always was.
+   */
+  public get defaultBackUrl(): string {
+    const storeId = this.project?.ref.storeId;
+    return `/store/${storeId ? getStoreId(storeId) : 'localhost:8989'}`;
+  }
   private envId?: string;
 
   constructor() {
@@ -195,11 +206,23 @@ export class EnvironmentPageComponent {
     state?: Record<string, unknown>,
   ): void {
     const { id } = envObject;
+    const url = this.project
+      ? tryProjectUrl(this.project.ref, [
+          'env',
+          this.projEnv?.id ?? this.envId ?? '',
+          ...folder.split('/'),
+          id,
+        ])
+      : undefined;
+    if (typeof url !== 'string') {
+      this.errorLogger.logError(
+        new Error('no exact address for the project'),
+        'Failed to navigate to db page',
+      );
+      return;
+    }
     this.navController
-      .navigateForward(
-        `/project/${this.projBrief?.id}/env/${this.projEnv?.id}/${folder}/${id}`, // TODO: relative path?
-        { state },
-      )
+      .navigateForward(url, { state })
       .catch((err) =>
         this.errorLogger.logError(err, 'Failed to navigate to db page'),
       );
