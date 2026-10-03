@@ -58,6 +58,29 @@ const ADDRESSES = [
   '/demo/(menu:x)',
   '/Demo(menu:x/y)',
   '/project/github.com/o/r/chat(menu:x)',
+  // review r2: other spellings of the same path, which the router's parser reads as the same address
+  '//demo',
+  '///demo',
+  '//demo/',
+  '/(demo)',
+  '/(demo)/',
+  '/(Demo;x=1)',
+  '/(demo//menu:x)',
+  '/(demo)(menu:x)',
+  '/(demo/other)',
+  '/demo//other',
+  '/demo///',
+  '//project/github.com/o/r/chat',
+  '///project/github.com/o/r/chat',
+  '/(project/github.com/o/r/chat)',
+  '/(project/github.com/o/r/tree/abc123/-/chat)',
+  '/(project/github.com/o/r/tree/abc123/-/chat//menu:x)',
+  '//project/github.com/o/r/tree/abc123/-/chat',
+  '/project//github.com/o/r/chat',
+  '/project/github.com/o/r//chat',
+  '/project/github.com/o/r/chat//',
+  '/project/github.com/o/r/chat(menu:x)/',
+  '/project/github.com/o/r/tree/HEAD/a(b)/-/chat',
 ];
 
 // A browser address reaches the router through Angular's Location, which drops one trailing slash before the
@@ -77,6 +100,20 @@ describe('demo-handoff-path', () => {
       ['/a/b;c=d/e%20f', ['a', 'b', 'e f']],
       ['/%E0%A4%A', ['%E0%A4%A']],
       ['/demo//', ['demo', '']],
+      // review r2: how the router's parser reads these (index.html's script does the same)
+      ['//demo', ['demo']],
+      ['///demo/', ['demo']],
+      ['/(demo)', ['demo']],
+      [
+        '/(project/github.com/o/r/chat)',
+        ['project', 'github.com', 'o', 'r', 'chat'],
+      ],
+      ['/(/project)', ['project']],
+      ['/(demo)/', ['demo']],
+      ['/(demo)(menu:x)', ['demo']],
+      ['/project//github.com/o/r/chat', ['project']],
+      ['/a/b//c/d', ['a', 'b']],
+      ['/(a;x=1/B%20c)', ['a', 'B c']],
     ])('%j is %j', (pathname, expected) => {
       expect(routeSegments(pathname)).toEqual(expected);
     });
@@ -97,8 +134,47 @@ describe('demo-handoff-path', () => {
       expect(isHandoffPath('/demo')).toBe(true);
       expect(handoffTargetOfPath('/demo')).toEqual({ kind: 'demo' });
     });
+    it.each([
+      '/(demo//menu:x)',
+      '/(project/github.com/o/r/chat//menu:x)',
+      '/project/github.com/o/r/tree/HEAD/a(b)/-/chat',
+    ])('%s', (path) => {
+      expect(isHandoffPath(path)).toBe(false);
+    });
     it('and an encoded parenthesis is just a character of a segment', () => {
       expect(isHandoffPath('/project/github.com/a%28b/r/chat')).toBe(true);
+    });
+  });
+
+  describe('a path written another way that the router reads as a hand-off address is one (review r2)', () => {
+    it.each([
+      ['//demo', { kind: 'demo' }],
+      ['///demo', { kind: 'demo' }],
+      ['/(demo)', { kind: 'demo' }],
+      ['/(Demo;x=1)/', { kind: 'demo' }],
+      [
+        '//project/github.com/datatug/chinook-demo/chat',
+        {
+          kind: 'chat',
+          owner: 'datatug',
+          repo: 'chinook-demo',
+          ref: undefined,
+        },
+      ],
+      [
+        '/(project/github.com/acme/demo/chat)',
+        { kind: 'chat', owner: 'acme', repo: 'demo', ref: undefined },
+      ],
+      [
+        '/(project/github.com/acme/demo/tree/HEAD/-/chat)',
+        { kind: 'chat', owner: 'acme', repo: 'demo', ref: 'HEAD' },
+      ],
+      [
+        '///project/github.com/acme/demo/tree/HEAD/-/chat/',
+        { kind: 'chat', owner: 'acme', repo: 'demo', ref: 'HEAD' },
+      ],
+    ])('%s', (path, target) => {
+      expect(handoffTargetOfPath(path)).toEqual(target);
     });
   });
 

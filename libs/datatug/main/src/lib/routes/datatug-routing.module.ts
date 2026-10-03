@@ -6,6 +6,7 @@ import {
   routingParamSpaceId,
   routingParamStoreId,
 } from '../core/datatug-routing-params';
+import { githubProjectRoutes } from './github-project-routes';
 import { profileHomeRedirectGuard } from './profile-home-redirect.guard';
 
 export const datatugRoutes: Routes = [
@@ -101,6 +102,9 @@ export const datatugRoutes: Routes = [
     pathMatch: 'full',
     redirectTo: '/',
   },
+  // The short address of a GitHub project: `/project/github.com/<owner>/<repo>…` (design
+  // `demo-as-github-project.md` 3.4). Matched by matchers, not paths; the old `store/…` form below is unchanged.
+  ...githubProjectRoutes,
   {
     path: 'store/:' + routingParamStoreId,
     loadChildren: () =>

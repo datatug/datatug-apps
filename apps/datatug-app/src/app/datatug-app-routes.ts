@@ -1,7 +1,8 @@
 import { inject } from '@angular/core';
-import { Router, Routes, UrlTree } from '@angular/router';
+import { CanMatchFn, Router, Routes } from '@angular/router';
 import { PRODUCT_PROFILE } from '@datatug/product-profiles';
 import { cliChatCapability } from './cli-chat-capability';
+import { searchOfQueryParams, showsHoldingPage } from './demo-handoff-asked';
 import { handoffUrlMatcher } from './demo-handoff-path';
 
 // Task 13 (S108, spec/research/2026-09-09-layered-acl-reconciliation.md,
@@ -18,9 +19,17 @@ import { handoffUrlMatcher } from './demo-handoff-path';
 // chat's `?msg=` is the shape the hand-off is moving to. Until the live demo can answer a question, they show one
 // holding page instead of failing to match any route, which opens Sentry's crash-report dialog and loses the
 // visitor's question. No flag and no sign-in. demo-handoff-capture.ts explains how the question is taken out of
-// the address bar before analytics starts, and which addresses may show it back (isEchoTrusted: `/demo` and the
+// the address bar before analytics starts, and which addresses may show it back (isTrustedHandoff: `/demo` and the
 // demo project's own chat; any other repository gets neutral wording and no question). Registered ahead of the
 // root feature routes; every other path is matched exactly as before.
+//
+// Which addresses show the holding page (demo-handoff-asked.ts decides, from what index.html kept of the query):
+//   - `/demo`: always.
+//   - `/project/github.com/<owner>/<repo>[/tree/<ref>/-]/chat`: only when it arrived with a question (`msg`, or
+//     `q`). Without one it is the chat page of that project, opened at its short address like every other page of
+//     it (the short project route, in the datatug-main routes). The question is the only thing that has nowhere
+//     else to go until the chat can run it, so it is what decides.
+//   - the old form of a project address, and every other short address, are never hand-offs.
 //
 // One route with a matcher, not three `path`s: Angular's literal segments are case-sensitive, and `/Demo` must
 // show the page too, as must `/demo;x=1` (the router ignores matrix parameters). demo-handoff-path.ts holds the
@@ -35,8 +44,23 @@ const demoHoldingPage = () => import('./demo-holding-page.component').then((m) =
 /** The hand-off page belongs to the DataTug product profile only. */
 export const datatugProfileOnly = (): boolean => inject(PRODUCT_PROFILE).id === 'datatug';
 
-/** `canMatch` of the hand-off route: matches under the DataTug profile, sends every other profile to the root. */
-export const handoffOrRoot = (): boolean | UrlTree => datatugProfileOnly() || inject(Router).parseUrl('/');
+/**
+ * `canMatch` of the hand-off route: under the DataTug profile the holding page for `/demo` and for a project chat
+ * address that arrived with a question, and no match (the router goes on to the project routes) for a project chat
+ * address without one; under every other profile, the root.
+ */
+export const handoffOrRoot: CanMatchFn = (_route, segments) => {
+  const router = inject(Router);
+  if (!datatugProfileOnly()) return router.parseUrl('/');
+  // The query the router has is normally empty (index.html's script took it out of the address bar before the
+  // router started). It is not when the script reads the path another way than the router does: then a question in
+  // it is as good as one the script stashed (demo-handoff-asked.ts).
+  return showsHoldingPage(
+    segments.map((segment) => segment.path),
+    undefined,
+    searchOfQueryParams(router.getCurrentNavigation()?.extractedUrl.queryParams ?? {}),
+  );
+};
 
 export const routes: Routes = [
   {

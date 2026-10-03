@@ -24,6 +24,7 @@ import {
   IEnvDbTableContext,
   IProjectContext,
   parseDatatugStoreRef,
+  parseProjectUrl,
   populateProjectBriefFromSummaryIfMissing,
 } from '../../nav/nav-models';
 import { ProjectContextService } from '../project/project-context.service';
@@ -37,18 +38,22 @@ const reStore = /\/store\/(.+?)($|\/)/,
   reEnvDb = /\/env\/\w+\/db\/(.+?)(?:\/|$)/,
   reTable = /\/table\/(.+?)(?:\/|$)/;
 
+/** The path of a URL as typed (`https://host/a/b?x#y` and `/a/b?x#y` both give `/a/b`). */
+function pathOf(url: string): string {
+  return /^(?:[a-z][a-z0-9+.-]*:\/\/[^/?#]*)?([^?#]*)/i.exec(url)?.[1] ?? '';
+}
+
 /**
- * Whether the URL's first path segment is `project`: the hand-off address
- * `/project/github.com/<owner>/<repo>/chat` (datatug-app's demo holding page). No route of this app starts with
- * `project` (the routes that carry a store start `/store/<id>/`), so such an address names no store, project,
- * environment or table, whatever its owner or repository is called: a repository called `store`, `env` or
- * `table` must not be read as one. Matrix parameters, letter case and percent-encoding are ignored, as the
- * router ignores them.
+ * Whether the URL's first path segment is `project`: the short address of a GitHub project,
+ * `/project/github.com/<owner>/<repo>…` (design `demo-as-github-project.md` 3.4), or the hand-off address
+ * `/project/github.com/<owner>/<repo>/chat` that datatug-app's holding page answers. No route of this app starts
+ * with `project` other than those (the routes that carry a store start `/store/<id>/`), so such an address names
+ * a store, project, environment or table only when a project route has opened it (see `legacyShapeOf`), whatever its
+ * owner or repository is called: a repository called `store`, `env` or `table` must not be read as one. Matrix
+ * parameters, letter case and percent-encoding are ignored, as the router ignores them.
  */
 function startsWithProjectSegment(url: string): boolean {
-  const path =
-    /^(?:[a-z][a-z0-9+.-]*:\/\/[^/?#]*)?([^?#]*)/i.exec(url)?.[1] ?? '';
-  let first = path.split('/')[1]?.split(/[;(]/)[0] ?? '';
+  let first = pathOf(url).split('/')[1]?.split(/[;(]/)[0] ?? '';
   try {
     first = decodeURIComponent(first);
   } catch {
@@ -266,10 +271,36 @@ export class DatatugNavContextService {
     //}
   }
 
+  /**
+   * The URL as the regular expressions below read it. A short GitHub address that the short project route has
+   * opened (the router state has its `storeId` and `projectId`, so a hand-off address that shows the holding page is
+   * not one) is read as the old form of the same project and page: `/store/github.com/project/<id>/<page…>`.
+   * Any other `/project/…` address names no store, project, environment or table: it reads as the bare root, and
+   * all of them clear.
+   */
+  private legacyShapeOf(rawUrl: string): string {
+    if (!startsWithProjectSegment(rawUrl)) {
+      return rawUrl;
+    }
+    const parsed = parseProjectUrl(pathOf(rawUrl));
+    if (parsed.ok) {
+      let leaf = this.router.routerState?.snapshot?.root;
+      while (leaf?.firstChild) {
+        leaf = leaf.firstChild;
+      }
+      if (
+        leaf?.paramMap.get('projectId') === parsed.projectId &&
+        leaf.paramMap.get('storeId') === parsed.storeId
+      ) {
+        return `/store/${parsed.storeId}/project/${parsed.projectId}${parsed.rest}`;
+      }
+    }
+    return '/';
+  }
+
   private processUrl(rawUrl: string): void {
     // console.log('DatatugNavContextService.processUrl():', url);
-    // An address that names no store, project, environment or table reads as the bare root: all of them clear.
-    const url = startsWithProjectSegment(rawUrl) ? '/' : rawUrl;
+    const url = this.legacyShapeOf(rawUrl);
     try {
       this.processStore(url);
       this.processProject(url);

@@ -19,6 +19,7 @@ import {
   IonToggle,
   IonToolbar,
 } from '@ionic/angular';
+import { readNewProjectFolder } from '@datatug/project-address';
 import { STORE_ID_GITHUB_COM } from '@sneat/core';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { IProjectContext, parseDatatugStoreRef } from '../../nav/nav-models';
@@ -238,6 +239,17 @@ export class NewProjectFormComponent implements ViewDidEnter {
       this.formError.set('Select a repository, or create a new one.');
       return;
     }
+    // Before anything is created on GitHub: a folder that the reader (and so the project's address) would refuse
+    // must never be written to.
+    const folder = readNewProjectFolder(this.githubFolder);
+    if (!folder.ok) {
+      this.formError.set(
+        folder.reason === 'leading-slash'
+          ? 'The folder is relative to the repository root: remove the leading "/".'
+          : 'The folder cannot contain "..", empty or "-" folders, or any of \\ @ % ? #.',
+      );
+      return;
+    }
     if (repo === NEW_GITHUB_REPO) {
       const name = this.newRepoName.trim();
       if (!name) {
@@ -248,7 +260,8 @@ export class NewProjectFormComponent implements ViewDidEnter {
       this.githubReposService
         .createRepo(token, name, this.makeRepoPrivate)
         .subscribe({
-          next: (created) => this.commitGithubProject(created.fullName, token),
+          next: (created) =>
+            this.commitGithubProject(created.fullName, token, folder.folder),
           error: (err) => {
             this.isCreating.set(false);
             this.formError.set(
@@ -262,10 +275,14 @@ export class NewProjectFormComponent implements ViewDidEnter {
       return;
     }
     this.isCreating.set(true);
-    this.commitGithubProject(repo, token);
+    this.commitGithubProject(repo, token, folder.folder);
   }
 
-  private commitGithubProject(fullName: string, token: string): void {
+  private commitGithubProject(
+    fullName: string,
+    token: string,
+    folder: string,
+  ): void {
     const [org, repo] = fullName.split('/');
     if (!org || !repo) {
       this.isCreating.set(false);
@@ -274,7 +291,7 @@ export class NewProjectFormComponent implements ViewDidEnter {
     }
     this.githubProjectCreateService
       .createProject(
-        { org, repo, folder: this.githubFolder, title: this.title },
+        { org, repo, folder, title: this.title },
         token,
       )
       .subscribe({

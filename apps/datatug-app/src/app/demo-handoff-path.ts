@@ -1,4 +1,9 @@
 import type { UrlMatcher, UrlSegment, UrlSegmentGroup } from '@angular/router';
+import {
+  hasOutletGroup,
+  pathHasOutletGroup,
+  ROOT_GROUP,
+} from '@datatug/project-address';
 
 // The one definition, in TypeScript, of which address is a hand-off address. The route table (the matcher
 // below), the capture of the visitor's question (demo-handoff-capture.ts) and the trust check all use it. The
@@ -7,9 +12,12 @@ import type { UrlMatcher, UrlSegment, UrlSegmentGroup } from '@angular/router';
 //
 // The rules are the router's own: matrix parameters (`/demo;x=1`) and a trailing slash do not change which route
 // matches, and the segments are matched after percent-decoding. The literal segments (`demo`, `project`,
-// `github.com`, `chat`, `tree`, `-`) match in any letter case; `/Demo` is the same page as `/demo`.
+// `github.com`, `chat`, `tree`, `-`) match in any letter case; `/Demo` is the same page as `/demo`. So do the other
+// spellings that the router's parser reads as the same path: `//demo` and `///demo`, and a path written as one
+// group at the root, `/(demo)` (review r2: an address the script read differently from the router left the question
+// in the address bar).
 //
-// An address with an auxiliary-outlet group (`/demo(menu:x)`, any `(` in the path) is NOT a hand-off address, for
+// An address with an auxiliary-outlet group (`/demo(menu:x)`, any `(` in the path but a root group) is NOT a hand-off address, for
 // the script, the TypeScript and the matcher alike: the router cannot show this page for it (the outlet group
 // matches nothing and the navigation fails, as on main), so nothing may claim to handle it. Its query is left
 // alone, exactly as for any other address that is not a hand-off.
@@ -34,12 +42,21 @@ function decoded(segment: string): string {
 }
 
 /**
- * The path segments of an address as the router reads them: one trailing slash ignored, matrix parameters
- * dropped, each segment percent-decoded (raw when it does not decode).
+ * The path segments of an address as the router reads them: one trailing slash dropped (the router's Location does
+ * that before the parser sees the address), a root group read as its content (`/(demo)` is `/demo`), leading
+ * slashes collapsed (`//demo` is `/demo`), the path cut at an empty segment inside it (`/a//b` is `/a`: the parser
+ * stops there), matrix parameters dropped, and each segment percent-decoded (raw when it does not decode).
  */
 export function routeSegments(pathname: string): string[] {
-  const parts = pathname.split('/').slice(1);
-  if (parts[parts.length - 1] === '') parts.pop();
+  const group = ROOT_GROUP.exec(pathname);
+  const path = (group ? group[1] : pathname.replace(/\/$/, '')).replace(
+    /^\/+/,
+    '',
+  );
+  if (path === '') return [];
+  const parts = path.split('/');
+  const empty = parts.indexOf('');
+  if (empty >= 0 && empty < parts.length - 1) parts.length = empty;
   return parts.map((part) => decoded(part.split(';')[0]));
 }
 
@@ -76,31 +93,13 @@ export function handoffTarget(
 export function handoffTargetOfPath(
   pathname: string,
 ): HandoffTarget | undefined {
-  return pathname.includes('(')
-    ? undefined
-    : handoffTarget(routeSegments(pathname));
+  if (pathHasOutletGroup(pathname)) return undefined;
+  return handoffTarget(routeSegments(pathname));
 }
 
 /** Whether this URL path is a hand-off address. */
 export function isHandoffPath(pathname: string): boolean {
   return handoffTargetOfPath(pathname) !== undefined;
-}
-
-const carriesPath = (group: UrlSegmentGroup): boolean =>
-  group.segments.length > 0 || group.hasChildren();
-
-/**
- * Whether the router sees an auxiliary-outlet group in this URL: a group below this one, or beside it, that
- * carries a path. The empty group the router itself adds for a named outlet whose route has an empty path (the
- * app's side menu, `outlet: 'menu'`) is not one.
- */
-function hasOutletGroup(group: UrlSegmentGroup | null | undefined): boolean {
-  if (!group) return false;
-  const below = Object.values(group.children);
-  const beside = group.parent
-    ? Object.values(group.parent.children).filter((other) => other !== group)
-    : [];
-  return [...below, ...beside].some(carriesPath);
 }
 
 /**

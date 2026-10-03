@@ -219,3 +219,106 @@ describe('DatatugNavContextService — a /project/ address with no /store/ segme
     expect(seen['env']).toMatchObject({ id: 'local' });
   });
 });
+
+/**
+ * The short address of a GitHub project (`/project/github.com/<owner>/<repo>…`, design `demo-as-github-project.md`
+ * 3.4), once the short project route has opened it: the side menu and the pages that read the nav context see the
+ * same store, project, environment and table as at the old address of the same project. An address that no project
+ * route has opened (the hand-off holding page answers the same shape) still names nothing.
+ */
+describe('DatatugNavContextService — a short GitHub project address opened by the short project route', () => {
+  /** The router state of a page whose deepest route has these parameters. */
+  const stateWith = (params: Record<string, string>) => ({
+    snapshot: {
+      root: {
+        firstChild: {
+          firstChild: { paramMap: { get: (name: string) => params[name] ?? null } },
+        },
+      },
+    },
+  });
+
+  function at(url: string, params?: Record<string, string>) {
+    const logError = vi.fn();
+    const watchProjectSummary = vi.fn(() => of(undefined));
+    window.history.replaceState({}, '', url);
+    TestBed.configureTestingModule({
+      providers: [
+        DatatugNavContextService,
+        { provide: AppContextService, useValue: { currentApp: of({ appCode: 'datatug' }) } },
+        {
+          provide: ProjectContextService,
+          useValue: { current: undefined, setCurrent: vi.fn(), current$: of(undefined) },
+        },
+        {
+          provide: Router,
+          useValue: {
+            events: of(),
+            navigate: vi.fn(),
+            ...(params ? { routerState: stateWith(params) } : {}),
+          },
+        },
+        { provide: ProjectService, useValue: { watchProjectSummary, getFull: vi.fn() } },
+        { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn(() => of(undefined)) } },
+        { provide: ErrorLogger, useValue: { logError, logErrorHandler: vi.fn(() => vi.fn()) } },
+      ],
+    });
+    const service = TestBed.inject(DatatugNavContextService);
+    const seen: Record<string, unknown> = {};
+    service.currentProject.subscribe((p) => (seen['project'] = p));
+    service.currentEnv.subscribe((e) => (seen['env'] = e));
+    service.currentStoreId.subscribe((id) => (seen['store'] = id));
+    return { logError, watchProjectSummary, seen };
+  }
+
+  beforeEach(() => sessionStorage.clear());
+
+  it.each([
+    ['/project/github.com/datatug/chinook-demo', 'chinook-demo@datatug@'],
+    ['/project/github.com/datatug/chinook-demo/chat', 'chinook-demo@datatug@'],
+    ['/project/github.com/o/r/tree/HEAD/demo-project-1/-/queries?tab=shared', 'r@o@demo-project-1'],
+    ['/project/github.com/o/r/tree/v1.0.0/-/chat', 'r@o@@v1.0.0'],
+    ['http://localhost:3000/project/github.com/o/r/tree/HEAD/datatug', 'r@o'],
+  ])('%s is the project %s of the GitHub store', (url, projectId) => {
+    const { logError, watchProjectSummary, seen } = at(url, { storeId: 'github.com', projectId });
+    expect(logError).not.toHaveBeenCalled();
+    expect(seen['store']).toBe('github.com');
+    expect(seen['project']).toMatchObject({ ref: { storeId: 'github.com', projectId } });
+    expect(watchProjectSummary).toHaveBeenCalledWith({ storeId: 'github.com', projectId });
+  });
+
+  it('reads an environment of the project from the page, as at the old address', () => {
+    const { seen } = at('/project/github.com/o/r/env/local', { storeId: 'github.com', projectId: 'r@o@' });
+    expect(seen['store']).toBe('github.com');
+    expect(seen['env']).toMatchObject({ id: 'local' });
+  });
+
+  it('reads the same project as the old address of it', () => {
+    const projectId = 'chinook-demo@datatug@';
+    const short = at('/project/github.com/datatug/chinook-demo/chat', { storeId: 'github.com', projectId });
+    const shortProject = short.seen['project'];
+    TestBed.resetTestingModule();
+    const old = at('/store/github.com/project/chinook-demo@datatug@/chat');
+    expect(shortProject).toEqual(old.seen['project']);
+    expect(short.seen['store']).toEqual(old.seen['store']);
+  });
+
+  it.each([
+    ['no route has opened it (the holding page answers this address)', undefined],
+    ['the route that opened it is for another project', { storeId: 'github.com', projectId: 'other@o@' }],
+    ['the route that opened it is for another store', { storeId: 'localhost:8989', projectId: 'r@o@' }],
+    ['the route that opened it has no project', {}],
+  ])('names nothing when %s', (_name, params) => {
+    const { logError, watchProjectSummary, seen } = at('/project/github.com/o/r/chat', params);
+    expect(logError).not.toHaveBeenCalled();
+    expect(watchProjectSummary).not.toHaveBeenCalled();
+    expect(seen['store']).toBeUndefined();
+    expect(seen['project']).toBeUndefined();
+  });
+
+  it('names nothing for a /project/ address that is not a project at all', () => {
+    const { logError, seen } = at('/project/github.com/o', { storeId: 'github.com', projectId: 'o@' });
+    expect(logError).not.toHaveBeenCalled();
+    expect(seen['project']).toBeUndefined();
+  });
+});

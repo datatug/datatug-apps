@@ -3,7 +3,9 @@ import { join } from 'node:path';
 import { datatugDemoConfig as devConfig } from '../environments/environment';
 import { datatugDemoConfig as prodConfig } from '../environments/environment.prod';
 import { datatugDemoConfig as ssoConfig } from '../environments/environment.sso-e2e';
-import { isEchoTrusted, isHandoffPath } from './demo-handoff-capture';
+import { showsHoldingPage } from './demo-handoff-asked';
+import { isTrustedHandoff, isHandoffPath } from './demo-handoff-capture';
+import { routeSegments } from './demo-handoff-path';
 import {
   DEMO_ENABLED_OVERRIDE_KEY,
   isDemoEnabled,
@@ -219,22 +221,27 @@ describe('the demo flag (G-F1)', () => {
       '/store/x/project/y/chat',
       '/',
     ];
-    const baseline = PATHS.map((p) => [isEchoTrusted(p), isHandoffPath(p)]);
+    const answers = (p: string) => [
+      isTrustedHandoff(p),
+      isHandoffPath(p),
+      // which page a hand-off address gets is not the flag's either (it is decided by whether a question was asked)
+      showsHoldingPage(routeSegments(p)),
+    ];
+    const baseline = PATHS.map(answers);
 
     it.each([[undefined], ['1'], ['0'], ['junk']])(
       'the answers for every path are the same with the override at %j',
       (override) => {
         if (override !== undefined)
           window.localStorage.setItem(DEMO_ENABLED_OVERRIDE_KEY, override);
-        expect(PATHS.map((p) => [isEchoTrusted(p), isHandoffPath(p)])).toEqual(
-          baseline,
-        );
+        expect(PATHS.map(answers)).toEqual(baseline);
       },
     );
 
     it('the trust and hand-off code does not import the flag, and the flag does not import it', () => {
       for (const file of [
         'demo-handoff-capture.ts',
+        'demo-handoff-asked.ts',
         'demo-handoff-path.ts',
         'demo-holding-page.component.ts',
         'datatug-app-routes.ts',

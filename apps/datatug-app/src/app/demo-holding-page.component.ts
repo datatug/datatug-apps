@@ -13,7 +13,7 @@ import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import {
   captureDemoHandoff,
   demoHandoff,
-  isEchoTrusted,
+  isTrustedHandoff,
   isHandoffPath,
 } from './demo-handoff-capture';
 import {
@@ -111,9 +111,9 @@ export class DemoHoldingPageComponent {
   // index.html's first script has already taken the query out of the address bar and stashed it; this parses it.
   private readonly handoff = (captureDemoHandoff(), demoHandoff());
   // `/demo` and the demo project's own chat address say that the live demo opens here soon and show the question
-  // back. Any other repository's chat address (see isEchoTrusted) gets neutral wording: it must not claim to be
+  // back. Any other repository's chat address (see isTrustedHandoff) gets neutral wording: it must not claim to be
   // a demo, and it carries no question (the capture dropped it).
-  protected readonly trusted = isEchoTrusted(window.location.pathname);
+  protected readonly trusted = isTrustedHandoff(window.location.pathname);
   protected readonly lang = this.handoff?.lang ?? 'en';
   protected readonly strings = DEMO_HOLDING_STRINGS[this.lang];
   protected readonly question = this.handoff?.question ?? '';

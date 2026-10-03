@@ -396,6 +396,74 @@ describe('NewProjectFormComponent creating in a GitHub repo', () => {
     expect(formErrorOf(component)).toContain('name');
   });
 
+  describe('the folder field (issue #180)', () => {
+    const prepare = (folder: string, repo = 'datatug/demo-projects') => {
+      oauth.isSignedIn = true;
+      oauth.accessToken = 'gho_token';
+      (component as unknown as { selectedRepo: { set: (v: string) => void } }).selectedRepo.set(repo);
+      repos.createRepo = vi.fn(() =>
+        of({ fullName: 'datatug/my-projects', private: false, defaultBranch: 'main' }),
+      );
+      component.newRepoName = 'my-projects';
+      component.store = 'github';
+      component.title = 'My project';
+      component.githubFolder = folder;
+    };
+
+    it.each([
+      ['/', 'leading "/"'],
+      ['/datatug', 'leading "/"'],
+      ['  /datatug', 'leading "/"'],
+      ['..', 'cannot contain'],
+      ['../x', 'cannot contain'],
+      ['a/../b', 'cannot contain'],
+      ['a//b', 'cannot contain'],
+      ['a\\b', 'cannot contain'],
+      ['-', 'cannot contain'],
+      ['a@b', 'cannot contain'],
+      ['a?b', 'cannot contain'],
+    ])('refuses the folder %j before anything is written or created (%s)', (folder, message) => {
+      for (const repo of ['datatug/demo-projects', '__new__']) {
+        prepare(folder, repo);
+
+        component.create();
+
+        expect(createProject).not.toHaveBeenCalled();
+        expect(repos.createRepo).not.toHaveBeenCalled();
+        expect(formErrorOf(component)).toContain(message);
+      }
+    });
+
+    it.each([
+      ['', 'datatug'],
+      ['   ', 'datatug'],
+      [' demo-project-1 ', 'demo-project-1'],
+      ['a/b/', 'a/b'],
+    ])('writes the folder %j as %j', (typed, folder) => {
+      prepare(typed);
+
+      component.create();
+
+      expect(createProject).toHaveBeenCalledWith(
+        expect.objectContaining({ folder }),
+        'gho_token',
+      );
+      expect(formErrorOf(component)).toBeUndefined();
+    });
+
+    it('also checks the folder before a new repository is created, and uses the checked folder after it', () => {
+      prepare(' sub/dir/ ', '__new__');
+
+      component.create();
+
+      expect(repos.createRepo).toHaveBeenCalled();
+      expect(createProject).toHaveBeenCalledWith(
+        expect.objectContaining({ repo: 'my-projects', folder: 'sub/dir' }),
+        'gho_token',
+      );
+    });
+  });
+
   it('still creates in the cloud store when Cloud is selected', () => {
     component.store = 'cloud';
     component.title = 'My project';

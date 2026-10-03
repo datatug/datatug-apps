@@ -23,18 +23,23 @@
 // (`datatug/chinook-demo`, default branch) show the visitor's question. The project chat of any other repository
 // does not: a message chosen by whoever made the link must not be displayed inside datatug.app's pages under
 // someone else's repository address. For those the query is still taken out of the address bar and kept out of
-// every report; only the language is kept, for the neutral page. See isEchoTrusted().
-import { handoffTargetOfPath, isHandoffPath } from './demo-handoff-path';
+// every report; only the language is kept, for the neutral page. See isTrustedHandoff().
+import { isTrustedProjectAddress, parseProjectUrl } from '@datatug/project-address';
+import {
+  DEMO_HANDOFF_ASKED_PARAM,
+  DEMO_HANDOFF_KEY,
+  DEMO_HANDOFF_STASH,
+  questionOfSearch,
+} from './demo-handoff-asked';
+import {
+  handoffTargetOfPath,
+  isHandoffPath,
+  routeSegments,
+} from './demo-handoff-path';
 
-export { isHandoffPath };
+export { isHandoffPath, DEMO_HANDOFF_KEY, DEMO_HANDOFF_STASH };
 
-export const DEMO_HANDOFF_KEY = 'datatug.demo.handoff.v1';
-export const DEMO_HANDOFF_STASH = '__datatugHandoffSearch';
 export const DEMO_QUESTION_MAX_BYTES = 1000;
-
-/** The demo project: the only repository whose chat address may show a message that came in a link. */
-const TRUSTED_OWNER = 'datatug';
-const TRUSTED_REPO = 'chinook-demo';
 
 export type DemoLang = 'en' | 'ru';
 
@@ -49,19 +54,32 @@ export interface DemoHandoff {
 let current: DemoHandoff | undefined;
 
 /**
- * Whether the hand-off at this path may be shown back to the visitor: `/demo`, or the chat of
- * `datatug/chinook-demo` (owner and repository decoded, lower-cased, each compared for exact equality) on its
- * default branch, that is with no `tree/<ref>` or with `tree/HEAD`. Anything else, however similar
- * (`chinook-demo-evil`, `tree/<sha>`), is not.
+ * Whether the hand-off at this path may be shown back to the visitor: `/demo`, or the chat of a project the app
+ * trusts, decided by the one trust function (`isTrustedProjectAddress`, design 3.6) on the PARSED project address:
+ * owner and repository ASCII-lower-cased and compared for exact equality with the compiled-in list, on its default
+ * branch, that is with no `tree/<ref>` or with `tree/HEAD`. Anything else, however similar (`chinook-demo-evil`,
+ * `tree/<sha>`, a look-alike letter such as the Kelvin sign U+212A that `toLowerCase()` would turn into `k`), is not.
  */
-export function isEchoTrusted(pathname: string): boolean {
+export function isTrustedHandoff(pathname: string): boolean {
   const target = handoffTargetOfPath(pathname);
   if (!target) return false;
   if (target.kind === 'demo') return true;
+  const project = parseProjectUrl(
+    `/project/github.com/${encodeURIComponent(target.owner)}/${encodeURIComponent(target.repo)}` +
+      (target.ref === undefined
+        ? ''
+        : `/tree/${encodeURIComponent(target.ref)}`),
+  );
+  return isTrustedProjectAddress(project);
+}
+
+/**
+ * This address with no query, for `history.replaceState`. A path that starts with `//` (`//project/…`, which the
+ * router reads as `/project/…`) is, to replaceState, an address on another host: it needs its origin.
+ */
+function withoutQuery(loc: Location): string {
   return (
-    target.owner.toLowerCase() === TRUSTED_OWNER &&
-    target.repo.toLowerCase() === TRUSTED_REPO &&
-    (target.ref === undefined || target.ref === 'HEAD')
+    (loc.pathname.startsWith('//') ? loc.origin : '') + loc.pathname + loc.hash
   );
 }
 
@@ -95,12 +113,6 @@ export function truncateToBytes(
   return { text, truncated: false };
 }
 
-// Control characters other than tab and line feed have no place in a question that is shown back as text.
-// eslint-disable-next-line no-control-regex
-const CONTROL_CHARACTERS = /[\u0000-\u0008\u000B-\u001F\u007F]/g;
-// Two or more blank lines in a row (a line of only spaces and tabs counts as blank): shown as a single blank line.
-const BLANK_LINE_RUNS = /(?:[ \t]*\n){3,}/g;
-
 /**
  * Parses a hand-off query string.
  * - the question is `msg`, else `q` (a blank `msg` does not hide a real `q`), trimmed, runs of blank lines
@@ -110,13 +122,10 @@ const BLANK_LINE_RUNS = /(?:[ \t]*\n){3,}/g;
  */
 export function parseHandoffSearch(search: string): DemoHandoff {
   const params = new URLSearchParams(search);
-  const clean = (value: string | null): string =>
-    (value ?? '')
-      .replace(CONTROL_CHARACTERS, '')
-      .replace(BLANK_LINE_RUNS, '\n\n')
-      .trim();
-  const raw = clean(params.get('msg')) || clean(params.get('q'));
-  const { text, truncated } = truncateToBytes(raw, DEMO_QUESTION_MAX_BYTES);
+  const { text, truncated } = truncateToBytes(
+    questionOfSearch(search),
+    DEMO_QUESTION_MAX_BYTES,
+  );
   const lang: DemoLang =
     (params.get('lang') ?? '').trim().toLowerCase() === 'ru' ? 'ru' : 'en';
   return { question: text.trimEnd(), lang, truncated };
@@ -171,23 +180,30 @@ export function captureDemoHandoff(env: CaptureEnv = defaultEnv()): void {
     // Strip first and unconditionally: nothing below may leave the question in the URL. A browser that refuses
     // (a SecurityError, an exotic embedding) must not stop the page from showing what it has.
     try {
-      history.replaceState(history.state, '', loc.pathname + loc.hash);
+      history.replaceState(history.state, '', withoutQuery(loc));
     } catch {
       // The address keeps its query; the question is still held in memory below.
     }
   }
   if (search) {
     const parsed = parseHandoffSearch(search);
-    const trusted = isEchoTrusted(loc.pathname);
+    const trusted = isTrustedHandoff(loc.pathname);
     // Not trusted: only the language survives, for the neutral page. The question is dropped here, not hidden later.
     current = trusted
       ? parsed
       : { question: '', lang: parsed.lang, truncated: false };
     // index.html has stored the original already; this covers a page served without that script, and removes
     // the question of an untrusted address from storage.
+    // For an address that may not echo it, what is kept is the language and a mark that a question was asked:
+    // after a reload the route still shows this page (neutral wording), not the project's chat.
     store(
       env,
-      storedFor(loc.pathname, trusted ? search : '?lang=' + parsed.lang),
+      storedFor(
+        loc.pathname,
+        trusted
+          ? search
+          : `?lang=${parsed.lang}&${DEMO_HANDOFF_ASKED_PARAM}=1`,
+      ),
     );
   } else if (env.navigationType() === 'navigate') {
     // A fresh visit to the bare path must not show a question left in this tab by an earlier visit. (A reload
@@ -206,6 +222,17 @@ function store(env: CaptureEnv, search: string | undefined): void {
 }
 
 /**
+ * Whether two paths are the same address for the router: `//project/…` as typed, kept for a reload, and the
+ * `/project/…` the router has since replaced it with, are one.
+ */
+function samePath(kept: string, pathname: string): boolean {
+  return (
+    JSON.stringify(routeSegments(kept)) ===
+    JSON.stringify(routeSegments(pathname))
+  );
+}
+
+/**
  * The hand-off for the holding page: the one captured in this page load, else the one kept for a reload, else
  * `undefined` (a bare visit, or storage is blocked after a reload: the page then shows its no-question copy in
  * English). A hand-off with only a language has an empty `question`. What storage holds is parsed like any
@@ -217,15 +244,14 @@ export function demoHandoff(
 ): DemoHandoff | undefined {
   // Whatever was captured, the question is only ever returned for an address that may show it.
   const forPath = (handoff: DemoHandoff): DemoHandoff =>
-    isEchoTrusted(pathname)
+    isTrustedHandoff(pathname)
       ? handoff
       : { question: '', lang: handoff.lang, truncated: false };
   if (current) return forPath(current);
   try {
     const raw = storage().getItem(DEMO_HANDOFF_KEY) ?? '';
     const at = raw.indexOf('?');
-    if (at < 0 || raw.slice(0, at) !== pathname.replace(/\/$/, ''))
-      return undefined;
+    if (at < 0 || !samePath(raw.slice(0, at), pathname)) return undefined;
     return forPath(parseHandoffSearch(raw.slice(at)));
   } catch {
     return undefined;

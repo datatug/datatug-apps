@@ -1,0 +1,6 @@
+{
+  "name": "@datatug/project-address",
+  "version": "0.0.1",
+  "description": "The pure functions that read and build the address of a project (GitHub project ids, the short project URL, and the trust decision of design demo-as-github-project.md 3.3, 3.4a and 3.6). No Angular, no I/O: the app's eager start-up code and the lazy datatug-main library both use them.",
+  "sideEffects": false
+}
