@@ -70,6 +70,13 @@ export interface ProductProfile {
   readonly showIncidentsMenuItem: boolean;
 
   /**
+   * Whether the side menu credits DALgo ("Powered by DALgo", linking dalgo.io) under the build info (founder,
+   * 2026-10-03: "The dalgo credit can be given on DataTug.app as well"). True for `datatug`; `incidentius` shows
+   * no DALgo credit, since nothing in its own surface presents DALgo.
+   */
+  readonly showPoweredByDalgo: boolean;
+
+  /**
    * Exact hostnames that select this profile (REQ:profile-table: "A profile
    * MUST be selected by hostname"). Empty means this profile is never chosen by
    * hostname alone — reachable only through the configuration override or, in a
@@ -94,6 +101,7 @@ export const PRODUCT_PROFILES: Readonly<
     homePath: '',
     entryPointLabel: 'Open a project',
     showIncidentsMenuItem: true,
+    showPoweredByDalgo: true,
     hostnames: ['datatug.app'],
   }),
   incidentius: Object.freeze({
@@ -102,6 +110,7 @@ export const PRODUCT_PROFILES: Readonly<
     homePath: 'incidents',
     entryPointLabel: "Houston, we've got a problem",
     showIncidentsMenuItem: false,
+    showPoweredByDalgo: false,
     hostnames: ['app.incidentius.com'],
   }),
 });

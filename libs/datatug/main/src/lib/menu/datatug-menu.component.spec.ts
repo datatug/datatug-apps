@@ -259,6 +259,49 @@ describe('DatatugMenuComponent', () => {
     });
   });
 
+  describe('Powered by DALgo credit', () => {
+    const credit = (fixture: ComponentFixture<DatatugMenuComponent>) =>
+      fixture.nativeElement.querySelector(
+        '[data-testid="powered-by-dalgo"]',
+      ) as HTMLAnchorElement | null;
+
+    it('links to dalgo.io in a new tab, with the full accessible name, under the datatug profile', () => {
+      const fixture = createComponent('/');
+      fixture.detectChanges();
+      const link = credit(fixture);
+      expect(link).toBeTruthy();
+      expect(link?.getAttribute('href')).toBe('https://dalgo.io');
+      expect(link?.getAttribute('target')).toBe('_blank');
+      expect(link?.getAttribute('rel')).toBe('noopener');
+      expect(link?.getAttribute('aria-label')).toBe(
+        'Powered by DALgo, the database abstraction layer for Go',
+      );
+      expect(link?.textContent).toContain('Powered by DALgo');
+    });
+
+    it('sits in the same card as the build info, right after it', () => {
+      const fixture = createComponent('/');
+      fixture.detectChanges();
+      const version = fixture.nativeElement.querySelector('sneat-app-version');
+      expect(version.nextElementSibling?.contains(credit(fixture))).toBe(true);
+    });
+
+    it('is on the login page too', () => {
+      const fixture = createComponent('/login');
+      fixture.detectChanges();
+      expect(credit(fixture)).toBeTruthy();
+    });
+
+    it('reads the declarative showPoweredByDalgo field: absent under incidentius', () => {
+      TestBed.overrideProvider(PRODUCT_PROFILE, {
+        useValue: PRODUCT_PROFILES.incidentius,
+      });
+      const fixture = createComponent('/');
+      fixture.detectChanges();
+      expect(credit(fixture)).toBeNull();
+    });
+  });
+
   describe('context tracking signals', () => {
     it('tracks the current store id', () => {
       const c = createComponent('/').componentInstance;

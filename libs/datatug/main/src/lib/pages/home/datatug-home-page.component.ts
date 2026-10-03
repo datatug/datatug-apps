@@ -16,6 +16,7 @@ import { DatatugServicesNavModule } from '../../services/nav/datatug-services-na
 import { DatatugServicesStoreModule } from '../../services/repo/datatug-services-store.module';
 import { MyDatatugProjectsComponent } from './my-projects/my-datatug-projects.component';
 import { MyStoresComponent } from './my-stores/my-stores.component';
+import { PlatformBlockComponent } from './platform-block/platform-block.component';
 
 @Component({
   selector: 'sneat-datatug-home',
@@ -29,6 +30,7 @@ import { MyStoresComponent } from './my-stores/my-stores.component';
     CopyrightComponent,
     MyDatatugProjectsComponent,
     MyStoresComponent,
+    PlatformBlockComponent,
     IonHeader,
     IonToolbar,
     IonTitle,

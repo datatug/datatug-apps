@@ -43,4 +43,16 @@
 
 <ion-card>
   <sneat-app-version />
+  @if (profile.showPoweredByDalgo) {
+    <p class="powered-by">
+      <a
+        href="https://dalgo.io"
+        target="_blank"
+        rel="noopener"
+        aria-label="Powered by DALgo, the database abstraction layer for Go"
+        data-testid="powered-by-dalgo"
+        >Powered by DALgo ↗</a
+      >
+    </p>
+  }
 </ion-card>
