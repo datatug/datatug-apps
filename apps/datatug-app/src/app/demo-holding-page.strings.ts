@@ -15,7 +15,7 @@ export interface DemoHoldingStrings {
   /** Shown when the question was longer than the bound and was cut. */
   readonly shortened: string;
   readonly questionLabel: string;
-  /** The page for the chat address of any repository other than the demo project: no question, no demo claim. */
+  /** The page for the start-chat address of any repository other than the demo project: no question, no demo claim. */
   readonly neutralHeading: string;
   readonly neutralMessage: string;
   readonly openDemoProject: string;

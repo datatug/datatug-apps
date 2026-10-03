@@ -1,12 +1,14 @@
 // The hand-off from datatug.io / datatug.ai is `datatug.app/demo?scenario=<id>&q=<text>&lang=<en|ru>`; the
-// project chat will receive `/project/github.com/<owner>/<repo>/chat?msg=<text>&lang=<en|ru>`. The visitor's
-// question must never be reported as part of a page URL, so it is taken out of the address bar before
-// analytics and Sentry start, kept in memory, and shown back by the holding page.
+// project's confirmation page receives `/project/github.com/<owner>/<repo>/start-chat#msg=<text>&lang=<en|ru>`
+// (founder ruling 2026-10-03: the question after `#`, so it is on neither the query string nor the server; the
+// old `…/chat?msg=…` still arrives and is moved there). The visitor's question must never be reported as part of
+// a page URL, so it is taken out of the address bar before analytics and Sentry start, kept in memory, and shown
+// back by the holding page.
 //
 // Two steps, split by weight and by timing:
 //   1. index.html: a tiny inline script, first in <head> (before the Google Analytics snippet, which reads the
-//      URL when gtag.js has loaded, possibly before any bundle runs), strips the query from the address bar and
-//      keeps it twice: in `window.__datatugHandoffSearch` and, so that a reload before the app has started
+//      URL when gtag.js has loaded, possibly before any bundle runs), strips the query from the address bar (and,
+//      on a start-chat address, the fragment and the `msg`, `q` and `lang` keys of the query only) and keeps it twice: in `window.__datatugHandoffSearch` and, so that a reload before the app has started
 //      does not lose the question either, in sessionStorage under DEMO_HANDOFF_KEY (the path and the raw query
 //      string, so that it is only ever applied to the same path). Its path test repeats the rules of
 //      demo-handoff-path.ts (which the router's matcher uses too) in ES5; demo-handoff-capture.spec.ts runs the
@@ -14,13 +16,13 @@
 //   2. `captureDemoHandoff()`, called by the holding page (demo-holding-page.component.ts, a lazy chunk, so none
 //      of this code is in the initial bundle): parses the stash (or, after a reload, what sessionStorage
 //      kept) and holds the result in module memory. Should the stash be missing on a first visit, it parses and
-//      strips the live query string itself. Blocked storage never leaves the question in the URL; it only means
+//      strips the live query string itself (on a start-chat address: the live fragment and query). Blocked storage never leaves the question in the URL; it only means
 //      that a reload shows the no-question copy.
 //
 // Only the hand-off addresses (demo-handoff-path.ts) are touched; every other URL is left exactly as it is.
 //
-// Which hand-offs are shown back. `/demo` and the project chat of the demo project itself
-// (`datatug/chinook-demo`, default branch) show the visitor's question. The project chat of any other repository
+// Which hand-offs are shown back. `/demo` and the start-chat page of the demo project itself
+// (`datatug/chinook-demo`, default branch, repository root) show the visitor's question. The page of any other repository
 // does not: a message chosen by whoever made the link must not be displayed inside datatug.app's pages under
 // someone else's repository address. For those the query is still taken out of the address bar and kept out of
 // every report; only the language is kept, for the neutral page. See isTrustedHandoff().
@@ -54,7 +56,8 @@ export interface DemoHandoff {
 let current: DemoHandoff | undefined;
 
 /**
- * Whether the hand-off at this path may be shown back to the visitor: `/demo`, or the chat of a project the app
+ * Whether the hand-off at this path may be shown back to the visitor: `/demo`, or the start-chat page (or the old
+ * chat address) of a project the app
  * trusts, decided by the one trust function (`isTrustedProjectAddress`, design 3.6) on the PARSED project address:
  * owner and repository ASCII-lower-cased and compared for exact equality with the compiled-in list, on its default
  * branch, that is with no `tree/<ref>` or with `tree/HEAD`. Anything else, however similar (`chinook-demo-evil`,
@@ -68,7 +71,11 @@ export function isTrustedHandoff(pathname: string): boolean {
     `/project/github.com/${encodeURIComponent(target.owner)}/${encodeURIComponent(target.repo)}` +
       (target.ref === undefined
         ? ''
-        : `/tree/${encodeURIComponent(target.ref)}`),
+        : `/tree/${encodeURIComponent(target.ref)}`) +
+      // A folder is another project (and never a trusted one: the demo project is at the root of its repository).
+      ('dir' in target && target.dir.length > 0
+        ? '/' + target.dir.map(encodeURIComponent).join('/')
+        : ''),
   );
   return isTrustedProjectAddress(project);
 }
@@ -80,6 +87,60 @@ export function isTrustedHandoff(pathname: string): boolean {
 function withoutQuery(loc: Location): string {
   return (
     (loc.pathname.startsWith('//') ? loc.origin : '') + loc.pathname + loc.hash
+  );
+}
+
+/** The keys of a start-chat hand-off, in its fragment or its query: the question (`q` is an alias) and the language. */
+const START_CHAT_KEYS = ['msg', 'q', 'lang'];
+
+/** A query-string pair's key as `URLSearchParams` reads it: `+` is a space, percent-decoded (raw when it does not decode). */
+function keyOfPair(pair: string): string {
+  const raw = pair.split('=')[0].replace(/\+/g, ' ');
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
+/**
+ * What a start-chat address carries, as a query string (`?msg=…&lang=…`, '' when none): the pairs of the fragment
+ * first, then those of the query, so that the fragment's question wins when both have one. Only the keys of
+ * START_CHAT_KEYS; the pairs are kept as typed.
+ */
+function startChatSearch(loc: Location): string {
+  const pairs: string[] = [];
+  for (const text of [loc.hash.replace(/^#/, ''), loc.search.replace(/^\?/, '')]) {
+    for (const pair of text.split('&')) {
+      if (START_CHAT_KEYS.includes(keyOfPair(pair))) pairs.push(pair);
+    }
+  }
+  return pairs.length > 0 ? `?${pairs.join('&')}` : '';
+}
+
+/**
+ * What the address the browser shows carries of a hand-off, as a query string ('' when nothing): on a start-chat
+ * address the question and language of its fragment and query, anywhere else its query. A page that is already open
+ * asks this to learn that a hand-off arrived (a fragment pasted over the same page does not reload it).
+ */
+export function liveHandoffSearch(loc: Location = window.location): string {
+  return handoffTargetOfPath(loc.pathname)?.kind === 'start-chat'
+    ? startChatSearch(loc)
+    : loc.search;
+}
+
+/**
+ * This start-chat address with its fragment and the keys of START_CHAT_KEYS taken out of the query, every other key
+ * kept as typed; undefined when there is nothing to take out.
+ */
+function withoutStartChatHandoff(loc: Location): string | undefined {
+  const pairs = loc.search === '' ? [] : loc.search.slice(1).split('&');
+  const kept = pairs.filter((pair) => !START_CHAT_KEYS.includes(keyOfPair(pair)));
+  if (loc.hash === '' && kept.length === pairs.length) return undefined;
+  return (
+    (loc.pathname.startsWith('//') ? loc.origin : '') +
+    loc.pathname +
+    (kept.length > 0 ? `?${kept.join('&')}` : '')
   );
 }
 
@@ -173,14 +234,27 @@ export function captureDemoHandoff(env: CaptureEnv = defaultEnv()): void {
   delete stash[DEMO_HANDOFF_STASH];
   const onHandoffPath = isHandoffPath(loc.pathname);
   if (!onHandoffPath && typeof stashed !== 'string') return;
+  const startChat = handoffTargetOfPath(loc.pathname)?.kind === 'start-chat';
 
-  // Read the live query string before stripping it: after replaceState `location.search` is empty.
-  const search = typeof stashed === 'string' ? stashed : loc.search;
-  if (loc.search) {
+  // Read the live address before stripping it: after replaceState `location.search` is empty.
+  const search =
+    typeof stashed === 'string'
+      ? stashed
+      : startChat
+        ? startChatSearch(loc)
+        : loc.search;
+  // The address with the question out of it: on start-chat the fragment and the hand-off keys of the query (the
+  // other keys stay), elsewhere the whole query.
+  const stripped = startChat
+    ? withoutStartChatHandoff(loc)
+    : loc.search
+      ? withoutQuery(loc)
+      : undefined;
+  if (stripped !== undefined) {
     // Strip first and unconditionally: nothing below may leave the question in the URL. A browser that refuses
     // (a SecurityError, an exotic embedding) must not stop the page from showing what it has.
     try {
-      history.replaceState(history.state, '', withoutQuery(loc));
+      history.replaceState(history.state, '', stripped);
     } catch {
       // The address keeps its query; the question is still held in memory below.
     }

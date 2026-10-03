@@ -1,5 +1,6 @@
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { Location } from '@angular/common';
 import { provideRouter, Router } from '@angular/router';
 import {
   PRODUCT_PROFILE,
@@ -136,7 +137,7 @@ describe('DataTug app routes', () => {
     // The short project route and the holding page share the project chat address. Which one an address gets is
     // decided from the query that index.html took out of the address bar (the router never sees it), and the
     // demo flag is not consulted: until the chat can run a question, the holding page is the only way not to lose it.
-    describe('the project chat address: the holding page only when it arrived with a question', () => {
+    describe('the old project chat address: moved to start-chat only when it arrived with a question (founder ruling 2026-10-03)', () => {
       const stash = (search: string) => {
         (window as unknown as Record<string, unknown>)[DEMO_HANDOFF_STASH] = search;
       };
@@ -157,7 +158,7 @@ describe('DataTug app routes', () => {
         '/project/github.com/datatug/chinook-demo/tree/HEAD/-/chat',
         '/project/github.com/someone/else/chat',
         '/project/github.com/datatug/chinook-demo/tree/abc123/-/chat',
-      ])('%s: a question gets the holding page, no question gets the project', async (url) => {
+      ])('%s: a question gets the start-chat page, no question gets the project', async (url) => {
         for (const [search, expected] of [
           ['?msg=Hello', HandoffStub],
           ['?q=Hello&lang=ru', HandoffStub],
@@ -194,6 +195,16 @@ describe('DataTug app routes', () => {
         ])('%s?msg=… is the holding page, and the question is stashed for it to capture', async (url) => {
           const result = await visit('datatug.app', `${url}?msg=Q&lang=ru`);
           expect(result.component).toBe(HandoffStub);
+          // an old chat address is moved to the start-chat address of the same project (nothing else is changed
+          // about it, the spelling of its fixed segments included); /demo is the page itself
+          expect(result.url).toBe(
+            url.includes('chat')
+              ? url
+                  .replace(/^\/*\(?\/*/, '/')
+                  .replace(/\)$/, '')
+                  .replace(/chat$/, 'start-chat')
+              : `${url.replace(/^\/*\(?\/*/, '/').replace(/\)$/, '')}?msg=Q&lang=ru`,
+          );
           expect(
             (window as unknown as Record<string, unknown>)[DEMO_HANDOFF_STASH],
           ).toBe('?msg=Q&lang=ru');
@@ -251,10 +262,75 @@ describe('DataTug app routes', () => {
         });
       });
 
-      it('a reload of a question that was asked shows the holding page again; a fresh visit shows the project', async () => {
+      it('a reload of a question that was asked moves to start-chat again; a fresh visit shows the project', async () => {
         const url = '/project/github.com/datatug/chinook-demo/chat';
         window.sessionStorage.setItem(DEMO_HANDOFF_KEY, url + '?msg=Hello');
-        expect((await visit('datatug.app', url)).component).toBe(HandoffStub);
+        const result = await visit('datatug.app', url);
+        expect(result.component).toBe(HandoffStub);
+        expect(result.url).toBe('/project/github.com/datatug/chinook-demo/start-chat');
+      });
+
+      it('the move replaces the old address in the history and carries no query, fragment or matrix parameter', async () => {
+        stash('?msg=Hello&lang=ru');
+        const result = await visit('datatug.app', '/project/github.com/datatug/chinook-demo/chat;x=1');
+        expect(result.url).toBe('/project/github.com/datatug/chinook-demo/start-chat');
+        expect(TestBed.inject(Location).path()).toBe('/project/github.com/datatug/chinook-demo/start-chat');
+        // one entry, not two: the chat address is not left behind for Back to return to
+        TestBed.inject(Location).back();
+        await new Promise((r) => setTimeout(r));
+        expect(TestBed.inject(Router).url).not.toContain('/chat');
+      });
+
+      it('the move keeps the case of the ref and a repeated hand-off lands on the same page', async () => {
+        stash('?msg=Hello');
+        const url = '/project/github.com/Acme/Demo/tree/Rel-1/-/chat';
+        const result = await visit('datatug.app', url);
+        expect(result.component).toBe(HandoffStub);
+        expect(result.url).toBe('/project/github.com/Acme/Demo/tree/Rel-1/-/start-chat');
+      });
+
+      // The confirmation page itself: an address of its own, with or without a question.
+      describe('start-chat', () => {
+        it.each([
+          '/project/github.com/datatug/chinook-demo/start-chat',
+          '/Project/GitHub.com/Datatug/Chinook-Demo/Start-Chat',
+          '/project/github.com/datatug/chinook-demo/start-chat;x=1',
+          '/project/github.com/datatug/chinook-demo/tree/HEAD/-/start-chat',
+          '/project/github.com/someone/else/start-chat',
+          '/project/github.com/someone/else/tree/abc/dir/sub/-/start-chat',
+          '//project/github.com/datatug/chinook-demo/start-chat',
+          '/(project/github.com/datatug/chinook-demo/start-chat)',
+        ])('%s is the page, with no question, with one stashed, and after a reload', async (url) => {
+          for (const prepare of [
+            () => undefined,
+            () => stash('?msg=Hello'),
+            () => window.sessionStorage.setItem(DEMO_HANDOFF_KEY, '/x?msg=Hello'),
+          ]) {
+            TestBed.resetTestingModule();
+            resetHandoffAskedForTests();
+            prepare();
+            expect((await visit('datatug.app', url)).component, url).toBe(HandoffStub);
+          }
+        });
+
+        it('stays where it is: no redirect, no stripped address', async () => {
+          const url = '/project/github.com/datatug/chinook-demo/start-chat';
+          expect((await visit('datatug.app', url)).url).toBe(url);
+        });
+
+        it('at app.incidentius.com it goes to the root like the other hand-off addresses', async () => {
+          const result = await visit('app.incidentius.com', '/project/github.com/datatug/chinook-demo/start-chat');
+          expect(result.component).toBe(HomeStub);
+          expect(result.url).toBe('/');
+        });
+
+        it.each([
+          '/project/github.com/datatug/chinook-demo/start-chat/more',
+          '/project/github.com/datatug/chinook-demo/tree/HEAD/start-chat',
+          '/start-chat',
+        ])('%s is not the page', async (url) => {
+          expect((await visit('datatug.app', url)).component, url).not.toBe(HandoffStub);
+        });
       });
 
       it('every other address under a project is the project, question or not', async () => {

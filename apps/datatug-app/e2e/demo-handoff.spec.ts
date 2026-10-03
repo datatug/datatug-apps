@@ -169,6 +169,98 @@ const leaks = (external: External[]): string[] =>
     )
     .map((request) => request.method + ' ' + request.url.slice(0, 120));
 
+// Shared by the privacy suites below.
+const hasMarker = (text: string): boolean => {
+  let decoded = text;
+  for (let i = 0; i < 3; i++) {
+    try {
+      decoded = decodeURIComponent(decoded);
+    } catch {
+      break;
+    }
+  }
+  return text.includes(MARKER) || decoded.includes(MARKER);
+};
+
+/** Everything the page did with the address after it was loaded, and where the question could have gone. */
+async function openAndWatch(
+  page: Page,
+  context: BrowserContext,
+  baseURL: string,
+  path: string,
+  ready: () => Promise<void>,
+) {
+  const external = await onProductionLikeHost(context, baseURL);
+  await page.addInitScript(() => {
+    const log: string[] = ((window as unknown as { __urls: string[] }).__urls =
+      []);
+    for (const name of ['pushState', 'replaceState'] as const) {
+      const original = history[name].bind(history);
+      history[name] = (state: unknown, title: string, url?: string | URL | null) => {
+        log.push(`${name} ${String(url)}`);
+        original(state, title, url);
+        log.push(`${name} -> ${location.href}`);
+      };
+    }
+    addEventListener('popstate', () => log.push(`popstate ${location.href}`));
+  });
+  const requests: string[] = [];
+  page.on('request', (request) => {
+    if (!request.isNavigationRequest()) requests.push(request.url());
+  });
+  await page.goto(`${HANDOFF_HOST}${path}`);
+  await ready();
+  // Make Sentry report something, so that its breadcrumbs and request URL are on the wire too.
+  await page.evaluate(() =>
+    setTimeout(() => {
+      throw new Error('R2 probe: an uncaught error');
+    }),
+  );
+  await page.waitForTimeout(2500);
+  return { external, requests };
+}
+
+/**
+ * The question is nowhere: not in the address, the history, the title, the storage, a request. The one place a
+ * hand-off address that may echo its question keeps it, as on main, is this tab's sessionStorage, so that a
+ * reload shows the holding page again (`keptForReload`).
+ */
+async function expectNoQuestion(
+  page: Page,
+  watched: { external: External[]; requests: string[] },
+  keptForReload = false,
+) {
+  expect(hasMarker(page.url()), `address bar ${page.url()}`).toBe(false);
+  const state = await page.evaluate(() => ({
+    title: document.title,
+    session: JSON.stringify(Object.entries(sessionStorage)),
+    local: JSON.stringify(Object.entries(localStorage)),
+    recorded: (window as unknown as { __urls: string[] }).__urls,
+    // every entry of the session history (the Navigation API, in Chromium)
+    entries: (
+      window as unknown as {
+        navigation: { entries: () => { url: string }[] };
+      }
+    ).navigation
+      .entries()
+      .map((entry) => entry.url),
+  }));
+  expect(state.title.includes(MARKER)).toBe(false);
+  expect(hasMarker(state.session), 'sessionStorage').toBe(keptForReload);
+  expect(hasMarker(state.local), 'localStorage').toBe(false);
+  expect(state.recorded.filter(hasMarker), 'history calls').toEqual([]);
+  expect(state.entries.filter(hasMarker), 'history entries').toEqual([]);
+  expect(watched.requests.filter(hasMarker), 'own requests').toEqual([]);
+  expect(leaks(watched.external), 'third-party requests').toEqual([]);
+  // Not vacuous: Google Analytics reported the page, and Sentry received the probe.
+  const hosts = new Set(
+    watched.external.map((request) => new URL(request.url).hostname),
+  );
+  expect([...hosts].some((h) => h.includes('google-analytics.com'))).toBe(true);
+  expect([...hosts].some((h) => h.includes('sentry.io'))).toBe(true);
+}
+
+
 const VIEWPORTS = [
   { name: '390', width: 390, height: 844 },
   { name: '1440', width: 1440, height: 900 },
@@ -504,7 +596,7 @@ test.describe('the hand-off holding page', () => {
     '/project/github.com/Datatug/Chinook-Demo/chat',
     '/project/github.com/datatug/chinook-demo/tree/HEAD/-/chat',
   ]) {
-    test(`the demo project chat address (${path}) shows the same page, with the question, and a clean URL`, async ({
+    test(`the old demo project chat address (${path}?msg=…) is moved to start-chat, shows the question, and has a clean URL`, async ({
       page,
       context,
       baseURL,
@@ -522,8 +614,9 @@ test.describe('the hand-off holding page', () => {
       await expect(page.locator('#demo-holding-message')).toContainText(
         SENTENCE.ru.withQuestion,
       );
+      // The old hand-off address is moved (replaced) to the start-chat page of the same project, with no query.
       expect(new URL(page.url()).pathname + new URL(page.url()).search).toBe(
-        path,
+        path.replace(/chat$/, 'start-chat'),
       );
       await page.waitForTimeout(1500);
       await expect(page.locator(SENTRY_DIALOG)).toHaveCount(0);
@@ -540,7 +633,7 @@ test.describe('the hand-off holding page', () => {
     '/project/github.com/datatug/chinook-demo-evil/chat',
     '/project/github.com/datatug/chinook-demo/tree/0123abcd4567ef89/-/chat',
   ]) {
-    test(`any other repository chat address (${path}) never shows the message, claims no demo, and still strips the URL`, async ({
+    test(`the old chat address of any other repository (${path}?msg=…) is moved to start-chat, never shows the message, claims no demo, and still strips the URL`, async ({
       page,
       context,
       baseURL,
@@ -566,7 +659,7 @@ test.describe('the hand-off holding page', () => {
         page.getByRole('link', { name: 'Open the demo project' }),
       ).toHaveCount(0);
       expect(new URL(page.url()).pathname + new URL(page.url()).search).toBe(
-        path,
+        path.replace(/chat$/, 'start-chat'),
       );
       await noHorizontalScroll(page);
       await shot(
@@ -875,6 +968,222 @@ test.describe('the hand-off holding page', () => {
   });
 });
 
+// Founder ruling 2026-10-03: the hand-off goes to the project's `start-chat` page, with the question after `#`.
+// The page is a confirmation page; while the demo is not live (the flag is off in this build) it is the holding page.
+test.describe('the start-chat confirmation page (founder ruling 2026-10-03)', () => {
+  const TRUSTED_ROOT = '/project/github.com/datatug/chinook-demo';
+  const OTHER_ROOT = '/project/github.com/acme/demo';
+  const enc = encodeURIComponent(MARKER);
+
+  // The five addresses of the ruling, and the old ones, each on the trusted project and on another one: the question
+  // is in no address, history entry, title, storage but the one per-tab hand-off key (trusted only), or request.
+  const ADDRESSES: [label: string, path: (root: string) => string, own: (root: string) => string][] = [
+    ['fragment', (r) => `${r}/start-chat#msg=${enc}&lang=ru`, (r) => `${r}/start-chat`],
+    ['fragment, q alias', (r) => `${r}/start-chat#q=${enc}&lang=ru`, (r) => `${r}/start-chat`],
+    ['query (a form post from a site)', (r) => `${r}/start-chat?msg=${enc}&lang=ru`, (r) => `${r}/start-chat`],
+    ['query, another key kept', (r) => `${r}/start-chat?utm_source=x&msg=${enc}&lang=ru`, (r) => `${r}/start-chat?utm_source=x`],
+    ['the old chat address', (r) => `${r}/chat?msg=${enc}&lang=ru`, (r) => `${r}/start-chat`],
+    ['the old chat address, q', (r) => `${r}/chat?q=${enc}&lang=ru`, (r) => `${r}/start-chat`],
+    ['a path that starts with //', (r) => `/${r}/start-chat#msg=${enc}&lang=ru`, (r) => `${r}/start-chat`],
+    ['a path written as one group', (r) => `/(${r.slice(1)}/start-chat)#msg=${enc}&lang=ru`, (r) => `${r}/start-chat`],
+  ];
+
+  for (const [label, path, own] of ADDRESSES) {
+    for (const [what, root, trusted] of [
+      ['the demo project', TRUSTED_ROOT, true],
+      ['another repository', OTHER_ROOT, false],
+    ] as const) {
+      test(`${label}, ${what}: ${trusted ? 'the question is shown' : 'neutral wording'}, and it is in no address, history entry, title, storage or request`, async ({
+        page,
+        context,
+        baseURL,
+      }) => {
+        const watched = await openAndWatch(page, context, baseURL ?? '', path(root), async () => {
+          await expect(page.locator('#demo-holding-message')).toBeVisible({ timeout: 20_000 });
+        });
+        // The address: the start-chat page of the project, with no question and no fragment (own query keys stay). The
+        // router writes a `//` or a root-group spelling in its one form.
+        const url = new URL(page.url());
+        expect(url.pathname + url.search + url.hash).toBe(own(root));
+        if (trusted) {
+          await expect(page.locator('blockquote')).toHaveText(MARKER);
+          await expect(page.locator('#demo-holding-message')).toContainText(SENTENCE.ru.withQuestion);
+          await expect(page).toHaveTitle('Живое демо DataTug');
+        } else {
+          await expect(page.locator('blockquote')).toHaveCount(0);
+          await expect(page.locator('#demo-holding-message')).toHaveText('Эта страница пока недоступна.'); // lang=ru
+          expect(await page.content()).not.toContain(MARKER);
+        }
+        await expectNoQuestion(page, watched, trusted);
+
+        // A reload shows the same page, with the question from this tab's own store for the trusted project.
+        await page.reload();
+        await expect(page.locator('#demo-holding-message')).toBeVisible({ timeout: 20_000 });
+        if (trusted) await expect(page.locator('blockquote')).toHaveText(MARKER);
+        else expect(await page.content()).not.toContain(MARKER);
+        const again = new URL(page.url());
+        expect(again.pathname + again.search + again.hash).toBe(own(root));
+      });
+    }
+  }
+
+  test('/demo?q=…&scenario=…&lang=…, the live Ask button of datatug.io, still shows the holding page and strips the question', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const watched = await openAndWatch(
+      page,
+      context,
+      baseURL ?? '',
+      `/demo?q=${enc}&scenario=x&lang=ru`,
+      async () => {
+        await expect(page.locator('#demo-holding-message')).toBeVisible({ timeout: 20_000 });
+      },
+    );
+    await expect(page.locator('blockquote')).toHaveText(MARKER);
+    expect(new URL(page.url()).pathname + new URL(page.url()).search).toBe('/demo');
+    await expectNoQuestion(page, watched, true);
+    expect(leaks(watched.external)).toEqual([]);
+  });
+
+  test('a question in the fragment never reaches the server, even the document request', async ({ page, context, baseURL }) => {
+    const origin = new URL(baseURL ?? '').origin;
+    const external = await stubExternal(context, (o) => o === origin);
+    const urls: string[] = [];
+    page.on('request', (request) => urls.push(request.url()));
+    const referrers: string[] = [];
+    page.on('request', (request) => referrers.push(request.headers()['referer'] ?? ''));
+    await page.goto(`${TRUSTED_ROOT}/start-chat#msg=${enc}&lang=en`);
+    await expect(page.locator('blockquote')).toHaveText(MARKER, { timeout: 20_000 });
+    await page.waitForTimeout(1000);
+    expect(urls.filter(hasMarker)).toEqual([]);
+    expect(referrers.filter(hasMarker)).toEqual([]);
+    expect(leaks(external)).toEqual([]);
+  });
+
+  // With the question in the query (a no-JS form post), the document request carries it, as it must; nothing after.
+  test('a question in the query is only ever in the document request', async ({ page, context, baseURL }) => {
+    const origin = new URL(baseURL ?? '').origin;
+    const external = await stubExternal(context, (o) => o === origin);
+    const later: string[] = [];
+    page.on('request', (request) => {
+      if (!request.isNavigationRequest()) later.push(request.url());
+    });
+    await page.goto(`${TRUSTED_ROOT}/start-chat?msg=${enc}&lang=en`);
+    await expect(page.locator('blockquote')).toHaveText(MARKER, { timeout: 20_000 });
+    await page.waitForTimeout(1000);
+    expect(later.filter(hasMarker)).toEqual([]);
+    expect(leaks(external)).toEqual([]);
+  });
+
+  test('the folder and ref forms are the page too; only the demo project at its default branch and root echoes the question', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const origin = new URL(baseURL ?? '').origin;
+    await stubExternal(context, (o) => o === origin);
+    for (const [path, echoes] of [
+      [`${TRUSTED_ROOT}/tree/HEAD/-/start-chat`, true],
+      [`${TRUSTED_ROOT}/tree/0123abcd4567ef89/-/start-chat`, false],
+      [`${TRUSTED_ROOT}/tree/HEAD/some/dir/-/start-chat`, false],
+      [`${OTHER_ROOT}/tree/HEAD/dir/-/start-chat`, false],
+      ['/project/github.com/datatug/chinook-demo-evil/start-chat', false],
+    ] as const) {
+      await page.goto(`${path}#msg=${enc}`);
+      await expect(page.locator('#demo-holding-message'), path).toBeVisible({ timeout: 20_000 });
+      if (echoes) await expect(page.locator('blockquote'), path).toHaveText(MARKER);
+      else {
+        await expect(page.locator('blockquote'), path).toHaveCount(0);
+        expect(await page.content(), path).not.toContain(MARKER);
+      }
+      expect(new URL(page.url()).pathname + new URL(page.url()).search + new URL(page.url()).hash, path).toBe(path);
+    }
+  });
+
+  // Chosen where the design is silent (6.5 has no row for it): a bare start-chat is the same page, with nothing to
+  // confirm. It does not open the project chat, which for a GitHub project shows a data error until G-A7.
+  test('a bare start-chat address is the page with nothing to confirm, and a question from an earlier visit does not come back', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const origin = new URL(baseURL ?? '').origin;
+    await stubExternal(context, (o) => o === origin);
+    await page.goto(`${TRUSTED_ROOT}/start-chat`);
+    await expect(page.locator('#demo-holding-message')).toContainText(SENTENCE.en.without, { timeout: 20_000 });
+    await expect(page.locator('blockquote')).toHaveCount(0);
+    await page.goto(`${TRUSTED_ROOT}/start-chat#msg=${enc}`);
+    await expect(page.locator('blockquote')).toHaveText(MARKER, { timeout: 20_000 });
+    await page.goto(`${TRUSTED_ROOT}/start-chat`);
+    await expect(page.locator('#demo-holding-message')).toContainText(SENTENCE.en.without, { timeout: 20_000 });
+    await expect(page.locator('blockquote')).toHaveCount(0);
+    await page.reload();
+    await expect(page.locator('#demo-holding-message')).toContainText(SENTENCE.en.without, { timeout: 20_000 });
+    await expect(page.locator('blockquote')).toHaveCount(0);
+    expect(new URL(page.url()).pathname).toBe(`${TRUSTED_ROOT}/start-chat`);
+  });
+
+  test('the project chat page never reads a question: a fragment or a stored hand-off does not turn it into the confirmation page', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const origin = new URL(baseURL ?? '').origin;
+    await stubExternal(context, (o) => o === origin);
+    await page.goto(`${TRUSTED_ROOT}/start-chat#msg=${enc}`);
+    await expect(page.locator('blockquote')).toHaveText(MARKER, { timeout: 20_000 });
+    await page.goto(`${TRUSTED_ROOT}/chat#msg=${enc}`);
+    await expect(page.locator('ion-title', { hasText: 'Chat' })).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('#demo-holding-message')).toHaveCount(0);
+    expect(new URL(page.url()).pathname).toBe(`${TRUSTED_ROOT}/chat`);
+  });
+
+  test('the old chat address with a question is replaced by start-chat: Back does not return to it', async ({ page, context, baseURL }) => {
+    const origin = new URL(baseURL ?? '').origin;
+    await stubExternal(context, (o) => o === origin);
+    await page.goto('/demo');
+    await expect(page.locator('#demo-holding-message')).toBeVisible({ timeout: 20_000 });
+    await page.goto(`${TRUSTED_ROOT}/chat?msg=${enc}`);
+    await expect(page.locator('blockquote')).toHaveText(MARKER, { timeout: 20_000 });
+    const entries = await page.evaluate(() =>
+      (window as unknown as { navigation: { entries: () => { url: string }[] } }).navigation
+        .entries()
+        .map((entry) => new URL(entry.url).pathname),
+    );
+    expect(entries.at(-1)).toBe(`${TRUSTED_ROOT}/start-chat`);
+    expect(entries.filter((e) => e.endsWith('/chat'))).toEqual([]);
+  });
+
+  // The confirmation page in every look the founder will see. Set DEMO_SHOTS_DIR to write them.
+  for (const viewport of [
+    { name: '390', width: 390, height: 844 },
+    { name: '1280', width: 1280, height: 800 },
+  ]) {
+    for (const [name, root, lang] of [
+      ['trusted-en', TRUSTED_ROOT, 'en'],
+      ['trusted-ru', TRUSTED_ROOT, 'ru'],
+      ['untrusted-en', OTHER_ROOT, 'en'],
+      ['trusted-bare', TRUSTED_ROOT, ''],
+    ] as const) {
+      test(`the page (${name}) at ${viewport.name} px does not scroll sideways`, async ({ page, context, baseURL }) => {
+        const origin = new URL(baseURL ?? '').origin;
+        await stubExternal(context, (o) => o === origin);
+        await page.setViewportSize({ width: viewport.width, height: viewport.height });
+        const question =
+          lang === 'ru'
+            ? 'Какие страны слушают больше всего джаза на душу населения?'
+            : 'Which countries listen to the most jazz per person?';
+        await page.goto(`${root}/start-chat${lang ? `#msg=${encodeURIComponent(question)}&lang=${lang}` : ''}`);
+        await expect(page.getByRole('heading', { level: 1 })).toBeVisible({ timeout: 20_000 });
+        await noHorizontalScroll(page);
+        await shot(page, `start-chat-${name}-${viewport.name}`);
+      });
+    }
+  }
+});
+
 test.describe('the question reaches no analytics or error report', () => {
   const HOST = 'https://handoff.datatug.test';
 
@@ -1020,96 +1329,6 @@ test.describe('a question on a project address that is not a hand-off address is
 
 test.describe('an address that the router reads another way than the inline script leaves no question behind (review r2, B1)', () => {
   const HOST = HANDOFF_HOST;
-  const hasMarker = (text: string): boolean => {
-    let decoded = text;
-    for (let i = 0; i < 3; i++) {
-      try {
-        decoded = decodeURIComponent(decoded);
-      } catch {
-        break;
-      }
-    }
-    return text.includes(MARKER) || decoded.includes(MARKER);
-  };
-
-  /** Everything the page did with the address after it was loaded, and where the question could have gone. */
-  async function openAndWatch(
-    page: Page,
-    context: BrowserContext,
-    baseURL: string,
-    path: string,
-    ready: () => Promise<void>,
-  ) {
-    const external = await onProductionLikeHost(context, baseURL);
-    await page.addInitScript(() => {
-      const log: string[] = ((window as unknown as { __urls: string[] }).__urls =
-        []);
-      for (const name of ['pushState', 'replaceState'] as const) {
-        const original = history[name].bind(history);
-        history[name] = (state: unknown, title: string, url?: string | URL | null) => {
-          log.push(`${name} ${String(url)}`);
-          original(state, title, url);
-          log.push(`${name} -> ${location.href}`);
-        };
-      }
-      addEventListener('popstate', () => log.push(`popstate ${location.href}`));
-    });
-    const requests: string[] = [];
-    page.on('request', (request) => {
-      if (!request.isNavigationRequest()) requests.push(request.url());
-    });
-    await page.goto(`${HOST}${path}`);
-    await ready();
-    // Make Sentry report something, so that its breadcrumbs and request URL are on the wire too.
-    await page.evaluate(() =>
-      setTimeout(() => {
-        throw new Error('R2 probe: an uncaught error');
-      }),
-    );
-    await page.waitForTimeout(2500);
-    return { external, requests };
-  }
-
-  /**
-   * The question is nowhere: not in the address, the history, the title, the storage, a request. The one place a
-   * hand-off address that may echo its question keeps it, as on main, is this tab's sessionStorage, so that a
-   * reload shows the holding page again (`keptForReload`).
-   */
-  async function expectNoQuestion(
-    page: Page,
-    watched: { external: External[]; requests: string[] },
-    keptForReload = false,
-  ) {
-    expect(hasMarker(page.url()), `address bar ${page.url()}`).toBe(false);
-    const state = await page.evaluate(() => ({
-      title: document.title,
-      session: JSON.stringify(Object.entries(sessionStorage)),
-      local: JSON.stringify(Object.entries(localStorage)),
-      recorded: (window as unknown as { __urls: string[] }).__urls,
-      // every entry of the session history (the Navigation API, in Chromium)
-      entries: (
-        window as unknown as {
-          navigation: { entries: () => { url: string }[] };
-        }
-      ).navigation
-        .entries()
-        .map((entry) => entry.url),
-    }));
-    expect(state.title.includes(MARKER)).toBe(false);
-    expect(hasMarker(state.session), 'sessionStorage').toBe(keptForReload);
-    expect(hasMarker(state.local), 'localStorage').toBe(false);
-    expect(state.recorded.filter(hasMarker), 'history calls').toEqual([]);
-    expect(state.entries.filter(hasMarker), 'history entries').toEqual([]);
-    expect(watched.requests.filter(hasMarker), 'own requests').toEqual([]);
-    expect(leaks(watched.external), 'third-party requests').toEqual([]);
-    // Not vacuous: Google Analytics reported the page, and Sentry received the probe.
-    const hosts = new Set(
-      watched.external.map((request) => new URL(request.url).hostname),
-    );
-    expect([...hosts].some((h) => h.includes('google-analytics.com'))).toBe(true);
-    expect([...hosts].some((h) => h.includes('sentry.io'))).toBe(true);
-  }
-
   const query = `?msg=${encodeURIComponent(MARKER)}&lang=ru`;
 
   // Hand-off addresses spelled so that the script did not recognise them: the holding page, as on main.
