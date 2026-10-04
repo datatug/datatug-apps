@@ -2,7 +2,7 @@
 
 Source code for **[DataTug.app](https://datatug.app)** — the hosted web UI (and mobile shell) of DataTug.
 
-> DataTug is an open-source, CLI-first data exploration platform with a web UI. It lets you explore, query, and connect data across multiple sources without losing context. The project files (queries, dashboards, schema docs, and the semantic knowledge base) are the source of truth; this repo is the **browser-based view** over them. The terminal view lives in [`datatug-cli`](https://github.com/datatug/datatug-cli), and the marketing/docs front door is [datatug.io](https://datatug.io).
+> DataTug is a CLI-first data exploration platform with an open-source CLI and a web UI. It lets you explore, query, and connect data across multiple sources without losing context. The project files (queries, dashboards, schema docs, and the semantic knowledge base) are the source of truth; this repo is the **browser-based view** over them. The terminal view lives in [`datatug-cli`](https://github.com/datatug/datatug-cli), and the marketing/docs front door is [datatug.io](https://datatug.io).
 >
 > This codebase was extracted from `sneat-apps` into this standalone repository. It still consumes shared UI/auth/data building blocks from the Sneat ecosystem as published `@sneat/*` packages.
 
@@ -111,7 +111,7 @@ CI runs via GitHub Actions — see [`.github/workflows/ci.yml`](.github/workflow
 
 ## License
 
-Open source, part of the [DataTug](https://datatug.io) project. A `LICENSE` file should be added to match the project's canonical license (the CLI ships under Apache-2.0).
+The source in this repository is published so that it can be read. No licence is granted yet; one will be announced (see [`LICENSE`](LICENSE)). The DataTug CLI is a separate project under Apache-2.0.
 
 ---
 
