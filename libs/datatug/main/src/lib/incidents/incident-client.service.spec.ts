@@ -1260,4 +1260,100 @@ describe('IncidentClientService', () => {
       });
     });
   });
+
+  describe('compare', () => {
+    it('POSTs /datatug/compare for affected vs control', () => {
+      let result: unknown;
+      service
+        .compare(CONTEXT, {
+          securityContextId: 'ctx-1',
+          queryId: 'customer-invoices',
+          left: {
+            kind: 'facts',
+            storeId: 'local',
+            project: 'billing',
+            environment: 'prod',
+            cohortRole: 'affected',
+          },
+          right: {
+            kind: 'facts',
+            storeId: 'local',
+            project: 'billing',
+            environment: 'prod',
+            cohortRole: 'control',
+          },
+          incident: INCIDENT.ref,
+          mutationId: 'compare-1',
+        })
+        .subscribe((value) => (result = value));
+
+      const req = httpMock.expectOne('//localhost:8989/datatug/compare');
+      expect(req.request.method).toBe('POST');
+      expect(req.request.body).toMatchObject({
+        queryId: 'customer-invoices',
+        mutationId: 'compare-1',
+      });
+      req.flush({
+        left: {
+          execution: {
+            storeId: 'ops',
+            projectId: 'billing',
+            executionId: 'left-1',
+          },
+          executedAt: '2026-09-14T10:00:00Z',
+          rowCount: 1,
+          limitations: [],
+          reproducible: true,
+        },
+        right: {
+          execution: {
+            storeId: 'ops',
+            projectId: 'billing',
+            executionId: 'right-1',
+          },
+          executedAt: '2026-09-14T10:00:00Z',
+          rowCount: 1,
+          limitations: [],
+          reproducible: true,
+        },
+        columns: [{ name: 'id', type: 'string' }],
+        key: ['id'],
+        added: [],
+        removed: [],
+        changed: [],
+        summary: {
+          added: 0,
+          removed: 0,
+          changed: 0,
+          unchanged: 1,
+          columnsOnlyOnOneSide: [],
+        },
+        policyLimited: false,
+        truncated: false,
+      });
+      expect(result).toMatchObject({ kind: 'ok' });
+    });
+
+    it('GETs /datatug/compare/rows for cached matching pages', () => {
+      let result: unknown;
+      service
+        .compareRows(CONTEXT, 'ops/billing/left|ops/billing/right', 'matched')
+        .subscribe((value) => (result = value));
+      const req = httpMock.expectOne(
+        (request) =>
+          request.method === 'GET' &&
+          request.url === '//localhost:8989/datatug/compare/rows',
+      );
+      expect(req.request.params.get('state')).toBe('matched');
+      expect(req.request.params.get('securityContextId')).toBe('ctx-1');
+      req.flush({
+        comparisonId: 'ops/billing/left|ops/billing/right',
+        state: 'matched',
+        columns: [{ name: 'id', type: 'string' }],
+        key: ['id'],
+        rows: [],
+      });
+      expect(result).toMatchObject({ kind: 'ok' });
+    });
+  });
 });
