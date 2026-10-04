@@ -4,5 +4,9 @@ The source code in this repository is published so that it can be read.
 No licence to use, copy, modify or distribute it is granted at this time.
 A licence for this repository will be announced.
 
+Third-party material included in this repository, such as the Chinook and
+World Bank demo data, remains under its own licence; see the notice files
+beside it.
+
 The DataTug CLI is a separate project, licensed under Apache-2.0:
 https://github.com/datatug/datatug-cli
