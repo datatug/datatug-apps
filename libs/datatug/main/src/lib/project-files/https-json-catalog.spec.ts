@@ -12,14 +12,14 @@ const MIRROR =
   'https://cdn.jsdelivr.net/gh/datatug/chinookdb@0b6bb6ba22f680c9fb2fea9ec8107a8638dd8dc4/public/data/json/chinook.{table}.json';
 const SHA = '88eb7faede360988e9c0f8f8d107e5093db5e712141de14d868f8947b43c373c';
 
-/** The block of design 4.8, verbatim. */
+/** The catalog shape of design 4.8, using the canonical Chinook domain. */
 const catalog = (
   overrides: Record<string, unknown> = {},
 ): Record<string, unknown> => ({
   driver: 'https-json',
-  label: 'Chinook (chinookdb.com)',
-  homepage: 'https://chinookdb.com',
-  urlTemplate: 'https://chinookdb.com/data/json/chinook.{table}.json',
+  label: 'Chinook (chinook.demodb.dev)',
+  homepage: 'https://chinook.demodb.dev',
+  urlTemplate: 'https://chinook.demodb.dev/data/json/chinook.{table}.json',
   fallbackUrlTemplate: MIRROR,
   keys: { Invoice: 'InvoiceId' },
   sha256: { Invoice: SHA },
@@ -71,7 +71,7 @@ describe('validateHttpsJsonCatalog: the shape of 4.8 and 5.2a', () => {
   it('accepts the smallest valid file', () => {
     const minimal = {
       driver: 'https-json',
-      urlTemplate: 'https://chinookdb.com/data/json/chinook.{table}.json',
+      urlTemplate: 'https://chinook.demodb.dev/data/json/chinook.{table}.json',
       keys: { Invoice: 'InvoiceId' },
       sha256: { Invoice: SHA },
     };
@@ -329,9 +329,19 @@ describe('the allow-list of address prefixes (3.6): a trusted project only', () 
     }
   });
 
-  it('accepts the chinookdb.com data path and a jsDelivr mirror pinned to 40 characters', () => {
+  it('accepts canonical and legacy Chinook data paths and a jsDelivr mirror pinned to 40 characters', () => {
     expect(trusted(catalog()).ok).toBe(true);
+    expect(trusted(catalog({ urlTemplate: 'https://chinookdb.com/data/json/chinook.{table}.json' })).ok).toBe(true);
     expect(trusted(catalog({ urlTemplate: MIRROR })).ok).toBe(true);
+  });
+
+  it.each([
+    'https://chinook.demodb.dev.evil.example/data/chinook.{table}.json',
+    'https://evil.demodb.dev/data/chinook.{table}.json',
+    'https://chinook.demodb.dev/database/chinook.{table}.json',
+    'https://chinook.demodb.dev/data/../private/chinook.{table}.json',
+  ])('refuses an address outside the canonical data path: %s', (urlTemplate) => {
+    refusedAt(catalog({ urlTemplate }), '/urlTemplate');
   });
 });
 
@@ -592,7 +602,7 @@ describe('labels that look like other labels, and the template that cannot becom
     if (!result.ok) return;
     const urls = tableUrls(result.value, 'Invoice', 'trusted');
     expect(urls.primary.ok && urls.primary.url.href).toBe(
-      'https://chinookdb.com/data/json/chinook.Invoice.json',
+      'https://chinook.demodb.dev/data/json/chinook.Invoice.json',
     );
     expect(urls.fallback?.ok && urls.fallback.url.href).toBe(
       `https://cdn.jsdelivr.net/gh/datatug/chinookdb@${COMMIT}/public/data/json/chinook.Invoice.json`,
