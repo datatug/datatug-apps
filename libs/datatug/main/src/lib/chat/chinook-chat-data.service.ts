@@ -5,6 +5,7 @@ import {
 } from '@dalgo/core';
 import { IndexedDbDatabase } from '@dalgo/indexeddb';
 import { CHINOOK_SCHEMA } from './chat.types';
+import { isChinookChatProject } from './chinook-chat-project';
 
 interface Fixture {
   readonly version: string;
@@ -39,8 +40,8 @@ export class ChinookChatDataService {
       this.database = undefined;
       this.databaseName = undefined;
     }
-    if (projectId !== 'datatug-demo-project') {
-      throw new Error('This local Chat trial has Chinook data only for datatug-demo-project.');
+    if (!isChinookChatProject(storeId, projectId)) {
+      throw new Error('This local Chat trial has Chinook data only for the Chinook demo project.');
     }
     const databaseName = 'chinook';
     if (this.databaseName !== databaseName) {
