@@ -209,7 +209,8 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
   expect(localInterpretRequests).toBe(0);
 
   await page.goto('/store/localhost:8989/project/a-different-project/chat');
-  await expect(page.getByText('This local Chat trial has Chinook data only for datatug-demo-project.')).toBeVisible();
+  await expect(page.getByText('This local Chat trial has Chinook data only for the Chinook demo project.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Send' })).toBeDisabled();
   await expect(page.getByText('Show last 100 orders')).toHaveCount(0);
 });
 

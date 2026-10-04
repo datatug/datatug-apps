@@ -26,6 +26,8 @@ export type ProjectTrust = 'trusted' | 'untrusted';
  * host: a host alone would let any repository on jsDelivr through.
  */
 export const ALLOWED_DATA_ADDRESS_PREFIXES: readonly string[] = [
+  'https://chinook.demodb.dev/data/',
+  // Existing pinned project files may still use the previous domain.
   'https://chinookdb.com/data/',
 ];
 
