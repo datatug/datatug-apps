@@ -1,4 +1,5 @@
 import { applyChatWorkspaceAction, chatBookmarkRows, ChatBookmark, ChatRecordSetData, emptyChatWorkspace } from './chat-workspace';
+import { DEMO_PROJECT_REF } from '../nav/github-project-address';
 
 const scope = JSON.stringify(['localhost:8989', 'datatug-demo-project']);
 const record: ChatRecordSetData = {
@@ -12,6 +13,27 @@ const record: ChatRecordSetData = {
 const records = new Map([[record.id, record]]);
 
 describe('Chat workspace actions', () => {
+  it.each(['source', 'table'] as const)('attaches the canonical demo %s context', (kind) => {
+    const demoScope = JSON.stringify([DEMO_PROJECT_REF.storeId, DEMO_PROJECT_REF.projectId]);
+    const reference = {
+      kind, projectId: DEMO_PROJECT_REF.projectId, sourceId: 'chinook',
+      objectId: kind === 'source' ? 'chinook' : 'main.Customer', title: 'Chinook',
+    };
+    const attached = applyChatWorkspaceAction(demoScope, undefined, new Map(), { kind: 'attach', reference }).state;
+    expect(attached.attachments).toEqual([reference]);
+    expect(() => applyChatWorkspaceAction(demoScope, attached, new Map(), { kind: 'dock', reference }))
+      .toThrow(/Only a result/);
+    for (const [storeId, projectId] of [
+      ['github.com', 'chinook-demo@other@'], ['other-store', DEMO_PROJECT_REF.projectId],
+    ]) {
+      expect(() => applyChatWorkspaceAction(JSON.stringify([storeId, projectId]), undefined, new Map(), {
+        kind: 'attach', reference: { ...reference, projectId },
+      })).toThrow(/unavailable/);
+    }
+    expect(() => applyChatWorkspaceAction(demoScope, undefined, new Map(), {
+      kind: 'attach', reference: { ...reference, sourceId: 'other' },
+    })).toThrow(/unavailable/);
+  });
   it('masks bookmarked selection columns and exact cell ranges', () => {
     const base: ChatBookmark = {
       id: 'bm-1', scope, projectId: 'datatug-demo-project', title: 'Customers', tags: [], target: 'selection',

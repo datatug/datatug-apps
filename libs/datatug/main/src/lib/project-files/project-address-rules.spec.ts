@@ -199,14 +199,16 @@ describe('checkProjectAddress: concrete addresses every project must pass (3.6)'
 });
 
 describe('the allow-list of address prefixes on a concrete address (3.6, trusted project)', () => {
-  it('lists exactly the chinookdb.com data path and a pinned jsDelivr mirror', () => {
+  it('lists the canonical and legacy Chinook data paths and a pinned jsDelivr mirror', () => {
     expect(ALLOWED_DATA_ADDRESS_PREFIXES).toEqual([
+      'https://chinook.demodb.dev/data/',
       'https://chinookdb.com/data/',
     ]);
     expect(beginsWithAllowedDataPrefix(`${MIRROR}x.json`)).toBe(true);
   });
 
   it.each([
+    'https://chinook.demodb.dev/data/json/chinook.Invoice.json',
     'https://chinookdb.com/data/json/chinook.Invoice.json',
     'https://chinookdb.com/data/chinook.json',
     `${MIRROR}public/data/json/chinook.Invoice.json`,
@@ -215,6 +217,10 @@ describe('the allow-list of address prefixes on a concrete address (3.6, trusted
   });
 
   it.each([
+    ['canonical look-alike host', 'https://chinook.demodb.dev.evil.example/data/x.json'],
+    ['canonical sibling host', 'https://evil.demodb.dev/data/x.json'],
+    ['canonical wrong path', 'https://chinook.demodb.dev/database/x.json'],
+    ['canonical traversal', 'https://chinook.demodb.dev/data/%2e%2e/private/x.json'],
     [
       'another path on chinookdb.com',
       'https://chinookdb.com/other/chinook.Invoice.json',
@@ -609,6 +615,7 @@ describe('property: whatever template is accepted for a trusted project, the exp
     'ab12',
   ];
   const bases = [
+    'https://chinook.demodb.dev/data/',
     'https://chinookdb.com/data/',
     `${MIRROR}`,
     'https://chinookdb.com/',
@@ -629,6 +636,7 @@ describe('property: whatever template is accepted for a trusted project, the exp
     'chinook',
   ];
   const underAllowedPrefix = (href: string): boolean =>
+    href.startsWith('https://chinook.demodb.dev/data/') ||
     href.startsWith('https://chinookdb.com/data/') ||
     new RegExp(
       `^https://cdn\\.jsdelivr\\.net/gh/datatug/chinookdb@[0-9a-f]{40}/`,

@@ -1,4 +1,5 @@
 import { CHINOOK_SCHEMA } from './chat.types';
+import { isChinookChatProject } from './chinook-chat-project';
 
 export type ChatWorkspaceTab = 'project' | 'selected' | 'docked' | 'bookmarks';
 export type ChatContextKind = 'project' | 'source' | 'table' | 'query' | 'recordset' | 'view' | 'selection' | 'bookmark';
@@ -127,6 +128,11 @@ function projectIdFromScope(scope: string): string {
   throw new Error('The chat project identity is invalid.');
 }
 
+function isChinookScope(scope: string): boolean {
+  const parts = JSON.parse(scope) as unknown[];
+  return typeof parts[0] === 'string' && isChinookChatProject(parts[0], projectIdFromScope(scope));
+}
+
 function validateReference(
   scope: string, state: ChatWorkspaceState, records: ReadonlyMap<string, ChatRecordSetData>, ref: ChatContextReference,
 ): void {
@@ -140,12 +146,12 @@ function validateReference(
       if (ref.objectId !== projectId) throw new Error('This project is unavailable.');
       return;
     case 'source':
-      if (projectId !== 'datatug-demo-project' || ref.sourceId !== 'chinook' || ref.objectId !== 'chinook') {
+      if (!isChinookScope(scope) || ref.sourceId !== 'chinook' || ref.objectId !== 'chinook') {
         throw new Error('This data source is unavailable.');
       }
       return;
     case 'table':
-      if (projectId !== 'datatug-demo-project' || ref.sourceId !== 'chinook' ||
+      if (!isChinookScope(scope) || ref.sourceId !== 'chinook' ||
           !CHINOOK_SCHEMA.tables.some((table) => `${table.schema}.${table.name}` === ref.objectId)) {
         throw new Error('This table is unavailable in the current data source.');
       }
