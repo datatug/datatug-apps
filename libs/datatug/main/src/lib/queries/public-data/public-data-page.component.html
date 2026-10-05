@@ -1,0 +1,370 @@
+<ion-header
+  ><ion-toolbar
+    ><ion-buttons slot="start"
+      ><ion-menu-button /><ion-back-button
+        [defaultHref]="backHref()" /></ion-buttons
+    ><ion-title>Public data lookup</ion-title></ion-toolbar
+  ></ion-header
+>
+<ion-content color="light">
+  <ion-card
+    ><ion-card-header
+      ><ion-card-title
+        >Connect a configured source</ion-card-title
+      ></ion-card-header
+    ><ion-card-content>
+      <p>
+        Choose a project source, table and field. Canonical metadata supplies
+        its provenance and explains supported lookups. Values keep their
+        original case and spaces.
+      </p>
+      <ion-button
+        (click)="loadConnections()"
+        [disabled]="connectionLoading() || !project()"
+        >Load configured sources</ion-button
+      >
+      @if (connectionLoading() || loading()) {
+        <ion-spinner /><ion-button fill="clear" (click)="cancel()"
+          >Cancel source inspection</ion-button
+        >
+      }
+      @if (connectionsLoaded() && !connections().length) {
+        <p>
+          No configured project source is available. Configure a connection in
+          the existing environment view before choosing a public lookup.
+        </p>
+      }
+      @if (connections().length) {
+        <label for="fabric-connection">Source</label
+        ><select
+          id="fabric-connection"
+          [value]="connection()?.id ?? ''"
+          (change)="selectConnection($any($event.target).value)"
+        >
+          <option value="">Choose a source</option>
+          @for (item of connections(); track item.id) {
+            <option [value]="item.id">{{ item.title }}</option>
+          }
+        </select>
+      }
+      @if (fields().length) {
+        <label for="fabric-field">Table and field</label
+        ><select
+          id="fabric-field"
+          [value]="field()?.id ?? ''"
+          (change)="selectField($any($event.target).value)"
+        >
+          <option value="">Choose a table and field</option>
+          @for (item of fields(); track item.id) {
+            <option [value]="item.id">
+              {{ item.table.schema }}.{{ item.table.name
+              }}{{ item.property ? '.' + item.property : '' }}
+            </option>
+          }
+        </select>
+      }
+      @if (connection() && !loading() && !fields().length) {
+        <p>
+          No configured table metadata is available for this source. Lookup is
+          unavailable.
+        </p>
+      }
+      @if (field(); as selectedField) {
+        <p data-testid="configured-field-reason">{{ selectedField.reason }}</p>
+        <ion-button fill="outline" (click)="previewTable()"
+          >Preview in existing table view</ion-button
+        >
+      }
+      @if (source(); as scope) {
+        <p data-testid="configured-source-scope">
+          Selected field: {{ scope.entity }}.{{ scope.property }} ·
+          {{ scope.namespace }}
+        </p>
+        <details data-testid="selected-field-provenance">
+          <summary>Selected field provenance</summary>
+          <p>
+            {{ scope.schema.repository }} at {{ scope.schema.revision }} ·
+            {{ scope.schema.path }} · SHA256 {{ scope.schema.sha256 }}
+          </p>
+        </details>
+      }
+    </ion-card-content></ion-card
+  >
+  <details>
+    <summary>Advanced source descriptor diagnostics</summary>
+    <ion-card
+      ><ion-card-header
+        ><ion-card-title
+          >Inspect a declared source field</ion-card-title
+        ></ion-card-header
+      ><ion-card-content>
+        <p>
+          Use the immutable schema repository, revision, path and SHA256, plus
+          its exact module, entity, property, string datatype and raw namespace.
+          Values retain their original case and spaces.
+        </p>
+        <ion-textarea
+          label="Source field declaration (JSON)"
+          labelPlacement="stacked"
+          [autoGrow]="true"
+          [ngModel]="sourceText()"
+          (ngModelChange)="sourceText.set($event)"
+        />
+        <ion-button (click)="connect()" [disabled]="loading() || !sourceText()"
+          >Connect and explain</ion-button
+        >
+        @if (loading()) {
+          <ion-spinner /><ion-button fill="clear" (click)="cancel()"
+            >Cancel</ion-button
+          >
+        }
+        @if (source(); as field) {
+          <p data-testid="source-scope">
+            {{ field.schema.repository }} at {{ field.schema.revision }} ·
+            {{ field.module }}.{{ field.entity }}.{{ field.property }} · raw
+            {{ field.datatype }} · {{ field.namespace }}
+          </p>
+        }
+      </ion-card-content></ion-card
+    >
+  </details>
+  @if (error()) {
+    <ion-card
+      ><ion-card-content role="alert">{{ error() }}</ion-card-content></ion-card
+    >
+  }
+  @if (discovery(); as data) {
+    <ion-card
+      ><ion-card-header
+        ><ion-card-title>Canonical suggestions</ion-card-title></ion-card-header
+      ><ion-card-content>
+        <p data-testid="source-availability">
+          Source: {{ connection()?.title ?? 'Declared source field' }}. Public
+          release date and coverage: unknown.
+        </p>
+        <details data-testid="canonical-provenance">
+          <summary>Canonical provenance and metadata limits</summary>
+          <p>
+            Metadata read: {{ data.metadataBytes }} of 2097152 bytes. Metadata
+            inspection does not query source data.
+          </p>
+          <p>
+            Directory {{ data.indexes.pins.directory.revision }} · ModelSpec
+            {{ data.indexes.pins.models.revision }} · MeaningGraph
+            {{ data.indexes.pins.meanings.revision }}
+          </p>
+          @for (
+            pin of [
+              data.indexes.pins.directory,
+              data.indexes.pins.models,
+              data.indexes.pins.meanings,
+            ];
+            track pin.repository
+          ) {
+            <p>
+              {{ pin.repository }} · {{ pin.revision }} · {{ pin.path }} ·
+              SHA256 {{ pin.sha256 }}
+            </p>
+          }
+        </details>
+        @if (!data.suggestions.length) {
+          <p data-testid="no-contract">
+            Lookup is unavailable: no supported scoped attachment is published
+            for this source. Labels alone do not authorize a lookup.
+          </p>
+        }
+        @for (suggestion of data.suggestions; track $index) {
+          <ion-card
+            ><ion-card-content>
+              <p>{{ suggestion.provider['title'] }}</p>
+              <p data-testid="suggestion-reason">{{ suggestion.reason }}</p>
+              @if (suggestion.contract; as contract) {
+                <p>
+                  {{ contract.source.entity }}.{{ contract.source.property }} →
+                  {{ contract.target.entity }}.{{ contract.target.property }} ·
+                  {{ contract.target.namespace }}
+                </p>
+                <p>
+                  Identity projection; UTF8 byte-exact equality; zero or one
+                  native target. Missing keys remain exceptions.
+                </p>
+                <details>
+                  <summary>Lookup provenance</summary>
+                  <p>Decision scope: {{ contract.decision.scope }}.</p>
+                  <p>
+                    Raw label table {{ contract.bridge.table }}.{{
+                      contract.bridge.raw_label_column
+                    }}
+                    → {{ contract.bridge.target_key_column }}. The original
+                    source field remains in the result.
+                  </p>
+                </details>
+              }
+              @if (suggestion.rights; as rights) {
+                <p>
+                  Source: {{ rights.source }} · Model: {{ rights.model }} ·
+                  Meaning: {{ rights.meaning }}
+                </p>
+              }
+              @if (suggestion.matchesSource) {
+                <ion-button (click)="save(suggestion)" [disabled]="saving()"
+                  >Save pending scenario</ion-button
+                >
+              }
+              @if (suggestion.matchesSource) {
+                <ion-button fill="outline" (click)="selected.set(suggestion)"
+                  >Inspect this lookup</ion-button
+                >
+              }
+            </ion-card-content></ion-card
+          >
+        }
+        <ion-item
+          ><ion-input
+            label="Selected user rows"
+            type="number"
+            min="1"
+            max="1000"
+            [ngModel]="userRows()"
+            (ngModelChange)="userRows.set(+$event)"
+        /></ion-item>
+        <ion-item
+          ><ion-input
+            label="User page offset"
+            type="number"
+            min="0"
+            [ngModel]="userOffset()"
+            (ngModelChange)="userOffset.set(+$event)"
+        /></ion-item>
+        <details data-testid="execution-limits">
+          <summary>Execution limits and saved revisions</summary>
+          <p>
+            Execution bounds: 1000 user rows; 100 place IDs or 50 ROR IDs; 5000
+            results; 5MiB; 10 seconds. Saved scenarios reopen with their exact
+            revisions and require an explicit run.
+          </p>
+        </details>
+        <ion-button
+          (click)="run()"
+          [disabled]="running() || !selected()?.eligible"
+          >Run bounded lookup</ion-button
+        >
+        @if (running()) {
+          <ion-spinner /><ion-button fill="clear" (click)="cancel()"
+            >Cancel lookup</ion-button
+          >
+        }
+        <ion-button fill="clear" [routerLink]="queriesHref()"
+          >Open saved queries</ion-button
+        >
+      </ion-card-content></ion-card
+    >
+  }
+  @if (result(); as output) {
+    <ion-card
+      ><ion-card-header
+        ><ion-card-title
+          >Results and exceptions</ion-card-title
+        ></ion-card-header
+      ><ion-card-content>
+        @if (output.publicDataExceptions; as counts) {
+          @if (hasRorStatuses()) {
+            <p>
+              ROR matches are references to the pinned source snapshot, not
+              proof of affiliation or current validity. Repeated input
+              affiliations remain distinct; child locations do not increase the
+              affiliation or unique organization count.
+            </p>
+          }
+          <p data-testid="exception-counts">
+            Source rows {{ counts.denominator }} · non-NULL
+            {{ counts.nonNull }} · NULL {{ counts.null }} · empty
+            {{ counts.empty }} · invalid {{ counts.invalid }} · unmatched
+            {{ counts.unmatched }} · ambiguous {{ counts.ambiguous }} · matched
+            {{ counts.matched }} · multiplied {{ counts.multiplied }}
+          </p>
+          <table>
+            <caption>
+              Raw keys and projected keys
+            </caption>
+            <thead>
+              <tr>
+                <th>Source row</th>
+                <th>Raw value</th>
+                <th>Projected keys</th>
+                <th>Exception</th>
+                <th>Target snapshot status</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of counts.details; track row.key) {
+                <tr>
+                  <td>{{ row.key }}</td>
+                  <td>{{ row.raw === null ? 'NULL' : row.raw }}</td>
+                  <td>{{ row.projected.join(', ') }}</td>
+                  <td>{{ row.status }}</td>
+                  <td>
+                    {{ row.targetStatus }}
+                    @if (row.targetStatus === 'withdrawn') {
+                      · erroneous, duplicate or out-of-scope record reference
+                    }
+                    @if (row.targetStatus === 'inactive') {
+                      · historical reference context
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
+        <p>
+          Observed {{ output.provenance.observedAt }}.
+          {{ output.provenance.source }}
+        </p>
+        <details>
+          <summary>Result provenance and transfer size</summary>
+          <p>Read {{ output.publicDataBytes }} bytes.</p>
+        </details>
+        @for (limitation of output.limitations; track $index) {
+          <p>{{ limitation.policy }}</p>
+        }
+        <table>
+          <caption>
+            Selected result page
+          </caption>
+          <thead>
+            <tr>
+              @for (column of output.recordset.columns; track $index) {
+                <th>{{ column.name }}</th>
+              }
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of resultRows(); track $index) {
+              <tr>
+                @for (cell of row; track $index) {
+                  <td>{{ cell.value === null ? 'NULL' : cell.value }}</td>
+                }
+              </tr>
+            }
+          </tbody>
+        </table>
+        <ion-button
+          fill="clear"
+          [disabled]="page() === 0"
+          (click)="changePage(-1)"
+          >Previous result page</ion-button
+        >
+        <ion-button
+          fill="clear"
+          [disabled]="
+            (page() + 1) * 100 >=
+            (output.totalRows ?? output.recordset.rows.length)
+          "
+          (click)="changePage(1)"
+          >Next result page</ion-button
+        >
+      </ion-card-content></ion-card
+    >
+  }
+</ion-content>

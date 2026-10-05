@@ -6,6 +6,8 @@ import { IndexedDbDatabase } from '@dalgo/indexeddb';
 import type { RunQueryResponse, TypedValue } from '@sneat/datatug-semantic';
 import type { IQueryDef, ITextQueryRequest } from '../models/definition/query-def';
 import { deleteQueryDatabase, queryStorageError } from './federated-query-storage';
+import { createBoundedFederationFetch } from './public-data/bounded-federation';
+import { publicDataExceptions, SAVED_SCENARIO_PUBLICATION_BLOCKER, type PublicDataExceptions } from './public-data/public-data-scenario';
 
 type Data = Record<string, unknown>;
 interface OvdbRecord { readonly key: string; readonly data: Data }
@@ -60,7 +62,7 @@ export interface FederatedQueryObserver {
   readonly onSourceLoaded?: (event: FederatedSourceLoaded) => void;
 }
 
-export type FederatedQueryResult = RunQueryResponse & { readonly totalRows?: number; readonly hasMore?: boolean };
+export type FederatedQueryResult = RunQueryResponse & { readonly totalRows?: number; readonly hasMore?: boolean; readonly publicDataExceptions?: PublicDataExceptions; readonly publicDataBytes?: number };
 export type FederatedOutputPage = (rows: readonly (readonly TypedValue[])[]) => Promise<void>;
 export type FederatedQueryMode = 'full' | 'visible';
 
@@ -93,6 +95,33 @@ function retryDelay(attempt: number, signal?: AbortSignal): Promise<void> {
 
 /** Runs each leaf against OVDB directly and merges/aggregates in this runtime. */
 export async function runFederatedQuery(definition: IQueryDef, onProgress?: (progress: FederatedQueryProgress) => void, token = '', onOutputPage?: FederatedOutputPage, signal?: AbortSignal, mode: FederatedQueryMode = 'full', onPageReady?: (result: FederatedQueryResult) => void, waitForNextPage?: () => Promise<void>, observer?: FederatedQueryObserver): Promise<FederatedQueryResult> {
+  if (definition.publicData) throw new Error(SAVED_SCENARIO_PUBLICATION_BLOCKER);
+  const bounds = definition.federation?.bounds;
+  if (!bounds) return runFederatedQueryInternal(definition, onProgress, token, onOutputPage, signal, mode, onPageReady, waitForNextPage, observer);
+  if (mode !== 'full') throw new Error('Bounded public-data runs calculate one selected page. Browse result pages after it finishes.');
+  const deadline = new AbortController();
+  const timer = setTimeout(() => deadline.abort(new Error('The bounded lookup exceeded its deadline.')), bounds.timeoutMs);
+  const combined = signal ? AbortSignal.any([signal, deadline.signal]) : deadline.signal;
+  try {
+    const transport = createBoundedFederationFetch(definition.federation?.ovdbBaseUrl ?? '', bounds, observer?.fetch ?? fetch, combined);
+    let outputRows = 0;
+    const collected: TypedValue[][] = [];
+    const result = await runFederatedQueryInternal(definition, onProgress, token, async (rows) => {
+      combined.throwIfAborted();
+      outputRows += rows.length;
+      if (outputRows > bounds.resultRows) throw new Error('The lookup exceeds the result-row bound; ambiguous or multiplied matches require a narrower query.');
+      if (onOutputPage) await onOutputPage(rows);
+      else collected.push(...rows.map((row) => [...row]));
+    }, combined, 'full', undefined, undefined, { ...observer, fetch: transport.fetch });
+    combined.throwIfAborted();
+    if (result.recordset.rows.length > bounds.resultRows) throw new Error('The lookup exceeds the result-row bound.');
+    // Nested joins use DALgo's batch result rather than the flat join callback.
+    if (!outputRows && result.recordset.rows.length && onOutputPage) await onOutputPage(result.recordset.rows);
+    return { ...result, ...(!onOutputPage && outputRows ? { recordset: { ...result.recordset, rows: collected } } : {}), publicDataExceptions: publicDataExceptions(bounds, transport.receipt.sources), publicDataBytes: transport.receipt.bytes(), limitations: [...result.limitations, { rowsFiltered: false, hiddenColumns: [], policy: `Selected user page: at most ${bounds.userRows} rows from offset ${bounds.userOffset}; ${bounds.identifierLimit} identifiers, ${bounds.resultRows} results, ${bounds.bytes} bytes, ${bounds.timeoutMs}ms.` }] };
+  } finally { clearTimeout(timer); }
+}
+
+async function runFederatedQueryInternal(definition: IQueryDef, onProgress?: (progress: FederatedQueryProgress) => void, token = '', onOutputPage?: FederatedOutputPage, signal?: AbortSignal, mode: FederatedQueryMode = 'full', onPageReady?: (result: FederatedQueryResult) => void, waitForNextPage?: () => Promise<void>, observer?: FederatedQueryObserver): Promise<FederatedQueryResult> {
     // Late-bound so a stubbed global fetch is honoured; an observer's fetch replaces it for this run only.
     const httpFetch: typeof fetch = observer?.fetch ?? ((input, init) => fetch(input, init));
     const config = definition.federation;

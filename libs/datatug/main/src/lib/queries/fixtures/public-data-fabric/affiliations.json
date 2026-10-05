@@ -1,0 +1,10 @@
+[
+  { "affiliation_id": "a1", "ror_id": "https://ror.org/000025p04" },
+  { "affiliation_id": "a2", "ror_id": "https://ror.org/00002d369" },
+  { "affiliation_id": "a3", "ror_id": "https://ror.org/000025p04" },
+  { "affiliation_id": "null", "ror_id": null },
+  { "affiliation_id": "empty", "ror_id": "" },
+  { "affiliation_id": "space", "ror_id": " https://ror.org/000025p04" },
+  { "affiliation_id": "case", "ror_id": "https://ROR.org/000025p04" },
+  { "affiliation_id": "synthetic", "ror_id": "Synthetic organization" }
+]

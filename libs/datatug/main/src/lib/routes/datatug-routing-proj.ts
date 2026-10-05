@@ -69,6 +69,10 @@ const emptyShellProjectRoutes: Routes = [
 
 export const datatugProjectRoutes: Routes = [
   {
+    path: 'public-data',
+    loadComponent: () => import('../queries/public-data/public-data-page.component').then((m) => m.PublicDataPageComponent),
+  },
+  {
     path: 'chat',
     loadComponent: () =>
       import('../pages/signed-in/chat/chat-page.component').then(

@@ -22,7 +22,7 @@ describe('federated query worker boundary', () => {
       postMessage(message: unknown): void { this.posted.push(message); }
       addEventListener(): void { /* not needed: no dispose in these runs */ }
       removeEventListener(): void { /* not needed */ }
-      terminate(): void { /* not needed */ }
+      terminate = vi.fn();
       send(data: unknown): void { this.onmessage?.({ data } as MessageEvent); }
     }
     const definition = { id: 'query', title: 'Query', request: { queryType: QueryType.DTQL, text: '{}' } } as IQueryDef;
@@ -62,6 +62,19 @@ describe('federated query worker boundary', () => {
       expect(withSource.worker.posted[0]).toEqual({ type: 'run', definition, token: '', mode: 'full', staticSource });
       withSource.worker.send({ type: 'result', result });
       await withSource.run;
+    });
+    it('terminates a bounded worker that never answers and rejects instead of keeping synchronous work alive', async () => {
+      vi.stubGlobal('Worker', FakeWorker);
+      const service = new FederatedQueryService();
+      const bounded = { ...definition, federation: { ovdbBaseUrl: 'https://demodb.dev/ovdb', tables: [], bounds: { userRows: 100, userOffset: 0, identifierKind: 'place' as const, identifierLimit: 100, resultRows: 5000, bytes: 5242880, timeoutMs: 100, sources: [{ database: 'user', name: 'Customer', keyField: 'Country' }, { database: 'geo', name: 'countries', keyField: 'id', parent: { database: 'user', name: 'Customer', field: 'Country' } }] } } };
+      FakeWorker.last = undefined;
+      const run = service.run(bounded);
+      const rejected = expect(run).rejects.toThrow(/exceeded its deadline/);
+      await vi.waitFor(() => expect(FakeWorker.last?.posted.length).toBe(1));
+      const worker = FakeWorker.last;
+      await rejected;
+      expect(worker?.terminate).toHaveBeenCalledOnce();
+      await expect(service.dispose()).resolves.toBeUndefined();
     });
   });
 });
