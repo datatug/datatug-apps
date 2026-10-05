@@ -1,0 +1,437 @@
+{
+  "scope": "Exact immutable metadata bytes with explicitly hypothetical registry indexes. No graph wrapper, admission, collection mapping or runtime publication is claimed. Source archives and data files excluded.",
+  "files": [
+    {
+      "file": {
+        "repository": "https://github.com/openvaultdb/directory",
+        "revision": "02db362144d7924c6081dd6768cc0d7187ac9bc3",
+        "path": "index.json",
+        "sha256": "2795164e7051fb5b3c59400e261a0219382d68c9d74178c13f86f3ac3ef11995"
+      },
+      "local": "2795164e7051fb5b3c59400e261a0219382d68c9d74178c13f86f3ac3ef11995"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/modelspec-org/registry",
+        "revision": "34be21159e522e85b6e5c110f8bfb8baaa8035a8",
+        "path": "index.json",
+        "sha256": "302a04f9775aec8627ddab0361030156f592abb3e446088ba43bd813aa527576"
+      },
+      "local": "302a04f9775aec8627ddab0361030156f592abb3e446088ba43bd813aa527576"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/meaninggraph/registry",
+        "revision": "3d85ae6fa06b7f38f59cfd2893e07ba801856b96",
+        "path": "index.json",
+        "sha256": "42931545086beb7c69d803767b8d50e524baff2ff37a2ec9eb8526eee16aa4a5"
+      },
+      "local": "42931545086beb7c69d803767b8d50e524baff2ff37a2ec9eb8526eee16aa4a5"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/ingitdb/geo-ingitdb",
+        "revision": "57e25689009047a557d35519831b8413b4abe838",
+        "path": "model/representations.json",
+        "sha256": "d012fe6f269f9f3c48bd8051c77e74ab6c5578c4d7bfe2bdc7029d4bee0a7b2c"
+      },
+      "local": "d012fe6f269f9f3c48bd8051c77e74ab6c5578c4d7bfe2bdc7029d4bee0a7b2c"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/demo-db/chinook",
+        "revision": "26e852cca00101f53a84ef8ee1f1ae389067f5cf",
+        "path": "model/chinook.modelspec.json",
+        "sha256": "5e81f79ae02760bbdc372985022ab94209b97aaa76bf456fb59e040a99476870"
+      },
+      "local": "5e81f79ae02760bbdc372985022ab94209b97aaa76bf456fb59e040a99476870"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/ingitdb/geo-ingitdb",
+        "revision": "57e25689009047a557d35519831b8413b4abe838",
+        "path": "model/geonames.modelspec.json",
+        "sha256": "609fe73e07b84db65bdb1a904b9f84dd5c43bcbbc75eeb2d75f9a69ed3e8af81"
+      },
+      "local": "609fe73e07b84db65bdb1a904b9f84dd5c43bcbbc75eeb2d75f9a69ed3e8af81"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/ingitdb/geo-ingitdb",
+        "revision": "57e25689009047a557d35519831b8413b4abe838",
+        "path": "source/artifact-snapshot.json",
+        "sha256": "b4ef99365a331865dfcb94c213995fe06dc1790f8054e3e7d96385af76c9179b"
+      },
+      "local": "b4ef99365a331865dfcb94c213995fe06dc1790f8054e3e7d96385af76c9179b"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/ingitdb/geo-ingitdb",
+        "revision": "57e25689009047a557d35519831b8413b4abe838",
+        "path": "model/geonames.meaning.yaml",
+        "sha256": "21bb35aecf1f1214908f245cfeb2d0c5e7c6caf3915a5ffd604254642b3b4b57"
+      },
+      "local": "21bb35aecf1f1214908f245cfeb2d0c5e7c6caf3915a5ffd604254642b3b4b57"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/meaninggraph/core",
+        "revision": "982916d73f0a35ff2558b0062f58aa3ac4f24d97",
+        "path": "geo.meaning.yaml",
+        "sha256": "ee6eeea2e8038e016433a72dd15d45b6eaf89d3ae6e45893d4e5eeb7be61f4e9"
+      },
+      "local": "ee6eeea2e8038e016433a72dd15d45b6eaf89d3ae6e45893d4e5eeb7be61f4e9"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/datatug/datatug",
+        "revision": "2694ed58c8bb82277324030cf82a596ee1695db5",
+        "path": "spec/research/public-data-fabric/assertions/$records/d1-edge-chinook-country.json",
+        "sha256": "f995ad2febb3545611c18a26bd12ee6ca7c1aa8e22d677364729de62a3e39bfe"
+      },
+      "local": "f995ad2febb3545611c18a26bd12ee6ca7c1aa8e22d677364729de62a3e39bfe"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/ingitdb/geo-ingitdb",
+        "revision": "57e25689009047a557d35519831b8413b4abe838",
+        "path": "bridges/geonames_chinook_customer_country.json",
+        "sha256": "8ad135c902b84ddfd32ccca029a81c5c76ef84e71c3ee793d57feae2c6e92ded"
+      },
+      "local": "8ad135c902b84ddfd32ccca029a81c5c76ef84e71c3ee793d57feae2c6e92ded"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/ingitdb/geo-ingitdb",
+        "revision": "57e25689009047a557d35519831b8413b4abe838",
+        "path": "country-keys.json",
+        "sha256": "c57b21174d0f0d2badd575cf1c2605840bc862e6cebd52064ceffd9c266ee9c8"
+      },
+      "local": "c57b21174d0f0d2badd575cf1c2605840bc862e6cebd52064ceffd9c266ee9c8"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/demo-db/northwind",
+        "revision": "e74726515c3833620b54b7a50d1d273276dd23c1",
+        "path": "model/northwind.modelspec.json",
+        "sha256": "a6d1c33ad1b52a2486bc5f8cdd9ba5216d9e6d59404c4b8f32799fcec9e1151f"
+      },
+      "local": "a6d1c33ad1b52a2486bc5f8cdd9ba5216d9e6d59404c4b8f32799fcec9e1151f"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/datatug/datatug",
+        "revision": "2694ed58c8bb82277324030cf82a596ee1695db5",
+        "path": "spec/research/public-data-fabric/assertions/$records/d1-edge-northwind-country.json",
+        "sha256": "fca0dec5ed2478b40c1ee6146b712d4527617b94f1bb1b9ad57ffbbc22852d21"
+      },
+      "local": "fca0dec5ed2478b40c1ee6146b712d4527617b94f1bb1b9ad57ffbbc22852d21"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/ingitdb/geo-ingitdb",
+        "revision": "57e25689009047a557d35519831b8413b4abe838",
+        "path": "bridges/geonames_northwind_customer_country.json",
+        "sha256": "a4bed8390ab416b8f314b8cb253e9960b3db59482a91d5a6095f80fd8bcc545a"
+      },
+      "local": "a4bed8390ab416b8f314b8cb253e9960b3db59482a91d5a6095f80fd8bcc545a"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/datatug/datatug",
+        "revision": "2694ed58c8bb82277324030cf82a596ee1695db5",
+        "path": "spec/research/public-data-fabric/assertions/$records/d1-edge-northwind-shipping-country.json",
+        "sha256": "8f7cf5e218e8c36c1932839323801a49133529327dbfac0405abf7fb7a5731eb"
+      },
+      "local": "8f7cf5e218e8c36c1932839323801a49133529327dbfac0405abf7fb7a5731eb"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/ingitdb/geo-ingitdb",
+        "revision": "57e25689009047a557d35519831b8413b4abe838",
+        "path": "bridges/geonames_northwind_order_country.json",
+        "sha256": "e1e6371f9504b8be7fe1b547b1d4d977976949299ef76fb5c7cede1c78c3e5b7"
+      },
+      "local": "e1e6371f9504b8be7fe1b547b1d4d977976949299ef76fb5c7cede1c78c3e5b7"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/demo-db/pubs",
+        "revision": "6c06c5c7395b03ff1a02c2b1a21485add3e1b65b",
+        "path": "model/pubs.modelspec.json",
+        "sha256": "6f7ca172d746866f2cf3ee84be0fb1ae9bd6c90f6144a0e35f24eec7af11f3ea"
+      },
+      "local": "6f7ca172d746866f2cf3ee84be0fb1ae9bd6c90f6144a0e35f24eec7af11f3ea"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/datatug/datatug",
+        "revision": "2694ed58c8bb82277324030cf82a596ee1695db5",
+        "path": "spec/research/public-data-fabric/assertions/$records/d1-edge-pubs-publisher-country.json",
+        "sha256": "06c96f83dd6cb07173759874904c5281a00e75655efe8256062f823b4b1ead9d"
+      },
+      "local": "06c96f83dd6cb07173759874904c5281a00e75655efe8256062f823b4b1ead9d"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/ingitdb/geo-ingitdb",
+        "revision": "57e25689009047a557d35519831b8413b4abe838",
+        "path": "bridges/geonames_pubs_publisher_country.json",
+        "sha256": "0e38ab8ca3bace7fa834f9e251ade0544407747d362ebff775c7d24e8fa9b377"
+      },
+      "local": "0e38ab8ca3bace7fa834f9e251ade0544407747d362ebff775c7d24e8fa9b377"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/ingitdb/ror-ingitdb",
+        "revision": "24bcbcb5f0ba715d72d604e9d4d296766e5f4ca7",
+        "path": "model/representations.json",
+        "sha256": "61c8c1f9297ac538e9cbd1b32806e4914799cf64bbeac89a71eb71b63c2559e6"
+      },
+      "local": "61c8c1f9297ac538e9cbd1b32806e4914799cf64bbeac89a71eb71b63c2559e6"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/datatug/datatug-apps",
+        "revision": "e7362033ec79c6663d7dbe0483b62fab01f7b9cd",
+        "path": "libs/datatug/main/src/lib/queries/fixtures/public-data-fabric/affiliations.modelspec.json",
+        "sha256": "cfe958f12d9a70bb7533499b76bf01c9447f81f0862852e460b095bb75e1b9cf"
+      },
+      "local": "cfe958f12d9a70bb7533499b76bf01c9447f81f0862852e460b095bb75e1b9cf"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/ingitdb/ror-ingitdb",
+        "revision": "24bcbcb5f0ba715d72d604e9d4d296766e5f4ca7",
+        "path": "model/ror.modelspec.json",
+        "sha256": "9694a0b6d7aba0bd26be22e8ee3501cf944463617839623e6b5b15d8068fd0ae"
+      },
+      "local": "9694a0b6d7aba0bd26be22e8ee3501cf944463617839623e6b5b15d8068fd0ae"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/ingitdb/ror-ingitdb",
+        "revision": "24bcbcb5f0ba715d72d604e9d4d296766e5f4ca7",
+        "path": "source/artifact-snapshot.json",
+        "sha256": "5520cfab8294336fbd98e8c1b4d3f732dffa88249ad58a15743f225cbaf15279"
+      },
+      "local": "5520cfab8294336fbd98e8c1b4d3f732dffa88249ad58a15743f225cbaf15279"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/ingitdb/ror-ingitdb",
+        "revision": "24bcbcb5f0ba715d72d604e9d4d296766e5f4ca7",
+        "path": "model/ror.meaning.yaml",
+        "sha256": "70e54d63b0d564edc73149154f84374cdff30a17b8631c56ecab06dd93d452e9"
+      },
+      "local": "70e54d63b0d564edc73149154f84374cdff30a17b8631c56ecab06dd93d452e9"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/meaninggraph/core",
+        "revision": "982916d73f0a35ff2558b0062f58aa3ac4f24d97",
+        "path": "identity.meaning.yaml",
+        "sha256": "b0eb207d1e2e68572a47b4a08d02aa10389e2788c20a9796c812a4fcda894c33"
+      },
+      "local": "b0eb207d1e2e68572a47b4a08d02aa10389e2788c20a9796c812a4fcda894c33"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/datatug/datatug",
+        "revision": "17263dbacabdfe95e53fc3c6980177416bdab941",
+        "path": "spec/research/public-data-fabric/evidence/w1-ror-user-decision.json",
+        "sha256": "a4caa4b6461230a3fa2ae8548121344cb286cfb98a9e19761a207c9f74479595"
+      },
+      "local": "a4caa4b6461230a3fa2ae8548121344cb286cfb98a9e19761a207c9f74479595"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/ingitdb/ror-ingitdb",
+        "revision": "24bcbcb5f0ba715d72d604e9d4d296766e5f4ca7",
+        "path": "source/validation.json",
+        "sha256": "06aa20ec30551b5eeeca02acdec95da3ebcfdd92524e3048e9d9f6a47d00c6fe"
+      },
+      "local": "06aa20ec30551b5eeeca02acdec95da3ebcfdd92524e3048e9d9f6a47d00c6fe"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/ingitdb/ror-ingitdb",
+        "revision": "dc78c1e929f1f10018f8c39e690351059a50c71f",
+        "path": "model/ror.modelspec.json",
+        "sha256": "9694a0b6d7aba0bd26be22e8ee3501cf944463617839623e6b5b15d8068fd0ae"
+      },
+      "local": "9694a0b6d7aba0bd26be22e8ee3501cf944463617839623e6b5b15d8068fd0ae"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/ingitdb/ror-ingitdb",
+        "revision": "dc78c1e929f1f10018f8c39e690351059a50c71f",
+        "path": "model/ror.meaning.yaml",
+        "sha256": "70e54d63b0d564edc73149154f84374cdff30a17b8631c56ecab06dd93d452e9"
+      },
+      "local": "70e54d63b0d564edc73149154f84374cdff30a17b8631c56ecab06dd93d452e9"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/ingitdb/ror-ingitdb",
+        "revision": "dc78c1e929f1f10018f8c39e690351059a50c71f",
+        "path": "source/artifact-snapshot.json",
+        "sha256": "5520cfab8294336fbd98e8c1b4d3f732dffa88249ad58a15743f225cbaf15279"
+      },
+      "local": "5520cfab8294336fbd98e8c1b4d3f732dffa88249ad58a15743f225cbaf15279"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/ingitdb/geo-ingitdb",
+        "revision": "6f4cf1269bc393048f6b204069135a62f0bb6c02",
+        "path": "model/geonames.modelspec.json",
+        "sha256": "609fe73e07b84db65bdb1a904b9f84dd5c43bcbbc75eeb2d75f9a69ed3e8af81"
+      },
+      "local": "609fe73e07b84db65bdb1a904b9f84dd5c43bcbbc75eeb2d75f9a69ed3e8af81"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/ingitdb/geo-ingitdb",
+        "revision": "6f4cf1269bc393048f6b204069135a62f0bb6c02",
+        "path": "model/geonames.meaning.yaml",
+        "sha256": "21bb35aecf1f1214908f245cfeb2d0c5e7c6caf3915a5ffd604254642b3b4b57"
+      },
+      "local": "21bb35aecf1f1214908f245cfeb2d0c5e7c6caf3915a5ffd604254642b3b4b57"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/ingitdb/geo-ingitdb",
+        "revision": "6f4cf1269bc393048f6b204069135a62f0bb6c02",
+        "path": "source/artifact-snapshot.json",
+        "sha256": "b4ef99365a331865dfcb94c213995fe06dc1790f8054e3e7d96385af76c9179b"
+      },
+      "local": "b4ef99365a331865dfcb94c213995fe06dc1790f8054e3e7d96385af76c9179b"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/ingitdb/geo-ingitdb",
+        "revision": "6f4cf1269bc393048f6b204069135a62f0bb6c02",
+        "path": "source/generation-validation.json",
+        "sha256": "031af09511205b4fbeb71dd8931d3d560ee56997dbfd7401e67b9472507fe132"
+      },
+      "local": "031af09511205b4fbeb71dd8931d3d560ee56997dbfd7401e67b9472507fe132"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/ingitdb/geo-ingitdb",
+        "revision": "6f4cf1269bc393048f6b204069135a62f0bb6c02",
+        "path": "source/native-key-evidence.json",
+        "sha256": "59d10462f828c32a652da074d7649ad68499845b75b03bdff93ddeb8907481f7"
+      },
+      "local": "59d10462f828c32a652da074d7649ad68499845b75b03bdff93ddeb8907481f7"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/ingitdb/ror-ingitdb",
+        "revision": "dc78c1e929f1f10018f8c39e690351059a50c71f",
+        "path": "source/validation.json",
+        "sha256": "06aa20ec30551b5eeeca02acdec95da3ebcfdd92524e3048e9d9f6a47d00c6fe"
+      },
+      "local": "06aa20ec30551b5eeeca02acdec95da3ebcfdd92524e3048e9d9f6a47d00c6fe"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/ingitdb/geo-ingitdb",
+        "revision": "6f4cf1269bc393048f6b204069135a62f0bb6c02",
+        "path": "source/generation-snapshot.json",
+        "sha256": "d564721b80809537424d17b2bf2276697593a3cb380ea020f33c070e1ff0e7ab"
+      },
+      "local": "d564721b80809537424d17b2bf2276697593a3cb380ea020f33c070e1ff0e7ab"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/ingitdb/geo-ingitdb",
+        "revision": "6f4cf1269bc393048f6b204069135a62f0bb6c02",
+        "path": "ATTRIBUTION.txt",
+        "sha256": "43a7e1b53ca7fcfc45ae9fac0548544b5d4ecf1bce2b7d4c3b498ab4fb9f5cc7"
+      },
+      "local": "43a7e1b53ca7fcfc45ae9fac0548544b5d4ecf1bce2b7d4c3b498ab4fb9f5cc7"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/ingitdb/ror-ingitdb",
+        "revision": "dc78c1e929f1f10018f8c39e690351059a50c71f",
+        "path": "DATA-LICENSE.md",
+        "sha256": "39d8853e3c9f9a7a96ea77edd1afe52ad25902f34a30855ad53c2c1aed62443b"
+      },
+      "local": "39d8853e3c9f9a7a96ea77edd1afe52ad25902f34a30855ad53c2c1aed62443b"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/ingitdb/geo-ingitdb",
+        "revision": "a10b7e89b6b0f76f915ad067043e251d5571182a",
+        "path": "ovdb.yaml",
+        "sha256": "6625b8b6235703158116f456dec5a43596c5c26dad4b6d916abc7614f162639c"
+      },
+      "local": "6625b8b6235703158116f456dec5a43596c5c26dad4b6d916abc7614f162639c"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/ingitdb/ror-ingitdb",
+        "revision": "6f90dbc1093b77c3b4d1a3689bddb20c6007b62f",
+        "path": "ovdb.yaml",
+        "sha256": "6e2be313adbca0517032696c4423a169961812bea4a55744d040caeb34eae8da"
+      },
+      "local": "6e2be313adbca0517032696c4423a169961812bea4a55744d040caeb34eae8da"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/ingitdb/ror-ingitdb",
+        "revision": "76e423f6b83d6cb8a11aed4fd982aed26be3f4ec",
+        "path": "scripts/package_artifacts.py",
+        "sha256": "001c65e7a69c5d413eab579d08fc2feccc23042404b1a04610d305a0f695b8ea"
+      },
+      "local": "001c65e7a69c5d413eab579d08fc2feccc23042404b1a04610d305a0f695b8ea"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/ingitdb/ror-ingitdb",
+        "revision": "dc78c1e929f1f10018f8c39e690351059a50c71f",
+        "path": "source/ror-v2.13.json",
+        "sha256": "492f57ee01f5410852f1118e19d94698258e7494cc72a1e6f4a30e5f9da5caea"
+      },
+      "local": "492f57ee01f5410852f1118e19d94698258e7494cc72a1e6f4a30e5f9da5caea"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/ingitdb/geo-ingitdb",
+        "revision": "247f2efaca32c9400bd8303c5db1f49f90a053a1",
+        "path": "scripts/package_geonames_w1.py",
+        "sha256": "0753b95dd2c5d2943a60eefdffc700e9f39fbd788a626691a46c67b11891be7b"
+      },
+      "local": "0753b95dd2c5d2943a60eefdffc700e9f39fbd788a626691a46c67b11891be7b"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/ingitdb/geo-ingitdb",
+        "revision": "6f4cf1269bc393048f6b204069135a62f0bb6c02",
+        "path": "DATA-LICENSE.md",
+        "sha256": "d5442960d5fc58661b5a45d965f65d5e681317ae6572b9c45d0e4225bd99538c"
+      },
+      "local": "d5442960d5fc58661b5a45d965f65d5e681317ae6572b9c45d0e4225bd99538c"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/datatug/datatug",
+        "revision": "58bd87d057864209332ba8388888f878a3b9b6bb",
+        "path": "spec/research/public-data-fabric/evidence/w1-followup-decisions/semantic-decision.json",
+        "sha256": "62fa8fa939835e3c745b09d6c097a86780c0187a1f6dc57bd66087275a8dbf51"
+      },
+      "local": "62fa8fa939835e3c745b09d6c097a86780c0187a1f6dc57bd66087275a8dbf51"
+    },
+    {
+      "file": {
+        "repository": "https://github.com/datatug/datatug",
+        "revision": "cb0f05954b52f373a2a7a41800689e7fdf8c06b5",
+        "path": "spec/research/public-data-fabric/evidence/w1-p1-wire-addendum/semantic-addendum-decision.json",
+        "sha256": "109c6a3ac249cbf470a47cbe913bcf6e1ca90bf69e7389435d039e8de39f15bb"
+      },
+      "local": "109c6a3ac249cbf470a47cbe913bcf6e1ca90bf69e7389435d039e8de39f15bb"
+    }
+  ]
+}

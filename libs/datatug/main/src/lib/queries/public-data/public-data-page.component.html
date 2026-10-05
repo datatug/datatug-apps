@@ -186,7 +186,7 @@
               data.indexes.pins.models,
               data.indexes.pins.meanings,
             ];
-            track pin.repository
+            track pin.repository + pin.revision + pin.path + pin.sha256
           ) {
             <p>
               {{ pin.repository }} · {{ pin.revision }} · {{ pin.path }} ·
@@ -244,6 +244,40 @@
                       'See pinned provider licence'
                   }}
                 </p>
+              }
+              @if (suggestion.graph; as graph) {
+                <p>
+                  Organization context preserves each affiliation and the
+                  organization's ordered locations. Place, Country, Region
+                  (GeoNames admin1) and Alternate names have independent
+                  statuses.
+                </p>
+                <p>
+                  Native integer place references require admitted source and transport proof plus an exact safe decimal wire token. Decimal or exponent spellings remain visible with their reason and cannot become lookup keys. Region keys preserve both country and admin1 components,
+                  including 00 and case.
+                </p>
+                <label
+                  ><input
+                    type="checkbox"
+                    [checked]="aliasesRequested()"
+                    (change)="setAliases($any($event.target).checked)"
+                  />
+                  Include alternate names on the next explicit run</label
+                >
+                <p>
+                  Changing this choice prepares a new run. It does not load
+                  data.
+                </p>
+                <details>
+                  <summary>Graph provenance and projections</summary>
+                  <p>{{ graph.envelope.graphs[0].id }}</p>
+                  <p>
+                    Decision
+                    {{ graph.envelope.graphs[0].decision.document.revision }} ·
+                    {{ graph.envelope.graphs[0].decision.document.sha256 }}
+                  </p>
+                  <p>{{ graph.reason }}</p>
+                </details>
               }
               @if (suggestion.contract; as contract) {
                 <p>
@@ -314,7 +348,7 @@
                 >
               }
               @if (suggestion.matchesSource) {
-                <ion-button fill="outline" (click)="selected.set(suggestion)"
+                <ion-button fill="outline" (click)="selectSuggestion(suggestion)"
                   >Inspect this lookup</ion-button
                 >
               }
@@ -328,7 +362,7 @@
             min="1"
             max="1000"
             [ngModel]="userRows()"
-            (ngModelChange)="userRows.set(+$event)"
+            (ngModelChange)="setRows(+$event)"
         /></ion-item>
         <ion-item
           ><ion-input
@@ -336,7 +370,7 @@
             type="number"
             min="0"
             [ngModel]="userOffset()"
-            (ngModelChange)="userOffset.set(+$event)"
+            (ngModelChange)="setOffset(+$event)"
         /></ion-item>
         <details data-testid="execution-limits">
           <summary>Execution limits and saved revisions</summary>
@@ -362,6 +396,16 @@
       </ion-card-content></ion-card
     >
   }
+  @if (history().length) {
+    <ion-card><ion-card-header><ion-card-title>Local result history</ion-card-title></ion-card-header><ion-card-content>
+      <p>Results from this page remain on this device. Opening a prior result reads its original grids and pins without a source request. Saved results reopen from their saved query.</p>
+      @for (entry of history(); track entry.id) {
+        <ion-button fill="outline" [disabled]="historyLoading()" (click)="openHistory(entry.id)">Open result from {{ entry.observedAt }}</ion-button>
+        <ion-button fill="clear" [disabled]="historyLoading()" (click)="deleteHistory(entry.id)">Delete local result</ion-button>
+      }
+    </ion-card-content></ion-card>
+  }
+  @if (historyError()) { <p role="alert">{{ historyError() }}</p> }
   @if (result(); as output) {
     <ion-card
       ><ion-card-header
@@ -369,6 +413,46 @@
           >Results and exceptions</ion-card-title
         ></ion-card-header
       ><ion-card-content>
+        @if (historical()) { <p role="status" data-testid="historical-result">Historical local result. These rows belong to their original executed definition and pins. Run explicitly to produce a result for the current selection.</p> }
+        @if (stoppedAttempt()) { <p role="status">{{ stoppedAttempt() }} The previous committed grids and coverage remain unchanged; further source reads are stopped.</p> }
+        @if (output.nativeGraph; as graph) {
+          @if (graph.stopped) {
+            <p role="status">
+              {{ graph.stopped }} The displayed coverage belongs to the last
+              committed result.
+            </p>
+          }
+          <p>
+            Affiliations {{ graph.edges['entry'].inputOccurrences }} · matched
+            {{ graph.edges['entry'].matched }} · unmatched
+            {{ graph.edges['entry'].unmatched }} · ambiguous
+            {{ graph.edges['entry'].ambiguous }} · incomplete
+            {{ graph.edges['entry'].incomplete }}
+          </p>
+          @for (stage of graphStageActions(); track stage.id) {
+            <ion-button
+              fill="outline"
+              [disabled]="running()"
+              (click)="continueGraphSource(stage.id, stage.offset)"
+              >{{ stage.offset ? 'Load next page' : 'Read first page' }}:
+              {{ stageLabel(stage.id) }}</ion-button
+            >
+          }
+          <details>
+            <summary>Stage coverage and provenance</summary>
+            @for (stage of graph.stageActions; track stage.id) {
+              <p>
+                {{ stageLabel(stage.id) }}: {{ stage.state }} · next offset
+                {{ stage.offset }}
+              </p>
+            }
+            <p>
+              Intermediate records {{ graph.ledger.intermediate }} · candidate
+              pairs {{ graph.ledger.candidates }} · retained output rows
+              {{ graph.ledger.outputRows }}
+            </p>
+          </details>
+        }
         @if (output.publicDataExceptions; as counts) {
           @if (hasRorStatuses()) {
             <p>
@@ -447,13 +531,38 @@
         @for (limitation of output.limitations; track $index) {
           <p>{{ limitation.policy }}</p>
         }
+        @if (output.relatedRecordsets?.length) {
+          <nav aria-label="Related result sets">
+            <ion-button fill="outline" (click)="selectResultSet('affiliations')"
+              >Affiliations</ion-button
+            >
+            @for (set of output.relatedRecordsets; track set.id) {
+              <ion-button fill="outline" (click)="selectResultSet(set.id)">{{
+                set.id === 'locations' ? 'Locations' : 'Alternate names'
+              }}</ion-button>
+            }
+          </nav>
+          <p>
+            Related views show locally materialized rows. Incomplete source
+            pages cannot prove absence. Alternate names retain their location
+            linkage.
+          </p>
+        }
+        <div class="result-scroll" tabindex="0" role="region" aria-label="Scrollable selected result page">
         <table>
           <caption>
-            Selected result page
+            {{
+              resultSet() === 'affiliations'
+                ? 'Affiliations'
+                : resultSet() === 'locations'
+                  ? 'Locations — each affiliation’s organization locations'
+                  : 'Alternate names — names for each location'
+            }}
+            · Selected result page
           </caption>
           <thead>
             <tr>
-              @for (column of output.recordset.columns; track $index) {
+              @for (column of activeRecordset()?.columns; track $index) {
                 <th>{{ column.name }}</th>
               }
             </tr>
@@ -468,6 +577,7 @@
             }
           </tbody>
         </table>
+        </div>
         <ion-button
           fill="clear"
           [disabled]="page() === 0"
@@ -476,10 +586,7 @@
         >
         <ion-button
           fill="clear"
-          [disabled]="
-            (page() + 1) * 100 >=
-            (output.totalRows ?? output.recordset.rows.length)
-          "
+          [disabled]="(page() + 1) * 100 >= activeRowCount()"
           (click)="changePage(1)"
           >Next result page</ion-button
         >

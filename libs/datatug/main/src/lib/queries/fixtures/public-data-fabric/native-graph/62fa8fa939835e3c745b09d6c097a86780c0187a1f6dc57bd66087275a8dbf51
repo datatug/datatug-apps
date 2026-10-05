@@ -1,0 +1,258 @@
+{
+  "kind": "accepted-w1-ror-geonames-projection-decision",
+  "accepted_at": "2026-10-05T11:38:12.191860+00:00",
+  "acceptance_scope": "exact proposal P1/P2/P3 with stated native pins and fidelity constraints",
+  "authority": "Fresh dedicated semantic specialist proposal plus distinct independent r1 review and root bounded acceptance; curation adds no semantic judgment.",
+  "authored_proposal": {
+    "path": "semantic-proposal.md",
+    "sha256": "c51268a6ba2aebe13a125c1161bfe3280b6c2b8ba7dd9b8332c7fb7c64c3a51b",
+    "source_json_hash": "192e9808186922f28a6f6824d204cbdccebffaeb340ed98ddb2abf84c43c97ca"
+  },
+  "review_source": "semantic-review/review-r1.json",
+  "root_acceptance_source": "semantic/root-acceptance-r1.json",
+  "execution_admitted": false,
+  "publication_admitted": false,
+  "publication_reference": "Final immutable hub commit and this decision path/hash must be assigned after reviewed publication; no final commit is invented here.",
+  "projections": [
+    {
+      "id": "P1",
+      "from": {
+        "provider_revision": "dc78c1e929f1f10018f8c39e690351059a50c71f",
+        "module": "ror",
+        "entity": "locations",
+        "property": "geonames_id",
+        "native_type": "int",
+        "namespace": "RORv2:GeoNameslocationid"
+      },
+      "to": {
+        "provider_revision": "6f4cf1269bc393048f6b204069135a62f0bb6c02",
+        "module": "geonames",
+        "entity": "geonames_places",
+        "property": "geonameid",
+        "native_type": "string",
+        "namespace": "GeoNames:geonameid"
+      },
+      "validation": "native positive integer; JavaScript number path requires Number.isSafeInteger; retain unsupported-precision otherwise",
+      "operation": "render validated integer as unpadded ASCII base10 digits; validate [1-9][0-9]* and exact integer roundtrip",
+      "target_equality": "utf8-byte-exact; never normalize target",
+      "preserve": [
+        "organization_id",
+        "ordinal",
+        "raw geonames_id",
+        "raw type",
+        "derived key",
+        "projection pin",
+        "both source pins"
+      ],
+      "nonreferences": [
+        "missing-field",
+        "null-reference",
+        "empty-reference with native-type violation",
+        "invalid-reference",
+        "unsupported-precision"
+      ],
+      "lookup_cardinality": "0 unmatched only after exhaustive lookup;1 matched;>1 ambiguous without selecting or expanding a target"
+    },
+    {
+      "id": "P2",
+      "from": {
+        "provider_revision": "6f4cf1269bc393048f6b204069135a62f0bb6c02",
+        "module": "geonames",
+        "entity": "geonames_places",
+        "properties": [
+          "country_code",
+          "admin1_code"
+        ],
+        "native_types": [
+          "string",
+          "string"
+        ]
+      },
+      "to": {
+        "provider_revision": "6f4cf1269bc393048f6b204069135a62f0bb6c02",
+        "module": "geonames",
+        "entity": "geonames_admin1",
+        "property": "code",
+        "namespace": "GeoNames:admin1compositecode"
+      },
+      "validation": "Each present nonnull nonempty string; country [A-Z]{2}; admin1 has no period; no stricter numeric/case/trim normalization",
+      "operation": "country_code + ASCII period + admin1_code",
+      "target_equality": "utf8-byte-exact in same Geo snapshot",
+      "preserve": [
+        "raw country_code",
+        "raw admin1_code",
+        "derived raw_reference",
+        "component diagnostics"
+      ],
+      "general00": "Exact lookup retained; annotate source general-code semantics without excluding matched MC.00 or unmatched 00 references",
+      "forbidden": [
+        "ISO3166-2 relabel",
+        "ROR embedded subdivision substitute",
+        "modern ISO membership validation",
+        "numeric normalization",
+        "case folding",
+        "padding",
+        "trimming"
+      ]
+    }
+  ],
+  "graph": {
+    "edges": [
+      {
+        "from": "Affiliation",
+        "to": "organizations",
+        "cardinality": "0..1",
+        "key": "exact approved ror_id -> id"
+      },
+      {
+        "from": "organizations",
+        "to": "locations",
+        "cardinality": "0..many",
+        "key": "id -> organization_id; ordinal retained"
+      },
+      {
+        "from": "locations",
+        "to": "geonames_places",
+        "cardinality": "0..1",
+        "projection": "P1"
+      },
+      {
+        "from": "geonames_places",
+        "to": "geonames_countries",
+        "cardinality": "0..1",
+        "key": "country_code -> iso; exact provider strings"
+      },
+      {
+        "from": "geonames_places",
+        "to": "geonames_admin1",
+        "cardinality": "0..1",
+        "projection": "P2"
+      },
+      {
+        "from": "geonames_places",
+        "to": "geonames_alternate_names",
+        "cardinality": "0..many",
+        "key": "geonameid -> geonameid; alternate_name_id retained",
+        "requested_only": true
+      }
+    ],
+    "root_grain": "original affiliation key or stable source row token",
+    "location_grain": [
+      "affiliation key",
+      "provider snapshot",
+      "organization_id",
+      "ordinal"
+    ],
+    "alias_grain": [
+      "affiliation key",
+      "provider snapshot",
+      "organization_id",
+      "ordinal",
+      "alternate_name_id"
+    ],
+    "representation": "Related resultsets or explicit child collections; flat alias expansion only explicit with multiplication counts",
+    "preservation": [
+      "All statuses; no successor substitution",
+      "Repeated affiliations and same-place locations remain separate",
+      "No parent erased by absent or invalid child branch",
+      "No fabricated native location for zero-location organization",
+      "Fetch key dedup does not deduplicate occurrences",
+      "Partial lookup stays pending/incomplete, not absent",
+      "No implicit Cartesian child products or DISTINCT repair",
+      "Alias native language/flags/periods retained; no implicit date filter or name fallback",
+      "Country branch retains raw nonempty source strings and null/empty/missing/type diagnostics",
+      "Both provider source editions are reference context, not affiliation-time geography",
+      "Keep ROR CC0 plus embedded GeoNames CC-BY and GeoNames CC-BY attribution"
+    ]
+  },
+  "bounds": {
+    "authority": "Existing accepted W1 runtime architecture; no increase proposed",
+    "deadline_seconds": 10,
+    "input_rows": 1000,
+    "distinct_ror_ids": 50,
+    "distinct_place_ids": 100,
+    "intermediate_rows": 5000,
+    "final_rows": 5000,
+    "decoded_network_bytes": 5242880,
+    "materialized_output_bytes": 5242880,
+    "scope": "one run across every branch/page/cached input/failure/fanout; no reset; raw/provenance/placeholder materialization counts",
+    "stop": "retain incomplete/deferred states; explicit continuation; no auto-drain or sentinel"
+  },
+  "authority_partition": {
+    "accepted": [
+      {
+        "id": "d1-edge-ror-geonames",
+        "scope": "Provider-qualified GeoNames feature reference; preserve location multiplicity; not city equivalence or prior execution approval"
+      },
+      {
+        "id": "d1-edge-place-admin1",
+        "scope": "Exact nonempty country/admin1 strings joined by period in same snapshot; retain raw components and missing/nonunique references"
+      },
+      {
+        "id": "w1-ror-user-native-url",
+        "scope": "Existing exact optional hypothetical Affiliation.ror_id ROR:URL tuple and unchanged eight-row fixture; identity only, all statuses, affiliation grain retained"
+      },
+      {
+        "id": "w1-runtime-architecture",
+        "scope": "Existing shared bounds, ordinary reads, pins, explicit action, J1-J6; does not approve new projections"
+      },
+      {
+        "id": "d1-edge-place-country",
+        "scope": "Phase 2 ACCEPTED: GeoNames place countrycode references countryInfo ISO in its country-code namespace. Accept only nonempty ISO2 values resolved against the same pinned country snapshot; unsupported/special areas stay unmatched. Country relation is not city-name identity."
+      },
+      {
+        "id": "d1-edge-alternate-place",
+        "scope": "Phase 2 ACCEPTED: GeoNames alternate geonameid references the gazetteer geonameid namespace. Accept the documented feature reference; language/flags/validity describe the alias, not identity. Names can repeat; full selected snapshots require target uniqueness/orphan measurement."
+      }
+    ],
+    "newly_proposed": [
+      "P1 checked positive native safe-integer to unpadded ASCII decimal-string lookup projection at exact model/snapshot pins",
+      "P2 physical field binding and precise validation/exceptions for already accepted provider composite",
+      "P3 branching/grain/completeness contract"
+    ],
+    "not_authority": [
+      "Geo fixture-only native country_iso contract",
+      "provider importer conversion by itself",
+      "transport flags",
+      "availability",
+      "serving keys",
+      "canonical registry presence"
+    ]
+  },
+  "required_tests": [
+    {
+      "id": "T1",
+      "scope": "P1 native type, positive/safe integer, roundtrip, target lexical counterexamples, raw preservation, pin mismatch"
+    },
+    {
+      "id": "T2",
+      "scope": "P2 US.CA,01 versus1,VN.x84,MC.00,null/empty pairings,missing/type/delimiter/case/space/history"
+    },
+    {
+      "id": "T3",
+      "scope": "unchanged eight-row fixture; separate all-status,multilocation,duplicate affiliation/same-place controls"
+    },
+    {
+      "id": "T4",
+      "scope": "duplicate targets ambiguous; alias multiplicity distinct; no missing branch drops parent"
+    },
+    {
+      "id": "T5",
+      "scope": "full pinned exception sets:9 IDs/59 locations,234 admin1 rows/78 keys,56 empties,138 multi-location orgs,all statuses"
+    },
+    {
+      "id": "T6",
+      "scope": "partial pages,shared counters,cancel,deadline,four pins,no query on invalid/no action,never unmatched on incomplete"
+    },
+    {
+      "id": "T7",
+      "scope": "admitted actual J1-J6 browser journey,explained exact projection,save/continuation provenance; whole-path cancellation"
+    }
+  ],
+  "remaining_gates": [
+    "authoritative immutable contract representation and decision pin",
+    "reviewed result branching and completeness",
+    "actual implementation tests",
+    "live browser/runtime/Directory J1-J6 and publication acceptance"
+  ]
+}

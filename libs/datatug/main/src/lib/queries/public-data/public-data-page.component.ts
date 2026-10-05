@@ -35,6 +35,7 @@ import { QueriesService } from '../queries.service';
 import {
   FederatedQueryService,
   type FederatedQueryResult,
+  type LocalResultDescriptor,
 } from '../federated-query.service';
 import {
   PublicDataService,
@@ -61,6 +62,13 @@ import { saveRuntimePins, runtimePlanIdentity } from './saved-runtime-pins';
   selector: 'sneat-datatug-public-data-page',
   templateUrl: './public-data-page.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  styles: [`
+    .result-scroll { max-width: 100%; overflow: auto; }
+    .result-scroll table { border-collapse: collapse; width: max-content; min-width: 100%; }
+    .result-scroll th, .result-scroll td { padding: .5rem; text-align: start; vertical-align: top; border-bottom: 1px solid var(--ion-border-color, #ddd); min-width: 6rem; max-width: 24rem; overflow-wrap: anywhere; }
+    .result-scroll caption { text-align: start; padding: .5rem; }
+    .result-scroll:focus-visible { outline: 2px solid var(--ion-color-primary); }
+  `],
   imports: [
     FormsModule,
     RouterLink,
@@ -105,9 +113,41 @@ export class PublicDataPageComponent implements OnDestroy {
   readonly result = signal<FederatedQueryResult | undefined>(undefined);
   private readonly executedPlan = signal<IQueryDef | undefined>(undefined);
   readonly selected = signal<PublicDataSuggestion | undefined>(undefined);
+  readonly history = signal<readonly LocalResultDescriptor[]>([]);
+  readonly historyLoading = signal(false);
+  readonly historical = signal(false);
+  readonly stoppedAttempt = signal('');
+  readonly historyError = signal('');
+  private readonly localIds = new Set<string>();
+  private viewGeneration = 0;
   readonly page = signal(0);
+  readonly resultSet = signal<'affiliations' | 'locations' | 'aliases'>(
+    'affiliations',
+  );
+  readonly aliasesRequested = signal(false);
+  readonly activeRecordset = computed(() =>
+    this.resultSet() === 'affiliations'
+      ? this.result()?.recordset
+      : this.result()?.relatedRecordsets?.find(
+          (set) => set.id === this.resultSet(),
+        )?.recordset,
+  );
+  readonly activeRowCount = computed(() =>
+    this.resultSet() === 'affiliations'
+      ? (this.result()?.totalRows ?? this.result()?.recordset.rows.length ?? 0)
+      : (this.result()?.relatedRecordsets?.find(
+          (set) => set.id === this.resultSet(),
+        )?.totalRows ?? 0),
+  );
   readonly resultRows = signal<FederatedQueryResult['recordset']['rows']>([]);
+  readonly graphStageActions = computed(
+    () =>
+      this.historical() || this.stoppedAttempt() ? [] : this.result()?.nativeGraph?.stageActions.filter(
+        (stage) => stage.state === 'available',
+      ) ?? [],
+  );
   readonly sourcePages = computed(() => {
+    if (this.historical() || this.stoppedAttempt()) return [];
     const driver = this.executedPlan()?.federation?.bounds?.sources[0];
     const driverId = driver ? `${driver.database}.${driver.name}` : undefined;
     return Object.entries(this.result()?.runtimeRead?.pages ?? {}).filter(
@@ -137,12 +177,16 @@ export class PublicDataPageComponent implements OnDestroy {
   private readonly subscription: Subscription =
     this.navContext.currentProject.subscribe((value) => {
       this.controller?.abort();
-      if (this.running()) void this.federation.dispose().catch(() => undefined);
+      void this.federation.dispose().catch(() => undefined);
       this.generation++;
       this.loading.set(false);
       this.connectionLoading.set(false);
       this.connectionsLoaded.set(false);
       this.project.set(value);
+      this.viewGeneration++;
+      this.localIds.clear(); this.history.set([]); this.historical.set(false);
+      this.stoppedAttempt.set(''); this.historyError.set('');
+      this.executedPlan.set(undefined); this.running.set(false); this.saving.set(false); this.historyLoading.set(false);
       this.connections.set([]);
       this.connection.set(undefined);
       this.fields.set([]);
@@ -153,6 +197,48 @@ export class PublicDataPageComponent implements OnDestroy {
       this.selected.set(undefined);
     });
 
+  private invalidateDraft(): void {
+    this.generation++; this.viewGeneration++;
+    if (this.result()) this.historical.set(true);
+    this.running.set(false); this.saving.set(false); this.historyLoading.set(false);
+    const generation = this.generation;
+    void this.federation.dispose().catch((error: unknown) => { if (generation === this.generation) this.historyError.set(error instanceof Error ? error.message : 'Cannot stop the prior lookup.'); });
+  }
+  setRows(value: number): void { if (value !== this.userRows()) { this.invalidateDraft(); this.userRows.set(value); } }
+  setOffset(value: number): void { if (value !== this.userOffset()) { this.invalidateDraft(); this.userOffset.set(value); } }
+  setAliases(value: boolean): void { if (value !== this.aliasesRequested()) { this.invalidateDraft(); this.aliasesRequested.set(value); } }
+  selectSuggestion(value: PublicDataSuggestion): void { this.invalidateDraft(); this.selected.set(value); }
+  async refreshHistory(): Promise<void> {
+    const generation = this.generation, view = this.viewGeneration;
+    this.historyLoading.set(true);
+    try {
+      const entries = await this.federation.listLocalResults(undefined, (message) => { if (generation === this.generation) this.historyError.set(message); });
+      if (generation === this.generation && view === this.viewGeneration) this.history.set(entries.filter((entry) => this.localIds.has(entry.id)));
+    } catch (error) { if (generation === this.generation) this.historyError.set(error instanceof Error ? error.message : 'Cannot read local results.'); }
+    finally { if (generation === this.generation) this.historyLoading.set(false); }
+  }
+  async openHistory(id: string): Promise<void> {
+    if (!this.localIds.has(id)) return;
+    this.invalidateDraft();
+    const generation = this.generation, view = ++this.viewGeneration;
+    this.historyLoading.set(true); this.historyError.set('');
+    try {
+      const opened = await this.federation.openLocalResult(id);
+      if (generation !== this.generation || view !== this.viewGeneration) return;
+      this.result.set(opened.result); this.executedPlan.set(opened.executedDefinition);
+      this.historical.set(true); this.resultSet.set('affiliations');
+      this.page.set(0); this.resultRows.set(opened.result.recordset.rows);
+    } catch (error) { if (generation === this.generation && view === this.viewGeneration) this.historyError.set(error instanceof Error ? error.message : 'No local result available.'); }
+    finally { if (generation === this.generation && view === this.viewGeneration) this.historyLoading.set(false); }
+  }
+  async deleteHistory(id: string): Promise<void> {
+    if (!this.localIds.has(id)) return;
+    const generation = this.generation;
+    if (this.result()?.localResult?.id === id) { this.invalidateDraft(); this.result.set(undefined); this.resultRows.set([]); this.executedPlan.set(undefined); }
+    const current = this.generation;
+    try { await this.federation.deleteLocalResult(id); if (current !== this.generation) return; this.localIds.delete(id); await this.refreshHistory(); }
+    catch (error) { if (generation === this.generation || current === this.generation) this.historyError.set(error instanceof Error ? error.message : 'Cannot delete local result.'); }
+  }
   async loadConnections(): Promise<void> {
     const project = this.project();
     if (!project || this.connectionLoading()) return;
@@ -189,6 +275,7 @@ export class PublicDataPageComponent implements OnDestroy {
     }
   }
   async selectConnection(id: string): Promise<void> {
+    this.invalidateDraft();
     const connection = this.connections().find((value) => value.id === id);
     const project = this.project();
     if (!connection || !project) return;
@@ -234,6 +321,7 @@ export class PublicDataPageComponent implements OnDestroy {
     }
   }
   selectField(id: string): void {
+    this.invalidateDraft();
     const field = this.fields().find((value) => value.id === id);
     this.field.set(field);
     this.source.set(field?.source);
@@ -274,11 +362,11 @@ export class PublicDataPageComponent implements OnDestroy {
 
   async connect(): Promise<void> {
     if (this.loading()) return;
+    this.invalidateDraft();
     const generation = ++this.generation;
     this.error.set('');
     this.discovery.set(undefined);
     this.source.set(undefined);
-    this.result.set(undefined);
     this.selected.set(undefined);
     try {
       const record = object(
@@ -340,7 +428,6 @@ export class PublicDataPageComponent implements OnDestroy {
         );
   }
   async run(): Promise<void> {
-    const generation = this.generation;
     const source = this.source();
     const discovery = this.discovery();
     const selected = this.selected();
@@ -349,6 +436,8 @@ export class PublicDataPageComponent implements OnDestroy {
       this.error.set(selected.reason);
       return;
     }
+    const generation = ++this.generation;
+    this.viewGeneration++; this.historical.set(false); this.stoppedAttempt.set('');
     this.error.set('');
     this.running.set(true);
     this.result.set(undefined);
@@ -362,43 +451,108 @@ export class PublicDataPageComponent implements OnDestroy {
         {
           userRows: this.userRows(),
           userOffset: this.userOffset(),
+          aliases: this.aliasesRequested(),
         },
         this.field()?.context,
       );
-      const result = await this.federation.run(query, undefined, '', 'full');
+      const result = await this.federation.run(query, undefined, '', 'full', undefined, { onHistoryError: (message) => { if (generation === this.generation) this.historyError.set(message); } });
       if (generation !== this.generation) return;
       this.result.set(result);
       this.executedPlan.set(query);
+      this.resultSet.set('affiliations');
       this.resultRows.set(result.recordset.rows);
+      if (result.localResult) { this.localIds.add(result.localResult.id); await this.refreshHistory(); }
     } catch (error) {
+      if (generation !== this.generation) return;
       this.error.set(
         error instanceof Error ? error.message : 'The bounded lookup failed.',
       );
     } finally {
-      this.running.set(false);
+      if (generation === this.generation) this.running.set(false);
     }
   }
   async changePage(delta: number): Promise<void> {
     const next = this.page() + delta;
-    if (
-      next < 0 ||
-      next * 100 >=
-        (this.result()?.totalRows ?? this.result()?.recordset.rows.length ?? 0)
-    )
-      return;
+    if (next < 0 || next * 100 >= this.activeRowCount()) return;
+    const view = this.viewGeneration, set = this.resultSet(), ref = this.result()?.localResult;
     try {
-      const rows = await this.federation.getPage(next);
+      const rows = await this.federation.getPage(next, set, ref);
+      if (view !== this.viewGeneration || set !== this.resultSet() || ref?.generation !== this.result()?.localResult?.generation || ref?.id !== this.result()?.localResult?.id) return;
       this.resultRows.set(rows);
       this.page.set(next);
     } catch (error) {
+      if (view !== this.viewGeneration) return;
       this.error.set(
         error instanceof Error ? error.message : 'Cannot read result page.',
       );
     }
   }
+  selectResultSet(id: 'affiliations' | 'locations' | 'aliases'): void {
+    const output = this.result();
+    if (!output) return;
+    const set =
+      id === 'affiliations'
+        ? output.recordset
+        : output.relatedRecordsets?.find((set) => set.id === id)?.recordset;
+    if (!set) return;
+    this.viewGeneration++;
+    this.resultSet.set(id);
+    this.page.set(0);
+    this.resultRows.set(set.rows);
+  }
+
+  stageLabel(id: string): string {
+    return (
+      (
+        {
+          organizations: 'Organizations',
+          locations: 'Organization locations',
+          places: 'Places',
+          countries: 'Countries',
+          admin1: 'Region (GeoNames admin1)',
+          aliases: 'Alternate names',
+        } as Record<string, string>
+      )[id] ?? id
+    );
+  }
+  async continueGraphSource(id: string, offset: number): Promise<void> {
+    if (this.running() || this.historical() || this.stoppedAttempt()) return;
+    const executed = this.executedPlan(),
+      plan = executed?.federation?.nativeGraph;
+    if (
+      !plan ||
+      plan.aliases !== this.aliasesRequested() ||
+      plan.selection.rows !== this.userRows() ||
+      plan.selection.offset !== this.userOffset()
+    ) {
+      this.error.set(
+        'The graph selection changed. Start a fresh explicit run.',
+      );
+      return;
+    }
+    const generation = this.generation;
+    this.running.set(true);
+    this.error.set('');
+    try {
+      const result = await this.federation.continueSource(id, 1000, offset);
+      if (generation !== this.generation) return;
+      this.result.set(result);
+      this.resultSet.set('affiliations');
+      this.page.set(0);
+      this.resultRows.set(result.recordset.rows);
+    } catch (error) {
+      if (generation === this.generation) {
+        this.stoppedAttempt.set(error instanceof Error ? error.message : 'The graph source continuation failed.');
+        this.error.set(this.stoppedAttempt());
+      }
+    } finally {
+      if (generation === this.generation) this.running.set(false);
+    }
+  }
+
   async continueSource(sourceId: string): Promise<void> {
     const page = this.result()?.runtimeRead?.pages[sourceId];
-    if (!page?.possiblyMore || this.running()) return;
+    if (!page?.possiblyMore || this.running() || this.historical() || this.stoppedAttempt()) return;
     const generation = this.generation;
     this.running.set(true);
     this.error.set('');
@@ -432,16 +586,16 @@ export class PublicDataPageComponent implements OnDestroy {
       );
       if (generation !== this.generation) return;
       this.result.set(result);
+      this.resultSet.set('affiliations');
       this.resultRows.set(result.recordset.rows);
       this.page.set(0);
     } catch (error) {
-      this.error.set(
-        error instanceof Error
-          ? error.message
-          : 'The bounded source continuation failed.',
-      );
+      if (generation === this.generation) {
+        this.stoppedAttempt.set(error instanceof Error ? error.message : 'The bounded source continuation failed.');
+        this.error.set(this.stoppedAttempt());
+      }
     } finally {
-      this.running.set(false);
+      if (generation === this.generation) this.running.set(false);
     }
   }
   async save(suggestion: PublicDataSuggestion): Promise<void> {
@@ -460,6 +614,7 @@ export class PublicDataPageComponent implements OnDestroy {
         {
           userRows: this.userRows(),
           userOffset: this.userOffset(),
+          aliases: this.aliasesRequested(),
         },
         this.field()?.context,
       );
@@ -470,6 +625,9 @@ export class PublicDataPageComponent implements OnDestroy {
           throw new Error(
             'This runtime receipt has no executed plan. Run explicitly again.',
           );
+        if (query.federation?.nativeGraph)
+          await this.metadata.verifyGraphForSave(query.federation.nativeGraph);
+        if (generation !== this.generation) return;
         query = saveRuntimePins(query, executed, result);
       }
       const saved = await firstValueFrom(
@@ -485,13 +643,15 @@ export class PublicDataPageComponent implements OnDestroy {
         throw new Error(
           'The query store did not preserve the exact scenario pins. This store cannot save the scenario safely yet.',
         );
+      if (result?.localResult) {
+        await this.federation.associateLocalResult(project.ref, saved.id, result.localResult);
+        if (generation !== this.generation) return;
+      }
       this.navigation.goQuery(project, saved);
     } catch (error) {
-      this.error.set(
-        error instanceof Error ? error.message : 'Scenario save failed.',
-      );
+      if (generation === this.generation) this.error.set(error instanceof Error ? error.message : 'Scenario save failed.');
     } finally {
-      this.saving.set(false);
+      if (generation === this.generation) this.saving.set(false);
     }
   }
   ngOnDestroy(): void {

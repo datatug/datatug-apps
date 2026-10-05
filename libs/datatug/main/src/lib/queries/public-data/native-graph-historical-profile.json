@@ -1,0 +1,198 @@
+{
+  "execution": "native-graph",
+  "id": "w1-ror-geonames-context/1",
+  "entry": {
+    "attachment": {
+      "repository": "https://github.com/ingitdb/ror-ingitdb",
+      "revision": "24bcbcb5f0ba715d72d604e9d4d296766e5f4ca7",
+      "path": "model/representations.json",
+      "sha256": "61c8c1f9297ac538e9cbd1b32806e4914799cf64bbeac89a71eb71b63c2559e6"
+    },
+    "contractIndex": 0,
+    "decisionScope": "w1-ror-user-native-url",
+    "source": {
+      "module": "affiliations",
+      "entity": "Affiliation",
+      "property": "ror_id",
+      "datatype": "string",
+      "namespace": "ROR:URL"
+    },
+    "targetStage": "organizations"
+  },
+  "decision": {
+    "document": {
+      "repository": "https://github.com/datatug/datatug",
+      "revision": "58bd87d057864209332ba8388888f878a3b9b6bb",
+      "path": "spec/research/public-data-fabric/evidence/w1-followup-decisions/semantic-decision.json",
+      "sha256": "62fa8fa939835e3c745b09d6c097a86780c0187a1f6dc57bd66087275a8dbf51"
+    },
+    "scope": "w1-ror-geonames-context-p1-p2-p3"
+  },
+  "sources": {
+    "ror": {
+      "model": {
+        "repository": "https://github.com/ingitdb/ror-ingitdb",
+        "revision": "dc78c1e929f1f10018f8c39e690351059a50c71f",
+        "path": "model/ror.modelspec.json",
+        "sha256": "9694a0b6d7aba0bd26be22e8ee3501cf944463617839623e6b5b15d8068fd0ae"
+      },
+      "binding": {
+        "repository": "https://github.com/ingitdb/ror-ingitdb",
+        "revision": "dc78c1e929f1f10018f8c39e690351059a50c71f",
+        "path": "model/ror.meaning.yaml",
+        "sha256": "70e54d63b0d564edc73149154f84374cdff30a17b8631c56ecab06dd93d452e9"
+      },
+      "snapshot": {
+        "repository": "https://github.com/ingitdb/ror-ingitdb",
+        "revision": "dc78c1e929f1f10018f8c39e690351059a50c71f",
+        "path": "source/artifact-snapshot.json",
+        "sha256": "5520cfab8294336fbd98e8c1b4d3f732dffa88249ad58a15743f225cbaf15279"
+      },
+      "dataset": {
+        "repository": "https://github.com/ingitdb/ror-ingitdb",
+        "revision": "dc78c1e929f1f10018f8c39e690351059a50c71f",
+        "path": "ror.sqlite",
+        "sha256": "afdf978130ee9899fedb698f0e9d18399efdea40ea92f01f26d6055ef1ed5d38"
+      },
+      "module": "ror"
+    },
+    "geo": {
+      "model": {
+        "repository": "https://github.com/ingitdb/geo-ingitdb",
+        "revision": "6f4cf1269bc393048f6b204069135a62f0bb6c02",
+        "path": "model/geonames.modelspec.json",
+        "sha256": "609fe73e07b84db65bdb1a904b9f84dd5c43bcbbc75eeb2d75f9a69ed3e8af81"
+      },
+      "binding": {
+        "repository": "https://github.com/ingitdb/geo-ingitdb",
+        "revision": "6f4cf1269bc393048f6b204069135a62f0bb6c02",
+        "path": "model/geonames.meaning.yaml",
+        "sha256": "21bb35aecf1f1214908f245cfeb2d0c5e7c6caf3915a5ffd604254642b3b4b57"
+      },
+      "snapshot": {
+        "repository": "https://github.com/ingitdb/geo-ingitdb",
+        "revision": "6f4cf1269bc393048f6b204069135a62f0bb6c02",
+        "path": "source/artifact-snapshot.json",
+        "sha256": "b4ef99365a331865dfcb94c213995fe06dc1790f8054e3e7d96385af76c9179b"
+      },
+      "dataset": {
+        "repository": "https://github.com/ingitdb/geo-ingitdb",
+        "revision": "6f4cf1269bc393048f6b204069135a62f0bb6c02",
+        "path": "geonames.sqlite",
+        "sha256": "cb53af14c67daadfc20ecbfe304d631d651022179793a77aa11413244d2f456d"
+      },
+      "module": "geonames"
+    }
+  },
+  "stages": [
+    {
+      "id": "organizations",
+      "source": "ror",
+      "entity": "organizations",
+      "grain": [
+        "id"
+      ]
+    },
+    {
+      "id": "locations",
+      "source": "ror",
+      "entity": "locations",
+      "grain": [
+        "organization_id",
+        "ordinal"
+      ]
+    },
+    {
+      "id": "places",
+      "source": "geo",
+      "entity": "geonames_places",
+      "grain": [
+        "geonameid"
+      ]
+    },
+    {
+      "id": "countries",
+      "source": "geo",
+      "entity": "geonames_countries",
+      "grain": [
+        "iso"
+      ]
+    },
+    {
+      "id": "admin1",
+      "source": "geo",
+      "entity": "geonames_admin1",
+      "grain": [
+        "code"
+      ]
+    },
+    {
+      "id": "aliases",
+      "source": "geo",
+      "entity": "geonames_alternate_names",
+      "grain": [
+        "alternate_name_id"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "organization-locations",
+      "from": "organizations",
+      "fields": [
+        "id"
+      ],
+      "to": "locations",
+      "lookupField": "organization_id",
+      "projection": "exact-string/1",
+      "cardinality": "zero-or-many"
+    },
+    {
+      "id": "location-place",
+      "from": "locations",
+      "fields": [
+        "geonames_id"
+      ],
+      "to": "places",
+      "lookupField": "geonameid",
+      "projection": "ror-positive-int-geonames-decimal/1",
+      "cardinality": "zero-or-one"
+    },
+    {
+      "id": "place-country",
+      "from": "places",
+      "fields": [
+        "country_code"
+      ],
+      "to": "countries",
+      "lookupField": "iso",
+      "projection": "exact-string/1",
+      "cardinality": "zero-or-one"
+    },
+    {
+      "id": "place-admin1",
+      "from": "places",
+      "fields": [
+        "country_code",
+        "admin1_code"
+      ],
+      "to": "admin1",
+      "lookupField": "code",
+      "projection": "geonames-country-admin1/1",
+      "cardinality": "zero-or-one"
+    },
+    {
+      "id": "place-aliases",
+      "from": "places",
+      "fields": [
+        "geonameid"
+      ],
+      "to": "aliases",
+      "lookupField": "geonameid",
+      "projection": "exact-string/1",
+      "cardinality": "zero-or-many",
+      "optional": true
+    }
+  ],
+  "resultShape": "affiliations-location-context-aliases/1"
+}

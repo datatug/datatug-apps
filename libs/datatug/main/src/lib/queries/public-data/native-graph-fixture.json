@@ -1,0 +1,657 @@
+{
+  "scope": "Separate pinned native multiplicity and ordinary-capacity test controls; no canonical publication or user fixture widening",
+  "native_snapshots": {
+    "ror": {
+      "sha256": "afdf978130ee9899fedb698f0e9d18399efdea40ea92f01f26d6055ef1ed5d38"
+    },
+    "geo": {
+      "sha256": "cb53af14c67daadfc20ecbfe304d631d651022179793a77aa11413244d2f456d"
+    }
+  },
+  "multiplicity": {
+    "affiliations": [
+      {
+        "affiliation_id": "a0",
+        "ror_id": "https://ror.org/0042xzm63"
+      },
+      {
+        "affiliation_id": "a1",
+        "ror_id": "https://ror.org/0042xzm63"
+      }
+    ],
+    "organizations": [
+      {
+        "id": "https://ror.org/0042xzm63",
+        "status": "active",
+        "raw_json": "{\"admin\":{\"created\":{\"date\":\"2024-07-08\",\"schema_version\":\"2.0\"},\"last_modified\":{\"date\":\"2024-12-11\",\"schema_version\":\"2.1\"}},\"domains\":[],\"established\":2012,\"external_ids\":[],\"id\":\"https://ror.org/0042xzm63\",\"links\":[{\"type\":\"website\",\"value\":\"https://restoreactscienceprogram.noaa.gov\"}],\"locations\":[{\"geonames_details\":{\"continent_code\":\"NA\",\"continent_name\":\"North America\",\"country_code\":\"US\",\"country_name\":\"United States\",\"country_subdivision_code\":\"MD\",\"country_subdivision_name\":\"Maryland\",\"lat\":38.99067,\"lng\":-77.02609,\"name\":\"Silver Spring\"},\"geonames_id\":4369596},{\"geonames_details\":{\"continent_code\":\"NA\",\"continent_name\":\"North America\",\"country_code\":\"US\",\"country_name\":\"United States\",\"country_subdivision_code\":\"MS\",\"country_subdivision_name\":\"Mississippi\",\"lat\":30.37976,\"lng\":-89.60254,\"name\":\"John C Stennis Space Center\"},\"geonames_id\":4431780}],\"names\":[{\"lang\":\"en\",\"types\":[\"acronym\"],\"value\":\"NOAA RESTORE\"},{\"lang\":\"en\",\"types\":[\"label\",\"ror_display\"],\"value\":\"NOAA RESTORE Science Program\"},{\"lang\":\"en\",\"types\":[\"alias\"],\"value\":\"RESTORE Science Program\"}],\"relationships\":[{\"id\":\"https://ror.org/02k4h0334\",\"label\":\"NOAA National Ocean Service\",\"type\":\"parent\"},{\"id\":\"https://ror.org/05ba43f71\",\"label\":\"NOAA National Centers for Coastal Ocean Science\",\"type\":\"parent\"},{\"id\":\"https://ror.org/04k7dar27\",\"label\":\"United States Fish and Wildlife Service\",\"type\":\"related\"},{\"id\":\"https://ror.org/05tqpe068\",\"label\":\"Gulf States Marine Fisheries Commission\",\"type\":\"related\"},{\"id\":\"https://ror.org/02an5tz90\",\"label\":\"Gulf of Mexico Fishery Management Council\",\"type\":\"related\"}],\"status\":\"active\",\"types\":[\"government\"]}"
+      }
+    ],
+    "locations": [
+      {
+        "organization_id": "https://ror.org/0042xzm63",
+        "ordinal": 0,
+        "geonames_id": 4369596,
+        "geonames_details_json": "{\"continent_code\":\"NA\",\"continent_name\":\"North America\",\"country_code\":\"US\",\"country_name\":\"United States\",\"country_subdivision_code\":\"MD\",\"country_subdivision_name\":\"Maryland\",\"lat\":38.99067,\"lng\":-77.02609,\"name\":\"Silver Spring\"}"
+      },
+      {
+        "organization_id": "https://ror.org/0042xzm63",
+        "ordinal": 1,
+        "geonames_id": 4431780,
+        "geonames_details_json": "{\"continent_code\":\"NA\",\"continent_name\":\"North America\",\"country_code\":\"US\",\"country_name\":\"United States\",\"country_subdivision_code\":\"MS\",\"country_subdivision_name\":\"Mississippi\",\"lat\":30.37976,\"lng\":-89.60254,\"name\":\"John C Stennis Space Center\"}"
+      }
+    ],
+    "places": [
+      {
+        "geonameid": "4369596",
+        "name": "Silver Spring",
+        "asciiname": "Silver Spring",
+        "alternatenames": "Fons Argenteus,Silvehr Spring,Silver Spring,Silver Spring  Md.,Silver-Spring,Silvur Spring,shirubasupuringu,silbeoseupeuling,sylwr aspryng  mrylnd,yin quan,\u0421\u0438\u043b\u0432\u0435\u0440 \u0421\u043f\u0440\u0438\u043d\u0433,\u0421\u0438\u043b\u0432\u0435\u0440-\u0421\u043f\u0440\u0438\u043d\u0433,\u0421\u0438\u043b\u0432\u044a\u0440 \u0421\u043f\u0440\u0438\u043d\u0433,\u0421\u0438\u043b\u0432\u044d\u0440 \u0421\u043f\u0440\u0438\u043d\u0433,\u0421\u0456\u043b\u0432\u0435\u0440-\u0421\u043f\u0440\u0456\u043d\u0433,\u0633\u0644\u0648\u0631 \u0633\u067e\u0631\u0646\u06af\u060c \u0645\u06cc\u0631\u06cc \u0644\u06cc\u0646\u0688,\u0633\u06cc\u0644\u0648\u0631 \u0627\u0633\u067e\u0631\u06cc\u0646\u06af\u060c \u0645\u0631\u06cc\u0644\u0646\u062f,\u30b7\u30eb\u30d0\u30fc\u30b9\u30d7\u30ea\u30f3\u30b0,\u94f6\u6cc9,\uc2e4\ubc84\uc2a4\ud504\ub9c1",
+        "latitude": "38.99067",
+        "longitude": "-77.02609",
+        "feature_class": "P",
+        "feature_code": "PPL",
+        "country_code": "US",
+        "cc2": "",
+        "admin1_code": "MD",
+        "admin2_code": "031",
+        "admin3_code": "",
+        "admin4_code": "",
+        "population": "71452",
+        "elevation": "104",
+        "dem": "106",
+        "timezone": "America/New_York",
+        "modification_date": "2019-01-25"
+      },
+      {
+        "geonameid": "4431780",
+        "name": "John C Stennis Space Center",
+        "asciiname": "John C Stennis Space Center",
+        "alternatenames": "John C Stennis Space Center,John C. Stennis Space Center,Mississippi Test Facility,Mississippi Test Operations,National Space Technology Laboratories",
+        "latitude": "30.37976",
+        "longitude": "-89.60254",
+        "feature_class": "L",
+        "feature_code": "RES",
+        "country_code": "US",
+        "cc2": "",
+        "admin1_code": "MS",
+        "admin2_code": "045",
+        "admin3_code": "",
+        "admin4_code": "",
+        "population": "0",
+        "elevation": "9",
+        "dem": "17",
+        "timezone": "America/Chicago",
+        "modification_date": "2016-12-06"
+      }
+    ],
+    "countries": [
+      {
+        "iso": "US",
+        "iso3": "USA",
+        "iso_numeric": "840",
+        "fips": "US",
+        "country": "United States",
+        "capital": "Washington",
+        "area_sq_km": "9629091",
+        "population": "327167434",
+        "continent": "NA",
+        "tld": ".us",
+        "currency_code": "USD",
+        "currency_name": "Dollar",
+        "phone": "1",
+        "postal_code_format": "#####-####",
+        "postal_code_regex": "^\\d{5}(-\\d{4})?$",
+        "languages": "en-US,es-US,haw,fr",
+        "geonameid": "6252001",
+        "neighbours": "CA,MX,CU",
+        "equivalent_fips_code": ""
+      }
+    ],
+    "admin1": [
+      {
+        "code": "US.MD",
+        "name": "Maryland",
+        "asciiname": "Maryland",
+        "geonameid": "4361885"
+      },
+      {
+        "code": "US.MS",
+        "name": "Mississippi",
+        "asciiname": "Mississippi",
+        "geonameid": "4436296"
+      }
+    ],
+    "aliases": [
+      {
+        "alternate_name_id": "11335503",
+        "geonameid": "4369596",
+        "isolanguage": "uk",
+        "alternate_name": "\u0421\u0456\u043b\u0432\u0435\u0440-\u0421\u043f\u0440\u0456\u043d\u0433",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "11335504",
+        "geonameid": "4369596",
+        "isolanguage": "ur",
+        "alternate_name": "\u0633\u0644\u0648\u0631 \u0633\u067e\u0631\u0646\u06af\u060c \u0645\u06cc\u0631\u06cc \u0644\u06cc\u0646\u0688",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "11335505",
+        "geonameid": "4369596",
+        "isolanguage": "ru",
+        "alternate_name": "\u0421\u0438\u043b\u0432\u0435\u0440-\u0421\u043f\u0440\u0438\u043d\u0433",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "12549857",
+        "geonameid": "4369596",
+        "isolanguage": "",
+        "alternate_name": "Silver Spring, Md.",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "12893252",
+        "geonameid": "4369596",
+        "isolanguage": "en",
+        "alternate_name": "Silver Spring",
+        "is_preferred_name": "1",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "13816277",
+        "geonameid": "4369596",
+        "isolanguage": "unlc",
+        "alternate_name": "USSIS",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "16134386",
+        "geonameid": "4369596",
+        "isolanguage": "wkdt",
+        "alternate_name": "Q755741",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "1927363",
+        "geonameid": "4369596",
+        "isolanguage": "zh-CN",
+        "alternate_name": "\u94f6\u6cc9",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "2738240",
+        "geonameid": "4369596",
+        "isolanguage": "post",
+        "alternate_name": "20901",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "2738241",
+        "geonameid": "4369596",
+        "isolanguage": "post",
+        "alternate_name": "20902",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "2738242",
+        "geonameid": "4369596",
+        "isolanguage": "post",
+        "alternate_name": "20903",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "2738243",
+        "geonameid": "4369596",
+        "isolanguage": "post",
+        "alternate_name": "20904",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "2738244",
+        "geonameid": "4369596",
+        "isolanguage": "post",
+        "alternate_name": "20905",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "2738245",
+        "geonameid": "4369596",
+        "isolanguage": "post",
+        "alternate_name": "20906",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "2738246",
+        "geonameid": "4369596",
+        "isolanguage": "post",
+        "alternate_name": "20907",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "2738247",
+        "geonameid": "4369596",
+        "isolanguage": "post",
+        "alternate_name": "20908",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "2738248",
+        "geonameid": "4369596",
+        "isolanguage": "post",
+        "alternate_name": "20910",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "2738249",
+        "geonameid": "4369596",
+        "isolanguage": "post",
+        "alternate_name": "20911",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "2738251",
+        "geonameid": "4369596",
+        "isolanguage": "post",
+        "alternate_name": "20914",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "2738252",
+        "geonameid": "4369596",
+        "isolanguage": "post",
+        "alternate_name": "20915",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "2738253",
+        "geonameid": "4369596",
+        "isolanguage": "post",
+        "alternate_name": "20916",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "2738254",
+        "geonameid": "4369596",
+        "isolanguage": "post",
+        "alternate_name": "20918",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "2738255",
+        "geonameid": "4369596",
+        "isolanguage": "post",
+        "alternate_name": "20997",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "2996582",
+        "geonameid": "4369596",
+        "isolanguage": "link",
+        "alternate_name": "https://en.wikipedia.org/wiki/Silver_Spring%2C_Maryland",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "8203006",
+        "geonameid": "4369596",
+        "isolanguage": "la",
+        "alternate_name": "Fons Argenteus",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "8203007",
+        "geonameid": "4369596",
+        "isolanguage": "fa",
+        "alternate_name": "\u0633\u06cc\u0644\u0648\u0631 \u0627\u0633\u067e\u0631\u06cc\u0646\u06af\u060c \u0645\u0631\u06cc\u0644\u0646\u062f",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "8203008",
+        "geonameid": "4369596",
+        "isolanguage": "kk",
+        "alternate_name": "\u0421\u0438\u043b\u0432\u044d\u0440 \u0421\u043f\u0440\u0438\u043d\u0433",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "8203009",
+        "geonameid": "4369596",
+        "isolanguage": "bg",
+        "alternate_name": "\u0421\u0438\u043b\u0432\u044a\u0440 \u0421\u043f\u0440\u0438\u043d\u0433",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "8203010",
+        "geonameid": "4369596",
+        "isolanguage": "ja",
+        "alternate_name": "\u30b7\u30eb\u30d0\u30fc\u30b9\u30d7\u30ea\u30f3\u30b0",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "8203011",
+        "geonameid": "4369596",
+        "isolanguage": "ko",
+        "alternate_name": "\uc2e4\ubc84\uc2a4\ud504\ub9c1",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "8203012",
+        "geonameid": "4369596",
+        "isolanguage": "zh",
+        "alternate_name": "\u94f6\u6cc9",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "8711479",
+        "geonameid": "4369596",
+        "isolanguage": "sr",
+        "alternate_name": "\u0421\u0438\u043b\u0432\u0435\u0440 \u0421\u043f\u0440\u0438\u043d\u0433",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "12633603",
+        "geonameid": "4431780",
+        "isolanguage": "",
+        "alternate_name": "National Space Technology Laboratories",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "12697683",
+        "geonameid": "4431780",
+        "isolanguage": "",
+        "alternate_name": "Mississippi Test Operations",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "12738404",
+        "geonameid": "4431780",
+        "isolanguage": "",
+        "alternate_name": "Mississippi Test Facility",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "12738405",
+        "geonameid": "4431780",
+        "isolanguage": "",
+        "alternate_name": "John C. Stennis Space Center",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "13083811",
+        "geonameid": "4431780",
+        "isolanguage": "en",
+        "alternate_name": "John C Stennis Space Center",
+        "is_preferred_name": "1",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      },
+      {
+        "alternate_name_id": "7154430",
+        "geonameid": "4431780",
+        "isolanguage": "link",
+        "alternate_name": "https://en.wikipedia.org/wiki/John_C._Stennis_Space_Center",
+        "is_preferred_name": "",
+        "is_short_name": "",
+        "is_colloquial": "",
+        "is_historic": "",
+        "from_period": "",
+        "to_period": ""
+      }
+    ],
+    "aliases_requested": true
+  },
+  "ordinary": {
+    "organizations": [
+      {
+        "id": "https://ror.org/000025p04",
+        "status": "active",
+        "raw_json": "{\"admin\":{\"created\":{\"date\":\"2023-03-16\",\"schema_version\":\"1.0\"},\"last_modified\":{\"date\":\"2026-02-24\",\"schema_version\":\"2.1\"}},\"domains\":[],\"established\":2019,\"external_ids\":[{\"all\":[\"501100017170\"],\"preferred\":\"501100017170\",\"type\":\"fundref\"}],\"id\":\"https://ror.org/000025p04\",\"links\":[{\"type\":\"website\",\"value\":\"https://www.tsri.or.th\"}],\"locations\":[{\"geonames_details\":{\"continent_code\":\"AS\",\"continent_name\":\"Asia\",\"country_code\":\"TH\",\"country_name\":\"Thailand\",\"country_subdivision_code\":\"10\",\"country_subdivision_name\":\"Bangkok\",\"lat\":13.75398,\"lng\":100.50144,\"name\":\"Bangkok\"},\"geonames_id\":1609350}],\"names\":[{\"lang\":null,\"types\":[\"acronym\"],\"value\":\"TSRI\"},{\"lang\":\"en\",\"types\":[\"ror_display\",\"label\"],\"value\":\"Thailand Science Research and Innovation\"},{\"lang\":\"th\",\"types\":[\"label\"],\"value\":\"\u0e2a\u0e33\u0e19\u0e31\u0e01\u0e07\u0e32\u0e19\u0e04\u0e13\u0e30\u0e01\u0e23\u0e23\u0e21\u0e01\u0e32\u0e23\u0e2a\u0e48\u0e07\u0e40\u0e2a\u0e23\u0e34\u0e21\u0e27\u0e34\u0e17\u0e22\u0e32\u0e28\u0e32\u0e2a\u0e15\u0e23\u0e4c \u0e27\u0e34\u0e08\u0e31\u0e22\u0e41\u0e25\u0e30\u0e19\u0e27\u0e31\u0e15\u0e01\u0e23\u0e23\u0e21\"}],\"relationships\":[{\"id\":\"https://ror.org/03gd1bh37\",\"label\":\"Thailand Research Fund\",\"type\":\"predecessor\"}],\"status\":\"active\",\"types\":[\"funder\",\"government\"]}"
+      }
+    ],
+    "locations": [
+      {
+        "organization_id": "https://ror.org/000025p04",
+        "ordinal": 0,
+        "geonames_id": 1609350,
+        "geonames_details_json": "{\"continent_code\":\"AS\",\"continent_name\":\"Asia\",\"country_code\":\"TH\",\"country_name\":\"Thailand\",\"country_subdivision_code\":\"10\",\"country_subdivision_name\":\"Bangkok\",\"lat\":13.75398,\"lng\":100.50144,\"name\":\"Bangkok\"}"
+      }
+    ],
+    "places": [
+      {
+        "geonameid": "1609350",
+        "name": "Bangkok",
+        "asciiname": "Bangkok",
+        "alternatenames": "Amphoe Phra Nakhon,BKK,Ban'nkok,Bancac,Bancocum,Bancoque,Banc\u00e1c,Banghok,Bangkok,Bangkok Metropolis,Bangkoka,Bangk\u00f2k,Banguecoque,Bankok,Bankokas,Bankoko,Banqkok,Changwat Phra Nakhon,Krung Thep,Krung Thep Maha Nakhon,Krung Thep Maha Nakhon Amon Rattanakosin Mahintarayutthaya Maha Dilok Phop Noppharat Ratchathani Buri Rom Udom Ratchaniwet Maha Sathan Amon Phiman Awatan Sathit Sakka Thattiya Witsanukam Prasit,Krungdeb,Man-kuk,M\u00e0n-kuk,Phra Nakhon,Siayuthia,The City of Angels,bainkaka,bainkoka,bamkoka,bangkog,bangkwk,bankeakk,bankoku,bankwk,bngqwq,bnkak,byankak,byankaka,camraata byankaka,krungtheph,krungthephmhankhr,krungtheph\u2021,man gu,penkak,\u039c\u03c0\u03b1\u03bd\u03b3\u03ba\u03cc\u03ba,\u0411\u0430\u043d\u0433\u043a\u043e\u043a,\u0411\u0430\u043d\u043a\u043e\u043a,\u0411\u0430\u04a5\u043a\u043e\u043a,\u0532\u0561\u0576\u0563\u056f\u0578\u056f,\u05d1\u05d0\u05e0\u05d2\u05e7\u05d0\u05e7,\u05d1\u05e0\u05d2\u05e7\u05d5\u05e7,\u0628\u0627\u0646\u0643\u0648\u0643,\u0628\u0627\u0646\u06a9\u0648\u06a9,\u0628\u0627\u0646\u06a9\u06c6\u06a9,\u0628\u0627\u0646\u06ab\u06a9\u0648\u06a9,\u0628\u0627\u0646\u06af\u0643\u0648\u0643,\u0628\u0646\u06a9\u0627\u06a9,\u092c\u0901\u0915\u0949\u0915,\u092c\u0948\u0902\u0915\u0915,\u092c\u0948\u0902\u0915\u0949\u0915,\u099a\u09be\u0982\u09f1\u09be\u09a4 \u09ac\u09cd\u09af\u09be\u0982\u0995\u0995,\u09ac\u09cd\u09af\u09be\u0982\u0995\u0995,\u0a2c\u0a48\u0a02\u0a15\u0a3e\u0a15,\u0baa\u0bc7\u0b99\u0bcd\u0b95\u0bbe\u0b95\u0bcd,\u0cac\u0ccd\u0caf\u0cbe\u0c82\u0c95\u0cbe\u0c95\u0ccd,\u0d2c\u0d3e\u0d19\u0d4d\u0d15\u0d4b\u0d15\u0d4d\u0d15\u0d4d,\u0db6\u0dd0\u0d82\u0d9a\u0ddc\u0d9a\u0dca,\u0e01\u0e23\u0e38\u0e07\u0e40\u0e17\u0e1e,\u0e01\u0e23\u0e38\u0e07\u0e40\u0e17\u0e1e\u0e21\u0e2b\u0e32\u0e19\u0e04\u0e23,\u0e01\u0e23\u0e38\u0e07\u0e40\u0e17\u0e1e\u0e21\u0e2b\u0e32\u0e19\u0e04\u0e23 \u0e2d\u0e21\u0e23\u0e23\u0e31\u0e15\u0e19\u0e42\u0e01\u0e2a\u0e34\u0e19\u0e17\u0e23\u0e4c \u0e21\u0e2b\u0e34\u0e19\u0e17\u0e23\u0e32\u0e22\u0e38\u0e18\u0e22\u0e32 \u0e21\u0e2b\u0e32\u0e14\u0e34\u0e25\u0e01\u0e20\u0e1e \u0e19\u0e1e\u0e23\u0e31\u0e15\u0e19\u0e23\u0e32\u0e0a\u0e18\u0e32\u0e19\u0e35\u0e1a\u0e39\u0e23\u0e35\u0e23\u0e21\u0e22\u0e4c \u0e2d\u0e38\u0e14\u0e21\u0e23\u0e32\u0e0a\u0e19\u0e34\u0e40\u0e27\u0e28\u0e19\u0e4c\u0e21\u0e2b\u0e32\u0e2a\u0e16\u0e32\u0e19 \u0e2d\u0e21\u0e23\u0e1e\u0e34\u0e21\u0e32\u0e19\u0e2d\u0e27\u0e15\u0e32\u0e23\u0e2a\u0e16\u0e34\u0e15 \u0e2a\u0e31\u0e01\u0e01\u0e30\u0e17\u0e31\u0e15\u0e15\u0e34\u0e22\u0e27\u0e34\u0e29\u0e13\u0e38\u0e01\u0e23\u0e23\u0e21\u0e1b\u0e23\u0e30\u0e2a\u0e34\u0e17\u0e18\u0e34\u0e4c,\u0e01\u0e23\u0e38\u0e07\u0e40\u0e17\u0e1e\u0e2f,\u0e9a\u0eb2\u0e87\u0e81\u0ead\u0e81,\u0f54\u0f53\u0f0b\u0f40\u0f7c\u0f42,\u1018\u1014\u103a\u1000\u1031\u102c\u1000\u103a\u1019\u103c\u102d\u102f\u1037,\u10d1\u10d0\u10dc\u10d2\u10d9\u10dd\u10d9\u10d8,\u1263\u1295\u12ae\u12ad,\u30d0\u30f3\u30b3\u30af,\u66fc\u8c37,\ubc29\ucf55",
+        "latitude": "13.75398",
+        "longitude": "100.50144",
+        "feature_class": "P",
+        "feature_code": "PPLC",
+        "country_code": "TH",
+        "cc2": "",
+        "admin1_code": "40",
+        "admin2_code": "",
+        "admin3_code": "",
+        "admin4_code": "",
+        "population": "5104476",
+        "elevation": "",
+        "dem": "12",
+        "timezone": "Asia/Bangkok",
+        "modification_date": "2024-03-26"
+      }
+    ],
+    "countries": [
+      {
+        "iso": "TH",
+        "iso3": "THA",
+        "iso_numeric": "764",
+        "fips": "TH",
+        "country": "Thailand",
+        "capital": "Bangkok",
+        "area_sq_km": "514000",
+        "population": "69428524",
+        "continent": "AS",
+        "tld": ".th",
+        "currency_code": "THB",
+        "currency_name": "Baht",
+        "phone": "66",
+        "postal_code_format": "#####",
+        "postal_code_regex": "^(\\d{5})$",
+        "languages": "th,en",
+        "geonameid": "1605651",
+        "neighbours": "LA,MM,KH,MY",
+        "equivalent_fips_code": ""
+      }
+    ],
+    "admin1": [
+      {
+        "code": "TH.40",
+        "name": "Bangkok",
+        "asciiname": "Bangkok",
+        "geonameid": "1609348"
+      }
+    ],
+    "aliases": [],
+    "aliases_requested": false
+  }
+}

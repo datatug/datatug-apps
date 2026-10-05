@@ -605,7 +605,37 @@
     </ion-card>
   }
 
+  @if (queryDef()?.federation?.nativeGraph) {
+    <ion-card data-testid="local-result-history">
+      <ion-card-header><ion-card-title>Local result history</ion-card-title></ion-card-header>
+      <ion-card-content>
+        <p>Open retained output from this browser. Results keep their executed plan and pins.</p>
+        @if (localHistoryLoading()) { <ion-spinner /> }
+        @if (localHistoryError(); as error) { <ion-text color="danger">{{ error }}</ion-text> }
+        @if (!localHistoryLoading() && !localResults().length) { <p>No local result available.</p> }
+        @for (artifact of localResults(); track artifact.id) {
+          <ion-item>
+            <ion-label>{{ artifact.observedAt }} · {{ artifact.counts.affiliations }} affiliations · {{ artifact.counts.locations }} locations · {{ artifact.counts.aliases }} alternate names</ion-label>
+            <ion-button [disabled]="localHistoryLoading()" (click)="openHistoricalResult(artifact.id)">Open historical result</ion-button>
+            <ion-button color="danger" fill="clear" [disabled]="localHistoryLoading()" (click)="deleteHistoricalResult(artifact.id)">Delete this result</ion-button>
+          </ion-item>
+        }
+      </ion-card-content>
+    </ion-card>
+  }
   @if (runResult(); as result) {
+    @if (selectedHistoricalResult()) {
+      <ion-text color="medium" data-testid="historical-result-label"><p>Historical local result · executed {{ result.provenance.observedAt }}. Original plan and pins; read-only viewing does not resume execution.</p></ion-text>
+      <details><summary>Executed plan and pins</summary><pre style="white-space: pre-wrap">{{ historicalPins() }}</pre></details>
+    }
+    @if (result.relatedRecordsets?.length) {
+      <ion-item>
+        <ion-select aria-label="Result set" [value]="relatedResultSet()" (ionChange)="changeRelatedResultSet($event.detail.value)">
+          <ion-select-option value="affiliations">Affiliations</ion-select-option>
+          @for (set of result.relatedRecordsets; track set.id) { <ion-select-option [value]="set.id">{{ set.label }}</ion-select-option> }
+        </ion-select>
+      </ion-item>
+    }
     <!-- REQ:limitation-visible / REQ:opaque-sql-limitation -->
     <sneat-datatug-limitation-header
       [limitations]="result.limitations"
@@ -621,8 +651,10 @@
         snapshot · recorded
         {{ formatRecordedDate(result.provenance.observedAt) }} ·
         {{ result.provenance.source }}
-      } @else {
+      } @else if (!selectedHistoricalResult()) {
         live · {{ result.provenance.source }}
+      } @else {
+        recorded local output · {{ result.provenance.source }}
       }
     </ion-text>
 
@@ -692,7 +724,7 @@
         >
           <thead>
             <tr>
-              @for (col of result.recordset.columns; track col.name) {
+              @for (col of displayedRecordset()?.columns; track col.name) {
                 <th
                   style="
                     text-align: left;
@@ -724,7 +756,7 @@
             @if (!resultTotalRows()) {
               <tr>
                 <td
-                  [attr.colspan]="result.recordset.columns.length"
+                  [attr.colspan]="displayedRecordset()?.columns.length"
                   style="padding: 4px 8px"
                 >
                   No rows.

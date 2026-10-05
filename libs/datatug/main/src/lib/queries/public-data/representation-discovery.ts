@@ -1,3 +1,7 @@
+import {
+  readNativeGraphMetadata,
+  type CheckedNativeGraphMetadata,
+} from './native-graph-contract';
 import Ajv2020 from 'ajv/dist/2020';
 import { parseAllDocuments } from 'yaml';
 import schema from './representation-contract.schema.json';
@@ -100,6 +104,7 @@ export interface PublicDataSuggestion {
   readonly provider: MetadataObject;
   readonly attachment: ImmutableFile;
   readonly contract?: ScopedRepresentationContract;
+  readonly graph?: CheckedNativeGraphMetadata;
   /** Structural compatibility is independent of runtime/semantic admission. */
   readonly compatibility?: 'compatible' | 'different-source' | 'incompatible';
   readonly sourceFacts?: SourceFacts;
@@ -332,7 +337,7 @@ export function parseMeaningDocument(text: string): MetadataObject {
   return value;
 }
 
-async function verifyContract(
+export async function verifyRepresentationContract(
   contract: ScopedRepresentationContract,
   provider: MetadataObject,
   indexes: CanonicalIndexes,
@@ -671,6 +676,30 @@ export async function discoverRepresentations(
         false,
       );
       const document = await reader.json(attachment);
+      if (document['format'] === 'ovdb-representation-contract/4') {
+        const graph = await readNativeGraphMetadata(
+          attachment,
+          provider,
+          indexes,
+          reader,
+          declaredSources.find((d) => scope && sameSource(scope, d.source)),
+        );
+        const matchesSource = scope
+          ? sameSource(scope, graph.entrySource)
+          : declaredSources.some((d) =>
+              sameSource(d.source, graph.entrySource),
+            );
+        suggestions.push({
+          provider,
+          attachment,
+          graph,
+          matchesSource,
+          compatibility: matchesSource ? 'compatible' : 'different-source',
+          eligible: false,
+          reason: graph.reason,
+        });
+        continue;
+      }
       if (
         !(document['format'] === 'ovdb-representation-contract/3'
           ? validate3(document)
@@ -713,7 +742,7 @@ export async function discoverRepresentations(
           : declaredSources.some((source) =>
               sameSource(source.source, contract.source),
             );
-        const verified = await verifyContract(
+        const verified = await verifyRepresentationContract(
           contract,
           provider,
           indexes,

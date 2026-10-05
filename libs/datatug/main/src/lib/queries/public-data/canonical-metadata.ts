@@ -91,6 +91,14 @@ export async function sha256(value: string | Uint8Array): Promise<string> {
   ).join('');
 }
 
+/** Immutable tuple identity does not depend on JSON member insertion order. */
+const immutableIdentity = (file: ImmutableFile): string =>
+  JSON.stringify({
+    repository: file.repository,
+    revision: file.revision,
+    path: file.path,
+    sha256: file.sha256,
+  });
 /** Rebuildable bytes keyed by every immutable coordinate; never stores decisions. */
 export class CanonicalMetadataCache {
   private readonly entries = new Map<string, Uint8Array>();
@@ -107,10 +115,10 @@ export class CanonicalMetadataCache {
     this.generation = '';
   }
   get(file: ImmutableFile): Uint8Array | undefined {
-    return this.entries.get(JSON.stringify(file))?.slice();
+    return this.entries.get(immutableIdentity(file))?.slice();
   }
   set(file: ImmutableFile, raw: Uint8Array): void {
-    this.entries.set(JSON.stringify(file), raw.slice());
+    this.entries.set(immutableIdentity(file), raw.slice());
   }
 }
 
@@ -120,6 +128,7 @@ export class CanonicalMetadataReader {
   private references = 0;
   private readonly admitted = new Map<string, Promise<string>>();
   private queue: Promise<void> = Promise.resolve();
+  private failure: unknown;
   constructor(
     private readonly httpFetch: typeof fetch,
     private readonly cache: CanonicalMetadataCache,
@@ -129,18 +138,20 @@ export class CanonicalMetadataReader {
     file: ImmutableFile,
     ancestry: readonly string[] = [],
   ): Promise<string> {
+    if (this.failure !== undefined) throw this.failure;
     const url = immutableUrl(file);
     if (ancestry.length > 8 || ancestry.includes(url))
       throw new Error(
         'Canonical metadata has a cycle or exceeds reference depth.',
       );
-    const identity = JSON.stringify(file);
+    const identity = immutableIdentity(file);
     const previous = this.admitted.get(identity);
     if (previous) return previous;
     if (++this.references > 96)
       throw new Error('Canonical metadata exceeds the reference count bound.');
     const request = this.queue.then(async () => {
       this.signal.throwIfAborted();
+      if (this.failure !== undefined) throw this.failure;
       let raw = this.cache.get(file);
       if (raw === undefined) {
         const response = await this.httpFetch(url, {
@@ -152,6 +163,9 @@ export class CanonicalMetadataReader {
           response,
           2 * 1024 * 1024 - this.admittedBytes,
           this.signal,
+          (bytes) => {
+            this.admittedBytes += bytes;
+          },
         );
         if (!response.ok)
           throw new Error(
@@ -159,7 +173,9 @@ export class CanonicalMetadataReader {
           );
         raw = read.raw;
       }
-      this.admittedBytes += raw.byteLength;
+      // Network chunks are already charged, including failures. Cache bytes spend once.
+      if (this.cache.get(file) !== undefined)
+        this.admittedBytes += raw.byteLength;
       if (this.admittedBytes > 2 * 1024 * 1024)
         throw new Error('Discovery metadata exceeds the aggregate 2MiB bound.');
       if ((await sha256(raw)) !== file.sha256)
@@ -173,7 +189,9 @@ export class CanonicalMetadataReader {
     });
     this.queue = request.then(
       () => undefined,
-      () => undefined,
+      (error: unknown) => {
+        this.failure = error;
+      },
     );
     this.admitted.set(identity, request);
     return request;
@@ -185,6 +203,11 @@ export class CanonicalMetadataReader {
     return object(
       strictJson(await this.text(file, ancestry)),
       'canonical document',
+    );
+  }
+  get files(): readonly ImmutableFile[] {
+    return [...this.admitted.keys()].map(
+      (key) => JSON.parse(key) as ImmutableFile,
     );
   }
   get bytes(): number {

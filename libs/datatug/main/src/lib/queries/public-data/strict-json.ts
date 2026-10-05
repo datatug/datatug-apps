@@ -9,7 +9,15 @@ export function strictJson(text: string): unknown {
 export function strictJsonNumbers(text: string): unknown {
   return parseStrictJson(text, true);
 }
-function parseStrictJson(text: string, numbers: boolean): unknown {
+/** Ordinary P1 diagnostics preserve valid JSON overflow tokens; metadata remains finite. */
+export function strictJsonWireNumbers(text: string): unknown {
+  return parseStrictJson(text, true, true);
+}
+function parseStrictJson(
+  text: string,
+  numbers: boolean,
+  wireOverflow = false,
+): unknown {
   let cursor = 0;
   const whitespace = (): void => {
     while (/\s/.test(text[cursor] ?? '') && cursor < text.length) cursor++;
@@ -86,7 +94,8 @@ function parseStrictJson(text: string, numbers: boolean): unknown {
     const raw = text.slice(start, cursor);
     const value: unknown = JSON.parse(raw);
     if (typeof value === 'number') {
-      if (!Number.isFinite(value)) throw new Error('Nonfinite JSON number.');
+      if (!wireOverflow && !Number.isFinite(value))
+        throw new Error('Nonfinite JSON number.');
       return numbers ? new JsonNumberToken(raw) : value;
     }
     return value;

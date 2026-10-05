@@ -117,6 +117,8 @@ import { DatatugQueriesServicesModule } from '../../datatug-queries-services.mod
 import { QueriesService } from '../../queries.service';
 import { FederatedQueryService, type FederatedQueryProgress, type FederatedQueryResult } from '../../federated-query.service';
 import { federatedVisibleMode } from '../../federated-query-executor';
+import type { LocalResultDescriptor, LocalResultRef } from '../../federated-local-results';
+import { graphStableIdentity } from '../../public-data/native-graph-executor';
 import { QueryContextSqlService } from '../../query-context-sql.service';
 import {
   isQueryChanged,
@@ -483,6 +485,21 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly accessBlockers = signal<readonly string[]>([]);
   public readonly runError = signal<string | undefined>(undefined);
   public readonly runResult = signal<FederatedQueryResult | undefined>(undefined);
+  public readonly localResults = signal<readonly LocalResultDescriptor[]>([]);
+  public readonly localHistoryLoading = signal(false);
+  public readonly localHistoryError = signal<string | undefined>(undefined);
+  public readonly selectedHistoricalResult = signal<LocalResultRef | undefined>(undefined);
+  public readonly historicalDefinition = signal<IQueryDef | undefined>(undefined);
+  public readonly relatedResultSet = signal('affiliations');
+  private historySelection = 0;
+  private historyCatalogRequest = 0;
+  private executedGraphDefinition?: IQueryDef;
+  private federatedRunLifetime = 0;
+  public readonly historicalPins = computed(() => JSON.stringify(this.historicalDefinition()?.federation?.nativeGraph, null, 2));
+  public readonly displayedRecordset = computed(() => {
+    const result = this.runResult();
+    return this.relatedResultSet() === 'affiliations' ? result?.recordset : result?.relatedRecordsets?.find((set) => set.id === this.relatedResultSet())?.recordset;
+  });
   private readonly publicDataMetadata = inject(PublicDataService);
   public readonly savedPlanReview = new SavedPlanReview(() => this.queryDef(), this.publicDataMetadata, this.queriesService, () => this.project?.ref, async (definition, signal) => {
     const source = definition.publicData?.declaredSource;
@@ -494,8 +511,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const saved = this.queryDef()?.publicData;
     return saved ? scenarioRevisionChanges(saved, INITIAL_CANONICAL_PINS) : [];
   });
-  public readonly resultTotalRows = computed(() => this.runResult()?.totalRows ?? this.runResult()?.recordset.rows.length ?? 0);
-  public readonly resultHasMore = computed(() => this.runResult()?.hasMore === true);
+  public readonly resultTotalRows = computed(() => this.relatedResultSet() === 'affiliations' ? this.runResult()?.totalRows ?? this.runResult()?.recordset.rows.length ?? 0 : this.runResult()?.relatedRecordsets?.find((set) => set.id === this.relatedResultSet())?.totalRows ?? 0);
+  public readonly resultHasMore = computed(() => !this.selectedHistoricalResult() && this.runResult()?.hasMore === true);
   public readonly visibleResultRows = computed(() => {
     const result = this.runResult();
     if (result?.totalRows !== undefined || result?.hasMore) return this.resultPageRows();
@@ -643,6 +660,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     try {
       this.editorState = editorState;
       if (!editorState?.currentQueryId) {
+        if (this.queryId) {
+          this.invalidateHistoryScope(); this.queryDef.set(undefined);
+          this.queryState = { ...this.queryState, id: '' };
+        }
         return;
       }
       const queryState = editorState.activeQueries.find(
@@ -651,6 +672,21 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       if (!queryState) {
         return;
       }
+      const previousDefinition = this.queryDef();
+      const scopeChanged = this.queryId !== queryState.id;
+      const nextPlanIdentity = graphStableIdentity(queryState.def?.federation?.nativeGraph);
+      const planChanged = graphStableIdentity(previousDefinition?.federation?.nativeGraph) !== nextPlanIdentity || (!!this.executedGraphDefinition?.federation?.nativeGraph && graphStableIdentity(this.executedGraphDefinition.federation.nativeGraph) !== nextPlanIdentity);
+      if (scopeChanged) this.invalidateHistoryScope();
+      else if (planChanged) {
+        this.invalidateFederatedRun();
+        this.invalidateHistoryRequests();
+        const result = this.runResult();
+        if (result?.localResult && result.nativeGraph && this.executedGraphDefinition) {
+          this.selectedHistoricalResult.set(result.localResult);
+          this.historicalDefinition.set(this.executedGraphDefinition);
+        }
+        this.stopFederatedRun();
+      }
       this.queryState = queryState;
       // Signal write (zoneless-safe, unlike the plain-field write just
       // above) — see `queryDef`'s own doc comment.
@@ -658,6 +694,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       if (this.queryDef()?.id !== queryState.def?.id) this.ovdbToken.set('');
       if (queryState.def && this.queryDef()?.id !== queryState.def.id) this.federatedMode.set(federatedVisibleMode(queryState.def).defaultMode);
       this.queryDef.set(queryState.def);
+      if (queryState.def?.federation?.nativeGraph) void this.refreshLocalHistory();
       if (this.queryState.environments && !this.queryState.activeEnv) {
         this.setActiveEnv(this.queryState.environments[0].id);
       }
@@ -675,6 +712,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   };
 
   ngOnDestroy(): void {
+    this.invalidateFederatedRun();
+    this.historySelection++;
     this.savedPlanReview.destroy();
     void this.federatedQuery.dispose().catch(() => undefined);
     if (this.destroyed) {
@@ -758,7 +797,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         ) {
           return; // TODO: cleanup query state?
         }
+        if (this.project?.ref.projectId !== currentProject.ref.projectId || this.project?.ref.storeId !== currentProject.ref.storeId) this.invalidateHistoryScope();
         this.project = currentProject;
+        if (this.queryDef()?.federation?.nativeGraph) void this.refreshLocalHistory();
         this.syncScopeAndBindings();
         const summary = currentProject?.summary;
         if (!summary) {
@@ -918,7 +959,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   private onProjRefChanged = (ref: IProjectRef) => {
     const prevProject = this.project;
+    if (ref.projectId !== prevProject?.ref.projectId || ref.storeId !== prevProject?.ref.storeId) this.invalidateHistoryScope();
     this.project = newProjectContextFromRef(ref);
+    if (this.queryDef()?.federation?.nativeGraph) void this.refreshLocalHistory();
     if (
       this.queryId &&
       (ref.projectId !== prevProject?.ref?.projectId ||
@@ -1521,6 +1564,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.runError.set(SAVED_SCENARIO_PUBLICATION_BLOCKER);
       return;
     }
+    this.historySelection++;
+    this.selectedHistoricalResult.set(undefined);
+    this.historicalDefinition.set(undefined);
+    this.relatedResultSet.set('affiliations');
     this.resultPageIndex.set(0);
     this.resultPageRows.set([]);
     if (definition?.federation) {
@@ -1529,16 +1576,31 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.federatedProgress.set(undefined);
       this.runError.set(undefined);
       this.runResult.set(undefined);
-      this.federatedQuery.run(definition, (progress) => this.federatedProgress.set(progress), this.ovdbToken().trim(), this.federatedMode(), (totalRows) => {
-        if (this.queryDef() === definition && this.queryId === queryId) this.runResult.update((result) => result ? { ...result, totalRows, hasMore: false } : result);
+      const runScope = this.historyScope(), lifetime = ++this.federatedRunLifetime;
+      const executedDefinition = structuredClone(definition);
+      const executedIdentity = graphStableIdentity(executedDefinition);
+      const current = (): boolean => lifetime === this.federatedRunLifetime && this.historyScope() === runScope && graphStableIdentity(this.queryDef()) === executedIdentity;
+      this.executedGraphDefinition = executedDefinition;
+      this.federatedQuery.run(executedDefinition, (progress) => { if (current()) this.federatedProgress.set(progress); }, this.ovdbToken().trim(), this.federatedMode(), (totalRows) => {
+        if (current()) this.runResult.update((result) => result ? { ...result, totalRows, hasMore: false } : result);
       }).then((result) => {
-        if (this.queryDef() === definition && this.queryId === queryId) {
+        if (current()) {
+          this.executedGraphDefinition = executedDefinition;
           this.resultPageRows.set(result.recordset.rows);
           this.runResult.set(result);
+          if (result.localResult && this.project?.ref) {
+            void this.federatedQuery.associateLocalResult(this.project.ref, queryId, result.localResult)
+              .then(() => current() ? this.refreshLocalHistory() : undefined)
+              .catch((error: unknown) => { if (current()) this.localHistoryError.set(error instanceof Error ? error.message : 'Cannot associate the local result.'); });
+          }
         }
       }).catch((error: unknown) => {
-        if (this.queryDef() === definition && this.queryId === queryId) this.runError.set(error instanceof Error ? error.message : 'The direct OVDB query failed.');
-      }).finally(() => this.running.set(false));
+        if (current()) this.runError.set(error instanceof Error ? error.message : 'The direct OVDB query failed.');
+      }).finally(() => {
+        if (lifetime !== this.federatedRunLifetime) return;
+        if (current()) this.running.set(false);
+        else { this.invalidateFederatedRun(); this.stopFederatedRun(); }
+      });
       return;
     }
     // Checked before requiring `environment`/`securityContextId` below: a
@@ -1633,12 +1695,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       return;
     }
     const previousRows = this.resultPageRows();
+    const selection = this.historySelection, set = this.relatedResultSet();
     this.resultPageRows.set([]);
     this.resultPageLoading.set(true);
     try {
-      const rows = await this.federatedQuery.getPage(next);
+      const rows = await this.federatedQuery.getPage(next, set, this.selectedHistoricalResult() ?? result?.localResult);
       const current = this.runResult();
-      if (current && result && current.provenance.observedAt === result.provenance.observedAt && current.provenance.queryId === result.provenance.queryId) {
+      if (selection === this.historySelection && set === this.relatedResultSet() && current === result) {
         if (rows.length === 0 && next > 0) {
           this.resultPageRows.set(previousRows);
           this.runResult.set({ ...current, totalRows: next * this.resultPageSize, hasMore: false });
@@ -1646,11 +1709,98 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         else { this.resultPageIndex.set(next); this.resultPageRows.set(rows); if (current.hasMore && rows.length < this.resultPageSize) this.runResult.set({ ...current, totalRows: next * this.resultPageSize + rows.length, hasMore: false }); }
       }
     } catch (error) {
+      if (selection !== this.historySelection || set !== this.relatedResultSet()) return;
       this.resultPageRows.set(previousRows);
       this.runError.set(error instanceof Error ? error.message : 'Cannot load result page.');
     } finally {
-      this.resultPageLoading.set(false);
+      if (selection === this.historySelection && set === this.relatedResultSet()) this.resultPageLoading.set(false);
     }
+  }
+
+  public async refreshLocalHistory(): Promise<void> {
+    const projectRef = this.project?.ref, queryId = this.queryId;
+    if (!projectRef || !queryId) return;
+    const request = ++this.historyCatalogRequest, scope = this.historyScope();
+    this.localResults.set([]);
+    this.localHistoryLoading.set(true);
+    try {
+      const results = await this.federatedQuery.listLocalResults({ projectRef, queryId }, (message) => {
+        if (request === this.historyCatalogRequest && this.historyScope() === scope) this.localHistoryError.set(message);
+      });
+      if (request === this.historyCatalogRequest && this.historyScope() === scope) this.localResults.set(results);
+    } catch (error) { if (request === this.historyCatalogRequest && this.historyScope() === scope) this.localHistoryError.set(error instanceof Error ? error.message : 'No local result available.'); }
+    finally { if (request === this.historyCatalogRequest && this.historyScope() === scope) this.localHistoryLoading.set(false); }
+  }
+
+  private historyScope(): string {
+    return JSON.stringify([this.project?.ref.storeId, this.project?.ref.projectId, this.queryId]);
+  }
+
+  private invalidateHistoryRequests(): void {
+    ++this.historySelection; ++this.historyCatalogRequest;
+    this.localHistoryLoading.set(false); this.resultPageLoading.set(false);
+    this.localHistoryError.set(undefined);
+  }
+
+  private invalidateFederatedRun(): void {
+    ++this.federatedRunLifetime;
+    this.running.set(false); this.federatedProgress.set(undefined);
+  }
+
+  private stopFederatedRun(): void {
+    const lifetime = this.federatedRunLifetime;
+    void this.federatedQuery.dispose().catch((error: unknown) => {
+      if (lifetime === this.federatedRunLifetime) this.localHistoryError.set(error instanceof Error ? error.message : 'Cannot stop the previous execution.');
+    });
+  }
+
+  private invalidateHistoryScope(): void {
+    this.invalidateFederatedRun(); this.stopFederatedRun();
+    this.invalidateHistoryRequests();
+    this.selectedHistoricalResult.set(undefined); this.historicalDefinition.set(undefined);
+    this.executedGraphDefinition = undefined; this.runResult.set(undefined); this.resultPageRows.set([]);
+    this.localResults.set([]); this.resultPageIndex.set(0); this.relatedResultSet.set('affiliations');
+  }
+
+  /** Selecting history is a local read. It never invokes metadata, a Worker or a provider. */
+  public async openHistoricalResult(id: string): Promise<void> {
+    this.invalidateFederatedRun();
+    const selection = ++this.historySelection, scope = this.historyScope();
+    const current = (): boolean => selection === this.historySelection && scope === this.historyScope();
+    this.localHistoryLoading.set(true); this.localHistoryError.set(undefined);
+    try {
+      await this.federatedQuery.dispose();
+      if (!current()) return;
+      const opened = await this.federatedQuery.openLocalResult(id);
+      if (!current()) return;
+      this.selectedHistoricalResult.set(opened.result.localResult);
+      this.historicalDefinition.set(opened.executedDefinition);
+      this.executedGraphDefinition = opened.executedDefinition;
+      this.relatedResultSet.set('affiliations'); this.resultPageIndex.set(0);
+      this.resultPageLoading.set(false);
+      this.resultPageRows.set(opened.result.recordset.rows); this.runResult.set(opened.result);
+    } catch (error) { if (current()) this.localHistoryError.set(error instanceof Error ? error.message : 'No local result available.'); }
+    finally { if (current()) this.localHistoryLoading.set(false); }
+  }
+
+  public async changeRelatedResultSet(set: string): Promise<void> {
+    const result = this.runResult();
+    if (!result || !['affiliations', 'locations', 'aliases'].includes(set)) return;
+    ++this.historySelection; this.relatedResultSet.set(set); this.resultPageIndex.set(0);
+    this.resultPageRows.set(set === 'affiliations' ? result.recordset.rows : result.relatedRecordsets?.find((item) => item.id === set)?.recordset.rows ?? []);
+    this.resultPageLoading.set(false);
+  }
+
+  public async deleteHistoricalResult(id: string): Promise<void> {
+    this.localHistoryLoading.set(true); this.localHistoryError.set(undefined);
+    try {
+      await this.federatedQuery.deleteLocalResult(id);
+      if (this.selectedHistoricalResult()?.id === id || this.runResult()?.localResult?.id === id) {
+        this.invalidateHistoryScope();
+      }
+      await this.refreshLocalHistory();
+    } catch (error) { this.localHistoryError.set(error instanceof Error ? error.message : 'Cannot delete the selected local result.'); }
+    finally { this.localHistoryLoading.set(false); }
   }
 
   /** api-contract.md "Bounded lookups and HTTP" — the user's explicit choice to view a

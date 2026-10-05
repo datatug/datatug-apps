@@ -42,14 +42,24 @@ export interface IQueryDef extends IQueryItem {
   federation?: {
     readonly ovdbBaseUrl: string;
     readonly bounds?: BoundedFederation;
+    /** Finite saved graph inputs; never execution authority. */
+    readonly nativeGraph?: import('../../queries/public-data/native-graph-executor').NativeGraphPlan;
     /** Descriptive historical pages/pins; reopening never executes them. */
     readonly readReceipt?: import('../../queries/public-data/immutable-federation').RuntimeReadReport;
-    readonly tables: readonly { readonly name: string; readonly database?: string; readonly schema?: string; readonly fields: readonly string[] }[];
+    readonly tables: readonly {
+      readonly name: string;
+      readonly database?: string;
+      readonly schema?: string;
+      readonly fields: readonly string[];
+    }[];
     readonly lookups?: readonly {
       readonly database: string;
       readonly collection: string;
       readonly fromColumn: string;
-      readonly fields: readonly { readonly source: string; readonly target: string }[];
+      readonly fields: readonly {
+        readonly source: string;
+        readonly target: string;
+      }[];
       readonly concurrency?: number;
     }[];
   };
