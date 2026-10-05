@@ -13,7 +13,7 @@ import type { DeclaredCatalogContext } from './declared-source';
 import type { NativeRepresentationContract } from './representation-discovery';
 
 /** Hypothetical publication envelope around exact landed, small provider metadata. */
-export async function nativeFixture(kind: 'ror' | 'geo') {
+export async function nativeFixture(kind: 'ror' | 'geo', exact = false) {
   const dir = resolve(
     'libs/datatug/main/src/lib/queries/fixtures/public-data-fabric/native',
     kind,
@@ -63,6 +63,15 @@ export async function nativeFixture(kind: 'ror' | 'geo') {
     ],
   };
   const sourceModel = JSON.parse(content(contract.source.schema));
+  if (exact && kind === 'geo') {
+    // Independent synthetic structural fixture: make optionality explicit.
+    sourceModel.entities.Input.properties.country_iso.required = false;
+    const updated = await put(
+      contract.source.schema,
+      JSON.stringify(sourceModel),
+    );
+    Object.assign(contract.source.schema, { sha256: updated.sha256 });
+  }
   const modelEntity = sourceModel.entities[contract.source.entity];
   const key = modelEntity.key[0];
   const table = kind === 'ror' ? 'affiliations' : 'input';
@@ -88,6 +97,10 @@ export async function nativeFixture(kind: 'ror' | 'geo') {
     },
     dataText,
   );
+  if (exact) {
+    document.format = 'ovdb-representation-contract/3';
+    Object.assign(contract.source, { data });
+  }
   const rawCatalog = {
     driver: 'https-json',
     label: 'Explicit hypothetical user affiliations',

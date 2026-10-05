@@ -31,6 +31,7 @@ async function setup(
         sha256: await sha256(text),
       },
       key: 'affiliation_id',
+      selected: 'ror_id',
       fields: [
         {
           name: 'affiliation_id',
@@ -209,7 +210,7 @@ describe('bounded declared source with real OVDB target transport', () => {
       /redirect/,
     );
   });
-  it('rejects added/removed BOM bytes and invalid UTF8 before any target request', async () => {
+  it('rejects wrong-hash BOM and malformed UTF8 bytes before any target request', async () => {
     for (const mutation of ['added', 'removed', 'invalid'] as const) {
       const state = await setup(),
         plain = new TextEncoder().encode(state.text),
@@ -229,9 +230,34 @@ describe('bounded declared source with real OVDB target transport', () => {
         return new Response(body);
       });
       await expect(state.request(state.transport())).rejects.toThrow(
-        mutation === 'invalid' ? /encoded|UTF|decode/ : /checksum/,
+        /checksum/,
       );
       expect(state.calls.map((call) => call.url)).toEqual([state.dataUrl]);
+    }
+  });
+  it('hashes admitted malformed UTF8 before fatal decoding and refuses admitted BOM', async () => {
+    for (const body of [
+      new Uint8Array([0xc3, 0x28]),
+      new Uint8Array([0xef, 0xbb, 0xbf, ...new TextEncoder().encode('[]')]),
+    ]) {
+      const state = await setup();
+      const data = state.bounds.driver?.data;
+      if (!data) throw new Error('Missing driver.');
+      Object.assign(data, { sha256: await sha256(body) });
+      vi.mocked(state.http).mockImplementation(async (input, init) => {
+        state.calls.push({ url: String(input), init });
+        return new Response(body);
+      });
+      const digest = vi.spyOn(crypto.subtle, 'digest');
+      try {
+        await expect(state.request(state.transport())).rejects.toThrow(
+          body[0] === 0xc3 ? /encoded|UTF|decode/ : /JSON|Unexpected|value/,
+        );
+        expect(digest).toHaveBeenCalledOnce();
+        expect(state.calls.map((call) => call.url)).toEqual([state.dataUrl]);
+      } finally {
+        digest.mockRestore();
+      }
     }
   });
   it('preserves ordinary Unicode exactly and enforces source byte boundaries before target access', async () => {
@@ -300,7 +326,7 @@ describe('bounded declared source with real OVDB target transport', () => {
     expect(state.http).toHaveBeenCalledTimes(1);
   });
   it('runs the accepted immutable affiliation bytes through existing DALgo while its saved production plan remains closed', async () => {
-    const fixture = await nativeFixture('ror');
+    const fixture = await nativeFixture('ror', true);
     vi.stubGlobal('fetch', fixture.http);
     try {
       const metadata = new PublicDataService(),

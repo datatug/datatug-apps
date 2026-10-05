@@ -3,6 +3,7 @@ import { immutableUrl, sha256 } from './canonical-metadata';
 import type { SourceModelField } from '../../project-files/source-model-declaration';
 import { strictJson } from './strict-json';
 import type { BoundedRecord } from './bounded-federation';
+import { boundedResponseBytes } from './bounded-response';
 
 /** Configured source transport only; never a public target or admission mechanism. */
 export interface BoundedJsonDriver {
@@ -11,16 +12,25 @@ export interface BoundedJsonDriver {
   readonly name: string;
   readonly data: ImmutableFile;
   readonly key: string;
+  /** Exact contract member; present only after configured-source admission. */
+  readonly selected?: string;
   readonly fields: readonly SourceModelField[];
 }
 export function validateJsonDriver(driver: BoundedJsonDriver): void {
   immutableUrl(driver.data);
   const key = driver.fields.find((field) => field.name === driver.key);
+  const selected = driver.fields.filter(
+    (field) => field.name === driver.selected,
+  );
   if (
     driver.kind !== 'https-json' ||
     !key ||
     key.nullable ||
     key.datatype !== 'string' ||
+    (driver.selected !== undefined &&
+      (selected.length !== 1 ||
+        selected[0].name !== selected[0].property ||
+        key.name !== key.property)) ||
     !driver.fields.length ||
     driver.fields.length > 128 ||
     new Set(driver.fields.map((field) => field.name)).size !==
@@ -41,11 +51,6 @@ export async function readJsonDriver(
   remaining: number,
   http: typeof fetch,
   signal: AbortSignal,
-  readResponse: (
-    response: Response,
-    remaining: number,
-    signal: AbortSignal,
-  ) => Promise<{ text: string; bytes: number; raw: Uint8Array }>,
 ): Promise<{ records: readonly BoundedRecord[]; bytes: number }> {
   validateJsonDriver(driver);
   signal.throwIfAborted();
@@ -55,7 +60,7 @@ export async function readJsonDriver(
     credentials: 'omit',
     signal,
   });
-  const read = await readResponse(response, remaining, signal);
+  const read = await boundedResponseBytes(response, remaining, signal);
   if (!response.ok)
     throw new Error(
       `The declared source is unavailable (${response.status}; ${read.bytes} response bytes).`,
@@ -63,7 +68,12 @@ export async function readJsonDriver(
   if ((await sha256(read.raw)) !== driver.data.sha256)
     throw new Error('Declared source checksum mismatch.');
   signal.throwIfAborted();
-  const raw = strictJson(read.text);
+  // Authentication precedes all source decoding and interpretation.
+  const text = new TextDecoder('utf-8', {
+    fatal: true,
+    ignoreBOM: true,
+  }).decode(read.raw);
+  const raw = strictJson(text);
   if (!Array.isArray(raw) || raw.length > 1000)
     throw new Error(
       'The declared source must be a bounded plain array of at most 1000 rows.',
@@ -81,6 +91,11 @@ export async function readJsonDriver(
     keys.add(key);
     for (const field of driver.fields) {
       const value = data[field.name];
+      if (
+        field.name === driver.selected &&
+        !Object.prototype.hasOwnProperty.call(data, field.name)
+      )
+        throw new Error('Declared source selected raw member is missing.');
       if (
         typeof value !== 'string' &&
         !(field.nullable && (value === null || value === undefined))

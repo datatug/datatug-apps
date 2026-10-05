@@ -157,6 +157,8 @@ export function configuredFieldChoices(
         const source = suggestion.contract?.source as SourceField | undefined;
         if (
           !source ||
+          // Exact data must come from the selected checked catalog, never a suggestion.
+          source.data !== undefined ||
           !suggestion.rights ||
           !suggestion.snapshot ||
           source.schema.repository !== provider['repository'] ||

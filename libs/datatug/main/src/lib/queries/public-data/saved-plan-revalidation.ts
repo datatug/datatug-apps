@@ -3,6 +3,7 @@ import type { PublicDataDiscovery } from './public-data.service';
 import type { PublicDataSuggestion } from './representation-discovery';
 import type { ImmutableFile } from './canonical-metadata';
 import type { PublicDataScenario } from './public-data-scenario';
+import type { VerifiedDeclaredSource } from './declared-source';
 
 /** A metadata observation; this is never serialized as execution authority. */
 export interface SavedPlanRevalidation {
@@ -14,6 +15,8 @@ export interface SavedPlanRevalidation {
   readonly reason: string;
   readonly discovery: PublicDataDiscovery;
   readonly suggestion?: PublicDataSuggestion;
+  /** Checked current selection when its exact data no longer matches the saved grant. */
+  readonly observedDeclared?: VerifiedDeclaredSource;
   readonly copy?: IQueryDef;
 }
 export function savedPlanIdentity(definition: IQueryDef): string {

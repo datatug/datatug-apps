@@ -125,13 +125,14 @@ export async function verifyDeclaredCatalog(
       string(catalog.sha256[table.name], 'declared source checksum'),
     );
     for (const field of table.fields)
-      if (field.namespace !== undefined)
+      if (field.namespace !== undefined) {
         result.push({
           kind: 'declared-https-json',
           configuration: input.configuration,
           connection: input.connection,
           source: {
             schema: declaration.schema,
+            data,
             module: declaration.module,
             entity: table.entity,
             property: field.property,
@@ -143,6 +144,7 @@ export async function verifyDeclaredCatalog(
           field,
           data,
         });
+      }
   }
   return result;
 }

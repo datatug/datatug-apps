@@ -248,6 +248,26 @@
                 </p>
               }
             }
+            @if (review.observedDeclared; as context) {
+              <p>
+                Checked selected configuration
+                {{ context.configuration.repository }} at
+                {{ context.configuration.revision }} ·
+                {{ context.configuration.path }} ·
+                {{ context.configuration.sha256 }}
+              </p>
+              <p>
+                Checked selected data {{ context.data.repository }} at
+                {{ context.data.revision }} · {{ context.data.path }} ·
+                {{ context.data.sha256 }}
+              </p>
+              <p>
+                Checked mapping {{ context.table.name }} key
+                {{ context.table.key }} · {{ context.field.name }} →
+                {{ context.field.property }}. This data has no matching exact
+                attachment; acknowledgement and save are unavailable.
+              </p>
+            }
           </details>
           @if (review.changes.length) {
             <p role="alert">

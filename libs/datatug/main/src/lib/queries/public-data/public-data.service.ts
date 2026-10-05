@@ -145,6 +145,30 @@ export class PublicDataService {
     const saved = definition.publicData;
     if (!saved)
       throw new Error('This query has no saved public-data provenance.');
+    if (saved.declaredSource) {
+      const bounds = definition.federation?.bounds;
+      const driver = bounds?.driver;
+      const selected = saved.declaredSource.field.name;
+      const fields = saved.declaredSource.table.fields.filter((field) =>
+        [saved.declaredSource?.table.key, selected].includes(field.name),
+      );
+      if (
+        !driver ||
+        !bounds ||
+        !saved.source.data ||
+        !sameSource({ ...saved.source, data: driver.data }, saved.source) ||
+        bounds.sources[0]?.database !== driver.database ||
+        bounds.sources[0]?.name !== driver.name ||
+        bounds.sources[0]?.keyField !== selected ||
+        bounds.sources[1]?.parent?.field !== selected ||
+        driver.key !== saved.declaredSource.table.key ||
+        driver.selected !== selected ||
+        JSON.stringify(driver.fields) !== JSON.stringify(fields)
+      )
+        throw new Error(
+          'Saved source transport differs from its declared exact data and mapping.',
+        );
+    }
     const originalPlan = savedPlanIdentity(definition);
     this.cache.begin(pins);
     const reader = new CanonicalMetadataReader(
@@ -159,19 +183,26 @@ export class PublicDataService {
     const declaredSources = configured
       ? await verifyDeclaredCatalog(configured, reader)
       : undefined;
-    const declared =
+    const observed =
       saved.declaredSource &&
       declaredSources?.find(
         (context) =>
-          sameSource(saved.source, context.source) &&
+          sameSource(
+            { ...saved.source, data: undefined },
+            { ...context.source, data: undefined },
+          ) &&
           context.table.name === saved.declaredSource?.table.name &&
           context.table.schema === saved.declaredSource?.table.schema &&
           context.field.name === saved.declaredSource?.field.name,
       );
+    const declared =
+      observed && sameSource(saved.source, observed.source)
+        ? observed
+        : undefined;
     if (
       saved.declaredSource &&
-      (!declared ||
-        JSON.stringify(declared.connection) !==
+      (!observed ||
+        JSON.stringify(observed.connection) !==
           JSON.stringify(saved.declaredSource.connection))
     )
       throw new Error(
@@ -184,6 +215,10 @@ export class PublicDataService {
     if (originals.length !== 1)
       throw new Error('Saved attachment has no unique exact source scope.');
     const original = originals[0];
+    if (saved.declaredSource && !original.source.data)
+      throw new Error(
+        'A legacy attachment cannot authorize exact declared source data.',
+      );
     const oldProvider = {
       repository: saved.attachment.repository,
       commit: saved.attachment.revision,
@@ -203,6 +238,21 @@ export class PublicDataService {
         throw new Error(
           'Saved provenance does not match its immutable original attachment.',
         );
+    if (
+      original.source.data &&
+      (!saved.source.data ||
+        !exact(
+          saved.source.data,
+          saved.declaredSource?.data ?? saved.source.data,
+        ) ||
+        !exact(
+          referenceFile(original.source.data, oldProvider, true),
+          saved.source.data,
+        ))
+    )
+      throw new Error(
+        'Saved exact source data differs from its attachment/configuration.',
+      );
     if (
       saved.namespace !== original.target.namespace ||
       saved.decisionScope !== original.decision.scope ||
@@ -225,6 +275,27 @@ export class PublicDataService {
         ))
     )
       throw new Error('Saved native refs differ from original attachment.');
+    if (saved.declaredSource && observed && !declared) {
+      const checkedAt = new Date().toISOString();
+      return {
+        originalPlan,
+        fingerprint: await sha256(
+          JSON.stringify({ originalPlan, pins, observed, checkedAt }),
+        ),
+        checkedAt,
+        compatible: false,
+        changes: ['configured source/schema/data/mapping'],
+        discovery: {
+          indexes,
+          suggestions: [],
+          metadataBytes: reader.bytes,
+          declaredSources,
+        },
+        observedDeclared: observed,
+        reason:
+          'The checked selected data differs from the saved exact source-data attachment. A new reviewed admission is required before this data can be saved as a lookup plan.',
+      };
+    }
     const suggestions = await discoverRepresentations(
       saved.source,
       indexes,
@@ -598,6 +669,19 @@ export class PublicDataService {
       throw new Error(
         'Native source context was not verified in this discovery operation.',
       );
+    if (
+      declared &&
+      (!contract.source.data ||
+        !source.data ||
+        !sameSource(declared.source, contract.source))
+    )
+      throw new Error(
+        'Exact declared data requires the independently matched format-3 native attachment.',
+      );
+    if (contract.source.data && !declared)
+      throw new Error(
+        'Exact source data requires a checked selected configuration.',
+      );
     const target = recordset(suggestion.provider, contract.target.entity);
     const publicDatabase = string(
       suggestion.provider['localId'],
@@ -620,7 +704,7 @@ export class PublicDataService {
       database = 'declared_user';
       name = declared.table.name;
       rawField = declared.field.name;
-      sourceFields = declared.table.fields.map((field) => field.name);
+      sourceFields = [...new Set([declared.table.key, declared.field.name])];
     } else {
       const providers = array(
         discovery.indexes.directory['databases'],
@@ -660,7 +744,10 @@ export class PublicDataService {
               name,
               data: declared.data,
               key: declared.table.key,
-              fields: declared.table.fields,
+              selected: declared.field.name,
+              fields: declared.table.fields.filter((field) =>
+                sourceFields.includes(field.name),
+              ),
             },
           }
         : {}),
