@@ -26,6 +26,8 @@ import {
 import { type PublicDataScenario } from './public-data-scenario';
 import contractDocument from '../fixtures/public-data-fabric/representation/contract.json';
 import type { IProjectContext } from '../../nav/nav-models';
+import { ConfiguredPublicDataSourcesService } from './configured-public-data-sources.service';
+import { publicDataExceptions } from './public-data-scenario';
 
 const contract = contractDocument.contracts[0] as RepresentationContract;
 const source = contract.source as SourceField;
@@ -136,9 +138,33 @@ describe('Public data route fixture UI journey (no deployed runtime claims)', ()
       ),
     };
     const navigation = {
+      goTable: vi.fn(),
       goQuery: vi.fn((_project, query: IQueryDef) => {
         reopened = structuredClone(query);
       }),
+    };
+    const connection = {
+      id: 'fixture-source',
+      title: 'Configured fixture source',
+      environment: 'fixture',
+      catalog: 'user',
+      driver: 'ovdb',
+      host: 'https://fixture.invalid/api',
+    };
+    const configured = {
+      list: vi.fn(async () => [connection]),
+      inspect: vi.fn(async () => ({
+        discovery,
+        fields: [
+          {
+            id: 'Customer.Country',
+            table: { schema: '', name: 'Customer', dbType: 'BASE TABLE' },
+            property: 'Country',
+            source,
+            reason: 'Scope resolved from immutable canonical fixture metadata.',
+          },
+        ],
+      })),
     };
     await TestBed.configureTestingModule({
       imports: [PublicDataPageComponent],
@@ -146,6 +172,7 @@ describe('Public data route fixture UI journey (no deployed runtime claims)', ()
       providers: [
         provideRouter([]),
         { provide: PublicDataService, useValue: metadata },
+        { provide: ConfiguredPublicDataSourcesService, useValue: configured },
         { provide: FederatedQueryService, useValue: federation },
         { provide: QueriesService, useValue: queries },
         { provide: DatatugNavService, useValue: navigation },
@@ -182,13 +209,30 @@ describe('Public data route fixture UI journey (no deployed runtime claims)', ()
       queries,
       navigation,
       click,
+      configured,
       reopened: () => reopened,
     };
   }
   it('connects, explains exact provenance, inspects, explicitly runs, shows exceptions, saves and reopens the exact query pins', async () => {
     const state = await setup(true);
     expect(state.federation.run).not.toHaveBeenCalled();
-    await state.click('Connect and explain');
+    state.fixture.componentInstance.sourceText.set('');
+    await state.click('Load configured sources');
+    const connection = state.fixture.nativeElement.querySelector(
+      '#fabric-connection',
+    ) as HTMLSelectElement;
+    connection.value = 'fixture-source';
+    connection.dispatchEvent(new Event('change'));
+    await state.fixture.whenStable();
+    const field = state.fixture.nativeElement.querySelector(
+      '#fabric-field',
+    ) as HTMLSelectElement;
+    field.value = 'Customer.Country';
+    field.dispatchEvent(new Event('change'));
+    await state.fixture.whenStable();
+    expect(state.fixture.componentInstance.sourceText()).toBe('');
+    expect(state.fixture.componentInstance.source()).toEqual(source);
+    expect(state.configured.inspect).toHaveBeenCalledOnce();
     expect(state.fixture.nativeElement.textContent).toContain(
       'Customer.Country',
     );
@@ -233,6 +277,77 @@ describe('Public data route fixture UI journey (no deployed runtime claims)', ()
     expect(run.disabled).toBe(true);
     await state.fixture.componentInstance.run();
     await state.fixture.whenStable();
+    expect(state.federation.run).not.toHaveBeenCalled();
+  });
+  it('renders snapshot status warnings and keeps repeated affiliations separate from child locations', async () => {
+    const state = await setup(false);
+    const raw = 'https://ror.org/0042xzm63';
+    const counts = publicDataExceptions(
+      {
+        userRows: 1000,
+        userOffset: 0,
+        identifierKind: 'ror',
+        nativeNamespace: 'ROR:URL',
+        identifierLimit: 50,
+        resultRows: 5000,
+        bytes: 5242880,
+        timeoutMs: 10000,
+        sources: [
+          { database: 'user', name: 'Affiliation', keyField: 'ror_id' },
+          {
+            database: 'ror',
+            name: 'organizations',
+            keyField: 'id',
+            parent: { database: 'user', name: 'Affiliation', field: 'ror_id' },
+          },
+        ],
+      },
+      new Map([
+        [
+          'user.Affiliation',
+          [
+            { key: 'a1', data: { ror_id: raw } },
+            { key: 'a2', data: { ror_id: raw } },
+            { key: 'w', data: { ror_id: 'https://ror.org/0006jh821' } },
+            { key: 'i', data: { ror_id: 'https://ror.org/00067tc54' } },
+          ],
+        ],
+        [
+          'ror.organizations',
+          [
+            {
+              key: raw,
+              data: {
+                id: raw,
+                status: 'active',
+                locations: [{ ordinal: 0 }, { ordinal: 1 }],
+              },
+            },
+            {
+              key: 'w',
+              data: { id: 'https://ror.org/0006jh821', status: 'withdrawn' },
+            },
+            {
+              key: 'i',
+              data: { id: 'https://ror.org/00067tc54', status: 'inactive' },
+            },
+          ],
+        ],
+      ]),
+    );
+    state.fixture.componentInstance.result.set({
+      recordset: { columns: [], rows: [] },
+      provenance: { source: 'ROR rendering fixture', observedAt: '2026-09-22' },
+      limitations: [],
+      publicDataExceptions: counts,
+    } as unknown as FederatedQueryResult);
+    await state.fixture.whenStable();
+    const text = state.fixture.nativeElement.textContent;
+    expect(text).toContain('matched 4');
+    expect(text).toContain('multiplied 0');
+    expect(text).toContain('child locations do not increase');
+    expect(text).toContain('erroneous, duplicate or out-of-scope');
+    expect(text).toContain('historical reference context');
     expect(state.federation.run).not.toHaveBeenCalled();
   });
 });

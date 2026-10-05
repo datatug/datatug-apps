@@ -1,4 +1,6 @@
+import { strictJson } from './strict-json';
 import { parseDTQL } from '@dalgo/core';
+import { validNativeRorUrl } from './public-data-scenario';
 
 export interface BoundedSource {
   readonly database: string;
@@ -17,6 +19,7 @@ export interface BoundedFederation {
   readonly userRows: number;
   readonly userOffset: number;
   readonly identifierKind: 'place' | 'ror';
+  readonly nativeNamespace?: 'ROR:URL';
   readonly identifierLimit: number;
   readonly resultRows: number;
   readonly bytes: number;
@@ -38,6 +41,13 @@ const sourceId = (source: Pick<BoundedSource, 'database' | 'name'>): string =>
   `${source.database}.${source.name}`;
 
 export function validateBounds(bounds: BoundedFederation): void {
+  if (
+    !['place', 'ror'].includes(bounds.identifierKind) ||
+    (bounds.identifierKind === 'ror' && bounds.nativeNamespace !== 'ROR:URL')
+  )
+    throw new Error(
+      'A native ROR lookup requires the explicit reviewed ROR:URL syntax namespace.',
+    );
   const cap = bounds.identifierKind === 'ror' ? 50 : 100;
   for (const [name, value, maximum, minimum] of [
     ['user rows', bounds.userRows, 1000, 1],
@@ -69,10 +79,12 @@ export function validateBounds(bounds: BoundedFederation): void {
       );
     if (
       source.parent &&
-      (!known.has(sourceId(source.parent)) ||
+      (sourceId(bounds.sources[index - 1]) !== sourceId(source.parent) ||
         !namePattern.test(source.parent.field))
     )
-      throw new Error('Each lookup must reference an earlier source field.');
+      throw new Error(
+        'Each lookup must reference the immediately preceding source field.',
+      );
     known.add(id);
   }
 }
@@ -164,6 +176,11 @@ export function createBoundedFederationFetch(
         for (const row of rows) {
           const value = row.data[source.parent.field];
           if (value === null || value === '') continue;
+          if (
+            bounds.nativeNamespace === 'ROR:URL' &&
+            (typeof value !== 'string' || !validNativeRorUrl(value))
+          )
+            continue;
           if (typeof value !== 'string')
             throw new Error(
               'A bounded native key must retain its declared string representation.',
@@ -240,7 +257,7 @@ export function createBoundedFederationFetch(
             throw new Error(
               `The bounded source ${id} is unavailable or unsupported (${response.status}).`,
             );
-          const page = JSON.parse(read.text) as {
+          const page = strictJson(read.text) as {
             records?: BoundedRecord[];
             nextPageToken?: string;
             snapshotToken?: string;
@@ -343,7 +360,7 @@ export function createBoundedFederationFetch(
       const headers = new Headers(init.headers);
       if (headers.get('OVDB-Page-Close') === 'true')
         return new Response(null, { status: 204 });
-      const document = JSON.parse(String(init.body)) as {
+      const document = strictJson(String(init.body)) as {
         from: { name: string };
       };
       const database = url.slice(

@@ -7,6 +7,7 @@ import {
   string,
   strictJson,
   immutableUrl,
+  exactFields,
   type CanonicalIndexes,
   type CanonicalMetadataReader,
   type ImmutableFile,
@@ -133,7 +134,20 @@ function findRecord(
   description: string,
 ): MetadataObject {
   const matches = records
-    .map((value) => object(value, description))
+    .map((value) => {
+      const record = object(value, description);
+      exactFields(record, [
+        'repository',
+        'commit',
+        'files',
+        'id',
+        'licence',
+        'meaning_files',
+        'meaning_licence',
+        'depends',
+      ]);
+      return record;
+    })
     .filter(
       (record) =>
         record['repository'] === repository && record['commit'] === revision,
@@ -150,24 +164,27 @@ function modelProperty(
   entity: string,
   property: string,
 ): MetadataObject {
+  exactFields(model, ['modelspec', 'module', 'entities']);
+  if (model['modelspec'] !== '1.0-draft')
+    throw new Error('Unsupported canonical model format.');
+  exactFields(object(model['module'], 'model module'), ['name']);
   if (object(model['module'], 'model module')['name'] !== module)
     throw new Error('Wrong canonical model module.');
-  const value = object(
-    object(object(model['entities'], 'entities')[entity], 'entity')[
-      'properties'
-    ],
-    'properties',
-  )[property];
+  const entityRecord = object(
+    object(model['entities'], 'entities')[entity],
+    'entity',
+  );
+  exactFields(entityRecord, ['properties']);
+  const value = object(entityRecord['properties'], 'properties')[property];
   const result = object(value, 'source-qualified property');
+  exactFields(result, ['type', 'required']);
   if (result['type'] !== 'string')
     throw new Error(
       'The exact model property does not declare the raw string representation.',
     );
   return result;
 }
-function meaningDocument(text: string): MetadataObject {
-  if (text.trimStart().startsWith('{'))
-    return object(strictJson(text), 'meaning document');
+export function parseMeaningDocument(text: string): MetadataObject {
   const documents = parseAllDocuments(text, { uniqueKeys: true, strict: true });
   if (
     documents.length !== 1 ||
@@ -177,7 +194,23 @@ function meaningDocument(text: string): MetadataObject {
     throw new Error(
       'The canonical meaning document has invalid or multiple YAML documents.',
     );
-  return object(documents[0].toJS({ maxAliasCount: 0 }), 'meaning document');
+  const value = object(
+    strictJson(JSON.stringify(documents[0].toJS({ maxAliasCount: 0 }))),
+    'meaning document',
+  );
+  exactFields(value, ['format', 'concepts']);
+  for (const item of array(value['concepts'], 'meaning concepts')) {
+    const concept = object(item, 'meaning concept');
+    exactFields(concept, ['id', 'extends', 'bindings']);
+    if (concept['bindings'])
+      for (const binding of array(concept['bindings'], 'meaning bindings'))
+        exactFields(object(binding, 'meaning binding'), [
+          'model',
+          'property',
+          'role',
+        ]);
+  }
+  return value;
 }
 
 async function verifyContract(
@@ -289,8 +322,10 @@ async function verifyContract(
       : []),
   ])
     modelProperty(model, target.module, contract.bridge.table, field);
-  const binding = meaningDocument(await reader.text(bindingFile, ancestry));
-  const core = meaningDocument(await reader.text(coreFile, ancestry));
+  const binding = parseMeaningDocument(
+    await reader.text(bindingFile, ancestry),
+  );
+  const core = parseMeaningDocument(await reader.text(coreFile, ancestry));
   if (
     binding['format'] !== 'meaning/draft-1' ||
     core['format'] !== 'meaning/draft-1'
@@ -327,7 +362,9 @@ async function verifyContract(
   const keysFile = referenceFile(target.keys, provider, false);
   const bridgeFile = referenceFile(contract.bridge.artifact, provider, false);
   const snapshot = await reader.json(snapshotFile, ancestry);
+  exactFields(snapshot, ['generator', 'artifacts']);
   const generator = object(snapshot['generator'], 'snapshot generator');
+  exactFields(generator, ['repository', 'revision']);
   if (
     !/^https:\/\/github\.com\/[a-z0-9_.-]+\/[a-z0-9_.-]+$/.test(
       string(generator['repository'], 'generator repository'),
@@ -340,6 +377,7 @@ async function verifyContract(
     if (
       !artifacts.some((value) => {
         const artifact = object(value, 'artifact');
+        exactFields(artifact, ['path', 'sha256']);
         return (
           artifact['path'] === file.path && artifact['sha256'] === file.sha256
         );
@@ -347,6 +385,7 @@ async function verifyContract(
     )
       throw new Error('Snapshot does not pin the exact bridge/key artifact.');
   const keys = await reader.json(keysFile, ancestry);
+  exactFields(keys, ['namespace', 'keys']);
   if (keys['namespace'] !== target.namespace)
     throw new Error('Wrong native-key namespace.');
   const nativeKeys = array(keys['keys'], 'native keys').map((value) =>
@@ -355,6 +394,7 @@ async function verifyContract(
   if (new Set(nativeKeys).size !== nativeKeys.length)
     throw new Error('Duplicate native identifier keys.');
   const bridge = await reader.json(bridgeFile, ancestry);
+  exactFields(bridge, ['table', 'rows']);
   if (bridge['table'] !== contract.bridge.table)
     throw new Error('Wrong physical bridge table.');
   const labels = new Set<string>();
@@ -385,17 +425,23 @@ async function verifyContract(
 
 /** Diagnostic discovery remains unavailable until reviewed canonical companion publication. */
 export async function discoverRepresentations(
-  scope: SourceField,
+  scope: SourceField | undefined,
   indexes: CanonicalIndexes,
   reader: CanonicalMetadataReader,
 ): Promise<readonly PublicDataSuggestion[]> {
-  immutableUrl(scope.schema);
+  if (scope) immutableUrl(scope.schema);
   const suggestions: PublicDataSuggestion[] = [];
   for (const value of array(
     indexes.directory['databases'],
     'Directory databases',
   )) {
     const provider = object(value, 'Directory provider');
+    exactFields(provider, [
+      'repository',
+      'commit',
+      'representation_contract',
+      'licence',
+    ]);
     if (provider['representation_contract'] === undefined) continue;
     let attachment: ImmutableFile | undefined;
     try {
@@ -423,7 +469,9 @@ export async function discoverRepresentations(
       for (const contract of document[
         'contracts'
       ] as readonly RepresentationContract[]) {
-        const matchesSource = sameSource(scope, contract.source);
+        const matchesSource = scope
+          ? sameSource(scope, contract.source)
+          : false;
         const verified = await verifyContract(
           contract,
           provider,

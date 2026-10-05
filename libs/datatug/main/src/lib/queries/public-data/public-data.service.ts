@@ -3,6 +3,7 @@ import type { IQueryDef } from '../../models/definition/query-def';
 import { QueryType } from '../../models/definition/query-def';
 import {
   PUBLIC_DATA_OVDB_BASES,
+  validateBounds,
   type BoundedFederation,
 } from './bounded-federation';
 import {
@@ -20,6 +21,7 @@ import {
 } from './canonical-metadata';
 import {
   discoverRepresentations,
+  sameSource,
   type PublicDataSuggestion,
   type SourceField,
 } from './representation-discovery';
@@ -30,10 +32,14 @@ export interface PublicDataDiscovery {
   readonly metadataBytes: number;
 }
 
-function recordset(provider: MetadataObject, entity: string): MetadataObject {
+function recordset(
+  provider: MetadataObject,
+  identity: string,
+  field: 'modelEntity' | 'name' = 'modelEntity',
+): MetadataObject {
   const matches = array(provider['recordsets'], 'recordsets')
     .map((value) => object(value, 'recordset'))
-    .filter((value) => (value['modelEntity'] ?? value['name']) === entity);
+    .filter((value) => value[field] === identity);
   if (matches.length !== 1)
     throw new Error(
       'The exact model entity has no unambiguous Directory recordset.',
@@ -55,6 +61,24 @@ function ownFile(
 export class PublicDataService {
   private readonly cache = new CanonicalMetadataCache();
   readonly currentPins = INITIAL_CANONICAL_PINS;
+  async discoverAll(
+    signal: AbortSignal,
+    pins: CanonicalPins = this.currentPins,
+  ): Promise<PublicDataDiscovery> {
+    this.cache.begin(pins);
+    const reader = new CanonicalMetadataReader(
+      (input, init) => fetch(input, init),
+      this.cache,
+      signal,
+    );
+    const indexes = await readCanonicalIndexes(pins, reader);
+    const suggestions = await discoverRepresentations(
+      undefined,
+      indexes,
+      reader,
+    );
+    return { indexes, suggestions, metadataBytes: reader.bytes };
+  }
   async discover(
     source: SourceField,
     signal: AbortSignal,
@@ -85,6 +109,7 @@ export class PublicDataService {
     if (
       !contract ||
       !suggestion.matchesSource ||
+      !sameSource(source, contract.source) ||
       !suggestion.rights ||
       !suggestion.snapshot
     )
@@ -106,7 +131,11 @@ export class PublicDataService {
         'This declared user source has no pinned Directory runtime mapping.',
       );
     const driver = recordset(sourceProvider, source.entity);
-    const bridge = recordset(suggestion.provider, contract.bridge.table);
+    const bridge = recordset(
+      suggestion.provider,
+      contract.bridge.table,
+      'name',
+    );
     const target = recordset(suggestion.provider, contract.target.entity);
     const sourceDatabase = string(sourceProvider['localId'], 'user database');
     const targetDatabase = string(
@@ -162,6 +191,7 @@ export class PublicDataService {
         },
       ],
     };
+    validateBounds(boundsConfig);
     const query = {
       from: {
         database: sourceDatabase,

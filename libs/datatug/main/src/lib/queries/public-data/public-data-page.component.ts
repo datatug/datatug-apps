@@ -45,6 +45,15 @@ import type {
   PublicDataSuggestion,
   SourceField,
 } from './representation-discovery';
+import {
+  sameSource,
+  REPRESENTATION_PUBLICATION_BLOCKER,
+} from './representation-discovery';
+import { ConfiguredPublicDataSourcesService } from './configured-public-data-sources.service';
+import type {
+  ConfiguredPublicSource,
+  ConfiguredFieldChoice,
+} from './configured-source';
 
 @Component({
   selector: 'sneat-datatug-public-data-page',
@@ -73,12 +82,19 @@ import type {
 })
 export class PublicDataPageComponent implements OnDestroy {
   private readonly metadata = inject(PublicDataService);
+  private readonly configured = inject(ConfiguredPublicDataSourcesService);
   private readonly queries = inject(QueriesService);
   private readonly federation = inject(FederatedQueryService);
   private readonly navigation = inject(DatatugNavService);
   private readonly navContext = inject(DatatugNavContextService);
   readonly project = signal<IProjectContext | undefined>(undefined);
   readonly sourceText = signal('');
+  readonly connections = signal<readonly ConfiguredPublicSource[]>([]);
+  readonly connection = signal<ConfiguredPublicSource | undefined>(undefined);
+  readonly fields = signal<readonly ConfiguredFieldChoice[]>([]);
+  readonly field = signal<ConfiguredFieldChoice | undefined>(undefined);
+  readonly connectionLoading = signal(false);
+  readonly connectionsLoaded = signal(false);
   readonly source = signal<SourceField | undefined>(undefined);
   readonly discovery = signal<PublicDataDiscovery | undefined>(undefined);
   readonly loading = signal(false);
@@ -88,6 +104,12 @@ export class PublicDataPageComponent implements OnDestroy {
   readonly selected = signal<PublicDataSuggestion | undefined>(undefined);
   readonly page = signal(0);
   readonly resultRows = signal<FederatedQueryResult['recordset']['rows']>([]);
+  readonly hasRorStatuses = computed(
+    () =>
+      this.result()?.publicDataExceptions?.details.some(
+        (row) => !!row.targetStatus,
+      ) ?? false,
+  );
   readonly error = signal('');
   readonly userRows = signal(100);
   readonly userOffset = signal(0);
@@ -105,14 +127,140 @@ export class PublicDataPageComponent implements OnDestroy {
   private readonly subscription: Subscription =
     this.navContext.currentProject.subscribe((value) => {
       this.controller?.abort();
+      if (this.running()) void this.federation.dispose().catch(() => undefined);
       this.generation++;
       this.loading.set(false);
+      this.connectionLoading.set(false);
+      this.connectionsLoaded.set(false);
       this.project.set(value);
+      this.connections.set([]);
+      this.connection.set(undefined);
+      this.fields.set([]);
+      this.field.set(undefined);
       this.source.set(undefined);
       this.discovery.set(undefined);
       this.result.set(undefined);
       this.selected.set(undefined);
     });
+
+  async loadConnections(): Promise<void> {
+    const project = this.project();
+    if (!project || this.connectionLoading()) return;
+    const generation = this.generation;
+    const controller = new AbortController();
+    this.controller?.abort();
+    this.controller = controller;
+    const deadline = setTimeout(
+      () =>
+        controller.abort(new Error('Configured source discovery timed out.')),
+      10000,
+    );
+    this.connectionLoading.set(true);
+    this.error.set('');
+    try {
+      const connections = await this.configured.list(
+        project,
+        controller.signal,
+      );
+      if (generation === this.generation) {
+        this.connections.set(connections);
+        this.connectionsLoaded.set(true);
+      }
+    } catch (error) {
+      if (generation === this.generation)
+        this.error.set(
+          error instanceof Error
+            ? error.message
+            : 'Configured source metadata is unavailable.',
+        );
+    } finally {
+      clearTimeout(deadline);
+      if (generation === this.generation) this.connectionLoading.set(false);
+    }
+  }
+  async selectConnection(id: string): Promise<void> {
+    const connection = this.connections().find((value) => value.id === id);
+    const project = this.project();
+    if (!connection || !project) return;
+    this.controller?.abort();
+    const controller = new AbortController();
+    this.controller = controller;
+    const generation = ++this.generation;
+    this.connection.set(connection);
+    this.fields.set([]);
+    this.field.set(undefined);
+    this.source.set(undefined);
+    this.selected.set(undefined);
+    this.discovery.set(undefined);
+    this.error.set('');
+    this.loading.set(true);
+    const deadline = setTimeout(
+      () =>
+        controller.abort(
+          new Error('Configured source metadata inspection timed out.'),
+        ),
+      10000,
+    );
+    try {
+      const inspected = await this.configured.inspect(
+        project,
+        connection,
+        controller.signal,
+      );
+      if (generation === this.generation) {
+        this.fields.set(inspected.fields);
+        this.discovery.set(inspected.discovery);
+      }
+    } catch (error) {
+      if (generation === this.generation)
+        this.error.set(
+          error instanceof Error
+            ? error.message
+            : 'Configured source inspection failed.',
+        );
+    } finally {
+      clearTimeout(deadline);
+      if (generation === this.generation) this.loading.set(false);
+    }
+  }
+  selectField(id: string): void {
+    const field = this.fields().find((value) => value.id === id);
+    this.field.set(field);
+    this.source.set(field?.source);
+    this.selected.set(undefined);
+    const discovery = this.discovery();
+    if (discovery)
+      this.discovery.set({
+        ...discovery,
+        suggestions: discovery.suggestions.map((value) => {
+          const matchesSource =
+            !!field?.source &&
+            !!value.contract &&
+            sameSource(field.source, value.contract.source);
+          return {
+            ...value,
+            matchesSource,
+            reason:
+              matchesSource && !value.eligible
+                ? REPRESENTATION_PUBLICATION_BLOCKER
+                : value.reason,
+          };
+        }),
+      });
+  }
+  previewTable(): void {
+    const project = this.project();
+    const connection = this.connection();
+    const field = this.field();
+    if (project && connection && field)
+      this.navigation.goTable({
+        project,
+        env: connection.environment,
+        db: connection.catalog,
+        schema: field.table.schema,
+        name: field.table.name,
+      });
+  }
 
   async connect(): Promise<void> {
     if (this.loading()) return;
@@ -182,6 +330,7 @@ export class PublicDataPageComponent implements OnDestroy {
         );
   }
   async run(): Promise<void> {
+    const generation = this.generation;
     const source = this.source();
     const discovery = this.discovery();
     const selected = this.selected();
@@ -201,6 +350,7 @@ export class PublicDataPageComponent implements OnDestroy {
         userOffset: this.userOffset(),
       });
       const result = await this.federation.run(query, undefined, '', 'full');
+      if (generation !== this.generation) return;
       this.result.set(result);
       this.resultRows.set(result.recordset.rows);
     } catch (error) {
@@ -230,6 +380,7 @@ export class PublicDataPageComponent implements OnDestroy {
     }
   }
   async save(suggestion: PublicDataSuggestion): Promise<void> {
+    const generation = this.generation;
     const source = this.source();
     const discovery = this.discovery();
     const project = this.project();
@@ -244,6 +395,7 @@ export class PublicDataPageComponent implements OnDestroy {
       const saved = await firstValueFrom(
         this.queries.createQuery(project.ref, query),
       );
+      if (generation !== this.generation) return;
       if (
         !saved.publicData ||
         saved.publicData.attachment.sha256 !==

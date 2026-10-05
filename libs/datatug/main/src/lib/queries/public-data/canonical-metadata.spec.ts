@@ -6,6 +6,7 @@ import {
   immutableUrl,
   sha256,
   strictJson,
+  exactFields,
   type ImmutableFile,
 } from './canonical-metadata';
 import { sameSource, type SourceField } from './representation-discovery';
@@ -23,7 +24,6 @@ describe('immutable canonical discovery admission', () => {
   it('rejects duplicate/case-aliased keys, lone surrogates, trailing documents and mutable paths', () => {
     for (const text of [
       '{"a":1,"a":2}',
-      '{"property":1,"Property":2}',
       '{"x":"\\ud800"}',
       '{}{}',
       '[1,]',
@@ -31,6 +31,22 @@ describe('immutable canonical discovery admission', () => {
     ])
       expect(() => strictJson(text)).toThrow();
     expect(strictJson('{"x":"\\ud83d\\ude00"}')).toEqual({ x: '😀' });
+    expect(strictJson('{"Country":1,"COUNTRY":2}')).toEqual({
+      Country: 1,
+      COUNTRY: 2,
+    });
+    expect(() =>
+      exactFields({ property: 1, Property: 2 }, ['property']),
+    ).toThrow(/Aliased/);
+    for (const encoded of [
+      '\\uFFFD',
+      '�',
+      '\\ud83d\\ude00',
+      '\\uD83D\\uDE00',
+      '\\\\ud800',
+      '\\"label\\"',
+    ])
+      expect(() => strictJson(`{"x":"${encoded}"}`)).not.toThrow();
     expect(() =>
       immutableUrl({ ...INITIAL_CANONICAL_PINS.directory, revision: 'main' }),
     ).toThrow();

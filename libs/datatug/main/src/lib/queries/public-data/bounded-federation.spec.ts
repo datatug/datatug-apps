@@ -38,6 +38,16 @@ const row = (key: string, data: Record<string, unknown>): BoundedRecord => ({
   key,
   data,
 });
+const validButHypotheticalRor = (value: number): string => {
+  const alphabet = '0123456789abcdefghjkmnpqrstvwxyz';
+  let rest = value;
+  let token = '';
+  for (let i = 0; i < 7; i++) {
+    token = alphabet[rest % 32] + token;
+    rest = Math.floor(rest / 32);
+  }
+  return `https://ror.org/${token}${String(98 - ((value * 100) % 97)).padStart(2, '0')}`;
+};
 const response = (body: unknown): Response =>
   new Response(JSON.stringify(body), {
     headers: { 'Content-Type': 'application/json' },
@@ -285,7 +295,9 @@ describe('bounded public-data federation preparation (fixture requests, not depl
     ] as const) {
       const tooMany = serve(
         Array.from({ length: count }, (_, i) =>
-          row(String(i), { Country: String(i) }),
+          row(String(i), {
+            Country: kind === 'ror' ? validButHypotheticalRor(i) : String(i),
+          }),
         ),
         [],
       );
@@ -294,6 +306,7 @@ describe('bounded public-data federation preparation (fixture requests, not depl
           definition({
             ...fixtureBounds(),
             identifierKind: kind,
+            ...(kind === 'ror' ? { nativeNamespace: 'ROR:URL' as const } : {}),
             identifierLimit: cap,
           }),
           undefined,
@@ -322,6 +335,21 @@ describe('bounded public-data federation preparation (fixture requests, not depl
     expect(() =>
       validateBounds({ ...fixtureBounds(), timeoutMs: 10001 }),
     ).toThrow(/deadline/);
+    const branched = fixtureBounds();
+    expect(() =>
+      validateBounds({
+        ...branched,
+        sources: [
+          ...branched.sources,
+          {
+            database: 'geo',
+            name: 'Branches',
+            keyField: 'raw',
+            parent: { database: 'user', name: 'Customer', field: 'Country' },
+          },
+        ],
+      }),
+    ).toThrow(/immediately preceding/);
   });
   it('enforces cumulative bytes, redirect refusal, cancellation and snapshot expiry', async () => {
     const runtime = serve(
@@ -464,5 +492,68 @@ describe('bounded public-data federation preparation (fixture requests, not depl
     );
     expect(result).toMatchObject({ unmatched: 1, matched: 1, invalid: 0 });
     expect(result.details[1].targetStatus).toBe('withdrawn');
+  });
+  it('never requests malformed ROR values, retains them as invalid and queries checksum-valid absent references separately', async () => {
+    const runtime = serve(
+      [
+        row('1', { Country: 'https://ror.org/000025p04' }),
+        row('2', { Country: ' https://ror.org/000025p04' }),
+        row('3', { Country: 'https://ror.org/000025p05' }),
+        row('4', { Country: 'https://ror.org/000000098' }),
+      ],
+      [row('active', { raw: 'https://ror.org/000025p04', status: 'active' })],
+    );
+    const result = await runFederatedQuery(
+      definition({
+        ...fixtureBounds(),
+        identifierKind: 'ror',
+        nativeNamespace: 'ROR:URL',
+        identifierLimit: 50,
+      }),
+      undefined,
+      '',
+      undefined,
+      undefined,
+      'full',
+      undefined,
+      undefined,
+      { fetch: runtime.http },
+    );
+    expect(
+      runtime.calls.find((call) => call.name === 'Countries' && !call.close)
+        ?.where?.right.values,
+    ).toEqual(['https://ror.org/000025p04', 'https://ror.org/000000098']);
+    expect(result.publicDataExceptions).toMatchObject({
+      denominator: 4,
+      matched: 1,
+      invalid: 2,
+      unmatched: 1,
+    });
+    expect(result.publicDataExceptions?.details[1].raw).toBe(
+      ' https://ror.org/000025p04',
+    );
+    expect(() =>
+      validateBounds({ ...fixtureBounds(), identifierKind: 'ror' }),
+    ).toThrow(/explicit reviewed/);
+  });
+  it('refuses duplicate raw response properties before they erase source identity', async () => {
+    await expect(
+      runFederatedQuery(
+        definition(),
+        undefined,
+        '',
+        undefined,
+        undefined,
+        'full',
+        undefined,
+        undefined,
+        {
+          fetch: async () =>
+            new Response(
+              '{"records":[{"key":"1","data":{"Country":"USA","Country":"Canada"}}]}',
+            ),
+        },
+      ),
+    ).rejects.toThrow(/Duplicate/);
   });
 });

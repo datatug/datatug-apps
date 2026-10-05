@@ -10,38 +10,117 @@
   <ion-card
     ><ion-card-header
       ><ion-card-title
-        >Connect a declared source field</ion-card-title
+        >Connect a configured source</ion-card-title
       ></ion-card-header
     ><ion-card-content>
       <p>
-        Use the immutable schema repository, revision, path and SHA256, plus its
-        exact module, entity, property, string datatype and raw namespace.
-        Values retain their original case and spaces.
+        Choose a project source, table and field. Canonical metadata supplies
+        its provenance and explains supported lookups. Values keep their
+        original case and spaces.
       </p>
-      <ion-textarea
-        label="Source field declaration (JSON)"
-        labelPlacement="stacked"
-        [autoGrow]="true"
-        [ngModel]="sourceText()"
-        (ngModelChange)="sourceText.set($event)"
-      />
-      <ion-button (click)="connect()" [disabled]="loading() || !sourceText()"
-        >Connect and explain</ion-button
+      <ion-button
+        (click)="loadConnections()"
+        [disabled]="connectionLoading() || !project()"
+        >Load configured sources</ion-button
       >
-      @if (loading()) {
+      @if (connectionLoading() || loading()) {
         <ion-spinner /><ion-button fill="clear" (click)="cancel()"
-          >Cancel</ion-button
+          >Cancel source inspection</ion-button
         >
       }
-      @if (source(); as field) {
-        <p data-testid="source-scope">
-          {{ field.schema.repository }} at {{ field.schema.revision }} ·
-          {{ field.module }}.{{ field.entity }}.{{ field.property }} · raw
-          {{ field.datatype }} · {{ field.namespace }}
+      @if (connectionsLoaded() && !connections().length) {
+        <p>
+          No configured project source is available. Configure a connection in
+          the existing environment view before choosing a public lookup.
+        </p>
+      }
+      @if (connections().length) {
+        <label for="fabric-connection">Source</label
+        ><select
+          id="fabric-connection"
+          [value]="connection()?.id ?? ''"
+          (change)="selectConnection($any($event.target).value)"
+        >
+          <option value="">Choose a source</option>
+          @for (item of connections(); track item.id) {
+            <option [value]="item.id">{{ item.title }}</option>
+          }
+        </select>
+      }
+      @if (fields().length) {
+        <label for="fabric-field">Table and field</label
+        ><select
+          id="fabric-field"
+          [value]="field()?.id ?? ''"
+          (change)="selectField($any($event.target).value)"
+        >
+          <option value="">Choose a table and field</option>
+          @for (item of fields(); track item.id) {
+            <option [value]="item.id">
+              {{ item.table.schema }}.{{ item.table.name
+              }}{{ item.property ? '.' + item.property : '' }}
+            </option>
+          }
+        </select>
+      }
+      @if (connection() && !loading() && !fields().length) {
+        <p>
+          No configured table metadata is available for this source. Lookup is
+          unavailable.
+        </p>
+      }
+      @if (field(); as selectedField) {
+        <p data-testid="configured-field-reason">{{ selectedField.reason }}</p>
+        <ion-button fill="outline" (click)="previewTable()"
+          >Preview in existing table view</ion-button
+        >
+      }
+      @if (source(); as scope) {
+        <p data-testid="configured-source-scope">
+          {{ scope.entity }}.{{ scope.property }} · {{ scope.namespace }} ·
+          {{ scope.schema.repository }} at {{ scope.schema.revision }}
         </p>
       }
     </ion-card-content></ion-card
   >
+  <details>
+    <summary>Advanced source descriptor diagnostics</summary>
+    <ion-card
+      ><ion-card-header
+        ><ion-card-title
+          >Inspect a declared source field</ion-card-title
+        ></ion-card-header
+      ><ion-card-content>
+        <p>
+          Use the immutable schema repository, revision, path and SHA256, plus
+          its exact module, entity, property, string datatype and raw namespace.
+          Values retain their original case and spaces.
+        </p>
+        <ion-textarea
+          label="Source field declaration (JSON)"
+          labelPlacement="stacked"
+          [autoGrow]="true"
+          [ngModel]="sourceText()"
+          (ngModelChange)="sourceText.set($event)"
+        />
+        <ion-button (click)="connect()" [disabled]="loading() || !sourceText()"
+          >Connect and explain</ion-button
+        >
+        @if (loading()) {
+          <ion-spinner /><ion-button fill="clear" (click)="cancel()"
+            >Cancel</ion-button
+          >
+        }
+        @if (source(); as field) {
+          <p data-testid="source-scope">
+            {{ field.schema.repository }} at {{ field.schema.revision }} ·
+            {{ field.module }}.{{ field.entity }}.{{ field.property }} · raw
+            {{ field.datatype }} · {{ field.namespace }}
+          </p>
+        }
+      </ion-card-content></ion-card
+    >
+  </details>
   @if (error()) {
     <ion-card
       ><ion-card-content role="alert">{{ error() }}</ion-card-content></ion-card
@@ -53,8 +132,7 @@
         ><ion-card-title>Canonical suggestions</ion-card-title></ion-card-header
       ><ion-card-content>
         <p>
-          Metadata read: {{ data.metadataBytes }} of 2097152 bytes. No data
-          lookup has run.
+          Metadata read: {{ data.metadataBytes }} of 2097152 bytes. Metadata inspection does not query source data.
         </p>
         <p>
           Directory {{ data.indexes.pins.directory.revision }} · ModelSpec
@@ -65,8 +143,8 @@
           <p data-testid="no-contract">
             No published scoped representation attachment is available at these
             revisions. Source names and ordinary labels do not authorize a
-            lookup. ROR user mapping and native-id runtime publication remain
-            pending.
+            lookup. No scoped ROR source mapping is published here; native-id
+            runtime publication remains pending.
           </p>
         }
         @for (suggestion of data.suggestions; track $index) {
@@ -158,6 +236,14 @@
         ></ion-card-header
       ><ion-card-content>
         @if (output.publicDataExceptions; as counts) {
+          @if (hasRorStatuses()) {
+            <p>
+              ROR matches are references to the pinned source snapshot, not
+              proof of affiliation or current validity. Repeated input
+              affiliations remain distinct; child locations do not increase the
+              affiliation or unique organization count.
+            </p>
+          }
           <p data-testid="exception-counts">
             Source rows {{ counts.denominator }} · non-NULL
             {{ counts.nonNull }} · NULL {{ counts.null }} · empty

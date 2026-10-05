@@ -10,6 +10,7 @@ import {
 } from './canonical-metadata';
 import {
   discoverRepresentations,
+  parseMeaningDocument,
   type RepresentationContract,
   type SourceField,
 } from './representation-discovery';
@@ -112,6 +113,24 @@ async function discover(
 }
 
 describe('closed reviewed-helper consumer fixture, never production admission', () => {
+  it('matches reviewed strict Unicode and single-document YAML controls', () => {
+    const text = 'format: meaning/draft-1\nconcepts: []\n';
+    for (const extra of ['---\nformat: broken\n', '---\n', '---\n['])
+      expect(() => parseMeaningDocument(text + extra)).toThrow();
+    expect(
+      parseMeaningDocument(text + '...\n# trailing comment\n'),
+    ).toMatchObject({ format: 'meaning/draft-1' });
+    expect(() =>
+      parseMeaningDocument(
+        'format: meaning/draft-1\nFORMAT: broken\nconcepts: []',
+      ),
+    ).toThrow(/Aliased/);
+    expect(() =>
+      parseMeaningDocument(
+        'format: meaning/draft-1\nconcepts: []\nx: "\\ud800"',
+      ),
+    ).toThrow();
+  });
   it('verifies the pinned companion graph but remains unavailable without canonical publication', async () => {
     const suggestions = await discover();
     expect(suggestions).toHaveLength(1);
