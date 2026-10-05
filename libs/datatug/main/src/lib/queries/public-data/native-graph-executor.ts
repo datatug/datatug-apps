@@ -1312,7 +1312,7 @@ export class NativeGraphExecution {
       return await this.materialize();
     } catch (error) {
       if (error instanceof GraphCapacityError)
-        return this.stopAtCapacity(error);
+        return this.stopAtCapacity();
       this.budget.controller.abort(error);
       throw error;
     } finally {
@@ -1349,7 +1349,7 @@ export class NativeGraphExecution {
       this.busy = false;
     }
   }
-  private stopAtCapacity(error: GraphCapacityError): NativeGraphResult {
+  private stopAtCapacity(): NativeGraphResult {
     this.stopped =
       'The native graph exhausted its shared row, candidate or output byte bound. Run a narrower explicit selection.';
     this.ledger.rollbackOutput();

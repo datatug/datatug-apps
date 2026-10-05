@@ -76,7 +76,7 @@ function* evidenceParts(value: unknown): Generator<string> {
     return;
   }
   if (typeof value === 'string') {
-    yield '\"';
+    yield '"';
     for (let start = 0; start < value.length; ) {
       let end = Math.min(start + 512, value.length);
       const last = value.charCodeAt(end - 1);
@@ -84,7 +84,7 @@ function* evidenceParts(value: unknown): Generator<string> {
       yield JSON.stringify(value.slice(start, end)).slice(1, -1);
       start = end;
     }
-    yield '\"';
+    yield '"';
     return;
   }
   if (Array.isArray(value)) {
