@@ -130,4 +130,168 @@ describe('federated query worker', () => {
     );
     expect(posted.find((message) => message.type === 'error')).toBeUndefined();
   });
+  it('executes immutable pages through the installed worker/DALgo path and continues only on an explicit source-page message', async () => {
+    const pins = {
+      'OVDB-Provider-Revision': 'a'.repeat(40),
+      'OVDB-Source-SHA256': 'b'.repeat(64),
+      'OVDB-Serving-SHA256': 'c'.repeat(64),
+      'OVDB-Manifest-SHA256': 'd'.repeat(64),
+    };
+    const calls: { name: string; headers: Headers; offset: number }[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_input, init) => {
+        const q = JSON.parse(String(init?.body));
+        const headers = new Headers(init?.headers);
+        calls.push({ name: q.from.name, headers, offset: q.offset });
+        expect(headers.has('OVDB-Page-Size')).toBe(false);
+        const rows =
+          q.from.name === 'Customer'
+            ? [{ key: 'u:1', data: { Country: 'USA' } }]
+            : [
+                { key: 'p:1', data: { raw: 'USA', iso: 'US' } },
+                { key: 'p:2', data: { raw: 'USA', iso: 'US' } },
+              ];
+        return new Response(
+          JSON.stringify({ records: rows.slice(q.offset, q.offset + q.limit) }),
+          { headers: pins },
+        );
+      }),
+    );
+    const configured = {
+      id: 'immutable-worker',
+      request: {
+        queryType: 'DTQL',
+        text: JSON.stringify({
+          from: {
+            database: 'user',
+            name: 'Customer',
+            alias: 'u',
+            joins: [
+              {
+                type: 'left',
+                from: { database: 'geo', name: 'Countries', alias: 'p' },
+                on: [
+                  {
+                    left: { source: 'u', field: 'Country' },
+                    op: '==',
+                    right: { source: 'p', field: 'raw' },
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+      },
+      federation: {
+        ovdbBaseUrl: 'https://cloud.openvaultdb.com',
+        tables: [
+          { database: 'user', name: 'Customer', fields: ['Country'] },
+          { database: 'geo', name: 'Countries', fields: ['raw', 'iso'] },
+        ],
+        bounds: {
+          userRows: 10,
+          userOffset: 0,
+          identifierKind: 'place',
+          identifierLimit: 100,
+          resultRows: 5000,
+          bytes: 5242880,
+          timeoutMs: 10000,
+          sources: [
+            { database: 'user', name: 'Customer', keyField: 'Country' },
+            {
+              database: 'geo',
+              name: 'Countries',
+              keyField: 'raw',
+              parent: { database: 'user', name: 'Customer', field: 'Country' },
+            },
+          ],
+          runtime: {
+            readProfile: 'bounded-immutable/1',
+            databases: {
+              user: {
+                providerRevision: 'a'.repeat(40),
+                sourceSha256: 'b'.repeat(64),
+              },
+              geo: {
+                providerRevision: 'a'.repeat(40),
+                sourceSha256: 'b'.repeat(64),
+              },
+            },
+            pages: { 'geo.Countries': { limit: 1, offset: 0 } },
+          },
+        },
+      },
+    } as unknown as IQueryDef;
+    await run({ definition: configured });
+    expect(calls).toHaveLength(2);
+    const first = posted.find((m) => m.type === 'result')?.['result'] as {
+      publicDataExceptions: { unresolved: number };
+      totalRows: number;
+    };
+    expect(first.publicDataExceptions.unresolved).toBe(1);
+    expect(first.totalRows).toBe(1);
+    scope.onmessage?.({
+      data: {
+        type: 'source-page',
+        sourceId: 'geo.Countries',
+        limit: 2,
+        offset: 1,
+        requestId: 7,
+      },
+    });
+    await vi.waitFor(() =>
+      expect(
+        posted.some((m) => m.type === 'source-result' && m['requestId'] === 7),
+      ).toBe(true),
+    );
+    expect(calls).toHaveLength(3);
+    expect(calls[2].offset).toBe(1);
+    expect(calls[2].headers.get('OVDB-Manifest-SHA256')).toBe('d'.repeat(64));
+    const continued = posted.find((m) => m.type === 'source-result')?.[
+      'result'
+    ] as {
+      publicDataExceptions: {
+        complete: boolean;
+        ambiguous: number;
+        multiplied: number;
+      };
+      totalRows: number;
+    };
+    expect(continued.publicDataExceptions).toMatchObject({
+      complete: true,
+      ambiguous: 1,
+      multiplied: 1,
+    });
+    expect(continued.totalRows).toBe(2);
+    scope.onmessage?.({ data: { type: 'expire-runtime' } });
+    scope.onmessage?.({
+      data: {
+        type: 'source-page',
+        sourceId: 'geo.Countries',
+        limit: 1,
+        offset: 2,
+        requestId: 8,
+      },
+    });
+    await vi.waitFor(() =>
+      expect(
+        posted.some((m) => m.type === 'source-error' && m['requestId'] === 8),
+      ).toBe(true),
+    );
+    expect(calls).toHaveLength(3);
+    scope.onmessage?.({ data: { type: 'page', index: 0, requestId: 9 } });
+    await vi.waitFor(() =>
+      expect(
+        posted.some((m) => m.type === 'page' && m['requestId'] === 9),
+      ).toBe(true),
+    );
+    expect(
+      posted.find((m) => m.type === 'page' && m['requestId'] === 9)?.['rows'],
+    ).toHaveLength(2);
+    scope.onmessage?.({ data: { type: 'close' } });
+    await vi.waitFor(() =>
+      expect(posted.some((m) => m.type === 'closed')).toBe(true),
+    );
+  });
 });

@@ -42,6 +42,8 @@ export interface IQueryDef extends IQueryItem {
   federation?: {
     readonly ovdbBaseUrl: string;
     readonly bounds?: BoundedFederation;
+    /** Descriptive historical pages/pins; reopening never executes them. */
+    readonly readReceipt?: import('../../queries/public-data/immutable-federation').RuntimeReadReport;
     readonly tables: readonly { readonly name: string; readonly database?: string; readonly schema?: string; readonly fields: readonly string[] }[];
     readonly lookups?: readonly {
       readonly database: string;

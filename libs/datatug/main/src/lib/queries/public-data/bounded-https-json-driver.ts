@@ -51,6 +51,7 @@ export async function readJsonDriver(
   remaining: number,
   http: typeof fetch,
   signal: AbortSignal,
+  onBytes?: (bytes: number) => void,
 ): Promise<{ records: readonly BoundedRecord[]; bytes: number }> {
   validateJsonDriver(driver);
   signal.throwIfAborted();
@@ -60,7 +61,7 @@ export async function readJsonDriver(
     credentials: 'omit',
     signal,
   });
-  const read = await boundedResponseBytes(response, remaining, signal);
+  const read = await boundedResponseBytes(response, remaining, signal, onBytes);
   if (!response.ok)
     throw new Error(
       `The declared source is unavailable (${response.status}; ${read.bytes} response bytes).`,
