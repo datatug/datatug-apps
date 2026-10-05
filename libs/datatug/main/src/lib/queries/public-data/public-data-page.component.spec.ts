@@ -313,7 +313,7 @@ describe('Public data route fixture UI journey (no deployed runtime claims)', ()
   });
   it('explains actual native release/coverage/licence evidence while structural compatibility leaves execution unavailable', async () => {
     const state = await setup(false),
-      native = await nativeFixture('ror');
+      native = await nativeFixture('ror', true);
     vi.stubGlobal('fetch', native.http);
     try {
       const pins = await native.publish(),

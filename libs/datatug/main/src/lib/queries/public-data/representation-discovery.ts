@@ -2,6 +2,7 @@ import Ajv2020 from 'ajv/dist/2020';
 import { parseAllDocuments } from 'yaml';
 import schema from './representation-contract.schema.json';
 import schema2 from './representation-contract-2.schema.json';
+import schema3 from './representation-contract-3.schema.json';
 import type { VerifiedDeclaredSource } from './declared-source';
 import { verifyNativeReceipt } from './native-receipt';
 import {
@@ -25,6 +26,8 @@ export interface Reference {
 }
 export interface SourceField {
   readonly schema: ImmutableFile;
+  /** Present only for an exact-artifact source, independently derived by configuration. */
+  readonly data?: ImmutableFile;
   readonly module: string;
   readonly entity: string;
   readonly property: string;
@@ -33,7 +36,10 @@ export interface SourceField {
 }
 export interface RepresentationContract {
   readonly execution?: 'label-bridge';
-  readonly source: Omit<SourceField, 'schema'> & { readonly schema: Reference };
+  readonly source: Omit<SourceField, 'schema' | 'data'> & {
+    readonly schema: Reference;
+    readonly data?: Reference;
+  };
   readonly target: {
     readonly snapshot: Reference;
     readonly keys: Reference;
@@ -81,9 +87,15 @@ export interface NativeRepresentationContract extends Omit<
     readonly serving_identity_column?: string;
   };
 }
+export interface ExactNativeRepresentationContract extends NativeRepresentationContract {
+  readonly source: NativeRepresentationContract['source'] & {
+    readonly data: Reference;
+  };
+}
 export type ScopedRepresentationContract =
   | RepresentationContract
-  | NativeRepresentationContract;
+  | NativeRepresentationContract
+  | ExactNativeRepresentationContract;
 export interface PublicDataSuggestion {
   readonly provider: MetadataObject;
   readonly attachment: ImmutableFile;
@@ -121,6 +133,9 @@ export interface SourceFacts {
 const validate2 = new Ajv2020({ allErrors: true, strict: true }).compile(
   schema2,
 );
+const validate3 = new Ajv2020({ allErrors: true, strict: true }).compile(
+  schema3,
+);
 const validate = new Ajv2020({ allErrors: true, strict: true }).compile(schema);
 /** This consumer proposal does not make unfrozen companion metadata executable. */
 export const REPRESENTATION_PUBLICATION_BLOCKER =
@@ -130,11 +145,19 @@ export function sameSource(
   scope: SourceField,
   source: RepresentationContract['source'],
 ): boolean {
+  const data = scope.data;
+  const expected = source.data;
   return (
     scope.schema.repository === source.schema.repository &&
     scope.schema.revision === source.schema.revision &&
     scope.schema.path === source.schema.path &&
     scope.schema.sha256 === source.schema.sha256 &&
+    (data === undefined || expected === undefined
+      ? data === expected
+      : data.repository === expected.repository &&
+        data.revision === expected.revision &&
+        data.path === expected.path &&
+        data.sha256 === expected.sha256) &&
     scope.module === source.module &&
     scope.entity === source.entity &&
     scope.property === source.property &&
@@ -226,6 +249,60 @@ function modelProperty(
     );
   return result;
 }
+function verifyExactDeclaredModel(
+  declared: VerifiedDeclaredSource,
+  model: MetadataObject,
+): void {
+  const module = object(model['module'], 'exact source module');
+  exactFields(module, ['name', 'id']);
+  if (
+    module['id'] !== declared.moduleId ||
+    module['name'] !== declared.source.module
+  )
+    throw new Error(
+      'Exact source module id/name differs from the selected configuration.',
+    );
+  const entity = object(
+    object(model['entities'], 'exact source entities')[declared.source.entity],
+    'exact source entity',
+  );
+  exactFields(entity, ['key', 'properties']);
+  const keys = array(entity['key'], 'exact source grain');
+  const grain = declared.table.fields.filter(
+    (field) => field.name === declared.table.key,
+  );
+  if (
+    keys.length !== 1 ||
+    grain.length !== 1 ||
+    keys[0] !== grain[0].property ||
+    grain[0].name !== grain[0].property ||
+    grain[0].datatype !== 'string' ||
+    grain[0].nullable
+  )
+    throw new Error(
+      'Exact source requires one identity-mapped required string grain.',
+    );
+  const selected = declared.field;
+  if (selected.name !== selected.property || selected.datatype !== 'string')
+    throw new Error(
+      'Exact source identifier requires identity raw-member mapping.',
+    );
+  for (const field of [grain[0], selected]) {
+    const property = object(
+      object(entity['properties'], 'exact source properties')[field.property],
+      'exact source property',
+    );
+    exactFields(property, ['type', 'required']);
+    if (
+      typeof property['required'] !== 'boolean' ||
+      property['type'] !== 'string' ||
+      property['required'] !== !field.nullable
+    )
+      throw new Error(
+        'Exact source property required/type differs from the raw mapping.',
+      );
+  }
+}
 export function parseMeaningDocument(text: string): MetadataObject {
   const documents = parseAllDocuments(text, { uniqueKeys: true, strict: true });
   if (
@@ -271,8 +348,15 @@ async function verifyContract(
   const modelRecords = array(indexes.models['models'], 'model registry');
   const graphRecords = array(indexes.meanings['graphs'], 'meaning registry');
   const sourceFile = referenceFile(contract.source.schema, provider, true);
+  if (contract.source.data) referenceFile(contract.source.data, provider, true);
   if (declared) {
-    if (!sameSource(declared.source, contract.source))
+    if (
+      (contract.source.data &&
+        (contract.execution !== 'native-identifier' ||
+          !sameSource(declared.source, contract.source))) ||
+      (!contract.source.data &&
+        !sameSource({ ...declared.source, data: undefined }, contract.source))
+    )
       throw new Error(
         'Declared configured source differs from exact contract scope.',
       );
@@ -358,6 +442,8 @@ async function verifyContract(
   const ancestry = [immutableUrl(attachment)];
   const source = await reader.json(sourceFile, ancestry);
   const model = await reader.json(modelFile, ancestry);
+  if (declared && contract.source.data)
+    verifyExactDeclaredModel(declared, source);
   modelProperty(
     source,
     contract.source.module,
@@ -535,9 +621,11 @@ export function parseRepresentationContracts(
   document: MetadataObject,
 ): readonly ScopedRepresentationContract[] {
   if (
-    !(document['format'] === 'ovdb-representation-contract/2'
-      ? validate2(document)
-      : validate(document))
+    !(document['format'] === 'ovdb-representation-contract/3'
+      ? validate3(document)
+      : document['format'] === 'ovdb-representation-contract/2'
+        ? validate2(document)
+        : validate(document))
   )
     throw new Error('Unsupported or malformed scoped representation schema.');
   return document['contracts'] as readonly ScopedRepresentationContract[];
@@ -584,9 +672,11 @@ export async function discoverRepresentations(
       );
       const document = await reader.json(attachment);
       if (
-        !(document['format'] === 'ovdb-representation-contract/2'
-          ? validate2(document)
-          : validate(document))
+        !(document['format'] === 'ovdb-representation-contract/3'
+          ? validate3(document)
+          : document['format'] === 'ovdb-representation-contract/2'
+            ? validate2(document)
+            : validate(document))
       )
         throw new Error(
           'Unsupported or malformed scoped representation schema.',
@@ -602,6 +692,10 @@ export async function discoverRepresentations(
           source.schema.revision,
           source.schema.path,
           source.schema.sha256,
+          source.data?.repository,
+          source.data?.revision,
+          source.data?.path,
+          source.data?.sha256,
           source.module,
           source.entity,
           source.property,
@@ -627,7 +721,12 @@ export async function discoverRepresentations(
           attachment,
           (() => {
             const matches = declaredSources.filter((source) =>
-              sameSource(source.source, contract.source),
+              sameSource(
+                contract.source.data
+                  ? source.source
+                  : { ...source.source, data: undefined },
+                contract.source,
+              ),
             );
             if (matches.length > 1)
               throw new Error(
@@ -643,7 +742,9 @@ export async function discoverRepresentations(
           matchesSource,
           eligible: false,
           compatibility:
-            !scope || matchesSource ? 'compatible' : 'different-source',
+            matchesSource || (!scope && !contract.source.data)
+              ? 'compatible'
+              : 'different-source',
           reason: matchesSource
             ? REPRESENTATION_PUBLICATION_BLOCKER
             : 'This contract belongs to a different exact source/schema/property/representation scope.',

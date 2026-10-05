@@ -31,6 +31,7 @@ async function setup(
         sha256: await sha256(text),
       },
       key: 'affiliation_id',
+      selected: 'ror_id',
       fields: [
         {
           name: 'affiliation_id',
@@ -300,7 +301,7 @@ describe('bounded declared source with real OVDB target transport', () => {
     expect(state.http).toHaveBeenCalledTimes(1);
   });
   it('runs the accepted immutable affiliation bytes through existing DALgo while its saved production plan remains closed', async () => {
-    const fixture = await nativeFixture('ror');
+    const fixture = await nativeFixture('ror', true);
     vi.stubGlobal('fetch', fixture.http);
     try {
       const metadata = new PublicDataService(),

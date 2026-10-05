@@ -11,16 +11,25 @@ export interface BoundedJsonDriver {
   readonly name: string;
   readonly data: ImmutableFile;
   readonly key: string;
+  /** Exact contract member; present only after configured-source admission. */
+  readonly selected?: string;
   readonly fields: readonly SourceModelField[];
 }
 export function validateJsonDriver(driver: BoundedJsonDriver): void {
   immutableUrl(driver.data);
   const key = driver.fields.find((field) => field.name === driver.key);
+  const selected = driver.fields.filter(
+    (field) => field.name === driver.selected,
+  );
   if (
     driver.kind !== 'https-json' ||
     !key ||
     key.nullable ||
     key.datatype !== 'string' ||
+    (driver.selected !== undefined &&
+      (selected.length !== 1 ||
+        selected[0].name !== selected[0].property ||
+        key.name !== key.property)) ||
     !driver.fields.length ||
     driver.fields.length > 128 ||
     new Set(driver.fields.map((field) => field.name)).size !==
@@ -81,6 +90,11 @@ export async function readJsonDriver(
     keys.add(key);
     for (const field of driver.fields) {
       const value = data[field.name];
+      if (
+        field.name === driver.selected &&
+        !Object.prototype.hasOwnProperty.call(data, field.name)
+      )
+        throw new Error('Declared source selected raw member is missing.');
       if (
         typeof value !== 'string' &&
         !(field.nullable && (value === null || value === undefined))

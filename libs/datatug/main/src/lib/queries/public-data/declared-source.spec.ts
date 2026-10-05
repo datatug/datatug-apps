@@ -17,7 +17,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 async function configured() {
-  const fixture = await nativeFixture('ror');
+  const fixture = await nativeFixture('ror', true);
   vi.stubGlobal('fetch', fixture.http);
   const pins = await fixture.publish(),
     metadata = new PublicDataService();
@@ -201,13 +201,11 @@ describe('configured private-schema-shaped public fixture declaration without gl
       catalog: parsed.value,
     });
     expect(checked).toMatchObject({
-      compatible: true,
+      compatible: false,
       changes: ['configured source/schema/data/mapping'],
+      observedDeclared: { data: { sha256: changed.sha256 } },
     });
-    expect(checked.copy?.publicData?.declaredSource?.data.sha256).toBe(
-      changed.sha256,
-    );
-    expect(checked.copy?.publicData?.eligible).toBe(false);
+    expect(checked.copy).toBeUndefined();
     expect(plan.publicData?.declaredSource?.data.sha256).toBe(
       state.fixture.data.sha256,
     );

@@ -423,7 +423,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
   it.each(['canonical', 'data-only', 'configuration-only'] as const)(
     'discloses proposed %s pins before changed-pin acknowledgement and separate storage copy without a data query',
     async (change) => {
-      const native = await nativeFixture('ror');
+      const native = await nativeFixture('ror', true);
       vi.stubGlobal('fetch', native.http);
       try {
         const metadata = new PublicDataService(),
@@ -507,6 +507,24 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
         await click('Check current metadata');
         await checked.mock.results[0].value;
         await runFixture.whenStable();
+        if (change === 'data-only') {
+          const review = component.savedPlanReview.review();
+          expect(review?.compatible).toBe(false);
+          expect(review?.copy).toBeUndefined();
+          expect(review?.observedDeclared?.data.sha256).not.toBe(
+            original.publicData?.declaredSource?.data.sha256,
+          );
+          expect(runFixture.nativeElement.textContent).toContain(
+            review?.observedDeclared?.data.sha256,
+          );
+          expect(runFixture.nativeElement.textContent).toContain(
+            'new reviewed admission',
+          );
+          expect(create).not.toHaveBeenCalled();
+          expect(component.queryDef()).toEqual(original);
+          expect(federatedRunMock).not.toHaveBeenCalled();
+          return;
+        }
         expect(component.savedPlanReview.review()?.compatible).toBe(true);
         expect(runFixture.nativeElement.textContent).toContain(
           change === 'canonical'
@@ -552,13 +570,9 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
         expect(details.textContent).toContain(
           'do not grant semantic admission or execution',
         );
-        if (change === 'data-only') {
-          expect(declared.data.sha256).not.toBe(
-            originalData.declaredSource?.data.sha256,
-          );
-          expect(proposed.source.schema).toEqual(originalData.source.schema);
-          expect(proposed.canonical).toEqual(originalData.canonical);
-        }
+        expect(declared.data.sha256).toBe(
+          originalData.declaredSource?.data.sha256,
+        );
         expect(component.savedPlanReview.acknowledged()).toBeUndefined();
         const save = Array.from(
           runFixture.nativeElement.querySelectorAll('ion-button'),

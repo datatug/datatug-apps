@@ -9,7 +9,7 @@ import type { QueriesService } from '../queries.service';
 const signal = () => new AbortController().signal;
 afterEach(() => vi.unstubAllGlobals());
 async function savedFixture() {
-  const fixture = await nativeFixture('ror');
+  const fixture = await nativeFixture('ror', true);
   vi.stubGlobal('fetch', fixture.http);
   const metadata = new PublicDataService(),
     oldPins = await fixture.publish();
@@ -138,5 +138,22 @@ describe('saved native plan bounded fresh metadata check and explicit separate c
     await state.saveCopy();
     expect(createQuery).not.toHaveBeenCalled();
     state.destroy();
+  });
+  it('rejects a saved driver data pin changed independently from its attachment and configuration', async () => {
+    const { metadata, definition } = await savedFixture();
+    const changed = structuredClone(definition);
+    Object.assign(changed.federation?.bounds?.driver?.data ?? {}, {
+      sha256: '0'.repeat(64),
+    });
+    await expect(metadata.revalidate(changed, signal())).rejects.toThrow(
+      /source transport differs/,
+    );
+    const remapped = structuredClone(definition);
+    Object.assign(remapped.federation?.bounds?.sources[0] ?? {}, {
+      keyField: 'affiliation_id',
+    });
+    await expect(metadata.revalidate(remapped, signal())).rejects.toThrow(
+      /source transport differs/,
+    );
   });
 });
