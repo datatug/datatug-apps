@@ -3,6 +3,7 @@ import { immutableUrl, sha256 } from './canonical-metadata';
 import type { SourceModelField } from '../../project-files/source-model-declaration';
 import { strictJson } from './strict-json';
 import type { BoundedRecord } from './bounded-federation';
+import { boundedResponseBytes } from './bounded-response';
 
 /** Configured source transport only; never a public target or admission mechanism. */
 export interface BoundedJsonDriver {
@@ -50,11 +51,6 @@ export async function readJsonDriver(
   remaining: number,
   http: typeof fetch,
   signal: AbortSignal,
-  readResponse: (
-    response: Response,
-    remaining: number,
-    signal: AbortSignal,
-  ) => Promise<{ text: string; bytes: number; raw: Uint8Array }>,
 ): Promise<{ records: readonly BoundedRecord[]; bytes: number }> {
   validateJsonDriver(driver);
   signal.throwIfAborted();
@@ -64,7 +60,7 @@ export async function readJsonDriver(
     credentials: 'omit',
     signal,
   });
-  const read = await readResponse(response, remaining, signal);
+  const read = await boundedResponseBytes(response, remaining, signal);
   if (!response.ok)
     throw new Error(
       `The declared source is unavailable (${response.status}; ${read.bytes} response bytes).`,
@@ -72,7 +68,12 @@ export async function readJsonDriver(
   if ((await sha256(read.raw)) !== driver.data.sha256)
     throw new Error('Declared source checksum mismatch.');
   signal.throwIfAborted();
-  const raw = strictJson(read.text);
+  // Authentication precedes all source decoding and interpretation.
+  const text = new TextDecoder('utf-8', {
+    fatal: true,
+    ignoreBOM: true,
+  }).decode(read.raw);
+  const raw = strictJson(text);
   if (!Array.isArray(raw) || raw.length > 1000)
     throw new Error(
       'The declared source must be a bounded plain array of at most 1000 rows.',
