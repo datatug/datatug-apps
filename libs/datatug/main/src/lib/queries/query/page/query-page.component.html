@@ -149,6 +149,106 @@
               {{ facts.sourceLicences.join(', ') || 'unknown' }}
             </p>
           }
+          <details data-testid="checked-public-data-provenance">
+            <summary>Checked provenance and immutable pins</summary>
+            <p>
+              Checked {{ review.checkedAt }} · metadata bytes
+              {{ review.discovery.metadataBytes }}
+            </p>
+            <p>
+              Directory {{ review.discovery.indexes.pins.directory.revision }} ·
+              ModelSpec registry
+              {{ review.discovery.indexes.pins.models.revision }} · MeaningGraph
+              registry {{ review.discovery.indexes.pins.meanings.revision }}
+            </p>
+            @if (review.suggestion; as suggestion) {
+              <p>
+                Attachment {{ suggestion.attachment.repository }} at
+                {{ suggestion.attachment.revision }} ·
+                {{ suggestion.attachment.path }} ·
+                {{ suggestion.attachment.sha256 }}
+              </p>
+            }
+            @if (review.copy?.publicData; as proposed) {
+              <p>
+                Proposed pending copy. These integrity pins do not grant
+                semantic admission or execution.
+              </p>
+              @if (proposed.declaredSource; as context) {
+                <p>
+                  Configured source {{ context.connection.projectId }} ·
+                  {{ context.connection.id }} · module {{ context.moduleId }}
+                </p>
+                <p>
+                  Configuration {{ context.configuration.repository }} at
+                  {{ context.configuration.revision }} ·
+                  {{ context.configuration.path }} ·
+                  {{ context.configuration.sha256 }}
+                </p>
+                <p>
+                  User data {{ context.data.repository }} at
+                  {{ context.data.revision }} · {{ context.data.path }} ·
+                  {{ context.data.sha256 }}
+                </p>
+                <p>
+                  Physical table {{ context.table.schema }}.{{
+                    context.table.name
+                  }}
+                  · key {{ context.table.key }} → entity
+                  {{ context.table.entity }}
+                </p>
+                @for (field of context.table.fields; track field.name) {
+                  <p>
+                    Mapping {{ field.name }} → {{ field.property }} ·
+                    {{ field.datatype }} ·
+                    {{ field.nullable ? 'nullable' : 'required' }} · namespace
+                    {{ field.namespace || 'undeclared' }}
+                  </p>
+                }
+              }
+              <p>
+                Source schema {{ proposed.source.schema.repository }} at
+                {{ proposed.source.schema.revision }} ·
+                {{ proposed.source.schema.path }} ·
+                {{ proposed.source.schema.sha256 }}
+              </p>
+              <p>
+                Source scope {{ proposed.source.module }}.{{
+                  proposed.source.entity
+                }}.{{ proposed.source.property }} ·
+                {{ proposed.source.datatype }} ·
+                {{ proposed.source.namespace }} → {{ proposed.namespace }}
+              </p>
+              @for (
+                pin of [
+                  { label: 'Attachment', file: proposed.attachment },
+                  { label: 'Target model', file: proposed.model },
+                  { label: 'Meaning', file: proposed.meaning },
+                  { label: 'Snapshot', file: proposed.snapshot },
+                  { label: 'Decision', file: proposed.decision },
+                ];
+                track pin.label
+              ) {
+                <p>
+                  {{ pin.label }} {{ pin.file.repository }} at
+                  {{ pin.file.revision }} · {{ pin.file.path }} ·
+                  {{ pin.file.sha256 }}
+                </p>
+              }
+              @if (proposed.native; as native) {
+                <p>
+                  Native dataset {{ native.dataset.repository }} at
+                  {{ native.dataset.revision }} · {{ native.dataset.path }} ·
+                  {{ native.dataset.sha256 }}
+                </p>
+                <p>
+                  Native receipt {{ native.provenance.repository }} at
+                  {{ native.provenance.revision }} ·
+                  {{ native.provenance.path }} · {{ native.provenance.sha256 }}
+                </p>
+              }
+            }
+          </details>
           @if (review.changes.length) {
             <p role="alert">
               Changed pins: {{ review.changes.join(', ') }}. The original plan
@@ -171,26 +271,6 @@
               >Save separate pending plan</ion-button
             >
           }
-          <details data-testid="checked-public-data-provenance">
-            <summary>Checked provenance and immutable pins</summary>
-            <p>
-              Checked {{ review.checkedAt }} · metadata bytes
-              {{ review.discovery.metadataBytes }}
-            </p>
-            <p>
-              Directory {{ review.discovery.indexes.pins.directory.revision }} ·
-              ModelSpec registry
-              {{ review.discovery.indexes.pins.models.revision }} · MeaningGraph
-              registry {{ review.discovery.indexes.pins.meanings.revision }}
-            </p>
-            @if (review.suggestion; as suggestion) {
-              <p>
-                Attachment {{ suggestion.attachment.repository }} at
-                {{ suggestion.attachment.revision }} ·
-                {{ suggestion.attachment.sha256 }}
-              </p>
-            }
-          </details>
         }
         @if (savedPlanReview.message(); as message) {
           <p role="status">{{ message }}</p>

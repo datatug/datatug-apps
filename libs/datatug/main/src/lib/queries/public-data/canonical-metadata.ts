@@ -79,10 +79,12 @@ export function immutableUrl(file: ImmutableFile): string {
     );
   return `https://raw.githubusercontent.com/${file.repository.slice('https://github.com/'.length)}/${file.revision}/${file.path}`;
 }
-export async function sha256(text: string): Promise<string> {
+export async function sha256(value: string | Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest(
     'SHA-256',
-    new TextEncoder().encode(text),
+    typeof value === 'string'
+      ? new TextEncoder().encode(value)
+      : new Uint8Array(value),
   );
   return Array.from(new Uint8Array(digest), (byte) =>
     byte.toString(16).padStart(2, '0'),
@@ -91,7 +93,7 @@ export async function sha256(text: string): Promise<string> {
 
 /** Rebuildable bytes keyed by every immutable coordinate; never stores decisions. */
 export class CanonicalMetadataCache {
-  private readonly entries = new Map<string, string>();
+  private readonly entries = new Map<string, Uint8Array>();
   private generation = '';
   begin(pins: CanonicalPins): void {
     const generation = JSON.stringify(pins);
@@ -104,11 +106,11 @@ export class CanonicalMetadataCache {
     this.entries.clear();
     this.generation = '';
   }
-  get(file: ImmutableFile): string | undefined {
-    return this.entries.get(JSON.stringify(file));
+  get(file: ImmutableFile): Uint8Array | undefined {
+    return this.entries.get(JSON.stringify(file))?.slice();
   }
-  set(file: ImmutableFile, text: string): void {
-    this.entries.set(JSON.stringify(file), text);
+  set(file: ImmutableFile, raw: Uint8Array): void {
+    this.entries.set(JSON.stringify(file), raw.slice());
   }
 }
 
@@ -139,8 +141,8 @@ export class CanonicalMetadataReader {
       throw new Error('Canonical metadata exceeds the reference count bound.');
     const request = this.queue.then(async () => {
       this.signal.throwIfAborted();
-      let text = this.cache.get(file);
-      if (text === undefined) {
+      let raw = this.cache.get(file);
+      if (raw === undefined) {
         const response = await this.httpFetch(url, {
           redirect: 'error',
           signal: this.signal,
@@ -155,14 +157,18 @@ export class CanonicalMetadataReader {
           throw new Error(
             `Canonical metadata unavailable (${response.status}).`,
           );
-        text = read.text;
+        raw = read.raw;
       }
-      this.admittedBytes += new TextEncoder().encode(text).byteLength;
+      this.admittedBytes += raw.byteLength;
       if (this.admittedBytes > 2 * 1024 * 1024)
         throw new Error('Discovery metadata exceeds the aggregate 2MiB bound.');
-      if ((await sha256(text)) !== file.sha256)
+      if ((await sha256(raw)) !== file.sha256)
         throw new Error('Canonical metadata checksum mismatch.');
-      this.cache.set(file, text);
+      const text = new TextDecoder('utf-8', {
+        fatal: true,
+        ignoreBOM: true,
+      }).decode(raw);
+      this.cache.set(file, raw);
       return text;
     });
     this.queue = request.then(

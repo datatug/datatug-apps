@@ -76,7 +76,13 @@ async function setup(
       return new Response(text);
     return new Response(
       JSON.stringify({
-        records: [{ key: 'ror', data: { id: 'https://ror.org/03yrm5c26' } }].filter(row => JSON.parse(String(init?.body)).where.right.values.includes(row.data.id)),
+        records: [
+          { key: 'ror', data: { id: 'https://ror.org/03yrm5c26' } },
+        ].filter((row) =>
+          JSON.parse(String(init?.body)).where.right.values.includes(
+            row.data.id,
+          ),
+        ),
       }),
     );
   });
@@ -202,6 +208,52 @@ describe('bounded declared source with real OVDB target transport', () => {
     await expect(redirected.request(redirected.transport())).rejects.toThrow(
       /redirect/,
     );
+  });
+  it('rejects added/removed BOM bytes and invalid UTF8 before any target request', async () => {
+    for (const mutation of ['added', 'removed', 'invalid'] as const) {
+      const state = await setup(),
+        plain = new TextEncoder().encode(state.text),
+        bom = new Uint8Array([0xef, 0xbb, 0xbf, ...plain]);
+      const data = state.bounds.driver?.data;
+      if (!data) throw new Error('Missing driver.');
+      if (mutation === 'removed')
+        Object.assign(data, { sha256: await sha256(bom) });
+      const body =
+        mutation === 'added'
+          ? bom
+          : mutation === 'removed'
+            ? plain
+            : new Uint8Array([0xc3, 0x28]);
+      vi.mocked(state.http).mockImplementation(async (input, init) => {
+        state.calls.push({ url: String(input), init });
+        return new Response(body);
+      });
+      await expect(state.request(state.transport())).rejects.toThrow(
+        mutation === 'invalid' ? /encoded|UTF|decode/ : /checksum/,
+      );
+      expect(state.calls.map((call) => call.url)).toEqual([state.dataUrl]);
+    }
+  });
+  it('preserves ordinary Unicode exactly and enforces source byte boundaries before target access', async () => {
+    const rows = [
+      { affiliation_id: 'é😀�', ror_id: 'https://ror.org/03yrm5c26' },
+    ];
+    const state = await setup(rows),
+      transport = state.transport();
+    await state.request(transport);
+    expect(
+      transport.receipt.sources.get('declared_user.affiliations')?.[0].key,
+    ).toBe('é😀�');
+    const sourceBytes = new TextEncoder().encode(state.text).byteLength;
+    for (const remaining of [sourceBytes, sourceBytes - 1]) {
+      const bounded = await setup(rows);
+      Object.assign(bounded.bounds, { bytes: remaining });
+      await expect(bounded.request(bounded.transport())).rejects.toThrow(
+        /byte bound/,
+      );
+      // At the exact source budget the source succeeds, but no bytes remain for the target response.
+      expect(bounded.calls).toHaveLength(remaining === sourceBytes ? 2 : 1);
+    }
   });
   it('applies an explicit source page only after full-file verification and refuses an identifier overflow before target access', async () => {
     const state = await setup();

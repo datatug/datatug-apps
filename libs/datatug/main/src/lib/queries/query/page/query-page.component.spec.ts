@@ -420,95 +420,171 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     expect(federatedRunMock).not.toHaveBeenCalled();
   });
 
-  it('uses the production saved-plan panel for explicit metadata check, changed-pin acknowledgement and separate storage copy without a data query', async () => {
-    const native = await nativeFixture('ror');
-    vi.stubGlobal('fetch', native.http);
-    try {
-      const metadata = new PublicDataService(),
-        oldPins = await native.publish();
-      const source = native.contract.source as Parameters<
-        PublicDataService['discover']
-      >[0];
-      const discovery = await metadata.discoverDeclared(
-        native.context,
-        new AbortController().signal,
-        oldPins,
-      );
-      const definition = metadata.scenario(
-        source,
-        discovery,
-        discovery.suggestions[0],
-        { userRows: 1000, userOffset: 0 },
-        discovery.declaredSources?.[0],
-      );
-      const original = structuredClone(definition),
-        pins = await native.publish('b'.repeat(40));
-      const html = readFileSync(
-        resolve(
-          'libs/datatug/main/src/lib/queries/query/page/query-page.component.html',
-        ),
-        'utf8',
-      );
-      const template = html
-        .split('<ion-content color="light">')[1]
-        .split('  <ion-card>')[0];
-      native.http.mockClear();
-      component = await createComponent({}, definition, template);
-      Object.assign(component.savedPlanReview, {
-        configured: async () => native.context,
-      });
-      const injected = TestBed.inject(PublicDataService),
-        revalidate = injected.revalidate.bind(injected);
-      const checked = vi
-        .spyOn(injected, 'revalidate')
-        .mockImplementation((query, signal) =>
-          revalidate(query, signal, pins, native.context),
+  it.each(['canonical', 'data-only', 'configuration-only'] as const)(
+    'discloses proposed %s pins before changed-pin acknowledgement and separate storage copy without a data query',
+    async (change) => {
+      const native = await nativeFixture('ror');
+      vi.stubGlobal('fetch', native.http);
+      try {
+        const metadata = new PublicDataService(),
+          oldPins = await native.publish();
+        const source = native.contract.source as Parameters<
+          PublicDataService['discover']
+        >[0];
+        const discovery = await metadata.discoverDeclared(
+          native.context,
+          new AbortController().signal,
+          oldPins,
         );
-      const create = vi.fn((_project, query) => of(structuredClone(query)));
-      Object.assign(TestBed.inject(QueriesService), { createQuery: create });
-      runFixture.detectChanges();
-      await runFixture.whenStable();
-      expect(native.http).not.toHaveBeenCalled();
-      expect(runFixture.nativeElement.textContent).toContain(
-        'Saved source release v2.13',
-      );
-      const click = async (label: string) => {
-        const buttons = Array.from(
-          runFixture.nativeElement.querySelectorAll('ion-button'),
-        ) as HTMLElement[];
-        const button = buttons.find(
-          (value) => value.textContent?.trim() === label,
+        const definition = metadata.scenario(
+          source,
+          discovery,
+          discovery.suggestions[0],
+          { userRows: 1000, userOffset: 0 },
+          discovery.declaredSources?.[0],
         );
-        expect(button).toBeDefined();
-        button?.click();
+        const original = structuredClone(definition);
+        const pins =
+          change === 'canonical'
+            ? await native.publish('b'.repeat(40))
+            : oldPins;
+        if (change !== 'canonical') {
+          if (change === 'data-only') {
+            const updated = await native.put(
+              native.data,
+              '[{"affiliation_id":"changed","ror_id":null}]',
+            );
+            Object.assign(native.context.catalog.sha256, {
+              affiliations: updated.sha256,
+            });
+          }
+          const configuration = await native.put(
+            { ...native.context.configuration, revision: 'd'.repeat(40) },
+            JSON.stringify(native.context.catalog),
+          );
+          Object.assign(native.context, { configuration });
+        }
+        const html = readFileSync(
+          resolve(
+            'libs/datatug/main/src/lib/queries/query/page/query-page.component.html',
+          ),
+          'utf8',
+        );
+        const template = html
+          .split('<ion-content color="light">')[1]
+          .split('  <ion-card>')[0];
+        native.http.mockClear();
+        component = await createComponent({}, definition, template);
+        Object.assign(component.savedPlanReview, {
+          configured: async () => native.context,
+        });
+        const injected = TestBed.inject(PublicDataService),
+          revalidate = injected.revalidate.bind(injected);
+        const checked = vi
+          .spyOn(injected, 'revalidate')
+          .mockImplementation((query, signal) =>
+            revalidate(query, signal, pins, native.context),
+          );
+        const create = vi.fn((_project, query) => of(structuredClone(query)));
+        Object.assign(TestBed.inject(QueriesService), { createQuery: create });
+        runFixture.detectChanges();
         await runFixture.whenStable();
-      };
-      await click('Check current metadata');
-      await checked.mock.results[0].value;
-      await runFixture.whenStable();
-      expect(component.savedPlanReview.review()?.compatible).toBe(true);
-      expect(runFixture.nativeElement.textContent).toContain(
-        'Changed pins: canonical directory',
-      );
-      const details = runFixture.nativeElement.querySelector(
-        '[data-testid="checked-public-data-provenance"]',
-      ) as HTMLDetailsElement;
-      expect(details.open).toBe(false);
-      expect(create).not.toHaveBeenCalled();
-      await click('Acknowledge this metadata check');
-      await click('Save separate pending plan');
-      expect(create).toHaveBeenCalledOnce();
-      expect(create.mock.calls[0][1].publicData.eligible).toBe(false);
-      expect(component.queryDef()).toEqual(original);
-      component.resultPageIndex.set(1);
-      component.runQuery();
-      expect(component.resultPageIndex()).toBe(1);
-      expect(federatedRunMock).not.toHaveBeenCalled();
-      expect(runQueryMock).not.toHaveBeenCalled();
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
+        expect(native.http).not.toHaveBeenCalled();
+        expect(runFixture.nativeElement.textContent).toContain(
+          'Saved source release v2.13',
+        );
+        const click = async (label: string) => {
+          const buttons = Array.from(
+            runFixture.nativeElement.querySelectorAll('ion-button'),
+          ) as HTMLElement[];
+          const button = buttons.find(
+            (value) => value.textContent?.trim() === label,
+          );
+          expect(button).toBeDefined();
+          button?.click();
+          await runFixture.whenStable();
+        };
+        await click('Check current metadata');
+        await checked.mock.results[0].value;
+        await runFixture.whenStable();
+        expect(component.savedPlanReview.review()?.compatible).toBe(true);
+        expect(runFixture.nativeElement.textContent).toContain(
+          change === 'canonical'
+            ? 'Changed pins: canonical directory'
+            : 'Changed pins: configured source/schema/data/mapping',
+        );
+        const details = runFixture.nativeElement.querySelector(
+          '[data-testid="checked-public-data-provenance"]',
+        ) as HTMLDetailsElement;
+        expect(details.open).toBe(false);
+        details.querySelector('summary')?.click();
+        await runFixture.whenStable();
+        expect(details.open).toBe(true);
+        const proposed = component.savedPlanReview.review()?.copy?.publicData;
+        if (
+          !proposed?.declaredSource ||
+          !proposed.native ||
+          !original.publicData?.declaredSource
+        )
+          throw new Error(
+            'Missing proposed or original declared native source.',
+          );
+        const declared = proposed.declaredSource,
+          originalData = original.publicData;
+        for (const ref of [
+          declared.configuration,
+          declared.data,
+          proposed.source.schema,
+          proposed.attachment,
+          proposed.model,
+          proposed.meaning,
+          proposed.snapshot,
+          proposed.decision,
+          proposed.native.dataset,
+          proposed.native.provenance,
+        ]) {
+          for (const value of Object.values(ref))
+            expect(details.textContent).toContain(value);
+        }
+        expect(details.textContent).toContain('Mapping ror_id → ror_id');
+        expect(details.textContent).toContain('ROR:URL');
+        expect(details.textContent).toContain('key affiliation_id');
+        expect(details.textContent).toContain(
+          'do not grant semantic admission or execution',
+        );
+        if (change === 'data-only') {
+          expect(declared.data.sha256).not.toBe(
+            originalData.declaredSource?.data.sha256,
+          );
+          expect(proposed.source.schema).toEqual(originalData.source.schema);
+          expect(proposed.canonical).toEqual(originalData.canonical);
+        }
+        expect(component.savedPlanReview.acknowledged()).toBeUndefined();
+        const save = Array.from(
+          runFixture.nativeElement.querySelectorAll('ion-button'),
+        ).find(
+          (button) =>
+            (button as HTMLElement).textContent?.trim() ===
+            'Save separate pending plan',
+        ) as HTMLButtonElement;
+        expect(save.disabled).toBe(true);
+        expect(create).not.toHaveBeenCalled();
+        expect(federatedRunMock).not.toHaveBeenCalled();
+        await click('Acknowledge this metadata check');
+        await click('Save separate pending plan');
+        expect(create).toHaveBeenCalledOnce();
+        expect(create.mock.calls[0][1].publicData.eligible).toBe(false);
+        expect(component.queryDef()).toEqual(original);
+        component.resultPageIndex.set(1);
+        component.runQuery();
+        expect(component.resultPageIndex()).toBe(1);
+        expect(federatedRunMock).not.toHaveBeenCalled();
+        expect(runQueryMock).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
 
   it('runs a federated query in the browser and exposes its download and lookup progress', async () => {
     const definition: IQueryDef = {

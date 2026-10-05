@@ -45,7 +45,7 @@ export async function readJsonDriver(
     response: Response,
     remaining: number,
     signal: AbortSignal,
-  ) => Promise<{ text: string; bytes: number }>,
+  ) => Promise<{ text: string; bytes: number; raw: Uint8Array }>,
 ): Promise<{ records: readonly BoundedRecord[]; bytes: number }> {
   validateJsonDriver(driver);
   signal.throwIfAborted();
@@ -60,7 +60,7 @@ export async function readJsonDriver(
     throw new Error(
       `The declared source is unavailable (${response.status}; ${read.bytes} response bytes).`,
     );
-  if ((await sha256(read.text)) !== driver.data.sha256)
+  if ((await sha256(read.raw)) !== driver.data.sha256)
     throw new Error('Declared source checksum mismatch.');
   signal.throwIfAborted();
   const raw = strictJson(read.text);
