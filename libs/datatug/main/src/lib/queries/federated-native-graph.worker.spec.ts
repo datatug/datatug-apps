@@ -42,8 +42,8 @@ vi.mock('./federated-query-executor', async (original) => {
       const text = await response.text();
       if (control.stageFault === 'pins') return new Response(text, { headers: { ...Object.fromEntries(response.headers.entries()), 'ovdb-source-sha256': 'f'.repeat(64) } });
       if (control.stageFault === 'malformed') return new Response('{records:', { headers: response.headers });
-      if (control.stageFault === 'duplicate') return new Response(text.replace('\"geonames_id\":4369596', '\"geonames_id\":4369596,\"geonames_id\":4369596'), { headers: response.headers });
-      if (control.stageFault === 'ordinal') return new Response(text.replace('\"ordinal\":0', '\"ordinal\":9007199254740993'), { headers: response.headers });
+      if (control.stageFault === 'duplicate') return new Response(text.replace('"geonames_id":4369596', '"geonames_id":4369596,"geonames_id":4369596'), { headers: response.headers });
+      if (control.stageFault === 'ordinal') return new Response(text.replace('"ordinal":0', '"ordinal":9007199254740993'), { headers: response.headers });
       const raw = control.wireToken;
       const changed = raw === undefined ? text.replace(',"geonames_id":4369596', '') : text.replace('"geonames_id":4369596', '"geonames_id":' + raw);
       return new Response(changed, { headers: response.headers });
