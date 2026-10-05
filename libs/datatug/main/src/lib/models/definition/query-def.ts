@@ -3,6 +3,8 @@ import { IParameterDef } from './parameter';
 import { IRecordsetDef } from './recordset';
 import { HttpMethod } from './command-definition';
 import { IWidgetRef } from './widget';
+import type { BoundedFederation } from '../../queries/public-data/bounded-federation';
+import type { PublicDataScenario } from '../../queries/public-data/public-data-scenario';
 
 export enum QueryType {
   HTTP = 'HTTP',
@@ -39,6 +41,7 @@ export interface IQueryDef extends IQueryItem {
   recordsets?: IRecordsetDef[];
   federation?: {
     readonly ovdbBaseUrl: string;
+    readonly bounds?: BoundedFederation;
     readonly tables: readonly { readonly name: string; readonly database?: string; readonly schema?: string; readonly fields: readonly string[] }[];
     readonly lookups?: readonly {
       readonly database: string;
@@ -48,6 +51,7 @@ export interface IQueryDef extends IQueryItem {
       readonly concurrency?: number;
     }[];
   };
+  publicData?: PublicDataScenario;
   widgets?: IWidgetRef[];
 }
 

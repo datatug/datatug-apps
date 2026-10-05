@@ -31,6 +31,7 @@ export type ProjectTopLevelPage =
   | 'environments'
   | 'servers'
   | 'queries'
+  | 'public-data'
   | 'query'
   | 'tags'
   | 'variables'

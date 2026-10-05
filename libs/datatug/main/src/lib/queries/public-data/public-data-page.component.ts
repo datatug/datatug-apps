@@ -1,0 +1,271 @@
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  OnDestroy,
+  signal,
+} from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
+import {
+  IonBackButton,
+  IonButton,
+  IonButtons,
+  IonCard,
+  IonCardContent,
+  IonCardHeader,
+  IonCardTitle,
+  IonContent,
+  IonHeader,
+  IonInput,
+  IonItem,
+  IonMenuButton,
+  IonSpinner,
+  IonTextarea,
+  IonTitle,
+  IonToolbar,
+} from '@ionic/angular';
+import { firstValueFrom, Subscription } from 'rxjs';
+import { DatatugNavContextService } from '../../services/nav/datatug-nav-context.service';
+import { DatatugNavService } from '../../services/nav/datatug-nav.service';
+import { projectPageHref } from '../../nav/project-page-href';
+import type { IProjectContext } from '../../nav/nav-models';
+import { QueriesService } from '../queries.service';
+import {
+  FederatedQueryService,
+  type FederatedQueryResult,
+} from '../federated-query.service';
+import {
+  PublicDataService,
+  type PublicDataDiscovery,
+} from './public-data.service';
+import { immutableUrl, object, strictJson } from './canonical-metadata';
+import type {
+  PublicDataSuggestion,
+  SourceField,
+} from './representation-discovery';
+
+@Component({
+  selector: 'sneat-datatug-public-data-page',
+  templateUrl: './public-data-page.component.html',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [
+    FormsModule,
+    RouterLink,
+    IonBackButton,
+    IonButton,
+    IonButtons,
+    IonCard,
+    IonCardContent,
+    IonCardHeader,
+    IonCardTitle,
+    IonContent,
+    IonHeader,
+    IonInput,
+    IonItem,
+    IonMenuButton,
+    IonSpinner,
+    IonTextarea,
+    IonTitle,
+    IonToolbar,
+  ],
+})
+export class PublicDataPageComponent implements OnDestroy {
+  private readonly metadata = inject(PublicDataService);
+  private readonly queries = inject(QueriesService);
+  private readonly federation = inject(FederatedQueryService);
+  private readonly navigation = inject(DatatugNavService);
+  private readonly navContext = inject(DatatugNavContextService);
+  readonly project = signal<IProjectContext | undefined>(undefined);
+  readonly sourceText = signal('');
+  readonly source = signal<SourceField | undefined>(undefined);
+  readonly discovery = signal<PublicDataDiscovery | undefined>(undefined);
+  readonly loading = signal(false);
+  readonly saving = signal(false);
+  readonly running = signal(false);
+  readonly result = signal<FederatedQueryResult | undefined>(undefined);
+  readonly selected = signal<PublicDataSuggestion | undefined>(undefined);
+  readonly page = signal(0);
+  readonly resultRows = signal<FederatedQueryResult['recordset']['rows']>([]);
+  readonly error = signal('');
+  readonly userRows = signal(100);
+  readonly userOffset = signal(0);
+  readonly backHref = computed(() => projectPageHref(this.project()?.ref));
+  readonly queriesHref = computed(() =>
+    projectPageHref(this.project()?.ref, 'queries'),
+  );
+  readonly compatible = computed(
+    () =>
+      this.discovery()?.suggestions.filter((value) => value.matchesSource) ??
+      [],
+  );
+  private controller?: AbortController;
+  private generation = 0;
+  private readonly subscription: Subscription =
+    this.navContext.currentProject.subscribe((value) => {
+      this.controller?.abort();
+      this.generation++;
+      this.loading.set(false);
+      this.project.set(value);
+      this.source.set(undefined);
+      this.discovery.set(undefined);
+      this.result.set(undefined);
+      this.selected.set(undefined);
+    });
+
+  async connect(): Promise<void> {
+    if (this.loading()) return;
+    const generation = ++this.generation;
+    this.error.set('');
+    this.discovery.set(undefined);
+    this.source.set(undefined);
+    this.result.set(undefined);
+    this.selected.set(undefined);
+    try {
+      const record = object(
+        strictJson(this.sourceText()),
+        'declared source field',
+      );
+      if (
+        Object.keys(record).sort().join(',') !==
+          'datatype,entity,module,namespace,property,schema' ||
+        record['datatype'] !== 'string' ||
+        !['entity', 'module', 'property', 'namespace'].every(
+          (key) => typeof record[key] === 'string' && !!record[key],
+        )
+      )
+        throw new Error(
+          'Declare the exact schema, module, entity, property, string datatype and raw namespace.',
+        );
+      const source = record as unknown as SourceField;
+      immutableUrl(source.schema);
+      this.source.set(source);
+      const controller = new AbortController();
+      this.controller = controller;
+      const deadline = setTimeout(
+        () => controller.abort(new Error('Canonical metadata read timed out.')),
+        10000,
+      );
+      this.loading.set(true);
+      try {
+        const discovery = await this.metadata.discover(
+          source,
+          controller.signal,
+        );
+        if (generation === this.generation) this.discovery.set(discovery);
+      } finally {
+        clearTimeout(deadline);
+      }
+    } catch (error) {
+      if (generation === this.generation)
+        this.error.set(
+          error instanceof Error
+            ? error.message
+            : 'Canonical discovery failed.',
+        );
+    } finally {
+      if (generation === this.generation) this.loading.set(false);
+    }
+  }
+  cancel(): void {
+    this.controller?.abort(new Error('Discovery cancelled.'));
+    if (this.running())
+      void this.federation
+        .dispose()
+        .catch((error: unknown) =>
+          this.error.set(
+            error instanceof Error
+              ? error.message
+              : 'Cannot cancel the lookup.',
+          ),
+        );
+  }
+  async run(): Promise<void> {
+    const source = this.source();
+    const discovery = this.discovery();
+    const selected = this.selected();
+    if (!source || !discovery || !selected || this.running()) return;
+    if (!selected.eligible) {
+      this.error.set(selected.reason);
+      return;
+    }
+    this.error.set('');
+    this.running.set(true);
+    this.result.set(undefined);
+    this.page.set(0);
+    this.resultRows.set([]);
+    try {
+      const query = this.metadata.scenario(source, discovery, selected, {
+        userRows: this.userRows(),
+        userOffset: this.userOffset(),
+      });
+      const result = await this.federation.run(query, undefined, '', 'full');
+      this.result.set(result);
+      this.resultRows.set(result.recordset.rows);
+    } catch (error) {
+      this.error.set(
+        error instanceof Error ? error.message : 'The bounded lookup failed.',
+      );
+    } finally {
+      this.running.set(false);
+    }
+  }
+  async changePage(delta: number): Promise<void> {
+    const next = this.page() + delta;
+    if (
+      next < 0 ||
+      next * 100 >=
+        (this.result()?.totalRows ?? this.result()?.recordset.rows.length ?? 0)
+    )
+      return;
+    try {
+      const rows = await this.federation.getPage(next);
+      this.resultRows.set(rows);
+      this.page.set(next);
+    } catch (error) {
+      this.error.set(
+        error instanceof Error ? error.message : 'Cannot read result page.',
+      );
+    }
+  }
+  async save(suggestion: PublicDataSuggestion): Promise<void> {
+    const source = this.source();
+    const discovery = this.discovery();
+    const project = this.project();
+    if (!source || !discovery || !project || this.saving()) return;
+    this.error.set('');
+    this.saving.set(true);
+    try {
+      const query = this.metadata.scenario(source, discovery, suggestion, {
+        userRows: this.userRows(),
+        userOffset: this.userOffset(),
+      });
+      const saved = await firstValueFrom(
+        this.queries.createQuery(project.ref, query),
+      );
+      if (
+        !saved.publicData ||
+        saved.publicData.attachment.sha256 !==
+          query.publicData?.attachment.sha256 ||
+        JSON.stringify(saved.federation) !== JSON.stringify(query.federation)
+      )
+        throw new Error(
+          'The query store did not preserve the exact scenario pins. This store cannot save the scenario safely yet.',
+        );
+      this.navigation.goQuery(project, saved);
+    } catch (error) {
+      this.error.set(
+        error instanceof Error ? error.message : 'Scenario save failed.',
+      );
+    } finally {
+      this.saving.set(false);
+    }
+  }
+  ngOnDestroy(): void {
+    this.generation++;
+    this.controller?.abort();
+    this.subscription.unsubscribe();
+    void this.federation.dispose().catch(() => undefined);
+  }
+}

@@ -28,6 +28,16 @@ export class FederatedQueryService {
     return new Promise<FederatedQueryResult>((resolve, reject) => {
       const worker = new Worker(new URL('./federated-query.worker.ts', import.meta.url), { type: 'module' });
       this.worker = worker;
+      // A worker can be busy in synchronous DALgo work: enforce the wall-clock
+      // bound from the UI thread as well as aborting requests inside the worker.
+      const deadline = definition.federation?.bounds
+        ? setTimeout(() => {
+          worker.terminate();
+          if (this.worker === worker) this.worker = undefined;
+          reject(new Error('The bounded lookup exceeded its deadline. Temporary storage is cleaned before the next run.'));
+        }, definition.federation.bounds.timeoutMs)
+        : undefined;
+      const clearDeadline = (): void => { if (deadline !== undefined) clearTimeout(deadline); };
       worker.onmessage = (event: MessageEvent<
         | { type: 'progress'; progress: FederatedQueryProgress }
         | { type: 'source'; event: FederatedSourceLoaded }
@@ -45,7 +55,7 @@ export class FederatedQueryService {
         if (message.type === 'source') { extras.onSourceLoaded?.(message.event); return; }
         if (message.type === 'finished') { onFinished?.(message.totalRows); return; }
         if (message.type === 'cleanup-error') return;
-        if (message.type === 'cancelled') { reject(new Error('The query was cancelled.')); return; }
+        if (message.type === 'cancelled') { clearDeadline(); reject(new Error('The query was cancelled.')); return; }
         if (message.type === 'page' || message.type === 'page-error') {
           const pending = this.pageRequests.get(message.requestId);
           this.pageRequests.delete(message.requestId);
@@ -53,16 +63,18 @@ export class FederatedQueryService {
           else pending?.reject(new Error(message.message));
           return;
         }
-        if (message.type === 'closed') { worker.terminate(); if (this.worker === worker) this.worker = undefined; return; }
+        if (message.type === 'closed') { clearDeadline(); worker.terminate(); if (this.worker === worker) this.worker = undefined; return; }
         if (message.type === 'result') {
+          clearDeadline();
           if (mode === 'full' && message.result.totalRows === undefined) void this.dispose().catch(() => undefined);
           resolve(message.result);
         } else {
+          clearDeadline();
           void this.dispose().catch(() => undefined);
           reject(new Error(message.message));
         }
       };
-      worker.onerror = (event) => { void this.dispose().catch(() => undefined); reject(new Error(event.message || 'The query worker failed.')); };
+      worker.onerror = (event) => { clearDeadline(); void this.dispose().catch(() => undefined); reject(new Error(event.message || 'The query worker failed.')); };
       worker.postMessage({ type: 'run', definition, token, mode, ...(extras.staticSource ? { staticSource: extras.staticSource } : {}) });
     });
   }

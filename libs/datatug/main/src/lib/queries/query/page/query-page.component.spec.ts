@@ -37,6 +37,8 @@ import { Coordinator } from '../../../executor/coordinator';
 import { QueryEditorStateService } from '../../query-editor-state-service';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
 import { FederatedQueryService } from '../../federated-query.service';
+import { INITIAL_CANONICAL_PINS } from '../../public-data/canonical-metadata';
+import { SAVED_SCENARIO_PUBLICATION_BLOCKER, type PublicDataScenario } from '../../public-data/public-data-scenario';
 
 function agentContextStub(securityContextId: string | undefined = 'sctx-1') {
   return {
@@ -327,6 +329,21 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
 
   beforeEach(() => {
     sessionStorage.clear();
+  });
+
+  it('reopens saved immutable provenance without lookup, exposes changed revisions and rejects a stored eligibility flag', async () => {
+    const file = INITIAL_CANONICAL_PINS.directory;
+    const saved: PublicDataScenario = { source: { schema: file, module: 'fixture', entity: 'Customer', property: 'Country', datatype: 'string', namespace: 'fixture-labels' }, canonical: { ...INITIAL_CANONICAL_PINS, directory: { ...file, revision: 'b'.repeat(40) } }, attachment: file, snapshot: file, model: file, meaning: file, decision: file, decisionScope: 'fixture-only', namespace: 'fixture-native', projection: 'identity', equality: 'utf8-byte-exact', rights: { source: 'fixture', model: 'fixture', meaning: 'fixture', attribution: 'fixture' }, observedAt: '2026-10-05', eligible: true, unavailableReason: 'pending' };
+    const definition: IQueryDef = { ...queryDef, id: 'saved-fixture', federation: { ovdbBaseUrl: 'https://demodb.dev/ovdb', tables: [] }, publicData: saved };
+    component = await createComponent({}, definition);
+    expect(component.queryDef()?.publicData).toEqual(saved);
+    expect(component.publicDataRevisionChanges()).toEqual(['directory']);
+    expect(federatedRunMock).not.toHaveBeenCalled();
+    component.runQuery();
+    expect(component.runError()).toMatch(/revisions changed/);
+    component.publicDataRevisionAcknowledged.set(true); component.runQuery();
+    expect(component.runError()).toBe(SAVED_SCENARIO_PUBLICATION_BLOCKER);
+    expect(federatedRunMock).not.toHaveBeenCalled();
   });
 
   it('runs a federated query in the browser and exposes its download and lookup progress', async () => {
