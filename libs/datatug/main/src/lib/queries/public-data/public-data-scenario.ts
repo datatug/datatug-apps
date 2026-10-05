@@ -47,6 +47,9 @@ export interface PublicDataExceptions {
   readonly ambiguous: number;
   readonly matched: number;
   readonly multiplied: number;
+  /** Truncated dependencies cannot establish absence or complete cardinality. */
+  readonly unresolved?: number;
+  readonly complete?: boolean;
   readonly details: readonly {
     readonly key: string;
     readonly raw: unknown;
@@ -73,11 +76,20 @@ export function validNativeRorUrl(raw: string): boolean {
 export function publicDataExceptions(
   bounds: BoundedFederation,
   sources: ReadonlyMap<string, readonly BoundedRecord[]>,
+  pages?: ReadonlyMap<
+    string,
+    import('./immutable-federation').OrdinaryPageReceipt
+  >,
 ): PublicDataExceptions {
   const driver = bounds.sources[0];
   const reference = bounds.sources[1];
   const rows = sources.get(`${driver.database}.${driver.name}`) ?? [];
   const targets = sources.get(`${reference.database}.${reference.name}`) ?? [];
+  const incomplete = bounds.sources.slice(1).some((source) => {
+    const page = pages?.get(`${source.database}.${source.name}`);
+    return page?.possiblyMore || page?.complete === false;
+  });
+  let unresolved = 0;
   const counts = {
     denominator: rows.length,
     nonNull: 0,
@@ -120,6 +132,9 @@ export function publicDataExceptions(
       ) {
         counts.invalid++;
         status = 'invalid';
+      } else if (incomplete) {
+        unresolved++;
+        status = 'unresolved due to truncation';
       } else if (!matches.length) {
         counts.unmatched++;
         status = 'unmatched';
@@ -151,7 +166,18 @@ export function publicDataExceptions(
       ...(targetStatus ? { targetStatus } : {}),
     };
   });
-  return { ...counts, details };
+  return {
+    ...counts,
+    details,
+    ...(pages
+      ? {
+          unresolved,
+          complete: ![...pages.values()].some(
+            (page) => page.possiblyMore || !page.complete,
+          ),
+        }
+      : {}),
+  };
 }
 export function scenarioRevisionChanges(
   saved: PublicDataScenario,

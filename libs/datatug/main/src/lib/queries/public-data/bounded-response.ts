@@ -3,15 +3,20 @@ export async function boundedResponseBytes(
   response: Response,
   remaining: number,
   signal?: AbortSignal,
+  onBytes?: (bytes: number) => void,
 ): Promise<{ bytes: number; raw: Uint8Array }> {
-  if (response.redirected || response.type === 'opaqueredirect')
+  if (response.redirected || response.type === 'opaqueredirect') {
+    await response.body?.cancel();
     throw new Error('A public-data redirect is refused.');
+  }
   const advertised = response.headers.get('Content-Length');
   if (
     advertised !== null &&
     (!/^\d+$/.test(advertised) || Number(advertised) > remaining)
-  )
+  ) {
+    await response.body?.cancel();
     throw new Error('The public-data response exceeds the byte bound.');
+  }
   const reader = response.body?.getReader();
   if (!reader) return { bytes: 0, raw: new Uint8Array() };
   const chunks: Uint8Array[] = [];
@@ -26,6 +31,7 @@ export async function boundedResponseBytes(
       const item = await reader.read();
       signal?.throwIfAborted();
       if (item.done) break;
+      onBytes?.(item.value.byteLength);
       bytes += item.value.byteLength;
       if (bytes > remaining)
         throw new Error('The public-data response exceeds the byte bound.');
@@ -50,8 +56,9 @@ export async function boundedResponseText(
   response: Response,
   remaining: number,
   signal?: AbortSignal,
+  onBytes?: (bytes: number) => void,
 ): Promise<{ text: string; bytes: number; raw: Uint8Array }> {
-  const read = await boundedResponseBytes(response, remaining, signal);
+  const read = await boundedResponseBytes(response, remaining, signal, onBytes);
   return {
     ...read,
     // Preserve BOMs in the decoded view; immutable checksums use raw bytes.

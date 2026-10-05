@@ -7,6 +7,8 @@ import type { RunQueryResponse, TypedValue } from '@sneat/datatug-semantic';
 import type { IQueryDef, ITextQueryRequest } from '../models/definition/query-def';
 import { deleteQueryDatabase, queryStorageError } from './federated-query-storage';
 import { createBoundedFederationFetch } from './public-data/bounded-federation';
+import { BoundedRunBudget } from './public-data/bounded-run-budget';
+import type { ImmutableReadReceipt } from './public-data/immutable-federation';
 import { publicDataExceptions, SAVED_SCENARIO_PUBLICATION_BLOCKER, type PublicDataExceptions } from './public-data/public-data-scenario';
 
 type Data = Record<string, unknown>;
@@ -58,11 +60,25 @@ export interface FederatedSourceLoaded {
 
 /** Optional seams: where HTTP goes (a static data adapter) and what the run reports about each source. */
 export interface FederatedQueryObserver {
+  readonly deadline?: number;
+  readonly onStorageOwned?: (name: string) => void;
+  readonly storageId?: string;
+  readonly onRuntimeSession?: (session: FederatedRuntimeSession) => void;
   readonly fetch?: typeof fetch;
   readonly onSourceLoaded?: (event: FederatedSourceLoaded) => void;
 }
+export interface FederatedRuntimeSession {
+  readonly readPage: (sourceId: string, page: import('./public-data/immutable-federation').OrdinaryPage) => Promise<FederatedQueryResult>;
+  readonly close: () => void;
+}
 
-export type FederatedQueryResult = RunQueryResponse & { readonly totalRows?: number; readonly hasMore?: boolean; readonly publicDataExceptions?: PublicDataExceptions; readonly publicDataBytes?: number };
+export type FederatedQueryResult = RunQueryResponse & {
+  readonly totalRows?: number;
+  readonly hasMore?: boolean;
+  readonly publicDataExceptions?: PublicDataExceptions;
+  readonly publicDataBytes?: number;
+  readonly runtimeRead?: import('./public-data/immutable-federation').RuntimeReadReport;
+};
 export type FederatedOutputPage = (rows: readonly (readonly TypedValue[])[]) => Promise<void>;
 export type FederatedQueryMode = 'full' | 'visible';
 
@@ -94,31 +110,151 @@ function retryDelay(attempt: number, signal?: AbortSignal): Promise<void> {
 }
 
 /** Runs each leaf against OVDB directly and merges/aggregates in this runtime. */
-export async function runFederatedQuery(definition: IQueryDef, onProgress?: (progress: FederatedQueryProgress) => void, token = '', onOutputPage?: FederatedOutputPage, signal?: AbortSignal, mode: FederatedQueryMode = 'full', onPageReady?: (result: FederatedQueryResult) => void, waitForNextPage?: () => Promise<void>, observer?: FederatedQueryObserver): Promise<FederatedQueryResult> {
-  if (definition.publicData) throw new Error(SAVED_SCENARIO_PUBLICATION_BLOCKER);
+export async function runFederatedQuery(
+  definition: IQueryDef,
+  onProgress?: (progress: FederatedQueryProgress) => void,
+  token = '',
+  onOutputPage?: FederatedOutputPage,
+  signal?: AbortSignal,
+  mode: FederatedQueryMode = 'full',
+  onPageReady?: (result: FederatedQueryResult) => void,
+  waitForNextPage?: () => Promise<void>,
+  observer?: FederatedQueryObserver,
+): Promise<FederatedQueryResult> {
+  if (definition.publicData)
+    throw new Error(SAVED_SCENARIO_PUBLICATION_BLOCKER);
   const bounds = definition.federation?.bounds;
-  if (!bounds) return runFederatedQueryInternal(definition, onProgress, token, onOutputPage, signal, mode, onPageReady, waitForNextPage, observer);
-  if (mode !== 'full') throw new Error('Bounded public-data runs calculate one selected page. Browse result pages after it finishes.');
+  if (!bounds)
+    return runFederatedQueryInternal(
+      definition,
+      onProgress,
+      token,
+      onOutputPage,
+      signal,
+      mode,
+      onPageReady,
+      waitForNextPage,
+      observer,
+    );
+  if (mode !== 'full')
+    throw new Error(
+      'Bounded public-data runs calculate one selected page. Browse result pages after it finishes.',
+    );
   const deadline = new AbortController();
-  const timer = setTimeout(() => deadline.abort(new Error('The bounded lookup exceeded its deadline.')), bounds.timeoutMs);
-  const combined = signal ? AbortSignal.any([signal, deadline.signal]) : deadline.signal;
+  const timer = bounds.runtime
+    ? undefined
+    : setTimeout(
+        () =>
+          deadline.abort(
+            new Error('The bounded lookup exceeded its deadline.'),
+          ),
+        bounds.timeoutMs,
+      );
+  const combined = signal
+    ? AbortSignal.any([signal, deadline.signal])
+    : deadline.signal;
+  const budget = bounds.runtime
+    ? new BoundedRunBudget(
+        bounds.bytes,
+        bounds.timeoutMs,
+        signal,
+        observer?.deadline,
+      )
+    : undefined;
+  const runSignal = budget?.signal ?? combined;
+  let retained = false;
   try {
-    const transport = createBoundedFederationFetch(definition.federation?.ovdbBaseUrl ?? '', bounds, observer?.fetch ?? fetch, combined);
-    let outputRows = 0;
-    const collected: TypedValue[][] = [];
-    const result = await runFederatedQueryInternal(definition, onProgress, token, async (rows) => {
-      combined.throwIfAborted();
-      outputRows += rows.length;
-      if (outputRows > bounds.resultRows) throw new Error('The lookup exceeds the result-row bound; ambiguous or multiplied matches require a narrower query.');
-      if (onOutputPage) await onOutputPage(rows);
-      else collected.push(...rows.map((row) => [...row]));
-    }, combined, 'full', undefined, undefined, { ...observer, fetch: transport.fetch });
-    combined.throwIfAborted();
-    if (result.recordset.rows.length > bounds.resultRows) throw new Error('The lookup exceeds the result-row bound.');
-    // Nested joins use DALgo's batch result rather than the flat join callback.
-    if (!outputRows && result.recordset.rows.length && onOutputPage) await onOutputPage(result.recordset.rows);
-    return { ...result, ...(!onOutputPage && outputRows ? { recordset: { ...result.recordset, rows: collected } } : {}), publicDataExceptions: publicDataExceptions(bounds, transport.receipt.sources), publicDataBytes: transport.receipt.bytes(), limitations: [...result.limitations, { rowsFiltered: false, hiddenColumns: [], policy: `Selected user page: at most ${bounds.userRows} rows from offset ${bounds.userOffset}; ${bounds.identifierLimit} identifiers, ${bounds.resultRows} results, ${bounds.bytes} bytes, ${bounds.timeoutMs}ms.` }] };
-  } finally { clearTimeout(timer); }
+    const transport = createBoundedFederationFetch(
+      definition.federation?.ovdbBaseUrl ?? '',
+      bounds,
+      observer?.fetch ?? fetch,
+      runSignal,
+      budget,
+    );
+    const execute = async (): Promise<FederatedQueryResult> => {
+      budget?.beginOutput();
+      let outputRows = 0;
+      const collected: TypedValue[][] = [];
+      const result = await runFederatedQueryInternal(
+        definition,
+        onProgress,
+        token,
+        async (rows) => {
+          budget?.check();
+          runSignal.throwIfAborted();
+          outputRows += rows.length;
+          if (outputRows > bounds.resultRows)
+            throw new Error(
+              'The lookup exceeds the result-row bound; ambiguous or multiplied matches require a narrower query.',
+            );
+          budget?.consumeOutput(rows);
+          if (onOutputPage) await onOutputPage(rows);
+          else collected.push(...rows.map((row) => [...row]));
+        },
+        runSignal,
+        'full',
+        undefined,
+        undefined,
+        { ...observer, fetch: transport.fetch },
+      );
+      budget?.check();
+      runSignal.throwIfAborted();
+      if (result.recordset.rows.length > bounds.resultRows)
+        throw new Error('The lookup exceeds the result-row bound.');
+      if (!outputRows) budget?.consumeOutput(result.recordset);
+      // Nested joins use DALgo's batch result rather than the flat join callback.
+      if (!outputRows && result.recordset.rows.length && onOutputPage)
+        await onOutputPage(result.recordset.rows);
+      const runtime: ImmutableReadReceipt | undefined = transport.receipt.runtime;
+      return {
+        ...result,
+        ...(!onOutputPage && outputRows
+          ? { recordset: { ...result.recordset, rows: collected } }
+          : {}),
+        publicDataExceptions: publicDataExceptions(
+          bounds,
+          transport.receipt.sources,
+          runtime?.pages,
+        ),
+        publicDataBytes: transport.receipt.bytes(),
+        ...(runtime
+          ? {
+              runtimeRead: {
+                pins: Object.fromEntries(runtime.pins),
+                pages: Object.fromEntries(runtime.pages),
+                history: Object.fromEntries(runtime.history),
+              },
+            }
+          : {}),
+        limitations: [
+          ...result.limitations,
+          {
+            rowsFiltered: false,
+            hiddenColumns: [],
+            policy: `Selected user page: at most ${bounds.userRows} rows from offset ${bounds.userOffset}; ${bounds.identifierLimit} identifiers, ${bounds.resultRows} results, ${bounds.bytes} network bytes, ${bounds.timeoutMs}ms.${runtime && [...runtime.pages.values()].some((page) => page.possiblyMore) ? ' A full source page may have more rows; matches and cardinalities depending on it are unresolved. Further reads require explicit action before the original deadline.' : ''}`,
+          },
+        ],
+      };
+    };
+    const result = await execute();
+    const readPage = transport.readPage;
+    if (budget && readPage && observer?.onRuntimeSession && [...(transport.receipt.runtime?.pages.values() ?? [])].some((page) => !page.complete)) {
+      const sessionBudget = budget;
+      observer.onRuntimeSession({
+        readPage: async (sourceId, page) => {
+          sessionBudget.check();
+          await readPage(sourceId, page);
+          return execute();
+        },
+        close: () => { sessionBudget.controller.abort(new Error('The query was cancelled.')); sessionBudget.close(); },
+      });
+      retained = true;
+    }
+    return result;
+  } finally {
+    clearTimeout(timer);
+    if (!retained) budget?.close();
+  }
 }
 
 async function runFederatedQueryInternal(definition: IQueryDef, onProgress?: (progress: FederatedQueryProgress) => void, token = '', onOutputPage?: FederatedOutputPage, signal?: AbortSignal, mode: FederatedQueryMode = 'full', onPageReady?: (result: FederatedQueryResult) => void, waitForNextPage?: () => Promise<void>, observer?: FederatedQueryObserver): Promise<FederatedQueryResult> {
@@ -137,7 +273,8 @@ async function runFederatedQueryInternal(definition: IQueryDef, onProgress?: (pr
       for (const joined of relation.joins) visit(joined.from);
     };
     visit(parsed.from);
-    const storeName = `datatug-federated-${Date.now()}-${crypto.randomUUID()}`;
+    const storeName = `datatug-federated-${observer?.storageId ?? `${Date.now()}-${crypto.randomUUID()}`}`;
+    observer?.onStorageOwned?.(storeName);
     const cache = new IndexedDbDatabase({ name: storeName, version: 1, collections: relations.map((relation) => ({
       name: `${relation.database}.${relation.name}`, storeName: `${relation.database}_${relation.name}`,
     })) });
@@ -382,6 +519,12 @@ async function runFederatedQueryInternal(definition: IQueryDef, onProgress?: (pr
         };
       }
       const executionOptions: JoinedQueryExecutionOptions = {
+        ...(config.bounds?.runtime ? {
+          maxFetchedRows: 5000, maxResultRows: config.bounds.resultRows,
+          maxRetainedBytes: 5 * 1024 * 1024,
+          // Keep approved inputs; no invented smaller candidate quota.
+          maxCandidateEvaluations: Number.MAX_SAFE_INTEGER,
+        } : {}),
         schema: { tables: config.tables },
         resolveSource: (relation) => ({ kind: 'collection', name: `${relation.database}.${relation.name}` }),
         resolveExecutor: executorFor,
@@ -403,7 +546,7 @@ async function runFederatedQueryInternal(definition: IQueryDef, onProgress?: (pr
         } } : {}),
       };
       let records: QueryPage<Data>['records'];
-      if (pagedJoin) {
+      if (pagedJoin && !config.bounds?.runtime) {
         if (onOutputPage) {
           let pages: AsyncIterable<QueryPage<Data>> = executeJoinedDTQLQueryPages(parsed,
             mode === 'visible' ? { ...executionOptions, pageSize: 100 } as JoinedQueryExecutionOptions : executionOptions);

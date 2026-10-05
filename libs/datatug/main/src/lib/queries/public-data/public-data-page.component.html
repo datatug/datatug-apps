@@ -385,6 +385,23 @@
             {{ counts.unmatched }} · ambiguous {{ counts.ambiguous }} · matched
             {{ counts.matched }} · multiplied {{ counts.multiplied }}
           </p>
+          @if (counts.complete === false) {
+            <p data-testid="incomplete-results">
+              A full source page may have more rows. These are observed results,
+              not complete match or cardinality totals. Unresolved due to
+              truncation: {{ counts.unresolved }}. Further source reads require
+              explicit action within the original run deadline.
+            </p>
+            @for (source of sourcePages(); track source[0]) {
+              <ion-button
+                fill="outline"
+                [disabled]="running()"
+                (click)="continueSource(source[0])"
+              >
+                Read next source page: {{ source[0] }}
+              </ion-button>
+            }
+          }
           <table>
             <caption>
               Raw keys and projected keys

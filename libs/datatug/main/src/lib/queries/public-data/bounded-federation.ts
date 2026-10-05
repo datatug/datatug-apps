@@ -7,6 +7,12 @@ import { strictJson } from './strict-json';
 import { parseDTQL } from '@dalgo/core';
 import { validNativeRorUrl } from './public-data-scenario';
 import { boundedResponseText } from './bounded-response';
+import {
+  createImmutableFederationFetch,
+  validateImmutableRuntime,
+  type BoundedRuntime,
+} from './immutable-federation';
+import type { BoundedRunBudget } from './bounded-run-budget';
 export { boundedResponseBytes, boundedResponseText } from './bounded-response';
 
 export interface BoundedSource {
@@ -22,6 +28,8 @@ export interface BoundedSource {
 
 /** Execution constraints, not a semantic acceptance mechanism. */
 export interface BoundedFederation {
+  /** Transport configuration only; never canonical source/semantic admission. */
+  readonly runtime?: BoundedRuntime;
   readonly sources: readonly BoundedSource[];
   readonly driver?: BoundedJsonDriver;
   readonly userRows: number;
@@ -41,14 +49,19 @@ export interface BoundedRecord {
 export interface BoundedReadReceipt {
   readonly sources: ReadonlyMap<string, readonly BoundedRecord[]>;
   readonly bytes: () => number;
+  readonly runtime?: import('./immutable-federation').ImmutableReadReceipt;
 }
 
-export const PUBLIC_DATA_OVDB_BASES = ['https://demodb.dev/ovdb'] as const;
+export const PUBLIC_DATA_OVDB_BASES = [
+  'https://demodb.dev/ovdb',
+  'https://cloud.openvaultdb.com',
+] as const;
 const namePattern = /^[A-Za-z][A-Za-z0-9_]*$/;
 const sourceId = (source: Pick<BoundedSource, 'database' | 'name'>): string =>
   `${source.database}.${source.name}`;
 
 export function validateBounds(bounds: BoundedFederation): void {
+  if (bounds.runtime) validateImmutableRuntime(bounds);
   if (
     !['place', 'ror'].includes(bounds.identifierKind) ||
     (bounds.identifierKind === 'ror' && bounds.nativeNamespace !== 'ROR:URL')
@@ -119,10 +132,18 @@ export function createBoundedFederationFetch(
   bounds: BoundedFederation,
   httpFetch: typeof fetch,
   signal: AbortSignal,
-): { fetch: typeof fetch; receipt: BoundedReadReceipt } {
+  budget?: BoundedRunBudget,
+): { fetch: typeof fetch; receipt: BoundedReadReceipt; readPage?: (sourceId: string, page: import('./immutable-federation').OrdinaryPage) => Promise<readonly BoundedRecord[]> } {
   validateBounds(bounds);
   if (!(PUBLIC_DATA_OVDB_BASES as readonly string[]).includes(base))
     throw new Error('This OVDB route is outside the public-data allowlist.');
+  if (bounds.runtime) {
+    if (!budget)
+      throw new Error('Immutable transport requires the shared run budget.');
+    return createImmutableFederationFetch(base, bounds, httpFetch, budget);
+  }
+  if (base !== 'https://demodb.dev/ovdb')
+    throw new Error('This route requires the explicit immutable read profile.');
   const loaded = new Map<string, readonly BoundedRecord[]>();
   const pending = new Map<string, Promise<readonly BoundedRecord[]>>();
   let bytes = 0;

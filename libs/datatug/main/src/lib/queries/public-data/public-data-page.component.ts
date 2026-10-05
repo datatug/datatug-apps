@@ -54,6 +54,8 @@ import type {
   ConfiguredPublicSource,
   ConfiguredFieldChoice,
 } from './configured-source';
+import type { IQueryDef } from '../../models/definition/query-def';
+import { saveRuntimePins, runtimePlanIdentity } from './saved-runtime-pins';
 
 @Component({
   selector: 'sneat-datatug-public-data-page',
@@ -101,9 +103,17 @@ export class PublicDataPageComponent implements OnDestroy {
   readonly saving = signal(false);
   readonly running = signal(false);
   readonly result = signal<FederatedQueryResult | undefined>(undefined);
+  private readonly executedPlan = signal<IQueryDef | undefined>(undefined);
   readonly selected = signal<PublicDataSuggestion | undefined>(undefined);
   readonly page = signal(0);
   readonly resultRows = signal<FederatedQueryResult['recordset']['rows']>([]);
+  readonly sourcePages = computed(() => {
+    const driver = this.executedPlan()?.federation?.bounds?.sources[0];
+    const driverId = driver ? `${driver.database}.${driver.name}` : undefined;
+    return Object.entries(this.result()?.runtimeRead?.pages ?? {}).filter(
+      ([id, page]) => id !== driverId && page.possiblyMore,
+    );
+  });
   readonly hasRorStatuses = computed(
     () =>
       this.result()?.publicDataExceptions?.details.some(
@@ -358,6 +368,7 @@ export class PublicDataPageComponent implements OnDestroy {
       const result = await this.federation.run(query, undefined, '', 'full');
       if (generation !== this.generation) return;
       this.result.set(result);
+      this.executedPlan.set(query);
       this.resultRows.set(result.recordset.rows);
     } catch (error) {
       this.error.set(
@@ -385,6 +396,54 @@ export class PublicDataPageComponent implements OnDestroy {
       );
     }
   }
+  async continueSource(sourceId: string): Promise<void> {
+    const page = this.result()?.runtimeRead?.pages[sourceId];
+    if (!page?.possiblyMore || this.running()) return;
+    const generation = this.generation;
+    this.running.set(true);
+    this.error.set('');
+    try {
+      const source = this.source(),
+        discovery = this.discovery(),
+        selected = this.selected(),
+        executed = this.executedPlan();
+      if (
+        !source ||
+        !discovery ||
+        !selected ||
+        !executed ||
+        runtimePlanIdentity(
+          this.metadata.scenario(
+            source,
+            discovery,
+            selected,
+            { userRows: this.userRows(), userOffset: this.userOffset() },
+            this.field()?.context,
+          ),
+        ) !== runtimePlanIdentity(executed)
+      )
+        throw new Error(
+          'The selected plan changed. Inspect its pins and run explicitly again before reading more sources.',
+        );
+      const result = await this.federation.continueSource(
+        sourceId,
+        page.limit,
+        page.offset + page.rows,
+      );
+      if (generation !== this.generation) return;
+      this.result.set(result);
+      this.resultRows.set(result.recordset.rows);
+      this.page.set(0);
+    } catch (error) {
+      this.error.set(
+        error instanceof Error
+          ? error.message
+          : 'The bounded source continuation failed.',
+      );
+    } finally {
+      this.running.set(false);
+    }
+  }
   async save(suggestion: PublicDataSuggestion): Promise<void> {
     const generation = this.generation;
     const source = this.source();
@@ -394,7 +453,7 @@ export class PublicDataPageComponent implements OnDestroy {
     this.error.set('');
     this.saving.set(true);
     try {
-      const query = this.metadata.scenario(
+      let query = this.metadata.scenario(
         source,
         discovery,
         suggestion,
@@ -404,6 +463,15 @@ export class PublicDataPageComponent implements OnDestroy {
         },
         this.field()?.context,
       );
+      const result = this.result(),
+        executed = this.executedPlan();
+      if (result?.runtimeRead) {
+        if (!executed)
+          throw new Error(
+            'This runtime receipt has no executed plan. Run explicitly again.',
+          );
+        query = saveRuntimePins(query, executed, result);
+      }
       const saved = await firstValueFrom(
         this.queries.createQuery(project.ref, query),
       );

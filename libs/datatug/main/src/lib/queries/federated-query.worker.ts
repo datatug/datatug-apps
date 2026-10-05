@@ -8,6 +8,7 @@ import {
   runFederatedQuery,
   type FederatedQueryMode,
   type FederatedQueryResult,
+  type FederatedRuntimeSession,
 } from './federated-query-executor';
 import {
   deleteQueryDatabase,
@@ -24,11 +25,15 @@ let rowsStored = 0;
 let resultReady = false;
 let resumePage: (() => void) | undefined;
 let pendingPage: { index: number; requestId: number } | undefined;
+let storageId: string | undefined;
+let runtimeSession: FederatedRuntimeSession | undefined;
+let stagedRows: TypedValue[][] | undefined;
 
 async function openOutput(): Promise<IDBDatabase> {
   if (outputDb) return outputDb;
-  const name = `datatug-output-${Date.now()}-${crypto.randomUUID()}`;
+  const name = `datatug-output-${storageId ?? `${Date.now()}-${crypto.randomUUID()}`}`;
   outputName = name;
+  self.postMessage({ type: 'storage', name });
   outputDb = await new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(name, 1);
     request.onupgradeneeded = () =>
@@ -44,6 +49,10 @@ async function storeRows(
 ): Promise<void> {
   if (!rows.length) return;
   if (closing) throw new Error('The query was cancelled.');
+  if (stagedRows) {
+    stagedRows.push(...rows.map((row) => [...row]));
+    return;
+  }
   const db = await openOutput();
   if (closing) throw new Error('The query was cancelled.');
   await new Promise<void>((resolve, reject) => {
@@ -111,12 +120,77 @@ self.onmessage = (
         token: string;
         mode?: FederatedQueryMode;
         staticSource?: StaticOvdbSource;
+        deadline?: number;
+        storageId?: string;
       }
     | { type: 'page'; index: number; requestId: number }
+    | {
+        type: 'source-page';
+        sourceId: string;
+        limit: number;
+        offset: number;
+        requestId: number;
+      }
+    | { type: 'expire-runtime' }
     | { type: 'close' }
   >,
 ): void => {
   const message = event.data;
+  if (message.type === 'expire-runtime') {
+    runtimeSession?.close();
+    runtimeSession = undefined;
+    return;
+  }
+  if (message.type === 'source-page') {
+    const session = runtimeSession;
+    if (!session || activeRun || closing) {
+      self.postMessage({
+        type: 'source-error',
+        requestId: message.requestId,
+        message:
+          'The bounded source continuation is unavailable or expired. Run explicitly again.',
+      });
+      return;
+    }
+    activeRun = (async () => {
+      try {
+        stagedRows = [];
+        const result = await session.readPage(message.sourceId, {
+          limit: message.limit,
+          offset: message.offset,
+        });
+        const rows = stagedRows;
+        stagedRows = undefined;
+        await closeOutput();
+        rowsStored = 0;
+        await storeRows(rows);
+        if (!closing)
+          self.postMessage({
+            type: 'source-result',
+            requestId: message.requestId,
+            result: { ...result, totalRows: rowsStored },
+          });
+      } catch (error) {
+        session.close();
+        runtimeSession = undefined;
+        const reason =
+          error instanceof Error
+            ? error.message
+            : 'The bounded source continuation failed.';
+        stagedRows = undefined;
+        if (!closing)
+          self.postMessage({
+            type: 'source-error',
+            requestId: message.requestId,
+            message: reason,
+          });
+      } finally {
+        stagedRows = undefined;
+        activeRun = undefined;
+      }
+    })();
+    return;
+  }
   if (message.type === 'page') {
     if (visibleMode && message.index * 100 >= rowsStored && activeRun) {
       pendingPage = { index: message.index, requestId: message.requestId };
@@ -142,6 +216,8 @@ self.onmessage = (
     const wasRunning = activeRun !== undefined;
     closing = true;
     controller?.abort();
+    runtimeSession?.close();
+    runtimeSession = undefined;
     resumePage?.();
     resumePage = undefined;
     void (async () => {
@@ -163,6 +239,9 @@ self.onmessage = (
     return;
   }
   closing = false;
+  runtimeSession?.close();
+  runtimeSession = undefined;
+  storageId = message.storageId;
   visibleMode = message.mode === 'visible';
   rowsStored = 0;
   resultReady = false;
@@ -171,7 +250,11 @@ self.onmessage = (
   activeRun = (async () => {
     try {
       await closeOutput();
-      if (message.definition.federation?.bounds?.driver && message.staticSource)
+      if (
+        (message.definition.federation?.bounds?.driver ||
+          message.definition.federation?.bounds?.runtime) &&
+        message.staticSource
+      )
         throw new Error(
           'A declared driver cannot replace its public targets with a static fallback.',
         );
@@ -198,6 +281,12 @@ self.onmessage = (
             }
           }),
         {
+          deadline: message.deadline,
+          storageId,
+          onRuntimeSession: (session) => {
+            runtimeSession = session;
+          },
+          onStorageOwned: (name) => self.postMessage({ type: 'storage', name }),
           ...(message.staticSource
             ? { fetch: createStaticOvdbFetch(message.staticSource) }
             : {}),
@@ -210,7 +299,9 @@ self.onmessage = (
           type: 'result',
           result: visibleMode
             ? { ...result, totalRows: rowsStored, hasMore: false }
-            : result,
+            : result.runtimeRead
+              ? { ...result, totalRows: rowsStored }
+              : result,
         });
       if (!closing && visibleMode) {
         self.postMessage({

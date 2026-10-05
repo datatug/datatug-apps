@@ -131,6 +131,7 @@ describe('Public data route fixture UI journey (no deployed runtime claims)', ()
       run: vi.fn(async () => output),
       dispose: vi.fn(async () => undefined),
       getPage: vi.fn(),
+      continueSource: vi.fn(async () => output),
     };
     let reopened: IQueryDef | undefined;
     const queries = {
@@ -205,6 +206,8 @@ describe('Public data route fixture UI journey (no deployed runtime claims)', ()
     };
     return {
       fixture,
+      definition,
+      output,
       federation,
       metadata,
       queries,
@@ -214,6 +217,103 @@ describe('Public data route fixture UI journey (no deployed runtime claims)', ()
       reopened: () => reopened,
     };
   }
+  it('renders asynchronous partial results as observed and unresolved without claiming exhaustive matches', async () => {
+    const state = await setup(true);
+    const updates = new Subject<FederatedQueryResult>();
+    updates.subscribe((result) =>
+      state.fixture.componentInstance.result.set(result),
+    );
+    updates.next({
+      ...state.output,
+      publicDataExceptions: {
+        ...(state.output.publicDataExceptions ?? {
+          denominator: 0,
+          nonNull: 0,
+          null: 0,
+          empty: 0,
+          invalid: 0,
+          unmatched: 0,
+          ambiguous: 0,
+          matched: 0,
+          multiplied: 0,
+          details: [],
+        }),
+        complete: false,
+        unresolved: 1,
+        matched: 0,
+        details: [
+          {
+            key: 'raw-key',
+            raw: 'USA',
+            projected: [],
+            status: 'unresolved due to truncation',
+            matches: 0,
+          },
+        ],
+      },
+    });
+    await state.fixture.whenStable();
+    expect(
+      state.fixture.nativeElement.querySelector(
+        '[data-testid="incomplete-results"]',
+      )?.textContent,
+    ).toContain('not complete match or cardinality totals');
+    expect(state.fixture.nativeElement.textContent).toContain(
+      'unresolved due to truncation',
+    );
+    expect(state.federation.run).not.toHaveBeenCalled();
+    const continuation = state.fixture.nativeElement.querySelector(
+      '[data-testid="incomplete-results"]',
+    );
+    expect(continuation).toBeDefined();
+    updates.complete();
+  });
+  it('reads more source rows only after the explicit button and refuses a changed plan', async () => {
+    const state = await setup(true);
+    Object.assign(state.definition.federation ?? {}, {
+      bounds: {
+        sources: [{ database: 'user', name: 'Customer', keyField: 'Country' }],
+      },
+    });
+    Object.assign(state.output, {
+      runtimeRead: {
+        pins: {},
+        pages: {
+          'geo.Countries': {
+            limit: 2,
+            offset: 0,
+            rows: 2,
+            possiblyMore: true,
+            complete: false,
+          },
+        },
+      },
+      publicDataExceptions: {
+        ...state.output.publicDataExceptions,
+        complete: false,
+        unresolved: 1,
+      },
+    });
+    await state.click('Connect and explain');
+    await state.click('Inspect this lookup');
+    await state.click('Run bounded lookup');
+    expect(state.federation.continueSource).not.toHaveBeenCalled();
+    await state.click('Read next source page: geo.Countries');
+    expect(state.federation.continueSource).toHaveBeenCalledExactlyOnceWith(
+      'geo.Countries',
+      2,
+      2,
+    );
+    state.metadata.scenario.mockReturnValue({
+      ...state.definition,
+      request: { ...state.definition.request, text: 'changed' },
+    });
+    await state.click('Read next source page: geo.Countries');
+    expect(state.federation.continueSource).toHaveBeenCalledTimes(1);
+    expect(state.fixture.nativeElement.textContent).toContain(
+      'selected plan changed',
+    );
+  });
   it('connects, explains exact provenance, inspects, explicitly runs, shows exceptions, saves and reopens the exact query pins', async () => {
     const state = await setup(true);
     expect(state.federation.run).not.toHaveBeenCalled();
