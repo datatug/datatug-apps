@@ -1,3 +1,7 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { nativeFixture } from '../../public-data/native-fixture.spec-helper';
+import { PublicDataService } from '../../public-data/public-data.service';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import {
   ChangeDetectorRef,
@@ -38,7 +42,10 @@ import { QueryEditorStateService } from '../../query-editor-state-service';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
 import { FederatedQueryService } from '../../federated-query.service';
 import { INITIAL_CANONICAL_PINS } from '../../public-data/canonical-metadata';
-import { SAVED_SCENARIO_PUBLICATION_BLOCKER, type PublicDataScenario } from '../../public-data/public-data-scenario';
+import {
+  SAVED_SCENARIO_PUBLICATION_BLOCKER,
+  type PublicDataScenario,
+} from '../../public-data/public-data-scenario';
 
 function agentContextStub(securityContextId: string | undefined = 'sctx-1') {
   return {
@@ -142,15 +149,38 @@ describe('SqlEditorPage', () => {
   // G-A1c: where the back button goes with no history: the project's queries (its address is the one
   // `projectUrl()` writes), in the folder of this query.
   it.each([
-    ['an agent project', { storeId: 'localhost:8989', projectId: 'datatug-demo-project' }, 'customers', '/store/localhost:8989/project/datatug-demo-project/queries?folder=customers'],
-    ['an agent project, query in no folder', { storeId: 'localhost:8989', projectId: 'p1' }, '', '/store/localhost:8989/project/p1/queries?folder='],
-    ['a GitHub project', { storeId: 'github.com', projectId: 'chinook-demo@datatug@' }, 'sales', '/project/github.com/datatug/chinook-demo/queries?folder=sales'],
-    ['a GitHub project in a folder', { storeId: 'github.com', projectId: 'r@o@d' }, 'sales', '/project/github.com/o/r/tree/HEAD/d/-/queries?folder=sales'],
-  ])('the back button goes to the queries of %s', (_name, ref, folder, href) => {
-    component.project = { ref };
-    component.queryFolderPath = folder;
-    expect(component.queriesBackHref).toBe(href);
-  });
+    [
+      'an agent project',
+      { storeId: 'localhost:8989', projectId: 'datatug-demo-project' },
+      'customers',
+      '/store/localhost:8989/project/datatug-demo-project/queries?folder=customers',
+    ],
+    [
+      'an agent project, query in no folder',
+      { storeId: 'localhost:8989', projectId: 'p1' },
+      '',
+      '/store/localhost:8989/project/p1/queries?folder=',
+    ],
+    [
+      'a GitHub project',
+      { storeId: 'github.com', projectId: 'chinook-demo@datatug@' },
+      'sales',
+      '/project/github.com/datatug/chinook-demo/queries?folder=sales',
+    ],
+    [
+      'a GitHub project in a folder',
+      { storeId: 'github.com', projectId: 'r@o@d' },
+      'sales',
+      '/project/github.com/o/r/tree/HEAD/d/-/queries?folder=sales',
+    ],
+  ])(
+    'the back button goes to the queries of %s',
+    (_name, ref, folder, href) => {
+      component.project = { ref };
+      component.queryFolderPath = folder;
+      expect(component.queriesBackHref).toBe(href);
+    },
+  );
 
   it('the back button goes to the root while there is no project', () => {
     component.queryFolderPath = 'sales';
@@ -205,6 +235,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
   async function createComponent(
     historyState: Record<string, unknown> = {},
     definition: IQueryDef = queryDef,
+    template = '<ul aria-label="Access blockers">@for (blocker of accessBlockers(); track $index) {<li>{{ blocker }}</li>}</ul>',
   ): Promise<QueryPageComponent> {
     Object.defineProperty(window, 'history', {
       value: { ...window.history, state: historyState },
@@ -287,15 +318,21 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
         },
         { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn() } },
         { provide: SemanticApiService, useValue: { runQuery: runQueryMock } },
-        { provide: FederatedQueryService, useValue: { run: federatedRunMock, getPage: federatedGetPageMock, dispose: vi.fn().mockResolvedValue(undefined) } },
+        {
+          provide: FederatedQueryService,
+          useValue: {
+            run: federatedRunMock,
+            getPage: federatedGetPageMock,
+            dispose: vi.fn().mockResolvedValue(undefined),
+          },
+        },
         { provide: AgentContextService, useValue: agentContext },
       ],
     })
       .overrideComponent(QueryPageComponent, {
         set: {
           imports: [],
-          template:
-            '<ul aria-label="Access blockers">@for (blocker of accessBlockers(); track $index) {<li>{{ blocker }}</li>}</ul>',
+          template,
           schemas: [CUSTOM_ELEMENTS_SCHEMA],
           providers: [],
         },
@@ -333,18 +370,221 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
 
   it('reopens saved immutable provenance without lookup, exposes changed revisions and rejects a stored eligibility flag', async () => {
     const file = INITIAL_CANONICAL_PINS.directory;
-    const saved: PublicDataScenario = { source: { schema: file, module: 'fixture', entity: 'Customer', property: 'Country', datatype: 'string', namespace: 'fixture-labels' }, canonical: { ...INITIAL_CANONICAL_PINS, directory: { ...file, revision: 'b'.repeat(40) } }, attachment: file, snapshot: file, model: file, meaning: file, decision: file, decisionScope: 'fixture-only', namespace: 'fixture-native', projection: 'identity', equality: 'utf8-byte-exact', rights: { source: 'fixture', model: 'fixture', meaning: 'fixture', attribution: 'fixture' }, observedAt: '2026-10-05', eligible: true, unavailableReason: 'pending' };
-    const definition: IQueryDef = { ...queryDef, id: 'saved-fixture', federation: { ovdbBaseUrl: 'https://demodb.dev/ovdb', tables: [] }, publicData: saved };
+    const saved: PublicDataScenario = {
+      source: {
+        schema: file,
+        module: 'fixture',
+        entity: 'Customer',
+        property: 'Country',
+        datatype: 'string',
+        namespace: 'fixture-labels',
+      },
+      canonical: {
+        ...INITIAL_CANONICAL_PINS,
+        directory: { ...file, revision: 'b'.repeat(40) },
+      },
+      attachment: file,
+      snapshot: file,
+      model: file,
+      meaning: file,
+      decision: file,
+      decisionScope: 'fixture-only',
+      namespace: 'fixture-native',
+      projection: 'identity',
+      equality: 'utf8-byte-exact',
+      rights: {
+        source: 'fixture',
+        model: 'fixture',
+        meaning: 'fixture',
+        attribution: 'fixture',
+      },
+      observedAt: '2026-10-05',
+      eligible: true,
+      unavailableReason: 'pending',
+    };
+    const definition: IQueryDef = {
+      ...queryDef,
+      id: 'saved-fixture',
+      federation: { ovdbBaseUrl: 'https://demodb.dev/ovdb', tables: [] },
+      publicData: saved,
+    };
     component = await createComponent({}, definition);
     expect(component.queryDef()?.publicData).toEqual(saved);
     expect(component.publicDataRevisionChanges()).toEqual(['directory']);
     expect(federatedRunMock).not.toHaveBeenCalled();
     component.runQuery();
     expect(component.runError()).toMatch(/revisions changed/);
-    component.publicDataRevisionAcknowledged.set(true); component.runQuery();
+    component.publicDataRevisionAcknowledged.set(true);
+    component.runQuery();
     expect(component.runError()).toBe(SAVED_SCENARIO_PUBLICATION_BLOCKER);
     expect(federatedRunMock).not.toHaveBeenCalled();
   });
+
+  it.each(['canonical', 'data-only', 'configuration-only'] as const)(
+    'discloses proposed %s pins before changed-pin acknowledgement and separate storage copy without a data query',
+    async (change) => {
+      const native = await nativeFixture('ror');
+      vi.stubGlobal('fetch', native.http);
+      try {
+        const metadata = new PublicDataService(),
+          oldPins = await native.publish();
+        const source = native.contract.source as Parameters<
+          PublicDataService['discover']
+        >[0];
+        const discovery = await metadata.discoverDeclared(
+          native.context,
+          new AbortController().signal,
+          oldPins,
+        );
+        const definition = metadata.scenario(
+          source,
+          discovery,
+          discovery.suggestions[0],
+          { userRows: 1000, userOffset: 0 },
+          discovery.declaredSources?.[0],
+        );
+        const original = structuredClone(definition);
+        const pins =
+          change === 'canonical'
+            ? await native.publish('b'.repeat(40))
+            : oldPins;
+        if (change !== 'canonical') {
+          if (change === 'data-only') {
+            const updated = await native.put(
+              native.data,
+              '[{"affiliation_id":"changed","ror_id":null}]',
+            );
+            Object.assign(native.context.catalog.sha256, {
+              affiliations: updated.sha256,
+            });
+          }
+          const configuration = await native.put(
+            { ...native.context.configuration, revision: 'd'.repeat(40) },
+            JSON.stringify(native.context.catalog),
+          );
+          Object.assign(native.context, { configuration });
+        }
+        const html = readFileSync(
+          resolve(
+            'libs/datatug/main/src/lib/queries/query/page/query-page.component.html',
+          ),
+          'utf8',
+        );
+        const template = html
+          .split('<ion-content color="light">')[1]
+          .split('  <ion-card>')[0];
+        native.http.mockClear();
+        component = await createComponent({}, definition, template);
+        Object.assign(component.savedPlanReview, {
+          configured: async () => native.context,
+        });
+        const injected = TestBed.inject(PublicDataService),
+          revalidate = injected.revalidate.bind(injected);
+        const checked = vi
+          .spyOn(injected, 'revalidate')
+          .mockImplementation((query, signal) =>
+            revalidate(query, signal, pins, native.context),
+          );
+        const create = vi.fn((_project, query) => of(structuredClone(query)));
+        Object.assign(TestBed.inject(QueriesService), { createQuery: create });
+        runFixture.detectChanges();
+        await runFixture.whenStable();
+        expect(native.http).not.toHaveBeenCalled();
+        expect(runFixture.nativeElement.textContent).toContain(
+          'Saved source release v2.13',
+        );
+        const click = async (label: string) => {
+          const buttons = Array.from(
+            runFixture.nativeElement.querySelectorAll('ion-button'),
+          ) as HTMLElement[];
+          const button = buttons.find(
+            (value) => value.textContent?.trim() === label,
+          );
+          expect(button).toBeDefined();
+          button?.click();
+          await runFixture.whenStable();
+        };
+        await click('Check current metadata');
+        await checked.mock.results[0].value;
+        await runFixture.whenStable();
+        expect(component.savedPlanReview.review()?.compatible).toBe(true);
+        expect(runFixture.nativeElement.textContent).toContain(
+          change === 'canonical'
+            ? 'Changed pins: canonical directory'
+            : 'Changed pins: configured source/schema/data/mapping',
+        );
+        const details = runFixture.nativeElement.querySelector(
+          '[data-testid="checked-public-data-provenance"]',
+        ) as HTMLDetailsElement;
+        expect(details.open).toBe(false);
+        details.querySelector('summary')?.click();
+        await runFixture.whenStable();
+        expect(details.open).toBe(true);
+        const proposed = component.savedPlanReview.review()?.copy?.publicData;
+        if (
+          !proposed?.declaredSource ||
+          !proposed.native ||
+          !original.publicData?.declaredSource
+        )
+          throw new Error(
+            'Missing proposed or original declared native source.',
+          );
+        const declared = proposed.declaredSource,
+          originalData = original.publicData;
+        for (const ref of [
+          declared.configuration,
+          declared.data,
+          proposed.source.schema,
+          proposed.attachment,
+          proposed.model,
+          proposed.meaning,
+          proposed.snapshot,
+          proposed.decision,
+          proposed.native.dataset,
+          proposed.native.provenance,
+        ]) {
+          for (const value of Object.values(ref))
+            expect(details.textContent).toContain(value);
+        }
+        expect(details.textContent).toContain('Mapping ror_id → ror_id');
+        expect(details.textContent).toContain('ROR:URL');
+        expect(details.textContent).toContain('key affiliation_id');
+        expect(details.textContent).toContain(
+          'do not grant semantic admission or execution',
+        );
+        if (change === 'data-only') {
+          expect(declared.data.sha256).not.toBe(
+            originalData.declaredSource?.data.sha256,
+          );
+          expect(proposed.source.schema).toEqual(originalData.source.schema);
+          expect(proposed.canonical).toEqual(originalData.canonical);
+        }
+        expect(component.savedPlanReview.acknowledged()).toBeUndefined();
+        const save = Array.from(
+          runFixture.nativeElement.querySelectorAll('ion-button'),
+        ).find(
+          (button) =>
+            (button as HTMLElement).textContent?.trim() ===
+            'Save separate pending plan',
+        ) as HTMLButtonElement;
+        expect(save.disabled).toBe(true);
+        expect(create).not.toHaveBeenCalled();
+        expect(federatedRunMock).not.toHaveBeenCalled();
+        await click('Acknowledge this metadata check');
+        await click('Save separate pending plan');
+        expect(create).toHaveBeenCalledOnce();
+        expect(create.mock.calls[0][1].publicData.eligible).toBe(false);
+        expect(component.queryDef()).toEqual(original);
+        component.resultPageIndex.set(1);
+        component.runQuery();
+        expect(component.resultPageIndex()).toBe(1);
+        expect(federatedRunMock).not.toHaveBeenCalled();
+        expect(runQueryMock).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
 
   it('runs a federated query in the browser and exposes its download and lookup progress', async () => {
     const definition: IQueryDef = {
@@ -356,44 +596,104 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     };
     component = await createComponent({}, definition);
     const response: RunQueryResponse = {
-      recordset: { columns: [{ name: 'country', type: 'string' }], rows: [[{ type: 'string', value: 'Alpha' }]] },
-      limitations: [], bindingsApplied: [], truncated: false,
-      provenance: { source: 'direct OVDB', queryId: 'sales', mode: 'live', observedAt: '2026-09-23T00:00:00Z', executionProfile: 'protected' },
+      recordset: {
+        columns: [{ name: 'country', type: 'string' }],
+        rows: [[{ type: 'string', value: 'Alpha' }]],
+      },
+      limitations: [],
+      bindingsApplied: [],
+      truncated: false,
+      provenance: {
+        source: 'direct OVDB',
+        queryId: 'sales',
+        mode: 'live',
+        observedAt: '2026-09-23T00:00:00Z',
+        executionProfile: 'protected',
+      },
     };
-    federatedRunMock.mockImplementation((_definition: IQueryDef, onProgress: (progress: unknown) => void) => {
-      onProgress({ rowsLoaded: 103, rowsProcessed: 100, requestsCompleted: 2, requestsInFlight: 0, requestsPending: 0 });
-      return Promise.resolve(response);
-    });
+    federatedRunMock.mockImplementation(
+      (_definition: IQueryDef, onProgress: (progress: unknown) => void) => {
+        onProgress({
+          rowsLoaded: 103,
+          rowsProcessed: 100,
+          requestsCompleted: 2,
+          requestsInFlight: 0,
+          requestsPending: 0,
+        });
+        return Promise.resolve(response);
+      },
+    );
     component.runQuery();
     await Promise.resolve();
     expect(federatedRunMock).toHaveBeenCalledOnce();
     expect(runQueryMock).not.toHaveBeenCalled();
-    expect(component.federatedProgress()).toEqual({ rowsLoaded: 103, rowsProcessed: 100, requestsCompleted: 2, requestsInFlight: 0, requestsPending: 0 });
+    expect(component.federatedProgress()).toEqual({
+      rowsLoaded: 103,
+      rowsProcessed: 100,
+      requestsCompleted: 2,
+      requestsInFlight: 0,
+      requestsPending: 0,
+    });
     expect(component.runResult()).toEqual(response);
   });
 
   it('defaults a flat left join to visible rows and lets the user switch to full result', async () => {
     const definition: IQueryDef = {
-      ...queryDef, id: 'detail-join',
-      request: { queryType: QueryType.DTQL, text: JSON.stringify({
-        from: { database: 'sales', name: 'Invoice', alias: 'i', joins: [{
-          type: 'left', from: { database: 'geo', name: 'Country', alias: 'c' },
-          on: [{ left: { field: 'country_id', source: 'i' }, op: '==', right: { field: 'id', source: 'c' } }],
-        }] },
-        columns: [{ field: 'id', source: 'i' }, { field: 'name', source: 'c' }],
-      }) },
-      federation: { ovdbBaseUrl: 'http://127.0.0.1:50501', tables: [
-        { database: 'sales', name: 'Invoice', fields: ['id', 'country_id'] },
-        { database: 'geo', name: 'Country', fields: ['id', 'name'] },
-      ] },
+      ...queryDef,
+      id: 'detail-join',
+      request: {
+        queryType: QueryType.DTQL,
+        text: JSON.stringify({
+          from: {
+            database: 'sales',
+            name: 'Invoice',
+            alias: 'i',
+            joins: [
+              {
+                type: 'left',
+                from: { database: 'geo', name: 'Country', alias: 'c' },
+                on: [
+                  {
+                    left: { field: 'country_id', source: 'i' },
+                    op: '==',
+                    right: { field: 'id', source: 'c' },
+                  },
+                ],
+              },
+            ],
+          },
+          columns: [
+            { field: 'id', source: 'i' },
+            { field: 'name', source: 'c' },
+          ],
+        }),
+      },
+      federation: {
+        ovdbBaseUrl: 'http://127.0.0.1:50501',
+        tables: [
+          { database: 'sales', name: 'Invoice', fields: ['id', 'country_id'] },
+          { database: 'geo', name: 'Country', fields: ['id', 'name'] },
+        ],
+      },
     };
     component = await createComponent({}, definition);
     expect(component.federatedMode()).toBe('visible');
     expect(component.ovdbDestination()).toBe('http://127.0.0.1:50501');
-    federatedRunMock.mockResolvedValue({ recordset: { columns: [], rows: [] }, limitations: [], bindingsApplied: [], truncated: false });
+    federatedRunMock.mockResolvedValue({
+      recordset: { columns: [], rows: [] },
+      limitations: [],
+      bindingsApplied: [],
+      truncated: false,
+    });
     component.federatedMode.set('full');
     component.runQuery();
-    expect(federatedRunMock).toHaveBeenCalledWith(definition, expect.any(Function), '', 'full', expect.any(Function));
+    expect(federatedRunMock).toHaveBeenCalledWith(
+      definition,
+      expect.any(Function),
+      '',
+      'full',
+      expect.any(Function),
+    );
   });
 
   it('shows only one result page at a time for a large federated recordset', async () => {
@@ -408,10 +708,20 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     federatedRunMock.mockResolvedValue({
       recordset: {
         columns: [{ name: 'id', type: 'integer' }],
-        rows: Array.from({ length: 205 }, (_, index) => [{ type: 'integer', value: String(index + 1) }]),
+        rows: Array.from({ length: 205 }, (_, index) => [
+          { type: 'integer', value: String(index + 1) },
+        ]),
       },
-      limitations: [], bindingsApplied: [], truncated: false,
-      provenance: { source: 'direct OVDB', queryId: 'many-sales', mode: 'live', observedAt: '2026-09-23T00:00:00Z', executionProfile: 'protected' },
+      limitations: [],
+      bindingsApplied: [],
+      truncated: false,
+      provenance: {
+        source: 'direct OVDB',
+        queryId: 'many-sales',
+        mode: 'live',
+        observedAt: '2026-09-23T00:00:00Z',
+        executionProfile: 'protected',
+      },
     } satisfies RunQueryResponse);
     component.runQuery();
     await Promise.resolve();
@@ -437,19 +747,34 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     };
     component = await createComponent({}, definition);
     federatedRunMock.mockResolvedValue({
-      recordset: { columns: [{ name: 'id', type: 'integer' }], rows: [[{ type: 'integer', value: '1' }]] },
+      recordset: {
+        columns: [{ name: 'id', type: 'integer' }],
+        rows: [[{ type: 'integer', value: '1' }]],
+      },
       totalRows: 120_000,
-      limitations: [], bindingsApplied: [], truncated: false,
-      provenance: { source: 'direct OVDB', queryId: 'paged-sales', mode: 'live', observedAt: '2026-09-23T00:00:00Z', executionProfile: 'protected' },
+      limitations: [],
+      bindingsApplied: [],
+      truncated: false,
+      provenance: {
+        source: 'direct OVDB',
+        queryId: 'paged-sales',
+        mode: 'live',
+        observedAt: '2026-09-23T00:00:00Z',
+        executionProfile: 'protected',
+      },
     });
-    federatedGetPageMock.mockResolvedValue([[{ type: 'integer', value: '101' }]]);
+    federatedGetPageMock.mockResolvedValue([
+      [{ type: 'integer', value: '101' }],
+    ]);
     component.runQuery();
     await Promise.resolve();
     expect(component.resultTotalRows()).toBe(120_000);
     expect(component.visibleResultRows()).toHaveLength(1);
     await component.changeResultPage(1);
     expect(federatedGetPageMock).toHaveBeenCalledWith(1);
-    expect(component.visibleResultRows()).toEqual([[{ type: 'integer', value: '101' }]]);
+    expect(component.visibleResultRows()).toEqual([
+      [{ type: 'integer', value: '101' }],
+    ]);
     expect(component.resultPageEnd()).toBe(200);
   });
 

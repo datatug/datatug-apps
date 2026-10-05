@@ -1,3 +1,8 @@
+import {
+  readJsonDriver,
+  validateJsonDriver,
+  type BoundedJsonDriver,
+} from './bounded-https-json-driver';
 import { strictJson } from './strict-json';
 import { parseDTQL } from '@dalgo/core';
 import { validNativeRorUrl } from './public-data-scenario';
@@ -16,6 +21,7 @@ export interface BoundedSource {
 /** Execution constraints, not a semantic acceptance mechanism. */
 export interface BoundedFederation {
   readonly sources: readonly BoundedSource[];
+  readonly driver?: BoundedJsonDriver;
   readonly userRows: number;
   readonly userOffset: number;
   readonly identifierKind: 'place' | 'ror';
@@ -64,6 +70,18 @@ export function validateBounds(bounds: BoundedFederation): void {
     throw new Error(
       'A bounded lookup needs two to four explicit source stages.',
     );
+  if (bounds.driver) {
+    validateJsonDriver(bounds.driver);
+    if (
+      sourceId(bounds.driver) !== sourceId(bounds.sources[0]) ||
+      !bounds.driver.fields.some(
+        (field) => field.name === bounds.sources[0].keyField,
+      )
+    )
+      throw new Error(
+        'The declared JSON driver must map exactly the first source relation.',
+      );
+  }
   const known = new Set<string>();
   for (const [index, source] of bounds.sources.entries()) {
     if (
@@ -94,7 +112,7 @@ export async function boundedResponseText(
   response: Response,
   remaining: number,
   signal?: AbortSignal,
-): Promise<{ text: string; bytes: number }> {
+): Promise<{ text: string; bytes: number; raw: Uint8Array }> {
   if (response.redirected || response.type === 'opaqueredirect')
     throw new Error('A public-data redirect is refused.');
   const advertised = response.headers.get('Content-Length');
@@ -104,7 +122,7 @@ export async function boundedResponseText(
   )
     throw new Error('The public-data response exceeds the byte bound.');
   const reader = response.body?.getReader();
-  if (!reader) return { text: '', bytes: 0 };
+  if (!reader) return { text: '', bytes: 0, raw: new Uint8Array() };
   const chunks: Uint8Array[] = [];
   let bytes = 0;
   const abort = (): void => {
@@ -129,8 +147,12 @@ export async function boundedResponseText(
       offset += chunk.byteLength;
     }
     return {
-      text: new TextDecoder('utf-8', { fatal: true }).decode(all),
+      // Preserve BOMs in the decoded view; immutable checksums use raw bytes.
+      text: new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(
+        all,
+      ),
       bytes,
+      raw: all,
     };
   } finally {
     signal?.removeEventListener('abort', abort);
@@ -167,6 +189,20 @@ export function createBoundedFederationFetch(
     const existing = pending.get(id);
     if (existing) return existing;
     const request = (async () => {
+      if (bounds.driver && id === sourceId(bounds.driver)) {
+        const page = await readJsonDriver(
+          bounds.driver,
+          bounds.userRows,
+          bounds.userOffset,
+          bounds.bytes - bytes,
+          httpFetch,
+          signal,
+          boundedResponseText,
+        );
+        bytes += page.bytes;
+        loaded.set(id, page.records);
+        return page.records;
+      }
       let values: string[] | undefined;
       if (source.parent) {
         const parent = stages.get(sourceId(source.parent));
@@ -175,7 +211,7 @@ export function createBoundedFederationFetch(
         const unique = new Set<string>();
         for (const row of rows) {
           const value = row.data[source.parent.field];
-          if (value === null || value === '') continue;
+          if (value === null || value === undefined || value === '') continue;
           if (
             bounds.nativeNamespace === 'ROR:URL' &&
             (typeof value !== 'string' || !validNativeRorUrl(value))

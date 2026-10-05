@@ -7,6 +7,11 @@
 // prefixes. Labels are shown as text; a link is shown only if it is https.
 
 import {
+  checkSourceModel,
+  type SourceModelDeclaration,
+} from './source-model-declaration';
+import { strictJson } from '../queries/public-data/strict-json';
+import {
   checkProjectAddress,
   checkUrlTemplate,
   expandUrlTemplate,
@@ -64,6 +69,7 @@ export interface HttpsJsonCatalog {
   /** Table name to the lower-case hexadecimal SHA-256 of that table's file as served. */
   readonly sha256: Readonly<Record<string, string>>;
   readonly upstream?: HttpsJsonUpstream;
+  readonly sourceModel?: SourceModelDeclaration;
 }
 
 export interface HttpsJsonCatalogOptions {
@@ -80,6 +86,7 @@ const CATALOG_KEYS = [
   'keys',
   'sha256',
   'upstream',
+  'sourceModel',
 ];
 const UPSTREAM_KEYS = ['repository', 'revision', 'licence'];
 
@@ -142,6 +149,20 @@ export function validateHttpsJsonCatalog(
       ? checkUpstream(root['upstream'], '/upstream', problems)
       : undefined;
 
+  const sourceModel =
+    'sourceModel' in root
+      ? checkSourceModel(root['sourceModel'], problems)
+      : undefined;
+  if (sourceModel && keys && sha256)
+    for (const table of sourceModel.tables) {
+      if (keys[table.name] !== table.key || !sha256[table.name])
+        problems.add(
+          '/sourceModel/tables',
+          'checksum-missing',
+          'Every declared source table needs its exact catalog key and SHA256.',
+        );
+    }
+
   if (fallbackUrlTemplate !== undefined && keys && sha256) {
     for (const table of Object.keys(keys)) {
       if (!Object.prototype.hasOwnProperty.call(sha256, table)) {
@@ -171,6 +192,7 @@ export function validateHttpsJsonCatalog(
     keys,
     sha256,
     ...(upstream !== undefined && { upstream }),
+    ...(sourceModel !== undefined && { sourceModel }),
   };
   return { ok: true, value };
 }
@@ -181,6 +203,23 @@ export function parseHttpsJsonCatalog(
   options: HttpsJsonCatalogOptions,
 ): ValidationResult<HttpsJsonCatalog> {
   const parsed = parseProjectFileText(text, MAX_PROJECT_FILE_BYTES);
+  if (parsed.ok) {
+    try {
+      strictJson(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text);
+    } catch (error) {
+      return {
+        ok: false,
+        errors: [
+          {
+            path: '',
+            code: 'not-json',
+            message:
+              error instanceof Error ? error.message : 'Invalid strict JSON.',
+          },
+        ],
+      };
+    }
+  }
   return parsed.ok ? validateHttpsJsonCatalog(parsed.value, options) : parsed;
 }
 

@@ -1,5 +1,15 @@
 /** Strict JSON preserves raw Unicode and refuses duplicate/consumed case aliases. */
+export class JsonNumberToken {
+  constructor(readonly token: string) {}
+}
 export function strictJson(text: string): unknown {
+  return parseStrictJson(text, false);
+}
+/** Metadata receipt equality preserves exact number tokens rather than rounded JS numbers. */
+export function strictJsonNumbers(text: string): unknown {
+  return parseStrictJson(text, true);
+}
+function parseStrictJson(text: string, numbers: boolean): unknown {
   let cursor = 0;
   const whitespace = (): void => {
     while (/\s/.test(text[cursor] ?? '') && cursor < text.length) cursor++;
@@ -29,17 +39,17 @@ export function strictJson(text: string): unknown {
     }
     throw new Error('Unterminated JSON string.');
   };
-  const visit = (depth: number): void => {
+  const visit = (depth: number): unknown => {
     if (depth > 32) throw new Error('Metadata nesting exceeds the bound.');
     whitespace();
     if (text[cursor] === '"') {
-      token();
-      return;
+      return token();
     }
     if (text[cursor] === '{') {
       cursor++;
       whitespace();
       const names = new Set<string>();
+      const record: Record<string, unknown> = Object.create(null);
       while (text[cursor] !== '}') {
         if (text[cursor] !== '"') throw new Error('Invalid JSON object.');
         const name = token();
@@ -47,35 +57,44 @@ export function strictJson(text: string): unknown {
         names.add(name);
         whitespace();
         if (text[cursor++] !== ':') throw new Error('Invalid JSON object.');
-        visit(depth + 1);
+        record[name] = visit(depth + 1);
         whitespace();
         if (text[cursor] !== ',') break;
         cursor++;
         whitespace();
       }
       if (text[cursor++] !== '}') throw new Error('Invalid JSON object.');
-      return;
+      return record;
     }
     if (text[cursor] === '[') {
+      const entries: unknown[] = [];
       cursor++;
       whitespace();
       while (text[cursor] !== ']') {
-        visit(depth + 1);
+        entries.push(visit(depth + 1));
         whitespace();
         if (text[cursor] !== ',') break;
         cursor++;
         whitespace();
       }
       if (text[cursor++] !== ']') throw new Error('Invalid JSON array.');
-      return;
+      return entries;
     }
     const start = cursor;
     while (cursor < text.length && !/[\s,}\]]/.test(text[cursor])) cursor++;
     if (start === cursor) throw new Error('Invalid JSON value.');
-    JSON.parse(text.slice(start, cursor));
+    const raw = text.slice(start, cursor);
+    const value: unknown = JSON.parse(raw);
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value)) throw new Error('Nonfinite JSON number.');
+      return numbers ? new JsonNumberToken(raw) : value;
+    }
+    return value;
   };
-  visit(0);
+  const value = visit(0);
   whitespace();
   if (cursor !== text.length) throw new Error('Trailing JSON data.');
-  return JSON.parse(text) as unknown;
+  // Retain the native parser's grammar check (e.g. trailing commas) after bounded traversal.
+  JSON.parse(text);
+  return value;
 }

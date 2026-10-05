@@ -1,13 +1,22 @@
 import type { BoundedFederation, BoundedRecord } from './bounded-federation';
 import type { CanonicalPins, ImmutableFile } from './canonical-metadata';
-import type { SourceField } from './representation-discovery';
+import type { VerifiedDeclaredSource } from './declared-source';
+import type { SourceField, SourceFacts } from './representation-discovery';
 
 export const SAVED_SCENARIO_PUBLICATION_BLOCKER =
   'Saved public-data execution awaits canonical companion publication and fresh metadata admission. A saved eligibility value does not authorize execution.';
 
 /** Saved with the existing query; never refreshes or executes on reopening. */
 export interface PublicDataScenario {
+  readonly execution?: 'label-bridge' | 'native-identifier';
+  readonly native?: {
+    readonly dataset: ImmutableFile;
+    readonly provenance: ImmutableFile;
+  };
   readonly source: SourceField;
+  /** Descriptive evidence observed at the saved pins; never execution authority. */
+  readonly sourceFacts?: SourceFacts;
+  readonly declaredSource?: VerifiedDeclaredSource;
   readonly canonical: CanonicalPins;
   readonly attachment: ImmutableFile;
   readonly snapshot: ImmutableFile;

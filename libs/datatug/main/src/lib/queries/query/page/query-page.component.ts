@@ -1,7 +1,11 @@
 import { HttpErrorResponse } from '@angular/common/http';
+import { PublicDataService } from '../../public-data/public-data.service';
+import { ConfiguredPublicDataSourcesService } from '../../public-data/configured-public-data-sources.service';
+import { SavedPlanReview } from '../../public-data/saved-plan-review';
 import { INITIAL_CANONICAL_PINS } from '../../public-data/canonical-metadata';
 import { scenarioRevisionChanges, SAVED_SCENARIO_PUBLICATION_BLOCKER } from '../../public-data/public-data-scenario';
 import {
+  Injector,
   ChangeDetectorRef,
   Component,
   OnDestroy,
@@ -357,6 +361,7 @@ export function extractLinkedEntityNames(
   ],
 })
 export class QueryPageComponent implements OnDestroy, ViewDidEnter {
+  private readonly injector = inject(Injector);
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly randomIdService = inject(RandomIdService);
   private readonly datatugNavContextService = inject(DatatugNavContextService);
@@ -478,6 +483,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly accessBlockers = signal<readonly string[]>([]);
   public readonly runError = signal<string | undefined>(undefined);
   public readonly runResult = signal<FederatedQueryResult | undefined>(undefined);
+  private readonly publicDataMetadata = inject(PublicDataService);
+  public readonly savedPlanReview = new SavedPlanReview(() => this.queryDef(), this.publicDataMetadata, this.queriesService, () => this.project?.ref, async (definition, signal) => {
+    const source = definition.publicData?.declaredSource;
+    if (!source || !this.project) return undefined;
+    return this.injector.get(ConfiguredPublicDataSourcesService).resolveSaved(this.project, source, signal);
+  });
   public readonly publicDataRevisionAcknowledged = signal(false);
   public readonly publicDataRevisionChanges = computed(() => {
     const saved = this.queryDef()?.publicData;
@@ -643,7 +654,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.queryState = queryState;
       // Signal write (zoneless-safe, unlike the plain-field write just
       // above) — see `queryDef`'s own doc comment.
-      if (this.queryDef()?.id !== queryState.def?.id) { this.ovdbToken.set(''); this.publicDataRevisionAcknowledged.set(false); }
+      if (this.queryDef() !== queryState.def) { this.savedPlanReview.reset(); this.publicDataRevisionAcknowledged.set(false); }
+      if (this.queryDef()?.id !== queryState.def?.id) this.ovdbToken.set('');
       if (queryState.def && this.queryDef()?.id !== queryState.def.id) this.federatedMode.set(federatedVisibleMode(queryState.def).defaultMode);
       this.queryDef.set(queryState.def);
       if (this.queryState.environments && !this.queryState.activeEnv) {
@@ -663,6 +675,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   };
 
   ngOnDestroy(): void {
+    this.savedPlanReview.destroy();
     void this.federatedQuery.dispose().catch(() => undefined);
     if (this.destroyed) {
       this.destroyed.next();
@@ -1499,8 +1512,6 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     if (!projectId || !queryId) {
       return;
     }
-    this.resultPageIndex.set(0);
-    this.resultPageRows.set([]);
     const definition = this.queryDef();
     if (definition?.publicData && this.publicDataRevisionChanges().length && !this.publicDataRevisionAcknowledged()) {
       this.runError.set('Canonical metadata revisions changed. Inspect the saved pins and explicitly acknowledge before re-execution.');
@@ -1510,6 +1521,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.runError.set(SAVED_SCENARIO_PUBLICATION_BLOCKER);
       return;
     }
+    this.resultPageIndex.set(0);
+    this.resultPageRows.set([]);
     if (definition?.federation) {
       if (this.running()) return;
       this.running.set(true);

@@ -86,8 +86,8 @@ describe('immutable canonical discovery admission', () => {
     const a = await file(text);
     const b = await file(text, 'b.json');
     const cache = new CanonicalMetadataCache();
-    cache.set(a, text);
-    cache.set(b, text);
+    cache.set(a, new TextEncoder().encode(text));
+    cache.set(b, new TextEncoder().encode(text));
     const operation = reader(vi.fn(), cache);
     await operation.text(a);
     await expect(operation.text(b)).rejects.toThrow(/aggregate/);
@@ -112,6 +112,69 @@ describe('immutable canonical discovery admission', () => {
     await expect(
       reader(async () => new Response('{}', { status: 404 })).text(small),
     ).rejects.toThrow(/unavailable/);
+  });
+  it('hashes original BOM bytes and retains their exact budget on cold and cached reads', async () => {
+    const plain = new TextEncoder().encode('é😀�'),
+      bom = new Uint8Array([0xef, 0xbb, 0xbf, ...plain]);
+    const ref = { ...(await file('é😀�')), sha256: await sha256(bom) };
+    for (const [expected, actual] of [
+      [plain, bom],
+      [bom, plain],
+    ]) {
+      const wrong = { ...ref, sha256: await sha256(expected) };
+      const cache = new CanonicalMetadataCache();
+      await expect(
+        reader(async () => new Response(actual), cache).text(wrong),
+      ).rejects.toThrow(/checksum/);
+      expect(cache.get(wrong)).toBeUndefined();
+    }
+    const cache = new CanonicalMetadataCache(),
+      http = vi.fn(async () => new Response(bom));
+    const cold = reader(http, cache),
+      warm = reader(http, cache);
+    expect(await cold.text(ref)).toBe('\ufeffé😀�');
+    expect(await warm.text(ref)).toBe('\ufeffé😀�');
+    expect(cold.bytes).toBe(bom.byteLength);
+    expect(warm.bytes).toBe(bom.byteLength);
+    expect(http).toHaveBeenCalledOnce();
+    const copy = cache.get(ref);
+    if (!copy) throw new Error('Missing verified cache bytes.');
+    copy[0] = 0;
+    expect(cache.get(ref)).toEqual(bom);
+    const invalid = new Uint8Array([0xc3, 0x28]),
+      invalidRef = { ...ref, sha256: await sha256(invalid) };
+    await expect(
+      reader(async () => new Response(invalid), cache).text(invalidRef),
+    ).rejects.toThrow();
+    expect(cache.get(invalidRef)).toBeUndefined();
+    cache.set(invalidRef, invalid);
+    await expect(reader(vi.fn(), cache).text(invalidRef)).rejects.toThrow();
+  });
+  it('enforces exact aggregate byte budgets with BOM and multibyte Unicode in fetched and cached metadata', async () => {
+    const cap = 2 * 1024 * 1024;
+    const exact = new TextEncoder().encode('\ufeffé' + 'x'.repeat(cap - 5));
+    expect(exact.byteLength).toBe(cap);
+    const ref = { ...(await file('')), sha256: await sha256(exact) },
+      cache = new CanonicalMetadataCache();
+    const cold = reader(async () => new Response(exact), cache);
+    await cold.text(ref);
+    expect(cold.bytes).toBe(cap);
+    const warm = reader(vi.fn(), cache);
+    await warm.text(ref);
+    expect(warm.bytes).toBe(cap);
+    const extra = await file('x', 'extra.txt');
+    cache.set(extra, new TextEncoder().encode('x'));
+    await expect(warm.text(extra)).rejects.toThrow(/byte bound|aggregate/);
+    const over = new Uint8Array([...exact, 120]),
+      overRef = { ...ref, sha256: await sha256(over) };
+    await expect(
+      reader(async () => new Response(over), cache).text(overRef),
+    ).rejects.toThrow(/byte bound/);
+    expect(cache.get(overRef)).toBeUndefined();
+    cache.set(overRef, over);
+    await expect(reader(vi.fn(), cache).text(overRef)).rejects.toThrow(
+      /aggregate/,
+    );
   });
   it('uses full source coordinates and representation scope, with no case or space guesses', () => {
     const source: SourceField = {

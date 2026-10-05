@@ -1,6 +1,9 @@
 import Ajv2020 from 'ajv/dist/2020';
 import { parseAllDocuments } from 'yaml';
 import schema from './representation-contract.schema.json';
+import schema2 from './representation-contract-2.schema.json';
+import type { VerifiedDeclaredSource } from './declared-source';
+import { verifyNativeReceipt } from './native-receipt';
 import {
   array,
   object,
@@ -14,7 +17,7 @@ import {
   type MetadataObject,
 } from './canonical-metadata';
 
-interface Reference {
+export interface Reference {
   readonly path: string;
   readonly sha256: string;
   readonly repository?: string;
@@ -29,6 +32,7 @@ export interface SourceField {
   readonly namespace: string;
 }
 export interface RepresentationContract {
+  readonly execution?: 'label-bridge';
   readonly source: Omit<SourceField, 'schema'> & { readonly schema: Reference };
   readonly target: {
     readonly snapshot: Reference;
@@ -65,10 +69,28 @@ export interface RepresentationContract {
   };
   readonly decision: { readonly document: Reference; readonly scope: string };
 }
+export interface NativeRepresentationContract extends Omit<
+  RepresentationContract,
+  'execution' | 'bridge' | 'target'
+> {
+  readonly execution: 'native-identifier';
+  readonly target: Omit<RepresentationContract['target'], 'keys'>;
+  readonly native: {
+    readonly dataset: Reference;
+    readonly provenance: Reference;
+    readonly serving_identity_column?: string;
+  };
+}
+export type ScopedRepresentationContract =
+  | RepresentationContract
+  | NativeRepresentationContract;
 export interface PublicDataSuggestion {
   readonly provider: MetadataObject;
   readonly attachment: ImmutableFile;
-  readonly contract?: RepresentationContract;
+  readonly contract?: ScopedRepresentationContract;
+  /** Structural compatibility is independent of runtime/semantic admission. */
+  readonly compatibility?: 'compatible' | 'different-source' | 'incompatible';
+  readonly sourceFacts?: SourceFacts;
   readonly matchesSource: boolean;
   readonly eligible: boolean;
   readonly reason: string;
@@ -80,6 +102,25 @@ export interface PublicDataSuggestion {
   };
 }
 
+export interface SourceFacts {
+  readonly inputs?: readonly {
+    readonly url?: string;
+    readonly retrievedAt?: string;
+    readonly modifiedAt?: string;
+    readonly licence?: string;
+  }[];
+  readonly release?: string;
+  readonly releaseDate?: string;
+  readonly retrievedAt?: string;
+  readonly records?: string;
+  readonly sourceUrl?: string;
+  readonly coverage: string;
+  readonly confidence: string;
+  readonly sourceLicences: readonly string[];
+}
+const validate2 = new Ajv2020({ allErrors: true, strict: true }).compile(
+  schema2,
+);
 const validate = new Ajv2020({ allErrors: true, strict: true }).compile(schema);
 /** This consumer proposal does not make unfrozen companion metadata executable. */
 export const REPRESENTATION_PUBLICATION_BLOCKER =
@@ -102,7 +143,7 @@ export function sameSource(
   );
 }
 
-function referenceFile(
+export function referenceFile(
   reference: Reference,
   provider: MetadataObject,
   external: boolean,
@@ -163,6 +204,7 @@ function modelProperty(
   module: string,
   entity: string,
   property: string,
+  datatype: string | undefined = 'string',
 ): MetadataObject {
   exactFields(model, ['modelspec', 'module', 'entities']);
   if (model['modelspec'] !== '1.0-draft')
@@ -174,11 +216,11 @@ function modelProperty(
     object(model['entities'], 'entities')[entity],
     'entity',
   );
-  exactFields(entityRecord, ['properties']);
+  exactFields(entityRecord, ['properties', 'key']);
   const value = object(entityRecord['properties'], 'properties')[property];
   const result = object(value, 'source-qualified property');
   exactFields(result, ['type', 'required']);
-  if (result['type'] !== 'string')
+  if (datatype !== undefined && result['type'] !== datatype)
     throw new Error(
       'The exact model property does not declare the raw string representation.',
     );
@@ -214,32 +256,41 @@ export function parseMeaningDocument(text: string): MetadataObject {
 }
 
 async function verifyContract(
-  contract: RepresentationContract,
+  contract: ScopedRepresentationContract,
   provider: MetadataObject,
   indexes: CanonicalIndexes,
   reader: CanonicalMetadataReader,
   attachment: ImmutableFile,
+  declared?: VerifiedDeclaredSource,
 ): Promise<{
   snapshot: MetadataObject;
   rights: PublicDataSuggestion['rights'];
+  sourceFacts?: SourceFacts;
 }> {
   const target = contract.target;
   const modelRecords = array(indexes.models['models'], 'model registry');
   const graphRecords = array(indexes.meanings['graphs'], 'meaning registry');
   const sourceFile = referenceFile(contract.source.schema, provider, true);
-  const sourceRecord = findRecord(
-    modelRecords,
-    sourceFile.repository,
-    sourceFile.revision,
-    'source model',
-  );
-  if (
-    object(sourceRecord['files'], 'source model files')['json'] !==
-    sourceFile.path
-  )
-    throw new Error(
-      'The source schema is not the registered canonical JSON model.',
+  if (declared) {
+    if (!sameSource(declared.source, contract.source))
+      throw new Error(
+        'Declared configured source differs from exact contract scope.',
+      );
+  } else {
+    const sourceRecord = findRecord(
+      modelRecords,
+      sourceFile.repository,
+      sourceFile.revision,
+      'source model',
     );
+    if (
+      object(sourceRecord['files'], 'source model files')['json'] !==
+      sourceFile.path
+    )
+      throw new Error(
+        'The source schema is not the registered canonical JSON model.',
+      );
+  }
   const providerRepository = string(
     provider['repository'],
     'provider repository',
@@ -314,14 +365,21 @@ async function verifyContract(
     contract.source.property,
   );
   modelProperty(model, target.module, target.entity, target.property);
-  for (const field of [
-    contract.bridge.raw_label_column,
-    contract.bridge.target_key_column,
-    ...(contract.bridge.serving_identity_column
-      ? [contract.bridge.serving_identity_column]
-      : []),
-  ])
-    modelProperty(model, target.module, contract.bridge.table, field);
+  if (contract.execution !== 'native-identifier') {
+    for (const field of [
+      contract.bridge.raw_label_column,
+      contract.bridge.target_key_column,
+    ])
+      modelProperty(model, target.module, contract.bridge.table, field);
+    if (contract.bridge.serving_identity_column)
+      modelProperty(
+        model,
+        target.module,
+        contract.bridge.table,
+        contract.bridge.serving_identity_column,
+        undefined,
+      );
+  }
   const binding = parseMeaningDocument(
     await reader.text(bindingFile, ancestry),
   );
@@ -359,8 +417,6 @@ async function verifyContract(
       'The binding does not implement this exact identifier property and canonical meaning.',
     );
   const snapshotFile = referenceFile(target.snapshot, provider, false);
-  const keysFile = referenceFile(target.keys, provider, false);
-  const bridgeFile = referenceFile(contract.bridge.artifact, provider, false);
   const snapshot = await reader.json(snapshotFile, ancestry);
   exactFields(snapshot, ['generator', 'artifacts']);
   const generator = object(snapshot['generator'], 'snapshot generator');
@@ -373,16 +429,68 @@ async function verifyContract(
   )
     throw new Error('Mutable snapshot generator provenance.');
   const artifacts = array(snapshot['artifacts'], 'snapshot artifacts');
-  for (const file of [keysFile, bridgeFile])
-    if (
-      !artifacts.some((value) => {
-        const artifact = object(value, 'artifact');
-        exactFields(artifact, ['path', 'sha256']);
-        return (
-          artifact['path'] === file.path && artifact['sha256'] === file.sha256
+  if (artifacts.length > 10000)
+    throw new Error('Snapshot artifact bound exceeded.');
+  const paths = new Set<string>();
+  for (const value of artifacts) {
+    const artifact = object(value, 'artifact');
+    exactFields(artifact, ['path', 'sha256']);
+    const file = referenceFile(
+      {
+        path: string(artifact['path'], 'artifact path'),
+        sha256: string(artifact['sha256'], 'artifact hash'),
+      },
+      provider,
+      false,
+    );
+    if (paths.has(file.path)) throw new Error('Duplicate snapshot artifact.');
+    paths.add(file.path);
+  }
+  const closed = (ref: Reference): boolean =>
+    artifacts.some((value) => {
+      const artifact = object(value, 'artifact');
+      return (
+        artifact['path'] === ref.path &&
+        artifact['sha256'] === ref.sha256 &&
+        ref.repository === undefined &&
+        ref.revision === undefined
+      );
+    });
+  // Decision bytes are provenance, never a free-prose acceptance parser.
+  await reader.text(
+    referenceFile(contract.decision.document, provider, true),
+    ancestry,
+  );
+  const rights = {
+    source: string(provider['licence'], 'source licence'),
+    model: string(targetRecord['licence'], 'model licence'),
+    meaning: string(graphRecord['meaning_licence'], 'meaning licence'),
+  };
+  if (contract.execution === 'native-identifier') {
+    for (const ref of [
+      contract.native.dataset,
+      contract.native.provenance,
+      target.model,
+      target.binding.document,
+    ])
+      if (!closed(ref))
+        throw new Error(
+          'Native dataset/model/binding/provenance closure mismatch.',
         );
-      })
-    )
+    const sourceFacts = await verifyNativeReceipt(
+      contract,
+      model,
+      snapshot,
+      reader,
+      (ref) => referenceFile(ref, provider, false),
+      ancestry,
+    );
+    return { snapshot, rights, sourceFacts };
+  }
+  const keysFile = referenceFile(contract.target.keys, provider, false);
+  const bridgeFile = referenceFile(contract.bridge.artifact, provider, false);
+  for (const ref of [contract.target.keys, contract.bridge.artifact])
+    if (!closed(ref))
       throw new Error('Snapshot does not pin the exact bridge/key artifact.');
   const keys = await reader.json(keysFile, ancestry);
   exactFields(keys, ['namespace', 'keys']);
@@ -423,11 +531,24 @@ async function verifyContract(
   };
 }
 
+export function parseRepresentationContracts(
+  document: MetadataObject,
+): readonly ScopedRepresentationContract[] {
+  if (
+    !(document['format'] === 'ovdb-representation-contract/2'
+      ? validate2(document)
+      : validate(document))
+  )
+    throw new Error('Unsupported or malformed scoped representation schema.');
+  return document['contracts'] as readonly ScopedRepresentationContract[];
+}
+
 /** Diagnostic discovery remains unavailable until reviewed canonical companion publication. */
 export async function discoverRepresentations(
   scope: SourceField | undefined,
   indexes: CanonicalIndexes,
   reader: CanonicalMetadataReader,
+  declaredSources: readonly VerifiedDeclaredSource[] = [],
 ): Promise<readonly PublicDataSuggestion[]> {
   if (scope) immutableUrl(scope.schema);
   const suggestions: PublicDataSuggestion[] = [];
@@ -462,41 +583,81 @@ export async function discoverRepresentations(
         false,
       );
       const document = await reader.json(attachment);
-      if (!validate(document))
+      if (
+        !(document['format'] === 'ovdb-representation-contract/2'
+          ? validate2(document)
+          : validate(document))
+      )
         throw new Error(
           'Unsupported or malformed scoped representation schema.',
         );
-      for (const contract of document[
+      const contracts = document[
         'contracts'
-      ] as readonly RepresentationContract[]) {
+      ] as readonly ScopedRepresentationContract[];
+      const sourceScopes = new Set<string>();
+      for (const contract of contracts) {
+        const source = contract.source;
+        const sourceIdentity = JSON.stringify([
+          source.schema.repository,
+          source.schema.revision,
+          source.schema.path,
+          source.schema.sha256,
+          source.module,
+          source.entity,
+          source.property,
+          source.datatype,
+          source.namespace,
+        ]);
+        if (sourceScopes.has(sourceIdentity))
+          throw new Error('Duplicate contract source scope.');
+        sourceScopes.add(sourceIdentity);
+      }
+      const verifiedSuggestions: PublicDataSuggestion[] = [];
+      for (const contract of contracts) {
         const matchesSource = scope
           ? sameSource(scope, contract.source)
-          : false;
+          : declaredSources.some((source) =>
+              sameSource(source.source, contract.source),
+            );
         const verified = await verifyContract(
           contract,
           provider,
           indexes,
           reader,
           attachment,
+          (() => {
+            const matches = declaredSources.filter((source) =>
+              sameSource(source.source, contract.source),
+            );
+            if (matches.length > 1)
+              throw new Error(
+                'Ambiguous configured source mapping for this contract scope.',
+              );
+            return matches[0];
+          })(),
         );
-        suggestions.push({
+        verifiedSuggestions.push({
           provider,
           attachment,
           contract,
           matchesSource,
           eligible: false,
+          compatibility:
+            !scope || matchesSource ? 'compatible' : 'different-source',
           reason: matchesSource
             ? REPRESENTATION_PUBLICATION_BLOCKER
             : 'This contract belongs to a different exact source/schema/property/representation scope.',
           ...verified,
         });
       }
+      suggestions.push(...verifiedSuggestions);
     } catch (error) {
       if (attachment)
         suggestions.push({
           provider,
           attachment,
           matchesSource: false,
+          compatibility: 'incompatible',
           eligible: false,
           reason:
             error instanceof Error

@@ -82,6 +82,33 @@
         </p>
         <details data-testid="selected-field-provenance">
           <summary>Selected field provenance</summary>
+          @if (field()?.context; as context) {
+            <p>
+              Configured schema/data/mapping integrity is verified; it does not
+              authorize semantic or runtime admission.
+            </p>
+            <p>
+              Project configuration {{ context.configuration.repository }} at
+              {{ context.configuration.revision }} ·
+              {{ context.configuration.path }} ·
+              {{ context.configuration.sha256 }}
+            </p>
+            <p>
+              User data {{ context.data.repository }} at
+              {{ context.data.revision }} · {{ context.data.path }} ·
+              {{ context.data.sha256 }}. Data is read only after an explicit
+              run.
+            </p>
+            <p>
+              Physical {{ context.table.schema || '(default)' }}.{{
+                context.table.name
+              }}.{{ context.field.name }} → {{ context.source.entity }}.{{
+                context.source.property
+              }}
+              · key {{ context.table.key }} · nullable
+              {{ context.field.nullable }}
+            </p>
+          }
           <p>
             {{ scope.schema.repository }} at {{ scope.schema.revision }} ·
             {{ scope.schema.path }} · SHA256 {{ scope.schema.sha256 }}
@@ -176,8 +203,48 @@
         @for (suggestion of data.suggestions; track $index) {
           <ion-card
             ><ion-card-content>
-              <p>{{ suggestion.provider['title'] }}</p>
+              <p>
+                {{
+                  suggestion.provider['title'] ||
+                    suggestion.provider['localId'] ||
+                    'Public source'
+                }}
+              </p>
               <p data-testid="suggestion-reason">{{ suggestion.reason }}</p>
+              <p>
+                Structural compatibility:
+                {{ suggestion.compatibility ?? 'not established' }}. Execution
+                availability:
+                {{ suggestion.eligible ? 'available' : 'unavailable' }}.
+              </p>
+              @if (suggestion.sourceFacts; as facts) {
+                <p data-testid="source-facts">
+                  Public release: {{ facts.release ?? 'unknown' }} · release
+                  date: {{ facts.releaseDate ?? 'unknown' }} · retrieved:
+                  {{ facts.retrievedAt ?? 'unknown' }}.
+                </p>
+                <p>{{ facts.coverage }} {{ facts.confidence }}</p>
+                @if (facts.inputs?.length) {
+                  <details>
+                    <summary>Source receipt dates and licences</summary>
+                    @for (input of facts.inputs; track $index) {
+                      <p>
+                        {{ input.url || 'Unknown source URL' }} · retrieved
+                        {{ input.retrievedAt || 'unknown' }} · modified
+                        {{ input.modifiedAt || 'unknown' }} ·
+                        {{ input.licence || 'Unknown licence' }}
+                      </p>
+                    }
+                  </details>
+                }
+                <p>
+                  Source licence scope:
+                  {{
+                    facts.sourceLicences.join(', ') ||
+                      'See pinned provider licence'
+                  }}
+                </p>
+              }
               @if (suggestion.contract; as contract) {
                 <p>
                   {{ contract.source.entity }}.{{ contract.source.property }} →
@@ -192,12 +259,47 @@
                   <summary>Lookup provenance</summary>
                   <p>Decision scope: {{ contract.decision.scope }}.</p>
                   <p>
-                    Raw label table {{ contract.bridge.table }}.{{
-                      contract.bridge.raw_label_column
-                    }}
-                    → {{ contract.bridge.target_key_column }}. The original
-                    source field remains in the result.
+                    Provider {{ suggestion.attachment.repository }} at
+                    {{ suggestion.attachment.revision }}
                   </p>
+                  <p>
+                    Attachment {{ suggestion.attachment.path }} ·
+                    {{ suggestion.attachment.sha256 }}
+                  </p>
+                  <p>
+                    Model {{ contract.target.model.path }} ·
+                    {{ contract.target.model.sha256 }} · binding
+                    {{ contract.target.binding.document.path }} ·
+                    {{ contract.target.binding.document.sha256 }}
+                  </p>
+                  <p>
+                    Snapshot {{ contract.target.snapshot.path }} ·
+                    {{ contract.target.snapshot.sha256 }}
+                  </p>
+                  <p>
+                    Decision {{ contract.decision.document.repository }} at
+                    {{ contract.decision.document.revision }} ·
+                    {{ contract.decision.document.path }} ·
+                    {{ contract.decision.document.sha256 }}
+                  </p>
+                  @if (contract.execution === 'native-identifier') {
+                    <p>
+                      Native dataset {{ contract.native.dataset.path }} ·
+                      {{ contract.native.dataset.sha256 }} · receipt
+                      {{ contract.native.provenance.path }} ·
+                      {{ contract.native.provenance.sha256 }}. Discovery reads
+                      metadata only.
+                    </p>
+                  }
+                  @if (contract.execution !== 'native-identifier') {
+                    <p>
+                      Raw label table {{ contract.bridge.table }}.{{
+                        contract.bridge.raw_label_column
+                      }}
+                      → {{ contract.bridge.target_key_column }}. The original
+                      source field remains in the result.
+                    </p>
+                  }
                 </details>
               }
               @if (suggestion.rights; as rights) {

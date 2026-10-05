@@ -22,15 +22,15 @@ export const INITIAL_CANONICAL_PINS: CanonicalPins = {
   },
   models: {
     repository: 'https://github.com/modelspec-org/registry',
-    revision: '48b30b250a61385d94d46a70968677870750ea35',
+    revision: '34be21159e522e85b6e5c110f8bfb8baaa8035a8',
     path: 'index.json',
-    sha256: '947e80bec116780f0ccb33c28caf4f2f5dbe53eb90e7b0e5c7f741116a69a320',
+    sha256: '302a04f9775aec8627ddab0361030156f592abb3e446088ba43bd813aa527576',
   },
   meanings: {
     repository: 'https://github.com/meaninggraph/registry',
-    revision: '2d92bbdd45fc2552f231f8f993a5b8b8d5b7fa29',
+    revision: '3d85ae6fa06b7f38f59cfd2893e07ba801856b96',
     path: 'index.json',
-    sha256: '5d710692a320374c02912c932d755b80f2cbe67a463ef419daa6a1d7c8bfc0b9',
+    sha256: '42931545086beb7c69d803767b8d50e524baff2ff37a2ec9eb8526eee16aa4a5',
   },
 };
 
@@ -68,7 +68,9 @@ export function immutableUrl(file: ImmutableFile): string {
     ) ||
     !/^[a-f0-9]{40}$/.test(file.revision) ||
     !/^[a-f0-9]{64}$/.test(file.sha256) ||
-    !/^[A-Za-z0-9_./-]+$/.test(file.path) ||
+    !/^(?:[A-Za-z0-9_.-]+|\$records)(?:\/(?:[A-Za-z0-9_.-]+|\$records))*$/.test(
+      file.path,
+    ) ||
     file.path.length > 1024 ||
     /(^\/|\/$|\/\/|(^|\/)(\.|\.\.|\.[gG][iI][tT])($|\/))/.test(file.path)
   )
@@ -77,10 +79,12 @@ export function immutableUrl(file: ImmutableFile): string {
     );
   return `https://raw.githubusercontent.com/${file.repository.slice('https://github.com/'.length)}/${file.revision}/${file.path}`;
 }
-export async function sha256(text: string): Promise<string> {
+export async function sha256(value: string | Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest(
     'SHA-256',
-    new TextEncoder().encode(text),
+    typeof value === 'string'
+      ? new TextEncoder().encode(value)
+      : new Uint8Array(value),
   );
   return Array.from(new Uint8Array(digest), (byte) =>
     byte.toString(16).padStart(2, '0'),
@@ -89,7 +93,7 @@ export async function sha256(text: string): Promise<string> {
 
 /** Rebuildable bytes keyed by every immutable coordinate; never stores decisions. */
 export class CanonicalMetadataCache {
-  private readonly entries = new Map<string, string>();
+  private readonly entries = new Map<string, Uint8Array>();
   private generation = '';
   begin(pins: CanonicalPins): void {
     const generation = JSON.stringify(pins);
@@ -102,11 +106,11 @@ export class CanonicalMetadataCache {
     this.entries.clear();
     this.generation = '';
   }
-  get(file: ImmutableFile): string | undefined {
-    return this.entries.get(JSON.stringify(file));
+  get(file: ImmutableFile): Uint8Array | undefined {
+    return this.entries.get(JSON.stringify(file))?.slice();
   }
-  set(file: ImmutableFile, text: string): void {
-    this.entries.set(JSON.stringify(file), text);
+  set(file: ImmutableFile, raw: Uint8Array): void {
+    this.entries.set(JSON.stringify(file), raw.slice());
   }
 }
 
@@ -137,8 +141,8 @@ export class CanonicalMetadataReader {
       throw new Error('Canonical metadata exceeds the reference count bound.');
     const request = this.queue.then(async () => {
       this.signal.throwIfAborted();
-      let text = this.cache.get(file);
-      if (text === undefined) {
+      let raw = this.cache.get(file);
+      if (raw === undefined) {
         const response = await this.httpFetch(url, {
           redirect: 'error',
           signal: this.signal,
@@ -153,14 +157,18 @@ export class CanonicalMetadataReader {
           throw new Error(
             `Canonical metadata unavailable (${response.status}).`,
           );
-        text = read.text;
+        raw = read.raw;
       }
-      this.admittedBytes += new TextEncoder().encode(text).byteLength;
+      this.admittedBytes += raw.byteLength;
       if (this.admittedBytes > 2 * 1024 * 1024)
         throw new Error('Discovery metadata exceeds the aggregate 2MiB bound.');
-      if ((await sha256(text)) !== file.sha256)
+      if ((await sha256(raw)) !== file.sha256)
         throw new Error('Canonical metadata checksum mismatch.');
-      this.cache.set(file, text);
+      const text = new TextDecoder('utf-8', {
+        fatal: true,
+        ignoreBOM: true,
+      }).decode(raw);
+      this.cache.set(file, raw);
       return text;
     });
     this.queue = request.then(
