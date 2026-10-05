@@ -1,3 +1,5 @@
+import { verifyNativeGraphPlan } from './native-graph-executor';
+import { graphFixtureMetadataTransport } from './native-graph.spec-helper';
 import { nativeFixture } from './native-fixture.spec-helper';
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
@@ -93,6 +95,7 @@ describe('Public data route fixture UI journey (no deployed runtime claims)', ()
     const metadata = {
       discover: vi.fn(async () => discovery),
       scenario: vi.fn(() => definition),
+      verifyGraphForSave: vi.fn((plan) => verifyNativeGraphPlan(plan, graphFixtureMetadataTransport, new AbortController().signal)),
     };
     const output = {
       recordset: {
@@ -131,6 +134,10 @@ describe('Public data route fixture UI journey (no deployed runtime claims)', ()
       run: vi.fn(async () => output),
       dispose: vi.fn(async () => undefined),
       getPage: vi.fn(),
+      listLocalResults: vi.fn(async () => []),
+      openLocalResult: vi.fn(),
+      associateLocalResult: vi.fn(async () => undefined),
+      deleteLocalResult: vi.fn(async () => undefined),
       continueSource: vi.fn(async () => output),
     };
     let reopened: IQueryDef | undefined;
@@ -214,9 +221,118 @@ describe('Public data route fixture UI journey (no deployed runtime claims)', ()
       navigation,
       click,
       configured,
+      projectChanges,
       reopened: () => reopened,
     };
   }
+  it('renders the three graph grains separately and saves/reopens full immutable graph pins without another lookup', async () => {
+    const { NativeGraphExecution, nativeGraphRunResponse } =
+      await import('./native-graph-executor');
+    const { graphFixturePlan, graphFixtureTransport } =
+      await import('./native-graph.spec-helper');
+    const { BoundedRunBudget } = await import('./bounded-run-budget');
+    const { default: native } = await import('./native-graph-fixture.json');
+    const state = await setup(true),
+      plan = graphFixturePlan(),
+      budget = new BoundedRunBudget(5242880, 10000);
+    try {
+      const execution = new NativeGraphExecution(
+        plan,
+        native.multiplicity.affiliations.map((data, i) => ({
+          key: String(i),
+          data,
+        })),
+        budget,
+        graphFixtureTransport(plan, native.multiplicity),
+        'https://runtime.example', graphFixtureMetadataTransport,
+      );
+      const output = nativeGraphRunResponse(
+        execution,
+        await execution.run(),
+        state.definition.id,
+        'Explicit graph UI fixture',
+      );
+      Object.assign(state.output, output);
+      Object.assign(state.definition.federation ?? {}, { nativeGraph: plan });
+      Object.assign(state.definition.publicData ?? {}, {
+        execution: 'native-graph',
+        graph: plan,
+      });
+      await state.click('Connect and explain');
+      await state.click('Inspect this lookup');
+      await state.click('Run bounded lookup');
+      expect(state.fixture.nativeElement.textContent).toContain(
+        'Affiliations 2',
+      );
+      await state.click('Locations');
+      expect(state.fixture.componentInstance.resultRows()).toHaveLength(4);
+      expect(
+        state.fixture.componentInstance
+          .activeRecordset()
+          ?.columns.map((column) => column.name),
+      ).toContain('Raw GeoNames ID');
+      await state.click('Alternate names');
+      expect(state.fixture.componentInstance.resultRows()).toHaveLength(76);
+      expect(state.federation.getPage).not.toHaveBeenCalled();
+      expect(state.federation.continueSource).not.toHaveBeenCalled();
+      await state.click('Save pending scenario');
+      await vi.waitFor(() => expect(state.reopened()).toBeDefined());
+      expect(state.metadata.verifyGraphForSave).toHaveBeenCalledOnce();
+      expect(state.reopened()?.federation?.nativeGraph).toEqual(plan);
+      expect(state.reopened()?.federation?.readReceipt?.pins).toEqual(
+        output.runtimeRead.pins,
+      );
+      expect(state.federation.run).toHaveBeenCalledOnce();
+      expect(state.reopened()?.publicData?.graph).toEqual(plan);
+    } finally {
+      budget.close();
+    }
+  });
+  it('retains previous run references, labels edited results historical and fences delayed history opens across projects', async () => {
+    const state = await setup(true), component = state.fixture.componentInstance;
+    Object.assign(state.output, { localResult: { id: 'local-first', generation: 1 }, totalRows: 150 });
+    state.federation.listLocalResults.mockResolvedValue([{ id: 'local-first', observedAt: 'first' }, { id: 'unrelated', observedAt: 'elsewhere' }] as never);
+    await state.click('Connect and explain'); await state.click('Inspect this lookup'); await state.click('Run bounded lookup');
+    expect(component.history().map((entry) => entry.id)).toEqual(['local-first']);
+    component.setRows(200); await state.fixture.whenStable();
+    expect(state.fixture.nativeElement.querySelector('[data-testid="historical-result"]')?.textContent).toContain('original executed definition');
+    expect(component.result()?.localResult?.id).toBe('local-first');
+    let complete!: (value: unknown) => void;
+    state.federation.openLocalResult.mockImplementation(() => new Promise((resolve) => { complete = resolve; }));
+    const pending = component.openHistory('local-first');
+    state.projectChanges.next({ ref: { storeId: 'other', projectId: 'other-project' } });
+    complete({ result: state.output, executedDefinition: state.definition }); await pending; await state.fixture.whenStable();
+    expect(component.result()).toBeUndefined(); expect(component.history()).toEqual([]); expect(component.historyLoading()).toBe(false);
+    expect(state.federation.run).toHaveBeenCalledOnce();
+  });
+  it('ignores delayed pages after selection edits and associates the committed artifact with the actual returned query ID', async () => {
+    const state = await setup(true), component = state.fixture.componentInstance;
+    Object.assign(state.output, { localResult: { id: 'local-saved', generation: 1 }, totalRows: 150 });
+    await state.click('Connect and explain'); await state.click('Inspect this lookup'); await state.click('Run bounded lookup');
+    let complete!: (value: unknown) => void;
+    state.federation.getPage.mockImplementation(() => new Promise((resolve) => { complete = resolve; }));
+    const pending = component.changePage(1), before = component.resultRows();
+    component.setOffset(1); complete([[{ value: 'stale' }]]); await pending;
+    expect(component.resultRows()).toBe(before); expect(component.page()).toBe(0);
+    component.setOffset(0);
+    state.queries.createQuery.mockImplementation((_ref, query) => of({ ...structuredClone(query), id: 'actual-created-query' }));
+    await state.click('Save pending scenario');
+    expect(state.federation.associateLocalResult).toHaveBeenCalledWith({ storeId: 'github.com', projectId: 'fixture@example@' }, 'actual-created-query', { id: 'local-saved', generation: 1 });
+    expect(state.reopened()?.id).toBe('actual-created-query');
+  });
+  it('preserves committed rows and coverage after a rejected continuation and disables further stage reads', async () => {
+    const state = await setup(true), component = state.fixture.componentInstance;
+    Object.assign(state.definition.federation ?? {}, { bounds: { sources: [] } });
+    Object.assign(state.output, { runtimeRead: { pins: {}, pages: { 'geo.Countries': { limit: 2, offset: 0, rows: 2, possiblyMore: true, complete: false } } } });
+    await state.click('Connect and explain'); await state.click('Inspect this lookup'); await state.click('Run bounded lookup');
+    const before = component.result(), rows = component.resultRows();
+    state.federation.continueSource.mockRejectedValue(new Error('Replacement storage quota refused.'));
+    await component.continueSource('geo.Countries'); await state.fixture.whenStable();
+    expect(component.result()).toBe(before); expect(component.resultRows()).toBe(rows);
+    expect(component.stoppedAttempt()).toContain('quota'); expect(component.sourcePages()).toEqual([]);
+    await component.continueSource('geo.Countries'); expect(state.federation.continueSource).toHaveBeenCalledOnce();
+    expect(state.fixture.nativeElement.textContent).toContain('previous committed grids and coverage remain unchanged');
+  });
   it('renders asynchronous partial results as observed and unresolved without claiming exhaustive matches', async () => {
     const state = await setup(true);
     const updates = new Subject<FederatedQueryResult>();

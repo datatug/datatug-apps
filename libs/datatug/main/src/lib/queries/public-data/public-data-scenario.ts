@@ -8,7 +8,8 @@ export const SAVED_SCENARIO_PUBLICATION_BLOCKER =
 
 /** Saved with the existing query; never refreshes or executes on reopening. */
 export interface PublicDataScenario {
-  readonly execution?: 'label-bridge' | 'native-identifier';
+  readonly execution?: 'label-bridge' | 'native-identifier' | 'native-graph';
+  readonly graph?: import('./native-graph-executor').NativeGraphPlan;
   readonly native?: {
     readonly dataset: ImmutableFile;
     readonly provenance: ImmutableFile;

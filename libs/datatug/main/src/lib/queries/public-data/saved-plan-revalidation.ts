@@ -42,6 +42,10 @@ export function savedPinChanges(
   fresh: PublicDataScenario,
 ): readonly string[] {
   const changes: string[] = [];
+  if (JSON.stringify(saved.graph) !== JSON.stringify(fresh.graph))
+    changes.push(
+      'native graph stages/operators/native/publisher/runtime pins/selection',
+    );
   if (
     JSON.stringify(saved.declaredSource) !==
     JSON.stringify(fresh.declaredSource)

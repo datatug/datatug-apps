@@ -1,0 +1,1105 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "format": {
+      "const": "ovdb-representation-contract/4"
+    },
+    "legacy": {
+      "$ref": "#/$defs/localJSONAttachment"
+    },
+    "graphs": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "items": {
+        "$ref": "#/$defs/graph"
+      }
+    }
+  },
+  "required": [
+    "format",
+    "graphs"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:datatug:provisional:ovdb-representation-contract:4:w1:r1",
+  "$comment": "Private implementation candidate only. Structural validation grants no admission. Canonical schema identity and publication remain separate.",
+  "$defs": {
+    "externalRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "pattern": "^(?:[A-Za-z0-9_.-]+|\\$records)(?:/(?:[A-Za-z0-9_.-]+|\\$records))*$",
+          "allOf": [
+            {
+              "not": {
+                "pattern": "(^|/)(\\.|\\.\\.|\\.[gG][iI][tT])(/|$)"
+              }
+            },
+            {
+              "not": {
+                "pattern": "(^/|/$|//)"
+              }
+            },
+            {
+              "not": {
+                "pattern": "\\s"
+              }
+            }
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "repository": {
+          "type": "string",
+          "pattern": "^https://github\\.com/[a-z0-9_.-]+/[a-z0-9_.-]+$",
+          "allOf": [
+            {
+              "not": {
+                "pattern": "^https://github\\.com/\\.{1,2}/"
+              }
+            },
+            {
+              "not": {
+                "pattern": "/\\.{1,2}$"
+              }
+            },
+            {
+              "not": {
+                "pattern": "\\.git$"
+              }
+            },
+            {
+              "not": {
+                "pattern": "\\s"
+              }
+            }
+          ]
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$",
+          "minLength": 40,
+          "maxLength": 40
+        }
+      },
+      "required": [
+        "path",
+        "sha256",
+        "repository",
+        "revision"
+      ],
+      "dependentRequired": {
+        "repository": [
+          "revision"
+        ],
+        "revision": [
+          "repository"
+        ]
+      }
+    },
+    "externalJSONRef": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/externalRef"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "pattern": "\\.json$"
+            }
+          }
+        }
+      ]
+    },
+    "localJSONAttachment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "pattern": "^(?:[A-Za-z0-9_.-]+|\\$records)(?:/(?:[A-Za-z0-9_.-]+|\\$records))*$",
+          "allOf": [
+            {
+              "not": {
+                "pattern": "(^|/)(\\.|\\.\\.|\\.[gG][iI][tT])(/|$)"
+              }
+            },
+            {
+              "not": {
+                "pattern": "(^/|/$|//)"
+              }
+            },
+            {
+              "not": {
+                "pattern": "\\s"
+              }
+            },
+            {
+              "pattern": "\\.json$"
+            }
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "minLength": 64,
+          "maxLength": 64
+        }
+      },
+      "required": [
+        "path",
+        "sha256"
+      ]
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "attachment": {
+          "$ref": "#/$defs/externalJSONRef"
+        },
+        "contractIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 31
+        },
+        "decisionScope": {
+          "const": "w1-ror-user-native-url"
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "module": {
+              "const": "affiliations"
+            },
+            "entity": {
+              "const": "Affiliation"
+            },
+            "property": {
+              "const": "ror_id"
+            },
+            "datatype": {
+              "const": "string"
+            },
+            "namespace": {
+              "const": "ROR:URL"
+            }
+          },
+          "required": [
+            "module",
+            "entity",
+            "property",
+            "datatype",
+            "namespace"
+          ]
+        },
+        "targetStage": {
+          "const": "organizations"
+        }
+      },
+      "required": [
+        "attachment",
+        "contractIndex",
+        "decisionScope",
+        "source",
+        "targetStage"
+      ]
+    },
+    "graph": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "execution": {
+          "const": "native-graph"
+        },
+        "id": {
+          "const": "w1-ror-geonames-context/1"
+        },
+        "entry": {
+          "$ref": "#/$defs/entry"
+        },
+        "decision": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "document": {
+              "$ref": "#/$defs/externalRef"
+            },
+            "scope": {
+              "const": "w1-ror-geonames-context-p1-p2-p3"
+            }
+          },
+          "required": [
+            "document",
+            "scope"
+          ]
+        },
+        "sources": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "ror": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "model": {
+                  "$ref": "#/$defs/externalRef"
+                },
+                "binding": {
+                  "$ref": "#/$defs/externalRef"
+                },
+                "snapshot": {
+                  "$ref": "#/$defs/externalRef"
+                },
+                "dataset": {
+                  "$ref": "#/$defs/externalRef"
+                },
+                "module": {
+                  "const": "ror"
+                }
+              },
+              "required": [
+                "model",
+                "binding",
+                "snapshot",
+                "dataset",
+                "module"
+              ]
+            },
+            "geo": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "model": {
+                  "$ref": "#/$defs/externalRef"
+                },
+                "binding": {
+                  "$ref": "#/$defs/externalRef"
+                },
+                "snapshot": {
+                  "$ref": "#/$defs/externalRef"
+                },
+                "dataset": {
+                  "$ref": "#/$defs/externalRef"
+                },
+                "module": {
+                  "const": "geonames"
+                }
+              },
+              "required": [
+                "model",
+                "binding",
+                "snapshot",
+                "dataset",
+                "module"
+              ]
+            }
+          },
+          "required": [
+            "ror",
+            "geo"
+          ]
+        },
+        "stages": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "uniqueItems": true,
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "const": "organizations"
+                  },
+                  "source": {
+                    "const": "ror"
+                  },
+                  "entity": {
+                    "const": "organizations"
+                  },
+                  "grain": {
+                    "const": [
+                      "id"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "source",
+                  "entity",
+                  "grain"
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "const": "locations"
+                  },
+                  "source": {
+                    "const": "ror"
+                  },
+                  "entity": {
+                    "const": "locations"
+                  },
+                  "grain": {
+                    "const": [
+                      "organization_id",
+                      "ordinal"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "source",
+                  "entity",
+                  "grain"
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "const": "places"
+                  },
+                  "source": {
+                    "const": "geo"
+                  },
+                  "entity": {
+                    "const": "geonames_places"
+                  },
+                  "grain": {
+                    "const": [
+                      "geonameid"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "source",
+                  "entity",
+                  "grain"
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "const": "countries"
+                  },
+                  "source": {
+                    "const": "geo"
+                  },
+                  "entity": {
+                    "const": "geonames_countries"
+                  },
+                  "grain": {
+                    "const": [
+                      "iso"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "source",
+                  "entity",
+                  "grain"
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "const": "admin1"
+                  },
+                  "source": {
+                    "const": "geo"
+                  },
+                  "entity": {
+                    "const": "geonames_admin1"
+                  },
+                  "grain": {
+                    "const": [
+                      "code"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "source",
+                  "entity",
+                  "grain"
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "const": "aliases"
+                  },
+                  "source": {
+                    "const": "geo"
+                  },
+                  "entity": {
+                    "const": "geonames_alternate_names"
+                  },
+                  "grain": {
+                    "const": [
+                      "alternate_name_id"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "source",
+                  "entity",
+                  "grain"
+                ]
+              }
+            ]
+          },
+          "allOf": [
+            {
+              "contains": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "const": "organizations"
+                  },
+                  "source": {
+                    "const": "ror"
+                  },
+                  "entity": {
+                    "const": "organizations"
+                  },
+                  "grain": {
+                    "const": [
+                      "id"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "source",
+                  "entity",
+                  "grain"
+                ]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "const": "locations"
+                  },
+                  "source": {
+                    "const": "ror"
+                  },
+                  "entity": {
+                    "const": "locations"
+                  },
+                  "grain": {
+                    "const": [
+                      "organization_id",
+                      "ordinal"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "source",
+                  "entity",
+                  "grain"
+                ]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "const": "places"
+                  },
+                  "source": {
+                    "const": "geo"
+                  },
+                  "entity": {
+                    "const": "geonames_places"
+                  },
+                  "grain": {
+                    "const": [
+                      "geonameid"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "source",
+                  "entity",
+                  "grain"
+                ]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "const": "countries"
+                  },
+                  "source": {
+                    "const": "geo"
+                  },
+                  "entity": {
+                    "const": "geonames_countries"
+                  },
+                  "grain": {
+                    "const": [
+                      "iso"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "source",
+                  "entity",
+                  "grain"
+                ]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "const": "admin1"
+                  },
+                  "source": {
+                    "const": "geo"
+                  },
+                  "entity": {
+                    "const": "geonames_admin1"
+                  },
+                  "grain": {
+                    "const": [
+                      "code"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "source",
+                  "entity",
+                  "grain"
+                ]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "const": "aliases"
+                  },
+                  "source": {
+                    "const": "geo"
+                  },
+                  "entity": {
+                    "const": "geonames_alternate_names"
+                  },
+                  "grain": {
+                    "const": [
+                      "alternate_name_id"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "source",
+                  "entity",
+                  "grain"
+                ]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            }
+          ]
+        },
+        "edges": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "const": "organization-locations"
+                  },
+                  "from": {
+                    "const": "organizations"
+                  },
+                  "fields": {
+                    "const": [
+                      "id"
+                    ]
+                  },
+                  "to": {
+                    "const": "locations"
+                  },
+                  "lookupField": {
+                    "const": "organization_id"
+                  },
+                  "projection": {
+                    "const": "exact-string/1"
+                  },
+                  "cardinality": {
+                    "const": "zero-or-many"
+                  }
+                },
+                "required": [
+                  "id",
+                  "from",
+                  "fields",
+                  "to",
+                  "lookupField",
+                  "projection",
+                  "cardinality"
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "const": "location-place"
+                  },
+                  "from": {
+                    "const": "locations"
+                  },
+                  "fields": {
+                    "const": [
+                      "geonames_id"
+                    ]
+                  },
+                  "to": {
+                    "const": "places"
+                  },
+                  "lookupField": {
+                    "const": "geonameid"
+                  },
+                  "projection": {
+                    "const": "ror-positive-int-geonames-decimal/1"
+                  },
+                  "cardinality": {
+                    "const": "zero-or-one"
+                  }
+                },
+                "required": [
+                  "id",
+                  "from",
+                  "fields",
+                  "to",
+                  "lookupField",
+                  "projection",
+                  "cardinality"
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "const": "place-country"
+                  },
+                  "from": {
+                    "const": "places"
+                  },
+                  "fields": {
+                    "const": [
+                      "country_code"
+                    ]
+                  },
+                  "to": {
+                    "const": "countries"
+                  },
+                  "lookupField": {
+                    "const": "iso"
+                  },
+                  "projection": {
+                    "const": "exact-string/1"
+                  },
+                  "cardinality": {
+                    "const": "zero-or-one"
+                  }
+                },
+                "required": [
+                  "id",
+                  "from",
+                  "fields",
+                  "to",
+                  "lookupField",
+                  "projection",
+                  "cardinality"
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "const": "place-admin1"
+                  },
+                  "from": {
+                    "const": "places"
+                  },
+                  "fields": {
+                    "const": [
+                      "country_code",
+                      "admin1_code"
+                    ]
+                  },
+                  "to": {
+                    "const": "admin1"
+                  },
+                  "lookupField": {
+                    "const": "code"
+                  },
+                  "projection": {
+                    "const": "geonames-country-admin1/1"
+                  },
+                  "cardinality": {
+                    "const": "zero-or-one"
+                  }
+                },
+                "required": [
+                  "id",
+                  "from",
+                  "fields",
+                  "to",
+                  "lookupField",
+                  "projection",
+                  "cardinality"
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "const": "place-aliases"
+                  },
+                  "from": {
+                    "const": "places"
+                  },
+                  "fields": {
+                    "const": [
+                      "geonameid"
+                    ]
+                  },
+                  "to": {
+                    "const": "aliases"
+                  },
+                  "lookupField": {
+                    "const": "geonameid"
+                  },
+                  "projection": {
+                    "const": "exact-string/1"
+                  },
+                  "cardinality": {
+                    "const": "zero-or-many"
+                  },
+                  "optional": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "id",
+                  "from",
+                  "fields",
+                  "to",
+                  "lookupField",
+                  "projection",
+                  "cardinality",
+                  "optional"
+                ]
+              }
+            ]
+          },
+          "allOf": [
+            {
+              "contains": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "const": "organization-locations"
+                  },
+                  "from": {
+                    "const": "organizations"
+                  },
+                  "fields": {
+                    "const": [
+                      "id"
+                    ]
+                  },
+                  "to": {
+                    "const": "locations"
+                  },
+                  "lookupField": {
+                    "const": "organization_id"
+                  },
+                  "projection": {
+                    "const": "exact-string/1"
+                  },
+                  "cardinality": {
+                    "const": "zero-or-many"
+                  }
+                },
+                "required": [
+                  "id",
+                  "from",
+                  "fields",
+                  "to",
+                  "lookupField",
+                  "projection",
+                  "cardinality"
+                ]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "const": "location-place"
+                  },
+                  "from": {
+                    "const": "locations"
+                  },
+                  "fields": {
+                    "const": [
+                      "geonames_id"
+                    ]
+                  },
+                  "to": {
+                    "const": "places"
+                  },
+                  "lookupField": {
+                    "const": "geonameid"
+                  },
+                  "projection": {
+                    "const": "ror-positive-int-geonames-decimal/1"
+                  },
+                  "cardinality": {
+                    "const": "zero-or-one"
+                  }
+                },
+                "required": [
+                  "id",
+                  "from",
+                  "fields",
+                  "to",
+                  "lookupField",
+                  "projection",
+                  "cardinality"
+                ]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "const": "place-country"
+                  },
+                  "from": {
+                    "const": "places"
+                  },
+                  "fields": {
+                    "const": [
+                      "country_code"
+                    ]
+                  },
+                  "to": {
+                    "const": "countries"
+                  },
+                  "lookupField": {
+                    "const": "iso"
+                  },
+                  "projection": {
+                    "const": "exact-string/1"
+                  },
+                  "cardinality": {
+                    "const": "zero-or-one"
+                  }
+                },
+                "required": [
+                  "id",
+                  "from",
+                  "fields",
+                  "to",
+                  "lookupField",
+                  "projection",
+                  "cardinality"
+                ]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "const": "place-admin1"
+                  },
+                  "from": {
+                    "const": "places"
+                  },
+                  "fields": {
+                    "const": [
+                      "country_code",
+                      "admin1_code"
+                    ]
+                  },
+                  "to": {
+                    "const": "admin1"
+                  },
+                  "lookupField": {
+                    "const": "code"
+                  },
+                  "projection": {
+                    "const": "geonames-country-admin1/1"
+                  },
+                  "cardinality": {
+                    "const": "zero-or-one"
+                  }
+                },
+                "required": [
+                  "id",
+                  "from",
+                  "fields",
+                  "to",
+                  "lookupField",
+                  "projection",
+                  "cardinality"
+                ]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "const": "place-aliases"
+                  },
+                  "from": {
+                    "const": "places"
+                  },
+                  "fields": {
+                    "const": [
+                      "geonameid"
+                    ]
+                  },
+                  "to": {
+                    "const": "aliases"
+                  },
+                  "lookupField": {
+                    "const": "geonameid"
+                  },
+                  "projection": {
+                    "const": "exact-string/1"
+                  },
+                  "cardinality": {
+                    "const": "zero-or-many"
+                  },
+                  "optional": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "id",
+                  "from",
+                  "fields",
+                  "to",
+                  "lookupField",
+                  "projection",
+                  "cardinality",
+                  "optional"
+                ]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            }
+          ]
+        },
+        "resultShape": {
+          "const": "affiliations-location-context-aliases/1"
+        }
+      },
+      "required": [
+        "execution",
+        "id",
+        "entry",
+        "decision",
+        "sources",
+        "stages",
+        "edges",
+        "resultShape"
+      ]
+    }
+  }
+}

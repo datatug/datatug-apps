@@ -1,0 +1,31 @@
+{
+  "title": "edge northwind shipping country",
+  "kind": "edge",
+  "status": "reconciled",
+  "from_id": "demand-northwind-orders",
+  "to_id": "d1-geo-countries",
+  "from_fields": [
+    "ShipCountry"
+  ],
+  "to_fields": [
+    "ISO"
+  ],
+  "meaning_id": "d1-meaning-country-area",
+  "compatibility": "transformable",
+  "assumptions": "Accept only the enumerated raw-value-to-ISO2 bridge in p2-bridge-probes.json for this exact source field and pinned fixtures: 830 rows resolve uniquely, zero unmatched/ambiguous nonnull values. GeoNames ISO target is unique across252 rows. Canonical core aliases plus exact GeoNames names resolve observed labels; do not generalise aliases to arbitrary text or infer sovereignty/history. Complete canonical value/binding publication is still required for values outside the starter core. Acceptance is scoped semantics; source rights, pinned canonical bindings, runtime implementation and full selected-wave validation remain prerequisites. Discovery assumptions (historical; current disposition is in reason): Shipping country is destination context, distinct from customer location. Review UK and USA aliases and preserve fixture dates from 2016–2018. Snapshot denominator: 830/830 nonnull rows matched and 830/830 total rows matched; 0 NULL, 0 empty-string, 0 unmatched nonnull and 0 ambiguous rows. Preserve all unlinked source rows.",
+  "confidence": "high",
+  "from_identifier_namespace": "demo:demand-northwind-orders:label",
+  "to_identifier_namespace": "GeoNames:countryInfoISO2",
+  "expected_cardinality": "many:0..1 via exact reviewed bridge; target ISO unique in inspected snapshot",
+  "evidence_ids": [
+    "d1-demo-roles",
+    "d1-geonames",
+    "p2-geography",
+    "p2-dedicated-reconciliation",
+    "p2-bridge-probes",
+    "p2-review-corrections"
+  ],
+  "physical_role": "Accepted scoped raw shipping-country-label representation bridge to GeoNames ISO; not executed in DataTug",
+  "transformation": "Join raw Country/ShipCountry/country to the explicit reviewed_values bridge for this assertion, retaining raw text and bridge edition; join bridge.ISO to GeoNames ISO. No trim or fuzzy matching; values absent from bridge remain unmatched.",
+  "reason": "Phase 2 ACCEPTED: Accept only the enumerated raw-value-to-ISO2 bridge in p2-bridge-probes.json for this exact source field and pinned fixtures: 830 rows resolve uniquely, zero unmatched/ambiguous nonnull values. GeoNames ISO target is unique across252 rows. Canonical core aliases plus exact GeoNames names resolve observed labels; do not generalise aliases to arbitrary text or infer sovereignty/history. Complete canonical value/binding publication is still required for values outside the starter core.\n\nSnapshot denominator: 830/830 nonnull rows matched and 830/830 total rows matched; 0 NULL, 0 empty-string, 0 unmatched nonnull and 0 ambiguous rows. Preserve all unlinked source rows."
+}

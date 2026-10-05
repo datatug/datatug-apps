@@ -2,9 +2,13 @@ import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FederatedQueryService } from './federated-query.service';
 import { QueryType, type IQueryDef } from '../models/definition/query-def';
+import { graphFixturePlan } from './public-data/native-graph.spec-helper';
+import { graphStableIdentity } from './public-data/native-graph-executor';
+import { createOutputStores, replaceGraphOutput, deleteLocalResult } from './federated-local-results';
+import type { FederatedQueryResult } from './federated-query-executor';
 
 describe('federated query worker boundary', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
   it('fails clearly when workers are unavailable instead of running an unbounded query on the UI thread', async () => {
     vi.stubGlobal('Worker', undefined);
@@ -87,6 +91,14 @@ describe('federated query worker boundary', () => {
       await expect(silent.run).resolves.toEqual(result);
     });
 
+    it.each([{ type: 'fixture-audit' }, { type: 'error', message: '' }, { type: 'error' }])('rejects unexpected or empty error messages visibly without accepting output: %j', async (message) => {
+      vi.stubGlobal('Worker', FakeWorker);
+      const active = await started(new FederatedQueryService());
+      active.worker.send(message);
+      await expect(active.run).rejects.toThrow('unexpected or invalid protocol message');
+      expect(active.worker.posted).toContainEqual({ type: 'close' });
+    });
+
     it('sends the static source to the worker only when one is given', async () => {
       vi.stubGlobal('Worker', FakeWorker);
       const plain = await started(new FederatedQueryService());
@@ -116,6 +128,81 @@ describe('federated query worker boundary', () => {
       });
       withSource.worker.send({ type: 'result', result });
       await withSource.run;
+    });
+    it.each(['previous-session', 'orphan-storage'])('settles cancellation during deferred %s cleanup without creating a Worker', async (phase) => {
+      vi.stubGlobal('Worker', FakeWorker); FakeWorker.last = undefined;
+      const service = new FederatedQueryService();
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => { release = resolve; });
+      const cleanup = phase === 'previous-session'
+        ? vi.spyOn(service as unknown as { closeWorker: () => Promise<void> }, 'closeWorker').mockImplementationOnce(() => held)
+        : vi.spyOn(indexedDB, 'databases').mockImplementationOnce(() => held.then(() => []));
+      const run = service.run(definition), rejected = expect(run).rejects.toThrow('cancelled');
+      if (phase === 'orphan-storage') await vi.waitFor(() => expect(cleanup).toHaveBeenCalledOnce());
+      await service.dispose(); await rejected;
+      expect(FakeWorker.last).toBeUndefined();
+      release(); await Promise.resolve(); await Promise.resolve();
+      expect(FakeWorker.last).toBeUndefined();
+    });
+
+    it('starts replacement before old startup cleanup settles and ignores old cleanup failure', async () => {
+      vi.stubGlobal('Worker', FakeWorker); FakeWorker.last = undefined;
+      const service = new FederatedQueryService();
+      let failOld!: (error: Error) => void;
+      vi.spyOn(indexedDB, 'databases').mockImplementationOnce(() => new Promise((_resolve, reject) => { failOld = reject; }));
+      const old = service.run(definition), rejected = expect(old).rejects.toThrow('cancelled');
+      await vi.waitFor(() => expect(failOld).toBeDefined());
+      const replacement = service.run(definition);
+      await rejected;
+      await vi.waitFor(() => expect(FakeWorker.last?.posted.length).toBe(1));
+      const worker = FakeWorker.last as FakeWorker;
+      failOld(new Error('Old cleanup failed.')); await Promise.resolve(); await Promise.resolve();
+      worker.send({ type: 'result', result });
+      await expect(replacement).resolves.toEqual(result);
+      expect(worker.terminate).not.toHaveBeenCalled();
+    });
+
+    it('captures immutable executed graph identity before asynchronous startup cleanup', async () => {
+      vi.stubGlobal('Worker', FakeWorker);
+      const service = new FederatedQueryService(), nativeGraph = graphFixturePlan();
+      const graph = { ...definition, federation: { ovdbBaseUrl: 'https://runtime.example', tables: [], nativeGraph } };
+      FakeWorker.last = undefined;
+      const run = service.run(graph), rejected = expect(run).rejects.toThrow('cancelled');
+      Object.assign(nativeGraph, { aliases: false });
+      await vi.waitFor(() => expect(FakeWorker.last?.posted.length).toBe(1));
+      const sent = FakeWorker.last?.posted[0] as { definition: IQueryDef };
+      expect(sent.definition.federation?.nativeGraph?.aliases).toBe(true);
+      expect(sent.definition).not.toBe(graph);
+      await service.dispose(); await rejected;
+    });
+
+    it('cancels before graph output creation, immediately restarts, and allows a local history switch', async () => {
+      vi.stubGlobal('Worker', FakeWorker);
+      const service = new FederatedQueryService(), graph = { ...definition, federation: { ovdbBaseUrl: 'https://runtime.example', tables: [], nativeGraph: graphFixturePlan() } };
+      const start = async () => {
+        FakeWorker.last = undefined;
+        const run = service.run(graph), rejected = expect(run).rejects.toThrow('cancelled');
+        await vi.waitFor(() => expect(FakeWorker.last?.posted.length).toBe(1));
+        const worker = FakeWorker.last as FakeWorker;
+        const storageId = (worker.posted[0] as { storageId: string }).storageId;
+        return { rejected, worker, output: `datatug-output-${storageId}` };
+      };
+      const first = await start(); await expect(service.dispose()).resolves.toBeUndefined(); await first.rejected;
+      expect(first.worker.terminate).toHaveBeenCalledOnce();
+      expect((await indexedDB.databases()).some((db) => db.name === first.output)).toBe(false);
+      const artifact = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open(`datatug-output-100000-${crypto.randomUUID()}`, 2);
+        request.onupgradeneeded = () => createOutputStores(request.result);
+        request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+      });
+      const primary = [[{ type: 'string' as const, value: 'recorded-row' }]];
+      const stored = { recordset: { columns: [{ name: 'Affiliation', type: 'string' }], rows: primary }, nativeGraph: { planIdentity: graphStableIdentity(graph.federation.nativeGraph), stageActions: [], coverage: {}, edges: {}, ledger: {} }, limitations: [], bindingsApplied: [], truncated: false, provenance: { observedAt: '2026-10-05T10:00:00Z', queryId: graph.id, source: 'synthetic', mode: 'live', executionProfile: 'protected' } } as unknown as FederatedQueryResult;
+      const descriptor = await replaceGraphOutput(artifact, graph, stored, primary, 1); artifact.close();
+      const second = await start();
+      // This is the component's dispose-before-local-open sequence, with no artifact created by the pending run.
+      await expect(service.dispose()).resolves.toBeUndefined(); await second.rejected;
+      expect((await service.openLocalResult(descriptor.id)).result.recordset.rows).toEqual(primary);
+      await deleteLocalResult(descriptor.id);
     });
     it('terminates a bounded worker that never answers and rejects instead of keeping synchronous work alive', async () => {
       vi.stubGlobal('Worker', FakeWorker);

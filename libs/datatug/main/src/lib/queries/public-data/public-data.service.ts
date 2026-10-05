@@ -1,4 +1,9 @@
 import { Injectable } from '@angular/core';
+import {
+  NATIVE_GRAPH_PUBLICATION_BLOCKER,
+  readNativeGraphMetadata,
+} from './native-graph-contract';
+import { graphStableIdentity, verifyNativeGraphPlan, type NativeGraphPlan } from './native-graph-executor';
 import type { IQueryDef } from '../../models/definition/query-def';
 import { QueryType } from '../../models/definition/query-def';
 import {
@@ -15,6 +20,7 @@ import {
   readCanonicalIndexes,
   sha256,
   INITIAL_CANONICAL_PINS,
+  immutableUrl,
   type CanonicalIndexes,
   type CanonicalPins,
   type ImmutableFile,
@@ -76,6 +82,9 @@ function ownFile(
 export class PublicDataService {
   private readonly cache = new CanonicalMetadataCache();
   readonly currentPins = INITIAL_CANONICAL_PINS;
+  async verifyGraphForSave(plan: NativeGraphPlan): Promise<void> {
+    await verifyNativeGraphPlan(plan, (input, init) => fetch(input, init), AbortSignal.timeout(10000));
+  }
   async discoverAll(
     signal: AbortSignal,
     pins: CanonicalPins = this.currentPins,
@@ -145,7 +154,7 @@ export class PublicDataService {
     const saved = definition.publicData;
     if (!saved)
       throw new Error('This query has no saved public-data provenance.');
-    if (saved.declaredSource) {
+    if (saved.declaredSource && !saved.graph) {
       const bounds = definition.federation?.bounds;
       const driver = bounds?.driver;
       const selected = saved.declaredSource.field.name;
@@ -209,6 +218,61 @@ export class PublicDataService {
         'Current configured source identity/schema/physical mapping differs from the saved plan.',
       );
     const indexes = await readCanonicalIndexes(pins, reader);
+    if (saved.graph) {
+      const graph = definition.federation?.nativeGraph;
+      if (
+        !graph ||
+        graphStableIdentity(graph) !== graphStableIdentity(saved.graph) ||
+        graphStableIdentity(graph.canonical) !==
+          graphStableIdentity(saved.canonical) ||
+        graphStableIdentity(graph.attachment) !==
+          graphStableIdentity(saved.attachment)
+      )
+        throw new Error('Saved graph transport and provenance differ.');
+      const checked = await readNativeGraphMetadata(
+        saved.attachment,
+        {
+          repository: saved.attachment.repository,
+          commit: saved.attachment.revision,
+        },
+        indexes,
+        reader,
+        declared,
+      );
+      if (
+        graphStableIdentity(checked.envelope) !==
+          graphStableIdentity(graph.envelope) ||
+        !sameSource(checked.entrySource, saved.source)
+      )
+        throw new Error(
+          'Saved graph differs from its immutable original metadata.',
+        );
+      for (const reference of graph.references)
+        await reader.text(reference, [immutableUrl(saved.attachment)]);
+      const suggestions = await discoverRepresentations(
+        saved.source,
+        indexes,
+        reader,
+        declaredSources,
+      );
+      const checkedAt = new Date().toISOString();
+      return {
+        originalPlan,
+        fingerprint: await sha256(
+          JSON.stringify({ originalPlan, pins, checkedAt }),
+        ),
+        checkedAt,
+        compatible: false,
+        changes: [],
+        discovery: {
+          indexes,
+          suggestions,
+          metadataBytes: reader.bytes,
+          declaredSources,
+        },
+        reason: NATIVE_GRAPH_PUBLICATION_BLOCKER,
+      };
+    }
     const originals = parseRepresentationContracts(
       await reader.json(saved.attachment),
     ).filter((contract) => sameSource(saved.source, contract.source));
@@ -346,6 +410,7 @@ export class PublicDataService {
         reason:
           'No unique structurally compatible current contract for the saved exact target and decision scope. Original plan and results are retained.',
       };
+    if (suggestion.graph) throw new Error(NATIVE_GRAPH_PUBLICATION_BLOCKER);
     const contract = suggestion.contract;
     if (!contract || !suggestion.rights)
       throw new Error('Missing verified metadata.');
@@ -431,9 +496,12 @@ export class PublicDataService {
     source: SourceField,
     discovery: PublicDataDiscovery,
     suggestion: PublicDataSuggestion,
-    bounds: Pick<BoundedFederation, 'userRows' | 'userOffset'>,
+    bounds: Pick<BoundedFederation, 'userRows' | 'userOffset'> & {
+      readonly aliases?: boolean;
+    },
     declared?: VerifiedDeclaredSource,
   ): IQueryDef {
+    if (suggestion.graph) throw new Error(NATIVE_GRAPH_PUBLICATION_BLOCKER);
     const contract = suggestion.contract;
     if (
       !contract ||
@@ -649,9 +717,12 @@ export class PublicDataService {
     source: SourceField,
     discovery: PublicDataDiscovery,
     suggestion: PublicDataSuggestion,
-    bounds: Pick<BoundedFederation, 'userRows' | 'userOffset'>,
+    bounds: Pick<BoundedFederation, 'userRows' | 'userOffset'> & {
+      readonly aliases?: boolean;
+    },
     declared?: VerifiedDeclaredSource,
   ): IQueryDef {
+    if (suggestion.graph) throw new Error(NATIVE_GRAPH_PUBLICATION_BLOCKER);
     const contract = suggestion.contract;
     if (
       !contract ||

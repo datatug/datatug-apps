@@ -1,0 +1,46 @@
+{
+  "kind": "accepted-w1-p1-json-wire-semantic-addendum",
+  "scope": "selected ROR SQLite to Go ordinary-record JSON to JavaScript P1 adapter only",
+  "authority": "Dedicated semantic proposal, fresh independent review, and root bounded acceptance; this curation makes no new semantic decision.",
+  "original_decision": {
+    "repository": "datatug/datatug",
+    "revision": "58bd87d057864209332ba8388888f878a3b9b6bb",
+    "path": "spec/research/public-data-fabric/evidence/w1-followup-decisions/semantic-decision.json",
+    "sha256": "62fa8fa939835e3c745b09d6c097a86780c0187a1f6dc57bd66087275a8dbf51"
+  },
+  "proposal": {"path": "source/proposal.md", "sha256": "6b1096ad1f9162be49cbf4f6be92275d827f65a9d272c8b25b25c72d867a5c1b"},
+  "independent_review": {"path": "source/review-r1.md", "sha256": "f7c1e2942e2ca0b5e1a40811f89a1fbff2e800c61c8897f99fcd339b2d5bb416", "verdict": "blockers=0 majors=0 minors=0 land=yes"},
+  "root_acceptance": {"path": "source/root-acceptance-r1.json", "sha256": "176e042b33ba3a09ae6342610c2ab8792c566ab8b9e0b9106be02a6258f663bc", "decision": "accept dedicated semantic proposal and independent reviewer interpretation for canonical addendum and bounded implementation"},
+  "eligible_wire": "Exact JSON number token [1-9][0-9]* with integer value <= 9007199254740991 and exact equality to the JavaScript value, only after admitted native integer/source/preparation/runtime/serving fidelity. Derive the target key separately as unpadded ASCII decimal and compare target UTF-8 bytes exactly.",
+  "proof_layers": [
+    "Model declaration identifies the P1 pair but cannot prove delivered native type.",
+    "Pinned publisher raw typed validation establishes positive native integer or NULL before SQLite affinity.",
+    "Exact source artifact and admitted preparation preserve stored integer value/type and location grain without cast, rewrite, or rounding.",
+    "Decision/operator, model, source dataset/snapshot, provider revision, serving dataset, collection/schema mapping, manifest and runtime build pins bind the ordinary read to that proof.",
+    "Exact response token and parsed value prove safe lossless representation for this response; neither reconstructs upstream type or precision."
+  ],
+  "numeric_precedence": [
+    "Exact nonpositive or fractional value: invalid-reference; preserve the original token, including negative zero.",
+    "Otherwise exact positive integer greater than 9007199254740991: unsupported-precision.",
+    "Otherwise integral decimal/exponent spelling outside [1-9][0-9]*: invalid-reference with representation-ambiguous reason; no key/query.",
+    "Otherwise canonical token: eligible only if every independent native/provenance/runtime proof is admitted."
+  ],
+  "failure_scope_reconciliation": {
+    "architecture_general_type_contradiction": "An independently established publisher raw-type, preparation, source-to-serving transport, or runtime fidelity contradiction refuses affected admission/read. Malformed or ambiguous page, invalid location identity/ordinal, duplicate child identity, unfiltered response or pin mismatch also refuses affected read/admission. Previously established parents and bounded error/incomplete evidence remain visible.",
+    "local_p1_reference_diagnostic": "A parseable location with independently established organization_id and ordinal, intact in-scope response and valid pins retains affiliation, organization/status, location/ordinal, exact raw kind/value/token and reason when only geonames_id is missing, null, empty, wrong type, nonpositive, fractional, unsafe or representation-ambiguous. It issues no dependent place/country/admin1/alias query; valid siblings may continue. This does not admit a provider artifact with failed native type proof.",
+    "budget": "All retained tokens, diagnostics and staging copies spend existing shared limits. If exact evidence cannot fit or arithmetic exceeds the bounded classifier, mark explicit truncated/incomplete and derive no key."
+  },
+  "raw_preservation": "Keep exact original numeric token for every numeric outcome through Worker, typed grid, save/reopen and continuation; parsed Number or its reserialization is insufficient. Keep object/array invalid references as bounded opaque diagnostics, never a native integer cell.",
+  "consumer_contract": "Publish this decision's repository commit, path and SHA256 alongside the immutable original decision. Repin current graph/profile/schema/allowlist/saved-plan execution references coherently after contract compatibility review; preserve reader-known historical formats and decision pins for read-only saved results while refusing old execution under changed pins. No capability/operator version increment is chosen by this packet.",
+  "execution_admitted": false,
+  "publication_admitted": false,
+  "w1_complete": false,
+  "remaining_gates": [
+    "reviewed hub publication and exact immutable commit reference",
+    "coherent graph/profile/schema/allowlist/saved-plan execution pins and historical read-only compatibility",
+    "actual strict parser, executor, Worker, grid, storage, save/reopen and continuation controls",
+    "actual source/preparation/runtime/serving admission",
+    "full graph closure and authorized publication",
+    "live J1-J6"
+  ]
+}

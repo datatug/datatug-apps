@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import 'fake-indexeddb/auto';
 import { resolve } from 'node:path';
 import { nativeFixture } from '../../public-data/native-fixture.spec-helper';
 import { PublicDataService } from '../../public-data/public-data.service';
@@ -20,7 +21,7 @@ import {
   SemanticApiService,
   type RunQueryResponse,
 } from '@sneat/datatug-semantic';
-import { Observable, Subject, of, throwError } from 'rxjs';
+import { BehaviorSubject, Observable, Subject, of, throwError } from 'rxjs';
 
 import {
   QueryPageComponent,
@@ -41,6 +42,9 @@ import { Coordinator } from '../../../executor/coordinator';
 import { QueryEditorStateService } from '../../query-editor-state-service';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
 import { FederatedQueryService } from '../../federated-query.service';
+import { graphFixturePlan } from '../../public-data/native-graph.spec-helper';
+import { graphStableIdentity } from '../../public-data/native-graph-executor';
+import { createOutputStores, replaceGraphOutput, openLocalResult, deleteLocalResult, type LocalResultDescriptor } from '../../federated-local-results';
 import { INITIAL_CANONICAL_PINS } from '../../public-data/canonical-metadata';
 import {
   SAVED_SCENARIO_PUBLICATION_BLOCKER,
@@ -236,6 +240,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     historyState: Record<string, unknown> = {},
     definition: IQueryDef = queryDef,
     template = '<ul aria-label="Access blockers">@for (blocker of accessBlockers(); track $index) {<li>{{ blocker }}</li>}</ul>',
+    navigation?: { editor: Observable<IQueryEditorState>; project: Observable<IProjectContext> },
   ): Promise<QueryPageComponent> {
     Object.defineProperty(window, 'history', {
       value: { ...window.history, state: historyState },
@@ -264,7 +269,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
         {
           provide: DatatugNavContextService,
           useValue: {
-            currentProject: of(project),
+            currentProject: navigation?.project ?? of(project),
             currentEnv: of(undefined),
             setCurrentEnvironment: vi.fn(),
           },
@@ -293,7 +298,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
         {
           provide: QueryEditorStateService,
           useValue: {
-            queryEditorState: of(
+            queryEditorState: navigation?.editor ?? of(
               definition === queryDef
                 ? editorState
                 : {
@@ -324,6 +329,10 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
             run: federatedRunMock,
             getPage: federatedGetPageMock,
             dispose: vi.fn().mockResolvedValue(undefined),
+            listLocalResults: vi.fn().mockResolvedValue([]),
+            openLocalResult: vi.fn(),
+            associateLocalResult: vi.fn().mockResolvedValue(undefined),
+            deleteLocalResult: vi.fn().mockResolvedValue(undefined),
           },
         },
         { provide: AgentContextService, useValue: agentContext },
@@ -366,6 +375,189 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
 
   beforeEach(() => {
     sessionStorage.clear();
+  });
+
+  it('opens saved history and pages all three grids locally with original pins and timestamp, no run or metadata fetch', async () => {
+    const definition = { ...queryDef, federation: { ovdbBaseUrl: 'https://runtime.example', tables: [], nativeGraph: graphFixturePlan() } };
+    const template = '<p>{{ selectedHistoricalResult() ? "Historical local result" : "idle" }}</p><p>{{ runResult()?.provenance?.observedAt }}</p><pre>{{ historicalPins() }}</pre><span>{{ relatedResultSet() }} {{ resultTotalRows() }}</span>@for (row of visibleResultRows(); track $index) {<span>{{ displayValue(row[0]) }}</span>}';
+    component = await createComponent({}, definition, template);
+    runFixture.detectChanges();
+    const service = TestBed.inject(FederatedQueryService);
+    const ref = { id: 'datatug-output-100000-abc', generation: 1 };
+    const historical = { localResult: ref, recordset: { columns: [{ name: 'Affiliation', type: 'string' }], rows: [{ type: 'string', value: 'original-affiliation' }] .map((cell) => [cell]) }, totalRows: 150,
+      relatedRecordsets: [{ id: 'locations', label: 'Locations', totalRows: 135, recordset: { columns: [{ name: 'Location', type: 'string' }], rows: [[{ type: 'string', value: 'original-location' }]] } }, { id: 'aliases', label: 'Alternate names', totalRows: 115, recordset: { columns: [{ name: 'Alias', type: 'string' }], rows: [[{ type: 'string', value: 'original-alias' }]] } }],
+      limitations: [], bindingsApplied: [], truncated: false, provenance: { observedAt: '2026-10-01T09:30:00Z', source: 'fixture', queryId: definition.id, mode: 'live', executionProfile: 'protected' } };
+    vi.mocked(service.openLocalResult).mockResolvedValue({ result: historical, executedDefinition: definition, descriptor: { ...ref } as LocalResultDescriptor } as Awaited<ReturnType<typeof service.openLocalResult>>);
+    const metadata = TestBed.inject(PublicDataService); const loadMetadata = vi.spyOn(metadata, 'revalidate');
+    await component.openHistoricalResult(ref.id); await runFixture.whenStable();
+    expect(runFixture.nativeElement.textContent).toContain('Historical local result');
+    expect(runFixture.nativeElement.textContent).toContain('2026-10-01T09:30:00Z');
+    expect(runFixture.nativeElement.textContent).toContain('original-affiliation');
+    expect(component.historicalDefinition()).toEqual(definition);
+    await component.changeRelatedResultSet('locations'); await runFixture.whenStable();
+    expect(component.resultTotalRows()).toBe(135); expect(runFixture.nativeElement.textContent).toContain('original-location');
+    await component.changeRelatedResultSet('aliases'); await runFixture.whenStable();
+    expect(component.resultTotalRows()).toBe(115); expect(runFixture.nativeElement.textContent).toContain('original-alias');
+    federatedGetPageMock.mockResolvedValue([[{ type: 'string', value: 'alias-page-2' }]]);
+    await component.changeResultPage(1); await runFixture.whenStable();
+    expect(federatedGetPageMock).toHaveBeenCalledWith(1, 'aliases', ref);
+    expect(runFixture.nativeElement.textContent).toContain('alias-page-2');
+    expect(federatedRunMock).not.toHaveBeenCalled(); expect(runQueryMock).not.toHaveBeenCalled(); expect(loadMetadata).not.toHaveBeenCalled();
+  });
+
+  it('shows unavailable local history and discards a delayed old page after choosing a different historical artifact', async () => {
+    component = await createComponent(); const service = TestBed.inject(FederatedQueryService);
+    vi.mocked(service.openLocalResult).mockRejectedValue(new Error('No local result available.'));
+    await component.openHistoricalResult('missing'); expect(component.localHistoryError()).toContain('No local result'); expect(federatedRunMock).not.toHaveBeenCalled();
+    const result = { localResult: { id: 'old', generation: 1 }, recordset: { columns: [], rows: [] }, totalRows: 150, limitations: [], bindingsApplied: [], provenance: { observedAt: 'old', queryId: 'old', source: 'fixture' } };
+    component.runResult.set(result as never); component.selectedHistoricalResult.set(result.localResult);
+    let release!: (rows: unknown) => void; federatedGetPageMock.mockImplementation(() => new Promise((resolve) => { release = resolve; }));
+    const pending = component.changeResultPage(1);
+    const next = { ...result, localResult: { id: 'new', generation: 1 }, recordset: { columns: [], rows: [[{ type: 'string', value: 'new-row' }]] } };
+    vi.mocked(service.openLocalResult).mockResolvedValue({ result: next, executedDefinition: queryDef, descriptor: {} as LocalResultDescriptor } as Awaited<ReturnType<typeof service.openLocalResult>>);
+    await component.openHistoricalResult('new'); release([[{ type: 'string', value: 'stale-row' }]]); await pending;
+    expect(component.visibleResultRows()).toEqual(next.recordset.rows); expect(component.resultPageIndex()).toBe(0);
+  });
+
+  const historyDefinition = (): IQueryDef => ({ ...queryDef, federation: { ovdbBaseUrl: 'https://runtime.example', tables: [], nativeGraph: graphFixturePlan() } });
+  const historyStateFor = (definition: IQueryDef): IQueryEditorState => ({ currentQueryId: definition.id, activeQueries: [{ id: definition.id, queryType: QueryType.DTQL, request: definition.request, def: definition }] }) as IQueryEditorState;
+  const historyResultFor = (definition: IQueryDef, id = 'datatug-output-100000-abc') => ({
+    localResult: { id, generation: 1 }, nativeGraph: { planIdentity: graphStableIdentity(definition.federation?.nativeGraph), stageActions: [] },
+    recordset: { columns: [{ name: 'Affiliation', type: 'string' }], rows: [[{ type: 'string', value: 'original-row' }]] }, totalRows: 150,
+    limitations: [], bindingsApplied: [], truncated: false,
+    provenance: { observedAt: '2026-10-01T09:30:00Z', queryId: definition.id, source: 'synthetic', mode: 'live', executionProfile: 'protected' },
+  }) as Awaited<ReturnType<FederatedQueryService['run']>>;
+  const historyResultTemplate = (): string => readFileSync(resolve('libs/datatug/main/src/lib/queries/query/page/query-page.component.html'), 'utf8').split('  @if (runResult(); as result) {')[1].split('</ion-content>')[0].replace(/^/, '@if (runResult(); as result) {');
+
+  it('renders exact plain P1 evidence from actual IndexedDB reopening in the original grid and preserves all three sets', async () => {
+    const definition = historyDefinition(); component = await createComponent({}, definition, historyResultTemplate());
+    const tokens = ['-0', '1e400', '-1e400', '0e400', '1.0000000000000001', '9007199254740990.5', '{"nested":[-0,1e3,9007199254740993]}'];
+    const result = { ...historyResultFor(definition), relatedRecordsets: [{ id: 'locations', label: 'Locations', parentSet: 'affiliations', parentField: 'Affiliation', totalRows: tokens.length, recordset: { columns: [{ name: 'Exact reference evidence', type: 'string' }], rows: tokens.map((token) => [{ type: 'string' as const, value: token }]) } }, { id: 'aliases', label: 'Alternate names', parentSet: 'locations', parentField: 'Location', totalRows: 0, recordset: { columns: [{ name: 'Alias', type: 'string' }], rows: [] } }] } as Awaited<ReturnType<FederatedQueryService['run']>>;
+    const db = await new Promise<IDBDatabase>((resolve, reject) => { const request = indexedDB.open(`datatug-output-100000-${crypto.randomUUID()}`, 2); request.onupgradeneeded = () => createOutputStores(request.result); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
+    const descriptor = await replaceGraphOutput(db, definition, result, result.recordset.rows, 1); db.close();
+    try {
+      vi.mocked(TestBed.inject(FederatedQueryService).openLocalResult).mockImplementation(openLocalResult);
+      await component.openHistoricalResult(descriptor.id); await component.changeRelatedResultSet('locations'); await runFixture.whenStable();
+      const values = Array.from(runFixture.nativeElement.querySelectorAll('tbody td') as NodeListOf<HTMLElement>, (cell) => cell.textContent?.trim());
+      expect(values).toEqual(tokens); expect(component.historicalDefinition()).toEqual(definition);
+      await component.changeRelatedResultSet('aliases'); await runFixture.whenStable(); expect(component.visibleResultRows()).toEqual([]);
+      await component.changeRelatedResultSet('affiliations'); await runFixture.whenStable(); expect(runFixture.nativeElement.textContent).toContain('original-row');
+      expect(federatedRunMock).not.toHaveBeenCalled(); expect(runQueryMock).not.toHaveBeenCalled();
+    } finally { await deleteLocalResult(descriptor.id); }
+  });
+
+  it.each(['aliases', 'fields', 'selection', 'operator', 'pins', 'in-place'])('marks completed output historical immediately on %s edit and preserves executed pins', async (change) => {
+    const definition = historyDefinition(), originalDefinition = structuredClone(definition), editor = new BehaviorSubject(historyStateFor(definition));
+    component = await createComponent({}, definition, historyResultTemplate(), { editor, project: of(project) });
+    const result = historyResultFor(definition); federatedRunMock.mockResolvedValue(result);
+    component.runQuery(); await runFixture.whenStable();
+    expect(runFixture.nativeElement.querySelector('[data-testid="result-provenance"]').textContent).toContain('live');
+    const changed = change === 'in-place' ? definition : structuredClone(definition), plan = changed.federation?.nativeGraph;
+    if (!plan) throw new Error('Missing graph fixture.');
+    // These are editor drafts, never admitted for execution by this test.
+    if (change === 'aliases' || change === 'in-place') Object.assign(plan, { aliases: false });
+    if (change === 'fields') Object.assign(plan.stages.locations, { fields: [...plan.stages.locations.fields, 'draft_field'] });
+    if (change === 'selection') Object.assign(plan.selection, { rows: 999 });
+    if (change === 'operator') Object.assign(plan.envelope.graphs[0].edges[1], { projection: 'draft-operator/1' });
+    if (change === 'pins') Object.assign(plan.stages.locations.runtime, { manifestSha256: 'e'.repeat(64) });
+    editor.next(historyStateFor(changed)); await runFixture.whenStable();
+    expect(component.runResult()).toBe(result); expect(component.selectedHistoricalResult()).toEqual(result.localResult);
+    expect(component.historicalDefinition()).toEqual(originalDefinition);
+    expect(runFixture.nativeElement.textContent).toContain('Historical local result');
+    expect(runFixture.nativeElement.textContent).toContain('2026-10-01T09:30:00Z');
+    expect(runFixture.nativeElement.textContent).toContain('original-row');
+    expect(runFixture.nativeElement.querySelector('[data-testid="result-provenance"]').textContent).not.toContain('live');
+    expect(TestBed.inject(FederatedQueryService).dispose).toHaveBeenCalled();
+    expect(federatedRunMock).toHaveBeenCalledOnce(); expect(runQueryMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['edit', 'history', 'destroy'])('invalidates actual service startup before Worker creation on %s', async (action) => {
+    const definition = historyDefinition(), editor = new BehaviorSubject(historyStateFor(definition));
+    component = await createComponent({}, definition, historyResultTemplate(), { editor, project: of(project) });
+    const service = TestBed.inject(FederatedQueryService), actual = new FederatedQueryService();
+    const construct = vi.fn(); vi.stubGlobal('Worker', construct);
+    let release!: () => void;
+    const cleanup = vi.spyOn(indexedDB, 'databases').mockImplementationOnce(() => new Promise((resolve) => { release = () => resolve([]); }));
+    federatedRunMock.mockImplementation(actual.run.bind(actual));
+    vi.mocked(service.dispose).mockImplementation(actual.dispose.bind(actual));
+    vi.mocked(service.openLocalResult).mockRejectedValue(new Error('Fixture unavailable.'));
+    try {
+      component.runQuery(); await vi.waitFor(() => expect(cleanup).toHaveBeenCalledOnce());
+      if (action === 'edit') { Object.assign(definition.federation?.nativeGraph ?? {}, { aliases: false }); editor.next(historyStateFor(definition)); }
+      if (action === 'history') await component.openHistoricalResult('fixture');
+      if (action === 'destroy') component.ngOnDestroy();
+      await Promise.resolve(); await Promise.resolve();
+      expect(component.running()).toBe(false); expect(component.runResult()).toBeUndefined();
+      release(); await runFixture.whenStable();
+      expect(construct).not.toHaveBeenCalled(); expect(component.runResult()).toBeUndefined(); expect(component.runError()).toBeUndefined();
+    } finally { cleanup.mockRestore(); vi.unstubAllGlobals(); }
+  });
+
+  it.each(['edit', 'silent-in-place'])('does not publish delayed output live across %s mutation and fences all old callbacks', async (action) => {
+    const definition = historyDefinition(), editor = new BehaviorSubject(historyStateFor(definition));
+    component = await createComponent({}, definition, historyResultTemplate(), { editor, project: of(project) });
+    let finish!: (value: Awaited<ReturnType<FederatedQueryService['run']>>) => void;
+    federatedRunMock.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    component.runQuery(); const oldCall = federatedRunMock.mock.calls.at(-1);
+    Object.assign(definition.federation?.nativeGraph ?? {}, { aliases: false });
+    if (action === 'edit') editor.next(historyStateFor(definition));
+    oldCall?.[1]?.({ phase: 'old' } as Parameters<NonNullable<Parameters<FederatedQueryService['run']>[1]>>[0]);
+    oldCall?.[4]?.(999);
+    finish(historyResultFor(oldCall?.[0] as IQueryDef)); await runFixture.whenStable();
+    expect(component.runResult()).toBeUndefined(); expect(component.federatedProgress()).toBeUndefined();
+    expect(runFixture.nativeElement.textContent).not.toContain('original-row');
+    expect(component.running()).toBe(false);
+  });
+
+  it.each(['resolve', 'reject'])('old completion %s cannot finalize or report errors into an immediate replacement', async (outcome) => {
+    const definition = historyDefinition(), editor = new BehaviorSubject(historyStateFor(definition));
+    component = await createComponent({}, definition, historyResultTemplate(), { editor, project: of(project) });
+    let finishOld!: (value: Awaited<ReturnType<FederatedQueryService['run']>>) => void, failOld!: (error: Error) => void;
+    let finishNew!: (value: Awaited<ReturnType<FederatedQueryService['run']>>) => void;
+    federatedRunMock.mockImplementationOnce(() => new Promise((resolve, reject) => { finishOld = resolve; failOld = reject; })).mockImplementationOnce(() => new Promise((resolve) => { finishNew = resolve; }));
+    component.runQuery(); const original = structuredClone(definition);
+    Object.assign(definition.federation?.nativeGraph ?? {}, { aliases: false }); editor.next(historyStateFor(definition));
+    component.runQuery(); expect(component.running()).toBe(true);
+    if (outcome === 'resolve') finishOld(historyResultFor(original)); else failOld(new Error('Old failure.'));
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    expect(component.running()).toBe(true); expect(component.runError()).toBeUndefined(); expect(component.runResult()).toBeUndefined();
+    const replacement = historyResultFor(definition, 'datatug-output-100000-new'); finishNew(replacement); await runFixture.whenStable();
+    expect(component.runResult()).toBe(replacement); expect(component.running()).toBe(false);
+  });
+
+  it.each(['resolve', 'reject'])('fences delayed local open %s across actual editor and project subscriptions', async (outcome) => {
+    const definition = historyDefinition(), editor = new BehaviorSubject(historyStateFor(definition)), projects = new BehaviorSubject(project);
+    component = await createComponent({}, definition, historyResultTemplate(), { editor, project: projects });
+    const service = TestBed.inject(FederatedQueryService);
+    let resolveOpen!: (value: Awaited<ReturnType<typeof service.openLocalResult>>) => void, rejectOpen!: (error: Error) => void;
+    vi.mocked(service.openLocalResult).mockImplementation(() => new Promise((resolve, reject) => { resolveOpen = resolve; rejectOpen = reject; }));
+    const pending = component.openHistoricalResult('datatug-output-100000-abc');
+    await vi.waitFor(() => expect(service.openLocalResult).toHaveBeenCalledOnce());
+    const other = { ...historyDefinition(), id: 'other-query' };
+    projects.next({ ref: { storeId: 'other-store', projectId: 'other-project' } }); editor.next(historyStateFor(other));
+    const current = historyResultFor(other, 'datatug-output-100000-def'); component.runResult.set(current);
+    if (outcome === 'resolve') resolveOpen({ result: historyResultFor(definition), executedDefinition: definition, descriptor: {} as LocalResultDescriptor });
+    else rejectOpen(new Error('Old artifact failed.'));
+    await pending; await runFixture.whenStable();
+    expect(component.runResult()).toBe(current); expect(component.historicalDefinition()).toBeUndefined();
+    expect(component.localHistoryError()).toBeUndefined(); expect(component.localHistoryLoading()).toBe(false);
+    expect(federatedRunMock).not.toHaveBeenCalled(); expect(runQueryMock).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])('clears deleted displayed artifact with historical=%s and keeps another view usable', async (historical) => {
+    const definition = historyDefinition(); component = await createComponent({}, definition, historyResultTemplate());
+    const service = TestBed.inject(FederatedQueryService), result = historyResultFor(definition);
+    component.runResult.set(result); if (historical) component.selectedHistoricalResult.set(result.localResult);
+    if (!result.localResult) throw new Error('Missing graph result.');
+    await component.deleteHistoricalResult(result.localResult.id); await runFixture.whenStable();
+    expect(component.runResult()).toBeUndefined(); expect(component.visibleResultRows()).toEqual([]);
+    expect(runFixture.nativeElement.textContent).not.toContain('original-row');
+    const other = historyResultFor(definition, 'datatug-output-100000-def');
+    vi.mocked(service.openLocalResult).mockResolvedValue({ result: other, executedDefinition: definition, descriptor: {} as LocalResultDescriptor });
+    if (!other.localResult) throw new Error('Missing other graph result.');
+    await component.openHistoricalResult(other.localResult.id); federatedGetPageMock.mockResolvedValue([[{ type: 'string', value: 'other-page' }]]);
+    await component.changeResultPage(1); expect(component.visibleResultRows()[0][0].value).toBe('other-page');
+    expect(service.deleteLocalResult).toHaveBeenCalledExactlyOnceWith(result.localResult.id);
   });
 
   it('reopens saved immutable provenance without lookup, exposes changed revisions and rejects a stored eligibility flag', async () => {
@@ -785,7 +977,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     expect(component.resultTotalRows()).toBe(120_000);
     expect(component.visibleResultRows()).toHaveLength(1);
     await component.changeResultPage(1);
-    expect(federatedGetPageMock).toHaveBeenCalledWith(1);
+    expect(federatedGetPageMock).toHaveBeenCalledWith(1, 'affiliations', undefined);
     expect(component.visibleResultRows()).toEqual([
       [{ type: 'integer', value: '101' }],
     ]);
