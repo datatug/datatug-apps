@@ -18,10 +18,8 @@ import {
   nativeGraphRunResponse,
   type NativeGraphPlan,
 } from './native-graph-executor';
-import { parseNativeGraphEnvelope, NATIVE_GRAPH_ORIGINAL_DECISION } from './native-graph-contract';
+import { NATIVE_GRAPH_ORIGINAL_DECISION } from './native-graph-contract';
 import type { BoundedRecord } from './bounded-federation';
-import type { NativeStageId } from './native-graph-contract';
-import { RUNTIME_PIN_HEADERS } from './runtime-read-pins';
 import { JsonNumberToken } from './strict-json';
 
 const budgets: BoundedRunBudget[] = [];
