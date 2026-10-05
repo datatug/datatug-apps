@@ -1,3 +1,7 @@
+import type {
+  DeclaredCatalogContext,
+  VerifiedDeclaredSource,
+} from './declared-source';
 import type { ITableFull } from '../../models/definition/apis/database';
 import {
   array,
@@ -19,6 +23,7 @@ export interface ConfiguredPublicSource {
   readonly driver: string;
   readonly host: string;
   readonly tables?: readonly ITableFull[];
+  readonly declaration?: DeclaredCatalogContext;
   readonly upstream?: {
     readonly repository: string;
     readonly revision: string;
@@ -29,6 +34,7 @@ export interface ConfiguredFieldChoice {
   readonly table: ITableFull;
   readonly property: string;
   readonly source?: SourceField;
+  readonly context?: VerifiedDeclaredSource;
   readonly reason: string;
 }
 

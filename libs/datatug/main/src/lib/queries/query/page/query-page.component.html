@@ -38,12 +38,63 @@
       ><ion-card-content>
         <p>
           {{ saved.source.entity }}.{{ saved.source.property }} →
-          {{ saved.namespace }}. Source release date and coverage are not
-          recorded for this saved plan.
+          {{ saved.namespace }}.
         </p>
+        @if (saved.sourceFacts; as facts) {
+          <p>
+            Saved source release {{ facts.release || 'unknown' }} · release date
+            {{ facts.releaseDate || 'unknown' }} · retrieved
+            {{ facts.retrievedAt || 'see source receipts' }}.
+          </p>
+          <p>{{ facts.coverage }} {{ facts.confidence }}</p>
+        } @else {
+          <p>
+            Source release date and coverage were not recorded for this saved
+            plan.
+          </p>
+        }
         <p>{{ saved.unavailableReason }}</p>
         <details data-testid="saved-public-data-provenance">
           <summary>Saved provenance and immutable revisions</summary>
+          @if (saved.declaredSource; as context) {
+            <p>
+              Configured source {{ context.connection.projectId }} ·
+              {{ context.connection.id }}. Schema/data integrity does not grant
+              semantic admission.
+            </p>
+            <p>
+              Configuration {{ context.configuration.repository }} at
+              {{ context.configuration.revision }} ·
+              {{ context.configuration.path }} ·
+              {{ context.configuration.sha256 }}
+            </p>
+            <p>
+              User data {{ context.data.repository }} at
+              {{ context.data.revision }} · {{ context.data.path }} ·
+              {{ context.data.sha256 }} · physical {{ context.table.name }}.{{
+                context.field.name
+              }}
+              · key {{ context.table.key }}
+            </p>
+          }
+          <p>
+            Attachment {{ saved.attachment.repository }} at
+            {{ saved.attachment.revision }} · {{ saved.attachment.path }} ·
+            {{ saved.attachment.sha256 }}
+          </p>
+          <p>
+            Model {{ saved.model.path }} · {{ saved.model.sha256 }} · meaning
+            {{ saved.meaning.path }} · {{ saved.meaning.sha256 }} · snapshot
+            {{ saved.snapshot.path }} · {{ saved.snapshot.sha256 }} · decision
+            {{ saved.decision.path }} · {{ saved.decision.sha256 }}
+          </p>
+          @if (saved.native; as native) {
+            <p>
+              Native dataset {{ native.dataset.path }} ·
+              {{ native.dataset.sha256 }} · receipt
+              {{ native.provenance.path }} · {{ native.provenance.sha256 }}
+            </p>
+          }
           <p>
             {{ saved.source.schema.repository }} at
             {{ saved.source.schema.revision }} · {{ saved.source.module }}.{{
@@ -72,9 +123,77 @@
             {{ publicDataRevisionChanges().join(', ') }}. Saved results retain
             their original snapshot; reopening runs no lookup.
           </p>
-          <ion-button (click)="publicDataRevisionAcknowledged.set(true)"
-            >Acknowledge changed revisions</ion-button
-          >
+        }
+        <ion-button
+          (click)="savedPlanReview.check()"
+          [disabled]="savedPlanReview.checking()"
+        >
+          {{
+            savedPlanReview.checking()
+              ? 'Checking metadata…'
+              : 'Check current metadata'
+          }}
+        </ion-button>
+        <p>Checking reads bounded metadata only. It does not run the query.</p>
+        @if (savedPlanReview.review(); as review) {
+          <p role="status">{{ review.reason }}</p>
+          @if (review.suggestion?.sourceFacts; as facts) {
+            <p>
+              Source release {{ facts.release || 'unknown' }} · release date
+              {{ facts.releaseDate || 'unknown' }} · retrieved
+              {{ facts.retrievedAt || 'see source receipts' }}
+            </p>
+            <p>{{ facts.coverage }} {{ facts.confidence }}</p>
+            <p>
+              Source receipt licences:
+              {{ facts.sourceLicences.join(', ') || 'unknown' }}
+            </p>
+          }
+          @if (review.changes.length) {
+            <p role="alert">
+              Changed pins: {{ review.changes.join(', ') }}. The original plan
+              and results remain unchanged.
+            </p>
+            <ion-button
+              (click)="savedPlanReview.acknowledge()"
+              [disabled]="!review.compatible"
+              >Acknowledge this metadata check</ion-button
+            >
+          }
+          @if (review.copy) {
+            <ion-button
+              (click)="savedPlanReview.saveCopy()"
+              [disabled]="
+                savedPlanReview.saving() ||
+                (review.changes.length > 0 &&
+                  savedPlanReview.acknowledged() !== review.fingerprint)
+              "
+              >Save separate pending plan</ion-button
+            >
+          }
+          <details data-testid="checked-public-data-provenance">
+            <summary>Checked provenance and immutable pins</summary>
+            <p>
+              Checked {{ review.checkedAt }} · metadata bytes
+              {{ review.discovery.metadataBytes }}
+            </p>
+            <p>
+              Directory {{ review.discovery.indexes.pins.directory.revision }} ·
+              ModelSpec registry
+              {{ review.discovery.indexes.pins.models.revision }} · MeaningGraph
+              registry {{ review.discovery.indexes.pins.meanings.revision }}
+            </p>
+            @if (review.suggestion; as suggestion) {
+              <p>
+                Attachment {{ suggestion.attachment.repository }} at
+                {{ suggestion.attachment.revision }} ·
+                {{ suggestion.attachment.sha256 }}
+              </p>
+            }
+          </details>
+        }
+        @if (savedPlanReview.message(); as message) {
+          <p role="status">{{ message }}</p>
         }
       </ion-card-content></ion-card
     >
@@ -276,20 +395,43 @@
     @if (queryDef()?.federation) {
       <ion-item>
         <ion-label position="stacked">OVDB bearer token (optional)</ion-label>
-        <ion-input aria-label="OVDB bearer token" type="password" autocomplete="off"
-          [value]="ovdbToken()" (ionInput)="ovdbToken.set($event.detail.value || '')" />
+        <ion-input
+          aria-label="OVDB bearer token"
+          type="password"
+          autocomplete="off"
+          [value]="ovdbToken()"
+          (ionInput)="ovdbToken.set($event.detail.value || '')"
+        />
       </ion-item>
-      <p class="ion-padding-horizontal">This token is sent to {{ ovdbDestination() }} for this run.</p>
+      <p class="ion-padding-horizontal">
+        This token is sent to {{ ovdbDestination() }} for this run.
+      </p>
     }
 
     @if (queryDef()?.federation) {
       <ion-item>
-        <ion-select label="Result mode" [value]="federatedMode()" (ionChange)="federatedMode.set($event.detail.value)" [disabled]="running()">
+        <ion-select
+          label="Result mode"
+          [value]="federatedMode()"
+          (ionChange)="federatedMode.set($event.detail.value)"
+          [disabled]="running()"
+        >
           <ion-select-option value="full">Full result</ion-select-option>
-          <ion-select-option value="visible" [disabled]="!visibleModeSupport().supported">Visible rows</ion-select-option>
+          <ion-select-option
+            value="visible"
+            [disabled]="!visibleModeSupport().supported"
+            >Visible rows</ion-select-option
+          >
         </ion-select>
       </ion-item>
-      <p class="ion-padding-horizontal">@if (visibleModeSupport().supported) { Visible rows loads the first result page, then computes later pages as you request them. } @else { {{ visibleModeSupport().reason }} }</p>
+      <p class="ion-padding-horizontal">
+        @if (visibleModeSupport().supported) {
+          Visible rows loads the first result page, then computes later pages as
+          you request them.
+        } @else {
+          {{ visibleModeSupport().reason }}
+        }
+      </p>
     }
     <ion-item lines="none">
       <ion-buttons>
@@ -318,10 +460,21 @@
 
   @if ((running() || resultPageLoading()) && federatedProgress(); as progress) {
     <p role="status" aria-live="polite">
-      {{ progress.stage === 'preparing' ? 'Preparing source snapshot' : progress.stage === 'loading' ? 'Loading sources' : progress.stage === 'processing' ? 'Processing rows' : progress.stage === 'lookup' ? 'Looking up records' : 'Query complete' }}:
-      loaded {{ progress.rowsLoaded }} rows; processed {{ progress.rowsProcessed }} rows.
-      HTTP lookups: {{ progress.requestsCompleted }} completed,
-      {{ progress.requestsInFlight }} in flight, {{ progress.requestsPending }} pending.
+      {{
+        progress.stage === 'preparing'
+          ? 'Preparing source snapshot'
+          : progress.stage === 'loading'
+            ? 'Loading sources'
+            : progress.stage === 'processing'
+              ? 'Processing rows'
+              : progress.stage === 'lookup'
+                ? 'Looking up records'
+                : 'Query complete'
+      }}: loaded {{ progress.rowsLoaded }} rows; processed
+      {{ progress.rowsProcessed }} rows. HTTP lookups:
+      {{ progress.requestsCompleted }} completed,
+      {{ progress.requestsInFlight }} in flight,
+      {{ progress.requestsPending }} pending.
     </p>
   }
 
@@ -403,11 +556,34 @@
 
     <ion-card>
       <ion-card-content style="overflow-x: auto">
-        @if (resultTotalRows() > resultPageSize || resultHasMore() || resultPageIndex() > 0) {
+        @if (
+          resultTotalRows() > resultPageSize ||
+          resultHasMore() ||
+          resultPageIndex() > 0
+        ) {
           <div aria-label="Result pages">
-            <ion-button fill="clear" [disabled]="resultPageLoading() || resultPageIndex() === 0" (click)="changeResultPage(-1)">Previous</ion-button>
-            Rows {{ resultPageIndex() * resultPageSize + 1 }}–{{ resultPageIndex() * resultPageSize + visibleResultRows().length }} @if (!resultHasMore()) { of {{ resultTotalRows() }} }
-            <ion-button fill="clear" [disabled]="resultPageLoading() || (!resultHasMore() && (resultPageIndex() + 1) * resultPageSize >= resultTotalRows())" (click)="changeResultPage(1)">Next</ion-button>
+            <ion-button
+              fill="clear"
+              [disabled]="resultPageLoading() || resultPageIndex() === 0"
+              (click)="changeResultPage(-1)"
+              >Previous</ion-button
+            >
+            Rows {{ resultPageIndex() * resultPageSize + 1 }}–{{
+              resultPageIndex() * resultPageSize + visibleResultRows().length
+            }}
+            @if (!resultHasMore()) {
+              of {{ resultTotalRows() }}
+            }
+            <ion-button
+              fill="clear"
+              [disabled]="
+                resultPageLoading() ||
+                (!resultHasMore() &&
+                  (resultPageIndex() + 1) * resultPageSize >= resultTotalRows())
+              "
+              (click)="changeResultPage(1)"
+              >Next</ion-button
+            >
           </div>
         }
         <table

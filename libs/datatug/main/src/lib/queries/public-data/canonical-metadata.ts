@@ -22,15 +22,15 @@ export const INITIAL_CANONICAL_PINS: CanonicalPins = {
   },
   models: {
     repository: 'https://github.com/modelspec-org/registry',
-    revision: '48b30b250a61385d94d46a70968677870750ea35',
+    revision: '34be21159e522e85b6e5c110f8bfb8baaa8035a8',
     path: 'index.json',
-    sha256: '947e80bec116780f0ccb33c28caf4f2f5dbe53eb90e7b0e5c7f741116a69a320',
+    sha256: '302a04f9775aec8627ddab0361030156f592abb3e446088ba43bd813aa527576',
   },
   meanings: {
     repository: 'https://github.com/meaninggraph/registry',
-    revision: '2d92bbdd45fc2552f231f8f993a5b8b8d5b7fa29',
+    revision: '3d85ae6fa06b7f38f59cfd2893e07ba801856b96',
     path: 'index.json',
-    sha256: '5d710692a320374c02912c932d755b80f2cbe67a463ef419daa6a1d7c8bfc0b9',
+    sha256: '42931545086beb7c69d803767b8d50e524baff2ff37a2ec9eb8526eee16aa4a5',
   },
 };
 
@@ -68,7 +68,9 @@ export function immutableUrl(file: ImmutableFile): string {
     ) ||
     !/^[a-f0-9]{40}$/.test(file.revision) ||
     !/^[a-f0-9]{64}$/.test(file.sha256) ||
-    !/^[A-Za-z0-9_./-]+$/.test(file.path) ||
+    !/^(?:[A-Za-z0-9_.-]+|\$records)(?:\/(?:[A-Za-z0-9_.-]+|\$records))*$/.test(
+      file.path,
+    ) ||
     file.path.length > 1024 ||
     /(^\/|\/$|\/\/|(^|\/)(\.|\.\.|\.[gG][iI][tT])($|\/))/.test(file.path)
   )

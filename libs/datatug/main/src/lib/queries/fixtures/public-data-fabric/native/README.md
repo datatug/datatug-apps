@@ -1,0 +1,5 @@
+# Native consumer metadata fixtures
+
+These files preserve exact small metadata bytes from ROR dc78c1e929f1f10018f8c39e690351059a50c71f and GeoNames 6f4cf1269bc393048f6b204069135a62f0bb6c02. Each manifest records immutable origin and SHA-256. No dataset or native key corpus is included or requested.
+
+Target Directory attachment envelopes are explicitly hypothetical publication fixtures; target ModelSpec and MeaningGraph registrations preserve the landed canonical bytes. User schemas are checked through an explicit project catalog declaration and are absent from global registrations. affiliations.db.json is the concrete pending connect example. ROR uses the independently accepted exact apps user-field fixture e7362033ec79c6663d7dbe0483b62fab01f7b9cd and hub decision 17263dbacabdfe95e53fc3c6980177416bdab941. GeoNames native Input.country_iso and its decision remain helper transport fixtures without semantic acceptance; accepted demo country label bridges are separate scopes. Structural compatibility and source evidence never authorize production execution.

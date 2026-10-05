@@ -1,0 +1,23 @@
+{
+  "modelspec": "1.0-draft",
+  "module": {
+    "name": "fixture",
+    "id": "github.com/example/native-geonames-fixture"
+  },
+  "entities": {
+    "Input": {
+      "properties": {
+        "country_iso": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string",
+          "required": true
+        }
+      },
+      "key": [
+        "id"
+      ]
+    }
+  }
+}

@@ -1,3 +1,8 @@
+import {
+  readJsonDriver,
+  validateJsonDriver,
+  type BoundedJsonDriver,
+} from './bounded-https-json-driver';
 import { strictJson } from './strict-json';
 import { parseDTQL } from '@dalgo/core';
 import { validNativeRorUrl } from './public-data-scenario';
@@ -16,6 +21,7 @@ export interface BoundedSource {
 /** Execution constraints, not a semantic acceptance mechanism. */
 export interface BoundedFederation {
   readonly sources: readonly BoundedSource[];
+  readonly driver?: BoundedJsonDriver;
   readonly userRows: number;
   readonly userOffset: number;
   readonly identifierKind: 'place' | 'ror';
@@ -64,6 +70,18 @@ export function validateBounds(bounds: BoundedFederation): void {
     throw new Error(
       'A bounded lookup needs two to four explicit source stages.',
     );
+  if (bounds.driver) {
+    validateJsonDriver(bounds.driver);
+    if (
+      sourceId(bounds.driver) !== sourceId(bounds.sources[0]) ||
+      !bounds.driver.fields.some(
+        (field) => field.name === bounds.sources[0].keyField,
+      )
+    )
+      throw new Error(
+        'The declared JSON driver must map exactly the first source relation.',
+      );
+  }
   const known = new Set<string>();
   for (const [index, source] of bounds.sources.entries()) {
     if (
@@ -167,6 +185,20 @@ export function createBoundedFederationFetch(
     const existing = pending.get(id);
     if (existing) return existing;
     const request = (async () => {
+      if (bounds.driver && id === sourceId(bounds.driver)) {
+        const page = await readJsonDriver(
+          bounds.driver,
+          bounds.userRows,
+          bounds.userOffset,
+          bounds.bytes - bytes,
+          httpFetch,
+          signal,
+          boundedResponseText,
+        );
+        bytes += page.bytes;
+        loaded.set(id, page.records);
+        return page.records;
+      }
       let values: string[] | undefined;
       if (source.parent) {
         const parent = stages.get(sourceId(source.parent));
@@ -175,7 +207,7 @@ export function createBoundedFederationFetch(
         const unique = new Set<string>();
         for (const row of rows) {
           const value = row.data[source.parent.field];
-          if (value === null || value === '') continue;
+          if (value === null || value === undefined || value === '') continue;
           if (
             bounds.nativeNamespace === 'ROR:URL' &&
             (typeof value !== 'string' || !validNativeRorUrl(value))

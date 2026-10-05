@@ -345,10 +345,16 @@ export class PublicDataPageComponent implements OnDestroy {
     this.page.set(0);
     this.resultRows.set([]);
     try {
-      const query = this.metadata.scenario(source, discovery, selected, {
-        userRows: this.userRows(),
-        userOffset: this.userOffset(),
-      });
+      const query = this.metadata.scenario(
+        source,
+        discovery,
+        selected,
+        {
+          userRows: this.userRows(),
+          userOffset: this.userOffset(),
+        },
+        this.field()?.context,
+      );
       const result = await this.federation.run(query, undefined, '', 'full');
       if (generation !== this.generation) return;
       this.result.set(result);
@@ -388,10 +394,16 @@ export class PublicDataPageComponent implements OnDestroy {
     this.error.set('');
     this.saving.set(true);
     try {
-      const query = this.metadata.scenario(source, discovery, suggestion, {
-        userRows: this.userRows(),
-        userOffset: this.userOffset(),
-      });
+      const query = this.metadata.scenario(
+        source,
+        discovery,
+        suggestion,
+        {
+          userRows: this.userRows(),
+          userOffset: this.userOffset(),
+        },
+        this.field()?.context,
+      );
       const saved = await firstValueFrom(
         this.queries.createQuery(project.ref, query),
       );

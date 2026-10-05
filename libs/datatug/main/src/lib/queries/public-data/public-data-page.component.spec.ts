@@ -1,3 +1,4 @@
+import { nativeFixture } from './native-fixture.spec-helper';
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
@@ -309,6 +310,43 @@ describe('Public data route fixture UI journey (no deployed runtime claims)', ()
     provenance.querySelector('summary')?.click();
     expect(provenance.open).toBe(true);
     expect(state.federation.run).not.toHaveBeenCalled();
+  });
+  it('explains actual native release/coverage/licence evidence while structural compatibility leaves execution unavailable', async () => {
+    const state = await setup(false),
+      native = await nativeFixture('ror');
+    vi.stubGlobal('fetch', native.http);
+    try {
+      const pins = await native.publish(),
+        metadata = new PublicDataService();
+      const source = native.contract.source as SourceField;
+      const discovery = await metadata.discoverDeclared(
+        native.context,
+        new AbortController().signal,
+        pins,
+      );
+      state.fixture.componentInstance.source.set(source);
+      state.fixture.componentInstance.discovery.set(discovery);
+      state.fixture.componentInstance.selected.set(discovery.suggestions[0]);
+      await state.fixture.whenStable();
+      const root = state.fixture.nativeElement as HTMLElement;
+      expect(
+        root.querySelector('[data-testid="source-facts"]')?.textContent,
+      ).toContain('v2.13');
+      expect(root.textContent).toContain('141528 organizations');
+      expect(root.textContent).toContain('CC0-1.0, CC-BY-4.0');
+      expect(root.textContent).toContain(
+        'Structural compatibility: compatible. Execution availability: unavailable.',
+      );
+      expect(root.textContent).toContain('Native dataset ror.sqlite');
+      const provenance = Array.from(root.querySelectorAll('details')).find(
+        (details) => details.textContent?.includes('Native dataset ror.sqlite'),
+      );
+      expect(provenance?.open).toBe(false);
+      await state.fixture.componentInstance.run();
+      expect(state.federation.run).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
   it('renders snapshot status warnings and keeps repeated affiliations separate from child locations', async () => {
     const state = await setup(false);
