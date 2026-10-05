@@ -131,17 +131,20 @@ describe('finite W1 native graph', () => {
       'aliases',
     ]);
   });
-  it('fits1000 duplicate affiliation references without repeated downstream joins', async () => {
+  // V8 coverage and CI contention may exceed Vitest's 5s default; the product
+  // still has its own unchanged 10s deadline, checked after the full assertions below.
+  it('fits1000 duplicate affiliation references without repeated downstream joins', { timeout: 15000 }, async () => {
     const p = plan(false),
       input = fixture.ordinary;
     const affiliations = Array.from({ length: 1000 }, (_, i) => ({
       key: 'u' + i,
       data: { ror_id: 'https://ror.org/000025p04' },
     }));
+    const runBudget = budget();
     const execution = new NativeGraphExecution(
       p,
       affiliations,
-      budget(),
+      runBudget,
       transport(p, input),
       'https://runtime.example', graphFixtureMetadataTransport,
     );
@@ -160,6 +163,7 @@ describe('finite W1 native graph', () => {
         'Explicit capacity fixture',
       ).totalRows,
     ).toBe(1000);
+    runBudget.check();
     execution.commitOutput();
   });
   it('retains invalid/null/empty affiliations without querying their values', async () => {
