@@ -464,6 +464,7 @@ describe('bounded public-data federation preparation (fixture requests, not depl
       expect(validNativeRorUrl(value)).toBe(true);
     for (const value of [
       'https://ror.org/000025p05',
+      'https://ror.org/100000096',
       ' https://ror.org/000025p04',
       'https://ROR.org/000025p04',
       '000025p04',
@@ -535,6 +536,48 @@ describe('bounded public-data federation preparation (fixture requests, not depl
     expect(() =>
       validateBounds({ ...fixtureBounds(), identifierKind: 'ror' }),
     ).toThrow(/explicit reviewed/);
+  });
+  it('rejects a checksum-valid nonzero ROR prefix before any target request, while querying the valid absent control', async () => {
+    const malformed = 'https://ror.org/100000096';
+    const absent = 'https://ror.org/000000098';
+    for (const raw of [malformed, absent]) {
+      const runtime = serve([row('1', { Country: raw })], []);
+      const result = await runFederatedQuery(
+        definition({
+          ...fixtureBounds(),
+          identifierKind: 'ror',
+          nativeNamespace: 'ROR:URL',
+          identifierLimit: 50,
+        }),
+        undefined,
+        '',
+        undefined,
+        undefined,
+        'full',
+        undefined,
+        undefined,
+        { fetch: runtime.http },
+      );
+      const targetCalls = runtime.calls.filter(
+        (call) => call.name === 'Countries' && !call.close,
+      );
+      expect(result.publicDataExceptions?.details[0].raw).toBe(raw);
+      if (raw === malformed) {
+        expect(targetCalls).toEqual([]);
+        expect(result.publicDataExceptions).toMatchObject({
+          denominator: 1,
+          invalid: 1,
+          unmatched: 0,
+        });
+      } else {
+        expect(targetCalls[0].where?.right.values).toEqual([absent]);
+        expect(result.publicDataExceptions).toMatchObject({
+          denominator: 1,
+          invalid: 0,
+          unmatched: 1,
+        });
+      }
+    }
   });
   it('refuses duplicate raw response properties before they erase source identity', async () => {
     await expect(

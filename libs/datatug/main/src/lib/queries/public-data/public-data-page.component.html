@@ -77,9 +77,16 @@
       }
       @if (source(); as scope) {
         <p data-testid="configured-source-scope">
-          {{ scope.entity }}.{{ scope.property }} · {{ scope.namespace }} ·
-          {{ scope.schema.repository }} at {{ scope.schema.revision }}
+          Selected field: {{ scope.entity }}.{{ scope.property }} ·
+          {{ scope.namespace }}
         </p>
+        <details data-testid="selected-field-provenance">
+          <summary>Selected field provenance</summary>
+          <p>
+            {{ scope.schema.repository }} at {{ scope.schema.revision }} ·
+            {{ scope.schema.path }} · SHA256 {{ scope.schema.sha256 }}
+          </p>
+        </details>
       }
     </ion-card-content></ion-card
   >
@@ -131,20 +138,39 @@
       ><ion-card-header
         ><ion-card-title>Canonical suggestions</ion-card-title></ion-card-header
       ><ion-card-content>
-        <p>
-          Metadata read: {{ data.metadataBytes }} of 2097152 bytes. Metadata inspection does not query source data.
+        <p data-testid="source-availability">
+          Source: {{ connection()?.title ?? 'Declared source field' }}. Public
+          release date and coverage: unknown.
         </p>
-        <p>
-          Directory {{ data.indexes.pins.directory.revision }} · ModelSpec
-          {{ data.indexes.pins.models.revision }} · MeaningGraph
-          {{ data.indexes.pins.meanings.revision }}
-        </p>
+        <details data-testid="canonical-provenance">
+          <summary>Canonical provenance and metadata limits</summary>
+          <p>
+            Metadata read: {{ data.metadataBytes }} of 2097152 bytes. Metadata
+            inspection does not query source data.
+          </p>
+          <p>
+            Directory {{ data.indexes.pins.directory.revision }} · ModelSpec
+            {{ data.indexes.pins.models.revision }} · MeaningGraph
+            {{ data.indexes.pins.meanings.revision }}
+          </p>
+          @for (
+            pin of [
+              data.indexes.pins.directory,
+              data.indexes.pins.models,
+              data.indexes.pins.meanings,
+            ];
+            track pin.repository
+          ) {
+            <p>
+              {{ pin.repository }} · {{ pin.revision }} · {{ pin.path }} ·
+              SHA256 {{ pin.sha256 }}
+            </p>
+          }
+        </details>
         @if (!data.suggestions.length) {
           <p data-testid="no-contract">
-            No published scoped representation attachment is available at these
-            revisions. Source names and ordinary labels do not authorize a
-            lookup. No scoped ROR source mapping is published here; native-id
-            runtime publication remains pending.
+            Lookup is unavailable: no supported scoped attachment is published
+            for this source. Labels alone do not authorize a lookup.
           </p>
         }
         @for (suggestion of data.suggestions; track $index) {
@@ -160,16 +186,19 @@
                 </p>
                 <p>
                   Identity projection; UTF8 byte-exact equality; zero or one
-                  native target. Missing keys remain exceptions. Decision scope:
-                  {{ contract.decision.scope }}.
+                  native target. Missing keys remain exceptions.
                 </p>
-                <p>
-                  Raw label table {{ contract.bridge.table }}.{{
-                    contract.bridge.raw_label_column
-                  }}
-                  → {{ contract.bridge.target_key_column }}. The original source
-                  field remains in the result.
-                </p>
+                <details>
+                  <summary>Lookup provenance</summary>
+                  <p>Decision scope: {{ contract.decision.scope }}.</p>
+                  <p>
+                    Raw label table {{ contract.bridge.table }}.{{
+                      contract.bridge.raw_label_column
+                    }}
+                    → {{ contract.bridge.target_key_column }}. The original
+                    source field remains in the result.
+                  </p>
+                </details>
               }
               @if (suggestion.rights; as rights) {
                 <p>
@@ -207,11 +236,14 @@
             [ngModel]="userOffset()"
             (ngModelChange)="userOffset.set(+$event)"
         /></ion-item>
-        <p>
-          Execution bounds: 1000 user rows; 100 place IDs or 50 ROR IDs; 5000
-          results; 5MiB; 10 seconds. Saved scenarios reopen with their exact
-          revisions and require an explicit run.
-        </p>
+        <details data-testid="execution-limits">
+          <summary>Execution limits and saved revisions</summary>
+          <p>
+            Execution bounds: 1000 user rows; 100 place IDs or 50 ROR IDs; 5000
+            results; 5MiB; 10 seconds. Saved scenarios reopen with their exact
+            revisions and require an explicit run.
+          </p>
+        </details>
         <ion-button
           (click)="run()"
           [disabled]="running() || !selected()?.eligible"
@@ -286,9 +318,13 @@
           </table>
         }
         <p>
-          Read {{ output.publicDataBytes }} bytes. Observed
-          {{ output.provenance.observedAt }}. {{ output.provenance.source }}
+          Observed {{ output.provenance.observedAt }}.
+          {{ output.provenance.source }}
         </p>
+        <details>
+          <summary>Result provenance and transfer size</summary>
+          <p>Read {{ output.publicDataBytes }} bytes.</p>
+        </details>
         @for (limitation of output.limitations; track $index) {
           <p>{{ limitation.policy }}</p>
         }

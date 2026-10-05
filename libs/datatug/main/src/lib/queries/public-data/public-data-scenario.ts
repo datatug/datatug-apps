@@ -50,7 +50,7 @@ export interface PublicDataExceptions {
 
 /** Representation validity only; exact snapshot membership is a separate lookup. */
 export function validNativeRorUrl(raw: string): boolean {
-  if (!/^https:\/\/ror\.org\/[0-9a-hj-km-np-tv-z]{7}[0-9]{2}$/.test(raw))
+  if (!/^https:\/\/ror\.org\/0[0-9a-hj-km-np-tv-z]{6}[0-9]{2}$/.test(raw))
     return false;
   const token = raw.slice('https://ror.org/'.length);
   const alphabet = '0123456789abcdefghjkmnpqrstvwxyz';

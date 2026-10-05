@@ -30,17 +30,54 @@
 
 <ion-content color="light">
   @if (queryDef()?.publicData; as saved) {
-    <ion-card><ion-card-header><ion-card-title>Saved public-data provenance</ion-card-title></ion-card-header><ion-card-content>
-      <p>{{ saved.source.schema.repository }} at {{ saved.source.schema.revision }} · {{ saved.source.module }}.{{ saved.source.entity }}.{{ saved.source.property }} · raw {{ saved.source.namespace }} → {{ saved.namespace }}</p>
-      <p>Directory {{ saved.canonical.directory.revision }} · ModelSpec {{ saved.model.revision }} · Meaning {{ saved.meaning.revision }} · Snapshot {{ saved.snapshot.sha256 }}</p>
-      <p>Identity projection · UTF8 byte-exact equality · decision {{ saved.decisionScope }} at {{ saved.decision.revision }}</p>
-      <p>Source licence {{ saved.rights.source }} · model {{ saved.rights.model }} · meaning {{ saved.rights.meaning }} · {{ saved.rights.attribution }}</p>
-      <p>{{ saved.unavailableReason }}</p>
-      @if (publicDataRevisionChanges().length) {
-        <p role="alert">Changed canonical revisions: {{ publicDataRevisionChanges().join(', ') }}. Saved results retain their original snapshot; reopening runs no lookup.</p>
-        <ion-button (click)="publicDataRevisionAcknowledged.set(true)">Acknowledge changed revisions</ion-button>
-      }
-    </ion-card-content></ion-card>
+    <ion-card
+      ><ion-card-header
+        ><ion-card-title
+          >Saved public-data lookup</ion-card-title
+        ></ion-card-header
+      ><ion-card-content>
+        <p>
+          {{ saved.source.entity }}.{{ saved.source.property }} →
+          {{ saved.namespace }}. Source release date and coverage are not
+          recorded for this saved plan.
+        </p>
+        <p>{{ saved.unavailableReason }}</p>
+        <details data-testid="saved-public-data-provenance">
+          <summary>Saved provenance and immutable revisions</summary>
+          <p>
+            {{ saved.source.schema.repository }} at
+            {{ saved.source.schema.revision }} · {{ saved.source.module }}.{{
+              saved.source.entity
+            }}.{{ saved.source.property }} · raw {{ saved.source.namespace }} →
+            {{ saved.namespace }}
+          </p>
+          <p>
+            Directory {{ saved.canonical.directory.revision }} · ModelSpec
+            {{ saved.model.revision }} · Meaning {{ saved.meaning.revision }} ·
+            Snapshot {{ saved.snapshot.sha256 }}
+          </p>
+          <p>
+            Identity projection · UTF8 byte-exact equality · decision
+            {{ saved.decisionScope }} at {{ saved.decision.revision }}
+          </p>
+          <p>
+            Source licence {{ saved.rights.source }} · model
+            {{ saved.rights.model }} · meaning {{ saved.rights.meaning }} ·
+            {{ saved.rights.attribution }}
+          </p>
+        </details>
+        @if (publicDataRevisionChanges().length) {
+          <p role="alert">
+            Changed canonical revisions:
+            {{ publicDataRevisionChanges().join(', ') }}. Saved results retain
+            their original snapshot; reopening runs no lookup.
+          </p>
+          <ion-button (click)="publicDataRevisionAcknowledged.set(true)"
+            >Acknowledge changed revisions</ion-button
+          >
+        }
+      </ion-card-content></ion-card
+    >
   }
   <ion-card>
     <ion-item>

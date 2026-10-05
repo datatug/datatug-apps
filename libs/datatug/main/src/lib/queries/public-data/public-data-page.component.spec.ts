@@ -279,6 +279,37 @@ describe('Public data route fixture UI journey (no deployed runtime claims)', ()
     await state.fixture.whenStable();
     expect(state.federation.run).not.toHaveBeenCalled();
   });
+  it('leads with readable availability while preserving immutable coordinates in closed expandable provenance', async () => {
+    const state = await setup(false);
+    await state.click('Connect and explain');
+    const root = state.fixture.nativeElement as HTMLElement;
+    expect(
+      root.querySelector('[data-testid="source-availability"]')?.textContent,
+    ).toContain('Public release date and coverage: unknown');
+    for (const selector of ['canonical-provenance', 'execution-limits']) {
+      const details = root.querySelector(
+        `[data-testid="${selector}"]`,
+      ) as HTMLDetailsElement;
+      expect(details.open).toBe(false);
+      expect(details.querySelector('summary')).toBeTruthy();
+    }
+    const provenance = root.querySelector(
+      '[data-testid="canonical-provenance"]',
+    ) as HTMLDetailsElement;
+    expect(provenance.textContent).toContain(
+      INITIAL_CANONICAL_PINS.directory.revision,
+    );
+    expect(provenance.textContent).toContain(
+      INITIAL_CANONICAL_PINS.directory.sha256,
+    );
+    expect(provenance.textContent).toContain('2097152 bytes');
+    expect(
+      root.querySelector('[data-testid="execution-limits"]')?.textContent,
+    ).toContain('5MiB');
+    provenance.querySelector('summary')?.click();
+    expect(provenance.open).toBe(true);
+    expect(state.federation.run).not.toHaveBeenCalled();
+  });
   it('renders snapshot status warnings and keeps repeated affiliations separate from child locations', async () => {
     const state = await setup(false);
     const raw = 'https://ror.org/0042xzm63';
