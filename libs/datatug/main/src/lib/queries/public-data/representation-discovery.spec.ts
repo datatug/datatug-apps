@@ -1,3 +1,4 @@
+import sourceRights from '@sneat/datatug-semantic/fixtures/client-only-source-rights.json';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -42,6 +43,7 @@ function fixtureFiles(): Record<string, string> {
 async function discover(
   files = fixtureFiles(),
   change?: (contract: RepresentationContract) => void,
+  rights?: { readonly licence: unknown; readonly dataRights?: unknown },
 ) {
   const document = JSON.parse(files['contract.json']) as {
     contracts: RepresentationContract[];
@@ -54,7 +56,8 @@ async function discover(
     repository: 'https://github.com/example/provider',
     commit: 'a'.repeat(40),
     title: 'Synthetic reviewed-helper fixture',
-    licence: 'fixture-only',
+    licence: rights ? rights.licence : 'fixture-only',
+    ...(rights?.dataRights !== undefined ? { dataRights: rights.dataRights } : {}),
     representation_contract: {
       path: 'contract.json',
       sha256: await sha256(files['contract.json']),
@@ -139,6 +142,17 @@ describe('closed reviewed-helper consumer fixture, never production admission', 
       eligible: false,
     });
     expect(suggestions[0].reason).toMatch(/publication is pending/);
+  });
+  it('reads URL-only/text-only source terms without promoting the reviewed fixture to public admission', async () => {
+    for (const declaration of [{ url: 'https://example.org/terms' }, { text: 'Fixture-only source conditions' }]) {
+      const suggestions = await discover(fixtureFiles(), undefined, { licence: declaration, dataRights: sourceRights.structured.sourceRights });
+      expect(suggestions[0].rights.declaration).toEqual(declaration);
+      expect(suggestions[0].sourceRights).toEqual(sourceRights.structured.sourceRights);
+      expect(suggestions[0].eligible).toBe(false);
+    }
+    const unsafe = await discover(fixtureFiles(), undefined, { licence: { url: 'javascript:alert(1)' } });
+    expect(unsafe[0].eligible).toBe(false);
+    expect(unsafe[0].rights?.declaration).toBeUndefined();
   });
   it('rejects exact wrong property, revision, checksum, namespace and reference scope', async () => {
     const changes: ((contract: RepresentationContract) => void)[] = [

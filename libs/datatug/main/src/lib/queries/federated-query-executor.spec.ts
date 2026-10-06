@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runFederatedQuery, type FederatedQueryProgress } from './federated-query-executor';
 import { QueryType, type IQueryDef } from '../models/definition/query-def';
 
+import rightsWire from '@sneat/datatug-semantic/fixtures/client-only-source-rights.json';
+
 vi.mock('@dalgo/indexeddb', () => ({
   IndexedDbDatabase: class { async close(): Promise<void> { /* no scratch rows for direct lookups */ } },
 }));
@@ -30,6 +32,7 @@ describe('visible browser query execution', () => {
     const sourceRequests: Headers[] = [];
     let lookups = 0;
     vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+      if (/\/v1\/databases\/[^/]+$/.test(url)) return response({});
       expect(url).not.toContain('secret');
       if (url.endsWith('/dtql')) {
         sourceRequests.push(new Headers(init.headers));
@@ -82,6 +85,7 @@ describe('visible browser query execution', () => {
     } });
     const requests: Headers[] = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+      if (/\/v1\/databases\/[^/]+$/.test(url)) return response({});
       if (!url.endsWith('/dtql')) return response({ data: { name: 'Alpha' } });
       const headers = new Headers(init.headers);
       requests.push(headers);
@@ -103,4 +107,46 @@ describe('visible browser query execution', () => {
     expect(requests.at(-1)?.get('OVDB-Page-Token')).toBe('cancelled-snapshot');
     expect(requests.at(-1)?.get('OVDB-Page-Close')).toBe('true');
   });
+  it('carries actual raw point/page evidence through the installed lookup engine and blocks missing expected discovery before rows', async () => {
+    vi.stubGlobal('indexedDB', { deleteDatabase: () => { const request: { onsuccess?: () => void } = {}; queueMicrotask(() => request.onsuccess?.()); return request; } });
+    const definition = { ...query, request: { queryType: QueryType.DTQL, text: JSON.stringify({ from: { database: 'fx', name: 'Rates' } }) }, federation: { ...query.federation, expectedServerIdentity: { baseUrl: 'https://ovdb.example.test', serverId: 'fixture-server' }, expectedSourceRights: rightsWire.structured.sourceRights, tables: [{ database: 'fx', name: 'Rates', fields: ['id', 'country_id'] }], lookups: [{ database: 'music', collection: 'Album', fromColumn: 'country_id', fields: [{ source: 'name', target: 'country' }] }] } } as unknown as IQueryDef;
+    const calls: string[] = [];
+    const http = vi.fn<typeof fetch>(async (url, init) => {
+      calls.push(String(url));
+      if (String(url).endsWith('/v1/databases/fx')) return response({ sourceRights: rightsWire.structured.sourceRights });
+      if (String(url).endsWith('/v1/databases/music')) return response({ sourceRights: rightsWire.legacy.sourceRights });
+      if (new Headers(init?.headers).get('OVDB-Page-Close') === 'true') return new Response(null, { status: 204 });
+      if (String(url).endsWith('/dtql')) return response({ ...rightsWire.structured, records: [{ key: '1', data: { id: 1, country_id: 3 } }], snapshotToken: 'fixture-snapshot' });
+      return response({ ...rightsWire.legacy, key: '3', data: { name: 'Fixture album' } });
+    });
+    const rows = vi.fn();
+    const result = await runFederatedQuery(definition, undefined, '', async (page) => { rows(page); }, undefined, 'visible', undefined, undefined, { fetch: http });
+    expect(calls.slice(0, 2)).toEqual(['https://ovdb.example.test/v1/databases/fx', 'https://ovdb.example.test/v1/databases/music']);
+    expect(rows).toHaveBeenCalledOnce();
+    expect(result.sourceRights?.map((right) => right.sourceId)).toEqual([...rightsWire.structured.usedSourceIds, ...rightsWire.legacy.usedSourceIds]);
+    expect(result.usedSourceIds).toEqual([...rightsWire.structured.usedSourceIds, ...rightsWire.legacy.usedSourceIds]);
+    const before = vi.fn();
+    await expect(runFederatedQuery(definition, undefined, '', before, undefined, 'visible', undefined, undefined, { fetch: async () => response({}) })).rejects.toThrow(/Expected structured/);
+    expect(before).not.toHaveBeenCalled();
+  });
+
+  it('rejects unsafe bounded origins, runtime profiles and bounds before any network or authorization exposure', async () => {
+    const bounds = { userRows: 1000, userOffset: 0, identifierKind: 'place' as const, identifierLimit: 100, resultRows: 5000, bytes: 5242880, timeoutMs: 10000, sources: [{ database: 'user', name: 'Customer', keyField: 'Country' }, { database: 'geo', name: 'Countries', keyField: 'raw', parent: { database: 'user', name: 'Customer', field: 'Country' } }] };
+    for (const federation of [
+      { ovdbBaseUrl: 'https://untrusted.example', bounds },
+      { ovdbBaseUrl: 'https://demodb.dev.evil.example/ovdb', bounds },
+      { ovdbBaseUrl: 'https://fixture-token@demodb.dev/ovdb', bounds },
+      { ovdbBaseUrl: 'https://demodb.dev/ovdb?secret=fixture-token', bounds },
+      { ovdbBaseUrl: 'https://cloud.openvaultdb.com', bounds },
+      { ovdbBaseUrl: 'https://demodb.dev/ovdb', bounds: { ...bounds, bytes: 5242881 } },
+      { ovdbBaseUrl: 'https://cloud.openvaultdb.com', bounds: { ...bounds, runtime: { readProfile: 'invalid', databases: {} } } },
+      { ovdbBaseUrl: 'https://demodb.dev/ovdb', bounds, expectedServerIdentity: { baseUrl: 'https://other.example', serverId: 'fixture-server' } },
+    ]) {
+      const network = vi.fn<typeof fetch>(async () => response({}));
+      const definition = { ...query, federation: { ...query.federation, expectedServerIdentity: { baseUrl: federation.ovdbBaseUrl, serverId: 'fixture-server' }, ...federation } } as unknown as IQueryDef;
+      await expect(runFederatedQuery(definition, undefined, 'fixture-token', undefined, undefined, 'full', undefined, undefined, { fetch: network })).rejects.toThrow();
+      expect(network).not.toHaveBeenCalled();
+    }
+  });
+
 });

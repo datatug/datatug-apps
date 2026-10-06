@@ -86,6 +86,7 @@ function fixture(
     signal?: AbortSignal | null;
   }[] = [];
   const http: typeof fetch = vi.fn(async (_url, init) => {
+    if (/\/v1\/databases\/[^/]+$/.test(String(_url))) return response({});
     const query = JSON.parse(String(init?.body));
     const name = query.from.name;
     calls.push({

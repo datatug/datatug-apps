@@ -67,7 +67,7 @@ function validateDescriptor(value: unknown, database: string): LocalResultDescri
   try {
     assertHistoricalNativeGraphPlan(d.executedDefinition.federation.nativeGraph);
     if (graphStableIdentity(d.executedDefinition.federation.nativeGraph) !== d.planIdentity) throw unavailable();
-    decodeResult({ recordset: d.result.recordset, limitations: d.result.limitations, bindingsApplied: d.result.bindingsApplied, provenance: d.result.provenance, truncated: d.result.truncated });
+    decodeResult({ recordset: d.result.recordset, limitations: d.result.limitations, bindingsApplied: d.result.bindingsApplied, provenance: d.result.provenance, truncated: d.result.truncated, ...(d.result.sourceRights !== undefined ? { sourceRights: d.result.sourceRights } : {}), ...(d.result.usedSourceIds !== undefined ? { usedSourceIds: d.result.usedSourceIds } : {}) });
     for (const set of d.result.relatedRecordsets ?? []) {
       if (typeof set.label !== 'string' || typeof set.parentField !== 'string' || set.parentSet !== (set.id === 'locations' ? 'affiliations' : 'locations')) throw unavailable();
       decodeResult({ recordset: set.recordset, limitations: [], bindingsApplied: [], provenance: d.result.provenance, truncated: d.result.truncated });

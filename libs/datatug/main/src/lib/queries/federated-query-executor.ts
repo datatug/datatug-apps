@@ -1,3 +1,4 @@
+import { preflightSourceRights, type FederatedSourceRights } from './federated-source-rights';
 import {
   executeJoinedDTQLQuery,
   executeJoinedDTQLQueryPages,
@@ -24,7 +25,7 @@ import {
   deleteQueryDatabase,
   queryStorageError,
 } from './federated-query-storage';
-import { createBoundedFederationFetch } from './public-data/bounded-federation';
+import { createBoundedFederationFetch, validateBoundedAdmission } from './public-data/bounded-federation';
 import { BoundedRunBudget } from './public-data/bounded-run-budget';
 import type { ImmutableReadReceipt } from './public-data/immutable-federation';
 import { NATIVE_GRAPH_PUBLICATION_BLOCKER } from './public-data/native-graph-contract';
@@ -226,6 +227,19 @@ function ovdbBaseUrl(raw: string): string {
   return url.href.replace(/\/$/, '');
 }
 
+/** Capture one selected origin/identity pair before any I/O; never adopt it from a response. */
+function admittedServerId(config: NonNullable<IQueryDef['federation']>, base: string): string | undefined {
+  const selected = config.expectedServerIdentity;
+  if (selected === undefined) return undefined;
+  if (!selected || typeof selected !== 'object' || Array.isArray(selected) ||
+    Object.keys(selected).some((key) => !['baseUrl', 'serverId'].includes(key)) ||
+    ovdbBaseUrl(selected.baseUrl) !== base || typeof selected.serverId !== 'string' ||
+    !selected.serverId.trim() || new TextEncoder().encode(selected.serverId).length > 4096 ||
+    Array.from(selected.serverId).some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127))
+    throw new Error('The expected OVDB server identity is not bound to this admitted base.');
+  return selected.serverId;
+}
+
 function retryDelay(attempt: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
@@ -278,6 +292,11 @@ export async function runFederatedQuery(
     throw new Error(
       'Bounded public-data runs calculate one selected page. Browse result pages after it finishes.',
     );
+  const config = definition.federation;
+  if (!config) throw new Error('This query has no direct OVDB configuration.');
+  const base = ovdbBaseUrl(config.ovdbBaseUrl);
+  validateBoundedAdmission(base, bounds);
+  const expectedServerId = admittedServerId(config, base);
   const deadline = new AbortController();
   const timer = bounds.runtime
     ? undefined
@@ -302,15 +321,24 @@ export async function runFederatedQuery(
   const runSignal = budget?.signal ?? combined;
   let retained = false;
   try {
+    let preflightBytes = 0;
+    const rights = await preflightSourceRights(base,
+      bounds.sources.filter((source) => !bounds.driver || source.database !== bounds.driver.database || source.name !== bounds.driver.name),
+      observer?.fetch ?? fetch, token ? { Authorization: `Bearer ${token}` } : {}, runSignal,
+      (count) => { preflightBytes += count; if (budget) budget.consumeNetwork(count); else if (preflightBytes > bounds.bytes) throw new Error('Source terms preflight exceeds run byte budget.'); }, definition.federation?.expectedSourceRights, expectedServerId);
     const transport = createBoundedFederationFetch(
-      definition.federation?.ovdbBaseUrl ?? '',
-      bounds,
+      base,
+      budget ? bounds : { ...bounds, bytes: bounds.bytes - preflightBytes },
       observer?.fetch ?? fetch,
       runSignal,
       budget,
+      rights,
     );
     const execute = async (): Promise<FederatedQueryResult> => {
       budget?.beginOutput();
+      // Reserve the bounded evidence ceiling before first rows, including ids
+      // disclosed by undeclared inputs; actual storage bytes remain charged.
+      budget?.consumeOutput(" ".repeat(262144));
       let outputRows = 0;
       const collected: TypedValue[][] = [];
       const result = await runFederatedQueryInternal(
@@ -334,6 +362,8 @@ export async function runFederatedQuery(
         undefined,
         undefined,
         { ...observer, fetch: transport.fetch },
+        rights,
+        true,
       );
       budget?.check();
       runSignal.throwIfAborted();
@@ -355,7 +385,7 @@ export async function runFederatedQuery(
           transport.receipt.sources,
           runtime?.pages,
         ),
-        publicDataBytes: transport.receipt.bytes(),
+        publicDataBytes: transport.receipt.bytes() + (budget ? 0 : preflightBytes),
         ...(runtime
           ? {
               runtimeRead: {
@@ -416,6 +446,8 @@ async function runFederatedQueryInternal(
   onPageReady?: (result: FederatedQueryResult) => void,
   waitForNextPage?: () => Promise<void>,
   observer?: FederatedQueryObserver,
+  capturedRights?: FederatedSourceRights,
+  rightsHandledByTransport = false,
 ): Promise<FederatedQueryResult> {
   // Late-bound so a stubbed global fetch is honoured; an observer's fetch replaces it for this run only.
   const httpFetch: typeof fetch =
@@ -423,6 +455,7 @@ async function runFederatedQueryInternal(
   const config = definition.federation;
   if (!config) throw new Error('This query has no direct OVDB configuration.');
   const baseUrl = ovdbBaseUrl(config.ovdbBaseUrl);
+  const expectedServerId = admittedServerId(config, baseUrl);
   const authHeaders: Record<string, string> = token
     ? { Authorization: `Bearer ${token}` }
     : {};
@@ -439,6 +472,10 @@ async function runFederatedQueryInternal(
     for (const joined of relation.joins) visit(joined.from);
   };
   visit(parsed.from);
+  const rights = capturedRights ?? await preflightSourceRights(baseUrl,
+    [...relations.map((relation) => ({ database: relation.database as string, name: relation.name })),
+      ...(config.lookups ?? []).map((lookup) => ({ database: lookup.database, name: lookup.collection }))],
+    httpFetch, authHeaders, signal, undefined, config.expectedSourceRights, expectedServerId);
   const storeName = `datatug-federated-${observer?.storageId ?? `${Date.now()}-${crypto.randomUUID()}`}`;
   observer?.onStorageOwned?.(storeName);
   const cache = new IndexedDbDatabase({
@@ -581,6 +618,7 @@ async function runFederatedQueryInternal(
             );
           }
           const record = (await response.json()) as OvdbRecord;
+          if (!rightsHandledByTransport) rights.accept({ database: lookup.database, name: lookup.collection }, record as unknown as Record<string, unknown>);
           if (
             !record.data ||
             typeof record.data !== 'object' ||
@@ -623,6 +661,7 @@ async function runFederatedQueryInternal(
       }
     };
     const pagedResponse = (): FederatedQueryResult => ({
+      ...rights.evidence(),
       recordset: {
         columns: (
           outputNames ??
@@ -720,6 +759,7 @@ async function runFederatedQueryInternal(
             );
           sourceRequests++;
           const page = (await response.json()) as OvdbPage;
+          if (!rightsHandledByTransport) rights.accept({ database: relation.database as string, name: relation.name }, page as unknown as Record<string, unknown>);
           if (
             !Array.isArray(page.records) ||
             page.records.length > pageSize ||
@@ -889,6 +929,7 @@ async function runFederatedQueryInternal(
         : (definition.recordsets?.[0]?.columns.map((column) => column.name) ??
           []);
       return {
+        ...rights.evidence(),
         recordset: {
           columns: names.map((name) => ({ name, type: 'unknown' })),
           rows: records.map((row) =>
@@ -1007,6 +1048,7 @@ async function runFederatedQueryInternal(
       : (definition.recordsets?.[0]?.columns.map((column) => column.name) ??
         []);
     return {
+      ...rights.evidence(),
       recordset: {
         columns: names.map((name) => ({ name, type: 'unknown' })),
         rows: records.map((row) => names.map((name) => typed(row.data[name]))),

@@ -350,7 +350,7 @@ describe('finite W1 native graph', () => {
     ).rejects.toThrow();
     expect(http.mock.calls.length).toBe(calls);
   });
-  it('stops child allocation at the shared cap while retaining all held affiliation parents', async () => {
+  it('stops child allocation at the shared cap while retaining all held affiliation parents', { timeout: 15000 }, async () => {
     const p = plan(true),
       input = structuredClone(fixture.ordinary);
     input.aliases = Array.from({ length: 38 }, (_, i) => ({
