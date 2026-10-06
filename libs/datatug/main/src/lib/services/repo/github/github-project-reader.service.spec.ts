@@ -489,6 +489,59 @@ describe('GithubProjectReaderService', () => {
   });
 
   describe('getQuery', () => {
+    it('reopens serialized public-data pins and federation without fetching lookup data', async () => {
+      const publicData = {
+        source: {
+          schema: {
+            repository: 'https://github.com/example/source',
+            revision: 'b'.repeat(40),
+            path: 'model.json',
+            sha256: 'c'.repeat(64),
+          },
+          module: 'synthetic',
+          entity: 'Customer',
+          property: 'Country',
+          datatype: 'string',
+          namespace: 'fixture-only',
+        },
+        canonical: {
+          directory: { revision: 'd'.repeat(40), sha256: 'e'.repeat(64) },
+        },
+        snapshot: { revision: 'f'.repeat(40), sha256: '1'.repeat(64) },
+        eligible: false,
+        unavailableReason:
+          'Synthetic pending scenario, no production admission.',
+      };
+      const federation = {
+        ovdbBaseUrl: 'https://cloud.openvaultdb.com',
+        tables: [],
+        bounds: { driver: { source: 'saved exact data pin' } },
+      };
+      const { service, gh } = setup({
+        'demo-project-1/queries/customers/customer-invoices.query.json':
+          JSON.stringify({
+            id: 'customer-invoices',
+            type: 'DTQL',
+            publicData,
+            federation,
+          }),
+        'demo-project-1/queries/customers/customer-invoices.query.dtql': '{}',
+      });
+      const result = await first(
+        service.getQuery(PROJECT_ID, 'customers/customer-invoices'),
+      );
+      expect(result).toMatchObject({
+        publicData,
+        federation,
+        type: 'DTQL',
+        text: '{}',
+      });
+      expect(gh.requests.every((call) => !call.url.includes('/dtql'))).toBe(
+        true,
+      );
+    });
+
+
     it('resolves a bare id, fetching both the definition and its sidecar body', async () => {
       const { service } = setup({
         'demo-project-1/queries/customers/customer-invoices.query.json':
