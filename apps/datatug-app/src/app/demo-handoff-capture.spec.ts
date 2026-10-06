@@ -809,6 +809,7 @@ describe('demo hand-off capture', () => {
     it.each([
       '/project/github.com/someone/else/chat',
       '/project/github.com/datatug/chinook-demo-evil/chat',
+      '/project/github.com/datatug/chinook-demo/tree/HEAD/dir/-/chat',
       '/project/github.com/datatug/chinook-demo/tree/abc1234def5678/-/chat',
     ])(
       'any other address (%s) drops the question, keeps the language, and still strips the address bar',
