@@ -35,7 +35,8 @@ import { activePage } from './journey/helpers/active-page';
 /**
  * `DATATUG_E2E_GITHUB_FAKE=<a checkout of datatug/datatug-demo-project>` serves that checkout in place of the three
  * hosts (see `helpers/fake-github.ts`): no network, no share of the 60 anonymous API requests an hour. Unset, this
- * file talks to the real GitHub, as it always did.
+ * file talks to the real GitHub, as it always did. CI checks out the current canonical commit, verifies its live
+ * commit/tree/raw contracts, then uses that checkout for these browser journeys and request-budget assertions.
  */
 const GITHUB_FAKE_DIR = process.env['DATATUG_E2E_GITHUB_FAKE'];
 
