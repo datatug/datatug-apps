@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Injectable, inject } from '@angular/core';
+import { Injectable, Injector, inject } from '@angular/core';
 import { ISneatApiService, SneatApiService } from '@sneat/api';
 import { PrivateTokenStoreService } from '@sneat/auth-core';
 import {
@@ -24,6 +24,7 @@ import {
 } from '../../core/project-context';
 import { IProjectFull, IProjectSummary } from '../../models/definition/project';
 import { buildAgentUrl } from '../repo/agent-url';
+import { SharedProjectSummaryService } from './shared-project-summary.service';
 import { DatatugStoreServiceFactory } from '../repo/datatug-store-service-factory.service';
 
 // `providedIn: 'root'` — this service caches project summaries per project
@@ -34,6 +35,7 @@ import { DatatugStoreServiceFactory } from '../repo/datatug-store-service-factor
 // `EnvironmentService` inject it.
 @Injectable({ providedIn: 'root' })
 export class ProjectService {
+  private readonly injector = inject(Injector);
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly http = inject(HttpClient);
   private readonly privateTokenStoreService = inject(PrivateTokenStoreService);
@@ -44,8 +46,7 @@ export class ProjectService {
   // store type the factory resolves is `firestore`, which is the same root
   // singleton this injection returns, so this is behaviour-preserving. Same
   // pattern as `EnvironmentService` / `SchemaService`.
-  private readonly sneatApiService: ISneatApiService =
-    inject(SneatApiService);
+  private readonly sneatApiService: ISneatApiService = inject(SneatApiService);
   private readonly datatugStoreServiceFactory = inject(
     DatatugStoreServiceFactory,
   );
@@ -72,6 +73,8 @@ export class ProjectService {
         () => 'Can not watch project by empty target parameter',
       );
     }
+    if (projectRef.spaceID !== undefined)
+      return this.injector.get(SharedProjectSummaryService).watch(projectRef);
     if (projectRef.storeId === 'agent') {
       throw new Error('TEMP DEBUG: storeId === agent, expected firestore');
     }
@@ -110,6 +113,10 @@ export class ProjectService {
   }
 
   public getFull(projectRef: IProjectRef): Observable<IProjectFull> {
+    if (projectRef?.spaceID !== undefined)
+      return throwError(
+        () => new Error('Shared project full reads are unavailable'),
+      );
     console.warn('The getFull() method should not be called from UI');
     if (!projectRef) {
       throw new Error('target is a required parameter for getFull()');

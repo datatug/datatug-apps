@@ -12,7 +12,7 @@ import {
 } from 'rxjs/operators';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { newRandomId } from '@sneat/random';
-import { IProjectRef } from '../../core/project-context';
+import { IProjectRef, equalProjectRef } from '../../core/project-context';
 import {
   AppContext,
   AppContextService,
@@ -41,6 +41,7 @@ const reEnv = /^\/env\/(.+?)(?:\/|$)/,
 interface IAddressedLocation {
   readonly storeId?: string;
   readonly projectId?: string;
+  readonly spaceID?: string;
   /** `''`, or a path starting with `/`: the page of the project, as typed. */
   readonly rest: string;
 }
@@ -141,6 +142,7 @@ export class DatatugNavContextService {
   public readonly currentEnvDbTable = this.$currentEnvDbTable.asObservable();
 
   private navEndSubscription: Subscription;
+  private projectSummarySubscription?: Subscription;
 
   constructor() {
     const appContext = this.appContext;
@@ -148,10 +150,7 @@ export class DatatugNavContextService {
     this.currentProject.subscribe({
       next: (p) => {
         const projRef = projectContextService.current;
-        if (
-          projRef?.projectId !== p?.ref?.projectId ||
-          projRef?.storeId !== p?.ref?.storeId
-        ) {
+        if (!equalProjectRef(projRef, p?.ref)) {
           projectContextService.setCurrent(p?.ref);
         }
       },
@@ -207,28 +206,30 @@ export class DatatugNavContextService {
     if (projectContext) {
       this.$currentStoreId.next(projectContext?.ref.storeId);
     }
+    this.projectSummarySubscription?.unsubscribe();
     this.$currentProj.next(projectContext);
     if (!projectContext) {
       return;
     }
     const target = this.projectContextService.current;
     const projRef = projectContext?.ref;
-    if (
-      target?.storeId !== projectContext?.ref?.storeId ||
-      target?.projectId !== projectContext?.ref?.projectId
-    ) {
+    if (!equalProjectRef(target, projectContext.ref)) {
       this.projectContextService.setCurrent(projRef);
     }
     if (projectContext?.ref?.projectId) {
-      this.projectService.watchProjectSummary(projRef).subscribe({
-        next: (summary) => this.onProjectSummaryChanged(projRef, summary),
-        error: (err) =>
-          this.errorLogger.logError(
-            err,
-            'Navigation context failed to get project summary',
-            { show: false },
-          ),
-      });
+      this.projectSummarySubscription = this.projectService
+        .watchProjectSummary(projRef)
+        .subscribe({
+          next: (summary) => this.onProjectSummaryChanged(projRef, summary),
+          error: (err) => {
+            this.onProjectSummaryChanged(projRef, undefined);
+            this.errorLogger.logError(
+              err,
+              'Navigation context failed to get project summary',
+              { show: false },
+            );
+          },
+        });
     }
   }
 
@@ -236,18 +237,21 @@ export class DatatugNavContextService {
     projRef: IProjectRef,
     summary?: IProjectSummary,
   ): void {
+    const currentProj = this.$currentProj.value;
+    if (!currentProj || !equalProjectRef(currentProj.ref, projRef)) return;
     if (!summary) {
-      // this.errorLogger.logError(new Error('Returned empty project summary'),
-      // 	`project: ${projectContext.brief.id} @ ${projectContext.storeId}`);
+      this.$currentProj.next({
+        ref: currentProj.ref,
+        store: currentProj.store,
+      });
       return;
     }
-    if (!summary.id) {
-      summary = { ...summary, id: projRef.projectId };
-    }
-    const currentProj = this.$currentProj.value;
-    if (currentProj?.ref.projectId === summary.id) {
-      this.$currentProj.next({ ...currentProj, summary });
-    }
+    if (!summary.id) summary = { ...summary, id: projRef.projectId };
+    this.$currentProj.next({
+      ...currentProj,
+      ...(projRef.spaceID !== undefined ? { brief: undefined } : {}),
+      summary,
+    });
   }
 
   public setCurrentEnvironment(id?: string): void {
@@ -317,9 +321,7 @@ export class DatatugNavContextService {
       }
       return { rest: '' };
     }
-    return parsed.ok
-      ? parsed
-      : { storeId: storeIdOfStorePath(path), rest: '' };
+    return parsed.ok ? parsed : { storeId: storeIdOfStorePath(path), rest: '' };
   }
 
   private processUrl(rawUrl: string): void {
@@ -328,6 +330,12 @@ export class DatatugNavContextService {
     try {
       this.processStore(where);
       this.processProject(where);
+      if (where.spaceID !== undefined) {
+        this.$currentEnv.next(undefined);
+        this.$currentEnvDb.next(undefined);
+        this.$currentEnvDbTable.next(undefined);
+        return;
+      }
       this.processEnvironment(where.rest);
       this.processEnvDb(where.rest);
       this.processEnvDbTable(where.rest);
@@ -351,7 +359,8 @@ export class DatatugNavContextService {
     if (
       !currentProject ||
       currentProject.ref.projectId !== id ||
-      currentProject.ref.storeId !== currentStoreId
+      currentProject.ref.storeId !== currentStoreId ||
+      currentProject.ref.spaceID !== where.spaceID
     ) {
       // let storeType: DatatugProjStoreType;
       // if (currentStoreId === STORE_ID_GITHUB_COM) {
@@ -362,7 +371,11 @@ export class DatatugNavContextService {
       const projectContext: IProjectContext = {
         // brief: {access: undefined, title: undefined},
         store: { ref: parseDatatugStoreRef(currentStoreId) },
-        ref: { projectId: id, storeId: currentStoreId || '' },
+        ref: {
+          projectId: id,
+          storeId: currentStoreId || '',
+          ...(where.spaceID !== undefined ? { spaceID: where.spaceID } : {}),
+        },
       };
       this.setCurrentProject(projectContext);
     }
@@ -404,6 +417,7 @@ export class DatatugNavContextService {
    * context") — the whole point is to survive a reload within this tab,
    * never to carry across tabs. */
   private lastEnvStorageKey(): string | undefined {
+    if (this.$currentProj.value?.ref.spaceID !== undefined) return undefined;
     const storeId = this.$currentStoreId.value;
     const projectId = this.$currentProj.value?.ref.projectId;
     if (!storeId || !projectId) {

@@ -1,5 +1,5 @@
 import { ActivatedRoute } from '@angular/router';
-import { combineLatest, Observable } from 'rxjs';
+import { Observable } from 'rxjs';
 import { routingParamProjectId } from '../../../core/datatug-routing-params';
 import {
   equalProjectRef,
@@ -39,19 +39,27 @@ export class ProjectTracker {
       takeUntil(stopNotifier),
       map((paramMap) => paramMap.get(routingParamProjectId) || ''),
     );
-    this.projectRef = combineLatest([
-      this.storeTracker.storeId,
-      this.projectId,
-    ]).pipe(
-      filter(([storeId, projectId]) => !!storeId && !!projectId),
-      map(([storeId, projectId]) => ({ storeId: storeId || '', projectId })),
+    this.projectRef = route.paramMap.pipe(
+      map((params) => ({
+        storeId: params.get('storeId') || '',
+        projectId: params.get(routingParamProjectId) || '',
+        ...(params.has('spaceId')
+          ? { spaceID: params.get('spaceId') || '' }
+          : {}),
+      })),
+      filter(isValidProjectRef),
+      takeUntil(stopNotifier),
     );
     const project = window.history.state?.project as IProjectContext;
-    if (isValidProjectRef(project?.ref)) {
+    if (
+      isValidProjectRef(project?.ref) &&
+      project.ref.spaceID === undefined &&
+      !route.snapshot?.paramMap.has('spaceId')
+    ) {
       this.projectRef = this.projectRef.pipe(startWith(project.ref));
     }
     this.projectRef = this.projectRef.pipe(
-      distinctUntilChanged(equalProjectRef),
+      distinctUntilChanged((a, b) => equalProjectRef(a, b)),
     );
   }
 }

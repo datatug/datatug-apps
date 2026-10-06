@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, input } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
   IonCard,
@@ -29,5 +29,6 @@ import { ProjectMenuTopComponent } from '../project-menu-top/project-menu-top.co
   ],
 })
 export class ProjectMenuComponent {
+  readonly metadataOnly = input(false);
   public tab: 'project' | 'queries' | 'boards' = 'project';
 }

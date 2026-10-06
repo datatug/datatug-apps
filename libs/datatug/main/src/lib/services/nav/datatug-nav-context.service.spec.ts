@@ -461,3 +461,72 @@ describe('DatatugNavContextService — reads the address with parseProjectUrl (G
     },
   );
 });
+
+describe('Space-scoped navigation metadata lifecycle', () => {
+  it('cancels previous scope and clears missing/error metadata without reading environments', async () => {
+    const { Subject } = await import('rxjs');
+    const reads = [
+      new Subject<{ id: string; title: string; access: string } | undefined>(),
+      new Subject<{ id: string; title: string; access: string } | undefined>(),
+      new Subject<{ id: string; title: string; access: string } | undefined>(),
+    ];
+    const watch = vi
+      .fn()
+      .mockReturnValueOnce(reads[0])
+      .mockReturnValueOnce(reads[1])
+      .mockReturnValueOnce(reads[2]);
+    const env = { getEnvSummary: vi.fn() };
+    TestBed.configureTestingModule({
+      providers: [
+        DatatugNavContextService,
+        { provide: AppContextService, useValue: { currentApp: of(undefined) } },
+        {
+          provide: ProjectContextService,
+          useValue: {
+            current: undefined,
+            setCurrent: vi.fn(),
+            current$: of(undefined),
+          },
+        },
+        { provide: Router, useValue: { events: NEVER } },
+        { provide: ProjectService, useValue: { watchProjectSummary: watch } },
+        { provide: EnvironmentService, useValue: env },
+        {
+          provide: ErrorLogger,
+          useValue: {
+            logError: vi.fn(),
+            logErrorHandler: vi.fn(() => vi.fn()),
+          },
+        },
+      ],
+    });
+    const service = TestBed.inject(DatatugNavContextService);
+    const values: unknown[] = [];
+    service.currentProject.subscribe((v) => values.push(v));
+    const p = { storeId: 'firestore', projectId: 'same' };
+    service.setCurrentProject({ ref: p });
+    reads[0].next({ id: 'same', title: 'Private', access: 'private' });
+    service.setCurrentProject({ ref: { ...p, spaceID: 'S1' } });
+    expect(reads[0].observed).toBe(false);
+    reads[1].next({ id: 'same', title: 'S1', access: 'protected' });
+    service.setCurrentProject({ ref: { ...p, spaceID: 'S2' } });
+    reads[2].next({ id: 'same', title: 'S2', access: 'protected' });
+    reads[1].next({ id: 'same', title: 'Late S1', access: 'protected' });
+    expect(values.at(-1)).toMatchObject({
+      ref: { spaceID: 'S2' },
+      summary: { title: 'S2' },
+    });
+    reads[2].next(undefined);
+    expect(values.at(-1)).toEqual({
+      ref: { ...p, spaceID: 'S2' },
+      store: undefined,
+    });
+    reads[2].next({ id: 'same', title: 'Restored S2', access: 'protected' });
+    reads[2].error(new Error('permission-denied'));
+    expect(values.at(-1)).toEqual({
+      ref: { ...p, spaceID: 'S2' },
+      store: undefined,
+    });
+    expect(env.getEnvSummary).not.toHaveBeenCalled();
+  });
+});

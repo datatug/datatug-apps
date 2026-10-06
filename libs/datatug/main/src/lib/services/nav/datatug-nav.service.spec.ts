@@ -40,6 +40,29 @@ describe('DatatugNavService', () => {
     expect(service).toBeTruthy();
   });
 
+  it('navigates a shared reference to its scoped overview and refuses queries/chat/table pages', () => {
+    const project: IProjectContext = {
+      ref: { storeId: 'firestore', spaceID: 'S1', projectId: 'same' },
+    };
+    service.goProject(project, 'overview');
+    expect(navMock.navigateRoot).toHaveBeenCalledWith(
+      '/space/S1/store/firestore/project/same/overview',
+      undefined,
+    );
+    navMock.navigateRoot?.mockClear();
+    service.goProject(project, 'queries');
+    service.goProject(project, 'chat');
+    service.goTable({
+      project,
+      env: 'local',
+      db: 'db',
+      schema: 'main',
+      name: 'table',
+    });
+    expect(navMock.navigateRoot).not.toHaveBeenCalled();
+    expect(navMock.navigateForward).not.toHaveBeenCalled();
+  });
+
   describe('goStore', () => {
     it('should navigate to store page', () => {
       const store = {

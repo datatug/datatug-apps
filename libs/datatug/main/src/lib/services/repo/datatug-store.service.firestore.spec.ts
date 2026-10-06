@@ -80,3 +80,72 @@ describe('DatatugStoreFirestoreService.getProjectSummary', () => {
     expect(docMock).not.toHaveBeenCalled();
   });
 });
+
+describe('Space-owned project metadata path', () => {
+  let service: DatatugStoreFirestoreService;
+  beforeEach(() => {
+    docMock.mockClear();
+    docDataMock.mockClear();
+    TestBed.configureTestingModule({
+      providers: [
+        DatatugStoreFirestoreService,
+        { provide: Firestore, useValue: {} },
+      ],
+    });
+    service = TestBed.inject(DatatugStoreFirestoreService);
+  });
+  it('reads two Spaces and the private root separately using the released DTO fields', () => {
+    docDataMock.mockReturnValue(
+      of({
+        title: 'Shared',
+        access: 'protected',
+        created: { at: '2026-10-06T00:00:00Z' },
+      }),
+    );
+    const values: unknown[] = [];
+    for (const spaceID of ['S1', 'S2'])
+      service
+        .getSharedProjectSummary({
+          storeId: 'firestore',
+          spaceID,
+          projectId: 'same',
+        })
+        .subscribe((v) => values.push(v));
+    service.getProjectSummary('same').subscribe();
+    expect(docMock.mock.calls).toEqual([
+      [expect.anything(), 'spaces/S1/ext/datatug/projects/same'],
+      [expect.anything(), 'spaces/S2/ext/datatug/projects/same'],
+      [expect.anything(), 'datatug_projects', 'same'],
+    ]);
+    expect(values).toEqual([
+      { id: 'same', title: 'Shared', access: 'protected' },
+      { id: 'same', title: 'Shared', access: 'protected' },
+    ]);
+  });
+  it('missing shared data does not try a private record', () => {
+    docDataMock.mockReturnValue(of(undefined));
+    const values: unknown[] = [];
+    service
+      .getSharedProjectSummary({
+        storeId: 'firestore',
+        spaceID: 'S1',
+        projectId: 'same',
+      })
+      .subscribe((v) => values.push(v));
+    expect(values).toEqual([undefined]);
+    expect(docMock).toHaveBeenCalledTimes(1);
+  });
+  it.each(['', '../S1', 'x/y'])(
+    'invalid Space %s cannot touch storage',
+    (spaceID) => {
+      service
+        .getSharedProjectSummary({
+          storeId: 'firestore',
+          spaceID,
+          projectId: 'same',
+        })
+        .subscribe({ error: () => undefined });
+      expect(docMock).not.toHaveBeenCalled();
+    },
+  );
+});

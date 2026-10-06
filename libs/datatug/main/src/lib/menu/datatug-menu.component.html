@@ -29,7 +29,7 @@
       (projectChanged)="onProjectChanged($event)"
     />
   }
-  @if (currentProject()) {
+  @if (currentProject() && currentProject()?.ref?.spaceID === undefined) {
     <sneat-datatug-menu-env-selector />
   }
 </ion-card>
@@ -38,7 +38,9 @@
 
 <!--<sneat-datatug-table-meta-card *ngIf="table" [meta]="table?.meta"/>-->
 @if (currentProject()) {
-  <sneat-datatug-project-menu />
+  <sneat-datatug-project-menu
+    [metadataOnly]="currentProject()?.ref?.spaceID !== undefined"
+  />
 }
 
 <ion-card>
