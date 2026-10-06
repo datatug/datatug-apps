@@ -176,7 +176,20 @@ describe('the routes as registered', () => {
     expect(old?.redirectTo).toBeUndefined();
   });
 
-  it('every other route of the table is as it was', () => {
+  it('guards the shared metadata route and exposes only root and overview children', () => {
+    const shared = datatugRoutes.find(
+      (r) => r.path === 'space/:spaceId/store/:storeId/project/:projectId',
+    );
+    expect(shared?.canMatch).toHaveLength(1);
+    expect(shared?.children?.map((r) => r.path)).toEqual(['', 'overview']);
+    expect(
+      shared?.children?.every((r) => typeof r.loadComponent === 'function'),
+    ).toBe(true);
+    expect(shared?.loadChildren).toBeUndefined();
+    expect(shared?.redirectTo).toBeUndefined();
+  });
+
+  it('retains the ordered route table with the shared metadata route before private stores', () => {
     expect(
       datatugRoutes
         .filter((r) => !githubProjectRoutes.includes(r))
@@ -191,6 +204,7 @@ describe('the routes as registered', () => {
       'explore/:spaceId',
       'explore-vault',
       'signed-out',
+      'space/:spaceId/store/:storeId/project/:projectId',
       'store/:storeId',
       'agent',
     ]);
