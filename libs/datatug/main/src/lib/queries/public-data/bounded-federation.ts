@@ -1,3 +1,4 @@
+import type { FederatedSourceRights } from '../federated-source-rights';
 import {
   readJsonDriver,
   validateJsonDriver,
@@ -133,6 +134,7 @@ export function createBoundedFederationFetch(
   httpFetch: typeof fetch,
   signal: AbortSignal,
   budget?: BoundedRunBudget,
+  rights?: FederatedSourceRights,
 ): { fetch: typeof fetch; receipt: BoundedReadReceipt; readPage?: (sourceId: string, page: import('./immutable-federation').OrdinaryPage) => Promise<readonly BoundedRecord[]> } {
   validateBounds(bounds);
   if (!(PUBLIC_DATA_OVDB_BASES as readonly string[]).includes(base))
@@ -140,7 +142,7 @@ export function createBoundedFederationFetch(
   if (bounds.runtime) {
     if (!budget)
       throw new Error('Immutable transport requires the shared run budget.');
-    return createImmutableFederationFetch(base, bounds, httpFetch, budget);
+    return createImmutableFederationFetch(base, bounds, httpFetch, budget, rights);
   }
   if (base !== 'https://demodb.dev/ovdb')
     throw new Error('This route requires the explicit immutable read profile.');
@@ -267,6 +269,7 @@ export function createBoundedFederationFetch(
             snapshotToken?: string;
             snapshotExpiresAt?: string;
           };
+          rights?.accept(source, page as unknown as Record<string, unknown>);
           if (!Array.isArray(page.records) || page.records.length > pageSize)
             throw new Error(
               'The bounded source returned too many rows or an invalid page.',

@@ -1,3 +1,4 @@
+import type { SourceRightsEvidence } from './source-rights';
 import type { AuthorizationResult } from './authorization';
 // Frozen wire types for the DataTug agent HTTP contract described in the hub
 // Feature's normative transport appendix:
@@ -158,7 +159,7 @@ export interface ResultProvenance {
 
 /** The exact success envelope for every read/execute endpoint below except
  * `semantic/columns` and `semantic/related`. */
-export interface Result {
+export interface Result extends SourceRightsEvidence {
   readonly recordset: {
     readonly columns: readonly ResultColumn[];
     readonly rows: readonly (readonly TypedValue[])[];

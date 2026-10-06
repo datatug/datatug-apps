@@ -1,6 +1,7 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, map } from 'rxjs';
+import { decodeSourceRightsEvidence } from '../../contract/source-rights';
 import { DATATUG_AGENT_BASE_URL } from '../tokens/datatug-agent-base-url.token';
 import {
   ApplicableQueriesRequest,
@@ -73,7 +74,7 @@ export class SemanticApiService {
     return this.http.post<SemanticRelatedRowsResponse>(
       `${this.baseUrl}/semantic/related/rows`,
       request,
-    );
+    ).pipe(map((response) => ({ ...response, ...decodeSourceRightsEvidence(response as unknown as Record<string, unknown>) })));
   }
 
   /** `POST /datatug/queries/applicable` */
@@ -91,6 +92,6 @@ export class SemanticApiService {
     return this.http.post<RunQueryResponse>(
       `${this.baseUrl}/exec/run_query`,
       request,
-    );
+    ).pipe(map((response) => ({ ...response, ...decodeSourceRightsEvidence(response as unknown as Record<string, unknown>) })));
   }
 }

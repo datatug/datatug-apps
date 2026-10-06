@@ -15,6 +15,9 @@ import {
 import { DATATUG_AGENT_BASE_URL } from '../tokens/datatug-agent-base-url.token';
 import { SemanticApiService } from './semantic-api.service';
 
+import sourceRights from '../../contract/fixtures/source-rights.json';
+import resultFixture from '../../contract/fixtures/result_live.json';
+
 const BASE_URL = 'http://localhost:8989/datatug';
 
 const SCOPE = {
@@ -219,4 +222,18 @@ describe('SemanticApiService', () => {
 
     expect(result).toEqual(fixture);
   });
+  it('captures result source evidence independently of later declaration changes and rejects unsafe responses', () => {
+    const request = { ...SCOPE, queryId: 'fixture', parameters: {}, mode: 'live' as const };
+    const wire = { ...structuredClone(resultFixture), ...structuredClone(sourceRights.structured) };
+    let result: RunQueryResponse | undefined;
+    service.runQuery(request).subscribe((value) => { result = value; });
+    httpMock.expectOne(`${BASE_URL}/exec/run_query`).flush(wire);
+    wire.sourceRights[0].declaration.text = 'Changed provider declaration';
+    expect(result?.sourceRights?.[0].declaration.text).toContain('Example source-data terms.');
+    let failure: unknown;
+    service.runQuery(request).subscribe({ error: (error: unknown) => { failure = error; } });
+    httpMock.expectOne(`${BASE_URL}/exec/run_query`).flush({ ...wire, sourceRights: [{ ...wire.sourceRights[0], declaration: { url: 'javascript:alert(1)' } }] });
+    expect(failure).toBeInstanceOf(Error);
+  });
+
 });

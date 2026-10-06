@@ -3,3 +3,4 @@
 export * from './types';
 export * from './decoders';
 export * from './adapt';
+export * from './source-rights';

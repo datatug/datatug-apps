@@ -70,6 +70,7 @@ function serve(
   }[] = [];
   const http: typeof fetch = vi.fn(async (_input, init) => {
     expect(init?.redirect).toBe('error');
+    if (/\/v1\/databases\/[^/]+$/.test(String(_input))) return response({});
     const query = JSON.parse(String(init?.body)) as {
       from: { name: string };
       where?: {
@@ -399,7 +400,7 @@ describe('bounded public-data federation preparation (fixture requests, not depl
         'full',
         undefined,
         undefined,
-        { fetch: async () => new Response('{}', { status: 410 }) },
+        { fetch: async (url) => /\/v1\/databases\/[^/]+$/.test(String(url)) ? response({}) : new Response('{}', { status: 410 }) },
       ),
     ).rejects.toThrow(/expired/);
     expect(() =>

@@ -1,3 +1,4 @@
+import { SourceRightsNoticeComponent } from '@sneat/datatug-semantic';
 import { HttpErrorResponse } from '@angular/common/http';
 import { PublicDataService } from '../../public-data/public-data.service';
 import { ConfiguredPublicDataSourcesService } from '../../public-data/configured-public-data-sources.service';
@@ -359,6 +360,7 @@ export function extractLinkedEntityNames(
     IonSpinner,
     IonText,
     IonTextarea,
+    SourceRightsNoticeComponent,
     LimitationHeaderComponent,
   ],
 })

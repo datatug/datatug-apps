@@ -1,3 +1,4 @@
+import { dataLicenseSummary, decodeDataLicenseDeclaration, decodeRightsInventory, type SourceRight, type DataLicenseDeclaration } from '@sneat/datatug-semantic';
 import {
   readNativeGraphMetadata,
   type CheckedNativeGraphMetadata,
@@ -112,8 +113,10 @@ export interface PublicDataSuggestion {
   readonly eligible: boolean;
   readonly reason: string;
   readonly snapshot?: MetadataObject;
+  readonly sourceRights?: readonly SourceRight[];
   readonly rights?: {
     readonly source: string;
+    readonly declaration?: DataLicenseDeclaration;
     readonly model: string;
     readonly meaning: string;
   };
@@ -347,6 +350,7 @@ export async function verifyRepresentationContract(
 ): Promise<{
   snapshot: MetadataObject;
   rights: PublicDataSuggestion['rights'];
+  sourceRights?: readonly SourceRight[];
   sourceFacts?: SourceFacts;
 }> {
   const target = contract.target;
@@ -553,7 +557,8 @@ export async function verifyRepresentationContract(
     ancestry,
   );
   const rights = {
-    source: string(provider['licence'], 'source licence'),
+    source: dataLicenseSummary(provider['licence']),
+    declaration: decodeDataLicenseDeclaration(provider['licence']),
     model: string(targetRecord['licence'], 'model licence'),
     meaning: string(graphRecord['meaning_licence'], 'meaning licence'),
   };
@@ -576,7 +581,7 @@ export async function verifyRepresentationContract(
       (ref) => referenceFile(ref, provider, false),
       ancestry,
     );
-    return { snapshot, rights, sourceFacts };
+    return { snapshot, rights, sourceFacts, sourceRights: decodeRightsInventory(provider) };
   }
   const keysFile = referenceFile(contract.target.keys, provider, false);
   const bridgeFile = referenceFile(contract.bridge.artifact, provider, false);
@@ -614,8 +619,10 @@ export async function verifyRepresentationContract(
   );
   return {
     snapshot,
+    sourceRights: decodeRightsInventory(provider),
     rights: {
-      source: string(provider['licence'], 'source licence'),
+      source: dataLicenseSummary(provider['licence']),
+    declaration: decodeDataLicenseDeclaration(provider['licence']),
       model: string(targetRecord['licence'], 'model licence'),
       meaning: string(graphRecord['meaning_licence'], 'meaning licence'),
     },
@@ -655,6 +662,8 @@ export async function discoverRepresentations(
       'commit',
       'representation_contract',
       'licence',
+      'sourceRights',
+      'dataRights',
     ]);
     if (provider['representation_contract'] === undefined) continue;
     let attachment: ImmutableFile | undefined;
@@ -693,6 +702,7 @@ export async function discoverRepresentations(
           provider,
           attachment,
           graph,
+          sourceRights: decodeRightsInventory(provider),
           matchesSource,
           compatibility: matchesSource ? 'compatible' : 'different-source',
           eligible: false,

@@ -50,3 +50,5 @@ export {
 export { InvestigationContextBarComponent } from './lib/components/investigation-context-bar/investigation-context-bar.component';
 export { LimitationHeaderComponent } from './lib/components/limitation-header/limitation-header.component';
 export { SemanticMarkerComponent } from './lib/components/semantic-marker/semantic-marker.component';
+
+export * from './lib/components/source-rights-notice.component';

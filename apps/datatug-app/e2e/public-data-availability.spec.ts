@@ -396,3 +396,53 @@ test('reopening a saved pending plan keeps its pins without automatic metadata o
     contentType: 'application/json',
   });
 });
+
+// Rendering-only contract fixture: no admitted ECB/provider and no query success claim.
+const rightsWire = JSON.parse(readFileSync(resolve('libs/datatug/semantic/src/contract/fixtures/source-rights.json'), 'utf8'));
+async function showCapturedFixture(page: Page, evidence: unknown) {
+  await page.locator('sneat-datatug-public-data-page').last().evaluate((element, evidence) => {
+    const component = (window as unknown as { ng: { getComponent(el: Element): unknown } }).ng.getComponent(element) as { result: { set(value: unknown): void }; sourceText: { set(value: string): void } };
+    component.result.set({ recordset: { columns: [], rows: [] }, limitations: [], bindingsApplied: [], truncated: false, provenance: { mode: 'local', executionProfile: 'public', source: 'Rendering contract fixture only', observedAt: '2026-10-05T00:00:00Z' }, ...(evidence as object) });
+    component.sourceText.set('Current selection changed after the captured fixture');
+  }, evidence);
+}
+test('captured source rights render safely at result use and changing current metadata stays idle', async ({ page }, testInfo) => {
+  const traffic = await installMetadata(page);
+  await page.goto(`${project}/public-data`);
+  const view = activePage(page);
+  await expect(view.getByRole('button', { name: 'Load configured sources', exact: true })).toBeEnabled();
+  const right = { ...rightsWire.structured.sourceRights[0], attribution: { text: 'Fixture credit <img src=x onerror=alert(1)>' }, freeSource: { text: 'Fixture data freely available', url: 'https://example.org/free' }, transformations: ['XML restructured into rows'] };
+  await showCapturedFixture(page, { sourceRights: [right], usedSourceIds: rightsWire.structured.usedSourceIds });
+  const notice = view.getByTestId('source-rights-notice');
+  await expect(notice).toContainText('Used by this result');
+  await expect(notice).toContainText('server-declared metadata');
+  await expect(notice).toContainText('They do not assign a licence to the joined or derived result');
+  await expect(notice).toContainText('Fixture credit <img');
+  await expect(notice.locator('img')).toHaveCount(0);
+  await expect(notice.getByRole('link', { name: 'Source terms (external)', exact: true })).toHaveAttribute('href', 'https://example.org/terms#reuse');
+  await expect(notice.getByRole('link', { name: 'Original free source (external)' })).toHaveAttribute('rel', 'noopener noreferrer');
+  await notice.getByText('Source terms text', { exact: true }).click();
+  await expect(notice).toContainText('Preserve source attribution.');
+  await page.locator('sneat-datatug-public-data-page').last().evaluate((element) => {
+    const component = (window as unknown as { ng: { getComponent(el: Element): unknown } }).ng.getComponent(element) as { sourceText: { set(value: string): void } };
+    component.sourceText.set('New current declaration URL: https://example.org/new-terms');
+  });
+  await expect(notice.getByRole('link', { name: 'Source terms (external)', exact: true })).toHaveAttribute('href', 'https://example.org/terms#reuse');
+  await showCapturedFixture(page, rightsWire.multiSource);
+  await expect(notice.locator('article')).toHaveCount(3);
+  await expect(notice).toContainText('Planned input; not reported used');
+  await showCapturedFixture(page, rightsWire.mixedDeclaredUndeclared);
+  await expect(notice).toContainText('Source data terms not declared: ovdb:fixture-server/unlicensed/Notes');
+  await showCapturedFixture(page, {});
+  await expect(notice).toContainText('Source data terms not declared.');
+  await showCapturedFixture(page, { sourceRights: [{ ...right, declaration: { text: '<script>fixture only</script>' } }] });
+  await notice.getByText('Source terms text', { exact: true }).click();
+  await expect(notice).toContainText('<script>fixture only</script>');
+  await expect(notice.locator('script')).toHaveCount(0);
+  await showCapturedFixture(page, { sourceRights: [{ ...right, declaration: { url: 'javascript:alert(1)' } }] });
+  await expect(notice.getByRole('alert')).toContainText('malformed or unsafe evidence');
+  await expect(notice.getByRole('link')).toHaveCount(0);
+  await idleWithoutData(page, traffic);
+  expect(traffic.metadata).toEqual([]);
+  await testInfo.attach('source-rights-rendering-receipt', { body: JSON.stringify({ fixtureOnly: true, ...traffic }, null, 2), contentType: 'application/json' });
+});

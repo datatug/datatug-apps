@@ -1,3 +1,4 @@
+import type { FederatedSourceRights } from '../federated-source-rights';
 import { parseDTQL } from '@dalgo/core';
 import type {
   BoundedFederation,
@@ -111,6 +112,7 @@ export function createImmutableFederationFetch(
   bounds: BoundedFederation,
   http: typeof fetch,
   budget: BoundedRunBudget,
+  rights?: FederatedSourceRights,
 ): {
   fetch: typeof fetch;
   receipt: BoundedReadReceipt;
@@ -354,6 +356,7 @@ export function createImmutableFederationFetch(
         throw new Error(
           'The immutable source returned an invalid ordinary page or a snapshot token.',
         );
+      rights?.accept(source, document as unknown as Record<string, unknown>);
       const keys = new Set<string>();
       for (const row of document.records) {
         if (

@@ -1,3 +1,4 @@
+import { decodeSourceRightsEvidence } from './source-rights';
 import {
   isAuthorizationResult,
   type AuthorizationResult,
@@ -439,7 +440,7 @@ export function decodeResult(v: unknown, path = 'result'): Result {
   const obj = requireObject(v, path);
   requireExactKeys(
     obj,
-    ['recordset', 'limitations', 'bindingsApplied', 'provenance', 'truncated'],
+    ['recordset', 'limitations', 'bindingsApplied', 'provenance', 'truncated', 'sourceRights', 'usedSourceIds'],
     path,
   );
   const recordsetObj = requireObject(obj['recordset'], `${path}.recordset`);
@@ -463,6 +464,7 @@ export function decodeResult(v: unknown, path = 'result'): Result {
     `${path}.bindingsApplied`,
   ).map((b, i) => decodeBinding(b, `${path}.bindingsApplied[${i}]`));
   return {
+    ...decodeSourceRightsEvidence(obj),
     recordset: { columns, rows },
     limitations,
     bindingsApplied,

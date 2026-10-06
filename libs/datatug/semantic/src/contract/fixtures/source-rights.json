@@ -1,0 +1,181 @@
+{
+  "legacy": {
+    "sourceRights": [
+      {
+        "sourceId": "ovdb:fixture-server/music/Album",
+        "source": {
+          "serverId": "fixture-server",
+          "databaseId": "music",
+          "recordset": "Album"
+        },
+        "declaration": {
+          "spdx": "MIT"
+        },
+        "declarationScope": "database",
+        "declaredAt": {
+          "serverId": "fixture-server",
+          "databaseId": "music"
+        },
+        "evidenceOrigin": "legacy-metadata",
+        "pins": [],
+        "transformations": []
+      }
+    ],
+    "usedSourceIds": [
+      "ovdb:fixture-server/music/Album"
+    ]
+  },
+  "structured": {
+    "sourceRights": [
+      {
+        "sourceId": "ovdb:fixture-server/fx/Rates",
+        "source": {
+          "serverId": "fixture-server",
+          "databaseId": "fx",
+          "recordset": "Rates"
+        },
+        "declaration": {
+          "name": "Source reuse conditions",
+          "url": "https://example.org/terms#reuse",
+          "text": "Example source-data terms.\nPreserve source attribution."
+        },
+        "declarationScope": "server",
+        "declaredAt": {
+          "serverId": "fixture-server"
+        },
+        "evidenceOrigin": "server-declared",
+        "pins": [],
+        "transformations": []
+      }
+    ],
+    "usedSourceIds": [
+      "ovdb:fixture-server/fx/Rates"
+    ]
+  },
+  "multiSource": {
+    "sourceRights": [
+      {
+        "sourceId": "ovdb:fixture-server/fx/Notes",
+        "source": {
+          "serverId": "fixture-server",
+          "databaseId": "fx",
+          "recordset": "Notes"
+        },
+        "declaration": {
+          "url": "https://example.org/notes-terms"
+        },
+        "declarationScope": "recordset",
+        "declaredAt": {
+          "serverId": "fixture-server",
+          "databaseId": "fx",
+          "recordset": "Notes"
+        },
+        "evidenceOrigin": "server-declared",
+        "pins": [],
+        "transformations": []
+      },
+      {
+        "sourceId": "ovdb:fixture-server/fx/Rates",
+        "source": {
+          "serverId": "fixture-server",
+          "databaseId": "fx",
+          "recordset": "Rates"
+        },
+        "declaration": {
+          "name": "Source reuse conditions",
+          "url": "https://example.org/terms#reuse",
+          "text": "Example source-data terms.\nPreserve source attribution."
+        },
+        "declarationScope": "server",
+        "declaredAt": {
+          "serverId": "fixture-server"
+        },
+        "evidenceOrigin": "server-declared",
+        "pins": [],
+        "transformations": []
+      },
+      {
+        "sourceId": "ovdb:fixture-server/music/Album",
+        "source": {
+          "serverId": "fixture-server",
+          "databaseId": "music",
+          "recordset": "Album"
+        },
+        "declaration": {
+          "spdx": "MIT"
+        },
+        "declarationScope": "database",
+        "declaredAt": {
+          "serverId": "fixture-server",
+          "databaseId": "music"
+        },
+        "evidenceOrigin": "legacy-metadata",
+        "pins": [],
+        "transformations": []
+      }
+    ],
+    "usedSourceIds": [
+      "ovdb:fixture-server/fx/Rates",
+      "ovdb:fixture-server/music/Album"
+    ]
+  },
+  "directoryShape": {
+    "dataRights": [
+      {
+        "sourceId": "ovdb:fixture-server/fx/Rates",
+        "source": {
+          "serverId": "fixture-server",
+          "databaseId": "fx",
+          "recordset": "Rates"
+        },
+        "declaration": {
+          "name": "Source reuse conditions",
+          "url": "https://example.org/terms#reuse",
+          "text": "Example source-data terms.\nPreserve source attribution."
+        },
+        "declarationScope": "server",
+        "declaredAt": {
+          "serverId": "fixture-server"
+        },
+        "evidenceOrigin": "server-declared",
+        "pins": [],
+        "transformations": []
+      }
+    ]
+  },
+  "specialCharacterIdentity": {
+    "source": {
+      "serverId": "fixture-server",
+      "databaseId": "fx",
+      "recordset": "Rates / 100%"
+    },
+    "sourceId": "ovdb:fixture-server/fx/Rates%20%2F%20100%25"
+  },
+  "mixedDeclaredUndeclared": {
+    "sourceRights": [
+      {
+        "sourceId": "ovdb:fixture-server/music/Album",
+        "source": {
+          "serverId": "fixture-server",
+          "databaseId": "music",
+          "recordset": "Album"
+        },
+        "declaration": {
+          "spdx": "MIT"
+        },
+        "declarationScope": "database",
+        "declaredAt": {
+          "serverId": "fixture-server",
+          "databaseId": "music"
+        },
+        "evidenceOrigin": "legacy-metadata",
+        "pins": [],
+        "transformations": []
+      }
+    ],
+    "usedSourceIds": [
+      "ovdb:fixture-server/music/Album",
+      "ovdb:fixture-server/unlicensed/Notes"
+    ]
+  }
+}

@@ -1,3 +1,4 @@
+import { SourceRightsNoticeComponent } from '../source-rights-notice.component';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
   ChangeDetectionStrategy,
@@ -93,6 +94,7 @@ export interface OpenQueryRequest {
   selector: 'sneat-datatug-context-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    SourceRightsNoticeComponent,
     IonList,
     IonListHeader,
     IonItem,

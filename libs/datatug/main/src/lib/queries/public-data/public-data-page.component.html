@@ -245,6 +245,13 @@
                   }}
                 </p>
               }
+              @if (suggestion.sourceRights) {
+                <sneat-datatug-source-rights-notice [evidence]="{sourceRights: suggestion.sourceRights}" />
+              }
+              @if (suggestion.rights?.declaration; as declaration) {
+                @if (declaration.url) { <p><a [href]="declaration.url" target="_blank" rel="noopener noreferrer">Source terms (external)</a></p> }
+                @if (declaration.text) { <details><summary>Source terms text</summary><p style="white-space: pre-wrap">{{ declaration.text }}</p></details> }
+              }
               @if (suggestion.graph; as graph) {
                 <p>
                   Organization context preserves each affiliation and the
@@ -524,6 +531,7 @@
           Observed {{ output.provenance.observedAt }}.
           {{ output.provenance.source }}
         </p>
+        <sneat-datatug-source-rights-notice [evidence]="output" />
         <details>
           <summary>Result provenance and transfer size</summary>
           <p>Read {{ output.publicDataBytes }} bytes.</p>

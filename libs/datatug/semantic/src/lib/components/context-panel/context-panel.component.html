@@ -48,6 +48,7 @@
         </ion-item>
       }
       @if (expandedRows()[lookup.lookupId]; as result) {
+        <sneat-datatug-source-rights-notice [evidence]="result" />
         <ion-item lines="none" class="context-panel__related-rows">
           <ion-label>
             @for (row of result.recordset.rows; track $index) {

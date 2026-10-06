@@ -1,3 +1,4 @@
+import { SourceRightsNoticeComponent } from '@sneat/datatug-semantic';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -70,6 +71,7 @@ import { saveRuntimePins, runtimePlanIdentity } from './saved-runtime-pins';
     .result-scroll:focus-visible { outline: 2px solid var(--ion-color-primary); }
   `],
   imports: [
+    SourceRightsNoticeComponent,
     FormsModule,
     RouterLink,
     IonBackButton,

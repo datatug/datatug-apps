@@ -29,6 +29,7 @@
       "@datatug/product-profiles": ["./libs/datatug/product-profiles/src/public_api.ts"],
       "@sneat/datatug-main": ["./libs/datatug/main/src/public_api.ts"],
       "@sneat/datatug-semantic": ["./libs/datatug/semantic/src/public_api.ts"],
+      "@sneat/datatug-semantic/fixtures/source-rights.json": ["./libs/datatug/semantic/src/contract/fixtures/source-rights.json"],
       "@sneat/core/testing": ["./libs/testing/src/test-setup.ts"]
     }
   },
