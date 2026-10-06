@@ -978,6 +978,36 @@ test.describe('the start-chat confirmation page (founder ruling 2026-10-03)', ()
   const OTHER_ROOT = '/project/github.com/acme/demo';
   const enc = encodeURIComponent(MARKER);
 
+  test('the site short folder start-chat link keeps its fragment question through the canonical redirect and reload', async ({
+    page, context, baseURL,
+  }) => {
+    const short = '/project/github.com/datatug/datatug-demo-project/demo-project-1/start-chat';
+    const watched = await openAndWatch(page, context, baseURL ?? '', `${short}#msg=${enc}&lang=ru`, async () => {
+      await expect(page.locator('#demo-holding-message')).toBeVisible({ timeout: 20_000 });
+    });
+    await expect(page.locator('blockquote')).toHaveText(MARKER);
+    expect(new URL(page.url()).pathname + new URL(page.url()).search + new URL(page.url()).hash).toBe(CANONICAL_START_CHAT);
+    await expectNoQuestion(page, watched, true);
+    await page.reload();
+    await expect(page.locator('blockquote')).toHaveText(MARKER);
+    expect(new URL(page.url()).pathname + new URL(page.url()).search + new URL(page.url()).hash).toBe(CANONICAL_START_CHAT);
+  });
+
+  test('the short folder start-chat GET form strips its query before analytics and keeps the question on reload', async ({
+    page, context, baseURL,
+  }) => {
+    const short = '/project/github.com/datatug/datatug-demo-project/demo-project-1/start-chat';
+    const watched = await openAndWatch(page, context, baseURL ?? '', `${short}?msg=${enc}&lang=ru`, async () => {
+      await expect(page.locator('#demo-holding-message')).toBeVisible({ timeout: 20_000 });
+    });
+    await expect(page.locator('blockquote')).toHaveText(MARKER);
+    expect(new URL(page.url()).pathname + new URL(page.url()).search + new URL(page.url()).hash).toBe(CANONICAL_START_CHAT);
+    await expectNoQuestion(page, watched, true);
+    await page.reload();
+    await expect(page.locator('blockquote')).toHaveText(MARKER);
+    expect(new URL(page.url()).pathname + new URL(page.url()).search + new URL(page.url()).hash).toBe(CANONICAL_START_CHAT);
+  });
+
   // The five addresses of the ruling, and the old ones, each on the trusted project and on another one: the question
   // is in no address, history entry, title, storage but the one per-tab hand-off key (trusted only), or request.
   const ADDRESSES: [label: string, path: (root: string) => string, own: (root: string) => string][] = [

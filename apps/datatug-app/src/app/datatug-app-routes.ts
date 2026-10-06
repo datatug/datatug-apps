@@ -69,6 +69,16 @@ export const legacyChinookDemoMatcher = (segments: UrlSegment[], group: UrlSegme
   return { consumed: segments };
 };
 
+/** The site's historic short folder spelling names only this one shared project. */
+export const canonicalDemoShortMatcher = (segments: UrlSegment[], group: UrlSegmentGroup) => {
+  if (hasOutletGroup(group) || segments.some((segment) => !/^[\x20-\x7e]+$/.test(segment.path))) return null;
+  const names = segments.map((segment) => segment.path.toLowerCase());
+  if (names.length !== 5 && names.length !== 6) return null;
+  if (names.slice(0, 5).join('/') !== 'project/github.com/datatug/datatug-demo-project/demo-project-1') return null;
+  if (names.length === 6 && names[5] !== 'start-chat') return null;
+  return { consumed: segments };
+};
+
 export const redirectLegacyChinookDemo: CanMatchFn = (_route, segments) => {
   if (!datatugProfileOnly()) return inject(Router).parseUrl('/');
   const names = segments.map((segment) => segment.path);
@@ -123,6 +133,9 @@ export const redirectLegacyChinookDemo: CanMatchFn = (_route, segments) => {
   return new RedirectCommand(destination, { replaceUrl: true });
 };
 
+// Both exact aliases use the same canonical destination and question rekeying.
+export const redirectCanonicalDemoShort = redirectLegacyChinookDemo;
+
 /** The hand-off page belongs to the DataTug product profile only. */
 export const datatugProfileOnly = (): boolean => inject(PRODUCT_PROFILE).id === 'datatug';
 
@@ -165,6 +178,11 @@ export const routes: Routes = [
   {
     matcher: legacyChinookDemoMatcher,
     canMatch: [redirectLegacyChinookDemo],
+    loadComponent: demoHoldingPage,
+  },
+  {
+    matcher: canonicalDemoShortMatcher,
+    canMatch: [redirectCanonicalDemoShort],
     loadComponent: demoHoldingPage,
   },
   {

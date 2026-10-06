@@ -789,4 +789,14 @@ test.describe('GitHub-store project — addresses (G-A1c)', () => {
       .poll(() => pathOf(page), { timeout: 15_000 })
       .toBe(PROJECT_URL);
   });
+
+  test('the published short folder link resolves to the shared project and its 18 connections', async ({ page }) => {
+    await page.goto('/project/github.com/datatug/datatug-demo-project/demo-project-1');
+    await expect.poll(() => pathOf(page), { timeout: 15_000 }).toBe(PROJECT_URL);
+    const connections = activePage(page).locator('sneat-datatug-demodb-connections ion-card').first();
+    await expect(connections.getByText('Database connections')).toBeVisible({ timeout: 15_000 });
+    await expect(connections.locator('ion-item')).toHaveCount(18);
+    await expect(connections.getByText('chinook / sqlite')).toBeVisible();
+    await expect(connections.getByText('employees / ingitdb')).toBeVisible();
+  });
 });
