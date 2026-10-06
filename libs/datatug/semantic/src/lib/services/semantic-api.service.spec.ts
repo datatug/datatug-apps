@@ -15,7 +15,7 @@ import {
 import { DATATUG_AGENT_BASE_URL } from '../tokens/datatug-agent-base-url.token';
 import { SemanticApiService } from './semantic-api.service';
 
-import sourceRights from '../../contract/fixtures/source-rights.json';
+import sourceRights from '../../contract/fixtures/client-only-source-rights.json';
 import resultFixture from '../../contract/fixtures/result_live.json';
 
 const BASE_URL = 'http://localhost:8989/datatug';

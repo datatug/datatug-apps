@@ -1,4 +1,4 @@
-import sourceRights from '@sneat/datatug-semantic/fixtures/source-rights.json';
+import sourceRights from '@sneat/datatug-semantic/fixtures/client-only-source-rights.json';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';

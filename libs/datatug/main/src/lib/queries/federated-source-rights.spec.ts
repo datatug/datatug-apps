@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { decodeSourceRights, type SourceRight } from '@sneat/datatug-semantic';
-import fixtures from '@sneat/datatug-semantic/fixtures/source-rights.json';
+import fixtures from '@sneat/datatug-semantic/fixtures/client-only-source-rights.json';
 import {
   FederatedSourceRights,
   preflightSourceRights,
@@ -32,6 +32,8 @@ describe('frozen source terms before browser federation output', () => {
           mutable.filter((right) => right.source.databaseId === 'music'),
         ],
       ]),
+      undefined,
+      'fixture-server',
     );
     const rate = rights.find(
       (right) => right.source.recordset === 'Rates',
@@ -80,6 +82,8 @@ describe('frozen source terms before browser federation output', () => {
     const session = new FederatedSourceRights(
       targets,
       new Map([['music', decodeSourceRights(fixtures.legacy.sourceRights)]]),
+      undefined,
+      'fixture-server',
     );
     session.accept(targets[0], fixtures.legacy);
     session.accept(targets[1], {
@@ -90,7 +94,7 @@ describe('frozen source terms before browser federation output', () => {
       session.accept(targets[1], {
         usedSourceIds: ['ovdb:unknown-server/unlicensed/Notes'],
       }),
-    ).toThrow(/identity changed/);
+    ).toThrow(/Unknown/);
     expect(() =>
       session.accept(targets[1], {
         usedSourceIds: ['ovdb:fixture-server/private/Notes'],
@@ -108,20 +112,39 @@ describe('frozen source terms before browser federation output', () => {
   it('fails closed when configured structured evidence is missing, changed or outside the plan', () => {
     const expected = decodeSourceRights(fixtures.structured.sourceRights);
     expect(
-      () => new FederatedSourceRights(planned, new Map(), expected),
+      () =>
+        new FederatedSourceRights(
+          planned,
+          new Map(),
+          expected,
+          'fixture-server',
+        ),
     ).toThrow(/Expected structured/);
     expect(
       () =>
-        new FederatedSourceRights(planned, inventories(), [
-          { ...expected[0], declaration: { text: 'Other expected terms' } },
-        ]),
+        new FederatedSourceRights(
+          planned,
+          inventories(),
+          [{ ...expected[0], declaration: { text: 'Other expected terms' } }],
+          'fixture-server',
+        ),
     ).toThrow(/Expected structured/);
     expect(
-      () => new FederatedSourceRights([], inventories(), expected),
+      () =>
+        new FederatedSourceRights(
+          [],
+          inventories(),
+          expected,
+          'fixture-server',
+        ),
     ).toThrow(/Unplanned expected/);
     expect(
-      new FederatedSourceRights(planned, inventories(), expected).evidence()
-        .sourceRights,
+      new FederatedSourceRights(
+        planned,
+        inventories(),
+        expected,
+        'fixture-server',
+      ).evidence().sourceRights,
     ).toEqual(rights);
   });
   it('retains Go-owned escaping for a used undeclared source', () => {
@@ -130,7 +153,12 @@ describe('frozen source terms before browser federation output', () => {
       database: source.source.databaseId,
       name: source.source.recordset,
     };
-    const session = new FederatedSourceRights([target], new Map());
+    const session = new FederatedSourceRights(
+      [target],
+      new Map(),
+      undefined,
+      'fixture-server',
+    );
     session.accept(target, { usedSourceIds: [source.sourceId] });
     expect(session.evidence().usedSourceIds).toEqual([source.sourceId]);
   });
@@ -151,6 +179,8 @@ describe('frozen source terms before browser federation output', () => {
       { Authorization: 'Bearer fixture-only' },
       undefined,
       charge,
+      undefined,
+      'fixture-server',
     );
     expect(network).toHaveBeenCalledTimes(2);
     expect(network.mock.calls.map(([url]) => String(url))).toEqual([
@@ -178,6 +208,7 @@ describe('frozen source terms before browser federation output', () => {
         signal,
         undefined,
         expected,
+        'fixture-server',
       );
     const redirected = response({});
     Object.defineProperty(redirected, 'redirected', { value: true });
@@ -211,5 +242,101 @@ describe('frozen source terms before browser federation output', () => {
     );
     await expect(pending).rejects.toThrow(/fixture cancelled/);
     expect(cancelled).toHaveBeenCalled();
+  });
+  it('rejects a first undeclared wrong-server response and any new evidence without admitted identity', () => {
+    const target = { database: 'fx', name: 'Rates' };
+    const session = new FederatedSourceRights(
+      [target],
+      new Map(),
+      undefined,
+      'fixture-server',
+    );
+    expect(() =>
+      session.accept(target, { usedSourceIds: ['ovdb:other-server/fx/Rates'] }),
+    ).toThrow(/Unknown/);
+    const legacy = new FederatedSourceRights([target], new Map());
+    for (const evidence of [
+      fixtures.structured,
+      { usedSourceIds: ['ovdb:fixture-server/fx/Rates'] },
+      { sourceRights: [], usedSourceIds: [] },
+    ])
+      expect(() => legacy.accept(target, evidence)).toThrow(
+        /requires the admitted server identity/,
+      );
+    expect(
+      () =>
+        new FederatedSourceRights(
+          [target],
+          new Map(),
+          decodeSourceRights(fixtures.structured.sourceRights),
+        ),
+    ).toThrow(/admitted server identity/);
+  });
+  it('rejects an extra structured server and preserves distinct planned source identities', async () => {
+    const target = { database: 'fx', name: 'Rates' };
+    const original = rights.find(
+      (right) => right.source.recordset === 'Rates',
+    ) as SourceRight;
+    const other = {
+      ...original,
+      sourceId: 'ovdb:other-server/fx/Rates',
+      source: { ...original.source, serverId: 'other-server' },
+      declaredAt: { serverId: 'other-server' },
+    };
+    expect(
+      () =>
+        new FederatedSourceRights(
+          [target],
+          new Map([['fx', [original, other]]]),
+          [original],
+          'fixture-server',
+        ),
+    ).toThrow(/admitted server identity/);
+    await expect(
+      preflightSourceRights(
+        'https://ovdb.example.test',
+        [target],
+        async () => response({ sourceRights: [original, other] }),
+        {},
+        undefined,
+        undefined,
+        [original],
+        'fixture-server',
+      ),
+    ).rejects.toThrow(/identity differs/);
+    expect(
+      new FederatedSourceRights(
+        planned,
+        inventories(),
+        undefined,
+        'fixture-server',
+      ).evidence().sourceRights,
+    ).toEqual(rights);
+  });
+  it('preserves a legacy server with no discovery endpoint, while expected sessions fail closed on missing discovery', async () => {
+    const network = vi.fn<typeof fetch>(
+      async () => new Response('{}', { status: 405 }),
+    );
+    const legacy = await preflightSourceRights(
+      'https://ovdb.example.test',
+      planned,
+      network,
+      {},
+    );
+    expect(network).not.toHaveBeenCalled();
+    legacy.accept(planned[0], {});
+    expect(legacy.evidence()).toEqual({});
+    await expect(
+      preflightSourceRights(
+        'https://ovdb.example.test',
+        planned,
+        network,
+        {},
+        undefined,
+        undefined,
+        decodeSourceRights(fixtures.structured.sourceRights),
+        'fixture-server',
+      ),
+    ).rejects.toThrow(/unavailable/);
   });
 });

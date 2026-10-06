@@ -39,15 +39,28 @@ export class FederatedSourceRights {
     planned: readonly PlannedRightsSource[],
     inventories: ReadonlyMap<string, readonly SourceRight[] | undefined>,
     expectedSourceRights?: readonly SourceRight[],
+    private readonly expectedServerId?: string,
   ) {
     for (const target of planned) {
-      const entries = decodeSourceRights(
+      const inventory = decodeSourceRights(
         inventories.get(target.database) ?? [],
-      ).filter(
+      );
+      if (
+        inventory.some(
+          (right) =>
+            !expectedServerId || right.source.serverId !== expectedServerId,
+        )
+      )
+        throw new Error(
+          'Source discovery differs from the admitted server identity.',
+        );
+      const entries = inventory.filter(
         (right) =>
           right.source.databaseId === target.database &&
           right.source.recordset === target.name,
       );
+      if (entries.length > 1)
+        throw new Error('Conflicting preflight source terms identity.');
       this.bySource.set(sourceKey(target), entries);
       for (const right of entries) {
         const prior = this.entries.get(right.sourceId);
@@ -57,6 +70,10 @@ export class FederatedSourceRights {
       }
     }
     for (const right of decodeSourceRights(expectedSourceRights ?? [])) {
+      if (!expectedServerId || right.source.serverId !== expectedServerId)
+        throw new Error(
+          'Expected source terms differ from the admitted server identity.',
+        );
       if (
         !planned.some(
           (target) =>
@@ -74,6 +91,14 @@ export class FederatedSourceRights {
       throw new Error('Source terms inventory exceeds metadata budget.');
   }
   accept(target: PlannedRightsSource, response: Record<string, unknown>): void {
+    if (
+      this.expectedServerId === undefined &&
+      (response['sourceRights'] !== undefined ||
+        response['usedSourceIds'] !== undefined)
+    )
+      throw new Error(
+        'New source terms evidence requires the admitted server identity.',
+      );
     const expected = this.bySource.get(sourceKey(target));
     if (!expected) throw new Error('Unplanned source terms identity.');
     const evidence = decodeSourceRightsEvidence(response);
@@ -96,6 +121,8 @@ export class FederatedSourceRights {
       try {
         matches =
           pieces.length === 3 &&
+          this.expectedServerId !== undefined &&
+          decodeURIComponent(pieces[0]) === this.expectedServerId &&
           decodeURIComponent(pieces[1]) === target.database &&
           decodeURIComponent(pieces[2]) === target.name;
       } catch {
@@ -138,7 +165,12 @@ export async function preflightSourceRights(
   signal?: AbortSignal,
   onBytes?: (bytes: number) => void,
   expectedSourceRights?: readonly SourceRight[],
+  expectedServerId?: string,
 ): Promise<FederatedSourceRights> {
+  // Old servers and saved plans need no new discovery endpoint. This mode can
+  // accept only old responses without any new source identity evidence.
+  if (expectedServerId === undefined)
+    return new FederatedSourceRights(planned, new Map(), expectedSourceRights);
   const inventories = new Map<string, readonly SourceRight[] | undefined>();
   let encoded = 0;
   for (const database of new Set(planned.map((source) => source.database))) {
@@ -202,12 +234,24 @@ export async function preflightSourceRights(
     const inventory = decodeRightsInventory(
       document as Record<string, unknown>,
     );
-    if (inventory?.some((right) => right.source.databaseId !== database))
+    if (
+      inventory?.some(
+        (right) =>
+          right.source.databaseId !== database ||
+          !expectedServerId ||
+          right.source.serverId !== expectedServerId,
+      )
+    )
       throw new Error('Source discovery terms identity differs.');
     encoded += size(inventory ?? []);
     if (encoded > 262144)
       throw new Error('Source terms preflight exceeds metadata budget.');
     inventories.set(database, inventory);
   }
-  return new FederatedSourceRights(planned, inventories, expectedSourceRights);
+  return new FederatedSourceRights(
+    planned,
+    inventories,
+    expectedSourceRights,
+    expectedServerId,
+  );
 }

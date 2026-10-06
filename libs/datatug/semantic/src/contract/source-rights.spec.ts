@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import fixtures from './fixtures/source-rights.json';
+import fixtures from './fixtures/client-only-source-rights.json';
 import legacyResult from './fixtures/result_live.json';
 import { decodeResult } from './decoders';
 import {

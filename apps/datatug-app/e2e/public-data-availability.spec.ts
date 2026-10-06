@@ -398,7 +398,7 @@ test('reopening a saved pending plan keeps its pins without automatic metadata o
 });
 
 // Rendering-only contract fixture: no admitted ECB/provider and no query success claim.
-const rightsWire = JSON.parse(readFileSync(resolve('libs/datatug/semantic/src/contract/fixtures/source-rights.json'), 'utf8'));
+const rightsWire = JSON.parse(readFileSync(resolve('libs/datatug/semantic/src/contract/fixtures/client-only-source-rights.json'), 'utf8'));
 async function showCapturedFixture(page: Page, evidence: unknown) {
   await page.locator('sneat-datatug-public-data-page').last().evaluate((element, evidence) => {
     const component = (window as unknown as { ng: { getComponent(el: Element): unknown } }).ng.getComponent(element) as { result: { set(value: unknown): void }; sourceText: { set(value: string): void } };

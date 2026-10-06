@@ -25,7 +25,7 @@ import {
   deleteQueryDatabase,
   queryStorageError,
 } from './federated-query-storage';
-import { createBoundedFederationFetch } from './public-data/bounded-federation';
+import { createBoundedFederationFetch, validateBoundedAdmission } from './public-data/bounded-federation';
 import { BoundedRunBudget } from './public-data/bounded-run-budget';
 import type { ImmutableReadReceipt } from './public-data/immutable-federation';
 import { NATIVE_GRAPH_PUBLICATION_BLOCKER } from './public-data/native-graph-contract';
@@ -227,6 +227,19 @@ function ovdbBaseUrl(raw: string): string {
   return url.href.replace(/\/$/, '');
 }
 
+/** Capture one selected origin/identity pair before any I/O; never adopt it from a response. */
+function admittedServerId(config: NonNullable<IQueryDef['federation']>, base: string): string | undefined {
+  const selected = config.expectedServerIdentity;
+  if (selected === undefined) return undefined;
+  if (!selected || typeof selected !== 'object' || Array.isArray(selected) ||
+    Object.keys(selected).some((key) => !['baseUrl', 'serverId'].includes(key)) ||
+    ovdbBaseUrl(selected.baseUrl) !== base || typeof selected.serverId !== 'string' ||
+    !selected.serverId.trim() || new TextEncoder().encode(selected.serverId).length > 4096 ||
+    Array.from(selected.serverId).some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127))
+    throw new Error('The expected OVDB server identity is not bound to this admitted base.');
+  return selected.serverId;
+}
+
 function retryDelay(attempt: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
@@ -279,6 +292,11 @@ export async function runFederatedQuery(
     throw new Error(
       'Bounded public-data runs calculate one selected page. Browse result pages after it finishes.',
     );
+  const config = definition.federation;
+  if (!config) throw new Error('This query has no direct OVDB configuration.');
+  const base = ovdbBaseUrl(config.ovdbBaseUrl);
+  validateBoundedAdmission(base, bounds);
+  const expectedServerId = admittedServerId(config, base);
   const deadline = new AbortController();
   const timer = bounds.runtime
     ? undefined
@@ -304,12 +322,12 @@ export async function runFederatedQuery(
   let retained = false;
   try {
     let preflightBytes = 0;
-    const rights = await preflightSourceRights(definition.federation?.ovdbBaseUrl ?? '',
+    const rights = await preflightSourceRights(base,
       bounds.sources.filter((source) => !bounds.driver || source.database !== bounds.driver.database || source.name !== bounds.driver.name),
       observer?.fetch ?? fetch, token ? { Authorization: `Bearer ${token}` } : {}, runSignal,
-      (count) => { preflightBytes += count; if (budget) budget.consumeNetwork(count); else if (preflightBytes > bounds.bytes) throw new Error('Source terms preflight exceeds run byte budget.'); }, definition.federation?.expectedSourceRights);
+      (count) => { preflightBytes += count; if (budget) budget.consumeNetwork(count); else if (preflightBytes > bounds.bytes) throw new Error('Source terms preflight exceeds run byte budget.'); }, definition.federation?.expectedSourceRights, expectedServerId);
     const transport = createBoundedFederationFetch(
-      definition.federation?.ovdbBaseUrl ?? '',
+      base,
       budget ? bounds : { ...bounds, bytes: bounds.bytes - preflightBytes },
       observer?.fetch ?? fetch,
       runSignal,
@@ -437,6 +455,7 @@ async function runFederatedQueryInternal(
   const config = definition.federation;
   if (!config) throw new Error('This query has no direct OVDB configuration.');
   const baseUrl = ovdbBaseUrl(config.ovdbBaseUrl);
+  const expectedServerId = admittedServerId(config, baseUrl);
   const authHeaders: Record<string, string> = token
     ? { Authorization: `Bearer ${token}` }
     : {};
@@ -456,7 +475,7 @@ async function runFederatedQueryInternal(
   const rights = capturedRights ?? await preflightSourceRights(baseUrl,
     [...relations.map((relation) => ({ database: relation.database as string, name: relation.name })),
       ...(config.lookups ?? []).map((lookup) => ({ database: lookup.database, name: lookup.collection }))],
-    httpFetch, authHeaders, signal, undefined, config.expectedSourceRights);
+    httpFetch, authHeaders, signal, undefined, config.expectedSourceRights, expectedServerId);
   const storeName = `datatug-federated-${observer?.storageId ?? `${Date.now()}-${crypto.randomUUID()}`}`;
   observer?.onStorageOwned?.(storeName);
   const cache = new IndexedDbDatabase({

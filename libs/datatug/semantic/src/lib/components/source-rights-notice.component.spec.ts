@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { describe, expect, it, vi } from 'vitest';
-import fixtures from '../../contract/fixtures/source-rights.json';
+import fixtures from '../../contract/fixtures/client-only-source-rights.json';
 import { SourceRightsNoticeComponent } from './source-rights-notice.component';
 
 describe('captured result source notices', () => {

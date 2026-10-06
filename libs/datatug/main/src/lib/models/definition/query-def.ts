@@ -41,6 +41,8 @@ export interface IQueryDef extends IQueryItem {
   recordsets?: IRecordsetDef[];
   federation?: {
     readonly ovdbBaseUrl: string;
+    /** One admitted origin/identity pair; not independent source eligibility. */
+    readonly expectedServerIdentity?: { readonly baseUrl: string; readonly serverId: string };
     /** Required captured evidence for structured sources; metadata is never admission authority. */
     readonly expectedSourceRights?: readonly import('@sneat/datatug-semantic').SourceRight[];
     readonly bounds?: BoundedFederation;

@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { TypedValue } from '@sneat/datatug-semantic';
-import rightsFixture from '@sneat/datatug-semantic/fixtures/source-rights.json';
+import rightsFixture from '@sneat/datatug-semantic/fixtures/client-only-source-rights.json';
 import type { IQueryDef } from '../models/definition/query-def';
 import type { FederatedQueryResult } from './federated-query-executor';
 import {
