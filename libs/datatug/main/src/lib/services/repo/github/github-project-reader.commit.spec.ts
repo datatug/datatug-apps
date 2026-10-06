@@ -27,8 +27,8 @@ import {
 } from '../../../nav/github-project-address';
 import { DatatugStoreGithubService } from '../datatug-store.service.github';
 
-const DEMO_REPO = 'datatug/datatug-demo-projects';
-const DEMO_ID = 'datatug-demo-projects@datatug@demo-project-1';
+const DEMO_REPO = 'datatug/datatug-demo-project';
+const DEMO_ID = 'datatug-demo-project@datatug@demo-project-1';
 const CHINOOK_REPO = 'datatug/chinook-demo';
 const CHINOOK_ID = 'chinook-demo@datatug@';
 const SHA_1 = fakeSha(0x111);
@@ -120,7 +120,7 @@ describe('GithubProjectReaderService: the commit, the cache, the failover (desig
       ]);
       expect(await first(reader.readInfo(DEMO_ID))).toEqual({
         org: 'datatug',
-        repo: 'datatug-demo-projects',
+        repo: 'datatug-demo-project',
         state: 'resolved',
         commit: SHA_1,
         fromMirror: false,
@@ -449,22 +449,18 @@ describe('GithubProjectReaderService: the commit, the cache, the failover (desig
 
   describe('the commit of an address (design 3.6, point 3)', () => {
     beforeEach(() => {
-      gh.addRepo(CHINOOK_REPO, SHA_2, {
-        'datatug-project.json': '{"id":"chinook"}',
-      });
-      gh.push(CHINOOK_REPO, fakeSha(0x333), {
-        'datatug-project.json': '{"id":"chinook-new"}',
-      });
+      gh.push(DEMO_REPO, SHA_2, demoFiles({ 'demo-project-1/datatug-project.json': '{"id":"demo-old"}' }));
+      gh.push(DEMO_REPO, fakeSha(0x333), demoFiles({ 'demo-project-1/datatug-project.json': '{"id":"demo-new"}' }));
     });
 
     it('a trusted project reads the commit GitHub resolves for the default branch now', async () => {
       const reader = browser.load();
       expect(
-        await first(reader.getRawJson(CHINOOK_ID, 'datatug-project.json')),
-      ).toEqual({ id: 'chinook-new' });
+        await first(reader.getRawJson(DEMO_ID, 'datatug-project.json')),
+      ).toEqual({ id: 'demo-new' });
       expect(gh.urls()).toEqual([
-        `https://api.github.com/repos/${CHINOOK_REPO}/commits/HEAD`,
-        rawUrl(fakeSha(0x333), 'datatug-project.json', CHINOOK_REPO),
+        `https://api.github.com/repos/${DEMO_REPO}/commits/HEAD`,
+        rawUrl(fakeSha(0x333), 'demo-project-1/datatug-project.json'),
       ]);
     });
 
@@ -474,28 +470,28 @@ describe('GithubProjectReaderService: the commit, the cache, the failover (desig
       expect(
         isTrustedProjectAddress({
           storeId: GITHUB_STORE_ID,
-          projectId: `${CHINOOK_ID}@${SHA_2}`,
+          projectId: `${DEMO_ID}@${SHA_2}`,
         }),
       ).toBe(false);
       expect(
         isTrustedProjectAddress({
           storeId: GITHUB_STORE_ID,
-          projectId: CHINOOK_ID,
+          projectId: DEMO_ID,
         }),
       ).toBe(true);
       const reader = browser.load();
       expect(
         await first(
-          reader.getRawJson(`${CHINOOK_ID}@${SHA_2}`, 'datatug-project.json'),
+          reader.getRawJson(`${DEMO_ID}@${SHA_2}`, 'datatug-project.json'),
         ),
       ).toEqual({
-        id: 'chinook',
+        id: 'demo-old',
       });
       expect(gh.urls()).toEqual([
-        rawUrl(SHA_2, 'datatug-project.json', CHINOOK_REPO),
+        rawUrl(SHA_2, 'demo-project-1/datatug-project.json'),
       ]);
       expect(
-        await first(reader.readInfo(`${CHINOOK_ID}@${SHA_2}`)),
+        await first(reader.readInfo(`${DEMO_ID}@${SHA_2}`)),
       ).toMatchObject({ state: 'given', commit: SHA_2 });
     });
 
@@ -503,24 +499,24 @@ describe('GithubProjectReaderService: the commit, the cache, the failover (desig
       const upper = SHA_2.replace(/[a-f]/g, (c) => c.toUpperCase());
       const reader = browser.load();
       await first(
-        reader.getRawJson(`${CHINOOK_ID}@${upper}`, 'datatug-project.json'),
+        reader.getRawJson(`${DEMO_ID}@${upper}`, 'datatug-project.json'),
       );
       expect(gh.urls()).toEqual([
-        rawUrl(SHA_2, 'datatug-project.json', CHINOOK_REPO),
+        rawUrl(SHA_2, 'demo-project-1/datatug-project.json'),
       ]);
     });
 
     it('a trusted project asks GitHub again once the remembered answer is older than 5 minutes', async () => {
       await first(
-        browser.load().getRawJson(CHINOOK_ID, 'datatug-project.json'),
+        browser.load().getRawJson(DEMO_ID, 'datatug-project.json'),
       );
       browser.time += GITHUB_RESOLVE_TTL_MS + 1;
       gh.reset();
       await first(
-        browser.load().getRawJson(CHINOOK_ID, 'datatug-project.json'),
+        browser.load().getRawJson(DEMO_ID, 'datatug-project.json'),
       );
       expect(gh.urls()[0]).toBe(
-        `https://api.github.com/repos/${CHINOOK_REPO}/commits/HEAD`,
+        `https://api.github.com/repos/${DEMO_REPO}/commits/HEAD`,
       );
     });
   });

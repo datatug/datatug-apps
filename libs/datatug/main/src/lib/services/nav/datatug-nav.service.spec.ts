@@ -338,12 +338,12 @@ describe('DatatugNavService', () => {
       );
     });
 
-    it('opens the demo project of the home page at /project/github.com/datatug/chinook-demo', () => {
+    it('opens the shared demo project of the home page at its nested GitHub path', () => {
       service.goProject({
         ref: { projectId: DEMO_PROJECT_REF.projectId, storeId: 'github' },
       });
       expect(navMock.navigateRoot).toHaveBeenCalledWith(
-        '/project/github.com/datatug/chinook-demo',
+        '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1',
         undefined,
       );
     });

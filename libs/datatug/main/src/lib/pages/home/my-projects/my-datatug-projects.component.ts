@@ -69,9 +69,8 @@ export class MyDatatugProjectsComponent implements OnDestroy {
 
   private readonly destroyed = new Subject<void>();
   public projects?: IProjectAndStore[];
-  // https://github.com/datatug/chinook-demo/blob/main/datatug-project.json — the project is at the root of its
-  // repository; its id (`chinook-demo@datatug@`, the empty folder is the root) and its address
-  // (`/project/github.com/datatug/chinook-demo`) come from `DEMO_PROJECT_REF`.
+  // The shared demo lives in datatug/datatug-demo-project/demo-project-1.
+  // Its nested project id and address come from DEMO_PROJECT_REF.
   public demoProjects: IDatatugProjectBriefWithIdAndStoreRef[] = [
     {
       id: DEMO_PROJECT_REF.projectId,

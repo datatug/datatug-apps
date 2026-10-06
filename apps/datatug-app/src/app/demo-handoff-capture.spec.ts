@@ -252,7 +252,7 @@ describe('demo hand-off capture', () => {
       for (const path of [
         '/demo',
         '/demo/',
-        '/project/github.com/datatug/chinook-demo/chat',
+        '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat',
         '/project/github.com/o/r/chat/',
         '/project/github.com/o/r/tree/abc123/-/chat',
         '/project/github.com/o/r/tree/HEAD/-/chat/',
@@ -302,7 +302,6 @@ describe('demo hand-off capture', () => {
         '/project/gitlab.com/o/r/chat',
         '/project/github.com//r/chat',
         '/project/github.com/o/r/tree/abc123/chat',
-        '/project/github.com/o/r/tree/abc123/dir/-/chat',
         '/project/github.com/o/r/tree/-/chat',
         '/project/github.com/o/r/tree//-/chat',
         '/demo(menu:x)',
@@ -333,15 +332,15 @@ describe('demo hand-off capture', () => {
 
     it('works for the project chat shape with msg', () => {
       const f = pageLoad(
-        '/project/github.com/datatug/chinook-demo/chat',
+        '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat',
         '?msg=Hello&q=ignored',
       );
       captureDemoHandoff(f.env);
       expect(f.replaced).toEqual([
-        '/project/github.com/datatug/chinook-demo/chat',
+        '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat',
       ]);
       expect(
-        demoHandoff(undefined, '/project/github.com/datatug/chinook-demo/chat')
+        demoHandoff(undefined, '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat')
           ?.question,
       ).toBe('Hello');
     });
@@ -349,10 +348,10 @@ describe('demo hand-off capture', () => {
     // review r2, B1: spellings of the address that the router reads as a hand-off address
     describe('an address written another way (review r2, B1)', () => {
       it.each([
-        ['//project/github.com/datatug/chinook-demo/chat', true],
+        ['//project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat', true],
         ['//project/github.com/acme/demo/chat', false],
-        ['///project/github.com/datatug/chinook-demo/tree/HEAD/-/chat', true],
-        ['/(project/github.com/datatug/chinook-demo/chat)', true],
+        ['///project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat', true],
+        ['/(project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat)', true],
         ['/(project/github.com/acme/demo/chat)', false],
         ['//demo', true],
         ['/(demo)', true],
@@ -370,12 +369,12 @@ describe('demo hand-off capture', () => {
       );
 
       it('what the script kept under the typed path is found again under the path the router has put there since', () => {
-        const typed = '//project/github.com/datatug/chinook-demo/chat';
+        const typed = '//project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat';
         const first = pageLoad(typed, '?msg=Hello');
         captureDemoHandoff(first.env);
         resetDemoHandoffForTests();
         const reload = pageLoad(
-          '/project/github.com/datatug/chinook-demo/chat',
+          '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat',
           '',
           { store: first.store, navigation: 'reload' },
         );
@@ -383,7 +382,7 @@ describe('demo hand-off capture', () => {
         expect(
           demoHandoff(
             () => reload.env.storage(),
-            '/project/github.com/datatug/chinook-demo/chat',
+            '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat',
           )?.question,
         ).toBe('Hello');
         // another address is another address
@@ -435,7 +434,7 @@ describe('demo hand-off capture', () => {
       '/demo;x=1',
       '/Demo',
       '/DEMO/',
-      '/project/github.com/datatug/chinook-demo/chat;x=1',
+      '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat;x=1',
       '/PROJECT/github.com/o/r/Chat',
     ])('strips the query for %s as well (the router matches it)', (path) => {
       const f = pageLoad(path, search);
@@ -578,7 +577,7 @@ describe('demo hand-off capture', () => {
 
   // Founder ruling 2026-10-03: the question travels after `#`, on a page of its own.
   describe('capture of the start-chat address (founder ruling 2026-10-03)', () => {
-    const TRUSTED = '/project/github.com/datatug/chinook-demo/start-chat';
+    const TRUSTED = '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/start-chat';
     const OTHER = '/project/github.com/acme/demo/start-chat';
     const M = 'Which countries listen most?';
 
@@ -662,7 +661,7 @@ describe('demo hand-off capture', () => {
         captureDemoHandoff(f.env);
         expect(demoHandoff(undefined, path)?.question, path).toBe('');
       }
-      expect(isTrustedHandoff('/project/github.com/datatug/chinook-demo/tree/HEAD/-/start-chat')).toBe(true);
+      expect(isTrustedHandoff('/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/start-chat')).toBe(true);
     });
 
     it('a reload shows the same question from the tab store; a fresh visit to the bare address shows none', () => {
@@ -698,7 +697,7 @@ describe('demo hand-off capture', () => {
       for (const path of [TRUSTED, TRUSTED + '/', TRUSTED + ';x=1', '/(' + TRUSTED.slice(1) + ')']) {
         expect(handoffTargetOfPath(path)?.kind, path).toBe('start-chat');
       }
-      const f = pageLoad('/project/github.com/datatug/chinook-demo/chat', '', { hash: '#msg=Hello' });
+      const f = pageLoad('/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat', '', { hash: '#msg=Hello' });
       captureDemoHandoff(f.env);
       expect(f.replaced).toEqual([]);
     });
@@ -708,16 +707,18 @@ describe('demo hand-off capture', () => {
     it.each([
       '/demo',
       '/demo/',
+      '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat',
       '/project/github.com/datatug/chinook-demo/chat',
-      '/project/github.com/datatug/chinook-demo/chat/',
-      '/project/github.com/Datatug/Chinook-Demo/chat',
-      '/project/github.com/DATATUG/CHINOOK-DEMO/chat',
-      '/project/github.com/datatug/chinook%2Ddemo/chat',
-      '/project/github.com/datatug/chinook-demo/tree/HEAD/-/chat',
+      '/project/github.com/datatug/chinook-demo/tree/HEAD/-/start-chat',
+      '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat/',
+      '/project/github.com/Datatug/Datatug-Demo-Project/tree/HEAD/demo-project-1/-/chat',
+      '/project/github.com/DATATUG/DATATUG-DEMO-PROJECT/tree/HEAD/demo-project-1/-/chat',
+      '/project/github.com/datatug/datatug%2Ddemo%2Dproject/tree/HEAD/demo-project-1/-/chat',
+      '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat',
       '/Demo',
       '/demo;x=1',
-      '/PROJECT/GITHUB.COM/datatug/chinook-demo/CHAT',
-      '/project/github.com/datatug/chinook-demo/chat;x=1',
+      '/PROJECT/GITHUB.COM/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/CHAT',
+      '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat;x=1',
     ])('%s is trusted', (path) => {
       expect(isTrustedHandoff(path)).toBe(true);
     });
@@ -737,8 +738,8 @@ describe('demo hand-off capture', () => {
       '/project/github.com/datatug/chinook-demo%2Fx/chat',
       '/project/github.com/%E0%A4%A/chinook-demo/chat',
       '/project/github.com/datatug/chinook-demo',
-      '/project/github.com/datatug/chinook-demo/chat/extra',
-      '/project/gitlab.com/datatug/chinook-demo/chat',
+      '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat/extra',
+      '/project/gitlab.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat',
       '/demo/other',
       '/',
     ])('%s is not trusted', (path) => {
@@ -759,7 +760,6 @@ describe('demo hand-off capture', () => {
         `/project/github.com/datatug/chinoo${KELVIN}-demo/chat`,
         `/project/github.com/datatug/CHINOO${KELVIN}-DEMO/chat`,
         `/project/github.com/datatug/chinoo%E2%84%AA-demo/chat`,
-        `/project/github.com/datatug/chinook-demo/tree/HEAD/-/chat`.replace('chinook', `chinoo${KELVIN}`),
         `/project/github.com/dataTUG/chinoo${KELVIN}-demo/chat`,
         `/project/github.com/${KELVIN}datatug/chinook-demo/chat`,
         `/project/github.com/datatug${KELVIN}/chinook-demo/chat`,
@@ -783,17 +783,17 @@ describe('demo hand-off capture', () => {
       });
 
       it('plain ASCII spellings of the same repository are still trusted', () => {
-        expect(isTrustedHandoff('/project/github.com/datatug/chinook-demo/chat')).toBe(true);
-        expect(isTrustedHandoff('/project/github.com/DataTug/Chinook-Demo/chat')).toBe(true);
+        expect(isTrustedHandoff('/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat')).toBe(true);
+        expect(isTrustedHandoff('/project/github.com/DataTug/Datatug-Demo-Project/tree/HEAD/demo-project-1/-/chat')).toBe(true);
       });
     });
 
     const msg = '?msg=Hello+there&lang=ru';
 
     it.each([
-      '/project/github.com/datatug/chinook-demo/chat',
-      '/project/github.com/Datatug/Chinook-Demo/chat',
-      '/project/github.com/datatug/chinook-demo/tree/HEAD/-/chat',
+      '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat',
+      '/project/github.com/Datatug/Datatug-Demo-Project/tree/HEAD/demo-project-1/-/chat',
+      '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat',
     ])('a trusted chat address (%s) keeps the question', (path) => {
       const f = pageLoad(path, msg);
       captureDemoHandoff(f.env);
@@ -850,7 +850,7 @@ describe('demo hand-off capture', () => {
     });
 
     it('blocked storage wins: after a reload on a trusted address nothing is shown', () => {
-      const path = '/project/github.com/datatug/chinook-demo/chat';
+      const path = '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat';
       const first = pageLoad(path, msg);
       captureDemoHandoff(first.env);
       resetDemoHandoffForTests();
@@ -908,6 +908,17 @@ describe('demo hand-off capture', () => {
       );
     });
 
+    it('keeps the old first-party chat question through the eager script and capture for its canonical redirect', () => {
+      const path = '/project/github.com/datatug/chinook-demo/chat';
+      const early = run(path, '?msg=Hello&lang=ru');
+      expect(early.replaced).toEqual([path]);
+      expect(early.stash).toBe('?msg=Hello&lang=ru');
+      const load = pageLoad(path, '', { store: early.kept, stashed: early.stash as string });
+      captureDemoHandoff(load.env);
+      expect(demoHandoff(() => load.env.storage(), path)?.question).toBe('Hello');
+      expect(load.store.get(DEMO_HANDOFF_KEY)).toBe(path + '?msg=Hello&lang=ru');
+    });
+
     it('acts on exactly the paths isHandoffPath accepts', () => {
       const paths = [
         '/demo',
@@ -931,7 +942,7 @@ describe('demo hand-off capture', () => {
         '/chat',
         '/hello-world',
         '/store/github.com/project/p/chat',
-        '/project/github.com/datatug/chinook-demo/chat',
+        '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat',
         '/project/github.com/o/r/chat/',
         '/project/github.com/o/r/chat;x=1',
         '/project/github.com;x=1/o;y=2/r/chat',
@@ -959,7 +970,7 @@ describe('demo hand-off capture', () => {
         '/(demo/other)',
         '/demo//other',
         '/demo///',
-        '//project/github.com/datatug/chinook-demo/chat',
+        '//project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat',
         '///project/github.com/o/r/chat/',
         '/(project/github.com/o/r/chat)',
         '/(PROJECT/github.com/acme/demo/tree/HEAD/-/chat)',
@@ -1002,10 +1013,6 @@ describe('demo hand-off capture', () => {
         [
           '/project/github.com/o/r?msg=M&x=1',
           '/project/github.com/o/r?x=1',
-        ],
-        [
-          '/project/github.com/o/r/tree/HEAD/dir/-/chat?msg=M',
-          '/project/github.com/o/r/tree/HEAD/dir/-/chat',
         ],
         [
           '/project/github.com/o/r/queries?msg=M',
@@ -1089,10 +1096,11 @@ describe('demo hand-off capture', () => {
         '///demo/',
         '/(demo)',
         '/(Demo;x=1)',
-        '//project/github.com/datatug/chinook-demo/chat',
+        '//project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat',
+        '//project/github.com/acme/demo/tree/HEAD/dir/-/chat',
         '//project/github.com/acme/demo/chat',
         '///project/github.com/acme/demo/chat/',
-        '/(project/github.com/datatug/chinook-demo/chat)',
+        '/(project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat)',
         '/(project/github.com/acme/demo/chat)',
         '/(project/github.com/acme/demo/chat)/',
         '/(Project/GitHub.com/acme/demo/tree/HEAD/-/chat)',
@@ -1114,7 +1122,6 @@ describe('demo hand-off capture', () => {
         '/(project/github.com/acme/demo/queries)',
         '/(project/github.com/acme/demo/queries)/',
         '//project/github.com/acme/demo',
-        '//project/github.com/acme/demo/tree/HEAD/dir/-/chat',
         '/(project/github.com/acme/demo/chat//menu:x)',
       ])('%s: the question is dropped, the rest of the query stays', (path) => {
         const result = run(path, '?msg=Q&x=1', '#h');
@@ -1132,9 +1139,9 @@ describe('demo hand-off capture', () => {
       });
 
       it('a reload of a hand-off address written another way, after the script and before the app, shows the same question', () => {
-        const first = run('//project/github.com/datatug/chinook-demo/chat', '?msg=Early');
+        const first = run('//project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat', '?msg=Early');
         const reload = pageLoad(
-          '/project/github.com/datatug/chinook-demo/chat',
+          '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat',
           '',
           { store: first.kept, navigation: 'reload' },
         );
@@ -1142,7 +1149,7 @@ describe('demo hand-off capture', () => {
         expect(
           demoHandoff(
             () => reload.env.storage(),
-            '/project/github.com/datatug/chinook-demo/chat',
+            '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat',
           )?.question,
         ).toBe('Early');
       });
@@ -1198,7 +1205,7 @@ describe('demo hand-off capture', () => {
         ['/(project/github.com/acme/demo/start-chat)'],
         ['/(Project/GitHub.com/acme/demo/tree/HEAD/d/-/START-CHAT)/'],
         ['/Project/GitHub.com/acme/demo/Start-Chat;x=1'],
-        ['/project/github.com/datatug/chinook-demo/start-chat'],
+        ['/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/start-chat'],
       ])('%s is handled: the question is stashed, kept, and out of the address bar', (path) => {
         expect(handoffTargetOfPath(path)?.kind).toBe('start-chat');
         const result = run(path, '', '#msg=Q&lang=ru');
@@ -1261,14 +1268,14 @@ describe('demo hand-off capture', () => {
       });
 
       it('a reload before the app has started loses nothing', () => {
-        const first = run('/project/github.com/datatug/chinook-demo/start-chat', '', '#msg=Early&lang=ru');
-        const reload = pageLoad('/project/github.com/datatug/chinook-demo/start-chat', '', {
+        const first = run('/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/start-chat', '', '#msg=Early&lang=ru');
+        const reload = pageLoad('/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/start-chat', '', {
           store: first.kept,
           navigation: 'reload',
         });
         captureDemoHandoff(reload.env);
         expect(
-          demoHandoff(() => reload.env.storage(), '/project/github.com/datatug/chinook-demo/start-chat'),
+          demoHandoff(() => reload.env.storage(), '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/start-chat'),
         ).toEqual({ question: 'Early', lang: 'ru', truncated: false });
       });
     });

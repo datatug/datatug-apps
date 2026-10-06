@@ -483,17 +483,14 @@ describe('parseProjectUrl: the trust decision on the parsed address (design 3.6)
   };
 
   it.each([
-    '/project/github.com/datatug/chinook-demo',
-    '/project/github.com/datatug/chinook-demo/chat',
-    '/project/github.com/datatug/chinook-demo/tree/HEAD',
-    '/project/github.com/datatug/chinook-demo/tree/HEAD/-/chat',
-    '/project/github.com/Datatug/Chinook-Demo/chat',
-    '/project/github.com/datatug/chinook-demo.git/chat',
-    '/project/github.com/datatug/chinook-demo/',
-    '/project/github.com/datatug/chinook-demo/blob/HEAD/datatug-project.json',
-    '/store/github.com/project/chinook-demo@datatug@',
-    '/store/github/project/Chinook-Demo@Datatug@/chat',
-  ])('trusts %s', (path) => {
+    '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1',
+    '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat',
+    '/project/github.com/Datatug/Datatug-Demo-Project/tree/HEAD/demo-project-1/-/chat',
+    '/project/github.com/datatug/datatug-demo-project.git/tree/HEAD/demo-project-1/-/chat',
+    '/project/github.com/datatug/datatug-demo-project/blob/HEAD/demo-project-1/datatug-project.json',
+    '/store/github.com/project/datatug-demo-project@datatug@demo-project-1',
+    '/store/github/project/Datatug-Demo-Project@Datatug@demo-project-1/chat',
+    ])('trusts %s', (path) => {
     expect(trusted(path)).toBe(true);
   });
 
@@ -675,9 +672,9 @@ describe('parseProjectUrl: the old shape', () => {
 describe('projectUrl', () => {
   it.each([
     [
-      { storeId: 'github.com', projectId: 'chinook-demo@datatug@' },
+      { storeId: 'github.com', projectId: 'datatug-demo-project@datatug@demo-project-1' },
       undefined,
-      '/project/github.com/datatug/chinook-demo',
+      '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1',
     ],
     [
       { storeId: 'github.com', projectId: 'chinook-demo@datatug@' },
@@ -808,9 +805,9 @@ describe('projectUrl writes the page as plain text, percent-encoded (issue #180)
 
 describe('DEMO_PROJECT_REF (G-A1c)', () => {
   it('is the demo project at its short address, and the trusted project', () => {
-    expect(DEMO_PROJECT_REF).toEqual({ storeId: 'github.com', projectId: 'chinook-demo@datatug@' });
-    expect(projectUrl(DEMO_PROJECT_REF)).toBe('/project/github.com/datatug/chinook-demo');
-    expect(projectUrl(DEMO_PROJECT_REF, 'chat')).toBe('/project/github.com/datatug/chinook-demo/chat');
+    expect(DEMO_PROJECT_REF).toEqual({ storeId: 'github.com', projectId: 'datatug-demo-project@datatug@demo-project-1' });
+    expect(projectUrl(DEMO_PROJECT_REF)).toBe('/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1');
+    expect(projectUrl(DEMO_PROJECT_REF, 'chat')).toBe('/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat');
     expect(isTrustedProjectAddress(DEMO_PROJECT_REF)).toBe(true);
   });
 });
@@ -1311,7 +1308,7 @@ describe('parseProjectUrl: the review cases (page validation, store, .git.git)',
     ).toBe(false);
     expect(
       isTrustedProjectAddress(
-        parseProjectUrl('/project/github.com/datatug/chinook-demo'),
+        parseProjectUrl('/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1'),
       ),
     ).toBe(true);
   });

@@ -221,13 +221,13 @@ export class GithubProjectIdError extends Error {
 /**
  * The projects that may run with no click. Compiled in. Exactly one entry at first: the demo repository, at the
  * repository root, on its default branch. Owner and repo are lower case. `folder` is `''` for every entry in the
- * first release (the demo project is at the repo root).
+ * shared demo (the only trusted folder is demo-project-1).
  */
 const TRUSTED_GITHUB_PROJECTS: readonly {
   readonly owner: string;
   readonly repo: string;
   readonly folder: string;
-}[] = [{ owner: 'datatug', repo: 'chinook-demo', folder: '' }];
+}[] = [{ owner: 'datatug', repo: 'datatug-demo-project', folder: 'demo-project-1' }];
 
 function isTrustedGithubProject(address: {
   readonly owner: string;

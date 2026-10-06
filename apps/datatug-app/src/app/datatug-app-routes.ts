@@ -9,9 +9,10 @@ import {
   UrlTree,
 } from '@angular/router';
 import { PRODUCT_PROFILE } from '@datatug/product-profiles';
+import { hasOutletGroup } from '@datatug/project-address';
 import { cliChatCapability } from './cli-chat-capability';
-import { handoffDecision, searchOfQueryParams } from './demo-handoff-asked';
-import { handoffUrlMatcher } from './demo-handoff-path';
+import { DEMO_HANDOFF_KEY, DEMO_HANDOFF_STASH, handoffAsked, handoffDecision, searchAsksQuestion, searchOfQueryParams } from './demo-handoff-asked';
+import { handoffUrlMatcher, routeSegments } from './demo-handoff-path';
 
 // Task 13 (S108, spec/research/2026-09-09-layered-acl-reconciliation.md,
 // datatug/datatug): the read-only worktree
@@ -52,6 +53,76 @@ import { handoffUrlMatcher } from './demo-handoff-path';
 // rule that a component never branches on the profile's identity is not what this is.)
 const demoHoldingPage = () => import('./demo-holding-page.component').then((m) => m.DemoHoldingPageComponent);
 
+/** Only the old first-party Chinook demo address is an alias of the consolidated project. */
+export const legacyChinookDemoMatcher = (segments: UrlSegment[], group: UrlSegmentGroup) => {
+  if (hasOutletGroup(group)) return null;
+  if (segments.some((segment) => !/^[\x20-\x7e]+$/.test(segment.path))) return null;
+  const names = segments.map((segment) => segment.path.toLowerCase());
+  if (names[0] !== 'project' || names[1] !== 'github.com' || names[2] !== 'datatug' || names[3] !== 'chinook-demo') return null;
+  const rest = names.slice(4);
+  if (rest[0] === 'tree' && segments[5]?.path !== 'HEAD') return null;
+  if (!(rest.length === 0 ||
+        (rest.length === 1 && (rest[0] === 'chat' || rest[0] === 'start-chat')) ||
+        (rest.length === 2 && rest[0] === 'tree' && rest[1] === 'head') ||
+        (rest.length === 4 && rest[0] === 'tree' && rest[1] === 'head' && rest[2] === '-' &&
+          (rest[3] === 'chat' || rest[3] === 'start-chat')))) return null;
+  return { consumed: segments };
+};
+
+export const redirectLegacyChinookDemo: CanMatchFn = (_route, segments) => {
+  if (!datatugProfileOnly()) return inject(Router).parseUrl('/');
+  const names = segments.map((segment) => segment.path);
+  const page = segments.at(-1)?.path.toLowerCase();
+  let asked = false;
+  if (page === 'chat' || page === 'start-chat') {
+    const router = inject(Router);
+    const routerSearch = searchOfQueryParams(router.getCurrentNavigation()?.extractedUrl.queryParams ?? {});
+    if (page === 'chat') {
+      asked = handoffAsked(names, undefined, routerSearch);
+      if (asked && typeof (window as unknown as Record<string, unknown>)[DEMO_HANDOFF_STASH] !== 'string') {
+        try {
+          const saved = sessionStorage.getItem(DEMO_HANDOFF_KEY) ?? '';
+          const split = saved.indexOf('?');
+          if (split >= 0 && routeSegments(saved.slice(0, split)).map((value) => value.toLowerCase()).join('/') ===
+              names.map((value) => value.toLowerCase()).join('/')) {
+            (window as unknown as Record<string, unknown>)[DEMO_HANDOFF_STASH] = saved.slice(split);
+          }
+        } catch { /* Blocked storage leaves only the current page-load hand-off. */ }
+      }
+    } else if (routerSearch && typeof (window as unknown as Record<string, unknown>)[DEMO_HANDOFF_STASH] !== 'string') {
+      (window as unknown as Record<string, unknown>)[DEMO_HANDOFF_STASH] = routerSearch;
+    }
+  } else {
+    delete (window as unknown as Record<string, unknown>)[DEMO_HANDOFF_STASH];
+  }
+  const suffix = page === 'chat' || page === 'start-chat' ? ['-', asked ? 'start-chat' : page] : [];
+  const destination = urlTreeOfSegments([
+    'project', 'github.com', 'datatug', 'datatug-demo-project', 'tree', 'HEAD', 'demo-project-1', ...suffix,
+  ]);
+  if (suffix.length) {
+    const canonicalPath = inject(Router).serializeUrl(destination);
+    let search = (window as unknown as Record<string, unknown>)[DEMO_HANDOFF_STASH];
+    if (typeof search !== 'string' || !searchAsksQuestion(search)) {
+      try {
+        const saved = sessionStorage.getItem(DEMO_HANDOFF_KEY) ?? '';
+        const split = saved.indexOf('?');
+        const stored = split < 0 ? [] : routeSegments(saved.slice(0, split));
+        if (stored.length === names.length && stored.every((part) => /^[\x20-\x7e]+$/.test(part)) &&
+            (names[4]?.toLowerCase() !== 'tree' || stored[5] === 'HEAD') &&
+            stored.map((part) => part.toLowerCase()).join('/') === names.map((part) => part.toLowerCase()).join('/')) {
+          search = saved.slice(split);
+        }
+      } catch { /* Blocked storage leaves this page's in-memory hand-off intact. */ }
+    }
+    if (typeof search === 'string' && searchAsksQuestion(search)) {
+      (window as unknown as Record<string, unknown>)[DEMO_HANDOFF_STASH] = search;
+      try { sessionStorage.setItem(DEMO_HANDOFF_KEY, canonicalPath + search); }
+      catch { /* A blocked store still permits this page-load hand-off. */ }
+    }
+  }
+  return new RedirectCommand(destination, { replaceUrl: true });
+};
+
 /** The hand-off page belongs to the DataTug product profile only. */
 export const datatugProfileOnly = (): boolean => inject(PRODUCT_PROFILE).id === 'datatug';
 
@@ -91,6 +162,11 @@ export const handoffOrRoot: CanMatchFn = (_route, segments) => {
 };
 
 export const routes: Routes = [
+  {
+    matcher: legacyChinookDemoMatcher,
+    canMatch: [redirectLegacyChinookDemo],
+    loadComponent: demoHoldingPage,
+  },
   {
     matcher: handoffUrlMatcher,
     canMatch: [handoffOrRoot],
