@@ -39,6 +39,8 @@ export type HandoffTarget =
       readonly repo: string;
       /** The `tree/<ref>` segment of `…/tree/<ref>/-/chat`; undefined for `…/chat`. */
       readonly ref?: string;
+      /** The folder segments of a nested project. */
+      readonly dir: readonly string[];
     }
   | {
       readonly kind: 'start-chat';
@@ -91,21 +93,23 @@ export function handoffTarget(
     return segments.length === 1 ? { kind: 'demo' } : undefined;
   if (first !== 'project' || host !== 'github.com' || !owner || !repo)
     return undefined;
-  const chat = (ref?: string): HandoffTarget => ({
+  const chat = (ref?: string, dir: string[] = []): HandoffTarget => ({
     kind: 'chat',
     owner: segments[2],
     repo: segments[3],
     ref,
+    dir,
   });
   if (rest.length === 1 && rest[0] === 'chat') return chat();
   if (
-    rest.length === 4 &&
+    rest.length >= 4 &&
     rest[0] === 'tree' &&
     rest[1] &&
-    rest[2] === '-' &&
-    rest[3] === 'chat'
+    rest[rest.length - 2] === '-' &&
+    rest[rest.length - 1] === 'chat' &&
+    !rest.slice(2, -2).includes('-')
   )
-    return chat(segments[5]);
+    return chat(segments[5], segments.slice(6, -2));
   const startChat = (ref?: string, dir: string[] = []): HandoffTarget => ({
     kind: 'start-chat',
     owner: segments[2],

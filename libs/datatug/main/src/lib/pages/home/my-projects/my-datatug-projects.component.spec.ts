@@ -63,9 +63,8 @@ describe('MyProjectsComponent', () => {
     expect(component).toBeTruthy();
   });
 
-  // G-A1c: the demo entry is the demo project at the root of datatug/chinook-demo; the nav service writes its
-  // address (/project/github.com/datatug/chinook-demo, see datatug-nav.service.spec.ts).
-  it('opens the demo project of datatug/chinook-demo, whose title is unchanged', () => {
+  // G-A1c: the demo entry opens the one shared nested project; the nav service writes its canonical path.
+  it('opens the shared demo project, whose title is unchanged', () => {
     const nav = TestBed.inject(DatatugNavService) as unknown as {
       goProject: ReturnType<typeof vi.fn>;
     };
@@ -77,7 +76,7 @@ describe('MyProjectsComponent', () => {
 
     expect(nav.goProject).toHaveBeenCalledTimes(1);
     expect(nav.goProject.mock.calls[0][0]).toMatchObject({
-      ref: { storeId: 'github', projectId: 'chinook-demo@datatug@' },
+      ref: { storeId: 'github', projectId: 'datatug-demo-project@datatug@demo-project-1' },
       brief: { title: 'DataTug Demo Project @ GitHub', access: 'public' },
     });
   });

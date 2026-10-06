@@ -52,7 +52,7 @@ test.skip(
   'requires network access to github.com/api.github.com/raw.githubusercontent.com — set DATATUG_E2E_OFFLINE=1 to skip',
 );
 
-const PROJECT_ID = 'datatug-demo-projects@datatug@demo-project-1';
+const PROJECT_ID = 'datatug-demo-project@datatug@demo-project-1';
 const PROJECT_URL = `/store/github.com/project/${PROJECT_ID}`;
 
 /** Ionic's own "ios" mode gives a slotted label `margin-inline-end: 8px` —

@@ -230,7 +230,7 @@ export class DatatugStorePageComponent
    * repo's zoneless-ready convention (see `AGENTS.md`), even though the
    * surrounding pre-existing fields on this component are plain properties. */
   public readonly githubOwner = signal('datatug');
-  public readonly githubRepository = signal('datatug-demo-projects');
+  public readonly githubRepository = signal('datatug-demo-project');
   public readonly githubFolder = signal('demo-project-1');
   public readonly githubFormError = signal<string | undefined>(undefined);
 

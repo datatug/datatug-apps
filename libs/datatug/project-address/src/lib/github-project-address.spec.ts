@@ -152,12 +152,10 @@ describe('isTrustedProjectAddress (design 3.6): the one trust function', () => {
     isTrustedProjectAddress({ storeId, projectId });
 
   it.each([
-    ['the demo repo, no ref', 'chinook-demo@datatug@'],
-    ['an explicit HEAD (tree/HEAD)', 'chinook-demo@datatug@@HEAD'],
-    ['an empty ref', 'chinook-demo@datatug@@'],
-    ['mixed case owner and repo', 'Chinook-Demo@Datatug@'],
-    ['upper case, with HEAD', 'CHINOOK-DEMO@DATATUG@@HEAD'],
-  ])('trusts %s', (_name, projectId) => {
+    ['the canonical folder, no ref', 'datatug-demo-project@datatug@demo-project-1'],
+    ['an explicit HEAD', 'datatug-demo-project@datatug@demo-project-1@HEAD'],
+    ['mixed case owner and repo', 'Datatug-Demo-Project@Datatug@demo-project-1'],
+    ])('trusts %s', (_name, projectId) => {
     expect(trusted(projectId)).toBe(true);
   });
 
@@ -236,7 +234,7 @@ describe('isTrustedProjectAddress (design 3.6): the one trust function', () => {
   });
 
   it('requires the store to be exactly github.com', () => {
-    const id = 'chinook-demo@datatug@';
+    const id = 'datatug-demo-project@datatug@demo-project-1';
     expect(trusted(id, 'github.com')).toBe(true);
     for (const storeId of [
       'http-localhost:8989',

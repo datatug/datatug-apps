@@ -299,7 +299,7 @@ test.describe('J1 — first useful result (the null-action path)', () => {
         .locator('ion-card ion-input')
         .first()
         .getByRole('textbox'),
-    ).toHaveValue('DataTug Demo Project 1', { timeout: 15_000 });
+    ).toHaveValue('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
 
     // "the user clicks Album": real in-app navigation (Task 17 item B.2,
     // S121b) — project -> "Go to..." -> Environments -> DEMO_ENV_ID ->
@@ -364,7 +364,7 @@ test.describe('J2 — from a value to related knowledge', () => {
         .locator('ion-card ion-input')
         .first()
         .getByRole('textbox'),
-    ).toHaveValue('DataTug Demo Project 1', { timeout: 15_000 });
+    ).toHaveValue('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
 
     // "the user opens the Customer table" — real in-app navigation (Task 17
     // item B.2, S121b), the same click path J1's own goToCatalogTables() doc
@@ -537,7 +537,7 @@ test.describe('J2b — HTTP reference source', () => {
         .locator('ion-card ion-input')
         .first()
         .getByRole('textbox'),
-    ).toHaveValue('DataTug Demo Project 1', { timeout: 15_000 });
+    ).toHaveValue('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
     await goToCatalogTables(page, DEMO_ENV_ID, DEMO_DB_CATALOG_ID);
     const customerRow = catalogTableRow(page, 'Customer');
     await expect(customerRow).toBeVisible({ timeout: 15_000 });
@@ -618,7 +618,7 @@ test.describe('J2b — HTTP reference source', () => {
         .locator('ion-card ion-input')
         .first()
         .getByRole('textbox'),
-    ).toHaveValue('DataTug Demo Project 1', { timeout: 15_000 });
+    ).toHaveValue('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
     await goToCatalogTables(page, DEMO_ENV_ID, DEMO_DB_CATALOG_ID);
     const customerRow = catalogTableRow(page, 'Customer');
     await expect(customerRow).toBeVisible({ timeout: 15_000 });
@@ -704,7 +704,7 @@ test.describe('J3 — carrying context', () => {
         .locator('ion-card ion-input')
         .first()
         .getByRole('textbox'),
-    ).toHaveValue('DataTug Demo Project 1', { timeout: 15_000 });
+    ).toHaveValue('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
     await goToCatalogTables(page, DEMO_ENV_ID, DEMO_DB_CATALOG_ID);
     const customerRow = catalogTableRow(page, 'Customer');
     await expect(customerRow).toBeVisible({ timeout: 15_000 });
@@ -861,7 +861,7 @@ test.describe('J4 — restricted principal', () => {
         .locator('ion-card ion-input')
         .first()
         .getByRole('textbox'),
-    ).toHaveValue('DataTug Demo Project 1', { timeout: 15_000 });
+    ).toHaveValue('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
 
     // "the user opens the Customer table" — real in-app navigation (Task 17
     // item B.2, S121b), the same click path J1's own goToCatalogTables() doc
@@ -1115,7 +1115,7 @@ test.describe('Personal queries tab — datatug-cli v0.24.0 root=personal (S174)
     await page.goto(projectUrl);
     await expect(
       page.locator('ion-card ion-input').first().getByRole('textbox'),
-    ).toHaveValue('DataTug Demo Project 1', { timeout: 15_000 });
+    ).toHaveValue('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
 
     // "the user opens Queries" — the persistent "Queries" side-menu item
     // (ProjectMenuTopComponent, reachable from any project page — same

@@ -232,7 +232,7 @@ describe('DemoHoldingPageComponent', () => {
     ) as HTMLAnchorElement[];
     expect(project.getAttribute('href')).toBe(DEMO_PROJECT_PATH);
     expect(project.getAttribute('href')).toBe(
-      '/project/github.com/datatug/chinook-demo',
+      '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1',
     );
     expect(site.getAttribute('href')).toBe(SITE_URL);
     expect(project.textContent?.trim()).toBe(

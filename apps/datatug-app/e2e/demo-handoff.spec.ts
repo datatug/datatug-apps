@@ -15,6 +15,9 @@ import { join } from 'node:path';
  */
 const SENTRY_DIALOG = '.sentry-error-embed';
 const MARKER = 'ZEBRA-SECRET-QUESTION-7731';
+const CANONICAL_PROJECT = '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1';
+const CANONICAL_CHAT = `${CANONICAL_PROJECT}/-/chat`;
+const CANONICAL_START_CHAT = `${CANONICAL_PROJECT}/-/start-chat`;
 
 const EN_QUESTION = `Which countries listen to the most jazz per person? ${MARKER} <b>bold</b> <img src=x onerror="window.__pwned=1">`;
 const RU_QUESTION = `Какие страны слушают больше всего джаза на душу населения? ${MARKER} 🎷`;
@@ -322,13 +325,13 @@ test.describe('the hand-off holding page', () => {
             new URL(page.url()).pathname + new URL(page.url()).search,
           ).toBe('/demo');
 
-          // Two links: the demo project as the home page opens it (its short address, G-A1c), and the site.
+          // Two links: the shared nested demo project as the home page opens it, and the site.
           await expect(
             page.getByRole('link', {
               name:
                 lang === 'en' ? 'Open the demo project' : 'Открыть демо-проект',
             }),
-          ).toHaveAttribute('href', '/project/github.com/datatug/chinook-demo');
+          ).toHaveAttribute('href', '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1');
           await expect(
             page.getByRole('link', {
               name: lang === 'en' ? 'Back to the site' : 'Назад на сайт',
@@ -519,8 +522,8 @@ test.describe('the hand-off holding page', () => {
     await expect(page.locator('html')).toHaveAttribute('lang', 'ru');
 
     await page.getByRole('link', { name: 'Открыть демо-проект' }).click();
-    // The demo project at its short address (G-A1c), as the home page opens it.
-    await expect(page).toHaveURL(/\/project\/github\.com\/datatug\/chinook-demo$/);
+    // The shared nested project, as the home page opens it.
+    await expect(page).toHaveURL(/\/project\/github\.com\/datatug\/datatug-demo-project\/tree\/HEAD\/demo-project-1$/);
     // The app's own defaults (index.html): the page kept in the Ionic stack must not leave its own behind.
     await expect(page).toHaveTitle('DataTug.app');
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
@@ -614,9 +617,9 @@ test.describe('the hand-off holding page', () => {
       await expect(page.locator('#demo-holding-message')).toContainText(
         SENTENCE.ru.withQuestion,
       );
-      // The old hand-off address is moved (replaced) to the start-chat page of the same project, with no query.
+      // The former repository is an alias of the shared project's start-chat page, with no query.
       expect(new URL(page.url()).pathname + new URL(page.url()).search).toBe(
-        path.replace(/chat$/, 'start-chat'),
+        CANONICAL_START_CHAT,
       );
       await page.waitForTimeout(1500);
       await expect(page.locator(SENTRY_DIALOG)).toHaveCount(0);
@@ -688,7 +691,7 @@ test.describe('the hand-off holding page', () => {
   // G-A1b: the short project route and the holding page share the project chat address. With a question the
   // holding page (the chat cannot run it yet, and it must not be lost); without one, the project's own chat page.
   // The demo flag is off in this production build and is not consulted either way.
-  const TRUSTED = '/project/github.com/datatug/chinook-demo/chat';
+  const TRUSTED = CANONICAL_CHAT;
 
   test('the demo project chat address with no question is the project chat page, not the holding page, and keeps its URL', async ({
     page,
@@ -724,7 +727,7 @@ test.describe('the hand-off holding page', () => {
       });
       await expect(page.locator('#demo-holding-message')).toHaveCount(0);
       expect(new URL(page.url()).pathname + new URL(page.url()).search).toBe(
-        TRUSTED,
+        CANONICAL_CHAT,
       );
     });
   }
@@ -1001,10 +1004,12 @@ test.describe('the start-chat confirmation page (founder ruling 2026-10-03)', ()
         const watched = await openAndWatch(page, context, baseURL ?? '', path(root), async () => {
           await expect(page.locator('#demo-holding-message')).toBeVisible({ timeout: 20_000 });
         });
-        // The address: the start-chat page of the project, with no question and no fragment (own query keys stay). The
-        // router writes a `//` or a root-group spelling in its one form.
+        // The exact old demo alias redirects to the shared project, clearing its query. Other repositories
+        // retain their own safe query keys. The router normalizes `//` and root-group spellings.
         const url = new URL(page.url());
-        expect(url.pathname + url.search + url.hash).toBe(own(root));
+        expect(url.pathname + url.search + url.hash).toBe(
+          trusted ? CANONICAL_START_CHAT : own(root),
+        );
         if (trusted) {
           await expect(page.locator('blockquote')).toHaveText(MARKER);
           await expect(page.locator('#demo-holding-message')).toContainText(SENTENCE.ru.withQuestion);
@@ -1022,7 +1027,9 @@ test.describe('the start-chat confirmation page (founder ruling 2026-10-03)', ()
         if (trusted) await expect(page.locator('blockquote')).toHaveText(MARKER);
         else expect(await page.content()).not.toContain(MARKER);
         const again = new URL(page.url());
-        expect(again.pathname + again.search + again.hash).toBe(own(root));
+        expect(again.pathname + again.search + again.hash).toBe(
+          trusted ? CANONICAL_START_CHAT : own(root),
+        );
       });
     }
   }
@@ -1098,7 +1105,9 @@ test.describe('the start-chat confirmation page (founder ruling 2026-10-03)', ()
         await expect(page.locator('blockquote'), path).toHaveCount(0);
         expect(await page.content(), path).not.toContain(MARKER);
       }
-      expect(new URL(page.url()).pathname + new URL(page.url()).search + new URL(page.url()).hash, path).toBe(path);
+      expect(new URL(page.url()).pathname + new URL(page.url()).search + new URL(page.url()).hash, path).toBe(
+        echoes ? CANONICAL_START_CHAT : path,
+      );
     }
   });
 
@@ -1122,7 +1131,7 @@ test.describe('the start-chat confirmation page (founder ruling 2026-10-03)', ()
     await page.reload();
     await expect(page.locator('#demo-holding-message')).toContainText(SENTENCE.en.without, { timeout: 20_000 });
     await expect(page.locator('blockquote')).toHaveCount(0);
-    expect(new URL(page.url()).pathname).toBe(`${TRUSTED_ROOT}/start-chat`);
+    expect(new URL(page.url()).pathname).toBe(CANONICAL_START_CHAT);
   });
 
   test('the project chat page never reads a question: a fragment or a stored hand-off does not turn it into the confirmation page', async ({
@@ -1137,7 +1146,7 @@ test.describe('the start-chat confirmation page (founder ruling 2026-10-03)', ()
     await page.goto(`${TRUSTED_ROOT}/chat#msg=${enc}`);
     await expect(page.locator('ion-title', { hasText: 'Chat' })).toBeVisible({ timeout: 20_000 });
     await expect(page.locator('#demo-holding-message')).toHaveCount(0);
-    expect(new URL(page.url()).pathname).toBe(`${TRUSTED_ROOT}/chat`);
+    expect(new URL(page.url()).pathname).toBe(CANONICAL_CHAT);
   });
 
   test('the old chat address with a question is replaced by start-chat: Back does not return to it', async ({ page, context, baseURL }) => {
@@ -1152,7 +1161,7 @@ test.describe('the start-chat confirmation page (founder ruling 2026-10-03)', ()
         .entries()
         .map((entry) => new URL(entry.url).pathname),
     );
-    expect(entries.at(-1)).toBe(`${TRUSTED_ROOT}/start-chat`);
+    expect(entries.at(-1)).toBe(CANONICAL_START_CHAT);
     expect(entries.filter((e) => e.endsWith('/chat'))).toEqual([]);
   });
 
@@ -1246,7 +1255,7 @@ test.describe('a question on a project address that is not a hand-off address is
     '/project/github.com/datatug/chinook-demo',
     '/Project/GitHub.com/datatug/chinook-demo/tree/HEAD/dir/-/Chat',
   ]) {
-    test(`${path}?msg=…&x=1: the address bar loses msg and keeps x=1, and nothing outgoing carries it`, async ({
+    test(`${path}?msg=…&x=1: the address bar loses msg and nothing outgoing carries it`, async ({
       page,
       context,
       baseURL,
@@ -1295,10 +1304,12 @@ test.describe('a question on a project address that is not a hand-off address is
       const url = new URL(page.url());
       expect(url.searchParams.has('msg')).toBe(false);
       expect(url.searchParams.has('q')).toBe(false);
-      expect(url.searchParams.get('x')).toBe('1');
-      // The queries page rewrites its own address (adds its default query, drops the fragment), on the old form
-      // of the address too; every other page leaves the fragment where the script left it.
-      if (!path.endsWith('/queries')) expect(url.hash).toBe('#frag');
+      // Only an ordinary project page keeps unrelated query keys. Nested chat is now a hand-off,
+      // and the exact old repository root redirects to the shared project; both clear the query.
+      expect(url.searchParams.get('x')).toBe(path.endsWith('/queries') ? '1' : null);
+      // The queries page and hand-off capture clear the fragment; the old root alias also
+      // redirects to the shared project without carrying the fragment forward.
+      expect(url.hash).toBe('');
       expect(page.url()).not.toContain(MARKER);
       // Not vacuous: the stand-in for Google Analytics saw page commands, Sentry received the probe.
       const hosts = new Set(

@@ -90,6 +90,29 @@ jobs:
 
       - uses: ./.github/actions/pnpm
 
+      # The browser suite counts the real reader's GitHub API/raw requests, but
+      # anonymous API access from a shared CI runner can exhaust its quota.
+      # Serve the current public demo commit through the existing GitHub HTTP
+      # fake, and check the live API/tree/raw contracts at that same commit.
+      - name: Checkout canonical demo project
+        uses: actions/checkout@v6
+        with:
+          repository: datatug/datatug-demo-project
+          ref: main
+          path: datatug-demo-project
+
+      - name: Verify live canonical GitHub source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sha="$(git -C datatug-demo-project rev-parse HEAD)"
+          test "$(gh api repos/datatug/datatug-demo-project/commits/HEAD --jq .sha)" = "$sha"
+          tree="$(gh api "repos/datatug/datatug-demo-project/git/trees/$sha?recursive=1" --jq '[.truncated, ([.tree[].path] | index("demo-project-1/entities/Album/Album.entity.json") != null), ([.tree[].path] | index("demo-project-1/queries/customers/customer-invoices.query.json") != null)] | @json')"
+          test "$tree" = '[false,true,true]'
+          curl -fsSL "https://raw.githubusercontent.com/datatug/datatug-demo-project/$sha/demo-project-1/entities/Album/Album.entity.json" -o "$RUNNER_TEMP/demo-album.json"
+          cmp datatug-demo-project/demo-project-1/entities/Album/Album.entity.json "$RUNNER_TEMP/demo-album.json"
+
       - name: Derive appropriate SHAs for base and head for nx affected commands
         uses: nrwl/nx-set-shas@v5
 
@@ -97,6 +120,8 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
 
       - name: nx e2e affected
+        env:
+          DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
         run: pnpm nx affected --target=e2e --parallel=1 --base=${{ env.NX_BASE }}
 
       # G-0 hand-off suite (apps/datatug-app/e2e/demo-handoff.spec.ts): the holding page for /demo and the
@@ -156,15 +181,15 @@ jobs:
           ref: ${{ env.DATATUG_CLI_REF }}
           path: datatug-cli
 
-      # Public repo (datatug/datatug-demo-projects), main branch — the demo
+      # Public repo (datatug/datatug-demo-project), main branch — the demo
       # project the journey suite drives the agent against. Same nested-path
       # reasoning as datatug-cli above.
-      - name: Checkout datatug-demo-projects (main)
+      - name: Checkout datatug-demo-project (main)
         uses: actions/checkout@v6
         with:
-          repository: datatug/datatug-demo-projects
+          repository: datatug/datatug-demo-project
           ref: main
-          path: datatug-demo-projects
+          path: datatug-demo-project
 
       - uses: ./.github/actions/pnpm
 
@@ -196,7 +221,7 @@ jobs:
       # a pinned copy of the same fixture file to the same path
       # (`~/datatug/dbs/chinook-local.sqlite`) that
       # environments/local/catalogs/chinook-local/chinook-local.db.json in
-      # datatug-demo-projects declares, without the `serve` call. Verify the
+      # datatug-demo-project declares, without the `serve` call. Verify the
       # content: github.com/.../blob?raw=true can return HTML with HTTP 200.
       - name: Fetch and verify pinned Chinook SQLite fixture
         run: |
@@ -217,7 +242,7 @@ jobs:
 
       - name: Run journey e2e (J1-J4, real datatug-cli agent)
         env:
-          DATATUG_DEMO_DIR: ${{ github.workspace }}/datatug-demo-projects/demo-project-1
+          DATATUG_DEMO_DIR: ${{ github.workspace }}/datatug-demo-project/demo-project-1
         run: pnpm exec playwright test -c apps/datatug-app/playwright.config.ts --project=journey --workers=1
 
       - name: Upload Playwright report
