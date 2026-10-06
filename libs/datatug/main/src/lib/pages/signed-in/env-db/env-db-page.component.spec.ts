@@ -1,7 +1,7 @@
 import { CUSTOM_ELEMENTS_SCHEMA, ChangeDetectorRef } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { HttpClient } from '@angular/common/http';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { NavController } from '@ionic/angular';
 import { Firestore } from 'firebase/firestore';
 import { ErrorLogger } from '@sneat/core';
@@ -45,9 +45,9 @@ describe('EnvDbPage', () => {
         {
           provide: ActivatedRoute,
           useValue: {
-            queryParamMap: of({ get: () => null }),
-            paramMap: of({ get: () => null }),
-            snapshot: { paramMap: { get: () => null }, params: {} },
+            queryParamMap: of(convertToParamMap({})),
+            paramMap: of(convertToParamMap({})),
+            snapshot: { paramMap: convertToParamMap({}), params: {} },
           },
         },
       ],
@@ -109,16 +109,14 @@ describe('EnvDbPage — project ref wiring', () => {
         {
           provide: ActivatedRoute,
           useValue: {
-            queryParamMap: of({ get: () => null }),
-            paramMap: of({
-              get: (key: string) =>
-                key === 'storeId'
-                  ? 'localhost:8989'
-                  : key === 'projectId'
-                    ? 'demo-project'
-                    : null,
-            }),
-            snapshot: { paramMap: { get: () => null }, params: {} },
+            queryParamMap: of(convertToParamMap({})),
+            paramMap: of(
+              convertToParamMap({
+                storeId: 'localhost:8989',
+                projectId: 'demo-project',
+              }),
+            ),
+            snapshot: { paramMap: convertToParamMap({}), params: {} },
           },
         },
       ],
@@ -185,9 +183,9 @@ describe('EnvDbPage dependency injection', () => {
         {
           provide: ActivatedRoute,
           useValue: {
-            queryParamMap: of({ get: () => null }),
-            paramMap: of({ get: () => null }),
-            snapshot: { paramMap: { get: () => null }, params: {} },
+            queryParamMap: of(convertToParamMap({})),
+            paramMap: of(convertToParamMap({})),
+            snapshot: { paramMap: convertToParamMap({}), params: {} },
           },
         },
         {

@@ -24,7 +24,7 @@ import {
 } from '@ionic/angular';
 import { DatatugCoreModule } from '../../../core/datatug-core.module';
 import { ENABLE_EMPTY_SHELL_PAGES } from '../../../core/feature-flags';
-import { IProjectRef } from '../../../core/project-context';
+import { IProjectRef, equalProjectRef } from '../../../core/project-context';
 import { DatatugFolderComponent } from '../../../folders/ui/datatug-folder.component';
 import {
   IProjBoard,
@@ -128,6 +128,10 @@ export class ProjectPageComponent
    */
   protected readonly storeDisplayLabel = storeIdToDisplayLabel;
 
+  protected readonly metadataState = signal<
+    'loading' | 'available' | 'unavailable'
+  >('loading');
+
   protected destroyed = new Subject<boolean>();
   @ViewChild(IonInput, { static: false }) addInput?: IonInput;
 
@@ -152,12 +156,11 @@ export class ProjectPageComponent
 
   private setProjRef = (ref: IProjectRef) => {
     try {
-      if (ref.projectId === this.project()?.ref?.projectId) {
-        this.project.set({
-          ref,
-          store: { ref: parseDatatugStoreRef(ref.storeId) },
-        });
-      }
+      this.project.set({
+        ref,
+        store: { ref: parseDatatugStoreRef(ref.storeId) },
+      });
+      this.metadataState.set('loading');
       this.projectService
         .watchProjectSummary(ref)
         .pipe(
@@ -170,9 +173,13 @@ export class ProjectPageComponent
         )
         .subscribe({
           next: (summary) => this.onProjectSummaryChanged(ref, summary),
-          error: this.errorLogger.logErrorHandler(
-            'Failed to load project summary for project page',
-          ),
+          error: (error) => {
+            this.onProjectSummaryChanged(ref, undefined);
+            this.errorLogger.logError(
+              error,
+              'Failed to load project summary for project page',
+            );
+          },
         });
     } catch (e) {
       this.errorLogger.logError(
@@ -287,7 +294,13 @@ export class ProjectPageComponent
       ref,
       summary,
     );
+    if (!equalProjectRef(this.project()?.ref, ref)) return;
+    this.metadataState.set(summary ? 'available' : 'unavailable');
     if (!summary) {
+      this.project.set({
+        ref,
+        store: { ref: parseDatatugStoreRef(ref.storeId) },
+      });
       return;
     }
     this.project.set({

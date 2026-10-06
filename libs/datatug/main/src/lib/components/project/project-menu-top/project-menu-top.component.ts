@@ -1,5 +1,5 @@
 import { AsyncPipe } from '@angular/common';
-import { Component, OnDestroy, inject } from '@angular/core';
+import { Component, OnDestroy, inject, signal } from '@angular/core';
 import { ENABLE_EMPTY_SHELL_PAGES } from '../../../core/feature-flags';
 import {
   IonButton,
@@ -52,7 +52,10 @@ export class ProjectMenuTopComponent implements OnDestroy {
   // A CLI bridge exposes chat and its project summary, while the remaining
   // project pages require the full project store API.
   get cliBridgeChat(): boolean {
-    return document.documentElement.dataset['cliChatBridgePath'] === location.pathname;
+    return (
+      document.documentElement.dataset['cliChatBridgePath'] ===
+      location.pathname
+    );
   }
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly datatugNavContextService = inject(DatatugNavContextService);
@@ -156,6 +159,7 @@ export class ProjectMenuTopComponent implements OnDestroy {
   }
 
   project?: IProjectContext;
+  readonly metadataOnly = signal(false);
   public currentFolder: Observable<string | undefined>;
 
   private destroyed = new Subject<void>();
@@ -176,6 +180,7 @@ export class ProjectMenuTopComponent implements OnDestroy {
 
   private setProject = (project?: IProjectContext) => {
     this.project = project;
+    this.metadataOnly.set(project?.ref.spaceID !== undefined);
   };
 
   ngOnDestroy() {
@@ -186,7 +191,11 @@ export class ProjectMenuTopComponent implements OnDestroy {
   goProjPage(event: Event, page: ProjectTopLevelPage): boolean {
     event.preventDefault();
     event.stopPropagation();
-    if (this.cliBridgeChat && page !== 'chat') return false;
+    if (
+      (this.cliBridgeChat && page !== 'chat') ||
+      (this.metadataOnly() && page !== 'overview')
+    )
+      return false;
     const project = this.project;
     this.nav.goProjPage(page, project, { project });
     return false;

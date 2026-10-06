@@ -1,11 +1,8 @@
+import { IProjectRef, isSharedProjectRef } from '../../core/project-context';
 import { IProjectSummary } from '../../models/definition/project';
 import { IDatatugStoreService } from './datatug-store.service.interface';
 import { Observable, throwError } from 'rxjs';
-import {
-  DocumentReference,
-  doc,
-  Firestore,
-} from 'firebase/firestore';
+import { DocumentReference, doc, Firestore } from 'firebase/firestore';
 import { map } from 'rxjs/operators';
 import { Injectable, inject } from '@angular/core';
 import { docData, docSnapshots } from './firestore-observables';
@@ -47,6 +44,28 @@ export class DatatugStoreFirestoreService implements IDatatugStoreService {
     ) as DocumentReference<IProjectSummary>;
     return docData<IProjectSummary>(projectDoc).pipe(
       map((project) => (project ? { ...project, id: projectId } : undefined)),
+    );
+  }
+
+  /** Reads only the metadata DTO written by NewSharedProjectRecord. Rules decide access. */
+  getSharedProjectSummary(
+    ref: IProjectRef,
+  ): Observable<IProjectSummary | undefined> {
+    if (!isSharedProjectRef(ref))
+      return throwError(() => new Error('Invalid shared project reference'));
+    const { spaceID, projectId } = ref;
+    const projectDoc = doc(
+      this.db,
+      `spaces/${spaceID}/ext/datatug/projects/${projectId}`,
+    ) as DocumentReference<IProjectSummary>;
+    return docData<IProjectSummary>(projectDoc).pipe(
+      map((project) => {
+        if (!project) return undefined;
+        if (typeof project.title !== 'string' || project.access !== 'protected')
+          throw new Error('Invalid shared project metadata');
+        // No private ownership list or fabricated item summaries: creation writes title/access/created only.
+        return { id: projectId, title: project.title, access: project.access };
+      }),
     );
   }
 

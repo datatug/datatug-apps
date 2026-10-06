@@ -7,6 +7,7 @@ import {
   routingParamStoreId,
 } from '../core/datatug-routing-params';
 import { githubProjectRoutes } from './github-project-routes';
+import { isSharedProjectRef } from '../core/project-context';
 import { profileHomeRedirectGuard } from './profile-home-redirect.guard';
 
 export const datatugRoutes: Routes = [
@@ -101,6 +102,28 @@ export const datatugRoutes: Routes = [
     path: 'signed-out',
     pathMatch: 'full',
     redirectTo: '/',
+  },
+  // Metadata only: no reuse of the private project's child query/write routes.
+  {
+    path: 'space/:spaceId/store/:storeId/project/:projectId',
+    canMatch: [
+      (_route, segments) =>
+        segments.every((s) => Object.keys(s.parameters).length === 0) &&
+        isSharedProjectRef({
+          spaceID: segments[1]?.path,
+          storeId: segments[3]?.path,
+          projectId: segments[5]?.path,
+        }) &&
+        (segments.length === 6 ||
+          (segments.length === 7 && segments[6].path === 'overview')),
+    ],
+    children: ['', 'overview'].map((path) => ({
+      path,
+      loadComponent: () =>
+        import('../pages/signed-in/project/project-page.component').then(
+          (m) => m.ProjectPageComponent,
+        ),
+    })),
   },
   // The short address of a GitHub project: `/project/github.com/<owner>/<repo>…` (design
   // `demo-as-github-project.md` 3.4). Matched by matchers, not paths; the old `store/…` form below is unchanged.

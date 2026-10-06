@@ -86,11 +86,7 @@ export class DatatugNavService {
       return;
     }
     const errMessage = 'Failed to navigate to project page ' + page;
-    const url = this.addressOf(
-      { storeId, projectId: project.ref.projectId },
-      page,
-      errMessage,
-    );
+    const url = this.addressOf({ ...project.ref, storeId }, page, errMessage);
     if (url === undefined) {
       return;
     }

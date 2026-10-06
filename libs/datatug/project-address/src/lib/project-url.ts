@@ -22,6 +22,7 @@ import {
 export interface IProjectRef {
   readonly storeId: string;
   readonly projectId: string;
+  readonly spaceID?: string;
 }
 
 export const getStoreId = (repo: string): string => {
@@ -103,10 +104,11 @@ export interface IProjectUrlParts {
   readonly ok: true;
   readonly storeId: string;
   readonly projectId: string;
+  readonly spaceID?: string;
   /** What follows the project locator: `''`, or a path beginning with `/` (`/chat`), every segment checked (not empty, not `.` or `..`). Left as typed (still percent-encoded). */
   readonly rest: string;
   /** `short` = `/project/github.com/…`; `legacy` = `/store/<storeId>/project/<projectId>`. */
-  readonly shape: 'short' | 'legacy';
+  readonly shape: 'short' | 'legacy' | 'space';
   /** The one address of this project and page (design 3.4a), `rest` kept. */
   readonly canonicalPath: string;
   /** False when the typed path is another spelling of `canonicalPath` (case, `.git`, a trailing slash, `tree/HEAD`, a `blob/` link, the legacy GitHub shape). Always true for a non-GitHub store (one shape, left as typed). */
@@ -246,6 +248,17 @@ export function tryProjectUrl(
   if (rest === undefined) {
     return refused('invalid-path-segment');
   }
+  if (ref?.spaceID !== undefined) {
+    if (
+      ref.storeId !== 'firestore' ||
+      !sharedIdentifier(ref.spaceID) ||
+      !sharedIdentifier(ref.projectId) ||
+      (rest !== '' && rest !== '/overview')
+    ) {
+      return refused('not-representable');
+    }
+    return `/space/${ref.spaceID}/store/firestore/project/${ref.projectId}${rest}`;
+  }
   const storeId = ref?.storeId;
   const projectId = ref?.projectId;
   if (typeof storeId !== 'string' || typeof projectId !== 'string') {
@@ -308,6 +321,32 @@ export function parseProjectUrl(
     return notOurs;
   }
   const segments = path.slice(1).split('/');
+  if (segments[0] === 'space') {
+    const spaceID = decodeLocatorSegment(segments[1]);
+    const projectId = decodeLocatorSegment(segments[5]);
+    const rest = restOf(withoutTrailingSlash(segments.slice(6)));
+    if (
+      segments[2] !== 'store' ||
+      segments[3] !== 'firestore' ||
+      segments[4] !== 'project' ||
+      !sharedIdentifier(spaceID) ||
+      !sharedIdentifier(projectId) ||
+      (rest !== '' && rest !== '/overview')
+    ) {
+      return { ok: false, reason: 'invalid-path-segment' };
+    }
+    const canonicalPath = `/space/${spaceID}/store/firestore/project/${projectId}${rest}`;
+    return {
+      ok: true,
+      storeId: 'firestore',
+      spaceID,
+      projectId,
+      rest,
+      shape: 'space',
+      canonicalPath,
+      isCanonical: path === canonicalPath,
+    };
+  }
   if (segments[0] === 'project') {
     return segments[1] === GITHUB_STORE_ID
       ? parseShortGithubPath(path, segments)
@@ -496,3 +535,7 @@ function parseShortGithubPath(
     github: githubParts(project),
   };
 }
+
+// Same bounded identifiers as DataTug backend's shared-project contract.
+const sharedIdentifier = (v: unknown): v is string =>
+  typeof v === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(v);

@@ -3,7 +3,11 @@
     <ion-buttons slot="start">
       <ion-menu-button />
       <ion-back-button
-        [defaultHref]="project()?.ref && '/store/' + project()?.ref?.storeId"
+        [defaultHref]="
+          project()?.ref?.spaceID
+            ? '/'
+            : project()?.ref && '/store/' + project()?.ref?.storeId
+        "
       />
     </ion-buttons>
     <ion-title color="medium">Project</ion-title>
@@ -16,28 +20,37 @@
       <ion-input
         style="font-weight: bold"
         readonly
-        [value]="project()?.brief?.title || 'Loading...'"
+        [value]="
+          project()?.brief?.title ||
+          (metadataState() === 'loading' ? 'Loading...' : 'Project unavailable')
+        "
       />
-      <ion-select
-        slot="end"
-        interface="popover"
-        placeholder="Go to..."
-        (ionChange)="goTo($event)"
-      >
-        <ion-select-option value="boards">Boards</ion-select-option>
-        <ion-select-option value="environments">Environments</ion-select-option>
-        <ion-select-option value="queries">Queries</ion-select-option>
-        <ion-select-option value="public-data">Public data lookup</ion-select-option>
-        @if (enableEmptyShellPages) {
-          <ion-select-option value="tags">Tags</ion-select-option>
-        }
-      </ion-select>
+      @if (!project()?.ref?.spaceID) {
+        <ion-select
+          slot="end"
+          interface="popover"
+          placeholder="Go to..."
+          (ionChange)="goTo($event)"
+        >
+          <ion-select-option value="boards">Boards</ion-select-option>
+          <ion-select-option value="environments"
+            >Environments</ion-select-option
+          >
+          <ion-select-option value="queries">Queries</ion-select-option>
+          <ion-select-option value="public-data"
+            >Public data lookup</ion-select-option
+          >
+          @if (enableEmptyShellPages) {
+            <ion-select-option value="tags">Tags</ion-select-option>
+          }
+        </ion-select>
+      }
     </ion-item>
     <!--		<ion-item>-->
     <!--			<ion-label color="medium" style="font-weight: bold;">ID</ion-label>-->
     <!--			<ion-input readonly [value]="project?.ref?.projectId" color="medium"></ion-input>-->
     <!--		</ion-item>-->
-    @if (project()?.ref && project()?.ref?.storeId !== "firestore") {
+    @if (project()?.ref && project()?.ref?.storeId !== 'firestore') {
       <ion-item>
         <ion-label color="medium" style="font-weight: bold">Store</ion-label>
         <ion-input
@@ -67,7 +80,30 @@
   <!--							 (itemClick)="goEntity($event)"-->
   <!--							 (cardTitleClick)="goProjFolder(Entity)"/>-->
 
-  <sneat-datatug-folder [path]="'~'" [projectRef]="project()?.ref" />
+  @if (project()?.ref?.spaceID) {
+    <ion-card>
+      <ion-item><ion-label>Read-only project metadata</ion-label></ion-item>
+      @if (metadataState() === 'available') {
+        <ion-item
+          ><ion-label>Space: {{ project()?.ref?.spaceID }}</ion-label></ion-item
+        >
+        <ion-item
+          ><ion-label
+            >Access: {{ project()?.summary?.access }}</ion-label
+          ></ion-item
+        >
+      } @else if (metadataState() === 'unavailable') {
+        <ion-item
+          ><ion-label
+            >Project metadata is unavailable. Check your sign-in and Space
+            access.</ion-label
+          ></ion-item
+        >
+      }
+    </ion-card>
+  } @else {
+    <sneat-datatug-folder [path]="'~'" [projectRef]="project()?.ref" />
+  }
   <!--	<sneat-datatug-card-list [projItemType]="Agent"-->
   <!--							 title="Agents"-->
   <!--							 itemIcon="cube-outline"-->

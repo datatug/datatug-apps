@@ -100,3 +100,73 @@ describe('ProjectMenuComponent — Active Queries tab renders QueriesMenuCompone
     expect(host.querySelector('sneat-datatug-queries-menu')).toBeTruthy();
   });
 });
+
+describe('shared metadata menu refuses active-query tab', () => {
+  it('renders only Overview even when an old menu instance retains the queries tab', async () => {
+    const { DatatugNavContextService } =
+      await import('../../../services/nav/datatug-nav-context.service');
+    const { DatatugNavService } =
+      await import('../../../services/nav/datatug-nav.service');
+    const { DatatugUserService } =
+      await import('../../../services/base/datatug-user-service');
+    const nav = { goProjPage: vi.fn() };
+    const queryActions = { openNewQuery: vi.fn() };
+    const queryState = {
+      queryEditorState: of(undefined),
+      setCurrentQuery: vi.fn(),
+      closeQuery: vi.fn(),
+    };
+    const project = {
+      ref: { storeId: 'firestore', spaceID: 'S1', projectId: 'same' },
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response('<svg xmlns="http://www.w3.org/2000/svg"></svg>'),
+      ),
+    );
+    await TestBed.configureTestingModule({
+      imports: [ProjectMenuComponent],
+      providers: [
+        {
+          provide: DatatugNavContextService,
+          useValue: {
+            currentProject: of(project),
+            currentFolder: of('overview'),
+          },
+        },
+        { provide: DatatugNavService, useValue: nav },
+        { provide: DatatugUserService, useValue: { datatugUserState: of({}) } },
+        {
+          provide: ErrorLogger,
+          useValue: {
+            logError: vi.fn(),
+            logErrorHandler: vi.fn(() => vi.fn()),
+          },
+        },
+        { provide: QueriesUiService, useValue: queryActions },
+        { provide: QueryEditorStateService, useValue: queryState },
+      ],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(ProjectMenuComponent);
+    fixture.componentInstance.tab = 'queries';
+    fixture.componentRef.setInput('metadataOnly', true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('sneat-datatug-queries-menu')).toBeNull();
+    expect(
+      host.querySelector('sneat-datatug-investigation-context-bar'),
+    ).toBeNull();
+    expect(host.querySelectorAll('ion-item')).toHaveLength(1);
+    const overview = host.querySelector('ion-item');
+    if (!overview) throw new Error('Missing overview menu item');
+    overview.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(nav.goProjPage).toHaveBeenCalledWith('overview', project, {
+      project,
+    });
+    expect(queryActions.openNewQuery).not.toHaveBeenCalled();
+    expect(queryState.setCurrentQuery).not.toHaveBeenCalled();
+  });
+});

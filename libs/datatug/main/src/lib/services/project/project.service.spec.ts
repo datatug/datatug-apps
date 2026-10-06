@@ -172,3 +172,35 @@ describe('ProjectService', () => {
     });
   });
 });
+
+describe('ProjectService shared operation fence', () => {
+  it('refuses getFull even if the legacy same-ID cache already contains a result', () => {
+    const http = { get: vi.fn() };
+    TestBed.configureTestingModule({
+      providers: [
+        ProjectService,
+        { provide: HttpClient, useValue: http },
+        { provide: SneatApiService, useValue: {} },
+        { provide: ErrorLogger, useValue: {} },
+        { provide: PrivateTokenStoreService, useValue: {} },
+        { provide: DatatugStoreServiceFactory, useValue: {} },
+      ],
+    });
+    const service = TestBed.inject(ProjectService);
+    (
+      service as unknown as {
+        projects: Record<string, Observable<IProjectSummary>>;
+      }
+    ).projects['same'] = of({
+      id: 'same',
+      title: 'private',
+      access: 'private',
+    });
+    let error: unknown;
+    service
+      .getFull({ storeId: 'firestore', spaceID: 'S1', projectId: 'same' })
+      .subscribe({ error: (e) => (error = e) });
+    expect(error).toBeTruthy();
+    expect(http.get).not.toHaveBeenCalled();
+  });
+});
