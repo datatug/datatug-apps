@@ -2,6 +2,7 @@ import { Injectable, InjectionToken, inject } from '@angular/core';
 import { Observable, defer, forkJoin, from, of, throwError } from 'rxjs';
 import { map, switchMap } from 'rxjs/operators';
 import { IParameterDef } from '../../../models/definition/parameter';
+import type { IQueryDef } from '../../../models/definition/query-def';
 import { IRecordsetDef } from '../../../models/definition/recordset';
 import {
   GITHUB_DEFAULT_BRANCH_REF,
@@ -163,10 +164,8 @@ export interface IGithubWireQueryItem {
   parameters?: IParameterDef[];
   dbModel?: string;
   recordsets?: IRecordsetDef[];
-  federation?: {
-    readonly ovdbBaseUrl: string;
-    readonly tables: readonly { readonly name: string; readonly schema?: string; readonly fields: readonly string[] }[];
-  };
+  federation?: IQueryDef['federation'];
+  publicData?: IQueryDef['publicData'];
 }
 
 export interface IGithubWireQueryFolder {
@@ -1436,6 +1435,7 @@ export class GithubProjectReaderService {
                   parameters: def?.parameters,
                   recordsets: def?.recordsets,
                   federation: def?.federation,
+                  publicData: def?.publicData,
                   dbModel: def?.dbModel,
                   draft: def?.draft,
                 }),
