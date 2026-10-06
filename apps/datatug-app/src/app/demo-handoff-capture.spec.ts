@@ -920,6 +920,36 @@ describe('demo hand-off capture', () => {
       expect(load.store.get(DEMO_HANDOFF_KEY)).toBe(path + '?msg=Hello&lang=ru');
     });
 
+    it('captures the short shared-project start-chat fragment before analytics and trusts only that exact folder', () => {
+      const path = '/project/github.com/datatug/datatug-demo-project/demo-project-1/start-chat';
+      const early = run(path, '', '#msg=Private+question&lang=ru');
+      expect(early.replaced).toEqual([path]);
+      expect(early.stash).toBe('?msg=Private+question&lang=ru');
+      expect(isTrustedHandoff(path)).toBe(true);
+      expect(handoffTargetOfPath(path)?.kind).toBe('start-chat');
+      const load = pageLoad(path, '', { store: early.kept, stashed: early.stash as string });
+      captureDemoHandoff(load.env);
+      expect(demoHandoff(() => load.env.storage(), path)?.question).toBe('Private question');
+      for (const other of [
+        '/project/github.com/datatug/datatug-demo-project/demo-project-2/start-chat',
+        '/project/github.com/datatug/datatug-demo-project-evil/demo-project-1/start-chat',
+        '/project/github.com/datatug/datatug-demo-project/demo-project-1/start-chaK',
+      ]) {
+        expect(handoffTargetOfPath(other)).toBeUndefined();
+        expect(run(other, '', '#msg=Private').stash).toBeUndefined();
+      }
+    });
+
+    it('captures a no-JavaScript short-folder start-chat GET form before analytics', () => {
+      const path = '/project/github.com/datatug/datatug-demo-project/demo-project-1/start-chat';
+      const early = run(path, '?msg=Private+form&lang=ru&x=1');
+      expect(early.replaced).toEqual([path + '?x=1']);
+      expect(early.stash).toBe('?msg=Private+form&lang=ru');
+      const load = pageLoad(path, '?x=1', { store: early.kept, stashed: early.stash as string });
+      captureDemoHandoff(load.env);
+      expect(demoHandoff(() => load.env.storage(), path)?.question).toBe('Private form');
+    });
+
     it('acts on exactly the paths isHandoffPath accepts', () => {
       const paths = [
         '/demo',

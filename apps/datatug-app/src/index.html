@@ -36,7 +36,7 @@
     <script id="datatug-handoff-stash">
       (function () {
         // `u`: a path that starts with `//` is, to history.replaceState, an address on another host; it needs its origin.
-        var p = location.pathname, g = /^\/\(([^()]*)\)/.exec(p), i, kept, got, left, taken, n, u = p.slice(0, 2) === '//' ? location.origin : '',
+        var p = location.pathname, g = /^\/\(([^()]*)\)/.exec(p), i, kept, got, left, taken, n, asciiShort = true, u = p.slice(0, 2) === '//' ? location.origin : '',
             s = (g ? g[1] : p.replace(/\/$/, '')).replace(/^\/+/, '').split('/'),
             h = location.hash, q = location.search, page = 'start-chat';
         if (!q && !h) return;
@@ -55,11 +55,13 @@
         for (i = 0; i < s.length; i++) {
           s[i] = s[i].split(';')[0];
           try { s[i] = decodeURIComponent(s[i]); } catch (e) {}
+          if (!/^[\x20-\x7e]+$/.test(s[i])) asciiShort = false;
           s[i] = s[i].toLowerCase();
         }
         n = s.length;
         if ((g ? g[1].indexOf('//') < 0 : p.indexOf('(') < 0) && s[0] === 'project' && s[1] === 'github.com' && s[2] && s[3] &&
-            (n === 5 ? s[4] === page : n >= 8 && s[4] === 'tree' && s[5] && s[n - 2] === '-' && s[n - 1] === page && s.slice(6, n - 2).indexOf('-') < 0)) {
+            (n === 5 ? s[4] === page : n >= 8 && s[4] === 'tree' && s[5] && s[n - 2] === '-' && s[n - 1] === page && s.slice(6, n - 2).indexOf('-') < 0 ||
+              asciiShort && n === 6 && s[2] === 'datatug' && s[3] === 'datatug-demo-project' && s[4] === 'demo-project-1' && s[5] === page)) {
           // The confirmation page: the question is after `#`, or (a form post with no script) in the query.
           got = []; left = []; taken = 0;
           h.slice(1).split('&').forEach(function (pair) { if (ours(pair)) got.push(pair); });

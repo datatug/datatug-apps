@@ -9,9 +9,11 @@ import {
   resolveProductProfile,
 } from '@datatug/product-profiles';
 import {
+  canonicalDemoShortMatcher,
   datatugProfileOnly,
   handoffOrRoot,
   legacyChinookDemoMatcher,
+  redirectCanonicalDemoShort,
   redirectLegacyChinookDemo,
   routes,
 } from './datatug-app-routes';
@@ -38,10 +40,12 @@ describe('DataTug app routes', () => {
   // G-0: a hand-off from the sites must never fail to match (Sentry's crash-report dialog, the question lost).
   it('has the hand-off route: a matcher (case-insensitive, matrix parameters ignored), lazy, no flag, DataTug profile or the root', () => {
     const matching = routes.filter((r) => r.matcher);
-    expect(matching.length).toBe(2);
+    expect(matching.length).toBe(3);
     expect(matching[0].matcher).toBe(legacyChinookDemoMatcher);
     expect(matching[0].canMatch).toEqual([redirectLegacyChinookDemo]);
-    const route = matching[1];
+    expect(matching[1].matcher).toBe(canonicalDemoShortMatcher);
+    expect(matching[1].canMatch).toEqual([redirectCanonicalDemoShort]);
+    const route = matching[2];
     expect(route.matcher).toBe(handoffUrlMatcher);
     expect(route.path).toBeUndefined();
     expect(route.loadComponent).toBeTypeOf('function');
@@ -53,6 +57,7 @@ describe('DataTug app routes', () => {
   it('leaves the rest of the route table as it was: the hand-off route is only added', () => {
     expect(routes.map((r) => r.path)).toEqual([
       undefined, // exact historical Chinook demo alias
+      undefined, // exact shared-project short folder alias
       undefined, // the hand-off route, which has a matcher instead of a path
       'store/:storeId/project/:projectId/chat',
       'chat',
@@ -124,6 +129,38 @@ describe('DataTug app routes', () => {
         const result = await visit('datatug.app', url);
         expect(result.url).toBe(url.replace('K', '%E2%84%AA'));
       }
+    });
+
+    it('redirects the exact shared-project short folder and start-chat addresses', async () => {
+      const short = '/project/github.com/datatug/datatug-demo-project/demo-project-1';
+      const canonical = '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1';
+      const root = await visit('datatug.app', short);
+      expect(root.url).toBe(canonical);
+      expect(root.component).toBe(ProjectStub);
+      TestBed.resetTestingModule();
+      const handoff = await visit('datatug.app', short + '/start-chat');
+      expect(handoff.url).toBe(canonical + '/-/start-chat');
+      expect(handoff.component).toBe(HandoffStub);
+    });
+
+    it('does not promote lookalike folders, owners, refs, or encoded separators to the shared demo', () => {
+      const paths = [
+        ['datatug', 'datatug-demo-project', 'demo-project-2'],
+        ['datatug-other', 'datatug-demo-project', 'demo-project-1'],
+        ['datatug', 'datatug-demo-project-evil', 'demo-project-1'],
+        ['datatug', 'datatug-demo-project', 'demo/project-1'],
+        ['datatug', 'datatug-demo-project', 'demo-project-1', 'chat'],
+        ['datatug', 'datatug-demo-project', 'demo-project-1', 'start-chat', 'extra'],
+        ['datatug', 'datatug-demo-project', 'tree', 'other', 'demo-project-1'],
+        ['datatug', 'datatug-demo-project', 'demo-project-1', 'start-chaK'],
+      ];
+      for (const parts of paths) {
+        const segments = ['project', 'github.com', ...parts].map((part) => new UrlSegment(part, {}));
+        expect(canonicalDemoShortMatcher(segments, new UrlSegmentGroup(segments, {}))).toBeNull();
+      }
+      const exact = ['project', 'github.com', 'datatug', 'datatug-demo-project', 'demo-project-1'];
+      const segments = exact.map((part) => new UrlSegment(part, {}));
+      expect(canonicalDemoShortMatcher(segments, new UrlSegmentGroup(segments, { aux: new UrlSegmentGroup([new UrlSegment('chat', {})], {}) }))).toBeNull();
     });
 
     it('does not treat encoded slashes or auxiliary outlets as the first-party alias', () => {

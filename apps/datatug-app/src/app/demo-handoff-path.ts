@@ -86,6 +86,17 @@ export function routeSegments(pathname: string): string[] {
 export function handoffTarget(
   segments: readonly string[],
 ): HandoffTarget | undefined {
+  // The site's short folder/start-chat link predates the canonical tree/HEAD
+  // spelling. Recognize only this first-party alias so its fragment is captured
+  // before analytics, then the route redirects to the explicit folder project.
+  if (segments.length === 6 && segments.every((part) => /^[\x20-\x7e]+$/.test(part)) &&
+      segments.map((part) => part.toLowerCase()).join('/') ===
+        'project/github.com/datatug/datatug-demo-project/demo-project-1/start-chat') {
+    return {
+      kind: 'start-chat', owner: 'datatug', repo: 'datatug-demo-project',
+      ref: 'HEAD', dir: ['demo-project-1'],
+    };
+  }
   const [first, host, owner, repo, ...rest] = segments.map((s) =>
     s.toLowerCase(),
   );
