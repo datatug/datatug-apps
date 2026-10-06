@@ -31,9 +31,9 @@ test.skip(
 );
 
 const BAD_PROJECT_URL =
-  '/store/github.com/project/datatug-demo-projects@datatug@no-such-project-xyz';
+  '/store/github.com/project/datatug-demo-project@datatug@no-such-project-xyz';
 const GOOD_PROJECT_URL =
-  '/store/github.com/project/datatug-demo-projects@datatug@demo-project-1';
+  '/store/github.com/project/datatug-demo-project@datatug@demo-project-1';
 
 const SENTRY_DIALOG_SELECTOR = '.sentry-error-embed';
 

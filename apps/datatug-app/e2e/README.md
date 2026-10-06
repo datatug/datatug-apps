@@ -47,8 +47,8 @@ fails CI hard just because the binary wasn't provisioned for that job.
 |---|---|---|
 | `DATATUG_BIN` | Path to a built `datatug` binary. | — |
 | `DATATUG_CLI_DIR` | Path to a `datatug-cli` checkout; used to `go build` a binary on demand when `DATATUG_BIN` is not set. | — |
-| `DATATUG_DEMO_DIR` | Path to `datatug-demo-projects/demo-project-1`. | `../datatug-demo-projects/demo-project-1` relative to this repo (tried at 1–3 directory levels up, to cover both a plain sibling checkout and a nested `.worktrees/<task>` checkout) |
-| `DATATUG_E2E_GITHUB_FAKE` | Used by `github-store.spec.ts` only: a checkout of `datatug/datatug-demo-projects`, served in place of `api.github.com`, `raw.githubusercontent.com` and `cdn.jsdelivr.net` (`helpers/fake-github.ts`): no network, none of the 60 anonymous API requests an hour. Unset, that spec reads the real GitHub. | Unset |
+| `DATATUG_DEMO_DIR` | Path to `datatug-demo-project/demo-project-1`. | `../datatug-demo-project/demo-project-1` relative to this repo (tried at 1–3 directory levels up, to cover both a plain sibling checkout and a nested `.worktrees/<task>` checkout) |
+| `DATATUG_E2E_GITHUB_FAKE` | Used by `github-store.spec.ts` only: a checkout of `datatug/datatug-demo-project`, served in place of `api.github.com`, `raw.githubusercontent.com` and `cdn.jsdelivr.net` (`helpers/fake-github.ts`): no network, none of the 60 anonymous API requests an hour. Unset, that spec reads the real GitHub. | Unset |
 | `DATATUG_LARGE_E2E` | Set to `1` to run the cross-source join journey with 120,000 rows instead of the CI default of 205 rows and 25-row source pages. | Unset |
 
 If neither `DATATUG_BIN` nor `DATATUG_CLI_DIR` is set, or the demo project
@@ -63,7 +63,7 @@ runs this suite in CI. It:
 
 1. Checks out this repo, plus `datatug/datatug-cli` at a **pinned release
    tag** (`env.DATATUG_CLI_REF` at the top of the job — currently
-   `v0.46.0`) and `datatug/datatug-demo-projects` at `main`, both nested
+   `v0.46.0`) and `datatug/datatug-demo-project` at `main`, both nested
    under the workspace (`actions/checkout`'s `path:` cannot escape the
    primary checkout).
 2. Sets up Go from `datatug-cli/go.mod` and builds `datatug` from the CLI
@@ -78,13 +78,13 @@ runs this suite in CI. It:
 3. Fetches the Chinook SQLite fixture directly, keylessly, to
    `~/datatug/dbs/chinook-local.sqlite` — the exact path
    `environments/local/catalogs/chinook-local/chinook-local.db.json`
-   declares in `datatug-demo-projects`. This is *not* `datatug demo`: that
+   declares in `datatug-demo-project`. This is *not* `datatug demo`: that
    CLI command (`apps/datatugapp/commands/cmd_demo.go` in `datatug-cli`)
    does the same keyless download but then blocks forever serving the demo
    project (it hands off to `serve`), so it can't run as a CI step; the CI
    step replicates just its `downloadSQLiteSource` behavior (same URL) and
    stops there. `DATATUG_DEMO_DIR` is set to the checked-out
-   `datatug-demo-projects/demo-project-1`, so the fixture never needs its
+   `datatug-demo-project/demo-project-1`, so the fixture never needs its
    own git clone.
 4. Installs Playwright's `chromium` browser, builds `datatug-app`
    (production config — a fail-fast check; `playwright.config.ts`'s own
@@ -139,7 +139,7 @@ kept-current account, with `journey.spec.ts`'s file header behind it for
 the per-test fix history. Read those two, not this file.
 
 This file used to carry a second copy of that account — three
-`datatug-cli`/`datatug-demo-projects` defects that blocked every journey
+`datatug-cli`/`datatug-demo-project` defects that blocked every journey
 test. It went stale the moment those fixes landed and contradicted
 `journey/README.md` for as long as it stood, which is why the status now
 lives in exactly one place; please keep it that way rather than restoring
