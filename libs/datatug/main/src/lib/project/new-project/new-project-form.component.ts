@@ -411,21 +411,14 @@ function githubProjectCreateFailure(error: unknown): {
     case 'conflict':
       return {
         message:
-          'The branch, folder or shared-project limit changed. Review your selection and try again.',
-        retrySameOperation: false,
+          'The branch, folder or shared-project limit conflicts with current state. Retry unchanged to check this operation, or review your selection before a new attempt.',
+        retrySameOperation: true,
       };
   }
   if (status === 400 || status === 401 || status === 402 || status === 403) {
     return {
       message:
         'Project creation was denied. Check your details and access before trying again.',
-      retrySameOperation: false,
-    };
-  }
-  if (status === 409 && code !== 'outcome_uncertain') {
-    return {
-      message:
-        'Project creation conflicted with current repository or plan state. Review your selection and try again.',
       retrySameOperation: false,
     };
   }

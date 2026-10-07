@@ -222,10 +222,6 @@ describe('New project through authenticated common API', () => {
       'GitHub access',
     ],
     [
-      { status: 409, error: { error: { code: 'conflict' } } },
-      'branch, folder or shared-project limit',
-    ],
-    [
       { status: 409, error: { error: { code: 'reauthorization_required' } } },
       'Reconnect GitHub',
     ],
@@ -260,6 +256,29 @@ describe('New project through authenticated common API', () => {
     h.component.create();
     expect(h.create.mock.calls[1][0]).toEqual(request);
   });
+  it.each([
+    [
+      { status: 409, error: { error: { code: 'conflict' } } },
+      'branch, folder or shared-project limit',
+    ],
+    [{ status: 409 }, 'Creation was not confirmed'],
+  ])(
+    'retains the operation for a conflict that may follow a provider commit',
+    async (failure, notice) => {
+      const h = await harness();
+      h.select();
+      h.fixture.detectChanges();
+      const pending = new Subject();
+      h.create.mockReturnValue(pending as never);
+      h.component.create();
+      const request = h.create.mock.calls[0][0];
+      pending.error(failure);
+      await h.fixture.whenStable();
+      expect(h.fixture.nativeElement.textContent).toContain(notice);
+      h.component.create();
+      expect(h.create.mock.calls[1][0]).toEqual(request);
+    },
+  );
   it('ignores out-of-order branch lists after repository selection changes', async () => {
     const h = await harness();
     h.select();
