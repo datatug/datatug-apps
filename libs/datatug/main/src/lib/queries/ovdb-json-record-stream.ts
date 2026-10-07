@@ -2,6 +2,7 @@
  * first; metadata and `complete:true` are written only after the server has
  * finished reading and closing the source. A partial body is never a result. */
 import { strictJson } from './public-data/strict-json';
+export const OVDB_ERROR_STREAM_MIME = 'application/vnd.openvaultdb.query-stream+json';
 export interface OvdbStreamRecord {
   readonly key?: string;
   readonly data: Readonly<Record<string, unknown>>;
@@ -72,13 +73,73 @@ function recordFromJson(json: string): OvdbStreamRecord {
   return record as unknown as OvdbStreamRecord;
 }
 
-function footerFromJson(json: string, observed: ReadonlySet<string>, relational: boolean): OvdbStreamFooter {
+function mappedError(value: unknown): { readonly code: string; readonly message: string } | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const error = value as Record<string, unknown>;
+  if (typeof error['code'] !== 'string' || !/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(error['code']) ||
+      typeof error['message'] !== 'string' || !error['message'].trim() ||
+      error['message'].length > 512 ||
+      Array.from(error['message']).some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127))
+    return undefined;
+  return { code: error['code'], message: error['message'] };
+}
+
+/** Only the server's bounded, mapped code/message may reach the user. */
+export function ovdbMappedError(value: unknown): string | undefined {
+  const parsed = mappedError(value);
+  return parsed ? `OVDB query failed (${parsed.code}): ${parsed.message}` : undefined;
+}
+
+/** Pre-header failures are normal JSON responses, never a query stream. */
+export async function readOvdbEarlyError(response: Response, signal?: AbortSignal): Promise<string | undefined> {
+  if (!/^application\/json(?:\s*;|\s*$)/i.test(response.headers.get('Content-Type') ?? '') ||
+      !response.body) return undefined;
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8', { fatal: true });
+  let body = '';
+  let size = 0;
+  try {
+    for (;;) {
+      signal?.throwIfAborted();
+      const part = await new Promise<ReadableStreamReadResult<Uint8Array>>((resolve, reject) => {
+        const abort = (): void => {
+          reject(signal?.reason ?? new Error('The OVDB query was cancelled.'));
+          void reader.cancel(signal?.reason).catch(() => undefined);
+        };
+        signal?.addEventListener('abort', abort, { once: true });
+        if (signal?.aborted) abort();
+        reader.read().then(resolve, reject).finally(() => signal?.removeEventListener('abort', abort));
+      });
+      if (part.done) break;
+      size += part.value.byteLength;
+      if (size > 16 * 1024) return undefined;
+      body += decoder.decode(part.value, { stream: true });
+    }
+    body += decoder.decode();
+    const parsed: unknown = strictJson(body);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
+    return ovdbMappedError((parsed as Record<string, unknown>)['error']);
+  } catch {
+    signal?.throwIfAborted();
+    return undefined;
+  } finally { void reader.cancel().catch(() => undefined); }
+}
+
+function footerFromJson(json: string, observed: ReadonlySet<string>, relational: boolean,
+  negotiatedErrors: boolean): OvdbStreamFooter {
   const value: unknown = strictJson(`{"records":[]${json}`);
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new Error('OVDB returned an invalid query stream footer.');
   const footer = value as Record<string, unknown>;
+  if (footer['complete'] === false && negotiatedErrors) {
+    const message = ovdbMappedError(footer['error']);
+    if (message && Object.keys(footer).every((key) => ['records', 'complete', 'error'].includes(key)))
+      throw new Error(message);
+  }
   if (footer['complete'] !== true)
     throw new Error('OVDB did not complete the query stream.');
+  if (footer['error'] !== undefined)
+    throw new Error('OVDB returned an inconsistent query stream footer.');
   const columns = footer['columns'] ?? (!relational && footer['execution'] === undefined ? [...observed] : undefined);
   if (!Array.isArray(columns) || columns.some((name) => typeof name !== 'string' || !name.length) ||
       new Set(columns).size !== columns.length ||
@@ -98,10 +159,12 @@ export async function readOvdbJsonRecordStream(
   onRecord: (record: OvdbStreamRecord) => Promise<void> | void,
   signal?: AbortSignal,
   limits: OvdbStreamLimits = defaultLimits,
+  negotiatedErrors = false,
 ): Promise<{ readonly footer: OvdbStreamFooter; readonly rows: number; readonly bytes: number }> {
   if (response.redirected || !response.ok || !response.body)
     throw new Error('OVDB query stream is unavailable.');
-  if (!/^application\/json(?:\s*;|\s*$)/i.test(response.headers.get('Content-Type') ?? ''))
+  const expectedMime = negotiatedErrors ? OVDB_ERROR_STREAM_MIME : 'application/json';
+  if (response.headers.get('Content-Type')?.split(';', 1)[0].trim().toLowerCase() !== expectedMime)
     throw new Error('OVDB query stream has an unexpected content type.');
   const reader = response.body.getReader();
   const decoder = new TextDecoder('utf-8', { fatal: true });
@@ -203,7 +266,8 @@ export async function readOvdbJsonRecordStream(
     await consume(decoder.decode());
     if (!footerReached() || recordLength)
       throw new Error('OVDB query stream ended before the terminal footer.');
-    return { footer: footerFromJson(footerParts.join('') + footerPart, observed, relational), rows, bytes };
+    return { footer: footerFromJson(footerParts.join('') + footerPart, observed, relational,
+      negotiatedErrors), rows, bytes };
   } finally {
     void reader.cancel().catch(() => undefined);
   }
