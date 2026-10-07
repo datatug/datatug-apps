@@ -627,6 +627,8 @@
           ? 'Preparing source snapshot'
           : progress.stage === 'loading'
             ? 'Loading sources'
+            : progress.stage === 'streaming'
+              ? 'Receiving query rows'
             : progress.stage === 'processing'
               ? 'Processing rows'
               : progress.stage === 'lookup'
