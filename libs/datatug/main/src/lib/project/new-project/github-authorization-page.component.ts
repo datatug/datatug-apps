@@ -21,7 +21,7 @@ declare global {
 }
 
 @Component({
-  selector: 'datatug-github-authorization-page',
+  selector: 'sneat-datatug-github-authorization-page',
   imports: [IonContent, IonHeader, IonToolbar, IonTitle, IonButton],
   providers: [NewProjectService],
   template: `<ion-header
@@ -81,7 +81,7 @@ export class GithubAuthorizationPageComponent {
         filter((auth) => auth.status === 'authenticated' && !!auth.user?.uid),
         take(1),
         switchMap((auth) => {
-          this.boundUserID = auth.user!.uid;
+          this.boundUserID = auth.user?.uid;
           return this.connection.complete(
             authorization.code,
             authorization.state,

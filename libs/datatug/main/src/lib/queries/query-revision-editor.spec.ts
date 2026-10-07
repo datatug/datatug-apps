@@ -5,7 +5,10 @@ import { QueryEditorStateService } from './query-editor-state-service';
 import { QueriesService } from './queries.service';
 import { ProjectService } from '../services/project/project.service';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
-import { createHostedDemoDbQuery, withHostedDemoDbSource } from './hosted-demo-db-query';
+import {
+  createHostedDemoDbQuery,
+  withHostedDemoDbSource,
+} from './hosted-demo-db-query';
 import { toProjectQueryWire } from './project-query-contract';
 import { type IProjectContext } from '../nav/nav-models';
 
@@ -22,6 +25,10 @@ const response = {
   branchHead: 'head-2',
   saveSupported: true,
 };
+function required<T>(value: T | undefined): T {
+  if (value === undefined) throw new Error('Missing test fixture value');
+  return value;
+}
 function harness() {
   TestBed.resetTestingModule();
   const project = new BehaviorSubject<IProjectContext | undefined>({ ref });
@@ -37,7 +44,10 @@ function harness() {
   const queries = {
     authentication: () => auth,
     getRevision: vi.fn(() => read),
-    saveRevision: vi.fn((..._args: unknown[]) => save),
+    saveRevision: vi.fn((...args: unknown[]) => {
+      void args;
+      return save;
+    }),
     capabilities: vi.fn(() => of({ querySave: true })),
     branches: vi.fn(() => of({ branches: [{ name: 'work', head: 'head-1' }] })),
     getQuery: vi.fn(),
@@ -72,31 +82,74 @@ function harness() {
 }
 
 describe('Common API query editor journey', () => {
-  it.each(['chinook.Customer', 'adventureworks.Person.Person'])('saves and cold-reloads the hosted demo source %s without a CLI definition', async (source) => {
-    const h = harness();
-    const definition = withHostedDemoDbSource(draft, source);
-    const state = h.service.newQuery({ id: 'q', isNew: true, queryType: definition.request.queryType,
-      title: definition.title, def: definition, request: definition.request, federation: definition.federation });
-    const result = { ...response, query: toProjectQueryWire(definition) };
-    h.queries.saveRevision.mockImplementation(() => of(result) as never);
-    await firstValueFrom(h.service.saveQuery(state, ref));
-    expect(h.queries.saveRevision.mock.calls[0][1]).toMatchObject({ ifNoneMatch: true, query: result.query });
-    h.service.reloadQuery('q');
-    h.read.next(result);
-    expect(h.service.getQueryState('q')?.def).toEqual(definition);
-    expect(h.getFull).not.toHaveBeenCalled();
-  });
+  it.each(['chinook.Customer', 'adventureworks.Person.Person'])(
+    'saves and cold-reloads the hosted demo source %s without a CLI definition',
+    async (source) => {
+      const h = harness();
+      const definition = withHostedDemoDbSource(draft, source);
+      const state = h.service.newQuery({
+        id: 'q',
+        isNew: true,
+        queryType: definition.request.queryType,
+        title: definition.title,
+        def: definition,
+        request: definition.request,
+        federation: definition.federation,
+      });
+      const result = { ...response, query: toProjectQueryWire(definition) };
+      h.queries.saveRevision.mockImplementation(() => of(result) as never);
+      await firstValueFrom(h.service.saveQuery(state, ref));
+      expect(h.queries.saveRevision.mock.calls[0][1]).toMatchObject({
+        ifNoneMatch: true,
+        query: result.query,
+      });
+      h.service.reloadQuery('q');
+      h.read.next(result);
+      expect(h.service.getQueryState('q')?.def).toEqual(definition);
+      expect(h.getFull).not.toHaveBeenCalled();
+    },
+  );
   it('uses only the actual local current branch and captured head for a first save', async () => {
     const h = harness();
-    const local = { storeId: 'http-localhost:8989', projectId: 'local', projectApi: 'local' as const, branch: 'work' };
+    const local = {
+      storeId: 'http-localhost:8989',
+      projectId: 'local',
+      projectApi: 'local' as const,
+      branch: 'work',
+    };
     h.project.next({ ref: local });
-    h.queries.branches.mockImplementation(() => of({ currentBranch: 'work', branches: [{ name: 'work', head: 'actual-local-head' }] }) as never);
+    h.queries.branches.mockImplementation(
+      () =>
+        of({
+          currentBranch: 'work',
+          branches: [{ name: 'work', head: 'actual-local-head' }],
+        }) as never,
+    );
     h.queries.saveRevision.mockImplementation(() => of(response) as never);
     await firstValueFrom(h.service.saveQuery(h.add(), local));
-    expect(h.queries.saveRevision.mock.calls[0][1]).toMatchObject({ branch: 'work', expectedBranchHead: 'actual-local-head', ifNoneMatch: true });
-    h.queries.branches.mockImplementation(() => of({ currentBranch: 'other', branches: [{ name: 'work', head: 'stale-head' }] }) as never);
-    const second = h.service.newQuery({ id: 'second', isNew: true, queryType: draft.request.queryType, def: { ...draft, id: 'second' }, request: draft.request, federation: draft.federation });
-    await expect(firstValueFrom(h.service.saveQuery(second, local))).rejects.toThrow('current local branch');
+    expect(h.queries.saveRevision.mock.calls[0][1]).toMatchObject({
+      branch: 'work',
+      expectedBranchHead: 'actual-local-head',
+      ifNoneMatch: true,
+    });
+    h.queries.branches.mockImplementation(
+      () =>
+        of({
+          currentBranch: 'other',
+          branches: [{ name: 'work', head: 'stale-head' }],
+        }) as never,
+    );
+    const second = h.service.newQuery({
+      id: 'second',
+      isNew: true,
+      queryType: draft.request.queryType,
+      def: { ...draft, id: 'second' },
+      request: draft.request,
+      federation: draft.federation,
+    });
+    await expect(
+      firstValueFrom(h.service.saveQuery(second, local)),
+    ).rejects.toThrow('current local branch');
     expect(h.queries.saveRevision).toHaveBeenCalledTimes(1);
   });
   it('retains the exact operation and captured head after a lost response', async () => {
@@ -111,7 +164,7 @@ describe('Common API query editor journey', () => {
     const first = h.queries.saveRevision.mock.calls[0][1];
     h.queries.saveRevision.mockImplementation(() => of(response) as never);
     await firstValueFrom(
-      h.service.saveQuery(h.service.getQueryState('q')!, ref),
+      h.service.saveQuery(required(h.service.getQueryState('q')), ref),
     );
     expect(h.queries.saveRevision.mock.calls[1][1]).toEqual(first);
     expect(h.queries.branches).toHaveBeenCalledTimes(1);
@@ -130,13 +183,13 @@ describe('Common API query editor journey', () => {
       operationId: string;
     };
     h.service.updateQueryState({
-      ...h.service.getQueryState('q')!,
+      ...required(h.service.getQueryState('q')),
       title: 'Later title',
       request: { ...draft.request, text: 'later body' } as typeof draft.request,
     });
     h.save.next(response);
     await completion;
-    const current = h.service.getQueryState('q')!;
+    const current = required(h.service.getQueryState('q'));
     expect(current.title).toBe('Later title');
     expect(current.request).toMatchObject({ text: 'later body' });
     h.queries.saveRevision.mockImplementation(() => of(response) as never);
@@ -194,7 +247,9 @@ describe('Common API query editor journey', () => {
     expect(h.service.getQueryState('q')?.def).toBeDefined();
     const caps = new Subject<{ querySave: boolean }>();
     h.queries.capabilities.mockImplementation(() => caps as never);
-    h.service.saveQuery(h.service.getQueryState('q')!, ref).subscribe();
+    h.service
+      .saveQuery(required(h.service.getQueryState('q')), ref)
+      .subscribe();
     h.auth.next({
       status: 'notAuthenticated',
       user: { uid: 'actor', providerData: [] },
@@ -206,7 +261,10 @@ describe('Common API query editor journey', () => {
   it('refuses a lossy rich definition before any API write, with an inline explanation', async () => {
     const h = harness();
     const state = h.add();
-    const enriched = { ...state, def: { ...state.def!, parameters: [] } };
+    const enriched = {
+      ...state,
+      def: { ...required(state.def), parameters: [] },
+    };
     h.service.updateQueryState(enriched);
     await expect(
       firstValueFrom(h.service.saveQuery(enriched, ref)),

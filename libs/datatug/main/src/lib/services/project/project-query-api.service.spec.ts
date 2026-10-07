@@ -8,12 +8,24 @@ import { createHostedDemoDbQuery } from '../../queries/hosted-demo-db-query';
 
 describe('ProjectQueryApiService', () => {
   const api = {
-    get: vi.fn((..._args: unknown[]) => of({})),
-    post: vi.fn((..._args: unknown[]) => of({})),
+    get: vi.fn((...args: unknown[]) => {
+      void args;
+      return of({});
+    }),
+    post: vi.fn((...args: unknown[]) => {
+      void args;
+      return of({});
+    }),
   };
   const http = {
-    get: vi.fn((..._args: unknown[]) => of({})),
-    post: vi.fn((..._args: unknown[]) => of({})),
+    get: vi.fn((...args: unknown[]) => {
+      void args;
+      return of({});
+    }),
+    post: vi.fn((...args: unknown[]) => {
+      void args;
+      return of({});
+    }),
   };
   beforeEach(() => {
     vi.clearAllMocks();

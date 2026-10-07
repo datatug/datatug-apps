@@ -13,7 +13,8 @@ function page(search: string, pathname = '/github/callback') {
   const window: { __datatugTakeGitHubAuthorization?: () => unknown } = {};
   const replaceState = vi.fn();
   const storage = { setItem: vi.fn(), getItem: vi.fn() };
-  runInNewContext(source!, {
+  if (!source) throw new Error('Missing callback scrub script');
+  runInNewContext(source, {
     location: { pathname, search, hash: '#ignored' },
     window,
     history: { replaceState },
@@ -32,7 +33,8 @@ describe('GitHub App callback before application bootstrap', () => {
     );
     const p = page('?code=private-code&state=private-state');
     expect(p.replaceState).toHaveBeenCalledWith(null, '', '/github/callback');
-    const take = p.window.__datatugTakeGitHubAuthorization!;
+    const take = p.window.__datatugTakeGitHubAuthorization;
+    if (!take) throw new Error('Missing callback handoff');
     expect(take()).toEqual({ code: 'private-code', state: 'private-state' });
     expect(p.window.__datatugTakeGitHubAuthorization).toBeUndefined();
     expect(take()).toBeUndefined();

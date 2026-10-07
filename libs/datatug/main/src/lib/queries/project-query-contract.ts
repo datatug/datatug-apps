@@ -94,7 +94,7 @@ export function toProjectQueryWire(
     throw new UnsupportedQueryContractError();
   return structuredClone({
     folderPath,
-    id,
+    id: query.id,
     ...(query.title !== undefined ? { title: query.title } : {}),
     type: query.request.queryType as ProjectQueryWire['type'],
     text,
@@ -105,10 +105,12 @@ export function toProjectQueryWire(
 
 export function fromProjectQueryWire(query: ProjectQueryReadWire): IQueryDef {
   // Reads preserve legacy/richer metadata; save validates the entire definition separately.
-  const { folderPath, id, title, type, text, ...metadata } = query;
+  const metadata = { ...query };
+  for (const key of ['folderPath', 'id', 'title', 'type', 'text'])
+    delete metadata[key];
   const mapped: IQueryDef = {
     ...metadata,
-    id,
+    id: query.id,
     ...(query.title !== undefined ? { title: query.title } : {}),
     request:
       query.type === QueryType.HTTP

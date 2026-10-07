@@ -286,9 +286,10 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       },
     };
     const payload = JSON.stringify(fields);
+    const pending = this.pendingCreate();
     const request =
-      this.pendingCreate()?.payload === payload
-        ? this.pendingCreate()!.request
+      pending?.payload === payload
+        ? pending.request
         : { ...fields, operationId: crypto.randomUUID() };
     this.pendingCreate.set({ payload, request });
     const generation = this.selectionGeneration;

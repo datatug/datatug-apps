@@ -12,7 +12,10 @@ function harness() {
     user: { uid: 'actor' },
   });
   const result = new Subject<{ connected: true }>();
-  const complete = vi.fn((..._args: unknown[]) => result);
+  const complete = vi.fn((...args: unknown[]) => {
+    void args;
+    return result;
+  });
   const newProject = vi.fn();
   TestBed.configureTestingModule({
     imports: [GithubAuthorizationPageComponent],

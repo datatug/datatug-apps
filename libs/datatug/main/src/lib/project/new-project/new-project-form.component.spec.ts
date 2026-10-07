@@ -29,7 +29,10 @@ const created = {
 };
 async function harness() {
   TestBed.resetTestingModule();
-  const create = vi.fn((..._args: unknown[]) => of(created));
+  const create = vi.fn((...args: unknown[]) => {
+    void args;
+    return of(created);
+  });
   const branches = vi.fn(() =>
     of({ branches: [{ name: 'work', head: 'head' }], defaultBranch: 'main' }),
   );

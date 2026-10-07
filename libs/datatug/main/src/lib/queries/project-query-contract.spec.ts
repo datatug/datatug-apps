@@ -52,7 +52,7 @@ describe('common project query contract', () => {
     const query = createHostedDemoDbQuery('q');
     const enriched = {
       ...query,
-      federation: { ...query.federation!, [key]: {} },
+      federation: { ...query.federation, [key]: {} },
     };
     const before = JSON.stringify(enriched);
     expect(() => toProjectQueryWire(enriched)).toThrow(
