@@ -353,8 +353,7 @@
             aria-label="Hosted DemoDB database and table"
             interface="popover"
             [value]="selectedHostedDemoDbSource()"
-            [disabled]="running() || queryState.isSaving"
-            [disabled]="queryState.saveSupported === false"
+            [disabled]="running() || queryState.isSaving || queryState.saveSupported === false"
             (ionChange)="hostedDemoDbSourceChanged($event)"
           >
             @for (source of hostedDemoDbSources; track source.id) {

@@ -1,5 +1,6 @@
 import {
   Component,
+  Injector,
   ViewChild,
   inject,
   input,
@@ -27,6 +28,7 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/angular';
+import { SpaceService, SpaceServiceModule } from '@sneat/space-services';
 import { SneatUserService } from '@sneat/auth-core';
 import { readNewProjectFolder } from '@datatug/project-address';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
@@ -48,6 +50,7 @@ import {
   templateUrl: 'new-project-form.component.html',
   imports: [
     FormsModule,
+    SpaceServiceModule,
     DatatugServicesProjectModule,
     IonHeader,
     IonToolbar,
@@ -71,6 +74,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   private readonly connection = inject(GithubConnectionService);
   private readonly queryApi = inject(ProjectQueryApiService);
   private readonly userService = inject(SneatUserService);
+  private readonly injector = inject(Injector);
   private readonly destroyRef = inject(DestroyRef);
   private readonly popoverController = inject(PopoverController);
   private readonly nav = inject(DatatugNavService);
@@ -78,6 +82,8 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   title = '';
   githubFolder = 'datatug';
   readonly spaceID = signal('');
+  readonly spaceTitle = signal('');
+  readonly isCreatingSpace = signal(false);
   readonly branch = signal('');
   protected readonly isCreating = signal(false);
   protected readonly formError = signal<string | undefined>(undefined);
@@ -102,6 +108,46 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   readonly onCancel = input<() => void>();
   @ViewChild(IonInput, { static: false }) titleInput?: IonInput;
 
+  createSpace(): void {
+    const title = this.spaceTitle().trim();
+    const actor = this.userID();
+    if (!title || !actor || this.isCreatingSpace()) {
+      this.formError.set('Sign in and enter a Space name before creating it.');
+      return;
+    }
+    this.formError.set(undefined);
+    this.isCreatingSpace.set(true);
+    this.injector
+      .get(SpaceService)
+      .createSpace({ type: 'team', title })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (space) => {
+          if (this.userID() !== actor) return;
+          this.isCreatingSpace.set(false);
+          if (!space.id) {
+            this.formError.set(
+              'The Space could not be selected. Please try again.',
+            );
+            return;
+          }
+          this.spaces.update((spaces) => [
+            ...spaces.filter((value) => value.id !== space.id),
+            { id: space.id, title: space.dbo?.title || title },
+          ]);
+          this.spaceID.set(space.id);
+          this.spaceTitle.set('');
+        },
+        error: () => {
+          if (this.userID() !== actor) return;
+          this.isCreatingSpace.set(false);
+          this.formError.set(
+            'The Space could not be created. Check your sign-in and try again.',
+          );
+        },
+      });
+  }
+
   constructor() {
     this.userService.userState
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -117,6 +163,8 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
         const uid = state.user?.uid;
         if (uid !== this.userID()) {
           this.userID.set(uid);
+          this.isCreatingSpace.set(false);
+          this.spaceTitle.set('');
           this.selectionGeneration++;
           this.githubRepos.set([]);
           this.selectedRepo.set(undefined);

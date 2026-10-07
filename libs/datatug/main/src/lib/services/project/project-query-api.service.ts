@@ -4,7 +4,7 @@ import { inject, Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { SneatApiService } from '@sneat/api';
 import { readGithubProjectId } from '@datatug/project-address';
-import { type Observable, throwError } from 'rxjs';
+import { type Observable, throwError, Subject, tap } from 'rxjs';
 import { IProjectRef } from '../../core/project-context';
 import { buildAgentUrl } from '../repo/agent-url';
 import {
@@ -64,6 +64,8 @@ export interface CreatedGithubProject {
 /** Store-specific transport only. Cloud always uses the shared Firebase auth bridge; no provider token or private fallback. */
 @Injectable({ providedIn: 'root' })
 export class ProjectQueryApiService {
+  private readonly deniedReads = new Subject<IProjectRef>();
+  readonly authorityDenied = this.deniedReads.asObservable();
   private readonly api = inject(SneatApiService);
   private readonly http = inject(HttpClient);
 
@@ -96,9 +98,22 @@ export class ProjectQueryApiService {
       const params = new HttpParams({
         fromObject: { ...this.reference(ref), ...extra },
       });
-      return ['github.com', 'github', 'firestore'].includes(ref.storeId)
+      const request = ['github.com', 'github', 'firestore'].includes(
+        ref.storeId,
+      )
         ? this.api.get<T>(`datatug/${path}`, params)
         : this.http.get<T>(buildAgentUrl(ref.storeId, `/${path}`), { params });
+      return request.pipe(
+        tap({
+          error: (error) => {
+            if (
+              ref.projectApi === 'cloud' &&
+              [401, 403].includes(error?.status)
+            )
+              this.deniedReads.next(ref);
+          },
+        }),
+      );
     } catch (error) {
       return throwError(() => error);
     }

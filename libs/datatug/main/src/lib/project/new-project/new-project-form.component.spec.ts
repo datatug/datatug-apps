@@ -2,6 +2,7 @@ import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { PopoverController } from '@ionic/angular';
 import { ErrorLogger } from '@sneat/core';
+import { SpaceService } from '@sneat/space-services';
 import { SneatUserService } from '@sneat/auth-core';
 import { Subject, of, throwError } from 'rxjs';
 import { NewProjectFormComponent } from './new-project-form.component';
@@ -27,7 +28,7 @@ const created = {
   spaceID: 'space',
   sharedProjectID: 'server-id',
 };
-async function harness() {
+async function harness(freshUser = false) {
   TestBed.resetTestingModule();
   const create = vi.fn((...args: unknown[]) => {
     void args;
@@ -37,6 +38,8 @@ async function harness() {
     of({ branches: [{ name: 'work', head: 'head' }], defaultBranch: 'main' }),
   );
   const createCloud = vi.fn(() => of('cloud-id'));
+  const spaceResult = new Subject<{ id: string; dbo: { title: string } }>();
+  const createSpace = vi.fn(() => spaceResult);
   const nav = { goProject: vi.fn() };
   const connection = {
     start: vi.fn(),
@@ -45,6 +48,7 @@ async function harness() {
   TestBed.configureTestingModule({
     imports: [NewProjectFormComponent],
     providers: [
+      { provide: SpaceService, useValue: { createSpace } },
       { provide: ProjectQueryApiService, useValue: { create, branches } },
       { provide: ProjectService, useValue: { createNewProject: createCloud } },
       { provide: GithubConnectionService, useValue: connection },
@@ -53,7 +57,9 @@ async function harness() {
         useValue: {
           userState: of({
             user: { uid: 'actor' },
-            record: { spaces: { space: { title: 'My Space' } } },
+            record: {
+              spaces: freshUser ? {} : { space: { title: 'My Space' } },
+            },
           }),
         },
       },
@@ -70,6 +76,7 @@ async function harness() {
   }).overrideComponent(NewProjectFormComponent, {
     set: { schemas: [CUSTOM_ELEMENTS_SCHEMA] },
   });
+  TestBed.overrideProvider(SpaceService, { useValue: { createSpace } });
   await TestBed.compileComponents();
   const fixture = TestBed.createComponent(NewProjectFormComponent);
   const component = fixture.componentInstance;
@@ -87,6 +94,8 @@ async function harness() {
     create,
     branches,
     createCloud,
+    createSpace,
+    spaceResult,
     connection,
     nav,
     select,
@@ -94,6 +103,46 @@ async function harness() {
 }
 
 describe('New project through authenticated common API', () => {
+  it('lets a fresh signed-in user create/select a Space through the existing Sneat API before GitHub project creation', async () => {
+    const h = await harness(true);
+    h.component.store = 'github';
+    h.component.title = 'Project';
+    h.component.loadGithubRepos();
+    h.component.repositoryChanged(repo.id);
+    h.component.branch.set('work');
+    h.fixture.detectChanges();
+    await h.fixture.whenStable();
+    expect(h.component.spaceID()).toBe('');
+    expect(h.fixture.nativeElement.textContent).toContain('Create Space');
+    h.component.create();
+    expect(h.create).not.toHaveBeenCalled();
+    h.component.spaceTitle.set('First Space');
+    h.component.createSpace();
+    expect(h.createSpace).toHaveBeenCalledWith({
+      type: 'team',
+      title: 'First Space',
+    });
+    h.spaceResult.next({ id: 'fresh-space', dbo: { title: 'First Space' } });
+    await h.fixture.whenStable();
+    expect(h.component.spaceID()).toBe('fresh-space');
+    expect(h.fixture.nativeElement.textContent).toContain('First Space');
+    h.component.create();
+    expect(h.create.mock.calls[0][0]).toMatchObject({ spaceID: 'fresh-space' });
+  });
+  it('shows a recoverable Space creation error without issuing a project write', async () => {
+    const h = await harness(true);
+    h.component.store = 'github';
+    h.fixture.detectChanges();
+    h.component.spaceTitle.set('First Space');
+    h.component.createSpace();
+    h.spaceResult.error({ status: 503 });
+    await h.fixture.whenStable();
+    expect(h.fixture.nativeElement.textContent).toContain(
+      'Space could not be created',
+    );
+    expect(h.component.isCreatingSpace()).toBe(false);
+    expect(h.create).not.toHaveBeenCalled();
+  });
   it('preserves the existing personal Cloud create contract', async () => {
     const h = await harness();
     h.component.title = 'Cloud';

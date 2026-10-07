@@ -129,6 +129,9 @@ export class QueryEditorStateService {
   private generation = 0;
   private readonly scopeReset = new Subject<void>();
   private authSubscription?: Subscription;
+  private denialSubscription?: Subscription;
+  private readonly quarantinedQueries = new Map<string, IQueryState>();
+  private readonly readVersions = new Map<string, number>();
   private readonly pendingSaves = new Map<
     string,
     { payload: string; request: ProjectQuerySave }
@@ -138,6 +141,8 @@ export class QueryEditorStateService {
     this.generation += 1;
     this.scopeReset.next();
     this.pendingSaves.clear();
+    this.quarantinedQueries.clear();
+    this.readVersions.clear();
     $state.next({ activeQueries: [] });
   }
 
@@ -159,8 +164,15 @@ export class QueryEditorStateService {
     datatugNavContextService.currentProject.subscribe((currentProject) => {
       if (!equalProjectRef(this.currentProject?.ref, currentProject?.ref)) {
         this.authSubscription?.unsubscribe();
+        this.denialSubscription?.unsubscribe();
         this.clearScope();
         if (currentProject?.ref.projectApi === 'cloud') {
+          this.denialSubscription = this.queriesService
+            .authorityDenied?.()
+            .subscribe((denied) => {
+              if (equalProjectRef(this.currentProject?.ref, denied))
+                this.clearScope();
+            });
           this.authSubscription = this.queriesService
             .authentication()
             .pipe(
@@ -200,6 +212,12 @@ export class QueryEditorStateService {
   }
 
   public closeQuery(query: IQueryState): void {
+    this.quarantinedQueries.delete(query.id || '');
+    this.pendingSaves.delete(query.id || '');
+    this.readVersions.set(
+      query.id || '',
+      (this.readVersions.get(query.id || '') || 0) + 1,
+    );
     const newState: IQueryEditorState = {
       ...$state.value,
       activeQueries:
@@ -216,6 +234,20 @@ export class QueryEditorStateService {
         activeQueries: [],
       };
       let queryState = state?.activeQueries?.find((q) => q.id === id);
+      if (
+        this.currentProject?.ref.projectApi === 'cloud' &&
+        queryState &&
+        !queryState.isNew
+      ) {
+        // Cached private content remains hidden until a fresh read authorizes it.
+        // Retain draft + original CAS privately across transient failures; never silently rebase.
+        if (queryState.def) this.quarantinedQueries.set(id, queryState);
+        state = {
+          ...state,
+          activeQueries: state.activeQueries.filter((q) => q.id !== id),
+        };
+        queryState = undefined;
+      }
       if (!queryState) {
         queryState = {
           id,
@@ -328,12 +360,37 @@ export class QueryEditorStateService {
     if (this.currentProject) {
       const currentProject = this.currentProject;
       if (currentProject.ref.projectApi) {
+        const readVersion = (this.readVersions.get(id) || 0) + 1;
+        this.readVersions.set(id, readVersion);
         this.queriesService
           .getRevision(currentProject.ref, id)
-          .pipe(map((result) => ({ result, def: fromProjectQueryWire(result.query) })), takeUntil(this.scopeReset))
+          .pipe(
+            map((result) => ({
+              result,
+              def: fromProjectQueryWire(result.query),
+            })),
+            takeUntil(this.scopeReset),
+          )
           .subscribe({
             next: ({ result, def }) => {
-              if (generation !== this.generation) return;
+              if (
+                generation !== this.generation ||
+                this.readVersions.get(id) !== readVersion
+              )
+                return;
+              const cached = this.quarantinedQueries.get(id);
+              if (cached) {
+                this.quarantinedQueries.delete(id);
+                this.updateQueryState({
+                  ...cached,
+                  isLoading: false,
+                  saveError: undefined,
+                  saveSupported:
+                    result.saveSupported !== false &&
+                    cached.saveSupported !== false,
+                });
+                return;
+              }
               onCompleted(def);
               const state = this.getQueryState(id);
               if (state)
@@ -348,15 +405,26 @@ export class QueryEditorStateService {
                       : undefined,
                 });
             },
-            error: () => {
-              if (generation !== this.generation) return;
+            error: (error) => {
+              if (
+                generation !== this.generation ||
+                this.readVersions.get(id) !== readVersion
+              )
+                return;
+              if (
+                currentProject.ref.projectApi === 'cloud' &&
+                [401, 403].includes(error?.status)
+              ) {
+                this.clearScope();
+                return;
+              }
               const state = this.getQueryState(id);
               if (state)
                 this.updateQueryState({
                   ...state,
                   isLoading: false,
                   saveError:
-                    'The query could not be loaded. Check your sign-in and project access, then reload.',
+                    'The query could not be loaded. Any unsaved draft is retained until access can be checked; try opening it again.',
                 });
             },
           });
@@ -650,11 +718,23 @@ export class QueryEditorStateService {
       return throwError(e);
     }
   }
+  private publishCommonQueryState(state: IQueryState): void {
+    if (state.id && this.quarantinedQueries.has(state.id))
+      this.quarantinedQueries.set(state.id, state);
+    else this.updateQueryState(state);
+  }
+
   private saveCommonQuery(
     queryState: IQueryState,
     ref: IProjectRef,
   ): Observable<void> {
-    if (queryState.id && this.getQueryState(queryState.id)?.isSaving)
+    if (
+      queryState.id &&
+      (
+        this.quarantinedQueries.get(queryState.id) ??
+        this.getQueryState(queryState.id)
+      )?.isSaving
+    )
       return throwError(() => new Error('A save is already in progress.'));
     return defer(() => {
       const id = queryState.id;
@@ -737,11 +817,12 @@ export class QueryEditorStateService {
         }),
         tap((result) => {
           if (generation !== this.generation) return;
-          const current = this.getQueryState(id);
+          const current =
+            this.quarantinedQueries.get(id) ?? this.getQueryState(id);
           if (!current) return;
           const def = fromProjectQueryWire(result.query);
           this.pendingSaves.delete(id);
-          this.updateQueryState({
+          this.publishCommonQueryState({
             ...current,
             def,
             revision: result.revision,
@@ -768,9 +849,10 @@ export class QueryEditorStateService {
         map(() => void 0),
         catchError((error) => {
           if (generation === this.generation) {
-            const current = this.getQueryState(id);
+            const current =
+              this.quarantinedQueries.get(id) ?? this.getQueryState(id);
             if (current)
-              this.updateQueryState({
+              this.publishCommonQueryState({
                 ...current,
                 isSaving: false,
                 saveError:

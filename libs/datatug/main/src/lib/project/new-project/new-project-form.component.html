@@ -46,6 +46,27 @@
       }
     </ion-select></ion-item
   >
+  @if (!spaces().length) {
+    <ion-item lines="none"
+      ><ion-label class="ion-text-wrap"
+        >Create a Space to hold this shared project, then select it.</ion-label
+      ></ion-item
+    >
+  }
+  <ion-item>
+    <ion-input
+      aria-label="New Space name"
+      label="New Space name"
+      [ngModel]="spaceTitle()"
+      (ngModelChange)="spaceTitle.set($event)"
+      [disabled]="isCreating() || isCreatingSpace()"
+    />
+    <ion-button
+      (click)="createSpace()"
+      [disabled]="isCreating() || isCreatingSpace() || !spaceTitle().trim()"
+      >Create Space</ion-button
+    >
+  </ion-item>
   <ion-item
     ><ion-button (click)="signInToGithub()" [disabled]="isConnecting()"
       >Connect GitHub</ion-button

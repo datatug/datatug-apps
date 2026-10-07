@@ -802,7 +802,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           graphStableIdentity(
             this.executedGraphDefinition.federation.nativeGraph,
           ) !== nextPlanIdentity);
-      if (scopeChanged) this.invalidateHistoryScope();
+      if (
+        scopeChanged ||
+        (this.project?.ref.projectApi === 'cloud' && previousDefinition && !effectiveDefinition)
+      ) this.invalidateHistoryScope();
       else if (planChanged) {
         this.invalidateFederatedRun();
         this.invalidateHistoryRequests();

@@ -43,8 +43,12 @@ describe('common project query contract', () => {
     ).toBe('');
   });
   it('refuses a definition whose leaf ID disagrees with the requested location', () => {
-    expect(() => toProjectQueryWire(createHostedDemoDbQuery('other'), 'folder/q')).toThrow(UnsupportedQueryContractError);
-    expect(() => toProjectQueryWire(createHostedDemoDbQuery('folder/q'), 'folder/q')).toThrow(UnsupportedQueryContractError);
+    expect(() =>
+      toProjectQueryWire(createHostedDemoDbQuery('other'), 'folder/q'),
+    ).toThrow(UnsupportedQueryContractError);
+    expect(() =>
+      toProjectQueryWire(createHostedDemoDbQuery('folder/q'), 'folder/q'),
+    ).toThrow(UnsupportedQueryContractError);
   });
   it.each([
     'bounds',
@@ -94,4 +98,26 @@ it('preserves richer legacy read metadata instead of silently dropping it into a
   expect(() => toProjectQueryWire(definition, 'customers/query')).toThrow(
     'cannot preserve',
   );
+});
+
+it('preserves legacy request-specific fields on read and refuses a lossy write', () => {
+  const wire = {
+    id: 'q',
+    folderPath: '~',
+    type: QueryType.SQL,
+    text: 'body from sidecar',
+    request: {
+      queryType: QueryType.SQL,
+      text: 'old body',
+      dbCatalog: 'legacy',
+      custom: true,
+    },
+  };
+  const def = fromProjectQueryWire(wire);
+  expect(def.request).toMatchObject({
+    text: 'body from sidecar',
+    dbCatalog: 'legacy',
+    custom: true,
+  });
+  expect(() => toProjectQueryWire(def)).toThrow(UnsupportedQueryContractError);
 });

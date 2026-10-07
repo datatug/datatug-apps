@@ -61,10 +61,10 @@ export function toProjectQueryWire(
   location = query.id,
 ): ProjectQueryWire {
   assertFields(query, ['id', 'title', 'request', 'draft', 'federation']);
-  assertFields(query.request, ['queryType', 'text']);
-  if (![QueryType.SQL, QueryType.DTQL].includes(query.request.queryType))
+  assertFields(query['request'], ['queryType', 'text']);
+  if (![QueryType.SQL, QueryType.DTQL].includes(query['request'].queryType))
     throw new UnsupportedQueryContractError();
-  const text = (query.request as ITextQueryRequest).text;
+  const text = (query['request'] as ITextQueryRequest).text;
   if (typeof text !== 'string') throw new UnsupportedQueryContractError();
   if (query.federation) {
     assertFields(query.federation, ['ovdbBaseUrl', 'tables', 'lookups']);
@@ -97,7 +97,7 @@ export function toProjectQueryWire(
     folderPath,
     id,
     ...(query.title !== undefined ? { title: query.title } : {}),
-    type: query.request.queryType as ProjectQueryWire['type'],
+    type: query['request'].queryType as ProjectQueryWire['type'],
     text,
     ...(query.draft !== undefined ? { draft: query.draft } : {}),
     ...(query.federation ? { federation: query.federation } : {}),
@@ -109,6 +109,10 @@ export function fromProjectQueryWire(query: ProjectQueryReadWire): IQueryDef {
   const metadata = { ...query };
   for (const key of ['folderPath', 'id', 'title', 'type', 'text'])
     delete metadata[key];
+  const request =
+    query['request'] && typeof query['request'] === 'object'
+      ? (query['request'] as Partial<ITextQueryRequest & IHttpQueryRequest>)
+      : {};
   const mapped: IQueryDef = {
     ...metadata,
     id: query.id,
@@ -116,13 +120,15 @@ export function fromProjectQueryWire(query: ProjectQueryReadWire): IQueryDef {
     request:
       query.type === QueryType.HTTP
         ? ({
+            ...request,
             queryType: QueryType.HTTP,
-            url: query.text ?? '',
-            method: 'GET',
+            url: query.text ?? request.url ?? '',
+            method: request.method ?? 'GET',
           } as IHttpQueryRequest)
         : ({
+            ...request,
             queryType: query.type,
-            text: query.text ?? '',
+            text: query.text ?? request.text ?? '',
           } as ITextQueryRequest),
     ...(query.draft !== undefined ? { draft: query.draft } : {}),
     ...(query.federation ? { federation: query.federation } : {}),

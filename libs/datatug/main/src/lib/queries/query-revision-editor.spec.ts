@@ -42,8 +42,10 @@ function harness() {
   });
   const read = new Subject<typeof response>();
   const save = new Subject<typeof response>();
+  const denied = new Subject<typeof ref>();
   const queries = {
     authentication: () => auth,
+    authorityDenied: () => denied,
     getRevision: vi.fn(() => read),
     saveRevision: vi.fn((...args: unknown[]) => {
       void args;
@@ -79,27 +81,114 @@ function harness() {
       request: draft.request,
       federation: draft.federation,
     });
-  return { service, queries, project, auth, read, save, add, getFull };
+  return { service, queries, project, auth, read, save, denied, add, getFull };
 }
 
 describe('Common API query editor journey', () => {
-  it.each([QueryType.SQL, QueryType.DTQL])('opens and conditionally saves a nested plain %s query with a leaf definition ID', async (type) => {
+  it('does not expose cached private content before fresh same-UID read and clears it on revocation', () => {
     const h = harness();
-    const query = { ...response.query, folderPath: 'folder/nested', id: 'q', type, text: 'original body', federation: undefined };
-    const reply = { ...response, query };
-    h.service.openQuery('folder/nested/q');
-    h.read.next(reply);
-    const state = required(h.service.getQueryState('folder/nested/q'));
-    expect(state.id).toBe('folder/nested/q');
-    expect(state.def?.id).toBe('q');
-    expect(state.request).toMatchObject({ queryType: type, text: 'original body' });
-    h.queries.saveRevision.mockImplementation(() => of(reply) as never);
-    await firstValueFrom(h.service.saveQuery({ ...state, title: 'Edited title' }, ref));
-    expect(h.queries.saveRevision.mock.calls[0][1]).toMatchObject({
-      ifMatch: 'revision-2', expectedBranchHead: 'head-2',
-      query: { folderPath: 'folder/nested', id: 'q', type, text: 'original body', title: 'Edited title' },
+    h.service.openQuery('q');
+    h.read.next(response);
+    const cached = required(h.service.getQueryState('q'));
+    h.service.updateQueryState({ ...cached, title: 'Private draft' });
+    const deniedRead = new Subject<typeof response>();
+    h.queries.getRevision.mockImplementation(() => deniedRead);
+    h.service.openQuery('q');
+    expect(h.queries.getRevision).toHaveBeenCalledTimes(2);
+    expect(h.service.getQueryState('q')?.def).toBeUndefined();
+    expect(h.service.getQueryState('q')?.title).toBeUndefined();
+    h.read.next(response); // the earlier authorized response cannot satisfy the new read
+    expect(h.service.getQueryState('q')?.def).toBeUndefined();
+    deniedRead.error({ status: 403 });
+    expect(h.auth.value.user.uid).toBe('actor');
+    expect(h.service.getQueryState('q')).toBeUndefined();
+    h.queries.getRevision.mockImplementation(() => of(response) as never);
+    h.service.openQuery('q');
+    expect(h.service.getQueryState('q')?.title).not.toBe('Private draft');
+    expect(h.getFull).not.toHaveBeenCalled();
+  });
+  it('retains a quarantined draft and original CAS across transient failure, restoring only after fresh authorization', () => {
+    const h = harness();
+    h.service.openQuery('q');
+    h.read.next(response);
+    h.service.updateQueryState({
+      ...required(h.service.getQueryState('q')),
+      title: 'Unsaved title',
+      request: {
+        ...draft.request,
+        text: 'unsaved body',
+      } as typeof draft.request,
+    });
+    h.queries.getRevision.mockImplementation(
+      () => throwError(() => ({ status: 0 })) as never,
+    );
+    h.service.openQuery('q');
+    expect(h.service.getQueryState('q')?.def).toBeUndefined();
+    expect(h.service.getQueryState('q')?.saveError).toContain('retained');
+    h.queries.getRevision.mockImplementation(
+      () =>
+        of({
+          ...response,
+          revision: 'remote-new-revision',
+          branchHead: 'remote-new-head',
+        }) as never,
+    );
+    h.service.openQuery('q');
+    expect(h.service.getQueryState('q')).toMatchObject({
+      title: 'Unsaved title',
+      request: { text: 'unsaved body' },
+      revision: 'revision-2',
+      branchHead: 'head-2',
     });
   });
+  it('clears matching cached private state when another authenticated project read explicitly denies authority', () => {
+    const h = harness();
+    h.service.openQuery('q');
+    h.read.next(response);
+    h.denied.next({ ...ref, branch: 'other' });
+    expect(h.service.getQueryState('q')?.def).toBeDefined();
+    h.denied.next(ref);
+    expect(h.service.getQueryState('q')).toBeUndefined();
+  });
+  it.each([QueryType.SQL, QueryType.DTQL])(
+    'opens and conditionally saves a nested plain %s query with a leaf definition ID',
+    async (type) => {
+      const h = harness();
+      const query = {
+        ...response.query,
+        folderPath: 'folder/nested',
+        id: 'q',
+        type,
+        text: 'original body',
+        federation: undefined,
+      };
+      const reply = { ...response, query };
+      h.service.openQuery('folder/nested/q');
+      h.read.next(reply);
+      const state = required(h.service.getQueryState('folder/nested/q'));
+      expect(state.id).toBe('folder/nested/q');
+      expect(state.def?.id).toBe('q');
+      expect(state.request).toMatchObject({
+        queryType: type,
+        text: 'original body',
+      });
+      h.queries.saveRevision.mockImplementation(() => of(reply) as never);
+      await firstValueFrom(
+        h.service.saveQuery({ ...state, title: 'Edited title' }, ref),
+      );
+      expect(h.queries.saveRevision.mock.calls[0][1]).toMatchObject({
+        ifMatch: 'revision-2',
+        expectedBranchHead: 'head-2',
+        query: {
+          folderPath: 'folder/nested',
+          id: 'q',
+          type,
+          text: 'original body',
+          title: 'Edited title',
+        },
+      });
+    },
+  );
   it.each(['chinook.Customer', 'adventureworks.Person.Person'])(
     'saves and cold-reloads the hosted demo source %s without a CLI definition',
     async (source) => {

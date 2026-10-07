@@ -257,6 +257,9 @@ export class QueriesService {
   public branches(ref: IProjectRef) {
     return this.injector.get(ProjectQueryApiService).branches(ref);
   }
+  public authorityDenied() {
+    return this.injector.get(ProjectQueryApiService).authorityDenied;
+  }
   public authentication() {
     return this.injector.get(SneatAuthStateService).authState;
   }

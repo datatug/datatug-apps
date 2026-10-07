@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { SneatApiService } from '@sneat/api';
-import { of, firstValueFrom } from 'rxjs';
+import { of, firstValueFrom, throwError } from 'rxjs';
 import { ProjectQueryApiService } from './project-query-api.service';
 import { toProjectQueryWire } from '../../queries/project-query-contract';
 import { createHostedDemoDbQuery } from '../../queries/hosted-demo-db-query';
@@ -106,4 +106,34 @@ describe('ProjectQueryApiService', () => {
     expect(api.get).not.toHaveBeenCalled();
     expect(http.get).not.toHaveBeenCalled();
   });
+});
+
+it('emits explicit private read authority denial without treating a network failure as revocation', async () => {
+  TestBed.resetTestingModule();
+  const get = vi.fn(() => throwError(() => ({ status: 0 })));
+  TestBed.configureTestingModule({
+    providers: [
+      ProjectQueryApiService,
+      { provide: SneatApiService, useValue: { get } },
+      { provide: HttpClient, useValue: {} },
+    ],
+  });
+  const service = TestBed.inject(ProjectQueryApiService);
+  const ref = {
+    storeId: 'github.com',
+    projectId: 'repo@owner@folder',
+    projectApi: 'cloud' as const,
+    branch: 'work',
+  };
+  const denied: unknown[] = [];
+  service.authorityDenied.subscribe((value) => denied.push(value));
+  await expect(firstValueFrom(service.summary(ref))).rejects.toMatchObject({
+    status: 0,
+  });
+  expect(denied).toEqual([]);
+  get.mockImplementation(() => throwError(() => ({ status: 403 })));
+  await expect(firstValueFrom(service.summary(ref))).rejects.toMatchObject({
+    status: 403,
+  });
+  expect(denied).toEqual([ref]);
 });
