@@ -3,6 +3,9 @@ export interface IProjectRef {
   readonly projectId: string;
   /** Present only for Space-owned cloud projects; never inferred from ambient state. */
   readonly spaceID?: string;
+  /** Explicit authenticated common-API transport; never a permission grant. */
+  readonly projectApi?: 'cloud' | 'local';
+  readonly branch?: string;
 }
 
 export interface IProjectItemRef extends IProjectRef {
@@ -15,21 +18,33 @@ export const equalProjectRef = (
 ) =>
   a?.projectId === b?.projectId &&
   a?.storeId === b?.storeId &&
-  a?.spaceID === b?.spaceID;
+  a?.spaceID === b?.spaceID &&
+  a?.projectApi === b?.projectApi &&
+  a?.branch === b?.branch;
 
 export function isValidProjectRef(v: IProjectRef): boolean {
   return (
     !!(v?.storeId && v?.projectId) &&
-    (v.spaceID === undefined || isSharedProjectRef(v))
+    (v.spaceID === undefined || isSharedProjectRef(v)) &&
+    (v.projectApi === undefined || (v.spaceID === undefined && !!v.branch &&
+      (v.projectApi === 'cloud' ? ['github.com', 'github'].includes(v.storeId) :
+        v.projectApi === 'local' && !['github.com', 'github', 'firestore'].includes(v.storeId))))
   );
 }
 
 export function projectRefToString(v?: IProjectRef): string | undefined {
   return (
     v &&
-    (v.spaceID === undefined
-      ? `${v.projectId}@${v.storeId}`
-      : JSON.stringify(['space-project/1', v.storeId, v.spaceID, v.projectId]))
+    (v.projectApi !== undefined
+      ? JSON.stringify(['common-project/1', v.projectApi, v.storeId, v.projectId, v.branch])
+      : v.spaceID === undefined
+        ? `${v.projectId}@${v.storeId}`
+        : JSON.stringify([
+            'space-project/1',
+            v.storeId,
+            v.spaceID,
+            v.projectId,
+          ]))
   );
 }
 

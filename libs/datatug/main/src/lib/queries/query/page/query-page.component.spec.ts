@@ -1,3 +1,5 @@
+import { createHostedDemoDbQuery, withHostedDemoDbSource } from '../../hosted-demo-db-query';
+import { toProjectQueryWire, fromProjectQueryWire } from '../../project-query-contract';
 import { readFileSync } from 'node:fs';
 import 'fake-indexeddb/auto';
 import { resolve } from 'node:path';
@@ -375,6 +377,22 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
 
   beforeEach(() => {
     sessionStorage.clear();
+  });
+
+  it.each(['chinook.Customer', 'adventureworks.Person.Person'])('runs a saved/cold-read %s query with no local CLI or environment', async (source) => {
+    const definition = fromProjectQueryWire(toProjectQueryWire(withHostedDemoDbSource(createHostedDemoDbQuery('new-q'), source)));
+    component = await createComponent({}, definition);
+    component.project = { ref: { storeId: 'github.com', projectId: 'user-repo@user@datatug', projectApi: 'cloud', branch: 'work' } };
+    component.envId = undefined;
+    federatedRunMock.mockResolvedValue(historyResultFor(definition));
+    component.runQuery();
+    await runFixture.whenStable();
+    expect(federatedRunMock.mock.calls[0][0]).toEqual(definition);
+    expect(definition.federation?.ovdbBaseUrl).toBe('https://demodb.dev/ovdb');
+    expect(definition.federation?.tables[0].name).toBe(source === 'chinook.Customer' ? 'Customer' : 'Person.Person');
+    expect(runQueryMock).not.toHaveBeenCalled();
+    expect(TestBed.inject(Coordinator).execute).not.toHaveBeenCalled();
+    expect(component.runError()).toBeUndefined();
   });
 
   it('keeps accepted plan review state across no-op editor emissions and resets it for a definition edit', async () => {

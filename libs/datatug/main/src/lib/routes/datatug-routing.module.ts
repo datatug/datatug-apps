@@ -12,6 +12,13 @@ import { profileHomeRedirectGuard } from './profile-home-redirect.guard';
 
 export const datatugRoutes: Routes = [
   {
+    path: 'github/callback',
+    loadComponent: () =>
+      import('../project/new-project/github-authorization-page.component').then(
+        (m) => m.GithubAuthorizationPageComponent,
+      ),
+  },
+  {
     // The active product profile's home route may not be this one — see
     // `profile-home-redirect.guard.ts` (hub `product-profiles`
     // REQ:profile-table). Under the `datatug` profile (empty `homePath`)

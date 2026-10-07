@@ -49,4 +49,8 @@ export interface IQueryState extends IQueryStateDto {
   readonly environments?: ReadonlyArray<IQueryEnvState>;
   readonly isSaving?: boolean;
   readonly isLoading?: boolean;
+  readonly revision?: string;
+  readonly branchHead?: string;
+  readonly saveError?: string;
+  readonly saveSupported?: boolean;
 }

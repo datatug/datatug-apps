@@ -1,3 +1,18 @@
+import { equalProjectRef } from '../core/project-context';
+import {
+  fromProjectQueryWire,
+  toProjectQueryWire,
+  UnsupportedQueryContractError,
+} from './project-query-contract';
+import { type ProjectQuerySave } from '../services/project/project-query-api.service';
+import {
+  defer,
+  switchMap,
+  Subscription,
+  distinctUntilChanged,
+  Subject,
+  takeUntil,
+} from 'rxjs';
 import { Injectable, inject } from '@angular/core';
 import {
   BehaviorSubject,
@@ -111,10 +126,56 @@ export class QueryEditorStateService {
     .pipe(filter((state) => !!state));
 
   private currentProject?: IProjectContext;
+  private generation = 0;
+  private readonly scopeReset = new Subject<void>();
+  private authSubscription?: Subscription;
+  private readonly pendingSaves = new Map<
+    string,
+    { payload: string; request: ProjectQuerySave }
+  >();
+
+  private clearScope(): void {
+    this.generation += 1;
+    this.scopeReset.next();
+    this.pendingSaves.clear();
+    $state.next({ activeQueries: [] });
+  }
+
+  public reloadQuery(id: string): void {
+    this.pendingSaves.delete(id);
+    const current = this.getQueryState(id);
+    if (!current) return;
+    this.updateQueryState({
+      id,
+      queryType: QueryType.SQL,
+      request: { queryType: QueryType.SQL, text: '' } as ISqlQueryRequest,
+      isLoading: true,
+    });
+    this.loadQuery(id);
+  }
 
   constructor() {
     const datatugNavContextService = this.datatugNavContextService;
     datatugNavContextService.currentProject.subscribe((currentProject) => {
+      if (!equalProjectRef(this.currentProject?.ref, currentProject?.ref)) {
+        this.authSubscription?.unsubscribe();
+        this.clearScope();
+        if (currentProject?.ref.projectApi === 'cloud') {
+          this.authSubscription = this.queriesService
+            .authentication()
+            .pipe(
+              map((auth) =>
+                JSON.stringify([
+                  auth.status,
+                  auth.user?.uid,
+                  auth.user?.providerData?.map((p) => [p.providerId, p.uid]),
+                ]),
+              ),
+              distinctUntilChanged(),
+            )
+            .subscribe(() => this.clearScope());
+        }
+      }
       this.currentProject = currentProject;
       if (this.currentProject?.summary) {
         $state.next(
@@ -148,10 +209,6 @@ export class QueryEditorStateService {
   }
 
   openQuery(id: string): void {
-    console.log(
-      `QueryEditorStateService.openQuery(${id})`,
-      this.currentProject,
-    );
     try {
       let changed = false;
       let state: IQueryEditorState = $state.value || {
@@ -174,7 +231,6 @@ export class QueryEditorStateService {
           activeQueries: [queryState, ...(state.activeQueries || [])],
         };
         changed = true;
-        this.loadQuery(id);
       }
       if (state.currentQueryId !== id) {
         state = {
@@ -186,13 +242,16 @@ export class QueryEditorStateService {
       if (changed) {
         $state.next(this.updateQueryStatesWithEnvs(state));
       }
+      if (queryState.isLoading) this.loadQuery(id);
     } catch (err) {
       this.errorLogger.logError(err, 'failed to openQuery');
     }
   }
 
   private loadQuery(id: string): void {
+    const generation = this.generation;
     const onCompleted = (def?: IQueryDef) => {
+      if (generation !== this.generation) return;
       const activeQuery = $state.value?.activeQueries.find((q) => q.id === id);
       if (!activeQuery) {
         return;
@@ -268,6 +327,41 @@ export class QueryEditorStateService {
     };
     if (this.currentProject) {
       const currentProject = this.currentProject;
+      if (currentProject.ref.projectApi) {
+        this.queriesService
+          .getRevision(currentProject.ref, id)
+          .pipe(map((result) => ({ result, def: fromProjectQueryWire(result.query) })), takeUntil(this.scopeReset))
+          .subscribe({
+            next: ({ result, def }) => {
+              if (generation !== this.generation) return;
+              onCompleted(def);
+              const state = this.getQueryState(id);
+              if (state)
+                this.updateQueryState({
+                  ...state,
+                  revision: result.revision,
+                  branchHead: result.branchHead,
+                  saveSupported: result.saveSupported !== false,
+                  saveError:
+                    result.saveSupported === false
+                      ? 'This legacy query can be read, but the current save API cannot preserve all its fields.'
+                      : undefined,
+                });
+            },
+            error: () => {
+              if (generation !== this.generation) return;
+              const state = this.getQueryState(id);
+              if (state)
+                this.updateQueryState({
+                  ...state,
+                  isLoading: false,
+                  saveError:
+                    'The query could not be loaded. Check your sign-in and project access, then reload.',
+                });
+            },
+          });
+        return;
+      }
       // `id` here may be a bare id (`customer-invoices`) or, as of
       // datatug-cli#219, the folder-qualified id `queries/applicable`'s
       // `Candidate.queryId` now returns (`customers/customer-invoices`).
@@ -390,10 +484,10 @@ export class QueryEditorStateService {
       }
     }
     queryState = this.updateQueryStateWithEnvs(queryState);
-    if ($state.value) {
+    {
       const state: IQueryEditorState = {
         currentQueryId: queryState.id,
-        activeQueries: [...($state.value.activeQueries || []), queryState],
+        activeQueries: [...($state.value?.activeQueries || []), queryState],
       };
       $state.next(state);
     }
@@ -424,11 +518,6 @@ export class QueryEditorStateService {
   private updateQueryStatesWithEnvs(
     state: IQueryEditorState,
   ): IQueryEditorState {
-    console.log(
-      'updateQueryStatesWithEnvs',
-      state.activeQueries,
-      this.currentProject?.summary?.environments,
-    );
     const { activeQueries } = state;
     if (!activeQueries?.length) {
       return state;
@@ -475,12 +564,14 @@ export class QueryEditorStateService {
     if (!this.currentProject) {
       return throwError(() => 'no current project');
     }
-    if (projectRef.projectId !== this.currentProject.ref.projectId) {
+    if (!equalProjectRef(projectRef, this.currentProject.ref)) {
       return throwError(
         () =>
           'An attempt to save a query after current project have been changed',
       );
     }
+    if (projectRef.projectApi)
+      return this.saveCommonQuery(queryState, projectRef);
     const { id } = queryState;
     if (!id) {
       return throwError(() => 'queryState.id is not set');
@@ -524,16 +615,20 @@ export class QueryEditorStateService {
             return throwError(() => `no state for query with id=${query.id}`);
           }
           const requestChangedDuringSave =
-            JSON.stringify(currentState.request) !== JSON.stringify(query.request);
+            JSON.stringify(currentState.request) !==
+            JSON.stringify(query.request);
           const titleChangedDuringSave = currentState.title !== query.title;
           const federationChangedDuringSave =
-            JSON.stringify(currentState.federation ?? currentState.def?.federation) !==
-            JSON.stringify(query.federation);
+            JSON.stringify(
+              currentState.federation ?? currentState.def?.federation,
+            ) !== JSON.stringify(query.federation);
           this.updateQueryState({
             ...currentState,
             def: value,
             title: titleChangedDuringSave ? currentState.title : value.title,
-            request: requestChangedDuringSave ? currentState.request : value.request,
+            request: requestChangedDuringSave
+              ? currentState.request
+              : value.request,
             federation: federationChangedDuringSave
               ? currentState.federation
               : value.federation,
@@ -554,5 +649,155 @@ export class QueryEditorStateService {
       setIsSavingToFalse();
       return throwError(e);
     }
+  }
+  private saveCommonQuery(
+    queryState: IQueryState,
+    ref: IProjectRef,
+  ): Observable<void> {
+    if (queryState.id && this.getQueryState(queryState.id)?.isSaving)
+      return throwError(() => new Error('A save is already in progress.'));
+    return defer(() => {
+      const id = queryState.id;
+      if (queryState.saveSupported === false)
+        throw new Error(
+          'This query cannot be saved losslessly by the current API.',
+        );
+      if (!id || !queryState.def || !queryState.request || !ref.branch)
+        throw new Error('Load a query and select its branch before saving.');
+      const generation = this.generation;
+      const query = toProjectQueryWire(
+        {
+          ...queryState.def,
+          title: queryState.title,
+          request: queryState.request,
+          federation: queryState.federation ?? queryState.def.federation,
+        },
+        id,
+      );
+      const payload = JSON.stringify({
+        branch: ref.branch,
+        query,
+        isNew: !!queryState.isNew,
+        revision: queryState.revision,
+      });
+      const prior = this.pendingSaves.get(id);
+      // An ambiguous response may already have committed. Preserve its operation for an unchanged retry.
+      // A changed draft obtains a new operation and retains the original CAS preconditions.
+      const request =
+        prior?.payload === payload
+          ? prior.request
+          : {
+              operationId: crypto.randomUUID(),
+              branch: ref.branch,
+              query,
+              ...(queryState.isNew
+                ? { ifNoneMatch: true as const }
+                : { ifMatch: queryState.revision }),
+              expectedBranchHead: queryState.branchHead,
+            };
+      if (!queryState.isNew && !queryState.revision)
+        throw new Error(
+          'Reload this query to obtain its revision before saving.',
+        );
+      this.pendingSaves.set(id, { payload, request });
+      this.updateQueryState({
+        ...queryState,
+        isSaving: true,
+        saveError: undefined,
+      });
+      return this.queriesService.capabilities(ref).pipe(
+        switchMap((capabilities) => {
+          if (generation !== this.generation)
+            throw new Error('Project scope changed during save.');
+          if (!capabilities.querySave)
+            throw new Error(
+              'This project does not currently allow saving queries.',
+            );
+          if (request.expectedBranchHead)
+            return this.queriesService.saveRevision(ref, request);
+          return this.queriesService.branches(ref).pipe(
+            switchMap((list) => {
+              if (generation !== this.generation)
+                throw new Error('Project scope changed during save.');
+              const branch = list.branches.find(
+                (branch) => branch.name === ref.branch,
+              );
+              if (
+                !branch ||
+                (list.currentBranch && list.currentBranch !== ref.branch)
+              )
+                throw new Error(
+                  'The selected branch is unavailable or is not the current local branch.',
+                );
+              const frozen = { ...request, expectedBranchHead: branch.head };
+              this.pendingSaves.set(id, { payload, request: frozen });
+              return this.queriesService.saveRevision(ref, frozen);
+            }),
+          );
+        }),
+        tap((result) => {
+          if (generation !== this.generation) return;
+          const current = this.getQueryState(id);
+          if (!current) return;
+          const def = fromProjectQueryWire(result.query);
+          this.pendingSaves.delete(id);
+          this.updateQueryState({
+            ...current,
+            def,
+            revision: result.revision,
+            branchHead: result.branchHead,
+            isNew: false,
+            isSaving: false,
+            saveError: undefined,
+            title:
+              current.title === queryState.title ? def.title : current.title,
+            request:
+              JSON.stringify(current.request) ===
+              JSON.stringify(queryState.request)
+                ? def.request
+                : current.request,
+            federation:
+              JSON.stringify(current.federation ?? current.def?.federation) ===
+              JSON.stringify(
+                queryState.federation ?? queryState.def?.federation,
+              )
+                ? def.federation
+                : current.federation,
+          });
+        }),
+        map(() => void 0),
+        catchError((error) => {
+          if (generation === this.generation) {
+            const current = this.getQueryState(id);
+            if (current)
+              this.updateQueryState({
+                ...current,
+                isSaving: false,
+                saveError:
+                  error?.status === 409 || error?.status === 412
+                    ? 'The saved query or branch changed. Your draft is preserved. Reload only when you are ready to discard it.'
+                    : 'The query was not confirmed saved. Your draft is preserved. Retry the same draft, or reload to inspect the saved revision.',
+              });
+          }
+          return throwError(() => error);
+        }),
+      );
+    }).pipe(
+      takeUntil(this.scopeReset),
+      catchError((error) => {
+        const current = queryState.id && this.getQueryState(queryState.id);
+        if (current && equalProjectRef(ref, this.currentProject?.ref))
+          this.updateQueryState({
+            ...current,
+            isSaving: false,
+            saveError:
+              error instanceof UnsupportedQueryContractError
+                ? error.message
+                : (current.saveError ??
+                  'The query could not be saved. Your draft is preserved. Reload its revision or check project access before retrying.'),
+          });
+        return throwError(() => error);
+      }),
+    );
   }
 }

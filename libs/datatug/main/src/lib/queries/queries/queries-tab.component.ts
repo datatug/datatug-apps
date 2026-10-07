@@ -1,9 +1,11 @@
+import { QueriesUiService } from '../queries-ui.service';
 import { TitleCasePipe } from '@angular/common';
 import {
   ChangeDetectorRef,
   Component,
   effect,
   inject,
+  Injector,
   input,
   model,
   signal,
@@ -73,6 +75,7 @@ type QueryType = 'SQL' | 'GraphQL' | 'HTTP';
   ],
 })
 export class QueriesTabComponent {
+  private readonly injector = inject(Injector);
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
@@ -581,6 +584,12 @@ export class QueriesTabComponent {
     this.applyFilter();
   }
 
+  newQuery(): void {
+    const project = this.project();
+    if (project)
+      void this.injector.get(QueriesUiService).openNewQuery(project.ref);
+  }
+
   newFolder(): void {
     const name = prompt('Name of a new folder?');
     if (!name) {
@@ -667,7 +676,9 @@ export class QueriesTabComponent {
  * instead of an `ErrorLogger.logError()` toast.
  */
 function isGithubPersonalQueriesError(err: unknown): boolean {
-  return err instanceof Error && err.message === GITHUB_PERSONAL_QUERIES_MESSAGE;
+  return (
+    err instanceof Error && err.message === GITHUB_PERSONAL_QUERIES_MESSAGE
+  );
 }
 
 /**

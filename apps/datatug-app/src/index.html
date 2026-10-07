@@ -33,6 +33,28 @@
          whole query goes and is kept. Any other path is untouched, except that every other address under
          /project/github.com loses `msg` and `q` (the question is dropped, never kept: nothing reads it there), the
          rest of its query and its fragment staying. -->
+    <!-- Scrub GitHub callback credentials before analytics and app bootstrap. -->
+    <script id="datatug-github-callback-scrub">
+      (function () {
+        if (!/^\/github\/callback\/?$/.test(location.pathname)) return;
+        var params = new URLSearchParams(location.search);
+        var codes = params.getAll('code'),
+          states = params.getAll('state');
+        var handoff =
+          codes.length === 1 && states.length === 1 && codes[0] && states[0]
+            ? { code: codes[0], state: states[0] }
+            : undefined;
+        // No secrets in URL, history state, browser storage or analytics.
+        history.replaceState(null, '', location.pathname);
+        window.__datatugTakeGitHubAuthorization = function () {
+          delete window.__datatugTakeGitHubAuthorization;
+          var value = handoff;
+          handoff = undefined;
+          return value;
+        };
+      })();
+    </script>
+
     <script id="datatug-handoff-stash">
       (function () {
         // `u`: a path that starts with `//` is, to history.replaceState, an address on another host; it needs its origin.

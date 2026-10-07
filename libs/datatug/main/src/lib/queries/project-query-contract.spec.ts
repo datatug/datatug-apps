@@ -1,0 +1,93 @@
+import {
+  createHostedDemoDbQuery,
+  withHostedDemoDbSource,
+} from './hosted-demo-db-query';
+import {
+  fromProjectQueryWire,
+  toProjectQueryWire,
+  UnsupportedQueryContractError,
+} from './project-query-contract';
+import { QueryType } from '../models/definition/query-def';
+
+describe('common project query contract', () => {
+  it.each(['chinook.Customer', 'adventureworks.Person.Person'])(
+    'round-trips complete %s source and DTQL body',
+    (source) => {
+      const query = withHostedDemoDbSource(
+        createHostedDemoDbQuery('test'),
+        source,
+      );
+      const wire = toProjectQueryWire(query);
+      expect(wire.folderPath).toBe('~');
+      expect(wire.type).toBe(QueryType.DTQL);
+      expect(fromProjectQueryWire(wire)).toEqual(query);
+      expect(wire.federation).not.toBe(query.federation);
+    },
+  );
+  it('preserves SQL newlines, empty body and folder location', () => {
+    const query = {
+      id: 'q',
+      title: 'SQL',
+      request: { queryType: QueryType.SQL, text: '\nSELECT 1;\n' },
+    };
+    expect(toProjectQueryWire(query, 'folder/q')).toMatchObject({
+      folderPath: 'folder',
+      id: 'q',
+      text: '\nSELECT 1;\n',
+    });
+    expect(
+      toProjectQueryWire({
+        ...query,
+        request: { queryType: QueryType.SQL, text: '' },
+      }).text,
+    ).toBe('');
+  });
+  it.each([
+    'bounds',
+    'expectedServerIdentity',
+    'expectedSourceRights',
+    'nativeGraph',
+    'readReceipt',
+  ])('refuses richer federation %s without changing the draft', (key) => {
+    const query = createHostedDemoDbQuery('q');
+    const enriched = {
+      ...query,
+      federation: { ...query.federation!, [key]: {} },
+    };
+    const before = JSON.stringify(enriched);
+    expect(() => toProjectQueryWire(enriched)).toThrow(
+      UnsupportedQueryContractError,
+    );
+    expect(JSON.stringify(enriched)).toBe(before);
+  });
+  it('refuses unsupported HTTP and asset fields rather than stripping them', () => {
+    expect(() =>
+      toProjectQueryWire({
+        id: 'q',
+        request: { queryType: QueryType.HTTP, url: '/foo' },
+      }),
+    ).toThrow(UnsupportedQueryContractError);
+    expect(() =>
+      toProjectQueryWire({ ...createHostedDemoDbQuery('q'), parameters: [] }),
+    ).toThrow(UnsupportedQueryContractError);
+  });
+});
+
+it('preserves richer legacy read metadata instead of silently dropping it into a supported save', () => {
+  const wire = {
+    folderPath: 'customers',
+    id: 'query',
+    type: QueryType.SQL,
+    text: 'select 1',
+    parameters: [{ id: 'customer' }],
+    customMetadata: { source: 'legacy' },
+  };
+  const definition = fromProjectQueryWire(wire);
+  expect(definition).toMatchObject({
+    parameters: wire.parameters,
+    customMetadata: wire.customMetadata,
+  });
+  expect(() => toProjectQueryWire(definition, 'customers/query')).toThrow(
+    'cannot preserve',
+  );
+});

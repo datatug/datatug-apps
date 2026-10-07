@@ -9,7 +9,7 @@
       <ion-button
         class="ion-padding-horizontal"
         slot="end"
-        [disabled]="queryState.isSaving"
+        [disabled]="queryState.isSaving || queryState.saveSupported === false"
         [fill]="isChanged ? 'solid' : 'clear'"
         [color]="isChanged ? 'danger' : 'medium'"
         title="Save changes"
@@ -29,6 +29,48 @@
 </ion-header>
 
 <ion-content color="light">
+  @if (project?.ref?.projectApi) {
+    <ion-item
+      ><ion-label>Branch: {{ project?.ref?.branch }}</ion-label
+      ><ion-button
+        (click)="loadQueryBranches()"
+        [disabled]="queryState.isSaving"
+        fill="clear"
+        >List branches</ion-button
+      ><ion-button (click)="reloadSavedQuery()" [disabled]="queryState.isSaving"
+        >Reload saved query</ion-button
+      ></ion-item
+    >
+    @if (queryBranches().length && project?.ref?.projectApi === 'cloud') {
+      <ion-item
+        ><ion-select
+          label="Open branch"
+          [value]="project?.ref?.branch"
+          (ionChange)="queryBranchChanged($event)"
+          [disabled]="queryState.isSaving"
+        >
+          @for (branch of queryBranches(); track branch.name) {
+            <ion-select-option [value]="branch.name">{{
+              branch.name
+            }}</ion-select-option>
+          }
+        </ion-select></ion-item
+      >
+    }
+    @if (branchError(); as error) {
+      <ion-item
+        ><ion-label color="danger">{{ error }}</ion-label></ion-item
+      >
+    }
+    @if (queryState.saveError; as error) {
+      <ion-item
+        ><ion-label color="danger" class="ion-text-wrap">{{
+          error
+        }}</ion-label></ion-item
+      >
+    }
+  }
+
   @if (queryDef()?.publicData; as saved) {
     <ion-card
       ><ion-card-header
@@ -312,6 +354,7 @@
             interface="popover"
             [value]="selectedHostedDemoDbSource()"
             [disabled]="running() || queryState.isSaving"
+            [disabled]="queryState.saveSupported === false"
             (ionChange)="hostedDemoDbSourceChanged($event)"
           >
             @for (source of hostedDemoDbSources; track source.id) {
@@ -327,10 +370,10 @@
     <ion-item>
       <ion-input
         placeholder="Title - is required"
+        [readonly]="queryState.saveSupported === false"
         [value]="queryState.title"
         [disabled]="queryState.isSaving"
         (ionChange)="queryTitleChanged($event)"
-        readonly="false"
       />
       <ion-select interface="popover" slot="end">
         <ion-select-option value="q1">Query #1</ion-select-option>
@@ -362,7 +405,8 @@
             autoGrow="true"
             [value]="queryBodyText()"
             [disabled]="queryState.isSaving || running()"
-            (ionInput)="queryTextChanged($event)"
+            [readonly]="queryState.saveSupported === false"
+          (ionInput)="queryTextChanged($event)"
           />
         } @else {
           <ion-text color="medium">No query text.</ion-text>

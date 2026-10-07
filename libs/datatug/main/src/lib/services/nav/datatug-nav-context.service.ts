@@ -1,3 +1,4 @@
+import { readProjectApiQuery } from '../../nav/project-api-routing';
 import { Injectable, inject } from '@angular/core';
 import { BehaviorSubject, Subscription } from 'rxjs';
 import { NavigationEnd, Router } from '@angular/router';
@@ -42,6 +43,8 @@ interface IAddressedLocation {
   readonly storeId?: string;
   readonly projectId?: string;
   readonly spaceID?: string;
+  readonly projectApi?: 'cloud' | 'local';
+  readonly branch?: string;
   /** `''`, or a path starting with `/`: the page of the project, as typed. */
   readonly rest: string;
 }
@@ -326,7 +329,18 @@ export class DatatugNavContextService {
 
   private processUrl(rawUrl: string): void {
     // console.log('DatatugNavContextService.processUrl():', url);
-    const where = this.locationOf(rawUrl);
+    let where: IAddressedLocation;
+    try {
+      where = {
+        ...this.locationOf(rawUrl),
+        ...readProjectApiQuery(
+          new URL(rawUrl, 'https://datatug.app').searchParams,
+        ),
+      };
+    } catch {
+      this.setCurrentProject(undefined);
+      return;
+    }
     try {
       this.processStore(where);
       this.processProject(where);
@@ -360,7 +374,9 @@ export class DatatugNavContextService {
       !currentProject ||
       currentProject.ref.projectId !== id ||
       currentProject.ref.storeId !== currentStoreId ||
-      currentProject.ref.spaceID !== where.spaceID
+      currentProject.ref.spaceID !== where.spaceID ||
+      currentProject.ref.projectApi !== where.projectApi ||
+      currentProject.ref.branch !== where.branch
     ) {
       // let storeType: DatatugProjStoreType;
       // if (currentStoreId === STORE_ID_GITHUB_COM) {
@@ -373,6 +389,9 @@ export class DatatugNavContextService {
         store: { ref: parseDatatugStoreRef(currentStoreId) },
         ref: {
           projectId: id,
+          ...(where.projectApi
+            ? { projectApi: where.projectApi, branch: where.branch }
+            : {}),
           storeId: currentStoreId || '',
           ...(where.spaceID !== undefined ? { spaceID: where.spaceID } : {}),
         },

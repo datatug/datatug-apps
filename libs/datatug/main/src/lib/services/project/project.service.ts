@@ -1,3 +1,6 @@
+import { ProjectQueryApiService } from './project-query-api.service';
+import { SneatAuthStateService } from '@sneat/auth-core';
+import { of, switchMap, startWith } from 'rxjs';
 import { HttpClient } from '@angular/common/http';
 import { Injectable, Injector, inject } from '@angular/core';
 import { ISneatApiService, SneatApiService } from '@sneat/api';
@@ -73,6 +76,20 @@ export class ProjectService {
         () => 'Can not watch project by empty target parameter',
       );
     }
+    if (projectRef.projectApi === 'cloud') {
+      return this.injector
+        .get(SneatAuthStateService)
+        .authState.pipe(
+          switchMap((auth) =>
+            auth.status === 'authenticated' && auth.user?.uid
+              ? this.injector
+                  .get(ProjectQueryApiService)
+                  .summary(projectRef)
+                  .pipe(startWith(undefined))
+              : of(undefined),
+          ),
+        );
+    }
     if (projectRef.spaceID !== undefined)
       return this.injector.get(SharedProjectSummaryService).watch(projectRef);
     if (projectRef.storeId === 'agent') {
@@ -113,7 +130,7 @@ export class ProjectService {
   }
 
   public getFull(projectRef: IProjectRef): Observable<IProjectFull> {
-    if (projectRef?.spaceID !== undefined)
+    if (projectRef?.spaceID !== undefined || projectRef?.projectApi === 'cloud')
       return throwError(
         () => new Error('Shared project full reads are unavailable'),
       );
