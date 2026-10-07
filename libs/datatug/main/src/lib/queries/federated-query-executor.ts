@@ -21,7 +21,7 @@ import type {
   IQueryDef,
   ITextQueryRequest,
 } from '../models/definition/query-def';
-import { readOvdbJsonRecordStream } from './ovdb-json-record-stream';
+import { OVDB_ERROR_STREAM_MIME, readOvdbEarlyError, readOvdbJsonRecordStream } from './ovdb-json-record-stream';
 import { ovdbResultColumns, ovdbStreamRow } from './ovdb-stream-values';
 import { localResultBytes } from './local-result-bytes';
 import { strictJson } from './public-data/strict-json';
@@ -267,9 +267,10 @@ function nativeDatabase(definition: IQueryDef): { database: string; sources: Pla
 }
 
 interface PlannedNativeSource { readonly database: string; readonly name: string }
+interface NativeStreamCapability { readonly streaming: boolean; readonly mappedErrors: boolean }
 
 async function streamCapability(base: string, database: string, fetcher: typeof fetch,
-  authHeaders: Record<string, string>, expectedServerId?: string, signal?: AbortSignal): Promise<boolean> {
+  authHeaders: Record<string, string>, expectedServerId?: string, signal?: AbortSignal): Promise<NativeStreamCapability> {
   const timeout = AbortSignal.timeout(15000);
   const effective = signal ? AbortSignal.any([signal, timeout]) : timeout;
   const response = await fetcher(`${base}/v1/databases/${encodeURIComponent(database)}`, {
@@ -306,22 +307,23 @@ async function streamCapability(base: string, database: string, fetcher: typeof 
     throw new Error('OVDB returned invalid database capabilities.');
   const document = metadata as Record<string, unknown>;
   const capabilities = document['capabilities'];
-  if (capabilities === undefined) return false; // Legacy endpoint: retain its current execution route.
+  if (capabilities === undefined) return { streaming: false, mappedErrors: false }; // Legacy route.
   if (!capabilities || typeof capabilities !== 'object' || Array.isArray(capabilities))
     throw new Error('OVDB returned invalid database capabilities.');
   const flags = capabilities as Record<string, unknown>;
-  if (flags['dtqlStreaming'] !== true) return false;
+  if (flags['dtqlStreaming'] !== true) return { streaming: false, mappedErrors: false };
   if (document['id'] !== database || (expectedServerId && document['serverId'] !== expectedServerId))
     throw new Error('OVDB streaming capability identity differs from the selected database.');
   if (flags['dtql'] !== true)
     throw new Error('OVDB advertises a query stream without DTQL capability.');
-  return true;
+  return { streaming: true, mappedErrors: flags['dtqlStreamingErrors'] === true };
 }
 
 async function runNativeStream(
   definition: IQueryDef, database: string, sources: readonly PlannedNativeSource[],
   base: string, token: string, onProgress?: (progress: FederatedQueryProgress) => void,
   onOutputPage?: FederatedOutputPage, signal?: AbortSignal, observer?: FederatedQueryObserver,
+  mappedErrors = false,
 ): Promise<FederatedQueryResult> {
   const fetcher: typeof fetch = observer?.fetch ?? ((input, init) => fetch(input, init));
   const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
@@ -332,11 +334,14 @@ async function runNativeStream(
     config.expectedSourceRights, expectedServerId);
   signal?.throwIfAborted();
   const response = await fetcher(`${base}/v1/databases/${encodeURIComponent(database)}/dtql`, {
-    method: 'POST', headers: { 'Content-Type': 'application/yaml', Accept: 'application/json', ...authHeaders },
+    method: 'POST', headers: { 'Content-Type': 'application/yaml',
+      Accept: mappedErrors ? OVDB_ERROR_STREAM_MIME : 'application/json', ...authHeaders },
     body: (definition.request as ITextQueryRequest).text, redirect: 'error', signal,
   });
-  if (response.redirected || !response.ok)
-    throw new Error(`OVDB ${database} whole-query execution failed (${response.status}).`);
+  if (response.redirected || !response.ok) {
+    const mapped = response.redirected ? undefined : await readOvdbEarlyError(response, signal);
+    throw new Error(mapped ?? `OVDB ${database} whole-query execution failed (${response.status}).`);
+  }
   const first: Readonly<Record<string, unknown>>[] = [];
   let previewBytes = 0;
   let count = 0;
@@ -355,7 +360,7 @@ async function runNativeStream(
     if (count === 1 || count % 100 === 0)
       onProgress?.({ stage: 'streaming', rowsLoaded: count, rowsProcessed: count,
         requestsCompleted: 0, requestsInFlight: 1, requestsPending: 0 });
-  }, signal);
+  }, signal, undefined, mappedErrors);
   signal?.throwIfAborted();
   rights.acceptWholeQuery(stream.footer as unknown as Record<string, unknown>);
   const columns = ovdbResultColumns(stream.footer.columns, definition);
@@ -435,10 +440,11 @@ export async function runFederatedQuery(
         throw new Error('The OVDB query deadline has expired.');
       const timeout = AbortSignal.timeout(remaining);
       const nativeSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
-      if (await streamCapability(base, native.database, fetcher, headers,
-        admittedServerId(config, base), nativeSignal))
+      const capability = await streamCapability(base, native.database, fetcher, headers,
+        admittedServerId(config, base), nativeSignal);
+      if (capability.streaming)
         return runNativeStream(definition, native.database, native.sources, base, token,
-          onProgress, onOutputPage, nativeSignal, observer);
+          onProgress, onOutputPage, nativeSignal, observer, capability.mappedErrors);
     }
     return runFederatedQueryInternal(
       definition,

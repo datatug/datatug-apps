@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IQueryDef } from '../models/definition/query-def';
+import { OVDB_ERROR_STREAM_MIME } from './ovdb-json-record-stream';
 
 type Posted = { type: string; [key: string]: unknown };
 
@@ -195,6 +196,22 @@ describe('federated query worker', () => {
     await run({});
     expect(posted.find((message) => message.type === 'result')).toBeUndefined();
     expect(posted.find((message) => message.type === 'error')?.['message']).toMatch(/terminal footer/);
+    const after = new Set((await indexedDB.databases()).map((database) => database.name));
+    expect([...after].filter((name) => !before.has(name))).toEqual([]);
+  });
+  it('deletes provisional pages and reports only a mapped negotiated terminal error', async () => {
+    const before = new Set((await indexedDB.databases()).map((database) => database.name));
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('/v1/databases/db')
+      ? new Response(JSON.stringify({ id: 'db', capabilities: {
+        dtql: true, dtqlStreaming: true, dtqlStreamingErrors: true,
+      } }), { headers: { 'Content-Type': 'application/json' } })
+      : new Response(`{"records":[${Array.from({ length: 100 }, (_, index) =>
+        JSON.stringify({ data: { name: String(index) } })).join(',')}],"error":{"code":"query_budget_exceeded","message":"The row budget was reached.","budget":{"name":"rows","limit":100,"route":"dtql"},"hint":"Narrow the query."},"complete":false}`,
+      { headers: { 'Content-Type': OVDB_ERROR_STREAM_MIME } })));
+    await run({});
+    expect(posted.find((message) => message.type === 'result')).toBeUndefined();
+    expect(posted.find((message) => message.type === 'error')?.['message']).toBe(
+      'OVDB query failed (query_budget_exceeded): The row budget was reached.');
     const after = new Set((await indexedDB.databases()).map((database) => database.name));
     expect([...after].filter((name) => !before.has(name))).toEqual([]);
   });
