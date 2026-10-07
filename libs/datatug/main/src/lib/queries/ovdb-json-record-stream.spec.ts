@@ -1,15 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
-import { readOvdbJsonRecordStream } from './ovdb-json-record-stream';
+import { OVDB_ERROR_STREAM_MIME, readOvdbEarlyError, readOvdbJsonRecordStream } from './ovdb-json-record-stream';
 
 const encoder = new TextEncoder();
 
-function streamed(parts: readonly string[]): Response {
+function streamed(parts: readonly string[], mime = 'application/json'): Response {
   return new Response(new ReadableStream<Uint8Array>({
     start(controller) {
       for (const part of parts) controller.enqueue(encoder.encode(part));
       controller.close();
     },
-  }), { headers: { 'Content-Type': 'application/json' } });
+  }), { headers: { 'Content-Type': mime } });
 }
 
 describe('provider-neutral OVDB JSON result stream', () => {
@@ -38,6 +38,41 @@ describe('provider-neutral OVDB JSON result stream', () => {
       await expect(readOvdbJsonRecordStream(streamed(['{"records":[{"data":{"id":1}}', tail]), seen)).rejects.toThrow();
       expect(seen).toHaveBeenCalledOnce();
     }
+  });
+
+  it('reports a negotiated mapped late error after provisional rows without accepting success metadata', async () => {
+    const seen = vi.fn();
+    const body = '{"records":[{"data":{"ArtistId":"42"}}],"error":{"code":"query_budget_exceeded","message":"The row budget was reached.","budget":{"name":"rows","limit":100,"route":"dtql","path":"records"},"hint":"Narrow the query."},"complete":false}';
+    await expect(readOvdbJsonRecordStream(streamed([body], OVDB_ERROR_STREAM_MIME), seen,
+      undefined, undefined, true)).rejects.toThrow('OVDB query failed (query_budget_exceeded): The row budget was reached.');
+    expect(seen).toHaveBeenCalledOnce();
+    await expect(readOvdbJsonRecordStream(streamed([body]), vi.fn())).rejects.toThrow(/did not complete/);
+  });
+
+  it('refuses malformed negotiated error footers, mixed success and error, and MIME mismatches', async () => {
+    const tails = [
+      '],"error":{"code":"query_failed","message":"oops"},"complete":true}',
+      '],"error":{"code":"query_failed","message":"oops"},"columns":["id"],"complete":false}',
+      '],"error":{"code":"bad code","message":"oops"},"complete":false}',
+      '],"error":{"code":"query_failed","message":"line\\nsecret"},"complete":false}',
+    ];
+    for (const tail of tails)
+      await expect(readOvdbJsonRecordStream(streamed(['{"records":[{"data":{"id":1}}', tail],
+        OVDB_ERROR_STREAM_MIME), vi.fn(), undefined, undefined, true)).rejects.toThrow(/inconsistent|did not complete/);
+    await expect(readOvdbJsonRecordStream(streamed(['{"records":[],"complete":true}']),
+      vi.fn(), undefined, undefined, true)).rejects.toThrow(/content type/);
+  });
+
+  it('reads only bounded, mapped early HTTP JSON errors', async () => {
+    const response = new Response('{"error":{"code":"query_budget_exceeded","message":"The row budget was reached.","budget":{"name":"rows","limit":100,"route":"dtql"},"hint":"Narrow the query."}}',
+      { status: 422, headers: { 'Content-Type': 'application/json' } });
+    expect(await readOvdbEarlyError(response)).toBe('OVDB query failed (query_budget_exceeded): The row budget was reached.');
+    const unchecked = new Response('{"error":{"code":"unsupported","message":"private\\nsecret"}}',
+      { status: 422, headers: { 'Content-Type': 'application/json' } });
+    expect(await readOvdbEarlyError(unchecked)).toBeUndefined();
+    const huge = new Response('{"error":{"code":"unsupported","message":"' + 'x'.repeat(17_000) + '"}}',
+      { status: 422, headers: { 'Content-Type': 'application/json' } });
+    expect(await readOvdbEarlyError(huge)).toBeUndefined();
   });
 
   it('refuses lossy JSON numeric tokens while preserving quoted wide integers and decimals', async () => {

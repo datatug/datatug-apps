@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { runFederatedQuery } from './federated-query-executor';
 import { QueryType, type IQueryDef } from '../models/definition/query-def';
+import { OVDB_ERROR_STREAM_MIME } from './ovdb-json-record-stream';
 
 const definition: IQueryDef = {
   id: 'artist-tracks', title: 'Artist tracks',
@@ -132,6 +133,33 @@ limit: 10`;
       : new Response('{"records":[{"data":{"ArtistId":"42"}}', { headers: { 'Content-Type': 'application/json' } }));
     await expect(runFederatedQuery(definition, undefined, '', undefined, undefined, 'full', undefined, undefined,
       { fetch: fetcher, onNativeRecord: async () => undefined })).rejects.toThrow(/terminal footer/);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it('negotiates mapped terminal errors only when advertised and never turns provisional rows into success', async () => {
+    const calls: RequestInit[] = [];
+    const staged = vi.fn();
+    const fetcher = vi.fn<typeof fetch>(async (input, init) => {
+      calls.push(init ?? {});
+      return String(input).endsWith('/music')
+        ? json({ id: 'music', capabilities: { dtql: true, dtqlStreaming: true, dtqlStreamingErrors: true } })
+        : new Response('{"records":[{"data":{"ArtistId":"42"}}],"error":{"code":"query_budget_exceeded","message":"The row budget was reached.","budget":{"name":"rows","limit":100,"route":"dtql"},"hint":"Narrow the query."},"complete":false}',
+          { headers: { 'Content-Type': OVDB_ERROR_STREAM_MIME } });
+    });
+    await expect(runFederatedQuery(definition, undefined, '', undefined, undefined, 'full', undefined, undefined,
+      { fetch: fetcher, onNativeRecord: staged })).rejects.toThrow('OVDB query failed (query_budget_exceeded): The row budget was reached.');
+    expect(staged).toHaveBeenCalledOnce();
+    expect(new Headers(calls[1].headers).get('Accept')).toBe(OVDB_ERROR_STREAM_MIME);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows a bounded early mapped HTTP error while retaining the no-leaf-fallback rule', async () => {
+    const fetcher = vi.fn<typeof fetch>(async (input) => String(input).endsWith('/music')
+      ? json({ id: 'music', capabilities: { dtql: true, dtqlStreaming: true, dtqlStreamingErrors: true } })
+      : new Response('{"error":{"code":"unsupported","message":"The query cannot run."}}',
+        { status: 422, headers: { 'Content-Type': 'application/json' } }));
+    await expect(runFederatedQuery(definition, undefined, '', undefined, undefined, 'full', undefined, undefined,
+      { fetch: fetcher })).rejects.toThrow('OVDB query failed (unsupported): The query cannot run.');
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 

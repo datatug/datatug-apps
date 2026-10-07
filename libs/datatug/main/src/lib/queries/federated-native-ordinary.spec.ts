@@ -90,4 +90,20 @@ describe('hosted DemoDB ordinary DTQL responses', () => {
     ).rejects.toThrow(/identity/);
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
+
+  it('shows a bounded mapped ordinary HTTP error without scanning tables', async () => {
+    const fetcher = vi.fn<typeof fetch>(async (input) =>
+      String(input).endsWith('/chinook')
+        ? Response.json({ id: 'chinook', capabilities: { dtql: true, read: true } })
+        : Response.json(
+            { error: { code: 'unsupported', message: 'The query cannot run.' } },
+            { status: 422 },
+          ),
+    );
+    await expect(
+      runFederatedQuery(createHostedDemoDbQuery('new-query'), undefined, '',
+        undefined, undefined, 'full', undefined, undefined, { fetch: fetcher }),
+    ).rejects.toThrow('OVDB query failed (unsupported): The query cannot run.');
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
 });
