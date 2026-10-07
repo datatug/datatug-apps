@@ -49,6 +49,7 @@ describe('shared project database connections', () => {
     expect(fixture.nativeElement.querySelectorAll('ion-item').length).toBe(26);
     expect(fixture.componentInstance['readiness'](catalog.connections[1])).toBe('PostgreSQL query endpoint pending');
     expect(fixture.nativeElement.querySelectorAll('ion-button').length).toBe(0);
+    expect(fixture.nativeElement.querySelector('a[href*="chinook-postgresql-genres"]')).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('Hosted BigQuery editions');
     const rendered = fixture.nativeElement.innerHTML;
     expect(rendered).toContain('demodb-dev.chinook');
@@ -56,6 +57,53 @@ describe('shared project database connections', () => {
     expect(rendered).toContain('Browser queries and copy are not enabled');
     expect(fixture.nativeElement.querySelectorAll('a[href="https://console.cloud.google.com/bigquery"]').length).toBe(6);
     expect(fixture.nativeElement.querySelectorAll('ion-card-title')[2].textContent).toContain('discoveries');
+  });
+
+  it('deep-links only the ready Chinook PostgreSQL edition to its saved cross-storage query', async () => {
+    const active = entries.map((entry) => entry.id === 'chinook-postgresql'
+      ? { ...entry, readiness: 'public-api', query: 'ovdb-read',
+          source: 'https://cloud.openvaultdb.com/v1/databases/chinook-postgresql' }
+      : entry);
+    const getRawJson = vi.fn(() => of({ format: 'datatug-demo-connections/v1', connections: active,
+      bigQueryEditions, bigQueryPlans: plans }));
+    await TestBed.configureTestingModule({
+      imports: [DemoDbConnectionsComponent],
+      providers: [{ provide: GithubProjectReaderService, useValue: { getRawJson } }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(DemoDbConnectionsComponent);
+    fixture.componentRef.setInput('projectRef', canonical);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.componentInstance['catalog']()).toBeDefined();
+    const anchors = fixture.nativeElement.querySelectorAll('a[href*="chinook-postgresql-genres"]');
+    expect(anchors.length).toBe(1);
+    expect(anchors[0].textContent).toContain('PostgreSQL and SQLite genres');
+    const target = new URL(anchors[0].getAttribute('href'), 'https://datatug.app');
+    expect(target.pathname).toContain('/query/demodb%2Fchinook-postgresql-genres');
+    expect(target.searchParams.get('id')).toBe('demodb/chinook-postgresql-genres');
+    const connection = fixture.componentInstance['catalog']()?.connections.find((entry) => entry.id === 'chinook-postgresql');
+    if (!connection) throw new Error('Ready Chinook PostgreSQL connection did not load.');
+    expect(fixture.componentInstance['readiness'](connection)).toBe('Public read-only PostgreSQL through OVDB');
+  });
+
+  it('rejects an active PostgreSQL declaration with a different endpoint', async () => {
+    const changed = entries.map((entry) => entry.id === 'chinook-postgresql'
+      ? { ...entry, readiness: 'public-api', query: 'ovdb-read',
+          source: 'https://example.test/v1/databases/chinook-postgresql' }
+      : entry);
+    const getRawJson = vi.fn(() => of({ format: 'datatug-demo-connections/v1', connections: changed,
+      bigQueryEditions, bigQueryPlans: plans }));
+    await TestBed.configureTestingModule({
+      imports: [DemoDbConnectionsComponent],
+      providers: [{ provide: GithubProjectReaderService, useValue: { getRawJson } }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(DemoDbConnectionsComponent);
+    fixture.componentRef.setInput('projectRef', canonical);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(fixture.componentInstance['catalog']()).toBeUndefined();
+    expect(fixture.componentInstance['error']()).toMatch(/could not be loaded/);
   });
 
   it('continues to render a cached v1 catalogue created before hosted editions were added', async () => {
