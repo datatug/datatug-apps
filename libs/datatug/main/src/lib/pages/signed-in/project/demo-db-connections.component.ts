@@ -7,6 +7,27 @@ import { GithubProjectReaderService } from '../../../services/repo/github/github
 const datasets = ['chinook', 'northwind', 'pubs', 'sakila', 'adventureworks', 'employees'] as const;
 type Dataset = typeof datasets[number];
 type Storage = 'sqlite' | 'postgresql' | 'ingitdb';
+interface BigQueryEdition {
+  readonly id: string;
+  readonly dataset: Dataset;
+  readonly storage: 'bigquery';
+  readonly sourceProjectId: 'demodb-dev';
+  readonly datasetId: Dataset;
+  readonly location: 'US';
+  readonly authentication: 'google-account-required';
+  readonly executionProjectId: 'user-selected';
+  readonly publicReadRole: 'READER';
+  readonly publicReadPrincipal: 'allAuthenticatedUsers';
+  readonly readiness: 'public-read-user-project-required';
+  readonly query: 'not-enabled-in-browser';
+  readonly copy: 'not-enabled';
+  readonly tableCount: number;
+  readonly rowCount: number;
+  readonly sourceRepository: string;
+  readonly sourceRevision: string;
+  readonly sourceSqliteSha256: string;
+  readonly verification: string;
+}
 const projectId = 'datatug-demo-project@datatug@demo-project-1';
 
 interface DemoDbConnection {
@@ -23,6 +44,7 @@ interface DemoDbConnection {
 interface ConnectionCatalog {
   readonly format: 'datatug-demo-connections/v1';
   readonly connections: readonly DemoDbConnection[];
+  readonly bigQueryEditions?: readonly BigQueryEdition[];
   readonly bigQueryPlans: readonly {
     readonly id: string;
     readonly title: string;
@@ -48,7 +70,25 @@ function validCatalog(raw: ConnectionCatalog): boolean {
       (storage !== 'ingitdb' || (entry.readiness === 'hosted-repository' &&
         new RegExp(`^https://github\\.com/demo-db/${dataset}/tree/[a-f0-9]{40}/ingitdb$`).test(entry.source)));
   }));
-  return editionsValid && raw.bigQueryPlans.every((plan) => plan?.readiness === 'setup-required' &&
+  const hostedEditions = raw.bigQueryEditions;
+  const bigQueryValid = hostedEditions === undefined || (
+    Array.isArray(hostedEditions) && hostedEditions.length === datasets.length && datasets.every((dataset) => {
+      const matches = hostedEditions.filter((edition) => edition?.id === `${dataset}-bigquery`);
+      if (matches.length !== 1) return false;
+      const edition = matches[0];
+      return edition.dataset === dataset && edition.storage === 'bigquery' &&
+        edition.sourceProjectId === 'demodb-dev' && edition.datasetId === dataset && edition.location === 'US' &&
+        edition.authentication === 'google-account-required' && edition.executionProjectId === 'user-selected' &&
+        edition.publicReadRole === 'READER' && edition.publicReadPrincipal === 'allAuthenticatedUsers' &&
+        edition.readiness === 'public-read-user-project-required' && edition.query === 'not-enabled-in-browser' &&
+        edition.copy === 'not-enabled' && Number.isSafeInteger(edition.tableCount) && edition.tableCount > 0 &&
+        Number.isSafeInteger(edition.rowCount) && edition.rowCount >= 0 &&
+        /^https:\/\/github\.com\/demo-db\/[a-z0-9-]+$/.test(edition.sourceRepository) &&
+        /^[a-f0-9]{40}$/.test(edition.sourceRevision) && /^[a-f0-9]{64}$/.test(edition.sourceSqliteSha256) &&
+        edition.verification === 'https://github.com/demo-db/websites/blob/main/config/bigquery-hosting.json';
+    })
+  );
+  return editionsValid && bigQueryValid && raw.bigQueryPlans.every((plan) => plan?.readiness === 'setup-required' &&
     /^https:\/\/github\.com\/openvaultdb\/directory\/blob\/[a-f0-9]{40}\/index\.json$/.test(plan.directory));
 }
 
@@ -76,6 +116,25 @@ function validCatalog(raw: ConnectionCatalog): boolean {
           }
         </ion-list>
       </ion-card>
+      @if (catalog()!.bigQueryEditions?.length) {
+        <ion-card>
+          <ion-card-header><ion-card-title>Hosted BigQuery editions</ion-card-title></ion-card-header>
+          <ion-list>
+            @for (edition of catalog()!.bigQueryEditions ?? []; track edition.id) {
+              <ion-item>
+                <ion-label>
+                  <strong>{{ edition.dataset }} · {{ edition.tableCount }} tables · {{ edition.rowCount.toLocaleString() }} rows</strong>
+                  <p>Source: {{ edition.sourceProjectId }}.{{ edition.datasetId }} · {{ edition.location }} · source revision {{ edition.sourceRevision }}</p>
+                  <p>Google account required. Choose your own BigQuery execution project before querying; charges apply to that project. Browser queries and copy are not enabled.</p>
+                  <p>Source SQLite SHA-256: <code>{{ edition.sourceSqliteSha256 }}</code></p>
+                  <a href="https://console.cloud.google.com/bigquery" target="_blank" rel="noopener noreferrer">Open BigQuery Console and select your execution project</a>
+                  · <a [href]="edition.verification" target="_blank" rel="noopener noreferrer">Verified hosting manifest</a>
+                </ion-label>
+              </ion-item>
+            }
+          </ion-list>
+        </ion-card>
+      }
       <ion-card>
         <ion-card-header><ion-card-title>BigQuery discoveries (setup planned)</ion-card-title></ion-card-header>
         <ion-list>
