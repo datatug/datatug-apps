@@ -175,7 +175,7 @@ describe('New project through authenticated common API', () => {
       },
       template: {
         id: 'demo-project-1',
-        commit: '51716f3a4d682d5cb7ef70a7fd37f42e5418fd3d',
+        commit: 'd32475de887f65fc18276fae2c8c7a6af5b3fcf6',
       },
     });
     expect(h.nav.goProject.mock.calls[0][0].ref).toEqual({
