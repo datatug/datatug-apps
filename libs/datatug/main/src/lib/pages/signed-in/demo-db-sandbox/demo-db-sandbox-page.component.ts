@@ -49,6 +49,7 @@ import {
 type SandboxPageState =
   | 'authenticating'
   | 'signed-out'
+  | 'anonymous'
   | 'checking'
   | 'not-created'
   | 'ready'
@@ -112,6 +113,21 @@ type SandboxPageState =
             <ion-button routerLink="/login">Sign in or register</ion-button>
           </ion-card-content>
         </ion-card>
+      } @else if (pageState() === 'anonymous') {
+        <ion-card>
+          <ion-card-header
+            ><ion-card-title
+              >Register to use a private sandbox</ion-card-title
+            ></ion-card-header
+          >
+          <ion-card-content>
+            <p>
+              You are signed in anonymously. Create or sign in to a registered
+              account to get a writable clone.
+            </p>
+            <ion-button routerLink="/login">Sign in or register</ion-button>
+          </ion-card-content>
+        </ion-card>
       } @else {
         <ion-card>
           <ion-card-header
@@ -129,9 +145,10 @@ type SandboxPageState =
               0.25 CU per account and suspends automatically while idle.
             </p>
             <p>
-              Each database starts from the published sample. Aggregate branch
-              growth is limited to 10% of the sample size by a best-effort
-              gateway check; this is not a provider-level hard quota.
+              Each database starts from the published sample. The maximum
+              aggregate branch size is the sample size plus 10%. A best-effort
+              gateway check applies this threshold; it is not a provider-level
+              hard quota.
             </p>
             @if (pageState() === 'checking') {
               <ion-spinner aria-label="Checking sandbox" />
@@ -206,7 +223,7 @@ type SandboxPageState =
               >
               <ion-item
                 ><ion-label
-                  >Growth allowance
+                  >Maximum aggregate branch size
                   <p>
                     {{ formatBytes(info.sampleGrowthLimitBytes) }}
                   </p></ion-label
@@ -214,7 +231,7 @@ type SandboxPageState =
               >
               <ion-item
                 ><ion-label
-                  >Current branch size
+                  >Last measured branch size
                   <p>{{ formatBytes(info.branchLogicalBytes) }}</p></ion-label
                 ></ion-item
               >
@@ -317,7 +334,7 @@ type SandboxPageState =
                   <table>
                     <thead>
                       <tr>
-                        @for (column of result.columns; track column.name) {
+                        @for (column of result.columns; track $index) {
                           <th>{{ column.name }}</th>
                         }
                       </tr>
@@ -328,7 +345,7 @@ type SandboxPageState =
                           @for (
                             column of result.columns;
                             let index = $index;
-                            track column.name
+                            track $index
                           ) {
                             <td>{{ formatCell(row[index]) }}</td>
                           }
@@ -402,7 +419,9 @@ export class DemoDbSandboxPageComponent implements OnDestroy {
 
   private onUserState(state: IDatatugUserState): void {
     const uid = state.user?.uid;
-    if (state.status !== 'authenticated' || !uid) {
+    const anonymous =
+      state.status === 'authenticated' && state.user?.isAnonymous === true;
+    if (state.status !== 'authenticated' || !uid || anonymous) {
       if (this.lastUid) {
         this.operationId++;
         this.busy.set(undefined);
@@ -414,7 +433,11 @@ export class DemoDbSandboxPageComponent implements OnDestroy {
       this.pendingCreateRequestId = undefined;
       this.message.set(undefined);
       this.pageState.set(
-        state.status === 'notAuthenticated' ? 'signed-out' : 'authenticating',
+        anonymous
+          ? 'anonymous'
+          : state.status === 'notAuthenticated'
+            ? 'signed-out'
+            : 'authenticating',
       );
       return;
     }
