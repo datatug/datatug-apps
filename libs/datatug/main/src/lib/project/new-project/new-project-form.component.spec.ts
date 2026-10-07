@@ -216,6 +216,50 @@ describe('New project through authenticated common API', () => {
     h.component.create();
     expect(h.create.mock.calls[2][0]).not.toEqual(request);
   });
+  it.each([
+    [
+      { status: 403, error: { error: { code: 'repository_denied' } } },
+      'GitHub access',
+    ],
+    [
+      { status: 409, error: { error: { code: 'conflict' } } },
+      'branch, folder or shared-project limit',
+    ],
+    [
+      { status: 409, error: { error: { code: 'reauthorization_required' } } },
+      'Reconnect GitHub',
+    ],
+  ])(
+    'explains a definitive create denial and starts a new operation on retry',
+    async (failure, notice) => {
+      const h = await harness();
+      h.select();
+      h.fixture.detectChanges();
+      const pending = new Subject();
+      h.create.mockReturnValue(pending as never);
+      h.component.create();
+      const firstRequest = h.create.mock.calls[0][0];
+      pending.error(failure);
+      await h.fixture.whenStable();
+      expect(h.fixture.nativeElement.textContent).toContain(notice);
+      h.component.create();
+      expect(h.create.mock.calls[1][0]).not.toEqual(firstRequest);
+    },
+  );
+  it('keeps the same operation for an explicit uncertain outcome', async () => {
+    const h = await harness();
+    h.select();
+    h.create.mockImplementation(() =>
+      throwError(() => ({
+        status: 409,
+        error: { error: { code: 'outcome_uncertain' } },
+      })),
+    );
+    h.component.create();
+    const request = h.create.mock.calls[0][0];
+    h.component.create();
+    expect(h.create.mock.calls[1][0]).toEqual(request);
+  });
   it('ignores out-of-order branch lists after repository selection changes', async () => {
     const h = await harness();
     h.select();
@@ -239,7 +283,7 @@ describe('New project through authenticated common API', () => {
     pending.error({ status: 403 });
     await h.fixture.whenStable();
     expect(h.fixture.nativeElement.textContent).toContain(
-      'Creation was not confirmed',
+      'Project creation was denied',
     );
     expect(
       h.fixture.nativeElement.querySelector('ion-button ion-label').textContent,

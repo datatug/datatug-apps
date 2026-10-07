@@ -353,11 +353,11 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
           branch: result.branch,
         });
       },
-      error: () => {
+      error: (error: unknown) => {
         this.isCreating.set(false);
-        this.formError.set(
-          'Creation was not confirmed. Retry unchanged to recover the same operation; changed inputs start a new operation.',
-        );
+        const failure = githubProjectCreateFailure(error);
+        if (!failure.retrySameOperation) this.pendingCreate.set(undefined);
+        this.formError.set(failure.message);
       },
     });
   }
@@ -374,4 +374,64 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       store: { ref: parseDatatugStoreRef(ref.storeId) },
     });
   }
+}
+
+function githubProjectCreateFailure(error: unknown): {
+  readonly message: string;
+  readonly retrySameOperation: boolean;
+} {
+  const response =
+    error && typeof error === 'object'
+      ? (error as {
+          status?: unknown;
+          error?: { error?: { code?: unknown } };
+        })
+      : undefined;
+  const status = response?.status;
+  const code = response?.error?.error?.code;
+  switch (code) {
+    case 'invalid':
+      return {
+        message: 'Check the project details and try again.',
+        retrySameOperation: false,
+      };
+    case 'unauthorized':
+    case 'repository_denied':
+    case 'actor_mismatch':
+      return {
+        message:
+          'Your current Space, plan or GitHub access does not allow this project. Check access before trying again.',
+        retrySameOperation: false,
+      };
+    case 'reauthorization_required':
+      return {
+        message: 'Reconnect GitHub, then try creating the project again.',
+        retrySameOperation: false,
+      };
+    case 'conflict':
+      return {
+        message:
+          'The branch, folder or shared-project limit changed. Review your selection and try again.',
+        retrySameOperation: false,
+      };
+  }
+  if (status === 400 || status === 401 || status === 402 || status === 403) {
+    return {
+      message:
+        'Project creation was denied. Check your details and access before trying again.',
+      retrySameOperation: false,
+    };
+  }
+  if (status === 409 && code !== 'outcome_uncertain') {
+    return {
+      message:
+        'Project creation conflicted with current repository or plan state. Review your selection and try again.',
+      retrySameOperation: false,
+    };
+  }
+  return {
+    message:
+      'Creation was not confirmed. Retry unchanged to recover the same operation; changed inputs start a new operation.',
+    retrySameOperation: true,
+  };
 }

@@ -19,7 +19,7 @@
       <!--						<ion-segment-button>SQL</ion-segment-button>-->
       <!--						<ion-segment-button>HTTP</ion-segment-button>-->
       <!--					</ion-segment>-->
-      @if (filter || type !== "*") {
+      @if (filter || type !== '*') {
         <ion-button (click)="clearFilter()" color="medium" title="Clear filter">
           <ion-icon name="close-outline" />
         </ion-button>
@@ -49,7 +49,7 @@
   @if (!isFiltering() && currentFolder.folders) {
     <ion-item-divider>
       @if (!parentFolders.length) {
-        <ion-label>{{ rootFolder() || "" | titlecase }} queries</ion-label>
+        <ion-label>{{ rootFolder() || '' | titlecase }} queries</ion-label>
       }
       @for (parentFolder of parentFolders; track parentFolder.id) {
         <ion-badge
@@ -59,15 +59,18 @@
           style="font-weight: normal"
         >
           <ion-icon name="folder-open-outline" />
-          {{ parentFolder.id || "root" }}
+          {{ parentFolder.id || 'root' }}
         </ion-badge>
       }
-      @if (currentFolder.id && currentFolder.path !== "~") {
+      @if (currentFolder.id && currentFolder.path !== '~') {
         &nbsp;/&nbsp;
         <ion-badge color="light">{{ currentFolder.id }}</ion-badge>
       }
       <ion-buttons slot="end">
-        @if (currentFolder.path !== "~" || currentFolder.folders.length) {
+        @if (
+          supportsFolderMutations() &&
+          (currentFolder.path !== '~' || currentFolder.folders.length)
+        ) {
           <ion-button
             title="Delete folder"
             [disabled]="isDeletingFolders.includes(this.currentFolder.path)"
@@ -80,10 +83,12 @@
           <ion-icon slot="start" name="add-outline" color="primary" />
           <ion-label>New query</ion-label>
         </ion-button>
-        <ion-button title="New folder" (click)="newFolder()">
-          <ion-icon slot="start" name="add-circle-outline" color="primary" />
-          <ion-label>New folder</ion-label>
-        </ion-button>
+        @if (supportsFolderMutations()) {
+          <ion-button title="New folder" (click)="newFolder()">
+            <ion-icon slot="start" name="add-circle-outline" color="primary" />
+            <ion-label>New folder</ion-label>
+          </ion-button>
+        }
       </ion-buttons>
     </ion-item-divider>
   }
@@ -140,7 +145,7 @@
               <span class="ion-margin-start">
                 @for (
                   target of targets;
-                  track "" + target.catalog + target.host + target.port
+                  track '' + target.catalog + target.host + target.port
                 ) {
                   <ion-badge>{{ target?.catalog }}</ion-badge>
                 }
@@ -170,7 +175,7 @@
           </ion-button>
         </ion-buttons>
       </ion-item>
-      @if (query.request.queryType === "SQL") {
+      @if (query.request.queryType === 'SQL') {
         <ion-item>
           <small>
             <small>
