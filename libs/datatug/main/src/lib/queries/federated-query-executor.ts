@@ -22,6 +22,7 @@ import type {
   ITextQueryRequest,
 } from '../models/definition/query-def';
 import { OVDB_ERROR_STREAM_MIME, readOvdbEarlyError, readOvdbJsonRecordStream } from './ovdb-json-record-stream';
+import { consumeOvdbOrdinaryQuery } from './ovdb-ordinary-execution';
 import { ovdbResultColumns, ovdbStreamRow } from './ovdb-stream-values';
 import { localResultBytes } from './local-result-bytes';
 import { strictJson } from './public-data/strict-json';
@@ -203,6 +204,8 @@ export type FederatedQueryResult = RunQueryResponse & {
   readonly runtimeRead?: import('./public-data/immutable-federation').RuntimeReadReport;
   readonly providerReads?: unknown;
   readonly nativeStream?: true;
+  /** Worker staging marker for a complete ordinary /dtql response. */
+  readonly nativeDirect?: true;
 };
 export type FederatedOutputPage = (
   rows: readonly (readonly TypedValue[])[],
@@ -267,10 +270,14 @@ function nativeDatabase(definition: IQueryDef): { database: string; sources: Pla
 }
 
 interface PlannedNativeSource { readonly database: string; readonly name: string }
-interface NativeStreamCapability { readonly streaming: boolean; readonly mappedErrors: boolean }
+interface NativeQueryCapability {
+  readonly streaming: boolean;
+  readonly ordinary: boolean;
+  readonly mappedErrors: boolean;
+}
 
 async function streamCapability(base: string, database: string, fetcher: typeof fetch,
-  authHeaders: Record<string, string>, expectedServerId?: string, signal?: AbortSignal): Promise<NativeStreamCapability> {
+  authHeaders: Record<string, string>, expectedServerId?: string, signal?: AbortSignal): Promise<NativeQueryCapability> {
   const timeout = AbortSignal.timeout(15000);
   const effective = signal ? AbortSignal.any([signal, timeout]) : timeout;
   const response = await fetcher(`${base}/v1/databases/${encodeURIComponent(database)}`, {
@@ -307,16 +314,79 @@ async function streamCapability(base: string, database: string, fetcher: typeof 
     throw new Error('OVDB returned invalid database capabilities.');
   const document = metadata as Record<string, unknown>;
   const capabilities = document['capabilities'];
-  if (capabilities === undefined) return { streaming: false, mappedErrors: false }; // Legacy route.
+  if (capabilities === undefined) return { streaming: false, ordinary: false, mappedErrors: false }; // Legacy route.
   if (!capabilities || typeof capabilities !== 'object' || Array.isArray(capabilities))
     throw new Error('OVDB returned invalid database capabilities.');
   const flags = capabilities as Record<string, unknown>;
-  if (flags['dtqlStreaming'] !== true) return { streaming: false, mappedErrors: false };
   if (document['id'] !== database || (expectedServerId && document['serverId'] !== expectedServerId))
-    throw new Error('OVDB streaming capability identity differs from the selected database.');
-  if (flags['dtql'] !== true)
+    throw new Error('OVDB query capability identity differs from the selected database.');
+  if (flags['dtqlStreaming'] === true && flags['dtql'] !== true)
     throw new Error('OVDB advertises a query stream without DTQL capability.');
-  return { streaming: true, mappedErrors: flags['dtqlStreamingErrors'] === true };
+  return {
+    streaming: flags['dtqlStreaming'] === true,
+    ordinary: flags['dtql'] === true && flags['dtqlStreaming'] !== true,
+    mappedErrors: flags['dtqlStreaming'] === true && flags['dtqlStreamingErrors'] === true,
+  };
+}
+
+async function runNativeOrdinary(
+  definition: IQueryDef,
+  database: string,
+  sources: readonly PlannedNativeSource[],
+  base: string,
+  token: string,
+  onProgress?: (progress: FederatedQueryProgress) => void,
+  onOutputPage?: FederatedOutputPage,
+  signal?: AbortSignal,
+  observer?: FederatedQueryObserver,
+): Promise<FederatedQueryResult> {
+  const fetcher: typeof fetch =
+    observer?.fetch ?? ((input, init) => fetch(input, init));
+  const authHeaders: Record<string, string> = token
+    ? { Authorization: `Bearer ${token}` }
+    : {};
+  const config = definition.federation;
+  if (!config) throw new Error('This query has no direct OVDB configuration.');
+  const rights = await preflightSourceRights(
+    base,
+    sources,
+    fetcher,
+    authHeaders,
+    signal,
+    undefined,
+    config.expectedSourceRights,
+    admittedServerId(config, base),
+  );
+  signal?.throwIfAborted();
+  const response = await fetcher(
+    `${base}/v1/databases/${encodeURIComponent(database)}/dtql`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/yaml',
+        Accept: 'application/json',
+        ...authHeaders,
+      },
+      body: (definition.request as ITextQueryRequest).text,
+      redirect: 'error',
+      signal,
+    },
+  );
+  if (response.redirected || !response.ok) {
+    const mapped = response.redirected ? undefined : await readOvdbEarlyError(response, signal);
+    throw new Error(mapped ?? `OVDB ${database} whole-query execution failed (${response.status}).`);
+  }
+  return consumeOvdbOrdinaryQuery(
+    response,
+    definition,
+    base,
+    database,
+    rights,
+    signal,
+    onProgress,
+    onOutputPage,
+    observer,
+  );
 }
 
 async function runNativeStream(
@@ -445,6 +515,9 @@ export async function runFederatedQuery(
       if (capability.streaming)
         return runNativeStream(definition, native.database, native.sources, base, token,
           onProgress, onOutputPage, nativeSignal, observer, capability.mappedErrors);
+      if (capability.ordinary)
+        return runNativeOrdinary(definition, native.database, native.sources, base, token,
+          onProgress, onOutputPage, nativeSignal, observer);
     }
     return runFederatedQueryInternal(
       definition,
