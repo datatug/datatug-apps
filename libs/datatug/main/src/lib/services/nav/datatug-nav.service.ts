@@ -190,6 +190,9 @@ export class DatatugNavService {
         },
         queryParams: {
           id: query.id,
+          ...(project.ref.projectApi
+            ? { projectApi: project.ref.projectApi, branch: project.ref.branch }
+            : {}),
         },
       },
       errMessage,

@@ -1,3 +1,5 @@
+import { createHostedDemoDbQuery, withHostedDemoDbSource } from '../../hosted-demo-db-query';
+import { toProjectQueryWire, fromProjectQueryWire } from '../../project-query-contract';
 import { readFileSync } from 'node:fs';
 import 'fake-indexeddb/auto';
 import { resolve } from 'node:path';
@@ -10,8 +12,8 @@ import {
   signal,
 } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ActivatedRoute, Router } from '@angular/router';
-import { NavController } from '@ionic/angular';
+import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
+import { IonSelect, IonSelectOption, NavController } from '@ionic/angular';
 import { Firestore } from 'firebase/firestore';
 import { ErrorLogger } from '@sneat/core';
 import { RANDOM_ID_OPTIONS, RandomIdService } from '@sneat/random';
@@ -39,6 +41,7 @@ import { DatatugNavContextService } from '../../../services/nav/datatug-nav-cont
 import { QueryContextSqlService } from '../../query-context-sql.service';
 import { QueriesService } from '../../queries.service';
 import { Coordinator } from '../../../executor/coordinator';
+import { ProjectService } from '../../../services/project/project.service';
 import { QueryEditorStateService } from '../../query-editor-state-service';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
 import { FederatedQueryService } from '../../federated-query.service';
@@ -240,7 +243,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     historyState: Record<string, unknown> = {},
     definition: IQueryDef = queryDef,
     template = '<ul aria-label="Access blockers">@for (blocker of accessBlockers(); track $index) {<li>{{ blocker }}</li>}</ul>',
-    navigation?: { editor: Observable<IQueryEditorState>; project: Observable<IProjectContext> },
+    navigation?: { editor?: Observable<IQueryEditorState>; project: Observable<IProjectContext>; realEditor?: boolean; queries?: unknown },
   ): Promise<QueryPageComponent> {
     Object.defineProperty(window, 'history', {
       value: { ...window.history, state: historyState },
@@ -277,9 +280,9 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
         {
           provide: ActivatedRoute,
           useValue: {
-            queryParamMap: of({ get: () => null }),
-            paramMap: of({ get: () => null }),
-            snapshot: { paramMap: { get: () => null }, params: {} },
+            queryParamMap: of(convertToParamMap(navigation?.realEditor ? { id: 'q', projectApi: 'cloud', branch: 'work' } : {})),
+            paramMap: of(convertToParamMap(navigation?.realEditor ? { storeId: 'github.com', projectId: 'repo@owner@folder' } : {})),
+            snapshot: { paramMap: convertToParamMap({}), queryParamMap: convertToParamMap(navigation?.realEditor ? { id: 'q', projectApi: 'cloud', branch: 'work' } : {}), params: {} },
           },
         },
         {
@@ -293,11 +296,12 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
           provide: QueryContextSqlService,
           useValue: { setSql: vi.fn(), setTarget: vi.fn() },
         },
-        { provide: QueriesService, useValue: {} },
+        { provide: QueriesService, useValue: navigation?.queries ?? {} },
+        { provide: ProjectService, useValue: { getFull: vi.fn() } },
         { provide: Coordinator, useValue: { execute: vi.fn() } },
         {
           provide: QueryEditorStateService,
-          useValue: {
+          ...(navigation?.realEditor ? { useClass: QueryEditorStateService } : { useValue: {
             queryEditorState: navigation?.editor ?? of(
               definition === queryDef
                 ? editorState
@@ -319,7 +323,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
             newQuery: vi.fn(),
             getQueryState: vi.fn(),
             saveQuery: vi.fn(),
-          },
+          } }),
         },
         { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn() } },
         { provide: SemanticApiService, useValue: { runQuery: runQueryMock } },
@@ -340,7 +344,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     })
       .overrideComponent(QueryPageComponent, {
         set: {
-          imports: [],
+          imports: template.includes('<ion-select') ? [IonSelect, IonSelectOption] : [],
           template,
           schemas: [CUSTOM_ELEMENTS_SCHEMA],
           providers: [],
@@ -375,6 +379,59 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
 
   beforeEach(() => {
     sessionStorage.clear();
+  });
+
+  it('clears the rendered private editor on same-UID read revocation instead of rendering cached content', async () => {
+    const privateProject = { ref: { storeId: 'github.com', projectId: 'repo@owner@folder', projectApi: 'cloud' as const, branch: 'work' } };
+    const read = new Subject<{ query: ReturnType<typeof toProjectQueryWire>; revision: string; branchHead: string }>();
+    const denied = new Subject<typeof privateProject.ref>();
+    const queries = { authentication: () => of({ status: 'authenticated', user: { uid: 'same-actor' } }), authorityDenied: () => denied, getRevision: vi.fn(() => read) };
+    component = await createComponent({}, queryDef, '<p>{{ queryState.title }}</p><pre>{{ queryState.request?.text }}</pre>', { realEditor: true, queries, project: of(privateProject) });
+    component.project = privateProject;
+    const editor = TestBed.inject(QueryEditorStateService);
+    editor.openQuery('q');
+    read.next({ query: { ...toProjectQueryWire(createHostedDemoDbQuery('q')), title: 'Private query', text: 'private body' }, revision: 'rev', branchHead: 'head' });
+    runFixture.detectChanges(); await runFixture.whenStable();
+    expect(runFixture.nativeElement.textContent).toContain('private body');
+    expect(runFixture.nativeElement.textContent).toContain('Private query');
+    component.historicalDefinition.set(queryDef);
+    editor.openQuery('q'); await runFixture.whenStable();
+    expect(component.historicalDefinition()).toBeUndefined();
+    expect(runFixture.nativeElement.textContent).not.toContain('private body');
+    read.error({ status: 403 }); await runFixture.whenStable();
+    expect(runFixture.nativeElement.textContent).not.toContain('Private query');
+    expect(runFixture.nativeElement.textContent).not.toContain('private body');
+    expect(component.queryDef()).toBeUndefined();
+  });
+
+  it.each(['running', 'saving', 'unsupported'])('disables the actual hosted picker while %s', async (state) => {
+    const definition = createHostedDemoDbQuery('q');
+    component = await createComponent({}, definition, '<ion-select [disabled]="running() || queryState.isSaving || queryState.saveSupported === false" />');
+    // Read the actual production picker expression, so a duplicate binding cannot mask one guard.
+    const html = readFileSync(resolve('libs/datatug/main/src/lib/queries/query/page/query-page.component.html'), 'utf8');
+    const picker = html.match(/<ion-select\b[^>]*aria-label="Hosted DemoDB database and table"[^>]*>[\s\S]*?<\/ion-select>/)?.[0];
+    expect(picker?.match(/\[disabled\]/g)).toHaveLength(1);
+    expect(picker).toContain('[disabled]="running() || queryState.isSaving || queryState.saveSupported === false"');
+    component.running.set(state === 'running');
+    component.queryState = { ...component.queryState, isSaving: state === 'saving', saveSupported: state !== 'unsupported' };
+    runFixture.detectChanges(); await runFixture.whenStable();
+    expect(runFixture.nativeElement.querySelector('ion-select').disabled).toBeTruthy();
+  });
+
+  it.each(['chinook.Customer', 'adventureworks.Person.Person'])('runs a saved/cold-read %s query with no local CLI or environment', async (source) => {
+    const definition = fromProjectQueryWire(toProjectQueryWire(withHostedDemoDbSource(createHostedDemoDbQuery('new-q'), source)));
+    component = await createComponent({}, definition);
+    component.project = { ref: { storeId: 'github.com', projectId: 'user-repo@user@datatug', projectApi: 'cloud', branch: 'work' } };
+    component.envId = undefined;
+    federatedRunMock.mockResolvedValue(historyResultFor(definition));
+    component.runQuery();
+    await runFixture.whenStable();
+    expect(federatedRunMock.mock.calls[0][0]).toEqual(definition);
+    expect(definition.federation?.ovdbBaseUrl).toBe('https://demodb.dev/ovdb');
+    expect(definition.federation?.tables[0].name).toBe(source === 'chinook.Customer' ? 'Customer' : 'Person.Person');
+    expect(runQueryMock).not.toHaveBeenCalled();
+    expect(TestBed.inject(Coordinator).execute).not.toHaveBeenCalled();
+    expect(component.runError()).toBeUndefined();
   });
 
   it('keeps accepted plan review state across no-op editor emissions and resets it for a definition edit', async () => {

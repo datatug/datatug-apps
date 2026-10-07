@@ -1,4 +1,14 @@
-import { Component, ViewChild, inject, input, signal } from '@angular/core';
+import {
+  Component,
+  Injector,
+  ViewChild,
+  inject,
+  input,
+  signal,
+  OnInit,
+  DestroyRef,
+} from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import {
   PopoverController,
@@ -16,42 +26,31 @@ import {
   IonSelectOption,
   IonSpinner,
   IonTitle,
-  IonToggle,
   IonToolbar,
 } from '@ionic/angular';
+import { SpaceService, SpaceServiceModule } from '@sneat/space-services';
+import { SneatUserService } from '@sneat/auth-core';
 import { readNewProjectFolder } from '@datatug/project-address';
-import { STORE_ID_GITHUB_COM } from '@sneat/core';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
-import { formatGithubProjectId } from '../../nav/github-project-address';
 import { IProjectContext, parseDatatugStoreRef } from '../../nav/nav-models';
 import { DatatugNavService } from '../../services/nav/datatug-nav.service';
 import { DatatugServicesProjectModule } from '../../services/project/datatug-services-project.module';
 import { ProjectService } from '../../services/project/project.service';
 import {
-  GithubRepoError,
-  IGithubRepo,
-} from '../../services/repo/github/github-api';
+  GithubConnectionService,
+  type ConnectedGithubRepository,
+} from '../../services/repo/github/github-connection.service';
 import {
-  GithubOAuthService,
-  GithubSignInRedirecting,
-} from '../../services/repo/github/github-oauth.service';
-import { GithubReposService } from '../../services/repo/github/github-repos.service';
-import {
-  DEFAULT_GITHUB_PROJECT_FOLDER,
-  GithubProjectCreateService,
-} from '../../services/repo/github/github-project-create.service';
-
-/** Stores the new-project dialog can create a project in. */
-type NewProjectStore = 'cloud' | 'github';
-
-/** Sentinel the repository select uses for "create a new repository". */
-export const NEW_GITHUB_REPO = '__new__';
+  ProjectQueryApiService,
+  type CreateGithubProject,
+} from '../../services/project/project-query-api.service';
 
 @Component({
   selector: 'sneat-datatug-new-project-form',
   templateUrl: 'new-project-form.component.html',
   imports: [
     FormsModule,
+    SpaceServiceModule,
     DatatugServicesProjectModule,
     IonHeader,
     IonToolbar,
@@ -65,275 +64,314 @@ export const NEW_GITHUB_REPO = '__new__';
     IonSelectOption,
     IonItemDivider,
     IonInput,
-    IonToggle,
     IonSpinner,
     IonFooter,
   ],
 })
-export class NewProjectFormComponent implements ViewDidEnter {
+export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly projectService = inject(ProjectService);
-  private readonly githubOAuth = inject(GithubOAuthService);
-  private readonly githubReposService = inject(GithubReposService);
-  private readonly githubProjectCreateService = inject(
-    GithubProjectCreateService,
-  );
+  private readonly connection = inject(GithubConnectionService);
+  private readonly queryApi = inject(ProjectQueryApiService);
+  private readonly userService = inject(SneatUserService);
+  private readonly injector = inject(Injector);
+  private readonly destroyRef = inject(DestroyRef);
   private readonly popoverController = inject(PopoverController);
   private readonly nav = inject(DatatugNavService);
-
-  /** Sentinel value for the "create a new repository" option. */
-  protected readonly newRepoValue = NEW_GITHUB_REPO;
-
-  // Written only by template events (`[(ngModel)]`), which is zoneless-safe on
-  // its own (AGENTS.md "Change detection & state", rule 4).
-  store: NewProjectStore = 'cloud';
+  store: 'cloud' | 'github' = 'cloud';
   title = '';
-  githubFolder = DEFAULT_GITHUB_PROJECT_FOLDER;
-  newRepoName = '';
-  makeRepoPrivate = false;
-
-  // Signals, not plain fields: everything below is written from promise and
-  // observable callbacks (sign-in, repo loading), which never schedule a
-  // repaint on their own in this zoneless app.
+  githubFolder = 'datatug';
+  readonly spaceID = signal('');
+  readonly spaceTitle = signal('');
+  readonly isCreatingSpace = signal(false);
+  readonly branch = signal('');
   protected readonly isCreating = signal(false);
   protected readonly formError = signal<string | undefined>(undefined);
   protected readonly isGithubSignedIn = signal(false);
   protected readonly isConnecting = signal(false);
   protected readonly isLoadingRepos = signal(false);
-  protected readonly githubRepos = signal<IGithubRepo[]>([]);
-  /** The selected repository's `owner/name`, or {@link newRepoValue}. */
-  protected readonly selectedRepo = signal<string>('');
-
+  protected readonly githubRepos = signal<readonly ConnectedGithubRepository[]>(
+    [],
+  );
+  protected readonly selectedRepo = signal<number | undefined>(undefined);
+  protected readonly spaces = signal<readonly { id: string; title: string }[]>(
+    [],
+  );
+  protected readonly branches = signal<
+    readonly { name: string; head: string }[]
+  >([]);
+  private selectionGeneration = 0;
+  private readonly userID = signal<string | undefined>(undefined);
+  private readonly pendingCreate = signal<
+    { payload: string; request: CreateGithubProject } | undefined
+  >(undefined);
   readonly onCancel = input<() => void>();
-
   @ViewChild(IonInput, { static: false }) titleInput?: IonInput;
 
-  constructor() {
-    this.isGithubSignedIn.set(this.githubOAuth.isSignedIn);
-    // A previous popup may have been blocked and sent the user to GitHub; on
-    // return the credential is waiting for whoever asks first, so ask now.
-    void this.completeRedirectSignIn();
-  }
-
-  ionViewDidEnter(): void {
-    setTimeout(() => {
-      this.titleInput?.setFocus().catch(console.error);
-    }, 100);
-  }
-
-  cancel(): void {
-    const onCancel = this.onCancel();
-    if (onCancel) {
-      onCancel();
-    }
-  }
-
-  /** True when the user chose to create a new repository rather than pick one. */
-  protected isNewRepo(): boolean {
-    return this.selectedRepo() === NEW_GITHUB_REPO;
-  }
-
-  /**
-   * Signs in to GitHub (or links GitHub to the current Sneat account) and loads
-   * the repositories the user can push to.
-   */
-  async signInToGithub(): Promise<void> {
-    this.formError.set(undefined);
-    this.isConnecting.set(true);
-    try {
-      await this.githubOAuth.signIn();
-      this.isGithubSignedIn.set(true);
-      this.isConnecting.set(false);
-      this.loadGithubRepos();
-    } catch (err) {
-      if (err instanceof GithubSignInRedirecting) {
-        // Not a failure: the browser is navigating to GitHub, and the dialog
-        // will pick the token up via completeRedirectSignIn() when it returns.
-        this.formError.set('Continuing on GitHub…');
-        return;
-      }
-      this.isConnecting.set(false);
-      const code = (err as { code?: string })?.code;
-      this.formError.set(
-        code === 'auth/popup-blocked' ||
-          code === 'auth/popup-closed-by-user' ||
-          code === 'auth/cancelled-popup-request'
-          ? 'GitHub sign-in was blocked or closed — allow pop-ups for this site and try again.'
-          : 'GitHub sign-in failed. Please try again.',
-      );
-      this.errorLogger.logError(err, 'Failed to sign in to GitHub');
-    }
-  }
-
-  /** Picks up a GitHub token left by a redirect sign-in, if there is one. */
-  private async completeRedirectSignIn(): Promise<void> {
-    try {
-      const token = await this.githubOAuth.completeRedirectSignIn();
-      if (token) {
-        this.isGithubSignedIn.set(true);
-        this.loadGithubRepos();
-      }
-    } catch (err) {
-      this.errorLogger.logError(
-        err,
-        'Failed to complete the GitHub redirect sign-in',
-      );
-    }
-  }
-
-  /** Loads the repositories the token can push to. */
-  loadGithubRepos(): void {
-    const token = this.githubOAuth.accessToken;
-    if (!token) {
+  createSpace(): void {
+    const title = this.spaceTitle().trim();
+    const actor = this.userID();
+    if (!title || !actor || this.isCreatingSpace()) {
+      this.formError.set('Sign in and enter a Space name before creating it.');
       return;
     }
-    this.isLoadingRepos.set(true);
-    this.githubReposService.listRepos(token).subscribe({
-      next: (repos) => {
-        this.githubRepos.set(repos);
-        this.isLoadingRepos.set(false);
-        if (!this.selectedRepo() && repos.length) {
-          this.selectedRepo.set(repos[0].fullName);
-        }
-      },
-      error: (err) => {
-        this.isLoadingRepos.set(false);
-        this.formError.set('Failed to load your GitHub repositories.');
-        this.errorLogger.logError(err, 'Failed to load GitHub repositories');
-      },
-    });
-  }
-
-  create(): void {
     this.formError.set(undefined);
-    if (this.store === 'github') {
-      this.createInGithubRepo();
-      return;
-    }
-    this.createInCloud();
-  }
-
-  private createInCloud(): void {
-    this.isCreating.set(true);
-    const storeId = 'firestore';
-    this.projectService
-      .createNewProject(storeId, { title: this.title, userIDs: [] })
+    this.isCreatingSpace.set(true);
+    this.injector
+      .get(SpaceService)
+      .createSpace({ type: 'team', title })
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: (projectId) => {
-          this.dismissAndGo({ projectId, storeId });
+        next: (space) => {
+          if (this.userID() !== actor) return;
+          this.isCreatingSpace.set(false);
+          if (!space.id) {
+            this.formError.set(
+              'The Space could not be selected. Please try again.',
+            );
+            return;
+          }
+          this.spaces.update((spaces) => [
+            ...spaces.filter((value) => value.id !== space.id),
+            { id: space.id, title: space.dbo?.title || title },
+          ]);
+          this.spaceID.set(space.id);
+          this.spaceTitle.set('');
         },
-        error: (err) => {
-          this.errorLogger.logError(err, 'Failed to create a new project');
-          this.isCreating.set(false);
+        error: () => {
+          if (this.userID() !== actor) return;
+          this.isCreatingSpace.set(false);
+          this.formError.set(
+            'The Space could not be created. Check your sign-in and try again.',
+          );
         },
       });
   }
 
-  private createInGithubRepo(): void {
-    const token = this.githubOAuth.accessToken;
-    if (!token) {
-      this.formError.set('Sign in to GitHub first.');
-      return;
-    }
-    const repo = this.selectedRepo();
-    if (!repo) {
-      this.formError.set('Select a repository, or create a new one.');
-      return;
-    }
-    // Before anything is created on GitHub: a folder that the reader (and so the project's address) would refuse
-    // must never be written to.
+  constructor() {
+    this.userService.userState
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((state) => {
+        this.spaces.set(
+          Object.entries(state.record?.spaces ?? {}).map(([id, space]) => ({
+            id,
+            title: space.title,
+          })),
+        );
+        if (!this.spaces().some((space) => space.id === this.spaceID()))
+          this.spaceID.set('');
+        const uid = state.user?.uid;
+        if (uid !== this.userID()) {
+          this.userID.set(uid);
+          this.isCreatingSpace.set(false);
+          this.spaceTitle.set('');
+          this.selectionGeneration++;
+          this.githubRepos.set([]);
+          this.selectedRepo.set(undefined);
+          this.branches.set([]);
+          this.branch.set('');
+          this.pendingCreate.set(undefined);
+          this.isCreating.set(false);
+          if (this.store === 'github') this.loadGithubRepos();
+        }
+      });
+  }
+  ngOnInit(): void {
+    if (this.store === 'github') this.loadGithubRepos();
+  }
+  ionViewDidEnter(): void {
+    setTimeout(
+      () => void this.titleInput?.setFocus().catch(() => undefined),
+      100,
+    );
+  }
+  cancel(): void {
+    this.onCancel()?.();
+  }
+  storeChanged(): void {
+    if (this.store === 'github') this.loadGithubRepos();
+  }
+
+  signInToGithub(): void {
+    this.formError.set(undefined);
+    this.isConnecting.set(true);
+    this.connection.start().subscribe({
+      next: (result) => {
+        try {
+          const url = new URL(result.authorizationURL);
+          if (
+            url.protocol !== 'https:' ||
+            url.hostname !== 'github.com' ||
+            url.pathname !== '/login/oauth/authorize' ||
+            url.username ||
+            url.password
+          )
+            throw new Error();
+          window.location.assign(url.href);
+        } catch {
+          this.isConnecting.set(false);
+          this.formError.set(
+            'GitHub could not be connected. Please try again.',
+          );
+        }
+      },
+      error: () => {
+        this.isConnecting.set(false);
+        this.formError.set('Sign in to DataTug, then connect GitHub.');
+      },
+    });
+  }
+  loadGithubRepos(): void {
+    const generation = ++this.selectionGeneration;
+    this.isLoadingRepos.set(true);
+    this.connection.repositories().subscribe({
+      next: (result) => {
+        if (generation !== this.selectionGeneration) return;
+        this.githubRepos.set(
+          result.repositories.filter((repo) => repo.permission === 'write'),
+        );
+        this.isGithubSignedIn.set(true);
+        this.isLoadingRepos.set(false);
+      },
+      error: () => {
+        if (generation !== this.selectionGeneration) return;
+        this.githubRepos.set([]);
+        this.selectedRepo.set(undefined);
+        this.branches.set([]);
+        this.isGithubSignedIn.set(false);
+        this.isLoadingRepos.set(false);
+      },
+    });
+  }
+  repositoryChanged(id: number): void {
+    this.selectedRepo.set(id);
+    this.branch.set('');
+    this.loadBranches();
+  }
+  loadBranches(): void {
+    const generation = ++this.selectionGeneration;
+    const repo = this.githubRepos().find(
+      (repo) => repo.id === this.selectedRepo(),
+    );
     const folder = readNewProjectFolder(this.githubFolder);
-    if (!folder.ok) {
-      this.formError.set(
-        folder.reason === 'leading-slash'
-          ? 'The folder is relative to the repository root: remove the leading "/".'
-          : 'The folder cannot contain "..", empty or "-" folders, or any of \\ @ % ? #.',
-      );
+    this.branches.set([]);
+    this.pendingCreate.set(undefined);
+    if (!repo || !folder.ok) {
+      this.formError.set('Choose a repository and a valid relative folder.');
       return;
     }
-    if (repo === NEW_GITHUB_REPO) {
-      const name = this.newRepoName.trim();
-      if (!name) {
-        this.formError.set('Enter a name for the new repository.');
-        return;
-      }
+    this.queryApi
+      .branches({
+        storeId: 'github.com',
+        projectId: `${repo.name}@${repo.owner}@${folder.folder}`,
+      })
+      .subscribe({
+        next: (result) => {
+          if (generation !== this.selectionGeneration) return;
+          this.branches.set(result.branches);
+          this.formError.set(undefined);
+        },
+        error: () => {
+          if (generation === this.selectionGeneration)
+            this.formError.set(
+              'Branches could not be loaded. Check your repository access and retry.',
+            );
+        },
+      });
+  }
+  create(): void {
+    if (this.isCreating()) return;
+    this.formError.set(undefined);
+    if (this.store !== 'github') {
       this.isCreating.set(true);
-      this.githubReposService
-        .createRepo(token, name, this.makeRepoPrivate)
+      this.projectService
+        .createNewProject('firestore', { title: this.title, userIDs: [] })
         .subscribe({
-          next: (created) =>
-            this.commitGithubProject(created.fullName, token, folder.folder),
-          error: (err) => {
+          next: (projectId) =>
+            this.dismissAndGo({ projectId, storeId: 'firestore' }),
+          error: () => {
             this.isCreating.set(false);
             this.formError.set(
-              err instanceof GithubRepoError
-                ? err.message
-                : `Failed to create the repository "${name}" on GitHub.`,
+              'The project could not be created. Please try again.',
             );
-            this.errorLogger.logError(err, 'Failed to create a GitHub repo');
           },
         });
       return;
     }
-    this.isCreating.set(true);
-    this.commitGithubProject(repo, token, folder.folder);
-  }
-
-  private commitGithubProject(
-    fullName: string,
-    token: string,
-    folder: string,
-  ): void {
-    const [org, repo] = fullName.split('/');
-    if (!org || !repo) {
-      this.isCreating.set(false);
-      this.formError.set(`Unexpected repository name: ${fullName}`);
+    const repo = this.githubRepos().find(
+      (repo) => repo.id === this.selectedRepo(),
+    );
+    const folder = readNewProjectFolder(this.githubFolder);
+    const branch = this.branches().find(
+      (branch) => branch.name === this.branch(),
+    );
+    if (
+      !repo ||
+      !folder.ok ||
+      !branch ||
+      !this.spaces().some((space) => space.id === this.spaceID()) ||
+      !this.title.trim()
+    ) {
+      this.formError.set(
+        'Choose a Space, initialized repository, branch and valid folder, and enter a title.',
+      );
       return;
     }
-    this.githubProjectCreateService
-      .createProject(
-        { org, repo, folder, title: this.title },
-        token,
-      )
-      .subscribe({
-        next: (project) => {
-          // The app's GitHub reader addresses a project by its id: `formatGithubProjectId()` writes the one id of it.
-          this.dismissAndGo({
-            projectId: formatGithubProjectId({
-              repo: project.repo,
-              org: project.org,
-              folder: project.folder,
-            }),
-            storeId: STORE_ID_GITHUB_COM,
-          });
-        },
-        error: (err) => {
-          this.isCreating.set(false);
-          this.formError.set(
-            err instanceof GithubRepoError
-              ? err.message
-              : `Failed to create the project in ${fullName}. Check that your GitHub access allows writing to it.`,
-          );
-          this.errorLogger.logError(
-            err,
-            'Failed to create a project in the GitHub repo',
-          );
-        },
-      });
+    const fields = {
+      title: this.title,
+      spaceID: this.spaceID(),
+      github: {
+        repositoryID: repo.id,
+        owner: repo.owner,
+        name: repo.name,
+        folder: folder.folder,
+        branch: branch.name,
+        expectedBranchHead: branch.head,
+      },
+      template: {
+        id: 'demo-project-1' as const,
+        commit: '51716f3a4d682d5cb7ef70a7fd37f42e5418fd3d' as const,
+      },
+    };
+    const payload = JSON.stringify(fields);
+    const pending = this.pendingCreate();
+    const request =
+      pending?.payload === payload
+        ? pending.request
+        : { ...fields, operationId: crypto.randomUUID() };
+    this.pendingCreate.set({ payload, request });
+    const generation = this.selectionGeneration;
+    this.isCreating.set(true);
+    this.queryApi.create(request).subscribe({
+      next: (result) => {
+        if (generation !== this.selectionGeneration) return;
+        this.pendingCreate.set(undefined);
+        this.dismissAndGo({
+          storeId: 'github.com',
+          projectId: result.project,
+          projectApi: 'cloud',
+          branch: result.branch,
+        });
+      },
+      error: () => {
+        this.isCreating.set(false);
+        this.formError.set(
+          'Creation was not confirmed. Retry unchanged to recover the same operation; changed inputs start a new operation.',
+        );
+      },
+    });
   }
-
-  private dismissAndGo(ref: { projectId: string; storeId: string }): void {
-    this.popoverController
+  private dismissAndGo(ref: IProjectContext['ref']): void {
+    void this.popoverController
       .dismiss()
       .catch(
         this.errorLogger.logErrorHandler(
-          'failed to close popover with new project form',
+          'Failed to close the new-project dialog',
         ),
       );
-    const projectContext: IProjectContext = {
+    this.nav.goProject({
       ref,
       store: { ref: parseDatatugStoreRef(ref.storeId) },
-    };
-    this.nav.goProject(projectContext);
+    });
   }
 }

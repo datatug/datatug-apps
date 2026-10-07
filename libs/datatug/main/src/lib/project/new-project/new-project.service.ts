@@ -8,12 +8,13 @@ export class NewProjectService {
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly popoverController = inject(PopoverController);
 
-  public openNewProjectDialog(): void {
+  public openNewProjectDialog(store?: 'github'): void {
     this.popoverController
       .create({
         component: NewProjectFormComponent,
         cssClass: 'small-popover',
         componentProps: {
+          ...(store ? { store } : {}),
           onCancel: () =>
             this.popoverController
               .dismiss()

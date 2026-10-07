@@ -1,4 +1,6 @@
 import { inject } from '@angular/core';
+import { convertToParamMap } from '@angular/router';
+import { readProjectApiQuery } from '../nav/project-api-routing';
 import {
   CanMatchFn,
   Router,
@@ -175,6 +177,42 @@ export const githubAddressCanMatch: CanMatchFn = async (_route, segments) => {
     return true;
   }
   const typed = router.getCurrentNavigation()?.extractedUrl;
+  if (
+    typed &&
+    Object.prototype.hasOwnProperty.call(typed.queryParams, 'projectApi')
+  ) {
+    // Private registered projects are resolved by the authenticated API. Never
+    // ask the anonymous manifest/default-branch reader about this address.
+    const address = readShortGithubAddress(paths(segments));
+    try {
+      const selection = readProjectApiQuery(
+        convertToParamMap(typed.queryParams),
+      );
+      if (
+        selection.projectApi !== 'cloud' ||
+        address.kind !== 'project' ||
+        address.parts.github?.ref !== undefined
+      )
+        throw new Error('Invalid common route');
+      if (
+        !address.parts.isCanonical ||
+        segments.some((segment) => Object.keys(segment.parameters).length)
+      ) {
+        return urlTreeOfPath(
+          address.parts.canonicalPath,
+          typed.queryParams,
+          typed.fragment,
+        );
+      }
+      return false;
+    } catch {
+      state.problem.set({
+        kind: 'unsupported',
+        reason: 'invalid-path-segment',
+      });
+      return true;
+    }
+  }
   const decision = await check.decide(paths(segments), {
     matrixParameters: segments.some(
       (segment) => Object.keys(segment.parameters).length > 0,

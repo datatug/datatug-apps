@@ -10,7 +10,12 @@
 </ion-header>
 <ion-item>
   <ion-label>Store</ion-label>
-  <ion-select [(ngModel)]="store" interface="popover">
+  <ion-select
+    [(ngModel)]="store"
+    [disabled]="isCreating()"
+    (ngModelChange)="storeChanged()"
+    interface="popover"
+  >
     <ion-select-option value="cloud">DataTug Cloud</ion-select-option>
     <ion-select-option value="github">GitHub repo</ion-select-option>
   </ion-select>
@@ -21,75 +26,111 @@
   </ion-item-divider>
 }
 @if (store === 'github') {
-  @if (!isGithubSignedIn()) {
-    <ion-item-divider>
-      <i>
-        Sign in with GitHub to choose a repository. We ask for repository access
-        so the project files can be committed; the token stays in this browser
-        tab.
-      </i>
-    </ion-item-divider>
-    <ion-item lines="none">
-      <ion-button
-        expand="block"
-        (click)="signInToGithub()"
-        [disabled]="isConnecting()"
-      >
-        @if (isConnecting()) {
-          <ion-spinner name="dots" slot="start" />
-          <ion-label>Connecting…</ion-label>
-        } @else {
-          <ion-icon name="logo-github" slot="start" />
-          <ion-label>Sign in with GitHub</ion-label>
-        }
-      </ion-button>
-    </ion-item>
-  } @else {
-    <ion-item>
-      <ion-label>Repository</ion-label>
-      <ion-select
-        interface="popover"
-        [ngModel]="selectedRepo()"
-        (ngModelChange)="selectedRepo.set($event)"
-        [disabled]="isLoadingRepos()"
-      >
-        @for (repo of githubRepos(); track repo.fullName) {
-          <ion-select-option [value]="repo.fullName">
-            {{ repo.fullName }}{{ repo.private ? ' (private)' : '' }}
-          </ion-select-option>
-        }
-        <ion-select-option [value]="newRepoValue">
-          ＋ Create a new repository
-        </ion-select-option>
-      </ion-select>
-    </ion-item>
-    @if (isLoadingRepos()) {
-      <ion-item lines="none">
-        <ion-spinner name="dots" slot="start" />
-        <ion-label>Loading your repositories…</ion-label>
-      </ion-item>
-    }
-    @if (isNewRepo()) {
-      <ion-item>
-        <ion-label position="stacked">New repository name</ion-label>
-        <ion-input placeholder="my-datatug-projects" [(ngModel)]="newRepoName" />
-      </ion-item>
-      <ion-item>
-        <ion-label>Private</ion-label>
-        <ion-toggle [(ngModel)]="makeRepoPrivate" />
-      </ion-item>
-    }
-    <ion-item>
-      <ion-label position="stacked">Folder in the repository (optional)</ion-label>
-      <ion-input placeholder="datatug" [(ngModel)]="githubFolder" />
-    </ion-item>
+  <ion-item-divider
+    ><i
+      >Create from the demo template in an initialized repository you can write
+      to. GitHub credentials stay on the server.</i
+    ></ion-item-divider
+  >
+  <ion-item
+    ><ion-label>Space</ion-label
+    ><ion-select
+      [ngModel]="spaceID()"
+      (ngModelChange)="spaceID.set($event)"
+      [disabled]="isCreating()"
+    >
+      @for (space of spaces(); track space.id) {
+        <ion-select-option [value]="space.id">{{
+          space.title
+        }}</ion-select-option>
+      }
+    </ion-select></ion-item
+  >
+  @if (!spaces().length) {
+    <ion-item lines="none"
+      ><ion-label class="ion-text-wrap"
+        >Create a Space to hold this shared project, then select it.</ion-label
+      ></ion-item
+    >
   }
+  <ion-item>
+    <ion-input
+      aria-label="New Space name"
+      label="New Space name"
+      [ngModel]="spaceTitle()"
+      (ngModelChange)="spaceTitle.set($event)"
+      [disabled]="isCreating() || isCreatingSpace()"
+    />
+    <ion-button
+      (click)="createSpace()"
+      [disabled]="isCreating() || isCreatingSpace() || !spaceTitle().trim()"
+      >Create Space</ion-button
+    >
+  </ion-item>
+  <ion-item
+    ><ion-button (click)="signInToGithub()" [disabled]="isConnecting()"
+      >Connect GitHub</ion-button
+    ><ion-button
+      (click)="loadGithubRepos()"
+      [disabled]="isLoadingRepos()"
+      fill="clear"
+      >Refresh repositories</ion-button
+    ></ion-item
+  >
+  @if (isGithubSignedIn()) {
+    <ion-item
+      ><ion-label>Repository</ion-label
+      ><ion-select
+        [ngModel]="selectedRepo()"
+        (ngModelChange)="repositoryChanged($event)"
+        [disabled]="isCreating()"
+      >
+        @for (repo of githubRepos(); track repo.id) {
+          <ion-select-option [value]="repo.id"
+            >{{ repo.owner }}/{{ repo.name }}</ion-select-option
+          >
+        }
+      </ion-select></ion-item
+    >
+    <ion-item
+      ><ion-label position="stacked">Relative folder</ion-label
+      ><ion-input
+        [(ngModel)]="githubFolder"
+        [disabled]="isCreating()"
+        (ionChange)="loadBranches()"
+    /></ion-item>
+    <ion-item
+      ><ion-label>Branch</ion-label
+      ><ion-select
+        [ngModel]="branch()"
+        (ngModelChange)="branch.set($event)"
+        [disabled]="isCreating()"
+      >
+        @for (branch of branches(); track branch.name) {
+          <ion-select-option [value]="branch.name">{{
+            branch.name
+          }}</ion-select-option>
+        }</ion-select
+      ><ion-button
+        (click)="loadBranches()"
+        [disabled]="isCreating()"
+        fill="clear"
+        >Reload branches</ion-button
+      ></ion-item
+    >
+  }
+  <ion-item
+    ><a href="https://github.com/new" target="_blank" rel="noopener noreferrer"
+      >Create and initialize a repository on GitHub</a
+    ></ion-item
+  >
 }
 <ion-item>
   <ion-label>Title</ion-label>
   <ion-input
     placeholder="is required"
     [(ngModel)]="title"
+    [disabled]="isCreating()"
     required="required"
     minlength="2"
     maxlength="30"
