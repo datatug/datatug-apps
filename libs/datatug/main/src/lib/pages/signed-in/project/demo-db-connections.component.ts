@@ -30,7 +30,7 @@ interface BigQueryEdition {
   readonly verification: string;
 }
 const projectId = 'datatug-demo-project@datatug@demo-project-1';
-const chinookPostgresqlQueryId = 'demodb/chinook-postgresql-genres';
+const chinookPostgresqlQueryId = 'demodb/chinook-postgresql-artist-tracks';
 
 interface DemoDbConnection {
   readonly id: string;
@@ -114,7 +114,7 @@ function validCatalog(raw: ConnectionCatalog): boolean {
                 <p>{{ readiness(edition) }}</p>
                 <a [href]="edition.source" target="_blank" rel="noopener noreferrer">Source</a>
                 @if (edition.id === 'chinook-postgresql' && edition.readiness === 'public-api' && chinookQueryHref()) {
-                  · <a [href]="chinookQueryHref()">Compare PostgreSQL and SQLite genres</a>
+                  · <a [href]="chinookQueryHref()">Explore PostgreSQL artist track totals</a>
                 }
                 @if (edition.storage === 'sqlite') {
                   <p>Copy to local Dev will be available after the browser database update.</p>

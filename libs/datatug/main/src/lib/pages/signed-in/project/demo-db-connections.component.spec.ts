@@ -49,7 +49,7 @@ describe('shared project database connections', () => {
     expect(fixture.nativeElement.querySelectorAll('ion-item').length).toBe(26);
     expect(fixture.componentInstance['readiness'](catalog.connections[1])).toBe('PostgreSQL query endpoint pending');
     expect(fixture.nativeElement.querySelectorAll('ion-button').length).toBe(0);
-    expect(fixture.nativeElement.querySelector('a[href*="chinook-postgresql-genres"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('a[href*="chinook-postgresql-artist-tracks"]')).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('Hosted BigQuery editions');
     const rendered = fixture.nativeElement.innerHTML;
     expect(rendered).toContain('demodb-dev.chinook');
@@ -76,12 +76,12 @@ describe('shared project database connections', () => {
     await fixture.whenStable();
     fixture.detectChanges();
     expect(fixture.componentInstance['catalog']()).toBeDefined();
-    const anchors = fixture.nativeElement.querySelectorAll('a[href*="chinook-postgresql-genres"]');
+    const anchors = fixture.nativeElement.querySelectorAll('a[href*="chinook-postgresql-artist-tracks"]');
     expect(anchors.length).toBe(1);
-    expect(anchors[0].textContent).toContain('PostgreSQL and SQLite genres');
+    expect(anchors[0].textContent).toContain('PostgreSQL artist track totals');
     const target = new URL(anchors[0].getAttribute('href'), 'https://datatug.app');
-    expect(target.pathname).toContain('/query/demodb%2Fchinook-postgresql-genres');
-    expect(target.searchParams.get('id')).toBe('demodb/chinook-postgresql-genres');
+    expect(target.pathname).toContain('/query/demodb%2Fchinook-postgresql-artist-tracks');
+    expect(target.searchParams.get('id')).toBe('demodb/chinook-postgresql-artist-tracks');
     const connection = fixture.componentInstance['catalog']()?.connections.find((entry) => entry.id === 'chinook-postgresql');
     if (!connection) throw new Error('Ready Chinook PostgreSQL connection did not load.');
     expect(fixture.componentInstance['readiness'](connection)).toBe('Public read-only PostgreSQL through OVDB');
@@ -104,7 +104,7 @@ describe('shared project database connections', () => {
     await fixture.whenStable();
     fixture.detectChanges();
     expect(fixture.componentInstance['catalog']()).toBeDefined();
-    expect(fixture.nativeElement.querySelectorAll('a[href*="chinook-postgresql-genres"]').length).toBe(1);
+    expect(fixture.nativeElement.querySelectorAll('a[href*="chinook-postgresql-artist-tracks"]').length).toBe(1);
   });
 
   it('rejects an active PostgreSQL declaration with a different endpoint', async () => {
