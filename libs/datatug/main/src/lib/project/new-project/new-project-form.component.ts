@@ -42,6 +42,7 @@ import {
 } from '../../services/repo/github/github-connection.service';
 import {
   ProjectQueryApiService,
+  DATATUG_DEMO_PROJECT_TEMPLATE,
   type CreateGithubProject,
 } from '../../services/project/project-query-api.service';
 
@@ -328,10 +329,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
         branch: branch.name,
         expectedBranchHead: branch.head,
       },
-      template: {
-        id: 'demo-project-1' as const,
-        commit: '51716f3a4d682d5cb7ef70a7fd37f42e5418fd3d' as const,
-      },
+      template: DATATUG_DEMO_PROJECT_TEMPLATE,
     };
     const payload = JSON.stringify(fields);
     const pending = this.pendingCreate();

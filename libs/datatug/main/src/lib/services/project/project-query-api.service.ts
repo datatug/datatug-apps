@@ -32,6 +32,11 @@ export interface ProjectBranches {
   readonly currentBranch?: string;
 }
 
+export const DATATUG_DEMO_PROJECT_TEMPLATE = {
+  id: 'demo-project-1',
+  commit: 'd32475de887f65fc18276fae2c8c7a6af5b3fcf6',
+} as const;
+
 export interface CreateGithubProject {
   readonly title: string;
   readonly spaceID: string;
@@ -44,10 +49,7 @@ export interface CreateGithubProject {
     readonly branch: string;
     readonly expectedBranchHead: string;
   };
-  readonly template: {
-    readonly id: 'demo-project-1';
-    readonly commit: '51716f3a4d682d5cb7ef70a7fd37f42e5418fd3d';
-  };
+  readonly template: typeof DATATUG_DEMO_PROJECT_TEMPLATE;
 }
 
 export interface CreatedGithubProject {
