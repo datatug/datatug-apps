@@ -58,6 +58,24 @@ describe('shared project database connections', () => {
     expect(fixture.nativeElement.querySelectorAll('ion-card-title')[2].textContent).toContain('discoveries');
   });
 
+  it('continues to render a cached v1 catalogue created before hosted editions were added', async () => {
+    const legacyCatalog = { format: 'datatug-demo-connections/v1', connections: entries, bigQueryPlans: plans };
+    const getRawJson = vi.fn(() => of(legacyCatalog));
+    await TestBed.configureTestingModule({
+      imports: [DemoDbConnectionsComponent],
+      providers: [{ provide: GithubProjectReaderService, useValue: { getRawJson } }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(DemoDbConnectionsComponent);
+    fixture.componentRef.setInput('projectRef', canonical);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.componentInstance['catalog']()).toBeDefined();
+    expect(fixture.nativeElement.querySelectorAll('ion-item').length).toBe(20);
+    expect(fixture.nativeElement.innerHTML).not.toContain('Hosted BigQuery editions');
+    expect(fixture.nativeElement.innerHTML).toContain('BigQuery discoveries (setup planned)');
+  });
+
   it('never loads the old or a lookalike repository as the shared project', async () => {
     const getRawJson = vi.fn();
     await TestBed.configureTestingModule({
@@ -78,6 +96,23 @@ describe('shared project database connections', () => {
       ? { ...entry, source: 'https://example.test/chinook' } : entry);
     const getRawJson = vi.fn(() => of({ format: 'datatug-demo-connections/v1', connections: changed,
       bigQueryEditions, bigQueryPlans: plans }));
+    await TestBed.configureTestingModule({
+      imports: [DemoDbConnectionsComponent],
+      providers: [{ provide: GithubProjectReaderService, useValue: { getRawJson } }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(DemoDbConnectionsComponent);
+    fixture.componentRef.setInput('projectRef', canonical);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(fixture.componentInstance['catalog']()).toBeUndefined();
+    expect(fixture.componentInstance['error']()).toMatch(/could not be loaded/);
+  });
+
+  it('rejects hosted editions that change the pinned source or execution project contract', async () => {
+    const changed = bigQueryEditions.map((edition) => edition.dataset === 'chinook'
+      ? { ...edition, sourceProjectId: 'untrusted-project' } : edition);
+    const getRawJson = vi.fn(() => of({ format: 'datatug-demo-connections/v1', connections: entries,
+      bigQueryEditions: changed, bigQueryPlans: plans }));
     await TestBed.configureTestingModule({
       imports: [DemoDbConnectionsComponent],
       providers: [{ provide: GithubProjectReaderService, useValue: { getRawJson } }],
