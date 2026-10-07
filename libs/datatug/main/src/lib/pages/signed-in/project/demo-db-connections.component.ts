@@ -2,6 +2,7 @@ import { Component, Input, inject, signal } from '@angular/core';
 import { IonCard, IonCardHeader, IonCardTitle, IonItem, IonLabel, IonList } from '@ionic/angular';
 import { firstValueFrom } from 'rxjs';
 import type { IProjectRef } from '../../../core/project-context';
+import { projectPageHref } from '../../../nav/project-page-href';
 import { GithubProjectReaderService } from '../../../services/repo/github/github-project-reader.service';
 
 const datasets = ['chinook', 'northwind', 'pubs', 'sakila', 'adventureworks', 'employees'] as const;
@@ -29,6 +30,7 @@ interface BigQueryEdition {
   readonly verification: string;
 }
 const projectId = 'datatug-demo-project@datatug@demo-project-1';
+const chinookPostgresqlQueryId = 'demodb/chinook-postgresql-artist-tracks';
 
 interface DemoDbConnection {
   readonly id: string;
@@ -65,8 +67,11 @@ function validCatalog(raw: ConnectionCatalog): boolean {
       Array.isArray(entry.environments) &&
       (storage !== 'sqlite' || (entry.readiness === 'public-api' &&
         entry.source === `https://demodb.dev/ovdb/v1/databases/${dataset}`)) &&
-      (storage !== 'postgresql' || (entry.readiness === 'hosted-api-pending' &&
-        entry.source === `https://demodb.dev/${dataset}/`)) &&
+      (storage !== 'postgresql' ||
+        (entry.readiness === 'hosted-api-pending' && entry.query === 'setup-required' &&
+          entry.source === `https://demodb.dev/${dataset}/`) ||
+        (entry.readiness === 'public-api' && entry.query === 'ovdb-read' &&
+          entry.source === `https://cloud.openvaultdb.com/v1/databases/${dataset}-postgresql`)) &&
       (storage !== 'ingitdb' || (entry.readiness === 'hosted-repository' &&
         new RegExp(`^https://github\\.com/demo-db/${dataset}/tree/[a-f0-9]{40}/ingitdb$`).test(entry.source)));
   }));
@@ -108,6 +113,9 @@ function validCatalog(raw: ConnectionCatalog): boolean {
                 <p>{{ edition.tags.join(' · ') }} · {{ edition.environments.join(', ') }}</p>
                 <p>{{ readiness(edition) }}</p>
                 <a [href]="edition.source" target="_blank" rel="noopener noreferrer">Source</a>
+                @if (edition.id === 'chinook-postgresql' && edition.readiness === 'public-api' && chinookQueryHref()) {
+                  · <a [href]="chinookQueryHref()">Explore PostgreSQL artist track totals</a>
+                }
                 @if (edition.storage === 'sqlite') {
                   <p>Copy to local Dev will be available after the browser database update.</p>
                 }
@@ -155,12 +163,18 @@ export class DemoDbConnectionsComponent {
   private loadEpoch = 0;
   protected readonly catalog = signal<ConnectionCatalog | undefined>(undefined);
   protected readonly error = signal<string | undefined>(undefined);
+  protected readonly chinookQueryHref = signal<string | undefined>(undefined);
 
   @Input() set projectRef(ref: IProjectRef | undefined) {
     const epoch = ++this.loadEpoch;
     this.catalog.set(undefined);
     this.error.set(undefined);
-    if (ref?.storeId === 'github.com' && ref.projectId === projectId) void this.load(epoch);
+    this.chinookQueryHref.set(undefined);
+    if (ref?.storeId === 'github.com' && ref.projectId === projectId) {
+      const page = projectPageHref(ref, ['query', chinookPostgresqlQueryId]);
+      if (page !== '/') this.chinookQueryHref.set(`${page}?id=${encodeURIComponent(chinookPostgresqlQueryId)}`);
+      void this.load(epoch);
+    }
   }
 
   private async load(epoch: number): Promise<void> {
@@ -175,7 +189,9 @@ export class DemoDbConnectionsComponent {
   }
 
   protected readiness(entry: DemoDbConnection): string {
-    if (entry.readiness === 'public-api') return 'Public read-only OVDB API';
+    if (entry.readiness === 'public-api') return entry.storage === 'postgresql'
+      ? 'Public read-only PostgreSQL through OVDB'
+      : 'Public read-only OVDB API';
     if (entry.readiness === 'hosted-repository') return 'Pinned inGitDB repository; local checkout required for queries';
     return 'PostgreSQL query endpoint pending';
   }
