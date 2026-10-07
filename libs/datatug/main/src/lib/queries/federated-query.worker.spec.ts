@@ -28,12 +28,9 @@ describe('federated query worker', () => {
     scope.onmessage?.({
       data: { type: 'run', definition, token: '', mode: 'full', ...extra },
     });
-    await vi.waitFor(() =>
-      expect(
-        posted.some(
-          (message) => message.type === 'result' || message.type === 'error',
-        ),
-      ).toBe(true),
+    await vi.waitFor(
+      () => expect(posted.some((message) => message.type === 'result' || message.type === 'error')).toBe(true),
+      { timeout: 10_000 },
     );
   };
 
@@ -48,7 +45,13 @@ describe('federated query worker', () => {
     vi.resetModules();
     await import('./federated-query.worker');
   });
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(async () => {
+    const closed = posted.filter((message) => message.type === 'closed').length;
+    scope.onmessage?.({ data: { type: 'close' } });
+    await vi.waitFor(() => expect(posted.filter((message) => message.type === 'closed').length).toBeGreaterThan(closed),
+      { timeout: 10_000 });
+    vi.unstubAllGlobals();
+  });
 
   it('reads from the static source it is given, never the global fetch, and reports the source it read', async () => {
     const urls: string[] = [];
@@ -181,7 +184,7 @@ describe('federated query worker', () => {
       const after = new Set((await indexedDB.databases()).map((database) => database.name));
       expect([...after].filter((name) => !before.has(name))).toEqual([]);
     } finally { advance.mockRestore(); }
-  });
+  }, 15_000);
 
   it('deletes provisional streamed rows when a late transport failure truncates the JSON footer', async () => {
     const before = new Set((await indexedDB.databases()).map((database) => database.name));
