@@ -164,6 +164,24 @@ describe('federated query worker', () => {
       expect(writes.mock.calls.filter(([store, mode]) => store === 'rows' && mode === 'readwrite')).toHaveLength(3);
     } finally { writes.mockRestore(); }
   });
+  it('stops the result cursor before loading an oversized page and removes provisional rows', async () => {
+    const before = new Set((await indexedDB.databases()).map((database) => database.name));
+    const advance = vi.spyOn(IDBCursorWithValue.prototype, 'continue');
+    try {
+      const large = 'x'.repeat(900_000);
+      vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('/v1/databases/db')
+        ? new Response(JSON.stringify({ id: 'db', capabilities: { dtql: true, dtqlStreaming: true } }), { headers: { 'Content-Type': 'application/json' } })
+        : new Response(JSON.stringify({ records: Array.from({ length: 10 }, () => ({ data: { name: large } })),
+          columns: ['name'], execution: {}, complete: true }), { headers: { 'Content-Type': 'application/json' } })));
+      scope.onmessage?.({ data: { type: 'run', definition, token: '', mode: 'full' } });
+      await vi.waitFor(() => expect(posted.some((message) => message.type === 'error')).toBe(true), { timeout: 10_000 });
+      expect(posted.find((message) => message.type === 'result')).toBeUndefined();
+      expect(posted.find((message) => message.type === 'error')?.['message']).toMatch(/page exceeds the browser byte limit/);
+      expect(advance).toHaveBeenCalledTimes(9);
+      const after = new Set((await indexedDB.databases()).map((database) => database.name));
+      expect([...after].filter((name) => !before.has(name))).toEqual([]);
+    } finally { advance.mockRestore(); }
+  });
 
   it('deletes provisional streamed rows when a late transport failure truncates the JSON footer', async () => {
     const before = new Set((await indexedDB.databases()).map((database) => database.name));

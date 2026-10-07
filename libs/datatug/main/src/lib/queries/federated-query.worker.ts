@@ -131,27 +131,33 @@ async function readPage(index: number, resultSet = 'affiliations', signal?: Abor
   return await new Promise<TypedValue[][]>((resolve, reject) => {
     const related = resultSet !== 'affiliations';
     const transaction = db.transaction(related ? 'relatedRows' : 'rows', 'readonly');
+    const rows: TypedValue[][] = [];
+    let pageBytes = 2;
     const abort = (): void => {
       try { transaction.abort(); } catch { /* The transaction may have completed before the abort event. */ }
     };
     signal?.addEventListener('abort', abort, { once: true });
-    const request = transaction.objectStore(related ? 'relatedRows' : 'rows').getAll(related ? IDBKeyRange.bound([resultSet, start - 1], [resultSet, start + 98]) : IDBKeyRange.bound(start, start + 99));
+    const request = transaction.objectStore(related ? 'relatedRows' : 'rows').openCursor(related ? IDBKeyRange.bound([resultSet, start - 1], [resultSet, start + 98]) : IDBKeyRange.bound(start, start + 99));
     request.onsuccess = () => {
-      signal?.removeEventListener('abort', abort);
-      if (signal?.aborted) { reject(signal.reason); return; }
-      if (related) { resolve(request.result.map((row) => row.rows) as TypedValue[][]); return; }
-      const values = request.result as Array<TypedValue[] | { nativeData: Readonly<Record<string, unknown>> }>;
-      const columns = nativeColumns;
-      if (values.some((value) => !Array.isArray(value)) && !columns) {
-        reject(new Error('The streamed result columns are not final yet.'));
-        return;
+      if (signal?.aborted) { reject(signal.reason); abort(); return; }
+      const cursor = request.result;
+      if (!cursor) return;
+      try {
+        const value = cursor.value as TypedValue[] | { nativeData: Readonly<Record<string, unknown>>; rows?: TypedValue[] };
+        let row: TypedValue[];
+        if (related) row = (value as { rows: TypedValue[] }).rows;
+        else if (Array.isArray(value)) row = value;
+        else if (nativeColumns) row = ovdbStreamRow(value.nativeData, nativeColumns);
+        else throw new Error('The streamed result columns are not final yet.');
+        pageBytes += localResultBytes(row) + (rows.length ? 1 : 0);
+        if (pageBytes > 8 * 1024 * 1024)
+          throw new Error('The streamed result page exceeds the browser byte limit.');
+        rows.push(row);
+        cursor.continue();
+      } catch (error) {
+        reject(error);
+        abort();
       }
-      const rows = values.map((value) => Array.isArray(value) ? value : ovdbStreamRow(value.nativeData, columns ?? []));
-      if (localResultBytes(rows) > 8 * 1024 * 1024) {
-        reject(new Error('The streamed result page exceeds the browser byte limit.'));
-        return;
-      }
-      resolve(rows);
     };
     request.onerror = () => {
       signal?.removeEventListener('abort', abort);
@@ -160,6 +166,10 @@ async function readPage(index: number, resultSet = 'affiliations', signal?: Abor
     transaction.onabort = () => {
       signal?.removeEventListener('abort', abort);
       reject(signal?.reason ?? queryStorageError(transaction.error));
+    };
+    transaction.oncomplete = () => {
+      signal?.removeEventListener('abort', abort);
+      resolve(rows);
     };
     if (signal?.aborted) abort();
   });
