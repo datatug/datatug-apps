@@ -36,7 +36,15 @@
     <!-- Scrub GitHub callback credentials before analytics and app bootstrap. -->
     <script id="datatug-github-callback-scrub">
       (function () {
-        if (!/^\/github\/callback\/?$/.test(location.pathname)) return;
+        // Match the router's primary segments, including matrix/group spellings.
+        // Over-scrubbing a refused callback spelling is safer than exposing credentials.
+        var path = location.pathname, group = /^\/\(([^()]*)\)/.exec(path);
+        var segments = (group ? group[1] : path).replace(/^\/+/, '').split('/');
+        function segment(value) {
+          value = (value || '').split(';')[0].split('(')[0];
+          try { return decodeURIComponent(value); } catch (e) { return value; }
+        }
+        if (segment(segments[0]) !== 'github' || segment(segments[1]) !== 'callback') return;
         var params = new URLSearchParams(location.search);
         var codes = params.getAll('code'),
           states = params.getAll('state');
@@ -45,7 +53,7 @@
             ? { code: codes[0], state: states[0] }
             : undefined;
         // No secrets in URL, history state, browser storage or analytics.
-        history.replaceState(null, '', location.pathname);
+        history.replaceState(null, '', (path.slice(0, 2) === '//' ? location.origin : '') + path);
         window.__datatugTakeGitHubAuthorization = function () {
           delete window.__datatugTakeGitHubAuthorization;
           var value = handoff;

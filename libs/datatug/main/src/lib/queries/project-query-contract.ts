@@ -87,6 +87,7 @@ export function toProjectQueryWire(
   const id = slash < 0 ? location : location.slice(slash + 1);
   if (
     !id ||
+    id !== query.id ||
     !folderPath ||
     location.startsWith('/') ||
     location.split('/').some((part) => !part || part === '.' || part === '..')
@@ -94,7 +95,7 @@ export function toProjectQueryWire(
     throw new UnsupportedQueryContractError();
   return structuredClone({
     folderPath,
-    id: query.id,
+    id,
     ...(query.title !== undefined ? { title: query.title } : {}),
     type: query.request.queryType as ProjectQueryWire['type'],
     text,

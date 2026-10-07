@@ -10,6 +10,7 @@ import {
   withHostedDemoDbSource,
 } from './hosted-demo-db-query';
 import { toProjectQueryWire } from './project-query-contract';
+import { QueryType } from '../models/definition/query-def';
 import { type IProjectContext } from '../nav/nav-models';
 
 const ref = {
@@ -82,6 +83,23 @@ function harness() {
 }
 
 describe('Common API query editor journey', () => {
+  it.each([QueryType.SQL, QueryType.DTQL])('opens and conditionally saves a nested plain %s query with a leaf definition ID', async (type) => {
+    const h = harness();
+    const query = { ...response.query, folderPath: 'folder/nested', id: 'q', type, text: 'original body', federation: undefined };
+    const reply = { ...response, query };
+    h.service.openQuery('folder/nested/q');
+    h.read.next(reply);
+    const state = required(h.service.getQueryState('folder/nested/q'));
+    expect(state.id).toBe('folder/nested/q');
+    expect(state.def?.id).toBe('q');
+    expect(state.request).toMatchObject({ queryType: type, text: 'original body' });
+    h.queries.saveRevision.mockImplementation(() => of(reply) as never);
+    await firstValueFrom(h.service.saveQuery({ ...state, title: 'Edited title' }, ref));
+    expect(h.queries.saveRevision.mock.calls[0][1]).toMatchObject({
+      ifMatch: 'revision-2', expectedBranchHead: 'head-2',
+      query: { folderPath: 'folder/nested', id: 'q', type, text: 'original body', title: 'Edited title' },
+    });
+  });
   it.each(['chinook.Customer', 'adventureworks.Person.Person'])(
     'saves and cold-reloads the hosted demo source %s without a CLI definition',
     async (source) => {

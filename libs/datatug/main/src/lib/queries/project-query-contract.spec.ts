@@ -42,6 +42,10 @@ describe('common project query contract', () => {
       }).text,
     ).toBe('');
   });
+  it('refuses a definition whose leaf ID disagrees with the requested location', () => {
+    expect(() => toProjectQueryWire(createHostedDemoDbQuery('other'), 'folder/q')).toThrow(UnsupportedQueryContractError);
+    expect(() => toProjectQueryWire(createHostedDemoDbQuery('folder/q'), 'folder/q')).toThrow(UnsupportedQueryContractError);
+  });
   it.each([
     'bounds',
     'expectedServerIdentity',
