@@ -130,6 +130,55 @@ describe('federated query worker', () => {
     );
     expect(posted.find((message) => message.type === 'error')).toBeUndefined();
   });
+  it('stages a streamed whole-query result in paged IndexedDB rows and keeps the footer column order', async () => {
+    const calls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      calls.push(String(input));
+      if (String(input).endsWith('/v1/databases/db'))
+        return new Response(JSON.stringify({ id: 'db', capabilities: { dtql: true, dtqlStreaming: true } }), { headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ records: Array.from({ length: 105 }, (_, index) => ({ data: { name: `row-${index}`, id: String(index) } })),
+        columns: ['id', 'name'], execution: {}, complete: true }), { headers: { 'Content-Type': 'application/json' } });
+    }));
+    await run({});
+    const result = posted.find((message) => message.type === 'result')?.['result'] as { nativeStream?: true; totalRows: number; recordset: { rows: { value: unknown }[][] } };
+    expect(result.nativeStream).toBe(true);
+    expect(result.totalRows).toBe(105);
+    expect(result.recordset.rows[0].map((value) => value.value)).toEqual(['0', 'row-0']);
+    scope.onmessage?.({ data: { type: 'page', index: 1, requestId: 7 } });
+    await vi.waitFor(() => expect(posted.some((message) => message.type === 'page' && message['requestId'] === 7)).toBe(true));
+    const page = posted.find((message) => message.type === 'page' && message['requestId'] === 7)?.['rows'] as { value: unknown }[][];
+    expect(page.map((row) => row[0].value)).toEqual(['100', '101', '102', '103', '104']);
+    expect(calls).toEqual(['https://static.example.test/data/v1/databases/db', 'https://static.example.test/data/v1/databases/db/dtql']);
+  });
+
+  it('deletes provisional streamed rows when a late transport failure truncates the JSON footer', async () => {
+    const before = new Set((await indexedDB.databases()).map((database) => database.name));
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('/v1/databases/db')
+      ? new Response(JSON.stringify({ id: 'db', capabilities: { dtql: true, dtqlStreaming: true } }), { headers: { 'Content-Type': 'application/json' } })
+      : new Response(`{"records":[${Array.from({ length: 100 }, (_, index) => JSON.stringify({ data: { name: String(index) } })).join(',')}`,
+        { headers: { 'Content-Type': 'application/json' } })));
+    await run({});
+    expect(posted.find((message) => message.type === 'result')).toBeUndefined();
+    expect(posted.find((message) => message.type === 'error')?.['message']).toMatch(/terminal footer/);
+    const after = new Set((await indexedDB.databases()).map((database) => database.name));
+    expect([...after].filter((name) => !before.has(name))).toEqual([]);
+  });
+  it('aborts a streamed query on close and removes its provisional IndexedDB pages', async () => {
+    const before = new Set((await indexedDB.databases()).map((database) => database.name));
+    let source!: ReadableStreamDefaultController<Uint8Array>;
+    const stream = new ReadableStream<Uint8Array>({ start(controller) { source = controller; } });
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('/v1/databases/db')
+      ? new Response(JSON.stringify({ id: 'db', capabilities: { dtql: true, dtqlStreaming: true } }), { headers: { 'Content-Type': 'application/json' } })
+      : new Response(stream, { headers: { 'Content-Type': 'application/json' } })));
+    scope.onmessage?.({ data: { type: 'run', definition, token: '', mode: 'full' } });
+    source.enqueue(new TextEncoder().encode(`{"records":[${Array.from({ length: 100 }, (_, index) => JSON.stringify({ data: { name: String(index) } })).join(',')}`));
+    await vi.waitFor(() => expect(posted.some((message) => message.type === 'storage')).toBe(true));
+    scope.onmessage?.({ data: { type: 'close' } });
+    await vi.waitFor(() => expect(posted.some((message) => message.type === 'closed')).toBe(true));
+    expect(posted.some((message) => message.type === 'result')).toBe(false);
+    const after = new Set((await indexedDB.databases()).map((database) => database.name));
+    expect([...after].filter((name) => !before.has(name))).toEqual([]);
+  });
   it('executes immutable pages through the installed worker/DALgo path and continues only on an explicit source-page message', async () => {
     const pins = {
       'OVDB-Provider-Revision': 'a'.repeat(40),

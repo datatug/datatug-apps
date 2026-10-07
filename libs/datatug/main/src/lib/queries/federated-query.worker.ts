@@ -16,6 +16,7 @@ import {
 } from './federated-query-storage';
 import { associateLocalResult, buildLocalResultDescriptor, createOutputStores, replaceGraphOutput, registerLocalResult, readLocalResultPage, type LocalResultDescriptor } from './federated-local-results';
 import { localResultBytes } from './local-result-bytes';
+import { ovdbStreamRow, type OvdbResultColumn } from './ovdb-stream-values';
 
 let outputDb: IDBDatabase | undefined;
 let outputName: string | undefined;
@@ -34,6 +35,8 @@ let stagedRows: TypedValue[][] | undefined;
 let executedDefinition: IQueryDef | undefined;
 let committed: LocalResultDescriptor | undefined;
 let replacementController: AbortController | undefined;
+let nativeColumns: readonly OvdbResultColumn[] | undefined;
+let nativePending: Readonly<Record<string, unknown>>[] = [];
 
 async function openOutput(): Promise<IDBDatabase> {
   if (outputDb) return outputDb;
@@ -63,6 +66,22 @@ async function storeRows(
   await new Promise<void>((resolve, reject) => {
     const transaction = db.transaction('rows', 'readwrite');
     for (const [index, row] of rows.entries()) transaction.objectStore('rows').put(row, rowsStored + index + 1);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(queryStorageError(transaction.error));
+    transaction.onabort = () => reject(queryStorageError(transaction.error));
+  });
+  rowsStored += rows.length;
+}
+
+async function storeNativeRows(rows: readonly Readonly<Record<string, unknown>>[]): Promise<void> {
+  if (!rows.length) return;
+  if (closing) throw new Error('The query was cancelled.');
+  const db = await openOutput();
+  if (closing) throw new Error('The query was cancelled.');
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction('rows', 'readwrite');
+    for (const [index, data] of rows.entries())
+      transaction.objectStore('rows').put({ nativeData: data }, rowsStored + index + 1);
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(queryStorageError(transaction.error));
     transaction.onabort = () => reject(queryStorageError(transaction.error));
@@ -103,7 +122,16 @@ async function readPage(index: number, resultSet = 'affiliations'): Promise<Type
     const related = resultSet !== 'affiliations';
     const transaction = db.transaction(related ? 'relatedRows' : 'rows', 'readonly');
     const request = transaction.objectStore(related ? 'relatedRows' : 'rows').getAll(related ? IDBKeyRange.bound([resultSet, start - 1], [resultSet, start + 98]) : IDBKeyRange.bound(start, start + 99));
-    request.onsuccess = () => resolve(related ? request.result.map((row) => row.rows) as TypedValue[][] : request.result as TypedValue[][]);
+    request.onsuccess = () => {
+      if (related) { resolve(request.result.map((row) => row.rows) as TypedValue[][]); return; }
+      const values = request.result as Array<TypedValue[] | { nativeData: Readonly<Record<string, unknown>> }>;
+      const columns = nativeColumns;
+      if (values.some((value) => !Array.isArray(value)) && !columns) {
+        reject(new Error('The streamed result columns are not final yet.'));
+        return;
+      }
+      resolve(values.map((value) => Array.isArray(value) ? value : ovdbStreamRow(value.nativeData, columns ?? [])));
+    };
     request.onerror = () =>
       reject(request.error ?? new Error('Cannot read result page.'));
   });
@@ -320,6 +348,8 @@ self.onmessage = (
   visibleMode = message.mode === 'visible';
   rowsStored = 0;
   resultReady = false;
+  nativeColumns = undefined;
+  nativePending = [];
   controller = new AbortController();
   const runController = controller;
   activeRun = (async () => {
@@ -370,12 +400,29 @@ self.onmessage = (
           },
           onStorageOwned: (name) => self.postMessage({ type: 'storage', name }),
           ...(message.staticSource
-            ? { fetch: createStaticOvdbFetch(message.staticSource) }
+            ? { fetch: createStaticOvdbFetch(message.staticSource), disableNativeStream: true }
             : {}),
           onSourceLoaded: (event) =>
             self.postMessage({ type: 'source', event }),
+          onNativeRecord: async (data) => {
+            nativePending.push(data);
+            if (nativePending.length >= 100) {
+              const page = nativePending;
+              nativePending = [];
+              await storeNativeRows(page);
+            }
+          },
         },
       );
+      if (nativePending.length) {
+        await storeNativeRows(nativePending);
+        nativePending = [];
+      }
+      if (rawResult.nativeStream) {
+        if (rawResult.totalRows !== rowsStored)
+          throw new Error('The streamed result row count differs from staged output.');
+        nativeColumns = rawResult.recordset.columns;
+      }
       const result = message.definition.federation?.nativeGraph
         ? await commitGraph(rawResult, stagedRows ?? [])
         : await storeRelated(rawResult);
@@ -399,6 +446,8 @@ self.onmessage = (
     } catch (error) {
       let messageText =
         error instanceof Error ? error.message : 'The query failed.';
+      nativePending = [];
+      nativeColumns = undefined;
       try {
         await closeOutput();
       } catch (cleanupError) {
