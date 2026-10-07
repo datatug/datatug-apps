@@ -95,6 +95,11 @@ export class ProjectMenuTopComponent implements OnDestroy {
     },
     ...ProjectMenuTopComponent.sortProjectPages([
       {
+        path: 'demo-db-sandbox',
+        title: 'DemoDB sandbox',
+        icon: 'server-outline',
+      },
+      {
         path: 'chat',
         title: 'Chat',
         icon: 'chatbubbles-outline',
@@ -159,6 +164,7 @@ export class ProjectMenuTopComponent implements OnDestroy {
   }
 
   project?: IProjectContext;
+  readonly isDemoDbProject = signal(false);
   readonly metadataOnly = signal(false);
   public currentFolder: Observable<string | undefined>;
 
@@ -181,6 +187,12 @@ export class ProjectMenuTopComponent implements OnDestroy {
   private setProject = (project?: IProjectContext) => {
     this.project = project;
     this.metadataOnly.set(project?.ref.spaceID !== undefined);
+    // Keep the writable sandbox entry scoped to the canonical public DemoDB
+    // project. The API independently enforces authenticated per-user access.
+    this.isDemoDbProject.set(
+      project?.ref.storeId === 'github.com' &&
+        project.ref.projectId === 'datatug-demo-project@datatug@demo-project-1',
+    );
   };
 
   ngOnDestroy() {

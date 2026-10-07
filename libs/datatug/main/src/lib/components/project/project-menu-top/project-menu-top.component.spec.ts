@@ -71,6 +71,28 @@ describe('ProjectContextMenuComponent', () => {
     });
   });
 
+  it('offers the sandbox entry only in the canonical DemoDB project', () => {
+    const setProject = (
+      component as unknown as {
+        setProject(project?: {
+          ref: { storeId: string; projectId: string };
+        }): void;
+      }
+    ).setProject;
+    setProject({
+      ref: {
+        storeId: 'github.com',
+        projectId: 'datatug-demo-project@datatug@demo-project-1',
+      },
+    });
+    expect(component.isDemoDbProject()).toBe(true);
+
+    setProject({
+      ref: { storeId: 'github.com', projectId: 'another-project' },
+    });
+    expect(component.isDemoDbProject()).toBe(false);
+  });
+
   // Regression coverage for the founder-reported NG04002 ("Overview" 404):
   // every item actually rendered in the side menu must resolve to a route
   // under `store/:storeId/project/:projectId/*` — a menu entry with no
@@ -80,9 +102,10 @@ describe('ProjectContextMenuComponent', () => {
   it('every rendered projTopLevelPages entry has a matching datatugProjectRoutes path', () => {
     const routePaths = new Set(datatugProjectRoutes.map((r) => r.path));
     for (const page of component.projTopLevelPages) {
-      expect(routePaths.has(page.path), `no route for menu item "${page.path}"`).toBe(
-        true,
-      );
+      expect(
+        routePaths.has(page.path),
+        `no route for menu item "${page.path}"`,
+      ).toBe(true);
     }
   });
 

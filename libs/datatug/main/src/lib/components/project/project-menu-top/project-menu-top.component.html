@@ -14,7 +14,10 @@
   <sneat-datatug-investigation-context-bar />
 }
 @for (page of projTopLevelPages; track page) {
-  @if (!metadataOnly() || page.path === 'overview') {
+  @if (
+    (page.path !== 'demo-db-sandbox' || isDemoDbProject()) &&
+    (!metadataOnly() || page.path === 'overview')
+  ) {
     <ion-item
       (click)="goProjPage($event, page.path)"
       tappable

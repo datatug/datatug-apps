@@ -24,6 +24,7 @@ type NavigationOptions = NonNullable<
 
 export type ProjectTopLevelPage =
   | 'chat'
+  | 'demo-db-sandbox'
   | 'overview'
   | 'boards'
   | 'dbmodels'
