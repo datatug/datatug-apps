@@ -28,7 +28,16 @@ export const isQueryChanged = (queryState: IQueryState): boolean => {
     return false;
   }
   const { def } = queryState;
+  if (queryState.isNew) {
+    return true;
+  }
   if (!def || def.title != queryState.title) {
+    return true;
+  }
+  if (
+    JSON.stringify(queryState.federation ?? def.federation) !==
+    JSON.stringify(def.federation)
+  ) {
     return true;
   }
   if (def.request.queryType !== queryState.request?.queryType) {
@@ -501,17 +510,34 @@ export class QueryEditorStateService {
       }
       const query: IQueryDef = {
         ...queryState.def,
+        ...(queryState.title !== undefined ? { title: queryState.title } : {}),
         request: queryState.request,
+        federation: queryState.federation ?? queryState.def.federation,
       };
-      const result = this.queriesService.updateQuery(projectRef, query).pipe(
+      const saveQuery = queryState.isNew
+        ? this.queriesService.createQuery(projectRef, query)
+        : this.queriesService.updateQuery(projectRef, query);
+      const result = saveQuery.pipe(
         tap((value: IQueryDef) => {
-          const queryState = this.getQueryState(query.id);
-          if (!queryState) {
+          const currentState = this.getQueryState(query.id);
+          if (!currentState) {
             return throwError(() => `no state for query with id=${query.id}`);
           }
+          const requestChangedDuringSave =
+            JSON.stringify(currentState.request) !== JSON.stringify(query.request);
+          const titleChangedDuringSave = currentState.title !== query.title;
+          const federationChangedDuringSave =
+            JSON.stringify(currentState.federation ?? currentState.def?.federation) !==
+            JSON.stringify(query.federation);
           this.updateQueryState({
-            ...queryState,
+            ...currentState,
             def: value,
+            title: titleChangedDuringSave ? currentState.title : value.title,
+            request: requestChangedDuringSave ? currentState.request : value.request,
+            federation: federationChangedDuringSave
+              ? currentState.federation
+              : value.federation,
+            isNew: false,
           });
           setIsSavingToFalse();
           return value;

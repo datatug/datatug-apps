@@ -27,7 +27,7 @@ import {
   QueryPageComponent,
   extractLinkedEntityNames,
 } from './query-page.component';
-import { IQueryEditorState } from '../../../editor/models';
+import { IQueryEditorState, IQueryState } from '../../../editor/models';
 import { IProjectContext } from '../../../nav/nav-models';
 import {
   IQueryDef,
@@ -375,6 +375,49 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
 
   beforeEach(() => {
     sessionStorage.clear();
+  });
+
+  it('keeps accepted plan review state across no-op editor emissions and resets it for a definition edit', async () => {
+    const definition: IQueryDef = {
+      ...historyDefinition(),
+      request: {
+        queryType: QueryType.DTQL,
+        text: 'from:\n  name: Person\n  alias: p\n',
+      } as unknown as ITextQueryRequest,
+    };
+    const editor = new BehaviorSubject(historyStateFor(definition));
+    component = await createComponent({}, definition, '<p></p>', {
+      editor,
+      project: of(project),
+    });
+    component.publicDataRevisionAcknowledged.set(true);
+    component.savedPlanReview.acknowledged.set('accepted-fingerprint');
+
+    editor.next({
+      ...editor.value,
+      activeQueries: editor.value.activeQueries.map((query) => ({
+        ...query,
+        isSaving: true,
+      })),
+    });
+    await runFixture.whenStable();
+    expect(component.publicDataRevisionAcknowledged()).toBe(true);
+    expect(component.savedPlanReview.acknowledged()).toBe('accepted-fingerprint');
+
+    const edited = editor.value.activeQueries[0];
+    editor.next({
+      ...editor.value,
+      activeQueries: [{
+        ...edited,
+        request: {
+          queryType: QueryType.DTQL,
+          text: 'from:\n  name: Person\n  alias: p\nlimit: 5\n',
+        } as unknown as ITextQueryRequest,
+      }],
+    });
+    await runFixture.whenStable();
+    expect(component.publicDataRevisionAcknowledged()).toBe(false);
+    expect(component.savedPlanReview.acknowledged()).toBeUndefined();
   });
 
   it('opens saved history and pages all three grids locally with original pins and timestamp, no run or metadata fetch', async () => {
@@ -2150,6 +2193,7 @@ describe('QueryPageComponent dependency injection', () => {
  */
 describe('QueryPageComponent — query text and linked entities display (S155)', () => {
   let component: QueryPageComponent;
+  let fixture: ComponentFixture<QueryPageComponent>;
 
   const project: IProjectContext = {
     ref: {
@@ -2212,7 +2256,7 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
     ],
   };
 
-  async function createComponent(def: IQueryDef): Promise<QueryPageComponent> {
+  async function createComponent(def: IQueryDef, template = ''): Promise<QueryPageComponent> {
     Object.defineProperty(window, 'history', {
       value: { ...window.history, state: {} },
       writable: true,
@@ -2229,6 +2273,7 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
         },
       ],
     } as unknown as IQueryEditorState;
+    const editor = new BehaviorSubject(editorState);
 
     await TestBed.configureTestingModule({
       imports: [QueryPageComponent],
@@ -2277,8 +2322,13 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
         {
           provide: QueryEditorStateService,
           useValue: {
-            queryEditorState: of(editorState),
-            updateQueryState: vi.fn(),
+            queryEditorState: editor,
+            updateQueryState: vi.fn((state: IQueryState) => editor.next({
+              ...editor.value,
+              activeQueries: editor.value.activeQueries.map((query) =>
+                query.id === state.id ? state : query,
+              ),
+            })),
             openQuery: vi.fn(),
             newQuery: vi.fn(),
             getQueryState: vi.fn(),
@@ -2293,14 +2343,15 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
       .overrideComponent(QueryPageComponent, {
         set: {
           imports: [],
-          template: '',
+          template,
           schemas: [CUSTOM_ELEMENTS_SCHEMA],
           providers: [],
         },
       })
       .compileComponents();
 
-    return TestBed.createComponent(QueryPageComponent).componentInstance;
+    fixture = TestBed.createComponent(QueryPageComponent);
+    return fixture.componentInstance;
   }
 
   beforeEach(() => {
@@ -2334,6 +2385,42 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
     component = await createComponent(httpDef);
 
     expect(component.queryBodyText()).toBeUndefined();
+  });
+
+  it('keeps an empty text editor mounted while the user types, clears, and types again', async () => {
+    const blankSql: IQueryDef = {
+      id: 'new-query',
+      title: 'New query',
+      request: { queryType: QueryType.SQL, text: '' } as ISqlQueryRequest,
+    };
+    component = await createComponent(
+      blankSql,
+      '@if (queryBodyText() !== undefined) {<ion-textarea data-testid="query-body-text" [value]="queryBodyText()" (ionInput)="queryTextChanged($event)"></ion-textarea>}',
+    );
+    fixture.detectChanges();
+    const getEditor = () => fixture.nativeElement.querySelector(
+      '[data-testid="query-body-text"]',
+    ) as HTMLElement | null;
+    expect(getEditor()).not.toBeNull();
+
+    const edit = async (value: string) => {
+      const editor = getEditor();
+      expect(editor).not.toBeNull();
+      editor?.dispatchEvent(new CustomEvent('ionInput', {
+        detail: { value }, bubbles: true,
+      }));
+      await fixture.whenStable();
+      fixture.detectChanges();
+    };
+    await edit('select 1');
+    expect(component.queryBodyText()).toBe('select 1');
+    expect(getEditor()).not.toBeNull();
+    await edit('');
+    expect(component.queryBodyText()).toBe('');
+    expect(getEditor()).not.toBeNull();
+    await edit('select 2');
+    expect(component.queryBodyText()).toBe('select 2');
+    expect(getEditor()).not.toBeNull();
   });
 });
 

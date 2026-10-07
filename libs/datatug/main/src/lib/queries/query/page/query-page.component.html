@@ -298,11 +298,37 @@
       </ion-card-content></ion-card
     >
   }
+  @if (canChangeHostedDemoDbSource()) {
+    <ion-card data-testid="hosted-demo-db-query-source">
+      <ion-card-header>
+        <ion-card-title>Hosted DemoDB source</ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        <p>Choose a public read-only table. The saved query keeps its source in the federation definition and runs in this browser.</p>
+        <ion-item>
+          <ion-select
+            label="Database and table"
+            aria-label="Hosted DemoDB database and table"
+            interface="popover"
+            [value]="selectedHostedDemoDbSource()"
+            [disabled]="running() || queryState.isSaving"
+            (ionChange)="hostedDemoDbSourceChanged($event)"
+          >
+            @for (source of hostedDemoDbSources; track source.id) {
+              <ion-select-option [value]="source.id">{{ source.label }}</ion-select-option>
+            }
+          </ion-select>
+        </ion-item>
+      </ion-card-content>
+    </ion-card>
+  }
+
   <ion-card>
     <ion-item>
       <ion-input
         placeholder="Title - is required"
         [value]="queryState.title"
+        [disabled]="queryState.isSaving"
         (ionChange)="queryTitleChanged($event)"
         readonly="false"
       />
@@ -323,27 +349,20 @@
   @if (queryState.queryType === 'HTTP') {
     <sneat-datatug-http-query-editor />
   } @else if (editorTab === 'text') {
-    <!-- S155 (founder ruling 2026-09-10): the query page previously had no
-         body editor at all for SQL/DTQL — the old `sneat-datatug-sql-query`
-         binding this replaces was commented out and never wired up, so the
-         query's own text, already correctly loaded onto
-         `queryState.request.text` (GithubProjectReaderService.getQuery() /
-         QueriesService.getQuery(), confirmed correct by this task's own
-         tests), simply never reached the DOM. Read-only here: this card is
-         about DISPLAY, not editing — this page's existing `isChanged`/`Save`
-         flow (title only, so far) is unaffected, and a GitHub-store project
-         has no agent to persist a body edit to anyway. -->
+    <!-- Saved query text is editable and persists with its definition through
+         the selected project's query API. -->
     <ion-card>
       <ion-card-header>
         <ion-card-title>Query text</ion-card-title>
       </ion-card-header>
       <ion-card-content>
-        @if (queryBodyText(); as bodyText) {
+        @if (queryBodyText() !== undefined) {
           <ion-textarea
             data-testid="query-body-text"
-            readonly="true"
             autoGrow="true"
-            [value]="bodyText"
+            [value]="queryBodyText()"
+            [disabled]="queryState.isSaving || running()"
+            (ionInput)="queryTextChanged($event)"
           />
         } @else {
           <ion-text color="medium">No query text.</ion-text>

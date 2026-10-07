@@ -12,6 +12,11 @@ import invoices from './fixtures/chinook-sales-per-capita/invoice.json';
 import populations from './fixtures/chinook-sales-per-capita/population_wb.json';
 import queryMeta from './fixtures/chinook-sales-per-capita/chinook-sales-per-capita.query.json';
 import queryText from './fixtures/chinook-sales-per-capita/chinook-sales-per-capita.query.dtql?raw';
+import {
+  createHostedDemoDbQuery,
+  HOSTED_DEMO_DB_SOURCES,
+  withHostedDemoDbSource,
+} from './hosted-demo-db-query';
 
 interface OvdbRow { readonly key: string; readonly data: Record<string, unknown> }
 type Sources = Readonly<Record<string, readonly OvdbRow[]>>;
@@ -117,6 +122,41 @@ describe('saved query sales/chinook-sales-per-capita in the browser executor', (
     // Only the three OVDB sources were read, over paged snapshots, and each snapshot was released.
     expect(requested.every((url) => url.startsWith(`${base}/v1/databases/`))).toBe(true);
     expect(requested.filter((url) => url.includes('/chinook/')).length).toBeGreaterThan(4);
+  });
+
+  it.each(HOSTED_DEMO_DB_SOURCES)(
+    'runs a saved one-table $id definition through the browser OVDB path',
+    async (source) => {
+    const base = 'https://ovdb.example.test';
+    const definition = withHostedDemoDbSource(
+      createHostedDemoDbQuery('customers'),
+      source.id,
+    );
+    if (!definition.federation) throw new Error('Expected hosted federation definition');
+    definition.federation.ovdbBaseUrl = base;
+    const requests: { url: string; body?: string }[] = [];
+    const values = Object.fromEntries(source.columns.map((field, index) => [field, index + 1]));
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+      requests.push({ url, body: init.body as string | undefined });
+      const headers = new Headers(init.headers);
+      if (headers.get('OVDB-Page-Close') === 'true') return new Response(null, { status: 204 });
+      return new Response(JSON.stringify({
+        records: [{ key: '1', data: values }],
+        snapshotToken: 'snapshot:chinook',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }));
+
+    const persisted = JSON.parse(JSON.stringify(definition)) as IQueryDef;
+    const result = await runFederatedQuery(persisted);
+    const rows = table(result);
+
+    expect(requests.some(({ url }) =>
+      url === `${base}/v1/databases/${source.database}/dtql`)).toBe(true);
+    expect(JSON.parse(requests.find(({ body }) => body)?.body ?? '{}').from).toMatchObject({
+      name: source.name,
+      ...(source.schema ? { schema: source.schema } : {}),
+    });
+    expect(rows).toEqual([values]);
   });
 
   describe('rows the join cannot price (a synthetic extension of the fixture, not demo data)', () => {

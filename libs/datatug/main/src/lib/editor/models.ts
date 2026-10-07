@@ -41,6 +41,8 @@ export interface IQueryState extends IQueryStateDto {
   readonly isNew?: boolean;
   readonly title?: string;
   readonly request?: IQueryRequest;
+  /** Draft source configuration; kept separate from `def` until saved. */
+  readonly federation?: IQueryDef['federation'];
   readonly response?: IExecuteResponse;
   readonly targetDbModel?: IProjDbModelBrief;
   readonly activeEnv?: IQueryEnvState;

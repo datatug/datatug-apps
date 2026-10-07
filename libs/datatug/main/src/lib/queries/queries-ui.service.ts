@@ -5,6 +5,7 @@ import { QueryType } from '../models/definition/query-def';
 import { DatatugNavService } from '../services/nav/datatug-nav.service';
 import { QueryEditorStateService } from './query-editor-state-service';
 import { RandomIdService } from '@sneat/random';
+import { createHostedDemoDbQuery } from './hosted-demo-db-query';
 
 // `providedIn: 'root'` — same S157 fix, same reason, as
 // `QueryEditorStateService` (this file's own `queryEditorStateService`
@@ -23,16 +24,22 @@ export class QueriesUiService {
   async openNewQuery(projectRef: IProjectRef): Promise<void> {
     const createNewQuery = (type: QueryType) => () => {
       const id = this.randomIdService.newRandomId({ len: 7 });
+      const demoDbDefinition = type === QueryType.DTQL
+        ? createHostedDemoDbQuery(id)
+        : undefined;
+      const request = demoDbDefinition?.request ?? (type === QueryType.HTTP
+        ? { queryType: QueryType.HTTP, url: '', method: 'GET' as const }
+        : { queryType: type, text: '' });
       const queryState = this.queryEditorStateService.newQuery({
         id: id,
         isNew: true,
         queryType: type,
-        def: {
+        request,
+        ...(demoDbDefinition?.federation ? { federation: demoDbDefinition.federation } : {}),
+        def: demoDbDefinition ?? {
           id,
           draft: true,
-          request: {
-            queryType: QueryType.HTTP,
-          },
+          request,
         },
       });
       if (queryState.def) {
@@ -47,6 +54,11 @@ export class QueriesUiService {
           text: 'SQL',
           role: 'selected',
           handler: createNewQuery(QueryType.SQL),
+        },
+        {
+          text: 'Hosted DemoDB table (DTQL)',
+          role: 'selected',
+          handler: createNewQuery(QueryType.DTQL),
         },
         {
           // icon: 'browser-outline',

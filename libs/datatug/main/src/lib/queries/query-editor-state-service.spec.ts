@@ -1,12 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 import { ErrorLogger } from '@sneat/core';
-import { defer, from, of } from 'rxjs';
+import { defer, firstValueFrom, from, of, Subject } from 'rxjs';
 
 import { QueryEditorStateService } from './query-editor-state-service';
 import { QueriesService } from './queries.service';
 import { ProjectService } from '../services/project/project.service';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import { QueryType } from '../models/definition/query-def';
+import { createHostedDemoDbQuery, withHostedDemoDbSource } from './hosted-demo-db-query';
 
 describe('QueryEditorStateService', () => {
   beforeEach(() => {
@@ -41,6 +42,75 @@ describe('QueryEditorStateService', () => {
 
   it('should be created', () => {
     expect(TestBed.inject(QueryEditorStateService)).toBeTruthy();
+  });
+});
+
+describe('QueryEditorStateService — hosted DemoDB query creation and save', () => {
+  it('creates a query with the complete selected DTQL/federation definition and marks it persisted', async () => {
+    const project = {
+      ref: { storeId: 'github.com', projectId: 'owner/repo' },
+      summary: { id: 'owner/repo', title: 'Test project', access: 'private' as const },
+    };
+    const draft = withHostedDemoDbSource(
+      createHostedDemoDbQuery('hosted-demodb-save-test'),
+      'adventureworks.Person.Person',
+    );
+    const pendingCreate = new Subject<ReturnType<typeof createHostedDemoDbQuery>>();
+    const createQuery = vi.fn(() => pendingCreate);
+
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        QueryEditorStateService,
+        { provide: ErrorLogger, useValue: { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) } },
+        { provide: QueriesService, useValue: { getQuery: vi.fn(), createQuery, updateQuery: vi.fn() } },
+        { provide: ProjectService, useValue: { getFull: vi.fn() } },
+        { provide: DatatugNavContextService, useValue: { currentProject: of(project), currentEnv: of(undefined) } },
+      ],
+    });
+
+    const service = TestBed.inject(QueryEditorStateService);
+    const state = service.newQuery({
+      id: draft.id,
+      title: draft.title,
+      isNew: true,
+      queryType: QueryType.DTQL,
+      def: draft,
+      request: draft.request,
+      federation: draft.federation,
+    });
+
+    const save = firstValueFrom(service.saveQuery(state, project.ref));
+    const savingState = service.getQueryState(draft.id);
+    if (!savingState) throw new Error('Expected query draft while save is pending');
+    const newerRequest = {
+      queryType: QueryType.DTQL,
+      text: 'from:\n  database: adventureworks\n  schema: Person\n  name: Person\n  alias: p\nlimit: 5\n',
+    };
+    service.updateQueryState({
+      ...savingState,
+      title: 'Edited while saving',
+      request: newerRequest,
+    });
+    pendingCreate.next(draft);
+    pendingCreate.complete();
+    await save;
+
+    expect(createQuery).toHaveBeenCalledOnce();
+    expect(createQuery.mock.calls[0][1]).toMatchObject({
+      id: 'hosted-demodb-save-test',
+      request: draft.request,
+      federation: {
+        ovdbBaseUrl: 'https://demodb.dev/ovdb',
+        tables: [{ database: 'adventureworks', name: 'Person.Person' }],
+      },
+    });
+    expect(service.getQueryState(draft.id)).toMatchObject({
+      isNew: false,
+      title: 'Edited while saving',
+      request: newerRequest,
+      federation: draft.federation,
+    });
   });
 });
 
