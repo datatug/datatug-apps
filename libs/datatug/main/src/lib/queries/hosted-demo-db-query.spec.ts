@@ -71,4 +71,42 @@ describe('hosted DemoDB query definitions', () => {
     expect(hostedDemoDbSourceId(joined)).toBeUndefined();
     expect(isHostedDemoDbStarterQuery(joined)).toBe(false);
   });
+
+  it.each([
+    ['lookup', { lookups: [{ database: 'music', collection: 'Album', fromColumn: 'CustomerId', fields: [{ source: 'Title', target: 'AlbumTitle' }] }] }],
+    ['bounds', { bounds: { runtime: { maxRows: 10 } } }],
+    ['server identity', { expectedServerIdentity: { baseUrl: HOSTED_DEMO_DB_OVDB_BASE_URL, serverId: 'server-1' } }],
+    ['source rights', { expectedSourceRights: [{ database: 'chinook', collection: 'Customer', right: 'read' }] }],
+    ['native graph plan', { nativeGraph: { version: 1 } }],
+    ['read receipt', { readReceipt: { status: 'complete' } }],
+  ])('does not offer or apply source replacement when federation has %s metadata', (_label, metadata) => {
+    const starter = createHostedDemoDbQuery('query-1');
+    const enriched = {
+      ...starter,
+      federation: { ...starter.federation, ...metadata },
+    } as typeof starter;
+
+    expect(isHostedDemoDbStarterQuery(enriched)).toBe(false);
+    expect(() => withHostedDemoDbSource(enriched, 'adventureworks.Person.Person')).toThrow(
+      'Only an unchanged hosted DemoDB starter query can switch sources.',
+    );
+    expect(enriched.federation).toMatchObject(metadata);
+  });
+
+  it('rejects custom table field metadata before replacing a source', () => {
+    const starter = createHostedDemoDbQuery('query-1');
+    const table = starter.federation?.tables[0];
+    if (!table) throw new Error('Expected starter table metadata');
+    const enriched = {
+      ...starter,
+      federation: {
+        ...starter.federation,
+        tables: [{ ...table, fields: [...table.fields, 'CustomField'] }],
+      },
+    };
+
+    expect(isHostedDemoDbStarterQuery(enriched)).toBe(false);
+    expect(() => withHostedDemoDbSource(enriched, 'adventureworks.Person.Person')).toThrow();
+    expect(enriched.federation?.tables[0].fields).toContain('CustomField');
+  });
 });

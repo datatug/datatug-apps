@@ -89,7 +89,24 @@ export function isHostedDemoDbStarterQuery(definition: IQueryDef | undefined): b
   const sourceId = hostedDemoDbSourceId(definition);
   if (!sourceId || !definition || definition.request.queryType !== QueryType.DTQL) return false;
   const source = HOSTED_DEMO_DB_SOURCES.find((item) => item.id === sourceId);
-  return !!source && (definition.request as ITextQueryRequest).text === bodyFor(source);
+  if (!source || (definition.request as ITextQueryRequest).text !== bodyFor(source)) return false;
+
+  // The picker replaces both the DTQL body and federation settings. A query
+  // with a starter-looking body can still carry meaningful execution metadata
+  // (lookups, limits, source rights, graph plans, etc.), so only admit the exact
+  // canonical federation emitted by createHostedDemoDbQuery().
+  const federation = definition.federation;
+  const table = federation?.tables[0];
+  return !!federation &&
+    Object.keys(federation).sort().join(',') === 'ovdbBaseUrl,tables' &&
+    federation.ovdbBaseUrl === HOSTED_DEMO_DB_OVDB_BASE_URL &&
+    federation.tables.length === 1 &&
+    !!table &&
+    Object.keys(table).sort().join(',') === 'database,fields,name' &&
+    table.database === source.database &&
+    table.name === source.name &&
+    table.fields.length === source.fields.length &&
+    table.fields.every((field, index) => field === source.fields[index]);
 }
 
 export function withHostedDemoDbSource(
@@ -98,6 +115,9 @@ export function withHostedDemoDbSource(
 ): IQueryDef {
   const source = HOSTED_DEMO_DB_SOURCES.find((item) => item.id === sourceId);
   if (!source) throw new Error(`Unknown hosted DemoDB source: ${sourceId}`);
+  if (!isHostedDemoDbStarterQuery(definition)) {
+    throw new Error('Only an unchanged hosted DemoDB starter query can switch sources.');
+  }
   return {
     ...definition,
     request: { queryType: QueryType.DTQL, text: bodyFor(source) } as ITextQueryRequest,
