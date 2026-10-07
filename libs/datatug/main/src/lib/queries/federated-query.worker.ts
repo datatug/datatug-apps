@@ -470,7 +470,7 @@ self.onmessage = (
         nativePending = [];
         nativePendingBytes = 0;
       }
-      if (rawResult.nativeStream) {
+      if (rawResult.nativeStream || rawResult.nativeDirect) {
         nativeStageSignal?.throwIfAborted();
         if (rawResult.totalRows !== rowsStored)
           throw new Error('The streamed result row count differs from staged output.');
