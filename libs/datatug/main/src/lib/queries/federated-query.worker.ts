@@ -150,7 +150,7 @@ async function readPage(index: number, resultSet = 'affiliations', signal?: Abor
         else if (nativeColumns) row = ovdbStreamRow(value.nativeData, nativeColumns);
         else throw new Error('The streamed result columns are not final yet.');
         pageBytes += localResultBytes(row) + (rows.length ? 1 : 0);
-        if (pageBytes > 8 * 1024 * 1024)
+        if (!related && nativeColumns && pageBytes > 8 * 1024 * 1024)
           throw new Error('The streamed result page exceeds the browser byte limit.');
         rows.push(row);
         cursor.continue();
