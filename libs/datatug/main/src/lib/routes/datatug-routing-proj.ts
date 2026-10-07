@@ -70,7 +70,17 @@ const emptyShellProjectRoutes: Routes = [
 export const datatugProjectRoutes: Routes = [
   {
     path: 'public-data',
-    loadComponent: () => import('../queries/public-data/public-data-page.component').then((m) => m.PublicDataPageComponent),
+    loadComponent: () =>
+      import('../queries/public-data/public-data-page.component').then(
+        (m) => m.PublicDataPageComponent,
+      ),
+  },
+  {
+    path: 'demo-db-sandbox',
+    loadComponent: () =>
+      import('../pages/signed-in/demo-db-sandbox/demo-db-sandbox-page.component').then(
+        (m) => m.DemoDbSandboxPageComponent,
+      ),
   },
   {
     path: 'chat',
@@ -256,9 +266,9 @@ export const datatugProjectRoutes: Routes = [
     // NOT gated behind ENABLE_EMPTY_SHELL_PAGES like its former siblings.
     path: 'variables',
     loadComponent: () =>
-      import(
-        '../pages/signed-in/investigation-context/investigation-context-page.component'
-      ).then((m) => m.InvestigationContextPageComponent),
+      import('../pages/signed-in/investigation-context/investigation-context-page.component').then(
+        (m) => m.InvestigationContextPageComponent,
+      ),
   },
   ...(ENABLE_EMPTY_SHELL_PAGES ? emptyShellProjectRoutes : []),
 ];
