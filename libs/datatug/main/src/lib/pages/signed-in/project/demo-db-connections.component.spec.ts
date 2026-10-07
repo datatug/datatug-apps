@@ -14,12 +14,23 @@ const entries = datasets.flatMap((dataset) => [
   { id: `${dataset}-ingitdb`, dataset, storage: 'ingitdb', tags: [dataset, 'ingitdb'], environments: ['dev'],
     readiness: 'hosted-repository', source: `https://github.com/demo-db/${dataset}/tree/${'a'.repeat(40)}/ingitdb`, query: 'local-checkout-required' },
 ]);
+const bigQueryEditions = datasets.map((dataset, index) => ({
+  id: `${dataset}-bigquery`, dataset, storage: 'bigquery', sourceProjectId: 'demodb-dev', datasetId: dataset,
+  location: 'US', authentication: 'google-account-required', executionProjectId: 'user-selected',
+  publicReadRole: 'READER', publicReadPrincipal: 'allAuthenticatedUsers',
+  readiness: 'public-read-user-project-required', query: 'not-enabled-in-browser', copy: 'not-enabled',
+  tableCount: [11, 13, 11, 16, 71, 6][index], rowCount: [15607, 3310, 255, 47268, 759240, 13584][index],
+  sourceRepository: `https://github.com/demo-db/${dataset}`, sourceRevision: 'c'.repeat(40),
+  sourceSqliteSha256: 'd'.repeat(64),
+  verification: 'https://github.com/demo-db/websites/blob/main/config/bigquery-hosting.json',
+}));
+const plans = ['world-bank-wdi', 'new-york-citibike'].map((id) => ({ id, title: id,
+  directory: `https://github.com/openvaultdb/directory/blob/${'b'.repeat(40)}/index.json`, readiness: 'setup-required' }));
 
 describe('shared project database connections', () => {
-  it('reads the nested canonical project catalogue and renders all 18 tagged editions', async () => {
+  it('renders 18 existing editions, six hosted BigQuery datasets and blocked discoveries', async () => {
     const getRawJson = vi.fn(() => of({ format: 'datatug-demo-connections/v1', connections: entries,
-      bigQueryPlans: [{ id: 'bigquery-world-bank-wdi', title: 'World Bank WDI',
-        directory: `https://github.com/openvaultdb/directory/blob/${'b'.repeat(40)}/index.json`, readiness: 'setup-required' }] }));
+      bigQueryEditions, bigQueryPlans: plans }));
     await TestBed.configureTestingModule({
       imports: [DemoDbConnectionsComponent],
       providers: [{ provide: GithubProjectReaderService, useValue: { getRawJson } }],
@@ -35,9 +46,16 @@ describe('shared project database connections', () => {
     for (const dataset of datasets) for (const storage of ['sqlite', 'postgresql', 'ingitdb']) {
       expect(catalog.connections.find((entry) => entry.id === `${dataset}-${storage}`)?.tags).toEqual([dataset, storage]);
     }
-    expect(fixture.nativeElement.querySelectorAll('ion-item').length).toBe(19);
+    expect(fixture.nativeElement.querySelectorAll('ion-item').length).toBe(26);
     expect(fixture.componentInstance['readiness'](catalog.connections[1])).toBe('PostgreSQL query endpoint pending');
     expect(fixture.nativeElement.querySelectorAll('ion-button').length).toBe(0);
+    expect(fixture.nativeElement.textContent).toContain('Hosted BigQuery editions');
+    const rendered = fixture.nativeElement.innerHTML;
+    expect(rendered).toContain('demodb-dev.chinook');
+    expect(rendered).toContain('your own BigQuery execution project');
+    expect(rendered).toContain('Browser queries and copy are not enabled');
+    expect(fixture.nativeElement.querySelectorAll('a[href="https://console.cloud.google.com/bigquery"]').length).toBe(6);
+    expect(fixture.nativeElement.querySelectorAll('ion-card-title')[2].textContent).toContain('discoveries');
   });
 
   it('never loads the old or a lookalike repository as the shared project', async () => {
@@ -58,7 +76,8 @@ describe('shared project database connections', () => {
   it('rejects a catalogue link outside the pinned public origins', async () => {
     const changed = entries.map((entry) => entry.id === 'chinook-ingitdb'
       ? { ...entry, source: 'https://example.test/chinook' } : entry);
-    const getRawJson = vi.fn(() => of({ format: 'datatug-demo-connections/v1', connections: changed, bigQueryPlans: [] }));
+    const getRawJson = vi.fn(() => of({ format: 'datatug-demo-connections/v1', connections: changed,
+      bigQueryEditions, bigQueryPlans: plans }));
     await TestBed.configureTestingModule({
       imports: [DemoDbConnectionsComponent],
       providers: [{ provide: GithubProjectReaderService, useValue: { getRawJson } }],
