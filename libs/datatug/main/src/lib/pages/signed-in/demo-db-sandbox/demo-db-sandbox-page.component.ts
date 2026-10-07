@@ -232,7 +232,13 @@ type SandboxPageState =
               <ion-item
                 ><ion-label
                   >Last measured branch size
-                  <p>{{ formatBytes(info.branchLogicalBytes) }}</p></ion-label
+                  <p>
+                    {{
+                      info.branchLogicalBytes > 0
+                        ? formatBytes(info.branchLogicalBytes)
+                        : 'Not measured yet'
+                    }}
+                  </p></ion-label
                 ></ion-item
               >
             </ion-list>

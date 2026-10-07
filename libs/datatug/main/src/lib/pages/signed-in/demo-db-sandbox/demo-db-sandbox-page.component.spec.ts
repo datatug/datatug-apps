@@ -121,6 +121,22 @@ describe('DemoDbSandboxPageComponent', () => {
     ).toBe('/login');
   });
 
+  it('shows an unreported Neon branch size as unknown while retaining the database baseline', async () => {
+    const api = {
+      get: vi.fn(() => of({ ...sandboxInfo, branchLogicalBytes: 0 })),
+      create: vi.fn(),
+      delete: vi.fn(),
+      query: vi.fn(),
+    };
+    const { fixture } = setup(signedIn, api);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.innerHTML).toContain('Not measured yet');
+    expect(fixture.nativeElement.innerHTML).toContain('97.7 KiB');
+    expect(fixture.nativeElement.innerHTML).toContain('107.4 KiB');
+  });
+
   it('creates one account sandbox, runs a DML statement against a selected database, and deletes it', async () => {
     const queryResult = {
       columns: [{ name: 'command', typeOid: 25 }],
