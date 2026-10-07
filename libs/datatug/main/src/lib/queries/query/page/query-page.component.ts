@@ -101,6 +101,7 @@ import { IParameter } from '../../../models/definition/parameter';
 import {
   IQueryDef,
   ISqlQueryRequest,
+  ITextQueryRequest,
   QueryType,
 } from '../../../models/definition/query-def';
 import {
@@ -116,6 +117,12 @@ import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatu
 import { DatatugExecutorModule } from '../../../executor/datatug-executor.module';
 import { DatatugQueriesServicesModule } from '../../datatug-queries-services.module';
 import { QueriesService } from '../../queries.service';
+import {
+  HOSTED_DEMO_DB_SOURCES,
+  hostedDemoDbSourceId,
+  isHostedDemoDbStarterQuery,
+  withHostedDemoDbSource,
+} from '../../hosted-demo-db-query';
 import { FederatedQueryService, type FederatedQueryProgress, type FederatedQueryResult } from '../../federated-query.service';
 import { federatedVisibleMode } from '../../federated-query-executor';
 import type { LocalResultDescriptor, LocalResultRef } from '../../federated-local-results';
@@ -549,6 +556,37 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       ? (request as ISqlQueryRequest).text
       : undefined;
   });
+  public readonly hostedDemoDbSources = HOSTED_DEMO_DB_SOURCES;
+  public readonly selectedHostedDemoDbSource = computed(() =>
+    hostedDemoDbSourceId(this.queryDef()),
+  );
+  public readonly canChangeHostedDemoDbSource = computed(() =>
+    isHostedDemoDbStarterQuery(this.queryDef()),
+  );
+
+  public hostedDemoDbSourceChanged(event: Event): void {
+    const sourceId = (event as CustomEvent<{ value: string }>).detail.value;
+    const definition = this.queryDef();
+    if (!definition || !sourceId || !isHostedDemoDbStarterQuery(definition)) return;
+    const selected = withHostedDemoDbSource(definition, sourceId);
+    this.queryState = {
+      ...this.queryState,
+      queryType: QueryType.DTQL,
+      request: selected.request,
+      federation: selected.federation,
+    };
+    this.queryEditorStateService.updateQueryState(this.queryState);
+  }
+
+  public queryTextChanged(event: Event): void {
+    const text = (event as CustomEvent<{ value?: string }>).detail.value ?? '';
+    if (!this.queryState.request || this.queryState.request.queryType === QueryType.HTTP) return;
+    this.queryState = {
+      ...this.queryState,
+      request: { ...this.queryState.request, text } as ITextQueryRequest,
+    };
+    this.queryEditorStateService.updateQueryState(this.queryState);
+  }
 
   /** Entity/collection names this query references — see
    * {@link extractLinkedEntityNames}'s own doc comment. */
@@ -676,7 +714,15 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       }
       const previousDefinition = this.queryDef();
       const scopeChanged = this.queryId !== queryState.id;
-      const nextPlanIdentity = graphStableIdentity(queryState.def?.federation?.nativeGraph);
+      const effectiveDefinition = queryState.def
+        ? {
+            ...queryState.def,
+            ...(queryState.title !== undefined ? { title: queryState.title } : {}),
+            ...(queryState.request ? { request: queryState.request } : {}),
+            federation: queryState.federation ?? queryState.def.federation,
+          }
+        : undefined;
+      const nextPlanIdentity = graphStableIdentity(effectiveDefinition?.federation?.nativeGraph);
       const planChanged = graphStableIdentity(previousDefinition?.federation?.nativeGraph) !== nextPlanIdentity || (!!this.executedGraphDefinition?.federation?.nativeGraph && graphStableIdentity(this.executedGraphDefinition.federation.nativeGraph) !== nextPlanIdentity);
       if (scopeChanged) this.invalidateHistoryScope();
       else if (planChanged) {
@@ -692,11 +738,16 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.queryState = queryState;
       // Signal write (zoneless-safe, unlike the plain-field write just
       // above) — see `queryDef`'s own doc comment.
-      if (this.queryDef() !== queryState.def) { this.savedPlanReview.reset(); this.publicDataRevisionAcknowledged.set(false); }
+      const definitionChanged =
+        previousDefinition?.id !== effectiveDefinition?.id ||
+        previousDefinition?.request !== effectiveDefinition?.request ||
+        previousDefinition?.federation !== effectiveDefinition?.federation ||
+        previousDefinition?.publicData !== effectiveDefinition?.publicData;
+      if (definitionChanged) { this.savedPlanReview.reset(); this.publicDataRevisionAcknowledged.set(false); }
       if (this.queryDef()?.id !== queryState.def?.id) this.ovdbToken.set('');
-      if (queryState.def && this.queryDef()?.id !== queryState.def.id) this.federatedMode.set(federatedVisibleMode(queryState.def).defaultMode);
-      this.queryDef.set(queryState.def);
-      if (queryState.def?.federation?.nativeGraph) void this.refreshLocalHistory();
+      if (effectiveDefinition && this.queryDef()?.id !== effectiveDefinition.id) this.federatedMode.set(federatedVisibleMode(effectiveDefinition).defaultMode);
+      this.queryDef.set(effectiveDefinition);
+      if (effectiveDefinition?.federation?.nativeGraph) void this.refreshLocalHistory();
       if (this.queryState.environments && !this.queryState.activeEnv) {
         this.setActiveEnv(this.queryState.environments[0].id);
       }
