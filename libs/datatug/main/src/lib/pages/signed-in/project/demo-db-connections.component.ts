@@ -70,8 +70,8 @@ function validCatalog(raw: ConnectionCatalog): boolean {
       (storage !== 'postgresql' ||
         (entry.readiness === 'hosted-api-pending' && entry.query === 'setup-required' &&
           entry.source === `https://demodb.dev/${dataset}/`) ||
-        (dataset === 'chinook' && entry.readiness === 'public-api' && entry.query === 'ovdb-read' &&
-          entry.source === 'https://cloud.openvaultdb.com/v1/databases/chinook-postgresql')) &&
+        (entry.readiness === 'public-api' && entry.query === 'ovdb-read' &&
+          entry.source === `https://cloud.openvaultdb.com/v1/databases/${dataset}-postgresql`)) &&
       (storage !== 'ingitdb' || (entry.readiness === 'hosted-repository' &&
         new RegExp(`^https://github\\.com/demo-db/${dataset}/tree/[a-f0-9]{40}/ingitdb$`).test(entry.source)));
   }));

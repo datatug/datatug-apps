@@ -87,10 +87,30 @@ describe('shared project database connections', () => {
     expect(fixture.componentInstance['readiness'](connection)).toBe('Public read-only PostgreSQL through OVDB');
   });
 
-  it('rejects an active PostgreSQL declaration with a different endpoint', async () => {
-    const changed = entries.map((entry) => entry.id === 'chinook-postgresql'
+  it('accepts six exact public PostgreSQL endpoints while exposing only the Chinook query', async () => {
+    const active = entries.map((entry) => entry.storage === 'postgresql'
       ? { ...entry, readiness: 'public-api', query: 'ovdb-read',
-          source: 'https://example.test/v1/databases/chinook-postgresql' }
+          source: `https://cloud.openvaultdb.com/v1/databases/${entry.dataset}-postgresql` }
+      : entry);
+    const getRawJson = vi.fn(() => of({ format: 'datatug-demo-connections/v1', connections: active,
+      bigQueryEditions, bigQueryPlans: plans }));
+    await TestBed.configureTestingModule({
+      imports: [DemoDbConnectionsComponent],
+      providers: [{ provide: GithubProjectReaderService, useValue: { getRawJson } }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(DemoDbConnectionsComponent);
+    fixture.componentRef.setInput('projectRef', canonical);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.componentInstance['catalog']()).toBeDefined();
+    expect(fixture.nativeElement.querySelectorAll('a[href*="chinook-postgresql-genres"]').length).toBe(1);
+  });
+
+  it('rejects an active PostgreSQL declaration with a different endpoint', async () => {
+    const changed = entries.map((entry) => entry.id === 'northwind-postgresql'
+      ? { ...entry, readiness: 'public-api', query: 'ovdb-read',
+          source: 'https://cloud.openvaultdb.com/v1/databases/chinook-postgresql' }
       : entry);
     const getRawJson = vi.fn(() => of({ format: 'datatug-demo-connections/v1', connections: changed,
       bigQueryEditions, bigQueryPlans: plans }));
