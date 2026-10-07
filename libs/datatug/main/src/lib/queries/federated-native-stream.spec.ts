@@ -66,7 +66,7 @@ limit: 10`;
           columns: ['Artist', 'TrackCount', 'TotalMilliseconds'], execution: {}, complete: true });
     });
     const result = await runFederatedQuery(saved, undefined, '', undefined, undefined, 'full', undefined, undefined,
-      { fetch: fetcher, onNativeRecord: async () => undefined });
+      { fetch: fetcher });
     expect(calls).toHaveLength(2);
     expect(calls[1].init?.body).toBe(yaml);
     expect(result.recordset.rows[0]).toEqual([
@@ -120,9 +120,9 @@ limit: 10`;
     const result = await run;
     expect(result.nativeStream).toBe(true);
     expect(result.totalRows).toBe(1);
-    expect(result.recordset.rows[0]).toEqual([
-      { type: 'integer', value: '42' }, { type: 'string', value: 'Alpha' }, { type: 'integer', value: '213' },
-    ]);
+    expect(first).toHaveBeenCalledWith({ ArtistId: '42', Artist: 'Alpha', TrackCount: '213' }, expect.any(AbortSignal));
+    expect(result.recordset.rows).toEqual([]);
+    expect(result.recordset.columns.map((column) => column.name)).toEqual(['ArtistId', 'Artist', 'TrackCount']);
     expect(calls).toHaveLength(2);
   });
 
@@ -154,6 +154,15 @@ limit: 10`;
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
+  it('bounds the direct preview by bytes even below 100 rows', async () => {
+    const name = 'x'.repeat(600_000);
+    const fetcher = vi.fn<typeof fetch>(async (input) => String(input).endsWith('/music')
+      ? json({ id: 'music', capabilities: { dtql: true, dtqlStreaming: true } })
+      : json({ records: [{ data: { name } }, { data: { name } }], columns: ['name'], execution: {}, complete: true }));
+    await expect(runFederatedQuery(definition, undefined, '', undefined, undefined, 'full', undefined, undefined,
+      { fetch: fetcher })).rejects.toThrow(/preview limit/);
+  });
+
   it('ends a stalled streamed body at the caller deadline', async () => {
     const body = new ReadableStream<Uint8Array>();
     const fetcher = vi.fn<typeof fetch>(async (input) => String(input).endsWith('/music')
@@ -161,6 +170,24 @@ limit: 10`;
       : new Response(body, { headers: { 'Content-Type': 'application/json' } }));
     await expect(runFederatedQuery(definition, undefined, '', undefined, undefined, 'full', undefined, undefined,
       { fetch: fetcher, deadline: Date.now() + 50, onNativeRecord: async () => undefined })).rejects.toThrow(/timed out|timeout|abort/i);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it('passes the same deadline signal to a blocked row sink', async () => {
+    const fetcher = vi.fn<typeof fetch>(async (input) => String(input).endsWith('/music')
+      ? json({ id: 'music', capabilities: { dtql: true, dtqlStreaming: true } })
+      : json({ records: [{ data: { ArtistId: '1' } }], columns: ['ArtistId'], execution: {}, complete: true }));
+    let sinkSignal: AbortSignal | undefined;
+    await expect(runFederatedQuery(definition, undefined, '', undefined, undefined, 'full', undefined, undefined,
+      { fetch: fetcher, deadline: Date.now() + 50,
+        onNativeRecord: async (_data, signal) => {
+          sinkSignal = signal;
+          await new Promise<void>((_resolve, reject) => {
+            signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+          });
+        },
+      })).rejects.toThrow(/timed out|timeout|abort/i);
+    expect(sinkSignal?.aborted).toBe(true);
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 });

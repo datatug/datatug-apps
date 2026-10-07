@@ -118,8 +118,9 @@ async function sendPendingPage(): Promise<void> {
   }
 }
 
-async function readPage(index: number, resultSet = 'affiliations'): Promise<TypedValue[][]> {
+async function readPage(index: number, resultSet = 'affiliations', signal?: AbortSignal): Promise<TypedValue[][]> {
   if (committed) return readLocalResultPage(committed, index, resultSet);
+  signal?.throwIfAborted();
   const db = outputDb;
   if (!db || !Number.isSafeInteger(index) || index < 0)
     throw new Error('Result page is unavailable.');
@@ -130,8 +131,14 @@ async function readPage(index: number, resultSet = 'affiliations'): Promise<Type
   return await new Promise<TypedValue[][]>((resolve, reject) => {
     const related = resultSet !== 'affiliations';
     const transaction = db.transaction(related ? 'relatedRows' : 'rows', 'readonly');
+    const abort = (): void => {
+      try { transaction.abort(); } catch { /* The transaction may have completed before the abort event. */ }
+    };
+    signal?.addEventListener('abort', abort, { once: true });
     const request = transaction.objectStore(related ? 'relatedRows' : 'rows').getAll(related ? IDBKeyRange.bound([resultSet, start - 1], [resultSet, start + 98]) : IDBKeyRange.bound(start, start + 99));
     request.onsuccess = () => {
+      signal?.removeEventListener('abort', abort);
+      if (signal?.aborted) { reject(signal.reason); return; }
       if (related) { resolve(request.result.map((row) => row.rows) as TypedValue[][]); return; }
       const values = request.result as Array<TypedValue[] | { nativeData: Readonly<Record<string, unknown>> }>;
       const columns = nativeColumns;
@@ -139,10 +146,22 @@ async function readPage(index: number, resultSet = 'affiliations'): Promise<Type
         reject(new Error('The streamed result columns are not final yet.'));
         return;
       }
-      resolve(values.map((value) => Array.isArray(value) ? value : ovdbStreamRow(value.nativeData, columns ?? [])));
+      const rows = values.map((value) => Array.isArray(value) ? value : ovdbStreamRow(value.nativeData, columns ?? []));
+      if (localResultBytes(rows) > 8 * 1024 * 1024) {
+        reject(new Error('The streamed result page exceeds the browser byte limit.'));
+        return;
+      }
+      resolve(rows);
     };
-    request.onerror = () =>
-      reject(request.error ?? new Error('Cannot read result page.'));
+    request.onerror = () => {
+      signal?.removeEventListener('abort', abort);
+      reject(signal?.reason ?? request.error ?? new Error('Cannot read result page.'));
+    };
+    transaction.onabort = () => {
+      signal?.removeEventListener('abort', abort);
+      reject(signal?.reason ?? queryStorageError(transaction.error));
+    };
+    if (signal?.aborted) abort();
   });
 }
 
@@ -366,6 +385,7 @@ self.onmessage = (
     try {
       await closeOutput();
       committed = undefined;
+      let nativeStageSignal: AbortSignal | undefined;
       if (message.definition.federation?.nativeGraph) stagedRows = [];
       if (
         (message.definition.federation?.bounds?.driver ||
@@ -375,7 +395,7 @@ self.onmessage = (
         throw new Error(
           'A declared driver cannot replace its public targets with a static fallback.',
         );
-      const rawResult = await runFederatedQuery(
+      let rawResult = await runFederatedQuery(
         message.definition,
         (progress) => self.postMessage({ type: 'progress', progress }),
         message.token,
@@ -414,13 +434,15 @@ self.onmessage = (
             : {}),
           onSourceLoaded: (event) =>
             self.postMessage({ type: 'source', event }),
-          onNativeRecord: async (data) => {
+          onNativeRecord: async (data, effectiveSignal) => {
+            nativeStageSignal = effectiveSignal;
+            effectiveSignal?.throwIfAborted();
             const bytes = localResultBytes(data);
             if (nativePending.length && nativePendingBytes + bytes > nativeBatchBytes) {
               const page = nativePending;
               nativePending = [];
               nativePendingBytes = 0;
-              await storeNativeRows(page, runController.signal);
+              await storeNativeRows(page, effectiveSignal ?? runController.signal);
             }
             nativePending.push(data);
             nativePendingBytes += bytes;
@@ -428,20 +450,23 @@ self.onmessage = (
               const page = nativePending;
               nativePending = [];
               nativePendingBytes = 0;
-              await storeNativeRows(page, runController.signal);
+              await storeNativeRows(page, effectiveSignal ?? runController.signal);
             }
           },
         },
       );
       if (nativePending.length) {
-        await storeNativeRows(nativePending, runController.signal);
+        await storeNativeRows(nativePending, nativeStageSignal ?? runController.signal);
         nativePending = [];
         nativePendingBytes = 0;
       }
       if (rawResult.nativeStream) {
+        nativeStageSignal?.throwIfAborted();
         if (rawResult.totalRows !== rowsStored)
           throw new Error('The streamed result row count differs from staged output.');
         nativeColumns = rawResult.recordset.columns;
+        rawResult = { ...rawResult, recordset: { ...rawResult.recordset, rows: await readPage(0, 'affiliations', nativeStageSignal) } };
+        nativeStageSignal?.throwIfAborted();
       }
       const result = message.definition.federation?.nativeGraph
         ? await commitGraph(rawResult, stagedRows ?? [])

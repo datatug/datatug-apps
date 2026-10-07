@@ -23,6 +23,7 @@ import type {
 } from '../models/definition/query-def';
 import { readOvdbJsonRecordStream } from './ovdb-json-record-stream';
 import { ovdbResultColumns, ovdbStreamRow } from './ovdb-stream-values';
+import { localResultBytes } from './local-result-bytes';
 import { strictJson } from './public-data/strict-json';
 import {
   deleteQueryDatabase,
@@ -163,7 +164,7 @@ export interface FederatedQueryObserver {
   readonly fetch?: typeof fetch;
   readonly onSourceLoaded?: (event: FederatedSourceLoaded) => void;
   /** Raw JSON rows are staged before the server's final column union exists. */
-  readonly onNativeRecord?: (data: Readonly<Record<string, unknown>>) => Promise<void>;
+  readonly onNativeRecord?: (data: Readonly<Record<string, unknown>>, signal?: AbortSignal) => Promise<void>;
   readonly disableNativeStream?: boolean;
 }
 export interface FederatedRuntimeSession {
@@ -337,19 +338,25 @@ async function runNativeStream(
   if (response.redirected || !response.ok)
     throw new Error(`OVDB ${database} whole-query execution failed (${response.status}).`);
   const first: Readonly<Record<string, unknown>>[] = [];
+  let previewBytes = 0;
   let count = 0;
   const stream = await readOvdbJsonRecordStream(response, async (record) => {
     signal?.throwIfAborted();
     count++;
-    if (!observer?.onNativeRecord && count > 100)
-      throw new Error('The streamed query needs a paged result sink for more than 100 rows.');
-    if (first.length < 100) first.push(record.data);
-    await observer?.onNativeRecord?.(record.data);
+    if (!observer?.onNativeRecord) {
+      const bytes = localResultBytes(record.data);
+      if (count > 100 || previewBytes + bytes > 1024 * 1024)
+        throw new Error('The streamed query needs a paged result sink beyond the direct preview limit.');
+      first.push(record.data);
+      previewBytes += bytes;
+    }
+    await observer?.onNativeRecord?.(record.data, signal);
     signal?.throwIfAborted();
     if (count === 1 || count % 100 === 0)
       onProgress?.({ stage: 'streaming', rowsLoaded: count, rowsProcessed: count,
         requestsCompleted: 0, requestsInFlight: 1, requestsPending: 0 });
   }, signal);
+  signal?.throwIfAborted();
   rights.acceptWholeQuery(stream.footer as unknown as Record<string, unknown>);
   const columns = ovdbResultColumns(stream.footer.columns, definition);
   const rows = first.map((record) => ovdbStreamRow(record, columns));
