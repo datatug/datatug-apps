@@ -151,6 +151,20 @@ describe('federated query worker', () => {
     expect(calls).toEqual(['https://static.example.test/data/v1/databases/db', 'https://static.example.test/data/v1/databases/db/dtql']);
   });
 
+  it('splits large streamed rows across byte-bounded IndexedDB transactions', async () => {
+    const writes = vi.spyOn(IDBDatabase.prototype, 'transaction');
+    try {
+      const large = 'x'.repeat(600_000);
+      vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('/v1/databases/db')
+        ? new Response(JSON.stringify({ id: 'db', capabilities: { dtql: true, dtqlStreaming: true } }), { headers: { 'Content-Type': 'application/json' } })
+        : new Response(JSON.stringify({ records: [{ data: { name: large } }, { data: { name: large } }, { data: { name: large } }],
+          columns: ['name'], execution: {}, complete: true }), { headers: { 'Content-Type': 'application/json' } })));
+      await run({});
+      expect(posted.find((message) => message.type === 'error')).toBeUndefined();
+      expect(writes.mock.calls.filter(([store, mode]) => store === 'rows' && mode === 'readwrite')).toHaveLength(3);
+    } finally { writes.mockRestore(); }
+  });
+
   it('deletes provisional streamed rows when a late transport failure truncates the JSON footer', async () => {
     const before = new Set((await indexedDB.databases()).map((database) => database.name));
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('/v1/databases/db')

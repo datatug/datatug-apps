@@ -37,6 +37,8 @@ let committed: LocalResultDescriptor | undefined;
 let replacementController: AbortController | undefined;
 let nativeColumns: readonly OvdbResultColumn[] | undefined;
 let nativePending: Readonly<Record<string, unknown>>[] = [];
+let nativePendingBytes = 0;
+const nativeBatchBytes = 1024 * 1024;
 
 async function openOutput(): Promise<IDBDatabase> {
   if (outputDb) return outputDb;
@@ -73,18 +75,25 @@ async function storeRows(
   rowsStored += rows.length;
 }
 
-async function storeNativeRows(rows: readonly Readonly<Record<string, unknown>>[]): Promise<void> {
+async function storeNativeRows(rows: readonly Readonly<Record<string, unknown>>[], signal?: AbortSignal): Promise<void> {
   if (!rows.length) return;
+  signal?.throwIfAborted();
   if (closing) throw new Error('The query was cancelled.');
   const db = await openOutput();
+  signal?.throwIfAborted();
   if (closing) throw new Error('The query was cancelled.');
   await new Promise<void>((resolve, reject) => {
     const transaction = db.transaction('rows', 'readwrite');
+    const abort = (): void => {
+      try { transaction.abort(); } catch { /* The transaction may have completed before the abort event. */ }
+    };
+    signal?.addEventListener('abort', abort, { once: true });
     for (const [index, data] of rows.entries())
       transaction.objectStore('rows').put({ nativeData: data }, rowsStored + index + 1);
-    transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(queryStorageError(transaction.error));
-    transaction.onabort = () => reject(queryStorageError(transaction.error));
+    transaction.oncomplete = () => { signal?.removeEventListener('abort', abort); resolve(); };
+    transaction.onerror = () => { signal?.removeEventListener('abort', abort); reject(queryStorageError(transaction.error)); };
+    transaction.onabort = () => { signal?.removeEventListener('abort', abort); reject(signal?.reason ?? queryStorageError(transaction.error)); };
+    if (signal?.aborted) abort();
   });
   rowsStored += rows.length;
 }
@@ -350,6 +359,7 @@ self.onmessage = (
   resultReady = false;
   nativeColumns = undefined;
   nativePending = [];
+  nativePendingBytes = 0;
   controller = new AbortController();
   const runController = controller;
   activeRun = (async () => {
@@ -405,18 +415,28 @@ self.onmessage = (
           onSourceLoaded: (event) =>
             self.postMessage({ type: 'source', event }),
           onNativeRecord: async (data) => {
-            nativePending.push(data);
-            if (nativePending.length >= 100) {
+            const bytes = localResultBytes(data);
+            if (nativePending.length && nativePendingBytes + bytes > nativeBatchBytes) {
               const page = nativePending;
               nativePending = [];
-              await storeNativeRows(page);
+              nativePendingBytes = 0;
+              await storeNativeRows(page, runController.signal);
+            }
+            nativePending.push(data);
+            nativePendingBytes += bytes;
+            if (nativePending.length >= 100 || nativePendingBytes >= nativeBatchBytes) {
+              const page = nativePending;
+              nativePending = [];
+              nativePendingBytes = 0;
+              await storeNativeRows(page, runController.signal);
             }
           },
         },
       );
       if (nativePending.length) {
-        await storeNativeRows(nativePending);
+        await storeNativeRows(nativePending, runController.signal);
         nativePending = [];
+        nativePendingBytes = 0;
       }
       if (rawResult.nativeStream) {
         if (rawResult.totalRows !== rowsStored)
@@ -447,6 +467,7 @@ self.onmessage = (
       let messageText =
         error instanceof Error ? error.message : 'The query failed.';
       nativePending = [];
+      nativePendingBytes = 0;
       nativeColumns = undefined;
       try {
         await closeOutput();

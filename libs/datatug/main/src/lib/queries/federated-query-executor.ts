@@ -345,6 +345,7 @@ async function runNativeStream(
       throw new Error('The streamed query needs a paged result sink for more than 100 rows.');
     if (first.length < 100) first.push(record.data);
     await observer?.onNativeRecord?.(record.data);
+    signal?.throwIfAborted();
     if (count === 1 || count % 100 === 0)
       onProgress?.({ stage: 'streaming', rowsLoaded: count, rowsProcessed: count,
         requestsCompleted: 0, requestsInFlight: 1, requestsPending: 0 });
@@ -422,10 +423,15 @@ export async function runFederatedQuery(
       const base = ovdbBaseUrl(config.ovdbBaseUrl);
       const fetcher: typeof fetch = observer?.fetch ?? ((input, init) => fetch(input, init));
       const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+      const remaining = Math.min(60_000, (observer?.deadline ?? Date.now() + 60_000) - Date.now());
+      if (!Number.isFinite(remaining) || remaining <= 0)
+        throw new Error('The OVDB query deadline has expired.');
+      const timeout = AbortSignal.timeout(remaining);
+      const nativeSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
       if (await streamCapability(base, native.database, fetcher, headers,
-        admittedServerId(config, base), signal))
+        admittedServerId(config, base), nativeSignal))
         return runNativeStream(definition, native.database, native.sources, base, token,
-          onProgress, onOutputPage, signal, observer);
+          onProgress, onOutputPage, nativeSignal, observer);
     }
     return runFederatedQueryInternal(
       definition,

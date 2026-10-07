@@ -153,4 +153,14 @@ limit: 10`;
       { fetch: fetcher })).rejects.toThrow(/paged result sink/);
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
+
+  it('ends a stalled streamed body at the caller deadline', async () => {
+    const body = new ReadableStream<Uint8Array>();
+    const fetcher = vi.fn<typeof fetch>(async (input) => String(input).endsWith('/music')
+      ? json({ id: 'music', capabilities: { dtql: true, dtqlStreaming: true } })
+      : new Response(body, { headers: { 'Content-Type': 'application/json' } }));
+    await expect(runFederatedQuery(definition, undefined, '', undefined, undefined, 'full', undefined, undefined,
+      { fetch: fetcher, deadline: Date.now() + 50, onNativeRecord: async () => undefined })).rejects.toThrow(/timed out|timeout|abort/i);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
 });
