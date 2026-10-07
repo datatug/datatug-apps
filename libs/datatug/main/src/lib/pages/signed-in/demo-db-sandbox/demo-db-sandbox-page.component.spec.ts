@@ -159,7 +159,7 @@ describe('DemoDbSandboxPageComponent', () => {
     expect(page.pageState()).toBe('ready');
     fixture.detectChanges();
     expect(fixture.nativeElement.innerHTML).toContain(
-      'Maximum aggregate branch size',
+      'Maximum combined sample database size',
     );
     expect(fixture.nativeElement.innerHTML).toContain('107.4 KiB');
     expect(fixture.nativeElement.innerHTML).toContain(

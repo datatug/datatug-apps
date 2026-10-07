@@ -146,9 +146,9 @@ type SandboxPageState =
             </p>
             <p>
               Each database starts from the published sample. The maximum
-              aggregate branch size is the sample size plus 10%. A best-effort
-              gateway check applies this threshold; it is not a provider-level
-              hard quota.
+              combined sample database size is the sum of the six published
+              databases plus 10%. A best-effort gateway check applies this
+              threshold; it is not a provider-level hard quota.
             </p>
             @if (pageState() === 'checking') {
               <ion-spinner aria-label="Checking sandbox" />
@@ -223,7 +223,7 @@ type SandboxPageState =
               >
               <ion-item
                 ><ion-label
-                  >Maximum aggregate branch size
+                  >Maximum combined sample database size
                   <p>
                     {{ formatBytes(info.sampleGrowthLimitBytes) }}
                   </p></ion-label
