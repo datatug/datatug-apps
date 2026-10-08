@@ -45,6 +45,7 @@ import { ProjectService } from '../../../services/project/project.service';
 import { QueryEditorStateService } from '../../query-editor-state-service';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
 import { FederatedQueryService } from '../../federated-query.service';
+import { PublicSqliteQueryService } from '../../public-sqlite-query.service';
 import { graphFixturePlan } from '../../public-data/native-graph.spec-helper';
 import { graphStableIdentity } from '../../public-data/native-graph-executor';
 import { createOutputStores, replaceGraphOutput, openLocalResult, deleteLocalResult, type LocalResultDescriptor } from '../../federated-local-results';
@@ -238,6 +239,128 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       },
     ],
   } as unknown as IQueryEditorState;
+
+  it('offers explicit SQLite binding for a cloned GitHub project, not only the canonical demo ID', async () => {
+    component = await createComponent();
+    expect(component.canChoosePublicSqliteSource()).toBe(false);
+    component.project = {
+      ref: {
+        storeId: 'github.com',
+        projectId: 'demo@buyer@project',
+        projectApi: 'cloud',
+        branch: 'main',
+      },
+    };
+    component.queryDef.set({
+      ...queryDef,
+      request: { queryType: QueryType.SQL, text: 'SELECT 1' },
+    });
+    expect(component.canChoosePublicSqliteSource()).toBe(true);
+  });
+
+  it('pages a browser SQLite result locally without asking the federated pager', async () => {
+    component = await createComponent();
+    component.project = {
+      ref: {
+        storeId: 'github.com',
+        projectId: 'demo@buyer@project',
+        projectApi: 'cloud',
+        branch: 'main',
+      },
+    };
+    component.queryDef.set({
+      ...queryDef,
+      connectionId: 'chinook-sqlite',
+      request: { queryType: QueryType.SQL, text: 'SELECT 1' },
+    });
+    const rows = Array.from({ length: 150 }, (_, index) => [
+      { type: 'integer' as const, value: String(index) },
+    ]);
+    vi.spyOn(TestBed.inject(PublicSqliteQueryService), 'run').mockResolvedValue(
+      {
+        recordset: { columns: [{ name: 'n', type: 'integer' }], rows },
+        limitations: [],
+        bindingsApplied: [],
+        truncated: false,
+        provenance: {
+          source: 'fixture',
+          queryId: queryDef.id,
+          mode: 'snapshot',
+          observedAt: '2026-10-09T00:00:00Z',
+          executionProfile: 'protected',
+        },
+      },
+    );
+    component.runQuery();
+    await vi.waitFor(() => expect(component.resultTotalRows()).toBe(150));
+    expect(component.visibleResultRows()).toHaveLength(100);
+    await component.changeResultPage(1);
+    expect(component.visibleResultRows()).toHaveLength(50);
+    expect(component.visibleResultRows()[0][0].value).toBe('100');
+    expect(federatedGetPageMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['resolve', 'reject'])(
+    'clears a stale browser SQLite run on %s without rendering its outcome',
+    async (outcome) => {
+      component = await createComponent();
+      component.project = {
+        ref: {
+          storeId: 'github.com',
+          projectId: 'demo@buyer@project',
+          projectApi: 'cloud',
+          branch: 'main',
+        },
+      };
+      const definition = {
+        ...queryDef,
+        connectionId: 'chinook-sqlite',
+        request: { queryType: QueryType.SQL, text: 'SELECT 1' },
+      };
+      component.queryDef.set(definition);
+      let resolveRun!: (
+        result: Awaited<ReturnType<PublicSqliteQueryService['run']>>,
+      ) => void;
+      let rejectRun!: (error: Error) => void;
+      vi.spyOn(
+        TestBed.inject(PublicSqliteQueryService),
+        'run',
+      ).mockImplementation(
+        () =>
+          new Promise((resolve, reject) => {
+            resolveRun = resolve;
+            rejectRun = reject;
+          }),
+      );
+      component.runQuery();
+      expect(component.running()).toBe(true);
+      component.queryDef.set({
+        ...definition,
+        request: { queryType: QueryType.SQL, text: 'SELECT 2' },
+      });
+      if (outcome === 'resolve')
+        resolveRun({
+          recordset: {
+            columns: [{ name: 'n', type: 'integer' }],
+            rows: [[{ type: 'integer', value: '1' }]],
+          },
+          limitations: [],
+          bindingsApplied: [],
+          truncated: false,
+          provenance: {
+            source: 'fixture',
+            queryId: queryDef.id,
+            mode: 'snapshot',
+            observedAt: '2026-10-09T00:00:00Z',
+            executionProfile: 'protected',
+          },
+        });
+      else rejectRun(new Error('old failure'));
+      await vi.waitFor(() => expect(component.running()).toBe(false));
+      expect(component.runResult()).toBeUndefined();
+      expect(component.runError()).toBeUndefined();
+    },
+  );
 
   async function createComponent(
     historyState: Record<string, unknown> = {},
@@ -963,7 +1086,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
         );
         const template = html
           .split('<ion-content color="light">')[1]
-          .split('  <ion-card>')[0];
+          .split('  <ion-card>\n    <ion-item>\n      <ion-input')[0];
         native.http.mockClear();
         component = await createComponent({}, definition, template);
         Object.assign(component.savedPlanReview, {

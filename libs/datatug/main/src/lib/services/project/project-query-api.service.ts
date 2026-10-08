@@ -37,7 +37,7 @@ export interface ProjectBranches {
 
 export const DATATUG_DEMO_PROJECT_TEMPLATE = {
   id: 'demo-project-1',
-  commit: 'd32475de887f65fc18276fae2c8c7a6af5b3fcf6',
+  commit: '436350d41371103be11144ffa346c605f85e1342',
 } as const;
 
 export interface CreateGithubProject {
@@ -130,6 +130,13 @@ export class ProjectQueryApiService {
 
   summary(ref: IProjectRef): Observable<IProjectSummary> {
     return this.get(ref, 'projects/project_summary', {
+      branch: ref.branch ?? '',
+    });
+  }
+
+  /** Authenticated, fixed-file catalogue read for private GitHub projects. */
+  connectionCatalog<T>(ref: IProjectRef): Observable<T> {
+    return this.get(ref, 'projects/connection_catalog', {
       branch: ref.branch ?? '',
     });
   }

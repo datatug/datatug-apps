@@ -13,6 +13,7 @@ export interface ProjectQueryWire {
   readonly type: QueryType.SQL | QueryType.DTQL;
   readonly text: string;
   readonly draft?: boolean;
+  readonly connectionId?: string;
   readonly federation?: IQueryDef['federation'];
 }
 
@@ -60,7 +61,14 @@ export function toProjectQueryWire(
   query: IQueryDef,
   location = query.id,
 ): ProjectQueryWire {
-  assertFields(query, ['id', 'title', 'request', 'draft', 'federation']);
+  assertFields(query, [
+    'id',
+    'title',
+    'request',
+    'draft',
+    'connectionId',
+    'federation',
+  ]);
   assertFields(query['request'], ['queryType', 'text']);
   if (![QueryType.SQL, QueryType.DTQL].includes(query['request'].queryType))
     throw new UnsupportedQueryContractError();
@@ -100,6 +108,9 @@ export function toProjectQueryWire(
     type: query['request'].queryType as ProjectQueryWire['type'],
     text,
     ...(query.draft !== undefined ? { draft: query.draft } : {}),
+    ...(query.connectionId !== undefined
+      ? { connectionId: query.connectionId }
+      : {}),
     ...(query.federation ? { federation: query.federation } : {}),
   });
 }

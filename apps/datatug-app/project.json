@@ -36,12 +36,17 @@
         "index": "apps/datatug-app/src/index.html",
         "browser": "apps/datatug-app/src/main.ts",
         "polyfills": [],
-        "allowedCommonJsDependencies": ["qrcode"],
+        "allowedCommonJsDependencies": ["qrcode", "sql.js"],
         "tsConfig": "apps/datatug-app/tsconfig.app.json",
         "inlineStyleLanguage": "scss",
         "assets": [
           "apps/datatug-app/src/favicon.ico",
           "apps/datatug-app/src/assets",
+          {
+            "glob": "sql-wasm.wasm",
+            "input": "node_modules/sql.js/dist",
+            "output": "./assets"
+          },
           {
             "glob": "**/*.svg",
             "input": "node_modules/ionicons/dist/ionicons/svg",

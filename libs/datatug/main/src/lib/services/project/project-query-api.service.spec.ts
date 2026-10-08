@@ -69,6 +69,24 @@ describe('ProjectQueryApiService', () => {
     expect(http.get).not.toHaveBeenCalled();
     expect(http.post).not.toHaveBeenCalled();
   });
+  it('reads the fixed source catalogue for a private cloned project on its selected branch', async () => {
+    const ref = {
+      storeId: 'github.com',
+      projectId: 'demo@buyer@project',
+      projectApi: 'cloud' as const,
+      branch: 'work',
+    };
+    await firstValueFrom(
+      TestBed.inject(ProjectQueryApiService).connectionCatalog(ref),
+    );
+    expect(api.get.mock.calls[0][0]).toBe(
+      'datatug/projects/connection_catalog',
+    );
+    const params = api.get.mock.calls[0][1] as HttpParams;
+    expect(params.get('project')).toBe('demo@buyer@project');
+    expect(params.get('branch')).toBe('work');
+    expect(http.get).not.toHaveBeenCalled();
+  });
   it.each([
     ['Repo@Owner@datatug@working', 'repo@owner@datatug', 'datatug'],
     ['Repo@Owner@datatug@HEAD', 'repo@owner@datatug', 'datatug'],

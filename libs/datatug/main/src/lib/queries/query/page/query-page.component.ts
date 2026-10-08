@@ -161,6 +161,7 @@ import type {
 } from '../../federated-local-results';
 import { graphStableIdentity } from '../../public-data/native-graph-executor';
 import { QueryContextSqlService } from '../../query-context-sql.service';
+import { PublicSqliteQueryService } from '../../public-sqlite-query.service';
 import {
   isQueryChanged,
   QueryEditorStateService,
@@ -415,6 +416,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private readonly queryContextSqlService = inject(QueryContextSqlService);
   private readonly queriesService = inject(QueriesService);
   private readonly federatedQuery = inject(FederatedQueryService);
+  private readonly publicSqliteQuery = inject(PublicSqliteQueryService);
   private readonly semanticApi = inject(SemanticApiService);
   private readonly agentContext = inject(AgentContextService);
   private readonly investigationContext = inject(InvestigationContextService);
@@ -510,20 +512,29 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     hasBlockingBindings(this.bindings()),
   );
   public readonly running = signal(false);
-  public readonly federatedProgress = signal<FederatedQueryProgress | undefined>(undefined);
+  public readonly federatedProgress = signal<
+    FederatedQueryProgress | undefined
+  >(undefined);
   public readonly resultPageIndex = signal(0);
   public readonly resultPageSize = 100;
   public readonly federatedMode = signal<'full' | 'visible'>('full');
   public readonly visibleModeSupport = computed(() => {
     const definition = this.queryDef();
-    return definition ? federatedVisibleMode(definition) : { supported: false, defaultMode: 'full' as const };
+    return definition
+      ? federatedVisibleMode(definition)
+      : { supported: false, defaultMode: 'full' as const };
   });
   public readonly ovdbDestination = computed(() => {
-    try { return new URL(this.queryDef()?.federation?.ovdbBaseUrl ?? '').origin; }
-    catch { return 'the configured OVDB endpoint'; }
+    try {
+      return new URL(this.queryDef()?.federation?.ovdbBaseUrl ?? '').origin;
+    } catch {
+      return 'the configured OVDB endpoint';
+    }
   });
   public readonly resultPageLoading = signal(false);
-  private readonly resultPageRows = signal<RunQueryResponse['recordset']['rows']>([]);
+  private readonly resultPageRows = signal<
+    RunQueryResponse['recordset']['rows']
+  >([]);
   /** In-memory OVDB credential for the current query only. */
   public readonly ovdbToken = signal('');
   public readonly accessBlockers = signal<readonly string[]>([]);
@@ -531,7 +542,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly runResult = signal<FederatedQueryResult | undefined>(
     undefined,
   );
-  public readonly queryRunTiming = signal<QueryRunTiming | undefined>(undefined);
+  public readonly queryRunTiming = signal<QueryRunTiming | undefined>(
+    undefined,
+  );
   public readonly localResults = signal<readonly LocalResultDescriptor[]>([]);
   public readonly localHistoryLoading = signal(false);
   public readonly localHistoryError = signal<string | undefined>(undefined);
@@ -595,7 +608,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   );
   public readonly visibleResultRows = computed(() => {
     const result = this.runResult();
-    if (result?.totalRows !== undefined || result?.hasMore) return this.resultPageRows();
+    if (result?.totalRows !== undefined || result?.hasMore)
+      return this.resultPageRows();
     const rows = result?.recordset.rows ?? [];
     const start = this.resultPageIndex() * this.resultPageSize;
     return rows.slice(start, start + this.resultPageSize);
@@ -667,6 +681,24 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly canChangeHostedDemoDbSource = computed(() =>
     isHostedDemoDbStarterQuery(this.queryDef()),
   );
+
+  public canChoosePublicSqliteSource(): boolean {
+    return (
+      isGithubStoreId(this.project?.ref.storeId) &&
+      this.queryDef()?.request.queryType === QueryType.SQL &&
+      this.queryState.saveSupported !== false
+    );
+  }
+
+  public publicSqliteSourceChanged(event: Event): void {
+    if (!this.canChoosePublicSqliteSource()) return;
+    const connectionId = (event as CustomEvent<{ value: string }>).detail.value;
+    if (connectionId !== '' && connectionId !== 'chinook-sqlite') return;
+    this.queryEditorStateService.updateQueryState({
+      ...this.queryState,
+      connectionId,
+    });
+  }
 
   public hostedDemoDbSourceChanged(event: Event): void {
     const sourceId = (event as CustomEvent<{ value: string }>).detail.value;
@@ -843,6 +875,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
               : {}),
             ...(queryState.request ? { request: queryState.request } : {}),
             federation: queryState.federation ?? queryState.def.federation,
+            connectionId:
+              queryState.connectionId !== undefined
+                ? queryState.connectionId || undefined
+                : queryState.def.connectionId,
           }
         : undefined;
       const nextPlanIdentity = graphStableIdentity(
@@ -857,8 +893,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           ) !== nextPlanIdentity);
       if (
         scopeChanged ||
-        (this.project?.ref.projectApi === 'cloud' && previousDefinition && !effectiveDefinition)
-      ) this.invalidateHistoryScope();
+        (this.project?.ref.projectApi === 'cloud' &&
+          previousDefinition &&
+          !effectiveDefinition)
+      )
+        this.invalidateHistoryScope();
       else if (planChanged) {
         this.invalidateFederatedRun();
         this.invalidateHistoryRequests();
@@ -1171,9 +1210,14 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   private onProjRefChanged = (ref: IProjectRef) => {
     const prevProject = this.project;
-    if (ref.projectId !== prevProject?.ref.projectId || ref.storeId !== prevProject?.ref.storeId) this.invalidateHistoryScope();
+    if (
+      ref.projectId !== prevProject?.ref.projectId ||
+      ref.storeId !== prevProject?.ref.storeId
+    )
+      this.invalidateHistoryScope();
     this.project = newProjectContextFromRef(ref);
-    if (this.queryDef()?.federation?.nativeGraph) void this.refreshLocalHistory();
+    if (this.queryDef()?.federation?.nativeGraph)
+      void this.refreshLocalHistory();
     if (
       this.queryId &&
       (ref.projectId !== prevProject?.ref?.projectId ||
@@ -1828,7 +1872,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
    * authorization. */
   public runQuery(): void {
     const runRequestedAt = monotonicTime();
-    const projectId = this.project?.ref.projectId;
+    const projectRef = this.project?.ref;
+    const projectId = projectRef?.projectId;
     const queryId = this.queryId;
     if (!projectId || !queryId) {
       return;
@@ -1855,6 +1900,47 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.resultPageIndex.set(0);
     this.resultPageRows.set([]);
     this.queryRunTiming.set(undefined);
+    if (
+      isGithubStoreId(this.project?.ref.storeId) &&
+      definition?.connectionId
+    ) {
+      if (this.running()) return;
+      const runScope = this.historyScope();
+      const executedDefinition = structuredClone(definition);
+      const lifetime = ++this.federatedRunLifetime;
+      const current = (): boolean =>
+        lifetime === this.federatedRunLifetime &&
+        this.historyScope() === runScope &&
+        JSON.stringify(this.queryDef()) === JSON.stringify(executedDefinition);
+      this.running.set(true);
+      this.runError.set(undefined);
+      this.runResult.set(undefined);
+      void this.publicSqliteQuery
+        .run(projectRef, executedDefinition)
+        .then((result) => {
+          if (!current()) return;
+          this.runResult.set(result);
+          this.queryRunTiming.set({
+            allResultsLoadedMs: Math.max(0, monotonicTime() - runRequestedAt),
+            noRecords: result.recordset.rows.length === 0,
+          });
+        })
+        .catch((error: unknown) => {
+          if (current())
+            this.runError.set(
+              error instanceof Error
+                ? error.message
+                : 'The public SQLite query failed.',
+            );
+        })
+        .finally(() => {
+          if (lifetime === this.federatedRunLifetime) {
+            if (!current()) this.queryRunTiming.set(undefined);
+            this.running.set(false);
+          }
+        });
+      return;
+    }
     if (definition?.federation) {
       if (this.running()) return;
       const runStartedAt = runRequestedAt;
@@ -1898,15 +1984,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         )
         .then((result) => {
           if (current()) {
-            const runtimePages = Object.values(
-              result.runtimeRead?.pages ?? {},
-            );
+            const runtimePages = Object.values(result.runtimeRead?.pages ?? {});
             const allResultsComplete =
               result.hasMore !== true &&
               result.truncated !== true &&
-              !runtimePages.some(
-                (page) => !page.complete || page.possiblyMore,
-              );
+              !runtimePages.some((page) => !page.complete || page.possiblyMore);
             if (runMode === 'full' && allResultsComplete) {
               const resultRows =
                 result.totalRows ?? result.recordset.rows.length;
@@ -1914,15 +1996,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
                 ...(resultRows === 0 || firstRecordAt === undefined
                   ? {}
                   : {
-                      firstRecordMs: Math.max(
-                        0,
-                        firstRecordAt - runStartedAt,
-                      ),
+                      firstRecordMs: Math.max(0, firstRecordAt - runStartedAt),
                     }),
-                allResultsLoadedMs: Math.max(
-                  0,
-                  monotonicTime() - runStartedAt,
-                ),
+                allResultsLoadedMs: Math.max(0, monotonicTime() - runStartedAt),
                 noRecords: resultRows === 0,
               });
             }
@@ -2170,14 +2246,17 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   private invalidateHistoryRequests(): void {
-    ++this.historySelection; ++this.historyCatalogRequest;
-    this.localHistoryLoading.set(false); this.resultPageLoading.set(false);
+    ++this.historySelection;
+    ++this.historyCatalogRequest;
+    this.localHistoryLoading.set(false);
+    this.resultPageLoading.set(false);
     this.localHistoryError.set(undefined);
   }
 
   private invalidateFederatedRun(): void {
     ++this.federatedRunLifetime;
-    this.running.set(false); this.federatedProgress.set(undefined);
+    this.running.set(false);
+    this.federatedProgress.set(undefined);
     this.queryRunTiming.set(undefined);
   }
 
@@ -2194,11 +2273,17 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   private invalidateHistoryScope(): void {
-    this.invalidateFederatedRun(); this.stopFederatedRun();
+    this.invalidateFederatedRun();
+    this.stopFederatedRun();
     this.invalidateHistoryRequests();
-    this.selectedHistoricalResult.set(undefined); this.historicalDefinition.set(undefined);
-    this.executedGraphDefinition = undefined; this.runResult.set(undefined); this.resultPageRows.set([]);
-    this.localResults.set([]); this.resultPageIndex.set(0); this.relatedResultSet.set('affiliations');
+    this.selectedHistoricalResult.set(undefined);
+    this.historicalDefinition.set(undefined);
+    this.executedGraphDefinition = undefined;
+    this.runResult.set(undefined);
+    this.resultPageRows.set([]);
+    this.localResults.set([]);
+    this.resultPageIndex.set(0);
+    this.relatedResultSet.set('affiliations');
   }
 
   /** Selecting history is a local read. It never invokes metadata, a Worker or a provider. */
