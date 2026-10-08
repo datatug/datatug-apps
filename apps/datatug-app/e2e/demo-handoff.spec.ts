@@ -1261,7 +1261,20 @@ test.describe('the question reaches no analytics or error report', () => {
     baseURL,
   }) => {
     const external = await onProductionLikeHost(context, baseURL ?? '');
-    await page.goto(`${HOST}/no-such-route-xyz?q=${MARKER}`);
+    // Keep this observer control independent of the production app. The app
+    // correctly scrubs unknown routes during startup, which can remove the
+    // marker before the deliberately injected SDK observes location.href.
+    await page.route(
+      (url) =>
+        url.origin === HOST && url.pathname === '/__observer-control.html',
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'text/html',
+          body: '<!doctype html><title>observer control</title>',
+        }),
+    );
+    await page.goto(`${HOST}/__observer-control.html?q=${MARKER}`);
     // Deliberately invoke the fixture SDK only in this observer control. The app
     // must never load it; a Sentry request alone must not make this control pass.
     await page.addScriptTag({
