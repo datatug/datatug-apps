@@ -188,8 +188,8 @@ describe('New project through authenticated common API', () => {
     expect(h.createCloud).not.toHaveBeenCalled();
   });
   it.each([
-    ['', 'repo@owner', 'datatug'],
-    ['datatug', 'repo@owner', 'datatug'],
+    ['', 'repo@owner@datatug', 'datatug'],
+    ['datatug', 'repo@owner@datatug', 'datatug'],
     ['Folder/Nested/', 'repo@owner@Folder/Nested', 'Folder/Nested'],
   ])(
     'loads branches for folder %s through the canonical project id',

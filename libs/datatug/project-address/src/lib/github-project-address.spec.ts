@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   asciiLowerCase,
   formatGithubProjectId,
+  formatGithubProjectApiKey,
+  GithubProjectIdError,
   isTrustedProjectAddress,
   isValidGithubFolder,
   isValidGithubRef,
@@ -152,10 +154,16 @@ describe('isTrustedProjectAddress (design 3.6): the one trust function', () => {
     isTrustedProjectAddress({ storeId, projectId });
 
   it.each([
-    ['the canonical folder, no ref', 'datatug-demo-project@datatug@demo-project-1'],
+    [
+      'the canonical folder, no ref',
+      'datatug-demo-project@datatug@demo-project-1',
+    ],
     ['an explicit HEAD', 'datatug-demo-project@datatug@demo-project-1@HEAD'],
-    ['mixed case owner and repo', 'Datatug-Demo-Project@Datatug@demo-project-1'],
-    ])('trusts %s', (_name, projectId) => {
+    [
+      'mixed case owner and repo',
+      'Datatug-Demo-Project@Datatug@demo-project-1',
+    ],
+  ])('trusts %s', (_name, projectId) => {
     expect(trusted(projectId)).toBe(true);
   });
 
@@ -300,7 +308,7 @@ describe('isTrustedProjectAddress (design 3.6): the one trust function', () => {
   });
 });
 
-describe('readNewProjectFolder: the new-project form\'s folder field (issue #180)', () => {
+describe("readNewProjectFolder: the new-project form's folder field (issue #180)", () => {
   it.each([
     // [typed, folder]
     ['', 'datatug'],
@@ -345,7 +353,10 @@ describe('readNewProjectFolder: the new-project form\'s folder field (issue #180
   });
 
   it('treats anything that is not text as blank', () => {
-    expect(readNewProjectFolder(undefined)).toEqual({ ok: true, folder: 'datatug' });
+    expect(readNewProjectFolder(undefined)).toEqual({
+      ok: true,
+      folder: 'datatug',
+    });
     expect(readNewProjectFolder(42)).toEqual({ ok: true, folder: 'datatug' });
   });
 
@@ -357,5 +368,54 @@ describe('readNewProjectFolder: the new-project form\'s folder field (issue #180
         expect(readGithubProjectId('r@o@' + reading.folder).ok).toBe(true);
       }
     }
+  });
+});
+
+describe('formatGithubProjectApiKey (cloud wire contract)', () => {
+  it.each([
+    ['Repo@Owner', 'repo@owner@datatug'],
+    ['Repo@Owner@datatug@working', 'repo@owner@datatug'],
+    ['Repo@Owner@datatug@HEAD', 'repo@owner@datatug'],
+    ['Repo@Owner@@working', 'repo@owner@'],
+    ['Repo@Owner@Folder/Nested@working', 'repo@owner@Folder/Nested'],
+  ])('formats %s as explicit three-part scope %s', (id, expected) => {
+    const project = splitGithubProjectId(id);
+    const wire = formatGithubProjectApiKey(project);
+    expect(wire).toBe(expected);
+    // API wire always has three parts. An empty folder preserves the prior wire; the cloud backend rejects it.
+    expect(wire.split('@')).toHaveLength(3);
+    expect(readGithubProjectId(wire)).toEqual({
+      ok: true,
+      id: { repo: 'repo', org: 'owner', folder: project.folder },
+    });
+  });
+  it('validates project scope through the shared strict reader', () => {
+    expect(() =>
+      formatGithubProjectApiKey({
+        repo: 'repo',
+        org: 'bad_owner',
+        folder: 'datatug',
+      }),
+    ).toThrow(GithubProjectIdError);
+    expect(() =>
+      formatGithubProjectApiKey({
+        repo: 'repo',
+        org: 'owner',
+        folder: '../other',
+      }),
+    ).toThrow(GithubProjectIdError);
+  });
+  it('excludes operation refs without changing the canonical UI id formatter', () => {
+    const project = {
+      repo: 'Repo',
+      org: 'Owner',
+      folder: 'datatug',
+      ref: 'working',
+    };
+    expect(formatGithubProjectApiKey(project)).toBe('repo@owner@datatug');
+    expect(formatGithubProjectId(project)).toBe('repo@owner@datatug@working');
+    expect(formatGithubProjectId({ ...project, ref: 'HEAD' })).toBe(
+      'repo@owner',
+    );
   });
 });

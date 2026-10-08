@@ -31,7 +31,7 @@ import {
 import { SpaceService, SpaceServiceModule } from '@sneat/space-services';
 import { SneatUserService } from '@sneat/auth-core';
 import {
-  formatGithubProjectId,
+  formatGithubProjectApiKey,
   readNewProjectFolder,
 } from '@datatug/project-address';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
@@ -267,7 +267,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     this.queryApi
       .branches({
         storeId: 'github.com',
-        projectId: formatGithubProjectId({
+        projectId: formatGithubProjectApiKey({
           repo: repo.name,
           org: repo.owner,
           folder: folder.folder,

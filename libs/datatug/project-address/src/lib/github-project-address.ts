@@ -75,6 +75,28 @@ export function formatGithubProjectId(project: IGithubProjectId): string {
   return `${repo}@${org}@${project.folder}`;
 }
 
+/**
+ * Cloud API wire key: always three parts, including the default folder, with
+ * branch/ref carried separately by the operation. UI ids keep their shortest spelling.
+ * An empty folder retains the old wire value; cloud API root projects remain unsupported.
+ */
+export function formatGithubProjectApiKey(project: IGithubProjectId): string {
+  const reading = readGithubProjectId(
+    formatGithubProjectId({
+      repo: project.repo,
+      org: project.org,
+      folder: project.folder,
+    }),
+  );
+  if (!reading.ok)
+    throw new GithubProjectIdError(
+      reading.reason,
+      'Invalid GitHub project API key',
+    );
+  const { repo, org, folder } = reading.id;
+  return `${repo}@${org}@${folder}`;
+}
+
 /** What GitHub allows as an owner (a user or an organisation): ASCII letters, digits, hyphens. */
 export const GITHUB_OWNER_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 
@@ -227,7 +249,9 @@ const TRUSTED_GITHUB_PROJECTS: readonly {
   readonly owner: string;
   readonly repo: string;
   readonly folder: string;
-}[] = [{ owner: 'datatug', repo: 'datatug-demo-project', folder: 'demo-project-1' }];
+}[] = [
+  { owner: 'datatug', repo: 'datatug-demo-project', folder: 'demo-project-1' },
+];
 
 function isTrustedGithubProject(address: {
   readonly owner: string;

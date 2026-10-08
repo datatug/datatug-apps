@@ -4,7 +4,7 @@ import { inject, Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { SneatApiService } from '@sneat/api';
 import {
-  formatGithubProjectId,
+  formatGithubProjectApiKey,
   readGithubProjectId,
 } from '@datatug/project-address';
 import { type Observable, throwError, Subject, tap } from 'rxjs';
@@ -85,7 +85,7 @@ export class ProjectQueryApiService {
       if (!address.ok) throw new Error('Invalid GitHub project reference');
       return {
         storage: 'github.com',
-        project: formatGithubProjectId({
+        project: formatGithubProjectApiKey({
           repo: address.id.repo,
           org: address.id.org,
           folder: address.id.folder,

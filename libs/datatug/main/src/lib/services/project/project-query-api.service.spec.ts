@@ -48,7 +48,7 @@ describe('ProjectQueryApiService', () => {
     const params = api.get.mock.calls[0][1] as HttpParams;
     expect(api.get.mock.calls[0][0]).toBe('datatug/queries/query_revision');
     expect(params.get('storage')).toBe('github.com');
-    expect(params.get('project')).toBe('repo@owner');
+    expect(params.get('project')).toBe('repo@owner@datatug');
     expect(params.get('branch')).toBe('working');
     await firstValueFrom(
       service.save(ref, {
@@ -62,7 +62,7 @@ describe('ProjectQueryApiService', () => {
     expect(api.post.mock.calls[0][0]).toBe('datatug/queries/save_query');
     expect(api.post.mock.calls[0][1]).toMatchObject({
       storage: 'github.com',
-      project: 'repo@owner',
+      project: 'repo@owner@datatug',
       operationId: 'stable-retry-id',
       ifNoneMatch: true,
     });
@@ -70,8 +70,8 @@ describe('ProjectQueryApiService', () => {
     expect(http.post).not.toHaveBeenCalled();
   });
   it.each([
-    ['Repo@Owner@datatug@working', 'repo@owner', 'datatug'],
-    ['Repo@Owner@datatug@HEAD', 'repo@owner', 'datatug'],
+    ['Repo@Owner@datatug@working', 'repo@owner@datatug', 'datatug'],
+    ['Repo@Owner@datatug@HEAD', 'repo@owner@datatug', 'datatug'],
     ['Repo@Owner@@working', 'repo@owner@', ''],
     [
       'Repo@Owner@Folder/Nested@working',
