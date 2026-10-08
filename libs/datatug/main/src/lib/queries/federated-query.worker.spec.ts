@@ -92,6 +92,10 @@ describe('federated query worker', () => {
     const result = posted.find((message) => message.type === 'result')?.[
       'result'
     ] as { recordset: { rows: { value: unknown }[][] } };
+    const firstRecordIndex = posted.findIndex((message) => message.type === 'first-record');
+    expect(firstRecordIndex).toBeGreaterThanOrEqual(0);
+    expect(posted[firstRecordIndex]?.['at']).toEqual(expect.any(Number));
+    expect(firstRecordIndex).toBeLessThan(posted.findIndex((message) => message.type === 'result'));
     expect(result.recordset.rows.map((row) => row[0].value)).toEqual([
       'A',
       'B',

@@ -17,6 +17,7 @@ import {
 import { associateLocalResult, buildLocalResultDescriptor, createOutputStores, replaceGraphOutput, registerLocalResult, readLocalResultPage, type LocalResultDescriptor } from './federated-local-results';
 import { localResultBytes } from './local-result-bytes';
 import { ovdbStreamRow, type OvdbResultColumn } from './ovdb-stream-values';
+import { monotonicTime } from './public-data/bounded-run-budget';
 
 let outputDb: IDBDatabase | undefined;
 let outputName: string | undefined;
@@ -444,6 +445,8 @@ self.onmessage = (
             : {}),
           onSourceLoaded: (event) =>
             self.postMessage({ type: 'source', event }),
+          onFirstRecord: () =>
+            self.postMessage({ type: 'first-record', at: monotonicTime() }),
           onNativeRecord: async (data, effectiveSignal) => {
             nativeStageSignal = effectiveSignal;
             effectiveSignal?.throwIfAborted();

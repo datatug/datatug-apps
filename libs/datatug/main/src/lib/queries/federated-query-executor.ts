@@ -164,6 +164,8 @@ export interface FederatedQueryObserver {
   readonly onRuntimeSession?: (session: FederatedRuntimeSession) => void;
   readonly fetch?: typeof fetch;
   readonly onSourceLoaded?: (event: FederatedSourceLoaded) => void;
+  /** Called once when the executor decodes its first query output record. */
+  readonly onFirstRecord?: () => void;
   /** Raw JSON rows are staged before the server's final column union exists. */
   readonly onNativeRecord?: (data: Readonly<Record<string, unknown>>, signal?: AbortSignal) => Promise<void>;
   readonly disableNativeStream?: boolean;
@@ -415,6 +417,7 @@ async function runNativeStream(
   let count = 0;
   const stream = await readOvdbJsonRecordStream(response, async (record) => {
     signal?.throwIfAborted();
+    observer?.onFirstRecord?.();
     count++;
     if (!observer?.onNativeRecord) {
       const bytes = localResultBytes(record.data);
@@ -490,20 +493,29 @@ export async function runFederatedQuery(
   waitForNextPage?: () => Promise<void>,
   observer?: FederatedQueryObserver,
 ): Promise<FederatedQueryResult> {
+  let firstRecordReported = false;
+  const runObserver: FederatedQueryObserver = {
+    ...observer,
+    onFirstRecord: () => {
+      if (firstRecordReported) return;
+      firstRecordReported = true;
+      observer?.onFirstRecord?.();
+    },
+  };
   if (definition.federation?.nativeGraph)
     throw new Error(NATIVE_GRAPH_PUBLICATION_BLOCKER);
   if (definition.publicData)
     throw new Error(SAVED_SCENARIO_PUBLICATION_BLOCKER);
   const bounds = definition.federation?.bounds;
   if (!bounds) {
-    const native = observer?.disableNativeStream ? undefined : nativeDatabase(definition);
+    const native = runObserver.disableNativeStream ? undefined : nativeDatabase(definition);
     if (native) {
       const config = definition.federation;
       if (!config) throw new Error('This query has no direct OVDB configuration.');
       const base = ovdbBaseUrl(config.ovdbBaseUrl);
-      const fetcher: typeof fetch = observer?.fetch ?? ((input, init) => fetch(input, init));
+      const fetcher: typeof fetch = runObserver.fetch ?? ((input, init) => fetch(input, init));
       const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-      const remaining = Math.min(60_000, (observer?.deadline ?? Date.now() + 60_000) - Date.now());
+      const remaining = Math.min(60_000, (runObserver.deadline ?? Date.now() + 60_000) - Date.now());
       if (!Number.isFinite(remaining) || remaining <= 0)
         throw new Error('The OVDB query deadline has expired.');
       const timeout = AbortSignal.timeout(remaining);
@@ -512,10 +524,10 @@ export async function runFederatedQuery(
         admittedServerId(config, base), nativeSignal);
       if (capability.streaming)
         return runNativeStream(definition, native.database, native.sources, base, token,
-          onProgress, onOutputPage, nativeSignal, observer, capability.mappedErrors);
+          onProgress, onOutputPage, nativeSignal, runObserver, capability.mappedErrors);
       if (capability.ordinary)
         return runNativeOrdinary(definition, native.database, native.sources, base, token,
-          onProgress, onOutputPage, nativeSignal, observer);
+          onProgress, onOutputPage, nativeSignal, runObserver);
     }
     return runFederatedQueryInternal(
       definition,
@@ -526,7 +538,7 @@ export async function runFederatedQuery(
       mode,
       onPageReady,
       waitForNextPage,
-      observer,
+      runObserver,
     );
   }
   if (mode !== 'full')
@@ -565,12 +577,12 @@ export async function runFederatedQuery(
     let preflightBytes = 0;
     const rights = await preflightSourceRights(base,
       bounds.sources.filter((source) => !bounds.driver || source.database !== bounds.driver.database || source.name !== bounds.driver.name),
-      observer?.fetch ?? fetch, token ? { Authorization: `Bearer ${token}` } : {}, runSignal,
+      runObserver.fetch ?? fetch, token ? { Authorization: `Bearer ${token}` } : {}, runSignal,
       (count) => { preflightBytes += count; if (budget) budget.consumeNetwork(count); else if (preflightBytes > bounds.bytes) throw new Error('Source terms preflight exceeds run byte budget.'); }, definition.federation?.expectedSourceRights, expectedServerId);
     const transport = createBoundedFederationFetch(
       base,
       budget ? bounds : { ...bounds, bytes: bounds.bytes - preflightBytes },
-      observer?.fetch ?? fetch,
+      runObserver.fetch ?? fetch,
       runSignal,
       budget,
       rights,
@@ -602,7 +614,7 @@ export async function runFederatedQuery(
         'full',
         undefined,
         undefined,
-        { ...observer, fetch: transport.fetch },
+        { ...runObserver, fetch: transport.fetch },
         rights,
         true,
       );
@@ -612,8 +624,10 @@ export async function runFederatedQuery(
         throw new Error('The lookup exceeds the result-row bound.');
       if (!outputRows) budget?.consumeOutput(result.recordset);
       // Nested joins use DALgo's batch result rather than the flat join callback.
-      if (!outputRows && result.recordset.rows.length && onOutputPage)
-        await onOutputPage(result.recordset.rows);
+      if (!outputRows && result.recordset.rows.length) {
+        runObserver.onFirstRecord?.();
+        if (onOutputPage) await onOutputPage(result.recordset.rows);
+      }
       const runtime: ImmutableReadReceipt | undefined =
         transport.receipt.runtime;
       return {
@@ -651,13 +665,13 @@ export async function runFederatedQuery(
     if (
       budget &&
       readPage &&
-      observer?.onRuntimeSession &&
+      runObserver.onRuntimeSession &&
       [...(transport.receipt.runtime?.pages.values() ?? [])].some(
         (page) => !page.complete,
       )
     ) {
       const sessionBudget = budget;
-      observer.onRuntimeSession({
+      runObserver.onRuntimeSession({
         readPage: async (sourceId, page) => {
           sessionBudget.check();
           await readPage(sourceId, page);
@@ -892,6 +906,7 @@ async function runFederatedQueryInternal(
       const converted = rows.map((row) =>
         names.map((name) => typed(row.data[name])),
       );
+      if (converted.length) observer?.onFirstRecord?.();
       for (const row of converted)
         if (firstOutputRows.length < 100) firstOutputRows.push(row);
       totalOutputRows += converted.length;
@@ -1288,6 +1303,7 @@ async function runFederatedQueryInternal(
       ? Object.keys(records[0].data)
       : (definition.recordsets?.[0]?.columns.map((column) => column.name) ??
         []);
+    if (records.length) observer?.onFirstRecord?.();
     return {
       ...rights.evidence(),
       recordset: {

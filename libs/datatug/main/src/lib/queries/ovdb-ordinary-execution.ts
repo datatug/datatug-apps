@@ -30,8 +30,15 @@ export async function consumeOvdbOrdinaryQuery(
   const columns = ovdbResultColumns(result.columns, definition);
   const preview: Readonly<Record<string, unknown>>[] = [];
   let previewBytes = 0;
+  let firstRecord = true;
   for (const record of result.records) {
     signal?.throwIfAborted();
+    if (firstRecord) {
+      // The ordinary JSON envelope is fully received and validated before rows
+      // are exposed, unlike the streaming endpoint's per-record callbacks.
+      observer?.onFirstRecord?.();
+      firstRecord = false;
+    }
     if (!observer?.onNativeRecord) {
       const bytes = localResultBytes(record.data);
       if (preview.length >= 100 || previewBytes + bytes > 1024 * 1024)

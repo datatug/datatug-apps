@@ -104,35 +104,41 @@ limit: 10`;
       if (String(input).endsWith('/music')) return json({ id: 'music', capabilities: { dtql: true, dtqlStreaming: true } });
       return new Response(stream, { headers: { 'Content-Type': 'application/json' } });
     });
-    const first = vi.fn();
+    const events: string[] = [];
+    const firstRecord = vi.fn(() => events.push('first-record'));
+    const first = vi.fn(() => events.push('stage-record'));
     let settled = false;
     const run = runFederatedQuery(definition, undefined, 'in-memory-token', undefined, undefined, 'full', undefined, undefined,
-      { fetch: fetcher, onNativeRecord: first });
+      { fetch: fetcher, onFirstRecord: firstRecord, onNativeRecord: first });
     void run.finally(() => { settled = true; });
     await vi.waitFor(() => expect(calls).toHaveLength(2));
     expect(calls[1].url).toBe('https://ovdb.example.test/v1/databases/music/dtql');
     expect(calls[1].init?.body).toBe((definition.request as unknown as { text: string }).text);
     expect(new Headers(calls[1].init?.headers).get('Authorization')).toBe('Bearer in-memory-token');
-    body.enqueue(new TextEncoder().encode('{"records":[{"data":{"ArtistId":"42","Artist":"Alpha","TrackCount":"213"}}'));
-    await vi.waitFor(() => expect(first).toHaveBeenCalledOnce());
+    body.enqueue(new TextEncoder().encode('{"records":[{"data":{"ArtistId":"42","Artist":"Alpha","TrackCount":"213"}},{"data":{"ArtistId":"43","Artist":"Beta","TrackCount":"1"}}'));
+    await vi.waitFor(() => expect(first).toHaveBeenCalledTimes(2));
+    expect(firstRecord).toHaveBeenCalledOnce();
+    expect(events[0]).toBe('first-record');
     expect(settled).toBe(false);
     body.enqueue(new TextEncoder().encode('],"columns":["ArtistId","Artist","TrackCount"],"execution":{"route":"database"},"complete":true}'));
     body.close();
     const result = await run;
     expect(result.nativeStream).toBe(true);
-    expect(result.totalRows).toBe(1);
-    expect(first).toHaveBeenCalledWith({ ArtistId: '42', Artist: 'Alpha', TrackCount: '213' }, expect.any(AbortSignal));
+    expect(result.totalRows).toBe(2);
+    expect(first).toHaveBeenNthCalledWith(1, { ArtistId: '42', Artist: 'Alpha', TrackCount: '213' }, expect.any(AbortSignal));
     expect(result.recordset.rows).toEqual([]);
     expect(result.recordset.columns.map((column) => column.name)).toEqual(['ArtistId', 'Artist', 'TrackCount']);
     expect(calls).toHaveLength(2);
   });
 
   it('rejects a late truncated stream and never fetches leaf tables as a fallback', async () => {
+    const firstRecord = vi.fn();
     const fetcher = vi.fn<typeof fetch>(async (input) => String(input).endsWith('/music')
       ? json({ id: 'music', capabilities: { dtql: true, dtqlStreaming: true } })
       : new Response('{"records":[{"data":{"ArtistId":"42"}}', { headers: { 'Content-Type': 'application/json' } }));
     await expect(runFederatedQuery(definition, undefined, '', undefined, undefined, 'full', undefined, undefined,
-      { fetch: fetcher, onNativeRecord: async () => undefined })).rejects.toThrow(/terminal footer/);
+      { fetch: fetcher, onFirstRecord: firstRecord, onNativeRecord: async () => undefined })).rejects.toThrow(/terminal footer/);
+    expect(firstRecord).toHaveBeenCalledOnce();
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 

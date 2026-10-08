@@ -724,6 +724,21 @@
       </ion-text>
 
       <sneat-datatug-source-rights-notice [evidence]="result" />
+
+      @if (!selectedHistoricalResult() && queryRunTiming(); as timing) {
+        <p data-testid="query-run-timings">
+          Time to first record:
+          @if (timing.noRecords) {
+            No records
+          } @else if (timing.firstRecordMs !== undefined) {
+            {{ formatQueryDuration(timing.firstRecordMs) }}
+          } @else {
+            Unavailable
+          }
+          · All results loaded in
+          {{ formatQueryDuration(timing.allResultsLoadedMs) }}
+        </p>
+      }
     </div>
 
     @if (result.bindingsApplied.length) {
