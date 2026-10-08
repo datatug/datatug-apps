@@ -8,7 +8,11 @@ import {
 let initialized = false;
 
 export function registerPosthog(settings: IPosthogSettings): void {
-  if (checkoutPrivacyActive() || isCheckoutAddress(location.pathname)) return;
+  if (
+    checkoutPrivacyActive() ||
+    isCheckoutAddress(location.pathname + location.hash)
+  )
+    return;
   const beforeSend = settings.config?.before_send;
   posthog.init(settings.token, {
     ...settings.config,

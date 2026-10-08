@@ -55,3 +55,14 @@ it('drops manual and autocapture events and stops recordings for this document a
   disableCheckoutAnalytics('/', target);
   expect(config.before_send(event)).toBeNull();
 });
+
+it('skips PostHog on a refreshed login with an internal checkout return fragment', () => {
+  const previous = location.pathname + location.search + location.hash;
+  try {
+    history.replaceState(null, '', '/login#/pricing/return?mode=test&session_id=cs_test_paid');
+    registerPosthog({ token: 'public-fixture', config: {} });
+    expect(sdk.init).not.toHaveBeenCalled();
+  } finally {
+    history.replaceState(null, '', previous);
+  }
+});

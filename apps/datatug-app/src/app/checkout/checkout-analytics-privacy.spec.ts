@@ -18,6 +18,8 @@ it.each([
   '//pricing//return/',
   '/pricing;foo=1/return',
   '/%73ubscribe',
+  '/login#/pricing/return?mode=test&session_id=cs_test_paid',
+  '/login#/subscribe?plan=pro&period=monthly&checkout=test',
 ])('recognizes %s without needing the session query', (url) => {
   expect(isCheckoutAddress(url)).toBe(true);
 });
@@ -47,10 +49,15 @@ it('sets initial-page disable before the GA snippet executes', () => {
     '/subscribe/',
     '/pricing/return/',
     '/%73ubscribe',
+    '/login#/pricing/return?mode=test&session_id=cs_test_paid',
+    '/login#/subscribe?plan=pro&period=monthly&checkout=test',
     '/pricing;foo=1/return',
   ]) {
     const target = {};
-    new Function('window', 'location', snippet)(target, { pathname });
+    new Function('window', 'location', snippet)(target, {
+      pathname: pathname.split('#')[0],
+      hash: pathname.includes('#') ? '#' + pathname.split('#')[1] : '',
+    });
     expect(target).toEqual({
       [CHECKOUT_PRIVACY_FLAG]: true,
       ...Object.fromEntries(

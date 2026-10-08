@@ -13,7 +13,7 @@ export function provideCheckoutAnalyticsPrivacy() {
   return provideAppInitializer(() => {
     const router = inject(Router);
     const target = window as unknown as Record<string, unknown>;
-    disableCheckoutAnalytics(location.pathname, target);
+    disableCheckoutAnalytics(location.pathname + location.hash, target);
     router.events.subscribe((event) => {
       if (!(event instanceof NavigationStart)) return;
       disableCheckoutAnalytics(event.url, target);

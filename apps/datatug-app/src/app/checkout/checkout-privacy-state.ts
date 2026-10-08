@@ -7,13 +7,20 @@ export const CHECKOUT_GA_IDS = [
 
 export function isCheckoutAddress(url: string): boolean {
   try {
-    const path = url
-      .split(/[?#]/)[0]
-      .split('/')
-      .filter(Boolean)
-      .map((part) => decodeURIComponent(part).split(';')[0].toLowerCase())
-      .join('/');
-    return path === 'subscribe' || path === 'pricing/return';
+    const normalize = (address: string) =>
+      address
+        .split(/[?#]/)[0]
+        .split('/')
+        .filter(Boolean)
+        .map((part) => decodeURIComponent(part).split(';')[0].toLowerCase())
+        .join('/');
+    const path = normalize(url);
+    const fragment = url.split('#')[1];
+    const continuation =
+      path === 'login' && fragment?.startsWith('/') ? normalize(fragment) : '';
+    return [path, continuation].some(
+      (value) => value === 'subscribe' || value === 'pricing/return',
+    );
   } catch {
     return false;
   }

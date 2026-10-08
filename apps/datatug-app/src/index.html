@@ -132,10 +132,12 @@
     <script>
       (function () {
         try {
-          var path = location.pathname.split('/').filter(Boolean).map(function (part) {
+          function normalize(address) { return address.split(/[?#]/)[0].split('/').filter(Boolean).map(function (part) {
             return decodeURIComponent(part).split(';')[0].toLowerCase();
-          }).join('/');
-          if (path === 'subscribe' || path === 'pricing/return') {
+          }).join('/'); }
+          var path = normalize(location.pathname);
+          var continuation = path === 'login' && (location.hash || '').slice(0, 2) === '#/' ? normalize(location.hash.slice(1)) : '';
+          if ([path, continuation].some(function (value) { return value === 'subscribe' || value === 'pricing/return'; })) {
             window.__datatugCheckoutPrivacy = true;
             ['G-SNF2R7PDY7', 'G-TYBDTV738R', 'G-PROVIDE_IF_NEEDED'].forEach(function (id) { window['ga-disable-' + id] = true; });
           }
