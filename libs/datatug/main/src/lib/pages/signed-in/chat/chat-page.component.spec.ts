@@ -2,6 +2,8 @@ import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { CUSTOM_ELEMENTS_SCHEMA, provideZonelessChangeDetection, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap } from '@angular/router';
+import { SneatAuthStateService } from '@sneat/auth-core';
+import { BehaviorSubject, of, Subject, throwError } from 'rxjs';
 import { ChatInterpretService } from '../../../chat/chat-interpret.service';
 import { ChatJoinService } from '../../../chat/chat-join.service';
 import { ChatProviderService } from '../../../chat/chat-provider.service';
@@ -10,6 +12,7 @@ import { ChatTurn } from '../../../chat/chat.types';
 import { emptyChatWorkspace } from '../../../chat/chat-workspace';
 import { ChinookChatDataService } from '../../../chat/chinook-chat-data.service';
 import { ChatPageComponent } from './chat-page.component';
+import { ProjectAIEligibilityService } from '../../../services/project/project-ai-eligibility.service';
 
 const engineError = 'join_aggregate at orderBy[0]: c.Country is neither aggregated nor present in GROUP BY';
 const session = { id: 's1', title: 'Chat', updatedAt: '2026-10-02T00:00:00Z', workspace: emptyChatWorkspace() };
@@ -28,26 +31,46 @@ describe('ChatPageComponent failed turns', () => {
     bindRecordSet: vi.fn(async (_scope: string, _session: string, dtql: string) => ({ dtql, parentRecordSetId: undefined })),
     failQuestion: vi.fn(async (_scope: string, _session: string, id: string, message: string): Promise<ChatTurn> =>
       ({ id, question: 'Sales by country?', state: 'error', error: message })),
+    completeWorkspaceAction: vi.fn(async (_scope: string, _session: string, id: string) => ({
+      workspace: emptyChatWorkspace(), turn: { id, question: 'Sales by country?', state: 'result' as const },
+    })),
   };
   const data = { ensureSeed: vi.fn(async () => undefined), query: vi.fn() };
   const joiner = { candidates: vi.fn((): unknown[] => []) };
-  const interpreter = { interpret: vi.fn(async () => ({ dtql: '{}', metrics: { requestBytes: 0, responseBytes: 0, interpretMs: 0 } })) };
+  const interpreter = { interpret: vi.fn<ChatInterpretService['interpret']>(async () => ({ dtql: '{}', metrics: { requestBytes: 0, responseBytes: 0, interpretMs: 0 } })) };
+  const eligibility = { read: vi.fn(() => of({ aiAllowed: true })) };
+  let routeParams: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
+  let routeQuery: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
+  let authState: BehaviorSubject<{ status: string; user?: { uid: string } }>;
 
   const text = (): string => (fixture.nativeElement as HTMLElement).textContent ?? '';
   const details = (): HTMLDetailsElement | null => (fixture.nativeElement as HTMLElement).querySelector('details.error-detail');
 
-  async function render(turns: ChatTurn[]): Promise<void> {
+  async function render(
+    turns: ChatTurn[],
+    params: Record<string, string> = { storeId: 'store', projectId: 'datatug-demo-project' },
+    query: Record<string, string> = {},
+  ): Promise<void> {
     restored = turns;
-    const paramMap = convertToParamMap({ storeId: 'store', projectId: 'datatug-demo-project' });
+    routeParams = new BehaviorSubject(convertToParamMap(params));
+    routeQuery = new BehaviorSubject(convertToParamMap(query));
+    authState = new BehaviorSubject<{ status: string; user?: { uid: string } }>({ status: 'authenticated', user: { uid: 'actor-1' } });
+    const route = {
+      get snapshot() { return { paramMap: routeParams.value, queryParamMap: routeQuery.value }; },
+      paramMap: routeParams.asObservable(),
+      queryParamMap: routeQuery.asObservable(),
+    };
     TestBed.configureTestingModule({
       imports: [ChatPageComponent],
       providers: [
         provideZonelessChangeDetection(),
-        { provide: ActivatedRoute, useValue: { snapshot: { paramMap }, paramMap: { subscribe: () => undefined } } },
+        { provide: ActivatedRoute, useValue: route },
         { provide: ChatSessionService, useValue: store },
         { provide: ChinookChatDataService, useValue: data },
         { provide: ChatInterpretService, useValue: interpreter },
         { provide: ChatJoinService, useValue: joiner },
+        { provide: ProjectAIEligibilityService, useValue: eligibility },
+        { provide: SneatAuthStateService, useValue: { authState: authState.asObservable() } },
         {
           provide: ChatProviderService,
           useValue: { providers: signal([{ id: 'p1', name: 'Test', protocol: 'openai-chat', baseUrl: 'https://ai.example.test', model: 'm', apiKey: 'k' }]), selectedId: signal('p1') },
@@ -63,6 +86,8 @@ describe('ChatPageComponent failed turns', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     joiner.candidates.mockImplementation(() => []);
+    eligibility.read.mockImplementation(() => of({ aiAllowed: true }));
+    interpreter.interpret.mockImplementation(async () => ({ dtql: '{}', metrics: { requestBytes: 0, responseBytes: 0, interpretMs: 0 } }));
   });
 
   it('shows a saved engine failure in plain language, with the engine text behind an expandable detail', async () => {
@@ -93,6 +118,95 @@ describe('ChatPageComponent failed turns', () => {
     expect(store.failQuestion).toHaveBeenCalledWith(expect.any(String), 's1', 'new', engineError, undefined);
     expect(text()).toMatch(/needs totals or counts/);
     expect(details()?.querySelector('pre')?.textContent).toBe(engineError);
+  });
+
+  it('does not call the provider when a shared project sponsor has expired and resolves the pending turn', async () => {
+    eligibility.read.mockReturnValueOnce(of({ aiAllowed: false }));
+    await render([], { storeId: 'github.com', projectId: 'datatug-demo-project' }, { projectApi: 'cloud', branch: 'main' });
+    const component = fixture.componentInstance;
+    component.question.set('Sales by country?');
+    await component.submit();
+    expect(eligibility.read).toHaveBeenCalledWith({ storeId: 'github.com', projectId: 'datatug-demo-project', projectApi: 'cloud', branch: 'main' });
+    expect(interpreter.interpret).not.toHaveBeenCalled();
+    expect(store.failQuestion).toHaveBeenCalledWith(expect.any(String), 's1', 'new', 'AI access for this shared project has expired.', undefined);
+    expect(component.submitting()).toBe(false);
+  });
+
+  it('fails closed on an unavailable eligibility read without exposing its server error', async () => {
+    eligibility.read.mockReturnValueOnce(throwError(() => new Error('private backend detail')));
+    await render([], { storeId: 'firestore', projectId: 'project_1', spaceId: 'space_1' });
+    const component = fixture.componentInstance;
+    component.question.set('Sales by country?');
+    await component.submit();
+    expect(interpreter.interpret).not.toHaveBeenCalled();
+    expect(store.failQuestion).toHaveBeenCalledWith(expect.any(String), 's1', 'new', 'Project AI access could not be verified.', undefined);
+    expect(text()).not.toContain('private backend detail');
+  });
+
+  it('fails closed when the eligibility response has no boolean decision', async () => {
+    eligibility.read.mockReturnValueOnce(of({} as { aiAllowed: boolean }));
+    await render([], { storeId: 'firestore', projectId: 'project_1', spaceId: 'space_1' });
+    const component = fixture.componentInstance;
+    component.question.set('Sales by country?');
+    await component.submit();
+    expect(interpreter.interpret).not.toHaveBeenCalled();
+    expect(store.failQuestion).toHaveBeenCalledWith(expect.any(String), 's1', 'new', 'Project AI access could not be verified.', undefined);
+  });
+
+  it('allows read-only project AI while the sponsor remains paid even when query saving is disabled', async () => {
+    eligibility.read.mockReturnValueOnce(of({ aiAllowed: true }));
+    interpreter.interpret.mockResolvedValueOnce({
+      workspaceAction: { kind: 'attach', reference: { kind: 'project', projectId: 'datatug-demo-project', objectId: 'datatug-demo-project', title: 'Project' } },
+      metrics: { requestBytes: 0, responseBytes: 0, interpretMs: 0 },
+    });
+    await render([], { storeId: 'github.com', projectId: 'datatug-demo-project' }, { projectApi: 'cloud', branch: 'main' });
+    const component = fixture.componentInstance;
+    component.question.set('Show me this project');
+    await component.submit();
+    expect(interpreter.interpret).toHaveBeenCalledTimes(1);
+    expect(store.completeWorkspaceAction).toHaveBeenCalled();
+  });
+
+  it.each([
+    ['local', 'local-project'],
+    ['github.com', 'public-repo'],
+  ])('keeps ordinary %s BYOK interpretation outside shared sponsorship', async (storeId, projectId) => {
+    await render([], { storeId, projectId });
+    const component = fixture.componentInstance;
+    component.question.set('Sales by country?');
+    await component.submit();
+    expect(eligibility.read).not.toHaveBeenCalled();
+    expect(interpreter.interpret).toHaveBeenCalledTimes(1);
+  });
+
+  it('discards a deferred eligibility response after the full project ref changes', async () => {
+    const deferred = new Subject<{ aiAllowed: boolean }>();
+    eligibility.read.mockReturnValueOnce(deferred);
+    await render([], { storeId: 'github.com', projectId: 'datatug-demo-project' }, { projectApi: 'cloud', branch: 'main' });
+    const component = fixture.componentInstance;
+    component.question.set('Sales by country?');
+    const pending = component.submit();
+    await Promise.resolve();
+    routeQuery.next(convertToParamMap({ projectApi: 'cloud', branch: 'other' }));
+    deferred.next({ aiAllowed: true });
+    deferred.complete();
+    await pending;
+    expect(interpreter.interpret).not.toHaveBeenCalled();
+  });
+
+  it('discards a deferred eligibility response after the authenticated actor changes', async () => {
+    const deferred = new Subject<{ aiAllowed: boolean }>();
+    eligibility.read.mockReturnValueOnce(deferred);
+    await render([], { storeId: 'github.com', projectId: 'datatug-demo-project' }, { projectApi: 'cloud', branch: 'main' });
+    const component = fixture.componentInstance;
+    component.question.set('Sales by country?');
+    const pending = component.submit();
+    await Promise.resolve();
+    authState.next({ status: 'authenticated', user: { uid: 'actor-2' } });
+    deferred.next({ aiAllowed: true });
+    deferred.complete();
+    await pending;
+    expect(interpreter.interpret).not.toHaveBeenCalled();
   });
 
   describe('when the related tables cannot be built for a saved result', () => {
