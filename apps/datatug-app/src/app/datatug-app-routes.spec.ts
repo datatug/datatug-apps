@@ -9,6 +9,7 @@ import {
   resolveProductProfile,
 } from '@datatug/product-profiles';
 import {
+  checkoutOrRoot,
   canonicalDemoShortMatcher,
   datatugProfileOnly,
   handoffOrRoot,
@@ -37,6 +38,16 @@ describe('DataTug app routes', () => {
     expect(paths).not.toContain('pwa/repo/:repo/agent/:agentId');
   });
 
+  it('uses the established DataTug-only guard on both checkout routes', () => {
+    for (const path of ['subscribe', 'pricing/return']) expect(routes.find((r) => r.path === path)?.canMatch).toEqual([checkoutOrRoot]);
+  });
+
+  it('redirects Incidentius checkout links explicitly to its root instead of falling through', () => {
+    TestBed.configureTestingModule({ providers: [provideRouter([]), { provide: PRODUCT_PROFILE, useValue: PRODUCT_PROFILES.incidentius }] });
+    const result = TestBed.runInInjectionContext(() => checkoutOrRoot({ path: 'subscribe' }, []));
+    expect(TestBed.inject(Router).serializeUrl(result as import('@angular/router').UrlTree)).toBe('/');
+  });
+
   // G-0: a hand-off from the sites must never fail to match (Sentry's crash-report dialog, the question lost).
   it('has the hand-off route: a matcher (case-insensitive, matrix parameters ignored), lazy, no flag, DataTug profile or the root', () => {
     const matching = routes.filter((r) => r.matcher);
@@ -54,8 +65,10 @@ describe('DataTug app routes', () => {
     expect(route.children).toBeUndefined();
   });
 
-  it('leaves the rest of the route table as it was: the hand-off route is only added', () => {
+  it('adds canonical checkout before the unchanged project and hand-off routes', () => {
     expect(routes.map((r) => r.path)).toEqual([
+      'subscribe',
+      'pricing/return',
       undefined, // exact historical Chinook demo alias
       undefined, // exact shared-project short folder alias
       undefined, // the hand-off route, which has a matcher instead of a path

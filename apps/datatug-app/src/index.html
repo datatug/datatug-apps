@@ -2,6 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <meta name="referrer" content="no-referrer" />
     <title>DataTug.app</title>
 
     <base href="/" />
@@ -127,6 +128,22 @@
       })();
     </script>
 
+    <!-- Checkout privacy: before any Google Analytics script or page view. -->
+    <script>
+      (function () {
+        try {
+          function normalize(address) { return address.split(/[?#]/)[0].split('/').filter(Boolean).map(function (part) {
+            return decodeURIComponent(part).split(';')[0].toLowerCase();
+          }).join('/'); }
+          var path = normalize(location.pathname);
+          var continuation = path === 'login' && (location.hash || '').slice(0, 2) === '#/' ? normalize(location.hash.slice(1)) : '';
+          if ([path, continuation].some(function (value) { return value === 'subscribe' || value === 'pricing/return'; })) {
+            window.__datatugCheckoutPrivacy = true;
+            ['G-SNF2R7PDY7', 'G-TYBDTV738R', 'G-PROVIDE_IF_NEEDED'].forEach(function (id) { window['ga-disable-' + id] = true; });
+          }
+        } catch (_) { /* Invalid routes are not checkout. */ }
+      })();
+    </script>
     <!-- Google Analytics (skipped on localhost) -->
     <script>
       if (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
@@ -137,7 +154,7 @@
         window.dataLayer = window.dataLayer || [];
         function gtag(){dataLayer.push(arguments);}
         gtag('js', new Date());
-        gtag('config', 'G-SNF2R7PDY7');
+        gtag('config', 'G-SNF2R7PDY7', {page_location: location.origin + location.pathname});
       }
     </script>
   </head>

@@ -49,6 +49,9 @@ jobs:
       - name: test:check-zoneless-fields (detector's own unit tests)
         run: pnpm run test:check-zoneless-fields
 
+      - name: test:checkout-flow (quote, payment and return contract)
+        run: pnpm run test:checkout-flow
+
       - name: test:wrangler-routes (preserve production app hostnames)
         run: pnpm run test:wrangler-routes
 

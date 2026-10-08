@@ -174,7 +174,15 @@ export const handoffOrRoot: CanMatchFn = (_route, segments) => {
   return decision.kind === 'page';
 };
 
+export const checkoutOrRoot: CanMatchFn = () => datatugProfileOnly() ? true : inject(Router).parseUrl('/');
+
 export const routes: Routes = [
+  ...['subscribe', 'pricing/return'].map((path) => ({
+    path,
+    canMatch: [checkoutOrRoot],
+    data: { checkoutReturn: path === 'pricing/return' },
+    loadComponent: () => import('./checkout/checkout-page.component').then((m) => m.CheckoutPageComponent),
+  })),
   {
     matcher: legacyChinookDemoMatcher,
     canMatch: [redirectLegacyChinookDemo],
