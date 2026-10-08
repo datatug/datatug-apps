@@ -104,9 +104,74 @@ async function harness(freshUser = false) {
 }
 
 describe('New project through authenticated common API', () => {
+  it('guides an empty GitHub repository list through App installation and refresh', async () => {
+    const h = await harness();
+    h.component.store = 'github';
+    h.connection.repositories.mockReturnValue(of({ repositories: [] }));
+    h.component.loadGithubRepos();
+    h.fixture.detectChanges();
+    await h.fixture.whenStable();
+    h.fixture.detectChanges();
+    expect(h.component.isGithubSignedIn()).toBe(true);
+    expect(h.component['githubRepos']()).toHaveLength(0);
+
+    const install = h.fixture.nativeElement.querySelector(
+      'a[href="https://github.com/apps/datatug/installations/new"]',
+    ) as HTMLAnchorElement | null;
+    expect(install?.textContent).toContain('Install DataTug App');
+    expect(install?.target).toBe('_blank');
+    expect(install?.rel).toContain('noopener');
+    expect(h.fixture.nativeElement.innerHTML).toContain(
+      'No repositories with write access are available yet',
+    );
+    expect(h.fixture.nativeElement.textContent).toContain(
+      'Refresh repositories',
+    );
+
+    const pendingRefresh = new Subject<{
+      repositories: (typeof repo)[];
+    }>();
+    h.connection.repositories.mockReturnValue(pendingRefresh as never);
+    h.component.loadGithubRepos();
+    h.fixture.detectChanges();
+    expect(h.component.isGithubSignedIn()).toBe(true);
+    expect(h.component['isLoadingRepos']()).toBe(true);
+    expect(h.fixture.nativeElement.innerHTML).not.toContain(
+      'No repositories with write access are available yet',
+    );
+
+    pendingRefresh.error({ status: 503 });
+    await h.fixture.whenStable();
+    h.fixture.detectChanges();
+    expect(h.component['githubReposError']()).toContain(
+      'Could not load GitHub repositories',
+    );
+    expect(h.fixture.nativeElement.innerHTML).not.toContain(
+      'No repositories with write access are available yet',
+    );
+
+    h.connection.repositories.mockReturnValue(of({ repositories: [] }));
+    h.component.loadGithubRepos();
+    h.fixture.detectChanges();
+    await h.fixture.whenStable();
+    h.fixture.detectChanges();
+    expect(h.fixture.nativeElement.innerHTML).toContain(
+      'No repositories with write access are available yet',
+    );
+
+    h.connection.repositories.mockReturnValue(of({ repositories: [repo] }));
+    h.component.loadGithubRepos();
+    h.fixture.detectChanges();
+    await h.fixture.whenStable();
+    h.fixture.detectChanges();
+    expect(h.fixture.nativeElement.innerHTML).not.toContain(
+      'No repositories with write access are available yet',
+    );
+    expect(h.fixture.nativeElement.textContent).toContain('owner/repo');
+  });
   it('explains a failed GitHub repository refresh and clears only that error after a successful retry', async () => {
     const h = await harness();
-    const repositories = new Subject<{ repositories: typeof repo[] }>();
+    const repositories = new Subject<{ repositories: (typeof repo)[] }>();
     h.connection.repositories.mockReturnValue(repositories as never);
     h.component.store = 'github';
     h.fixture.detectChanges();
