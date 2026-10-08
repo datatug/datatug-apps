@@ -30,7 +30,10 @@ import {
 } from '@ionic/angular';
 import { SpaceService, SpaceServiceModule } from '@sneat/space-services';
 import { SneatUserService } from '@sneat/auth-core';
-import { readNewProjectFolder } from '@datatug/project-address';
+import {
+  formatGithubProjectId,
+  readNewProjectFolder,
+} from '@datatug/project-address';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { IProjectContext, parseDatatugStoreRef } from '../../nav/nav-models';
 import { DatatugNavService } from '../../services/nav/datatug-nav.service';
@@ -264,7 +267,11 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     this.queryApi
       .branches({
         storeId: 'github.com',
-        projectId: `${repo.name}@${repo.owner}@${folder.folder}`,
+        projectId: formatGithubProjectId({
+          repo: repo.name,
+          org: repo.owner,
+          folder: folder.folder,
+        }),
       })
       .subscribe({
         next: (result) => {

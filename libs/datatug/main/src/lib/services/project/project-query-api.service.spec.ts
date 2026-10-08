@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { SneatApiService } from '@sneat/api';
+import { readGithubProjectId } from '@datatug/project-address';
 import { of, firstValueFrom, throwError } from 'rxjs';
 import { ProjectQueryApiService } from './project-query-api.service';
 import { toProjectQueryWire } from '../../queries/project-query-contract';
@@ -47,7 +48,7 @@ describe('ProjectQueryApiService', () => {
     const params = api.get.mock.calls[0][1] as HttpParams;
     expect(api.get.mock.calls[0][0]).toBe('datatug/queries/query_revision');
     expect(params.get('storage')).toBe('github.com');
-    expect(params.get('project')).toBe('repo@owner@datatug');
+    expect(params.get('project')).toBe('repo@owner');
     expect(params.get('branch')).toBe('working');
     await firstValueFrom(
       service.save(ref, {
@@ -61,13 +62,42 @@ describe('ProjectQueryApiService', () => {
     expect(api.post.mock.calls[0][0]).toBe('datatug/queries/save_query');
     expect(api.post.mock.calls[0][1]).toMatchObject({
       storage: 'github.com',
-      project: 'repo@owner@datatug',
+      project: 'repo@owner',
       operationId: 'stable-retry-id',
       ifNoneMatch: true,
     });
     expect(http.get).not.toHaveBeenCalled();
     expect(http.post).not.toHaveBeenCalled();
   });
+  it.each([
+    ['Repo@Owner@datatug@working', 'repo@owner', 'datatug'],
+    ['Repo@Owner@datatug@HEAD', 'repo@owner', 'datatug'],
+    ['Repo@Owner@@working', 'repo@owner@', ''],
+    [
+      'Repo@Owner@Folder/Nested@working',
+      'repo@owner@Folder/Nested',
+      'Folder/Nested',
+    ],
+  ])(
+    'projects %s into a canonical API scope with branch separate',
+    async (projectId, canonical, folder) => {
+      const service = TestBed.inject(ProjectQueryApiService);
+      await firstValueFrom(
+        service.read(
+          { storeId: 'github.com', projectId },
+          'q',
+          'selected-branch',
+        ),
+      );
+      const params = api.get.mock.calls[0][1] as HttpParams;
+      expect(params.get('project')).toBe(canonical);
+      expect(params.get('branch')).toBe('selected-branch');
+      expect(readGithubProjectId(params.get('project'))).toEqual({
+        ok: true,
+        id: { repo: 'repo', org: 'owner', folder },
+      });
+    },
+  );
   it('uses the exact local CLI prefix and local storage envelope', async () => {
     const service = TestBed.inject(ProjectQueryApiService);
     const ref = { storeId: 'http-localhost:8989', projectId: 'local-project' };
