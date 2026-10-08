@@ -590,7 +590,16 @@ export class QueriesTabComponent {
       void this.injector.get(QueriesUiService).openNewQuery(project.ref);
   }
 
+  public supportsFolderMutations(): boolean {
+    const ref = this.project()?.ref;
+    return !(
+      ref?.projectApi === 'cloud' &&
+      (ref.storeId === 'github.com' || ref.storeId === 'github')
+    );
+  }
+
   newFolder(): void {
+    if (!this.supportsFolderMutations()) return;
     const name = prompt('Name of a new folder?');
     if (!name) {
       return;
@@ -628,6 +637,7 @@ export class QueriesTabComponent {
   }
 
   public deleteFolder(): void {
+    if (!this.supportsFolderMutations()) return;
     const m =
       this.currentFolder.path === '~'
         ? 'Are you sure you want to delete all queries and sub-folder?'
