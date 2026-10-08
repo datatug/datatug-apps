@@ -15,21 +15,29 @@ const mount = vi.fn().mockResolvedValue({ destroy: vi.fn() });
 vi.mock('./checkout-provider.mjs', () => ({
   stripeCheckoutAdapter: async () => ({ mount }),
 }));
-const quote = (mode: 'test' | 'live' = 'test') => ({
-  sessionId: `cs_${mode}_fixture`,
-  clientSecret: `cs_${mode}_fixture_secret_memory`,
-  mode,
-  accountId: 'buyer',
-  accountKind: 'personal',
-  amount: { currency: 'eur', list: 1900, due: 1330, taxIncluded: true },
-  appliedDiscount: { kind: 'launch', percentOff: 30, duration: 'forever' },
-  offer: {
-    applied: true,
-    reserved: false,
-    duration: 'forever',
-    percentOff: 30,
-  },
-});
+const quote = (
+  mode: 'test' | 'live' = 'test',
+  plan = 'datatug-pro-monthly',
+) => {
+  const annual = plan === 'datatug-pro-annual';
+  const list = annual ? 19000 : 1900;
+  const due = annual ? 13300 : 1330;
+  return {
+    sessionId: `cs_${mode}_fixture`,
+    clientSecret: `cs_${mode}_fixture_secret_memory`,
+    mode,
+    accountId: 'buyer',
+    accountKind: 'personal',
+    amount: { currency: 'eur', list, due, taxIncluded: true },
+    appliedDiscount: { kind: 'launch', percentOff: 30, duration: 'forever' },
+    offer: {
+      applied: true,
+      reserved: false,
+      duration: 'forever',
+      percentOff: 30,
+    },
+  };
+};
 const authenticated = {
   status: 'authenticated',
   user: { uid: 'buyer', email: 'buyer@example.invalid', isAnonymous: false },
@@ -105,7 +113,7 @@ beforeEach(() => {
             taxIncluded: true,
           })),
         }
-      : quote(mode);
+      : quote(mode, JSON.parse(String(options?.body ?? '{}')).plan);
     return { ok: true, headers: new Headers(), json: async () => data };
   });
   vi.stubGlobal('fetch', fetcher);
@@ -173,11 +181,12 @@ it('default LIVE checkout uses authenticated normal API config and session for t
   expect(requests[1].options.headers.Authorization).toBe(
     'Bearer token-only-header',
   );
-  expect(root.textContent).toContain('€13.30');
+  expect(root.textContent).toContain('€133.00');
+  expect(root.textContent).toContain('€190.00');
   expect(root.textContent).not.toContain('Test mode');
-  expect(root.textContent).toContain('These pages are drafts');
   expect(root.querySelector('a[href="https://datatug.io/terms/"]')).not.toBeNull();
   expect(root.querySelector('a[href="https://datatug.io/privacy/"]')).not.toBeNull();
+  expect(root.textContent).toContain('Please review these policies before continuing to payment.');
   expect(mount).not.toHaveBeenCalled();
 });
 
