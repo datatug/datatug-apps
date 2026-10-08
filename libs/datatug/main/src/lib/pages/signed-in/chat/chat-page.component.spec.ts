@@ -356,6 +356,81 @@ describe('ChatPageComponent failed turns', () => {
     expect(component.sessionError()).not.toBe('The sponsor plan for this shared project has ended.');
   });
 
+  it('terminalizes a persisted pending question when the branch changes during fresh eligibility', async () => {
+    const deferred = new Subject<{ aiAllowed: boolean }>();
+    eligibility.read.mockReturnValueOnce(of({ aiAllowed: true })).mockReturnValueOnce(deferred);
+    await render([], { storeId: 'github.com', projectId: 'datatug-demo-project' }, { projectApi: 'cloud', branch: 'main' });
+    const component = fixture.componentInstance;
+    component.question.set('Sales by country?');
+    const pendingSubmit = component.submit();
+    await vi.waitFor(() => expect(eligibility.read).toHaveBeenCalledTimes(2));
+
+    routeQuery.next(convertToParamMap({ projectApi: 'cloud', branch: 'other' }));
+    deferred.next({ aiAllowed: true });
+    deferred.complete();
+    await pendingSubmit;
+    await fixture.whenStable();
+
+    expect(store.appendQuestion).toHaveBeenCalledTimes(1);
+    expect(store.failQuestion).toHaveBeenCalledWith(
+      JSON.stringify(['github.com', 'datatug-demo-project']),
+      's1',
+      'new',
+      'This request was interrupted. Ask it again to retry.',
+    );
+    expect(interpreter.interpret).not.toHaveBeenCalled();
+    expect(data.query).not.toHaveBeenCalled();
+    expect(component.turns().some((turn) => turn.id === 'new')).toBe(false);
+    expect(component.sessionError()).toBeUndefined();
+  });
+
+  it('terminalizes a pending question when the provider rejects after the branch changes', async () => {
+    let rejectInterpret!: (error: Error) => void;
+    interpreter.interpret.mockImplementationOnce(
+      () => new Promise((_resolve, reject) => (rejectInterpret = reject)),
+    );
+    await render([], { storeId: 'github.com', projectId: 'datatug-demo-project' }, { projectApi: 'cloud', branch: 'main' });
+    const component = fixture.componentInstance;
+    component.question.set('Sales by country?');
+    const pendingSubmit = component.submit();
+    await vi.waitFor(() => expect(interpreter.interpret).toHaveBeenCalledTimes(1));
+
+    routeQuery.next(convertToParamMap({ projectApi: 'cloud', branch: 'other' }));
+    rejectInterpret(new Error('stale provider detail'));
+    await pendingSubmit;
+    await fixture.whenStable();
+
+    expect(store.failQuestion).toHaveBeenCalledWith(
+      JSON.stringify(['github.com', 'datatug-demo-project']),
+      's1',
+      'new',
+      'This request was interrupted. Ask it again to retry.',
+    );
+    expect(data.query).not.toHaveBeenCalled();
+    expect(component.turns().some((turn) => turn.id === 'new')).toBe(false);
+    expect(component.sessionError()).toBeUndefined();
+  });
+
+  it('re-seeds after auth changes while an older local seed is still loading', async () => {
+    await render([]);
+    const component = fixture.componentInstance;
+    component.seedState.set('loading');
+    let resolveOldSeed!: () => void;
+    const oldSeedResult = new Promise<void>((resolve) => (resolveOldSeed = resolve));
+    data.ensureSeed.mockImplementationOnce(() => oldSeedResult);
+    const oldSeed = (component as unknown as { seed(): Promise<void> }).seed();
+    await Promise.resolve();
+
+    authState.next({ status: 'anonymous' });
+    authState.next({ status: 'authenticated', user: { uid: 'actor-2' } });
+    await fixture.whenStable();
+    expect(component.seedState()).toBe('ready');
+
+    resolveOldSeed();
+    await oldSeed;
+    expect(component.seedState()).toBe('ready');
+  });
+
   it('discards a deferred eligibility response after the authenticated actor changes', async () => {
     const deferred = new Subject<{ aiAllowed: boolean }>();
     eligibility.read.mockReturnValueOnce(deferred);

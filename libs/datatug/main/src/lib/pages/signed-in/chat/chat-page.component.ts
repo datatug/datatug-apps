@@ -150,7 +150,7 @@ export class ChatPageComponent {
       const changed = this.authIdentity() !== identity;
       if (changed) this.authRevision.update((revision) => revision + 1);
       this.authIdentity.set(identity);
-      if (this.authInitialized() && changed) this.resetCurrentSession();
+      if (this.authInitialized() && changed) this.resetCurrentSession(true);
       this.authInitialized.set(true);
     });
     void this.seed();
@@ -365,11 +365,17 @@ export class ChatPageComponent {
       }
       const pending = await this.sessionStore.appendQuestion(scope, sessionId, question);
       id = pending.id;
-      if (!this.isCurrentRequest(scope, sessionId, projectRef, authRevision, authIdentity)) return;
+      if (!this.isCurrentRequest(scope, sessionId, projectRef, authRevision, authIdentity)) {
+        await this.cancelStaleQuestion(scope, sessionId, id);
+        return;
+      }
       this.question.set('');
       this.turns.update((turns) => [...turns, pending]);
       await this.refreshSessions();
-      if (!this.isCurrentRequest(scope, sessionId, projectRef, authRevision, authIdentity)) return;
+      if (!this.isCurrentRequest(scope, sessionId, projectRef, authRevision, authIdentity)) {
+        await this.cancelStaleQuestion(scope, sessionId, id);
+        return;
+      }
       const latest = this.turns()
         .filter((turn) => turn.dtql && turn.recordSetId)
         .at(-1);
@@ -379,7 +385,9 @@ export class ChatPageComponent {
       }
       const latestEligibility = await this.checkSponsorEligibility(scope, sessionId, projectRef, authRevision, authIdentity);
       if (latestEligibility.kind !== 'allowed') {
-        if (latestEligibility.kind === 'denied' && this.isCurrentRequest(scope, sessionId, projectRef, authRevision, authIdentity)) {
+        if (latestEligibility.kind === 'stale' || !this.isCurrentRequest(scope, sessionId, projectRef, authRevision, authIdentity)) {
+          await this.cancelStaleQuestion(scope, sessionId, id);
+        } else {
           const failed = await this.sessionStore.failQuestion(scope, sessionId, id, latestEligibility.message);
           if (this.isCurrentRequest(scope, sessionId, projectRef, authRevision, authIdentity)) {
             this.replaceTurn(id, failed);
@@ -441,7 +449,10 @@ export class ChatPageComponent {
         await this.refreshSessions();
       }
     } catch (error) {
-      if (!this.isCurrentRequest(scope, sessionId, projectRef, authRevision, authIdentity)) return;
+      if (!this.isCurrentRequest(scope, sessionId, projectRef, authRevision, authIdentity)) {
+        if (id) await this.cancelStaleQuestion(scope, sessionId, id);
+        return;
+      }
       const message = error instanceof Error ? error.message : 'Unable to answer that question.';
       if (id) {
         try {
@@ -881,6 +892,14 @@ export class ChatPageComponent {
 
   private scope(): string {
     return JSON.stringify([this.storeId(), this.projectId()]);
+  }
+
+  private async cancelStaleQuestion(scope: string, sessionId: string, id: string): Promise<void> {
+    try {
+      await this.sessionStore.failQuestion(scope, sessionId, id, 'This request was interrupted. Ask it again to retry.');
+    } catch {
+      // Do not surface an old request's storage error in the current project context.
+    }
   }
 
   private requiresSponsorEligibility(ref: IProjectRef): boolean {
