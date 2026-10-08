@@ -21,6 +21,12 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Params, Router } from '@angular/router';
+import { AgGridAngular } from 'ag-grid-angular';
+import {
+  AllCommunityModule,
+  ModuleRegistry,
+  type ColDef,
+} from 'ag-grid-community';
 import {
   ErrorLogger,
   IErrorLogger,
@@ -30,6 +36,16 @@ import {
 
 const isGithubStoreId = (storeId?: string): boolean =>
   storeId === STORE_ID_GITHUB_COM || storeId === STORE_TYPE_GITHUB;
+
+ModuleRegistry.registerModules([AllCommunityModule]);
+
+interface QueryResultGridRow {
+  readonly [columnId: string]: string;
+}
+
+// displayTypedValue converts integer strings through Number(), which can round wide values.
+const displayQueryResultValue = (value: TypedValue): string =>
+  value.type === 'integer' ? value.value : displayTypedValue(value);
 
 /** Shown instead of ever calling `SemanticApiService.runQuery()` for a
  * GitHub-store project — there is no CLI agent to execute against (founder
@@ -359,6 +375,7 @@ export function extractLinkedEntityNames(
     DatatugQueriesServicesModule,
     DatatugExecutorModule,
     FormsModule,
+    AgGridAngular,
     HttpQueryEditorComponent,
     SneatDatatugPageTitleComponent,
     IonHeader,
@@ -583,6 +600,34 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const start = this.resultPageIndex() * this.resultPageSize;
     return rows.slice(start, start + this.resultPageSize);
   });
+  public readonly resultGridColumnDefs = computed<ColDef<QueryResultGridRow>[]>(
+    () =>
+      (this.displayedRecordset()?.columns ?? []).map((column, index) => {
+        const columnId = `result_${index}`;
+        return {
+          colId: columnId,
+          field: columnId,
+          headerName: column.name,
+          sortable: false,
+          minWidth: 120,
+        };
+      }),
+  );
+  public readonly resultGridRows = computed<QueryResultGridRow[]>(() =>
+    this.visibleResultRows().map((row) =>
+      Object.fromEntries(
+        row.map((cell, index) => [
+          `result_${index}`,
+          displayQueryResultValue(cell),
+        ]),
+      ),
+    ),
+  );
+  public readonly resultGridDefaultColDef: ColDef<QueryResultGridRow> = {
+    resizable: true,
+  };
+  public readonly resultGridNoRowsTemplate =
+    '<span class="ag-overlay-no-rows-center">No rows.</span>';
   public readonly resultPageEnd = computed(() =>
     Math.min(
       (this.resultPageIndex() + 1) * this.resultPageSize,
