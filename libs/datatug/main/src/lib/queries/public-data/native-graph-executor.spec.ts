@@ -21,6 +21,7 @@ import {
 import { NATIVE_GRAPH_ORIGINAL_DECISION } from './native-graph-contract';
 import type { BoundedRecord } from './bounded-federation';
 import { JsonNumberToken } from './strict-json';
+import * as publicDataScenario from './public-data-scenario';
 
 const budgets: BoundedRunBudget[] = [];
 const budget = (): BoundedRunBudget => {
@@ -29,6 +30,7 @@ const budget = (): BoundedRunBudget => {
   return b;
 };
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const b of budgets.splice(0)) b.close();
 });
 const records = (rows: readonly Record<string, unknown>[]): BoundedRecord[] =>
@@ -148,7 +150,13 @@ describe('finite W1 native graph', () => {
       transport(p, input),
       'https://runtime.example', graphFixtureMetadataTransport,
     );
+    const validRorUrl = vi.spyOn(publicDataScenario, 'validNativeRorUrl');
     const result = await execution.run();
+    // Each source URL is checked once for grouping and once for row status.
+    // Rebuilding the stage key set per affiliation would add millions of
+    // validations, so keep this work linear in the selected affiliations.
+    expect(validRorUrl.mock.calls.length).toBeGreaterThanOrEqual(1000);
+    expect(validRorUrl.mock.calls.length).toBeLessThanOrEqual(2000);
     expect(result.affiliations).toHaveLength(1000);
     expect(result.locations).toHaveLength(1000);
     expect(result.aliases).toHaveLength(0);
