@@ -64,11 +64,11 @@ export class ChatPageComponent {
   private readonly projectTracker = new ProjectTracker(this.trackerDestroyed, this.route);
   private readonly auth = inject(SneatAuthStateService);
   private readonly projectAI = inject(ProjectAIEligibilityService);
-  private authRevision = 0;
-  private authIdentity?: string;
+  private authRevision = signal(0);
+  private authIdentity = signal<string | undefined>(undefined);
   readonly projectRefRouteValid = signal(true);
   readonly projectRef = signal<IProjectRef | undefined>(undefined);
-  private authInitialized = false;
+  private authInitialized = signal(false);
   private readonly interpreter = inject(ChatInterpretService);
   private readonly data = inject(ChinookChatDataService);
   private readonly sessionStore = inject(ChatSessionService);
@@ -142,11 +142,11 @@ export class ChatPageComponent {
     });
     this.auth.authState.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((state) => {
       const identity = state.status === 'authenticated' ? state.user?.uid : undefined;
-      const changed = this.authIdentity !== identity;
-      if (changed) this.authRevision++;
-      this.authIdentity = identity;
-      if (this.authInitialized && changed) this.resetCurrentSession();
-      this.authInitialized = true;
+      const changed = this.authIdentity() !== identity;
+      if (changed) this.authRevision.update((revision) => revision + 1);
+      this.authIdentity.set(identity);
+      if (this.authInitialized() && changed) this.resetCurrentSession();
+      this.authInitialized.set(true);
     });
     void this.seed();
     void this.restoreSessions();
@@ -157,8 +157,8 @@ export class ChatPageComponent {
     this.sessionBusy.set(true);
     const scope = this.scope();
     const ref = this.projectRef();
-    const authRevision = this.authRevision;
-    const authIdentity = this.authIdentity;
+    const authRevision = this.authRevision();
+    const authIdentity = this.authIdentity();
     try {
       const session = await this.sessionStore.create(scope);
       if (!this.isCurrentContext(scope, ref, authRevision, authIdentity)) return;
@@ -185,8 +185,8 @@ export class ChatPageComponent {
     if (!id || id === this.activeSessionId() || this.submitting() || this.sessionBusy()) return;
     const scope = this.scope();
     const ref = this.projectRef();
-    const authRevision = this.authRevision;
-    const authIdentity = this.authIdentity;
+    const authRevision = this.authRevision();
+    const authIdentity = this.authIdentity();
     this.sessionBusy.set(true);
     this.activeSessionId.set(id);
     this.turns.set([]);
@@ -226,8 +226,8 @@ export class ChatPageComponent {
     const scope = this.scope();
     const id = this.activeSessionId();
     const ref = this.projectRef();
-    const authRevision = this.authRevision;
-    const authIdentity = this.authIdentity;
+    const authRevision = this.authRevision();
+    const authIdentity = this.authIdentity();
     this.sessionBusy.set(true);
     try {
       await this.sessionStore.rename(scope, id, this.sessionTitleDraft());
@@ -253,8 +253,8 @@ export class ChatPageComponent {
     if (!action || this.sessionBusy() || this.submitting()) return;
     const scope = this.scope();
     const ref = this.projectRef();
-    const authRevision = this.authRevision;
-    const authIdentity = this.authIdentity;
+    const authRevision = this.authRevision();
+    const authIdentity = this.authIdentity();
     this.sessionBusy.set(true);
     try {
       if (action.kind === 'clear') {
@@ -346,8 +346,8 @@ export class ChatPageComponent {
       this.showSessionError(new Error('Project AI access could not be verified.'));
       return;
     }
-    const authRevision = this.authRevision;
-    const authIdentity = this.authIdentity;
+    const authRevision = this.authRevision();
+    const authIdentity = this.authIdentity();
     const dataScope = `${this.storeId()}:${this.projectId()}`;
     this.submitting.set(true);
     let id: string | undefined;
@@ -557,8 +557,8 @@ export class ChatPageComponent {
     const scope = this.scope();
     const sessionId = this.activeSessionId();
     const ref = this.projectRef();
-    const authRevision = this.authRevision;
-    const authIdentity = this.authIdentity;
+    const authRevision = this.authRevision();
+    const authIdentity = this.authIdentity();
     const isCurrent = () => this.isCurrentRequest(scope, sessionId, ref!, authRevision, authIdentity);
     const question = `Join ${candidate.sourceAlias} to ${candidate.targetTable} via ${candidate.sourceFields.join(', ')}`;
     this.submitting.set(true);
@@ -628,8 +628,8 @@ export class ChatPageComponent {
     const scope = this.scope();
     const sessionId = this.activeSessionId();
     const ref = this.projectRef();
-    const authRevision = this.authRevision;
-    const authIdentity = this.authIdentity;
+    const authRevision = this.authRevision();
+    const authIdentity = this.authIdentity();
     const isCurrent = () => this.isCurrentRequest(scope, sessionId, ref!, authRevision, authIdentity);
     this.sessionBusy.set(true);
     try {
@@ -656,8 +656,8 @@ export class ChatPageComponent {
   async refreshBookmarks(): Promise<void> {
     const scope = this.scope();
     const ref = this.projectRef();
-    const authRevision = this.authRevision;
-    const authIdentity = this.authIdentity;
+    const authRevision = this.authRevision();
+    const authIdentity = this.authIdentity();
     const tags = this.bookmarkTags()
       .split(',')
       .map((tag) => tag.trim())
@@ -817,8 +817,8 @@ export class ChatPageComponent {
   private async seed(): Promise<void> {
     const scope = this.scope();
     const ref = this.projectRef();
-    const authRevision = this.authRevision;
-    const authIdentity = this.authIdentity;
+    const authRevision = this.authRevision();
+    const authIdentity = this.authIdentity();
     if (!ref) return;
     this.seedState.set('loading');
     this.seedError.set(undefined);
@@ -918,19 +918,19 @@ export class ChatPageComponent {
   }
 
   private isCurrentRequest(scope: string, sessionId: string, ref: IProjectRef, authRevision: number, authIdentity: string | undefined): boolean {
-    return this.isCurrentContext(scope, ref, authRevision, authIdentity) && sessionId === this.activeSessionId() && authRevision === this.authRevision && authIdentity === this.authIdentity;
+    return this.isCurrentContext(scope, ref, authRevision, authIdentity) && sessionId === this.activeSessionId() && authRevision === this.authRevision() && authIdentity === this.authIdentity();
   }
 
   private isCurrentContext(scope: string, ref: IProjectRef | undefined, authRevision: number, authIdentity: string | undefined): boolean {
     const current = this.projectRef();
-    return !!ref && !!current && this.projectRefRouteValid() && scope === this.scope() && equalProjectRef(ref, current) && authRevision === this.authRevision && authIdentity === this.authIdentity;
+    return !!ref && !!current && this.projectRefRouteValid() && scope === this.scope() && equalProjectRef(ref, current) && authRevision === this.authRevision() && authIdentity === this.authIdentity();
   }
 
   private async restoreSessions(): Promise<void> {
     const scope = this.scope();
     const ref = this.projectRef();
-    const authRevision = this.authRevision;
-    const authIdentity = this.authIdentity;
+    const authRevision = this.authRevision();
+    const authIdentity = this.authIdentity();
     if (!ref || !this.projectRefRouteValid()) return;
     const isCurrent = () => this.isCurrentContext(scope, ref, authRevision, authIdentity);
     this.sessionState.set('loading');
@@ -967,8 +967,8 @@ export class ChatPageComponent {
   private async refreshSessions(): Promise<void> {
     const scope = this.scope();
     const ref = this.projectRef();
-    const authRevision = this.authRevision;
-    const authIdentity = this.authIdentity;
+    const authRevision = this.authRevision();
+    const authIdentity = this.authIdentity();
     const sessions = await this.sessionStore.list(scope);
     if (this.isCurrentContext(scope, ref, authRevision, authIdentity)) this.sessions.set(sessions);
   }
