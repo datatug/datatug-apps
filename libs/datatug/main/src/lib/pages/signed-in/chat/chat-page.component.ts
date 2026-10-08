@@ -137,14 +137,6 @@ export class ChatPageComponent {
   readonly errorView = chatErrorView;
 
   constructor() {
-    this.projectTracker.projectRef.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: (ref) => this.updateProjectRef(ref),
-      error: () => this.invalidateProjectRef(),
-    });
-    this.destroyRef.onDestroy(() => {
-      this.trackerDestroyed.next();
-      this.trackerDestroyed.complete();
-    });
     this.auth.authState.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((state) => {
       const identity = state.status === 'authenticated' ? state.user?.uid : undefined;
       const changed = this.authIdentity() !== identity;
@@ -153,8 +145,14 @@ export class ChatPageComponent {
       if (this.authInitialized() && changed) this.resetCurrentSession(true);
       this.authInitialized.set(true);
     });
-    void this.seed();
-    void this.restoreSessions();
+    this.projectTracker.projectRef.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: (ref) => this.updateProjectRef(ref),
+      error: () => this.invalidateProjectRef(),
+    });
+    this.destroyRef.onDestroy(() => {
+      this.trackerDestroyed.next();
+      this.trackerDestroyed.complete();
+    });
   }
 
   async newSession(): Promise<void> {
@@ -859,7 +857,11 @@ export class ChatPageComponent {
     this.projectRef.set(ref);
     this.storeId.set(ref.storeId);
     this.projectId.set(ref.projectId);
-    if (initialScopeMatches) return;
+    if (initialScopeMatches) {
+      void this.seed();
+      void this.restoreSessions();
+      return;
+    }
     this.resetCurrentSession(true);
   }
 

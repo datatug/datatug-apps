@@ -65,6 +65,7 @@ describe('ChatPageComponent failed turns', () => {
   };
   const eligibility = { read: vi.fn(() => of({ aiAllowed: true })) };
   let routeParams: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
+  let deferredRouteParams: Subject<ReturnType<typeof convertToParamMap>> | undefined;
   let routeQuery: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
   let authState: BehaviorSubject<{ status: string; user?: { uid: string } }>;
 
@@ -78,16 +79,18 @@ describe('ChatPageComponent failed turns', () => {
       projectId: 'datatug-demo-project',
     },
     query: Record<string, string> = {},
+    deferProjectRef = false,
   ): Promise<void> {
     restored = turns;
     routeParams = new BehaviorSubject(convertToParamMap(params));
+    deferredRouteParams = deferProjectRef ? new Subject() : undefined;
     routeQuery = new BehaviorSubject(convertToParamMap(query));
     authState = new BehaviorSubject<{ status: string; user?: { uid: string } }>({ status: 'authenticated', user: { uid: 'actor-1' } });
     const route = {
       get snapshot() {
         return { paramMap: routeParams.value, queryParamMap: routeQuery.value };
       },
-      paramMap: routeParams.asObservable(),
+      paramMap: deferredRouteParams?.asObservable() || routeParams.asObservable(),
       queryParamMap: routeQuery.asObservable(),
     };
     TestBed.configureTestingModule({
@@ -151,6 +154,26 @@ describe('ChatPageComponent failed turns', () => {
     // The raw text is only inside the collapsed detail, never the headline.
     const headline = (fixture.nativeElement as HTMLElement).querySelector('.turn-error ion-text')?.textContent ?? '';
     expect(headline).not.toContain('join_aggregate');
+  });
+
+  it('starts local seed and session restore when the initial project reference arrives asynchronously', async () => {
+    await render([], { storeId: 'store', projectId: 'datatug-demo-project' }, {}, true);
+    const component = fixture.componentInstance;
+
+    expect(component.projectRef()).toBeUndefined();
+    expect(component.seedState()).toBe('loading');
+    expect(component.sessionState()).toBe('loading');
+    expect(data.ensureSeed).not.toHaveBeenCalled();
+    expect(store.list).not.toHaveBeenCalled();
+
+    deferredRouteParams?.next(convertToParamMap({ storeId: 'store', projectId: 'datatug-demo-project' }));
+    await fixture.whenStable();
+    await vi.waitFor(() => expect(component.sessionState()).toBe('ready'));
+
+    expect(component.seedState()).toBe('ready');
+    expect(component.sessionState()).toBe('ready');
+    expect(data.ensureSeed).toHaveBeenCalledWith('store', 'datatug-demo-project');
+    expect(store.list).toHaveBeenCalledWith(JSON.stringify(['store', 'datatug-demo-project']));
   });
 
   it('shows an already plain message as it is, with no technical detail', async () => {
