@@ -723,8 +723,6 @@
         }
       </ion-text>
 
-      <sneat-datatug-source-rights-notice [evidence]="result" />
-
       @if (!selectedHistoricalResult() && queryRunTiming(); as timing) {
         <p data-testid="query-run-timings">
           Time to first record:
@@ -769,48 +767,49 @@
       </ion-list>
     }
 
-    <ion-card>
-      <ion-card-content style="overflow-x: auto">
-        @if (
-          resultTotalRows() > resultPageSize ||
-          resultHasMore() ||
-          resultPageIndex() > 0
-        ) {
-          <div aria-label="Result pages">
-            <ion-button
-              fill="clear"
-              [disabled]="resultPageLoading() || resultPageIndex() === 0"
-              (click)="changeResultPage(-1)"
-              >Previous</ion-button
-            >
-            Rows {{ resultPageIndex() * resultPageSize + 1 }}–{{
-              resultPageIndex() * resultPageSize + visibleResultRows().length
-            }}
-            @if (!resultHasMore()) {
-              of {{ resultTotalRows() }}
-            }
-            <ion-button
-              fill="clear"
-              [disabled]="
-                resultPageLoading() ||
-                (!resultHasMore() &&
-                  (resultPageIndex() + 1) * resultPageSize >= resultTotalRows())
-              "
-              (click)="changeResultPage(1)"
-              >Next</ion-button
-            >
-          </div>
-        }
-        <ag-grid-angular
-          class="ag-theme-quartz"
-          style="height: 420px; width: 100%"
-          [columnDefs]="resultGridColumnDefs()"
-          [rowData]="resultGridRows()"
-          [defaultColDef]="resultGridDefaultColDef"
-          [loading]="resultPageLoading()"
-          [overlayNoRowsTemplate]="resultGridNoRowsTemplate"
-        />
-      </ion-card-content>
-    </ion-card>
+    <div class="ion-padding-horizontal">
+      @if (
+        resultTotalRows() > resultPageSize ||
+        resultHasMore() ||
+        resultPageIndex() > 0
+      ) {
+        <div aria-label="Result pages">
+          <ion-button
+            fill="clear"
+            [disabled]="resultPageLoading() || resultPageIndex() === 0"
+            (click)="changeResultPage(-1)"
+            >Previous</ion-button
+          >
+          Rows {{ resultPageIndex() * resultPageSize + 1 }}–{{
+            resultPageIndex() * resultPageSize + visibleResultRows().length
+          }}
+          @if (!resultHasMore()) {
+            of {{ resultTotalRows() }}
+          }
+          <ion-button
+            fill="clear"
+            [disabled]="
+              resultPageLoading() ||
+              (!resultHasMore() &&
+                (resultPageIndex() + 1) * resultPageSize >= resultTotalRows())
+            "
+            (click)="changeResultPage(1)"
+            >Next</ion-button
+          >
+        </div>
+      }
+      <ag-grid-angular
+        class="ag-theme-quartz"
+        style="height: 420px; width: 100%"
+        [columnDefs]="resultGridColumnDefs()"
+        [rowData]="resultGridRows()"
+        [defaultColDef]="resultGridDefaultColDef"
+        [loading]="resultPageLoading()"
+        [overlayNoRowsTemplate]="resultGridNoRowsTemplate"
+      />
+    </div>
+    <div class="ion-padding-horizontal">
+      <sneat-datatug-source-rights-notice [evidence]="result" [compact]="true" />
+    </div>
   }
 </ion-content>
