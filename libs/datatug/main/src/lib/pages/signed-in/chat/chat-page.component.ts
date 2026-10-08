@@ -4,7 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { SneatAuthStateService } from '@sneat/auth-core';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, Subject } from 'rxjs';
 import { AgGridAngular } from 'ag-grid-angular';
 import { AllCommunityModule, ModuleRegistry, type CellClickedEvent, type ColDef, type SelectionChangedEvent } from 'ag-grid-community';
 import {
@@ -29,7 +29,7 @@ import { ChatJoinService } from '../../../chat/chat-join.service';
 import { ChatJoinAmbiguityError, ChatJoinCandidate, ambiguousChatJoinRequest, chatJoinCandidateLabel, validateChatJoinChoice } from '../../../chat/chat-joins';
 import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
 import { IProjectRef, equalProjectRef, isSharedProjectRef } from '../../../core/project-context';
-import { readProjectApiQuery } from '../../../nav/project-api-routing';
+import { ProjectTracker } from '../../../services/nav/contexts/project.tracker';
 import { ProjectAIEligibilityService, type ProjectAIEligibility } from '../../../services/project/project-ai-eligibility.service';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -60,12 +60,15 @@ export class ChatPageComponent {
   }>();
   private readonly route = inject(ActivatedRoute);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly trackerDestroyed = new Subject<void>();
+  private readonly projectTracker = new ProjectTracker(this.trackerDestroyed, this.route);
   private readonly auth = inject(SneatAuthStateService);
   private readonly projectAI = inject(ProjectAIEligibilityService);
   private authRevision = 0;
   private authIdentity?: string;
   readonly projectRefRouteValid = signal(true);
-  readonly projectRef = signal<IProjectRef>(this.readProjectRef());
+  readonly projectRef = signal<IProjectRef | undefined>(undefined);
+  private authInitialized = false;
   private readonly interpreter = inject(ChatInterpretService);
   private readonly data = inject(ChinookChatDataService);
   private readonly sessionStore = inject(ChatSessionService);
@@ -129,13 +132,21 @@ export class ChatPageComponent {
   readonly errorView = chatErrorView;
 
   constructor() {
-    this.route.paramMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => this.updateScope());
-    this.route.parent?.paramMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => this.updateScope());
-    this.route.queryParamMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => this.updateScope());
-    this.route.parent?.queryParamMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => this.updateScope());
+    this.projectTracker.projectRef.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: (ref) => this.updateProjectRef(ref),
+      error: () => this.invalidateProjectRef(),
+    });
+    this.destroyRef.onDestroy(() => {
+      this.trackerDestroyed.next();
+      this.trackerDestroyed.complete();
+    });
     this.auth.authState.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((state) => {
-      this.authRevision++;
-      this.authIdentity = state.status === 'authenticated' ? state.user?.uid : undefined;
+      const identity = state.status === 'authenticated' ? state.user?.uid : undefined;
+      const changed = this.authIdentity !== identity;
+      if (changed) this.authRevision++;
+      this.authIdentity = identity;
+      if (this.authInitialized && changed) this.resetCurrentSession();
+      this.authInitialized = true;
     });
     void this.seed();
     void this.restoreSessions();
@@ -145,11 +156,14 @@ export class ChatPageComponent {
     if (this.submitting() || this.sessionBusy()) return;
     this.sessionBusy.set(true);
     const scope = this.scope();
+    const ref = this.projectRef();
+    const authRevision = this.authRevision;
+    const authIdentity = this.authIdentity;
     try {
       const session = await this.sessionStore.create(scope);
-      if (scope !== this.scope()) return;
+      if (!this.isCurrentContext(scope, ref, authRevision, authIdentity)) return;
       await this.refreshSessions();
-      if (scope !== this.scope()) return;
+      if (!this.isCurrentContext(scope, ref, authRevision, authIdentity)) return;
       this.activeSessionId.set(session.id);
       this.turns.set([]);
       this.turnTabs.set({});
@@ -157,9 +171,9 @@ export class ChatPageComponent {
       this.sessionState.set('ready');
       this.sessionError.set(undefined);
     } catch (error) {
-      this.showSessionError(error);
+      if (this.isCurrentContext(scope, ref, authRevision, authIdentity)) this.showSessionError(error);
     } finally {
-      this.sessionBusy.set(false);
+      if (this.isCurrentContext(scope, ref, authRevision, authIdentity)) this.sessionBusy.set(false);
     }
   }
 
@@ -170,6 +184,9 @@ export class ChatPageComponent {
   async switchSession(id: string): Promise<void> {
     if (!id || id === this.activeSessionId() || this.submitting() || this.sessionBusy()) return;
     const scope = this.scope();
+    const ref = this.projectRef();
+    const authRevision = this.authRevision;
+    const authIdentity = this.authIdentity;
     this.sessionBusy.set(true);
     this.activeSessionId.set(id);
     this.turns.set([]);
@@ -177,21 +194,23 @@ export class ChatPageComponent {
     try {
       this.sessionState.set('loading');
       const restored = await this.sessionStore.load(scope, id);
-      if (scope !== this.scope()) return;
+      if (!this.isCurrentContext(scope, ref, authRevision, authIdentity)) return;
       await this.sessionStore.activate(scope, id);
-      if (scope !== this.scope()) return;
+      if (!this.isCurrentContext(scope, ref, authRevision, authIdentity)) return;
       this.turns.set(restored.turns);
       this.workspace.set(restored.session.workspace || emptyChatWorkspace());
       this.turnTabs.set({});
       await this.refreshSessions();
-      if (scope !== this.scope()) return;
+      if (!this.isCurrentContext(scope, ref, authRevision, authIdentity)) return;
       this.sessionState.set('ready');
       this.sessionError.set(undefined);
     } catch (error) {
-      this.showSessionError(error);
-      this.sessionState.set('error');
+      if (this.isCurrentContext(scope, ref, authRevision, authIdentity)) {
+        this.showSessionError(error);
+        this.sessionState.set('error');
+      }
     } finally {
-      this.sessionBusy.set(false);
+      if (this.isCurrentContext(scope, ref, authRevision, authIdentity)) this.sessionBusy.set(false);
     }
   }
 
@@ -206,18 +225,21 @@ export class ChatPageComponent {
     if (this.sessionBusy() || this.submitting()) return;
     const scope = this.scope();
     const id = this.activeSessionId();
+    const ref = this.projectRef();
+    const authRevision = this.authRevision;
+    const authIdentity = this.authIdentity;
     this.sessionBusy.set(true);
     try {
       await this.sessionStore.rename(scope, id, this.sessionTitleDraft());
-      if (scope !== this.scope() || id !== this.activeSessionId()) return;
+      if (!this.isCurrentContext(scope, ref, authRevision, authIdentity) || id !== this.activeSessionId()) return;
       await this.refreshSessions();
-      if (scope !== this.scope() || id !== this.activeSessionId()) return;
+      if (!this.isCurrentContext(scope, ref, authRevision, authIdentity) || id !== this.activeSessionId()) return;
       this.renameModalOpen.set(false);
       this.sessionError.set(undefined);
     } catch (error) {
-      this.showSessionError(error);
+      if (this.isCurrentContext(scope, ref, authRevision, authIdentity)) this.showSessionError(error);
     } finally {
-      this.sessionBusy.set(false);
+      if (this.isCurrentContext(scope, ref, authRevision, authIdentity)) this.sessionBusy.set(false);
     }
   }
 
@@ -230,25 +252,28 @@ export class ChatPageComponent {
     const action = this.sessionAction();
     if (!action || this.sessionBusy() || this.submitting()) return;
     const scope = this.scope();
+    const ref = this.projectRef();
+    const authRevision = this.authRevision;
+    const authIdentity = this.authIdentity;
     this.sessionBusy.set(true);
     try {
       if (action.kind === 'clear') {
         await this.sessionStore.clear(scope, action.id);
-        if (scope === this.scope() && action.id === this.activeSessionId()) this.turns.set([]);
-        if (scope === this.scope() && action.id === this.activeSessionId()) this.workspace.set(emptyChatWorkspace());
+        if (this.isCurrentContext(scope, ref, authRevision, authIdentity) && action.id === this.activeSessionId()) this.turns.set([]);
+        if (this.isCurrentContext(scope, ref, authRevision, authIdentity) && action.id === this.activeSessionId()) this.workspace.set(emptyChatWorkspace());
       } else {
         await this.sessionStore.delete(scope, action.id);
-        if (scope === this.scope() && action.id === this.activeSessionId()) {
+        if (this.isCurrentContext(scope, ref, authRevision, authIdentity) && action.id === this.activeSessionId()) {
           this.activeSessionId.set('');
           this.turns.set([]);
           this.workspace.set(emptyChatWorkspace());
         }
       }
-      if (scope === this.scope()) await this.restoreSessions();
+      if (this.isCurrentContext(scope, ref, authRevision, authIdentity)) await this.restoreSessions();
     } catch (error) {
-      this.showSessionError(error);
+      if (this.isCurrentContext(scope, ref, authRevision, authIdentity)) this.showSessionError(error);
     } finally {
-      this.sessionBusy.set(false);
+      if (this.isCurrentContext(scope, ref, authRevision, authIdentity)) this.sessionBusy.set(false);
     }
   }
 
@@ -317,6 +342,10 @@ export class ChatPageComponent {
     const scope = this.scope();
     const sessionId = this.activeSessionId();
     const projectRef = this.projectRef();
+    if (!projectRef || !this.projectRefRouteValid()) {
+      this.showSessionError(new Error('Project AI access could not be verified.'));
+      return;
+    }
     const authRevision = this.authRevision;
     const authIdentity = this.authIdentity;
     const dataScope = `${this.storeId()}:${this.projectId()}`;
@@ -324,35 +353,37 @@ export class ChatPageComponent {
     let id: string | undefined;
     try {
       const context = this.sessionStore.context(this.turns(), this.workspace(), this.projectId(), this.allBookmarks()) + this.joinContext();
+      const firstEligibility = await this.checkSponsorEligibility(scope, sessionId, projectRef, authRevision, authIdentity);
+      if (firstEligibility.kind !== 'allowed') {
+        if (firstEligibility.kind === 'denied' && this.isCurrentRequest(scope, sessionId, projectRef, authRevision, authIdentity)) this.sessionError.set(firstEligibility.message);
+        return;
+      }
       const pending = await this.sessionStore.appendQuestion(scope, sessionId, question);
       id = pending.id;
-      if (scope === this.scope() && sessionId === this.activeSessionId()) {
-        this.question.set('');
-        this.turns.update((turns) => [...turns, pending]);
-        await this.refreshSessions();
-      }
-      const latest = this.turns().filter((turn) => turn.dtql && turn.recordSetId).at(-1);
+      if (!this.isCurrentRequest(scope, sessionId, projectRef, authRevision, authIdentity)) return;
+      this.question.set('');
+      this.turns.update((turns) => [...turns, pending]);
+      await this.refreshSessions();
+      if (!this.isCurrentRequest(scope, sessionId, projectRef, authRevision, authIdentity)) return;
+      const latest = this.turns()
+        .filter((turn) => turn.dtql && turn.recordSetId)
+        .at(-1);
       if (latest?.recordSetId) {
         const ambiguity = ambiguousChatJoinRequest(question, latest.recordSetId, this.candidatesFor(latest));
         if (ambiguity) throw ambiguity;
       }
-      if (!this.projectRefRouteValid()) throw new Error('Project AI access could not be verified.');
-      if (this.requiresSponsorEligibility(projectRef)) {
-        if (!authIdentity) throw new Error('Project AI access could not be verified.');
-        let eligibility: ProjectAIEligibility;
-        try {
-          eligibility = await firstValueFrom(this.projectAI.read(projectRef));
-        } catch {
-          throw new Error('Project AI access could not be verified.');
+      const latestEligibility = await this.checkSponsorEligibility(scope, sessionId, projectRef, authRevision, authIdentity);
+      if (latestEligibility.kind !== 'allowed') {
+        if (latestEligibility.kind === 'denied' && this.isCurrentRequest(scope, sessionId, projectRef, authRevision, authIdentity)) {
+          const failed = await this.sessionStore.failQuestion(scope, sessionId, id, latestEligibility.message);
+          if (this.isCurrentRequest(scope, sessionId, projectRef, authRevision, authIdentity)) {
+            this.replaceTurn(id, failed);
+            await this.refreshSessions();
+          }
         }
-        if (!this.isCurrentRequest(scope, sessionId, projectRef, authRevision, authIdentity))
-          throw new Error('The project or sign-in changed before this request could be sent.');
-        if (eligibility.aiAllowed !== true && eligibility.aiAllowed !== false)
-          throw new Error('Project AI access could not be verified.');
-        if (eligibility.aiAllowed === false) throw new Error('AI access for this shared project has expired.');
+        return;
       }
-      if (!this.isCurrentRequest(scope, sessionId, projectRef, authRevision, authIdentity))
-        throw new Error('The project or sign-in changed before this request could be sent.');
+      if (!this.isCurrentRequest(scope, sessionId, projectRef, authRevision, authIdentity)) throw new Error('The project or sign-in changed before this request could be sent.');
       const interpretation = await this.interpreter.interpret(question, provider, context);
       if (!this.isCurrentRequest(scope, sessionId, projectRef, authRevision, authIdentity)) throw new Error('The project or sign-in changed before this result could be queried.');
       if (interpretation.joinCandidate) {
@@ -368,9 +399,7 @@ export class ChatPageComponent {
       }
       if (interpretation.workspaceAction) {
         if (!this.isCurrentRequest(scope, sessionId, projectRef, authRevision, authIdentity)) throw new Error('The project or sign-in changed before this result could be saved.');
-        const completed = await this.sessionStore.completeWorkspaceAction(
-          scope, sessionId, id, interpretation.workspaceAction, interpretation.metrics,
-        );
+        const completed = await this.sessionStore.completeWorkspaceAction(scope, sessionId, id, interpretation.workspaceAction, interpretation.metrics);
         if (this.isCurrentRequest(scope, sessionId, projectRef, authRevision, authIdentity)) {
           this.workspace.set(completed.workspace);
           this.replaceTurn(id, completed.turn);
@@ -383,15 +412,23 @@ export class ChatPageComponent {
       if (!this.isCurrentRequest(scope, sessionId, projectRef, authRevision, authIdentity)) throw new Error('The project or sign-in changed before this result could be queried.');
       const queryStarted = performance.now();
       const { rows, query } = await this.data.query(dataScope, bound.dtql);
-      if (!this.isCurrentRequest(scope, sessionId, projectRef, authRevision, authIdentity))
-        throw new Error('The project or sign-in changed before this result could be saved.');
+      if (!this.isCurrentRequest(scope, sessionId, projectRef, authRevision, authIdentity)) throw new Error('The project or sign-in changed before this result could be saved.');
       const result = await this.sessionStore.completeQuery(scope, sessionId, id, {
-        dtql: bound.dtql, generatedDtql: interpretation.dtql, parentRecordSetId: bound.parentRecordSetId,
-        dtqlYaml: chatDtqlYaml(query), sql: chatSQLite(query), rows,
-        columns: rows.length ? Object.keys(rows[0]) : isJoinedDTQLQuery(query) ?
-          (query.columns?.map((column) => column.as || (column.expression?.kind === 'field' ? column.expression.field.field : '')).filter(Boolean) || []) :
-          [...(CHINOOK_SCHEMA.tables.find((table) => `${table.schema}.${table.name}` === query.source.name)?.fields || [])],
-        metrics: { ...interpretation.metrics, queryMs: performance.now() - queryStarted },
+        dtql: bound.dtql,
+        generatedDtql: interpretation.dtql,
+        parentRecordSetId: bound.parentRecordSetId,
+        dtqlYaml: chatDtqlYaml(query),
+        sql: chatSQLite(query),
+        rows,
+        columns: rows.length
+          ? Object.keys(rows[0])
+          : isJoinedDTQLQuery(query)
+            ? query.columns?.map((column) => column.as || (column.expression?.kind === 'field' ? column.expression.field.field : '')).filter(Boolean) || []
+            : [...(CHINOOK_SCHEMA.tables.find((table) => `${table.schema}.${table.name}` === query.source.name)?.fields || [])],
+        metrics: {
+          ...interpretation.metrics,
+          queryMs: performance.now() - queryStarted,
+        },
         source: `${scope}/chinook`,
       });
       if (this.isCurrentRequest(scope, sessionId, projectRef, authRevision, authIdentity)) {
@@ -399,20 +436,20 @@ export class ChatPageComponent {
         await this.refreshSessions();
       }
     } catch (error) {
+      if (!this.isCurrentRequest(scope, sessionId, projectRef, authRevision, authIdentity)) return;
       const message = error instanceof Error ? error.message : 'Unable to answer that question.';
       if (id) {
         try {
-          const failed = await this.sessionStore.failQuestion(scope, sessionId, id, message,
-            error instanceof ChatJoinAmbiguityError ? error.choices : undefined);
-          if (scope === this.scope() && sessionId === this.activeSessionId()) this.replaceTurn(id, failed);
+          const failed = await this.sessionStore.failQuestion(scope, sessionId, id, message, error instanceof ChatJoinAmbiguityError ? error.choices : undefined);
+          if (this.isCurrentRequest(scope, sessionId, projectRef, authRevision, authIdentity)) this.replaceTurn(id, failed);
         } catch (saveError) {
-          this.showSessionError(saveError);
+          if (this.isCurrentRequest(scope, sessionId, projectRef, authRevision, authIdentity)) this.showSessionError(saveError);
         }
       } else {
         this.showSessionError(error);
       }
     } finally {
-      this.submitting.set(false);
+      if (this.isCurrentContext(scope, projectRef, authRevision, authIdentity)) this.submitting.set(false);
     }
   }
 
@@ -519,27 +556,37 @@ export class ChatPageComponent {
     if (!parent.recordSetId || this.seedState() !== 'ready' || this.sessionState() !== 'ready' || this.submitting() || this.sessionBusy()) return;
     const scope = this.scope();
     const sessionId = this.activeSessionId();
+    const ref = this.projectRef();
+    const authRevision = this.authRevision;
+    const authIdentity = this.authIdentity;
+    const isCurrent = () => this.isCurrentRequest(scope, sessionId, ref!, authRevision, authIdentity);
     const question = `Join ${candidate.sourceAlias} to ${candidate.targetTable} via ${candidate.sourceFields.join(', ')}`;
     this.submitting.set(true);
     let id: string | undefined;
     try {
       const pending = await this.sessionStore.appendQuestion(scope, sessionId, question);
       id = pending.id;
-      if (scope === this.scope() && sessionId === this.activeSessionId()) this.turns.update((turns) => [...turns, pending]);
+      if (!isCurrent()) return;
+      this.turns.update((turns) => [...turns, pending]);
       const completed = await this.joiner.apply(scope, sessionId, parent.recordSetId, candidate.id, id, `${this.storeId()}:${this.projectId()}`);
-      if (scope === this.scope() && sessionId === this.activeSessionId()) {
+      if (isCurrent()) {
         this.replaceTurn(id, completed);
         await this.refreshSessions();
       }
     } catch (error) {
+      if (!isCurrent()) return;
       const message = error instanceof Error ? error.message : 'Unable to apply the relationship.';
       if (id) {
         try {
           const failed = await this.sessionStore.failQuestion(scope, sessionId, id, message);
-          if (scope === this.scope() && sessionId === this.activeSessionId()) this.replaceTurn(id, failed);
-        } catch (saveError) { this.showSessionError(saveError); }
+          if (isCurrent()) this.replaceTurn(id, failed);
+        } catch (saveError) {
+          if (isCurrent()) this.showSessionError(saveError);
+        }
       } else this.showSessionError(error);
-    } finally { this.submitting.set(false); }
+    } finally {
+      if (this.isCurrentContext(scope, ref, authRevision, authIdentity)) this.submitting.set(false);
+    }
   }
 
   keyMask(provider: ChatProvider): string {
@@ -580,17 +627,21 @@ export class ChatPageComponent {
     if (this.submitting() || this.sessionBusy() || this.sessionState() !== 'ready') return;
     const scope = this.scope();
     const sessionId = this.activeSessionId();
+    const ref = this.projectRef();
+    const authRevision = this.authRevision;
+    const authIdentity = this.authIdentity;
+    const isCurrent = () => this.isCurrentRequest(scope, sessionId, ref!, authRevision, authIdentity);
     this.sessionBusy.set(true);
     try {
       const state = await this.sessionStore.workspaceAction(scope, sessionId, action);
-      if (scope === this.scope() && sessionId === this.activeSessionId()) {
+      if (isCurrent()) {
         this.workspace.set(state);
         await this.refreshBookmarks();
       }
     } catch (error) {
-      this.showSessionError(error);
+      if (isCurrent()) this.showSessionError(error);
     } finally {
-      this.sessionBusy.set(false);
+      if (this.isCurrentContext(scope, ref, authRevision, authIdentity)) this.sessionBusy.set(false);
     }
   }
 
@@ -604,11 +655,15 @@ export class ChatPageComponent {
 
   async refreshBookmarks(): Promise<void> {
     const scope = this.scope();
-    const tags = this.bookmarkTags().split(',').map((tag) => tag.trim()).filter(Boolean);
-    const [all, bookmarks] = await Promise.all([
-      this.sessionStore.listBookmarks(scope), this.sessionStore.listBookmarks(scope, this.bookmarkSearch(), tags),
-    ]);
-    if (scope === this.scope()) {
+    const ref = this.projectRef();
+    const authRevision = this.authRevision;
+    const authIdentity = this.authIdentity;
+    const tags = this.bookmarkTags()
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+    const [all, bookmarks] = await Promise.all([this.sessionStore.listBookmarks(scope), this.sessionStore.listBookmarks(scope, this.bookmarkSearch(), tags)]);
+    if (this.isCurrentContext(scope, ref, authRevision, authIdentity)) {
       this.allBookmarks.set(all);
       this.bookmarks.set(bookmarks);
     }
@@ -761,28 +816,45 @@ export class ChatPageComponent {
 
   private async seed(): Promise<void> {
     const scope = this.scope();
+    const ref = this.projectRef();
+    const authRevision = this.authRevision;
+    const authIdentity = this.authIdentity;
+    if (!ref) return;
     this.seedState.set('loading');
     this.seedError.set(undefined);
     try {
       await this.data.ensureSeed(this.storeId(), this.projectId());
-      if (scope !== this.scope()) return;
+      if (!this.isCurrentContext(scope, ref, authRevision, authIdentity)) return;
       this.seedState.set('ready');
     } catch (error) {
-      if (scope !== this.scope()) return;
+      if (!this.isCurrentContext(scope, ref, authRevision, authIdentity)) return;
       this.seedError.set(error instanceof Error ? error.message : 'The local Chinook database is unavailable.');
       this.seedState.set('error');
     }
   }
 
-  private updateScope(): void {
-    const wasValid = this.projectRefRouteValid();
-    const ref = this.readProjectRef();
-    const storeId = ref.storeId;
-    const projectId = ref.projectId;
-    if (equalProjectRef(ref, this.projectRef()) && wasValid === this.projectRefRouteValid()) return;
+  private updateProjectRef(ref: IProjectRef): void {
+    const previous = this.projectRef();
+    this.projectRefRouteValid.set(true);
+    if (previous && equalProjectRef(ref, previous)) return;
+    const initialScopeMatches = !previous && ref.storeId === this.storeId() && ref.projectId === this.projectId();
     this.projectRef.set(ref);
-    this.storeId.set(storeId);
-    this.projectId.set(projectId);
+    this.storeId.set(ref.storeId);
+    this.projectId.set(ref.projectId);
+    if (initialScopeMatches) return;
+    this.resetCurrentSession(true);
+  }
+
+  private invalidateProjectRef(): void {
+    this.projectRefRouteValid.set(false);
+    if (!this.projectRef()) return;
+    this.projectRef.set(undefined);
+    this.resetCurrentSession();
+    this.sessionState.set('error');
+    this.showSessionError(new Error('Project AI access could not be verified.'));
+  }
+
+  private resetCurrentSession(reseed = false): void {
     this.turns.set([]);
     this.sessions.set([]);
     this.bookmarks.set([]);
@@ -790,76 +862,103 @@ export class ChatPageComponent {
     this.openBookmark.set(undefined);
     this.workspace.set(emptyChatWorkspace());
     this.activeSessionId.set('');
-    void this.seed();
-    void this.restoreSessions();
+    this.sessionError.set(undefined);
+    this.sessionState.set('loading');
+    this.submitting.set(false);
+    this.sessionBusy.set(false);
+    if (this.projectRef()) {
+      if (reseed) void this.seed();
+      void this.restoreSessions();
+    }
   }
 
   private scope(): string {
     return JSON.stringify([this.storeId(), this.projectId()]);
   }
 
-  private readProjectRef(): IProjectRef {
-    const params = this.route.snapshot.paramMap;
-    const parentParams = this.route.parent?.snapshot.paramMap;
-    const query = this.route.snapshot.queryParamMap;
-    const storeId = params.get('storeId') || parentParams?.get('storeId') || '';
-    const projectId = params.get('projectId') || parentParams?.get('projectId') || '';
-    const spaceID = params.get('spaceId') || parentParams?.get('spaceId');
-    try {
-      this.projectRefRouteValid.set(true);
-      return {
-        ...readProjectApiQuery(query),
-        storeId,
-        projectId,
-        ...(spaceID ? { spaceID } : {}),
-      };
-    } catch {
-      this.projectRefRouteValid.set(false);
-      // A malformed API qualifier must never silently fall back to an unqualified BYOK path.
-      return { storeId, projectId, projectApi: 'cloud', branch: '' };
-    }
-  }
-
   private requiresSponsorEligibility(ref: IProjectRef): boolean {
-    return ref.projectApi === 'cloud' || ref.storeId === 'firestore' || isSharedProjectRef(ref);
+    return ref.projectApi === 'cloud' || isSharedProjectRef(ref);
   }
 
-  private isCurrentRequest(
-    scope: string,
-    sessionId: string,
-    ref: IProjectRef,
-    authRevision: number,
-    authIdentity: string | undefined,
-  ): boolean {
-    return scope === this.scope() && equalProjectRef(ref, this.projectRef()) &&
-      sessionId === this.activeSessionId() && authRevision === this.authRevision &&
-      authIdentity === this.authIdentity;
+  private async checkSponsorEligibility(scope: string, sessionId: string, ref: IProjectRef, authRevision: number, authIdentity: string | undefined): Promise<SponsorEligibilityCheck> {
+    if (!this.projectRefRouteValid())
+      return {
+        kind: 'denied',
+        message: 'Project AI access could not be verified.',
+      };
+    if (!this.requiresSponsorEligibility(ref)) return { kind: 'allowed' };
+    if (!authIdentity)
+      return {
+        kind: 'denied',
+        message: 'Project AI access could not be verified.',
+      };
+    let result: ProjectAIEligibility;
+    try {
+      result = await firstValueFrom(this.projectAI.read(ref));
+    } catch {
+      return this.isCurrentRequest(scope, sessionId, ref, authRevision, authIdentity)
+        ? {
+            kind: 'denied',
+            message: 'Project AI access could not be verified.',
+          }
+        : { kind: 'stale' };
+    }
+    if (!this.isCurrentRequest(scope, sessionId, ref, authRevision, authIdentity)) return { kind: 'stale' };
+    if (result?.aiAllowed === true) return { kind: 'allowed' };
+    if (result?.aiAllowed === false) {
+      return {
+        kind: 'denied',
+        message: result.reason === 'plan_ended' ? 'The sponsor plan for this shared project has ended.' : 'AI access for this shared project is currently unavailable.',
+      };
+    }
+    return {
+      kind: 'denied',
+      message: 'Project AI access could not be verified.',
+    };
+  }
+
+  private isCurrentRequest(scope: string, sessionId: string, ref: IProjectRef, authRevision: number, authIdentity: string | undefined): boolean {
+    return this.isCurrentContext(scope, ref, authRevision, authIdentity) && sessionId === this.activeSessionId() && authRevision === this.authRevision && authIdentity === this.authIdentity;
+  }
+
+  private isCurrentContext(scope: string, ref: IProjectRef | undefined, authRevision: number, authIdentity: string | undefined): boolean {
+    const current = this.projectRef();
+    return !!ref && !!current && this.projectRefRouteValid() && scope === this.scope() && equalProjectRef(ref, current) && authRevision === this.authRevision && authIdentity === this.authIdentity;
   }
 
   private async restoreSessions(): Promise<void> {
     const scope = this.scope();
+    const ref = this.projectRef();
+    const authRevision = this.authRevision;
+    const authIdentity = this.authIdentity;
+    if (!ref || !this.projectRefRouteValid()) return;
+    const isCurrent = () => this.isCurrentContext(scope, ref, authRevision, authIdentity);
     this.sessionState.set('loading');
     try {
       let sessions = await this.sessionStore.list(scope);
+      if (!isCurrent()) return;
       if (!sessions.length) {
         await this.sessionStore.create(scope);
+        if (!isCurrent()) return;
         sessions = await this.sessionStore.list(scope);
+        if (!isCurrent()) return;
       }
-      if (scope !== this.scope()) return;
       this.sessions.set(sessions);
       const selectedId = this.activeSessionId();
       const selected = sessions.find((session) => session.id === selectedId) || sessions[0];
       this.activeSessionId.set(selected.id);
       this.turns.set([]);
       const restored = await this.sessionStore.load(scope, selected.id);
-      if (scope !== this.scope()) return;
+      if (!isCurrent()) return;
       this.turns.set(restored.turns);
       this.workspace.set(restored.session.workspace || emptyChatWorkspace());
       await this.refreshBookmarks();
+      if (!isCurrent()) return;
       this.turnTabs.set({});
       this.sessionState.set('ready');
       this.sessionError.set(undefined);
     } catch (error) {
+      if (!isCurrent()) return;
       this.showSessionError(error);
       this.sessionState.set('error');
     }
@@ -867,8 +966,11 @@ export class ChatPageComponent {
 
   private async refreshSessions(): Promise<void> {
     const scope = this.scope();
+    const ref = this.projectRef();
+    const authRevision = this.authRevision;
+    const authIdentity = this.authIdentity;
     const sessions = await this.sessionStore.list(scope);
-    if (scope === this.scope()) this.sessions.set(sessions);
+    if (this.isCurrentContext(scope, ref, authRevision, authIdentity)) this.sessions.set(sessions);
   }
 
   private showSessionError(error: unknown): void {

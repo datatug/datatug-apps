@@ -15,8 +15,18 @@ import { ChatPageComponent } from './chat-page.component';
 import { ProjectAIEligibilityService } from '../../../services/project/project-ai-eligibility.service';
 
 const engineError = 'join_aggregate at orderBy[0]: c.Country is neither aggregated nor present in GROUP BY';
-const session = { id: 's1', title: 'Chat', updatedAt: '2026-10-02T00:00:00Z', workspace: emptyChatWorkspace() };
-const failedTurn: ChatTurn = { id: 'old', question: 'Sales by country?', state: 'error', error: engineError };
+const session = {
+  id: 's1',
+  title: 'Chat',
+  updatedAt: '2026-10-02T00:00:00Z',
+  workspace: emptyChatWorkspace(),
+};
+const failedTurn: ChatTurn = {
+  id: 'old',
+  question: 'Sales by country?',
+  state: 'error',
+  error: engineError,
+};
 
 describe('ChatPageComponent failed turns', () => {
   let fixture: ComponentFixture<ChatPageComponent>;
@@ -28,16 +38,31 @@ describe('ChatPageComponent failed turns', () => {
     listBookmarks: vi.fn(async () => []),
     context: vi.fn(() => ''),
     appendQuestion: vi.fn(async (_scope: string, _session: string, question: string): Promise<ChatTurn> => ({ id: 'new', question, state: 'loading' })),
-    bindRecordSet: vi.fn(async (_scope: string, _session: string, dtql: string) => ({ dtql, parentRecordSetId: undefined })),
-    failQuestion: vi.fn(async (_scope: string, _session: string, id: string, message: string): Promise<ChatTurn> =>
-      ({ id, question: 'Sales by country?', state: 'error', error: message })),
+    bindRecordSet: vi.fn(async (_scope: string, _session: string, dtql: string) => ({
+      dtql,
+      parentRecordSetId: undefined,
+    })),
+    failQuestion: vi.fn(
+      async (_scope: string, _session: string, id: string, message: string): Promise<ChatTurn> => ({
+        id,
+        question: 'Sales by country?',
+        state: 'error',
+        error: message,
+      }),
+    ),
     completeWorkspaceAction: vi.fn(async (_scope: string, _session: string, id: string) => ({
-      workspace: emptyChatWorkspace(), turn: { id, question: 'Sales by country?', state: 'result' as const },
+      workspace: emptyChatWorkspace(),
+      turn: { id, question: 'Sales by country?', state: 'result' as const },
     })),
   };
   const data = { ensureSeed: vi.fn(async () => undefined), query: vi.fn() };
   const joiner = { candidates: vi.fn((): unknown[] => []) };
-  const interpreter = { interpret: vi.fn<ChatInterpretService['interpret']>(async () => ({ dtql: '{}', metrics: { requestBytes: 0, responseBytes: 0, interpretMs: 0 } })) };
+  const interpreter = {
+    interpret: vi.fn<ChatInterpretService['interpret']>(async () => ({
+      dtql: '{}',
+      metrics: { requestBytes: 0, responseBytes: 0, interpretMs: 0 },
+    })),
+  };
   const eligibility = { read: vi.fn(() => of({ aiAllowed: true })) };
   let routeParams: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
   let routeQuery: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
@@ -48,7 +73,10 @@ describe('ChatPageComponent failed turns', () => {
 
   async function render(
     turns: ChatTurn[],
-    params: Record<string, string> = { storeId: 'store', projectId: 'datatug-demo-project' },
+    params: Record<string, string> = {
+      storeId: 'store',
+      projectId: 'datatug-demo-project',
+    },
     query: Record<string, string> = {},
   ): Promise<void> {
     restored = turns;
@@ -56,7 +84,9 @@ describe('ChatPageComponent failed turns', () => {
     routeQuery = new BehaviorSubject(convertToParamMap(query));
     authState = new BehaviorSubject<{ status: string; user?: { uid: string } }>({ status: 'authenticated', user: { uid: 'actor-1' } });
     const route = {
-      get snapshot() { return { paramMap: routeParams.value, queryParamMap: routeQuery.value }; },
+      get snapshot() {
+        return { paramMap: routeParams.value, queryParamMap: routeQuery.value };
+      },
       paramMap: routeParams.asObservable(),
       queryParamMap: routeQuery.asObservable(),
     };
@@ -70,14 +100,32 @@ describe('ChatPageComponent failed turns', () => {
         { provide: ChatInterpretService, useValue: interpreter },
         { provide: ChatJoinService, useValue: joiner },
         { provide: ProjectAIEligibilityService, useValue: eligibility },
-        { provide: SneatAuthStateService, useValue: { authState: authState.asObservable() } },
+        {
+          provide: SneatAuthStateService,
+          useValue: { authState: authState.asObservable() },
+        },
         {
           provide: ChatProviderService,
-          useValue: { providers: signal([{ id: 'p1', name: 'Test', protocol: 'openai-chat', baseUrl: 'https://ai.example.test', model: 'm', apiKey: 'k' }]), selectedId: signal('p1') },
+          useValue: {
+            providers: signal([
+              {
+                id: 'p1',
+                name: 'Test',
+                protocol: 'openai-chat',
+                baseUrl: 'https://ai.example.test',
+                model: 'm',
+                apiKey: 'k',
+              },
+            ]),
+            selectedId: signal('p1'),
+          },
         },
       ],
     }).overrideComponent(ChatPageComponent, {
-      set: { imports: [DecimalPipe, NgTemplateOutlet], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+      set: {
+        imports: [DecimalPipe, NgTemplateOutlet],
+        schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      },
     });
     fixture = TestBed.createComponent(ChatPageComponent);
     await fixture.whenStable();
@@ -87,7 +135,10 @@ describe('ChatPageComponent failed turns', () => {
     vi.clearAllMocks();
     joiner.candidates.mockImplementation(() => []);
     eligibility.read.mockImplementation(() => of({ aiAllowed: true }));
-    interpreter.interpret.mockImplementation(async () => ({ dtql: '{}', metrics: { requestBytes: 0, responseBytes: 0, interpretMs: 0 } }));
+    interpreter.interpret.mockImplementation(async () => ({
+      dtql: '{}',
+      metrics: { requestBytes: 0, responseBytes: 0, interpretMs: 0 },
+    }));
   });
 
   it('shows a saved engine failure in plain language, with the engine text behind an expandable detail', async () => {
@@ -103,7 +154,12 @@ describe('ChatPageComponent failed turns', () => {
   });
 
   it('shows an already plain message as it is, with no technical detail', async () => {
-    await render([{ ...failedTurn, error: 'The AI provider rejected the request (HTTP 401).' }]);
+    await render([
+      {
+        ...failedTurn,
+        error: 'The AI provider rejected the request (HTTP 401).',
+      },
+    ]);
     expect(text()).toContain('The AI provider rejected the request (HTTP 401).');
     expect(details()).toBeNull();
   });
@@ -120,43 +176,83 @@ describe('ChatPageComponent failed turns', () => {
     expect(details()?.querySelector('pre')?.textContent).toBe(engineError);
   });
 
-  it('does not call the provider when a shared project sponsor has expired and resolves the pending turn', async () => {
-    eligibility.read.mockReturnValueOnce(of({ aiAllowed: false }));
+  it('does not create a pending turn when a shared project sponsor has expired', async () => {
+    eligibility.read.mockReturnValueOnce(of({ aiAllowed: false, reason: 'plan_ended' }));
     await render([], { storeId: 'github.com', projectId: 'datatug-demo-project' }, { projectApi: 'cloud', branch: 'main' });
     const component = fixture.componentInstance;
     component.question.set('Sales by country?');
     await component.submit();
-    expect(eligibility.read).toHaveBeenCalledWith({ storeId: 'github.com', projectId: 'datatug-demo-project', projectApi: 'cloud', branch: 'main' });
+    expect(eligibility.read).toHaveBeenCalledWith({
+      storeId: 'github.com',
+      projectId: 'datatug-demo-project',
+      projectApi: 'cloud',
+      branch: 'main',
+    });
     expect(interpreter.interpret).not.toHaveBeenCalled();
-    expect(store.failQuestion).toHaveBeenCalledWith(expect.any(String), 's1', 'new', 'AI access for this shared project has expired.', undefined);
+    expect(store.appendQuestion).not.toHaveBeenCalled();
+    expect(store.failQuestion).not.toHaveBeenCalled();
+    expect(component.question()).toBe('Sales by country?');
+    expect(component.sessionError()).toBe('The sponsor plan for this shared project has ended.');
     expect(component.submitting()).toBe(false);
   });
 
   it('fails closed on an unavailable eligibility read without exposing its server error', async () => {
     eligibility.read.mockReturnValueOnce(throwError(() => new Error('private backend detail')));
-    await render([], { storeId: 'firestore', projectId: 'project_1', spaceId: 'space_1' });
+    await render([], {
+      storeId: 'firestore',
+      projectId: 'project_1',
+      spaceId: 'space_1',
+    });
     const component = fixture.componentInstance;
     component.question.set('Sales by country?');
     await component.submit();
     expect(interpreter.interpret).not.toHaveBeenCalled();
-    expect(store.failQuestion).toHaveBeenCalledWith(expect.any(String), 's1', 'new', 'Project AI access could not be verified.', undefined);
+    expect(store.appendQuestion).not.toHaveBeenCalled();
+    expect(store.failQuestion).not.toHaveBeenCalled();
+    expect(component.question()).toBe('Sales by country?');
     expect(text()).not.toContain('private backend detail');
   });
 
   it('fails closed when the eligibility response has no boolean decision', async () => {
     eligibility.read.mockReturnValueOnce(of({} as { aiAllowed: boolean }));
-    await render([], { storeId: 'firestore', projectId: 'project_1', spaceId: 'space_1' });
+    await render([], {
+      storeId: 'firestore',
+      projectId: 'project_1',
+      spaceId: 'space_1',
+    });
     const component = fixture.componentInstance;
     component.question.set('Sales by country?');
     await component.submit();
     expect(interpreter.interpret).not.toHaveBeenCalled();
-    expect(store.failQuestion).toHaveBeenCalledWith(expect.any(String), 's1', 'new', 'Project AI access could not be verified.', undefined);
+    expect(store.appendQuestion).not.toHaveBeenCalled();
+    expect(store.failQuestion).not.toHaveBeenCalled();
+    expect(component.sessionError()).toBe('Project AI access could not be verified.');
+  });
+
+  it('resolves an already-created pending turn when fresh eligibility expires before interpretation', async () => {
+    eligibility.read.mockReturnValueOnce(of({ aiAllowed: true })).mockReturnValueOnce(of({ aiAllowed: false, reason: 'plan_ended' }));
+    await render([], { storeId: 'github.com', projectId: 'datatug-demo-project' }, { projectApi: 'cloud', branch: 'main' });
+    const component = fixture.componentInstance;
+    component.question.set('Sales by country?');
+    await component.submit();
+    expect(store.appendQuestion).toHaveBeenCalledTimes(1);
+    expect(store.failQuestion).toHaveBeenCalledWith(expect.any(String), 's1', 'new', 'The sponsor plan for this shared project has ended.');
+    expect(interpreter.interpret).not.toHaveBeenCalled();
+    expect(component.turns().find((turn) => turn.id === 'new')?.state).toBe('error');
   });
 
   it('allows read-only project AI while the sponsor remains paid even when query saving is disabled', async () => {
-    eligibility.read.mockReturnValueOnce(of({ aiAllowed: true }));
+    eligibility.read.mockReturnValueOnce(of({ aiAllowed: true })).mockReturnValueOnce(of({ aiAllowed: true }));
     interpreter.interpret.mockResolvedValueOnce({
-      workspaceAction: { kind: 'attach', reference: { kind: 'project', projectId: 'datatug-demo-project', objectId: 'datatug-demo-project', title: 'Project' } },
+      workspaceAction: {
+        kind: 'attach',
+        reference: {
+          kind: 'project',
+          projectId: 'datatug-demo-project',
+          objectId: 'datatug-demo-project',
+          title: 'Project',
+        },
+      },
       metrics: { requestBytes: 0, responseBytes: 0, interpretMs: 0 },
     });
     await render([], { storeId: 'github.com', projectId: 'datatug-demo-project' }, { projectApi: 'cloud', branch: 'main' });
@@ -170,6 +266,7 @@ describe('ChatPageComponent failed turns', () => {
   it.each([
     ['local', 'local-project'],
     ['github.com', 'public-repo'],
+    ['firestore', 'private-firestore-project'],
   ])('keeps ordinary %s BYOK interpretation outside shared sponsorship', async (storeId, projectId) => {
     await render([], { storeId, projectId });
     const component = fixture.componentInstance;
@@ -177,6 +274,22 @@ describe('ChatPageComponent failed turns', () => {
     await component.submit();
     expect(eligibility.read).not.toHaveBeenCalled();
     expect(interpreter.interpret).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores a restore failure from the previous full project ref', async () => {
+    await render([{ ...failedTurn, id: 'current', question: 'Current session' }]);
+    const deferred = new Subject<(typeof session)[]>();
+    store.list.mockReturnValueOnce(deferred as unknown as Promise<(typeof session)[]>);
+    const component = fixture.componentInstance;
+    const staleRestore = (component as unknown as { restoreSessions(): Promise<void> }).restoreSessions();
+    await Promise.resolve();
+    routeQuery.next(convertToParamMap({ projectApi: 'cloud', branch: 'other' }));
+    await fixture.whenStable();
+    deferred.error(new Error('stale restore failure'));
+    await staleRestore;
+    await fixture.whenStable();
+    expect(component.sessionError()).toBeUndefined();
+    expect(component.sessionState()).toBe('ready');
   });
 
   it('discards a deferred eligibility response after the full project ref changes', async () => {
@@ -192,6 +305,55 @@ describe('ChatPageComponent failed turns', () => {
     deferred.complete();
     await pending;
     expect(interpreter.interpret).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{ projectApi: 'cloud', branch: 'other' }, 'branch'],
+    [{ projectApi: 'private', branch: 'main' }, 'API'],
+  ])('discards a denied eligibility response after a full ref %s change', async (nextQuery) => {
+    const deferred = new Subject<{ aiAllowed: boolean; reason?: string }>();
+    eligibility.read.mockReturnValueOnce(deferred);
+    await render([], { storeId: 'github.com', projectId: 'datatug-demo-project' }, { projectApi: 'cloud', branch: 'main', spaceId: 'space-1' });
+    const component = fixture.componentInstance;
+    component.question.set('Sales by country?');
+    const pending = component.submit();
+    await Promise.resolve();
+    routeQuery.next(convertToParamMap(nextQuery));
+    deferred.next({ aiAllowed: false, reason: 'plan_ended' });
+    deferred.complete();
+    await pending;
+    expect(store.appendQuestion).not.toHaveBeenCalled();
+    expect(store.failQuestion).not.toHaveBeenCalled();
+    expect(interpreter.interpret).not.toHaveBeenCalled();
+    expect(component.sessionError()).not.toBe('The sponsor plan for this shared project has ended.');
+  });
+
+  it('discards a denied eligibility response after the Space changes during the read', async () => {
+    const deferred = new Subject<{ aiAllowed: boolean; reason?: string }>();
+    eligibility.read.mockReturnValueOnce(deferred);
+    await render([], {
+      storeId: 'firestore',
+      projectId: 'project_1',
+      spaceId: 'space-1',
+    });
+    const component = fixture.componentInstance;
+    component.question.set('Sales by country?');
+    const pending = component.submit();
+    await Promise.resolve();
+    routeParams.next(
+      convertToParamMap({
+        storeId: 'firestore',
+        projectId: 'project_1',
+        spaceId: 'space-2',
+      }),
+    );
+    deferred.next({ aiAllowed: false, reason: 'plan_ended' });
+    deferred.complete();
+    await pending;
+    expect(store.appendQuestion).not.toHaveBeenCalled();
+    expect(store.failQuestion).not.toHaveBeenCalled();
+    expect(interpreter.interpret).not.toHaveBeenCalled();
+    expect(component.sessionError()).not.toBe('The sponsor plan for this shared project has ended.');
   });
 
   it('discards a deferred eligibility response after the authenticated actor changes', async () => {
@@ -210,12 +372,21 @@ describe('ChatPageComponent failed turns', () => {
   });
 
   describe('when the related tables cannot be built for a saved result', () => {
-    const result: ChatTurn = { id: 'r1', question: 'Customers?', state: 'result', recordSetId: 'rs1', dtql: '{}', rows: [{ CustomerId: 1 }] };
+    const result: ChatTurn = {
+      id: 'r1',
+      question: 'Customers?',
+      state: 'result',
+      recordSetId: 'rs1',
+      dtql: '{}',
+      rows: [{ CustomerId: 1 }],
+    };
     const relatedError = (): HTMLElement | null => (fixture.nativeElement as HTMLElement).querySelector('.join-candidates .turn-error');
 
     it('explains an engine error in plain language, with the engine text behind an expandable detail', async () => {
       const raw = 'join_scope at from.joins[0].on[0].left: forward alias c';
-      joiner.candidates.mockImplementation(() => { throw new Error(raw); });
+      joiner.candidates.mockImplementation(() => {
+        throw new Error(raw);
+      });
       await render([result]);
       expect(relatedError()?.querySelector('ion-text')?.textContent).toMatch(/table or column that is not available/);
       expect(relatedError()?.querySelector('ion-text')?.textContent).not.toContain('join_scope');
@@ -225,7 +396,9 @@ describe('ChatPageComponent failed turns', () => {
     });
 
     it('shows an already plain failure as it is, with no technical detail', async () => {
-      joiner.candidates.mockImplementation(() => { throw 'not an Error'; });
+      joiner.candidates.mockImplementation(() => {
+        throw 'not an Error';
+      });
       await render([result]);
       expect(relatedError()?.querySelector('ion-text')?.textContent).toContain('The saved query cannot be read with the current schema.');
       expect(relatedError()?.querySelector('details')).toBeNull();
