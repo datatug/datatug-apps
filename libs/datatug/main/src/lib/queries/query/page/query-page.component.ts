@@ -4,6 +4,7 @@ import { PublicDataService } from '../../public-data/public-data.service';
 import { ConfiguredPublicDataSourcesService } from '../../public-data/configured-public-data-sources.service';
 import { SavedPlanReview } from '../../public-data/saved-plan-review';
 import { INITIAL_CANONICAL_PINS } from '../../public-data/canonical-metadata';
+import { monotonicTime } from '../../public-data/bounded-run-budget';
 import {
   scenarioRevisionChanges,
   SAVED_SCENARIO_PUBLICATION_BLOCKER,
@@ -36,6 +37,12 @@ const isGithubStoreId = (storeId?: string): boolean =>
  * command to run, not a thrown error"). */
 export const GITHUB_QUERY_RUN_MESSAGE =
   'This project is browsed read-only from GitHub — running a query needs a DataTug agent. Clone the repo and run `datatug serve --project <path>` to execute it.';
+
+interface QueryRunTiming {
+  readonly firstRecordMs?: number;
+  readonly allResultsLoadedMs: number;
+  readonly noRecords: boolean;
+}
 import { RandomIdService } from '@sneat/random';
 import { distinctUntilChanged, takeUntil } from 'rxjs/operators';
 import { Subject } from 'rxjs';
@@ -507,6 +514,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly runResult = signal<FederatedQueryResult | undefined>(
     undefined,
   );
+  public readonly queryRunTiming = signal<QueryRunTiming | undefined>(undefined);
   public readonly localResults = signal<readonly LocalResultDescriptor[]>([]);
   public readonly localHistoryLoading = signal(false);
   public readonly localHistoryError = signal<string | undefined>(undefined);
@@ -1774,6 +1782,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
    * bindingOrigins for the submitted parameter keys — display provenance only, never
    * authorization. */
   public runQuery(): void {
+    const runRequestedAt = monotonicTime();
     const projectId = this.project?.ref.projectId;
     const queryId = this.queryId;
     if (!projectId || !queryId) {
@@ -1800,8 +1809,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.relatedResultSet.set('affiliations');
     this.resultPageIndex.set(0);
     this.resultPageRows.set([]);
+    this.queryRunTiming.set(undefined);
     if (definition?.federation) {
       if (this.running()) return;
+      const runStartedAt = runRequestedAt;
+      const runMode = this.federatedMode();
+      let firstRecordAt: number | undefined;
       this.running.set(true);
       this.federatedProgress.set(undefined);
       this.runError.set(undefined);
@@ -1822,16 +1835,52 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
             if (current()) this.federatedProgress.set(progress);
           },
           this.ovdbToken().trim(),
-          this.federatedMode(),
+          runMode,
           (totalRows) => {
             if (current())
               this.runResult.update((result) =>
                 result ? { ...result, totalRows, hasMore: false } : result,
               );
           },
+          runMode === 'full'
+            ? {
+                onFirstRecord: (at) => {
+                  if (current() && firstRecordAt === undefined)
+                    firstRecordAt = at;
+                },
+              }
+            : {},
         )
         .then((result) => {
           if (current()) {
+            const runtimePages = Object.values(
+              result.runtimeRead?.pages ?? {},
+            );
+            const allResultsComplete =
+              result.hasMore !== true &&
+              result.truncated !== true &&
+              !runtimePages.some(
+                (page) => !page.complete || page.possiblyMore,
+              );
+            if (runMode === 'full' && allResultsComplete) {
+              const resultRows =
+                result.totalRows ?? result.recordset.rows.length;
+              this.queryRunTiming.set({
+                ...(resultRows === 0 || firstRecordAt === undefined
+                  ? {}
+                  : {
+                      firstRecordMs: Math.max(
+                        0,
+                        firstRecordAt - runStartedAt,
+                      ),
+                    }),
+                allResultsLoadedMs: Math.max(
+                  0,
+                  monotonicTime() - runStartedAt,
+                ),
+                noRecords: resultRows === 0,
+              });
+            }
             this.executedGraphDefinition = executedDefinition;
             this.resultPageRows.set(result.recordset.rows);
             this.runResult.set(result);
@@ -1857,12 +1906,14 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           }
         })
         .catch((error: unknown) => {
-          if (current())
+          if (current()) {
+            this.queryRunTiming.set(undefined);
             this.runError.set(
               error instanceof Error
                 ? error.message
                 : 'The direct OVDB query failed.',
             );
+          }
         })
         .finally(() => {
           if (lifetime !== this.federatedRunLifetime) return;
@@ -2082,6 +2133,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private invalidateFederatedRun(): void {
     ++this.federatedRunLifetime;
     this.running.set(false); this.federatedProgress.set(undefined);
+    this.queryRunTiming.set(undefined);
   }
 
   private stopFederatedRun(): void {
@@ -2187,6 +2239,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     if (!this.lastRequest || !this.lastRequestScope || !snapshot) {
       return;
     }
+    this.queryRunTiming.set(undefined);
     this.running.set(true);
     this.runError.set(undefined);
     this.accessBlockers.set([]);
@@ -2293,6 +2346,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   protected formatRecordedDate(iso: string): string {
     const date = new Date(iso);
     return Number.isNaN(date.getTime()) ? iso : date.toISOString().slice(0, 10);
+  }
+
+  protected formatQueryDuration(milliseconds: number): string {
+    const rounded = Math.round(Math.max(0, milliseconds));
+    return rounded < 1000
+      ? `${rounded === 0 && milliseconds > 0 ? '<1' : rounded} ms`
+      : `${(rounded / 1000).toFixed(1)} s`;
   }
 
   private extractErrorMessage(err: unknown): string {

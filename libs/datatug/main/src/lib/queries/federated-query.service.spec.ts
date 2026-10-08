@@ -91,6 +91,20 @@ describe('federated query worker boundary', () => {
       await expect(silent.run).resolves.toEqual(result);
     });
 
+    it('routes the worker first decoded-record timestamp to the current run', async () => {
+      vi.stubGlobal('Worker', FakeWorker);
+      const firstRecord = vi.fn();
+      const active = await started(new FederatedQueryService(), {
+        onFirstRecord: firstRecord,
+      });
+      const at = 123456.75;
+      active.worker.send({ type: 'first-record', at });
+      active.worker.send({ type: 'result', result });
+      await expect(active.run).resolves.toEqual(result);
+      expect(firstRecord).toHaveBeenCalledOnce();
+      expect(firstRecord).toHaveBeenCalledWith(at);
+    });
+
     it.each([{ type: 'fixture-audit' }, { type: 'error', message: '' }, { type: 'error' }])('rejects unexpected or empty error messages visibly without accepting output: %j', async (message) => {
       vi.stubGlobal('Worker', FakeWorker);
       const active = await started(new FederatedQueryService());

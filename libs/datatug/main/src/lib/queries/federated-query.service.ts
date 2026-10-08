@@ -29,6 +29,8 @@ export type {
 /** Optional extras for one run: a per-source report, and a static data adapter to read from instead of an OVDB server. */
 export interface FederatedRunExtras {
   readonly onHistoryError?: (message: string) => void;
+  /** Absolute monotonic timestamp captured when the first output record is decoded. */
+  readonly onFirstRecord?: (at: number) => void;
   readonly onSourceLoaded?: (event: FederatedSourceLoaded) => void;
   readonly staticSource?: StaticOvdbSource;
 }
@@ -197,6 +199,7 @@ export class FederatedQueryService {
         event: MessageEvent<
           | { type: 'progress'; progress: FederatedQueryProgress }
           | { type: 'source'; event: FederatedSourceLoaded }
+          | { type: 'first-record'; at: number }
           | { type: 'result'; result: FederatedQueryResult }
           | { type: 'error'; message: string }
           | { type: 'page'; requestId: number; rows: TypedValue[][] }
@@ -251,6 +254,10 @@ export class FederatedQueryService {
         }
         if (message.type === 'source') {
           extras.onSourceLoaded?.(message.event);
+          return;
+        }
+        if (message.type === 'first-record') {
+          if (Number.isFinite(message.at)) extras.onFirstRecord?.(message.at);
           return;
         }
         if (message.type === 'finished') {
