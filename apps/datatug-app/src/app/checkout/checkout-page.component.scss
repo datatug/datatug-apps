@@ -1,0 +1,32 @@
+main {
+  max-width: 46rem;
+  margin: 2rem auto;
+  padding: 1rem;
+}
+.test {
+  font-weight: 700;
+}
+button {
+  padding: 0.7rem 1rem;
+  cursor: pointer;
+}
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+label {
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-start;
+}
+dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.7rem;
+}
+section[hidden] {
+  display: none;
+}
+a {
+  margin-right: 0.6rem;
+}

@@ -627,6 +627,8 @@
           ? 'Preparing source snapshot'
           : progress.stage === 'loading'
             ? 'Loading sources'
+            : progress.stage === 'streaming'
+              ? 'Receiving query rows'
             : progress.stage === 'processing'
               ? 'Processing rows'
               : progress.stage === 'lookup'
@@ -708,19 +710,36 @@
          recorded date comes from Result.provenance.observedAt, which for a snapshot
          response is the fixture's actual capture time (never "now" — see
          datatug-cli's pkg/httpsource snapshot handling). -->
-    <ion-text color="medium" data-testid="result-provenance">
-      @if (result.provenance.mode === 'snapshot') {
-        snapshot · recorded
-        {{ formatRecordedDate(result.provenance.observedAt) }} ·
-        {{ result.provenance.source }}
-      } @else if (!selectedHistoricalResult()) {
-        live · {{ result.provenance.source }}
-      } @else {
-        recorded local output · {{ result.provenance.source }}
-      }
-    </ion-text>
+    <div class="ion-padding-horizontal">
+      <ion-text color="medium" data-testid="result-provenance">
+        @if (result.provenance.mode === 'snapshot') {
+          snapshot · recorded
+          {{ formatRecordedDate(result.provenance.observedAt) }} ·
+          {{ result.provenance.source }}
+        } @else if (!selectedHistoricalResult()) {
+          live · {{ result.provenance.source }}
+        } @else {
+          recorded local output · {{ result.provenance.source }}
+        }
+      </ion-text>
 
-    <sneat-datatug-source-rights-notice [evidence]="result" />
+      <sneat-datatug-source-rights-notice [evidence]="result" />
+
+      @if (!selectedHistoricalResult() && queryRunTiming(); as timing) {
+        <p data-testid="query-run-timings">
+          Time to first record:
+          @if (timing.noRecords) {
+            No records
+          } @else if (timing.firstRecordMs !== undefined) {
+            {{ formatQueryDuration(timing.firstRecordMs) }}
+          } @else {
+            Unavailable
+          }
+          · All results loaded in
+          {{ formatQueryDuration(timing.allResultsLoadedMs) }}
+        </p>
+      }
+    </div>
 
     @if (result.bindingsApplied.length) {
       <!-- REQ:no-hidden-filters — "the results header MUST list the bindings that
@@ -782,53 +801,15 @@
             >
           </div>
         }
-        <table
-          class="run-result-table"
-          style="width: 100%; border-collapse: collapse"
-        >
-          <thead>
-            <tr>
-              @for (col of displayedRecordset()?.columns; track col.name) {
-                <th
-                  style="
-                    text-align: left;
-                    border-bottom: 2px solid var(--ion-color-step-150, #d9d9d9);
-                    padding: 4px 8px;
-                  "
-                >
-                  {{ col.name }}
-                </th>
-              }
-            </tr>
-          </thead>
-          <tbody>
-            @for (row of visibleResultRows(); track $index) {
-              <tr>
-                @for (cell of row; track $index) {
-                  <td
-                    style="
-                      border-bottom: 1px solid
-                        var(--ion-color-step-100, #e6e6e6);
-                      padding: 4px 8px;
-                    "
-                  >
-                    {{ displayValue(cell) }}
-                  </td>
-                }
-              </tr>
-            }
-            @if (!resultTotalRows()) {
-              <tr>
-                <td
-                  [attr.colspan]="displayedRecordset()?.columns.length"
-                  style="padding: 4px 8px"
-                >
-                  No rows.
-                </td>
-              </tr>
-            }
-          </tbody>
-        </table>
+        <ag-grid-angular
+          class="ag-theme-quartz"
+          style="height: 420px; width: 100%"
+          [columnDefs]="resultGridColumnDefs()"
+          [rowData]="resultGridRows()"
+          [defaultColDef]="resultGridDefaultColDef"
+          [loading]="resultPageLoading()"
+          [overlayNoRowsTemplate]="resultGridNoRowsTemplate"
+        />
       </ion-card-content>
     </ion-card>
   }

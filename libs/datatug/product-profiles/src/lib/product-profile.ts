@@ -76,6 +76,9 @@ export interface ProductProfile {
    */
   readonly showPoweredByDalgo: boolean;
 
+  /** Product-specific billing entry; omitted when the profile has no checkout. */
+  readonly pricingUrl?: string;
+
   /**
    * Exact hostnames that select this profile (REQ:profile-table: "A profile
    * MUST be selected by hostname"). Empty means this profile is never chosen by
@@ -97,6 +100,7 @@ export const PRODUCT_PROFILES: Readonly<
 > = Object.freeze({
   datatug: Object.freeze({
     id: 'datatug',
+    pricingUrl: 'https://datatug.io/pricing/',
     brandName: 'DataTug.app',
     homePath: '',
     entryPointLabel: 'Open a project',
@@ -125,5 +129,7 @@ export const DEFAULT_PRODUCT_PROFILE_ID: ProductProfileId = 'datatug';
 export function isProductProfileId(
   value: string | null | undefined,
 ): value is ProductProfileId {
-  return !!value && Object.prototype.hasOwnProperty.call(PRODUCT_PROFILES, value);
+  return (
+    !!value && Object.prototype.hasOwnProperty.call(PRODUCT_PROFILES, value)
+  );
 }

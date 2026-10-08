@@ -4,6 +4,7 @@ import { PopoverController } from '@ionic/angular';
 import { ErrorLogger } from '@sneat/core';
 import { SpaceService } from '@sneat/space-services';
 import { SneatUserService } from '@sneat/auth-core';
+import { readGithubProjectId } from '@datatug/project-address';
 import { Subject, of, throwError } from 'rxjs';
 import { NewProjectFormComponent } from './new-project-form.component';
 import { DatatugNavService } from '../../services/nav/datatug-nav.service';
@@ -175,7 +176,7 @@ describe('New project through authenticated common API', () => {
       },
       template: {
         id: 'demo-project-1',
-        commit: '51716f3a4d682d5cb7ef70a7fd37f42e5418fd3d',
+        commit: 'd32475de887f65fc18276fae2c8c7a6af5b3fcf6',
       },
     });
     expect(h.nav.goProject.mock.calls[0][0].ref).toEqual({
@@ -186,6 +187,30 @@ describe('New project through authenticated common API', () => {
     });
     expect(h.createCloud).not.toHaveBeenCalled();
   });
+  it.each([
+    ['', 'repo@owner@datatug', 'datatug'],
+    ['datatug', 'repo@owner@datatug', 'datatug'],
+    ['Folder/Nested/', 'repo@owner@Folder/Nested', 'Folder/Nested'],
+  ])(
+    'loads branches for folder %s through the canonical project id',
+    async (typedFolder, projectId, folder) => {
+      const h = await harness();
+      h.component.githubFolder = typedFolder;
+      h.select();
+      expect(h.branches).toHaveBeenCalledWith({
+        storeId: 'github.com',
+        projectId,
+      });
+      expect(readGithubProjectId(projectId)).toEqual({
+        ok: true,
+        id: { repo: 'repo', org: 'owner', folder },
+      });
+      h.component.create();
+      expect(h.create.mock.calls[0][0]).toMatchObject({
+        github: { folder, branch: 'work' },
+      });
+    },
+  );
   it('requires explicit Space and branch before any creation', async () => {
     const h = await harness();
     h.select();
@@ -203,6 +228,32 @@ describe('New project through authenticated common API', () => {
     h.component.githubFolder = '../other';
     h.component.create();
     expect(h.create).not.toHaveBeenCalled();
+  });
+  it.each([
+    'my project',
+    'é',
+    '.hidden',
+    'a'.repeat(129),
+    'a'.repeat(128) + '/' + 'b'.repeat(128),
+  ])(
+    'refuses backend-unsupported creation folder %j before branch or project requests',
+    async (folder) => {
+      const h = await harness();
+      h.component.githubFolder = folder;
+      h.select();
+      h.component.create();
+      expect(h.branches).not.toHaveBeenCalled();
+      expect(h.create).not.toHaveBeenCalled();
+    },
+  );
+  it('handles an invalid repository identity before branch lookup without throwing', async () => {
+    const h = await harness();
+    h.connection.repositories.mockReturnValue(
+      of({ repositories: [{ ...repo, owner: 'bad@owner' }] }),
+    );
+    expect(() => h.select()).not.toThrow();
+    expect(h.branches).not.toHaveBeenCalled();
+    expect(h.component['formError']()).toContain('Choose a repository');
   });
   it('reuses the operation after an ambiguous failure but changes it for a changed payload', async () => {
     const h = await harness();

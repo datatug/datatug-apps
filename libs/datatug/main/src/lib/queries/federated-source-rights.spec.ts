@@ -21,6 +21,15 @@ const inventories = () =>
 const response = (body: unknown) => new Response(JSON.stringify(body));
 
 describe('frozen source terms before browser federation output', () => {
+  it('validates one whole-query terminal rights union against the frozen inventory', () => {
+    const run = () => new FederatedSourceRights(planned, inventories(), undefined, 'fixture-server');
+    const accepted = run();
+    accepted.acceptWholeQuery({ sourceRights: rights, usedSourceIds: rights.map((right) => right.sourceId) });
+    expect(accepted.evidence().usedSourceIds).toEqual(rights.map((right) => right.sourceId).sort());
+    expect(() => run().acceptWholeQuery({ sourceRights: rights.slice(1), usedSourceIds: rights.slice(1).map((right) => right.sourceId) })).toThrow(/missing/);
+    expect(() => run().acceptWholeQuery({ sourceRights: rights, usedSourceIds: rights.slice(1).map((right) => right.sourceId) })).toThrow(/usage evidence/);
+    expect(() => run().acceptWholeQuery({ sourceRights: rights, usedSourceIds: ['ovdb:fixture-server/private/Notes'] })).toThrow(/Unknown/);
+  });
   it('freezes every planned lookup, preserves unused inputs and rejects changed later-page evidence', () => {
     const mutable = structuredClone(rights);
     const session = new FederatedSourceRights(

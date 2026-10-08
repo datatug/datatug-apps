@@ -7,7 +7,7 @@ import { join } from 'node:path';
  * and keep the visitor's question out of every analytics and error report. Before this the router threw NG04002,
  * Sentry's crash-report dialog opened, the address bar was rewritten to `/` and the question was lost.
  *
- * MUST run against the PRODUCTION build (real Sentry DSN, real analytics): see
+ * MUST run against the PRODUCTION build (real Sentry DSN, optional analytics disabled): see
  * playwright.demo-handoff.config.ts, `pnpm e2e:demo-handoff`. Nothing here talks to a third party: every
  * request to a host other than the app's own is recorded and answered with an empty reply.
  *
@@ -125,8 +125,8 @@ async function shot(page: Page, name: string): Promise<void> {
 const HANDOFF_HOST = 'https://handoff.datatug.test';
 
 /**
- * Serves the production build as if it lived on an https host that is not localhost (so the app turns its
- * analytics and error reporting on, as in production), and stands in for Google Analytics with a script that
+ * Serves the production build on an https host (Sentry diagnostics remain configured, while DataTug optional
+ * analytics stay disabled), and stands in for Google Analytics with a script that
  * reports what gtag.js reports: the page location and every command.
  */
 async function onProductionLikeHost(
@@ -233,6 +233,7 @@ async function expectNoQuestion(
   watched: { external: External[]; requests: string[] },
   keptForReload = false,
 ) {
+  await expectDiagnosticsWithoutOptionalTracking(page, watched.external);
   expect(hasMarker(page.url()), `address bar ${page.url()}`).toBe(false);
   const state = await page.evaluate(() => ({
     title: document.title,
@@ -255,14 +256,42 @@ async function expectNoQuestion(
   expect(state.entries.filter(hasMarker), 'history entries').toEqual([]);
   expect(watched.requests.filter(hasMarker), 'own requests').toEqual([]);
   expect(leaks(watched.external), 'third-party requests').toEqual([]);
-  // Not vacuous: Google Analytics reported the page, and Sentry received the probe.
-  const hosts = new Set(
-    watched.external.map((request) => new URL(request.url).hostname),
-  );
-  expect([...hosts].some((h) => h.includes('google-analytics.com'))).toBe(true);
-  expect([...hosts].some((h) => h.includes('sentry.io'))).toBe(true);
 }
 
+
+/** Absence of optional SDK traffic is now the launch contract. Sentry's probe
+ * still exercises the outgoing observer, and the separate GA control below
+ * proves that the stub can detect a location leak when explicitly invoked.
+ */
+async function expectDiagnosticsWithoutOptionalTracking(
+  page: Page,
+  external: External[],
+) {
+  // Finish lazy chunk/preload requests and the error probe before evaluating
+  // the observer or ending the test's intercepted request context.
+  await page.waitForLoadState('networkidle');
+  expect(
+    await page.evaluate(
+      () =>
+        (window as unknown as { __datatugOptionalTrackingDisabled?: boolean })
+          .__datatugOptionalTrackingDisabled,
+    ),
+  ).toBe(true);
+  const hosts = external.map((request) => new URL(request.url).hostname);
+  expect(
+    hosts.filter(
+      (host) =>
+        host.includes('google-analytics.com') ||
+        host.includes('googletagmanager.com') ||
+        host.includes('posthog.com'),
+    ),
+    'optional analytics must not start',
+  ).toEqual([]);
+  expect(
+    hosts.some((host) => host.includes('sentry.io')),
+    'Sentry error probe exercises the observer',
+  ).toBe(true);
+}
 
 const VIEWPORTS = [
   { name: '390', width: 390, height: 844 },
@@ -1226,15 +1255,34 @@ test.describe('the start-chat confirmation page (founder ruling 2026-10-03)', ()
 test.describe('the question reaches no analytics or error report', () => {
   const HOST = 'https://handoff.datatug.test';
 
-  test('control: the same stand-in for Google Analytics does see a query that is NOT stripped (so it is not blind)', async ({
+  test('control: the same stand-in for Google Analytics detects an explicitly emitted location leak (so it is not blind)', async ({
     page,
     context,
     baseURL,
   }) => {
     const external = await onProductionLikeHost(context, baseURL ?? '');
     await page.goto(`${HOST}/no-such-route-xyz?q=${MARKER}`);
-    await page.waitForTimeout(2000);
-    expect(leaks(external).length).toBeGreaterThan(0);
+    // Deliberately invoke the fixture SDK only in this observer control. The app
+    // must never load it; a Sentry request alone must not make this control pass.
+    await page.addScriptTag({
+      url: 'https://www.googletagmanager.com/gtag/js?id=observer-control',
+    });
+    await page.evaluate(() => {
+      (window as unknown as { dataLayer: unknown[] }).dataLayer.push([
+        'observer-control',
+      ]);
+    });
+    await expect
+      .poll(
+        () =>
+          leaks(
+            external.filter(
+              (request) =>
+                new URL(request.url).hostname === 'www.google-analytics.com',
+            ),
+          ).length,
+      )
+      .toBeGreaterThan(0);
   });
 
   test('/demo: Google Analytics, Sentry (an error is thrown on purpose) and PostHog never receive it', async ({
@@ -1259,19 +1307,7 @@ test.describe('the question reaches no analytics or error report', () => {
     );
     await page.waitForTimeout(3000);
 
-    const hosts = new Set(
-      external.map((request) => new URL(request.url).hostname),
-    );
-    // Not vacuous: Google Analytics saw page commands and a location, Sentry received the probe.
-    expect([...hosts].some((h) => h.includes('google-analytics.com'))).toBe(
-      true,
-    );
-    expect([...hosts].some((h) => h.includes('sentry.io'))).toBe(true);
-    expect(
-      external.some((request) =>
-        request.url.includes('dl=' + encodeURIComponent(`${HOST}/demo`) + '&'),
-      ),
-    ).toBe(true);
+    await expectDiagnosticsWithoutOptionalTracking(page, external);
     expect(leaks(external)).toEqual([]);
   });
 });
@@ -1341,14 +1377,7 @@ test.describe('a question on a project address that is not a hand-off address is
       // redirects to the shared project without carrying the fragment forward.
       expect(url.hash).toBe('');
       expect(page.url()).not.toContain(MARKER);
-      // Not vacuous: the stand-in for Google Analytics saw page commands, Sentry received the probe.
-      const hosts = new Set(
-        external.map((request) => new URL(request.url).hostname),
-      );
-      expect([...hosts].some((h) => h.includes('google-analytics.com'))).toBe(
-        true,
-      );
-      expect([...hosts].some((h) => h.includes('sentry.io'))).toBe(true);
+      await expectDiagnosticsWithoutOptionalTracking(page, external);
       const leaked = external.filter((request) =>
         [request.url, request.body].some(
           (text) =>
@@ -1626,13 +1655,7 @@ test.describe('the matrix-parameter address reaches no analytics either', () => 
       }),
     );
     await page.waitForTimeout(3000);
-    const hosts = new Set(
-      external.map((request) => new URL(request.url).hostname),
-    );
-    expect([...hosts].some((h) => h.includes('google-analytics.com'))).toBe(
-      true,
-    );
-    expect([...hosts].some((h) => h.includes('sentry.io'))).toBe(true);
+    await expectDiagnosticsWithoutOptionalTracking(page, external);
     const leaked = external.filter((request) =>
       [request.url, request.body].some(
         (text) =>

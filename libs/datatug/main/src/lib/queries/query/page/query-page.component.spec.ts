@@ -434,6 +434,56 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     expect(component.runError()).toBeUndefined();
   });
 
+  it('maps the current result page to safe AG Grid columns and preserves exact typed values', async () => {
+    component = await createComponent();
+    component.runResult.set({
+      ...historyResultFor(queryDef),
+      recordset: {
+        columns: [
+          { name: 'customer.id', type: 'decimal' },
+          { name: 'customer.id', type: 'integer' },
+          { name: 'payload.data', type: 'string' },
+        ],
+        rows: [
+          [
+            { type: 'decimal', value: '9007199254740993.0000000000000001' },
+            { type: 'integer', value: '900719925474099312345' },
+            { type: 'string', value: '{"nested.value":1}' },
+          ],
+          [
+            { type: 'decimal', value: '2.50' },
+            { type: 'integer', value: '2' },
+            { type: 'string', value: '{"nested.value":2}' },
+          ],
+        ],
+      },
+      totalRows: undefined,
+    });
+    const columns = component.resultGridColumnDefs();
+    expect(columns.map(({ colId, field, headerName }) => ({ colId, field, headerName }))).toEqual([
+      { colId: 'result_0', field: 'result_0', headerName: 'customer.id' },
+      { colId: 'result_1', field: 'result_1', headerName: 'customer.id' },
+      { colId: 'result_2', field: 'result_2', headerName: 'payload.data' },
+    ]);
+    expect(component.resultGridRows()).toEqual([
+      {
+        result_0: '9007199254740993.0000000000000001',
+        result_1: '900719925474099312345',
+        result_2: '{"nested.value":1}',
+      },
+      { result_0: '2.50', result_1: '2', result_2: '{"nested.value":2}' },
+    ]);
+    component.resultPageIndex.set(1);
+    expect(component.resultGridColumnDefs()).toBe(columns);
+    expect(component.resultGridRows()).toEqual([]);
+
+    const template = readFileSync(resolve('libs/datatug/main/src/lib/queries/query/page/query-page.component.html'), 'utf8');
+    expect(template).toContain('[columnDefs]="resultGridColumnDefs()"');
+    expect(template).toContain('[rowData]="resultGridRows()"');
+    expect(template).toContain('[overlayNoRowsTemplate]="resultGridNoRowsTemplate"');
+    expect(template).not.toContain('<table');
+  });
+
   it('keeps accepted plan review state across no-op editor emissions and resets it for a definition edit', async () => {
     const definition: IQueryDef = {
       ...historyDefinition(),
@@ -529,6 +579,155 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
   }) as Awaited<ReturnType<FederatedQueryService['run']>>;
   const historyResultTemplate = (): string => readFileSync(resolve('libs/datatug/main/src/lib/queries/query/page/query-page.component.html'), 'utf8').split('  @if (runResult(); as result) {')[1].split('</ion-content>')[0].replace(/^/, '@if (runResult(); as result) {');
 
+  it('reports first decoded record and clean full-result completion from the same monotonic run start', async () => {
+    const definition = historyDefinition();
+    component = await createComponent({}, definition, historyResultTemplate());
+    let now = 10;
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
+    let complete!: (result: Awaited<ReturnType<FederatedQueryService['run']>>) => void;
+    federatedRunMock.mockImplementation(() => new Promise((resolve) => { complete = resolve; }));
+
+    component.runQuery();
+    const extras = federatedRunMock.mock.calls[0][5] as { onFirstRecord?: (at: number) => void };
+    now = 20;
+    extras.onFirstRecord?.(performance.timeOrigin + now);
+    now = 42;
+    complete(historyResultFor(definition));
+    await runFixture.whenStable();
+
+    expect(component.queryRunTiming()).toEqual({ firstRecordMs: 10, allResultsLoadedMs: 32, noRecords: false });
+    expect(runFixture.nativeElement.textContent.replace(/\s+/g, ' ').trim()).toContain('Time to first record: 10 ms · All results loaded in 32 ms');
+    clock.mockRestore();
+  });
+
+  it('shows no first-record duration for an empty successful result', async () => {
+    const definition = historyDefinition();
+    component = await createComponent({}, definition, historyResultTemplate());
+    let now = 5;
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
+    let complete!: (result: Awaited<ReturnType<FederatedQueryService['run']>>) => void;
+    federatedRunMock.mockImplementation(() => new Promise((resolve) => { complete = resolve; }));
+
+    component.runQuery();
+    now = 24;
+    complete({
+      ...historyResultFor(definition),
+      totalRows: 0,
+      recordset: { columns: [], rows: [] },
+    });
+    await runFixture.whenStable();
+
+    expect(component.queryRunTiming()).toEqual({ allResultsLoadedMs: 19, noRecords: true });
+    expect(runFixture.nativeElement.textContent.replace(/\s+/g, ' ').trim()).toContain('Time to first record: No records · All results loaded in 19 ms');
+    clock.mockRestore();
+  });
+
+  it('clears first-record timing when the run fails after decoding a row', async () => {
+    const definition = historyDefinition();
+    component = await createComponent({}, definition, historyResultTemplate());
+    let now = 5;
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
+    let fail!: (error: Error) => void;
+    federatedRunMock.mockImplementation(() => new Promise((_resolve, reject) => { fail = reject; }));
+
+    component.runQuery();
+    const extras = federatedRunMock.mock.calls[0][5] as { onFirstRecord?: (at: number) => void };
+    now = 12;
+    extras.onFirstRecord?.(performance.timeOrigin + now);
+    fail(new Error('The final result footer was invalid.'));
+    await runFixture.whenStable();
+
+    expect(component.queryRunTiming()).toBeUndefined();
+    expect(runFixture.nativeElement.querySelector('[data-testid="query-run-timings"]')).toBeNull();
+    expect(component.runError()).toContain('final result footer');
+    clock.mockRestore();
+  });
+
+  it('does not call a visible first page all results loaded', async () => {
+    const definition = historyDefinition();
+    component = await createComponent({}, definition, historyResultTemplate());
+    component.federatedMode.set('visible');
+    federatedRunMock.mockResolvedValue(historyResultFor(definition));
+
+    component.runQuery();
+    await runFixture.whenStable();
+
+    expect(component.queryRunTiming()).toBeUndefined();
+    expect(runFixture.nativeElement.querySelector('[data-testid="query-run-timings"]')).toBeNull();
+  });
+
+  it.each([
+    { hasMore: true },
+    { truncated: true },
+    { runtimeRead: { pins: {}, pages: { 'db.items': { limit: 10, offset: 0, rows: 10, complete: false, possiblyMore: true } } } },
+  ])('withholds full-result timing when the result is incomplete: %j', async (incomplete) => {
+    const definition = historyDefinition();
+    component = await createComponent({}, definition, historyResultTemplate());
+    federatedRunMock.mockResolvedValue({
+      ...historyResultFor(definition),
+      ...incomplete,
+    });
+
+    component.runQuery();
+    await runFixture.whenStable();
+
+    expect(component.queryRunTiming()).toBeUndefined();
+    expect(runFixture.nativeElement.querySelector('[data-testid="query-run-timings"]')).toBeNull();
+  });
+
+  it('discards first-record timing and completion when the user leaves during the run', async () => {
+    const definition = historyDefinition();
+    component = await createComponent({}, definition, historyResultTemplate());
+    let now = 5;
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
+    let finish!: (result: Awaited<ReturnType<FederatedQueryService['run']>>) => void;
+    federatedRunMock.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+
+    component.runQuery();
+    const extras = federatedRunMock.mock.calls[0][5] as { onFirstRecord?: (at: number) => void };
+    now = 12;
+    extras.onFirstRecord?.(performance.timeOrigin + now);
+    component.ngOnDestroy();
+    now = 20;
+    finish(historyResultFor(definition));
+    await runFixture.whenStable();
+
+    expect(component.queryRunTiming()).toBeUndefined();
+    expect(component.runResult()).toBeUndefined();
+    clock.mockRestore();
+  });
+
+  it('ignores an old first-record event after a replacement run starts', async () => {
+    const definition = historyDefinition();
+    const editor = new BehaviorSubject(historyStateFor(definition));
+    component = await createComponent({}, definition, historyResultTemplate(), { editor, project: of(project) });
+    let now = 10;
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
+    let finishOld!: (result: Awaited<ReturnType<FederatedQueryService['run']>>) => void;
+    let finishNew!: (result: Awaited<ReturnType<FederatedQueryService['run']>>) => void;
+    federatedRunMock
+      .mockImplementationOnce(() => new Promise((resolve) => { finishOld = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { finishNew = resolve; }));
+
+    component.runQuery();
+    const oldExtras = federatedRunMock.mock.calls[0][5] as { onFirstRecord?: (at: number) => void };
+    Object.assign(definition.federation?.nativeGraph ?? {}, { aliases: false });
+    editor.next(historyStateFor(definition));
+    now = 20;
+    component.runQuery();
+    const newExtras = federatedRunMock.mock.calls[1][5] as { onFirstRecord?: (at: number) => void };
+    oldExtras.onFirstRecord?.(performance.timeOrigin + 15);
+    newExtras.onFirstRecord?.(performance.timeOrigin + 27);
+    now = 35;
+    finishNew(historyResultFor(definition));
+    await runFixture.whenStable();
+    finishOld(historyResultFor(definition));
+    await Promise.resolve();
+
+    expect(component.queryRunTiming()).toEqual({ firstRecordMs: 7, allResultsLoadedMs: 15, noRecords: false });
+    clock.mockRestore();
+  });
+
   it('renders exact plain P1 evidence from actual IndexedDB reopening in the original grid and preserves all three sets', async () => {
     const definition = historyDefinition(); component = await createComponent({}, definition, historyResultTemplate());
     const tokens = ['-0', '1e400', '-1e400', '0e400', '1.0000000000000001', '9007199254740990.5', '{"nested":[-0,1e3,9007199254740993]}'];
@@ -538,10 +737,10 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     try {
       vi.mocked(TestBed.inject(FederatedQueryService).openLocalResult).mockImplementation(openLocalResult);
       await component.openHistoricalResult(descriptor.id); await component.changeRelatedResultSet('locations'); await runFixture.whenStable();
-      const values = Array.from(runFixture.nativeElement.querySelectorAll('tbody td') as NodeListOf<HTMLElement>, (cell) => cell.textContent?.trim());
+      const values = component.resultGridRows().flatMap((row) => Object.values(row));
       expect(values).toEqual(tokens); expect(component.historicalDefinition()).toEqual(definition);
       await component.changeRelatedResultSet('aliases'); await runFixture.whenStable(); expect(component.visibleResultRows()).toEqual([]);
-      await component.changeRelatedResultSet('affiliations'); await runFixture.whenStable(); expect(runFixture.nativeElement.textContent).toContain('original-row');
+      await component.changeRelatedResultSet('affiliations'); await runFixture.whenStable(); expect(component.resultGridRows().flatMap((row) => Object.values(row))).toContain('original-row');
       expect(federatedRunMock).not.toHaveBeenCalled(); expect(runQueryMock).not.toHaveBeenCalled();
     } finally { await deleteLocalResult(descriptor.id); }
   });
@@ -565,7 +764,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     expect(component.historicalDefinition()).toEqual(originalDefinition);
     expect(runFixture.nativeElement.textContent).toContain('Historical local result');
     expect(runFixture.nativeElement.textContent).toContain('2026-10-01T09:30:00Z');
-    expect(runFixture.nativeElement.textContent).toContain('original-row');
+    expect(component.resultGridRows().flatMap((row) => Object.values(row))).toContain('original-row');
     expect(runFixture.nativeElement.querySelector('[data-testid="result-provenance"]').textContent).not.toContain('live');
     expect(TestBed.inject(FederatedQueryService).dispose).toHaveBeenCalled();
     expect(federatedRunMock).toHaveBeenCalledOnce(); expect(runQueryMock).not.toHaveBeenCalled();
@@ -605,7 +804,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     oldCall?.[4]?.(999);
     finish(historyResultFor(oldCall?.[0] as IQueryDef)); await runFixture.whenStable();
     expect(component.runResult()).toBeUndefined(); expect(component.federatedProgress()).toBeUndefined();
-    expect(runFixture.nativeElement.textContent).not.toContain('original-row');
+    expect(component.resultGridRows().flatMap((row) => Object.values(row))).not.toContain('original-row');
     expect(component.running()).toBe(false);
   });
 
@@ -651,7 +850,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     if (!result.localResult) throw new Error('Missing graph result.');
     await component.deleteHistoricalResult(result.localResult.id); await runFixture.whenStable();
     expect(component.runResult()).toBeUndefined(); expect(component.visibleResultRows()).toEqual([]);
-    expect(runFixture.nativeElement.textContent).not.toContain('original-row');
+    expect(component.resultGridRows().flatMap((row) => Object.values(row))).not.toContain('original-row');
     const other = historyResultFor(definition, 'datatug-output-100000-def');
     vi.mocked(service.openLocalResult).mockResolvedValue({ result: other, executedDefinition: definition, descriptor: {} as LocalResultDescriptor });
     if (!other.localResult) throw new Error('Missing other graph result.');
@@ -999,6 +1198,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       '',
       'full',
       expect.any(Function),
+      expect.objectContaining({ onFirstRecord: expect.any(Function) }),
     );
   });
 

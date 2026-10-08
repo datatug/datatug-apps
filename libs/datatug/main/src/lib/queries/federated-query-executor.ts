@@ -21,6 +21,11 @@ import type {
   IQueryDef,
   ITextQueryRequest,
 } from '../models/definition/query-def';
+import { OVDB_ERROR_STREAM_MIME, readOvdbEarlyError, readOvdbJsonRecordStream } from './ovdb-json-record-stream';
+import { consumeOvdbOrdinaryQuery } from './ovdb-ordinary-execution';
+import { ovdbResultColumns, ovdbStreamRow } from './ovdb-stream-values';
+import { localResultBytes } from './local-result-bytes';
+import { strictJson } from './public-data/strict-json';
 import {
   deleteQueryDatabase,
   queryStorageError,
@@ -68,6 +73,8 @@ export function federatedVisibleMode(definition: IQueryDef): {
   const config = definition.federation;
   if (!config) return { supported: false, defaultMode: 'full' };
   try {
+    if (nativeDatabase(definition))
+      return { supported: false, defaultMode: 'full', reason: 'A whole-database query streams its complete result.' };
     const parsed = parseDTQL((definition.request as ITextQueryRequest).text, {
       tables: config.tables,
     });
@@ -125,6 +132,7 @@ export interface FederatedQueryProgress {
   readonly stage:
     | 'preparing'
     | 'loading'
+    | 'streaming'
     | 'processing'
     | 'lookup'
     | 'complete';
@@ -156,6 +164,11 @@ export interface FederatedQueryObserver {
   readonly onRuntimeSession?: (session: FederatedRuntimeSession) => void;
   readonly fetch?: typeof fetch;
   readonly onSourceLoaded?: (event: FederatedSourceLoaded) => void;
+  /** Called once when the executor decodes its first query output record. */
+  readonly onFirstRecord?: () => void;
+  /** Raw JSON rows are staged before the server's final column union exists. */
+  readonly onNativeRecord?: (data: Readonly<Record<string, unknown>>, signal?: AbortSignal) => Promise<void>;
+  readonly disableNativeStream?: boolean;
 }
 export interface FederatedRuntimeSession {
   readonly reserveOutputStorage?: (bytes: number) => void;
@@ -191,6 +204,10 @@ export type FederatedQueryResult = RunQueryResponse & {
   readonly publicDataExceptions?: PublicDataExceptions;
   readonly publicDataBytes?: number;
   readonly runtimeRead?: import('./public-data/immutable-federation').RuntimeReadReport;
+  readonly providerReads?: unknown;
+  readonly nativeStream?: true;
+  /** Worker staging marker for a complete ordinary /dtql response. */
+  readonly nativeDirect?: true;
 };
 export type FederatedOutputPage = (
   rows: readonly (readonly TypedValue[])[],
@@ -225,6 +242,211 @@ function ovdbBaseUrl(raw: string): string {
     );
   }
   return url.href.replace(/\/$/, '');
+}
+
+function nativeDatabase(definition: IQueryDef): { database: string; sources: PlannedNativeSource[] } | undefined {
+  const config = definition.federation;
+  if (!config || config.lookups?.length || config.bounds || definition.request.queryType !== 'DTQL') return undefined;
+  const parsed = parseDTQL((definition.request as ITextQueryRequest).text, { tables: config.tables });
+  const configured = new Set(config.tables.map((table) => table.database).filter((database): database is string => !!database));
+  const implicit = configured.size === 1 && config.tables.every((table) => table.database)
+    ? [...configured][0] : undefined;
+  if (!isJoinedDTQLQuery(parsed)) {
+    if (parsed.source.kind !== 'collection') return undefined;
+    const matches = config.tables.filter((table) => table.name === parsed.source.name && table.database);
+    return matches.length === 1 && implicit && matches[0].database === implicit
+      ? { database: implicit, sources: [{ database: implicit, name: matches[0].name }] }
+      : undefined;
+  }
+  const sources: PlannedNativeSource[] = [];
+  let fullyQualified = true;
+  const visit = (relation: QueryRelation): void => {
+    const database = relation.database ?? implicit;
+    if (!database) fullyQualified = false;
+    else sources.push({ database, name: relation.name });
+    relation.joins.forEach((join) => visit(join.from));
+  };
+  visit(parsed.from);
+  if (!fullyQualified || !sources.length || new Set(sources.map((source) => source.database)).size !== 1) return undefined;
+  return { database: sources[0].database, sources };
+}
+
+interface PlannedNativeSource { readonly database: string; readonly name: string }
+interface NativeQueryCapability {
+  readonly streaming: boolean;
+  readonly ordinary: boolean;
+  readonly mappedErrors: boolean;
+}
+
+async function streamCapability(base: string, database: string, fetcher: typeof fetch,
+  authHeaders: Record<string, string>, expectedServerId: string | undefined, effective: AbortSignal): Promise<NativeQueryCapability> {
+  const response = await fetcher(`${base}/v1/databases/${encodeURIComponent(database)}`, {
+    headers: { Accept: 'application/json', ...authHeaders }, redirect: 'error', signal: effective,
+  });
+  if (response.redirected || !response.ok || !response.body)
+    throw new Error('OVDB database capability discovery is unavailable.');
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for (;;) {
+      effective.throwIfAborted();
+      const part = await new Promise<ReadableStreamReadResult<Uint8Array>>((resolve, reject) => {
+        const abort = (): void => {
+          reject(effective.reason);
+          void reader.cancel(effective.reason).catch(() => undefined);
+        };
+        effective.addEventListener('abort', abort, { once: true });
+        if (effective.aborted) abort();
+        reader.read().then(resolve, reject).finally(() => effective.removeEventListener('abort', abort));
+      });
+      if (part.done) break;
+      size += part.value.byteLength;
+      if (size > 1024 * 1024) throw new Error('OVDB capability discovery exceeds the browser limit.');
+      chunks.push(part.value);
+    }
+  } finally { void reader.cancel().catch(() => undefined); }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  const metadata: unknown = strictJson(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata))
+    throw new Error('OVDB returned invalid database capabilities.');
+  const document = metadata as Record<string, unknown>;
+  const capabilities = document['capabilities'];
+  if (capabilities === undefined) return { streaming: false, ordinary: false, mappedErrors: false }; // Legacy route.
+  if (!capabilities || typeof capabilities !== 'object' || Array.isArray(capabilities))
+    throw new Error('OVDB returned invalid database capabilities.');
+  const flags = capabilities as Record<string, unknown>;
+  if (document['id'] !== database || (expectedServerId && document['serverId'] !== expectedServerId))
+    throw new Error('OVDB query capability identity differs from the selected database.');
+  if (flags['dtqlStreaming'] === true && flags['dtql'] !== true)
+    throw new Error('OVDB advertises a query stream without DTQL capability.');
+  return {
+    streaming: flags['dtqlStreaming'] === true,
+    ordinary: flags['dtql'] === true && flags['dtqlStreaming'] !== true,
+    mappedErrors: flags['dtqlStreaming'] === true && flags['dtqlStreamingErrors'] === true,
+  };
+}
+
+async function runNativeOrdinary(
+  definition: IQueryDef,
+  database: string,
+  sources: readonly PlannedNativeSource[],
+  base: string,
+  token: string,
+  onProgress?: (progress: FederatedQueryProgress) => void,
+  onOutputPage?: FederatedOutputPage,
+  signal?: AbortSignal,
+  observer?: FederatedQueryObserver,
+): Promise<FederatedQueryResult> {
+  const fetcher: typeof fetch =
+    observer?.fetch ?? ((input, init) => fetch(input, init));
+  const authHeaders: Record<string, string> = token
+    ? { Authorization: `Bearer ${token}` }
+    : {};
+  const config = definition.federation;
+  if (!config) throw new Error('This query has no direct OVDB configuration.');
+  const rights = await preflightSourceRights(
+    base,
+    sources,
+    fetcher,
+    authHeaders,
+    signal,
+    undefined,
+    config.expectedSourceRights,
+    admittedServerId(config, base),
+  );
+  signal?.throwIfAborted();
+  const response = await fetcher(
+    `${base}/v1/databases/${encodeURIComponent(database)}/dtql`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/yaml',
+        Accept: 'application/json',
+        ...authHeaders,
+      },
+      body: (definition.request as ITextQueryRequest).text,
+      redirect: 'error',
+      signal,
+    },
+  );
+  if (response.redirected || !response.ok) {
+    const mapped = response.redirected ? undefined : await readOvdbEarlyError(response, signal);
+    throw new Error(mapped ?? `OVDB ${database} whole-query execution failed (${response.status}).`);
+  }
+  return consumeOvdbOrdinaryQuery(
+    response,
+    definition,
+    base,
+    database,
+    rights,
+    signal,
+    onProgress,
+    onOutputPage,
+    observer,
+  );
+}
+
+async function runNativeStream(
+  definition: IQueryDef, database: string, sources: readonly PlannedNativeSource[],
+  base: string, token: string, onProgress?: (progress: FederatedQueryProgress) => void,
+  onOutputPage?: FederatedOutputPage, signal?: AbortSignal, observer?: FederatedQueryObserver,
+  mappedErrors = false,
+): Promise<FederatedQueryResult> {
+  const fetcher: typeof fetch = observer?.fetch ?? ((input, init) => fetch(input, init));
+  const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  const config = definition.federation;
+  if (!config) throw new Error('This query has no direct OVDB configuration.');
+  const expectedServerId = admittedServerId(config, base);
+  const rights = await preflightSourceRights(base, sources, fetcher, authHeaders, signal, undefined,
+    config.expectedSourceRights, expectedServerId);
+  signal?.throwIfAborted();
+  const response = await fetcher(`${base}/v1/databases/${encodeURIComponent(database)}/dtql`, {
+    method: 'POST', headers: { 'Content-Type': 'application/yaml',
+      Accept: mappedErrors ? OVDB_ERROR_STREAM_MIME : 'application/json', ...authHeaders },
+    body: (definition.request as ITextQueryRequest).text, redirect: 'error', signal,
+  });
+  if (response.redirected || !response.ok) {
+    const mapped = response.redirected ? undefined : await readOvdbEarlyError(response, signal);
+    throw new Error(mapped ?? `OVDB ${database} whole-query execution failed (${response.status}).`);
+  }
+  const first: Readonly<Record<string, unknown>>[] = [];
+  let previewBytes = 0;
+  let count = 0;
+  const stream = await readOvdbJsonRecordStream(response, async (record) => {
+    signal?.throwIfAborted();
+    observer?.onFirstRecord?.();
+    count++;
+    if (!observer?.onNativeRecord) {
+      const bytes = localResultBytes(record.data);
+      if (count > 100 || previewBytes + bytes > 1024 * 1024)
+        throw new Error('The streamed query needs a paged result sink beyond the direct preview limit.');
+      first.push(record.data);
+      previewBytes += bytes;
+    }
+    await observer?.onNativeRecord?.(record.data, signal);
+    signal?.throwIfAborted();
+    if (count === 1 || count % 100 === 0)
+      onProgress?.({ stage: 'streaming', rowsLoaded: count, rowsProcessed: count,
+        requestsCompleted: 0, requestsInFlight: 1, requestsPending: 0 });
+  }, signal, undefined, mappedErrors);
+  signal?.throwIfAborted();
+  rights.acceptWholeQuery(stream.footer as unknown as Record<string, unknown>);
+  const columns = ovdbResultColumns(stream.footer.columns, definition);
+  const rows = first.map((record) => ovdbStreamRow(record, columns));
+  if (onOutputPage && !observer?.onNativeRecord) await onOutputPage(rows);
+  onProgress?.({ stage: 'complete', rowsLoaded: count, rowsProcessed: count,
+    requestsCompleted: 1, requestsInFlight: 0, requestsPending: 0 });
+  return {
+    ...rights.evidence(),
+    ...(stream.footer.providerReads === undefined ? {} : { providerReads: stream.footer.providerReads }),
+    recordset: { columns, rows }, totalRows: count, hasMore: false, nativeStream: true,
+    limitations: [], bindingsApplied: [], truncated: false,
+    provenance: { source: `${base}/v1/databases/${database} (direct OVDB)`, queryId: definition.id,
+      mode: 'live', observedAt: new Date().toISOString(), executionProfile: 'protected' },
+  };
 }
 
 /** Capture one selected origin/identity pair before any I/O; never adopt it from a response. */
@@ -271,12 +493,42 @@ export async function runFederatedQuery(
   waitForNextPage?: () => Promise<void>,
   observer?: FederatedQueryObserver,
 ): Promise<FederatedQueryResult> {
+  let firstRecordReported = false;
+  const runObserver: FederatedQueryObserver = {
+    ...observer,
+    onFirstRecord: () => {
+      if (firstRecordReported) return;
+      firstRecordReported = true;
+      observer?.onFirstRecord?.();
+    },
+  };
   if (definition.federation?.nativeGraph)
     throw new Error(NATIVE_GRAPH_PUBLICATION_BLOCKER);
   if (definition.publicData)
     throw new Error(SAVED_SCENARIO_PUBLICATION_BLOCKER);
   const bounds = definition.federation?.bounds;
-  if (!bounds)
+  if (!bounds) {
+    const native = runObserver.disableNativeStream ? undefined : nativeDatabase(definition);
+    if (native) {
+      const config = definition.federation;
+      if (!config) throw new Error('This query has no direct OVDB configuration.');
+      const base = ovdbBaseUrl(config.ovdbBaseUrl);
+      const fetcher: typeof fetch = runObserver.fetch ?? ((input, init) => fetch(input, init));
+      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+      const remaining = Math.min(60_000, (runObserver.deadline ?? Date.now() + 60_000) - Date.now());
+      if (!Number.isFinite(remaining) || remaining <= 0)
+        throw new Error('The OVDB query deadline has expired.');
+      const timeout = AbortSignal.timeout(remaining);
+      const nativeSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
+      const capability = await streamCapability(base, native.database, fetcher, headers,
+        admittedServerId(config, base), nativeSignal);
+      if (capability.streaming)
+        return runNativeStream(definition, native.database, native.sources, base, token,
+          onProgress, onOutputPage, nativeSignal, runObserver, capability.mappedErrors);
+      if (capability.ordinary)
+        return runNativeOrdinary(definition, native.database, native.sources, base, token,
+          onProgress, onOutputPage, nativeSignal, runObserver);
+    }
     return runFederatedQueryInternal(
       definition,
       onProgress,
@@ -286,8 +538,9 @@ export async function runFederatedQuery(
       mode,
       onPageReady,
       waitForNextPage,
-      observer,
+      runObserver,
     );
+  }
   if (mode !== 'full')
     throw new Error(
       'Bounded public-data runs calculate one selected page. Browse result pages after it finishes.',
@@ -324,12 +577,12 @@ export async function runFederatedQuery(
     let preflightBytes = 0;
     const rights = await preflightSourceRights(base,
       bounds.sources.filter((source) => !bounds.driver || source.database !== bounds.driver.database || source.name !== bounds.driver.name),
-      observer?.fetch ?? fetch, token ? { Authorization: `Bearer ${token}` } : {}, runSignal,
+      runObserver.fetch ?? fetch, token ? { Authorization: `Bearer ${token}` } : {}, runSignal,
       (count) => { preflightBytes += count; if (budget) budget.consumeNetwork(count); else if (preflightBytes > bounds.bytes) throw new Error('Source terms preflight exceeds run byte budget.'); }, definition.federation?.expectedSourceRights, expectedServerId);
     const transport = createBoundedFederationFetch(
       base,
       budget ? bounds : { ...bounds, bytes: bounds.bytes - preflightBytes },
-      observer?.fetch ?? fetch,
+      runObserver.fetch ?? fetch,
       runSignal,
       budget,
       rights,
@@ -361,7 +614,7 @@ export async function runFederatedQuery(
         'full',
         undefined,
         undefined,
-        { ...observer, fetch: transport.fetch },
+        { ...runObserver, fetch: transport.fetch },
         rights,
         true,
       );
@@ -371,8 +624,10 @@ export async function runFederatedQuery(
         throw new Error('The lookup exceeds the result-row bound.');
       if (!outputRows) budget?.consumeOutput(result.recordset);
       // Nested joins use DALgo's batch result rather than the flat join callback.
-      if (!outputRows && result.recordset.rows.length && onOutputPage)
-        await onOutputPage(result.recordset.rows);
+      if (!outputRows && result.recordset.rows.length) {
+        runObserver.onFirstRecord?.();
+        if (onOutputPage) await onOutputPage(result.recordset.rows);
+      }
       const runtime: ImmutableReadReceipt | undefined =
         transport.receipt.runtime;
       return {
@@ -410,13 +665,13 @@ export async function runFederatedQuery(
     if (
       budget &&
       readPage &&
-      observer?.onRuntimeSession &&
+      runObserver.onRuntimeSession &&
       [...(transport.receipt.runtime?.pages.values() ?? [])].some(
         (page) => !page.complete,
       )
     ) {
       const sessionBudget = budget;
-      observer.onRuntimeSession({
+      runObserver.onRuntimeSession({
         readPage: async (sourceId, page) => {
           sessionBudget.check();
           await readPage(sourceId, page);
@@ -651,6 +906,7 @@ async function runFederatedQueryInternal(
       const converted = rows.map((row) =>
         names.map((name) => typed(row.data[name])),
       );
+      if (converted.length) observer?.onFirstRecord?.();
       for (const row of converted)
         if (firstOutputRows.length < 100) firstOutputRows.push(row);
       totalOutputRows += converted.length;
@@ -1047,6 +1303,7 @@ async function runFederatedQueryInternal(
       ? Object.keys(records[0].data)
       : (definition.recordsets?.[0]?.columns.map((column) => column.name) ??
         []);
+    if (records.length) observer?.onFirstRecord?.();
     return {
       ...rights.evidence(),
       recordset: {

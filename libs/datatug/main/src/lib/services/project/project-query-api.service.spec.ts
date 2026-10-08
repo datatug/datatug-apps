@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { SneatApiService } from '@sneat/api';
+import { readGithubProjectId } from '@datatug/project-address';
 import { of, firstValueFrom, throwError } from 'rxjs';
 import { ProjectQueryApiService } from './project-query-api.service';
 import { toProjectQueryWire } from '../../queries/project-query-contract';
@@ -68,6 +69,61 @@ describe('ProjectQueryApiService', () => {
     expect(http.get).not.toHaveBeenCalled();
     expect(http.post).not.toHaveBeenCalled();
   });
+  it.each([
+    ['Repo@Owner@datatug@working', 'repo@owner@datatug', 'datatug'],
+    ['Repo@Owner@datatug@HEAD', 'repo@owner@datatug', 'datatug'],
+    ['Repo@Owner@@working', 'repo@owner@', ''],
+    [
+      'Repo@Owner@Folder/Nested@working',
+      'repo@owner@Folder/Nested',
+      'Folder/Nested',
+    ],
+  ])(
+    'projects %s into a canonical API scope with branch separate',
+    async (projectId, canonical, folder) => {
+      const service = TestBed.inject(ProjectQueryApiService);
+      await firstValueFrom(
+        service.read(
+          { storeId: 'github.com', projectId },
+          'q',
+          'selected-branch',
+        ),
+      );
+      const params = api.get.mock.calls[0][1] as HttpParams;
+      expect(params.get('project')).toBe(canonical);
+      expect(params.get('branch')).toBe('selected-branch');
+      expect(readGithubProjectId(params.get('project'))).toEqual({
+        ok: true,
+        id: { repo: 'repo', org: 'owner', folder },
+      });
+    },
+  );
+  it.each([
+    'my project',
+    'é',
+    '.hidden',
+    'a'.repeat(129),
+    'a'.repeat(128) + '/' + 'b'.repeat(128),
+  ])(
+    'refuses unsupported API folder %j through observable errors before GET or save',
+    async (folder) => {
+      const service = TestBed.inject(ProjectQueryApiService);
+      const ref = { storeId: 'github.com', projectId: 'repo@owner@' + folder };
+      await expect(firstValueFrom(service.read(ref, 'q'))).rejects.toThrow(
+        'Invalid GitHub project API key',
+      );
+      await expect(
+        firstValueFrom(
+          service.save(ref, {
+            operationId: 'op',
+            query: toProjectQueryWire(createHostedDemoDbQuery('q')),
+          }),
+        ),
+      ).rejects.toThrow('Invalid GitHub project API key');
+      expect(api.get).not.toHaveBeenCalled();
+      expect(api.post).not.toHaveBeenCalled();
+    },
+  );
   it('uses the exact local CLI prefix and local storage envelope', async () => {
     const service = TestBed.inject(ProjectQueryApiService);
     const ref = { storeId: 'http-localhost:8989', projectId: 'local-project' };
