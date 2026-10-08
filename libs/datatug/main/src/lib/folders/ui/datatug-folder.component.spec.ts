@@ -17,10 +17,12 @@ describe('DatatugFolderComponent', () => {
   let fixture: ComponentFixture<DatatugFolderComponent>;
   let watchFolder: ReturnType<typeof vi.fn>;
   let logError: ReturnType<typeof vi.fn>;
+  let goProject: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     watchFolder = vi.fn();
     logError = vi.fn();
+    goProject = vi.fn();
     await TestBed.configureTestingModule({
       imports: [DatatugFolderComponent],
       providers: [
@@ -29,7 +31,7 @@ describe('DatatugFolderComponent', () => {
           useValue: { logError, logErrorHandler: vi.fn(() => vi.fn()) },
         },
         { provide: DatatugFoldersService, useValue: { watchFolder } },
-        { provide: DatatugNavService, useValue: {} },
+        { provide: DatatugNavService, useValue: { goProject } },
         { provide: SchemaService, useValue: {} },
         { provide: EnvironmentService, useValue: {} },
         { provide: DatatugBoardService, useValue: {} },
@@ -84,6 +86,39 @@ describe('DatatugFolderComponent', () => {
       failure,
       expect.stringContaining('folder'),
     );
+  });
+
+  it('offers a working query-browser route instead of an empty list or board creator', () => {
+    watchFolder.mockReturnValue(of(null));
+    const projectRef = {
+      storeId: 'github.com',
+      projectId: 'datatug-demo-project@datatug@demo-project-1',
+    };
+    fixture.componentRef.setInput('projectRef', projectRef);
+    fixture.componentInstance.tab = 'queries';
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('sneat-card-list')).toBeNull();
+    const browseButton = fixture.nativeElement.querySelector(
+      'ion-button',
+    ) as HTMLButtonElement;
+    expect(browseButton.textContent).toContain('Browse queries');
+    expect(browseButton.disabled).toBe(false);
+
+    browseButton.click();
+    expect(goProject).toHaveBeenCalledWith({ ref: projectRef }, 'queries');
+  });
+
+  it('keeps the query-browser action disabled until a project is available', () => {
+    fixture.componentInstance.tab = 'queries';
+    fixture.detectChanges();
+
+    const browseButton = fixture.nativeElement.querySelector(
+      'ion-button',
+    ) as HTMLButtonElement;
+    expect(browseButton.disabled).toBe(true);
+    browseButton.click();
+    expect(goProject).not.toHaveBeenCalled();
   });
 });
 
@@ -179,7 +214,10 @@ describe('DatatugFolderComponent renders the Boards card once the folder arrives
       providers: [
         {
           provide: ErrorLogger,
-          useValue: { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) },
+          useValue: {
+            logError: vi.fn(),
+            logErrorHandler: vi.fn(() => vi.fn()),
+          },
         },
         {
           provide: DatatugFoldersService,
