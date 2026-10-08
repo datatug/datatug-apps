@@ -94,7 +94,12 @@
       <ion-label color="danger" class="ion-text-wrap">{{ error }}</ion-label>
     </ion-item>
   }
-  @if (isGithubSignedIn() && !githubRepos().length) {
+  @if (
+    isGithubSignedIn() &&
+    !isLoadingRepos() &&
+    !githubReposError() &&
+    !githubRepos().length
+  ) {
     <ion-item lines="none">
       <ion-label class="ion-text-wrap">
         No repositories with write access are available yet. Install the App for

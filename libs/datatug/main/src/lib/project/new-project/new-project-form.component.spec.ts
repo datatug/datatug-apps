@@ -128,6 +128,37 @@ describe('New project through authenticated common API', () => {
       'Refresh repositories',
     );
 
+    const pendingRefresh = new Subject<{
+      repositories: (typeof repo)[];
+    }>();
+    h.connection.repositories.mockReturnValue(pendingRefresh as never);
+    h.component.loadGithubRepos();
+    h.fixture.detectChanges();
+    expect(h.component.isGithubSignedIn()).toBe(true);
+    expect(h.component['isLoadingRepos']()).toBe(true);
+    expect(h.fixture.nativeElement.innerHTML).not.toContain(
+      'No repositories with write access are available yet',
+    );
+
+    pendingRefresh.error({ status: 503 });
+    await h.fixture.whenStable();
+    h.fixture.detectChanges();
+    expect(h.component['githubReposError']()).toContain(
+      'Could not load GitHub repositories',
+    );
+    expect(h.fixture.nativeElement.innerHTML).not.toContain(
+      'No repositories with write access are available yet',
+    );
+
+    h.connection.repositories.mockReturnValue(of({ repositories: [] }));
+    h.component.loadGithubRepos();
+    h.fixture.detectChanges();
+    await h.fixture.whenStable();
+    h.fixture.detectChanges();
+    expect(h.fixture.nativeElement.innerHTML).toContain(
+      'No repositories with write access are available yet',
+    );
+
     h.connection.repositories.mockReturnValue(of({ repositories: [repo] }));
     h.component.loadGithubRepos();
     h.fixture.detectChanges();
