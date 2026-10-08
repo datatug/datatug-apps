@@ -32,6 +32,11 @@ import { IProjectRef, equalProjectRef, isSharedProjectRef } from '../../../core/
 import { ProjectTracker } from '../../../services/nav/contexts/project.tracker';
 import { ProjectAIEligibilityService, type ProjectAIEligibility } from '../../../services/project/project-ai-eligibility.service';
 
+type SponsorEligibilityCheck =
+  | { readonly kind: 'allowed' }
+  | { readonly kind: 'stale' }
+  | { readonly kind: 'denied'; readonly message: string };
+
 ModuleRegistry.registerModules([AllCommunityModule]);
 addIcons({ sendOutline });
 
@@ -557,9 +562,10 @@ export class ChatPageComponent {
     const scope = this.scope();
     const sessionId = this.activeSessionId();
     const ref = this.projectRef();
+    if (!ref) return;
     const authRevision = this.authRevision();
     const authIdentity = this.authIdentity();
-    const isCurrent = () => this.isCurrentRequest(scope, sessionId, ref!, authRevision, authIdentity);
+    const isCurrent = () => this.isCurrentRequest(scope, sessionId, ref, authRevision, authIdentity);
     const question = `Join ${candidate.sourceAlias} to ${candidate.targetTable} via ${candidate.sourceFields.join(', ')}`;
     this.submitting.set(true);
     let id: string | undefined;
@@ -628,9 +634,10 @@ export class ChatPageComponent {
     const scope = this.scope();
     const sessionId = this.activeSessionId();
     const ref = this.projectRef();
+    if (!ref) return;
     const authRevision = this.authRevision();
     const authIdentity = this.authIdentity();
-    const isCurrent = () => this.isCurrentRequest(scope, sessionId, ref!, authRevision, authIdentity);
+    const isCurrent = () => this.isCurrentRequest(scope, sessionId, ref, authRevision, authIdentity);
     this.sessionBusy.set(true);
     try {
       const state = await this.sessionStore.workspaceAction(scope, sessionId, action);
