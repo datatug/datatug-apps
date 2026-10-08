@@ -128,6 +128,22 @@
       })();
     </script>
 
+    <!-- DataTug launch: optional tracking disabled before any SDK starts. -->
+    <script>
+      (function () {
+        // Match product-profile resolution before Angular is available. Only the
+        // established local development hosts honor the profile query override.
+        var host = location.hostname;
+        var local = host === 'localhost' || host === '127.0.0.1' || host === '' || host.endsWith('.local') || host.includes('.ngrok.');
+        var profile = local ? new URLSearchParams(location.search).get('profile') : null;
+        var incidentius = profile === 'incidentius' || (profile !== 'datatug' && host === 'app.incidentius.com');
+        if (!incidentius) {
+          window.__datatugOptionalTrackingDisabled = true;
+          ['G-SNF2R7PDY7', 'G-TYBDTV738R', 'G-PROVIDE_IF_NEEDED'].forEach(function (id) { window['ga-disable-' + id] = true; });
+        }
+      })();
+    </script>
+
     <!-- Checkout privacy: before any Google Analytics script or page view. -->
     <script>
       (function () {
@@ -146,7 +162,7 @@
     </script>
     <!-- Google Analytics (skipped on localhost) -->
     <script>
-      if (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+      if (!window.__datatugOptionalTrackingDisabled && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
         var s = document.createElement('script');
         s.async = true;
         s.src = 'https://www.googletagmanager.com/gtag/js?id=G-SNF2R7PDY7';
