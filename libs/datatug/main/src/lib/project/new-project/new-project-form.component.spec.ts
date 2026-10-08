@@ -229,6 +229,32 @@ describe('New project through authenticated common API', () => {
     h.component.create();
     expect(h.create).not.toHaveBeenCalled();
   });
+  it.each([
+    'my project',
+    'é',
+    '.hidden',
+    'a'.repeat(129),
+    'a'.repeat(128) + '/' + 'b'.repeat(128),
+  ])(
+    'refuses backend-unsupported creation folder %j before branch or project requests',
+    async (folder) => {
+      const h = await harness();
+      h.component.githubFolder = folder;
+      h.select();
+      h.component.create();
+      expect(h.branches).not.toHaveBeenCalled();
+      expect(h.create).not.toHaveBeenCalled();
+    },
+  );
+  it('handles an invalid repository identity before branch lookup without throwing', async () => {
+    const h = await harness();
+    h.connection.repositories.mockReturnValue(
+      of({ repositories: [{ ...repo, owner: 'bad@owner' }] }),
+    );
+    expect(() => h.select()).not.toThrow();
+    expect(h.branches).not.toHaveBeenCalled();
+    expect(h.component['formError']()).toContain('Choose a repository');
+  });
   it('reuses the operation after an ambiguous failure but changes it for a changed payload', async () => {
     const h = await harness();
     h.select();

@@ -6,6 +6,7 @@ import {
   GithubProjectIdError,
   isTrustedProjectAddress,
   isValidGithubFolder,
+  isValidGithubProjectApiFolder,
   isValidGithubRef,
   readGithubProjectId,
   readNewProjectFolder,
@@ -318,8 +319,10 @@ describe("readNewProjectFolder: the new-project form's folder field (issue #180)
     ['a/b', 'a/b'],
     ['a/b/', 'a/b'],
     ['a/b//', 'a/b'],
-    ['my project', 'my project'],
-    ['.hidden', '.hidden'],
+    [
+      'a'.repeat(128) + '/' + 'b'.repeat(127),
+      'a'.repeat(128) + '/' + 'b'.repeat(127),
+    ],
     ['a..b', 'a..b'],
   ])('%j is the folder %j', (typed, folder) => {
     expect(readNewProjectFolder(typed)).toEqual({ ok: true, folder });
@@ -327,6 +330,11 @@ describe("readNewProjectFolder: the new-project form's folder field (issue #180)
 
   it.each([
     // [typed, why]
+    ['my project', 'invalid'],
+    ['.hidden', 'invalid'],
+    ['é', 'invalid'],
+    ['a'.repeat(129), 'invalid'],
+    ['a'.repeat(128) + '/' + 'b'.repeat(128), 'invalid'],
     ['/', 'leading-slash'],
     ['/datatug', 'leading-slash'],
     ['  /a', 'leading-slash'],
@@ -361,7 +369,7 @@ describe("readNewProjectFolder: the new-project form's folder field (issue #180)
   });
 
   it('only ever returns a folder the reader accepts', () => {
-    for (const typed of ['a', 'a/b', 'a b', '.x', 'x.', 'é']) {
+    for (const typed of ['a', 'a/b', 'x.', 'a..b', 'a'.repeat(128)]) {
       const reading = readNewProjectFolder(typed);
       expect(reading.ok).toBe(true);
       if (reading.ok) {
@@ -422,6 +430,8 @@ describe('formatGithubProjectApiKey (cloud wire contract)', () => {
 
 it.each([
   { repo: 'repo@other', org: 'owner', folder: 'datatug' },
+  { repo: 'repo\n', org: 'owner', folder: 'datatug' },
+  { repo: 'repo', org: 'owner\n', folder: 'datatug' },
   { repo: 'repo', org: 'owner@other', folder: 'datatug' },
   { repo: 'repo', org: 'owner', folder: 'folder@ref' },
 ])(
@@ -432,3 +442,54 @@ it.each([
     );
   },
 );
+
+describe('released cloud API project folder contract', () => {
+  it.each([
+    '',
+    'my project',
+    'é',
+    '.hidden',
+    '_leading',
+    '-leading',
+    'a//b',
+    'folder\n',
+    'folder\r',
+    'a\\b',
+    '/a',
+    'a/',
+    '.',
+    '..',
+    'a/../b',
+    'a'.repeat(129),
+    'a'.repeat(128) + '/' + 'b'.repeat(128),
+  ])('refuses unsupported API folder %j', (folder) => {
+    expect(isValidGithubProjectApiFolder(folder)).toBe(false);
+    if (folder !== '')
+      expect(() =>
+        formatGithubProjectApiKey({ repo: 'repo', org: 'owner', folder }),
+      ).toThrow(GithubProjectIdError);
+  });
+  it.each([
+    'a',
+    'A.B_c-0',
+    'a..b',
+    'Folder/Nested',
+    'a'.repeat(128),
+    'a'.repeat(128) + '/' + 'b'.repeat(127),
+  ])('accepts API folder %j at the released limits', (folder) => {
+    expect(isValidGithubProjectApiFolder(folder)).toBe(true);
+    expect(
+      formatGithubProjectApiKey({ repo: 'repo', org: 'owner', folder }),
+    ).toBe('repo@owner@' + folder);
+  });
+  it.each(['my project', 'é', '.hidden', 'a'.repeat(129)])(
+    'retains generic read-only support for %j',
+    (folder) => {
+      expect(isValidGithubFolder(folder)).toBe(true);
+      expect(readGithubProjectId('repo@owner@' + folder)).toEqual({
+        ok: true,
+        id: { repo: 'repo', org: 'owner', folder },
+      });
+    },
+  );
+});

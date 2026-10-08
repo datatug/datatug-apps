@@ -98,6 +98,32 @@ describe('ProjectQueryApiService', () => {
       });
     },
   );
+  it.each([
+    'my project',
+    'é',
+    '.hidden',
+    'a'.repeat(129),
+    'a'.repeat(128) + '/' + 'b'.repeat(128),
+  ])(
+    'refuses unsupported API folder %j through observable errors before GET or save',
+    async (folder) => {
+      const service = TestBed.inject(ProjectQueryApiService);
+      const ref = { storeId: 'github.com', projectId: 'repo@owner@' + folder };
+      await expect(firstValueFrom(service.read(ref, 'q'))).rejects.toThrow(
+        'Invalid GitHub project API key',
+      );
+      await expect(
+        firstValueFrom(
+          service.save(ref, {
+            operationId: 'op',
+            query: toProjectQueryWire(createHostedDemoDbQuery('q')),
+          }),
+        ),
+      ).rejects.toThrow('Invalid GitHub project API key');
+      expect(api.get).not.toHaveBeenCalled();
+      expect(api.post).not.toHaveBeenCalled();
+    },
+  );
   it('uses the exact local CLI prefix and local storage envelope', async () => {
     const service = TestBed.inject(ProjectQueryApiService);
     const ref = { storeId: 'http-localhost:8989', projectId: 'local-project' };

@@ -264,28 +264,30 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       this.formError.set('Choose a repository and a valid relative folder.');
       return;
     }
-    this.queryApi
-      .branches({
-        storeId: 'github.com',
-        projectId: formatGithubProjectApiKey({
-          repo: repo.name,
-          org: repo.owner,
-          folder: folder.folder,
-        }),
-      })
-      .subscribe({
-        next: (result) => {
-          if (generation !== this.selectionGeneration) return;
-          this.branches.set(result.branches);
-          this.formError.set(undefined);
-        },
-        error: () => {
-          if (generation === this.selectionGeneration)
-            this.formError.set(
-              'Branches could not be loaded. Check your repository access and retry.',
-            );
-        },
+    let projectId: string;
+    try {
+      projectId = formatGithubProjectApiKey({
+        repo: repo.name,
+        org: repo.owner,
+        folder: folder.folder,
       });
+    } catch {
+      this.formError.set('Choose a repository and a valid relative folder.');
+      return;
+    }
+    this.queryApi.branches({ storeId: 'github.com', projectId }).subscribe({
+      next: (result) => {
+        if (generation !== this.selectionGeneration) return;
+        this.branches.set(result.branches);
+        this.formError.set(undefined);
+      },
+      error: () => {
+        if (generation === this.selectionGeneration)
+          this.formError.set(
+            'Branches could not be loaded. Check your repository access and retry.',
+          );
+      },
+    });
   }
   create(): void {
     if (this.isCreating()) return;

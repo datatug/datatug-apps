@@ -85,6 +85,8 @@ export function formatGithubProjectApiKey(project: IGithubProjectId): string {
   if (
     typeof repo !== 'string' ||
     typeof org !== 'string' ||
+    !isSafePathSegment(repo) ||
+    !isSafePathSegment(org) ||
     !GITHUB_REPO_PATTERN.test(repo) ||
     !GITHUB_OWNER_PATTERN.test(org) ||
     asciiLowerCase(repo).endsWith('.git')
@@ -93,7 +95,7 @@ export function formatGithubProjectApiKey(project: IGithubProjectId): string {
       'owner-or-repo',
       'Invalid GitHub project API key',
     );
-  if (!isValidGithubFolder(folder))
+  if (folder !== '' && !isValidGithubProjectApiFolder(folder))
     throw new GithubProjectIdError('folder', 'Invalid GitHub project API key');
   return `${asciiLowerCase(repo)}@${asciiLowerCase(org)}@${folder}`;
 }
@@ -144,16 +146,33 @@ export function isValidGithubFolder(folder: unknown): folder is string {
   );
 }
 
+/** Released cloud backend project-folder contract; read-only GitHub addresses are broader. */
+export function isValidGithubProjectApiFolder(
+  folder: unknown,
+): folder is string {
+  return (
+    typeof folder === 'string' &&
+    folder.length > 0 &&
+    folder.length <= 256 &&
+    folder
+      .split('/')
+      .every(
+        (segment) =>
+          segment.length <= 128 &&
+          /^[A-Za-z0-9]/.test(segment) &&
+          !/[^A-Za-z0-9._-]/.test(segment),
+      )
+  );
+}
+
 export type NewProjectFolderReading =
   | { readonly ok: true; readonly folder: string }
   | { readonly ok: false; readonly reason: 'leading-slash' | 'invalid' };
 
 /**
- * The folder field of the new-project form, as the reader will accept it. A blank field means the default folder
- * (`datatug`); a folder starting with `/` is refused (it would read as an absolute path); trailing slashes are
- * dropped; what is left must be {@link isValidGithubFolder} and not empty, so `..`, `.`, a backslash, an empty
- * segment (`a//b`), a `-` segment, `@`, `%`, `?` and `#` are all refused: a project can only be created in a
- * folder that the reader (and so its address) can open.
+ * New project creation uses the cloud API folder contract. Blank means `datatug`;
+ * leading slash is refused and trailing slashes are removed before validation.
+ * Generic read-only GitHub addresses retain their broader folder contract.
  */
 export function readNewProjectFolder(typed: unknown): NewProjectFolderReading {
   const trimmed = typeof typed === 'string' ? typed.trim() : '';
@@ -164,7 +183,7 @@ export function readNewProjectFolder(typed: unknown): NewProjectFolderReading {
     return { ok: false, reason: 'leading-slash' };
   }
   const folder = trimmed.replace(/\/+$/, '');
-  return folder !== '' && isValidGithubFolder(folder)
+  return isValidGithubProjectApiFolder(folder)
     ? { ok: true, folder }
     : { ok: false, reason: 'invalid' };
 }
