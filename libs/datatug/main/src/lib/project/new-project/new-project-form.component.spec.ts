@@ -104,6 +104,41 @@ async function harness(freshUser = false) {
 }
 
 describe('New project through authenticated common API', () => {
+  it('explains a failed GitHub repository refresh and clears only that error after a successful retry', async () => {
+    const h = await harness();
+    const repositories = new Subject<{ repositories: typeof repo[] }>();
+    h.connection.repositories.mockReturnValue(repositories as never);
+    h.component.store = 'github';
+    h.fixture.detectChanges();
+
+    repositories.error({ status: 503 });
+    await h.fixture.whenStable();
+    h.fixture.detectChanges();
+    expect(h.fixture.nativeElement.textContent).toContain(
+      'Could not load GitHub repositories',
+    );
+    expect(h.fixture.nativeElement.textContent).toContain(
+      'Connect or reconnect GitHub',
+    );
+    expect(h.component.isGithubSignedIn()).toBe(false);
+    expect(h.component.isLoadingRepos()).toBe(false);
+
+    h.component['formError'].set('Branches could not be loaded.');
+    h.connection.repositories.mockReturnValue(of({ repositories: [repo] }));
+    h.component.loadGithubRepos();
+    await h.fixture.whenStable();
+    h.fixture.detectChanges();
+
+    expect(h.fixture.nativeElement.textContent).not.toContain(
+      'Could not load GitHub repositories',
+    );
+    expect(h.fixture.nativeElement.textContent).toContain(
+      'Branches could not be loaded.',
+    );
+    expect(h.component['githubReposError']()).toBeUndefined();
+    expect(h.component.isGithubSignedIn()).toBe(true);
+    expect(h.fixture.nativeElement.textContent).toContain('owner/repo');
+  });
   it('lets a fresh signed-in user create/select a Space through the existing Sneat API before GitHub project creation', async () => {
     const h = await harness(true);
     h.component.store = 'github';

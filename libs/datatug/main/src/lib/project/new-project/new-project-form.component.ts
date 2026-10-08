@@ -91,6 +91,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   readonly branch = signal('');
   protected readonly isCreating = signal(false);
   protected readonly formError = signal<string | undefined>(undefined);
+  protected readonly githubReposError = signal<string | undefined>(undefined);
   protected readonly isGithubSignedIn = signal(false);
   protected readonly isConnecting = signal(false);
   protected readonly isLoadingRepos = signal(false);
@@ -227,6 +228,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   }
   loadGithubRepos(): void {
     const generation = ++this.selectionGeneration;
+    this.githubReposError.set(undefined);
     this.isLoadingRepos.set(true);
     this.connection.repositories().subscribe({
       next: (result) => {
@@ -236,6 +238,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
         );
         this.isGithubSignedIn.set(true);
         this.isLoadingRepos.set(false);
+        this.githubReposError.set(undefined);
       },
       error: () => {
         if (generation !== this.selectionGeneration) return;
@@ -244,6 +247,9 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
         this.branches.set([]);
         this.isGithubSignedIn.set(false);
         this.isLoadingRepos.set(false);
+        this.githubReposError.set(
+          'Could not load GitHub repositories. Connect or reconnect GitHub, then refresh repositories.',
+        );
       },
     });
   }

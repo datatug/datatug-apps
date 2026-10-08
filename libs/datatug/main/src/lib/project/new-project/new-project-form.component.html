@@ -77,6 +77,11 @@
       >Refresh repositories</ion-button
     ></ion-item
   >
+  @if (githubReposError(); as error) {
+    <ion-item lines="none">
+      <ion-label color="danger" class="ion-text-wrap">{{ error }}</ion-label>
+    </ion-item>
+  }
   @if (isGithubSignedIn()) {
     <ion-item
       ><ion-label>Repository</ion-label
