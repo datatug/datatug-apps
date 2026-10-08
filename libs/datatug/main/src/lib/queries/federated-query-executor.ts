@@ -277,9 +277,7 @@ interface NativeQueryCapability {
 }
 
 async function streamCapability(base: string, database: string, fetcher: typeof fetch,
-  authHeaders: Record<string, string>, expectedServerId?: string, signal?: AbortSignal): Promise<NativeQueryCapability> {
-  const timeout = AbortSignal.timeout(15000);
-  const effective = signal ? AbortSignal.any([signal, timeout]) : timeout;
+  authHeaders: Record<string, string>, expectedServerId: string | undefined, effective: AbortSignal): Promise<NativeQueryCapability> {
   const response = await fetcher(`${base}/v1/databases/${encodeURIComponent(database)}`, {
     headers: { Accept: 'application/json', ...authHeaders }, redirect: 'error', signal: effective,
   });

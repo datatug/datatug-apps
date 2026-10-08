@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ITextQueryRequest } from '../models/definition/query-def';
 import { runFederatedQuery } from './federated-query-executor';
 import {
@@ -14,7 +14,28 @@ vi.mock('@dalgo/indexeddb', () => ({
   },
 }));
 
+function pendingDiscovery() {
+  let requestStarted!: () => void;
+  const started = new Promise<void>((resolve) => {
+    requestStarted = resolve;
+  });
+  const fetcher = vi.fn<typeof fetch>(
+    (_input, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        if (!signal) throw new Error('Expected the query abort signal.');
+        const abort = (): void => reject(signal.reason);
+        signal.addEventListener('abort', abort, { once: true });
+        if (signal.aborted) abort();
+        requestStarted();
+      }),
+  );
+  return { fetcher, started };
+}
+
 describe('hosted DemoDB ordinary DTQL responses', () => {
+  afterEach(() => vi.restoreAllMocks());
+
   it.each([
     ['chinook.Customer', 'chinook', 'CustomerId', 1],
     ['adventureworks.Person.Person', 'adventureworks', 'BusinessEntityID', 42],
@@ -105,5 +126,100 @@ describe('hosted DemoDB ordinary DTQL responses', () => {
         undefined, undefined, 'full', undefined, undefined, { fetch: fetcher }),
     ).rejects.toThrow('OVDB query failed (unsupported): The query cannot run.');
     expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it('allows capability discovery to use more than 15 seconds within the native query deadline', async () => {
+    const start = 100_000;
+    let now = start;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const timeout = vi
+      .spyOn(AbortSignal, 'timeout')
+      .mockReturnValue(new AbortController().signal);
+    const elapsedAtDiscovery = vi.fn();
+    const fetcher = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/chinook')) {
+        now = start + 16_000;
+        elapsedAtDiscovery(now - start);
+        return Response.json({
+          id: 'chinook',
+          capabilities: { dtql: true, query: true, read: true },
+        });
+      }
+      return Response.json({
+        records: [{ data: { CustomerId: 1 } }],
+        columns: ['CustomerId'],
+        execution: { route: 'database', rowsReturned: 1 },
+      });
+    });
+
+    const result = await runFederatedQuery(
+      createHostedDemoDbQuery('new-query'),
+      undefined,
+      '',
+      undefined,
+      undefined,
+      'full',
+      undefined,
+      undefined,
+      { fetch: fetcher, deadline: start + 60_000 },
+    );
+
+    expect(elapsedAtDiscovery).toHaveBeenCalledWith(16_000);
+    expect(timeout).toHaveBeenCalledExactlyOnceWith(60_000);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(result.totalRows).toBe(1);
+  });
+
+  it('aborts slow capability discovery at the overall deadline before querying or staging rows', async () => {
+    const deadline = new AbortController();
+    vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal);
+    const onOutputPage = vi.fn();
+    const onNativeRecord = vi.fn();
+    const { fetcher, started } = pendingDiscovery();
+    const run = runFederatedQuery(
+      createHostedDemoDbQuery('new-query'),
+      undefined,
+      '',
+      onOutputPage,
+      undefined,
+      'full',
+      undefined,
+      undefined,
+      { fetch: fetcher, deadline: Date.now() + 60_000, onNativeRecord },
+    );
+    await started;
+    deadline.abort(new DOMException('The query exceeded its deadline.', 'TimeoutError'));
+
+    await expect(run).rejects.toThrow('The query exceeded its deadline.');
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(onOutputPage).not.toHaveBeenCalled();
+    expect(onNativeRecord).not.toHaveBeenCalled();
+  });
+
+  it('cancels capability discovery before querying or staging rows', async () => {
+    vi.spyOn(AbortSignal, 'timeout').mockReturnValue(new AbortController().signal);
+    const cancellation = new AbortController();
+    const onOutputPage = vi.fn();
+    const onNativeRecord = vi.fn();
+    const { fetcher, started } = pendingDiscovery();
+    const run = runFederatedQuery(
+      createHostedDemoDbQuery('new-query'),
+      undefined,
+      '',
+      onOutputPage,
+      cancellation.signal,
+      'full',
+      undefined,
+      undefined,
+      { fetch: fetcher, deadline: Date.now() + 60_000, onNativeRecord },
+    );
+    await started;
+    cancellation.abort(new Error('The query was cancelled.'));
+
+    await expect(run).rejects.toThrow('The query was cancelled.');
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(onOutputPage).not.toHaveBeenCalled();
+    expect(onNativeRecord).not.toHaveBeenCalled();
   });
 });
