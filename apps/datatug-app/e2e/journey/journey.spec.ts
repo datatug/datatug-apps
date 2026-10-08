@@ -497,7 +497,7 @@ test.describe('J2 — from a value to related knowledge', () => {
         timeout: 15_000,
       },
     );
-    await expect(activePage(page).locator('.run-result-table')).toBeVisible();
+    await expect(activePage(page).locator('ag-grid-angular')).toBeVisible();
     await expect
       .poll(() => agentServer.readLog(), { timeout: 15_000 })
       .toMatch(/\/datatug\/exec\/run_query/);

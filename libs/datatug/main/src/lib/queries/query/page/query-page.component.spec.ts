@@ -434,6 +434,56 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     expect(component.runError()).toBeUndefined();
   });
 
+  it('maps the current result page to safe AG Grid columns and preserves exact typed values', async () => {
+    component = await createComponent();
+    component.runResult.set({
+      ...historyResultFor(queryDef),
+      recordset: {
+        columns: [
+          { name: 'customer.id', type: 'decimal' },
+          { name: 'customer.id', type: 'integer' },
+          { name: 'payload.data', type: 'string' },
+        ],
+        rows: [
+          [
+            { type: 'decimal', value: '9007199254740993.0000000000000001' },
+            { type: 'integer', value: '900719925474099312345' },
+            { type: 'string', value: '{"nested.value":1}' },
+          ],
+          [
+            { type: 'decimal', value: '2.50' },
+            { type: 'integer', value: '2' },
+            { type: 'string', value: '{"nested.value":2}' },
+          ],
+        ],
+      },
+      totalRows: undefined,
+    });
+    const columns = component.resultGridColumnDefs();
+    expect(columns.map(({ colId, field, headerName }) => ({ colId, field, headerName }))).toEqual([
+      { colId: 'result_0', field: 'result_0', headerName: 'customer.id' },
+      { colId: 'result_1', field: 'result_1', headerName: 'customer.id' },
+      { colId: 'result_2', field: 'result_2', headerName: 'payload.data' },
+    ]);
+    expect(component.resultGridRows()).toEqual([
+      {
+        result_0: '9007199254740993.0000000000000001',
+        result_1: '900719925474099312345',
+        result_2: '{"nested.value":1}',
+      },
+      { result_0: '2.50', result_1: '2', result_2: '{"nested.value":2}' },
+    ]);
+    component.resultPageIndex.set(1);
+    expect(component.resultGridColumnDefs()).toBe(columns);
+    expect(component.resultGridRows()).toEqual([]);
+
+    const template = readFileSync(resolve('libs/datatug/main/src/lib/queries/query/page/query-page.component.html'), 'utf8');
+    expect(template).toContain('[columnDefs]="resultGridColumnDefs()"');
+    expect(template).toContain('[rowData]="resultGridRows()"');
+    expect(template).toContain('[overlayNoRowsTemplate]="resultGridNoRowsTemplate"');
+    expect(template).not.toContain('<table');
+  });
+
   it('keeps accepted plan review state across no-op editor emissions and resets it for a definition edit', async () => {
     const definition: IQueryDef = {
       ...historyDefinition(),
@@ -687,10 +737,10 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     try {
       vi.mocked(TestBed.inject(FederatedQueryService).openLocalResult).mockImplementation(openLocalResult);
       await component.openHistoricalResult(descriptor.id); await component.changeRelatedResultSet('locations'); await runFixture.whenStable();
-      const values = Array.from(runFixture.nativeElement.querySelectorAll('tbody td') as NodeListOf<HTMLElement>, (cell) => cell.textContent?.trim());
+      const values = component.resultGridRows().flatMap((row) => Object.values(row));
       expect(values).toEqual(tokens); expect(component.historicalDefinition()).toEqual(definition);
       await component.changeRelatedResultSet('aliases'); await runFixture.whenStable(); expect(component.visibleResultRows()).toEqual([]);
-      await component.changeRelatedResultSet('affiliations'); await runFixture.whenStable(); expect(runFixture.nativeElement.textContent).toContain('original-row');
+      await component.changeRelatedResultSet('affiliations'); await runFixture.whenStable(); expect(component.resultGridRows().flatMap((row) => Object.values(row))).toContain('original-row');
       expect(federatedRunMock).not.toHaveBeenCalled(); expect(runQueryMock).not.toHaveBeenCalled();
     } finally { await deleteLocalResult(descriptor.id); }
   });
@@ -714,7 +764,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     expect(component.historicalDefinition()).toEqual(originalDefinition);
     expect(runFixture.nativeElement.textContent).toContain('Historical local result');
     expect(runFixture.nativeElement.textContent).toContain('2026-10-01T09:30:00Z');
-    expect(runFixture.nativeElement.textContent).toContain('original-row');
+    expect(component.resultGridRows().flatMap((row) => Object.values(row))).toContain('original-row');
     expect(runFixture.nativeElement.querySelector('[data-testid="result-provenance"]').textContent).not.toContain('live');
     expect(TestBed.inject(FederatedQueryService).dispose).toHaveBeenCalled();
     expect(federatedRunMock).toHaveBeenCalledOnce(); expect(runQueryMock).not.toHaveBeenCalled();
@@ -754,7 +804,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     oldCall?.[4]?.(999);
     finish(historyResultFor(oldCall?.[0] as IQueryDef)); await runFixture.whenStable();
     expect(component.runResult()).toBeUndefined(); expect(component.federatedProgress()).toBeUndefined();
-    expect(runFixture.nativeElement.textContent).not.toContain('original-row');
+    expect(component.resultGridRows().flatMap((row) => Object.values(row))).not.toContain('original-row');
     expect(component.running()).toBe(false);
   });
 
@@ -800,7 +850,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     if (!result.localResult) throw new Error('Missing graph result.');
     await component.deleteHistoricalResult(result.localResult.id); await runFixture.whenStable();
     expect(component.runResult()).toBeUndefined(); expect(component.visibleResultRows()).toEqual([]);
-    expect(runFixture.nativeElement.textContent).not.toContain('original-row');
+    expect(component.resultGridRows().flatMap((row) => Object.values(row))).not.toContain('original-row');
     const other = historyResultFor(definition, 'datatug-output-100000-def');
     vi.mocked(service.openLocalResult).mockResolvedValue({ result: other, executedDefinition: definition, descriptor: {} as LocalResultDescriptor });
     if (!other.localResult) throw new Error('Missing other graph result.');
