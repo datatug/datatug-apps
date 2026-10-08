@@ -30,11 +30,17 @@ import { provideCheckoutAnalyticsPrivacy } from './app/checkout/checkout-analyti
 import { routes } from './app/datatug-app-routes';
 import { DatatugAppComponent } from './app/datatug-app.component';
 import { buildInfo } from './build-info';
-import { datatugAppEnvironmentConfig } from './environments/environment';
+import { datatugAppEnvironmentConfig as environmentConfig } from './environments/environment';
+import { withoutDataTugTracking } from './launch-tracking';
 import { registerIonicons } from './register-ionicons';
 import { registerPosthog } from './register-posthog';
 import { captureCliChatCapability } from './app/cli-chat-capability';
 import { cliChatProjectInterceptor } from './app/cli-chat-project.interceptor';
+
+const datatugAppEnvironmentConfig = withoutDataTugTracking(environmentConfig, {
+  hostname: location.hostname,
+  queryProfile: new URLSearchParams(location.search).get('profile'),
+});
 
 captureCliChatCapability();
 

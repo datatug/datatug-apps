@@ -9,6 +9,9 @@ let initialized = false;
 
 export function registerPosthog(settings: IPosthogSettings): void {
   if (
+    (window as unknown as Record<string, unknown>)[
+      '__datatugOptionalTrackingDisabled'
+    ] === true ||
     checkoutPrivacyActive() ||
     isCheckoutAddress(location.pathname + location.hash)
   )
