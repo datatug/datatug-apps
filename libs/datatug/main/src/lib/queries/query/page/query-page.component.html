@@ -710,19 +710,21 @@
          recorded date comes from Result.provenance.observedAt, which for a snapshot
          response is the fixture's actual capture time (never "now" — see
          datatug-cli's pkg/httpsource snapshot handling). -->
-    <ion-text color="medium" data-testid="result-provenance">
-      @if (result.provenance.mode === 'snapshot') {
-        snapshot · recorded
-        {{ formatRecordedDate(result.provenance.observedAt) }} ·
-        {{ result.provenance.source }}
-      } @else if (!selectedHistoricalResult()) {
-        live · {{ result.provenance.source }}
-      } @else {
-        recorded local output · {{ result.provenance.source }}
-      }
-    </ion-text>
+    <div class="ion-padding-horizontal">
+      <ion-text color="medium" data-testid="result-provenance">
+        @if (result.provenance.mode === 'snapshot') {
+          snapshot · recorded
+          {{ formatRecordedDate(result.provenance.observedAt) }} ·
+          {{ result.provenance.source }}
+        } @else if (!selectedHistoricalResult()) {
+          live · {{ result.provenance.source }}
+        } @else {
+          recorded local output · {{ result.provenance.source }}
+        }
+      </ion-text>
 
-    <sneat-datatug-source-rights-notice [evidence]="result" />
+      <sneat-datatug-source-rights-notice [evidence]="result" />
+    </div>
 
     @if (result.bindingsApplied.length) {
       <!-- REQ:no-hidden-filters — "the results header MUST list the bindings that
