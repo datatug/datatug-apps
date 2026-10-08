@@ -5,6 +5,8 @@ import { appCheckoutAuth } from './checkout-auth';
 
 describe('existing app checkout identity', () => {
   const selections = [
+    '/subscribe?plan=pro&period=monthly',
+    '/subscribe?plan=pro&period=yearly',
     '/subscribe?plan=pro&period=yearly&checkout=test',
     '/pricing/return?mode=test&session_id=cs_test_paid',
     '/pricing/return?mode=live&session_id=cs_live_paid',
@@ -67,6 +69,7 @@ describe('existing app checkout identity', () => {
     '//evil.invalid',
     '/subscribe?plan=business&period=monthly&checkout=test',
     '/subscribe?plan=pro&period=monthly&checkout=test&token=x',
+    '/subscribe?plan=pro&period=monthly&account=other',
   ])('rejects unsafe continuation %s', (path) => {
     expect(() =>
       appCheckoutAuth({} as SneatAuthStateService, {} as Router, path),

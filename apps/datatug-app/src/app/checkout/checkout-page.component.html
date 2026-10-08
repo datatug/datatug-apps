@@ -9,6 +9,15 @@
     @if (enabled() && mode() === 'test') {
       <p class="test">Test mode — no live payment or live plan activation.</p>
     }
+    @if (enabled() && mode() === 'live') {
+      <p role="note">
+        <a href="https://datatug.io/terms/" target="_blank" rel="noopener noreferrer">Terms</a>
+        ·
+        <a href="https://datatug.io/privacy/" target="_blank" rel="noopener noreferrer">Privacy</a>.
+        These pages are drafts; LIVE checkout cannot be enabled until the final
+        policies and purchase terms are approved.
+      </p>
+    }
     @if (state().user; as user) {
       <p>Signed in as {{ user.email || 'your DataTug account' }}</p>
       <button type="button" (click)="signOut()">Use another account</button>
