@@ -1,0 +1,127 @@
+<ion-header
+  ><ion-toolbar><ion-title>DataTug Pro</ion-title></ion-toolbar></ion-header
+>
+<ion-content>
+  <main>
+    <h1>
+      {{ returning ? 'Check your purchase' : 'Complete your subscription' }}
+    </h1>
+    @if (enabled() && mode() === 'test') {
+      <p class="test">Test mode — no live payment or live plan activation.</p>
+    }
+    @if (state().user; as user) {
+      <p>Signed in as {{ user.email || 'your DataTug account' }}</p>
+      <button type="button" (click)="signOut()">Use another account</button>
+    }
+    <p role="status" aria-live="polite">
+      @switch (state().stage) {
+        @case ('sign-in') {
+          Sign in with the same DataTug account used for your purchase.
+        }
+        @case ('loading') {
+          Checking your Pro price…
+        }
+        @case ('quote') {
+          Review your quote and early-access terms.
+        }
+        @case ('mounting') {
+          Loading the secure payment form…
+        }
+        @case ('payment') {
+          Enter payment details in the secure form.
+        }
+        @case ('checking') {
+          Checking payment and plan status…
+        }
+        @case ('test') {
+          Test checkout complete. This does not activate a live Pro plan.
+        }
+        @case ('pro') {
+          Your personal Pro plan is active.
+        }
+        @default {
+          {{ state().message }}
+        }
+      }
+    </p>
+    @if (state().stage === 'sign-in' || state().status === 401) {
+      <button type="button" (click)="signIn()" [disabled]="signingIn()">
+        Sign in to continue
+      </button>
+    }
+    @if (state().stage === 'quote') {
+      @if (state().quote; as quote) {
+        <h2>Your Pro quote</h2>
+        <p>{{ period() === 'yearly' ? 'Billed yearly' : 'Billed monthly' }}</p>
+        <dl>
+          <dt>List price</dt>
+          <dd>{{ quote.list }}</dd>
+          <dt>Price due</dt>
+          <dd>{{ quote.due }}</dd>
+        </dl>
+        <p>{{ quote.discount }}</p>
+        <p>
+          Tax is included in this quoted price. The payment form confirms the
+          final charge.
+        </p>
+        <h3>Early access</h3>
+        <p>
+          Paid sharing and included AI are still being built, and plan limits
+          are not yet enforced. Payment starts now for the upcoming benefits
+          described on the pricing page.
+        </p>
+        <label
+          ><input
+            type="checkbox"
+            [checked]="accepted()"
+            (change)="accepted.set($any($event.target).checked)"
+          />
+          I understand that these benefits are still being built and my payment
+          starts now.</label
+        >
+        <p>
+          <button type="button" [disabled]="!accepted()" (click)="pay()">
+            Continue to payment
+          </button>
+        </p>
+      }
+    }
+    <section
+      [hidden]="state().stage !== 'payment' && state().stage !== 'mounting'"
+      aria-label="Payment"
+    >
+      <div #embedded></div>
+    </section>
+    @if (
+      state().stage === 'error' ||
+      state().stage === 'pending' ||
+      state().stage === 'test'
+    ) {
+      @if (state().code !== 'already_subscribed') {
+        <button type="button" (click)="retry()" [disabled]="retryBlocked()">
+          {{ returning ? 'Check again' : 'Retry this selection' }}
+        </button>
+      }
+      @if (existingPurchase(); as purchase) {
+        <a
+          [routerLink]="purchase.split('?')[0]"
+          [queryParams]="{ mode: 'test', session_id: state().existingSession }"
+          >Check existing purchase</a
+        >
+      }
+      @if (state().code === 'already_subscribed' && !existingPurchase()) {
+        <a routerLink="/my">Check your account</a>
+      }
+      @if (state().supportReference) {
+        <p>Test checkout reference: {{ state().supportReference }}</p>
+      }
+    }
+    @if (state().stage === 'test' || state().stage === 'pro') {
+      <p><a routerLink="/">Continue to DataTug</a></p>
+    }
+    <p>
+      <a [href]="back()">Back to pricing</a> ·
+      <a routerLink="/">Cancel and return to DataTug</a>
+    </p>
+  </main>
+</ion-content>

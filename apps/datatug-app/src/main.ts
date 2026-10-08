@@ -26,6 +26,7 @@ import {
 import { RANDOM_ID_OPTIONS, RandomIdService } from '@sneat/random';
 import { DATATUG_AGENT_BASE_URL } from '@sneat/datatug-semantic';
 import { agentBaseUrlOfPath } from './app/agent-base-url';
+import { provideCheckoutAnalyticsPrivacy } from './app/checkout/checkout-analytics-privacy';
 import { routes } from './app/datatug-app-routes';
 import { DatatugAppComponent } from './app/datatug-app.component';
 import { buildInfo } from './build-info';
@@ -44,6 +45,7 @@ if (datatugAppEnvironmentConfig.posthog) {
 bootstrapApplication(DatatugAppComponent, {
   providers: [
     provideZonelessChangeDetection(),
+    provideCheckoutAnalyticsPrivacy(),
     provideHttpClient(withInterceptors([cliChatProjectInterceptor])),
     provideIonicAngular(),
     provideAnimationsAsync(),
