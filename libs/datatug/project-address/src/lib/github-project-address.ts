@@ -81,20 +81,21 @@ export function formatGithubProjectId(project: IGithubProjectId): string {
  * An empty folder retains the old wire value; cloud API root projects remain unsupported.
  */
 export function formatGithubProjectApiKey(project: IGithubProjectId): string {
-  const reading = readGithubProjectId(
-    formatGithubProjectId({
-      repo: project.repo,
-      org: project.org,
-      folder: project.folder,
-    }),
-  );
-  if (!reading.ok)
+  const { repo, org, folder } = project;
+  if (
+    typeof repo !== 'string' ||
+    typeof org !== 'string' ||
+    !GITHUB_REPO_PATTERN.test(repo) ||
+    !GITHUB_OWNER_PATTERN.test(org) ||
+    asciiLowerCase(repo).endsWith('.git')
+  )
     throw new GithubProjectIdError(
-      reading.reason,
+      'owner-or-repo',
       'Invalid GitHub project API key',
     );
-  const { repo, org, folder } = reading.id;
-  return `${repo}@${org}@${folder}`;
+  if (!isValidGithubFolder(folder))
+    throw new GithubProjectIdError('folder', 'Invalid GitHub project API key');
+  return `${asciiLowerCase(repo)}@${asciiLowerCase(org)}@${folder}`;
 }
 
 /** What GitHub allows as an owner (a user or an organisation): ASCII letters, digits, hyphens. */

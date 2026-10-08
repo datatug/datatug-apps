@@ -389,7 +389,7 @@ describe('formatGithubProjectApiKey (cloud wire contract)', () => {
       id: { repo: 'repo', org: 'owner', folder: project.folder },
     });
   });
-  it('validates project scope through the shared strict reader', () => {
+  it('validates project scope through the shared field validators', () => {
     expect(() =>
       formatGithubProjectApiKey({
         repo: 'repo',
@@ -419,3 +419,16 @@ describe('formatGithubProjectApiKey (cloud wire contract)', () => {
     );
   });
 });
+
+it.each([
+  { repo: 'repo@other', org: 'owner', folder: 'datatug' },
+  { repo: 'repo', org: 'owner@other', folder: 'datatug' },
+  { repo: 'repo', org: 'owner', folder: 'folder@ref' },
+])(
+  'refuses an injected delimiter without reinterpreting project identity: %j',
+  (project) => {
+    expect(() => formatGithubProjectApiKey(project)).toThrow(
+      GithubProjectIdError,
+    );
+  },
+);
