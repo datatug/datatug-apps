@@ -1201,25 +1201,50 @@ describe('GithubProjectReaderService: the follow-up of the second review', () =>
 
   describe('a cache that opens slowly (the chunk, the database)', () => {
     /** The real cache, answering nothing until `open()` (a slow device loading and opening it). */
-    const slow = (): { store: IGithubFileStore; open: () => void } => {
+    const slow = (): {
+      store: IGithubFileStore;
+      open: () => void;
+      firstOperation: Promise<{ readonly promise: Promise<unknown> }>;
+      operationCount: () => number;
+    } => {
       let open: () => void = () => undefined;
       const opened = new Promise<void>((resolve) => (open = resolve));
+      let captureFirstOperation: (
+        operation: { readonly promise: Promise<unknown> },
+      ) => void = () => undefined;
+      const firstOperation = new Promise<{
+        readonly promise: Promise<unknown>;
+      }>((resolve) => (captureFirstOperation = resolve));
+      let operationCount = 0;
       const real = browser.store;
+      const delayed = <T>(run: () => Promise<T>): Promise<T> => {
+        const operation = opened.then(run);
+        operationCount++;
+        if (operationCount === 1) {
+          // Keep the exact Promise returned to the guard. Its completion
+          // callback is attached before a test can await this captured value.
+          captureFirstOperation({ promise: operation });
+        }
+        return operation;
+      };
       return {
         open,
+        firstOperation,
+        operationCount: () => operationCount,
         store: {
-          getFile: (k, p) => opened.then(() => real.getFile(k, p)),
-          putFile: (k, p, f) => opened.then(() => real.putFile(k, p, f)),
-          getResolved: (k) => opened.then(() => real.getResolved(k)),
-          putResolved: (k, c) => opened.then(() => real.putResolved(k, c)),
-          dropResolved: (k) => opened.then(() => real.dropResolved(k)),
-          forgetResolved: (k) => opened.then(() => real.forgetResolved(k)),
+          getFile: (k, p) => delayed(() => real.getFile(k, p)),
+          putFile: (k, p, f) => delayed(() => real.putFile(k, p, f)),
+          getResolved: (k) => delayed(() => real.getResolved(k)),
+          putResolved: (k, c) => delayed(() => real.putResolved(k, c)),
+          dropResolved: (k) => delayed(() => real.dropResolved(k)),
+          forgetResolved: (k) => delayed(() => real.forgetResolved(k)),
         },
       };
     };
 
     it('the first read does not wait for it past the usual wait, and what is read after it opens is kept', async () => {
-      const { store, open } = slow();
+      const cache = slow();
+      const { store, open } = cache;
       const reader = browser.load(store);
       const project = first(reader.getRawJson(DEMO_ID, 'datatug-project.json'));
       await browser.timers.waitFor(2);
@@ -1229,8 +1254,9 @@ describe('GithubProjectReaderService: the follow-up of the second review', () =>
       expect(browser.timers.count).toBe(1);
       expect(browser.timers.delays).toContain(GITHUB_STORE_OPEN_TIMEOUT_MS);
 
+      const firstOperation = await cache.firstOperation;
       open();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      await firstOperation.promise;
       expect(await first(reader.getRawJson(DEMO_ID, ENV))).toEqual({ v: 1 });
       expect(
         await browser.store.getFile(`${DEMO_REPO}@${SHA_1}`, REPO_ENV),
@@ -1238,15 +1264,18 @@ describe('GithubProjectReaderService: the follow-up of the second review', () =>
     });
 
     it('a cache that has not opened by its own limit is given up on for the visit', async () => {
-      const { store, open } = slow();
+      const cache = slow();
+      const { store, open } = cache;
       const reader = browser.load(store);
       const project = first(reader.getRawJson(DEMO_ID, 'datatug-project.json'));
       await browser.timers.waitFor(2);
       browser.timers.fireAll();
       await project;
+      const firstOperation = await cache.firstOperation;
       open();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      await firstOperation.promise;
       await first(reader.getRawJson(DEMO_ID, ENV));
+      expect(cache.operationCount()).toBe(1);
       expect(
         await browser.store.getFile(`${DEMO_REPO}@${SHA_1}`, REPO_ENV),
       ).toBeUndefined();
