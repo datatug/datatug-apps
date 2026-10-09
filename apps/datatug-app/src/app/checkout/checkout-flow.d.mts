@@ -4,13 +4,18 @@ import type {
   CheckoutProvider,
   CheckoutSelection,
   CheckoutState,
+  SpaceServiceCheckoutApi,
+  SpaceServiceSelection,
 } from './checkout-contracts';
 interface Common {
   auth: CheckoutAuth;
-  api: CheckoutApi;
   mode: 'test' | 'live';
   render(state: CheckoutState): void;
 }
+type CheckoutCommon = Common & { api: CheckoutApi };
+type SpaceServiceCommon = Common & {
+  api: CheckoutApi & SpaceServiceCheckoutApi;
+};
 interface Flow {
   start(): void;
   dispose(): void;
@@ -18,7 +23,7 @@ interface Flow {
   signOut(): Promise<void>;
 }
 export function createCheckoutFlow(
-  options: Common & {
+  options: CheckoutCommon & {
     provider: CheckoutProvider;
     selection: CheckoutSelection;
   },
@@ -27,5 +32,27 @@ export function createCheckoutFlow(
   acknowledge(element: HTMLElement): Promise<void>;
 };
 export function createReturnFlow(
-  options: Common & { sessionId: string; wait?: (ms: number) => Promise<void> },
+  options: CheckoutCommon & {
+    sessionId: string;
+    serviceScope?: never;
+    wait?: (ms: number) => Promise<void>;
+  },
 ): Flow & { refresh(): Promise<void> };
+export function createReturnFlow(
+  options: SpaceServiceCommon & {
+    sessionId: string;
+    serviceScope: { spaceID: string };
+    wait?: (ms: number) => Promise<void>;
+  },
+): Flow & { refresh(): Promise<void> };
+export function createSpaceServiceCheckoutFlow(options: {
+  auth: CheckoutAuth;
+  api: SpaceServiceCommon['api'];
+  provider: CheckoutProvider;
+  selection: SpaceServiceSelection;
+  render(state: CheckoutState): void;
+  ready?: () => boolean;
+}): Flow & {
+  load(): Promise<void>;
+  acknowledge(element: HTMLElement): Promise<void>;
+};

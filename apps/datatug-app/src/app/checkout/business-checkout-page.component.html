@@ -1,0 +1,233 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-title>DataTug Business TEST checkout</ion-title>
+  </ion-toolbar>
+</ion-header>
+<ion-content>
+  <main>
+    <h1>
+      {{
+        returning ? 'Check your Business checkout' : 'Review Business checkout'
+      }}
+    </h1>
+    <p class="test-mode" role="note">
+      TEST mode only. This does not make a live payment or activate Business
+      access.
+    </p>
+
+    @if (state().user; as user) {
+      <p>Signed in as {{ user.email || 'your DataTug account' }}</p>
+      <button type="button" (click)="signOut()">Use another account</button>
+    }
+
+    @if (!returning && apiAvailable()) {
+      <section aria-labelledby="period-heading">
+        <h2 id="period-heading">Billing period</h2>
+        <div class="choices" role="group" aria-label="Billing period">
+          <button
+            type="button"
+            [disabled]="selectionLocked()"
+            [attr.aria-pressed]="period() === 'monthly'"
+            (click)="choosePeriod('monthly')"
+          >
+            Monthly
+          </button>
+          <button
+            type="button"
+            [disabled]="selectionLocked()"
+            [attr.aria-pressed]="period() === 'annual'"
+            (click)="choosePeriod('annual')"
+          >
+            Annual
+          </button>
+        </div>
+      </section>
+
+      @if (!selectedSpace()) {
+        <section aria-labelledby="space-heading">
+          <h2 id="space-heading">Choose a Space</h2>
+          <p>
+            Select a shared Space where you have an owner or admin role. The
+            server checks current access before quoting.
+          </p>
+          @if (spaces().length) {
+            <div
+              class="space-list"
+              role="group"
+              aria-label="Spaces you administer"
+            >
+              @for (space of spaces(); track space.id) {
+                <button
+                  type="button"
+                  [disabled]="selectionLocked()"
+                  [attr.aria-pressed]="selectedSpaceID() === space.id"
+                  (click)="chooseSpace(space.id)"
+                >
+                  {{ space.title }} <span>{{ space.type }}</span>
+                </button>
+              }
+            </div>
+          } @else if (state().stage !== 'sign-in') {
+            <p>No eligible shared Spaces are available on this account.</p>
+          }
+        </section>
+      } @else {
+        <p class="selected-space">
+          Space: <strong>{{ selectedSpace()?.title }}</strong>
+        </p>
+        @if (!selectionLocked()) {
+          <button type="button" class="change-space" (click)="chooseSpace('')">
+            Choose another Space
+          </button>
+        }
+      }
+    }
+
+    <p role="status" aria-live="polite">
+      @switch (state().stage) {
+        @case ('unavailable') {
+          {{ state().message }}
+        }
+        @case ('sign-in') {
+          Sign in to review the quote for the selected Space.
+        }
+        @case ('select-space') {
+          {{ state().message || 'Choose a Space you administer to continue.' }}
+        }
+        @case ('loading') {
+          Checking the Business TEST quote…
+        }
+        @case ('quote') {
+          Review the Space, price and early-access terms before continuing.
+        }
+        @case ('creating-session') {
+          Preparing the secure TEST checkout…
+        }
+        @case ('mounting') {
+          Loading the secure TEST payment form…
+        }
+        @case ('payment') {
+          Enter test payment details in the secure form. No live payment or
+          Business access will be created.
+        }
+        @case ('checking') {
+          Checking TEST checkout status…
+        }
+        @case ('test-complete') {
+          Test checkout complete. Business access is pending reconciliation.
+        }
+        @case ('expired') {
+          This TEST checkout expired. You can return to the pricing page.
+        }
+        @case ('pending') {
+          {{ state().message }}
+        }
+        @default {
+          {{ state().message }}
+        }
+      }
+    </p>
+
+    @if (state().stage === 'sign-in' || state().status === 401) {
+      <button type="button" (click)="signIn()" [disabled]="signingIn()">
+        Sign in to continue
+      </button>
+    }
+
+    @if (state().quote; as quote) {
+      <section aria-labelledby="quote-heading">
+        <h2 id="quote-heading">Your Business TEST quote</h2>
+        @if (selectedSpace()) {
+          <p>
+            For <strong>{{ selectedSpace()?.title }}</strong>
+          </p>
+        }
+        <p>Billed {{ quote.interval === 'year' ? 'annually' : 'monthly' }}</p>
+        <dl>
+          <dt>Price including tax</dt>
+          <dd>{{ quote.due }}</dd>
+        </dl>
+        <p>
+          Tax is included in the quoted price. Any provider-reported total may
+          be unavailable while checkout is pending.
+        </p>
+        <h3>Early access</h3>
+        <p>
+          DataTug Business is in early access. This TEST checkout does not
+          activate Business access; access remains pending reconciliation.
+        </p>
+        <label class="consent">
+          <input
+            type="checkbox"
+            [disabled]="
+              state().stage === 'creating-session' ||
+              state().stage === 'mounting' ||
+              state().stage === 'payment'
+            "
+            [checked]="accepted()"
+            (change)="accepted.set($any($event.target).checked)"
+          />
+          I understand this is a TEST checkout and Business access is not
+          activated automatically.
+        </label>
+        <p>
+          <button
+            type="button"
+            [disabled]="
+              !accepted() ||
+              state().stage === 'creating-session' ||
+              state().stage === 'mounting' ||
+              state().stage === 'payment'
+            "
+            (click)="pay()"
+          >
+            {{
+              state().retrySameQuote
+                ? 'Retry this TEST checkout'
+                : 'Continue to TEST payment'
+            }}
+          </button>
+        </p>
+      </section>
+    }
+
+    <section
+      [hidden]="state().stage !== 'payment' && state().stage !== 'mounting'"
+      aria-label="TEST payment form"
+    >
+      <div #embedded></div>
+    </section>
+
+    @if (
+      state().stage === 'error' ||
+      state().stage === 'pending' ||
+      state().stage === 'expired'
+    ) {
+      @if (!state().retrySameQuote) {
+        <button type="button" (click)="retry()">
+          {{
+            state().code === 'quote_expired'
+              ? 'Get a fresh quote'
+              : returning
+                ? 'Check again'
+                : 'Retry this quote'
+          }}
+        </button>
+      }
+    }
+    @if (state().stage === 'test-complete') {
+      <p>
+        Business access is not granted by this page. It remains pending
+        reconciliation.
+      </p>
+      <p><a routerLink="/">Continue to DataTug</a></p>
+    }
+    <nav aria-label="Checkout navigation">
+      <a [href]="backToPricing()">Back to pricing</a>
+      ·
+      <button type="button" class="link-button" (click)="cancel()">
+        Cancel and return to DataTug
+      </button>
+    </nav>
+  </main>
+</ion-content>

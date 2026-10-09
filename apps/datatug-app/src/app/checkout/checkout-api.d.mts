@@ -2,6 +2,7 @@ import type {
   CheckoutApi,
   CheckoutAuth,
   CheckoutConfig,
+  SpaceServiceCheckoutApi,
 } from './checkout-contracts';
 export class CheckoutError extends Error {
   constructor(
@@ -19,6 +20,24 @@ export function checkoutApi(
   config: CheckoutConfig,
   auth: CheckoutAuth,
   fetcher?: typeof fetch,
-): CheckoutApi;
+): CheckoutApi & SpaceServiceCheckoutApi;
 export function validQuote(quote: unknown, mode: string): boolean;
 export function discountDescription(quote: unknown): string;
+export function validSpaceServiceQuote(
+  quote: unknown,
+  selection: { spaceID: string; planID: string },
+  now?: number,
+): boolean;
+export function validSpaceServiceSession(
+  session: unknown,
+  selection: {
+    spaceID: string;
+    planID: string;
+    quoteID: string;
+    quotedDueMinor: number;
+  },
+): boolean;
+export function validSpaceServiceStatus(
+  status: unknown,
+  selection: { spaceID: string; sessionID: string },
+): boolean;

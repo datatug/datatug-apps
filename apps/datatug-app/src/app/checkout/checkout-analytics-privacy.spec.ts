@@ -20,6 +20,10 @@ it.each([
   '/%73ubscribe',
   '/login#/pricing/return?mode=test&session_id=cs_test_paid',
   '/login#/subscribe?plan=pro&period=monthly&checkout=test',
+  '/business/checkout?planID=datatug-business-usage-monthly&spaceID=s1',
+  '/business/checkout/return?spaceID=s1&session_id=cs_test_paid',
+  '/login#/business/checkout?planID=datatug-business-usage-annual&spaceID=s1',
+  '/login#/business/checkout/return?spaceID=s1&session_id=cs_test_paid',
 ])('recognizes %s without needing the session query', (url) => {
   expect(isCheckoutAddress(url)).toBe(true);
 });
@@ -51,6 +55,10 @@ it('sets initial-page disable before the GA snippet executes', () => {
     '/%73ubscribe',
     '/login#/pricing/return?mode=test&session_id=cs_test_paid',
     '/login#/subscribe?plan=pro&period=monthly&checkout=test',
+    '/business/checkout?planID=datatug-business-usage-monthly&spaceID=s1',
+    '/business/checkout/return?spaceID=s1&session_id=cs_test_paid',
+    '/login#/business/checkout?planID=datatug-business-usage-annual&spaceID=s1',
+    '/login#/business/checkout/return?spaceID=s1&session_id=cs_test_paid',
     '/pricing;foo=1/return',
   ]) {
     const target = {};

@@ -1,5 +1,6 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { installFakeGithub } from './helpers/fake-github';
 import { activePage } from './journey/helpers/active-page';
 
 /**
@@ -47,10 +48,20 @@ import { activePage } from './journey/helpers/active-page';
  * fix reverted — so it would not have failed before the fix and is not a
  * real regression guard for this bug.)
  */
+const GITHUB_FAKE_DIR = process.env['DATATUG_E2E_GITHUB_FAKE'] ?? null;
+
 test.skip(
-  process.env['DATATUG_E2E_OFFLINE'] === '1',
-  'requires network access to github.com/api.github.com/raw.githubusercontent.com — set DATATUG_E2E_OFFLINE=1 to skip',
+  process.env['DATATUG_E2E_OFFLINE'] === '1' && GITHUB_FAKE_DIR === null,
+  'requires network access to github.com/api.github.com/raw.githubusercontent.com — set DATATUG_E2E_GITHUB_FAKE to use a local checkout or DATATUG_E2E_OFFLINE=1 to skip',
 );
+
+test.beforeEach(async ({ context }) => {
+  if (GITHUB_FAKE_DIR !== null) {
+    await installFakeGithub(context, [
+      { fullName: 'datatug/datatug-demo-project', dir: GITHUB_FAKE_DIR },
+    ]);
+  }
+});
 
 const PROJECT_ID = 'datatug-demo-project@datatug@demo-project-1';
 const PROJECT_URL = `/store/github.com/project/${PROJECT_ID}`;
