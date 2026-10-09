@@ -198,6 +198,7 @@ describe('the routes as registered', () => {
       'new-project',
       'github/callback',
       '',
+      'home',
       'incidents',
       'incidents/new',
       'incidents/:storeId/:incidentId/record',

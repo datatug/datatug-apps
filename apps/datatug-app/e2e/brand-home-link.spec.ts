@@ -13,7 +13,9 @@ test('brand "DataTug.app" link in the header navigates to the home screen', asyn
 
   await page.getByRole('link', { name: 'DataTug.app home' }).click();
 
-  await expect(page).toHaveURL('/');
+  // The link points at `/`, which each product profile resolves to its own
+  // home inside the app: `/home` under the datatug profile.
+  await expect(page).toHaveURL('/home');
   await expect(
     page.getByRole('heading', { name: 'Your data workbench' }),
   ).toBeVisible();

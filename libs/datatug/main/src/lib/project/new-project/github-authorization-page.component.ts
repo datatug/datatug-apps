@@ -1,5 +1,6 @@
 import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { RouterLink } from '@angular/router';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { filter, switchMap, take, Subject, takeUntil } from 'rxjs';
 import {
@@ -22,7 +23,7 @@ declare global {
 
 @Component({
   selector: 'sneat-datatug-github-authorization-page',
-  imports: [IonContent, IonHeader, IonToolbar, IonTitle, IonButton],
+  imports: [IonContent, IonHeader, IonToolbar, IonTitle, IonButton, RouterLink],
   providers: [NewProjectService],
   template: `<ion-header
       ><ion-toolbar
@@ -37,7 +38,7 @@ declare global {
       @if (connected()) {
         <ion-button (click)="newProject()">Create a project</ion-button>
       }
-      <ion-button href="/" fill="clear"
+      <ion-button routerLink="/" fill="clear"
         >Back to projects</ion-button
       ></ion-content
     >`,
