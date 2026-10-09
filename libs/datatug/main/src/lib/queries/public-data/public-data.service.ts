@@ -39,6 +39,7 @@ import {
   type DeclaredCatalogContext,
   type VerifiedDeclaredSource,
 } from './declared-source';
+import { directoryRecordType } from './model-vocabulary';
 import type { PublicDataScenario } from './public-data-scenario';
 import {
   savedPlanIdentity,
@@ -60,7 +61,11 @@ function recordset(
 ): MetadataObject {
   const matches = array(provider['recordsets'], 'recordsets')
     .map((value) => object(value, 'recordset'))
-    .filter((value) => value[field] === identity);
+    .filter(
+      (value) =>
+        (field === 'modelEntity' ? directoryRecordType(value) : value[field]) ===
+        identity,
+    );
   if (matches.length !== 1)
     throw new Error(
       'The exact model entity has no unambiguous Directory recordset.',

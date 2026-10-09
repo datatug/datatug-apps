@@ -8,6 +8,7 @@ import {
   type MetadataObject,
   immutableUrl,
 } from './canonical-metadata';
+import { normalizeModel } from './model-vocabulary';
 import { JsonNumberToken, strictJson, strictJsonNumbers } from './strict-json';
 import type {
   NativeRepresentationContract,
@@ -91,7 +92,7 @@ export async function verifyNativeReceipt(
   own(native.dataset);
   own(native.provenance);
   const entity = object(
-    object(model['entities'], 'native entities')[target.entity],
+    object(normalizeModel(model)['entities'], 'native entities')[target.entity],
     'native entity',
   );
   exactFields(entity, ['key', 'properties']);

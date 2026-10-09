@@ -11,6 +11,7 @@ import {
   sha256,
   type CanonicalPins,
   type ImmutableFile,
+  type MetadataObject,
 } from './canonical-metadata';
 import {
   parseNativeGraphEnvelope,
@@ -18,6 +19,10 @@ import {
   readNativeGraphMetadata,
 } from './native-graph-contract';
 import { parseRepresentationContracts } from './representation-discovery';
+import {
+  mixedVocabularies,
+  toCurrentSpelling,
+} from './model-vocabulary.spec-helper';
 
 const dir = resolve(
   'libs/datatug/main/src/lib/queries/fixtures/public-data-fabric/native-graph',
@@ -307,5 +312,31 @@ describe('closed native graph metadata, never admission', () => {
       ),
     ).rejects.toThrow('depth');
     expect(f.http).toHaveBeenCalledTimes(96);
+  });
+  describe('reads each graph source model in either ModelSpec vocabulary', () => {
+    // The reviewed pins of both source models are compiled in, so the models are
+    // changed after the pinned bytes are read and verified, as the shorthand test above does.
+    async function readWith(edit: (model: MetadataObject) => unknown) {
+      const f = await metadataFixture(),
+        indexes = await readCanonicalIndexes(f.pins, f.reader),
+        original = f.reader.json.bind(f.reader),
+        models = [profile.sources.ror.model, profile.sources.geo.model].map(
+          immutableUrl,
+        );
+      vi.spyOn(f.reader, 'json').mockImplementation(async (ref, ancestry) => {
+        const parsed = await original(ref, ancestry);
+        return models.includes(immutableUrl(ref)) ? edit(parsed) : parsed;
+      });
+      return readNativeGraphMetadata(f.attachment, f.provider, indexes, f.reader);
+    }
+
+    it('gives the same metadata for the earlier and the current spelling', async () => {
+      const earlier = await readWith((model) => model);
+      expect(earlier.eligible).toBe(false);
+      expect(await readWith(toCurrentSpelling)).toEqual(earlier);
+    });
+    it.each(mixedVocabularies)('refuses %s', async (_, edit) => {
+      await expect(readWith(edit)).rejects.toThrow(/other vocabulary/);
+    });
   });
 });
