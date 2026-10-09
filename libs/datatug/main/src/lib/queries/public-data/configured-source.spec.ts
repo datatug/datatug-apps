@@ -254,7 +254,32 @@ describe('configured source adapter using pinned actual Directory and registry f
         }).every((value) => !value.source),
       ).toBe(true);
     });
-    it('lets records and fields win over entities and properties where both are present', () => {
+    it('lets fields win over properties on a record type that has both', () => {
+      expect(
+        choicesWith({
+          models: modelsWith((entry) => ({
+            ...current(entry),
+            entities: undefined,
+            records: (current(entry)['records'] as Entry[]).map((record) => ({
+              ...record,
+              properties: [],
+            })),
+          })),
+        }),
+      ).toEqual(earlier);
+    });
+    it('falls back to properties on a record type that has no fields', () => {
+      expect(
+        choicesWith({
+          models: modelsWith((entry) => ({
+            ...entry,
+            entities: undefined,
+            records: entry['entities'],
+          })),
+        }),
+      ).toEqual(earlier);
+    });
+    it('lets records win over entities where both are present', () => {
       const emptied = (record: Entry): Entry => ({ ...record, properties: [] });
       expect(
         choicesWith({
