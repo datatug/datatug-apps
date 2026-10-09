@@ -160,7 +160,7 @@ export class DatatugNavService {
   goQuery(
     project: IProjectContext,
     query: IQueryDef,
-    action?: 'execute' | 'edit',
+    action?: 'execute' | 'edit' | 'create',
   ): void {
     // console.log('goQuery', query.id);
     // The id is its own page segment — `projectUrl()` writes a segment

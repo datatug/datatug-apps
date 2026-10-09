@@ -93,4 +93,24 @@ describe('QueriesUiService', () => {
     expect(newQuery.mock.calls.map(([state]) => (state as { request: { queryType: string } }).request.queryType))
       .toEqual(['SQL', 'HTTP']);
   });
+
+  it('marks a new SQL navigation and carries its generated title for route restoration', async () => {
+    const projectRef = { storeId: 'github.com', projectId: 'owner/repo' };
+    newQuery.mockImplementationOnce((state: unknown) => ({
+      ...(state as object),
+      title: 'Query #1',
+    }));
+    await TestBed.inject(QueriesUiService).openNewQuery(projectRef);
+    sheetOptions.buttons.find((button) => button.text === 'SQL')?.handler?.();
+
+    expect(goQuery).toHaveBeenCalledWith(
+      { ref: projectRef },
+      expect.objectContaining({
+        id: 'test-id',
+        title: 'Query #1',
+        request: { queryType: 'SQL', text: '' },
+      }),
+      'create',
+    );
+  });
 });

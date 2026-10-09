@@ -23,7 +23,7 @@ import {
   SemanticApiService,
   type RunQueryResponse,
 } from '@sneat/datatug-semantic';
-import { BehaviorSubject, Observable, Subject, of, throwError } from 'rxjs';
+import { BehaviorSubject, Observable, Subject, firstValueFrom, of, throwError } from 'rxjs';
 
 import {
   QueryPageComponent,
@@ -193,6 +193,156 @@ describe('SqlEditorPage', () => {
   it('the back button goes to the root while there is no project', () => {
     component.queryFolderPath = 'sales';
     expect(component.queriesBackHref).toBe('/?folder=sales');
+  });
+});
+
+describe('QueryPageComponent — new SQL draft navigation', () => {
+  it.each([
+    ['public GitHub project', undefined],
+    ['private GitHub clone', 'cloud' as const],
+  ])('restores an editable draft after project context loads in a %s', async (_name, projectApi) => {
+    sessionStorage.clear();
+    const ref = {
+      storeId: 'github.com',
+      projectId: 'demo@buyer@project',
+      ...(projectApi ? { projectApi, branch: 'main' } : {}),
+    };
+    const query: IQueryDef = {
+      id: 'draft-1',
+      title: 'Query #1',
+      draft: true,
+      request: { queryType: QueryType.SQL, text: '' },
+    };
+    const replaceState = vi.fn((state: Record<string, unknown>) => {
+      Object.defineProperty(window, 'history', {
+        value: { ...window.history, state, replaceState },
+        writable: true,
+        configurable: true,
+      });
+    });
+    Object.defineProperty(window, 'history', {
+      value: {
+        ...window.history,
+        state: { action: 'create', project: { ref }, query },
+        replaceState,
+      },
+      writable: true,
+      configurable: true,
+    });
+    const currentProject = new Subject<IProjectContext | undefined>();
+    const getRevision = vi.fn(() =>
+      of({
+        query: {
+          id: query.id,
+          title: query.title,
+          type: 'SQL',
+          text: 'SELECT 1',
+          connectionId: 'chinook-sqlite',
+        },
+        revision: 'revision-1',
+        branchHead: 'branch-next',
+        saveSupported: true,
+      }),
+    );
+    const saveRevision = vi.fn((_ref: unknown, request: { query: unknown }) =>
+      of({ query: request.query, revision: 'revision-1', branchHead: 'branch-next' }),
+    );
+    const queryParams = convertToParamMap({
+      id: query.id,
+      editor: 'text',
+      ...(projectApi ? { projectApi, branch: 'main' } : {}),
+    });
+    const params = convertToParamMap({
+      storeId: ref.storeId,
+      projectId: ref.projectId,
+    });
+    await TestBed.configureTestingModule({
+      imports: [QueryPageComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        { provide: ErrorLogger, useValue: { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) } },
+        { provide: RandomIdService, useValue: { newRandomId: vi.fn(() => 'draft-1') } },
+        {
+          provide: DatatugNavContextService,
+          useValue: { currentProject, currentEnv: of(undefined), setCurrentEnvironment: vi.fn() },
+        },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            queryParamMap: of(queryParams),
+            paramMap: of(params),
+            snapshot: { queryParamMap: queryParams, paramMap: params, params: {} },
+          },
+        },
+        { provide: Router, useValue: { navigate: vi.fn(() => Promise.resolve(true)), events: of() } },
+        { provide: QueryContextSqlService, useValue: { setSql: vi.fn(), setTarget: vi.fn() } },
+        {
+          provide: QueriesService,
+          useValue: {
+            authorityDenied: () => of(undefined),
+            authentication: () => of({ status: 'signedOut' }),
+            getRevision,
+            capabilities: () => of({ querySave: true }),
+            branches: () =>
+              of({ branches: [{ name: 'main', head: 'branch-initial' }], currentBranch: 'main' }),
+            saveRevision,
+          },
+        },
+        { provide: ProjectService, useValue: { getFull: vi.fn() } },
+        { provide: Coordinator, useValue: { execute: vi.fn() } },
+        QueryEditorStateService,
+        { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn() } },
+        { provide: SemanticApiService, useValue: { runQuery: vi.fn() } },
+        { provide: AgentContextService, useValue: agentContextStub() },
+      ],
+    })
+      .overrideComponent(QueryPageComponent, {
+        set: { imports: [], template: '', schemas: [CUSTOM_ELEMENTS_SCHEMA], providers: [] },
+      })
+      .compileComponents();
+
+    const editor = TestBed.inject(QueryEditorStateService);
+    editor.newQuery({
+      id: query.id,
+      title: query.title,
+      queryType: QueryType.SQL,
+      request: query.request,
+      def: query,
+      isNew: true,
+    });
+    const openQuery = vi.spyOn(editor, 'openQuery');
+    const component = TestBed.createComponent(QueryPageComponent).componentInstance;
+    expect(openQuery).not.toHaveBeenCalled();
+    currentProject.next({ ref });
+    expect(editor.getQueryState(query.id)?.isNew).toBe(true);
+    expect(getRevision).not.toHaveBeenCalled();
+    expect(component.queryBodyText()).toBe('');
+    expect(component.canChoosePublicSqliteSource()).toBe(true);
+    expect(component.queryState.isNew).toBe(true);
+
+    component.queryTextChanged({ detail: { value: 'SELECT 1' } } as unknown as Event);
+    component.publicSqliteSourceChanged({ detail: { value: 'chinook-sqlite' } } as unknown as Event);
+    expect(component.queryDef()?.request).toEqual({ queryType: QueryType.SQL, text: 'SELECT 1' });
+    expect(component.queryDef()?.connectionId).toBe('chinook-sqlite');
+    if (projectApi === 'cloud') {
+      await firstValueFrom(editor.saveQuery(component.queryState, ref));
+      expect(saveRevision).toHaveBeenCalledOnce();
+      expect(saveRevision.mock.calls[0][1]).toMatchObject({
+        ifNoneMatch: true,
+        expectedBranchHead: 'branch-initial',
+        query: { id: query.id, text: 'SELECT 1', connectionId: 'chinook-sqlite' },
+      });
+      expect(replaceState).toHaveBeenCalledOnce();
+      expect(history.state.action).toBeUndefined();
+      expect(history.state.query).toBeUndefined();
+
+      currentProject.next(undefined);
+      currentProject.next({ ref });
+      const reloaded = TestBed.createComponent(QueryPageComponent).componentInstance;
+      expect(getRevision).toHaveBeenCalledOnce();
+      expect(reloaded.queryBodyText()).toBe('SELECT 1');
+      expect(reloaded.queryDef()?.connectionId).toBe('chinook-sqlite');
+    }
   });
 });
 

@@ -7,8 +7,10 @@ const sqlPath = process.env['DATATUG_CHINOOK_GENRE_SQL'];
 it.skipIf(!fixturePath || !sqlPath)(
   'runs the saved Customer Genre Mix against the pinned Chinook fixture',
   async () => {
-    const sql = readFileSync(sqlPath!, 'utf8');
-    const fixture = readFileSync(fixturePath!);
+    if (!sqlPath || !fixturePath)
+      throw new Error('The pinned Chinook fixture and saved SQL are required.');
+    const sql = readFileSync(sqlPath, 'utf8');
+    const fixture = readFileSync(fixturePath);
     const result = await executePinnedSql(sql, fixture);
     expect(result.columns).toEqual([
       'GenreId',

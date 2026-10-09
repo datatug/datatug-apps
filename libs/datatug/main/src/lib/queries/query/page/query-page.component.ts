@@ -426,6 +426,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private readonly changeDetector = inject(ChangeDetectorRef);
 
   public project?: IProjectContext;
+  private navigationDraft?: { ref: IProjectRef; query: IQueryDef };
 
   public showQueryBuilder?: boolean;
   public editorTab: 'text' | 'builder' = 'text';
@@ -769,6 +770,19 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   };
 
   constructor() {
+    const navigationQuery = history.state.query as IQueryDef | undefined;
+    const navigationProject = history.state.project as IProjectContext | undefined;
+    if (
+      history.state.action === 'create' &&
+      navigationQuery?.id &&
+      navigationQuery.request &&
+      navigationProject?.ref
+    ) {
+      this.navigationDraft = {
+        ref: navigationProject.ref,
+        query: navigationQuery,
+      };
+    }
     // REQ:applicable-queries / INTEGRATION.md §3 — EnvDbTablePageComponent.onOpenQuery
     // carries the context panel's resolved Candidate bindings/targets (selection wins
     // over context, REQ:parameter-auto-binding) via router state, since this shared
@@ -788,7 +802,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
     this.trackQueryState();
     const query = history.state.query as IQueryDef;
-    if (query && !this.route.snapshot.queryParamMap.get('projectApi')) {
+    if (query && !this.navigationDraft && !this.route.snapshot.queryParamMap.get('projectApi')) {
       this.setQuery(query);
     }
 
@@ -864,6 +878,23 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       );
       if (!queryState) {
         return;
+      }
+      if (
+        this.navigationDraft?.query.id === queryState.id &&
+        !queryState.isNew &&
+        queryState.def
+      ) {
+        this.navigationDraft = undefined;
+        const navigationState = history.state as Record<string, unknown>;
+        if (
+          navigationState?.['action'] === 'create' &&
+          (navigationState['query'] as IQueryDef | undefined)?.id === queryState.id
+        ) {
+          const savedState = { ...navigationState };
+          delete savedState['action'];
+          delete savedState['query'];
+          history.replaceState(savedState, '');
+        }
       }
       const previousDefinition = this.queryDef();
       const scopeChanged = this.queryId !== queryState.id;
@@ -1026,13 +1057,16 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.datatugNavContextService.currentProject
       .pipe(takeUntil(this.destroyed))
       .subscribe((currentProject) => {
-        if (
-          !currentProject ||
-          (equalProjectRef(this.project?.ref, currentProject.ref) &&
-            this.project?.summary?.environments?.length ===
-              currentProject.summary?.environments?.length)
-        ) {
+        if (!currentProject) {
           return; // TODO: cleanup query state?
+        }
+        if (
+          equalProjectRef(this.project?.ref, currentProject.ref) &&
+          this.project?.summary?.environments?.length ===
+            currentProject.summary?.environments?.length
+        ) {
+          this.restoreNavigationDraft(currentProject.ref);
+          return;
         }
         if (
           this.project?.ref.projectId !== currentProject.ref.projectId ||
@@ -1041,6 +1075,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           this.invalidateHistoryScope();
         const previousRef = this.project?.ref;
         this.project = currentProject;
+        this.restoreNavigationDraft(currentProject.ref);
         if (
           currentProject.ref.projectApi &&
           !equalProjectRef(previousRef, currentProject.ref)
@@ -1249,9 +1284,38 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     if (i >= 0) {
       this.queryFolderPath = id.substring(0, i);
     }
-    if (!isNew) {
+    if (!isNew && this.navigationDraft?.query.id !== id) {
       this.queryEditorStateService.openQuery(id);
     }
+  }
+
+  private restoreNavigationDraft(ref: IProjectRef): void {
+    const draft = this.navigationDraft;
+    if (
+      !draft ||
+      !(
+        equalProjectRef(draft.ref, ref) ||
+        (!draft.ref.projectApi &&
+          !ref.projectApi &&
+          draft.ref.storeId === ref.storeId &&
+          draft.ref.projectId === ref.projectId &&
+          draft.ref.spaceID === ref.spaceID)
+      )
+    )
+      return;
+    const existing = this.queryEditorStateService.getQueryState(draft.query.id);
+    if (existing?.isNew) return;
+    const state: IQueryState = {
+      id: draft.query.id,
+      title: draft.query.title,
+      queryType: draft.query.request.queryType,
+      request: draft.query.request,
+      def: draft.query,
+      federation: draft.query.federation,
+      isNew: true,
+    };
+    if (existing) this.queryEditorStateService.updateQueryState(state);
+    else this.queryEditorStateService.newQuery(state);
   }
 
   private setQuery(query: IQueryDef): void {
