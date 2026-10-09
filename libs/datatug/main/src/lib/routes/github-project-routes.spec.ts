@@ -195,6 +195,7 @@ describe('the routes as registered', () => {
         .filter((r) => !githubProjectRoutes.includes(r))
         .map((r) => r.path),
     ).toEqual([
+      'new-project',
       'github/callback',
       '',
       'incidents',

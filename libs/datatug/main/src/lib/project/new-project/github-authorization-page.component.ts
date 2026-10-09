@@ -113,6 +113,8 @@ export class GithubAuthorizationPageComponent {
       );
   }
   newProject(): void {
-    this.newProjectService.openNewProjectDialog('github');
+    // The callback handoff is one-shot; cancel should return to projects,
+    // not revisit the already-consumed callback URL.
+    this.newProjectService.navigateToNewProjectPage('github', '/');
   }
 }

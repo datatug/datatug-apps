@@ -3,15 +3,14 @@ import {
   Injector,
   ViewChild,
   inject,
-  input,
   signal,
   OnInit,
   DestroyRef,
 } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import {
-  PopoverController,
   ViewDidEnter,
   IonButton,
   IonButtons,
@@ -19,17 +18,21 @@ import {
   IonHeader,
   IonIcon,
   IonInput,
+  IonContent,
   IonItem,
   IonItemDivider,
   IonLabel,
   IonSelect,
   IonSelectOption,
-  IonSpinner,
   IonTitle,
   IonToolbar,
 } from '@ionic/angular';
 import { SpaceService, SpaceServiceModule } from '@sneat/space-services';
-import { SneatUserService } from '@sneat/auth-core';
+import {
+  SneatAuthStateService,
+  SneatUserService,
+  type AuthStatus,
+} from '@sneat/auth-core';
 import {
   formatGithubProjectApiKey,
   readNewProjectFolder,
@@ -48,6 +51,20 @@ import {
   DATATUG_DEMO_PROJECT_TEMPLATE,
   type CreateGithubProject,
 } from '../../services/project/project-query-api.service';
+import { safeNewProjectReturnUrl } from './new-project.service';
+
+interface NewProjectDraft {
+  readonly actorID?: string;
+  readonly store: 'cloud' | 'github';
+  readonly title: string;
+  readonly githubFolder: string;
+  readonly spaceID?: string;
+  readonly spaceTitle: string;
+  readonly repositoryID?: number;
+  readonly branch?: string;
+}
+
+const NEW_PROJECT_DRAFT_KEY = 'datatug:new-project:draft';
 
 @Component({
   selector: 'sneat-datatug-new-project-form',
@@ -68,7 +85,7 @@ import {
     IonSelectOption,
     IonItemDivider,
     IonInput,
-    IonSpinner,
+    IonContent,
     IonFooter,
   ],
 })
@@ -77,14 +94,16 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   private readonly projectService = inject(ProjectService);
   private readonly connection = inject(GithubConnectionService);
   private readonly queryApi = inject(ProjectQueryApiService);
+  private readonly auth = inject(SneatAuthStateService);
   private readonly userService = inject(SneatUserService);
   private readonly injector = inject(Injector);
   private readonly destroyRef = inject(DestroyRef);
-  private readonly popoverController = inject(PopoverController);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly nav = inject(DatatugNavService);
-  store: 'cloud' | 'github' = 'cloud';
-  title = '';
-  githubFolder = 'datatug';
+  readonly store = signal<'cloud' | 'github'>('cloud');
+  readonly title = signal('');
+  readonly githubFolder = signal('datatug');
   readonly spaceID = signal('');
   readonly spaceTitle = signal('');
   readonly isCreatingSpace = signal(false);
@@ -94,6 +113,8 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   protected readonly githubReposError = signal<string | undefined>(undefined);
   protected readonly isGithubSignedIn = signal(false);
   protected readonly isConnecting = signal(false);
+  protected readonly isSigningIn = signal(false);
+  protected readonly signInMessage = signal<string | undefined>(undefined);
   protected readonly isLoadingRepos = signal(false);
   protected readonly githubRepos = signal<readonly ConnectedGithubRepository[]>(
     [],
@@ -110,14 +131,28 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   private readonly pendingCreate = signal<
     { payload: string; request: CreateGithubProject } | undefined
   >(undefined);
-  readonly onCancel = input<() => void>();
+  private readonly restoredDraft = signal<NewProjectDraft | undefined>(
+    undefined,
+  );
+  private readonly pendingDraft = signal<NewProjectDraft | undefined>(
+    undefined,
+  );
+  private readonly authStatus = signal<AuthStatus | undefined>(undefined);
+  private returnUrl = '/';
   @ViewChild(IonInput, { static: false }) titleInput?: IonInput;
 
   createSpace(): void {
     const title = this.spaceTitle().trim();
     const actor = this.userID();
-    if (!title || !actor || this.isCreatingSpace()) {
-      this.formError.set('Sign in and enter a Space name before creating it.');
+    if (this.isCreatingSpace()) return;
+    if (!title) {
+      this.formError.set('Enter a Space name before creating it.');
+      return;
+    }
+    if (!actor) {
+      this.requestSignIn(
+        'Sign in to create a Space. Your project details are saved in this browser.',
+      );
       return;
     }
     this.formError.set(undefined);
@@ -142,6 +177,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
           ]);
           this.spaceID.set(space.id);
           this.spaceTitle.set('');
+          this.saveDraft();
         },
         error: () => {
           if (this.userID() !== actor) return;
@@ -157,19 +193,42 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     this.userService.userState
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((state) => {
+        this.authStatus.set(state.status);
         this.spaces.set(
           Object.entries(state.record?.spaces ?? {}).map(([id, space]) => ({
             id,
             title: space.title,
           })),
         );
-        if (!this.spaces().some((space) => space.id === this.spaceID()))
+        const savedSpaceID = this.restoredDraft()?.spaceID;
+        if (
+          savedSpaceID &&
+          this.spaces().some((space) => space.id === savedSpaceID)
+        )
+          this.spaceID.set(savedSpaceID);
+        else if (!this.spaces().some((space) => space.id === this.spaceID()))
           this.spaceID.set('');
         const uid = state.user?.uid;
         if (uid !== this.userID()) {
+          const previousUserID = this.userID();
           this.userID.set(uid);
           this.isCreatingSpace.set(false);
-          this.spaceTitle.set('');
+          if (previousUserID) {
+            // A different account must not inherit another user's draft.
+            clearNewProjectDraft();
+            this.restoredDraft.set(undefined);
+            this.title.set('');
+            this.githubFolder.set('datatug');
+            this.spaceTitle.set('');
+            this.spaceID.set('');
+          } else {
+            // The initial sign-in completes in-place for popup auth.
+            this.spaceTitle.set(
+              this.restoredDraft()?.spaceTitle ?? this.spaceTitle(),
+            );
+            if (this.restoredDraft() && !this.restoredDraft()?.actorID)
+              this.saveDraft();
+          }
           this.selectionGeneration++;
           this.githubRepos.set([]);
           this.selectedRepo.set(undefined);
@@ -177,12 +236,22 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
           this.branch.set('');
           this.pendingCreate.set(undefined);
           this.isCreating.set(false);
-          if (this.store === 'github') this.loadGithubRepos();
+          if (this.store() === 'github') this.loadGithubRepos();
         }
+        this.resolvePendingDraft(uid, state.status);
       });
   }
   ngOnInit(): void {
-    if (this.store === 'github') this.loadGithubRepos();
+    const draft = readNewProjectDraft();
+    const storeParam = this.route.snapshot.queryParamMap.get('store');
+    if (storeParam !== null) {
+      this.store.set(storeParam === 'github' ? 'github' : 'cloud');
+    }
+    this.restoreDraftForCurrentActor(draft);
+    this.returnUrl = safeNewProjectReturnUrl(
+      this.route.snapshot.queryParamMap.get('returnUrl'),
+    );
+    if (this.store() === 'github' && this.userID()) this.loadGithubRepos();
   }
   ionViewDidEnter(): void {
     setTimeout(
@@ -191,13 +260,40 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     );
   }
   cancel(): void {
-    this.onCancel()?.();
+    if (this.isCreating()) return;
+    clearNewProjectDraft();
+    void this.router
+      .navigateByUrl(this.returnUrl, { replaceUrl: true })
+      .catch(
+        this.errorLogger.logErrorHandler(
+          'Failed to return from the new project page',
+        ),
+      );
   }
-  storeChanged(): void {
-    if (this.store === 'github') this.loadGithubRepos();
+  storeChanged(store: 'cloud' | 'github'): void {
+    this.store.set(store);
+    void this.router
+      .navigate([], {
+        relativeTo: this.route,
+        queryParams: { store: this.store() },
+        queryParamsHandling: 'merge',
+        replaceUrl: true,
+      })
+      .catch(
+        this.errorLogger.logErrorHandler(
+          'Failed to update the new project page URL',
+        ),
+      );
+    if (this.store() === 'github' && this.userID()) this.loadGithubRepos();
   }
 
   signInToGithub(): void {
+    if (!this.userID()) {
+      this.requestSignIn(
+        'Sign in to connect GitHub. Your project details are saved in this browser.',
+      );
+      return;
+    }
     this.formError.set(undefined);
     this.isConnecting.set(true);
     this.connection.start().subscribe({
@@ -227,18 +323,34 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     });
   }
   loadGithubRepos(): void {
+    if (!this.userID()) return;
     const generation = ++this.selectionGeneration;
     this.githubReposError.set(undefined);
     this.isLoadingRepos.set(true);
     this.connection.repositories().subscribe({
       next: (result) => {
         if (generation !== this.selectionGeneration) return;
-        this.githubRepos.set(
-          result.repositories.filter((repo) => repo.permission === 'write'),
+        const writableRepos = result.repositories.filter(
+          (repo) => repo.permission === 'write',
         );
+        this.githubRepos.set(writableRepos);
         this.isGithubSignedIn.set(true);
         this.isLoadingRepos.set(false);
         this.githubReposError.set(undefined);
+        const saved = this.restoredDraft();
+        if (saved?.repositoryID) {
+          const repo = writableRepos.find(
+            (candidate) => candidate.id === saved.repositoryID,
+          );
+          if (repo) {
+            this.selectedRepo.set(repo.id);
+            this.githubFolder.set(saved.githubFolder);
+            this.loadBranches();
+          } else {
+            // The saved selection is restored only if it is still writable.
+            this.restoredDraft.set(undefined);
+          }
+        }
       },
       error: () => {
         if (generation !== this.selectionGeneration) return;
@@ -263,7 +375,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     const repo = this.githubRepos().find(
       (repo) => repo.id === this.selectedRepo(),
     );
-    const folder = readNewProjectFolder(this.githubFolder);
+    const folder = readNewProjectFolder(this.githubFolder());
     this.branches.set([]);
     this.pendingCreate.set(undefined);
     if (!repo || !folder.ok) {
@@ -285,6 +397,14 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       next: (result) => {
         if (generation !== this.selectionGeneration) return;
         this.branches.set(result.branches);
+        const savedBranch = this.restoredDraft()?.branch;
+        this.branch.set(
+          savedBranch &&
+            result.branches.some((candidate) => candidate.name === savedBranch)
+            ? savedBranch
+            : '',
+        );
+        this.restoredDraft.set(undefined);
         this.formError.set(undefined);
       },
       error: () => {
@@ -298,13 +418,21 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   create(): void {
     if (this.isCreating()) return;
     this.formError.set(undefined);
-    if (this.store !== 'github') {
+    if (!this.userID()) {
+      this.requestSignIn(
+        'Sign in to create your project. Your details are saved in this browser.',
+      );
+      return;
+    }
+    if (this.store() !== 'github') {
       this.isCreating.set(true);
       this.projectService
-        .createNewProject('firestore', { title: this.title, userIDs: [] })
+        .createNewProject('firestore', { title: this.title(), userIDs: [] })
         .subscribe({
-          next: (projectId) =>
-            this.dismissAndGo({ projectId, storeId: 'firestore' }),
+          next: (projectId) => {
+            clearNewProjectDraft();
+            this.dismissAndGo({ projectId, storeId: 'firestore' });
+          },
           error: () => {
             this.isCreating.set(false);
             this.formError.set(
@@ -317,7 +445,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     const repo = this.githubRepos().find(
       (repo) => repo.id === this.selectedRepo(),
     );
-    const folder = readNewProjectFolder(this.githubFolder);
+    const folder = readNewProjectFolder(this.githubFolder());
     const branch = this.branches().find(
       (branch) => branch.name === this.branch(),
     );
@@ -326,7 +454,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       !folder.ok ||
       !branch ||
       !this.spaces().some((space) => space.id === this.spaceID()) ||
-      !this.title.trim()
+      !this.title().trim()
     ) {
       this.formError.set(
         'Choose a Space, initialized repository, branch and valid folder, and enter a title.',
@@ -334,7 +462,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       return;
     }
     const fields = {
-      title: this.title,
+      title: this.title(),
       spaceID: this.spaceID(),
       github: {
         repositoryID: repo.id,
@@ -359,6 +487,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       next: (result) => {
         if (generation !== this.selectionGeneration) return;
         this.pendingCreate.set(undefined);
+        clearNewProjectDraft();
         this.dismissAndGo({
           storeId: 'github.com',
           projectId: result.project,
@@ -375,17 +504,154 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     });
   }
   private dismissAndGo(ref: IProjectContext['ref']): void {
-    void this.popoverController
-      .dismiss()
-      .catch(
-        this.errorLogger.logErrorHandler(
-          'Failed to close the new-project dialog',
-        ),
+    this.nav.goProject(
+      {
+        ref,
+        store: { ref: parseDatatugStoreRef(ref.storeId) },
+      },
+      undefined,
+      { replaceUrl: true },
+    );
+  }
+
+  protected async signInToContinue(): Promise<void> {
+    if (this.isSigningIn()) return;
+    this.saveDraft();
+    this.isSigningIn.set(true);
+    try {
+      await this.auth.signInWith('google.com');
+      this.signInMessage.set(undefined);
+    } catch {
+      this.formError.set('Sign-in could not be completed. Please try again.');
+    } finally {
+      this.isSigningIn.set(false);
+    }
+  }
+
+  private requestSignIn(message: string): void {
+    this.saveDraft();
+    this.signInMessage.set(message);
+  }
+
+  private saveDraft(): void {
+    try {
+      const draft: NewProjectDraft = {
+        actorID: this.userID(),
+        store: this.store(),
+        title: this.title(),
+        githubFolder: this.githubFolder(),
+        spaceID: this.spaceID() || undefined,
+        spaceTitle: this.spaceTitle(),
+        repositoryID: this.selectedRepo(),
+        branch: this.branch() || undefined,
+      };
+      this.restoredDraft.set(draft);
+      sessionStorage.setItem(NEW_PROJECT_DRAFT_KEY, JSON.stringify(draft));
+    } catch {
+      this.formError.set(
+        'Project details could not be saved in this browser. Keep this page open while signing in.',
       );
-    this.nav.goProject({
-      ref,
-      store: { ref: parseDatatugStoreRef(ref.storeId) },
-    });
+    }
+  }
+
+  private restoreDraftForCurrentActor(draft?: NewProjectDraft): void {
+    if (!draft) return;
+    if (!draft.actorID) {
+      this.restoredDraft.set(draft);
+      this.applyDraft(draft);
+      // Anonymous drafts are intentionally eligible for the first sign-in.
+      // Bind them as soon as the current signed-in actor is known.
+      if (this.userID()) this.saveDraft();
+      return;
+    }
+    if (this.userID() === draft.actorID) {
+      this.restoredDraft.set(draft);
+      this.applyDraft(draft);
+      return;
+    }
+    if (!this.userID() && this.authStatus() === 'authenticating') {
+      // Do not expose another account's data while session restoration runs.
+      this.pendingDraft.set(draft);
+      return;
+    }
+    clearNewProjectDraft();
+  }
+
+  private resolvePendingDraft(
+    uid: string | undefined,
+    status: AuthStatus,
+  ): void {
+    const draft = this.pendingDraft();
+    if (!draft || status === 'authenticating') return;
+    this.pendingDraft.set(undefined);
+    if (uid && uid === draft.actorID) {
+      this.restoredDraft.set(draft);
+      this.applyDraft(draft);
+      if (
+        this.store() === 'github' &&
+        !this.isLoadingRepos() &&
+        !this.isGithubSignedIn()
+      )
+        this.loadGithubRepos();
+      return;
+    }
+    clearNewProjectDraft();
+  }
+
+  private applyDraft(draft: NewProjectDraft): void {
+    const storeParam = this.route.snapshot.queryParamMap.get('store');
+    if (storeParam === null) this.store.set(draft.store);
+    this.title.set(draft.title);
+    this.githubFolder.set(draft.githubFolder);
+    this.spaceTitle.set(draft.spaceTitle);
+    if (this.spaces().some((space) => space.id === draft.spaceID))
+      this.spaceID.set(draft.spaceID ?? '');
+  }
+}
+
+function readNewProjectDraft(): NewProjectDraft | undefined {
+  try {
+    const value: unknown = JSON.parse(
+      sessionStorage.getItem(NEW_PROJECT_DRAFT_KEY) ?? 'null',
+    );
+    if (!value || typeof value !== 'object') return undefined;
+    const draft = value as Partial<NewProjectDraft>;
+    return {
+      actorID:
+        typeof draft.actorID === 'string'
+          ? draft.actorID.slice(0, 128)
+          : undefined,
+      store: draft.store === 'github' ? 'github' : 'cloud',
+      title: typeof draft.title === 'string' ? draft.title.slice(0, 30) : '',
+      githubFolder:
+        typeof draft.githubFolder === 'string'
+          ? draft.githubFolder.slice(0, 256)
+          : 'datatug',
+      spaceID:
+        typeof draft.spaceID === 'string'
+          ? draft.spaceID.slice(0, 128)
+          : undefined,
+      spaceTitle:
+        typeof draft.spaceTitle === 'string'
+          ? draft.spaceTitle.slice(0, 100)
+          : '',
+      repositoryID:
+        typeof draft.repositoryID === 'number' ? draft.repositoryID : undefined,
+      branch:
+        typeof draft.branch === 'string'
+          ? draft.branch.slice(0, 255)
+          : undefined,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function clearNewProjectDraft(): void {
+  try {
+    sessionStorage.removeItem(NEW_PROJECT_DRAFT_KEY);
+  } catch {
+    // Session storage is optional; page navigation still works without it.
   }
 }
 

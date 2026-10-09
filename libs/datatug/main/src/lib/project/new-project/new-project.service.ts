@@ -1,35 +1,48 @@
 import { Injectable, inject } from '@angular/core';
-import { PopoverController } from '@ionic/angular';
-import { NewProjectFormComponent } from './new-project-form.component';
+import { Router } from '@angular/router';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 
 @Injectable()
 export class NewProjectService {
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
-  private readonly popoverController = inject(PopoverController);
+  private readonly router = inject(Router);
 
-  public openNewProjectDialog(store?: 'github'): void {
-    this.popoverController
-      .create({
-        component: NewProjectFormComponent,
-        cssClass: 'datatug-dialog',
-        componentProps: {
+  public navigateToNewProjectPage(
+    store?: 'github',
+    returnUrl = this.router.url,
+  ): void {
+    const safeReturnUrl = safeNewProjectReturnUrl(returnUrl);
+    void this.router
+      .navigate(['/new-project'], {
+        queryParams: {
           ...(store ? { store } : {}),
-          onCancel: () =>
-            this.popoverController
-              .dismiss()
-              .catch(
-                this.errorLogger.logErrorHandler(
-                  'failed to dismiss popover on cancel',
-                ),
-              ),
+          returnUrl: safeReturnUrl,
         },
       })
-      .then((popover) => {
-        popover
-          .present()
-          .catch(this.errorLogger.logErrorHandler('Failed to present modal'));
-      })
-      .catch(this.errorLogger.logErrorHandler('Failed to create modal:'));
+      .catch(
+        this.errorLogger.logErrorHandler(
+          'Failed to navigate to the new project page',
+        ),
+      );
+  }
+}
+
+/** Only allow a same-app path to be used as the page's Back/Cancel destination. */
+export function safeNewProjectReturnUrl(
+  value: string | null | undefined,
+): string {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) return '/';
+  try {
+    const url = new URL(value, 'https://datatug.local');
+    if (url.origin !== 'https://datatug.local') return '/';
+    if (
+      url.pathname === '/new-project' ||
+      url.pathname.startsWith('/new-project/')
+    )
+      return '/';
+    // Return destinations should not replay OAuth codes or unrelated query state.
+    return url.pathname || '/';
+  } catch {
+    return '/';
   }
 }

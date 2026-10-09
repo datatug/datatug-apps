@@ -8,24 +8,25 @@
     </ion-buttons>
   </ion-toolbar>
 </ion-header>
+<ion-content>
 <ion-item>
   <ion-label>Store</ion-label>
   <ion-select
-    [(ngModel)]="store"
+    [ngModel]="store()"
     [disabled]="isCreating()"
-    (ngModelChange)="storeChanged()"
+    (ngModelChange)="storeChanged($event)"
     interface="popover"
   >
     <ion-select-option value="cloud">DataTug Cloud</ion-select-option>
     <ion-select-option value="github">GitHub repo</ion-select-option>
   </ion-select>
 </ion-item>
-@if (store === 'cloud') {
+@if (store() === 'cloud') {
   <ion-item-divider>
     <i>DataTug cloud is free for personal use.</i>
   </ion-item-divider>
 }
-@if (store === 'github') {
+@if (store() === 'github') {
   <ion-item-divider
     ><i
       >Create from the demo template in an initialized repository you can write
@@ -125,8 +126,9 @@
     <ion-item
       ><ion-label position="stacked">Relative folder</ion-label
       ><ion-input
-        [(ngModel)]="githubFolder"
+        [ngModel]="githubFolder()"
         [disabled]="isCreating()"
+        (ngModelChange)="githubFolder.set($event)"
         (ionChange)="loadBranches()"
     /></ion-item>
     <ion-item
@@ -159,7 +161,8 @@
   <ion-label>Title</ion-label>
   <ion-input
     placeholder="is required"
-    [(ngModel)]="title"
+    [ngModel]="title()"
+    (ngModelChange)="title.set($event)"
     [disabled]="isCreating()"
     required="required"
     minlength="2"
@@ -171,20 +174,24 @@
     <ion-label color="danger" class="ion-text-wrap">{{ error }}</ion-label>
   </ion-item>
 }
-<ion-footer>
-  <div class="ion-padding">
-    <ion-button (click)="create()" [disabled]="isCreating()">
-      <ion-icon name="save-outline" slot="start" />
-      <ion-label>Create new project</ion-label>
-    </ion-button>
+@if (signInMessage(); as message) {
+  <ion-item lines="none">
+    <ion-label class="ion-text-wrap">{{ message }}</ion-label>
     <ion-button
-      [disabled]="isCreating()"
-      style="position: absolute; right: 1em"
-      (click)="cancel()"
-      color="light"
+      (click)="signInToContinue()"
+      [disabled]="isSigningIn()"
+      >Sign in to continue</ion-button
     >
-      <ion-icon name="close-outline" color="medium" slot="start" />
-      <ion-label color="medium">Cancel</ion-label>
-    </ion-button>
-  </div>
+  </ion-item>
+}
+</ion-content>
+<ion-footer>
+  <ion-toolbar>
+    <ion-buttons slot="end">
+      <ion-button (click)="create()" [disabled]="isCreating()">
+        <ion-icon name="save-outline" slot="start" />
+        <ion-label>Create new project</ion-label>
+      </ion-button>
+    </ion-buttons>
+  </ion-toolbar>
 </ion-footer>

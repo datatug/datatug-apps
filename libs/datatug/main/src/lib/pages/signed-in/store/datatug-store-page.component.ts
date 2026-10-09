@@ -220,8 +220,7 @@ export class DatatugStorePageComponent
 
   /** True while `storeId` is the GitHub store, in either id form it can
    * arrive in — see `isGithubStoreId()`'s doc comment above. Drives the
-   * read-only "Add" note and the "Open a GitHub project" form in the
-   * template. */
+   * GitHub project creation guidance in the template. */
   public get isGithubStore(): boolean {
     return isGithubStoreId(this.storeId);
   }
@@ -248,7 +247,7 @@ export class DatatugStorePageComponent
   /**
    * The status the template's `@switch` gates the project list/"Open a
    * GitHub project" form on (`datatug-store-page.component.html`). GitHub
-   * is a public, read-only store — founder ruling 2026-09-11: its known
+   * is a public store — founder ruling 2026-09-11: its known
    * projects (the demo project, merged in by `withGithubDemoProjects()`)
    * and the "Open a GitHub project" form must render for anonymous
    * visitors, not sit behind "Please sign in to see projects". So this
@@ -285,7 +284,9 @@ export class DatatugStorePageComponent
         // `projectsBriefFromDictToFlatList()` returns `IDatatugProjectBriefWithId[]`
         // (`access` optional); `DatatugStoreService.getProjects()` casts the
         // same way for the same reason — see its own "dirty hack" comment.
-        projectsBriefFromDictToFlatList(store.brief?.projects) as IProjectBase[],
+        projectsBriefFromDictToFlatList(
+          store.brief?.projects,
+        ) as IProjectBase[],
       );
     }
     this.storeTracker = new StoreTracker(this.destroyed, route);
@@ -430,13 +431,17 @@ export class DatatugStorePageComponent
   }
 
   create(): void {
-    this.newProjectService.openNewProjectDialog();
+    this.newProjectService.navigateToNewProjectPage(
+      this.isGithubStore ? 'github' : undefined,
+    );
   }
 
   /** The address of a project of this store, for its row's link: a GitHub project at its short address. */
   protected projectLink(project: IProjectBase): string {
     return projectPageHref(
-      this.storeId ? { storeId: this.storeId, projectId: project.id } : undefined,
+      this.storeId
+        ? { storeId: this.storeId, projectId: project.id }
+        : undefined,
     );
   }
 
