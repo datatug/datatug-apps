@@ -1,6 +1,8 @@
 import { IEnvironmentConfig } from '@sneat/core';
 import type { DatatugDemoConfig } from './demo-config';
 
+export const datatugBusinessCheckoutApiOrigin: string | null = null;
+
 export const datatugAppEnvironmentConfig: IEnvironmentConfig = {
   production: false,
   useNgrok: false,

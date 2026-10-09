@@ -7,12 +7,14 @@ import {
   convertToParamMap,
   provideRouter,
 } from '@angular/router';
+import { RouterTestingHarness } from '@angular/router/testing';
 import {
   SneatAuthStateService,
   SneatUserService,
   type ISneatAuthState,
 } from '@sneat/auth-core';
 import { BehaviorSubject, of } from 'rxjs';
+import { TEST_CHECKOUT_ORIGIN } from './checkout-config.mjs';
 import { DATATUG_BUSINESS_CHECKOUT_API_ORIGIN } from './business-checkout-config';
 import { BusinessCheckoutPageComponent } from './business-checkout-page.component';
 
@@ -130,10 +132,122 @@ it('keeps the cold route closed and makes no request until an API origin is conf
   expect(fetcher).not.toHaveBeenCalled();
 });
 
+it('shows the unavailable state on a real cold route before query normalization can stall', async () => {
+  states = new BehaviorSubject(authenticated);
+  await TestBed.configureTestingModule({
+    imports: [BusinessCheckoutPageComponent],
+    providers: [
+      provideRouter([
+        { path: 'business/checkout', component: BusinessCheckoutPageComponent },
+      ]),
+      {
+        provide: DATATUG_BUSINESS_CHECKOUT_API_ORIGIN,
+        useValue: null,
+      },
+      {
+        provide: SneatAuthStateService,
+        useValue: {
+          authState: states,
+          fbAuth: { currentUser: { isAnonymous: false } },
+          signOut: async () => states.next({ status: 'notAuthenticated' }),
+        },
+      },
+      {
+        provide: SneatUserService,
+        useValue: {
+          userState: of({
+            status: 'authenticated',
+            user: authenticated.user,
+            record: { spaces },
+          }),
+        },
+      },
+    ],
+  })
+    .overrideComponent(BusinessCheckoutPageComponent, {
+      set: { imports: [RouterLink], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+    })
+    .compileComponents();
+
+  const harness = await RouterTestingHarness.create();
+  await harness.navigateByUrl(
+    '/business/checkout',
+    BusinessCheckoutPageComponent,
+  );
+  await harness.fixture.whenStable();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await harness.fixture.whenStable();
+
+  expect(harness.routeNativeElement?.textContent).toContain(
+    'DataTug Business TEST checkout is not configured yet.',
+  );
+  expect(harness.routeNativeElement?.textContent).not.toContain(
+    'Checking the Business TEST quote',
+  );
+  expect(fetcher).not.toHaveBeenCalled();
+});
+
+it('continues a real cold configured route after canonicalizing its default plan', async () => {
+  states = new BehaviorSubject(authenticated);
+  await TestBed.configureTestingModule({
+    imports: [BusinessCheckoutPageComponent],
+    providers: [
+      provideRouter([
+        { path: 'business/checkout', component: BusinessCheckoutPageComponent },
+      ]),
+      {
+        provide: DATATUG_BUSINESS_CHECKOUT_API_ORIGIN,
+        useValue: TEST_CHECKOUT_ORIGIN,
+      },
+      {
+        provide: SneatAuthStateService,
+        useValue: {
+          authState: states,
+          fbAuth: { currentUser: { isAnonymous: false } },
+          signOut: async () => states.next({ status: 'notAuthenticated' }),
+        },
+      },
+      {
+        provide: SneatUserService,
+        useValue: {
+          userState: of({
+            status: 'authenticated',
+            user: authenticated.user,
+            record: { spaces },
+          }),
+        },
+      },
+    ],
+  })
+    .overrideComponent(BusinessCheckoutPageComponent, {
+      set: { imports: [RouterLink], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+    })
+    .compileComponents();
+
+  const harness = await RouterTestingHarness.create();
+  const router = TestBed.inject(Router);
+  await harness.navigateByUrl(
+    '/business/checkout',
+    BusinessCheckoutPageComponent,
+  );
+  await harness.fixture.whenStable();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await harness.fixture.whenStable();
+
+  expect(router.url).toBe(
+    '/business/checkout?planID=datatug-business-usage-monthly',
+  );
+  expect(harness.routeNativeElement?.textContent).toContain('Choose a Space');
+  expect(harness.routeNativeElement?.textContent).not.toContain(
+    'Checking the Business TEST quote',
+  );
+  expect(fetcher).not.toHaveBeenCalled();
+});
+
 it('offers only administerable Spaces and does not quote a member-selected Space', async () => {
   const root = await render(
     { planID: 'datatug-business-usage-monthly', spaceID: 'member_1' },
-    'https://checkout.test.invalid',
+    TEST_CHECKOUT_ORIGIN,
   );
   expect(root.textContent).toContain('Choose a Space');
   expect(root.textContent).toContain('Shared group');
@@ -144,7 +258,7 @@ it('offers only administerable Spaces and does not quote a member-selected Space
 it('supports a cold deep link, gets the authenticated quote before consent, and displays its selected Space', async () => {
   const root = await render(
     { planID: 'datatug-business-usage-monthly', spaceID: 'group_1' },
-    'https://checkout.test.invalid',
+    TEST_CHECKOUT_ORIGIN,
   );
   expect(root.textContent).toContain('Your Business TEST quote');
   expect(root.textContent).toContain('Shared group');
@@ -153,7 +267,7 @@ it('supports a cold deep link, gets the authenticated quote before consent, and 
   expect(fetcher).toHaveBeenCalledOnce();
   const [url, options] = fetcher.mock.calls[0];
   expect(String(url)).toBe(
-    'https://checkout.test.invalid/v0/checkout/space-service/quote',
+    `${TEST_CHECKOUT_ORIGIN}/v0/checkout/space-service/quote`,
   );
   expect(options?.headers).toMatchObject({
     Authorization: 'Bearer token-only-header',
@@ -169,7 +283,7 @@ it('supports a cold deep link, gets the authenticated quote before consent, and 
 it('allows Space reselection from the quote review before consent', async () => {
   const root = await render(
     { planID: 'datatug-business-usage-monthly', spaceID: 'group_1' },
-    'https://checkout.test.invalid',
+    TEST_CHECKOUT_ORIGIN,
   );
   expect(root.textContent).toContain('Your Business TEST quote');
   const navigate = vi
@@ -194,7 +308,7 @@ it('keeps a claimed quote locked after durable recovery', async () => {
   }));
   const root = await render(
     { planID: 'datatug-business-usage-monthly', spaceID: 'group_1' },
-    'https://checkout.test.invalid',
+    TEST_CHECKOUT_ORIGIN,
   );
   expect(root.textContent).toContain('Your Business TEST quote');
   expect(root.querySelector('.change-space')).toBeNull();
@@ -226,7 +340,7 @@ it('allows consent for a cold claimed quote without replacing its frozen claim',
   });
   const root = await render(
     { planID: 'datatug-business-usage-monthly', spaceID: 'group_1' },
-    'https://checkout.test.invalid',
+    TEST_CHECKOUT_ORIGIN,
   );
   expect(root.querySelector('.change-space')).toBeNull();
   expect(
@@ -275,7 +389,7 @@ it('allows Space reselection before consent and invalidates the previous quote r
   );
   const root = await render(
     { planID: 'datatug-business-usage-monthly', spaceID: 'group_1' },
-    'https://checkout.test.invalid',
+    TEST_CHECKOUT_ORIGIN,
   );
   expect(fetcher).toHaveBeenCalledOnce();
   const navigate = vi
@@ -304,7 +418,7 @@ it('allows Space reselection before consent and invalidates the previous quote r
 it('locks Space and billing-period changes during session creation and same-quote recovery', async () => {
   const root = await render(
     { planID: 'datatug-business-usage-monthly', spaceID: 'group_1' },
-    'https://checkout.test.invalid',
+    TEST_CHECKOUT_ORIGIN,
   );
   const navigate = vi.spyOn(TestBed.inject(Router), 'navigate');
   const state = fixture.componentInstance['state'];
@@ -350,7 +464,7 @@ it('re-acknowledges and retries the same frozen quote after session failure', as
   });
   const root = await render(
     { planID: 'datatug-business-usage-monthly', spaceID: 'group_1' },
-    'https://checkout.test.invalid',
+    TEST_CHECKOUT_ORIGIN,
   );
   const navigate = vi.spyOn(TestBed.inject(Router), 'navigate');
   const acknowledge = async () => {

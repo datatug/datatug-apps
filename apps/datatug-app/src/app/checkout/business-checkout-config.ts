@@ -1,8 +1,9 @@
-import { InjectionToken } from '@angular/core';
+import { InjectionToken, type ValueProvider } from '@angular/core';
+import { TEST_CHECKOUT_ORIGIN } from './checkout-config.mjs';
 
 /**
- * No checkout host is wired into the DataTug app yet. Supplying a trusted
- * HTTPS origin is a deploy-time decision; the route remains closed by default.
+ * Business checkout accepts only the fixed TEST API origin. The production
+ * build supplies it explicitly; development and SSO builds stay closed.
  */
 export const DATATUG_BUSINESS_CHECKOUT_API_ORIGIN = new InjectionToken<
   string | null
@@ -10,6 +11,15 @@ export const DATATUG_BUSINESS_CHECKOUT_API_ORIGIN = new InjectionToken<
   providedIn: 'root',
   factory: () => null,
 });
+
+export function provideDatatugBusinessCheckoutApiOrigin(
+  value: string | null,
+): ValueProvider {
+  return {
+    provide: DATATUG_BUSINESS_CHECKOUT_API_ORIGIN,
+    useValue: isTrustedBusinessCheckoutOrigin(value) ? value : null,
+  };
+}
 
 export function isTrustedBusinessCheckoutOrigin(
   value: string | null,
@@ -19,6 +29,7 @@ export function isTrustedBusinessCheckoutOrigin(
     const url = new URL(value);
     return (
       url.protocol === 'https:' &&
+      url.origin === TEST_CHECKOUT_ORIGIN &&
       !!url.host &&
       !url.username &&
       !url.password &&
