@@ -236,8 +236,9 @@ it('allows consent for a cold claimed quote without replacing its frozen claim',
   ).toBe(true);
   const checkbox = root.querySelector<HTMLInputElement>('.consent input');
   expect(checkbox?.disabled).toBe(false);
-  checkbox!.checked = true;
-  checkbox!.dispatchEvent(new Event('change'));
+  if (!checkbox) throw new Error('Expected consent checkbox');
+  checkbox.checked = true;
+  checkbox.dispatchEvent(new Event('change'));
   fixture.detectChanges();
   const quoteSection = Array.from(root.querySelectorAll('section')).find(
     (section) => section.querySelector('#quote-heading'),
@@ -356,8 +357,9 @@ it('re-acknowledges and retries the same frozen quote after session failure', as
     const checkbox = root.querySelector<HTMLInputElement>('.consent input');
     expect(checkbox).not.toBeNull();
     expect(checkbox?.disabled).toBe(false);
-    checkbox!.checked = true;
-    checkbox!.dispatchEvent(new Event('change'));
+    if (!checkbox) throw new Error('Expected consent checkbox');
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change'));
     fixture.detectChanges();
     const quoteSection = Array.from(root.querySelectorAll('section')).find(
       (section) => section.querySelector('#quote-heading'),
