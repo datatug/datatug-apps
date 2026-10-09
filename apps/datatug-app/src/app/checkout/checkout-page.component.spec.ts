@@ -133,6 +133,14 @@ it('cold auth waits, then renders the quote and mounts only after acknowledgemen
   states.next(authenticated);
   await fixture.whenStable();
   expect(root.textContent).toContain('€13.30');
+  const quoteCopy = root.textContent?.replace(/\s+/g, ' ') ?? '';
+  expect(quoteCopy).toContain(
+    'DataTug Pro is in early access. Your subscription starts now, and some paid features are still being completed.',
+  );
+  expect(quoteCopy).toContain(
+    'I understand this is early access and my subscription starts now.',
+  );
+  expect(quoteCopy).not.toContain('plan limits are not yet enforced');
   expect(mount).not.toHaveBeenCalled();
   const ack = root.querySelector('input');
   if (!ack) throw new Error('Missing quote acknowledgement');
