@@ -13,6 +13,7 @@ import { hasOutletGroup } from '@datatug/project-address';
 import { cliChatCapability } from './cli-chat-capability';
 import { DEMO_HANDOFF_KEY, DEMO_HANDOFF_STASH, handoffAsked, handoffDecision, searchAsksQuestion, searchOfQueryParams } from './demo-handoff-asked';
 import { handoffUrlMatcher, routeSegments } from './demo-handoff-path';
+import { CheckoutLoadErrorComponent } from './checkout/checkout-load-error.component';
 
 // Task 13 (S108, spec/research/2026-09-09-layered-acl-reconciliation.md,
 // datatug/datatug): the read-only worktree
@@ -176,18 +177,39 @@ export const handoffOrRoot: CanMatchFn = (_route, segments) => {
 
 export const checkoutOrRoot: CanMatchFn = () => datatugProfileOnly() ? true : inject(Router).parseUrl('/');
 
+// The rejected promise branch covers only the lazy module import. A loaded
+// component's constructor, rendering, auth, and payment errors stay on their
+// existing paths. Never include the rejection or URL in diagnostics.
+const loadBusinessCheckoutPage = () =>
+  import('./checkout/business-checkout-page.component').then(
+    (module) => module.BusinessCheckoutPageComponent,
+    () => {
+      console.warn('business_checkout_page_import_failed');
+      return CheckoutLoadErrorComponent;
+    },
+  );
+
+const loadProCheckoutPage = () =>
+  import('./checkout/checkout-page.component').then(
+    (module) => module.CheckoutPageComponent,
+    () => {
+      console.warn('pro_checkout_page_import_failed');
+      return CheckoutLoadErrorComponent;
+    },
+  );
+
 export const routes: Routes = [
   ...['business/checkout/return', 'business/checkout'].map((path) => ({
     path,
     canMatch: [checkoutOrRoot],
     data: { businessCheckoutReturn: path === 'business/checkout/return' },
-    loadComponent: () => import('./checkout/business-checkout-page.component').then((m) => m.BusinessCheckoutPageComponent),
+    loadComponent: loadBusinessCheckoutPage,
   })),
   ...['subscribe', 'pricing/return'].map((path) => ({
     path,
     canMatch: [checkoutOrRoot],
     data: { checkoutReturn: path === 'pricing/return' },
-    loadComponent: () => import('./checkout/checkout-page.component').then((m) => m.CheckoutPageComponent),
+    loadComponent: loadProCheckoutPage,
   })),
   {
     matcher: legacyChinookDemoMatcher,
