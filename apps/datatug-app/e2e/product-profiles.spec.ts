@@ -12,11 +12,10 @@ test('?profile=incidentius lands on the incident list with the "Houston" entry p
 }, testInfo) => {
   await page.goto('/?profile=incidentius');
 
-  // profile-home-redirect.guard.ts sends the empty root route to the
-  // profile's own homePath — no query string carries over because
-  // PRODUCT_PROFILE is already resolved (from the initial location.search)
-  // before that navigation happens.
-  await expect(page).toHaveURL('/incidents');
+  // profile-home-redirect.guard.ts sends the root route to the profile's own
+  // homePath, and the query string of `/` goes with it (so `?profile=` stays
+  // in the address of a local-development reload).
+  await expect(page).toHaveURL('/incidents?profile=incidentius');
 
   await expect(
     page.getByRole('link', { name: 'Incidentius home' }),
@@ -70,7 +69,7 @@ test('build info is visible under the incidentius profile too — same shared co
   page,
 }) => {
   await page.goto('/?profile=incidentius');
-  await expect(page).toHaveURL('/incidents');
+  await expect(page).toHaveURL('/incidents?profile=incidentius');
   await expect(page.locator('sneat-app-version')).toBeVisible();
 });
 

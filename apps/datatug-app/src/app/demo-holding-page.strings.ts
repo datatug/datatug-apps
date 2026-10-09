@@ -62,13 +62,31 @@ const ALLOWED_SITE_ORIGINS: readonly string[] = [
   'https://datatug.ai',
 ];
 
+/**
+ * datatug.app serves this app on every path and the DataTug.app landing page on `/`, `/en/…` and `/ru/…`. A referrer
+ * on that origin means "from the landing" only on those paths: from any other path (`/home`, a project) the visitor
+ * came from the app itself, which has no site page to return to.
+ */
+const LANDING_ORIGIN = 'https://datatug.app';
+
+/** The landing's own paths: the root, and the English and Russian subtrees (`/en` and `/ru` themselves included). */
+function isLandingPath(pathname: string): boolean {
+  return (
+    pathname === '/' ||
+    ['/en', '/ru'].some(
+      (prefix) => pathname === prefix || pathname.startsWith(prefix + '/'),
+    )
+  );
+}
+
 /** The Russian home page of datatug.ai: the one path, besides `/`, a referrer may send the visitor back to. */
 const RU_HOME_PATH = '/ru/';
 
 /**
  * The site the visitor came from when it is one of ours, else datatug.io. Only an origin is ever used, plus, for
  * a visitor who came from the Russian pages of datatug.ai (`/ru` or anything under `/ru/`), that site's Russian
- * home page. Nothing else of the referrer (no other path, query or fragment) is ever used.
+ * home page. A visitor who came from the DataTug.app landing (see {@link isLandingPath}) returns to its root.
+ * Nothing else of the referrer (no other path, query or fragment) is ever used.
  */
 export function siteUrlFor(referrer: string): string {
   try {
@@ -78,6 +96,9 @@ export function siteUrlFor(referrer: string): string {
         origin === 'https://datatug.ai' &&
         (pathname === '/ru' || pathname.startsWith(RU_HOME_PATH));
       return origin + (russian ? RU_HOME_PATH : '/');
+    }
+    if (origin === LANDING_ORIGIN && isLandingPath(pathname)) {
+      return LANDING_ORIGIN + '/';
     }
   } catch {
     // No referrer, or not a URL.

@@ -522,6 +522,27 @@ test.describe('the hand-off holding page', () => {
     ).toHaveAttribute('href', 'https://datatug.ai/ru/');
   });
 
+  test('a visitor who came from the DataTug.app landing goes back to its root, and one who came from the app itself goes to datatug.io', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const origin = new URL(baseURL ?? '').origin;
+    await stubExternal(context, (o) => o === origin);
+    await page.goto('/demo?q=Hi&lang=en', {
+      referer: 'https://datatug.app/en/pricing/?q=secret',
+    });
+    await expect(
+      page.getByRole('link', { name: 'Back to the site' }),
+    ).toHaveAttribute('href', 'https://datatug.app/');
+    await page.goto('/demo?q=Hi&lang=en', {
+      referer: 'https://datatug.app/home',
+    });
+    await expect(
+      page.getByRole('link', { name: 'Back to the site' }),
+    ).toHaveAttribute('href', 'https://datatug.io/');
+  });
+
   test('blank lines in the question are collapsed and the quote picks its own text direction', async ({
     page,
     context,

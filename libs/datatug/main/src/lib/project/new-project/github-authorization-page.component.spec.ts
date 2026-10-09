@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { provideRouter, Router, UrlTree } from '@angular/router';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { BehaviorSubject, Subject } from 'rxjs';
 import { GithubAuthorizationPageComponent } from './github-authorization-page.component';
@@ -20,6 +21,7 @@ function harness() {
   TestBed.configureTestingModule({
     imports: [GithubAuthorizationPageComponent],
     providers: [
+      provideRouter([]),
       {
         provide: SneatAuthStateService,
         useValue: { authState: auth, signInWith: vi.fn() },
@@ -87,5 +89,32 @@ describe('GitHub callback authenticated exchange', () => {
     await fixture.whenStable();
     expect(fixture.componentInstance.connected()).toBe(false);
     expect(fixture.nativeElement.textContent).toContain('sign-in changed');
+  });
+});
+describe('GitHub callback "Back to projects"', () => {
+  it('navigates to / inside the app, so each product profile resolves its own home, instead of reloading the page at /', () => {
+    harness();
+    const fixture = TestBed.createComponent(GithubAuthorizationPageComponent);
+    fixture.detectChanges();
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigateByUrl').mockResolvedValue(true);
+    const button: HTMLElement = Array.from(
+      fixture.nativeElement.querySelectorAll(
+        'ion-button',
+      ) as NodeListOf<HTMLElement>,
+    ).find((candidate) =>
+      candidate.textContent?.includes('Back to projects'),
+    ) as HTMLElement;
+
+    // A plain `href="/"` would be a full page load, and a full page load of
+    // `/` is answered by the DataTug.app landing page, not by this app: the
+    // router has to take the click over, which cancels the browser's own
+    // navigation.
+    const click = new MouseEvent('click', { bubbles: true, cancelable: true });
+    button.dispatchEvent(click);
+
+    expect(click.defaultPrevented).toBe(true);
+    expect(navigate).toHaveBeenCalledTimes(1);
+    expect(router.serializeUrl(navigate.mock.calls[0][0] as UrlTree)).toBe('/');
   });
 });

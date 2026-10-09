@@ -265,6 +265,28 @@ describe('DemoHoldingPageComponent: the link back to the site', () => {
       'https://datatug.ai/ru/',
     );
   });
+
+  it.each([
+    ['https://datatug.app/', 'https://datatug.app/'],
+    ['https://datatug.app/en/pricing/?q=secret', 'https://datatug.app/'],
+    ['https://datatug.app/ru/', 'https://datatug.app/'],
+    // Same origin as the app, but not the landing: the visitor came from the app itself.
+    ['https://datatug.app/home', SITE_URL],
+  ])(
+    'goes back to the DataTug.app landing for a visitor who came from it (%s)',
+    async (referrer, expected) => {
+      Object.defineProperty(document, 'referrer', {
+        configurable: true,
+        value: referrer,
+      });
+      handOff('?q=Hi&lang=en');
+      const fixture = await render();
+      const links = Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll('.links a'),
+      );
+      expect(links[links.length - 1].getAttribute('href')).toBe(expected);
+    },
+  );
 });
 
 describe('DemoHoldingPageComponent: the tab title and the document language', () => {
@@ -634,9 +656,44 @@ describe('siteUrlFor (the back-to-the-site link)', () => {
     expect(siteUrlFor('https://datatug.ai.evil.example/ru/')).toBe(SITE_URL);
   });
 
+  it('a visitor from the DataTug.app landing returns to its root, and only from the landing paths', () => {
+    for (const referrer of [
+      'https://datatug.app/',
+      'https://datatug.app',
+      'https://datatug.app/?utm_source=x',
+      'https://datatug.app/en',
+      'https://datatug.app/en/',
+      'https://datatug.app/en/pricing/?q=secret#x',
+      'https://datatug.app/ru',
+      'https://datatug.app/ru/',
+      'https://datatug.app/ru/a/b/c',
+    ])
+      expect(siteUrlFor(referrer), referrer).toBe('https://datatug.app/');
+    // Every other path of datatug.app is the app itself: nothing of the landing to return to.
+    for (const referrer of [
+      'https://datatug.app/home',
+      'https://datatug.app/demo',
+      'https://datatug.app/project/github.com/datatug/datatug-demo-project',
+      'https://datatug.app/english/',
+      'https://datatug.app/ruby/',
+      'https://datatug.app/static/logo.svg',
+      'https://datatug.app//',
+      'https://datatug.app/pricing/en/',
+    ])
+      expect(siteUrlFor(referrer), referrer).toBe(SITE_URL);
+  });
+
   it.each([
     '',
     'not a url',
+    'https://www.datatug.app/',
+    'https://datatug.app.evil.example/',
+    'https://evil.example/https://datatug.app/',
+    'https://datatug.app@evil.example/',
+    'https://sub.datatug.app/en/',
+    'http://datatug.app/',
+    'https://datatug.app:8443/',
+    'https://app.incidentius.com/',
     'https://evil.example/',
     'https://datatug.io.evil.example/',
     'https://evil.example/https://datatug.io/',
