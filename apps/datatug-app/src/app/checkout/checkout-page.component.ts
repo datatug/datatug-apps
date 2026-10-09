@@ -21,8 +21,9 @@ import { checkoutChoice, checkoutRail } from './checkout-config.mjs';
 import { createCheckoutFlow, createReturnFlow } from './checkout-flow.mjs';
 import type { CheckoutState } from './checkout-contracts';
 
-// Explicit TEST selection is the only armed rail. URL inputs cannot supply an
-// origin, account, coupon, key or a LIVE activation switch.
+// Explicit TEST selection is pinned to its isolated backend. The default LIVE
+// rail can only query the configured normal API. URL inputs cannot supply an
+// API origin, account, coupon, key or LIVE activation switch.
 
 @Component({
   selector: 'datatug-checkout-page',
@@ -94,7 +95,7 @@ export class CheckoutPageComponent implements OnDestroy {
     }
     const returnPath = this.returning
       ? `/pricing/return?mode=${rail.mode}&session_id=${encodeURIComponent((chosen as { sessionId: string }).sessionId)}`
-      : `/subscribe?plan=pro&period=${(chosen as { period: string }).period}&checkout=test`;
+      : `/subscribe?plan=pro&period=${(chosen as { period: string }).period}${rail.mode === 'test' ? '&checkout=test' : ''}`;
     const auth = appCheckoutAuth(this.auth, this.router, returnPath);
     const api = checkoutApi(
       { apiOrigin: rail.apiOrigin, mode: rail.mode },
@@ -133,7 +134,7 @@ export class CheckoutPageComponent implements OnDestroy {
         auth,
         api,
         selection: selected,
-        mode: 'test',
+        mode: rail.mode,
         render,
         provider: {
           async mount(options) {

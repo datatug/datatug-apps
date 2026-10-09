@@ -11,7 +11,7 @@ export function returnSelection(search) {
   const params = new URLSearchParams(search);
   const mode = params.get('mode');
   const sessionId = params.get('session_id');
-  if (!checkoutChoice(search, true) || params.getAll('mode').length !== 1 || params.getAll('session_id').length !== 1 || (mode !== 'test' && mode !== 'live') || !/^cs_(?:test_|live_)?[A-Za-z0-9_]+$/.test(sessionId ?? '') || params.has('account')) return null;
+  if (!checkoutChoice(search, true) || params.getAll('mode').length !== 1 || params.getAll('session_id').length !== 1 || (mode !== 'test' && mode !== 'live') || !/^cs_(?:test_|live_)?[A-Za-z0-9_]+$/.test(sessionId ?? '') || params.has('account') || params.has('coupon')) return null;
   if (sessionId.startsWith('cs_test_') && mode !== 'test') return null;
   if (sessionId.startsWith('cs_live_') && mode !== 'live') return null;
   return { mode, sessionId };
@@ -36,16 +36,15 @@ export function pricingReturnUrl(period, mode) {
 }
 
 export const TEST_CHECKOUT_ORIGIN = 'https://datatug-checkout-test-354fvnqbaa-ey.a.run.app';
-/** LIVE is a read-only return rail; no new LIVE session is armed. */
 export function checkoutRail(search, returning, normalApiBaseUrl) {
   const chosen = returning ? returnSelection(search) : selection(search);
   const choice = checkoutChoice(search, returning);
   if (!chosen || !choice) return null;
   if (choice.test) return { chosen, mode: 'test', apiOrigin: TEST_CHECKOUT_ORIGIN };
-  if (!returning || chosen.mode !== 'live') return null;
+  if (returning && chosen.mode !== 'live') return null;
   try {
     const url = new URL(normalApiBaseUrl);
     if (url.protocol !== 'https:' || url.username || url.password) return null;
-    return { chosen, mode: 'live', apiOrigin: url.origin };
+    return { chosen, mode: returning ? chosen.mode : 'live', apiOrigin: url.origin };
   } catch { return null; }
 }

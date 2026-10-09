@@ -9,7 +9,7 @@ export function appCheckoutAuth(
   returnPath: string,
 ): CheckoutAuth {
   if (
-    !/^\/(?:subscribe\?plan=pro&period=(?:monthly|yearly)&checkout=test|pricing\/return\?mode=(?:test|live)&session_id=cs_(?:test_|live_)?[A-Za-z0-9_]+)$/.test(
+    !/^\/(?:subscribe\?plan=pro&period=(?:monthly|yearly)(?:&checkout=test)?|pricing\/return\?mode=(?:test|live)&session_id=cs_(?:test_|live_)?[A-Za-z0-9_]+)$/.test(
       returnPath,
     )
   ) {

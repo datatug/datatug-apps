@@ -15,20 +15,28 @@ const mount = vi.fn().mockResolvedValue({ destroy: vi.fn() });
 vi.mock('./checkout-provider.mjs', () => ({
   stripeCheckoutAdapter: async () => ({ mount }),
 }));
-const quote = {
-  sessionId: 'cs_test_fixture',
-  clientSecret: 'cs_test_fixture_secret_memory',
-  mode: 'test',
-  accountId: 'buyer',
-  accountKind: 'personal',
-  amount: { currency: 'eur', list: 1900, due: 1330, taxIncluded: true },
-  appliedDiscount: { kind: 'launch', percentOff: 30, duration: 'forever' },
-  offer: {
-    applied: true,
-    reserved: false,
-    duration: 'forever',
-    percentOff: 30,
-  },
+const quote = (
+  mode: 'test' | 'live' = 'test',
+  plan = 'datatug-pro-monthly',
+) => {
+  const annual = plan === 'datatug-pro-annual';
+  const list = annual ? 19000 : 1900;
+  const due = annual ? 13300 : 1330;
+  return {
+    sessionId: `cs_${mode}_fixture`,
+    clientSecret: `cs_${mode}_fixture_secret_memory`,
+    mode,
+    accountId: 'buyer',
+    accountKind: 'personal',
+    amount: { currency: 'eur', list, due, taxIncluded: true },
+    appliedDiscount: { kind: 'launch', percentOff: 30, duration: 'forever' },
+    offer: {
+      applied: true,
+      reserved: false,
+      duration: 'forever',
+      percentOff: 30,
+    },
+  };
 };
 const authenticated = {
   status: 'authenticated',
@@ -87,22 +95,25 @@ async function render(
 
 beforeEach(() => {
   mount.mockClear();
-  fetcher = vi.fn(async (url: URL) => {
+  fetcher = vi.fn(async (url: URL, options?: RequestInit) => {
+    const requestMode = new URLSearchParams(url.search).get('mode')
+      ?? (url.pathname.endsWith('/session')
+        ? JSON.parse(String(options?.body ?? '{}')).mode
+        : null);
+    const mode = requestMode === 'live' ? 'live' : 'test';
     const data = url.pathname.endsWith('/config')
       ? {
           site: 'datatug',
-          mode: 'test',
-          publishableKey: 'pk_test_fixture',
-          plans: [
-            {
-              id: 'datatug-pro-monthly',
-              accountRequired: true,
-              accountKind: 'personal',
-              taxIncluded: true,
-            },
-          ],
+          mode,
+          publishableKey: `pk_${mode}_fixture`,
+          plans: ['datatug-pro-monthly', 'datatug-pro-annual'].map((id) => ({
+            id,
+            accountRequired: true,
+            accountKind: 'personal',
+            taxIncluded: true,
+          })),
         }
-      : quote;
+      : quote(mode, JSON.parse(String(options?.body ?? '{}')).plan);
     return { ok: true, headers: new Headers(), json: async () => data };
   });
   vi.stubGlobal('fetch', fetcher);
@@ -122,6 +133,14 @@ it('cold auth waits, then renders the quote and mounts only after acknowledgemen
   states.next(authenticated);
   await fixture.whenStable();
   expect(root.textContent).toContain('€13.30');
+  const quoteCopy = root.textContent?.replace(/\s+/g, ' ') ?? '';
+  expect(quoteCopy).toContain(
+    'DataTug Pro is in early access. Your subscription starts now, and some paid features are still being completed.',
+  );
+  expect(quoteCopy).toContain(
+    'I understand this is early access and my subscription starts now.',
+  );
+  expect(quoteCopy).not.toContain('plan limits are not yet enforced');
   expect(mount).not.toHaveBeenCalled();
   const ack = root.querySelector('input');
   if (!ack) throw new Error('Missing quote acknowledgement');
@@ -133,8 +152,50 @@ it('cold auth waits, then renders the quote and mounts only after acknowledgemen
   pay.click();
   await fixture.whenStable();
   expect(mount).toHaveBeenCalledOnce();
-  expect(mount.mock.calls[0][0].clientSecret).toBe(quote.clientSecret);
-  expect(root.innerHTML).not.toContain(quote.clientSecret);
+  expect(mount.mock.calls[0][0].clientSecret).toBe(quote().clientSecret);
+  expect(root.innerHTML).not.toContain(quote().clientSecret);
+});
+
+it('default LIVE checkout uses authenticated normal API config and session for the selected annual plan', async () => {
+  const root = await render(
+    { plan: 'pro', period: 'yearly' },
+    false,
+    { status: 'authenticating' },
+  );
+  expect(fetcher).not.toHaveBeenCalled();
+  states.next(authenticated);
+  await fixture.whenStable();
+
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  const requests = fetcher.mock.calls.map(([url, options]) => ({
+    url: new URL(String(url)),
+    options,
+  }));
+  expect(requests.map(({ url }) => url.origin)).toEqual([
+    'https://api.sneat.cloud',
+    'https://api.sneat.cloud',
+  ]);
+  expect(requests.map(({ url }) => url.searchParams.get('mode'))).toEqual([
+    'live',
+    null,
+  ]);
+  expect(requests[0].url.pathname).toBe('/v0/checkout/config');
+  expect(requests[1].url.pathname).toBe('/v0/checkout/session');
+  expect(JSON.parse(String(requests[1].options.body))).toEqual({
+    site: 'datatug',
+    plan: 'datatug-pro-annual',
+    mode: 'live',
+  });
+  expect(requests[1].options.headers.Authorization).toBe(
+    'Bearer token-only-header',
+  );
+  expect(root.textContent).toContain('€133.00');
+  expect(root.textContent).toContain('€190.00');
+  expect(root.textContent).not.toContain('Test mode');
+  expect(root.querySelector('a[href="https://datatug.io/terms/"]')).not.toBeNull();
+  expect(root.querySelector('a[href="https://datatug.io/privacy/"]')).not.toBeNull();
+  expect(root.textContent).toContain('Please review these policies before continuing to payment.');
+  expect(mount).not.toHaveBeenCalled();
 });
 
 it.each(['test', 'live'])(
@@ -204,8 +265,64 @@ it('already subscribed exposes the existing return and never offers another purc
   expect(mount).not.toHaveBeenCalled();
 });
 
-it('new LIVE checkout stays closed before auth/API/provider work', async () => {
-  await render({ plan: 'pro', period: 'monthly' });
-  expect(fetcher).not.toHaveBeenCalled();
+it.each([
+  {
+    mode: 'live',
+    query: { plan: 'pro', period: 'monthly' },
+    origin: 'https://api.sneat.cloud',
+    failedStage: 'config',
+  },
+  {
+    mode: 'live',
+    query: { plan: 'pro', period: 'monthly' },
+    origin: 'https://api.sneat.cloud',
+    failedStage: 'session',
+  },
+  {
+    mode: 'test',
+    query: { plan: 'pro', period: 'monthly', checkout: 'test' },
+    origin: 'https://datatug-checkout-test-354fvnqbaa-ey.a.run.app',
+    failedStage: 'config',
+  },
+  {
+    mode: 'test',
+    query: { plan: 'pro', period: 'monthly', checkout: 'test' },
+    origin: 'https://datatug-checkout-test-354fvnqbaa-ey.a.run.app',
+    failedStage: 'session',
+  },
+])('$mode $failedStage errors remain on the selected rail', async ({ mode, query, origin, failedStage }) => {
+  fetcher.mockImplementation(async (url: URL) => {
+    if (failedStage === 'config' || url.pathname.endsWith('/session')) {
+      return {
+        ok: false,
+        status: 503,
+        headers: new Headers(),
+        json: async () => ({ code: 'checkout_not_configured' }),
+      };
+    }
+    const selectedMode = new URLSearchParams(url.search).get('mode');
+    return {
+      ok: true,
+      headers: new Headers(),
+      json: async () => ({
+        site: 'datatug',
+        mode: selectedMode,
+        publishableKey: `pk_${selectedMode}_fixture`,
+        plans: [{
+          id: 'datatug-pro-monthly',
+          accountRequired: true,
+          accountKind: 'personal',
+          taxIncluded: true,
+        }],
+      }),
+    };
+  });
+  const root = await render(query);
+  expect(fetcher).toHaveBeenCalledTimes(failedStage === 'config' ? 1 : 2);
+  expect(fetcher.mock.calls.map(([url]) => new URL(String(url)).origin)).toEqual(
+    Array.from({ length: failedStage === 'config' ? 1 : 2 }, () => origin),
+  );
+  expect(new URL(String(fetcher.mock.calls[0][0])).searchParams.get('mode')).toBe(mode);
+  expect(root.textContent).toContain('Checkout is unavailable right now');
   expect(mount).not.toHaveBeenCalled();
 });

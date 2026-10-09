@@ -9,6 +9,14 @@
     @if (enabled() && mode() === 'test') {
       <p class="test">Test mode — no live payment or live plan activation.</p>
     }
+    @if (enabled() && mode() === 'live') {
+      <p role="note">
+        <a href="https://datatug.io/terms/" target="_blank" rel="noopener noreferrer">Terms</a>
+        ·
+        <a href="https://datatug.io/privacy/" target="_blank" rel="noopener noreferrer">Privacy</a>.
+        Please review these policies before continuing to payment.
+      </p>
+    }
     @if (state().user; as user) {
       <p>Signed in as {{ user.email || 'your DataTug account' }}</p>
       <button type="button" (click)="signOut()">Use another account</button>
@@ -66,9 +74,8 @@
         </p>
         <h3>Early access</h3>
         <p>
-          Paid sharing and included AI are still being built, and plan limits
-          are not yet enforced. Payment starts now for the upcoming benefits
-          described on the pricing page.
+          DataTug Pro is in early access. Your subscription starts now, and
+          some paid features are still being completed.
         </p>
         <label
           ><input
@@ -76,8 +83,8 @@
             [checked]="accepted()"
             (change)="accepted.set($any($event.target).checked)"
           />
-          I understand that these benefits are still being built and my payment
-          starts now.</label
+          I understand this is early access and my subscription starts
+          now.</label
         >
         <p>
           <button type="button" [disabled]="!accepted()" (click)="pay()">
