@@ -13,7 +13,8 @@ import { IonHeader } from '@ionic/angular/ion-header';
 import { IonTitle } from '@ionic/angular/ion-title';
 import { IonToolbar } from '@ionic/angular/ion-toolbar';
 import { SneatApiBaseUrl } from '@sneat/api';
-import { SneatAuthStateService } from '@sneat/auth-core';
+import { SneatAuthStateService, SneatUserService } from '@sneat/auth-core';
+import { AuthPanelComponent } from '@sneat/auth-ui';
 import { Subscription } from 'rxjs';
 import { appCheckoutAuth } from './checkout-auth';
 import { checkoutApi } from './checkout-api.mjs';
@@ -27,7 +28,14 @@ import type { CheckoutState } from './checkout-contracts';
 
 @Component({
   selector: 'datatug-checkout-page',
-  imports: [RouterLink, IonHeader, IonToolbar, IonTitle, IonContent],
+  imports: [
+    RouterLink,
+    IonHeader,
+    IonToolbar,
+    IonTitle,
+    IonContent,
+    AuthPanelComponent,
+  ],
   templateUrl: './checkout-page.component.html',
   styleUrl: './checkout-page.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -36,11 +44,12 @@ export class CheckoutPageComponent implements OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly auth = inject(SneatAuthStateService);
+  private readonly userService = inject(SneatUserService);
   private readonly normalApiBaseUrl = inject(SneatApiBaseUrl);
   protected readonly mode = signal<'test' | 'live'>('test');
   protected readonly state = signal<CheckoutState>({ stage: 'loading' });
   protected readonly accepted = signal(false);
-  protected readonly signingIn = signal(false);
+  protected readonly authReturnTo = signal<string | undefined>(undefined);
   protected readonly retryBlocked = signal(false);
   protected readonly returning =
     this.route.snapshot.data['checkoutReturn'] === true;
@@ -65,6 +74,7 @@ export class CheckoutPageComponent implements OnDestroy {
     this.flow?.dispose();
     clearTimeout(this.retryTimer);
     this.accepted.set(false);
+    this.authReturnTo.set(undefined);
     this.retryBlocked.set(false);
     this.existingPurchase.set(null);
     const search = new URLSearchParams();
@@ -96,7 +106,13 @@ export class CheckoutPageComponent implements OnDestroy {
     const returnPath = this.returning
       ? `/pricing/return?mode=${rail.mode}&session_id=${encodeURIComponent((chosen as { sessionId: string }).sessionId)}`
       : `/subscribe?plan=pro&period=${(chosen as { period: string }).period}${rail.mode === 'test' ? '&checkout=test' : ''}`;
-    const auth = appCheckoutAuth(this.auth, this.router, returnPath);
+    this.authReturnTo.set(returnPath);
+    const auth = appCheckoutAuth(
+      this.auth,
+      this.userService,
+      this.router,
+      returnPath,
+    );
     const api = checkoutApi(
       { apiOrigin: rail.apiOrigin, mode: rail.mode },
       auth,
@@ -146,22 +162,6 @@ export class CheckoutPageComponent implements OnDestroy {
       });
     }
     this.flow.start();
-  }
-
-  protected async signIn(): Promise<void> {
-    if (this.signingIn()) return;
-    this.signingIn.set(true);
-    try {
-      await this.flow?.signIn();
-    } catch {
-      this.state.set({
-        stage: 'error',
-        status: 401,
-        message: 'Sign-in was cancelled or unavailable. Please retry.',
-      });
-    } finally {
-      this.signingIn.set(false);
-    }
   }
 
   protected async signOut(): Promise<void> {

@@ -1,10 +1,18 @@
-import type { SneatAuthStateService } from '@sneat/auth-core';
 import type { Router } from '@angular/router';
+import {
+  isSneatAccountReady,
+  type ISneatAuthState,
+  type ISneatUserState,
+  type SneatAuthStateService,
+  type SneatUserService,
+} from '@sneat/auth-core';
 import type { CheckoutAuth } from './checkout-contracts';
+import { combineLatest } from 'rxjs';
 
 /** Uses the host's existing identity. Tokens stay only at the request boundary. */
 export function appCheckoutAuth(
   auth: SneatAuthStateService,
+  userService: SneatUserService,
   router: Router,
   returnPath: string,
   continuationLabel = 'DataTug Pro',
@@ -16,22 +24,53 @@ export function appCheckoutAuth(
   if (!proPath.test(returnPath) && !businessPath.test(returnPath)) {
     throw new Error('Invalid checkout continuation');
   }
+  let latestAuthState: ISneatAuthState | undefined;
+  let latestUserState: ISneatUserState | undefined;
   return {
     observe(callback) {
-      const subscription = auth.authState.subscribe((state) => {
-        // Do not turn startup/token refresh into a signed-out flash or purchase.
-        if (state.status === 'authenticating') return;
-        const user =
-          state.status === 'authenticated' && !state.user?.isAnonymous
-            ? state.user
-            : null;
+      let sawSettledAuth = false;
+      const subscription = combineLatest([
+        auth.authState,
+        userService.userState,
+      ]).subscribe(([authState, userState]) => {
+        latestAuthState = authState;
+        latestUserState = userState;
+        if (
+          authState.status === 'authenticating' &&
+          authState.loadingPhase !== 'failed' &&
+          !sawSettledAuth
+        )
+          return;
+        if (authState.status !== 'authenticating') sawSettledAuth = true;
+
+        const user = isSneatAccountReady(authState, userState)
+          ? authState.user
+          : null;
         callback(user ? { id: user.uid, email: user.email } : null);
       });
       return () => subscription.unsubscribe();
     },
     async token() {
       const user = auth.fbAuth.currentUser;
-      return user && !user.isAnonymous ? user.getIdToken() : null;
+      const uid = user?.uid;
+      if (
+        !uid ||
+        user?.isAnonymous ||
+        latestAuthState?.user?.uid !== uid ||
+        !isSneatAccountReady(latestAuthState, latestUserState)
+      ) {
+        return null;
+      }
+      const token = await user.getIdToken();
+      if (
+        auth.fbAuth.currentUser?.uid !== uid ||
+        auth.fbAuth.currentUser?.isAnonymous !== false ||
+        latestAuthState?.user?.uid !== uid ||
+        !isSneatAccountReady(latestAuthState, latestUserState)
+      ) {
+        return null;
+      }
+      return token;
     },
     async signIn() {
       await router.navigate(['/login'], {

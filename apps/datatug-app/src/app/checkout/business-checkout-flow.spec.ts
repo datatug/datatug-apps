@@ -272,6 +272,45 @@ it('drops an old actor quote when auth changes before the response returns', asy
   flow.dispose();
 });
 
+it('destroys a provider candidate that resolves after checkout identity invalidation', async () => {
+  const harness = authHarness();
+  let resolveMount!: (value: { destroy: () => void }) => void;
+  const destroyCandidate = vi.fn();
+  const mount = vi.fn(
+    () =>
+      new Promise<{ destroy: () => void }>(
+        (resolve) => (resolveMount = resolve),
+      ),
+  );
+  const states: Record<string, unknown>[] = [];
+  const flow = createSpaceServiceCheckoutFlow({
+    auth: harness.auth as never,
+    api: {
+      serviceQuote: vi.fn().mockResolvedValue(quote()),
+      serviceSession: vi.fn().mockResolvedValue(session()),
+    } as never,
+    provider: { mount } as never,
+    selection,
+    render: (state) => states.push(state),
+  });
+  flow.start();
+  harness.emit(user);
+  await flush();
+  expect(states.at(-1)?.stage).toBe('quote');
+
+  const acknowledgement = flow.acknowledge({} as HTMLElement);
+  await flush();
+  expect(mount).toHaveBeenCalledOnce();
+  harness.emit(null);
+  resolveMount({ destroy: destroyCandidate });
+  await acknowledgement;
+
+  expect(destroyCandidate).toHaveBeenCalledOnce();
+  expect(states.at(-1)?.stage).toBe('sign-in');
+  expect(states.some((state) => state.stage === 'payment')).toBe(false);
+  flow.dispose();
+});
+
 it('accepts a nullable provider total and reports completed Test checkout only as pending reconciliation', async () => {
   const testStatus = {
     spaceID: selection.spaceID,

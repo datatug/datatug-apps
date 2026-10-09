@@ -7,7 +7,11 @@ import {
   provideRouter,
 } from '@angular/router';
 import { SneatApiBaseUrl } from '@sneat/api';
-import { ISneatAuthState, SneatAuthStateService } from '@sneat/auth-core';
+import {
+  ISneatAuthState,
+  SneatAuthStateService,
+  SneatUserService,
+} from '@sneat/auth-core';
 import { BehaviorSubject, of } from 'rxjs';
 import { CheckoutPageComponent } from './checkout-page.component';
 
@@ -40,6 +44,8 @@ const quote = (
 };
 const authenticated = {
   status: 'authenticated',
+  loadingPhase: 'ready',
+  token: 'in-memory-test-token',
   user: { uid: 'buyer', email: 'buyer@example.invalid', isAnonymous: false },
 } as ISneatAuthState;
 let states: BehaviorSubject<ISneatAuthState>;
@@ -50,6 +56,7 @@ async function render(
   query: Record<string, string>,
   returning = false,
   initial: ISneatAuthState = authenticated,
+  recordUID = 'buyer',
 ) {
   states = new BehaviorSubject(initial);
   await TestBed.configureTestingModule({
@@ -63,11 +70,23 @@ async function render(
           authState: states,
           fbAuth: {
             currentUser: {
+              uid: initial.user?.uid ?? 'buyer',
               isAnonymous: false,
               getIdToken: async () => 'token-only-header',
             },
           },
           signOut: async () => states.next({ status: 'notAuthenticated' }),
+        },
+      },
+      {
+        provide: SneatUserService,
+        useValue: {
+          userState: of({
+            status: 'authenticated',
+            user: { ...authenticated.user, uid: recordUID },
+            record: { title: 'Buyer' },
+            userRecordStatus: 'ready',
+          }),
         },
       },
       {
@@ -96,8 +115,9 @@ async function render(
 beforeEach(() => {
   mount.mockClear();
   fetcher = vi.fn(async (url: URL, options?: RequestInit) => {
-    const requestMode = new URLSearchParams(url.search).get('mode')
-      ?? (url.pathname.endsWith('/session')
+    const requestMode =
+      new URLSearchParams(url.search).get('mode') ??
+      (url.pathname.endsWith('/session')
         ? JSON.parse(String(options?.body ?? '{}')).mode
         : null);
     const mode = requestMode === 'live' ? 'live' : 'test';
@@ -140,9 +160,8 @@ it.each([
     const root = await render(query, returning, { status: 'notAuthenticated' });
 
     expect(root.textContent).toContain(copy);
-    expect(root.querySelector('button.primary-action')?.textContent).toContain(
-      'Sign in to continue',
-    );
+    expect(root.querySelector('sneat-auth-panel')).toBeTruthy();
+    expect(root.textContent).toContain('Continue with your DataTug account');
     expect(fetcher).not.toHaveBeenCalled();
   },
 );
@@ -171,7 +190,9 @@ it('cold auth waits, then renders the quote and mounts only after acknowledgemen
   ack.checked = true;
   ack.dispatchEvent(new Event('change'));
   await fixture.whenStable();
-  const pay = Array.from(root.querySelectorAll('button')).find((b) => b.textContent?.includes('Continue to payment'));
+  const pay = Array.from(root.querySelectorAll('button')).find((b) =>
+    b.textContent?.includes('Continue to payment'),
+  );
   if (!pay) throw new Error('Missing payment button');
   pay.click();
   await fixture.whenStable();
@@ -180,12 +201,36 @@ it('cold auth waits, then renders the quote and mounts only after acknowledgemen
   expect(root.innerHTML).not.toContain(quote().clientSecret);
 });
 
+it.each([
+  {
+    name: 'token failure',
+    auth: { ...authenticated, loadingPhase: 'failed' } as ISneatAuthState,
+    recordUID: 'buyer',
+  },
+  {
+    name: 'a stale prior-account record',
+    auth: authenticated,
+    recordUID: 'previous-buyer',
+  },
+])(
+  'does not quote or enable payment for $name',
+  async ({ auth, recordUID }) => {
+    const root = await render(
+      { plan: 'pro', period: 'monthly' },
+      false,
+      auth,
+      recordUID,
+    );
+    expect(root.querySelector('sneat-auth-panel')).toBeTruthy();
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(mount).not.toHaveBeenCalled();
+  },
+);
+
 it('default LIVE checkout uses authenticated normal API config and session for the selected annual plan', async () => {
-  const root = await render(
-    { plan: 'pro', period: 'yearly' },
-    false,
-    { status: 'authenticating' },
-  );
+  const root = await render({ plan: 'pro', period: 'yearly' }, false, {
+    status: 'authenticating',
+  });
   expect(fetcher).not.toHaveBeenCalled();
   states.next(authenticated);
   await fixture.whenStable();
@@ -216,9 +261,15 @@ it('default LIVE checkout uses authenticated normal API config and session for t
   expect(root.textContent).toContain('€133.00');
   expect(root.textContent).toContain('€190.00');
   expect(root.textContent).not.toContain('Test mode');
-  expect(root.querySelector('a[href="https://datatug.io/terms/"]')).not.toBeNull();
-  expect(root.querySelector('a[href="https://datatug.io/privacy/"]')).not.toBeNull();
-  expect(root.textContent).toContain('Please review these policies before continuing to payment.');
+  expect(
+    root.querySelector('a[href="https://datatug.io/terms/"]'),
+  ).not.toBeNull();
+  expect(
+    root.querySelector('a[href="https://datatug.io/privacy/"]'),
+  ).not.toBeNull();
+  expect(root.textContent).toContain(
+    'Please review these policies before continuing to payment.',
+  );
   expect(mount).not.toHaveBeenCalled();
 });
 
@@ -314,39 +365,48 @@ it.each([
     origin: 'https://datatug-checkout-test-354fvnqbaa-ey.a.run.app',
     failedStage: 'session',
   },
-])('$mode $failedStage errors remain on the selected rail', async ({ mode, query, origin, failedStage }) => {
-  fetcher.mockImplementation(async (url: URL) => {
-    if (failedStage === 'config' || url.pathname.endsWith('/session')) {
+])(
+  '$mode $failedStage errors remain on the selected rail',
+  async ({ mode, query, origin, failedStage }) => {
+    fetcher.mockImplementation(async (url: URL) => {
+      if (failedStage === 'config' || url.pathname.endsWith('/session')) {
+        return {
+          ok: false,
+          status: 503,
+          headers: new Headers(),
+          json: async () => ({ code: 'checkout_not_configured' }),
+        };
+      }
+      const selectedMode = new URLSearchParams(url.search).get('mode');
       return {
-        ok: false,
-        status: 503,
+        ok: true,
         headers: new Headers(),
-        json: async () => ({ code: 'checkout_not_configured' }),
+        json: async () => ({
+          site: 'datatug',
+          mode: selectedMode,
+          publishableKey: `pk_${selectedMode}_fixture`,
+          plans: [
+            {
+              id: 'datatug-pro-monthly',
+              accountRequired: true,
+              accountKind: 'personal',
+              taxIncluded: true,
+            },
+          ],
+        }),
       };
-    }
-    const selectedMode = new URLSearchParams(url.search).get('mode');
-    return {
-      ok: true,
-      headers: new Headers(),
-      json: async () => ({
-        site: 'datatug',
-        mode: selectedMode,
-        publishableKey: `pk_${selectedMode}_fixture`,
-        plans: [{
-          id: 'datatug-pro-monthly',
-          accountRequired: true,
-          accountKind: 'personal',
-          taxIncluded: true,
-        }],
-      }),
-    };
-  });
-  const root = await render(query);
-  expect(fetcher).toHaveBeenCalledTimes(failedStage === 'config' ? 1 : 2);
-  expect(fetcher.mock.calls.map(([url]) => new URL(String(url)).origin)).toEqual(
-    Array.from({ length: failedStage === 'config' ? 1 : 2 }, () => origin),
-  );
-  expect(new URL(String(fetcher.mock.calls[0][0])).searchParams.get('mode')).toBe(mode);
-  expect(root.textContent).toContain('Checkout is unavailable right now');
-  expect(mount).not.toHaveBeenCalled();
-});
+    });
+    const root = await render(query);
+    expect(fetcher).toHaveBeenCalledTimes(failedStage === 'config' ? 1 : 2);
+    expect(
+      fetcher.mock.calls.map(([url]) => new URL(String(url)).origin),
+    ).toEqual(
+      Array.from({ length: failedStage === 'config' ? 1 : 2 }, () => origin),
+    );
+    expect(
+      new URL(String(fetcher.mock.calls[0][0])).searchParams.get('mode'),
+    ).toBe(mode);
+    expect(root.textContent).toContain('Checkout is unavailable right now');
+    expect(mount).not.toHaveBeenCalled();
+  },
+);

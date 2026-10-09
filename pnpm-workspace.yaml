@@ -52,9 +52,9 @@ allowBuilds:
   workerd: true
 minimumReleaseAgeExclude:
   - '@sneat/api@0.5.0 || 0.26.4'
-  - '@sneat/auth-core@0.5.0 || 0.26.4'
+  - '@sneat/auth-core@0.5.0 || 0.26.4 || 0.27.30'
   - '@sneat/auth-models@0.5.0 || 0.26.4'
-  - '@sneat/auth-ui@0.5.0 || 0.26.4 || 0.27.20'
+  - '@sneat/auth-ui@0.5.0 || 0.26.4 || 0.27.20 || 0.27.30'
   - '@sneat/components@0.5.0 || 0.26.4 || 0.27.23'
   - '@sneat/core@0.5.0 || 0.26.4 || 0.27.23'
   - '@sneat/data@0.5.0 || 0.26.4'

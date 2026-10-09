@@ -19,10 +19,19 @@
     }
     @if (enabled() && mode() === 'live') {
       <p class="legal-note" role="note">
-        <a href="https://datatug.io/terms/" target="_blank" rel="noopener noreferrer">Terms</a>
+        <a
+          href="https://datatug.io/terms/"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Terms</a
+        >
         ·
-        <a href="https://datatug.io/privacy/" target="_blank" rel="noopener noreferrer">Privacy</a>.
-        Please review these policies before continuing to payment.
+        <a
+          href="https://datatug.io/privacy/"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Privacy</a
+        >. Please review these policies before continuing to payment.
       </p>
     }
     @if (state().user; as user) {
@@ -67,14 +76,10 @@
       }
     </p>
     @if (state().stage === 'sign-in' || state().status === 401) {
-      <button
-        class="primary-action"
-        type="button"
-        (click)="signIn()"
-        [disabled]="signingIn()"
-      >
-        Sign in to continue
-      </button>
+      <section class="checkout-auth" aria-labelledby="checkout-auth-heading">
+        <h2 id="checkout-auth-heading">Continue with your DataTug account</h2>
+        <sneat-auth-panel [returnTo]="authReturnTo()" [showIntro]="false" />
+      </section>
     }
     @if (state().stage === 'quote') {
       @if (state().quote; as quote) {
@@ -99,10 +104,7 @@
             Tax is included in this quoted price. The payment form confirms the
             final charge.
           </p>
-          <section
-            class="early-access"
-            aria-labelledby="early-access-heading"
-          >
+          <section class="early-access" aria-labelledby="early-access-heading">
             <h3 id="early-access-heading">Early access</h3>
             <p class="early-access-copy">
               DataTug Pro is in early access. Your subscription starts now, and

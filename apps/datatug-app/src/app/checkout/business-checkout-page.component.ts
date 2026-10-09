@@ -14,7 +14,12 @@ import { IonContent } from '@ionic/angular/ion-content';
 import { IonHeader } from '@ionic/angular/ion-header';
 import { IonTitle } from '@ionic/angular/ion-title';
 import { IonToolbar } from '@ionic/angular/ion-toolbar';
-import { SneatAuthStateService, SneatUserService } from '@sneat/auth-core';
+import {
+  isSneatAccountReady,
+  SneatAuthStateService,
+  SneatUserService,
+} from '@sneat/auth-core';
+import { AuthPanelComponent } from '@sneat/auth-ui';
 import { Subscription } from 'rxjs';
 import type { CheckoutState } from './checkout-contracts';
 import { appCheckoutAuth } from './checkout-auth';
@@ -50,7 +55,14 @@ const validSessionID = (value: string | null): value is string =>
 
 @Component({
   selector: 'datatug-business-checkout-page',
-  imports: [RouterLink, IonHeader, IonToolbar, IonTitle, IonContent],
+  imports: [
+    RouterLink,
+    IonHeader,
+    IonToolbar,
+    IonTitle,
+    IonContent,
+    AuthPanelComponent,
+  ],
   templateUrl: './business-checkout-page.component.html',
   styleUrl: './business-checkout-page.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -64,6 +76,7 @@ export class BusinessCheckoutPageComponent {
     DATATUG_BUSINESS_CHECKOUT_API_ORIGIN,
   );
   private readonly userState = toSignal(this.userService.userState);
+  private readonly authState = toSignal(this.auth.authState);
   private readonly routeSubscription: Subscription;
   private flow?:
     | ReturnType<typeof createSpaceServiceCheckoutFlow>
@@ -79,7 +92,7 @@ export class BusinessCheckoutPageComponent {
   protected readonly selectedSpaceID = signal('');
   protected readonly period = signal<BusinessPeriod>('monthly');
   protected readonly accepted = signal(false);
-  protected readonly signingIn = signal(false);
+  protected readonly authReturnTo = signal<string | undefined>(undefined);
   protected readonly state = signal<CheckoutState>({ stage: 'loading' });
   protected readonly selectionLocked = computed(() => {
     const current = this.state();
@@ -89,9 +102,15 @@ export class BusinessCheckoutPageComponent {
       ['creating-session', 'mounting', 'payment'].includes(current.stage)
     );
   });
-  protected readonly spaces = computed(() =>
-    manageableBusinessSpaces(this.userState()?.record?.spaces),
-  );
+  protected readonly spaces = computed(() => {
+    const authState = this.authState();
+    const userState = this.userState();
+    return manageableBusinessSpaces(
+      isSneatAccountReady(authState, userState)
+        ? userState?.record?.spaces
+        : undefined,
+    );
+  });
   protected readonly selectedSpace = computed(() =>
     this.spaces().find((space) => space.id === this.selectedSpaceID()),
   );
@@ -124,6 +143,7 @@ export class BusinessCheckoutPageComponent {
   private start(params: ParamMap = this.route.snapshot.queryParamMap): void {
     this.flow?.dispose();
     this.accepted.set(false);
+    this.authReturnTo.set(undefined);
     this.lastReadySelection = '';
     if (!isTrustedBusinessCheckoutOrigin(this.configuredApiOrigin)) {
       this.state.set({
@@ -205,8 +225,10 @@ export class BusinessCheckoutPageComponent {
         return;
       }
       const returnPath = `/business/checkout/return?spaceID=${encodeURIComponent(spaceID)}&session_id=${encodeURIComponent(sessionID)}`;
+      this.authReturnTo.set(returnPath);
       const auth = appCheckoutAuth(
         this.auth,
+        this.userService,
         this.router,
         returnPath,
         'DataTug Business checkout',
@@ -232,8 +254,10 @@ export class BusinessCheckoutPageComponent {
       });
     }
     const returnPath = `/business/checkout?planID=${selection.planID}${spaceID ? `&spaceID=${encodeURIComponent(spaceID)}` : ''}`;
+    this.authReturnTo.set(returnPath);
     const auth = appCheckoutAuth(
       this.auth,
+      this.userService,
       this.router,
       returnPath,
       'DataTug Business checkout',
@@ -300,22 +324,6 @@ export class BusinessCheckoutPageComponent {
         if (!navigated) this.start();
       })
       .catch(() => this.start());
-  }
-
-  protected async signIn(): Promise<void> {
-    if (this.signingIn()) return;
-    this.signingIn.set(true);
-    try {
-      await this.flow?.signIn();
-    } catch {
-      this.state.set({
-        stage: 'error',
-        status: 401,
-        message: 'Sign-in was cancelled or unavailable. Please retry.',
-      });
-    } finally {
-      this.signingIn.set(false);
-    }
   }
 
   protected async signOut(): Promise<void> {

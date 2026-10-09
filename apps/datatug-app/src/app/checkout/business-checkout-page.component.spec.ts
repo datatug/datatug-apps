@@ -12,14 +12,25 @@ import {
   SneatAuthStateService,
   SneatUserService,
   type ISneatAuthState,
+  type ISneatUserState,
 } from '@sneat/auth-core';
 import { BehaviorSubject, of } from 'rxjs';
 import { TEST_CHECKOUT_ORIGIN } from './checkout-config.mjs';
 import { DATATUG_BUSINESS_CHECKOUT_API_ORIGIN } from './business-checkout-config';
 import { BusinessCheckoutPageComponent } from './business-checkout-page.component';
+import template from './business-checkout-page.component.html?raw';
+
+it('embeds the shared auth panel for signed-out Business checkout', () => {
+  expect(template).toContain(
+    '<sneat-auth-panel [returnTo]="authReturnTo()" [showIntro]="false" />',
+  );
+  expect(template).not.toContain('Sign in to continue</button>');
+});
 
 const authenticated = {
   status: 'authenticated',
+  loadingPhase: 'ready',
+  token: 'in-memory-test-token',
   user: { uid: 'buyer', email: 'buyer@example.invalid', isAnonymous: false },
 } as ISneatAuthState;
 const spaces = {
@@ -28,6 +39,7 @@ const spaces = {
   personal_1: { title: 'Personal', type: 'personal', roles: ['owner'] },
 };
 let states: BehaviorSubject<ISneatAuthState>;
+let userStates: BehaviorSubject<ISneatUserState>;
 let fixture: ComponentFixture<BusinessCheckoutPageComponent>;
 let fetcher: ReturnType<typeof vi.fn>;
 
@@ -48,8 +60,19 @@ function businessQuote(claimed = false) {
   };
 }
 
-async function render(query: Record<string, string>, apiOrigin: string | null) {
-  states = new BehaviorSubject(authenticated);
+async function render(
+  query: Record<string, string>,
+  apiOrigin: string | null,
+  initialAuth: ISneatAuthState = authenticated,
+  recordUID = 'buyer',
+) {
+  states = new BehaviorSubject(initialAuth);
+  userStates = new BehaviorSubject<ISneatUserState>({
+    status: 'authenticated',
+    user: { ...authenticated.user, uid: recordUID } as ISneatUserState['user'],
+    record: { spaces },
+    userRecordStatus: 'ready',
+  } as ISneatUserState);
   await TestBed.configureTestingModule({
     imports: [BusinessCheckoutPageComponent],
     providers: [
@@ -61,6 +84,7 @@ async function render(query: Record<string, string>, apiOrigin: string | null) {
           authState: states,
           fbAuth: {
             currentUser: {
+              uid: initialAuth.user?.uid ?? 'buyer',
               isAnonymous: false,
               getIdToken: async () => 'token-only-header',
             },
@@ -71,11 +95,7 @@ async function render(query: Record<string, string>, apiOrigin: string | null) {
       {
         provide: SneatUserService,
         useValue: {
-          userState: of({
-            status: 'authenticated',
-            user: authenticated.user,
-            record: { spaces },
-          }),
+          userState: userStates,
         },
       },
       {
@@ -159,6 +179,7 @@ it('shows the unavailable state on a real cold route before query normalization 
             status: 'authenticated',
             user: authenticated.user,
             record: { spaces },
+            userRecordStatus: 'ready',
           }),
         },
       },
@@ -214,6 +235,7 @@ it('continues a real cold configured route after canonicalizing its default plan
             status: 'authenticated',
             user: authenticated.user,
             record: { spaces },
+            userRecordStatus: 'ready',
           }),
         },
       },
@@ -254,6 +276,32 @@ it('offers only administerable Spaces and does not quote a member-selected Space
   expect(root.textContent).not.toContain('Member only');
   expect(fetcher).not.toHaveBeenCalled();
 });
+
+it.each([
+  {
+    name: 'token failure',
+    auth: { ...authenticated, loadingPhase: 'failed' } as ISneatAuthState,
+    recordUID: 'buyer',
+  },
+  {
+    name: 'a stale prior-account record',
+    auth: authenticated,
+    recordUID: 'previous-buyer',
+  },
+])(
+  'keeps the quote and Space list closed for $name',
+  async ({ auth, recordUID }) => {
+    const root = await render(
+      { planID: 'datatug-business-usage-monthly', spaceID: 'group_1' },
+      TEST_CHECKOUT_ORIGIN,
+      auth,
+      recordUID,
+    );
+    expect(root.textContent).toContain('Choose a Space');
+    expect(root.textContent).not.toContain('Shared group');
+    expect(fetcher).not.toHaveBeenCalled();
+  },
+);
 
 it('supports a cold deep link, gets the authenticated quote before consent, and displays its selected Space', async () => {
   const root = await render(
