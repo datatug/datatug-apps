@@ -19,7 +19,11 @@ export function isCheckoutAddress(url: string): boolean {
     const continuation =
       path === 'login' && fragment?.startsWith('/') ? normalize(fragment) : '';
     return [path, continuation].some(
-      (value) => value === 'subscribe' || value === 'pricing/return',
+      (value) =>
+        value === 'subscribe' ||
+        value === 'pricing/return' ||
+        value === 'business/checkout' ||
+        value === 'business/checkout/return',
     );
   } catch {
     return false;

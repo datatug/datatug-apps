@@ -7,12 +7,13 @@ export function appCheckoutAuth(
   auth: SneatAuthStateService,
   router: Router,
   returnPath: string,
+  continuationLabel = 'DataTug Pro',
 ): CheckoutAuth {
-  if (
-    !/^\/(?:subscribe\?plan=pro&period=(?:monthly|yearly)(?:&checkout=test)?|pricing\/return\?mode=(?:test|live)&session_id=cs_(?:test_|live_)?[A-Za-z0-9_]+)$/.test(
-      returnPath,
-    )
-  ) {
+  const proPath =
+    /^\/(?:subscribe\?plan=pro&period=(?:monthly|yearly)(?:&checkout=test)?|pricing\/return\?mode=(?:test|live)&session_id=cs_(?:test_|live_)?[A-Za-z0-9_]+)$/;
+  const businessPath =
+    /^\/(?:business\/checkout\?planID=datatug-business-usage-(?:monthly|annual)(?:&spaceID=[A-Za-z0-9_-]{1,128})?|business\/checkout\/return\?spaceID=[A-Za-z0-9_-]{1,128}&session_id=cs_test_[A-Za-z0-9_]+)$/;
+  if (!proPath.test(returnPath) && !businessPath.test(returnPath)) {
     throw new Error('Invalid checkout continuation');
   }
   return {
@@ -35,7 +36,9 @@ export function appCheckoutAuth(
     async signIn() {
       await router.navigate(['/login'], {
         fragment: returnPath,
-        queryParams: { reason: 'Sign in to continue with DataTug Pro' },
+        queryParams: {
+          reason: `Sign in to continue with ${continuationLabel}`,
+        },
       });
     },
     async signOut() {

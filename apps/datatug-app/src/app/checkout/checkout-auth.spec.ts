@@ -31,6 +31,26 @@ describe('existing app checkout identity', () => {
       );
     },
   );
+  it.each([
+    '/business/checkout?planID=datatug-business-usage-monthly',
+    '/business/checkout?planID=datatug-business-usage-annual&spaceID=space_1',
+    '/business/checkout/return?spaceID=space_1&session_id=cs_test_paid',
+  ])('preserves validated Business TEST continuation %s', async (path) => {
+    const navigate = vi.fn().mockResolvedValue(true);
+    const adapter = appCheckoutAuth(
+      {} as SneatAuthStateService,
+      { navigate } as unknown as Router,
+      path,
+      'DataTug Business checkout',
+    );
+    await adapter.signIn();
+    expect(navigate).toHaveBeenCalledWith(['/login'], {
+      fragment: path,
+      queryParams: {
+        reason: 'Sign in to continue with DataTug Business checkout',
+      },
+    });
+  });
   it('waits for cold authentication and uses the existing current-user token only', async () => {
     const states = new BehaviorSubject<ISneatAuthState>({
       status: 'authenticating',
@@ -70,6 +90,9 @@ describe('existing app checkout identity', () => {
     '/subscribe?plan=business&period=monthly&checkout=test',
     '/subscribe?plan=pro&period=monthly&checkout=test&token=x',
     '/subscribe?plan=pro&period=monthly&account=other',
+    '/business/checkout?planID=datatug-business-usage-monthly&api=https://evil.invalid',
+    '/business/checkout?planID=datatug-business-usage-monthly&spaceID=../private',
+    '/business/checkout/return?spaceID=space_1&session_id=cs_live_paid',
   ])('rejects unsafe continuation %s', (path) => {
     expect(() =>
       appCheckoutAuth({} as SneatAuthStateService, {} as Router, path),

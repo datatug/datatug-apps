@@ -177,6 +177,12 @@ export const handoffOrRoot: CanMatchFn = (_route, segments) => {
 export const checkoutOrRoot: CanMatchFn = () => datatugProfileOnly() ? true : inject(Router).parseUrl('/');
 
 export const routes: Routes = [
+  ...['business/checkout/return', 'business/checkout'].map((path) => ({
+    path,
+    canMatch: [checkoutOrRoot],
+    data: { businessCheckoutReturn: path === 'business/checkout/return' },
+    loadComponent: () => import('./checkout/business-checkout-page.component').then((m) => m.BusinessCheckoutPageComponent),
+  })),
   ...['subscribe', 'pricing/return'].map((path) => ({
     path,
     canMatch: [checkoutOrRoot],
