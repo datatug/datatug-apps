@@ -123,6 +123,30 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+it.each([
+  {
+    query: { plan: 'pro', period: 'monthly' },
+    returning: false,
+    copy: 'Sign in to review your price and continue to payment.',
+  },
+  {
+    query: { mode: 'test', session_id: 'cs_test_waiting' },
+    returning: true,
+    copy: 'Sign in with the same DataTug account used for your purchase.',
+  },
+])(
+  'shows the right sign-in context before any quote is requested',
+  async ({ query, returning, copy }) => {
+    const root = await render(query, returning, { status: 'notAuthenticated' });
+
+    expect(root.textContent).toContain(copy);
+    expect(root.querySelector('button.primary-action')?.textContent).toContain(
+      'Sign in to continue',
+    );
+    expect(fetcher).not.toHaveBeenCalled();
+  },
+);
+
 it('cold auth waits, then renders the quote and mounts only after acknowledgement', async () => {
   const root = await render(
     { plan: 'pro', period: 'monthly', checkout: 'test' },
