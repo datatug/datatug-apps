@@ -129,9 +129,15 @@
     </p>
 
     @if (state().stage === 'sign-in' || state().status === 401) {
-      <button type="button" (click)="signIn()" [disabled]="signingIn()">
-        Sign in to continue
-      </button>
+      <section
+        class="checkout-auth"
+        aria-labelledby="business-checkout-auth-heading"
+      >
+        <h2 id="business-checkout-auth-heading">
+          Continue with your DataTug account
+        </h2>
+        <sneat-auth-panel [returnTo]="authReturnTo()" [showIntro]="false" />
+      </section>
     }
 
     @if (state().quote; as quote) {
