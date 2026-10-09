@@ -44,11 +44,14 @@ export interface ProductProfile {
 
   /**
    * Path (relative to the app root, no leading slash) this profile's home route
-   * redirects to. Empty string means the root route itself (`/`) is the home
-   * page — no redirect. Non-empty means `/` redirects to `/${homePath}` (see
+   * redirects to. Non-empty means `/` redirects to `/${homePath}` (see
    * `profile-home-redirect.guard.ts` in `@sneat/datatug-main`), which is the "at
    * most, registering a new home route" a new profile needs alongside its table
-   * entry.
+   * entry. `datatug` uses `home`, so its start page has an address of its own
+   * that survives a refresh (the DataTug.app landing page answers a full page
+   * load of `/`); `incidentius` uses `incidents`. Empty string means the root
+   * route itself (`/`) is the home page — no redirect; no registered profile
+   * does this today.
    */
   readonly homePath: string;
 
@@ -102,7 +105,7 @@ export const PRODUCT_PROFILES: Readonly<
     id: 'datatug',
     pricingUrl: 'https://datatug.io/pricing/',
     brandName: 'DataTug.app',
-    homePath: '',
+    homePath: 'home',
     entryPointLabel: 'Open a project',
     showIncidentsMenuItem: true,
     showPoweredByDalgo: true,

@@ -8,7 +8,16 @@ import {
 } from '../core/datatug-routing-params';
 import { githubProjectRoutes } from './github-project-routes';
 import { isSharedProjectRef } from '../core/project-context';
-import { profileHomeRedirectGuard } from './profile-home-redirect.guard';
+import {
+  profileHomeRedirectGuard,
+  profileStartPageGuard,
+  START_PAGE_PATH,
+} from './profile-home-redirect.guard';
+
+const loadDatatugHomePage = () =>
+  import('../pages/home/datatug-home-page.component').then(
+    (m) => m.DatatugHomePageComponent,
+  );
 
 export const datatugRoutes: Routes = [
   {
@@ -26,17 +35,25 @@ export const datatugRoutes: Routes = [
       ),
   },
   {
-    // The active product profile's home route may not be this one — see
-    // `profile-home-redirect.guard.ts` (hub `product-profiles`
-    // REQ:profile-table). Under the `datatug` profile (empty `homePath`)
-    // the guard is a no-op and this still loads DatatugHomePageComponent
-    // directly, exactly as before the guard existed.
+    // The app root. It shows nothing itself: the guard sends `/` to the active
+    // product profile's home route (`homePath`; `datatug` -> `/home`,
+    // `incidentius` -> `/incidents` — see `profile-home-redirect.guard.ts`,
+    // hub `product-profiles` REQ:profile-table). A full page load of `/` on
+    // datatug.app is answered by the landing page, not by this app, which is
+    // why the start page has the address below. The component stays here only
+    // for a profile with an empty `homePath` (none registered today), whose
+    // home page is the root itself.
     path: '',
     canActivate: [profileHomeRedirectGuard],
-    loadComponent: () =>
-      import('../pages/home/datatug-home-page.component').then(
-        (m) => m.DatatugHomePageComponent,
-      ),
+    loadComponent: loadDatatugHomePage,
+  },
+  {
+    // The DataTug start page, at an address that survives a refresh. Only a
+    // profile whose `homePath` is `home` (`datatug`) shows it; under any other
+    // profile `profileStartPageGuard` sends `/home` to that profile's own home.
+    path: START_PAGE_PATH,
+    canActivate: [profileStartPageGuard],
+    loadComponent: loadDatatugHomePage,
   },
   {
     // The incident list — `incidentius` profile home (redirected here by
