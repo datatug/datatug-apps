@@ -4,6 +4,7 @@ import {
   computed,
   input,
 } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import {
   decodeSourceRightsEvidence,
   type SourceRightsEvidence,
@@ -14,23 +15,40 @@ import {
 @Component({
   selector: 'sneat-datatug-source-rights-notice',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [NgTemplateOutlet],
   styles: [
     '.terms-text { white-space: pre-wrap; overflow-wrap: anywhere; } article { margin-block: 1rem; }',
   ],
   template: `
     <section aria-label="Source data terms" data-testid="source-rights-notice">
-      <h3>Source data terms</h3>
-      <p>
-        These declarations describe source data. They do not assign a licence to
-        the joined or derived result.
-      </p>
       @if (decoded().error) {
+        <h3>Source data terms</h3>
         <p role="alert">
           Source data terms could not be verified: malformed or unsafe evidence.
         </p>
-      } @else if (!decoded().evidence.sourceRights?.length) {
-        <p>Source data terms not declared.</p>
+      } @else if (compact()) {
+        @if (decoded().evidence.sourceRights?.length) {
+          <details data-testid="source-rights-details">
+            <summary>Source licences</summary>
+            <p>
+              Licences apply to the source data. Check each source before
+              sharing or reusing query results.
+            </p>
+            <ng-container *ngTemplateOutlet="declarations" />
+          </details>
+        }
       } @else {
+        <h3>Source data terms</h3>
+        <p>
+          These declarations describe source data. They do not assign a licence
+          to the joined or derived result.
+        </p>
+        @if (!decoded().evidence.sourceRights?.length) {
+          <p>Source data terms not declared.</p>
+        }
+        <ng-container *ngTemplateOutlet="declarations" />
+      }
+      <ng-template #declarations>
         @for (right of decoded().evidence.sourceRights; track right.sourceId) {
           <article>
             <h4>
@@ -96,15 +114,16 @@ import {
             }
           </article>
         }
-      }
-      @for (id of undeclared(); track id) {
-        <p>Source data terms not declared: {{ id }}</p>
-      }
+        @for (id of undeclared(); track id) {
+          <p>Source data terms not declared: {{ id }}</p>
+        }
+      </ng-template>
     </section>
   `,
 })
 export class SourceRightsNoticeComponent {
   readonly evidence = input<SourceRightsEvidence | undefined>();
+  readonly compact = input(false);
   readonly decoded = computed(() => {
     try {
       return {

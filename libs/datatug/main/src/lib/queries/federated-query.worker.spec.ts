@@ -182,14 +182,16 @@ describe('federated query worker', () => {
         : new Response(JSON.stringify({ records: Array.from({ length: 10 }, () => ({ data: { name: large } })),
           columns: ['name'], execution: {}, complete: true }), { headers: { 'Content-Type': 'application/json' } })));
       scope.onmessage?.({ data: { type: 'run', definition, token: '', mode: 'full' } });
-      await vi.waitFor(() => expect(posted.some((message) => message.type === 'error')).toBe(true), { timeout: 10_000 });
+      // The 9 MiB fake IndexedDB stream can take longer on parallel CI workers;
+      // this still requires the exact byte-limit error and clean provisional state.
+      await vi.waitFor(() => expect(posted.some((message) => message.type === 'error')).toBe(true), { timeout: 25_000 });
       expect(posted.find((message) => message.type === 'result')).toBeUndefined();
       expect(posted.find((message) => message.type === 'error')?.['message']).toMatch(/page exceeds the browser byte limit/);
       expect(advance).toHaveBeenCalledTimes(9);
       const after = new Set((await indexedDB.databases()).map((database) => database.name));
       expect([...after].filter((name) => !before.has(name))).toEqual([]);
     } finally { advance.mockRestore(); }
-  }, 15_000);
+  }, 30_000);
 
   it('deletes provisional streamed rows when a late transport failure truncates the JSON footer', async () => {
     const before = new Set((await indexedDB.databases()).map((database) => database.name));

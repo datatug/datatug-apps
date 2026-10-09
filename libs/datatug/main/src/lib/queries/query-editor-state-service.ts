@@ -50,6 +50,12 @@ export const isQueryChanged = (queryState: IQueryState): boolean => {
     return true;
   }
   if (
+    queryState.connectionId !== undefined &&
+    queryState.connectionId !== (def.connectionId ?? '')
+  ) {
+    return true;
+  }
+  if (
     JSON.stringify(queryState.federation ?? def.federation) !==
     JSON.stringify(def.federation)
   ) {
@@ -751,6 +757,10 @@ export class QueryEditorStateService {
           title: queryState.title,
           request: queryState.request,
           federation: queryState.federation ?? queryState.def.federation,
+          connectionId:
+            queryState.connectionId !== undefined
+              ? queryState.connectionId || undefined
+              : queryState.def.connectionId,
         },
         id,
       );

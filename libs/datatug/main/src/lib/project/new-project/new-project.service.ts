@@ -12,7 +12,7 @@ export class NewProjectService {
     this.popoverController
       .create({
         component: NewProjectFormComponent,
-        cssClass: 'small-popover',
+        cssClass: 'datatug-dialog',
         componentProps: {
           ...(store ? { store } : {}),
           onCancel: () =>

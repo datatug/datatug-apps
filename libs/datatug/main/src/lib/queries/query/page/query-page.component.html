@@ -365,6 +365,29 @@
     </ion-card>
   }
 
+  @if (canChoosePublicSqliteSource()) {
+    <ion-card>
+      <ion-card-header
+        ><ion-card-title>Public SQLite source</ion-card-title></ion-card-header
+      >
+      <ion-card-content>
+        <ion-item>
+          <ion-select
+            label="Saved connection"
+            aria-label="Saved SQLite connection"
+            [value]="queryDef()?.connectionId || ''"
+            [disabled]="running() || queryState.isSaving"
+            (ionChange)="publicSqliteSourceChanged($event)"
+          >
+            <ion-select-option value="">No browser source</ion-select-option>
+            <ion-select-option value="chinook-sqlite"
+              >Chinook · pinned public SQLite</ion-select-option
+            >
+          </ion-select>
+        </ion-item>
+      </ion-card-content>
+    </ion-card>
+  }
   <ion-card>
     <ion-item>
       <ion-input
@@ -605,7 +628,7 @@
             !queryId ||
             !project ||
             hasBlockedBindings() ||
-            (availableTargets().length > 0 && !selectedSource())
+            (!queryDef()?.connectionId && availableTargets().length > 0 && !selectedSource())
           "
           (click)="runQuery()"
         >
@@ -618,6 +641,9 @@
         </ion-button>
       </ion-buttons>
     </ion-item>
+    @if (queryDef()?.connectionId; as connectionId) {
+      <p class="ion-padding-horizontal">Saved source: {{ connectionId }}. Run checks its public SQLite fixture and integrity pin before showing results.</p>
+    }
   </ion-card>
 
   @if ((running() || resultPageLoading()) && federatedProgress(); as progress) {
@@ -723,8 +749,6 @@
         }
       </ion-text>
 
-      <sneat-datatug-source-rights-notice [evidence]="result" />
-
       @if (!selectedHistoricalResult() && queryRunTiming(); as timing) {
         <p data-testid="query-run-timings">
           Time to first record:
@@ -769,48 +793,49 @@
       </ion-list>
     }
 
-    <ion-card>
-      <ion-card-content style="overflow-x: auto">
-        @if (
-          resultTotalRows() > resultPageSize ||
-          resultHasMore() ||
-          resultPageIndex() > 0
-        ) {
-          <div aria-label="Result pages">
-            <ion-button
-              fill="clear"
-              [disabled]="resultPageLoading() || resultPageIndex() === 0"
-              (click)="changeResultPage(-1)"
-              >Previous</ion-button
-            >
-            Rows {{ resultPageIndex() * resultPageSize + 1 }}–{{
-              resultPageIndex() * resultPageSize + visibleResultRows().length
-            }}
-            @if (!resultHasMore()) {
-              of {{ resultTotalRows() }}
-            }
-            <ion-button
-              fill="clear"
-              [disabled]="
-                resultPageLoading() ||
-                (!resultHasMore() &&
-                  (resultPageIndex() + 1) * resultPageSize >= resultTotalRows())
-              "
-              (click)="changeResultPage(1)"
-              >Next</ion-button
-            >
-          </div>
-        }
-        <ag-grid-angular
-          class="ag-theme-quartz"
-          style="height: 420px; width: 100%"
-          [columnDefs]="resultGridColumnDefs()"
-          [rowData]="resultGridRows()"
-          [defaultColDef]="resultGridDefaultColDef"
-          [loading]="resultPageLoading()"
-          [overlayNoRowsTemplate]="resultGridNoRowsTemplate"
-        />
-      </ion-card-content>
-    </ion-card>
+    <div class="ion-padding-horizontal">
+      @if (
+        resultTotalRows() > resultPageSize ||
+        resultHasMore() ||
+        resultPageIndex() > 0
+      ) {
+        <div aria-label="Result pages">
+          <ion-button
+            fill="clear"
+            [disabled]="resultPageLoading() || resultPageIndex() === 0"
+            (click)="changeResultPage(-1)"
+            >Previous</ion-button
+          >
+          Rows {{ resultPageIndex() * resultPageSize + 1 }}–{{
+            resultPageIndex() * resultPageSize + visibleResultRows().length
+          }}
+          @if (!resultHasMore()) {
+            of {{ resultTotalRows() }}
+          }
+          <ion-button
+            fill="clear"
+            [disabled]="
+              resultPageLoading() ||
+              (!resultHasMore() &&
+                (resultPageIndex() + 1) * resultPageSize >= resultTotalRows())
+            "
+            (click)="changeResultPage(1)"
+            >Next</ion-button
+          >
+        </div>
+      }
+      <ag-grid-angular
+        class="ag-theme-quartz"
+        style="height: 420px; width: 100%"
+        [columnDefs]="resultGridColumnDefs()"
+        [rowData]="resultGridRows()"
+        [defaultColDef]="resultGridDefaultColDef"
+        [loading]="resultPageLoading()"
+        [overlayNoRowsTemplate]="resultGridNoRowsTemplate"
+      />
+    </div>
+    <div class="ion-padding-horizontal">
+      <sneat-datatug-source-rights-notice [evidence]="result" [compact]="true" />
+    </div>
   }
 </ion-content>

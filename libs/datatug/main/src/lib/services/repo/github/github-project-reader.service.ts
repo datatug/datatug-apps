@@ -125,7 +125,9 @@ export function buildGithubRawUrl(
  * project id. Any ref is readable: files and listing both come from the one
  * commit the reader resolves for the id (design 4.5).
  */
-export function assertReadableGithubProjectId(projectId: string): IGithubProjectId {
+export function assertReadableGithubProjectId(
+  projectId: string,
+): IGithubProjectId {
   return readableId(projectId);
 }
 
@@ -147,8 +149,6 @@ interface IGithubGitTreeResponse {
   readonly truncated?: boolean;
 }
 
-
-
 /** Wire shape one query item's own `.query.json` (or legacy `.sql.json`) file decodes
  * to — deliberately the SAME flat shape `queries.service.ts`'s own (un-exported)
  * `IWireQueryItem` declares (structurally compatible, so `toQueryDef()`/`toQueryFolder()`
@@ -161,6 +161,7 @@ export interface IGithubWireQueryItem {
   type: string;
   text?: string;
   draft?: boolean;
+  connectionId?: string;
   parameters?: IParameterDef[];
   dbModel?: string;
   recordsets?: IRecordsetDef[];
@@ -581,7 +582,11 @@ export class GithubProjectReaderService {
     }
     return memo
       ? { state: 'remembered', sha: memo.sha, remembered: true }
-      : { state: 'unresolved', remembered: false, refused: out.kind === 'refused' };
+      : {
+          state: 'unresolved',
+          remembered: false,
+          refused: out.kind === 'refused',
+        };
   }
 
   /**
@@ -709,7 +714,10 @@ export class GithubProjectReaderService {
   private async readAtCommit<T>(
     session: IGithubSession,
     read: IGithubRead<T>,
-    readAt: (commit: IGithubResolvedCommit, epoch: number) => Promise<T | typeof STALE>,
+    readAt: (
+      commit: IGithubResolvedCommit,
+      epoch: number,
+    ) => Promise<T | typeof STALE>,
   ): Promise<T> {
     let failures = 0;
     try {
@@ -975,7 +983,10 @@ export class GithubProjectReaderService {
         // The project file is 404 at a commit that was only remembered: the repository may have been rewritten, or
         // the project created (pushed from elsewhere) after the answer was kept, whatever else was read at it. Ask
         // once more which commit it is. Not answered: the commit stands for the visit, and the file is absent.
-        if (commit.remembered && (await this.doubt(session, commit)) === 'moved') {
+        if (
+          commit.remembered &&
+          (await this.doubt(session, commit)) === 'moved'
+        ) {
           return STALE;
         }
         return undefined;
@@ -1289,7 +1300,9 @@ export class GithubProjectReaderService {
           .map((e) => e.name);
         const rootItemFiles = entries
           .filter(
-            (e) => e.type === 'file' && GithubProjectReaderService.isQueryDefFile(e.name),
+            (e) =>
+              e.type === 'file' &&
+              GithubProjectReaderService.isQueryDefFile(e.name),
           )
           .map((e) => e.name);
 
@@ -1306,7 +1319,11 @@ export class GithubProjectReaderService {
                           GithubProjectReaderService.isQueryDefFile(e.name),
                       )
                       .map((e) => e.name);
-                    return this.loadQueryItems(projectId, folderName, itemFiles).pipe(
+                    return this.loadQueryItems(
+                      projectId,
+                      folderName,
+                      itemFiles,
+                    ).pipe(
                       map(
                         (items): IGithubWireQueryFolder => ({
                           id: folderName,
@@ -1353,6 +1370,7 @@ export class GithubProjectReaderService {
               id: def?.id || bareId,
               title: def?.title,
               type: def?.type || 'SQL',
+              ...(def?.connectionId ? { connectionId: def.connectionId } : {}),
               parameters: def?.parameters,
               recordsets: def?.recordsets,
               dbModel: def?.dbModel,
@@ -1380,7 +1398,9 @@ export class GithubProjectReaderService {
         const { folder } = parseGithubProjectId(projectId);
         const queriesPrefix = folder ? `${folder}/queries/` : 'queries/';
         const wantsFolder = id.includes('/');
-        const wantFolderName = wantsFolder ? id.slice(0, id.lastIndexOf('/')) : '';
+        const wantFolderName = wantsFolder
+          ? id.slice(0, id.lastIndexOf('/'))
+          : '';
         const wantBareId = wantsFolder ? id.slice(id.lastIndexOf('/') + 1) : id;
 
         const match = tree.find((e) => {
@@ -1389,8 +1409,12 @@ export class GithubProjectReaderService {
           }
           const relFromQueries = e.path.slice(queriesPrefix.length);
           const slashIdx = relFromQueries.indexOf('/');
-          const folderName = slashIdx === -1 ? '' : relFromQueries.slice(0, slashIdx);
-          const fileName = slashIdx === -1 ? relFromQueries : relFromQueries.slice(slashIdx + 1);
+          const folderName =
+            slashIdx === -1 ? '' : relFromQueries.slice(0, slashIdx);
+          const fileName =
+            slashIdx === -1
+              ? relFromQueries
+              : relFromQueries.slice(slashIdx + 1);
           if (!GithubProjectReaderService.isQueryDefFile(fileName)) {
             return false;
           }
@@ -1408,13 +1432,18 @@ export class GithubProjectReaderService {
 
         const relFromQueries = match.path.slice(queriesPrefix.length);
         const slashIdx = relFromQueries.indexOf('/');
-        const folderName = slashIdx === -1 ? '' : relFromQueries.slice(0, slashIdx);
-        const fileName = slashIdx === -1 ? relFromQueries : relFromQueries.slice(slashIdx + 1);
+        const folderName =
+          slashIdx === -1 ? '' : relFromQueries.slice(0, slashIdx);
+        const fileName =
+          slashIdx === -1 ? relFromQueries : relFromQueries.slice(slashIdx + 1);
         const defRelPath = folderName
           ? `queries/${folderName}/${fileName}`
           : `queries/${fileName}`;
 
-        return this.getRawJson<IGithubWireQueryItem>(projectId, defRelPath).pipe(
+        return this.getRawJson<IGithubWireQueryItem>(
+          projectId,
+          defRelPath,
+        ).pipe(
           switchMap((def) => {
             const bareId = GithubProjectReaderService.defFileBareId(fileName);
             const type = def?.type || 'SQL';
@@ -1432,6 +1461,7 @@ export class GithubProjectReaderService {
                   title: def?.title,
                   type,
                   text,
+                  ...(def?.connectionId ? { connectionId: def.connectionId } : {}),
                   parameters: def?.parameters,
                   recordsets: def?.recordsets,
                   federation: def?.federation,

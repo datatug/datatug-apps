@@ -104,7 +104,107 @@ async function harness(freshUser = false) {
 }
 
 describe('New project through authenticated common API', () => {
-  it('lets a fresh signed-in user create/select a Space through the existing Sneat API before GitHub project creation', async () => {
+  it('guides an empty GitHub repository list through App installation and refresh', async () => {
+    const h = await harness();
+    h.component.store = 'github';
+    h.connection.repositories.mockReturnValue(of({ repositories: [] }));
+    h.component.loadGithubRepos();
+    h.fixture.detectChanges();
+    await h.fixture.whenStable();
+    h.fixture.detectChanges();
+    expect(h.component.isGithubSignedIn()).toBe(true);
+    expect(h.component['githubRepos']()).toHaveLength(0);
+
+    const install = h.fixture.nativeElement.querySelector(
+      'a[href="https://github.com/apps/datatug/installations/new"]',
+    ) as HTMLAnchorElement | null;
+    expect(install?.textContent).toContain('Install DataTug App');
+    expect(install?.target).toBe('_blank');
+    expect(install?.rel).toContain('noopener');
+    expect(h.fixture.nativeElement.innerHTML).toContain(
+      'No repositories with write access are available yet',
+    );
+    expect(h.fixture.nativeElement.textContent).toContain(
+      'Refresh repositories',
+    );
+
+    const pendingRefresh = new Subject<{
+      repositories: (typeof repo)[];
+    }>();
+    h.connection.repositories.mockReturnValue(pendingRefresh as never);
+    h.component.loadGithubRepos();
+    h.fixture.detectChanges();
+    expect(h.component.isGithubSignedIn()).toBe(true);
+    expect(h.component['isLoadingRepos']()).toBe(true);
+    expect(h.fixture.nativeElement.innerHTML).not.toContain(
+      'No repositories with write access are available yet',
+    );
+
+    pendingRefresh.error({ status: 503 });
+    await h.fixture.whenStable();
+    h.fixture.detectChanges();
+    expect(h.component['githubReposError']()).toContain(
+      'Could not load GitHub repositories',
+    );
+    expect(h.fixture.nativeElement.innerHTML).not.toContain(
+      'No repositories with write access are available yet',
+    );
+
+    h.connection.repositories.mockReturnValue(of({ repositories: [] }));
+    h.component.loadGithubRepos();
+    h.fixture.detectChanges();
+    await h.fixture.whenStable();
+    h.fixture.detectChanges();
+    expect(h.fixture.nativeElement.innerHTML).toContain(
+      'No repositories with write access are available yet',
+    );
+
+    h.connection.repositories.mockReturnValue(of({ repositories: [repo] }));
+    h.component.loadGithubRepos();
+    h.fixture.detectChanges();
+    await h.fixture.whenStable();
+    h.fixture.detectChanges();
+    expect(h.fixture.nativeElement.innerHTML).not.toContain(
+      'No repositories with write access are available yet',
+    );
+    expect(h.fixture.nativeElement.textContent).toContain('owner/repo');
+  });
+  it('explains a failed GitHub repository refresh and clears only that error after a successful retry', async () => {
+    const h = await harness();
+    const repositories = new Subject<{ repositories: (typeof repo)[] }>();
+    h.connection.repositories.mockReturnValue(repositories as never);
+    h.component.store = 'github';
+    h.fixture.detectChanges();
+
+    repositories.error({ status: 503 });
+    await h.fixture.whenStable();
+    h.fixture.detectChanges();
+    expect(h.fixture.nativeElement.textContent).toContain(
+      'Could not load GitHub repositories',
+    );
+    expect(h.fixture.nativeElement.textContent).toContain(
+      'Connect or reconnect GitHub',
+    );
+    expect(h.component.isGithubSignedIn()).toBe(false);
+    expect(h.component.isLoadingRepos()).toBe(false);
+
+    h.component['formError'].set('Branches could not be loaded.');
+    h.connection.repositories.mockReturnValue(of({ repositories: [repo] }));
+    h.component.loadGithubRepos();
+    await h.fixture.whenStable();
+    h.fixture.detectChanges();
+
+    expect(h.fixture.nativeElement.textContent).not.toContain(
+      'Could not load GitHub repositories',
+    );
+    expect(h.fixture.nativeElement.textContent).toContain(
+      'Branches could not be loaded.',
+    );
+    expect(h.component['githubReposError']()).toBeUndefined();
+    expect(h.component.isGithubSignedIn()).toBe(true);
+    expect(h.fixture.nativeElement.textContent).toContain('owner/repo');
+  });
+  it('lets a fresh signed-in user create/select a top-level group Space through the existing Sneat API before GitHub project creation', async () => {
     const h = await harness(true);
     h.component.store = 'github';
     h.component.title = 'Project';
@@ -120,7 +220,7 @@ describe('New project through authenticated common API', () => {
     h.component.spaceTitle.set('First Space');
     h.component.createSpace();
     expect(h.createSpace).toHaveBeenCalledWith({
-      type: 'team',
+      type: 'group',
       title: 'First Space',
     });
     h.spaceResult.next({ id: 'fresh-space', dbo: { title: 'First Space' } });
@@ -176,7 +276,7 @@ describe('New project through authenticated common API', () => {
       },
       template: {
         id: 'demo-project-1',
-        commit: 'd32475de887f65fc18276fae2c8c7a6af5b3fcf6',
+        commit: '436350d41371103be11144ffa346c605f85e1342',
       },
     });
     expect(h.nav.goProject.mock.calls[0][0].ref).toEqual({

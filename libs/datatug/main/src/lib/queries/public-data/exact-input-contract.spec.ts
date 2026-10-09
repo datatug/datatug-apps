@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { immutableUrl } from './canonical-metadata';
+import {
+  immutableUrl,
+  type ImmutableFile,
+  type MetadataObject,
+} from './canonical-metadata';
 import { nativeFixture } from './native-fixture.spec-helper';
 import { parseHttpsJsonCatalog } from '../../project-files/https-json-catalog';
 import {
@@ -7,6 +11,11 @@ import {
   sameSource,
 } from './representation-discovery';
 import { PublicDataService } from './public-data.service';
+import {
+  currentKeysUnderEarlier,
+  mixedUnderCurrent,
+  toCurrentSpelling,
+} from './model-vocabulary.spec-helper';
 
 describe('closed exact-artifact native contract', () => {
   it.each(['ror', 'geo'] as const)(
@@ -211,5 +220,124 @@ describe('closed exact-artifact native contract', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  describe('reads the source model and the registered target model in either ModelSpec vocabulary', () => {
+    // Replaces both models with `edit` of each, re-pins every hash that covers
+    // their bytes, and runs the declared-source discovery.
+    async function discoverWith(
+      edit: (model: MetadataObject) => unknown,
+      servingIdentityColumn?: string,
+    ) {
+      const fixture = await nativeFixture('ror', true);
+      const { contract } = fixture;
+      if (servingIdentityColumn)
+        Object.assign(contract.native, {
+          serving_identity_column: servingIdentityColumn,
+        });
+      const rewrite = async (ref: ImmutableFile) => {
+        const bytes = fixture.files.get(immutableUrl(ref));
+        if (!bytes) throw new Error('Missing fixture model.');
+        return fixture.put(
+          ref,
+          JSON.stringify(edit(JSON.parse(bytes) as MetadataObject)),
+        );
+      };
+      const source = await rewrite(contract.source.schema);
+      Object.assign(contract.source.schema, { sha256: source.sha256 });
+      const targetFile = fixture.own(
+        contract.target.model.path,
+        contract.target.model.sha256,
+      );
+      const target = await rewrite(targetFile);
+      Object.assign(contract.target.model, { sha256: target.sha256 });
+      const snapshotFile = fixture.own(
+        contract.target.snapshot.path,
+        contract.target.snapshot.sha256,
+      );
+      const snapshot = JSON.parse(
+        fixture.files.get(immutableUrl(snapshotFile)) ?? '',
+      );
+      for (const artifact of snapshot.artifacts as {
+        path: string;
+        sha256: string;
+      }[])
+        if (artifact.path === target.path) artifact.sha256 = target.sha256;
+      Object.assign(contract.target.snapshot, {
+        sha256: (await fixture.put(snapshotFile, JSON.stringify(snapshot)))
+          .sha256,
+      });
+      await fixture.updateReceipt((proof) =>
+        Object.assign((proof['native_key'] as { model: object }).model, {
+          sha256: target.sha256,
+        }),
+      );
+      const catalog = structuredClone(fixture.context.catalog);
+      Object.assign(catalog.sourceModel?.schema ?? {}, {
+        sha256: source.sha256,
+      });
+      const text = JSON.stringify(catalog);
+      const parsed = parseHttpsJsonCatalog(text, { trust: 'untrusted' });
+      if (!parsed.ok) throw new Error('Unexpected catalog.');
+      const configuration = await fixture.put(
+        fixture.context.configuration,
+        text,
+      );
+      const pins = await fixture.publish();
+      vi.stubGlobal('fetch', fixture.http);
+      try {
+        return await new PublicDataService().discoverDeclared(
+          { ...fixture.context, configuration, catalog: parsed.value },
+          new AbortController().signal,
+          pins,
+        );
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    }
+    // The pinned hashes differ because the bytes do; nothing else may.
+    const unhashed = (value: unknown) =>
+      JSON.stringify(value).replace(/[0-9a-f]{64}/g, '#');
+
+    it('gives the same discovery for the earlier and the current spelling', async () => {
+      const earlier = await discoverWith((model) => model);
+      expect(earlier.suggestions[0]).toMatchObject({
+        compatibility: 'compatible',
+        matchesSource: true,
+      });
+      const current = await discoverWith(toCurrentSpelling);
+      expect(unhashed(current.suggestions)).toBe(unhashed(earlier.suggestions));
+      expect(unhashed(current.declaredSources)).toBe(
+        unhashed(earlier.declaredSources),
+      );
+    });
+    it.each(currentKeysUnderEarlier)(
+      'reads a 1.0-draft model with %s exactly as before',
+      async (_, edit) => {
+        const earlier = await discoverWith((model) => model);
+        const changed = await discoverWith(edit);
+        expect(unhashed(changed.suggestions)).toBe(
+          unhashed(earlier.suggestions),
+        );
+      },
+    );
+    it.each(mixedUnderCurrent)('refuses %s', async (_, edit) => {
+      await expect(discoverWith(edit)).rejects.toThrow(/earlier vocabulary/);
+    });
+    // A name the model does not declare must not be found among its properties,
+    // whichever spelling the model is in (the guard reads `properties[name]`).
+    it.each(['constructor', 'toString', 'hasOwnProperty', 'valueOf', 'nosuch'])(
+      'refuses the undeclared serving identity column %s in either spelling',
+      async (name) => {
+        for (const edit of [
+          (model: MetadataObject) => model,
+          toCurrentSpelling,
+        ]) {
+          const { suggestions } = await discoverWith(edit, name);
+          expect(suggestions[0].compatibility).toBe('incompatible');
+          expect(suggestions[0].reason).toMatch(/separately declared property/);
+        }
+      },
+    );
   });
 });

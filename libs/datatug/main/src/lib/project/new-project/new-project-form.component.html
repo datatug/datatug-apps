@@ -77,6 +77,36 @@
       >Refresh repositories</ion-button
     ></ion-item
   >
+  <ion-item lines="none">
+    <ion-label class="ion-text-wrap">
+      The DataTug GitHub App must have access to the repository you choose.
+      <a
+        href="https://github.com/apps/datatug/installations/new"
+        target="_blank"
+        rel="noopener noreferrer"
+        >Install DataTug App</a
+      >
+      on GitHub, select your repository, then return and refresh repositories.
+    </ion-label>
+  </ion-item>
+  @if (githubReposError(); as error) {
+    <ion-item lines="none">
+      <ion-label color="danger" class="ion-text-wrap">{{ error }}</ion-label>
+    </ion-item>
+  }
+  @if (
+    isGithubSignedIn() &&
+    !isLoadingRepos() &&
+    !githubReposError() &&
+    !githubRepos().length
+  ) {
+    <ion-item lines="none">
+      <ion-label class="ion-text-wrap">
+        No repositories with write access are available yet. Install the App for
+        a repository you can write to, then refresh repositories.
+      </ion-label>
+    </ion-item>
+  }
   @if (isGithubSignedIn()) {
     <ion-item
       ><ion-label>Repository</ion-label
