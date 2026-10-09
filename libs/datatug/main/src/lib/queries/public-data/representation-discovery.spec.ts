@@ -8,6 +8,7 @@ import {
   INITIAL_CANONICAL_PINS,
   sha256,
   type CanonicalIndexes,
+  type MetadataObject,
 } from './canonical-metadata';
 import {
   discoverRepresentations,
@@ -15,6 +16,11 @@ import {
   type RepresentationContract,
   type SourceField,
 } from './representation-discovery';
+import {
+  currentKeysUnderEarlier,
+  mixedUnderCurrent,
+  toCurrentSpelling,
+} from './model-vocabulary.spec-helper';
 
 function fixtureFiles(): Record<string, string> {
   return Object.fromEntries(
@@ -202,5 +208,49 @@ describe('closed reviewed-helper consumer fixture, never production admission', 
       );
       expect(suggestion.eligible).toBe(false);
     }
+  });
+  describe('reads a model in either ModelSpec vocabulary', () => {
+    async function withModels(edit: (model: MetadataObject) => unknown) {
+      const files = fixtureFiles();
+      for (const name of ['source.modelspec.json', 'target.modelspec.json'])
+        files[name] = JSON.stringify(
+          edit(JSON.parse(files[name]) as MetadataObject),
+        );
+      const source = await sha256(files['source.modelspec.json']);
+      const target = await sha256(files['target.modelspec.json']);
+      const [suggestion] = await discover(files, (c) => {
+        Object.assign(c.source.schema, { sha256: source });
+        Object.assign(c.target.model, { sha256: target });
+      });
+      return suggestion;
+    }
+    it('gives the same suggestion for the earlier and the current spelling', async () => {
+      // The pinned file hashes differ because the files' bytes do; nothing else may.
+      const unhashed = (value: unknown) =>
+        JSON.stringify(value).replace(/[0-9a-f]{64}/g, '#');
+      const [original] = await discover();
+      expect(original.contract).toBeDefined();
+      expect(unhashed(await withModels((model) => model))).toBe(
+        unhashed(original),
+      );
+      expect(unhashed(await withModels(toCurrentSpelling))).toBe(
+        unhashed(original),
+      );
+    });
+    it.each(currentKeysUnderEarlier)(
+      'reads a 1.0-draft model with %s exactly as before',
+      async (_, edit) => {
+        const unhashed = (value: unknown) =>
+          JSON.stringify(value).replace(/[0-9a-f]{64}/g, '#');
+        const [original] = await discover();
+        expect(unhashed(await withModels(edit))).toBe(unhashed(original));
+      },
+    );
+    it.each(mixedUnderCurrent)('refuses %s', async (_, edit) => {
+      const suggestion = await withModels(edit);
+      expect(suggestion.eligible).toBe(false);
+      expect(suggestion.contract).toBeUndefined();
+      expect(suggestion.reason).not.toMatch(/publication is pending/);
+    });
   });
 });

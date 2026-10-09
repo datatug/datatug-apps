@@ -9,6 +9,7 @@ import schema from './representation-contract.schema.json';
 import schema2 from './representation-contract-2.schema.json';
 import schema3 from './representation-contract-3.schema.json';
 import type { VerifiedDeclaredSource } from './declared-source';
+import { normalizeModel } from './model-vocabulary';
 import { verifyNativeReceipt } from './native-receipt';
 import {
   array,
@@ -449,8 +450,8 @@ export async function verifyRepresentationContract(
   )
     throw new Error('Unregistered pinned canonical meaning dependency.');
   const ancestry = [immutableUrl(attachment)];
-  const source = await reader.json(sourceFile, ancestry);
-  const model = await reader.json(modelFile, ancestry);
+  const source = normalizeModel(await reader.json(sourceFile, ancestry));
+  const model = normalizeModel(await reader.json(modelFile, ancestry));
   if (declared && contract.source.data)
     verifyExactDeclaredModel(declared, source);
   modelProperty(

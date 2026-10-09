@@ -16,6 +16,7 @@ import {
   type CanonicalMetadataReader,
   type ImmutableFile,
 } from './canonical-metadata';
+import { normalizeModel } from './model-vocabulary';
 import type { SourceField } from './representation-discovery';
 
 export interface DeclaredCatalogContext {
@@ -78,7 +79,9 @@ export async function verifyDeclaredCatalog(
   const catalog = parsed.value,
     declaration = catalog.sourceModel;
   if (!declaration) throw new Error('Missing source declaration.');
-  const model = await reader.json(declaration.schema, [configurationUrl]);
+  const model = normalizeModel(
+    await reader.json(declaration.schema, [configurationUrl]),
+  );
   exactFields(model, ['modelspec', 'module', 'entities']);
   const module = object(model['module'], 'declared module');
   exactFields(module, ['name', 'id']);

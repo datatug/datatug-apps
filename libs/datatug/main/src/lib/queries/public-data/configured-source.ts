@@ -4,6 +4,11 @@ import type {
 } from './declared-source';
 import type { ITableFull } from '../../models/definition/apis/database';
 import {
+  directoryRecordType,
+  indexedFields,
+  indexedRecordTypes,
+} from './model-vocabulary';
+import {
   array,
   exactFields,
   object,
@@ -101,7 +106,7 @@ export function configuredFieldChoices(
     );
     if (
       mappings.length !== 1 ||
-      typeof mappings[0]['modelEntity'] !== 'string'
+      typeof directoryRecordType(mappings[0]) !== 'string'
     ) {
       choices.push({
         id: `${table.schema}.${table.name}`,
@@ -112,8 +117,8 @@ export function configuredFieldChoices(
       });
       continue;
     }
-    const entity = mappings[0]['modelEntity'];
-    const entities = array(model['entities'], 'registered entities')
+    const entity = directoryRecordType(mappings[0]);
+    const entities = array(indexedRecordTypes(model), 'registered entities')
       .map((value) => object(value, 'registered entity'))
       .filter((value) => value['name'] === entity);
     if (entities.length !== 1) {
@@ -127,7 +132,7 @@ export function configuredFieldChoices(
       continue;
     }
     for (const value of array(
-      entities[0]['properties'],
+      indexedFields(entities[0]),
       'registered properties',
     )) {
       const property = object(value, 'registered property');

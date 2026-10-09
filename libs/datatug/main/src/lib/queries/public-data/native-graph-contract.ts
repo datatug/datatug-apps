@@ -24,6 +24,7 @@ import {
   type SourceField,
 } from './representation-discovery';
 import type { VerifiedDeclaredSource } from './declared-source';
+import { normalizeModel } from './model-vocabulary';
 
 export const NATIVE_GRAPH_PUBLICATION_BLOCKER =
   'The native organization/location graph awaits canonical graph, collection mapping and runtime admission. Metadata and saved eligibility do not authorize queries.';
@@ -360,7 +361,7 @@ export async function readNativeGraphMetadata(
       throw new Error(
         'Graph native model/binding is unregistered or ambiguous.',
       );
-    const model = await reader.json(source.model, ancestry);
+    const model = normalizeModel(await reader.json(source.model, ancestry));
     if (
       model['modelspec'] !== '1.0-draft' ||
       object(model['module'], 'module')['name'] !== source.module

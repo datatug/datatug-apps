@@ -78,6 +78,43 @@ describe('pending bounded scenario factory', () => {
     ]);
     expect(query.publicData?.eligible).toBe(false);
   });
+  describe('reads modelRecordType as modelEntity', () => {
+    type Recordset = Record<string, unknown>;
+    const scenarioWith = (change: (set: Recordset) => Recordset) => {
+      const changed = structuredClone(discovery);
+      changed.indexes.directory['databases'] = [
+        { ...sourceProvider, recordsets: [change(driver)] },
+      ];
+      const staged = structuredClone(suggestion);
+      const provider = staged.provider as { recordsets: Recordset[] };
+      provider.recordsets = provider.recordsets.map((set) =>
+        set['modelEntity'] === undefined ? set : change(set),
+      );
+      // The scenario id and observation time vary per call; its federation does not.
+      return new PublicDataService().scenario(source, changed, staged, {
+        userRows: 1000,
+        userOffset: 0,
+      }).federation;
+    };
+    const renamed = (set: Recordset): Recordset => {
+      const { modelEntity, ...rest } = set;
+      return { ...rest, modelRecordType: modelEntity };
+    };
+    it('gives the same scenario for the newer key as for the earlier one', () => {
+      const earlier = scenarioWith((set) => set);
+      expect(earlier?.tables).toHaveLength(3);
+      expect(scenarioWith(renamed)).toEqual(earlier);
+    });
+    it('lets the newer key win where both are present', () => {
+      const earlier = scenarioWith((set) => set);
+      expect(
+        scenarioWith((set) => ({ ...renamed(set), modelEntity: 'Other' })),
+      ).toEqual(earlier);
+      expect(() =>
+        scenarioWith((set) => ({ ...set, modelRecordType: 'Other' })),
+      ).toThrow(/exact model entity/);
+    });
+  });
   it('rejects name-only model guesses, mismatched source claims and out-of-bound saved scenarios', () => {
     const changed = structuredClone(discovery);
     changed.indexes.directory['databases'] = [
