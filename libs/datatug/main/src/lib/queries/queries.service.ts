@@ -3,7 +3,10 @@ import {
   type ProjectQuerySave,
 } from '../services/project/project-query-api.service';
 import { SneatAuthStateService } from '@sneat/auth-core';
-import { fromProjectQueryWire, type ProjectQueryRevision } from './project-query-contract';
+import {
+  fromProjectQueryWire,
+  type ProjectQueryRevision,
+} from './project-query-contract';
 import { Injectable, Injector, inject } from '@angular/core';
 import { Observable, throwError, of, switchMap, startWith } from 'rxjs';
 import { map } from 'rxjs/operators';
@@ -93,6 +96,7 @@ interface IWireQueryItem {
   type: string;
   text?: string;
   draft?: boolean;
+  connectionId?: string;
   parameters?: IParameterDef[];
   dbModel?: string;
   targets?: IQueryTarget[];
@@ -276,7 +280,10 @@ export class QueriesService {
     return this.injector.get(ProjectQueryApiService).save(ref, save);
   }
   public getQuery(projRef: IProjectRef, id: string): Observable<IQueryDef> {
-    if (projRef.projectApi) return this.getRevision(projRef, id).pipe(map((reply) => fromProjectQueryWire(reply.query)));
+    if (projRef.projectApi)
+      return this.getRevision(projRef, id).pipe(
+        map((reply) => fromProjectQueryWire(reply.query)),
+      );
     if (isGithubStoreId(projRef.storeId)) {
       return this.githubReader
         .getQuery(projRef.projectId, id)

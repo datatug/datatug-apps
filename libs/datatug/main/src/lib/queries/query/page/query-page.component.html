@@ -365,6 +365,29 @@
     </ion-card>
   }
 
+  @if (canChoosePublicSqliteSource()) {
+    <ion-card>
+      <ion-card-header
+        ><ion-card-title>Public SQLite source</ion-card-title></ion-card-header
+      >
+      <ion-card-content>
+        <ion-item>
+          <ion-select
+            label="Saved connection"
+            aria-label="Saved SQLite connection"
+            [value]="queryDef()?.connectionId || ''"
+            [disabled]="running() || queryState.isSaving"
+            (ionChange)="publicSqliteSourceChanged($event)"
+          >
+            <ion-select-option value="">No browser source</ion-select-option>
+            <ion-select-option value="chinook-sqlite"
+              >Chinook · pinned public SQLite</ion-select-option
+            >
+          </ion-select>
+        </ion-item>
+      </ion-card-content>
+    </ion-card>
+  }
   <ion-card>
     <ion-item>
       <ion-input
@@ -605,7 +628,7 @@
             !queryId ||
             !project ||
             hasBlockedBindings() ||
-            (availableTargets().length > 0 && !selectedSource())
+            (!queryDef()?.connectionId && availableTargets().length > 0 && !selectedSource())
           "
           (click)="runQuery()"
         >
@@ -618,6 +641,9 @@
         </ion-button>
       </ion-buttons>
     </ion-item>
+    @if (queryDef()?.connectionId; as connectionId) {
+      <p class="ion-padding-horizontal">Saved source: {{ connectionId }}. Run checks its public SQLite fixture and integrity pin before showing results.</p>
+    }
   </ion-card>
 
   @if ((running() || resultPageLoading()) && federatedProgress(); as progress) {

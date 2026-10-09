@@ -42,6 +42,16 @@ describe('common project query contract', () => {
       }).text,
     ).toBe('');
   });
+  it('round-trips the saved SQL project connection ID', () => {
+    const query = {
+      id: 'chinook-customer-genre-mix',
+      connectionId: 'chinook-sqlite',
+      request: { queryType: QueryType.SQL, text: 'SELECT Genre FROM Genre' },
+    };
+    const wire = toProjectQueryWire(query, 'demodb/chinook-customer-genre-mix');
+    expect(wire.connectionId).toBe('chinook-sqlite');
+    expect(fromProjectQueryWire(wire)).toEqual(query);
+  });
   it('refuses a definition whose leaf ID disagrees with the requested location', () => {
     expect(() =>
       toProjectQueryWire(createHostedDemoDbQuery('other'), 'folder/q'),

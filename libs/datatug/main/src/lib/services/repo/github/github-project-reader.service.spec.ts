@@ -465,7 +465,7 @@ describe('GithubProjectReaderService', () => {
       const { service } = setup({
         'demo-project-1/queries/albums/albums_by_title.sql.json': '{"title":"Albums by title"}',
         'demo-project-1/queries/customers/customer-invoices.query.json':
-          '{"id":"customer-invoices","title":"Customer invoices","type":"DTQL"}',
+          '{"id":"customer-invoices","title":"Customer invoices","type":"DTQL","connectionId":"chinook-sqlite"}',
       });
       const result = await first(service.getQueriesFolder(PROJECT_ID));
 
@@ -480,6 +480,7 @@ describe('GithubProjectReaderService', () => {
         id: 'customer-invoices',
         title: 'Customer invoices',
         type: 'DTQL',
+        connectionId: 'chinook-sqlite',
       });
       // datatug-cli's own `all_queries` never includes the body — this
       // listing call shouldn't either (queries.service.ts's own doc
@@ -545,7 +546,7 @@ describe('GithubProjectReaderService', () => {
     it('resolves a bare id, fetching both the definition and its sidecar body', async () => {
       const { service } = setup({
         'demo-project-1/queries/customers/customer-invoices.query.json':
-          '{"id":"customer-invoices","title":"Customer invoices","type":"DTQL"}',
+          '{"id":"customer-invoices","title":"Customer invoices","type":"DTQL","connectionId":"chinook-sqlite"}',
         'demo-project-1/queries/customers/customer-invoices.query.dtql': 'from:\n  name: Invoice\n',
       });
       const result = await first(service.getQuery(PROJECT_ID, 'customer-invoices'));
@@ -553,6 +554,7 @@ describe('GithubProjectReaderService', () => {
       expect(result).toMatchObject({
         id: 'customer-invoices',
         type: 'DTQL',
+        connectionId: 'chinook-sqlite',
         text: 'from:\n  name: Invoice\n',
       });
     });

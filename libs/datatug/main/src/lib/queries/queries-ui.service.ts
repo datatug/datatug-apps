@@ -43,7 +43,11 @@ export class QueriesUiService {
         },
       });
       if (queryState.def) {
-        this.nav.goQuery({ ref: projectRef }, queryState.def);
+        this.nav.goQuery(
+          { ref: projectRef },
+          { ...queryState.def, title: queryState.title },
+          'create',
+        );
       }
     };
     const actionSheet = await this.actionSheet.create({
