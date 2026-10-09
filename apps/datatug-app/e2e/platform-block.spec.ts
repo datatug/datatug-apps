@@ -133,7 +133,7 @@ test('the side menu credits DALgo next to the build info, as a keyboard-focusabl
 
 test('the incidentius profile shows no DALgo credit', async ({ page }) => {
   await page.goto('/?profile=incidentius');
-  await expect(page).toHaveURL('/incidents?profile=incidentius');
+  await expect(page).toHaveURL('/incidents');
   await expect(page.locator('sneat-app-version')).toBeVisible();
   await expect(page.getByTestId('powered-by-dalgo')).toHaveCount(0);
 });

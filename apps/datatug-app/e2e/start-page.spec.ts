@@ -40,12 +40,12 @@ test('a reload on /home stays on /home and shows the start page', async ({
   await expect(page.getByRole('heading', startPageHeading)).toBeVisible();
 });
 
-test('/ keeps its query string and fragment on the way to /home', async ({
+test('/ does not carry its query string or fragment to /home', async ({
   page,
 }) => {
   await page.goto('/?ref=e2e#frag');
 
-  await expect(page).toHaveURL('/home?ref=e2e#frag');
+  await expect(page).toHaveURL('/home');
   await expect(page.getByRole('heading', startPageHeading)).toBeVisible();
 });
 
@@ -64,7 +64,7 @@ test('under the incidentius profile / still ends on /incidents', async ({
 }) => {
   await page.goto('/?profile=incidentius');
 
-  await expect(page).toHaveURL('/incidents?profile=incidentius');
+  await expect(page).toHaveURL('/incidents');
   await expect(
     page.getByText("Houston, we've got a problem", { exact: true }),
   ).toBeVisible();
@@ -76,7 +76,7 @@ test('under the incidentius profile /home goes to /incidents and never shows the
 }) => {
   await page.goto('/home?profile=incidentius');
 
-  await expect(page).toHaveURL('/incidents?profile=incidentius');
+  await expect(page).toHaveURL('/incidents');
   await expect(
     page.getByText("Houston, we've got a problem", { exact: true }),
   ).toBeVisible();

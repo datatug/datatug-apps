@@ -522,7 +522,7 @@ test.describe('the hand-off holding page', () => {
     ).toHaveAttribute('href', 'https://datatug.ai/ru/');
   });
 
-  test('a visitor who came from the DataTug.app landing goes back to its root, and one who came from the app itself goes to datatug.io', async ({
+  test('a visitor who came from the DataTug.app landing goes back to its root (its Russian home page from the Russian pages), and one who came from the app itself goes to datatug.io', async ({
     page,
     context,
     baseURL,
@@ -535,6 +535,12 @@ test.describe('the hand-off holding page', () => {
     await expect(
       page.getByRole('link', { name: 'Back to the site' }),
     ).toHaveAttribute('href', 'https://datatug.app/');
+    await page.goto('/demo?q=Hi&lang=ru', {
+      referer: 'https://datatug.app/ru/some/page?q=secret',
+    });
+    await expect(
+      page.getByRole('link', { name: 'Назад на сайт' }),
+    ).toHaveAttribute('href', 'https://datatug.app/ru/');
     await page.goto('/demo?q=Hi&lang=en', {
       referer: 'https://datatug.app/home',
     });

@@ -69,24 +69,27 @@ const ALLOWED_SITE_ORIGINS: readonly string[] = [
  */
 const LANDING_ORIGIN = 'https://datatug.app';
 
+/** Whether `pathname` is `prefix` itself or anything under `prefix/`. */
+function isUnder(pathname: string, prefix: string): boolean {
+  return pathname === prefix || pathname.startsWith(prefix + '/');
+}
+
 /** The landing's own paths: the root, and the English and Russian subtrees (`/en` and `/ru` themselves included). */
 function isLandingPath(pathname: string): boolean {
   return (
-    pathname === '/' ||
-    ['/en', '/ru'].some(
-      (prefix) => pathname === prefix || pathname.startsWith(prefix + '/'),
-    )
+    pathname === '/' || isUnder(pathname, '/en') || isUnder(pathname, '/ru')
   );
 }
 
-/** The Russian home page of datatug.ai: the one path, besides `/`, a referrer may send the visitor back to. */
+/** The Russian home page of datatug.ai and of the DataTug.app landing: the one path, besides `/`, a referrer may send the visitor back to. */
 const RU_HOME_PATH = '/ru/';
 
 /**
  * The site the visitor came from when it is one of ours, else datatug.io. Only an origin is ever used, plus, for
- * a visitor who came from the Russian pages of datatug.ai (`/ru` or anything under `/ru/`), that site's Russian
- * home page. A visitor who came from the DataTug.app landing (see {@link isLandingPath}) returns to its root.
- * Nothing else of the referrer (no other path, query or fragment) is ever used.
+ * a visitor who came from the Russian pages of datatug.ai or of the DataTug.app landing (`/ru` or anything under
+ * `/ru/`), that site's Russian home page. A visitor from the English pages of the DataTug.app landing (see
+ * {@link isLandingPath}) returns to its root. Nothing else of the referrer (no other path, query or fragment) is
+ * ever used.
  */
 export function siteUrlFor(referrer: string): string {
   try {
@@ -98,7 +101,7 @@ export function siteUrlFor(referrer: string): string {
       return origin + (russian ? RU_HOME_PATH : '/');
     }
     if (origin === LANDING_ORIGIN && isLandingPath(pathname)) {
-      return LANDING_ORIGIN + '/';
+      return LANDING_ORIGIN + (isUnder(pathname, '/ru') ? RU_HOME_PATH : '/');
     }
   } catch {
     // No referrer, or not a URL.

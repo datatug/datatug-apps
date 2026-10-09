@@ -269,7 +269,7 @@ describe('DemoHoldingPageComponent: the link back to the site', () => {
   it.each([
     ['https://datatug.app/', 'https://datatug.app/'],
     ['https://datatug.app/en/pricing/?q=secret', 'https://datatug.app/'],
-    ['https://datatug.app/ru/', 'https://datatug.app/'],
+    ['https://datatug.app/ru/some/page', 'https://datatug.app/ru/'],
     // Same origin as the app, but not the landing: the visitor came from the app itself.
     ['https://datatug.app/home', SITE_URL],
   ])(
@@ -656,7 +656,7 @@ describe('siteUrlFor (the back-to-the-site link)', () => {
     expect(siteUrlFor('https://datatug.ai.evil.example/ru/')).toBe(SITE_URL);
   });
 
-  it('a visitor from the DataTug.app landing returns to its root, and only from the landing paths', () => {
+  it('a visitor from the English DataTug.app landing returns to its root, and only from the landing paths', () => {
     for (const referrer of [
       'https://datatug.app/',
       'https://datatug.app',
@@ -664,9 +664,6 @@ describe('siteUrlFor (the back-to-the-site link)', () => {
       'https://datatug.app/en',
       'https://datatug.app/en/',
       'https://datatug.app/en/pricing/?q=secret#x',
-      'https://datatug.app/ru',
-      'https://datatug.app/ru/',
-      'https://datatug.app/ru/a/b/c',
     ])
       expect(siteUrlFor(referrer), referrer).toBe('https://datatug.app/');
     // Every other path of datatug.app is the app itself: nothing of the landing to return to.
@@ -681,6 +678,27 @@ describe('siteUrlFor (the back-to-the-site link)', () => {
       'https://datatug.app/pricing/en/',
     ])
       expect(siteUrlFor(referrer), referrer).toBe(SITE_URL);
+  });
+
+  it('a visitor from the Russian DataTug.app landing returns to its Russian home page, and only to that', () => {
+    for (const referrer of [
+      'https://datatug.app/ru',
+      'https://datatug.app/ru/',
+      'https://datatug.app/ru/?utm_source=x',
+      'https://datatug.app/ru/pricing/?q=secret#x',
+      'https://datatug.app/ru/a/b/c',
+    ])
+      expect(siteUrlFor(referrer), referrer).toBe('https://datatug.app/ru/');
+    // Not Russian landing paths: the app's own paths, or the English subtree.
+    for (const referrer of [
+      'https://datatug.app/ruby/',
+      'https://datatug.app/rus/',
+      'https://datatug.app/pricing/ru/',
+    ])
+      expect(siteUrlFor(referrer), referrer).toBe(SITE_URL);
+    expect(siteUrlFor('https://datatug.app/en/ru/')).toBe(
+      'https://datatug.app/',
+    );
   });
 
   it.each([

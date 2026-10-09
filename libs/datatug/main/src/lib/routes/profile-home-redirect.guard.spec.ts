@@ -7,7 +7,7 @@ import {
   START_PAGE_PATH,
 } from './profile-home-redirect.guard';
 
-/** The part of the activated route the guards read: the address being left. */
+/** The route being left, as it is when the address has a query string and a fragment (the guards ignore both). */
 function routeOf(
   queryParams: Record<string, string> = {},
   fragment: string | null = null,
@@ -55,24 +55,18 @@ describe('profileHomeRedirectGuard', () => {
     expect(result).toBe(parseUrlSpy.mock.results[0]?.value);
   });
 
-  it('keeps the query string and the fragment of / on the redirect, under both profiles', () => {
-    const route = routeOf({ agent: 'localhost:8989', project: 'p' }, 'frag');
+  it('redirects to the plain home address: the query string and the fragment of / are not carried', () => {
+    // Under `incidentius` the root used to drop them, and it still does.
+    const route = routeOf({ x: '1' }, 'y');
 
     provideProfile(PRODUCT_PROFILES.datatug);
-    expect(serialized(runGuard(profileHomeRedirectGuard, route))).toBe(
-      '/home?agent=localhost:8989&project=p#frag',
-    );
+    expect(serialized(runGuard(profileHomeRedirectGuard, route))).toBe('/home');
 
     TestBed.resetTestingModule();
     provideProfile(PRODUCT_PROFILES.incidentius);
     expect(serialized(runGuard(profileHomeRedirectGuard, route))).toBe(
-      '/incidents?agent=localhost:8989&project=p#frag',
+      '/incidents',
     );
-  });
-
-  it('adds no query string or fragment when / had none', () => {
-    provideProfile(PRODUCT_PROFILES.datatug);
-    expect(serialized(runGuard(profileHomeRedirectGuard))).toBe('/home');
   });
 
   it('lets a profile with an empty homePath through (the root is its home page)', () => {
@@ -116,14 +110,12 @@ describe('profileStartPageGuard (the /home route)', () => {
     expect(serialized(runGuard(profileStartPageGuard))).toBe('/incidents');
   });
 
-  it('keeps the query string and the fragment of /home on that redirect', () => {
+  it('does not carry the query string or the fragment of /home to that redirect', () => {
     provideProfile(PRODUCT_PROFILES.incidentius);
 
     expect(
-      serialized(
-        runGuard(profileStartPageGuard, routeOf({ agent: 'demo' }, 'frag')),
-      ),
-    ).toBe('/incidents?agent=demo#frag');
+      serialized(runGuard(profileStartPageGuard, routeOf({ x: '1' }, 'y'))),
+    ).toBe('/incidents');
   });
 
   it('sends /home to the root for a profile whose home page is the root, so the two guards never loop', () => {

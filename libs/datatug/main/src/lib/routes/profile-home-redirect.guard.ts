@@ -1,10 +1,5 @@
 import { inject } from '@angular/core';
-import {
-  ActivatedRouteSnapshot,
-  CanActivateFn,
-  Router,
-  UrlTree,
-} from '@angular/router';
+import { CanActivateFn, Router } from '@angular/router';
 import { PRODUCT_PROFILE } from '@datatug/product-profiles';
 
 /**
@@ -14,18 +9,6 @@ import { PRODUCT_PROFILE } from '@datatug/product-profiles';
  * page (see {@link profileStartPageGuard}).
  */
 export const START_PAGE_PATH = 'home';
-
-/** `/${homePath}` with the query string and the fragment of the address being left. */
-function homeUrlTree(
-  router: Router,
-  from: ActivatedRouteSnapshot,
-  homePath: string,
-): UrlTree {
-  const home = router.parseUrl('/' + homePath);
-  home.queryParams = from.queryParams;
-  home.fragment = from.fragment;
-  return home;
-}
 
 /**
  * Guards the app root route (`path: ''`). Redirects to the active product
@@ -37,23 +20,17 @@ function homeUrlTree(
  * (`incidents` REQ:profile-home, AC:incidentius-profile-home), and `datatug`'s
  * `homePath: 'home'` sends `/` to `/home`, its start page.
  *
- * The query string and the fragment of `/` go with the redirect: the project
- * address of a link (`/?agent=…&storeId=…`) is read from them, and a redirect
- * that dropped them would drop that project.
- *
  * An empty `homePath` would make the root route itself the home page, so the
  * guard lets it through — no registered profile does this today. Reads only the
  * profile's declarative `homePath` field, never its identity, so a third profile
  * needs no change here — only its own table entry
  * (REQ:profile-config-is-declarative).
  */
-export const profileHomeRedirectGuard: CanActivateFn = (
-  route: ActivatedRouteSnapshot,
-) => {
+export const profileHomeRedirectGuard: CanActivateFn = () => {
   const profile = inject(PRODUCT_PROFILE);
   const router = inject(Router);
   if (profile.homePath) {
-    return homeUrlTree(router, route, profile.homePath);
+    return router.parseUrl('/' + profile.homePath);
   }
   return true;
 };
@@ -67,12 +44,10 @@ export const profileHomeRedirectGuard: CanActivateFn = (
  * With an empty `homePath` the redirect target is `/`, whose route shows the
  * start page (see {@link profileHomeRedirectGuard}), so this never loops.
  */
-export const profileStartPageGuard: CanActivateFn = (
-  route: ActivatedRouteSnapshot,
-) => {
+export const profileStartPageGuard: CanActivateFn = () => {
   const profile = inject(PRODUCT_PROFILE);
   if (profile.homePath === START_PAGE_PATH) {
     return true;
   }
-  return homeUrlTree(inject(Router), route, profile.homePath);
+  return inject(Router).parseUrl('/' + profile.homePath);
 };
