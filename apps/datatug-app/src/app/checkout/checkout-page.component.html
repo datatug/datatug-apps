@@ -2,15 +2,23 @@
   ><ion-toolbar><ion-title>DataTug Pro</ion-title></ion-toolbar></ion-header
 >
 <ion-content>
-  <main>
-    <h1>
-      {{ returning ? 'Check your purchase' : 'Complete your subscription' }}
-    </h1>
+  <main class="checkout-shell">
+    @if (!returning) {
+      <p class="plan-kicker">
+        DataTug Pro <span aria-hidden="true">·</span>
+        {{ period() === 'yearly' ? 'Yearly plan' : 'Monthly plan' }}
+      </p>
+    }
+    <header class="checkout-intro">
+      <h1>
+        {{ returning ? 'Check your purchase' : 'Complete your subscription' }}
+      </h1>
+    </header>
     @if (enabled() && mode() === 'test') {
       <p class="test">Test mode — no live payment or live plan activation.</p>
     }
     @if (enabled() && mode() === 'live') {
-      <p role="note">
+      <p class="legal-note" role="note">
         <a href="https://datatug.io/terms/" target="_blank" rel="noopener noreferrer">Terms</a>
         ·
         <a href="https://datatug.io/privacy/" target="_blank" rel="noopener noreferrer">Privacy</a>.
@@ -18,13 +26,19 @@
       </p>
     }
     @if (state().user; as user) {
-      <p>Signed in as {{ user.email || 'your DataTug account' }}</p>
+      <p class="account-status">
+        Signed in as {{ user.email || 'your DataTug account' }}
+      </p>
       <button type="button" (click)="signOut()">Use another account</button>
     }
-    <p role="status" aria-live="polite">
+    <p class="checkout-status" role="status" aria-live="polite">
       @switch (state().stage) {
         @case ('sign-in') {
-          Sign in with the same DataTug account used for your purchase.
+          @if (returning) {
+            Sign in with the same DataTug account used for your purchase.
+          } @else {
+            Sign in to review your price and continue to payment.
+          }
         }
         @case ('loading') {
           Checking your Pro price…
@@ -53,44 +67,67 @@
       }
     </p>
     @if (state().stage === 'sign-in' || state().status === 401) {
-      <button type="button" (click)="signIn()" [disabled]="signingIn()">
+      <button
+        class="primary-action"
+        type="button"
+        (click)="signIn()"
+        [disabled]="signingIn()"
+      >
         Sign in to continue
       </button>
     }
     @if (state().stage === 'quote') {
       @if (state().quote; as quote) {
-        <h2>Your Pro quote</h2>
-        <p>{{ period() === 'yearly' ? 'Billed yearly' : 'Billed monthly' }}</p>
-        <dl>
-          <dt>List price</dt>
-          <dd>{{ quote.list }}</dd>
-          <dt>Price due</dt>
-          <dd>{{ quote.due }}</dd>
-        </dl>
-        <p>{{ quote.discount }}</p>
-        <p>
-          Tax is included in this quoted price. The payment form confirms the
-          final charge.
-        </p>
-        <h3>Early access</h3>
-        <p>
-          DataTug Pro is in early access. Your subscription starts now, and
-          some paid features are still being completed.
-        </p>
-        <label
-          ><input
-            type="checkbox"
-            [checked]="accepted()"
-            (change)="accepted.set($any($event.target).checked)"
-          />
-          I understand this is early access and my subscription starts
-          now.</label
-        >
-        <p>
-          <button type="button" [disabled]="!accepted()" (click)="pay()">
-            Continue to payment
-          </button>
-        </p>
+        <section class="quote-card" aria-labelledby="quote-heading">
+          <div class="quote-heading">
+            <h2 id="quote-heading">Your Pro quote</h2>
+            <span class="billing-period">
+              {{ period() === 'yearly' ? 'Yearly' : 'Monthly' }}
+            </span>
+          </div>
+          <p class="billing-caption">
+            {{ period() === 'yearly' ? 'Billed yearly' : 'Billed monthly' }}
+          </p>
+          <dl class="price-summary">
+            <dt>List price</dt>
+            <dd>{{ quote.list }}</dd>
+            <dt>Price due</dt>
+            <dd class="price-due">{{ quote.due }}</dd>
+          </dl>
+          <p class="discount-note">{{ quote.discount }}</p>
+          <p class="tax-note">
+            Tax is included in this quoted price. The payment form confirms the
+            final charge.
+          </p>
+          <section
+            class="early-access"
+            aria-labelledby="early-access-heading"
+          >
+            <h3 id="early-access-heading">Early access</h3>
+            <p class="early-access-copy">
+              DataTug Pro is in early access. Your subscription starts now, and
+              some paid features are still being completed.
+            </p>
+          </section>
+          <label class="consent">
+            <input
+              type="checkbox"
+              [checked]="accepted()"
+              (change)="accepted.set($any($event.target).checked)"
+            />
+            I understand this is early access and my subscription starts now.
+          </label>
+          <p>
+            <button
+              class="primary-action"
+              type="button"
+              [disabled]="!accepted()"
+              (click)="pay()"
+            >
+              Continue to payment
+            </button>
+          </p>
+        </section>
       }
     }
     <section
@@ -126,8 +163,8 @@
     @if (state().stage === 'test' || state().stage === 'pro') {
       <p><a routerLink="/">Continue to DataTug</a></p>
     }
-    <p>
-      <a [href]="back()">Back to pricing</a> ·
+    <p class="checkout-footer">
+      <a [href]="back()">Back to pricing</a>
       <a routerLink="/">Cancel and return to DataTug</a>
     </p>
   </main>
