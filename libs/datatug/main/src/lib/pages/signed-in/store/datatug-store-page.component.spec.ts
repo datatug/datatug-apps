@@ -2,6 +2,8 @@ import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, RouterLink, provideRouter } from '@angular/router';
 import { provideIonicAngular } from '@ionic/angular/provide';
+import { addIcons } from 'ionicons';
+import { add, hourglassOutline } from 'ionicons/icons';
 import {
   IonBackButton,
   IonButton,
@@ -41,6 +43,10 @@ import {
   DatatugUserService,
   IDatatugUserState,
 } from '../../../services/base/datatug-user-service';
+
+// The app registers its icon set in main.ts. Register only those used by the
+// real store template so happy-dom embeds SVGs without network fetches.
+addIcons({ add, hourglassOutline });
 
 // The one shared demo project listed under the GitHub store (G-A1c; the home page's entry).
 const DEMO_PROJECT_ID = 'datatug-demo-project@datatug@demo-project-1';

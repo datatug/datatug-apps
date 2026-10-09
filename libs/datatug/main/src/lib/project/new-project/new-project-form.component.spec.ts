@@ -1,6 +1,8 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
+import { addIcons } from 'ionicons';
+import { closeOutline, saveOutline } from 'ionicons/icons';
 import { ErrorLogger } from '@sneat/core';
 import { SpaceService } from '@sneat/space-services';
 import { SneatAuthStateService, SneatUserService } from '@sneat/auth-core';
@@ -11,6 +13,10 @@ import { DatatugNavService } from '../../services/nav/datatug-nav.service';
 import { ProjectService } from '../../services/project/project.service';
 import { ProjectQueryApiService } from '../../services/project/project-query-api.service';
 import { GithubConnectionService } from '../../services/repo/github/github-connection.service';
+
+// The app registers its icon set in main.ts. Mirror the icons this real
+// template uses so happy-dom renders embedded SVGs instead of fetching them.
+addIcons({ closeOutline, saveOutline });
 
 const repo = {
   id: 12,

@@ -95,10 +95,13 @@ export class DatatugNavService {
     if (url === undefined) {
       return;
     }
-    const options: NavigationOptions | undefined = {
-      ...navigationOptions,
-      ...(project.brief ? { state: { project } } : {}),
-    };
+    const options: NavigationOptions | undefined =
+      navigationOptions || project.brief
+        ? {
+            ...navigationOptions,
+            ...(project.brief ? { state: { project } } : {}),
+          }
+        : undefined;
     this.navRoot(url, errMessage, options);
   }
 
