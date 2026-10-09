@@ -101,9 +101,9 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly nav = inject(DatatugNavService);
-  store: 'cloud' | 'github' = 'cloud';
-  title = '';
-  githubFolder = 'datatug';
+  readonly store = signal<'cloud' | 'github'>('cloud');
+  readonly title = signal('');
+  readonly githubFolder = signal('datatug');
   readonly spaceID = signal('');
   readonly spaceTitle = signal('');
   readonly isCreatingSpace = signal(false);
@@ -131,9 +131,13 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   private readonly pendingCreate = signal<
     { payload: string; request: CreateGithubProject } | undefined
   >(undefined);
-  private restoredDraft?: NewProjectDraft;
-  private pendingDraft?: NewProjectDraft;
-  private authStatus?: AuthStatus;
+  private readonly restoredDraft = signal<NewProjectDraft | undefined>(
+    undefined,
+  );
+  private readonly pendingDraft = signal<NewProjectDraft | undefined>(
+    undefined,
+  );
+  private readonly authStatus = signal<AuthStatus | undefined>(undefined);
   private returnUrl = '/';
   @ViewChild(IonInput, { static: false }) titleInput?: IonInput;
 
@@ -189,14 +193,14 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     this.userService.userState
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((state) => {
-        this.authStatus = state.status;
+        this.authStatus.set(state.status);
         this.spaces.set(
           Object.entries(state.record?.spaces ?? {}).map(([id, space]) => ({
             id,
             title: space.title,
           })),
         );
-        const savedSpaceID = this.restoredDraft?.spaceID;
+        const savedSpaceID = this.restoredDraft()?.spaceID;
         if (
           savedSpaceID &&
           this.spaces().some((space) => space.id === savedSpaceID)
@@ -212,17 +216,17 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
           if (previousUserID) {
             // A different account must not inherit another user's draft.
             clearNewProjectDraft();
-            this.restoredDraft = undefined;
-            this.title = '';
-            this.githubFolder = 'datatug';
+            this.restoredDraft.set(undefined);
+            this.title.set('');
+            this.githubFolder.set('datatug');
             this.spaceTitle.set('');
             this.spaceID.set('');
           } else {
             // The initial sign-in completes in-place for popup auth.
             this.spaceTitle.set(
-              this.restoredDraft?.spaceTitle ?? this.spaceTitle(),
+              this.restoredDraft()?.spaceTitle ?? this.spaceTitle(),
             );
-            if (this.restoredDraft && !this.restoredDraft.actorID)
+            if (this.restoredDraft() && !this.restoredDraft()?.actorID)
               this.saveDraft();
           }
           this.selectionGeneration++;
@@ -232,7 +236,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
           this.branch.set('');
           this.pendingCreate.set(undefined);
           this.isCreating.set(false);
-          if (this.store === 'github') this.loadGithubRepos();
+          if (this.store() === 'github') this.loadGithubRepos();
         }
         this.resolvePendingDraft(uid, state.status);
       });
@@ -241,13 +245,13 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     const draft = readNewProjectDraft();
     const storeParam = this.route.snapshot.queryParamMap.get('store');
     if (storeParam !== null) {
-      this.store = storeParam === 'github' ? 'github' : 'cloud';
+      this.store.set(storeParam === 'github' ? 'github' : 'cloud');
     }
     this.restoreDraftForCurrentActor(draft);
     this.returnUrl = safeNewProjectReturnUrl(
       this.route.snapshot.queryParamMap.get('returnUrl'),
     );
-    if (this.store === 'github' && this.userID()) this.loadGithubRepos();
+    if (this.store() === 'github' && this.userID()) this.loadGithubRepos();
   }
   ionViewDidEnter(): void {
     setTimeout(
@@ -266,11 +270,12 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
         ),
       );
   }
-  storeChanged(): void {
+  storeChanged(store: 'cloud' | 'github'): void {
+    this.store.set(store);
     void this.router
       .navigate([], {
         relativeTo: this.route,
-        queryParams: { store: this.store },
+        queryParams: { store: this.store() },
         queryParamsHandling: 'merge',
         replaceUrl: true,
       })
@@ -279,7 +284,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
           'Failed to update the new project page URL',
         ),
       );
-    if (this.store === 'github' && this.userID()) this.loadGithubRepos();
+    if (this.store() === 'github' && this.userID()) this.loadGithubRepos();
   }
 
   signInToGithub(): void {
@@ -332,18 +337,18 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
         this.isGithubSignedIn.set(true);
         this.isLoadingRepos.set(false);
         this.githubReposError.set(undefined);
-        const saved = this.restoredDraft;
+        const saved = this.restoredDraft();
         if (saved?.repositoryID) {
           const repo = writableRepos.find(
             (candidate) => candidate.id === saved.repositoryID,
           );
           if (repo) {
             this.selectedRepo.set(repo.id);
-            this.githubFolder = saved.githubFolder;
+            this.githubFolder.set(saved.githubFolder);
             this.loadBranches();
           } else {
             // The saved selection is restored only if it is still writable.
-            this.restoredDraft = undefined;
+            this.restoredDraft.set(undefined);
           }
         }
       },
@@ -370,7 +375,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     const repo = this.githubRepos().find(
       (repo) => repo.id === this.selectedRepo(),
     );
-    const folder = readNewProjectFolder(this.githubFolder);
+    const folder = readNewProjectFolder(this.githubFolder());
     this.branches.set([]);
     this.pendingCreate.set(undefined);
     if (!repo || !folder.ok) {
@@ -392,14 +397,14 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       next: (result) => {
         if (generation !== this.selectionGeneration) return;
         this.branches.set(result.branches);
-        const savedBranch = this.restoredDraft?.branch;
+        const savedBranch = this.restoredDraft()?.branch;
         this.branch.set(
           savedBranch &&
             result.branches.some((candidate) => candidate.name === savedBranch)
             ? savedBranch
             : '',
         );
-        this.restoredDraft = undefined;
+        this.restoredDraft.set(undefined);
         this.formError.set(undefined);
       },
       error: () => {
@@ -419,10 +424,10 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       );
       return;
     }
-    if (this.store !== 'github') {
+    if (this.store() !== 'github') {
       this.isCreating.set(true);
       this.projectService
-        .createNewProject('firestore', { title: this.title, userIDs: [] })
+        .createNewProject('firestore', { title: this.title(), userIDs: [] })
         .subscribe({
           next: (projectId) => {
             clearNewProjectDraft();
@@ -440,7 +445,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     const repo = this.githubRepos().find(
       (repo) => repo.id === this.selectedRepo(),
     );
-    const folder = readNewProjectFolder(this.githubFolder);
+    const folder = readNewProjectFolder(this.githubFolder());
     const branch = this.branches().find(
       (branch) => branch.name === this.branch(),
     );
@@ -449,7 +454,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       !folder.ok ||
       !branch ||
       !this.spaces().some((space) => space.id === this.spaceID()) ||
-      !this.title.trim()
+      !this.title().trim()
     ) {
       this.formError.set(
         'Choose a Space, initialized repository, branch and valid folder, and enter a title.',
@@ -457,7 +462,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       return;
     }
     const fields = {
-      title: this.title,
+      title: this.title(),
       spaceID: this.spaceID(),
       github: {
         repositoryID: repo.id,
@@ -532,15 +537,15 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     try {
       const draft: NewProjectDraft = {
         actorID: this.userID(),
-        store: this.store,
-        title: this.title,
-        githubFolder: this.githubFolder,
+        store: this.store(),
+        title: this.title(),
+        githubFolder: this.githubFolder(),
         spaceID: this.spaceID() || undefined,
         spaceTitle: this.spaceTitle(),
         repositoryID: this.selectedRepo(),
         branch: this.branch() || undefined,
       };
-      this.restoredDraft = draft;
+      this.restoredDraft.set(draft);
       sessionStorage.setItem(NEW_PROJECT_DRAFT_KEY, JSON.stringify(draft));
     } catch {
       this.formError.set(
@@ -552,7 +557,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   private restoreDraftForCurrentActor(draft?: NewProjectDraft): void {
     if (!draft) return;
     if (!draft.actorID) {
-      this.restoredDraft = draft;
+      this.restoredDraft.set(draft);
       this.applyDraft(draft);
       // Anonymous drafts are intentionally eligible for the first sign-in.
       // Bind them as soon as the current signed-in actor is known.
@@ -560,13 +565,13 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       return;
     }
     if (this.userID() === draft.actorID) {
-      this.restoredDraft = draft;
+      this.restoredDraft.set(draft);
       this.applyDraft(draft);
       return;
     }
-    if (!this.userID() && this.authStatus === 'authenticating') {
+    if (!this.userID() && this.authStatus() === 'authenticating') {
       // Do not expose another account's data while session restoration runs.
-      this.pendingDraft = draft;
+      this.pendingDraft.set(draft);
       return;
     }
     clearNewProjectDraft();
@@ -576,14 +581,14 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     uid: string | undefined,
     status: AuthStatus,
   ): void {
-    const draft = this.pendingDraft;
+    const draft = this.pendingDraft();
     if (!draft || status === 'authenticating') return;
-    this.pendingDraft = undefined;
+    this.pendingDraft.set(undefined);
     if (uid && uid === draft.actorID) {
-      this.restoredDraft = draft;
+      this.restoredDraft.set(draft);
       this.applyDraft(draft);
       if (
-        this.store === 'github' &&
+        this.store() === 'github' &&
         !this.isLoadingRepos() &&
         !this.isGithubSignedIn()
       )
@@ -595,9 +600,9 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
 
   private applyDraft(draft: NewProjectDraft): void {
     const storeParam = this.route.snapshot.queryParamMap.get('store');
-    if (storeParam === null) this.store = draft.store;
-    this.title = draft.title;
-    this.githubFolder = draft.githubFolder;
+    if (storeParam === null) this.store.set(draft.store);
+    this.title.set(draft.title);
+    this.githubFolder.set(draft.githubFolder);
     this.spaceTitle.set(draft.spaceTitle);
     if (this.spaces().some((space) => space.id === draft.spaceID))
       this.spaceID.set(draft.spaceID ?? '');
