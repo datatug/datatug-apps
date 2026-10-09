@@ -4,7 +4,7 @@ import {
   Component,
   OnDestroy,
   inject,
-  input
+  input,
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
@@ -130,6 +130,6 @@ export class MyDatatugProjectsComponent implements OnDestroy {
   }
 
   addProject(): void {
-    this.newProjectService.openNewProjectDialog();
+    this.newProjectService.navigateToNewProjectPage();
   }
 }

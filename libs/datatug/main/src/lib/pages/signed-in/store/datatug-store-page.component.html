@@ -21,27 +21,18 @@
         <ion-item-divider>
           <ion-label>Projects</ion-label>
           <ion-buttons slot="end">
-            @if (isGithubStore) {
-              <ion-button
-                disabled
-                title="GitHub stores are read-only in the web app"
-              >
-                <ion-icon name="add" slot="start" color="medium" />
-                <ion-label>Add</ion-label>
-              </ion-button>
-            } @else {
-              <ion-button title="New project" (click)="create()">
-                <ion-icon name="add" slot="start" color="primary" />
-                <ion-label>Add</ion-label>
-              </ion-button>
-            }
+            <ion-button title="New project" (click)="create()">
+              <ion-icon name="add" slot="start" color="primary" />
+              <ion-label>Add</ion-label>
+            </ion-button>
           </ion-buttons>
         </ion-item-divider>
         @if (isGithubStore) {
           <ion-item>
             <ion-label color="medium">
-              GitHub stores are read-only in the web app — open a project
-              directly from its repository below instead of adding one here.
+              Add creates a DataTug project from the demo template in a
+              repository you can write to. Existing GitHub project files remain
+              read-only here.
             </ion-label>
           </ion-item>
         }

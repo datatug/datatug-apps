@@ -12,6 +12,13 @@ import { profileHomeRedirectGuard } from './profile-home-redirect.guard';
 
 export const datatugRoutes: Routes = [
   {
+    path: 'new-project',
+    loadComponent: () =>
+      import('../project/new-project/new-project-form.component').then(
+        (m) => m.NewProjectFormComponent,
+      ),
+  },
+  {
     path: 'github/callback',
     loadComponent: () =>
       import('../project/new-project/github-authorization-page.component').then(
