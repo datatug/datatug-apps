@@ -204,7 +204,7 @@ describe('New project through authenticated common API', () => {
     expect(h.component.isGithubSignedIn()).toBe(true);
     expect(h.fixture.nativeElement.textContent).toContain('owner/repo');
   });
-  it('lets a fresh signed-in user create/select a Space through the existing Sneat API before GitHub project creation', async () => {
+  it('lets a fresh signed-in user create/select a top-level group Space through the existing Sneat API before GitHub project creation', async () => {
     const h = await harness(true);
     h.component.store = 'github';
     h.component.title = 'Project';
@@ -220,7 +220,7 @@ describe('New project through authenticated common API', () => {
     h.component.spaceTitle.set('First Space');
     h.component.createSpace();
     expect(h.createSpace).toHaveBeenCalledWith({
-      type: 'team',
+      type: 'group',
       title: 'First Space',
     });
     h.spaceResult.next({ id: 'fresh-space', dbo: { title: 'First Space' } });
