@@ -17,7 +17,8 @@ import {
   type SourceField,
 } from './representation-discovery';
 import {
-  mixedVocabularies,
+  currentKeysUnderEarlier,
+  mixedUnderCurrent,
   toCurrentSpelling,
 } from './model-vocabulary.spec-helper';
 
@@ -236,7 +237,16 @@ describe('closed reviewed-helper consumer fixture, never production admission', 
         unhashed(original),
       );
     });
-    it.each(mixedVocabularies)('refuses %s', async (_, edit) => {
+    it.each(currentKeysUnderEarlier)(
+      'reads a 1.0-draft model with %s exactly as before',
+      async (_, edit) => {
+        const unhashed = (value: unknown) =>
+          JSON.stringify(value).replace(/[0-9a-f]{64}/g, '#');
+        const [original] = await discover();
+        expect(unhashed(await withModels(edit))).toBe(unhashed(original));
+      },
+    );
+    it.each(mixedUnderCurrent)('refuses %s', async (_, edit) => {
       const suggestion = await withModels(edit);
       expect(suggestion.eligible).toBe(false);
       expect(suggestion.contract).toBeUndefined();

@@ -20,7 +20,8 @@ import {
 } from './native-graph-contract';
 import { parseRepresentationContracts } from './representation-discovery';
 import {
-  mixedVocabularies,
+  currentKeysUnderEarlier,
+  mixedUnderCurrent,
   toCurrentSpelling,
 } from './model-vocabulary.spec-helper';
 
@@ -335,8 +336,14 @@ describe('closed native graph metadata, never admission', () => {
       expect(earlier.eligible).toBe(false);
       expect(await readWith(toCurrentSpelling)).toEqual(earlier);
     });
-    it.each(mixedVocabularies)('refuses %s', async (_, edit) => {
-      await expect(readWith(edit)).rejects.toThrow(/other vocabulary/);
+    it.each(currentKeysUnderEarlier)(
+      'reads a 1.0-draft model with %s exactly as before',
+      async (_, edit) => {
+        expect(await readWith(edit)).toEqual(await readWith((m) => m));
+      },
+    );
+    it.each(mixedUnderCurrent)('refuses %s', async (_, edit) => {
+      await expect(readWith(edit)).rejects.toThrow(/earlier vocabulary/);
     });
   });
 });

@@ -12,7 +12,8 @@ import {
 } from './representation-discovery';
 import { PublicDataService } from './public-data.service';
 import {
-  mixedVocabularies,
+  currentKeysUnderEarlier,
+  mixedUnderCurrent,
   toCurrentSpelling,
 } from './model-vocabulary.spec-helper';
 
@@ -224,9 +225,16 @@ describe('closed exact-artifact native contract', () => {
   describe('reads the source model and the registered target model in either ModelSpec vocabulary', () => {
     // Replaces both models with `edit` of each, re-pins every hash that covers
     // their bytes, and runs the declared-source discovery.
-    async function discoverWith(edit: (model: MetadataObject) => unknown) {
+    async function discoverWith(
+      edit: (model: MetadataObject) => unknown,
+      servingIdentityColumn?: string,
+    ) {
       const fixture = await nativeFixture('ror', true);
       const { contract } = fixture;
+      if (servingIdentityColumn)
+        Object.assign(contract.native, {
+          serving_identity_column: servingIdentityColumn,
+        });
       const rewrite = async (ref: ImmutableFile) => {
         const bytes = fixture.files.get(immutableUrl(ref));
         if (!bytes) throw new Error('Missing fixture model.');
@@ -303,8 +311,33 @@ describe('closed exact-artifact native contract', () => {
         unhashed(earlier.declaredSources),
       );
     });
-    it.each(mixedVocabularies)('refuses %s', async (_, edit) => {
-      await expect(discoverWith(edit)).rejects.toThrow(/other vocabulary/);
+    it.each(currentKeysUnderEarlier)(
+      'reads a 1.0-draft model with %s exactly as before',
+      async (_, edit) => {
+        const earlier = await discoverWith((model) => model);
+        const changed = await discoverWith(edit);
+        expect(unhashed(changed.suggestions)).toBe(
+          unhashed(earlier.suggestions),
+        );
+      },
+    );
+    it.each(mixedUnderCurrent)('refuses %s', async (_, edit) => {
+      await expect(discoverWith(edit)).rejects.toThrow(/earlier vocabulary/);
     });
+    // A name the model does not declare must not be found among its properties,
+    // whichever spelling the model is in (the guard reads `properties[name]`).
+    it.each(['constructor', 'toString', 'hasOwnProperty', 'valueOf', 'nosuch'])(
+      'refuses the undeclared serving identity column %s in either spelling',
+      async (name) => {
+        for (const edit of [
+          (model: MetadataObject) => model,
+          toCurrentSpelling,
+        ]) {
+          const { suggestions } = await discoverWith(edit, name);
+          expect(suggestions[0].compatibility).toBe('incompatible');
+          expect(suggestions[0].reason).toMatch(/separately declared property/);
+        }
+      },
+    );
   });
 });

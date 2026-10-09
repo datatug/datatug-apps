@@ -4,84 +4,83 @@ import type { MetadataObject } from './canonical-metadata';
  * ModelSpec spells a model's JSON form in two vocabularies. `1.0-draft` has the
  * top-level key `entities`, `properties` on a record type and `entity` on a
  * member that refers to another record type; `1.0-draft-2` has `records`,
- * `fields` and `record`. The identifier decides which one a document is in, and
- * a document that carries the other vocabulary's key at any of the three levels
- * is refused, as the reference CLI refuses it.
+ * `fields` and `record`.
  *
- * Every reader in this route reads the `1.0-draft` shape. `normalizeModel` hands
- * a `1.0-draft` document back untouched (after the refusal check), turns a
- * `1.0-draft-2` one into that shape, and hands any other identifier back
- * untouched for the reader's own identifier check.
+ * Every reader in this route reads the `1.0-draft` shape. `normalizeModel`
+ * hands back, untouched and unexamined, any document whose identifier is not
+ * `1.0-draft-2` (so every document read before this vocabulary existed behaves
+ * exactly as it did, and the readers' own identifier checks still apply). A
+ * `1.0-draft-2` document that carries the earlier vocabulary's key at the top
+ * level, on a record type or on a member is refused, as the reference CLI
+ * refuses it; any other is rebuilt in the `1.0-draft` shape.
+ *
+ * The rebuilt objects have no prototype, like the objects `strictJson`
+ * parses: a lookup of a name the model does not declare (`constructor`,
+ * `toString`, ...) must find nothing.
  */
-const EARLIER = {
-  identifier: '1.0-draft',
-  records: 'entities',
-  fields: 'properties',
-  reference: 'entity',
-};
-const CURRENT = {
-  identifier: '1.0-draft-2',
-  records: 'records',
-  fields: 'fields',
-  reference: 'record',
-};
+const CURRENT = '1.0-draft-2';
 
 const isObject = (value: unknown): value is MetadataObject =>
   !!value && typeof value === 'object' && !Array.isArray(value);
 
-function refuse(holder: MetadataObject, key: string, identifier: string): void {
+function bare(entries: [string, unknown][]): MetadataObject {
+  const result: MetadataObject = Object.create(null);
+  for (const [key, value] of entries) result[key] = value;
+  return result;
+}
+function refuse(holder: MetadataObject, key: string): void {
   if (Object.hasOwn(holder, key))
     throw new Error(
-      `A ModelSpec ${identifier} model must not carry "${key}", a key of the other vocabulary.`,
+      `A ModelSpec ${CURRENT} model must not carry "${key}", a key of the earlier vocabulary.`,
     );
 }
-
 function renamed(value: unknown, from: string, to: string): unknown {
   if (!isObject(value) || !Object.hasOwn(value, from)) return value;
-  return Object.fromEntries(
+  return bare(
     Object.entries(value).map(([key, v]) => [key === from ? to : key, v]),
   );
 }
 function mapValues(value: unknown, change: (v: unknown) => unknown): unknown {
   return isObject(value)
-    ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, change(v)]))
+    ? bare(Object.entries(value).map(([k, v]) => [k, change(v)]))
     : value;
 }
 
 /** The model in the `1.0-draft` shape every reader of this route reads. */
 export function normalizeModel(model: MetadataObject): MetadataObject {
-  const own = [EARLIER, CURRENT].find(
-    (v) => v.identifier === model['modelspec'],
-  );
-  if (!own) return model;
-  const other = own === EARLIER ? CURRENT : EARLIER;
-  refuse(model, other.records, own.identifier);
-  const recordTypes = model[own.records];
+  if (model['modelspec'] !== CURRENT) return model;
+  refuse(model, 'entities');
+  const recordTypes = model['records'];
   if (isObject(recordTypes))
     for (const record of Object.values(recordTypes)) {
       if (!isObject(record)) continue;
-      refuse(record, other.fields, own.identifier);
-      const members = record[own.fields];
+      refuse(record, 'properties');
+      const members = record['fields'];
       if (isObject(members))
         for (const member of Object.values(members))
-          if (isObject(member)) refuse(member, other.reference, own.identifier);
+          if (isObject(member)) refuse(member, 'entity');
     }
-  if (own === EARLIER) return model;
   const converted = renamed(model, 'records', 'entities') as MetadataObject;
-  return {
-    ...converted,
-    modelspec: EARLIER.identifier,
-    entities: mapValues(converted['entities'], (record) => {
-      const type = renamed(record, 'fields', 'properties');
-      if (!isObject(type)) return type;
-      return {
-        ...type,
-        properties: mapValues(type['properties'], (member) =>
-          renamed(member, 'record', 'entity'),
-        ),
-      };
-    }),
-  };
+  return bare([
+    ...Object.entries(converted),
+    ['modelspec', '1.0-draft'],
+    [
+      'entities',
+      mapValues(converted['entities'], (record) => {
+        const type = renamed(record, 'fields', 'properties');
+        if (!isObject(type)) return type;
+        return bare([
+          ...Object.entries(type),
+          [
+            'properties',
+            mapValues(type['properties'], (member) =>
+              renamed(member, 'record', 'entity'),
+            ),
+          ],
+        ]);
+      }),
+    ],
+  ]);
 }
 
 /**

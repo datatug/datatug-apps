@@ -6,9 +6,13 @@ import {
   normalizeModel,
 } from './model-vocabulary';
 import {
-  mixedVocabularies,
+  currentKeysUnderEarlier,
+  mixedUnderCurrent,
   toCurrentSpelling,
+  withPrototype,
 } from './model-vocabulary.spec-helper';
+import { strictJson } from './strict-json';
+import type { MetadataObject } from './canonical-metadata';
 
 const earlier = () => ({
   modelspec: '1.0-draft',
@@ -57,22 +61,63 @@ describe('normalizeModel', () => {
       expect(normalizeModel(model)).toBe(model);
   });
 
-  it.each(mixedVocabularies)('refuses %s', (_, mix) => {
-    expect(() => normalizeModel(mix(earlier()))).toThrow(/other vocabulary/);
+  it.each(mixedUnderCurrent)('refuses %s', (_, mix) => {
+    expect(() => normalizeModel(mix(earlier()))).toThrow(/earlier vocabulary/);
+  });
+  it.each(currentKeysUnderEarlier)(
+    'hands a 1.0-draft model with %s back untouched, as it was read before',
+    (_, add) => {
+      const model = add(earlier());
+      expect(normalizeModel(model)).toBe(model);
+    },
+  );
+  it('hands a 1.0-draft identifier over the current keys back untouched', () => {
+    const model = { ...toCurrentSpelling(earlier()), modelspec: '1.0-draft' };
+    expect(normalizeModel(model)).toBe(model);
   });
 
-  it('refuses an earlier-spelling document under the current identifier', () => {
-    expect(() =>
-      normalizeModel({ ...earlier(), modelspec: '1.0-draft-2' }),
-    ).toThrow(/"entities"/);
+  it('builds a model with no prototype at any level, like a parsed one', () => {
+    // As the reader gives it: parsed by strictJson, so prototype-less to begin with.
+    const parsed = strictJson(
+      JSON.stringify(toCurrentSpelling(earlier())),
+    ) as MetadataObject;
+    expect(withPrototype(parsed)).toEqual([]);
+    const converted = normalizeModel(parsed);
+    expect(withPrototype(converted)).toEqual([]);
+    // The harness itself sees a prototype where there is one.
+    expect(withPrototype(earlier())).toContain('$');
+    for (const name of [
+      'constructor',
+      'toString',
+      'hasOwnProperty',
+      'valueOf',
+    ]) {
+      expect(converted['entities'] as MetadataObject).not.toHaveProperty(name);
+      expect(
+        (
+          (converted['entities'] as MetadataObject)[
+            'Customer'
+          ] as MetadataObject
+        )['properties'],
+      ).not.toHaveProperty(name);
+      expect((converted as MetadataObject)[name]).toBeUndefined();
+    }
   });
-  it('refuses a current-spelling document under the earlier identifier', () => {
-    expect(() =>
-      normalizeModel({
-        ...toCurrentSpelling(earlier()),
-        modelspec: '1.0-draft',
-      }),
-    ).toThrow(/"records"/);
+  it('keeps a __proto__ key as an own key, whatever the compile target', () => {
+    const parsed = strictJson(
+      '{"modelspec":"1.0-draft-2","module":{},"__proto__":{"x":1},' +
+        '"records":{"__proto__":{"__proto__":1,"fields":{"__proto__":{"type":"string","record":"R"}}}}}',
+    ) as MetadataObject;
+    const converted = normalizeModel(parsed);
+    expect(Object.hasOwn(converted, '__proto__')).toBe(true);
+    const entities = converted['entities'] as MetadataObject;
+    expect(Object.hasOwn(entities, '__proto__')).toBe(true);
+    const type = entities['__proto__'] as MetadataObject;
+    expect(Object.hasOwn(type, '__proto__')).toBe(true);
+    const members = type['properties'] as MetadataObject;
+    expect(Object.getPrototypeOf(members)).toBeNull();
+    expect(members['__proto__']).toEqual({ type: 'string', entity: 'R' });
+    expect(withPrototype(converted)).toEqual([]);
   });
 
   it('leaves malformed shapes for the readers to refuse with their own messages', () => {

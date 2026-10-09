@@ -45,37 +45,13 @@ export function toCurrentSpelling(model: MetadataObject): MetadataObject {
   );
 }
 
-/** Edits that turn a `1.0-draft` model into one the readers refuse for mixing the vocabularies. */
-export const mixedVocabularies: readonly [
-  string,
-  (model: MetadataObject) => MetadataObject,
-][] = [
+type Edit = readonly [string, (model: MetadataObject) => MetadataObject];
+
+/** Edits that turn a `1.0-draft` model into a `1.0-draft-2` one that mixes the vocabularies: refused. */
+export const mixedUnderCurrent: readonly Edit[] = [
   [
-    'an identifier that disagrees with the keys',
-    (m) => ({ ...toCurrentSpelling(m), modelspec: '1.0-draft' }),
-  ],
-  [
-    'the other identifier over the earlier keys',
+    'the earlier keys under the current identifier',
     (m) => ({ ...m, modelspec: '1.0-draft-2' }),
-  ],
-  ['records beside entities', (m) => ({ ...m, records: {} })],
-  [
-    'fields in an earlier record type',
-    (m) =>
-      mapModel(
-        m,
-        ['entities', 'properties'],
-        (t) => ({ ...t, fields: {} }),
-        same,
-      ),
-  ],
-  [
-    'record on an earlier member',
-    (m) =>
-      mapModel(m, ['entities', 'properties'], same, (f) => ({
-        ...f,
-        record: 'X',
-      })),
   ],
   [
     'properties inside a current record type',
@@ -96,3 +72,37 @@ export const mixedVocabularies: readonly [
       })),
   ],
 ];
+
+/** Edits that add a current-vocabulary key to a `1.0-draft` model: read exactly as before. */
+export const currentKeysUnderEarlier: readonly Edit[] = [
+  ['records beside entities', (m) => ({ ...m, records: {} })],
+  [
+    'fields in an earlier record type',
+    (m) =>
+      mapModel(
+        m,
+        ['entities', 'properties'],
+        (t) => ({ ...t, fields: {} }),
+        same,
+      ),
+  ],
+  [
+    'record on an earlier member',
+    (m) =>
+      mapModel(m, ['entities', 'properties'], same, (f) => ({
+        ...f,
+        record: 'X',
+      })),
+  ],
+];
+
+/** Every object in a value, however deep, that has a prototype. */
+export function withPrototype(value: unknown, path = '$'): string[] {
+  if (!value || typeof value !== 'object') return [];
+  const own =
+    Array.isArray(value) || Object.getPrototypeOf(value) === null ? [] : [path];
+  return Object.entries(value).reduce(
+    (found, [key, v]) => [...found, ...withPrototype(v, `${path}.${key}`)],
+    own,
+  );
+}
