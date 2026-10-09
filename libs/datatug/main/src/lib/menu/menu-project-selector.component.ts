@@ -76,7 +76,12 @@ export class MenuProjectSelectorComponent implements OnChanges {
   private setProject = (project: IProjectContext | undefined): void => {
     this.project = project;
     this.currentProjectId = project?.ref?.projectId;
-    this.projectLabel.set(project?.summary?.title || project?.brief?.title || project?.ref?.projectId || '');
+    this.projectLabel.set(
+      project?.summary?.title ||
+        project?.brief?.title ||
+        project?.ref?.projectId ||
+        '',
+    );
   };
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -93,7 +98,7 @@ export class MenuProjectSelectorComponent implements OnChanges {
   }
 
   public newProject(): void {
-    this.newProjectService.openNewProjectDialog();
+    this.newProjectService.navigateToNewProjectPage();
   }
 
   switchProject(event: CustomEvent): void {

@@ -31,7 +31,7 @@ function harness() {
       providers: [
         {
           provide: NewProjectService,
-          useValue: { openNewProjectDialog: newProject },
+          useValue: { navigateToNewProjectPage: newProject },
         },
       ],
     },
@@ -59,7 +59,7 @@ describe('GitHub callback authenticated exchange', () => {
     await fixture.whenStable();
     expect(fixture.nativeElement.textContent).toContain('GitHub is connected');
     fixture.componentInstance.newProject();
-    expect(h.newProject).toHaveBeenCalledWith('github');
+    expect(h.newProject).toHaveBeenCalledWith('github', '/');
     h.auth.next({ status: 'authenticated', user: { uid: 'actor' } });
     expect(h.complete).toHaveBeenCalledTimes(1);
   });

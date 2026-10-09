@@ -78,7 +78,11 @@ export class DatatugNavService {
     );
   }
 
-  goProject(project?: IProjectContext, page?: ProjectTopLevelPage): void {
+  goProject(
+    project?: IProjectContext,
+    page?: ProjectTopLevelPage,
+    navigationOptions?: NavigationOptions,
+  ): void {
     // console.log('DatatugNavService.goProject()', project, page);
     const storeRef: IStoreRef | undefined = project?.store?.ref;
     const storeId: string =
@@ -91,9 +95,10 @@ export class DatatugNavService {
     if (url === undefined) {
       return;
     }
-    const options: NavigationOptions | undefined = project.brief
-      ? { state: { project } }
-      : undefined;
+    const options: NavigationOptions | undefined = {
+      ...navigationOptions,
+      ...(project.brief ? { state: { project } } : {}),
+    };
     this.navRoot(url, errMessage, options);
   }
 

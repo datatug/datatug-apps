@@ -1,11 +1,11 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { PopoverController } from '@ionic/angular';
+import { ActivatedRoute, Router } from '@angular/router';
 import { ErrorLogger } from '@sneat/core';
 import { SpaceService } from '@sneat/space-services';
-import { SneatUserService } from '@sneat/auth-core';
+import { SneatAuthStateService, SneatUserService } from '@sneat/auth-core';
 import { readGithubProjectId } from '@datatug/project-address';
-import { Subject, of, throwError } from 'rxjs';
+import { BehaviorSubject, Subject, of, throwError } from 'rxjs';
 import { NewProjectFormComponent } from './new-project-form.component';
 import { DatatugNavService } from '../../services/nav/datatug-nav.service';
 import { ProjectService } from '../../services/project/project.service';
@@ -29,8 +29,15 @@ const created = {
   spaceID: 'space',
   sharedProjectID: 'server-id',
 };
-async function harness(freshUser = false) {
+async function harness(
+  freshUser = false,
+  routeParams: Record<string, string | null> = {},
+  authenticated = true,
+  preserveDraft = false,
+  initialStatus?: 'authenticating' | 'authenticated' | 'notAuthenticated',
+) {
   TestBed.resetTestingModule();
+  if (!preserveDraft) sessionStorage.removeItem('datatug:new-project:draft');
   const create = vi.fn((...args: unknown[]) => {
     void args;
     return of(created);
@@ -41,11 +48,24 @@ async function harness(freshUser = false) {
   const createCloud = vi.fn(() => of('cloud-id'));
   const spaceResult = new Subject<{ id: string; dbo: { title: string } }>();
   const createSpace = vi.fn(() => spaceResult);
+  const userState = new BehaviorSubject({
+    status:
+      initialStatus ?? (authenticated ? 'authenticated' : 'notAuthenticated'),
+    user: authenticated ? { uid: 'actor' } : undefined,
+    record: { spaces: freshUser ? {} : { space: { title: 'My Space' } } },
+  });
   const nav = { goProject: vi.fn() };
+  const router = {
+    navigate: vi.fn(() => Promise.resolve(true)),
+    navigateByUrl: vi.fn(() => Promise.resolve(true)),
+    parseUrl: vi.fn(),
+    serializeUrl: vi.fn(),
+  };
   const connection = {
     start: vi.fn(),
     repositories: vi.fn(() => of({ repositories: [repo] })),
   };
+  const signInWith = vi.fn(() => Promise.resolve(undefined));
   TestBed.configureTestingModule({
     imports: [NewProjectFormComponent],
     providers: [
@@ -53,21 +73,20 @@ async function harness(freshUser = false) {
       { provide: ProjectQueryApiService, useValue: { create, branches } },
       { provide: ProjectService, useValue: { createNewProject: createCloud } },
       { provide: GithubConnectionService, useValue: connection },
+      { provide: SneatAuthStateService, useValue: { signInWith } },
       {
         provide: SneatUserService,
-        useValue: {
-          userState: of({
-            user: { uid: 'actor' },
-            record: {
-              spaces: freshUser ? {} : { space: { title: 'My Space' } },
-            },
-          }),
-        },
+        useValue: { userState },
       },
       { provide: DatatugNavService, useValue: nav },
+      { provide: Router, useValue: router },
       {
-        provide: PopoverController,
-        useValue: { dismiss: vi.fn(() => Promise.resolve(true)) },
+        provide: ActivatedRoute,
+        useValue: {
+          snapshot: {
+            queryParamMap: { get: (key: string) => routeParams[key] ?? null },
+          },
+        },
       },
       {
         provide: ErrorLogger,
@@ -97,13 +116,170 @@ async function harness(freshUser = false) {
     createCloud,
     createSpace,
     spaceResult,
+    userState,
     connection,
+    signInWith,
     nav,
+    router,
     select,
   };
 }
 
 describe('New project through authenticated common API', () => {
+  it('loads a GitHub deep link from URL context and returns to its safe internal page', async () => {
+    const h = await harness(false, {
+      store: 'github',
+      returnUrl: '/store/github.com?code=must-not-replay#repos',
+    });
+    h.fixture.detectChanges();
+    expect(h.component.store).toBe('github');
+    expect(h.connection.repositories).toHaveBeenCalledTimes(1);
+    h.component.cancel();
+    expect(h.router.navigateByUrl).toHaveBeenCalledWith('/store/github.com', {
+      replaceUrl: true,
+    });
+  });
+
+  it('lets a signed-out visitor fill, save and resume the form at the sign-in step', async () => {
+    const h = await harness(false, { store: 'github' }, false);
+    h.fixture.detectChanges();
+    h.component.title = 'Saved project';
+    h.component.githubFolder = 'demo-project-1';
+    h.component.create();
+    h.fixture.detectChanges();
+
+    expect(h.create).not.toHaveBeenCalled();
+    expect(h.createCloud).not.toHaveBeenCalled();
+    expect(h.fixture.nativeElement.innerHTML).toContain(
+      'Sign in to create your project',
+    );
+    const saved = JSON.parse(
+      sessionStorage.getItem('datatug:new-project:draft') ?? 'null',
+    );
+    expect(saved).toMatchObject({
+      store: 'github',
+      title: 'Saved project',
+      githubFolder: 'demo-project-1',
+    });
+    expect(saved.actorID).toBeUndefined();
+    expect(JSON.stringify(saved)).not.toContain('token');
+
+    const signIn = Array.from(
+      h.fixture.nativeElement.querySelectorAll('ion-button'),
+    ).find((button: Element) =>
+      button.textContent?.includes('Sign in to continue'),
+    ) as HTMLElement | undefined;
+    signIn?.click();
+    await h.fixture.whenStable();
+    expect(h.signInWith).toHaveBeenCalledWith('google.com');
+
+    const resumed = await harness(false, { store: 'github' }, true, true);
+    resumed.fixture.detectChanges();
+    expect(resumed.component.store).toBe('github');
+    expect(resumed.component.title).toBe('Saved project');
+    expect(resumed.component.githubFolder).toBe('demo-project-1');
+    expect(
+      JSON.parse(sessionStorage.getItem('datatug:new-project:draft') ?? 'null')
+        .actorID,
+    ).toBe('actor');
+  });
+
+  it('keeps the saved Space name when sign-in completes in the same page', async () => {
+    const h = await harness(false, {}, false);
+    h.component.title = 'Shared project';
+    h.component.spaceTitle.set('First Space');
+    h.component.create();
+    expect(h.component['signInMessage']()).toContain('Sign in to create');
+
+    h.userState.next({
+      status: 'authenticated',
+      user: { uid: 'actor' },
+      record: { spaces: {} },
+    });
+
+    expect(h.component.spaceTitle()).toBe('First Space');
+  });
+
+  it('clears account-bound draft state when the signed-in user changes', async () => {
+    const h = await harness();
+    sessionStorage.setItem(
+      'datatug:new-project:draft',
+      JSON.stringify({
+        store: 'github',
+        title: 'Account A project',
+        githubFolder: 'private-folder',
+        spaceID: 'space',
+        spaceTitle: 'Private Space',
+        repositoryID: 12,
+        branch: 'work',
+      }),
+    );
+    h.fixture.detectChanges();
+    expect(h.component.title).toBe('Account A project');
+    expect(h.component.spaceID()).toBe('space');
+
+    h.userState.next({
+      status: 'authenticated',
+      user: { uid: 'different-actor' },
+      record: { spaces: {} },
+    });
+
+    expect(h.component.title).toBe('');
+    expect(h.component.spaceID()).toBe('');
+    expect(h.component.spaceTitle()).toBe('');
+    expect(sessionStorage.getItem('datatug:new-project:draft')).toBeNull();
+  });
+
+  it('discards another signed-in account draft on cold entry', async () => {
+    sessionStorage.setItem(
+      'datatug:new-project:draft',
+      JSON.stringify({
+        actorID: 'account-a',
+        store: 'github',
+        title: 'Account A project',
+        githubFolder: 'private-folder',
+        spaceID: 'space',
+        spaceTitle: 'Private Space',
+        repositoryID: 12,
+        branch: 'work',
+      }),
+    );
+    const h = await harness(false, {}, true, true);
+    h.fixture.detectChanges();
+
+    expect(h.component.title).toBe('');
+    expect(h.component.githubFolder).toBe('datatug');
+    expect(h.component.spaceTitle()).toBe('');
+    expect(h.component.spaceID()).toBe('');
+    expect(sessionStorage.getItem('datatug:new-project:draft')).toBeNull();
+  });
+
+  it('waits for auth restoration before showing an actor-bound draft', async () => {
+    sessionStorage.setItem(
+      'datatug:new-project:draft',
+      JSON.stringify({
+        actorID: 'actor',
+        store: 'github',
+        title: 'My private draft',
+        githubFolder: 'datatug',
+        spaceTitle: '',
+      }),
+    );
+    const h = await harness(false, {}, false, true, 'authenticating');
+    h.fixture.detectChanges();
+    expect(h.component.title).toBe('');
+    expect(sessionStorage.getItem('datatug:new-project:draft')).not.toBeNull();
+
+    h.userState.next({
+      status: 'authenticated',
+      user: { uid: 'actor' },
+      record: { spaces: {} },
+    });
+    expect(h.component.title).toBe('My private draft');
+    expect(h.component.store).toBe('github');
+    expect(h.connection.repositories).toHaveBeenCalledTimes(1);
+  });
+
   it('guides an empty GitHub repository list through App installation and refresh', async () => {
     const h = await harness();
     h.component.store = 'github';
@@ -256,6 +432,7 @@ describe('New project through authenticated common API', () => {
       storeId: 'firestore',
       projectId: 'cloud-id',
     });
+    expect(h.nav.goProject.mock.calls[0][2]).toEqual({ replaceUrl: true });
     expect(h.create).not.toHaveBeenCalled();
   });
   it('creates on the explicitly chosen repository/Space/branch and navigates with cold-load transport', async () => {
@@ -285,6 +462,7 @@ describe('New project through authenticated common API', () => {
       projectApi: 'cloud',
       branch: 'work',
     });
+    expect(h.nav.goProject.mock.calls[0][2]).toEqual({ replaceUrl: true });
     expect(h.createCloud).not.toHaveBeenCalled();
   });
   it.each([

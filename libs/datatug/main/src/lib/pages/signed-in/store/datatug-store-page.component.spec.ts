@@ -45,8 +45,7 @@ import {
 // The one shared demo project listed under the GitHub store (G-A1c; the home page's entry).
 const DEMO_PROJECT_ID = 'datatug-demo-project@datatug@demo-project-1';
 // What the "Open a GitHub project" form is pre-filled with (datatug/datatug-demo-project, folder demo-project-1).
-const FORM_DEFAULT_PROJECT_ID =
-  'datatug-demo-project@datatug@demo-project-1';
+const FORM_DEFAULT_PROJECT_ID = 'datatug-demo-project@datatug@demo-project-1';
 
 // Real-template imports for the `describe('project list gating ...')` block
 // below, minus `DatatugServicesStoreModule` (the real component's own
@@ -126,7 +125,7 @@ describe('StorePageComponent', () => {
         },
         {
           provide: NewProjectService,
-          useValue: { openNewProjectDialog: vi.fn() },
+          useValue: { navigateToNewProjectPage: vi.fn() },
         },
         {
           provide: DatatugUserService,
@@ -235,7 +234,10 @@ describe('StorePageComponent', () => {
             type: 'github',
             title: 'GitHub.com',
             projects: {
-              'my-repo@my-org@my-folder': { title: 'My repo', access: 'public' },
+              'my-repo@my-org@my-folder': {
+                title: 'My repo',
+                access: 'public',
+              },
             },
           },
         },
@@ -326,16 +328,32 @@ describe('StorePageComponent', () => {
       ).projectLink.call(Object.assign(component, { storeId }), { id });
 
     it.each([
-      ['github.com', 'chinook-demo@datatug@', '/project/github.com/datatug/chinook-demo'],
-      ['github', 'chinook-demo@datatug@', '/project/github.com/datatug/chinook-demo'],
+      [
+        'github.com',
+        'chinook-demo@datatug@',
+        '/project/github.com/datatug/chinook-demo',
+      ],
+      [
+        'github',
+        'chinook-demo@datatug@',
+        '/project/github.com/datatug/chinook-demo',
+      ],
       [
         'github.com',
         'datatug-demo-projects@datatug@demo-project-1',
         '/project/github.com/datatug/datatug-demo-projects/tree/HEAD/demo-project-1',
       ],
       ['firestore', 'p1', '/store/firestore/project/p1'],
-      ['http-localhost:8989', 'datatug-demo-project', '/store/http-localhost:8989/project/datatug-demo-project'],
-      ['localhost:8989', 'datatug-demo-project', '/store/localhost:8989/project/datatug-demo-project'],
+      [
+        'http-localhost:8989',
+        'datatug-demo-project',
+        '/store/http-localhost:8989/project/datatug-demo-project',
+      ],
+      [
+        'localhost:8989',
+        'datatug-demo-project',
+        '/store/localhost:8989/project/datatug-demo-project',
+      ],
       // Nothing to link to: no store yet, or a project with no exact address.
       [null, 'p1', '/'],
       ['localhost:8989', '50%', '/'],
@@ -384,18 +402,21 @@ describe('StorePageComponent', () => {
       // the default folder dropped), whatever the form was filled with.
       ['My-Org', 'My-Repo', 'My-Folder', 'my-repo@my-org@My-Folder'],
       ['datatug', 'chinook-demo', 'datatug', 'chinook-demo@datatug'],
-    ])('writes the one id of the project for %s/%s in %s', (owner, repo, folder, id) => {
-      const nav = TestBed.inject(DatatugNavService) as {
-        goProject: ReturnType<typeof vi.fn>;
-      };
+    ])(
+      'writes the one id of the project for %s/%s in %s',
+      (owner, repo, folder, id) => {
+        const nav = TestBed.inject(DatatugNavService) as {
+          goProject: ReturnType<typeof vi.fn>;
+        };
 
-      component.updateGithubField('owner', owner);
-      component.updateGithubField('repository', repo);
-      component.updateGithubField('folder', folder);
-      component.openGithubProject(new Event('submit'));
+        component.updateGithubField('owner', owner);
+        component.updateGithubField('repository', repo);
+        component.updateGithubField('folder', folder);
+        component.openGithubProject(new Event('submit'));
 
-      expect(nav.goProject.mock.calls[0][0].ref.projectId).toBe(id);
-    });
+        expect(nav.goProject.mock.calls[0][0].ref.projectId).toBe(id);
+      },
+    );
 
     it('rejects an empty field without navigating', () => {
       const nav = TestBed.inject(DatatugNavService) as {
@@ -481,9 +502,12 @@ describe('StorePageComponent', () => {
           },
           {
             provide: NewProjectService,
-            useValue: { openNewProjectDialog: vi.fn() },
+            useValue: { navigateToNewProjectPage: vi.fn() },
           },
-          { provide: DatatugUserService, useValue: { datatugUserState: authState } },
+          {
+            provide: DatatugUserService,
+            useValue: { datatugUserState: authState },
+          },
         ],
       })
         .overrideComponent(DatatugStorePageComponent, {
@@ -533,6 +557,23 @@ describe('StorePageComponent', () => {
         f.nativeElement.querySelector('ion-card-title')?.textContent,
       ).toContain('Open a GitHub project');
       expect(f.nativeElement.querySelectorAll('ion-input').length).toBe(3);
+    });
+
+    it('offers the supported GitHub project creation route from the real store template', () => {
+      const f = render('github.com', [...GITHUB_DEMO_PROJECTS]);
+      const add = f.nativeElement.querySelector(
+        'ion-button[title="New project"]',
+      ) as HTMLElement | null;
+
+      expect(add).toBeTruthy();
+      expect(add?.hasAttribute('disabled')).toBe(false);
+      expect(html(f)).toContain(
+        'Add creates a DataTug project from the demo template',
+      );
+      add?.click();
+      expect(
+        TestBed.inject(NewProjectService).navigateToNewProjectPage,
+      ).toHaveBeenCalledWith('github');
     });
 
     it('anonymous + firestore: still shows "Please sign in to see projects" (unchanged)', () => {
