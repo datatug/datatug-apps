@@ -26,11 +26,15 @@ import {
 import { RANDOM_ID_OPTIONS, RandomIdService } from '@sneat/random';
 import { DATATUG_AGENT_BASE_URL } from '@sneat/datatug-semantic';
 import { agentBaseUrlOfPath } from './app/agent-base-url';
+import { provideDatatugBusinessCheckoutApiOrigin } from './app/checkout/business-checkout-config';
 import { provideCheckoutAnalyticsPrivacy } from './app/checkout/checkout-analytics-privacy';
 import { routes } from './app/datatug-app-routes';
 import { DatatugAppComponent } from './app/datatug-app.component';
 import { buildInfo } from './build-info';
-import { datatugAppEnvironmentConfig as environmentConfig } from './environments/environment';
+import {
+  datatugAppEnvironmentConfig as environmentConfig,
+  datatugBusinessCheckoutApiOrigin,
+} from './environments/environment';
 import { withoutDataTugTracking } from './launch-tracking';
 import { registerIonicons } from './register-ionicons';
 import { registerPosthog } from './register-posthog';
@@ -52,6 +56,9 @@ bootstrapApplication(DatatugAppComponent, {
   providers: [
     provideZonelessChangeDetection(),
     provideCheckoutAnalyticsPrivacy(),
+    provideDatatugBusinessCheckoutApiOrigin(
+      datatugBusinessCheckoutApiOrigin,
+    ),
     provideHttpClient(withInterceptors([cliChatProjectInterceptor])),
     provideIonicAngular(),
     provideAnimationsAsync(),

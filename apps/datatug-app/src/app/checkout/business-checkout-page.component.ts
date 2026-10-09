@@ -9,7 +9,7 @@ import {
   ViewChild,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, ParamMap, Router, RouterLink } from '@angular/router';
 import { IonContent } from '@ionic/angular/ion-content';
 import { IonHeader } from '@ionic/angular/ion-header';
 import { IonTitle } from '@ionic/angular/ion-title';
@@ -104,8 +104,8 @@ export class BusinessCheckoutPageComponent {
   private embedded?: ElementRef<HTMLElement>;
 
   constructor() {
-    this.routeSubscription = this.route.queryParamMap.subscribe(() =>
-      this.start(),
+    this.routeSubscription = this.route.queryParamMap.subscribe((params) =>
+      this.start(params),
     );
     effect(() => {
       const userID = this.state().user?.id;
@@ -121,11 +121,18 @@ export class BusinessCheckoutPageComponent {
     });
   }
 
-  private start(): void {
+  private start(params: ParamMap = this.route.snapshot.queryParamMap): void {
     this.flow?.dispose();
     this.accepted.set(false);
     this.lastReadySelection = '';
-    const params = this.route.snapshot.queryParamMap;
+    if (!isTrustedBusinessCheckoutOrigin(this.configuredApiOrigin)) {
+      this.state.set({
+        stage: 'unavailable',
+        message: 'DataTug Business TEST checkout is not configured yet.',
+      });
+    } else {
+      this.state.set({ stage: 'loading' });
+    }
     const spaceParam = params.get('spaceID');
     const rawPlanID = params.get('planID');
     const requestedPeriod = periodForPlanID(rawPlanID);
