@@ -308,12 +308,21 @@ export class PublicSqliteQueryService {
     const cteProfile = tree.definitions !== undefined;
     if (cteProfile && !authorCte)
       throw new Error('This SQLite preview supports exactly one non-recursive Invoice count CTE.');
+    const rawFrom = tree.query.from as Readonly<Record<string, unknown>>;
+    if (authorCte) {
+      const allowedRootKeys = new Set(['name', 'alias', 'joins']);
+      if (
+        rawFrom['name'] !== authorCte.name ||
+        typeof rawFrom['alias'] !== 'string' ||
+        Object.keys(rawFrom).some((key) => !allowedRootKeys.has(key))
+      )
+        throw new Error('The outer source must be the unqualified named CTE reference.');
+    }
     if (authorCte && (tree.query['where'] !== undefined ||
-      (tree.query.from as Record<string, unknown>)['name'] !== authorCte.name))
+      rawFrom['name'] !== authorCte.name))
       throw new Error('The CustomerId predicate must stay inside the referenced CTE, with no outer WHERE.');
     if (authorCte && (authorCte.query.definitions?.length || authorCte.query.query['where'] === undefined))
       throw new Error('The CTE must contain one Invoice query with its CustomerId parameter predicate.');
-    const rawFrom = tree.query.from as Readonly<Record<string, unknown>>;
     const rawJoins = Array.isArray(rawFrom['joins'])
       ? (rawFrom['joins'] as readonly Readonly<Record<string, unknown>>[])
       : [];
@@ -874,12 +883,10 @@ export class PublicSqliteQueryService {
           schemaVersion: plan.schemaVersion,
           draftRevision: plan.draftRevision,
           authorProfile: true,
-          ...(plan.authorProof
-            ? { authorProfileKind: plan.authorProof.profile }
-            : {}),
+          authorProfileKind: plan.authorProof.profile,
           ...(plan.relationship ? { relationship: plan.relationship } : {}),
           ...(plan.outputColumns ? { outputColumns: plan.outputColumns } : {}),
-          ...(plan.authorProof ? { authorProof: plan.authorProof } : {}),
+          authorProof: plan.authorProof,
         });
       });
       if (!reply.ok || !reply.result)
@@ -895,7 +902,7 @@ export class PublicSqliteQueryService {
         receipt.schemaVersion !== plan.schemaVersion ||
         receipt.draftRevision !== plan.draftRevision ||
         receipt.schemaFingerprint !==
-          (plan.relationship || plan.authorProof
+          (plan.relationship || plan.authorProof.profile === 'customer-count-cte'
             ? JOINED_SCHEMA_FINGERPRINT
             : 'CustomerId:INTEGER|InvoiceId:INTEGER|InvoiceDate:DATETIME') ||
         JSON.stringify(receipt.relationship) !==

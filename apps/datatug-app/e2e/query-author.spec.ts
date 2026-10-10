@@ -77,6 +77,7 @@ test('Customer count CTE previews without values and runs against the pinned fix
   page,
 }) => {
   test.setTimeout(60_000);
+  await page.setViewportSize({ width: 1920, height: 1000 });
   await page.goto(CTE_AUTHOR_URL);
   const author = page.getByTestId('tugql-author');
   await expect(author).toBeVisible({ timeout: 20_000 });
@@ -96,7 +97,7 @@ test('Customer count CTE previews without values and runs against the pinned fix
   await author.getByTestId('author-run').click();
   const receipt = page.getByTestId('author-execution-receipt');
   await expect(receipt).toContainText('Executed');
-  await expect(receipt).toContainText('1 rows');
+  await expect(receipt).toContainText('1 row');
   const rows = page.getByRole('grid').getByRole('row');
   await expect(rows).toHaveCount(2);
   const resultCells = rows.nth(1).getByRole('gridcell');
@@ -106,6 +107,21 @@ test('Customer count CTE previews without values and runs against the pinned fix
   await expect(resultCells.nth(3)).toHaveText('Gonçalves');
   await expect(resultCells.nth(4)).toHaveText('luisg@embraer.com.br');
   await expect(receipt).not.toContainText('Worker-verified relationship');
+
+  await author.getByTestId('author-code-tab').click();
+  const editor = author.getByTestId('query-body-text').locator('textarea');
+  const original = await editor.inputValue();
+  await editor.fill(original.replace('having count(*) >= 7', 'having count(*) >= 8'));
+  await expect(author.getByTestId('author-run')).toHaveAttribute('disabled', '');
+  await expect(author.getByTestId('author-sql-preview')).toHaveCount(0);
+  await expect(receipt).toContainText('Executed');
+
+  await author.getByTestId('author-preview').click();
+  await expect(author.getByTestId('author-sql-preview').locator('pre'))
+    .toContainText('HAVING COUNT(*) >= ?');
+  await expect(author.getByTestId('author-run')).toBeEnabled();
+  await author.getByTestId('author-run').click();
+  await expect(receipt).toContainText('0 rows');
 });
 
 test('Code formats TugQL reversibly before explicit Preview and worker Run', async ({

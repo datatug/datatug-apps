@@ -19,7 +19,10 @@ import {
   executePinnedSql,
   readPinnedFixture,
 } from './public-sqlite-query.worker';
-import type { PublicSqliteClientReportedBinding } from './public-sqlite-tugql';
+import type {
+  PublicSqliteClientReportedBinding,
+  PublicSqlitePreparedPlan,
+} from './public-sqlite-tugql';
 
 const catalog = {
   format: 'datatug-demo-connections/v1',
@@ -155,7 +158,7 @@ it('checks the pinned relationship schema and returns deterministically ordered 
   db.close();
   const sql =
     'SELECT i.InvoiceId AS InvoiceId, i.CustomerId AS CustomerId, c.FirstName AS FirstName, c.LastName AS LastName, c.Email AS Email FROM Invoice AS i INNER JOIN Customer AS c ON i.CustomerId = c.CustomerId WHERE i.CustomerId = ? ORDER BY i.InvoiceId ASC LIMIT 100';
-  const result = await executePinnedSql(sql, fixture, [1], true, true);
+  const result = await executePinnedSql(sql, fixture, [1], false, true);
   expect(result.columns).toEqual([
     'InvoiceId',
     'CustomerId',
@@ -174,7 +177,7 @@ it('checks the pinned relationship schema and returns deterministically ordered 
     'luisg@embraer.com.br',
   ]);
   await expect(
-    executePinnedSql(sql, fixture, [1], true, true, [
+    executePinnedSql(sql, fixture, [1], false, true, [
       'CustomerId',
       'InvoiceId',
     ]),
@@ -231,6 +234,10 @@ it('cancels a started Author worker and terminates it promptly', async () => {
         '7651ba378ac2fcd0dfc3c66fb101f7a7eed3ba39a612ec642b96e20702061f15',
       schemaVersion: 'fixture:typed-invoice-v1',
       draftRevision: 1,
+      authorProof: {
+        profile: 'invoice-query' as const,
+        resolvedQuery: {} as PublicSqlitePreparedPlan['authorProof']['resolvedQuery'],
+      },
     });
     const pending = service['executePlan'](
       {
@@ -569,6 +576,14 @@ describe('Author TugQL structural preview and Run binding', () => {
           true,
           true,
           preview.outputColumns?.map((column) => column.name),
+          preview.authorProof,
+          preview.bindingNames,
+          preview.schemaVersion,
+          preview.draftRevision,
+          preview.authorProof.profile,
+          preview.fixtureSha256,
+          preview.outputColumns,
+          preview.relationship,
         );
         return result;
       };
@@ -604,6 +619,8 @@ describe('Author TugQL structural preview and Run binding', () => {
           preview.draftRevision,
           preview.authorProof?.profile,
           preview.fixtureSha256,
+          preview.outputColumns,
+          preview.relationship,
         );
       };
       const cteResult = await compileAndRunCte(cteSource, 101);
@@ -698,6 +715,36 @@ describe('Author TugQL structural preview and Run binding', () => {
     expect(reader.getRawJson).not.toHaveBeenCalled();
   });
 
+  it('rejects a schema-qualified CTE source before resolution can erase the qualifier', async () => {
+    const qualified = cteSource.replace(
+      'from CustomerCounts as totals',
+      'from forbidden.CustomerCounts as totals',
+    );
+    await expect(
+      TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+        project,
+        definition(qualified),
+        20,
+      ),
+    ).rejects.toThrow('unqualified named CTE reference');
+    expect(reader.getRawJson).not.toHaveBeenCalled();
+  });
+
+  it('rejects a CTE projection missing either required Customer string field', async () => {
+    for (const source of [
+      cteSource.replace('  c.LastName\n', ''),
+      cteSource.replace('  c.Email\n', ''),
+    ]) {
+      await expect(
+        TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+          project,
+          definition(source),
+          20,
+        ),
+      ).rejects.toThrow('all three Customer string fields');
+    }
+  });
+
   it('still verifies the physical Customer primary key for a derived CTE join', async () => {
     reader.getRawJson.mockImplementation((_projectId, path) =>
       of(path.endsWith('Customer/main.Customer.columns.json')
@@ -746,6 +793,8 @@ describe('Author TugQL structural preview and Run binding', () => {
       '  counts.CustomerKey',
       '  counts.InvoiceTotal',
       '  c.FirstName',
+      '  c.LastName',
+      '  c.Email',
       ')',
       '',
     ].join('\n');
@@ -775,7 +824,9 @@ describe('Author TugQL structural preview and Run binding', () => {
       bindings: readonly (string | number | null)[],
       columns: readonly string[] | undefined,
       proof: typeof preview.authorProof,
-      profile: 'customer-count-cte' | undefined,
+      profile: 'invoice-query' | 'customer-count-cte' | undefined,
+      fullColumns: typeof preview.outputColumns = preview.outputColumns,
+      relationship: typeof preview.relationship = preview.relationship,
     ) =>
       executePinnedSql(
         sql,
@@ -790,6 +841,8 @@ describe('Author TugQL structural preview and Run binding', () => {
         preview.draftRevision,
         profile,
         preview.fixtureSha256,
+        fullColumns,
+        relationship,
       );
 
     // Supplying each changed field explicitly exercises the immutable request
@@ -800,7 +853,58 @@ describe('Author TugQL structural preview and Run binding', () => {
       outputNames,
       undefined,
       'customer-count-cte',
-    )).rejects.toThrow('proof or pinned fixture identity');
+    )).rejects.toThrow('profile proof or execution metadata');
+    const commentedSql = preview.sql.replace('FROM (\n', 'FROM /* disguised source */ (\n');
+    await expect(invoke(
+      commentedSql,
+      [1, ...preview.fixedBindings],
+      outputNames,
+      undefined,
+      undefined,
+    )).rejects.toThrow('profile proof or execution metadata');
+    const invoiceScan = {
+      kind: 'recursive-dtql',
+      from: { kind: 'table', name: 'Invoice', alias: 'i', joins: [] },
+      limit: 10,
+      columns: [{ expression: { kind: 'field', field: { source: 'i', field: 'InvoiceId' } } }],
+    } as unknown as typeof preview.authorProof.resolvedQuery;
+    await expect(invoke(
+      preview.sql,
+      [1, ...preview.fixedBindings],
+      outputNames,
+      { profile: 'customer-count-cte', resolvedQuery: invoiceScan },
+      'customer-count-cte',
+    )).rejects.toThrow('independently compiled profile');
+    await expect(executePinnedSql(
+      preview.sql,
+      undefined,
+      [1, ...preview.fixedBindings],
+      true,
+      true,
+      outputNames,
+      preview.authorProof,
+      preview.bindingNames,
+      undefined,
+      undefined,
+      'customer-count-cte',
+      preview.fixtureSha256,
+      preview.outputColumns,
+    )).rejects.toThrow('profile proof or execution metadata');
+    await expect(executePinnedSql(
+      preview.sql,
+      undefined,
+      [1, ...preview.fixedBindings],
+      true,
+      true,
+      outputNames,
+      preview.authorProof,
+      preview.bindingNames,
+      preview.schemaVersion,
+      -1,
+      'customer-count-cte',
+      preview.fixtureSha256,
+      preview.outputColumns,
+    )).rejects.toThrow('profile proof or execution metadata');
     await expect(executePinnedSql(
       preview.sql,
       undefined,
@@ -814,7 +918,7 @@ describe('Author TugQL structural preview and Run binding', () => {
       preview.draftRevision,
       preview.authorProof?.profile,
       'bad-fixture-hash',
-    )).rejects.toThrow('proof or pinned fixture identity');
+    )).rejects.toThrow('profile proof or execution metadata');
     await expect(invoke(
       preview.sql,
       [1, ...preview.fixedBindings],
@@ -823,7 +927,7 @@ describe('Author TugQL structural preview and Run binding', () => {
         ? { ...preview.authorProof, profile: 'wrong' as 'customer-count-cte' }
         : undefined,
       'customer-count-cte',
-    )).rejects.toThrow('proof or pinned fixture identity');
+    )).rejects.toThrow('profile proof or execution metadata');
     await expect(invoke(
       `${preview.sql} `,
       [1, ...preview.fixedBindings],
@@ -831,12 +935,40 @@ describe('Author TugQL structural preview and Run binding', () => {
       preview.authorProof,
       'customer-count-cte',
     )).rejects.toThrow('independently compiled profile');
+    const fabricatedRelationship = {
+      id: 'FK_Invoice_Customer_CustomerId',
+      version: '1',
+      fromSource: 'Invoice',
+      toSource: 'Customer',
+      joinType: 'inner',
+      pairs: [{ fromField: 'CustomerId', toField: 'CustomerId' }],
+    } as const;
+    await expect(invoke(
+      preview.sql,
+      [1, ...preview.fixedBindings],
+      outputNames,
+      preview.authorProof,
+      'customer-count-cte',
+      preview.outputColumns,
+      fabricatedRelationship,
+    )).rejects.toThrow('cannot carry a physical relationship receipt');
     await expect(invoke(
       preview.sql,
       [1, ...preview.fixedBindings],
       ['ChangedOutput'],
       preview.authorProof,
       'customer-count-cte',
+    )).rejects.toThrow('independently compiled profile');
+    const changedLineage = preview.outputColumns?.map((column, index) =>
+      index === 0 ? { ...column, lineage: [] } : column,
+    );
+    await expect(invoke(
+      preview.sql,
+      [1, ...preview.fixedBindings],
+      outputNames,
+      preview.authorProof,
+      'customer-count-cte',
+      changedLineage,
     )).rejects.toThrow('independently compiled profile');
     await expect(invoke(
       preview.sql,
@@ -851,7 +983,7 @@ describe('Author TugQL structural preview and Run binding', () => {
       outputNames,
       undefined,
       undefined,
-    )).rejects.toThrow('proof or pinned fixture identity');
+    )).rejects.toThrow('profile proof or execution metadata');
   });
 
   it('previews a resolver-backed Invoice to Customer join and returns a source-preserving completion', async () => {

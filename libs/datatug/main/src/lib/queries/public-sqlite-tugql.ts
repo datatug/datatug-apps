@@ -15,12 +15,13 @@ export interface PublicSqlitePreparedPlan {
   readonly draftRevision: number;
   readonly relationship?: PublicSqliteRelationshipReceipt;
   readonly outputColumns?: readonly PublicSqliteOutputColumn[];
-  readonly authorProof?: PublicSqliteAuthorProof;
+  readonly authorProof: PublicSqliteAuthorProof;
 }
 
 export interface PublicSqliteAuthorProof {
-  readonly profile: 'customer-count-cte';
+  readonly profile: 'invoice-query' | 'customer-count-cte';
   readonly resolvedQuery: RecursiveDTQLQuery;
+  readonly relationship?: PublicSqliteRelationshipReceipt;
 }
 
 export interface PublicSqliteRelationshipReceipt {
@@ -67,7 +68,7 @@ export type PublicSqliteQueryPreview = Omit<
 
 export type PublicSqliteExecutionReceipt = Omit<
   PublicSqlitePreparedPlan,
-  'bindings'
+  'bindings' | 'authorProof'
 > & {
   readonly executionId: string;
   readonly bindingNames: readonly string[];
@@ -434,6 +435,13 @@ export function compilePublicSqliteTugQL(
       ? { relationship: Object.freeze(options.relationship) }
       : {}),
     ...(isJoined ? { outputColumns: Object.freeze(outputColumns) } : {}),
+    authorProof: Object.freeze({
+      profile: 'invoice-query' as const,
+      resolvedQuery: freezeQuery(query),
+      ...(options.relationship
+        ? { relationship: Object.freeze(options.relationship) }
+        : {}),
+    }),
     ...(options.expandedSource
       ? { expandedSource: options.expandedSource }
       : {}),
@@ -540,8 +548,8 @@ function compileCustomerCountCte(
   if (!validOn)
     throw new Error('Write the Customer join explicitly as totals.CustomerId = c.CustomerId.');
   const columns = query.columns;
-  if (!columns || columns.length < 3)
-    throw new Error('Project the CTE key, count, and Customer first name, last name, and email.');
+  if (!columns || columns.length !== 5)
+    throw new Error('Project the CTE key, count, and all three Customer string fields.');
   const names = columns.map((column) => column.as ?? (column.expression.kind === 'field' ? column.expression.field.field : ''));
   if (new Set(names).size !== names.length || names.some((name) => !name))
     throw new Error('Every CTE output must have a unique projection name.');
@@ -574,6 +582,11 @@ function compileCustomerCountCte(
       lineage: Object.freeze(lineage),
     }));
   }
+  if (
+    customerFields.size !== 3 ||
+    !['FirstName', 'LastName', 'Email'].every((field) => customerFields.has(field))
+  )
+    throw new Error('Project FirstName, LastName, and Email exactly once.');
   const threshold = having.right.value;
   const havingSql = `${count} ${SQL_COMPARISON_OPERATORS[having.operator]} ?`;
   const derived = [
