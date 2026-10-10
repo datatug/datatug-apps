@@ -163,6 +163,7 @@ export interface IGithubWireQueryItem {
   draft?: boolean;
   connectionId?: string;
   parameters?: IParameterDef[];
+  relationshipBindings?: IQueryDef['relationshipBindings'];
   dbModel?: string;
   recordsets?: IRecordsetDef[];
   federation?: IQueryDef['federation'];
@@ -1372,6 +1373,7 @@ export class GithubProjectReaderService {
               type: def?.type || 'SQL',
               ...(def?.connectionId ? { connectionId: def.connectionId } : {}),
               parameters: def?.parameters,
+              relationshipBindings: def?.relationshipBindings,
               recordsets: def?.recordsets,
               dbModel: def?.dbModel,
               draft: def?.draft,
@@ -1461,8 +1463,11 @@ export class GithubProjectReaderService {
                   title: def?.title,
                   type,
                   text,
-                  ...(def?.connectionId ? { connectionId: def.connectionId } : {}),
+                  ...(def?.connectionId
+                    ? { connectionId: def.connectionId }
+                    : {}),
                   parameters: def?.parameters,
+                  relationshipBindings: def?.relationshipBindings,
                   recordsets: def?.recordsets,
                   federation: def?.federation,
                   publicData: def?.publicData,

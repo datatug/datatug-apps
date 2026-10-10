@@ -559,6 +559,35 @@ describe('GithubProjectReaderService', () => {
       });
     });
 
+    it('retains the saved relationship binding from the GitHub query file', async () => {
+      const relationshipBindings = [
+        {
+          id: 'FK_Invoice_Customer_CustomerId',
+          version:
+            'fixture:main.Invoice.CustomerId:INTEGER->main.Customer.CustomerId:INTEGER:PRIMARY_KEY:v1',
+          from: { schema: 'main', table: 'Invoice' },
+          to: { schema: 'main', table: 'Customer' },
+          pairs: [{ fromField: 'CustomerId', toField: 'CustomerId' }],
+        },
+      ];
+      const { service } = setup({
+        'demo-project-1/queries/demodb/chinook-customer-invoice-join.query.json': JSON.stringify({
+          id: 'chinook-customer-invoice-join',
+          type: 'DTQL',
+          connectionId: 'chinook-sqlite',
+          relationshipBindings,
+        }),
+        'demo-project-1/queries/demodb/chinook-customer-invoice-join.query.dtql':
+          'from Invoice as i\njoin Customer as c\n  on i.CustomerId = c.CustomerId\n',
+      });
+
+      const result = await first(
+        service.getQuery(PROJECT_ID, 'demodb/chinook-customer-invoice-join'),
+      );
+
+      expect(result.relationshipBindings).toEqual(relationshipBindings);
+    });
+
     it('resolves a folder-qualified id the same way', async () => {
       const { service } = setup({
         'demo-project-1/queries/customers/customer-invoices.query.json':

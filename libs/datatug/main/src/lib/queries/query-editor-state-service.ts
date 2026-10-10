@@ -504,6 +504,7 @@ export class QueryEditorStateService {
               type?: string;
               text?: string;
               parameters?: readonly IParameterDef[];
+              relationshipBindings?: IQueryDef['relationshipBindings'];
             }[];
           }[];
         };
@@ -522,6 +523,7 @@ export class QueryEditorStateService {
             text: item.text ?? '',
           } as ISqlQueryRequest,
           parameters: item.parameters as IParameterDef[] | undefined,
+          relationshipBindings: item.relationshipBindings,
         };
       }
     }

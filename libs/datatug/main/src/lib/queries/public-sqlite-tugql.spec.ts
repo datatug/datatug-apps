@@ -3,6 +3,7 @@ import {
   compilePublicSqliteTugQL,
   requireCustomerIdParameterSource,
   requireLiteralHavingThreshold,
+  PUBLIC_CHINOOK_CUSTOMER_FK,
 } from './public-sqlite-tugql';
 
 const resolve = (source: string) => {
@@ -166,6 +167,162 @@ it('compiles supported CustomerId groups and binds an integer COUNT HAVING thres
     'HAVING threshold (literal)',
   ]);
   expect(plan.sql).not.toContain('>= 7');
+});
+
+it('resolves and compiles only the declared Invoice to Customer relationship', () => {
+  const relationship = {
+    id: PUBLIC_CHINOOK_CUSTOMER_FK,
+    version: `${PUBLIC_CHINOOK_CUSTOMER_FK}:v1`,
+    fromSource: 'i',
+    toSource: 'c',
+    joinType: 'inner' as const,
+    pairs: [{ fromField: 'CustomerId', toField: 'CustomerId' }],
+  };
+  const resolveJoin = (
+    on: string,
+    projection = 'i.InvoiceId, i.CustomerId, c.FirstName, c.LastName, c.Email',
+  ): ReturnType<typeof resolveTugQL> => {
+    const source = `parameters (\n  @CustomerId integer required\n)\nfrom Invoice as i\njoin Customer as c${on}\nwhere i.CustomerId = @CustomerId\nlimit 100\nselect ${projection}\n`;
+    const parsed = parseTugQL(source);
+    expect(parsed.diagnostics).toEqual([]);
+    if (!parsed.document.tree) throw new Error('Expected parsed TugQL tree.');
+    requireCustomerIdParameterSource(parsed.document.tree);
+    const withoutBindings = { ...parsed.document.tree };
+    delete (withoutBindings as { parameters?: unknown }).parameters;
+    const query = { ...withoutBindings.query };
+    delete (query as { where?: unknown }).where;
+    return resolveTugQL(
+      {
+        sourceMetadata: parsed.document.sourceMetadata,
+        tree: { ...withoutBindings, query },
+      },
+      {
+        authorizedSchemas: [
+          {
+            version: 'joined-schema-v1',
+            tables: [
+              {
+                name: 'Invoice',
+                fields: [
+                  { name: 'CustomerId', type: 'integer', authorized: true },
+                  { name: 'InvoiceId', type: 'integer', authorized: true },
+                  { name: 'InvoiceDate', type: 'datetime', authorized: true },
+                ],
+              },
+              {
+                name: 'Customer',
+                fields: [
+                  { name: 'CustomerId', type: 'integer', authorized: true },
+                  { name: 'FirstName', type: 'string', authorized: true },
+                  { name: 'LastName', type: 'string', authorized: true },
+                  { name: 'Email', type: 'string', authorized: true },
+                ],
+              },
+            ],
+          },
+        ],
+        relationships: [
+          {
+            id: relationship.id,
+            version: relationship.version,
+            from: { table: 'Invoice', source: 'i' },
+            to: { table: 'Customer', source: 'c' },
+            pairs: relationship.pairs,
+            exactTypedEquality: true,
+          },
+        ],
+        pinnedImports: [],
+        bindings: [],
+      },
+    );
+  };
+  const missingOn = resolveJoin('');
+  const explicitOn = resolveJoin('\n  on i.CustomerId = c.CustomerId');
+  const shorthandOn = resolveJoin('\n  on CustomerId');
+  for (const result of [missingOn, explicitOn, shorthandOn]) {
+    expect(result.diagnostics).toEqual([]);
+    expect(result.resolved?.relationships).toHaveLength(1);
+    if (!result.resolved) throw new Error('Expected resolved joined query.');
+    const plan = compilePublicSqliteTugQL(result.resolved, {
+      fixtureSha256: 'fixture-sha256',
+      schemaVersion: 'joined-schema-v1',
+      draftRevision: 1,
+      relationship,
+    });
+    expect(plan.sql).toContain(
+      'INNER JOIN "Customer" AS "c" ON "i"."CustomerId" = "c"."CustomerId"',
+    );
+    expect(plan.sql).toContain('ORDER BY "i"."InvoiceId" ASC');
+    expect(
+      plan.outputColumns?.map(({ name, type, lineage }) => [
+        name,
+        type,
+        lineage[0]?.source,
+        lineage[0]?.field,
+      ]),
+    ).toEqual([
+      ['InvoiceId', 'integer', 'i', 'InvoiceId'],
+      ['CustomerId', 'integer', 'i', 'CustomerId'],
+      ['FirstName', 'string', 'c', 'FirstName'],
+      ['LastName', 'string', 'c', 'LastName'],
+      ['Email', 'string', 'c', 'Email'],
+    ]);
+  }
+  const authoredAlias = resolveJoin('\n  on i.CustomerId = c.CustomerId');
+  if (!authoredAlias.resolved)
+    throw new Error('Expected resolved joined query.');
+  const authoredColumns = authoredAlias.resolved.query.columns;
+  if (!authoredColumns?.length) throw new Error('Expected joined projections.');
+  const aliasQuery = {
+    ...authoredAlias.resolved,
+    query: {
+      ...authoredAlias.resolved.query,
+      columns: [
+        { ...authoredColumns[0], as: 'InvoiceNumber' },
+        ...authoredColumns.slice(1),
+      ],
+    },
+  };
+  const aliasPlan = compilePublicSqliteTugQL(aliasQuery, {
+    fixtureSha256: 'fixture-sha256',
+    schemaVersion: 'joined-schema-v1',
+    draftRevision: 1,
+    relationship,
+  });
+  expect(aliasPlan.sql).toContain('"i"."InvoiceId" AS "InvoiceNumber"');
+  expect(aliasPlan.outputColumns?.[0]).toMatchObject({
+    name: 'InvoiceNumber',
+    lineage: [{ source: 'i', field: 'InvoiceId' }],
+  });
+  const timestampProjection = resolveJoin(
+    '\n  on i.CustomerId = c.CustomerId',
+    'i.InvoiceId, i.InvoiceDate, i.CustomerId, c.FirstName, c.LastName, c.Email',
+  );
+  expect(timestampProjection.diagnostics).toEqual([]);
+  if (!timestampProjection.resolved)
+    throw new Error('Expected resolved timestamp projection.');
+  expect(() =>
+    compilePublicSqliteTugQL(timestampProjection.resolved, {
+      fixtureSha256: 'fixture-sha256',
+      schemaVersion: 'joined-schema-v1',
+      draftRevision: 1,
+      relationship,
+    }),
+  ).toThrow('Only InvoiceId, CustomerId, FirstName, LastName, and Email projections are supported.');
+  const unmatched = resolveJoin('\n  on i.InvoiceId = c.CustomerId');
+  expect(unmatched.diagnostics).toHaveLength(0);
+  expect(unmatched.resolved?.relationships).toEqual([]);
+  const unmatchedResolved = unmatched.resolved;
+  if (unmatchedResolved)
+    expect(() =>
+      compilePublicSqliteTugQL(unmatchedResolved, {
+        fixtureSha256: 'fixture-sha256',
+        schemaVersion: 'joined-schema-v1',
+        draftRevision: 1,
+      }),
+    ).toThrow(
+      'unique declared Invoice.CustomerId to Customer.CustomerId relationship',
+    );
 });
 
 it('fails closed for unapproved grouped Invoice expressions and HAVING operators', () => {
