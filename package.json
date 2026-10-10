@@ -27,7 +27,7 @@
     "@angular/router": "22.1.3",
     "@capacitor-firebase/authentication": "8.1.0",
     "@capacitor/core": "8.1.0",
-    "@dalgo/core": "0.7.1",
+    "@dalgo/core": "0.7.2",
     "@dalgo/indexeddb": "github:dal-go/dalgo-http-adapters#519665be7bab21bae3c388eb2395afb8b6df1be9&path:/packages/indexeddb",
     "@firebase/auth": "1.12.1",
     "@firebase/firestore": "4.12.0",

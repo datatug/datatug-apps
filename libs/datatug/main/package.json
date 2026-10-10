@@ -6,7 +6,7 @@
     "@angular/core": ">=22.0.0 <23.0.0",
     "@angular/router": ">=22.0.0 <23.0.0",
     "@angular/forms": ">=22.0.0 <23.0.0",
-    "@dalgo/core": "*",
+    "@dalgo/core": "0.7.2",
     "@dalgo/indexeddb": "*",
     "ag-grid-angular": "^36.2.0",
     "ag-grid-community": "^36.2.0",
