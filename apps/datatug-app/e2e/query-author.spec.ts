@@ -99,11 +99,11 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
   await expect(editor).toHaveValue(/on i\.CustomerId = c\.CustomerId/u);
   await expect(editor).toHaveValue(/-- preserve this relationship note/u);
   const sourceInspector = preview.getByTestId('author-source-inspector');
-  await expect(sourceInspector.locator('summary')).toHaveText(
+  await expect(sourceInspector.locator(':scope > summary')).toHaveText(
     'Sources and relationships',
   );
   await expect(sourceInspector).not.toHaveAttribute('open', '');
-  await sourceInspector.locator('summary').click();
+  await sourceInspector.locator(':scope > summary').click();
   const preparedMetadata = preview.getByTestId('author-source-metadata');
   await expect(preparedMetadata).toContainText('chinook-sqlite');
   await expect(preparedMetadata).toContainText(
@@ -269,7 +269,7 @@ test('cold saved CustomerId count supports parameterized HAVING thresholds in th
   await expect(preview).toContainText('?2');
   await expect(preview).toContainText('7');
   const sourceInspector = preview.getByTestId('author-source-inspector');
-  await sourceInspector.locator('summary').click();
+  await sourceInspector.locator(':scope > summary').click();
   const preparedMetadata = preview.getByTestId('author-source-metadata');
   await expect(preparedMetadata).toContainText('chinook-sqlite');
   await expect(preparedMetadata).toContainText(
