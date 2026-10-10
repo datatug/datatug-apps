@@ -1,5 +1,10 @@
 import { expect, test } from '@playwright/test';
 
+const withoutOpaqueUuids = (content: string) => content.replace(
+  /\b[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\b/gi,
+  '[opaque UUID]',
+);
+
 test('Chat restores isolated DALgo sessions and immutable result snapshots', async ({ page }) => {
   test.setTimeout(120_000);
   page.setDefaultTimeout(10_000);
@@ -19,7 +24,10 @@ test('Chat restores isolated DALgo sessions and immutable result snapshots', asy
     const previous = body.messages[0]?.content || '';
     if (question === 'Show the customers associated with those orders') {
       continuationHasMetadata = previous.includes('RecordSet:') && previous.includes('"Invoice"');
-      expect(previous).not.toContain('99999');
+      const knownUuidWithSentinel = 'RecordSet: a3999996-8c2c-4718-b38a-fc9d74916092';
+      expect(withoutOpaqueUuids(knownUuidWithSentinel)).not.toContain('99999');
+      expect(withoutOpaqueUuids(previous)).not.toContain('99999');
+      expect(withoutOpaqueUuids('CustomerId: 99999')).toContain('99999');
       const recordSetId = previous.match(/RecordSet: ([0-9a-f-]{36})/)?.[1];
       expect(recordSetId).toBeTruthy();
       await route.fulfill({ json: { choices: [{ message: { content: JSON.stringify({ dtql: {
