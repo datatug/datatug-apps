@@ -1,16 +1,18 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router, UrlTree } from '@angular/router';
 import { SneatAuthStateService } from '@sneat/auth-core';
+import { ErrorLogger } from '@sneat/core';
 import { BehaviorSubject, Subject } from 'rxjs';
 import { GithubAuthorizationPageComponent } from './github-authorization-page.component';
 import { GithubConnectionService } from '../../services/repo/github/github-connection.service';
 import { NewProjectService } from './new-project.service';
+import { saveBusinessGithubContinuation } from './business-github-continuation';
 
-function harness() {
+function harness(actorID = 'actor', useRealNewProjectService = false) {
   TestBed.resetTestingModule();
   const auth = new BehaviorSubject({
     status: 'notAuthenticated',
-    user: { uid: 'actor' },
+    user: { uid: actorID },
   });
   const result = new Subject<{ connected: true }>();
   const complete = vi.fn((...args: unknown[]) => {
@@ -27,22 +29,29 @@ function harness() {
         useValue: { authState: auth, signInWith: vi.fn() },
       },
       { provide: GithubConnectionService, useValue: { complete } },
+      {
+        provide: ErrorLogger,
+        useValue: { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) },
+      },
     ],
   }).overrideComponent(GithubAuthorizationPageComponent, {
     set: {
-      providers: [
-        {
-          provide: NewProjectService,
-          useValue: { navigateToNewProjectPage: newProject },
-        },
-      ],
+      providers: useRealNewProjectService
+        ? [NewProjectService]
+        : [
+            {
+              provide: NewProjectService,
+              useValue: { navigateToNewProjectPage: newProject },
+            },
+          ],
     },
   });
-  return { auth, result, complete, newProject };
+  return { auth, result, complete, newProject, router: TestBed.inject(Router) };
 }
 
 afterEach(() => {
   delete window.__datatugTakeGitHubAuthorization;
+  sessionStorage.removeItem('datatug:new-project:github-business-continuation');
 });
 describe('GitHub callback authenticated exchange', () => {
   it('consumes only the ephemeral handoff, waits for Firebase, exchanges once and offers the real create dialog', async () => {
@@ -74,6 +83,40 @@ describe('GitHub callback authenticated exchange', () => {
     expect(fixture.nativeElement.textContent).toContain(
       'missing or has already been used',
     );
+  });
+  it('returns Business checkout context to project creation for the same Business-only actor', async () => {
+    const h = harness('business-only-actor', true);
+    const navigate = vi.spyOn(h.router, 'navigate').mockResolvedValue(true);
+    expect(
+      saveBusinessGithubContinuation('business-only-actor', 'space-a'),
+    ).toBe(true);
+    window.__datatugTakeGitHubAuthorization = () => ({
+      code: 'code-fixture',
+      state: 'state-fixture',
+    });
+    const fixture = TestBed.createComponent(GithubAuthorizationPageComponent);
+    fixture.detectChanges();
+    h.auth.next({
+      status: 'authenticated',
+      user: { uid: 'business-only-actor' },
+    });
+    h.result.next({ connected: true });
+    await fixture.whenStable();
+
+    fixture.componentInstance.newProject();
+    expect(navigate).toHaveBeenCalledWith(['/new-project'], {
+      queryParams: {
+        store: 'github',
+        billingIntent: 'space_business',
+        spaceID: 'space-a',
+        returnUrl: '/',
+      },
+    });
+    expect(
+      sessionStorage.getItem(
+        'datatug:new-project:github-business-continuation',
+      ),
+    ).toBeNull();
   });
   it('cancels an old-actor return on a session change and never claims it is connected for the new actor', async () => {
     const h = harness();

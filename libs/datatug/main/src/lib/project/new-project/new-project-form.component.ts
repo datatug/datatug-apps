@@ -53,6 +53,10 @@ import {
   type ProjectBillingIntent,
 } from '../../services/project/project-query-api.service';
 import { safeNewProjectReturnUrl } from './new-project.service';
+import {
+  clearBusinessGithubContinuation,
+  saveBusinessGithubContinuation,
+} from './business-github-continuation';
 
 interface NewProjectDraft {
   readonly actorID?: string;
@@ -219,7 +223,10 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
           this.spaces().some((space) => space.id === savedSpaceID)
         )
           this.spaceID.set(savedSpaceID);
-        else if (!this.spaces().some((space) => space.id === this.spaceID()))
+        else if (
+          this.requestedSpaceID() ||
+          !this.spaces().some((space) => space.id === this.spaceID())
+        )
           this.spaceID.set('');
         const uid = state.user?.uid;
         if (uid !== this.userID()) {
@@ -308,6 +315,21 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       return;
     }
     this.formError.set(undefined);
+    if (!this.saveDraft()) return;
+    if (this.billingIntent() === 'space_business') {
+      const actorID = this.userID();
+      const spaceID = this.spaceID();
+      if (
+        !actorID ||
+        !this.spaces().some((space) => space.id === spaceID) ||
+        !saveBusinessGithubContinuation(actorID, spaceID)
+      ) {
+        this.formError.set(
+          'Your Business Space could not be saved for the GitHub return. Choose a Space and try again.',
+        );
+        return;
+      }
+    }
     this.isConnecting.set(true);
     this.connection.start().subscribe({
       next: (result) => {
@@ -323,6 +345,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
             throw new Error();
           window.location.assign(url.href);
         } catch {
+          clearBusinessGithubContinuation();
           this.isConnecting.set(false);
           this.formError.set(
             'GitHub could not be connected. Please try again.',
@@ -330,6 +353,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
         }
       },
       error: () => {
+        clearBusinessGithubContinuation();
         this.isConnecting.set(false);
         this.formError.set('Sign in to DataTug, then connect GitHub.');
       },
@@ -561,7 +585,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     this.signInMessage.set(message);
   }
 
-  private saveDraft(): void {
+  private saveDraft(): boolean {
     try {
       const draft: NewProjectDraft = {
         actorID: this.userID(),
@@ -575,10 +599,12 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       };
       this.restoredDraft.set(draft);
       sessionStorage.setItem(NEW_PROJECT_DRAFT_KEY, JSON.stringify(draft));
+      return true;
     } catch {
       this.formError.set(
         'Project details could not be saved in this browser. Keep this page open while signing in.',
       );
+      return false;
     }
   }
 
@@ -632,7 +658,10 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     this.title.set(draft.title);
     this.githubFolder.set(draft.githubFolder);
     this.spaceTitle.set(draft.spaceTitle);
-    if (this.spaces().some((space) => space.id === draft.spaceID))
+    if (
+      !this.requestedSpaceID() &&
+      this.spaces().some((space) => space.id === draft.spaceID)
+    )
       this.spaceID.set(draft.spaceID ?? '');
   }
 }
