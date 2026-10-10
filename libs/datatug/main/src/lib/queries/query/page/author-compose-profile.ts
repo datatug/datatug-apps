@@ -329,6 +329,44 @@ function replaceInvoiceDateProjection(
   if (!core) return undefined;
   const separator = /\r\n/u.test(source) ? '\r\n' : '\n';
 
+  const parenthesized = /^\(([\s\S]*)\)$/u.exec(core);
+  if (parenthesized) {
+    const inner = parenthesized[1] ?? '';
+    if (!includeInvoiceDate) {
+      const block = /^(\r?\n[ \t]*)([^\r\n]+)(\r?\n)[ \t]*([^\r\n]+)(\r?\n[ \t]*)$/u.exec(inner);
+      if (
+        !block ||
+        !isInvoiceProjectionLine(block[2] ?? '', 'InvoiceId') ||
+        !isInvoiceProjectionLine(block[4] ?? '', 'InvoiceDate')
+      ) {
+        return undefined;
+      }
+      const nextCore = `(${block[1]}${block[2]}${block[5]})`;
+      return `${source.slice(0, contentStart)}${leading}${nextCore}${trailing}`;
+    }
+
+    const block = /^(\r?\n[ \t]*)([^\r\n]+)(\r?\n[ \t]*)$/u.exec(inner);
+    const invoiceIdLine = block?.[2];
+    if (!block || !invoiceIdLine || !isInvoiceProjectionLine(invoiceIdLine, 'InvoiceId')) {
+      return undefined;
+    }
+    const fieldExpression = /^(?:(?:[A-Za-z_][\w]*)\.)?InvoiceId/iu.exec(
+      invoiceIdLine.trim(),
+    )?.[0];
+    if (!fieldExpression) return undefined;
+    const field = /InvoiceId$/iu.exec(fieldExpression)?.[0] ?? 'InvoiceId';
+    const dateField =
+      field === field.toUpperCase()
+        ? 'INVOICEDATE'
+        : field === field.toLowerCase()
+          ? 'invoicedate'
+          : 'InvoiceDate';
+    const dateExpression = fieldExpression.replace(/InvoiceId/iu, dateField);
+    const indent = block[1].match(/(?:\r?\n)([ \t]*)$/u)?.[1] ?? '';
+    const nextCore = `(${block[1]}${invoiceIdLine}${separator}${indent}${dateExpression}${block[3]})`;
+    return `${source.slice(0, contentStart)}${leading}${nextCore}${trailing}`;
+  }
+
   if (!includeInvoiceDate) {
     const dateItem = /,\s*(?:(?:[A-Za-z_][\w]*)\.)?InvoiceDate(?:\s+as\s+[A-Za-z_][\w]*)?$/iu.exec(core);
     if (!dateItem || dateItem.index === undefined) return undefined;
@@ -362,6 +400,13 @@ function replaceInvoiceDateProjection(
     ? `,${separator}${indent}${dateExpression}`
     : `, ${dateExpression}`;
   return `${source.slice(0, contentStart)}${leading}${core}${addition}${trailing}`;
+}
+
+function isInvoiceProjectionLine(line: string, field: 'InvoiceId' | 'InvoiceDate'): boolean {
+  const expression = /^(?:(?:[A-Za-z_][\w]*)\.)?(InvoiceId|InvoiceDate)(?:\s+as\s+[A-Za-z_][\w]*)?$/iu.exec(
+    line.trim(),
+  );
+  return expression?.[1]?.toLowerCase() === field.toLowerCase();
 }
 
 type LocalizedClauseUpdate =

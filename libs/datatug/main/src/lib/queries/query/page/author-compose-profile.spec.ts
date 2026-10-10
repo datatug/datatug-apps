@@ -167,7 +167,7 @@ describe('author compose profile', () => {
     );
   });
 
-  it('toggles InvoiceDate in a block SELECT without changing casing, indentation, or the final newline', () => {
+  it('keeps the legacy comma-separated multiline projection editable without changing its layout', () => {
     const source = [
       'PARAMETERS (',
       '\t@CustomerId INTEGER REQUIRED',
@@ -200,7 +200,7 @@ describe('author compose profile', () => {
     });
   });
 
-  it('adds InvoiceDate using the authored block projection style and retains the final newline', () => {
+  it('adds InvoiceDate to a legacy comma-separated multiline projection and retains the final newline', () => {
     const source = [
       'PARAMETERS (',
       '\t@CustomerId INTEGER REQUIRED',
@@ -231,6 +231,86 @@ describe('author compose profile', () => {
       supported: true,
       includeInvoiceDate: true,
       invoiceIdAlias: 'id',
+    });
+  });
+
+  it('removes an optional projection from an approved comma-free parenthesized block', () => {
+    const source = [
+      'PARAMETERS (',
+      '\t@CustomerId INTEGER REQUIRED',
+      ')',
+      'FROM main.Invoice AS i',
+      'WHERE i.CustomerId = @CustomerId',
+      'LIMIT 100',
+      'SELECT (',
+      '\ti.InvoiceId AS id',
+      '\ti.InvoiceDate AS issued',
+      ')',
+      '',
+    ].join('\n');
+    expect(parseTugQL(source).diagnostics).toEqual([]);
+    expect(readAuthorComposeProfile(source)).toMatchObject({
+      supported: true,
+      writable: true,
+      includeInvoiceDate: true,
+    });
+    const result = updateAuthorComposeSource(source, {
+      grouped: false,
+      includeInvoiceDate: false,
+      countExpression: 'star',
+      havingOperator: '>=',
+      threshold: 7,
+      limit: 100,
+    });
+    expect(result).toBe(source.replace('\ti.InvoiceDate AS issued\n', ''));
+    expect(result).not.toMatch(/InvoiceId\s*,/u);
+    expect(parseTugQL(result ?? '').diagnostics).toEqual([]);
+    expect(readAuthorComposeProfile(result ?? '')).toMatchObject({
+      supported: true,
+      writable: true,
+      includeInvoiceDate: false,
+    });
+  });
+
+  it('adds an optional projection to an approved comma-free parenthesized block', () => {
+    const source = [
+      'PARAMETERS (',
+      '\t@CustomerId INTEGER REQUIRED',
+      ')',
+      'FROM main.Invoice AS i',
+      'WHERE i.CustomerId = @CustomerId',
+      'LIMIT 100',
+      'SELECT (',
+      '\ti.InvoiceId AS id',
+      ')',
+      '',
+    ].join('\n');
+    expect(parseTugQL(source).diagnostics).toEqual([]);
+    expect(readAuthorComposeProfile(source)).toMatchObject({
+      supported: true,
+      writable: true,
+      includeInvoiceDate: false,
+    });
+    const result = updateAuthorComposeSource(source, {
+      grouped: false,
+      includeInvoiceDate: true,
+      countExpression: 'star',
+      havingOperator: '>=',
+      threshold: 7,
+      limit: 100,
+    });
+    expect(result).toBe(
+      source.replace(
+        '\ti.InvoiceId AS id\n',
+        '\ti.InvoiceId AS id\n\ti.InvoiceDate\n',
+      ),
+    );
+    expect(result).not.toMatch(/InvoiceId\s*,/u);
+    expect(parseTugQL(result ?? '').diagnostics).toEqual([]);
+    expect(readAuthorComposeProfile(result ?? '')).toMatchObject({
+      supported: true,
+      writable: true,
+      includeInvoiceDate: true,
     });
   });
 
