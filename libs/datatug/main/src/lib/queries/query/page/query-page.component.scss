@@ -186,6 +186,29 @@
   line-height: 1.55;
 }
 
+:host ::ng-deep .author-customer-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+}
+
+:host ::ng-deep .author-customer-lookup-action {
+  min-height: 2rem;
+  padding: 0.2rem 0.35rem;
+  border: 0;
+  background: transparent;
+  color: var(--ion-color-primary-shade);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+:host ::ng-deep .author-customer-lookup-action:focus-visible {
+  outline: 2px solid var(--ion-color-primary);
+  outline-offset: 2px;
+}
+
 @media (max-width: 430px) {
   .query-page-title {
     max-width: min(43vw, 10rem);

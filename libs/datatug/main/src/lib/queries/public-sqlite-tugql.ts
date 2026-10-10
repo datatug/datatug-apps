@@ -39,6 +39,14 @@ export interface PublicSqliteOutputColumn {
   }[];
 }
 
+/** UI-supplied origin metadata. It is explicitly client-reported, not worker proof. */
+export interface PublicSqliteClientReportedBinding {
+  readonly origin: 'manual' | 'selection';
+  readonly originEvidence: 'client-reported';
+  readonly sourceQueryId?: string;
+  readonly sourceColumn?: string;
+}
+
 /** A structural preview has no user-provided values and is safe to show before Run. */
 export type PublicSqliteQueryPreview = Omit<
   PublicSqlitePreparedPlan,
@@ -58,6 +66,8 @@ export type PublicSqliteExecutionReceipt = Omit<
   readonly bindingNames: readonly string[];
   readonly relationship?: PublicSqliteRelationshipReceipt;
   readonly outputColumns?: readonly PublicSqliteOutputColumn[];
+  /** UI-supplied origin metadata; the worker verifies values, not this claim. */
+  readonly clientReportedBinding?: PublicSqliteClientReportedBinding;
 };
 
 const SQL_COMPARISON_OPERATORS: Readonly<Record<string, string>> = {

@@ -489,6 +489,21 @@
           [disabled]="queryState.isSaving || running()"
           (ionInput)="authorCustomerIdChanged($event)"
         />
+        @if (authorCustomerIdOrigin(); as customerIdOrigin) {
+          <p class="author-binding-origin" data-testid="author-binding-origin">
+            @if (customerIdOrigin.origin === 'selection') {
+              Customer ID {{ authorCustomerId() }} · selection ·
+              client-reported from {{ customerIdOrigin.sourceQueryId }}.{{
+                customerIdOrigin.sourceColumn
+              }} → target {{ queryDef()?.title || queryId }} on
+              {{ queryDef()?.connectionId || 'Chinook SQLite' }}.
+              Preview SQL, then Run to execute.
+            } @else {
+              Customer ID {{ authorCustomerId() || '—' }} · manual ·
+              client-reported. Preview SQL, then Run to execute.
+            }
+          </p>
+        }
         <div class="author-actions">
           <ion-button
             data-testid="author-preview"
@@ -1035,8 +1050,31 @@
           </p>
           <p>
             Worker verified bindings {{ receipt.bindingNames.join(', ') }}.
-            Input origin: manual · client-reported.
+            @if (receipt.clientReportedBinding; as inputOrigin) {
+              Input origin: {{ inputOrigin.origin }} ·
+              {{ inputOrigin.originEvidence }}.
+              @if (inputOrigin.origin === 'selection') {
+                Selected from {{ inputOrigin.sourceQueryId }}.{{
+                  inputOrigin.sourceColumn
+                }} ·
+                target {{ receipt.sourceId }}.
+              }
+            } @else {
+              Input origin: manual · client-reported.
+            }
           </p>
+          @if (receipt.relationship; as relationship) {
+            <p data-testid="author-receipt-relationship">
+              Worker-verified relationship {{ relationship.id }} ·
+              {{ relationship.fromSource }}.{{
+                relationship.pairs[0]?.fromField
+              }}
+              → {{ relationship.toSource }}.{{
+                relationship.pairs[0]?.toField
+              }} · version
+              {{ relationship.version }}
+            </p>
+          }
           @if (
             !publicSqliteRunIsStale(result) &&
             receipt.draftRevision === authorDraftRevision() &&

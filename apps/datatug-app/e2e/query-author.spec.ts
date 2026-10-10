@@ -2,6 +2,8 @@ import { expect, test } from '@playwright/test';
 import { installFakeGithub } from './helpers/fake-github';
 
 const DEMO_REPO = process.env['DATATUG_E2E_GITHUB_FAKE'];
+const JOIN_DEMO_REPO =
+  process.env['DATATUG_E2E_GITHUB_JOIN'] ?? DEMO_REPO;
 const AUTHOR_URL =
   '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-invoice-author?id=chinook-invoice-author&editor=text&env=local';
 const COUNT_AUTHOR_URL =
@@ -12,10 +14,13 @@ test.skip(
   'set DATATUG_E2E_GITHUB_FAKE to the demo project checkout containing the saved Author query',
 );
 
-test.beforeEach(async ({ context }) => {
+test.beforeEach(async ({ context }, testInfo) => {
   if (DEMO_REPO) {
+    const repository = testInfo.title.includes('Invoice Customer join')
+      ? JOIN_DEMO_REPO
+      : DEMO_REPO;
     await installFakeGithub(context, [
-      { fullName: 'datatug/datatug-demo-project', dir: DEMO_REPO },
+      { fullName: 'datatug/datatug-demo-project', dir: repository ?? DEMO_REPO },
     ]);
   }
 });
@@ -60,6 +65,126 @@ test('Compose HAVING edits replace the shared draft before Preview and worker Ru
   );
   await author.getByTestId('author-code-tab').click();
   await expect(editor).toHaveValue(/having count\(\*\) >= 8\n/u);
+});
+
+test('Invoice Customer join makes missing ON reviewable and opens an explicit typed lookup', async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await page.goto(
+    '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-customer-invoice-join?id=chinook-customer-invoice-join&editor=text&env=local',
+  );
+  const author = page.getByTestId('tugql-author');
+  await expect(author).toBeVisible({ timeout: 20_000 });
+  await author.getByRole('button', { name: 'Open Code' }).click();
+  const editor = author.getByTestId('query-body-text').locator('textarea');
+  const original = await editor.inputValue();
+  const missingOn = original.replace(
+    /join Customer as c\r?\n\s*on i\.CustomerId = c\.CustomerId\r?\n/u,
+    'join Customer as c -- preserve this relationship note\n',
+  );
+  expect(missingOn).not.toBe(original);
+  await editor.fill(missingOn);
+  await author.getByTestId('author-preview').click();
+
+  const preview = author.getByTestId('author-sql-preview');
+  await expect(preview).toContainText('Preview · Not executed');
+  await expect(editor).toHaveValue(/on i\.CustomerId = c\.CustomerId/u);
+  await expect(editor).toHaveValue(/-- preserve this relationship note/u);
+  await expect(preview).toContainText('Schema relationship');
+  await expect(preview.locator('pre')).toContainText(
+    'INNER JOIN "Customer" AS "c" ON "i"."CustomerId" = "c"."CustomerId"',
+  );
+  await expect(author.getByTestId('author-run')).toHaveAttribute(
+    'disabled',
+    '',
+  );
+
+  await author.getByTestId('author-customer-id').locator('input').fill('1');
+  await author.getByTestId('author-run').click();
+  const joinReceipt = page.getByTestId('author-execution-receipt');
+  await expect(joinReceipt).toContainText('Executed');
+  await expect(joinReceipt).toContainText('7 rows');
+  await expect(joinReceipt).toContainText('Worker-verified relationship');
+  let rows = page.getByRole('grid').getByRole('row');
+  await expect(rows).toHaveCount(8);
+  await expect(rows.nth(1)).toContainText('98');
+  await expect(rows.nth(7)).toContainText('382');
+
+  const firstRunAction = await page
+    .getByRole('button', { name: 'Look up invoices for Customer ID 1' })
+    .first()
+    .elementHandle();
+  expect(firstRunAction).not.toBeNull();
+  await author.getByTestId('author-customer-id').locator('input').fill('2');
+  await expect(
+    page.getByRole('button', { name: 'Look up invoices for Customer ID 1' }),
+  ).toHaveCount(0);
+  await expect(author.getByTestId('author-binding-origin')).toContainText(
+    'manual · client-reported',
+  );
+  await author.getByTestId('author-run').click();
+  await expect(joinReceipt).toContainText('Executed');
+  await firstRunAction?.evaluate((button) => button.click());
+  await expect(page).toHaveURL(/id=chinook-customer-invoice-join/u);
+  await author.getByTestId('author-customer-id').locator('input').fill('1');
+  await author.getByTestId('author-run').click();
+  await expect(joinReceipt).toContainText('7 rows');
+
+  const lookupActions = page.getByRole('button', {
+    name: 'Look up invoices for Customer ID 1',
+  });
+  const firstLookupAction = lookupActions.nth(0);
+  const firstResultRow = rows.nth(1);
+  const invoiceIdCell = firstResultRow.getByRole('gridcell').nth(0);
+  const customerIdCell = firstResultRow.getByRole('gridcell').nth(1);
+  await invoiceIdCell.click();
+  await page.keyboard.press('Tab');
+  await expect(customerIdCell).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(firstLookupAction).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(customerIdCell).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(firstLookupAction).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/id=chinook-invoice-author/u);
+  const lookupAuthor = page.getByTestId('tugql-author');
+  await expect(lookupAuthor).toBeVisible();
+  await expect(lookupAuthor.getByTestId('author-customer-id').locator('input')).toHaveValue('1');
+  await expect(page.getByTestId('author-results-empty')).toBeVisible();
+  await expect(lookupAuthor.getByTestId('author-binding-origin')).toContainText(
+    'selection · client-reported',
+  );
+  await expect(lookupAuthor.getByTestId('author-binding-origin')).toContainText(
+    'chinook-customer-invoice-join.CustomerId',
+  );
+  await expect(lookupAuthor.getByTestId('author-binding-origin')).toContainText(
+    'Chinook Invoice Author',
+  );
+  await expect(lookupAuthor.getByTestId('author-run')).toHaveAttribute(
+    'disabled',
+    '',
+  );
+  await expect(page.getByTestId('author-execution-receipt')).toHaveCount(0);
+
+  await lookupAuthor.getByTestId('author-preview').click();
+  await expect(lookupAuthor.getByTestId('author-run')).toBeEnabled();
+  await expect(page.getByTestId('author-execution-receipt')).toHaveCount(0);
+  await lookupAuthor.getByTestId('author-run').click();
+  const lookupReceipt = page.getByTestId('author-execution-receipt');
+  await expect(lookupReceipt).toContainText('Executed');
+  await expect(lookupReceipt).toContainText('7 rows');
+  await lookupReceipt.getByText('Execution details').click();
+  await expect(lookupReceipt).toContainText(
+    'Input origin: selection · client-reported',
+  );
+  await expect(lookupReceipt).toContainText(
+    'chinook-customer-invoice-join.CustomerId',
+  );
+  rows = page.getByRole('grid').getByRole('row');
+  await expect(rows).toHaveCount(8);
+  await expect(rows.nth(1)).toContainText('98');
 });
 
 test('cold saved CustomerId count supports parameterized HAVING thresholds in the worker', async ({
@@ -250,9 +375,13 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
 
   for (const width of [390, 320]) {
     await page.setViewportSize({ width, height: 844 });
-    await page.getByRole('tab', { name: 'Results' }).click();
+    const resultsView = page.locator('#workspace-results-tab');
+    await resultsView.click();
+    await expect(resultsView).toHaveAttribute('aria-pressed', 'true');
     await expect(receipt).toBeVisible();
-    await page.getByRole('tab', { name: 'Editor' }).click();
+    const editorView = page.locator('#workspace-editor-tab');
+    await editorView.click();
+    await expect(editorView).toHaveAttribute('aria-pressed', 'true');
     await expect(author).toBeVisible();
     const header = await page.evaluate(() => {
       const bounds = (selector: string): DOMRect | undefined =>

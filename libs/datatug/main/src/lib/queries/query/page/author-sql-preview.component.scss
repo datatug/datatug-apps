@@ -41,6 +41,14 @@
   line-height: 1.2;
 }
 
+.author-preview-relationship {
+  margin: 0.65rem 0 0;
+  color: var(--ion-color-medium-shade);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .author-sql-scroll {
   max-width: 100%;
   overflow-x: auto;

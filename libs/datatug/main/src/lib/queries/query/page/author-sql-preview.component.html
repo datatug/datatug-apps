@@ -9,6 +9,12 @@
   <div class="author-sql-scroll" tabindex="0" aria-label="Compiled SQLite SQL">
     <pre><code>{{ plan().sql }}</code></pre>
   </div>
+  @if (plan().relationship; as relationship) {
+    <p class="author-preview-relationship" data-testid="author-preview-relationship">
+      Schema relationship · {{ relationship.fromSource }}.CustomerId →
+      {{ relationship.toSource }}.CustomerId · {{ relationship.id }}
+    </p>
+  }
   <div class="author-binding-list" aria-label="SQL bindings">
     @for (
       bindingName of plan().bindingNames;

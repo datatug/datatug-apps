@@ -1,32 +1,28 @@
-<div class="workspace-mobile-navigation" role="tablist" aria-label="Query workspace">
+<nav class="workspace-mobile-navigation" aria-label="Query workspace views">
   <ion-buttons>
     <ion-button
-      role="tab"
       id="workspace-editor-tab"
-      aria-controls="workspace-editor-pane"
-      [attr.aria-selected]="mobilePane() === 'editor'"
+      [attr.aria-pressed]="mobilePane() === 'editor'"
       [fill]="mobilePane() === 'editor' ? 'solid' : 'clear'"
       (click)="mobilePane.set('editor')"
     >
       Editor
     </ion-button>
     <ion-button
-      role="tab"
       id="workspace-results-tab"
-      aria-controls="workspace-results-pane"
-      [attr.aria-selected]="mobilePane() === 'results'"
+      [attr.aria-pressed]="mobilePane() === 'results'"
       [fill]="mobilePane() === 'results' ? 'solid' : 'clear'"
       (click)="mobilePane.set('results')"
     >
       Results
     </ion-button>
   </ion-buttons>
-</div>
+</nav>
 <div
   class="workspace-pane workspace-editor-pane"
   id="workspace-editor-pane"
-  role="tabpanel"
-  aria-labelledby="workspace-editor-tab"
+  role="region"
+  aria-label="Query editor"
   [class.mobile-inactive]="mobilePane() !== 'editor'"
 >
   <ng-content select="[query-workspace-editor]" />
@@ -34,8 +30,8 @@
 <div
   class="workspace-pane workspace-results-pane"
   id="workspace-results-pane"
-  role="tabpanel"
-  aria-labelledby="workspace-results-tab"
+  role="region"
+  aria-label="Query results"
   [class.mobile-inactive]="mobilePane() !== 'results'"
 >
   <ng-content select="[query-workspace-results]" />

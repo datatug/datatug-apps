@@ -19,6 +19,7 @@ import {
   executePinnedSql,
   readPinnedFixture,
 } from './public-sqlite-query.worker';
+import type { PublicSqliteClientReportedBinding } from './public-sqlite-tugql';
 
 const catalog = {
   format: 'datatug-demo-connections/v1',
@@ -929,5 +930,49 @@ describe('Author TugQL structural preview and Run binding', () => {
         originEvidence: 'client-reported',
       },
     ]);
+
+    await expect(
+      service.runTugQL(
+        project,
+        query,
+        8,
+        '42',
+        preview,
+        undefined,
+        {
+          origin: 'other',
+          originEvidence: 'client-reported',
+        } as unknown as PublicSqliteClientReportedBinding,
+      ),
+    ).rejects.toThrow('input origin is invalid');
+    expect(workerMessages).toHaveLength(1);
+
+    const inputOrigin = {
+      origin: 'selection' as const,
+      originEvidence: 'client-reported' as const,
+      sourceQueryId: 'chinook-customer-invoice-join',
+      sourceColumn: 'CustomerId',
+    };
+    const selectedPromise = service.runTugQL(
+      project,
+      query,
+      8,
+      '42',
+      preview,
+      undefined,
+      inputOrigin,
+    );
+    inputOrigin.sourceQueryId = 'mutated-after-call';
+    const selected = await selectedPromise;
+    expect(selected.bindingsApplied[0]).toMatchObject({
+      origin: 'selection',
+      originEvidence: 'client-reported',
+    });
+    expect(selected.publicSqliteReceipt?.clientReportedBinding).toEqual({
+      origin: 'selection',
+      originEvidence: 'client-reported',
+      sourceQueryId: 'chinook-customer-invoice-join',
+      sourceColumn: 'CustomerId',
+    });
   });
 });

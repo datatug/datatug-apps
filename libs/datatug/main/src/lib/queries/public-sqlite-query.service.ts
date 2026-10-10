@@ -28,6 +28,7 @@ import {
   type PublicSqliteRelationshipReceipt,
   type PublicSqlitePreparedPlan,
   type PublicSqliteQueryPreview,
+  type PublicSqliteClientReportedBinding,
 } from './public-sqlite-tugql';
 
 const CONNECTION_ID = 'chinook-sqlite';
@@ -645,7 +646,24 @@ export class PublicSqliteQueryService {
     customerIdText: string,
     previewPlan: PublicSqliteQueryPreview,
     signal?: AbortSignal,
+    bindingProvenance: PublicSqliteClientReportedBinding = {
+      origin: 'manual',
+      originEvidence: 'client-reported',
+    },
   ): Promise<FederatedQueryResult> {
+    const clientReportedBinding = Object.freeze({ ...bindingProvenance });
+    if (
+      !['manual', 'selection'].includes(clientReportedBinding.origin) ||
+      clientReportedBinding.originEvidence !== 'client-reported' ||
+      (clientReportedBinding.origin === 'selection' &&
+        (!clientReportedBinding.sourceQueryId ||
+          !clientReportedBinding.sourceColumn)) ||
+      (clientReportedBinding.origin === 'manual' &&
+        (clientReportedBinding.sourceQueryId ||
+          clientReportedBinding.sourceColumn))
+    ) {
+      throw new Error('The CustomerId input origin is invalid.');
+    }
     if (previewPlan.expandedSource !== undefined)
       throw new Error(
         'Apply the displayed relationship completion and preview the updated draft before Run.',
@@ -677,6 +695,7 @@ export class PublicSqliteQueryService {
       definition,
       preparedPlan,
       signal,
+      clientReportedBinding,
     );
     return result;
   }
@@ -772,6 +791,7 @@ export class PublicSqliteQueryService {
     definition: IQueryDef,
     plan: PublicSqlitePreparedPlan,
     signal?: AbortSignal,
+    bindingProvenance?: PublicSqliteClientReportedBinding,
   ): Promise<FederatedQueryResult> {
     if (
       definition.connectionId !== plan.sourceId ||
@@ -878,6 +898,9 @@ export class PublicSqliteQueryService {
         ...(receipt.outputColumns
           ? { outputColumns: receipt.outputColumns }
           : {}),
+        ...(bindingProvenance
+          ? { clientReportedBinding: Object.freeze({ ...bindingProvenance }) }
+          : {}),
       });
       return {
         recordset: {
@@ -894,8 +917,9 @@ export class PublicSqliteQueryService {
           {
             parameterId: 'CustomerId',
             value: { type: 'integer', value: String(plan.bindings[0]) },
-            origin: 'manual',
-            originEvidence: 'client-reported',
+            origin: bindingProvenance?.origin ?? 'manual',
+            originEvidence:
+              bindingProvenance?.originEvidence ?? 'client-reported',
           },
         ],
         truncated: false,
