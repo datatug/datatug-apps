@@ -227,6 +227,7 @@ import type {
 import { graphStableIdentity } from '../../public-data/native-graph-executor';
 import { QueryContextSqlService } from '../../query-context-sql.service';
 import { PublicSqliteQueryService } from '../../public-sqlite-query.service';
+import type { PublicSqlitePreparedPlan } from '../../public-sqlite-tugql';
 import {
   isQueryChanged,
   QueryEditorStateService,
@@ -489,12 +490,27 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private readonly queryEditorStateService = inject(QueryEditorStateService);
   private readonly envService = inject(EnvironmentService);
   private readonly changeDetector = inject(ChangeDetectorRef);
+  private authorRunAbort?: AbortController;
 
   public project?: IProjectContext;
   private navigationDraft?: { ref: IProjectRef; query: IQueryDef };
+  private authorPreviewLifetime = 0;
 
   public showQueryBuilder?: boolean;
   public editorTab: 'text' | 'builder' = 'text';
+  public readonly authorMode = signal<'compose' | 'code'>('compose');
+  public readonly authorCustomerId = signal('');
+  public readonly authorDraftRevision = signal(0);
+  public readonly authorPreviewOpen = signal(false);
+  public readonly authorPlan = signal<PublicSqlitePreparedPlan | undefined>(
+    undefined,
+  );
+  public readonly authorError = signal<string | undefined>(undefined);
+  public readonly isTugqlAuthorJourney = computed(
+    () =>
+      this.queryDef()?.connectionId === 'chinook-sqlite' &&
+      this.queryDef()?.request.queryType === QueryType.DTQL,
+  );
 
   public parameters?: IParameter[];
 
@@ -849,7 +865,97 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       ...this.queryState,
       request: { ...this.queryState.request, text } as ITextQueryRequest,
     };
+    if (this.isTugqlAuthorJourney()) {
+      this.authorDraftRevision.update((revision) => revision + 1);
+      this.authorPlan.set(undefined);
+      this.authorError.set(undefined);
+    }
     this.queryEditorStateService.updateQueryState(this.queryState);
+  }
+
+  public setAuthorMode(mode: 'compose' | 'code'): void {
+    this.authorMode.set(mode);
+  }
+
+  public cancelAuthorRun(): void {
+    this.authorRunAbort?.abort();
+  }
+
+  public authorCustomerIdChanged(event: Event): void {
+    const detail = (event as CustomEvent<{ value?: string }>).detail;
+    const target = event.target as HTMLInputElement | null;
+    const value = detail?.value ?? target?.value ?? '';
+    this.authorCustomerId.set(value);
+    this.authorDraftRevision.update((revision) => revision + 1);
+    this.authorPlan.set(undefined);
+    this.authorError.set(undefined);
+    const next: IQueryState = {
+      ...this.queryState,
+      authorBindings: {
+        ...(this.queryState.authorBindings ?? {}),
+        CustomerId: value,
+      },
+    };
+    this.queryState = next;
+    this.queryEditorStateService.updateQueryState(next);
+  }
+
+  public async previewTugql(): Promise<void> {
+    const project = this.project?.ref;
+    const definition = this.queryDef();
+    if (!project || !definition || !this.isTugqlAuthorJourney()) return;
+    const revision = this.authorDraftRevision();
+    const definitionSnapshot = JSON.stringify(definition);
+    const scopeSnapshot = this.historyScope();
+    const queryIdSnapshot = this.queryId;
+    const projectSnapshot = JSON.stringify(project);
+    const securityContextIdSnapshot = this.agentContext.securityContextId();
+    const customerIdSnapshot = this.authorCustomerId();
+    const lifetime = ++this.authorPreviewLifetime;
+    const isCurrent = (): boolean =>
+      lifetime === this.authorPreviewLifetime &&
+      this.isTugqlAuthorJourney() &&
+      this.authorDraftRevision() === revision &&
+      this.historyScope() === scopeSnapshot &&
+      this.queryId === queryIdSnapshot &&
+      JSON.stringify(this.queryDef()) === definitionSnapshot &&
+      JSON.stringify(this.project?.ref) === projectSnapshot &&
+      this.agentContext.securityContextId() === securityContextIdSnapshot &&
+      this.authorCustomerId() === customerIdSnapshot;
+    this.authorPlan.set(undefined);
+    this.authorPreviewOpen.set(false);
+    this.authorError.set(undefined);
+    try {
+      const plan = await this.publicSqliteQuery.prepareTugQL(
+        project,
+        definition,
+        revision,
+        customerIdSnapshot,
+      );
+      if (isCurrent()) {
+        this.authorPlan.set(plan);
+        this.authorPreviewOpen.set(true);
+      }
+    } catch (error: unknown) {
+      if (isCurrent())
+        this.authorError.set(
+          error instanceof Error ? error.message : 'The TugQL preview failed.',
+        );
+    }
+  }
+
+  public authorPreviewToggled(event: Event): void {
+    const details = event.target as HTMLDetailsElement | null;
+    if (details) this.authorPreviewOpen.set(details.open);
+  }
+
+  public publicSqliteCustomerIdLabel(result: FederatedQueryResult): string {
+    const applied = result.bindingsApplied.find(
+      (binding) => binding.parameterId === 'CustomerId',
+    );
+    return applied?.value.type === 'integer'
+      ? applied.value.value
+      : 'applied';
   }
 
   /** Entity/collection names this query references — see
@@ -1000,6 +1106,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
             queryType: QueryType.SQL,
             request: { queryType: QueryType.SQL, text: '' } as ISqlQueryRequest,
           };
+          this.authorCustomerId.set('');
+          this.authorPlan.set(undefined);
           this.changeDetector.markForCheck();
         }
         return;
@@ -1086,6 +1194,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         this.stopFederatedRun();
       }
       this.queryState = queryState;
+      this.authorCustomerId.set(
+        queryState.authorBindings?.['CustomerId'] ?? '',
+      );
       // Signal write (zoneless-safe, unlike the plain-field write just
       // above) — see `queryDef`'s own doc comment.
       const definitionChanged =
@@ -1123,6 +1234,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   };
 
   ngOnDestroy(): void {
+    this.authorRunAbort?.abort();
+    this.authorRunAbort = undefined;
     ++this.semanticRunLifetime;
     this.invalidateFederatedRun();
     this.setDisplayedResult(undefined);
@@ -2269,6 +2382,80 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.queryRunTiming.set(undefined);
     if (
       isGithubStoreId(this.project?.ref.storeId) &&
+      definition?.connectionId === 'chinook-sqlite' &&
+      definition.request.queryType === QueryType.DTQL
+    ) {
+      if (this.running()) return;
+      const previewPlan = this.authorPlan();
+      if (!previewPlan) {
+        this.runError.set('Preview the current TugQL draft before Run.');
+        return;
+      }
+      const runScope = this.historyScope();
+      const executedDefinition = structuredClone(definition);
+      const draftRevision = this.authorDraftRevision();
+      const customerId = this.authorCustomerId();
+      const queryIdSnapshot = this.queryId;
+      const projectSnapshot = JSON.stringify(projectRef);
+      const lifetime = ++this.federatedRunLifetime;
+      const controller = new AbortController();
+      this.authorRunAbort = controller;
+      const current = (): boolean =>
+        lifetime === this.federatedRunLifetime &&
+        this.historyScope() === runScope &&
+        this.queryId === queryIdSnapshot &&
+        JSON.stringify(this.project?.ref) === projectSnapshot &&
+        this.authorDraftRevision() === draftRevision &&
+        this.authorCustomerId() === customerId &&
+        this.authorPlan() === previewPlan &&
+        JSON.stringify(this.queryDef()) === JSON.stringify(executedDefinition);
+      this.running.set(true);
+      this.runError.set(undefined);
+      void this.publicSqliteQuery
+        .runTugQL(
+          projectRef,
+          executedDefinition,
+          draftRevision,
+          customerId,
+          previewPlan,
+          controller.signal,
+        )
+        .then((result) => {
+          if (!current()) return;
+          this.showAttemptResult(result);
+          const timing: QueryRunTiming = {
+            allResultsLoadedMs: Math.max(0, monotonicTime() - runRequestedAt),
+            noRecords: result.recordset.rows.length === 0,
+          };
+          this.queryRunTiming.set(timing);
+          this.commitSuccessfulResult(result, executedDefinition, timing);
+        })
+        .catch((error: unknown) => {
+          if (
+            current() &&
+            !(error instanceof Error && error.name === 'AbortError')
+          ) {
+            if (this.isAuthorizationFailure(error))
+              this.invalidateHistoryScope();
+            this.runError.set(
+              error instanceof Error
+                ? error.message
+                : 'The public SQLite query failed.',
+            );
+          }
+        })
+        .finally(() => {
+          if (this.authorRunAbort === controller)
+            this.authorRunAbort = undefined;
+          if (lifetime === this.federatedRunLifetime) {
+            if (!current()) this.queryRunTiming.set(undefined);
+            this.running.set(false);
+          }
+        });
+      return;
+    }
+    if (
+      isGithubStoreId(this.project?.ref.storeId) &&
       definition?.connectionId
     ) {
       if (this.running()) return;
@@ -2651,6 +2838,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   private invalidateFederatedRun(): void {
+    this.authorRunAbort?.abort();
+    this.authorRunAbort = undefined;
     ++this.federatedRunLifetime;
     this.running.set(false);
     this.federatedProgress.set(undefined);
@@ -2670,6 +2859,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   private invalidateHistoryScope(): void {
+    ++this.authorPreviewLifetime;
+    this.authorPlan.set(undefined);
+    this.authorError.set(undefined);
     ++this.semanticRunLifetime;
     this.invalidateFederatedRun();
     this.stopFederatedRun();

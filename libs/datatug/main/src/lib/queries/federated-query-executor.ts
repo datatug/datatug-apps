@@ -188,6 +188,8 @@ export interface FederatedRuntimeSession {
 }
 
 export type FederatedQueryResult = RunQueryResponse & {
+  /** Worker-issued proof of the exact prepared request that produced this result. */
+  readonly publicSqliteReceipt?: import('./public-sqlite-tugql').PublicSqliteExecutionReceipt;
   readonly localResult?: { readonly id: string; readonly generation: number };
   readonly relatedRecordsets?: readonly GraphRelatedRecordset[];
   readonly nativeGraph?: Pick<

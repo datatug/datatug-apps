@@ -29,7 +29,7 @@
 </ion-header>
 
 <ion-content color="light">
-  @if (project?.ref?.projectApi) {
+  @if (project?.ref?.projectApi && !isTugqlAuthorJourney()) {
     <ion-item
       ><ion-label>Branch: {{ project?.ref?.branch }}</ion-label
       ><ion-button
@@ -340,7 +340,7 @@
       </ion-card-content></ion-card
     >
   }
-  @if (canChangeHostedDemoDbSource()) {
+  @if (canChangeHostedDemoDbSource() && !isTugqlAuthorJourney()) {
     <ion-card data-testid="hosted-demo-db-query-source">
       <ion-card-header>
         <ion-card-title>Hosted DemoDB source</ion-card-title>
@@ -374,7 +374,7 @@
     </ion-card>
   }
 
-  @if (canChoosePublicSqliteSource()) {
+  @if (canChoosePublicSqliteSource() && !isTugqlAuthorJourney()) {
     <ion-card>
       <ion-card-header
         ><ion-card-title>Public SQLite source</ion-card-title></ion-card-header
@@ -397,31 +397,150 @@
       </ion-card-content>
     </ion-card>
   }
-  <ion-card>
-    <ion-item>
-      <ion-input
-        placeholder="Title - is required"
-        [readonly]="queryState.saveSupported === false"
-        [value]="queryState.title"
-        [disabled]="queryState.isSaving"
-        (ionChange)="queryTitleChanged($event)"
-      />
-      <ion-select interface="popover" slot="end">
-        <ion-select-option value="q1">Query #1</ion-select-option>
-        <ion-select-option value="q2">Query #2</ion-select-option>
-        <ion-select-option value="q3">Query #3</ion-select-option>
-        <ion-select-option value="q4">Query #4</ion-select-option>
-      </ion-select>
-    </ion-item>
-    <ion-item>
-      <ion-icon name="folder-outline" slot="start" />
-      <ion-label color="medium">Folder:</ion-label>
-      <ion-input readonly="true" value="/" />
-    </ion-item>
-  </ion-card>
+  @if (!isTugqlAuthorJourney()) {
+    <ion-card>
+      <ion-item>
+        <ion-input
+          placeholder="Title - is required"
+          [readonly]="queryState.saveSupported === false"
+          [value]="queryState.title"
+          [disabled]="queryState.isSaving"
+          (ionChange)="queryTitleChanged($event)"
+        />
+        <ion-select interface="popover" slot="end">
+          <ion-select-option value="q1">Query #1</ion-select-option>
+          <ion-select-option value="q2">Query #2</ion-select-option>
+          <ion-select-option value="q3">Query #3</ion-select-option>
+          <ion-select-option value="q4">Query #4</ion-select-option>
+        </ion-select>
+      </ion-item>
+      <ion-item>
+        <ion-icon name="folder-outline" slot="start" />
+        <ion-label color="medium">Folder:</ion-label>
+        <ion-input readonly="true" value="/" />
+      </ion-item>
+    </ion-card>
+  }
 
   @if (queryState.queryType === 'HTTP') {
     <sneat-datatug-http-query-editor />
+  } @else if (isTugqlAuthorJourney()) {
+    <ion-card data-testid="tugql-author">
+      <ion-card-header>
+        <ion-card-title>{{
+          queryState.title || 'Chinook Invoice query'
+        }}</ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        <p>Target: Chinook · pinned public SQLite snapshot</p>
+        <ion-buttons>
+          <ion-button
+            data-testid="author-compose-tab"
+            [fill]="authorMode() === 'compose' ? 'solid' : 'clear'"
+            (click)="setAuthorMode('compose')"
+            >Compose</ion-button
+          >
+          <ion-button
+            data-testid="author-code-tab"
+            [fill]="authorMode() === 'code' ? 'solid' : 'clear'"
+            (click)="setAuthorMode('code')"
+            >Code</ion-button
+          >
+        </ion-buttons>
+        <p>Invoices for customer</p>
+        <ion-item lines="none">
+          <ion-input
+            data-testid="author-customer-id"
+            type="number"
+            inputmode="numeric"
+            fill="outline"
+            label="Customer ID"
+            labelPlacement="stacked"
+            helperText="Required · integer"
+            [value]="authorCustomerId()"
+            [disabled]="queryState.isSaving || running()"
+            (ionInput)="authorCustomerIdChanged($event)"
+          />
+        </ion-item>
+        @if (authorMode() === 'compose') {
+          <details>
+            <summary>Supported syntax</summary>
+            <p>
+              This browser profile runs a bounded Invoice scan with the required
+              integer CustomerId equality, InvoiceId and optional InvoiceDate,
+              and a limit from 1 to 100. Grouped CustomerId queries support
+              COUNT(*) or COUNT(InvoiceId) with an integer literal =, !=, <,
+              <=, >, or >= HAVING threshold. Other TugQL can be edited in Code,
+              but Preview will explain if this SQLite profile cannot run it.
+            </p>
+          </details>
+        } @else {
+          <ion-textarea
+            data-testid="query-body-text"
+            rows="8"
+            autoGrow="false"
+            fill="outline"
+            label="TugQL"
+            labelPlacement="stacked"
+            [value]="queryBodyText()"
+            [disabled]="queryState.isSaving || running()"
+            [readonly]="queryState.saveSupported === false"
+            (ionInput)="queryTextChanged($event)"
+          />
+        }
+        <ion-button
+          data-testid="author-preview"
+          [disabled]="running() || queryState.isSaving"
+          (click)="previewTugql()"
+          >Preview SQL</ion-button
+        >
+        <ion-button
+          data-testid="author-run"
+          color="primary"
+          [disabled]="
+            running() ||
+            queryState.isSaving ||
+            !authorPlan() ||
+            !queryId ||
+            !project
+          "
+          (click)="runQuery()"
+        >
+          @if (running()) {
+            <ion-spinner name="dots" slot="start" />
+          }
+          Run
+        </ion-button>
+        @if (running()) {
+          <ion-button
+            data-testid="author-cancel"
+            fill="clear"
+            (click)="cancelAuthorRun()"
+          >
+            Cancel
+          </ion-button>
+        }
+        @if (authorError()) {
+          <ion-text color="danger" data-testid="author-error">{{
+            authorError()
+          }}</ion-text>
+        }
+        @if (authorPlan(); as plan) {
+          <details
+            data-testid="author-sql-preview"
+            [open]="authorPreviewOpen()"
+            (toggle)="authorPreviewToggled($event)"
+          >
+            <summary>Compiled SQL · SQLite</summary>
+            <pre>{{ plan.sql }}</pre>
+            <p>
+              Binding: &#64;CustomerId (integer). Preview does not execute the
+              query.
+            </p>
+          </details>
+        }
+      </ion-card-content>
+    </ion-card>
   } @else if (editorTab === 'text') {
     <!-- Saved query text is editable and persists with its definition through
          the selected project's query API. -->
@@ -446,7 +565,7 @@
     </ion-card>
   }
 
-  @if (linkedEntities().length) {
+  @if (linkedEntities().length && !isTugqlAuthorJourney()) {
     <!-- S155 — the query's linked entities/collections; see
          `extractLinkedEntityNames()`'s own doc comment (query-page.component.ts)
          for the two sources this reads (parameter/recordset `meta.entity`,
@@ -472,193 +591,196 @@
     clear it here. An ambiguous or unconfirmed-conflict parameter blocks Run until
     resolved (AC:typed-context-isolation).
   -->
-  <ion-card>
-    <ion-card-header>
-      <ion-card-title>Parameters</ion-card-title>
-    </ion-card-header>
-    @if (visibleBindings().length) {
-      <ion-list>
-        @for (binding of visibleBindings(); track binding.parameterId) {
-          <ion-item [color]="binding.blocked ? 'warning' : undefined">
-            <ion-label>
-              {{ bindingFieldLabel(binding) }}
-              @if (binding.blocked === 'ambiguous') {
-                <p>ambiguous — {{ ambiguousValuesLabel(binding) }}</p>
-              } @else if (binding.blocked === 'conflict-unconfirmed') {
-                <p>conflict — {{ conflictLabel(binding) }}</p>
-              } @else if (binding.blocked === 'missing-required') {
-                <p>required — no value supplied</p>
-              } @else {
-                <p>{{ bindingValueLabel(binding) }}</p>
-              }
-            </ion-label>
-            @if (binding.cohortOptions?.length) {
-              @for (option of binding.cohortOptions; track option.factKey) {
-                @if (
-                  option.factKey !== selectedCohortFactKey(binding.parameterId)
-                ) {
-                  <ion-button
-                    slot="end"
-                    fill="outline"
-                    (click)="
-                      chooseContextCohort(binding.parameterId, option.factKey)
-                    "
-                  >
-                    @if (selectedCohortFactKey(binding.parameterId)) {
-                      Other compare side:
-                    } @else {
-                      Use
-                    }
-                    {{ cohortOptionLabel(option) }}
-                  </ion-button>
+  @if (!isTugqlAuthorJourney()) {
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>Parameters</ion-card-title>
+      </ion-card-header>
+      @if (visibleBindings().length) {
+        <ion-list>
+          @for (binding of visibleBindings(); track binding.parameterId) {
+            <ion-item [color]="binding.blocked ? 'warning' : undefined">
+              <ion-label>
+                {{ bindingFieldLabel(binding) }}
+                @if (binding.blocked === 'ambiguous') {
+                  <p>ambiguous — {{ ambiguousValuesLabel(binding) }}</p>
+                } @else if (binding.blocked === 'conflict-unconfirmed') {
+                  <p>conflict — {{ conflictLabel(binding) }}</p>
+                } @else if (binding.blocked === 'missing-required') {
+                  <p>required — no value supplied</p>
+                } @else {
+                  <p>{{ bindingValueLabel(binding) }}</p>
+                }
+              </ion-label>
+              @if (binding.cohortOptions?.length) {
+                @for (option of binding.cohortOptions; track option.factKey) {
+                  @if (
+                    option.factKey !==
+                    selectedCohortFactKey(binding.parameterId)
+                  ) {
+                    <ion-button
+                      slot="end"
+                      fill="outline"
+                      (click)="
+                        chooseContextCohort(binding.parameterId, option.factKey)
+                      "
+                    >
+                      @if (selectedCohortFactKey(binding.parameterId)) {
+                        Other compare side:
+                      } @else {
+                        Use
+                      }
+                      {{ cohortOptionLabel(option) }}
+                    </ion-button>
+                  }
                 }
               }
-            }
-            @if (binding.blocked === 'conflict-unconfirmed') {
-              <ion-button
-                slot="end"
-                fill="clear"
-                title="Use the selection value"
-                (click)="confirmConflict(binding.parameterId)"
-              >
-                Use selection
-              </ion-button>
-            } @else if (binding.value !== undefined) {
-              <ion-button
-                slot="end"
-                fill="clear"
-                title="Clear this binding"
-                (click)="clearBinding(binding.parameterId)"
-              >
-                <ion-icon name="close-outline" />
-              </ion-button>
-            }
-          </ion-item>
-        }
-      </ion-list>
-    } @else {
-      <ion-card-content>
-        <ion-text color="medium"
-          >No parameters bound from selection or context.</ion-text
-        >
-      </ion-card-content>
-    }
+              @if (binding.blocked === 'conflict-unconfirmed') {
+                <ion-button
+                  slot="end"
+                  fill="clear"
+                  title="Use the selection value"
+                  (click)="confirmConflict(binding.parameterId)"
+                >
+                  Use selection
+                </ion-button>
+              } @else if (binding.value !== undefined) {
+                <ion-button
+                  slot="end"
+                  fill="clear"
+                  title="Clear this binding"
+                  (click)="clearBinding(binding.parameterId)"
+                >
+                  <ion-icon name="close-outline" />
+                </ion-button>
+              }
+            </ion-item>
+          }
+        </ion-list>
+      } @else {
+        <ion-card-content>
+          <ion-text color="medium"
+            >No parameters bound from selection or context.</ion-text
+          >
+        </ion-card-content>
+      }
 
-    @for (suggestion of rebindSuggestions(); track suggestion.parameterId) {
-      <ion-item color="warning" data-testid="rebind-choice">
-        <ion-label>
-          Context changed for {{ suggestion.parameterId }}
-          <p>
-            {{ rebindSuggestionLabel(suggestion) }}. Current binding is
-            preserved.
-          </p>
-        </ion-label>
-        <ion-button
-          slot="end"
-          fill="clear"
-          (click)="keepCurrentBinding(suggestion.parameterId)"
-        >
-          Keep current
-        </ion-button>
-        <ion-button slot="end" (click)="acceptRebind(suggestion.parameterId)">
-          Use new context
-        </ion-button>
-      </ion-item>
-    }
+      @for (suggestion of rebindSuggestions(); track suggestion.parameterId) {
+        <ion-item color="warning" data-testid="rebind-choice">
+          <ion-label>
+            Context changed for {{ suggestion.parameterId }}
+            <p>
+              {{ rebindSuggestionLabel(suggestion) }}. Current binding is
+              preserved.
+            </p>
+          </ion-label>
+          <ion-button
+            slot="end"
+            fill="clear"
+            (click)="keepCurrentBinding(suggestion.parameterId)"
+          >
+            Keep current
+          </ion-button>
+          <ion-button slot="end" (click)="acceptRebind(suggestion.parameterId)">
+            Use new context
+          </ion-button>
+        </ion-item>
+      }
 
-    @if (availableTargets().length) {
-      <!-- api-contract.md needs-target/TARGET_REQUIRED — a real target selector, never
+      @if (availableTargets().length) {
+        <!-- api-contract.md needs-target/TARGET_REQUIRED — a real target selector, never
            a hidden source; targets come only from an authorized Candidate or a
            TARGET_REQUIRED error's own error.targets. -->
-      <ion-item>
-        <ion-label>Target</ion-label>
-        <ion-select
-          interface="popover"
-          [value]="selectedSource()"
-          (ionChange)="chooseTarget($event.detail.value)"
-        >
-          @for (target of availableTargets(); track target.source) {
-            <ion-select-option [value]="target.source">{{
-              target.label
-            }}</ion-select-option>
-          }
-        </ion-select>
-      </ion-item>
-    }
-
-    @if (queryDef()?.federation) {
-      <ion-item>
-        <ion-label position="stacked">OVDB bearer token (optional)</ion-label>
-        <ion-input
-          aria-label="OVDB bearer token"
-          type="password"
-          autocomplete="off"
-          [value]="ovdbToken()"
-          (ionInput)="setOvdbToken($event.detail.value)"
-        />
-      </ion-item>
-      <p class="ion-padding-horizontal">
-        This token is sent to {{ ovdbDestination() }} for this run.
-      </p>
-    }
-
-    @if (queryDef()?.federation) {
-      <ion-item>
-        <ion-select
-          label="Result mode"
-          [value]="federatedMode()"
-          (ionChange)="federatedMode.set($event.detail.value)"
-          [disabled]="running()"
-        >
-          <ion-select-option value="full">Full result</ion-select-option>
-          <ion-select-option
-            value="visible"
-            [disabled]="!visibleModeSupport().supported"
-            >Visible rows</ion-select-option
+        <ion-item>
+          <ion-label>Target</ion-label>
+          <ion-select
+            interface="popover"
+            [value]="selectedSource()"
+            (ionChange)="chooseTarget($event.detail.value)"
           >
-        </ion-select>
-      </ion-item>
-      <p class="ion-padding-horizontal">
-        @if (visibleModeSupport().supported) {
-          Visible rows loads the first result page, then computes later pages as
-          you request them.
-        } @else {
-          {{ visibleModeSupport().reason }}
-        }
-      </p>
-    }
-    <ion-item lines="none">
-      <ion-buttons>
-        <ion-button
-          fill="solid"
-          color="primary"
-          [disabled]="
-            running() ||
-            !queryId ||
-            !project ||
-            hasBlockedBindings() ||
-            (!queryDef()?.connectionId &&
-              availableTargets().length > 0 &&
-              !selectedSource())
-          "
-          (click)="runQuery()"
-        >
-          @if (running()) {
-            <ion-spinner name="dots" slot="start" />
+            @for (target of availableTargets(); track target.source) {
+              <ion-select-option [value]="target.source">{{
+                target.label
+              }}</ion-select-option>
+            }
+          </ion-select>
+        </ion-item>
+      }
+
+      @if (queryDef()?.federation) {
+        <ion-item>
+          <ion-label position="stacked">OVDB bearer token (optional)</ion-label>
+          <ion-input
+            aria-label="OVDB bearer token"
+            type="password"
+            autocomplete="off"
+            [value]="ovdbToken()"
+            (ionInput)="setOvdbToken($event.detail.value)"
+          />
+        </ion-item>
+        <p class="ion-padding-horizontal">
+          This token is sent to {{ ovdbDestination() }} for this run.
+        </p>
+      }
+
+      @if (queryDef()?.federation) {
+        <ion-item>
+          <ion-select
+            label="Result mode"
+            [value]="federatedMode()"
+            (ionChange)="federatedMode.set($event.detail.value)"
+            [disabled]="running()"
+          >
+            <ion-select-option value="full">Full result</ion-select-option>
+            <ion-select-option
+              value="visible"
+              [disabled]="!visibleModeSupport().supported"
+              >Visible rows</ion-select-option
+            >
+          </ion-select>
+        </ion-item>
+        <p class="ion-padding-horizontal">
+          @if (visibleModeSupport().supported) {
+            Visible rows loads the first result page, then computes later pages
+            as you request them.
           } @else {
-            <ion-icon name="play-outline" slot="start" />
+            {{ visibleModeSupport().reason }}
           }
-          Run query
-        </ion-button>
-      </ion-buttons>
-    </ion-item>
-    @if (queryDef()?.connectionId; as connectionId) {
-      <p class="ion-padding-horizontal">
-        Saved source: {{ connectionId }}. Run checks its public SQLite fixture
-        and integrity pin before showing results.
-      </p>
-    }
-  </ion-card>
+        </p>
+      }
+      <ion-item lines="none">
+        <ion-buttons>
+          <ion-button
+            fill="solid"
+            color="primary"
+            [disabled]="
+              running() ||
+              !queryId ||
+              !project ||
+              hasBlockedBindings() ||
+              (!queryDef()?.connectionId &&
+                availableTargets().length > 0 &&
+                !selectedSource())
+            "
+            (click)="runQuery()"
+          >
+            @if (running()) {
+              <ion-spinner name="dots" slot="start" />
+            } @else {
+              <ion-icon name="play-outline" slot="start" />
+            }
+            Run query
+          </ion-button>
+        </ion-buttons>
+      </ion-item>
+      @if (queryDef()?.connectionId; as connectionId) {
+        <p class="ion-padding-horizontal">
+          Saved source: {{ connectionId }}. Run checks its public SQLite fixture
+          and integrity pin before showing results.
+        </p>
+      }
+    </ion-card>
+  }
 
   @if ((running() || resultPageLoading()) && federatedProgress(); as progress) {
     <p role="status" aria-live="polite">
@@ -834,6 +956,50 @@
     </ion-card>
   }
   @if (runResult(); as result) {
+    @if (result.publicSqliteReceipt; as receipt) {
+      <section
+        data-testid="author-execution-receipt"
+        aria-label="SQLite execution receipt"
+      >
+        <p>
+          @if (
+            displayedResultIsPreviousRun() ||
+            receipt.draftRevision !== authorDraftRevision()
+          ) {
+            Previous run ·
+          } @else {
+            Executed ·
+          }
+          {{ resultTotalRows() }} rows · Customer ID
+          {{ publicSqliteCustomerIdLabel(result) }} applied · pinned snapshot ·
+          queried {{ result.provenance.observedAt }}
+        </p>
+        <details>
+          <summary>Execution details</summary>
+          <p>Worker execution ID {{ receipt.executionId }}.</p>
+          <p>
+            Draft revision {{ receipt.draftRevision }} · fixture SHA-256
+            {{ receipt.fixtureSha256 }} · schema fingerprint
+            {{ receipt.schemaVersion }}
+          </p>
+          <p>
+            Worker verified bindings {{ receipt.bindingNames.join(', ') }}.
+            Input origin: manual · client-reported.
+          </p>
+          @if (
+            !displayedResultIsPreviousRun() &&
+            receipt.draftRevision === authorDraftRevision() &&
+            authorPlan()
+          ) {
+            <p>The executed request matched the preview at Run time.</p>
+          }
+          <details>
+            <summary>Executed SQL</summary>
+            <pre>{{ receipt.sql }}</pre>
+          </details>
+        </details>
+      </section>
+    }
     @if (selectedHistoricalResult()) {
       <ion-text color="medium" data-testid="historical-result-label"
         ><p>
@@ -885,7 +1051,9 @@
          datatug-cli's pkg/httpsource snapshot handling). -->
     <div class="ion-padding-horizontal">
       <ion-text color="medium" data-testid="result-provenance">
-        @if (result.provenance.mode === 'snapshot') {
+        @if (result.publicSqliteReceipt) {
+          Pinned snapshot · queried {{ result.provenance.observedAt }}
+        } @else if (result.provenance.mode === 'snapshot') {
           snapshot · recorded
           {{ formatRecordedDate(result.provenance.observedAt) }} ·
           {{ result.provenance.source }}
@@ -918,7 +1086,7 @@
       }
     </div>
 
-    @if (result.bindingsApplied.length) {
+    @if (result.bindingsApplied.length && !result.publicSqliteReceipt) {
       <!-- REQ:no-hidden-filters — "the results header MUST list the bindings that
            were applied". Origin/originEvidence are shown distinctly per the 2026-09-09
            handoff correction: a client-supplied origin is never presented as

@@ -12,14 +12,31 @@ const MAX_SQL_BYTES = 64 << 10;
 type Cell = string | number | null;
 interface RunMessage {
   readonly sql: string;
+  readonly bindings?: readonly (string | number | null)[];
+  readonly bindingNames?: readonly string[];
+  readonly fixtureSha256?: string;
+  readonly schemaVersion?: string;
+  readonly draftRevision?: number;
+  readonly authorProfile?: boolean;
+}
+interface WorkerExecutionReceipt {
+  readonly executionId: string;
+  readonly sql: string;
+  readonly bindings: readonly (string | number | null)[];
+  readonly bindingNames: readonly string[];
+  readonly fixtureSha256: string;
+  readonly schemaVersion: string;
+  readonly draftRevision: number;
+  readonly schemaFingerprint: string;
 }
 interface ResultMessage {
   readonly columns: readonly string[];
   readonly rows: readonly (readonly Cell[])[];
 }
 
-function hasBindParameter(sql: string): boolean {
+function bindParameterCount(sql: string): number {
   let quote = '';
+  let count = 0;
   for (let i = 0; i < sql.length; i++) {
     const ch = sql[i];
     const next = sql[i + 1];
@@ -48,10 +65,31 @@ function hasBindParameter(sql: string): boolean {
     if (
       ch === '?' ||
       ((ch === ':' || ch === '@' || ch === '$') && /[A-Za-z_]/.test(next ?? ''))
-    )
-      return true;
+    ) {
+      if (ch !== '?') return -1;
+      count++;
+    }
   }
-  return false;
+  return count;
+}
+
+function verifyPinnedInvoiceSchema(db: import('sql.js').Database): string {
+  const result = db.exec('PRAGMA table_info("Invoice")')[0];
+  const actual = new Map(
+    (result?.values ?? []).map(
+      (row) => [String(row[1]), String(row[2]).toUpperCase()] as const,
+    ),
+  );
+  const expected = new Map([
+    ['CustomerId', 'INTEGER'],
+    ['InvoiceId', 'INTEGER'],
+    ['InvoiceDate', 'DATETIME'],
+  ]);
+  for (const [name, type] of expected) {
+    if (actual.get(name) !== type)
+      throw new Error(`Pinned Chinook Invoice schema mismatch at ${name}.`);
+  }
+  return [...expected].map(([name, type]) => `${name}:${type}`).join('|');
 }
 
 export async function readPinnedFixture(): Promise<Uint8Array> {
@@ -97,6 +135,8 @@ export async function readPinnedFixture(): Promise<Uint8Array> {
 export async function executePinnedSql(
   sql: string,
   fixture?: Uint8Array,
+  bindings: readonly (string | number | null)[] = [],
+  authorProfile = false,
 ): Promise<ResultMessage> {
   if (
     typeof sql !== 'string' ||
@@ -115,6 +155,9 @@ export async function executePinnedSql(
   );
   const db = new SQL.Database(fixture ?? (await readPinnedFixture()));
   try {
+    const schemaFingerprint = authorProfile
+      ? verifyPinnedInvoiceSchema(db)
+      : undefined;
     db.run('PRAGMA query_only = ON');
     db.run('PRAGMA trusted_schema = OFF');
     const columns: string[] = [];
@@ -123,10 +166,21 @@ export async function executePinnedSql(
     for (const statement of db.iterateStatements(sql)) {
       if (++statements !== 1)
         throw new Error('Use one read-only SELECT statement.');
-      if (hasBindParameter(statement.getSQL()))
-        throw new Error(
-          'Browser SQLite queries do not accept unbound parameters.',
-        );
+      const statementSql = statement.getSQL();
+      const expectedBindings = bindParameterCount(statementSql);
+      if (
+        expectedBindings < 0 ||
+        expectedBindings !== bindings.length ||
+        bindings.some(
+          (value) =>
+            value !== null &&
+            typeof value !== 'string' &&
+            (typeof value !== 'number' || !Number.isSafeInteger(value)),
+        )
+      )
+        throw new Error('The browser SQLite query bindings are invalid.');
+      if (bindings.length && !statement.bind([...bindings]))
+        throw new Error('The browser SQLite query bindings are invalid.');
       columns.push(...statement.getColumnNames());
       if (!columns.length || columns.length > MAX_COLUMNS)
         throw new Error('The query must return 1 to 40 columns.');
@@ -154,7 +208,11 @@ export async function executePinnedSql(
     }
     if (statements !== 1)
       throw new Error('Use one read-only SELECT statement.');
-    return { columns, rows };
+    return {
+      columns,
+      rows,
+      ...(schemaFingerprint ? { schemaFingerprint } : {}),
+    };
   } finally {
     db.close();
   }
@@ -166,8 +224,35 @@ if (
   typeof Window === 'undefined'
 ) {
   self.onmessage = (event: MessageEvent<RunMessage>) => {
-    void executePinnedSql(event.data.sql)
-      .then((result) => self.postMessage({ ok: true, result }))
+    void executePinnedSql(
+      event.data.sql,
+      undefined,
+      event.data.bindings ?? [],
+      event.data.authorProfile === true,
+    )
+      .then((result) => {
+        if (
+          !event.data.authorProfile ||
+          !event.data.fixtureSha256 ||
+          !event.data.schemaVersion ||
+          !Number.isSafeInteger(event.data.draftRevision) ||
+          !event.data.bindingNames?.length
+        ) {
+          self.postMessage({ ok: true, result });
+          return;
+        }
+        const receipt: WorkerExecutionReceipt = {
+          executionId: crypto.randomUUID(),
+          sql: event.data.sql,
+          bindings: event.data.bindings ?? [],
+          bindingNames: event.data.bindingNames,
+          fixtureSha256: event.data.fixtureSha256,
+          schemaVersion: event.data.schemaVersion,
+          draftRevision: event.data.draftRevision,
+          schemaFingerprint: result.schemaFingerprint ?? '',
+        };
+        self.postMessage({ ok: true, result, receipt });
+      })
       .catch((error: unknown) =>
         self.postMessage({
           ok: false,
