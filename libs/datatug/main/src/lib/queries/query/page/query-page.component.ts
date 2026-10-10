@@ -11,10 +11,13 @@ import {
   SAVED_SCENARIO_PUBLICATION_BLOCKER,
 } from '../../public-data/public-data-scenario';
 import {
+  afterNextRender,
+  ElementRef,
   Injector,
   ChangeDetectorRef,
   Component,
   OnDestroy,
+  ViewChild,
   computed,
   effect,
   inject,
@@ -236,6 +239,7 @@ import { QueryContextSqlService } from '../../query-context-sql.service';
 import { PublicSqliteQueryService } from '../../public-sqlite-query.service';
 import { AuthorSqlPreviewComponent } from './author-sql-preview.component';
 import { AuthorComposeControlsComponent } from './author-compose-controls.component';
+import { readAuthorComposeProfile } from './author-compose-profile';
 import {
   customerIdLookupValue,
   hasVerifiedCustomerIdLineage,
@@ -514,6 +518,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private readonly envService = inject(EnvironmentService);
   private readonly changeDetector = inject(ChangeDetectorRef);
   private authorRunAbort?: AbortController;
+  private authorLookupFocusRevision = 0;
+  private authorModeScopeKey = '';
+  private authorModeDefaultResolved = false;
+  private authorModeExplicit = false;
+  @ViewChild('authorLookupHeading', { read: ElementRef })
+  private authorLookupHeading?: ElementRef<HTMLElement>;
 
   public project?: IProjectContext;
   private navigationDraft?: { ref: IProjectRef; query: IQueryDef };
@@ -773,11 +783,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         !this.publicSqliteRunIsStale(result);
       return (this.displayedRecordset()?.columns ?? []).map((column, index) => {
         const columnId = `result_${index}`;
-        const canLookupCustomer = hasVerifiedCustomerIdLineage(
-          receipt,
-          index,
-          column.name,
-        ) && canOfferLookup;
+        const canLookupCustomer =
+          hasVerifiedCustomerIdLineage(receipt, index, column.name) &&
+          canOfferLookup;
         return {
           colId: columnId,
           field: columnId,
@@ -796,9 +804,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
                     index,
                     column.name,
                   ),
-              suppressKeyboardEvent: (
-                params: SuppressKeyboardEventParams<QueryResultGridRow, string>,
-              ) => this.suppressCustomerLookupKeyboardEvent(params),
+                suppressKeyboardEvent: (
+                  params: SuppressKeyboardEventParams<
+                    QueryResultGridRow,
+                    string
+                  >,
+                ) => this.suppressCustomerLookupKeyboardEvent(params),
               }
             : {}),
         };
@@ -843,7 +854,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       receipt,
       columnIndex,
       columnName,
-      rowIndex === null ? undefined : this.visibleResultRows()[rowIndex]?.[columnIndex],
+      rowIndex === null
+        ? undefined
+        : this.visibleResultRows()[rowIndex]?.[columnIndex],
       current,
     );
     if (!customerId) return value;
@@ -1042,6 +1055,14 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       request: { ...this.queryState.request, text } as ITextQueryRequest,
     };
     if (isAuthorDraft) {
+      this.queryDef.update((definition) =>
+        definition
+          ? {
+              ...definition,
+              request: { ...definition.request, text } as ITextQueryRequest,
+            }
+          : definition,
+      );
       this.authorDraftRevision.update((revision) => revision + 1);
       this.authorPlan.set(undefined);
       this.authorError.set(undefined);
@@ -1050,11 +1071,48 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   public setAuthorMode(mode: 'compose' | 'code'): void {
+    this.authorModeExplicit = true;
     this.authorMode.set(mode);
   }
 
+  private syncAuthorMode(definition?: IQueryDef, resolveDefault = false): void {
+    const nextScopeKey = JSON.stringify({
+      queryId: this.queryState.id,
+      project: this.project?.ref,
+      environment: this.queryState.activeEnv?.id ?? this.envId,
+      securityContextId: this.agentContext.securityContextId(),
+    });
+    if (nextScopeKey !== this.authorModeScopeKey) {
+      ++this.authorLookupFocusRevision;
+      this.authorModeScopeKey = nextScopeKey;
+      this.authorModeDefaultResolved = false;
+      this.authorModeExplicit = false;
+      // A target change starts in the conservative editor until its definition
+      // has arrived and the visual profile can be checked.
+      this.authorMode.set('code');
+    }
+    if (
+      resolveDefault &&
+      definition &&
+      !this.authorModeDefaultResolved &&
+      !this.authorModeExplicit
+    ) {
+      const request = definition.request;
+      this.authorMode.set(
+        definition.connectionId === 'chinook-sqlite' &&
+          request?.queryType === QueryType.DTQL &&
+          readAuthorComposeProfile(request.text ?? '').supported
+          ? 'compose'
+          : 'code',
+      );
+      this.authorModeDefaultResolved = true;
+    }
+  }
+
   public authorComposeTextChanged(text: string): void {
-    this.queryTextChanged(new CustomEvent('ionInput', { detail: { value: text } }));
+    this.queryTextChanged(
+      new CustomEvent('ionInput', { detail: { value: text } }),
+    );
   }
 
   public cancelAuthorRun(): void {
@@ -1102,6 +1160,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     expectedCustomerId: string,
     expectedQueryIdentity: symbol,
   ): Promise<void> {
+    const lookupRequestRevision = ++this.authorLookupFocusRevision;
     const result = this.runResult();
     const receipt = result?.publicSqliteReceipt;
     if (
@@ -1188,8 +1247,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.agentContext.securityContextId() !== sourceSecurityContextId ||
       this.authorDraftRevision() !== sourceDraftRevision ||
       this.authorBindingRevision() !== sourceBindingRevision ||
+      this.authorLookupFocusRevision !== lookupRequestRevision ||
       this.runResult() !== result ||
-      this.runResult()?.publicSqliteReceipt?.executionId !== expectedExecutionId ||
+      this.runResult()?.publicSqliteReceipt?.executionId !==
+        expectedExecutionId ||
       this.currentQueryIdentity() !== expectedQueryIdentity
     ) {
       return;
@@ -1228,8 +1289,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         },
       },
     });
-    void this.router
-      .navigate([], {
+    let navigated = false;
+    try {
+      navigated = await this.router.navigate([], {
         relativeTo: this.route,
         queryParams: {
           id: CUSTOMER_INVOICE_LOOKUP_QUERY_ID,
@@ -1237,12 +1299,37 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           ...(activeEnvironment ? { env: activeEnvironment } : {}),
         },
         queryParamsHandling: 'merge',
-      })
-      .catch(
-        this.errorLogger.logErrorHandler(
-          'Failed to open the Customer invoice lookup query',
-        ),
+      });
+    } catch (error: unknown) {
+      this.errorLogger.logError(
+        error,
+        'Failed to open the Customer invoice lookup query',
       );
+      return;
+    }
+    if (navigated) this.focusAuthorLookupAfterRender();
+  }
+
+  private focusAuthorLookupAfterRender(): void {
+    const focusRevision = ++this.authorLookupFocusRevision;
+    const expectedProject = JSON.stringify(this.project?.ref);
+    const expectedEnvironment = this.queryState.activeEnv?.id;
+    const expectedSecurityContext = this.agentContext.securityContextId();
+    const canFocus = (): boolean =>
+      focusRevision === this.authorLookupFocusRevision &&
+      this.queryId === CUSTOMER_INVOICE_LOOKUP_QUERY_ID &&
+      JSON.stringify(this.project?.ref) === expectedProject &&
+      this.queryState.activeEnv?.id === expectedEnvironment &&
+      this.agentContext.securityContextId() === expectedSecurityContext;
+
+    this.changeDetector.markForCheck();
+    afterNextRender(
+      () => {
+        if (!canFocus()) return;
+        this.authorLookupHeading?.nativeElement.focus();
+      },
+      { injector: this.injector },
+    );
   }
 
   public async previewTugql(): Promise<void> {
@@ -1292,8 +1379,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           );
           if (this.queryDef()?.request.queryType !== QueryType.DTQL) return;
           if (
-            (this.queryDef()?.request as ITextQueryRequest | undefined)?.text !==
-            plan.expandedSource
+            (this.queryDef()?.request as ITextQueryRequest | undefined)
+              ?.text !== plan.expandedSource
           ) {
             this.authorError.set(
               'The relationship completion could not be applied to this draft. Review the JOIN in Code.',
@@ -1344,8 +1431,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       applied?.value.type !== 'integer' ||
       Number(applied.value.value) !== Number(this.authorCustomerId()) ||
       applied.origin !== this.authorCustomerIdOrigin().origin ||
-      applied.originEvidence !==
-        this.authorCustomerIdOrigin().originEvidence ||
+      applied.originEvidence !== this.authorCustomerIdOrigin().originEvidence ||
       (this.authorCustomerIdOrigin().origin === 'selection' &&
         (result.publicSqliteReceipt?.clientReportedBinding?.sourceQueryId !==
           this.authorCustomerIdOrigin().sourceQueryId ||
@@ -1470,6 +1556,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.invalidateHistoryScope();
     this.observedSecurityContextId = securityContextId;
     this.hasObservedSecurityContext = true;
+    this.syncAuthorMode(this.queryDef(), true);
     if (projectId && environment && securityContextId) {
       this.investigationContext.setScope({
         project: projectId,
@@ -1630,6 +1717,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   };
 
   ngOnDestroy(): void {
+    ++this.authorLookupFocusRevision;
     this.authorRunAbort?.abort();
     this.authorRunAbort = undefined;
     ++this.semanticRunLifetime;
@@ -3264,6 +3352,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   private invalidateHistoryScope(): void {
+    ++this.authorLookupFocusRevision;
     ++this.authorPreviewLifetime;
     this.authorPlan.set(undefined);
     this.authorError.set(undefined);

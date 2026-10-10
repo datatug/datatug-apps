@@ -675,6 +675,268 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     expect(component.authorPlan()).toBe(preview);
   });
 
+  it('opens an unsupported joined Author draft in Code without overriding an explicit mode choice', async () => {
+    const source =
+      'from Invoice as i join Customer as c on i.CustomerId = c.CustomerId';
+    const definition: IQueryDef = {
+      ...queryDef,
+      id: 'chinook-customer-invoice-join',
+      connectionId: 'chinook-sqlite',
+      request: { queryType: QueryType.DTQL, text: source },
+    };
+    component = await createComponent({}, definition);
+
+    expect(component.authorMode()).toBe('code');
+    component.setAuthorMode('compose');
+    component.authorComposeTextChanged(`${source}\n-- keep my draft`);
+
+    expect(component.authorMode()).toBe('compose');
+    expect(component.queryBodyText()).toBe(`${source}\n-- keep my draft`);
+  });
+
+  it('opens a supported scan in Compose and keeps explicit Code mode while editing', async () => {
+    const source = [
+      'parameters (',
+      '  @CustomerId integer required',
+      ')',
+      'from Invoice as i',
+      'where i.CustomerId = @CustomerId',
+      'limit 100',
+      'select i.InvoiceId',
+    ].join('\n');
+    const definition: IQueryDef = {
+      ...queryDef,
+      id: 'chinook-invoice-author',
+      connectionId: 'chinook-sqlite',
+      request: { queryType: QueryType.DTQL, text: source },
+    };
+    component = await createComponent({}, definition);
+
+    expect(component.authorMode()).toBe('compose');
+    component.setAuthorMode('code');
+    component.authorComposeTextChanged(source.replace('limit 100', 'limit 90'));
+
+    expect(component.authorMode()).toBe('code');
+    expect(component.queryBodyText()).toBe(
+      source.replace('limit 100', 'limit 90'),
+    );
+  });
+
+  it('waits for an asynchronously loaded definition before choosing the cold mode', async () => {
+    const source = [
+      'parameters (',
+      '  @CustomerId integer required',
+      ')',
+      'from Invoice as i',
+      'where i.CustomerId = @CustomerId',
+      'limit 100',
+      'select i.InvoiceId',
+    ].join('\n');
+    const definition: IQueryDef = {
+      ...queryDef,
+      id: 'chinook-invoice-author',
+      connectionId: 'chinook-sqlite',
+      request: { queryType: QueryType.DTQL, text: source },
+    };
+    const editor = new Subject<IQueryEditorState>();
+    component = await createComponent({}, queryDef, '<p></p>', {
+      editor,
+      project: of(project),
+    });
+    const loadingState: IQueryState = {
+      id: definition.id,
+      queryType: QueryType.DTQL,
+      request: definition.request,
+    };
+    editor.next({
+      ...editorState,
+      currentQueryId: definition.id,
+      activeQueries: [loadingState],
+    });
+
+    expect(component.authorMode()).toBe('code');
+
+    editor.next({
+      ...editorState,
+      currentQueryId: definition.id,
+      activeQueries: [{ ...loadingState, def: definition }],
+    });
+
+    expect(component.authorMode()).toBe('compose');
+  });
+
+  it('reselects the cold mode after a same-query security scope change', async () => {
+    const source = [
+      'parameters (',
+      '  @CustomerId integer required',
+      ')',
+      'from Invoice as i',
+      'where i.CustomerId = @CustomerId',
+      'limit 100',
+      'select i.InvoiceId',
+    ].join('\n');
+    const definition: IQueryDef = {
+      ...queryDef,
+      id: 'chinook-invoice-author',
+      connectionId: 'chinook-sqlite',
+      request: { queryType: QueryType.DTQL, text: source },
+    };
+    component = await createComponent({}, definition);
+    component.setAuthorMode('code');
+    expect(component.authorMode()).toBe('code');
+
+    agentContext.securityContextId.set('sctx-2');
+    await runFixture.whenStable();
+
+    expect(component.authorMode()).toBe('compose');
+  });
+
+  it('cancels a scheduled lookup focus when the destination scope is superseded', async () => {
+    component = await createComponent(
+      {},
+      queryDef,
+      '<h2 #authorLookupHeading tabindex="-1">Invoice lookup</h2>',
+    );
+    component.queryState = {
+      ...component.queryState,
+      id: 'chinook-invoice-author',
+    };
+    runFixture.detectChanges();
+    const heading = runFixture.nativeElement.querySelector('h2');
+    const internals = component as unknown as {
+      focusAuthorLookupAfterRender(): void;
+      invalidateHistoryScope(): void;
+    };
+
+    internals.focusAuthorLookupAfterRender();
+    internals.invalidateHistoryScope();
+    await runFixture.whenStable();
+
+    expect(document.activeElement).not.toBe(heading);
+  });
+
+  it('does not focus the lookup heading when navigation is rejected', async () => {
+    const definition: IQueryDef = {
+      ...queryDef,
+      id: 'chinook-customer-invoice-join',
+      connectionId: 'chinook-sqlite',
+      request: {
+        queryType: QueryType.DTQL,
+        text: 'from Invoice as i join Customer as c on i.CustomerId = c.CustomerId',
+      } as unknown as ITextQueryRequest,
+    };
+    component = await createComponent({}, definition);
+    component.project = {
+      ref: { storeId: 'github.com', projectId: 'demo@buyer@project' },
+    };
+    component.queryState = {
+      ...component.queryState,
+      id: definition.id,
+      queryType: QueryType.DTQL,
+      request: definition.request,
+      authorBindings: { CustomerId: '1' },
+      authorBindingProvenance: {
+        CustomerId: { origin: 'manual', originEvidence: 'client-reported' },
+      },
+    };
+    component.queryDef.set(definition);
+    component.authorCustomerId.set('1');
+    component.runResult.set({
+      recordset: {
+        columns: [{ name: 'CustomerId', type: 'integer' }],
+        rows: [[{ type: 'integer', value: '1' }]],
+      },
+      publicSqliteReceipt: {
+        executionId: 'join-run-1',
+        draftRevision: 0,
+        relationship: {
+          id: 'FK_Invoice_Customer_CustomerId',
+          version: '1',
+          fromSource: 'Invoice',
+          toSource: 'Customer',
+          joinType: 'inner',
+          pairs: [{ fromField: 'CustomerId', toField: 'CustomerId' }],
+        },
+        outputColumns: [
+          {
+            name: 'CustomerId',
+            type: 'integer',
+            lineage: [{ source: 'Invoice', field: 'CustomerId' }],
+          },
+        ],
+        clientReportedBinding: {
+          origin: 'manual',
+          originEvidence: 'client-reported',
+        },
+      },
+      bindingsApplied: [
+        {
+          parameterId: 'CustomerId',
+          value: { type: 'integer', value: '1' },
+          origin: 'manual',
+          originEvidence: 'client-reported',
+        },
+      ],
+    } as never);
+
+    const lookupDefinition: IQueryDef = {
+      ...definition,
+      id: 'chinook-invoice-author',
+      request: { queryType: QueryType.DTQL, text: 'from Invoice as i' },
+    };
+    const queries = TestBed.inject(QueriesService);
+    Object.assign(queries, { getQuery: vi.fn(() => of(lookupDefinition)) });
+    const editor = TestBed.inject(QueryEditorStateService);
+    vi.spyOn(editor, 'openAuthorizedQuery').mockReturnValue({
+      id: lookupDefinition.id,
+      queryType: QueryType.DTQL,
+      request: lookupDefinition.request,
+      def: lookupDefinition,
+    });
+    const router = TestBed.inject(Router);
+    vi.mocked(router.navigate).mockResolvedValue(false);
+    const focusAuthorLookupAfterRender = vi.spyOn(
+      component as unknown as { focusAuthorLookupAfterRender(): void },
+      'focusAuthorLookupAfterRender',
+    );
+    const internals = component as unknown as {
+      currentQueryIdentity(): symbol;
+      openAuthorCustomerLookup(
+        columnIndex: number,
+        columnName: string,
+        rowIndex: number,
+        executionId: string,
+        customerId: string,
+        identity: symbol,
+      ): Promise<void>;
+    };
+
+    await internals.openAuthorCustomerLookup(
+      0,
+      'CustomerId',
+      0,
+      'join-run-1',
+      '1',
+      internals.currentQueryIdentity(),
+    );
+
+    expect(router.navigate).toHaveBeenCalledOnce();
+    expect(focusAuthorLookupAfterRender).not.toHaveBeenCalled();
+
+    vi.mocked(router.navigate).mockRejectedValue(new Error('route rejected'));
+    await internals.openAuthorCustomerLookup(
+      0,
+      'CustomerId',
+      0,
+      'join-run-1',
+      '1',
+      internals.currentQueryIdentity(),
+    );
+
+    expect(router.navigate).toHaveBeenCalledTimes(2);
+    expect(focusAuthorLookupAfterRender).not.toHaveBeenCalled();
+  });
+
   it('marks a committed result previous when same-value selection provenance is changed to manual', async () => {
     component = await createComponent();
     component.authorCustomerId.set('1');
@@ -813,6 +1075,10 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     Object.assign(TestBed.inject(QueriesService), { getRevision });
     const editor = TestBed.inject(QueryEditorStateService);
     const openAuthorizedQuery = vi.spyOn(editor, 'openAuthorizedQuery');
+    const focusAuthorLookupAfterRender = vi.spyOn(
+      component as unknown as { focusAuthorLookupAfterRender(): void },
+      'focusAuthorLookupAfterRender',
+    );
     const internals = component as unknown as {
       currentQueryIdentity(): symbol;
       openAuthorCustomerLookup(
@@ -839,6 +1105,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     expect(component.runResult()).toBe(result);
     expect(component.authorError()).toContain('lookup could not be opened');
     expect(openAuthorizedQuery).not.toHaveBeenCalled();
+    expect(focusAuthorLookupAfterRender).not.toHaveBeenCalled();
   });
 
   async function createComponent(

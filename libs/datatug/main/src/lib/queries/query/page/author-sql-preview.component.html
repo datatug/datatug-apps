@@ -9,12 +9,83 @@
   <div class="author-sql-scroll" tabindex="0" aria-label="Compiled SQLite SQL">
     <pre><code>{{ plan().sql }}</code></pre>
   </div>
-  @if (plan().relationship; as relationship) {
-    <p class="author-preview-relationship" data-testid="author-preview-relationship">
-      Schema relationship · {{ relationship.fromSource }}.CustomerId →
-      {{ relationship.toSource }}.CustomerId · {{ relationship.id }}
-    </p>
-  }
+  <details
+    class="author-source-inspector"
+    data-testid="author-source-inspector"
+  >
+    <summary>Sources and relationships</summary>
+    <div class="author-source-content" data-testid="author-source-metadata">
+      <dl class="author-source-facts">
+        <div>
+          <dt>Source</dt>
+          <dd>{{ plan().sourceId }}</dd>
+        </div>
+        <div>
+          <dt>Pinned SHA</dt>
+          <dd>
+            <code>{{ plan().fixtureSha256 }}</code>
+          </dd>
+        </div>
+      </dl>
+      @if (plan().relationship; as relationship) {
+        <section
+          class="author-source-section"
+          aria-label="Prepared relationship"
+        >
+          <h4>Declared relationship</h4>
+          <p>
+            {{ relationship.fromSource }} → {{ relationship.toSource }} ·
+            {{ relationship.joinType }} · {{ relationship.id }} v{{
+              relationship.version
+            }}
+          </p>
+          <ul>
+            @for (pair of relationship.pairs; track $index) {
+              <li>
+                <code>{{ relationship.fromSource }}.{{ pair.fromField }}</code>
+                → <code>{{ relationship.toSource }}.{{ pair.toField }}</code>
+              </li>
+            }
+          </ul>
+        </section>
+      }
+      @if (plan().outputColumns?.length) {
+        <section
+          class="author-source-section"
+          aria-label="Prepared output lineage"
+        >
+          <h4>Output columns · {{ plan().outputColumns?.length }}</h4>
+          <ol class="author-output-columns">
+            @for (column of plan().outputColumns ?? []; track $index) {
+              <li>
+                <code>{{ column.name }}</code>
+                <span>{{ column.type }}</span>
+                <span class="author-output-lineage">
+                  @for (
+                    item of column.lineage;
+                    track $index;
+                    let last = $last
+                  ) {
+                    <code>{{ item.source }}.{{ item.field }}</code>
+                    @if (!last) {
+                      <span>, </span>
+                    }
+                  }
+                </span>
+              </li>
+            }
+          </ol>
+        </section>
+      } @else {
+        <p class="author-source-unavailable">
+          Column lineage is unavailable for this preview.
+        </p>
+      }
+      <p class="author-source-note">
+        Prepared metadata · not worker-verified or executed.
+      </p>
+    </div>
+  </details>
   <div class="author-binding-list" aria-label="SQL bindings">
     @for (
       bindingName of plan().bindingNames;

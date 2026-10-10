@@ -2,8 +2,7 @@ import { expect, test } from '@playwright/test';
 import { installFakeGithub } from './helpers/fake-github';
 
 const DEMO_REPO = process.env['DATATUG_E2E_GITHUB_FAKE'];
-const JOIN_DEMO_REPO =
-  process.env['DATATUG_E2E_GITHUB_JOIN'] ?? DEMO_REPO;
+const JOIN_DEMO_REPO = process.env['DATATUG_E2E_GITHUB_JOIN'] ?? DEMO_REPO;
 const AUTHOR_URL =
   '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-invoice-author?id=chinook-invoice-author&editor=text&env=local';
 const COUNT_AUTHOR_URL =
@@ -20,7 +19,10 @@ test.beforeEach(async ({ context }, testInfo) => {
       ? JOIN_DEMO_REPO
       : DEMO_REPO;
     await installFakeGithub(context, [
-      { fullName: 'datatug/datatug-demo-project', dir: repository ?? DEMO_REPO },
+      {
+        fullName: 'datatug/datatug-demo-project',
+        dir: repository ?? DEMO_REPO,
+      },
     ]);
   }
 });
@@ -33,7 +35,9 @@ test('Compose HAVING edits replace the shared draft before Preview and worker Ru
   const author = page.getByTestId('tugql-author');
   await expect(author).toBeVisible({ timeout: 20_000 });
 
-  const threshold = author.getByRole('spinbutton', { name: 'HAVING threshold' });
+  const threshold = author.getByRole('spinbutton', {
+    name: 'HAVING threshold',
+  });
   await threshold.fill('8');
   await threshold.press('Tab');
   await author.getByTestId('author-code-tab').click();
@@ -76,7 +80,10 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
   );
   const author = page.getByTestId('tugql-author');
   await expect(author).toBeVisible({ timeout: 20_000 });
-  await author.getByRole('button', { name: 'Open Code' }).click();
+  await expect(author.getByTestId('author-code-tab')).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
   const editor = author.getByTestId('query-body-text').locator('textarea');
   const original = await editor.inputValue();
   const missingOn = original.replace(
@@ -91,7 +98,23 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
   await expect(preview).toContainText('Preview · Not executed');
   await expect(editor).toHaveValue(/on i\.CustomerId = c\.CustomerId/u);
   await expect(editor).toHaveValue(/-- preserve this relationship note/u);
-  await expect(preview).toContainText('Schema relationship');
+  const sourceInspector = preview.getByTestId('author-source-inspector');
+  await expect(sourceInspector.locator('summary')).toHaveText(
+    'Sources and relationships',
+  );
+  await expect(sourceInspector).not.toHaveAttribute('open', '');
+  await sourceInspector.locator('summary').click();
+  const preparedMetadata = preview.getByTestId('author-source-metadata');
+  await expect(preparedMetadata).toContainText('chinook-sqlite');
+  await expect(preparedMetadata).toContainText(
+    'FK_Invoice_Customer_CustomerId',
+  );
+  await expect(preparedMetadata).toContainText('Invoice.CustomerId');
+  await expect(preparedMetadata).toContainText('Customer.CustomerId');
+  await expect(preparedMetadata).toContainText('i.CustomerId');
+  await expect(preparedMetadata).toContainText(
+    'Prepared metadata · not worker-verified or executed.',
+  );
   await expect(preview.locator('pre')).toContainText(
     'INNER JOIN "Customer" AS "c" ON "i"."CustomerId" = "c"."CustomerId"',
   );
@@ -166,7 +189,10 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
   await expect(page).toHaveURL(/id=chinook-invoice-author/u);
   const lookupAuthor = page.getByTestId('tugql-author');
   await expect(lookupAuthor).toBeVisible();
-  await expect(lookupAuthor.getByTestId('author-customer-id').locator('input')).toHaveValue('1');
+  await expect(lookupAuthor.locator('ion-card-title')).toBeFocused();
+  await expect(
+    lookupAuthor.getByTestId('author-customer-id').locator('input'),
+  ).toHaveValue('1');
   await expect(page.getByTestId('author-results-empty')).toBeVisible();
   await expect(lookupAuthor.getByTestId('author-binding-origin')).toContainText(
     'selection · client-reported',
@@ -222,6 +248,14 @@ test('cold saved CustomerId count supports parameterized HAVING thresholds in th
   await expect(preview).toContainText('HAVING threshold · integer literal');
   await expect(preview).toContainText('?2');
   await expect(preview).toContainText('7');
+  const sourceInspector = preview.getByTestId('author-source-inspector');
+  await sourceInspector.locator('summary').click();
+  const preparedMetadata = preview.getByTestId('author-source-metadata');
+  await expect(preparedMetadata).toContainText('chinook-sqlite');
+  await expect(preparedMetadata).toContainText(
+    'Column lineage is unavailable for this preview.',
+  );
+  await expect(preparedMetadata).not.toContainText('Declared relationship');
   await expect(author.getByTestId('author-run')).toHaveAttribute(
     'disabled',
     '',
