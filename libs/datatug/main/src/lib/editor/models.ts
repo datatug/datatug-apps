@@ -45,6 +45,8 @@ export interface IQueryState extends IQueryStateDto {
   readonly federation?: IQueryDef['federation'];
   /** Draft project source binding; empty string explicitly clears one. */
   readonly connectionId?: string;
+  /** Visible TugQL author bindings kept with the shared unsaved editor draft. */
+  readonly authorBindings?: Readonly<Record<string, string>>;
   readonly response?: IExecuteResponse;
   readonly targetDbModel?: IProjDbModelBrief;
   readonly activeEnv?: IQueryEnvState;

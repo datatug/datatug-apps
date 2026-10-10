@@ -585,6 +585,63 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     },
   );
 
+  it('discards a deferred Author preview after the user switches query identity', async () => {
+    const authorDefinition: IQueryDef = {
+      ...queryDef,
+      id: 'chinook-invoice-author',
+      connectionId: 'chinook-sqlite',
+      request: {
+        queryType: QueryType.DTQL,
+        text: 'from Invoice\nlimit 10\nselect InvoiceId',
+      },
+    };
+    component = await createComponent({}, authorDefinition);
+    component.project = {
+      ref: {
+        storeId: 'github.com',
+        projectId: 'demo@buyer@project',
+        projectApi: 'cloud',
+        branch: 'main',
+      },
+    };
+    component.queryState = {
+      ...component.queryState,
+      id: authorDefinition.id,
+      connectionId: authorDefinition.connectionId,
+      queryType: QueryType.DTQL,
+      request: authorDefinition.request,
+    };
+    component.queryDef.set(authorDefinition);
+    component.authorCustomerId.set('1');
+    component.authorDraftRevision.set(1);
+    let finishPreview!: (
+      plan: Awaited<ReturnType<PublicSqliteQueryService['prepareTugQL']>>,
+    ) => void;
+    vi.spyOn(
+      TestBed.inject(PublicSqliteQueryService),
+      'prepareTugQL',
+    ).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishPreview = resolve;
+        }),
+    );
+    const pending = component.previewTugql();
+    component.queryState = { ...component.queryState, id: 'another-query' };
+    component.queryDef.set({ ...authorDefinition, id: 'another-query' });
+    finishPreview({
+      sql: 'SELECT "InvoiceId" FROM "Invoice" LIMIT 10',
+      bindings: Object.freeze([1]),
+      bindingNames: Object.freeze(['CustomerId']),
+      sourceId: 'chinook-sqlite',
+      fixtureSha256: 'fixture',
+      schemaVersion: 'schema',
+      draftRevision: 1,
+    });
+    await pending;
+    expect(component.authorPlan()).toBeUndefined();
+  });
+
   async function createComponent(
     historyState: Record<string, unknown> = {},
     definition: IQueryDef = queryDef,
@@ -2455,7 +2512,9 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
         );
         const template = html
           .split('<ion-content color="light">')[1]
-          .split('  <ion-card>\n    <ion-item>\n      <ion-input')[0];
+          .split(
+            '  @if (!isTugqlAuthorJourney()) {\n    <ion-card>\n      <ion-item>\n        <ion-input',
+          )[0];
         native.http.mockClear();
         component = await createComponent({}, definition, template);
         Object.assign(component.savedPlanReview, {

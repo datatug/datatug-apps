@@ -1,6 +1,6 @@
 import initSqlJs from 'sql.js';
 import { TestBed } from '@angular/core/testing';
-import { NEVER } from 'rxjs';
+import { NEVER, of } from 'rxjs';
 import { QueryType } from '../models/definition/query-def';
 import { GithubProjectReaderService } from '../services/repo/github/github-project-reader.service';
 import { ProjectQueryApiService } from '../services/project/project-query-api.service';
@@ -87,6 +87,118 @@ describe('public browser SQLite admission', () => {
   });
 });
 
+it('executes prepared integer bindings through the same SQLite worker path', async () => {
+  const SQL = await initSqlJs();
+  const db = new SQL.Database();
+  db.run('CREATE TABLE Invoice (InvoiceId INTEGER, CustomerId INTEGER)');
+  db.run('INSERT INTO Invoice VALUES (101, 1), (202, 2), (303, 2)');
+  const fixture = db.export();
+  db.close();
+
+  await expect(
+    executePinnedSql(
+      'SELECT InvoiceId FROM Invoice WHERE CustomerId = ? LIMIT 100',
+      fixture,
+      [2],
+    ),
+  ).resolves.toEqual({ columns: ['InvoiceId'], rows: [[202], [303]] });
+  await expect(
+    executePinnedSql(
+      'SELECT InvoiceId FROM Invoice WHERE CustomerId = ? LIMIT 100',
+      fixture,
+    ),
+  ).rejects.toThrow('bindings are invalid');
+  await expect(
+    executePinnedSql(
+      'SELECT InvoiceId FROM Invoice WHERE CustomerId = ? LIMIT 100',
+      fixture,
+      [2, 3],
+    ),
+  ).rejects.toThrow('bindings are invalid');
+
+  const groupedSql =
+    'SELECT CustomerId, COUNT(*) AS InvoiceCount FROM Invoice WHERE CustomerId = ? GROUP BY CustomerId HAVING COUNT(*) >= ? LIMIT 10';
+  await expect(
+    executePinnedSql(groupedSql, fixture, [2, 2]),
+  ).resolves.toEqual({ columns: ['CustomerId', 'InvoiceCount'], rows: [[2, 2]] });
+  await expect(
+    executePinnedSql(groupedSql, fixture, [2, 3]),
+  ).resolves.toEqual({ columns: ['CustomerId', 'InvoiceCount'], rows: [] });
+});
+
+it('cancels a started Author worker and terminates it promptly', async () => {
+  const workerInstances: Array<{
+    onmessage: ((event: MessageEvent) => void) | null;
+    onerror: (() => void) | null;
+    posted: boolean;
+    terminated: boolean;
+  }> = [];
+  class PendingWorker {
+    public onmessage: ((event: MessageEvent) => void) | null = null;
+    public onerror: (() => void) | null = null;
+    public posted = false;
+    public terminated = false;
+    public postMessage(): void {
+      this.posted = true;
+    }
+    public terminate(): void {
+      this.terminated = true;
+    }
+    constructor() {
+      workerInstances.push(this);
+    }
+  }
+  TestBed.configureTestingModule({
+    providers: [
+      PublicSqliteQueryService,
+      {
+        provide: GithubProjectReaderService,
+        useValue: { getRawJson: () => of(catalog) },
+      },
+      {
+        provide: ProjectQueryApiService,
+        useValue: { connectionCatalog: () => of(catalog) },
+      },
+    ],
+  });
+  vi.stubGlobal('Worker', PendingWorker);
+  try {
+    const controller = new AbortController();
+    const service = TestBed.inject(PublicSqliteQueryService);
+    const plan = Object.freeze({
+      sql: 'SELECT "i"."InvoiceId" FROM "Invoice" AS "i" WHERE "i"."CustomerId" = ? LIMIT 10',
+      bindings: Object.freeze([1]),
+      bindingNames: Object.freeze(['CustomerId']),
+      sourceId: 'chinook-sqlite' as const,
+      fixtureSha256:
+        '7651ba378ac2fcd0dfc3c66fb101f7a7eed3ba39a612ec642b96e20702061f15',
+      schemaVersion: 'fixture:typed-invoice-v1',
+      draftRevision: 1,
+    });
+    const pending = service['executePlan'](
+      {
+        storeId: 'github.com',
+        projectId: 'demo@buyer@project',
+        projectApi: 'cloud',
+        branch: 'main',
+      },
+      {
+        id: 'chinook-invoice-author',
+        connectionId: 'chinook-sqlite',
+        request: { queryType: QueryType.DTQL, text: '' },
+      },
+      plan,
+      controller.signal,
+    );
+    await vi.waitFor(() => expect(workerInstances.at(-1)?.posted).toBe(true));
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(workerInstances.at(-1)?.terminated).toBe(true);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
 it('bounds a stalled authenticated catalogue read before launching a worker', async () => {
   TestBed.configureTestingModule({
     providers: [
@@ -163,7 +275,7 @@ describe('bounded SQLite worker', () => {
     );
     await expect(
       executePinnedSql('SELECT Name FROM Genre WHERE GenreId = ?', fixture),
-    ).rejects.toThrow('unbound parameters');
+    ).rejects.toThrow('bindings are invalid');
     await expect(
       executePinnedSql(
         'WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<1001) SELECT x FROM n',
