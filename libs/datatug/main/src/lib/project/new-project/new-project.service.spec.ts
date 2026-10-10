@@ -12,6 +12,7 @@ describe('NewProjectService', () => {
   const navigate = vi.fn(() => Promise.resolve(true));
 
   beforeEach(() => {
+    navigate.mockClear();
     TestBed.configureTestingModule({
       providers: [
         NewProjectService,
@@ -36,6 +37,21 @@ describe('NewProjectService', () => {
     service.navigateToNewProjectPage('github', '/store/github.com?code=secret');
     expect(navigate).toHaveBeenCalledWith(['/new-project'], {
       queryParams: { store: 'github', returnUrl: '/store/github.com' },
+    });
+  });
+
+  it('carries consumed Business checkout context into project creation as request intent', () => {
+    service.navigateToNewProjectPage('github', '/', {
+      billingIntent: 'space_business',
+      spaceID: 'space-a',
+    });
+    expect(navigate).toHaveBeenCalledWith(['/new-project'], {
+      queryParams: {
+        store: 'github',
+        billingIntent: 'space_business',
+        spaceID: 'space-a',
+        returnUrl: '/',
+      },
     });
   });
 

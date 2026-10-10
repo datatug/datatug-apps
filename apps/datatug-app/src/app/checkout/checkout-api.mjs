@@ -121,10 +121,18 @@ function validSpaceID(spaceID) {
 }
 
 export function validSpaceServiceQuote(quote, selection, now = Date.now()) {
+  const mode = selection?.mode ?? 'test';
   const plan = servicePlans[selection?.planID];
   const amount = quote?.amount;
   const discount = quote?.appliedDiscount;
   const expiresAt = Date.parse(quote?.expiresAtUTC ?? '');
+  const validDiscount =
+    discount?.kind === 'none'
+      ? discount.percentOff === 0 && amount?.due === amount?.list
+      : discount?.kind === 'launch' &&
+        mode === 'live' &&
+        discount.percentOff === 30 &&
+        amount?.due === Math.round(amount?.list * 0.7);
   if (
     !plan ||
     !validSpaceID(selection?.spaceID) ||
@@ -132,19 +140,20 @@ export function validSpaceServiceQuote(quote, selection, now = Date.now()) {
     quote.spaceID !== selection.spaceID ||
     quote.serviceID !== 'datatug' ||
     quote.planID !== selection.planID ||
-    quote.mode !== 'test' ||
+    (mode !== 'test' && mode !== 'live') ||
+    quote.mode !== mode ||
     quote.accountKind !== 'organisation' ||
     !Number.isSafeInteger(amount?.list) ||
     amount.list <= 0 ||
     amount?.currency !== 'eur' ||
     !Number.isSafeInteger(amount.due) ||
-    amount.due !== amount.list ||
+    amount.due <= 0 ||
+    amount.due > amount.list ||
     amount.taxIncluded !== true ||
     quote.quantity !== 1 ||
     quote.period?.interval !== plan.interval ||
     quote.period?.count !== 1 ||
-    discount?.kind !== 'none' ||
-    discount.percentOff !== 0 ||
+    !validDiscount ||
     typeof quote.claimed !== 'boolean' ||
     !Number.isFinite(expiresAt) ||
     (!quote.claimed && expiresAt <= now)
@@ -158,6 +167,7 @@ export function validSpaceServiceQuote(quote, selection, now = Date.now()) {
 
 export function validSpaceServiceSession(session, selection) {
   const id = session?.sessionID;
+  const mode = selection?.mode ?? 'test';
   return (
     !!selection &&
     validSpaceID(selection.spaceID) &&
@@ -168,11 +178,16 @@ export function validSpaceServiceSession(session, selection) {
     session.spaceID === selection.spaceID &&
     session.serviceID === 'datatug' &&
     session.planID === selection.planID &&
-    session.mode === 'test' &&
-    /^cs_test_[A-Za-z0-9_]+$/.test(id ?? '') &&
+    (mode === 'test' || mode === 'live') &&
+    session.mode === mode &&
+    (mode === 'test'
+      ? /^cs_test_[A-Za-z0-9_]+$/.test(id ?? '')
+      : /^cs_live_[A-Za-z0-9_]+$/.test(id ?? '')) &&
     typeof session.clientSecret === 'string' &&
     session.clientSecret.startsWith(`${id}_secret_`) &&
-    /^pk_test_[A-Za-z0-9_]+$/.test(session.publishableKey ?? '') &&
+    (mode === 'test'
+      ? /^pk_test_[A-Za-z0-9_]+$/.test(session.publishableKey ?? '')
+      : /^pk_live_[A-Za-z0-9_]+$/.test(session.publishableKey ?? '')) &&
     (session.providerAmountTotal === null ||
       (Number.isSafeInteger(session.providerAmountTotal) &&
         session.providerAmountTotal === selection.quotedDueMinor))
@@ -180,16 +195,24 @@ export function validSpaceServiceSession(session, selection) {
 }
 
 export function validSpaceServiceStatus(status, selection) {
+  const mode = selection?.mode ?? 'test';
+  const validAccessStatus =
+    status?.accessStatus === 'pending_reconciliation' ||
+    (mode === 'live' &&
+      (status?.accessStatus === 'active' || status?.accessStatus === 'ended'));
   return (
     !!selection &&
     validSpaceID(selection.spaceID) &&
+    (mode === 'test' || mode === 'live') &&
     status?.spaceID === selection.spaceID &&
     status.serviceID === 'datatug' &&
     status.sessionID === selection.sessionID &&
-    status.mode === 'test' &&
-    /^cs_test_[A-Za-z0-9_]+$/.test(status.sessionID ?? '') &&
+    status.mode === mode &&
+    (mode === 'test'
+      ? /^cs_test_[A-Za-z0-9_]+$/.test(status.sessionID ?? '')
+      : /^cs_live_[A-Za-z0-9_]+$/.test(status.sessionID ?? '')) &&
     ['open', 'complete', 'expired'].includes(status.status) &&
-    status.accessStatus === 'pending_reconciliation' &&
+    validAccessStatus &&
     (status.providerAmountTotal === null ||
       (Number.isSafeInteger(status.providerAmountTotal) &&
         status.providerAmountTotal >= 0)) &&

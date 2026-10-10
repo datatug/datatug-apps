@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
+import type { BusinessGithubContinuation } from './business-github-continuation';
 
 @Injectable()
 export class NewProjectService {
@@ -10,12 +11,21 @@ export class NewProjectService {
   public navigateToNewProjectPage(
     store?: 'github',
     returnUrl = this.router.url,
+    continuation?: BusinessGithubContinuation,
   ): void {
     const safeReturnUrl = safeNewProjectReturnUrl(returnUrl);
     void this.router
       .navigate(['/new-project'], {
         queryParams: {
           ...(store ? { store } : {}),
+          // These values are request intent only. The creation endpoint still
+          // verifies current Business authority for this actor and Space.
+          ...(continuation
+            ? {
+                billingIntent: 'space_business',
+                spaceID: continuation.spaceID,
+              }
+            : {}),
           returnUrl: safeReturnUrl,
         },
       })

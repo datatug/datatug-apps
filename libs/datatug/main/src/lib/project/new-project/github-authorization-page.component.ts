@@ -11,6 +11,10 @@ import {
   IonButton,
 } from '@ionic/angular';
 import { GithubConnectionService } from '../../services/repo/github/github-connection.service';
+import {
+  clearBusinessGithubContinuation,
+  takeBusinessGithubContinuation,
+} from './business-github-continuation';
 import { NewProjectService } from './new-project.service';
 
 declare global {
@@ -55,6 +59,7 @@ export class GithubAuthorizationPageComponent {
   private readonly authChanged = new Subject<void>();
 
   constructor() {
+    this.destroyRef.onDestroy(clearBusinessGithubContinuation);
     const authorization = window.__datatugTakeGitHubAuthorization?.();
     delete window.__datatugTakeGitHubAuthorization;
     if (!authorization) {
@@ -114,8 +119,18 @@ export class GithubAuthorizationPageComponent {
       );
   }
   newProject(): void {
+    if (!this.connected() || !this.boundUserID) return;
     // The callback handoff is one-shot; cancel should return to projects,
     // not revisit the already-consumed callback URL.
-    this.newProjectService.navigateToNewProjectPage('github', '/');
+    const continuation = takeBusinessGithubContinuation(this.boundUserID);
+    if (continuation) {
+      this.newProjectService.navigateToNewProjectPage(
+        'github',
+        '/',
+        continuation,
+      );
+    } else {
+      this.newProjectService.navigateToNewProjectPage('github', '/');
+    }
   }
 }

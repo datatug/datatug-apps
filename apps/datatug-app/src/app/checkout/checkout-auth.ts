@@ -20,7 +20,7 @@ export function appCheckoutAuth(
   const proPath =
     /^\/(?:subscribe\?plan=pro&period=(?:monthly|yearly)(?:&checkout=test)?|pricing\/return\?mode=(?:test|live)&session_id=cs_(?:test_|live_)?[A-Za-z0-9_]+)$/;
   const businessPath =
-    /^\/(?:business\/checkout\?planID=datatug-business-usage-(?:monthly|annual)(?:&spaceID=[A-Za-z0-9_-]{1,128})?|business\/checkout\/return\?spaceID=[A-Za-z0-9_-]{1,128}&session_id=cs_test_[A-Za-z0-9_]+)$/;
+    /^\/(?:business\/checkout\?planID=datatug-business-usage-(?:monthly|annual)(?:&checkout=test)?(?:&spaceID=[A-Za-z0-9_-]{1,128})?|business\/checkout\/return\?spaceID=[A-Za-z0-9_-]{1,128}&mode=(?:test&session_id=cs_test_[A-Za-z0-9_]+|live&session_id=cs_live_[A-Za-z0-9_]+))$/;
   if (!proPath.test(returnPath) && !businessPath.test(returnPath)) {
     throw new Error('Invalid checkout continuation');
   }

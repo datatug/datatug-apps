@@ -30,6 +30,8 @@ import {
 } from './checkout-flow.mjs';
 import {
   DATATUG_BUSINESS_CHECKOUT_API_ORIGIN,
+  DATATUG_BUSINESS_CHECKOUT_LIVE_API_ORIGIN,
+  DATATUG_BUSINESS_CHECKOUT_LIVE_ENABLED,
   isTrustedBusinessCheckoutOrigin,
 } from './business-checkout-config';
 import { manageableBusinessSpaces } from './business-checkout-spaces';
@@ -38,6 +40,7 @@ type BusinessPlanID =
   | 'datatug-business-usage-monthly'
   | 'datatug-business-usage-annual';
 type BusinessPeriod = 'monthly' | 'annual';
+type CheckoutMode = 'test' | 'live';
 
 const planIDForPeriod = (period: BusinessPeriod): BusinessPlanID =>
   period === 'annual'
@@ -50,8 +53,12 @@ const periodForPlanID = (planID: string | null): BusinessPeriod | undefined => {
 };
 const validSpaceID = (value: string | null): value is string =>
   !!value && /^[A-Za-z0-9_-]{1,128}$/.test(value);
-const validSessionID = (value: string | null): value is string =>
-  !!value && /^cs_test_[A-Za-z0-9_]+$/.test(value);
+const modeForSessionID = (value: string | null): CheckoutMode | undefined =>
+  value && /^cs_test_[A-Za-z0-9_]+$/.test(value)
+    ? 'test'
+    : value && /^cs_live_[A-Za-z0-9_]+$/.test(value)
+      ? 'live'
+      : undefined;
 
 @Component({
   selector: 'datatug-business-checkout-page',
@@ -75,6 +82,10 @@ export class BusinessCheckoutPageComponent {
   private readonly configuredApiOrigin = inject(
     DATATUG_BUSINESS_CHECKOUT_API_ORIGIN,
   );
+  private readonly configuredLiveApiOrigin = inject(
+    DATATUG_BUSINESS_CHECKOUT_LIVE_API_ORIGIN,
+  );
+  private readonly liveEnabled = inject(DATATUG_BUSINESS_CHECKOUT_LIVE_ENABLED);
   private readonly userState = toSignal(this.userService.userState);
   private readonly authState = toSignal(this.auth.authState);
   private readonly routeSubscription: Subscription;
@@ -86,9 +97,8 @@ export class BusinessCheckoutPageComponent {
 
   protected readonly returning =
     this.route.snapshot.data['businessCheckoutReturn'] === true;
-  protected readonly enabled = signal(
-    isTrustedBusinessCheckoutOrigin(this.configuredApiOrigin),
-  );
+  protected readonly mode = signal<CheckoutMode>('live');
+  protected readonly enabled = signal(false);
   protected readonly selectedSpaceID = signal('');
   protected readonly period = signal<BusinessPeriod>('monthly');
   protected readonly accepted = signal(false);
@@ -117,7 +127,8 @@ export class BusinessCheckoutPageComponent {
   protected readonly apiAvailable = computed(
     () =>
       this.enabled() &&
-      isTrustedBusinessCheckoutOrigin(this.configuredApiOrigin),
+      !!this.apiOriginFor(this.mode()) &&
+      (this.mode() === 'test' || this.liveEnabled || this.returning),
   );
   @ViewChild('embedded', { static: true })
   private embedded?: ElementRef<HTMLElement>;
@@ -132,7 +143,7 @@ export class BusinessCheckoutPageComponent {
       const stage = this.state().stage;
       if (this.returning || !userID || !space || stage !== 'select-space')
         return;
-      const key = `${userID}:${space.id}:${planIDForPeriod(this.period())}`;
+      const key = `${userID}:${space.id}:${planIDForPeriod(this.period())}:${this.mode()}`;
       if (this.lastReadySelection === key) return;
       this.lastReadySelection = key;
       const flow = this.flow;
@@ -145,14 +156,6 @@ export class BusinessCheckoutPageComponent {
     this.accepted.set(false);
     this.authReturnTo.set(undefined);
     this.lastReadySelection = '';
-    if (!isTrustedBusinessCheckoutOrigin(this.configuredApiOrigin)) {
-      this.state.set({
-        stage: 'unavailable',
-        message: 'DataTug Business TEST checkout is not configured yet.',
-      });
-    } else {
-      this.state.set({ stage: 'loading' });
-    }
     const spaceParam = params.get('spaceID');
     const rawPlanID = params.get('planID');
     const requestedPeriod = periodForPlanID(rawPlanID);
@@ -160,35 +163,84 @@ export class BusinessCheckoutPageComponent {
       !this.returning && rawPlanID !== null && !requestedPeriod;
     const period = this.returning ? undefined : (requestedPeriod ?? 'monthly');
     const spaceID = validSpaceID(spaceParam) ? spaceParam : '';
+    const sessionID = this.returning ? params.get('session_id') : null;
+    const sessionMode = this.returning
+      ? modeForSessionID(sessionID)
+      : undefined;
+    const rawReturnMode = this.returning ? params.get('mode') : null;
+    const returnMode =
+      rawReturnMode === 'test' || rawReturnMode === 'live'
+        ? rawReturnMode
+        : undefined;
+    const checkoutValues = params.getAll('checkout');
+    const invalidModeSelector = this.returning
+      ? params.has('checkout') ||
+        params.getAll('mode').length !== 1 ||
+        !returnMode ||
+        returnMode !== sessionMode
+      : checkoutValues.length > 1 ||
+        (checkoutValues.length === 1 && checkoutValues[0] !== 'test') ||
+        params.has('mode');
+    const mode: CheckoutMode = this.returning
+      ? (returnMode ?? 'live')
+      : checkoutValues[0] === 'test'
+        ? 'test'
+        : 'live';
+    this.mode.set(mode);
+    this.enabled.set(this.returning || mode === 'test' || this.liveEnabled);
+    this.state.set({ stage: 'loading' });
     this.selectedSpaceID.set(spaceID);
     if (period) this.period.set(period);
 
+    if (invalidModeSelector) {
+      this.state.set({
+        stage: 'unavailable',
+        message: this.returning
+          ? 'This Business checkout return does not identify a valid TEST or LIVE session.'
+          : 'The checkout rail selector is invalid. Use checkout=test for TEST or omit it for LIVE.',
+      });
+      return;
+    }
+
+    if (!this.returning && mode === 'live' && !this.liveEnabled) {
+      this.state.set({
+        stage: 'unavailable',
+        message:
+          'LIVE Business checkout is not enabled yet. Choose TEST to use the isolated test payment flow.',
+      });
+      return;
+    }
+
     const allowed = this.returning
-      ? ['spaceID', 'session_id']
-      : ['spaceID', 'planID'];
+      ? ['spaceID', 'session_id', 'mode']
+      : ['spaceID', 'planID', 'checkout'];
     const extras = params.keys.some(
       (key) => !allowed.includes(key) || params.getAll(key).length !== 1,
     );
-    const canonicalParams = this.returning
+    const canonicalParams: Record<string, string> = this.returning
       ? {
           ...(spaceID ? { spaceID } : {}),
-          ...(validSessionID(params.get('session_id'))
-            ? { session_id: params.get('session_id') ?? '' }
-            : {}),
+          ...(returnMode && sessionID ? { session_id: sessionID } : {}),
+          ...(returnMode ? { mode: returnMode } : {}),
         }
       : {
           planID: invalidPlan
             ? (rawPlanID ?? '')
             : planIDForPeriod(this.period()),
+          ...(mode === 'test' ? { checkout: 'test' } : {}),
           ...(spaceID ? { spaceID } : {}),
         };
     const currentParams = Object.fromEntries(
       params.keys.map((key) => [key, params.get(key)]),
     );
-    if (
-      extras ||
-      JSON.stringify(currentParams) !== JSON.stringify(canonicalParams)
-    ) {
+    const currentParamKeys = Object.keys(currentParams);
+    const canonicalParamKeys = Object.keys(canonicalParams);
+    const paramsMatch =
+      currentParamKeys.length === canonicalParamKeys.length &&
+      canonicalParamKeys.every(
+        (key) => currentParams[key] === canonicalParams[key],
+      );
+    if (extras || !paramsMatch) {
       void this.router.navigate([], {
         relativeTo: this.route,
         queryParams: canonicalParams,
@@ -200,23 +252,21 @@ export class BusinessCheckoutPageComponent {
     if (invalidPlan) {
       this.state.set({
         stage: 'unavailable',
-        message:
-          'Choose a monthly or annual Business plan to review its TEST quote.',
+        message: `Choose a monthly or annual Business plan to review its ${mode.toUpperCase()} quote.`,
       });
       return;
     }
 
-    const apiOrigin = this.configuredApiOrigin;
-    if (!isTrustedBusinessCheckoutOrigin(apiOrigin)) {
+    const apiOrigin = this.apiOriginFor(mode);
+    if (!apiOrigin) {
       this.state.set({
         stage: 'unavailable',
-        message: 'DataTug Business TEST checkout is not configured yet.',
+        message: `DataTug Business ${mode.toUpperCase()} checkout is not configured yet.`,
       });
       return;
     }
     if (this.returning) {
-      const sessionID = params.get('session_id');
-      if (!spaceID || !validSessionID(sessionID)) {
+      if (!spaceID || !sessionID || !returnMode) {
         this.state.set({
           stage: 'unavailable',
           message:
@@ -224,7 +274,7 @@ export class BusinessCheckoutPageComponent {
         });
         return;
       }
-      const returnPath = `/business/checkout/return?spaceID=${encodeURIComponent(spaceID)}&session_id=${encodeURIComponent(sessionID)}`;
+      const returnPath = `/business/checkout/return?spaceID=${encodeURIComponent(spaceID)}&mode=${mode}&session_id=${encodeURIComponent(sessionID)}`;
       this.authReturnTo.set(returnPath);
       const auth = appCheckoutAuth(
         this.auth,
@@ -233,27 +283,31 @@ export class BusinessCheckoutPageComponent {
         returnPath,
         'DataTug Business checkout',
       );
-      const api = checkoutApi({ apiOrigin, mode: 'test' }, auth);
+      const api = checkoutApi({ apiOrigin, mode }, auth);
       this.flow = createReturnFlow({
         auth,
         api,
-        mode: 'test',
+        mode,
         sessionId: sessionID,
-        serviceScope: { spaceID },
+        serviceScope: { spaceID, mode },
         render: (state) => this.render(state),
       });
       this.flow.start();
       return;
     }
 
-    const selection = { spaceID, planID: planIDForPeriod(this.period()) };
+    const selection = {
+      spaceID,
+      planID: planIDForPeriod(this.period()),
+      mode,
+    };
     if (!spaceID) {
       this.state.set({
         stage: 'select-space',
         message: 'Choose a Space you administer to review its Business quote.',
       });
     }
-    const returnPath = `/business/checkout?planID=${selection.planID}${spaceID ? `&spaceID=${encodeURIComponent(spaceID)}` : ''}`;
+    const returnPath = `/business/checkout?planID=${selection.planID}${mode === 'test' ? '&checkout=test' : ''}${spaceID ? `&spaceID=${encodeURIComponent(spaceID)}` : ''}`;
     this.authReturnTo.set(returnPath);
     const auth = appCheckoutAuth(
       this.auth,
@@ -262,7 +316,7 @@ export class BusinessCheckoutPageComponent {
       returnPath,
       'DataTug Business checkout',
     );
-    const api = checkoutApi({ apiOrigin, mode: 'test' }, auth);
+    const api = checkoutApi({ apiOrigin, mode }, auth);
     this.flow = createSpaceServiceCheckoutFlow({
       auth,
       api,
@@ -291,6 +345,7 @@ export class BusinessCheckoutPageComponent {
     if (spaceID && !this.spaces().some((space) => space.id === spaceID)) return;
     this.navigateSelection({
       planID: planIDForPeriod(this.period()),
+      ...(this.mode() === 'test' ? { checkout: 'test' } : {}),
       ...(spaceID ? { spaceID } : {}),
     });
   }
@@ -300,8 +355,33 @@ export class BusinessCheckoutPageComponent {
       return;
     this.navigateSelection({
       planID: planIDForPeriod(period),
+      ...(this.mode() === 'test' ? { checkout: 'test' } : {}),
       ...(this.selectedSpaceID() ? { spaceID: this.selectedSpaceID() } : {}),
     });
+  }
+
+  protected chooseMode(mode: CheckoutMode): void {
+    if (this.returning || this.selectionLocked()) return;
+    if (mode === 'live' && !this.liveEnabled) return;
+    this.navigateSelection({
+      planID: planIDForPeriod(this.period()),
+      ...(mode === 'test' ? { checkout: 'test' } : {}),
+      ...(this.selectedSpaceID() ? { spaceID: this.selectedSpaceID() } : {}),
+    });
+  }
+
+  protected liveRailDisabled(): boolean {
+    return !this.liveEnabled;
+  }
+
+  private apiOriginFor(mode: CheckoutMode): string | null {
+    if (mode === 'test')
+      return isTrustedBusinessCheckoutOrigin(this.configuredApiOrigin, mode)
+        ? this.configuredApiOrigin
+        : null;
+    return isTrustedBusinessCheckoutOrigin(this.configuredLiveApiOrigin, mode)
+      ? this.configuredLiveApiOrigin
+      : null;
   }
 
   private navigateSelection(queryParams: Record<string, string>): void {

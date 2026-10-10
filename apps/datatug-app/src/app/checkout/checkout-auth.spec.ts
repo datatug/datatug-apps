@@ -63,10 +63,11 @@ describe('DataTug checkout identity readiness', () => {
   );
 
   it.each([
-    '/business/checkout?planID=datatug-business-usage-monthly',
+    '/business/checkout?planID=datatug-business-usage-monthly&checkout=test',
     '/business/checkout?planID=datatug-business-usage-annual&spaceID=space_1',
-    '/business/checkout/return?spaceID=space_1&session_id=cs_test_paid',
-  ])('preserves validated Business TEST continuation %s', async (path) => {
+    '/business/checkout/return?spaceID=space_1&mode=test&session_id=cs_test_paid',
+    '/business/checkout/return?spaceID=space_1&mode=live&session_id=cs_live_paid',
+  ])('preserves validated Business continuation %s', async (path) => {
     const navigate = vi.fn().mockResolvedValue(true);
     const adapter = appCheckoutAuth(
       {} as SneatAuthStateService,
@@ -311,7 +312,8 @@ describe('DataTug checkout identity readiness', () => {
     '/subscribe?plan=pro&period=monthly&account=other',
     '/business/checkout?planID=datatug-business-usage-monthly&api=https://evil.invalid',
     '/business/checkout?planID=datatug-business-usage-monthly&spaceID=../private',
-    '/business/checkout/return?spaceID=space_1&session_id=cs_live_paid',
+    '/business/checkout/return?spaceID=space_1&mode=live&session_id=cs_test_paid',
+    '/business/checkout/return?spaceID=space_1&session_id=cs_test_paid',
   ])('rejects unsafe continuation %s', (path) => {
     expect(() =>
       appCheckoutAuth(

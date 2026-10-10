@@ -40,9 +40,12 @@ export const DATATUG_DEMO_PROJECT_TEMPLATE = {
   commit: '436350d41371103be11144ffa346c605f85e1342',
 } as const;
 
+export type ProjectBillingIntent = 'personal_pro' | 'space_business';
+
 export interface CreateGithubProject {
   readonly title: string;
   readonly spaceID: string;
+  readonly billingIntent: ProjectBillingIntent;
   readonly operationId: string;
   readonly github: {
     readonly repositoryID: number;

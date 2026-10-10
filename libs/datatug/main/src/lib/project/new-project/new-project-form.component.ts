@@ -50,8 +50,13 @@ import {
   ProjectQueryApiService,
   DATATUG_DEMO_PROJECT_TEMPLATE,
   type CreateGithubProject,
+  type ProjectBillingIntent,
 } from '../../services/project/project-query-api.service';
 import { safeNewProjectReturnUrl } from './new-project.service';
+import {
+  clearBusinessGithubContinuation,
+  saveBusinessGithubContinuation,
+} from './business-github-continuation';
 
 interface NewProjectDraft {
   readonly actorID?: string;
@@ -105,6 +110,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   readonly title = signal('');
   readonly githubFolder = signal('datatug');
   readonly spaceID = signal('');
+  readonly billingIntent = signal<ProjectBillingIntent>('personal_pro');
   readonly spaceTitle = signal('');
   readonly isCreatingSpace = signal(false);
   readonly branch = signal('');
@@ -137,6 +143,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   private readonly pendingDraft = signal<NewProjectDraft | undefined>(
     undefined,
   );
+  private readonly requestedSpaceID = signal<string | undefined>(undefined);
   private readonly authStatus = signal<AuthStatus | undefined>(undefined);
   private returnUrl = '/';
   @ViewChild(IonInput, { static: false }) titleInput?: IonInput;
@@ -190,6 +197,15 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   }
 
   constructor() {
+    const requestedSpaceID = this.route.snapshot.queryParamMap.get('spaceID');
+    if (requestedSpaceID && /^[A-Za-z0-9_-]{1,128}$/.test(requestedSpaceID))
+      this.requestedSpaceID.set(requestedSpaceID);
+    this.billingIntent.set(
+      this.route.snapshot.queryParamMap.get('billingIntent') ===
+        'space_business'
+        ? 'space_business'
+        : 'personal_pro',
+    );
     this.userService.userState
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((state) => {
@@ -200,13 +216,17 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
             title: space.title,
           })),
         );
-        const savedSpaceID = this.restoredDraft()?.spaceID;
+        const savedSpaceID =
+          this.requestedSpaceID() ?? this.restoredDraft()?.spaceID;
         if (
           savedSpaceID &&
           this.spaces().some((space) => space.id === savedSpaceID)
         )
           this.spaceID.set(savedSpaceID);
-        else if (!this.spaces().some((space) => space.id === this.spaceID()))
+        else if (
+          this.requestedSpaceID() ||
+          !this.spaces().some((space) => space.id === this.spaceID())
+        )
           this.spaceID.set('');
         const uid = state.user?.uid;
         if (uid !== this.userID()) {
@@ -295,6 +315,22 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       return;
     }
     this.formError.set(undefined);
+    clearBusinessGithubContinuation();
+    if (!this.saveDraft()) return;
+    if (this.billingIntent() === 'space_business') {
+      const actorID = this.userID();
+      const spaceID = this.spaceID();
+      if (
+        !actorID ||
+        !this.spaces().some((space) => space.id === spaceID) ||
+        !saveBusinessGithubContinuation(actorID, spaceID)
+      ) {
+        this.formError.set(
+          'Your Business Space could not be saved for the GitHub return. Choose a Space and try again.',
+        );
+        return;
+      }
+    }
     this.isConnecting.set(true);
     this.connection.start().subscribe({
       next: (result) => {
@@ -310,6 +346,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
             throw new Error();
           window.location.assign(url.href);
         } catch {
+          clearBusinessGithubContinuation();
           this.isConnecting.set(false);
           this.formError.set(
             'GitHub could not be connected. Please try again.',
@@ -317,6 +354,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
         }
       },
       error: () => {
+        clearBusinessGithubContinuation();
         this.isConnecting.set(false);
         this.formError.set('Sign in to DataTug, then connect GitHub.');
       },
@@ -425,9 +463,23 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       return;
     }
     if (this.store() !== 'github') {
+      if (
+        this.billingIntent() === 'space_business' &&
+        !this.spaces().some((space) => space.id === this.spaceID())
+      ) {
+        this.formError.set(
+          'Choose a Business Space before creating the project.',
+        );
+        return;
+      }
       this.isCreating.set(true);
       this.projectService
-        .createNewProject('firestore', { title: this.title(), userIDs: [] })
+        .createNewProject('firestore', {
+          title: this.title(),
+          userIDs: [],
+          billingIntent: this.billingIntent(),
+          ...(this.spaceID() ? { spaceID: this.spaceID() } : {}),
+        })
         .subscribe({
           next: (projectId) => {
             clearNewProjectDraft();
@@ -464,6 +516,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     const fields = {
       title: this.title(),
       spaceID: this.spaceID(),
+      billingIntent: this.billingIntent(),
       github: {
         repositoryID: repo.id,
         owner: repo.owner,
@@ -533,7 +586,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     this.signInMessage.set(message);
   }
 
-  private saveDraft(): void {
+  private saveDraft(): boolean {
     try {
       const draft: NewProjectDraft = {
         actorID: this.userID(),
@@ -547,10 +600,12 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       };
       this.restoredDraft.set(draft);
       sessionStorage.setItem(NEW_PROJECT_DRAFT_KEY, JSON.stringify(draft));
+      return true;
     } catch {
       this.formError.set(
         'Project details could not be saved in this browser. Keep this page open while signing in.',
       );
+      return false;
     }
   }
 
@@ -604,7 +659,10 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     this.title.set(draft.title);
     this.githubFolder.set(draft.githubFolder);
     this.spaceTitle.set(draft.spaceTitle);
-    if (this.spaces().some((space) => space.id === draft.spaceID))
+    if (
+      !this.requestedSpaceID() &&
+      this.spaces().some((space) => space.id === draft.spaceID)
+    )
       this.spaceID.set(draft.spaceID ?? '');
   }
 }

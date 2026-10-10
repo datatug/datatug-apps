@@ -29,6 +29,7 @@ import { IProjectFull, IProjectSummary } from '../../models/definition/project';
 import { buildAgentUrl } from '../repo/agent-url';
 import { SharedProjectSummaryService } from './shared-project-summary.service';
 import { DatatugStoreServiceFactory } from '../repo/datatug-store-service-factory.service';
+import type { ProjectBillingIntent } from './project-query-api.service';
 
 // `providedIn: 'root'` — this service caches project summaries per project
 // ref (`projSummary`) so every consumer shares one request and one result.
@@ -201,10 +202,13 @@ export class ProjectService {
     // The store also travels as `?store=` (not in the body), exactly like the
     // datatug CLI agent's create_project endpoint.
     return this.sneatApiService
-      .post<
-        ICreateProjectData,
-        { id: string }
-      >('datatug/projects/create_project?store=firestore', projData)
+      .post<ICreateProjectData, { id: string }>(
+        'datatug/projects/create_project?store=firestore',
+        {
+          ...projData,
+          billingIntent: projData.billingIntent ?? 'personal_pro',
+        },
+      )
       .pipe(map((response) => response.id));
   }
 }
@@ -212,6 +216,7 @@ export class ProjectService {
 export interface ICreateProjectData {
   title: string;
   userIDs: string[];
+  billingIntent?: ProjectBillingIntent;
   spaceID?: string;
 }
 
