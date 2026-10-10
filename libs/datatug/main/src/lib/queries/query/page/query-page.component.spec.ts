@@ -631,7 +631,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     component.queryDef.set({ ...authorDefinition, id: 'another-query' });
     finishPreview({
       sql: 'SELECT "InvoiceId" FROM "Invoice" LIMIT 10',
-      bindings: Object.freeze([1]),
+      fixedBindings: Object.freeze([]),
       bindingNames: Object.freeze(['CustomerId']),
       sourceId: 'chinook-sqlite',
       fixtureSha256: 'fixture',
@@ -640,6 +640,38 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     });
     await pending;
     expect(component.authorPlan()).toBeUndefined();
+  });
+
+  it('keeps structural SQL preview when CustomerId is missing or changes', async () => {
+    component = await createComponent();
+    const preview = Object.freeze({
+      sql: 'SELECT "i"."InvoiceId" FROM "Invoice" AS "i" WHERE "i"."CustomerId" = ? LIMIT 10',
+      fixedBindings: Object.freeze([]),
+      bindingNames: Object.freeze(['CustomerId']),
+      sourceId: 'chinook-sqlite' as const,
+      fixtureSha256: 'fixture',
+      schemaVersion: 'schema',
+      draftRevision: 1,
+    });
+    component.authorPlan.set(preview);
+
+    expect(component.authorCustomerIdValid()).toBe(false);
+    component.authorCustomerIdChanged(
+      new CustomEvent('ionInput', { detail: { value: '42' } }),
+    );
+    expect(component.authorCustomerIdValid()).toBe(true);
+    expect(component.authorPlan()).toBe(preview);
+
+    component.authorCustomerIdChanged(
+      new CustomEvent('ionInput', { detail: { value: '42.5' } }),
+    );
+    expect(component.authorCustomerIdValid()).toBe(false);
+    expect(component.authorPlan()).toBe(preview);
+    component.authorCustomerIdChanged(
+      new CustomEvent('ionInput', { detail: { value: '' } }),
+    );
+    expect(component.authorCustomerIdValid()).toBe(false);
+    expect(component.authorPlan()).toBe(preview);
   });
 
   async function createComponent(

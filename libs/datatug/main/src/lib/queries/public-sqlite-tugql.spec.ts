@@ -8,7 +8,76 @@ import {
 const resolve = (source: string) => {
   const parsed = parseTugQL(source);
   expect(parsed.diagnostics).toEqual([]);
-  const result = resolveTugQL(parsed.document, {
+  const tree = parsed.document.tree;
+  if (!tree) throw new Error('Expected parsed TugQL tree.');
+  requireCustomerIdParameterSource(tree);
+  requireLiteralHavingThreshold(tree);
+  const parameterFreeTree = { ...tree };
+  delete parameterFreeTree.parameters;
+  const structuralQuery = { ...tree.query };
+  delete structuralQuery.where;
+  const result = resolveTugQL(
+    {
+      sourceMetadata: parsed.document.sourceMetadata,
+      tree: { ...parameterFreeTree, query: structuralQuery },
+    },
+    {
+      authorizedSchemas: [
+        {
+          version: 'invoice-schema-v1',
+          tables: [
+            {
+              name: 'Invoice',
+              fields: [
+                { name: 'CustomerId', type: 'integer', authorized: true },
+                { name: 'InvoiceId', type: 'integer', authorized: true },
+                { name: 'InvoiceDate', type: 'datetime', authorized: true },
+              ],
+            },
+          ],
+        },
+      ],
+      relationships: [],
+      pinnedImports: [],
+      bindings: [],
+    },
+  );
+  expect(result.diagnostics).toEqual([]);
+  if (!result.resolved) throw new Error('Expected TugQL resolution.');
+  return result.resolved;
+};
+
+it('previews the bounded typed Invoice scan without requiring or inventing a binding', () => {
+  const source = `parameters (\n  @CustomerId integer required\n)\nfrom Invoice as i\nwhere i.CustomerId = @CustomerId\nlimit 7\nselect i.InvoiceId, i.InvoiceDate\n`;
+  const parsed = parseTugQL(source);
+  expect(parsed.diagnostics).toEqual([]);
+  if (!parsed.document.tree) throw new Error('Expected parsed TugQL tree.');
+  expect(() =>
+    requireCustomerIdParameterSource(parsed.document.tree),
+  ).not.toThrow();
+  const plan = compilePublicSqliteTugQL(resolve(source), {
+    fixtureSha256: 'fixture-sha256',
+    schemaVersion: 'invoice-schema-v1',
+    draftRevision: 9,
+  });
+
+  expect(plan.sql).toBe(
+    'SELECT "i"."InvoiceId",\n  "i"."InvoiceDate"\nFROM "Invoice" AS "i"\nWHERE "i"."CustomerId" = ?\nLIMIT 7',
+  );
+  expect(plan.fixedBindings).toEqual([]);
+  expect(plan.bindingNames).toEqual(['CustomerId']);
+  expect(plan.sql).not.toContain('42');
+  expect(Object.isFrozen(plan)).toBe(true);
+  expect(Object.isFrozen(plan.fixedBindings)).toBe(true);
+  expect(Object.isFrozen(plan.bindingNames)).toBe(true);
+});
+
+it('fails closed when the structural compiler receives any WHERE clause', () => {
+  const parsed = parseTugQL(
+    'from Invoice as i\nwhere i.CustomerId = 42\nlimit 10\nselect i.InvoiceId\n',
+  );
+  expect(parsed.diagnostics).toEqual([]);
+  const resolution = resolveTugQL(parsed.document, {
     authorizedSchemas: [
       {
         version: 'invoice-schema-v1',
@@ -26,37 +95,19 @@ const resolve = (source: string) => {
     ],
     relationships: [],
     pinnedImports: [],
-    bindings: [{ name: 'CustomerId', set: true, value: 42 }],
+    bindings: [],
   });
-  expect(result.diagnostics).toEqual([]);
-  if (!result.resolved) throw new Error('Expected TugQL resolution.');
-  return result.resolved;
-};
-
-it('lowers the bounded typed Invoice scan to one immutable prepared request', () => {
-  const source = `parameters (\n  @CustomerId integer required\n)\nfrom Invoice as i\nwhere i.CustomerId = @CustomerId\nlimit 7\nselect i.InvoiceId, i.InvoiceDate\n`;
-  const parsed = parseTugQL(source);
-  expect(parsed.diagnostics).toEqual([]);
-  if (!parsed.document.tree) throw new Error('Expected parsed TugQL tree.');
-  expect(() => requireCustomerIdParameterSource(parsed.document.tree)).not.toThrow();
-  const plan = compilePublicSqliteTugQL(
-    resolve(source),
-    {
+  expect(resolution.diagnostics).toEqual([]);
+  if (!resolution.resolved) throw new Error('Expected TugQL resolution.');
+  expect(() =>
+    compilePublicSqliteTugQL(resolution.resolved, {
       fixtureSha256: 'fixture-sha256',
       schemaVersion: 'invoice-schema-v1',
-      draftRevision: 9,
-    },
+      draftRevision: 1,
+    }),
+  ).toThrow(
+    'structurally resolved query with its guarded CustomerId predicate removed',
   );
-
-  expect(plan.sql).toBe(
-    'SELECT "i"."InvoiceId", "i"."InvoiceDate" FROM "Invoice" AS "i" WHERE "i"."CustomerId" = ? LIMIT 7',
-  );
-  expect(plan.bindings).toEqual([42]);
-  expect(plan.bindingNames).toEqual(['CustomerId']);
-  expect(plan.sql).not.toContain('42');
-  expect(Object.isFrozen(plan)).toBe(true);
-  expect(Object.isFrozen(plan.bindings)).toBe(true);
-  expect(Object.isFrozen(plan.bindingNames)).toBe(true);
 });
 
 it('rejects unbounded scans and projection expressions outside the adapter profile', () => {
@@ -97,42 +148,19 @@ it('preserves an authored row limit within the hard cap', () => {
 });
 
 it('compiles supported CustomerId groups and binds an integer COUNT HAVING threshold', () => {
-  const parsed = parseTugQL(
+  const resolved = resolve(
     `parameters (\n  @CustomerId integer required\n)\nfrom Invoice as i\nwhere i.CustomerId = @CustomerId\ngroup by i.CustomerId\nhaving count(*) >= 7\nlimit 10\nselect i.CustomerId, count(*) as InvoiceCount\n`,
   );
-  expect(parsed.diagnostics).toEqual([]);
-  const resolved = resolveTugQL(parsed.document, {
-    authorizedSchemas: [
-      {
-        version: 'invoice-schema-v1',
-        tables: [
-          {
-            name: 'Invoice',
-            fields: [
-              { name: 'CustomerId', type: 'integer', authorized: true },
-              { name: 'InvoiceId', type: 'integer', authorized: true },
-              { name: 'InvoiceDate', type: 'datetime', authorized: true },
-            ],
-          },
-        ],
-      },
-    ],
-    relationships: [],
-    pinnedImports: [],
-    bindings: [{ name: 'CustomerId', set: true, value: 42 }],
-  });
-  expect(resolved.diagnostics).toEqual([]);
-  if (!resolved.resolved) throw new Error('Expected resolved TugQL query.');
-  expect(resolved.resolved.query.having).toBeDefined();
-  const plan = compilePublicSqliteTugQL(resolved.resolved, {
+  expect(resolved.query.having).toBeDefined();
+  const plan = compilePublicSqliteTugQL(resolved, {
     fixtureSha256: 'fixture-sha256',
     schemaVersion: 'invoice-schema-v1',
     draftRevision: 1,
   });
   expect(plan.sql).toBe(
-    'SELECT "i"."CustomerId", COUNT(*) AS "InvoiceCount" FROM "Invoice" AS "i" WHERE "i"."CustomerId" = ? GROUP BY "i"."CustomerId" HAVING COUNT(*) >= ? LIMIT 10',
+    'SELECT "i"."CustomerId",\n  COUNT(*) AS "InvoiceCount"\nFROM "Invoice" AS "i"\nWHERE "i"."CustomerId" = ?\nGROUP BY "i"."CustomerId"\nHAVING COUNT(*) >= ?\nLIMIT 10',
   );
-  expect(plan.bindings).toEqual([42, 7]);
+  expect(plan.fixedBindings).toEqual([7]);
   expect(plan.bindingNames).toEqual([
     'CustomerId',
     'HAVING threshold (literal)',
@@ -176,7 +204,7 @@ it.each([
       },
     );
     expect(plan.sql).toContain(`HAVING COUNT(*) ${sqlOperator} ?`);
-    expect(plan.bindings).toEqual([42, 7]);
+    expect(plan.fixedBindings).toEqual([7]);
     expect(plan.bindingNames).toEqual([
       'CustomerId',
       'HAVING threshold (literal)',
@@ -196,11 +224,9 @@ it('supports COUNT(InvoiceId) and rejects a HAVING aggregate different from the 
     ),
     options,
   );
-  expect(supported.sql).toContain(
-    'COUNT("i"."InvoiceId") AS "InvoiceCount"',
-  );
+  expect(supported.sql).toContain('COUNT("i"."InvoiceId") AS "InvoiceCount"');
   expect(supported.sql).toContain('HAVING COUNT("i"."InvoiceId") >= ?');
-  expect(supported.bindings).toEqual([42, 7]);
+  expect(supported.fixedBindings).toEqual([7]);
 
   expect(() =>
     compilePublicSqliteTugQL(
@@ -228,14 +254,16 @@ it('accepts built-in parameter type casing and preserves grouped output aliases'
   const parsed = parseTugQL(source);
   expect(parsed.diagnostics).toEqual([]);
   if (!parsed.document.tree) throw new Error('Expected parsed TugQL tree.');
-  expect(() => requireCustomerIdParameterSource(parsed.document.tree)).not.toThrow();
+  expect(() =>
+    requireCustomerIdParameterSource(parsed.document.tree),
+  ).not.toThrow();
   const plan = compilePublicSqliteTugQL(resolve(source), {
     fixtureSha256: 'fixture-sha256',
     schemaVersion: 'invoice-schema-v1',
     draftRevision: 1,
   });
   expect(plan.sql).toContain(
-    'SELECT "i"."CustomerId" AS "Customer", COUNT(*) AS "Invoices"',
+    'SELECT "i"."CustomerId" AS "Customer",\n  COUNT(*) AS "Invoices"',
   );
 });
 

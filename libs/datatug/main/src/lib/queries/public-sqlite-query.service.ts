@@ -1,5 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { parseTugQL, resolveTugQL } from '@dalgo/core';
+import type { TugQLDocument } from '@dalgo/core';
 import {
   Observable,
   firstValueFrom,
@@ -24,6 +25,7 @@ import {
   requireCustomerIdParameterSource,
   requireLiteralHavingThreshold,
   type PublicSqlitePreparedPlan,
+  type PublicSqliteQueryPreview,
 } from './public-sqlite-tugql';
 
 const CONNECTION_ID = 'chinook-sqlite';
@@ -165,18 +167,15 @@ export class PublicSqliteQueryService {
     project: IProjectRef,
     definition: IQueryDef,
     draftRevision: number,
-    customerIdText: string,
     signal?: AbortSignal,
-  ): Promise<PublicSqlitePreparedPlan> {
+  ): Promise<PublicSqliteQueryPreview> {
     if (
       definition.request.queryType !== QueryType.DTQL ||
       definition.connectionId !== CONNECTION_ID ||
-      definition.federation ||
-      !/^-?\d+$/u.test(customerIdText) ||
-      !Number.isSafeInteger(Number(customerIdText))
+      definition.federation
     ) {
       throw new Error(
-        'Enter a whole-number CustomerId for the Chinook Invoice source.',
+        'This preview supports the admitted Chinook Invoice TugQL source only.',
       );
     }
     const deadline = Date.now() + RUN_TIMEOUT_MS;
@@ -256,8 +255,18 @@ export class PublicSqliteQueryService {
     }
     requireCustomerIdParameterSource(tree);
     requireLiteralHavingThreshold(tree);
-    const value = Number(customerIdText);
-    const authorization = resolveTugQL(parsed.document, {
+    const parameterFreeTree = { ...tree };
+    delete parameterFreeTree.parameters;
+    const structuralQuery = { ...tree.query };
+    delete structuralQuery['where'];
+    const structuralDocument: TugQLDocument = {
+      sourceMetadata: parsed.document.sourceMetadata,
+      tree: {
+        ...parameterFreeTree,
+        query: structuralQuery,
+      },
+    };
+    const authorization = resolveTugQL(structuralDocument, {
       authorizedSchemas: [
         {
           version: schemaVersion,
@@ -275,7 +284,7 @@ export class PublicSqliteQueryService {
       ],
       relationships: [],
       pinnedImports: [],
-      bindings: [{ name: 'CustomerId', set: true, value }],
+      bindings: [],
     });
     if (authorization.diagnostics.length || !authorization.resolved)
       throw new Error(
@@ -294,21 +303,37 @@ export class PublicSqliteQueryService {
     definition: IQueryDef,
     draftRevision: number,
     customerIdText: string,
-    previewPlan: PublicSqlitePreparedPlan,
+    previewPlan: PublicSqliteQueryPreview,
     signal?: AbortSignal,
   ): Promise<FederatedQueryResult> {
+    if (
+      !/^-?\d+$/u.test(customerIdText) ||
+      !Number.isSafeInteger(Number(customerIdText))
+    )
+      throw new Error(
+        'Enter a whole-number CustomerId before running this query.',
+      );
     const plan = await this.prepareTugQL(
       project,
       definition,
       draftRevision,
-      customerIdText,
       signal,
     );
     if (JSON.stringify(plan) !== JSON.stringify(previewPlan))
       throw new Error(
         'The saved draft or its bindings changed. Preview SQL again before Run.',
       );
-    const result = await this.executePlan(project, definition, plan, signal);
+    const { fixedBindings, ...structuralPlan } = plan;
+    const preparedPlan: PublicSqlitePreparedPlan = Object.freeze({
+      ...structuralPlan,
+      bindings: Object.freeze([Number(customerIdText), ...fixedBindings]),
+    });
+    const result = await this.executePlan(
+      project,
+      definition,
+      preparedPlan,
+      signal,
+    );
     return result;
   }
 

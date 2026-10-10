@@ -1,22 +1,26 @@
 <ion-header>
-  <ion-toolbar>
+  <ion-toolbar color="light">
     <ion-buttons slot="start">
       <ion-menu-button />
-      <ion-back-button [defaultHref]="queriesBackHref" />
+      <ion-back-button
+        [defaultHref]="queriesBackHref"
+        text=""
+        aria-label="Back to queries"
+      />
     </ion-buttons>
-    <sneat-datatug-page-title pageTitle="Query" />
+    <sneat-datatug-page-title class="query-page-title" pageTitle="Query" />
     <ion-buttons slot="end">
       <ion-button
-        class="ion-padding-horizontal"
+        class="query-save-button"
         slot="end"
         [disabled]="queryState.isSaving || queryState.saveSupported === false"
         [fill]="isChanged ? 'solid' : 'clear'"
         [color]="isChanged ? 'danger' : 'medium'"
-        title="Save changes"
+        aria-label="Save changes"
         (click)="saveChanges()"
       >
         <ion-icon name="save-outline" slot="start" />
-        <ion-label>
+        <ion-label class="query-save-label">
           @if (queryState.isSaving) {
             Saving...
           } @else {
@@ -425,15 +429,24 @@
   @if (queryState.queryType === 'HTTP') {
     <sneat-datatug-http-query-editor />
   } @else if (isTugqlAuthorJourney()) {
-    <ion-card data-testid="tugql-author">
+    <ion-card class="author-card" data-testid="tugql-author">
       <ion-card-header>
-        <ion-card-title>{{
-          queryState.title || 'Chinook Invoice query'
-        }}</ion-card-title>
+        <div class="author-card-heading">
+          <div>
+            <p class="author-eyebrow">QUERY AUTHOR</p>
+            <ion-card-title>{{
+              queryState.title || 'Chinook Invoice query'
+            }}</ion-card-title>
+          </div>
+          <span class="author-source-badge">Chinook · SQLite</span>
+        </div>
       </ion-card-header>
       <ion-card-content>
-        <p>Target: Chinook · pinned public SQLite snapshot</p>
-        <ion-buttons>
+        <p class="author-description">
+          Preview the SQL structure, then run the bounded query for one
+          customer.
+        </p>
+        <ion-buttons class="author-mode-switch">
           <ion-button
             data-testid="author-compose-tab"
             [attr.aria-pressed]="authorMode() === 'compose'"
@@ -449,15 +462,33 @@
             >Code</ion-button
           >
         </ion-buttons>
-        <p>Invoices for customer</p>
+        <h2 class="author-section-title">Invoices for customer</h2>
         <ion-input
+          class="author-customer-input"
           data-testid="author-customer-id"
           type="number"
           inputmode="numeric"
           fill="outline"
           label="Customer ID"
           labelPlacement="floating"
-          helperText="Required · integer"
+          helperText="Required to run · integer"
+          [class.ion-invalid]="
+            !authorCustomerIdMissing() && !authorCustomerIdValid()
+          "
+          [class.ion-touched]="
+            !authorCustomerIdMissing() && !authorCustomerIdValid()
+          "
+          [class.ng-invalid]="
+            !authorCustomerIdMissing() && !authorCustomerIdValid()
+          "
+          [class.ng-touched]="
+            !authorCustomerIdMissing() && !authorCustomerIdValid()
+          "
+          [errorText]="
+            !authorCustomerIdMissing() && !authorCustomerIdValid()
+              ? 'Enter a whole-number Customer ID'
+              : undefined
+          "
           [value]="authorCustomerId()"
           [disabled]="queryState.isSaving || running()"
           (ionInput)="authorCustomerIdChanged($event)"
@@ -469,9 +500,9 @@
               This browser profile runs a bounded Invoice scan with the required
               integer CustomerId equality, InvoiceId and optional InvoiceDate,
               and a limit from 1 to 100. Grouped CustomerId queries support
-              COUNT(*) or COUNT(InvoiceId) with an integer literal =, !=, <,
-              <=, >, or >= HAVING threshold. Other TugQL can be edited in Code,
-              but Preview will explain if this SQLite profile cannot run it.
+              COUNT(*) or COUNT(InvoiceId) with an integer literal =, !=, <, <=,
+              >, or >= HAVING threshold. Other TugQL can be edited in Code, but
+              Preview will explain if this SQLite profile cannot run it.
             </p>
           </details>
         } @else {
@@ -490,17 +521,20 @@
         }
         <ion-button
           data-testid="author-preview"
+          class="author-preview-button"
           [disabled]="running() || queryState.isSaving"
           (click)="previewTugql()"
           >Preview SQL</ion-button
         >
         <ion-button
           data-testid="author-run"
+          class="author-run-button"
           color="primary"
           [disabled]="
             running() ||
             queryState.isSaving ||
             !authorPlan() ||
+            !authorCustomerIdValid() ||
             !queryId ||
             !project
           "
@@ -526,18 +560,55 @@
           }}</ion-text>
         }
         @if (authorPlan(); as plan) {
-          <details
-            data-testid="author-sql-preview"
-            [open]="authorPreviewOpen()"
-            (toggle)="authorPreviewToggled($event)"
-          >
-            <summary>Compiled SQL · SQLite</summary>
-            <pre>{{ plan.sql }}</pre>
-            <p>
-              Binding: &#64;CustomerId (integer). Preview does not execute the
-              query.
-            </p>
-          </details>
+          <section class="author-sql-preview" data-testid="author-sql-preview">
+            <div class="author-preview-heading">
+              <div>
+                <h3>SQL preview</h3>
+                <p>Compiled for the pinned SQLite source</p>
+              </div>
+              <span class="author-preview-state">Preview · Not executed</span>
+            </div>
+            <div
+              class="author-sql-scroll"
+              tabindex="0"
+              aria-label="Compiled SQLite SQL"
+            >
+              <pre><code>{{ plan.sql }}</code></pre>
+            </div>
+            <div class="author-binding-list" aria-label="SQL bindings">
+              @for (
+                bindingName of plan.bindingNames;
+                track bindingName;
+                let i = $index
+              ) {
+                <div class="author-binding-row">
+                  <code class="author-binding-index">?{{ i + 1 }}</code>
+                  @if (bindingName === 'CustomerId') {
+                    <span class="author-binding-name"
+                      >&#64;CustomerId · integer</span
+                    >
+                    <span class="author-binding-value">
+                      @if (authorCustomerIdValid()) {
+                        {{ authorCustomerId() }} · ready
+                      } @else if (authorCustomerIdMissing()) {
+                        Required · unset
+                      } @else {
+                        Invalid · enter a whole number
+                      }
+                    </span>
+                  } @else {
+                    <span class="author-binding-name"
+                      >HAVING threshold · integer literal</span
+                    >
+                    <span class="author-binding-value">{{
+                      plan.fixedBindings[i - 1]
+                    }}</span>
+                  }
+                </div>
+              }
+            </div>
+            <p class="author-binding-note">Preview never executes the query.</p>
+          </section>
         }
       </ion-card-content>
     </ion-card>
@@ -958,33 +1029,44 @@
   @if (runResult(); as result) {
     @if (result.publicSqliteReceipt; as receipt) {
       <section
+        class="author-receipt"
         data-testid="author-execution-receipt"
         aria-label="SQLite execution receipt"
       >
-        <p>
-          @if (
-            displayedResultIsPreviousRun() ||
-            receipt.draftRevision !== authorDraftRevision()
-          ) {
-            Previous run ·
-          } @else {
-            Executed ·
-          }
-          {{ resultTotalRows() }} rows · Customer ID
-          {{ publicSqliteCustomerIdLabel(result) }} applied · pinned snapshot ·
-          queried {{ result.provenance.observedAt }}
-          @if (!selectedHistoricalResult()) {
-            @if (displayedResultIsPreviousRun()) {
-              @if (committedRun()?.timing; as timing) {
-                · loaded in {{ formatQueryDuration(timing.allResultsLoadedMs) }}
+        <div class="author-receipt-summary">
+          <div class="author-receipt-status">
+            <span
+              class="receipt-status-dot"
+              [class.previous]="publicSqliteRunIsStale(result)"
+            ></span>
+            <strong>{{
+              publicSqliteRunIsStale(result) ? 'Previous run' : 'Executed'
+            }}</strong>
+          </div>
+          <p class="author-receipt-primary">
+            {{ resultTotalRows() }}
+            {{ resultTotalRows() === 1 ? 'row' : 'rows' }}
+            <span>Customer ID {{ publicSqliteCustomerIdLabel(result) }}</span>
+          </p>
+          <p class="author-receipt-secondary">
+            Pinned Chinook snapshot ·
+            {{ result.provenance.observedAt | date: 'medium' }}
+            @if (!selectedHistoricalResult()) {
+              @if (publicSqliteRunIsStale(result)) {
+                @if (committedRun()?.timing; as timing) {
+                  · Loaded in
+                  {{ formatQueryDuration(timing.allResultsLoadedMs) }}
+                }
+              } @else if (queryRunTiming(); as timing) {
+                · Loaded in
+                {{ formatQueryDuration(timing.allResultsLoadedMs) }}
               }
-            } @else if (queryRunTiming(); as timing) {
-              · loaded in {{ formatQueryDuration(timing.allResultsLoadedMs) }}
             }
-          }
-        </p>
-        <details>
+          </p>
+        </div>
+        <details class="author-receipt-details">
           <summary>Execution details</summary>
+          <p>Observed at {{ result.provenance.observedAt }}.</p>
           <p>Worker execution ID {{ receipt.executionId }}.</p>
           <p>
             Draft revision {{ receipt.draftRevision }} · fixture SHA-256
@@ -996,7 +1078,7 @@
             Input origin: manual · client-reported.
           </p>
           @if (
-            !displayedResultIsPreviousRun() &&
+            !publicSqliteRunIsStale(result) &&
             receipt.draftRevision === authorDraftRevision() &&
             authorPlan()
           ) {
