@@ -41,12 +41,91 @@
   line-height: 1.2;
 }
 
-.author-preview-relationship {
-  margin: 0.65rem 0 0;
+.author-source-inspector {
+  margin-top: 0.8rem;
+  border: 1px solid var(--ion-color-step-150, #e5e7eb);
+  border-radius: 0.65rem;
   color: var(--ion-color-medium-shade);
-  font-size: 0.78rem;
-  line-height: 1.45;
+  font-size: 0.8rem;
+}
+.author-source-inspector summary {
+  padding: 0.65rem 0.75rem;
+  color: var(--ion-color-dark);
+  cursor: pointer;
+  font-weight: 600;
+}
+.author-source-inspector summary:focus-visible {
+  outline: 2px solid var(--ion-color-primary);
+  outline-offset: 2px;
+  border-radius: 0.35rem;
+}
+.author-source-content {
+  display: grid;
+  gap: 0.8rem;
+  padding: 0 0.75rem 0.75rem;
   overflow-wrap: anywhere;
+}
+.author-source-facts {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0;
+}
+.author-source-facts > div {
+  display: grid;
+  grid-template-columns: minmax(6rem, 0.35fr) minmax(0, 1fr);
+  gap: 0.5rem;
+}
+.author-source-facts dt,
+.author-source-section h4 {
+  color: var(--ion-color-dark);
+  font-weight: 600;
+}
+.author-source-facts dd {
+  min-width: 0;
+  margin: 0;
+}
+.author-source-facts code,
+.author-output-columns code,
+.author-source-section code {
+  overflow-wrap: anywhere;
+}
+.author-source-section h4 {
+  margin: 0 0 0.35rem;
+  font-size: 0.8rem;
+}
+.author-source-section p,
+.author-source-unavailable,
+.author-source-note {
+  margin: 0;
+  line-height: 1.45;
+}
+.author-source-fingerprint {
+  margin-top: 0.5rem;
+  font-size: 0.74rem;
+}
+.author-source-fingerprint summary {
+  cursor: pointer;
+}
+.author-source-fingerprint code {
+  display: block;
+}
+.author-source-section ul,
+.author-output-columns {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.4rem 0 0;
+  padding-left: 1.2rem;
+}
+.author-output-columns li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.2rem 0.6rem;
+}
+.author-output-lineage {
+  grid-column: 1 / -1;
+}
+.author-source-note {
+  font-size: 0.74rem;
 }
 
 .author-sql-scroll {
@@ -151,5 +230,10 @@
   .author-binding-value {
     grid-column: 2;
     text-align: start;
+  }
+
+  .author-source-facts > div {
+    grid-template-columns: 1fr;
+    gap: 0.1rem;
   }
 }

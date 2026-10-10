@@ -435,7 +435,12 @@
         <div class="author-card-heading">
           <div>
             <p class="author-eyebrow">QUERY AUTHOR</p>
-            <ion-card-title>{{
+            <ion-card-title
+              #authorLookupHeading
+              tabindex="-1"
+              role="heading"
+              aria-level="2"
+              >{{
               queryState.title || 'Chinook Invoice query'
             }}</ion-card-title>
           </div>
