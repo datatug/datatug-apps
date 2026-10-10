@@ -109,7 +109,7 @@ function proPath(): string {
 }
 
 function businessPath(): string {
-  return '/business/checkout?planID=datatug-business-usage-monthly&spaceID=space_1';
+  return '/business/checkout?planID=datatug-business-usage-monthly&checkout=test&spaceID=space_1';
 }
 
 async function render(
@@ -237,6 +237,7 @@ function query(kind: CheckoutKind): Record<string, string> {
     ? { plan: 'pro', period: 'yearly', checkout: 'test' }
     : {
         planID: 'datatug-business-usage-monthly',
+        checkout: 'test',
         spaceID: 'space_1',
       };
 }

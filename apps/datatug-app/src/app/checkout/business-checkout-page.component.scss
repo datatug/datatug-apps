@@ -17,6 +17,12 @@ h3 {
   background: var(--ion-color-warning-tint, #fff7e3);
 }
 
+.live-mode {
+  border-inline-start: 4px solid var(--ion-color-primary, #3880ff);
+  padding: 0.65rem 0.8rem;
+  background: var(--ion-color-primary-tint, #e7efff);
+}
+
 .choices,
 .space-list {
   display: flex;
@@ -40,6 +46,11 @@ h3 {
   border-color: var(--ion-color-primary, #3880ff);
   outline: 2px solid var(--ion-color-primary, #3880ff);
   outline-offset: 1px;
+}
+
+.choices button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
 }
 
 .space-list button span {

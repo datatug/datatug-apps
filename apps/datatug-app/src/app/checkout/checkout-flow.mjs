@@ -279,6 +279,10 @@ export function createSpaceServiceCheckoutFlow({
           due: money(quote.amount.due),
           interval: quote.period.interval,
           claimed: quote.claimed,
+          discount:
+            quote.appliedDiscount.kind === 'launch'
+              ? `${quote.appliedDiscount.percentOff}% launch discount`
+              : undefined,
         },
       });
     } catch (error) {
@@ -310,6 +314,10 @@ export function createSpaceServiceCheckoutFlow({
         due: money(quote.amount.due),
         interval: quote.period.interval,
         claimed: quote.claimed,
+        discount:
+          quote.appliedDiscount.kind === 'launch'
+            ? `${quote.appliedDiscount.percentOff}% launch discount`
+            : undefined,
       },
     });
     try {
@@ -358,6 +366,10 @@ export function createSpaceServiceCheckoutFlow({
                   due: money(quote.amount.due),
                   interval: quote.period.interval,
                   claimed: quote.claimed,
+                  discount:
+                    quote.appliedDiscount.kind === 'launch'
+                      ? `${quote.appliedDiscount.percentOff}% launch discount`
+                      : undefined,
                 },
               }
             : {}),
@@ -416,6 +428,7 @@ export function createReturnFlow({
             !validSpaceServiceStatus(status, {
               spaceID: serviceScope.spaceID,
               sessionID: sessionId,
+              mode: serviceScope.mode ?? 'test',
             })
           )
             throw new Error('invalid_service_status');
@@ -423,8 +436,36 @@ export function createReturnFlow({
             render({ stage: 'expired', user, status });
             return;
           }
+          if (
+            serviceScope.mode === 'live' &&
+            status.accessStatus === 'ended'
+          ) {
+            render({ stage: 'business-ended', user });
+            return;
+          }
+          if (
+            serviceScope.mode === 'live' &&
+            status.status === 'complete' &&
+            status.accessStatus === 'active'
+          ) {
+            render({
+              stage: 'business-active',
+              user,
+              spaceID: serviceScope.spaceID,
+            });
+            return;
+          }
           if (status.status === 'complete') {
-            render({ stage: 'test-complete', user, status });
+            render(
+              (serviceScope.mode ?? 'test') === 'test'
+                ? { stage: 'test-complete', user, status }
+                : {
+                    stage: 'pending',
+                    user,
+                    message:
+                      'Your live payment is complete. Business access is pending reconciliation and has not been activated by this page.',
+                  },
+            );
             return;
           }
         } else {
@@ -459,7 +500,9 @@ export function createReturnFlow({
           stage: 'pending',
           user,
           message: serviceScope
-            ? 'Test checkout is still processing. Business access is pending reconciliation.'
+            ? (serviceScope.mode ?? 'test') === 'test'
+              ? 'Test checkout is still processing. Business access is pending reconciliation.'
+              : 'Live checkout is still processing. Business access is pending reconciliation.'
             : 'Payment is being processed. Your plan is not confirmed yet; check again shortly.',
         });
     } catch (error) {

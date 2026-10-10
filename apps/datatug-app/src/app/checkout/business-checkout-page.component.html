@@ -1,6 +1,6 @@
 <ion-header>
   <ion-toolbar>
-    <ion-title>DataTug Business TEST checkout</ion-title>
+    <ion-title>DataTug Business {{ mode().toUpperCase() }} checkout</ion-title>
   </ion-toolbar>
 </ion-header>
 <ion-content>
@@ -10,10 +10,40 @@
         returning ? 'Check your Business checkout' : 'Review Business checkout'
       }}
     </h1>
-    <p class="test-mode" role="note">
-      TEST mode only. This does not make a live payment or activate Business
-      access.
-    </p>
+    @if (!returning) {
+      <section aria-labelledby="rail-heading">
+        <h2 id="rail-heading">Payment rail</h2>
+        <div class="choices" role="group" aria-label="Payment rail">
+          <button
+            type="button"
+            [disabled]="liveRailDisabled() || selectionLocked()"
+            [attr.aria-pressed]="mode() === 'live'"
+            (click)="chooseMode('live')"
+          >
+            LIVE{{ liveRailDisabled() ? ' (closed)' : '' }}
+          </button>
+          <button
+            type="button"
+            [disabled]="selectionLocked()"
+            [attr.aria-pressed]="mode() === 'test'"
+            (click)="chooseMode('test')"
+          >
+            TEST
+          </button>
+        </div>
+      </section>
+    }
+    @if (mode() === 'test') {
+      <p class="test-mode" role="note">
+        TEST mode only. This does not make a live payment or activate Business
+        access.
+      </p>
+    } @else if (returning) {
+      <p class="live-mode" role="note">
+        LIVE checkout return. Payment status is checked against the configured
+        DataTug API, and Business access is confirmed only by the service.
+      </p>
+    }
 
     @if (state().user; as user) {
       <p>Signed in as {{ user.email || 'your DataTug account' }}</p>
@@ -95,29 +125,40 @@
           {{ state().message || 'Choose a Space you administer to continue.' }}
         }
         @case ('loading') {
-          Checking the Business TEST quote…
+          Checking the Business {{ mode().toUpperCase() }} quote…
         }
         @case ('quote') {
           Review the Space, price and early-access terms before continuing.
         }
         @case ('creating-session') {
-          Preparing the secure TEST checkout…
+          Preparing the secure {{ mode().toUpperCase() }} checkout…
         }
         @case ('mounting') {
-          Loading the secure TEST payment form…
+          Loading the secure {{ mode().toUpperCase() }} payment form…
         }
         @case ('payment') {
-          Enter test payment details in the secure form. No live payment or
-          Business access will be created.
+          @if (mode() === 'test') {
+            Enter test payment details in the secure form. No live payment or
+            Business access will be created.
+          } @else {
+            Complete payment in the secure form. Business access is confirmed
+            only after the service verifies it.
+          }
         }
         @case ('checking') {
-          Checking TEST checkout status…
+          Checking {{ mode().toUpperCase() }} checkout status…
         }
         @case ('test-complete') {
           Test checkout complete. Business access is pending reconciliation.
         }
+        @case ('business-active') {
+          Business access is active for this Space.
+        }
+        @case ('business-ended') {
+          Business access has ended for this Space. A new paid confirmation is required before continuing.
+        }
         @case ('expired') {
-          This TEST checkout expired. You can return to the pricing page.
+          This {{ mode().toUpperCase() }} checkout expired. You can return to the pricing page.
         }
         @case ('pending') {
           {{ state().message }}
@@ -142,7 +183,7 @@
 
     @if (state().quote; as quote) {
       <section aria-labelledby="quote-heading">
-        <h2 id="quote-heading">Your Business TEST quote</h2>
+        <h2 id="quote-heading">Your Business {{ mode().toUpperCase() }} quote</h2>
         @if (selectedSpace()) {
           <p>
             For <strong>{{ selectedSpace()?.title }}</strong>
@@ -150,7 +191,13 @@
         }
         <p>Billed {{ quote.interval === 'year' ? 'annually' : 'monthly' }}</p>
         <dl>
-          <dt>Price including tax</dt>
+          <dt>List price including tax</dt>
+          <dd>{{ quote.list }}</dd>
+          @if (quote.discount) {
+            <dt>Launch discount</dt>
+            <dd>{{ quote.discount }}</dd>
+          }
+          <dt>Due, tax included</dt>
           <dd>{{ quote.due }}</dd>
         </dl>
         <p>
@@ -159,8 +206,9 @@
         </p>
         <h3>Early access</h3>
         <p>
-          DataTug Business is in early access. This TEST checkout does not
-          activate Business access; access remains pending reconciliation.
+          DataTug Business is in early access. A completed payment alone does
+          not activate Business access; access remains pending reconciliation
+          until the service confirms it.
         </p>
         <label class="consent">
           <input
@@ -173,8 +221,13 @@
             [checked]="accepted()"
             (change)="accepted.set($any($event.target).checked)"
           />
-          I understand this is a TEST checkout and Business access is not
-          activated automatically.
+          @if (mode() === 'test') {
+            I understand this is a TEST checkout and Business access is not
+            activated automatically.
+          } @else {
+            I understand this is a LIVE payment and Business access is not
+            activated automatically.
+          }
         </label>
         <p>
           <button
@@ -189,8 +242,8 @@
           >
             {{
               state().retrySameQuote
-                ? 'Retry this TEST checkout'
-                : 'Continue to TEST payment'
+                ? 'Retry this ' + mode().toUpperCase() + ' checkout'
+                : 'Continue to ' + mode().toUpperCase() + ' payment'
             }}
           </button>
         </p>
@@ -199,7 +252,7 @@
 
     <section
       [hidden]="state().stage !== 'payment' && state().stage !== 'mounting'"
-      aria-label="TEST payment form"
+      [attr.aria-label]="mode().toUpperCase() + ' payment form'"
     >
       <div #embedded></div>
     </section>
@@ -227,6 +280,15 @@
         reconciliation.
       </p>
       <p><a routerLink="/">Continue to DataTug</a></p>
+    }
+    @if (state().stage === 'business-active' && state().spaceID) {
+      <p>
+        <a
+          [routerLink]="['/new-project']"
+          [queryParams]="{ spaceID: state().spaceID }"
+          >Create a project in this Space</a
+        >
+      </p>
     }
     <nav aria-label="Checkout navigation">
       <a [href]="backToPricing()">Back to pricing</a>

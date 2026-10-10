@@ -132,6 +132,14 @@ async function harness(
 }
 
 describe('New project through authenticated common API', () => {
+  it('preselects a requested checkout Space only when it belongs to the signed-in user', async () => {
+    const h = await harness(false, { spaceID: 'space' });
+    expect(h.component.spaceID()).toBe('space');
+
+    const other = await harness(true, { spaceID: 'space' });
+    expect(other.component.spaceID()).toBe('');
+  });
+
   it('loads a GitHub deep link from URL context and returns to its safe internal page', async () => {
     const h = await harness(false, {
       store: 'github',

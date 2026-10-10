@@ -16,7 +16,11 @@ import {
 } from '@sneat/auth-core';
 import { BehaviorSubject, of } from 'rxjs';
 import { TEST_CHECKOUT_ORIGIN } from './checkout-config.mjs';
-import { DATATUG_BUSINESS_CHECKOUT_API_ORIGIN } from './business-checkout-config';
+import {
+  DATATUG_BUSINESS_CHECKOUT_API_ORIGIN,
+  DATATUG_BUSINESS_CHECKOUT_LIVE_API_ORIGIN,
+  DATATUG_BUSINESS_CHECKOUT_LIVE_ENABLED,
+} from './business-checkout-config';
 import { BusinessCheckoutPageComponent } from './business-checkout-page.component';
 import template from './business-checkout-page.component.html?raw';
 
@@ -61,11 +65,17 @@ function businessQuote(claimed = false) {
 }
 
 async function render(
-  query: Record<string, string>,
+  query: Record<string, string | string[]>,
   apiOrigin: string | null,
   initialAuth: ISneatAuthState = authenticated,
   recordUID = 'buyer',
+  testRailByDefault = true,
+  returning = false,
 ) {
+  const routeQuery =
+    testRailByDefault && query.checkout === undefined
+      ? { ...query, checkout: 'test' }
+      : query;
   states = new BehaviorSubject(initialAuth);
   userStates = new BehaviorSubject<ISneatUserState>({
     status: 'authenticated',
@@ -78,6 +88,8 @@ async function render(
     providers: [
       provideRouter([]),
       { provide: DATATUG_BUSINESS_CHECKOUT_API_ORIGIN, useValue: apiOrigin },
+      { provide: DATATUG_BUSINESS_CHECKOUT_LIVE_API_ORIGIN, useValue: null },
+      { provide: DATATUG_BUSINESS_CHECKOUT_LIVE_ENABLED, useValue: false },
       {
         provide: SneatAuthStateService,
         useValue: {
@@ -101,10 +113,10 @@ async function render(
       {
         provide: ActivatedRoute,
         useValue: {
-          queryParamMap: of(convertToParamMap(query)),
+          queryParamMap: of(convertToParamMap(routeQuery)),
           snapshot: {
-            data: { businessCheckoutReturn: false },
-            queryParamMap: convertToParamMap(query),
+            data: { businessCheckoutReturn: returning },
+            queryParamMap: convertToParamMap(routeQuery),
           },
         },
       },
@@ -149,6 +161,60 @@ it('keeps the cold route closed and makes no request until an API origin is conf
   expect(root.textContent).toContain(
     'DataTug Business TEST checkout is not configured yet.',
   );
+  expect(fetcher).not.toHaveBeenCalled();
+});
+
+it('defaults to the closed LIVE rail and requires an explicit TEST selection', async () => {
+  const root = await render(
+    { planID: 'datatug-business-usage-monthly', spaceID: 'group_1' },
+    TEST_CHECKOUT_ORIGIN,
+    authenticated,
+    'buyer',
+    false,
+  );
+  expect(root.textContent).toContain('LIVE Business checkout is not enabled yet.');
+  expect(root.querySelector('button[aria-pressed="true"]')?.textContent).toContain('LIVE');
+  expect(fetcher).not.toHaveBeenCalled();
+  const navigate = vi.spyOn(TestBed.inject(Router), 'navigate');
+  const testRail = Array.from(root.querySelectorAll('button')).find((button) =>
+    button.textContent?.trim() === 'TEST',
+  );
+  testRail?.click();
+  expect(navigate).toHaveBeenCalledWith(
+    [],
+    expect.objectContaining({
+      queryParams: {
+        planID: 'datatug-business-usage-monthly',
+        checkout: 'test',
+        spaceID: 'group_1',
+      },
+    }),
+  );
+});
+
+it.each([
+  { checkout: ['test', 'test'] },
+  { checkout: 'test', mode: 'live' },
+  { checkout: 'live' },
+])('rejects ambiguous Business rail selectors without an API call', async (query) => {
+  const root = await render(
+    { planID: 'datatug-business-usage-monthly', ...query },
+    TEST_CHECKOUT_ORIGIN,
+  );
+  expect(root.textContent).toContain('The checkout rail selector is invalid.');
+  expect(fetcher).not.toHaveBeenCalled();
+});
+
+it('rejects a return whose explicit mode conflicts with its session prefix', async () => {
+  const root = await render(
+    { spaceID: 'group_1', mode: 'live', session_id: 'cs_test_123' },
+    TEST_CHECKOUT_ORIGIN,
+    authenticated,
+    'buyer',
+    false,
+    true,
+  );
+  expect(root.textContent).toContain('does not identify a valid TEST or LIVE session');
   expect(fetcher).not.toHaveBeenCalled();
 });
 
@@ -200,10 +266,10 @@ it('shows the unavailable state on a real cold route before query normalization 
   await harness.fixture.whenStable();
 
   expect(harness.routeNativeElement?.textContent).toContain(
-    'DataTug Business TEST checkout is not configured yet.',
+    'LIVE Business checkout is not enabled yet.',
   );
   expect(harness.routeNativeElement?.textContent).not.toContain(
-    'Checking the Business TEST quote',
+    'Checking the Business LIVE quote',
   );
   expect(fetcher).not.toHaveBeenCalled();
 });
@@ -249,7 +315,7 @@ it('continues a real cold configured route after canonicalizing its default plan
   const harness = await RouterTestingHarness.create();
   const router = TestBed.inject(Router);
   await harness.navigateByUrl(
-    '/business/checkout',
+    '/business/checkout?checkout=test',
     BusinessCheckoutPageComponent,
   );
   await harness.fixture.whenStable();
@@ -257,7 +323,7 @@ it('continues a real cold configured route after canonicalizing its default plan
   await harness.fixture.whenStable();
 
   expect(router.url).toBe(
-    '/business/checkout?planID=datatug-business-usage-monthly',
+    '/business/checkout?planID=datatug-business-usage-monthly&checkout=test',
   );
   expect(harness.routeNativeElement?.textContent).toContain('Choose a Space');
   expect(harness.routeNativeElement?.textContent).not.toContain(

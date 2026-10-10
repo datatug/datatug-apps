@@ -137,6 +137,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   private readonly pendingDraft = signal<NewProjectDraft | undefined>(
     undefined,
   );
+  private readonly requestedSpaceID = signal<string | undefined>(undefined);
   private readonly authStatus = signal<AuthStatus | undefined>(undefined);
   private returnUrl = '/';
   @ViewChild(IonInput, { static: false }) titleInput?: IonInput;
@@ -190,6 +191,9 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   }
 
   constructor() {
+    const requestedSpaceID = this.route.snapshot.queryParamMap.get('spaceID');
+    if (requestedSpaceID && /^[A-Za-z0-9_-]{1,128}$/.test(requestedSpaceID))
+      this.requestedSpaceID.set(requestedSpaceID);
     this.userService.userState
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((state) => {
@@ -200,7 +204,8 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
             title: space.title,
           })),
         );
-        const savedSpaceID = this.restoredDraft()?.spaceID;
+        const savedSpaceID =
+          this.requestedSpaceID() ?? this.restoredDraft()?.spaceID;
         if (
           savedSpaceID &&
           this.spaces().some((space) => space.id === savedSpaceID)

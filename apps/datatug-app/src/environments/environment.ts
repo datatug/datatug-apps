@@ -2,6 +2,8 @@ import { IEnvironmentConfig, IFirebaseEmulatorConfig } from '@sneat/core';
 import type { DatatugDemoConfig } from './demo-config';
 
 export const datatugBusinessCheckoutApiOrigin: string | null = null;
+export const datatugBusinessCheckoutLiveApiOrigin: string | null = null;
+export const datatugBusinessCheckoutLiveEnabled = false;
 
 const useNgrok = window.location.hostname.includes('.ngrok.');
 const useSSL = useNgrok || window.location.hostname == 'local-app.sneat.ws';
