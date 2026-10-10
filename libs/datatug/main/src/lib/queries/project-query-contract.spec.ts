@@ -52,6 +52,31 @@ describe('common project query contract', () => {
     expect(wire.connectionId).toBe('chinook-sqlite');
     expect(fromProjectQueryWire(wire)).toEqual(query);
   });
+  it('preserves a saved relationship pin on read and refuses a lossy project-query save', () => {
+    const relationshipBindings = [
+      {
+        id: 'FK_Invoice_Customer_CustomerId',
+        version:
+          'fixture:main.Invoice.CustomerId:INTEGER->main.Customer.CustomerId:INTEGER:PRIMARY_KEY:v1',
+        from: { schema: 'main', table: 'Invoice' },
+        to: { schema: 'main', table: 'Customer' },
+        pairs: [{ fromField: 'CustomerId', toField: 'CustomerId' }],
+      },
+    ];
+    const wire = {
+      folderPath: 'customers',
+      id: 'customer-invoices-joined',
+      type: QueryType.DTQL,
+      text: 'from Invoice as i',
+      connectionId: 'chinook-sqlite',
+      relationshipBindings,
+    };
+    const definition = fromProjectQueryWire(wire);
+    expect(definition.relationshipBindings).toEqual(relationshipBindings);
+    expect(() =>
+      toProjectQueryWire(definition, 'customers/customer-invoices-joined'),
+    ).toThrow(UnsupportedQueryContractError);
+  });
   it('refuses a definition whose leaf ID disagrees with the requested location', () => {
     expect(() =>
       toProjectQueryWire(createHostedDemoDbQuery('other'), 'folder/q'),

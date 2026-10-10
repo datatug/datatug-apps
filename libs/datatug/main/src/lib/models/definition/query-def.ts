@@ -34,6 +34,8 @@ export interface IQueryFolderContext extends IQueryFolder {
 // Defines user's query
 export interface IQueryDef extends IQueryItem {
   request: IQueryRequest;
+  /** Reviewed schema relationship pins retained by Git-backed query files. */
+  relationshipBindings?: readonly IQueryRelationshipBinding[];
   /** Project connection declaration ID; never a URL or credential. */
   connectionId?: string;
   draft?: boolean;
@@ -74,6 +76,17 @@ export interface IQueryDef extends IQueryItem {
   };
   publicData?: PublicDataScenario;
   widgets?: IWidgetRef[];
+}
+
+export interface IQueryRelationshipBinding {
+  readonly id: string;
+  readonly version: string;
+  readonly from: { readonly schema: string; readonly table: string };
+  readonly to: { readonly schema: string; readonly table: string };
+  readonly pairs: readonly {
+    readonly fromField: string;
+    readonly toField: string;
+  }[];
 }
 
 // Defines request to some data without parameters
