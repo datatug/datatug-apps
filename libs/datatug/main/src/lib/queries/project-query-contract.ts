@@ -38,6 +38,14 @@ export interface ProjectQueryCapabilities {
   readonly reviewedCommit: boolean;
   readonly pullCurrent: boolean;
   readonly pushCurrent: boolean;
+  /** Server-verified Business usage scope for this exact registered GitHub project. */
+  readonly activityScope?: GitHubProjectActivityScope;
+}
+
+/** A selector returned by authenticated capabilities, never an authorization grant. */
+export interface GitHubProjectActivityScope {
+  readonly spaceID: string;
+  readonly projectID: string;
 }
 
 export class UnsupportedQueryContractError extends Error {
