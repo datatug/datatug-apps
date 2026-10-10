@@ -1,4 +1,11 @@
 import initSqlJs from 'sql.js';
+import type { TugQLResolved } from '@dalgo/core';
+import {
+  compilePublicSqliteTugQL,
+  type PublicSqliteAuthorProof,
+  type PublicSqliteOutputColumn,
+  type PublicSqliteRelationshipReceipt,
+} from './public-sqlite-tugql';
 
 const FIXTURE_URL = 'https://chinook.demodb.dev/data/chinook.sqlite';
 const FIXTURE_SHA256 =
@@ -10,25 +17,8 @@ const MAX_RESULT_BYTES = 1 << 20;
 const MAX_SQL_BYTES = 64 << 10;
 
 type Cell = string | number | null;
-interface WorkerRelationship {
-  readonly id: string;
-  readonly version: string;
-  readonly fromSource: string;
-  readonly toSource: string;
-  readonly joinType: 'inner';
-  readonly pairs: readonly {
-    readonly fromField: string;
-    readonly toField: string;
-  }[];
-}
-interface WorkerOutputColumn {
-  readonly name: string;
-  readonly type: 'integer' | 'string';
-  readonly lineage: readonly {
-    readonly source: string;
-    readonly field: string;
-  }[];
-}
+type WorkerRelationship = PublicSqliteRelationshipReceipt;
+type WorkerOutputColumn = PublicSqliteOutputColumn;
 interface RunMessage {
   readonly sql: string;
   readonly bindings?: readonly (string | number | null)[];
@@ -37,8 +27,10 @@ interface RunMessage {
   readonly schemaVersion?: string;
   readonly draftRevision?: number;
   readonly authorProfile?: boolean;
+  readonly authorProfileKind?: PublicSqliteAuthorProof['profile'];
   readonly relationship?: WorkerRelationship;
   readonly outputColumns?: readonly WorkerOutputColumn[];
+  readonly authorProof?: PublicSqliteAuthorProof;
 }
 interface WorkerExecutionReceipt {
   readonly executionId: string;
@@ -199,6 +191,14 @@ export async function executePinnedSql(
   authorProfile = false,
   joined = false,
   expectedOutputColumnNames?: readonly string[],
+  authorProof?: PublicSqliteAuthorProof,
+  bindingNames?: readonly string[],
+  schemaVersion?: string,
+  draftRevision?: number,
+  authorProfileKind?: PublicSqliteAuthorProof['profile'],
+  fixtureSha256?: string,
+  expectedOutputColumns?: readonly WorkerOutputColumn[],
+  authorRelationship?: WorkerRelationship,
 ): Promise<ResultMessage> {
   if (
     typeof sql !== 'string' ||
@@ -206,6 +206,60 @@ export async function executePinnedSql(
     !/^\s*(?:select|with)\b/i.test(sql)
   ) {
     throw new Error('Use one read-only SELECT statement of at most 64 KiB.');
+  }
+  if (
+    (authorProfile && (
+      !authorProfileKind ||
+      !authorProof ||
+      authorProof.profile !== authorProfileKind ||
+      fixtureSha256 !== FIXTURE_SHA256 ||
+      !schemaVersion?.trim() ||
+      !Number.isSafeInteger(draftRevision) ||
+      (draftRevision as number) < 0 ||
+      !bindingNames?.length
+    )) ||
+    (!authorProfile && (
+      authorProfileKind !== undefined ||
+      authorProof !== undefined ||
+      authorRelationship !== undefined
+    ))
+  )
+    throw new Error('The Author profile proof or execution metadata is missing or invalid.');
+  if (authorProof) {
+    if (
+      authorProfileKind === 'customer-count-cte' &&
+      (authorRelationship !== undefined || authorProof.relationship !== undefined)
+    )
+      throw new Error('The CTE Author profile cannot carry a physical relationship receipt.');
+    const resolved = {
+      query: authorProof.resolvedQuery,
+      columns: [],
+      schemaVersion: schemaVersion ?? '',
+      dependencies: [],
+      relationships: [],
+    } as unknown as TugQLResolved;
+    const derived = compilePublicSqliteTugQL(resolved, {
+      fixtureSha256: FIXTURE_SHA256,
+      schemaVersion: schemaVersion ?? '',
+      draftRevision: draftRevision ?? -1,
+      ...(authorProof.relationship ? { relationship: authorProof.relationship } : {}),
+    });
+    const bindingsMatch = bindings.length === 1 + derived.fixedBindings.length &&
+      Number.isSafeInteger(bindings[0]) &&
+      JSON.stringify(bindings.slice(1)) === JSON.stringify(derived.fixedBindings);
+    if (
+      !authorProfile ||
+      derived.authorProof?.profile !== authorProfileKind ||
+      sql !== derived.sql ||
+      JSON.stringify(bindingNames) !== JSON.stringify(derived.bindingNames) ||
+      JSON.stringify(expectedOutputColumnNames) !==
+        JSON.stringify(derived.outputColumns?.map((column) => column.name)) ||
+      JSON.stringify(expectedOutputColumns) !== JSON.stringify(derived.outputColumns) ||
+      JSON.stringify(authorRelationship) !== JSON.stringify(derived.relationship) ||
+      !bindingsMatch
+    )
+      throw new Error('The Author execution request differs from its independently compiled profile.');
+    joined = derived.authorProof.profile === 'customer-count-cte' || derived.relationship !== undefined;
   }
   const SQL = await initSqlJs(
     fixture
@@ -302,35 +356,54 @@ if (
       undefined,
       event.data.bindings ?? [],
       event.data.authorProfile === true,
-      event.data.relationship !== undefined,
+      event.data.relationship !== undefined || event.data.authorProof !== undefined,
       event.data.outputColumns?.map((column) => column.name),
+      event.data.authorProof,
+      event.data.bindingNames,
+      event.data.schemaVersion,
+      event.data.draftRevision,
+      event.data.authorProfileKind,
+      event.data.fixtureSha256,
+      event.data.outputColumns,
+      event.data.relationship,
     )
       .then((result) => {
-        if (
-          !event.data.authorProfile ||
-          !event.data.fixtureSha256 ||
-          !event.data.schemaVersion ||
-          typeof event.data.draftRevision !== 'number' ||
-          !Number.isSafeInteger(event.data.draftRevision) ||
-          !event.data.bindingNames?.length
-        ) {
+        if (!event.data.authorProfile) {
           self.postMessage({ ok: true, result });
           return;
         }
+        const proof = event.data.authorProof as PublicSqliteAuthorProof;
+        const schemaVersion = event.data.schemaVersion as string;
+        const draftRevision = event.data.draftRevision as number;
+        const receiptPlan = compilePublicSqliteTugQL(
+          {
+            query: proof.resolvedQuery,
+            columns: [],
+            schemaVersion,
+            dependencies: [],
+            relationships: [],
+          } as unknown as TugQLResolved,
+          {
+            fixtureSha256: FIXTURE_SHA256,
+            schemaVersion,
+            draftRevision,
+            ...(proof.relationship ? { relationship: proof.relationship } : {}),
+          },
+        );
         const receipt: WorkerExecutionReceipt = {
           executionId: crypto.randomUUID(),
           sql: event.data.sql,
           bindings: event.data.bindings ?? [],
-          bindingNames: event.data.bindingNames,
-          fixtureSha256: event.data.fixtureSha256,
-          schemaVersion: event.data.schemaVersion,
-          draftRevision: event.data.draftRevision,
+          bindingNames: event.data.bindingNames as readonly string[],
+          fixtureSha256: event.data.fixtureSha256 as string,
+          schemaVersion,
+          draftRevision,
           schemaFingerprint: result.schemaFingerprint ?? '',
-          ...(event.data.relationship
-            ? { relationship: event.data.relationship }
+          ...(receiptPlan.relationship
+            ? { relationship: receiptPlan.relationship }
             : {}),
-          ...(event.data.outputColumns
-            ? { outputColumns: event.data.outputColumns }
+          ...(receiptPlan.outputColumns
+            ? { outputColumns: receiptPlan.outputColumns }
             : {}),
         };
         self.postMessage({ ok: true, result, receipt });

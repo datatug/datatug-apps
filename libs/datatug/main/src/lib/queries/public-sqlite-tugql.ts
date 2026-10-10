@@ -1,5 +1,6 @@
 import type {
   RecursiveDTQLExpression,
+  RecursiveDTQLQuery,
   TugQLResolved,
   TugQLTree,
 } from '@dalgo/core';
@@ -14,6 +15,13 @@ export interface PublicSqlitePreparedPlan {
   readonly draftRevision: number;
   readonly relationship?: PublicSqliteRelationshipReceipt;
   readonly outputColumns?: readonly PublicSqliteOutputColumn[];
+  readonly authorProof: PublicSqliteAuthorProof;
+}
+
+export interface PublicSqliteAuthorProof {
+  readonly profile: 'invoice-query' | 'customer-count-cte';
+  readonly resolvedQuery: RecursiveDTQLQuery;
+  readonly relationship?: PublicSqliteRelationshipReceipt;
 }
 
 export interface PublicSqliteRelationshipReceipt {
@@ -60,7 +68,7 @@ export type PublicSqliteQueryPreview = Omit<
 
 export type PublicSqliteExecutionReceipt = Omit<
   PublicSqlitePreparedPlan,
-  'bindings'
+  'bindings' | 'authorProof'
 > & {
   readonly executionId: string;
   readonly bindingNames: readonly string[];
@@ -109,7 +117,10 @@ function countSql(expression: RecursiveDTQLExpression, alias: string): string {
 
 /** Preserve parameter identity before resolveTugQL substitutes its value into a literal. */
 export function requireCustomerIdParameterSource(tree: TugQLTree): void {
-  const query = tree.query as Readonly<Record<string, unknown>>;
+  const cte = tree.definitions?.length === 1 && tree.definitions[0]?.kind === 'cte'
+    ? tree.definitions[0]
+    : undefined;
+  const query = (cte?.query.query ?? tree.query) as Readonly<Record<string, unknown>>;
   const from = query['from'] as Readonly<Record<string, unknown>> | undefined;
   const alias = typeof from?.['alias'] === 'string' ? from['alias'] : 'Invoice';
   const where = query['where'] as Readonly<Record<string, unknown>> | undefined;
@@ -141,7 +152,10 @@ export function requireCustomerIdParameterSource(tree: TugQLTree): void {
 
 /** Validate literal provenance before resolveTugQL replaces parameters with values. */
 export function requireLiteralHavingThreshold(tree: TugQLTree): void {
-  const query = tree.query as Readonly<Record<string, unknown>>;
+  const cte = tree.definitions?.length === 1 && tree.definitions[0]?.kind === 'cte'
+    ? tree.definitions[0]
+    : undefined;
+  const query = (cte?.query.query ?? tree.query) as Readonly<Record<string, unknown>>;
   const having = query['having'] as
     | Readonly<Record<string, unknown>>
     | undefined;
@@ -169,6 +183,8 @@ export function compilePublicSqliteTugQL(
   },
 ): PublicSqliteQueryPreview {
   const query = resolved.query;
+  if (query.from.kind === 'query')
+    return compileCustomerCountCte(resolved, options);
   if (query.where !== undefined) {
     throw new Error(
       'Compile only the structurally resolved query with its guarded CustomerId predicate removed.',
@@ -198,6 +214,8 @@ export function compilePublicSqliteTugQL(
   const invoiceAlias = query.from.alias ?? 'Invoice';
   const customerAlias =
     join?.from.kind === 'table' ? (join.from.alias ?? 'Customer') : 'Customer';
+  if (isJoined && invoiceAlias.toLowerCase() === customerAlias.toLowerCase())
+    throw new Error('Invoice and Customer aliases must be distinct in the join.');
   const onPredicate = join?.on[0];
   const onMatchesRelationship =
     onPredicate?.operator === '==' &&
@@ -419,8 +437,198 @@ export function compilePublicSqliteTugQL(
       ? { relationship: Object.freeze(options.relationship) }
       : {}),
     ...(isJoined ? { outputColumns: Object.freeze(outputColumns) } : {}),
+    authorProof: Object.freeze({
+      profile: 'invoice-query' as const,
+      resolvedQuery: freezeQuery(query),
+      ...(options.relationship
+        ? { relationship: Object.freeze(options.relationship) }
+        : {}),
+    }),
     ...(options.expandedSource
       ? { expandedSource: options.expandedSource }
       : {}),
   });
+}
+
+/** Compile only the authored single Invoice-count CTE and its explicit Customer key join. */
+function compileCustomerCountCte(
+  resolved: TugQLResolved,
+  options: {
+    readonly fixtureSha256: string;
+    readonly schemaVersion: string;
+    readonly draftRevision: number;
+  },
+): PublicSqliteQueryPreview {
+  const query = resolved.query;
+  const relation = query.from;
+  const cte = relation.query;
+  const innerRelation = cte?.from;
+  const join = relation.joins[0];
+  const cteAlias = cte?.as ?? '';
+  const invoiceAlias = innerRelation?.alias ?? 'Invoice';
+  const customerAlias = join?.from.alias ?? 'Customer';
+  const keyOutput = cte?.columns?.[0]?.as ?? 'CustomerId';
+  const countOutput = cte?.columns?.[1]?.as;
+  const innerLimit = cte?.limit;
+  const outerLimit = query.limit;
+  if (
+    query.kind !== 'recursive-dtql' ||
+    relation.kind !== 'query' ||
+    !cte ||
+    relation.name !== undefined ||
+    relation.schema !== undefined ||
+    !cteAlias ||
+    relation.alias !== undefined ||
+    relation.joins.length !== 1 ||
+    query.where !== undefined ||
+    query.as !== undefined ||
+    query.offset !== undefined ||
+    query.groupBy !== undefined ||
+    query.having !== undefined ||
+    innerRelation?.kind !== 'table' ||
+    innerRelation.name !== 'Invoice' ||
+    (innerRelation.schema !== undefined && innerRelation.schema !== 'main') ||
+    !invoiceAlias ||
+    innerRelation.joins.length !== 0 ||
+    cte.where !== undefined ||
+    cte.offset !== undefined ||
+    cte.orderBy?.length ||
+    innerLimit === undefined ||
+    !Number.isSafeInteger(innerLimit) ||
+    innerLimit < 1 ||
+    innerLimit > 100 ||
+    outerLimit === undefined ||
+    !Number.isSafeInteger(outerLimit) ||
+    outerLimit < 1 ||
+    outerLimit > 100 ||
+    query.orderBy?.length !== 1 ||
+    query.orderBy[0]?.field.source !== cteAlias ||
+    query.orderBy[0]?.field.field !== keyOutput ||
+    query.orderBy[0]?.direction !== 'asc' ||
+    join?.type !== 'inner' ||
+    join.from.kind !== 'table' ||
+    join.from.name !== 'Customer' ||
+    (join.from.schema !== undefined && join.from.schema !== 'main') ||
+    !customerAlias ||
+    join.from.joins.length !== 0 ||
+    join.on.length !== 1
+  ) {
+    throw new Error('This preview supports one bounded Invoice count CTE joined to Customer by its explicit key.');
+  }
+  if (cteAlias.toLowerCase() === customerAlias.toLowerCase())
+    throw new Error('The CTE and Customer aliases must be distinct in the outer query.');
+  const group = cte.groupBy?.[0];
+  const having = cte.having;
+  if (
+    cte.groupBy?.length !== 1 ||
+    group?.kind !== 'field' ||
+    group.field.source !== invoiceAlias ||
+    group.field.field !== 'CustomerId' ||
+    !having ||
+    having.kind !== 'comparison' ||
+    !Object.hasOwn(SQL_COMPARISON_OPERATORS, having.operator) ||
+    having.right.kind !== 'literal' ||
+    typeof having.right.value !== 'number' ||
+    !Number.isSafeInteger(having.right.value) ||
+    cte.columns?.length !== 2 ||
+    cte.columns[0]?.expression.kind !== 'field' ||
+    cte.columns[0].expression.field.source !== invoiceAlias ||
+    cte.columns[0].expression.field.field !== 'CustomerId' ||
+    !keyOutput ||
+    !countOutput
+  ) {
+    throw new Error('The CTE must group Invoice.CustomerId and project its integer COUNT with an integer HAVING literal.');
+  }
+  if (keyOutput.toLowerCase() === countOutput.toLowerCase())
+    throw new Error('The CTE key and count outputs must have distinct names.');
+  const countExpression = cte.columns[1].expression;
+  const count = countSql(countExpression, invoiceAlias);
+  if (countSql(having.left, invoiceAlias) !== count)
+    throw new Error('The CTE must select and filter the same Invoice COUNT expression.');
+  const joinOn = join.on[0];
+  const validOn = joinOn?.operator === '==' &&
+    ((joinOn.left.source === cteAlias && joinOn.left.field === keyOutput &&
+      joinOn.right.source === customerAlias && joinOn.right.field === 'CustomerId') ||
+     (joinOn.right.source === cteAlias && joinOn.right.field === keyOutput &&
+      joinOn.left.source === customerAlias && joinOn.left.field === 'CustomerId'));
+  if (!validOn)
+    throw new Error('Write the Customer join explicitly as totals.CustomerId = c.CustomerId.');
+  const columns = query.columns;
+  if (!columns || columns.length !== 5)
+    throw new Error('Project the CTE key, count, and all three Customer string fields.');
+  const names = columns.map((column) => column.as ?? (column.expression.kind === 'field' ? column.expression.field.field : ''));
+  if (new Set(names).size !== names.length || names.some((name) => !name))
+    throw new Error('Every CTE output must have a unique projection name.');
+  const select: string[] = [];
+  const outputColumns: PublicSqliteOutputColumn[] = [];
+  const customerFields = new Set<string>();
+  for (const [index, column] of columns.entries()) {
+    const expression = column.expression;
+    if (expression.kind !== 'field')
+      throw new Error('Project the CTE key, count, and Customer first name, last name, and email.');
+    const field = expression.field;
+    const isKey = index === 0 && field.source === cteAlias && field.field === keyOutput;
+    const isCount = index === 1 && field.source === cteAlias && field.field === countOutput;
+    const isCustomer = index > 1 && field.source === customerAlias &&
+      ['FirstName', 'LastName', 'Email'].includes(field.field);
+    if (!(isKey || isCount || isCustomer) || (isCustomer && customerFields.has(field.field)))
+      throw new Error('Project the CTE key, count, and distinct Customer string fields.');
+    if (isCustomer) customerFields.add(field.field);
+    const name = names[index] as string;
+    select.push(`${quoteIdentifier(field.source)}.${quoteIdentifier(field.field)} AS ${quoteIdentifier(name)}`);
+    const type = index < 2 ? 'integer' : 'string';
+    const lineage = isKey
+      ? [{ source: invoiceAlias, field: 'CustomerId' }]
+      : isCount
+        ? []
+        : [{ source: customerAlias, field: field.field }];
+    outputColumns.push(Object.freeze({
+      name,
+      type,
+      lineage: Object.freeze(lineage),
+    }));
+  }
+  if (
+    customerFields.size !== 3 ||
+    !['FirstName', 'LastName', 'Email'].every((field) => customerFields.has(field))
+  )
+    throw new Error('Project FirstName, LastName, and Email exactly once.');
+  const threshold = having.right.value;
+  const havingSql = `${count} ${SQL_COMPARISON_OPERATORS[having.operator]} ?`;
+  const derived = [
+    `SELECT ${quoteIdentifier(invoiceAlias)}.${quoteIdentifier('CustomerId')} AS ${quoteIdentifier(keyOutput)},`,
+    `  ${count} AS ${quoteIdentifier(countOutput)}`,
+    `FROM ${quoteIdentifier('Invoice')} AS ${quoteIdentifier(invoiceAlias)}`,
+    `WHERE ${quoteIdentifier(invoiceAlias)}.${quoteIdentifier('CustomerId')} = ?`,
+    `GROUP BY ${quoteIdentifier(invoiceAlias)}.${quoteIdentifier('CustomerId')}`,
+    `HAVING ${havingSql}`,
+    `LIMIT ${innerLimit}`,
+  ].join('\n');
+  const sql = [
+    `SELECT ${select.join(',\n  ')}`,
+    `FROM (\n${derived}\n) AS ${quoteIdentifier(cteAlias)}`,
+    `INNER JOIN ${quoteIdentifier('Customer')} AS ${quoteIdentifier(customerAlias)} ON ${quoteIdentifier(cteAlias)}.${quoteIdentifier(keyOutput)} = ${quoteIdentifier(customerAlias)}.${quoteIdentifier('CustomerId')}`,
+    `ORDER BY ${quoteIdentifier(cteAlias)}.${quoteIdentifier(keyOutput)} ASC`,
+    `LIMIT ${outerLimit}`,
+  ].join('\n');
+  const proof = Object.freeze({ profile: 'customer-count-cte' as const, resolvedQuery: freezeQuery(query) });
+  return Object.freeze({
+    sql,
+    fixedBindings: Object.freeze([threshold]),
+    bindingNames: Object.freeze(['CustomerId', 'HAVING threshold (literal)']),
+    sourceId: 'chinook-sqlite',
+    fixtureSha256: options.fixtureSha256,
+    schemaVersion: options.schemaVersion,
+    draftRevision: options.draftRevision,
+    outputColumns: Object.freeze(outputColumns),
+    authorProof: proof,
+  });
+}
+
+function freezeQuery<T>(value: T): T {
+  if (value && typeof value === 'object' && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const child of Object.values(value)) freezeQuery(child);
+  }
+  return value;
 }
