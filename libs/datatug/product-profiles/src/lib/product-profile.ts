@@ -103,7 +103,7 @@ export const PRODUCT_PROFILES: Readonly<
 > = Object.freeze({
   datatug: Object.freeze({
     id: 'datatug',
-    pricingUrl: 'https://datatug.io/pricing/',
+    pricingUrl: 'https://datatug.app/en/pricing/',
     brandName: 'DataTug.app',
     homePath: 'home',
     entryPointLabel: 'Open a project',

@@ -650,3 +650,36 @@ it('re-acknowledges and retries the same frozen quote after session failure', as
     sessionCalls.map(([, options]) => JSON.parse(String(options?.body))),
   ).toEqual([firstSessionBody, firstSessionBody]);
 });
+
+it.each([
+  [
+    {
+      planID: 'datatug-business-usage-monthly',
+      spaceID: 'group_1',
+      checkout: 'test',
+    },
+    true,
+    'https://datatug.app/en/pricing/?checkout=test',
+  ],
+  [
+    { planID: 'datatug-business-usage-monthly', spaceID: 'group_1' },
+    false,
+    'https://datatug.app/en/pricing/',
+  ],
+])(
+  'links back to pricing at %s for query %j',
+  async (params, testRailByDefault, expected) => {
+    const root = await render(
+      params,
+      TEST_CHECKOUT_ORIGIN,
+      authenticated,
+      'buyer',
+      testRailByDefault,
+    );
+    expect(
+      root
+        .querySelector('nav[aria-label="Checkout navigation"] a')
+        ?.getAttribute('href'),
+    ).toBe(expected);
+  },
+);

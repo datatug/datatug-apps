@@ -56,7 +56,7 @@ export class CheckoutPageComponent implements OnDestroy {
   protected readonly period = signal('');
   protected readonly enabled = signal(false);
   protected readonly existingPurchase = signal<string | null>(null);
-  protected readonly back = signal('https://datatug.io/pricing/');
+  protected readonly back = signal('https://datatug.app/en/pricing/');
   @ViewChild('embedded', { static: true })
   private embedded?: ElementRef<HTMLElement>;
   private flow?:
@@ -93,7 +93,7 @@ export class CheckoutPageComponent implements OnDestroy {
     this.enabled.set(Boolean(rail));
     this.mode.set(rail?.mode ?? 'test');
     this.back.set(
-      'https://datatug.io/pricing/' + (test ? '?checkout=test' : ''),
+      'https://datatug.app/en/pricing/' + (test ? '?checkout=test' : ''),
     );
     if (!rail || !chosen) {
       this.state.set({

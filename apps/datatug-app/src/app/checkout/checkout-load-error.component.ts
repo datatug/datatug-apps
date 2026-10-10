@@ -21,7 +21,7 @@ export const CHECKOUT_PAGE_RELOAD = new InjectionToken<() => void>('CHECKOUT_PAG
         <h1>Checkout page could not load</h1>
         <p>Check your connection, then reload this page to try again.</p>
         <button type="button" (click)="reload()">Reload checkout</button>
-        <p><a href="https://datatug.io/pricing/">Back to pricing</a></p>
+        <p><a href="https://datatug.app/en/pricing/">Back to pricing</a></p>
       </main>
     </ion-content>
   `,
