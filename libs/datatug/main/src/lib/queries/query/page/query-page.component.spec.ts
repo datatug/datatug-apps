@@ -63,6 +63,7 @@ import { QueryWorkspaceLayoutComponent } from './query-workspace-layout.componen
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
 import { FederatedQueryService } from '../../federated-query.service';
 import { PublicSqliteQueryService } from '../../public-sqlite-query.service';
+import { GitHubProjectActivityService } from '../../../services/project/github-project-activity.service';
 import { graphFixturePlan } from '../../public-data/native-graph.spec-helper';
 import { graphStableIdentity } from '../../public-data/native-graph-executor';
 import {
@@ -82,6 +83,13 @@ function agentContextStub(securityContextId: string | undefined = 'sctx-1') {
   return {
     securityContextId: signal(securityContextId),
     refresh: vi.fn(() => of(undefined)),
+  };
+}
+
+function githubProjectActivityStub() {
+  return {
+    resolve: vi.fn(() => of(undefined)),
+    reportForCurrentProject: vi.fn(() => of(undefined)),
   };
 }
 
@@ -132,6 +140,10 @@ describe('SqlEditorPage', () => {
       imports: [QueryPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
+        {
+          provide: GitHubProjectActivityService,
+          useValue: githubProjectActivityStub(),
+        },
         {
           provide: ErrorLogger,
           useValue: {
@@ -323,6 +335,10 @@ describe('QueryPageComponent — new SQL draft navigation', () => {
         imports: [QueryPageComponent],
         schemas: [CUSTOM_ELEMENTS_SCHEMA],
         providers: [
+          {
+            provide: GitHubProjectActivityService,
+            useValue: githubProjectActivityStub(),
+          },
           {
             provide: ErrorLogger,
             useValue: {
@@ -542,8 +558,41 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     expect(component.canChoosePublicSqliteSource()).toBe(true);
   });
 
+  it('reports a changed GitHub query draft once without counting an unchanged editor value', async () => {
+    component = await createComponent();
+    component.project = {
+      ref: {
+        storeId: 'github.com',
+        projectId: 'demo@buyer@project',
+        projectApi: 'cloud',
+        branch: 'main',
+      },
+    };
+    const activity = TestBed.inject(
+      GitHubProjectActivityService,
+    ) as unknown as ReturnType<typeof githubProjectActivityStub>;
+
+    expect(activity.reportForCurrentProject).not.toHaveBeenCalled();
+    component.queryTextChanged(
+      new CustomEvent('ionInput', { detail: { value: 'SELECT 1' } }),
+    );
+    component.queryTextChanged(
+      new CustomEvent('ionInput', { detail: { value: 'SELECT 1' } }),
+    );
+
+    expect(activity.reportForCurrentProject).toHaveBeenCalledOnce();
+    expect(activity.reportForCurrentProject).toHaveBeenCalledWith(
+      component.project.ref,
+      'test-id',
+      'query_edit',
+    );
+  });
+
   it('pages a browser SQLite result locally without asking the federated pager', async () => {
     component = await createComponent();
+    const activity = TestBed.inject(
+      GitHubProjectActivityService,
+    ) as unknown as ReturnType<typeof githubProjectActivityStub>;
     component.project = {
       ref: {
         storeId: 'github.com',
@@ -576,6 +625,11 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       },
     );
     component.runQuery();
+    expect(activity.reportForCurrentProject).toHaveBeenCalledWith(
+      component.project.ref,
+      'test-id',
+      'query_execution_dispatched',
+    );
     await vi.waitFor(() => expect(component.resultTotalRows()).toBe(150));
     expect(component.visibleResultRows()).toHaveLength(100);
     await component.changeResultPage(1);
@@ -2163,6 +2217,10 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       imports: [QueryPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
+        {
+          provide: GitHubProjectActivityService,
+          useValue: githubProjectActivityStub(),
+        },
         {
           provide: ErrorLogger,
           useValue: {
@@ -5349,6 +5407,10 @@ describe('QueryPageComponent — clearing a required parameter blocks Run (S96)'
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
         {
+          provide: GitHubProjectActivityService,
+          useValue: githubProjectActivityStub(),
+        },
+        {
           provide: ErrorLogger,
           useValue: {
             logError: vi.fn(),
@@ -5547,6 +5609,10 @@ describe('QueryPageComponent dependency injection', () => {
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
         {
+          provide: GitHubProjectActivityService,
+          useValue: githubProjectActivityStub(),
+        },
+        {
           provide: ErrorLogger,
           useValue: {
             logError: vi.fn(),
@@ -5608,6 +5674,10 @@ describe('QueryPageComponent dependency injection', () => {
       imports: [QueryPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
+        {
+          provide: GitHubProjectActivityService,
+          useValue: githubProjectActivityStub(),
+        },
         {
           provide: ErrorLogger,
           useValue: {
@@ -5763,6 +5833,10 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
       imports: [QueryPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
+        {
+          provide: GitHubProjectActivityService,
+          useValue: githubProjectActivityStub(),
+        },
         {
           provide: ErrorLogger,
           useValue: {

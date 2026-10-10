@@ -231,6 +231,7 @@ import {
 } from '../../../nav/nav-models';
 import { projectPageHref } from '../../../nav/project-page-href';
 import { ProjectTracker } from '../../../services/nav/contexts/project.tracker';
+import { GitHubProjectActivityService } from '../../../services/project/github-project-activity.service';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { DatatugServicesNavModule } from '../../../services/nav/datatug-services-nav.module';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
@@ -300,6 +301,8 @@ interface RebindSuggestion {
 function typedValuesEqual(a: TypedValue, b: TypedValue): boolean {
   return a.type === b.type && a.value === b.value;
 }
+
+const githubQueryEditReportMinIntervalMs = 1_100;
 
 /** Writes `next` into `sig` only if it differs from the current value per `equal` —
  * see `updateBindings()`'s own comment on why an unconditional `.set()` inside an
@@ -524,6 +527,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly randomIdService = inject(RandomIdService);
   private readonly datatugNavContextService = inject(DatatugNavContextService);
+  private readonly githubProjectActivity = inject(GitHubProjectActivityService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly queryContextSqlService = inject(QueryContextSqlService);
@@ -554,6 +558,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public project?: IProjectContext;
   private navigationDraft?: { ref: IProjectRef; query: IQueryDef };
   private authorPreviewLifetime = 0;
+  private lastGitHubQueryEditReport?: { key: string; at: number };
 
   public showQueryBuilder?: boolean;
   public editorTab: 'text' | 'builder' = 'text';
@@ -1094,6 +1099,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.queryState.request.queryType === QueryType.HTTP
     )
       return;
+    const previousText = (this.queryState.request as ITextQueryRequest).text;
+    if (text !== previousText) this.reportGitHubQueryEdit(this.project?.ref);
     this.queryState = {
       ...this.queryState,
       request: { ...this.queryState.request, text } as ITextQueryRequest,
@@ -2175,6 +2182,18 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           this.invalidateHistoryScope();
         const previousRef = this.project?.ref;
         this.project = currentProject;
+        if (
+          isGithubStoreId(currentProject.ref.storeId) &&
+          currentProject.ref.projectApi === 'cloud'
+        ) {
+          this.githubProjectActivity.resolve(currentProject.ref).subscribe({
+            error: (error: unknown) =>
+              this.errorLogger.logError(
+                error,
+                'Failed to resolve GitHub Business query activity context',
+              ),
+          });
+        }
         this.restoreNavigationDraft(currentProject.ref);
         if (
           currentProject.ref.projectApi &&
@@ -3275,6 +3294,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         JSON.stringify(this.queryDef()) === JSON.stringify(executedDefinition);
       this.running.set(true);
       this.runError.set(undefined);
+      this.reportGitHubQueryDispatch(projectRef);
       void this.publicSqliteQuery
         .runTugQL(
           projectRef,
@@ -3333,6 +3353,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         JSON.stringify(this.queryDef()) === JSON.stringify(executedDefinition);
       this.running.set(true);
       this.runError.set(undefined);
+      this.reportGitHubQueryDispatch(projectRef);
       void this.publicSqliteQuery
         .run(projectRef, executedDefinition)
         .then((result) => {
@@ -3387,6 +3408,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         credentialGeneration === this.ovdbCredentialGeneration() &&
         graphStableIdentity(this.queryDef()) === executedIdentity;
       this.executedGraphDefinition = executedDefinition;
+      this.reportGitHubQueryDispatch(projectRef);
       this.federatedQuery
         .run(
           executedDefinition,
@@ -3843,6 +3865,62 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     );
   }
 
+  private reportGitHubQueryDispatch(ref?: IProjectRef): void {
+    if (
+      !ref ||
+      !isGithubStoreId(ref.storeId) ||
+      ref.projectApi !== 'cloud'
+    ) {
+      return;
+    }
+    this.githubProjectActivity
+      .reportForCurrentProject(
+        ref,
+        this.randomIdService.newRandomId(),
+        'query_execution_dispatched',
+      )
+      .subscribe({
+        error: (error: unknown) =>
+          this.errorLogger.logError(
+            error,
+            'Failed to record GitHub Business query activity',
+          ),
+      });
+  }
+
+  private reportGitHubQueryEdit(ref?: IProjectRef): void {
+    if (
+      !ref ||
+      !isGithubStoreId(ref.storeId) ||
+      ref.projectApi !== 'cloud'
+    ) {
+      return;
+    }
+    const key = JSON.stringify({ ref, queryId: this.queryId });
+    const now = Date.now();
+    const last = this.lastGitHubQueryEditReport;
+    if (
+      last?.key === key &&
+      now - last.at < githubQueryEditReportMinIntervalMs
+    ) {
+      return;
+    }
+    this.lastGitHubQueryEditReport = { key, at: now };
+    this.githubProjectActivity
+      .reportForCurrentProject(
+        ref,
+        this.randomIdService.newRandomId(),
+        'query_edit',
+      )
+      .subscribe({
+        error: (error: unknown) =>
+          this.errorLogger.logError(
+            error,
+            'Failed to record GitHub Business query edit activity',
+          ),
+      });
+  }
+
   private executeQuery(
     request: RunQueryRequest,
     requestScope: {
@@ -3855,6 +3933,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.lastRequestScope = requestScope;
     const definition = this.queryDef();
     if (!definition) return;
+    this.reportGitHubQueryDispatch(this.project?.ref);
     const executedDefinition = structuredClone(definition);
     const queryIdentity = this.currentQueryIdentity();
     const targetIdentity = this.currentResultTargetIdentity();
