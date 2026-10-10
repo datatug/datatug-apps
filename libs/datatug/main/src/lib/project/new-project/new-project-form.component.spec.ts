@@ -13,6 +13,10 @@ import { DatatugNavService } from '../../services/nav/datatug-nav.service';
 import { ProjectService } from '../../services/project/project.service';
 import { ProjectQueryApiService } from '../../services/project/project-query-api.service';
 import { GithubConnectionService } from '../../services/repo/github/github-connection.service';
+import {
+  saveBusinessGithubContinuation,
+  takeBusinessGithubContinuation,
+} from './business-github-continuation';
 
 // The app registers its icon set in main.ts. Mirror the icons this real
 // template uses so happy-dom renders embedded SVGs instead of fetching them.
@@ -41,6 +45,10 @@ async function harness(
   authenticated = true,
   preserveDraft = false,
   initialStatus?: 'authenticating' | 'authenticated' | 'notAuthenticated',
+  spaceRecords: Record<string, { title: string }> = freshUser
+    ? {}
+    : { space: { title: 'My Space' } },
+  actorID = 'actor',
 ) {
   TestBed.resetTestingModule();
   if (!preserveDraft) sessionStorage.removeItem('datatug:new-project:draft');
@@ -53,12 +61,13 @@ async function harness(
   );
   const createCloud = vi.fn(() => of('cloud-id'));
   const spaceResult = new Subject<{ id: string; dbo: { title: string } }>();
+  const startResult = new Subject<{ authorizationURL: string }>();
   const createSpace = vi.fn(() => spaceResult);
   const userState = new BehaviorSubject({
     status:
       initialStatus ?? (authenticated ? 'authenticated' : 'notAuthenticated'),
-    user: authenticated ? { uid: 'actor' } : undefined,
-    record: { spaces: freshUser ? {} : { space: { title: 'My Space' } } },
+    user: authenticated ? { uid: actorID } : undefined,
+    record: { spaces: spaceRecords },
   });
   const nav = { goProject: vi.fn() };
   const router = {
@@ -68,7 +77,7 @@ async function harness(
     serializeUrl: vi.fn(),
   };
   const connection = {
-    start: vi.fn(),
+    start: vi.fn(() => startResult),
     repositories: vi.fn(() => of({ repositories: [repo] })),
   };
   const signInWith = vi.fn(() => Promise.resolve(undefined));
@@ -106,10 +115,10 @@ async function harness(
   await TestBed.compileComponents();
   const fixture = TestBed.createComponent(NewProjectFormComponent);
   const component = fixture.componentInstance;
-  const select = () => {
+  const select = (selectedSpaceID = 'space') => {
     component.store.set('github');
     component.title.set('Project');
-    component.spaceID.set('space');
+    component.spaceID.set(selectedSpaceID);
     component.loadGithubRepos();
     component.repositoryChanged(repo.id);
     component.branch.set('work');
@@ -122,6 +131,7 @@ async function harness(
     createCloud,
     createSpace,
     spaceResult,
+    startResult,
     userState,
     connection,
     signInWith,
@@ -132,6 +142,133 @@ async function harness(
 }
 
 describe('New project through authenticated common API', () => {
+  it('preselects a requested checkout Space only when it belongs to the signed-in user', async () => {
+    const h = await harness(false, { spaceID: 'space' });
+    expect(h.component.spaceID()).toBe('space');
+
+    const other = await harness(true, { spaceID: 'space' });
+    expect(other.component.spaceID()).toBe('');
+  });
+
+  it('keeps a valid checkout Space over a same-actor draft for Cloud creation', async () => {
+    sessionStorage.setItem(
+      'datatug:new-project:draft',
+      JSON.stringify({
+        actorID: 'actor',
+        store: 'cloud',
+        title: 'Saved project',
+        githubFolder: 'datatug',
+        spaceID: 'B',
+        spaceTitle: '',
+      }),
+    );
+    const h = await harness(
+      false,
+      { spaceID: 'A', billingIntent: 'space_business' },
+      true,
+      true,
+      undefined,
+      { A: { title: 'Space A' }, B: { title: 'Space B' } },
+    );
+    h.fixture.detectChanges();
+    expect(h.component.spaceID()).toBe('A');
+    h.component.create();
+    expect(h.createCloud).toHaveBeenCalledWith('firestore', {
+      title: 'Saved project',
+      userIDs: [],
+      billingIntent: 'space_business',
+      spaceID: 'A',
+    });
+  });
+
+  it('keeps a valid checkout Space over a deferred same-actor draft for GitHub creation', async () => {
+    sessionStorage.setItem(
+      'datatug:new-project:draft',
+      JSON.stringify({
+        actorID: 'actor',
+        store: 'github',
+        title: 'Saved project',
+        githubFolder: 'datatug',
+        spaceID: 'B',
+        spaceTitle: '',
+      }),
+    );
+    const h = await harness(
+      false,
+      {
+        store: 'github',
+        spaceID: 'A',
+        billingIntent: 'space_business',
+      },
+      false,
+      true,
+      'authenticating',
+      {},
+    );
+    h.fixture.detectChanges();
+    expect(h.component.spaceID()).toBe('');
+    h.userState.next({
+      status: 'authenticated',
+      user: { uid: 'actor' },
+      record: { spaces: { A: { title: 'Space A' }, B: { title: 'Space B' } } },
+    });
+    await h.fixture.whenStable();
+    expect(h.component.spaceID()).toBe('A');
+    h.select('A');
+    h.component.create();
+    expect(h.create.mock.calls[0][0]).toMatchObject({
+      spaceID: 'A',
+      billingIntent: 'space_business',
+    });
+  });
+
+  it('saves actor-bound Business context before leaving for GitHub without storing credentials', async () => {
+    const h = await harness(false, {
+      store: 'github',
+      spaceID: 'space',
+      billingIntent: 'space_business',
+    });
+    h.component.title.set('Business project');
+    h.component.githubFolder.set('demo-project-1');
+    h.component.signInToGithub();
+
+    expect(h.connection.start).toHaveBeenCalledTimes(1);
+    expect(takeBusinessGithubContinuation('actor')).toEqual({
+      billingIntent: 'space_business',
+      spaceID: 'space',
+    });
+    expect(
+      JSON.stringify(
+        Object.keys(sessionStorage).map((key) => sessionStorage.getItem(key)),
+      ),
+    ).not.toMatch(/token|secret|authorizationURL/i);
+  });
+
+  it('clears abandoned Business context when the actor starts personal GitHub OAuth', async () => {
+    expect(saveBusinessGithubContinuation('actor', 'space')).toBe(true);
+    const h = await harness(false, { store: 'github' });
+
+    h.component.signInToGithub();
+
+    expect(h.connection.start).toHaveBeenCalledTimes(1);
+    expect(takeBusinessGithubContinuation('actor')).toBeUndefined();
+  });
+
+  it('forwards the Business billing intent and selected Space to shared project creation', async () => {
+    const h = await harness(false, {
+      spaceID: 'space',
+      billingIntent: 'space_business',
+    });
+    h.component.title.set('Business project');
+    h.component.create();
+    expect(h.createCloud).toHaveBeenCalledWith('firestore', {
+      title: 'Business project',
+      userIDs: [],
+      billingIntent: 'space_business',
+      spaceID: 'space',
+    });
+  });
+
   it('loads a GitHub deep link from URL context and returns to its safe internal page', async () => {
     const h = await harness(false, {
       store: 'github',
@@ -439,6 +576,7 @@ describe('New project through authenticated common API', () => {
     expect(h.createCloud).toHaveBeenCalledWith('firestore', {
       title: 'Cloud',
       userIDs: [],
+      billingIntent: 'personal_pro',
     });
     expect(h.nav.goProject.mock.calls[0][0].ref).toEqual({
       storeId: 'firestore',
@@ -454,6 +592,7 @@ describe('New project through authenticated common API', () => {
     expect(h.create.mock.calls[0][0]).toMatchObject({
       title: 'Project',
       spaceID: 'space',
+      billingIntent: 'personal_pro',
       operationId: expect.any(String),
       github: {
         repositoryID: 12,
@@ -476,6 +615,24 @@ describe('New project through authenticated common API', () => {
     });
     expect(h.nav.goProject.mock.calls[0][2]).toEqual({ replaceUrl: true });
     expect(h.createCloud).not.toHaveBeenCalled();
+  });
+
+  it('forwards Business-only callback intent and its purchased Space to GitHub project creation', async () => {
+    const h = await harness(
+      false,
+      { spaceID: 'A', billingIntent: 'space_business' },
+      true,
+      false,
+      undefined,
+      { A: { title: 'Business Space' } },
+      'business-only-actor',
+    );
+    h.select('A');
+    h.component.create();
+    expect(h.create.mock.calls[0][0]).toMatchObject({
+      spaceID: 'A',
+      billingIntent: 'space_business',
+    });
   });
   it.each([
     ['', 'repo@owner@datatug', 'datatug'],

@@ -26,6 +26,7 @@ export interface SpaceServiceCheckoutApi {
 export interface SpaceServiceSelection {
   spaceID: string;
   planID: 'datatug-business-usage-monthly' | 'datatug-business-usage-annual';
+  mode?: 'test' | 'live';
 }
 export interface CheckoutProvider {
   mount(options: {
@@ -36,6 +37,7 @@ export interface CheckoutProvider {
 }
 export interface CheckoutState {
   stage: string;
+  spaceID?: string;
   user?: CheckoutUser | null;
   message?: string;
   code?: string;

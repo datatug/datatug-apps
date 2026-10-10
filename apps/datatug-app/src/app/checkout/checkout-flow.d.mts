@@ -41,7 +41,7 @@ export function createReturnFlow(
 export function createReturnFlow(
   options: SpaceServiceCommon & {
     sessionId: string;
-    serviceScope: { spaceID: string };
+    serviceScope: { spaceID: string; mode?: 'test' | 'live' };
     wait?: (ms: number) => Promise<void>;
   },
 ): Flow & { refresh(): Promise<void> };

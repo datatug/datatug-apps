@@ -92,6 +92,51 @@ it('validates the fixed Business quote and lets claimed frozen quotes resume aft
   );
 });
 
+it('validates only the server quoted LIVE 30 percent launch amount and rail keys', () => {
+  const liveSelection = { ...selection, mode: 'live' as const };
+  const liveQuote = {
+    ...quote(),
+    mode: 'live',
+    amount: { currency: 'eur', list: 9900, due: 6930, taxIncluded: true },
+    appliedDiscount: { kind: 'launch', percentOff: 30 },
+  };
+  expect(validSpaceServiceQuote(liveQuote, liveSelection)).toBe(true);
+  expect(
+    validSpaceServiceQuote(
+      { ...liveQuote, appliedDiscount: { kind: 'launch', percentOff: 20 } },
+      liveSelection,
+    ),
+  ).toBe(false);
+  expect(
+    validSpaceServiceQuote(
+      { ...liveQuote, amount: { ...liveQuote.amount, due: 7000 } },
+      liveSelection,
+    ),
+  ).toBe(false);
+  expect(
+    validSpaceServiceSession(
+      {
+        ...session(6930),
+        mode: 'live',
+        sessionID: 'cs_live_123',
+        clientSecret: 'cs_live_123_secret_memory',
+        publishableKey: 'pk_live_memory',
+      },
+      {
+        ...liveSelection,
+        quoteID: 'quote_1',
+        quotedDueMinor: 6930,
+      },
+    ),
+  ).toBe(true);
+  expect(
+    validSpaceServiceSession(
+      { ...session(), mode: 'test' },
+      { ...liveSelection, quoteID: 'quote_1', quotedDueMinor: 6930 },
+    ),
+  ).toBe(false);
+});
+
 it('uses the shared bearer/no-store request boundary with exact Space-service payloads', async () => {
   const fetcher = vi.fn(async (url: URL, options?: RequestInit) => {
     void url;
@@ -423,4 +468,84 @@ it('keeps an open Business return pending after bounded status polling', async (
   expect(states.at(-1)).toMatchObject({ stage: 'pending' });
   expect(states.at(-1)?.stage).not.toBe('pro');
   flow.dispose();
+});
+
+it('grants the active return state only for a matching LIVE paid status', async () => {
+  const harness = authHarness();
+  const states: Record<string, unknown>[] = [];
+  const status = {
+    spaceID: selection.spaceID,
+    serviceID: 'datatug',
+    planID: selection.planID,
+    mode: 'live',
+    sessionID: 'cs_live_123',
+    status: 'complete',
+    providerAmountTotal: 6930,
+    accessStatus: 'active',
+  };
+  expect(
+    validSpaceServiceStatus(status, {
+      spaceID: selection.spaceID,
+      sessionID: 'cs_live_123',
+      mode: 'live',
+    }),
+  ).toBe(true);
+  expect(
+    validSpaceServiceStatus({ ...status, mode: 'test' }, {
+      spaceID: selection.spaceID,
+      sessionID: 'cs_live_123',
+      mode: 'live',
+    }),
+  ).toBe(false);
+  const flow = createReturnFlow({
+    auth: harness.auth as never,
+    api: { serviceStatus: vi.fn().mockResolvedValue(status) } as never,
+    mode: 'live',
+    sessionId: 'cs_live_123',
+    serviceScope: { spaceID: selection.spaceID, mode: 'live' },
+    wait: async () => undefined,
+    render: (state) => states.push(state),
+  });
+  flow.start();
+  harness.emit(user);
+  await flush();
+  expect(states.at(-1)).toMatchObject({
+    stage: 'business-active',
+    spaceID: selection.spaceID,
+  });
+  flow.dispose();
+});
+
+it('keeps ended and unverified LIVE access out of the active state', async () => {
+  for (const accessStatus of ['ended', 'pending_reconciliation']) {
+    const harness = authHarness();
+    const states: Record<string, unknown>[] = [];
+    const status = {
+      spaceID: selection.spaceID,
+      serviceID: 'datatug',
+      planID: selection.planID,
+      mode: 'live',
+      sessionID: 'cs_live_123',
+      status: 'complete',
+      providerAmountTotal: 6930,
+      accessStatus,
+    };
+    const flow = createReturnFlow({
+      auth: harness.auth as never,
+      api: { serviceStatus: vi.fn().mockResolvedValue(status) } as never,
+      mode: 'live',
+      sessionId: 'cs_live_123',
+      serviceScope: { spaceID: selection.spaceID, mode: 'live' },
+      wait: async () => undefined,
+      render: (state) => states.push(state),
+    });
+    flow.start();
+    harness.emit(user);
+    await flush();
+    expect(states.at(-1)?.stage).toBe(
+      accessStatus === 'ended' ? 'business-ended' : 'pending',
+    );
+    expect(states.at(-1)?.stage).not.toBe('business-active');
+    flow.dispose();
+  }
 });
