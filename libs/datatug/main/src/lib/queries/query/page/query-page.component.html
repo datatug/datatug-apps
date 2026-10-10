@@ -346,18 +346,27 @@
         <ion-card-title>Hosted DemoDB source</ion-card-title>
       </ion-card-header>
       <ion-card-content>
-        <p>Choose a public read-only table. The saved query keeps its source in the federation definition and runs in this browser.</p>
+        <p>
+          Choose a public read-only table. The saved query keeps its source in
+          the federation definition and runs in this browser.
+        </p>
         <ion-item>
           <ion-select
             label="Database and table"
             aria-label="Hosted DemoDB database and table"
             interface="popover"
             [value]="selectedHostedDemoDbSource()"
-            [disabled]="running() || queryState.isSaving || queryState.saveSupported === false"
+            [disabled]="
+              running() ||
+              queryState.isSaving ||
+              queryState.saveSupported === false
+            "
             (ionChange)="hostedDemoDbSourceChanged($event)"
           >
             @for (source of hostedDemoDbSources; track source.id) {
-              <ion-select-option [value]="source.id">{{ source.label }}</ion-select-option>
+              <ion-select-option [value]="source.id">{{
+                source.label
+              }}</ion-select-option>
             }
           </ion-select>
         </ion-item>
@@ -428,7 +437,7 @@
             [value]="queryBodyText()"
             [disabled]="queryState.isSaving || running()"
             [readonly]="queryState.saveSupported === false"
-          (ionInput)="queryTextChanged($event)"
+            (ionInput)="queryTextChanged($event)"
           />
         } @else {
           <ion-text color="medium">No query text.</ion-text>
@@ -585,7 +594,7 @@
           type="password"
           autocomplete="off"
           [value]="ovdbToken()"
-          (ionInput)="ovdbToken.set($event.detail.value || '')"
+          (ionInput)="setOvdbToken($event.detail.value)"
         />
       </ion-item>
       <p class="ion-padding-horizontal">
@@ -628,7 +637,9 @@
             !queryId ||
             !project ||
             hasBlockedBindings() ||
-            (!queryDef()?.connectionId && availableTargets().length > 0 && !selectedSource())
+            (!queryDef()?.connectionId &&
+              availableTargets().length > 0 &&
+              !selectedSource())
           "
           (click)="runQuery()"
         >
@@ -642,7 +653,10 @@
       </ion-buttons>
     </ion-item>
     @if (queryDef()?.connectionId; as connectionId) {
-      <p class="ion-padding-horizontal">Saved source: {{ connectionId }}. Run checks its public SQLite fixture and integrity pin before showing results.</p>
+      <p class="ion-padding-horizontal">
+        Saved source: {{ connectionId }}. Run checks its public SQLite fixture
+        and integrity pin before showing results.
+      </p>
     }
   </ion-card>
 
@@ -655,11 +669,11 @@
             ? 'Loading sources'
             : progress.stage === 'streaming'
               ? 'Receiving query rows'
-            : progress.stage === 'processing'
-              ? 'Processing rows'
-              : progress.stage === 'lookup'
-                ? 'Looking up records'
-                : 'Query complete'
+              : progress.stage === 'processing'
+                ? 'Processing rows'
+                : progress.stage === 'lookup'
+                  ? 'Looking up records'
+                  : 'Query complete'
       }}: loaded {{ progress.rowsLoaded }} rows; processed
       {{ progress.rowsProcessed }} rows. HTTP lookups:
       {{ progress.requestsCompleted }} completed,
@@ -697,32 +711,165 @@
 
   @if (queryDef()?.federation?.nativeGraph) {
     <ion-card data-testid="local-result-history">
-      <ion-card-header><ion-card-title>Local result history</ion-card-title></ion-card-header>
+      <ion-card-header
+        ><ion-card-title>Local result history</ion-card-title></ion-card-header
+      >
       <ion-card-content>
-        <p>Open retained output from this browser. Results keep their executed plan and pins.</p>
-        @if (localHistoryLoading()) { <ion-spinner /> }
-        @if (localHistoryError(); as error) { <ion-text color="danger">{{ error }}</ion-text> }
-        @if (!localHistoryLoading() && !localResults().length) { <p>No local result available.</p> }
+        <p>
+          Open retained output from this browser. Results keep their executed
+          plan and pins.
+        </p>
+        @if (localHistoryLoading()) {
+          <ion-spinner />
+        }
+        @if (localHistoryError(); as error) {
+          <ion-text color="danger">{{ error }}</ion-text>
+        }
+        @if (!localHistoryLoading() && !localResults().length) {
+          <p>No local result available.</p>
+        }
         @for (artifact of localResults(); track artifact.id) {
           <ion-item>
-            <ion-label>{{ artifact.observedAt }} · {{ artifact.counts.affiliations }} affiliations · {{ artifact.counts.locations }} locations · {{ artifact.counts.aliases }} alternate names</ion-label>
-            <ion-button [disabled]="localHistoryLoading()" (click)="openHistoricalResult(artifact.id)">Open historical result</ion-button>
-            <ion-button color="danger" fill="clear" [disabled]="localHistoryLoading()" (click)="deleteHistoricalResult(artifact.id)">Delete this result</ion-button>
+            <ion-label
+              >{{ artifact.observedAt }} ·
+              {{ artifact.counts.affiliations }} affiliations ·
+              {{ artifact.counts.locations }} locations ·
+              {{ artifact.counts.aliases }} alternate names</ion-label
+            >
+            <ion-button
+              [disabled]="localHistoryLoading()"
+              (click)="openHistoricalResult(artifact.id)"
+              >Open historical result</ion-button
+            >
+            <ion-button
+              color="danger"
+              fill="clear"
+              [disabled]="localHistoryLoading()"
+              (click)="deleteHistoricalResult(artifact.id)"
+              >Delete this result</ion-button
+            >
           </ion-item>
         }
       </ion-card-content>
     </ion-card>
   }
+  @if (previousCommittedRun(); as previous) {
+    <ion-card data-testid="previous-committed-result">
+      <ion-card-header>
+        <ion-card-title>Previous successful run</ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        <p>
+          Query {{ previous.scope.queryId }} · target
+          {{ previous.scope.target }} ·
+          @if (previous.scope.environment) {
+            {{ previous.scope.environment }} ·
+          }
+          {{ previous.provenance.mode }} · {{ previous.provenance.source }} ·
+          observed {{ previous.provenance.observedAt }}
+        </p>
+        @if (previous.timing; as timing) {
+          <p data-testid="previous-run-timings">
+            Time to first record:
+            @if (timing.noRecords) {
+              No records
+            } @else if (timing.firstRecordMs !== undefined) {
+              {{ formatQueryDuration(timing.firstRecordMs) }}
+            } @else {
+              Unavailable
+            }
+            · All results loaded in
+            {{ formatQueryDuration(timing.allResultsLoadedMs) }}
+          </p>
+        }
+        <p>
+          Showing the first
+          {{
+            previousResultDisplayCount(previous.result.recordset.rows.length)
+          }}
+          of {{ previous.result.recordset.rows.length }} rows retained in this
+          receipt
+          @if (
+            previous.result.totalRows !== undefined &&
+            previous.result.totalRows !== previous.result.recordset.rows.length
+          ) {
+            (reported total: {{ previous.result.totalRows }})
+          }
+        </p>
+        <details>
+          <summary>Inspect previous result</summary>
+          <div role="list" aria-label="Previous successful result rows">
+            @for (
+              row of previous.result.recordset.rows.slice(0, resultPageSize);
+              track $index
+            ) {
+              <div role="listitem">
+                @for (cell of row; track $index) {
+                  <span
+                    ><strong
+                      >{{
+                        previous.result.recordset.columns[$index]?.name
+                      }}:</strong
+                    >
+                    {{ displayValue(cell) }}
+                  </span>
+                }
+              </div>
+            }
+          </div>
+          <details>
+            <summary>Executed query</summary>
+            <pre style="white-space: pre-wrap">{{
+              committedDefinitionText(previous.executedDefinition)
+            }}</pre>
+          </details>
+          @if (committedDefinitionPins(previous.executedDefinition); as pins) {
+            <details>
+              <summary>Executed plan and pins</summary>
+              <pre style="white-space: pre-wrap">{{ pins }}</pre>
+            </details>
+          }
+        </details>
+      </ion-card-content>
+    </ion-card>
+  }
   @if (runResult(); as result) {
     @if (selectedHistoricalResult()) {
-      <ion-text color="medium" data-testid="historical-result-label"><p>Historical local result · executed {{ result.provenance.observedAt }}. Original plan and pins; read-only viewing does not resume execution.</p></ion-text>
-      <details><summary>Executed plan and pins</summary><pre style="white-space: pre-wrap">{{ historicalPins() }}</pre></details>
+      <ion-text color="medium" data-testid="historical-result-label"
+        ><p>
+          Historical local result · executed {{ result.provenance.observedAt }}.
+          Original plan and pins; read-only viewing does not resume execution.
+        </p></ion-text
+      >
+      <details>
+        <summary>Executed plan and pins</summary>
+        <pre style="white-space: pre-wrap">{{ historicalPins() }}</pre>
+      </details>
+    }
+    @if (displayedResultIsPreviousRun()) {
+      <ion-text color="medium" data-testid="previous-run-label">
+        <p>
+          Previous successful run · query {{ committedRun()?.scope?.queryId }} ·
+          target {{ committedRun()?.scope?.target }} · observed
+          {{ committedRun()?.provenance?.observedAt }}
+        </p>
+      </ion-text>
     }
     @if (result.relatedRecordsets?.length) {
       <ion-item>
-        <ion-select aria-label="Result set" [value]="relatedResultSet()" (ionChange)="changeRelatedResultSet($event.detail.value)">
-          <ion-select-option value="affiliations">Affiliations</ion-select-option>
-          @for (set of result.relatedRecordsets; track set.id) { <ion-select-option [value]="set.id">{{ set.label }}</ion-select-option> }
+        <ion-select
+          aria-label="Result set"
+          [value]="relatedResultSet()"
+          (ionChange)="changeRelatedResultSet($event.detail.value)"
+        >
+          <ion-select-option value="affiliations"
+            >Affiliations</ion-select-option
+          >
+          @for (set of result.relatedRecordsets; track set.id) {
+            <ion-select-option [value]="set.id">{{
+              set.label
+            }}</ion-select-option>
+          }
         </ion-select>
       </ion-item>
     }
@@ -749,7 +896,13 @@
         }
       </ion-text>
 
-      @if (!selectedHistoricalResult() && queryRunTiming(); as timing) {
+      @if (
+        !selectedHistoricalResult() &&
+          (displayedResultIsPreviousRun()
+            ? committedRun()?.timing
+            : queryRunTiming());
+        as timing
+      ) {
         <p data-testid="query-run-timings">
           Time to first record:
           @if (timing.noRecords) {
@@ -835,7 +988,10 @@
       />
     </div>
     <div class="ion-padding-horizontal">
-      <sneat-datatug-source-rights-notice [evidence]="result" [compact]="true" />
+      <sneat-datatug-source-rights-notice
+        [evidence]="result"
+        [compact]="true"
+      />
     </div>
   }
 </ion-content>

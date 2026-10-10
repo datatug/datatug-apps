@@ -47,6 +47,17 @@ interface QueryResultGridRow {
 const displayQueryResultValue = (value: TypedValue): string =>
   value.type === 'integer' ? value.value : displayTypedValue(value);
 
+const cloneAndFreeze = <T>(value: T): T => {
+  const clone = structuredClone(value);
+  const freeze = (item: unknown): void => {
+    if (!item || typeof item !== 'object' || Object.isFrozen(item)) return;
+    Object.values(item).forEach(freeze);
+    Object.freeze(item);
+  };
+  freeze(clone);
+  return clone;
+};
+
 /** Shown instead of ever calling `SemanticApiService.runQuery()` for a
  * GitHub-store project — there is no CLI agent to execute against (founder
  * ruling 2026-09-11, deliverable 2: "an explicit, friendly notice with the
@@ -58,6 +69,60 @@ interface QueryRunTiming {
   readonly firstRecordMs?: number;
   readonly allResultsLoadedMs: number;
   readonly noRecords: boolean;
+}
+
+interface CommittedQueryDefinition {
+  readonly request: {
+    readonly queryType: QueryType;
+    readonly text?: string;
+    readonly method?: string;
+  };
+  readonly nativeGraph?: NonNullable<IQueryDef['federation']>['nativeGraph'];
+}
+
+type CommittedQueryResult = Omit<FederatedQueryResult, 'bindingsApplied'> & {
+  readonly bindingsApplied: readonly {
+    readonly parameterId: string;
+    readonly type: TypedValue['type'];
+    readonly set: true;
+    readonly origin: Binding['origin'];
+    readonly originEvidence: Binding['originEvidence'];
+    readonly factId?: string;
+  }[];
+};
+
+/** Retained receipts record binding metadata without copying runtime values. */
+const snapshotCommittedResult = (
+  result: FederatedQueryResult,
+): CommittedQueryResult =>
+  cloneAndFreeze({
+    ...result,
+    bindingsApplied: result.bindingsApplied.map((binding) => ({
+      parameterId: binding.parameterId,
+      type: binding.value.type,
+      set: true as const,
+      origin: binding.origin,
+      originEvidence: binding.originEvidence,
+      ...(binding.factId ? { factId: binding.factId } : {}),
+    })),
+  });
+
+interface CommittedQueryRun {
+  readonly result: CommittedQueryResult;
+  readonly displayedResultGeneration: number;
+  readonly executedDefinition: CommittedQueryDefinition;
+  readonly queryIdentity: symbol;
+  readonly scope: {
+    readonly storeId?: string;
+    readonly projectId?: string;
+    readonly queryId?: string;
+    readonly securityContextId?: string;
+    readonly environment?: string;
+    readonly target: string;
+  };
+  readonly targetIdentity: string;
+  readonly timing?: QueryRunTiming;
+  readonly provenance: FederatedQueryResult['provenance'];
 }
 import { RandomIdService } from '@sneat/random';
 import { distinctUntilChanged, takeUntil } from 'rxjs/operators';
@@ -538,14 +603,45 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   >([]);
   /** In-memory OVDB credential for the current query only. */
   public readonly ovdbToken = signal('');
+  /** Changes fence work authorized by a previous token without storing token bytes. */
+  private readonly ovdbCredentialGeneration = signal(0);
   public readonly accessBlockers = signal<readonly string[]>([]);
   public readonly runError = signal<string | undefined>(undefined);
   public readonly runResult = signal<FederatedQueryResult | undefined>(
     undefined,
   );
+  private readonly displayedResultGeneration = signal(0);
   public readonly queryRunTiming = signal<QueryRunTiming | undefined>(
     undefined,
   );
+  /** Last complete execution, frozen separately from the latest attempt/result pane. */
+  public readonly committedRun = signal<CommittedQueryRun | undefined>(
+    undefined,
+  );
+  public readonly previousCommittedRun = computed(() => {
+    const committed = this.committedRun();
+    return committed &&
+      (committed.displayedResultGeneration !==
+        this.displayedResultGeneration() ||
+        committed.queryIdentity !== this.currentQueryIdentity() ||
+        committed.targetIdentity !== this.currentResultTargetIdentity() ||
+        this.running() ||
+        !!this.runError())
+      ? committed
+      : undefined;
+  });
+  public readonly displayedResultIsPreviousRun = computed(() => {
+    const committed = this.committedRun();
+    return (
+      !!committed &&
+      committed.displayedResultGeneration ===
+        this.displayedResultGeneration() &&
+      (this.running() ||
+        !!this.runError() ||
+        committed.queryIdentity !== this.currentQueryIdentity() ||
+        committed.targetIdentity !== this.currentResultTargetIdentity())
+    );
+  });
   public readonly localResults = signal<readonly LocalResultDescriptor[]>([]);
   public readonly localHistoryLoading = signal(false);
   public readonly localHistoryError = signal<string | undefined>(undefined);
@@ -558,8 +654,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly relatedResultSet = signal('affiliations');
   private historySelection = 0;
   private historyCatalogRequest = 0;
+  private observedSecurityContextId?: string;
+  private hasObservedSecurityContext = false;
   private executedGraphDefinition?: IQueryDef;
   private federatedRunLifetime = 0;
+  private semanticRunLifetime = 0;
   public readonly historicalPins = computed(() =>
     JSON.stringify(
       this.historicalDefinition()?.federation?.nativeGraph,
@@ -665,6 +764,15 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
    * this component's first render. See AGENTS.md's "Change detection &
    * state" section. */
   public readonly queryDef = signal<IQueryDef | undefined>(undefined);
+  /** Semantic equality avoids marking an unchanged definition as an edit. */
+  private readonly identityDefinition = computed(() => this.queryDef(), {
+    equal: (left, right) => JSON.stringify(left) === JSON.stringify(right),
+  });
+  /** Receipts identify a draft without copying request or credential bytes. */
+  private readonly queryIdentityToken = computed(() => {
+    this.identityDefinition();
+    return Symbol('query-definition');
+  });
 
   /** SQL/DTQL body text for the current query, for the `editor=text` panel
    * below — `undefined` for an HTTP query (no text-shaped `request`) or
@@ -721,6 +829,14 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.queryEditorStateService.updateQueryState(this.queryState);
   }
 
+  protected setOvdbToken(value: string | null | undefined): void {
+    const nextToken = value ?? '';
+    if (this.ovdbToken() === nextToken) return;
+    this.ovdbToken.set(nextToken);
+    this.ovdbCredentialGeneration.update((generation) => generation + 1);
+    this.invalidateHistoryScope();
+  }
+
   public queryTextChanged(event: Event): void {
     if (this.queryState.saveSupported === false) return;
     const text = (event as CustomEvent<{ value?: string }>).detail.value ?? '';
@@ -770,8 +886,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   };
 
   constructor() {
+    this.observedSecurityContextId = this.agentContext.securityContextId();
+    this.hasObservedSecurityContext = true;
     const navigationQuery = history.state.query as IQueryDef | undefined;
-    const navigationProject = history.state.project as IProjectContext | undefined;
+    const navigationProject = history.state.project as
+      | IProjectContext
+      | undefined;
     if (
       history.state.action === 'create' &&
       navigationQuery?.id &&
@@ -802,7 +922,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
     this.trackQueryState();
     const query = history.state.query as IQueryDef;
-    if (query && !this.navigationDraft && !this.route.snapshot.queryParamMap.get('projectApi')) {
+    if (
+      query &&
+      !this.navigationDraft &&
+      !this.route.snapshot.queryParamMap.get('projectApi')
+    ) {
       this.setQuery(query);
     }
 
@@ -837,6 +961,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const projectId = this.project?.ref.projectId;
     const environment = this.envId;
     const securityContextId = this.agentContext.securityContextId();
+    if (
+      this.hasObservedSecurityContext &&
+      this.observedSecurityContextId !== securityContextId
+    )
+      this.invalidateHistoryScope();
+    this.observedSecurityContextId = securityContextId;
+    this.hasObservedSecurityContext = true;
     if (projectId && environment && securityContextId) {
       this.investigationContext.setScope({
         project: projectId,
@@ -888,7 +1019,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         const navigationState = history.state as Record<string, unknown>;
         if (
           navigationState?.['action'] === 'create' &&
-          (navigationState['query'] as IQueryDef | undefined)?.id === queryState.id
+          (navigationState['query'] as IQueryDef | undefined)?.id ===
+            queryState.id
         ) {
           const savedState = { ...navigationState };
           delete savedState['action'];
@@ -915,6 +1047,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       const nextPlanIdentity = graphStableIdentity(
         effectiveDefinition?.federation?.nativeGraph,
       );
+      const queryDefinitionChanged =
+        !!previousDefinition &&
+        !!effectiveDefinition &&
+        JSON.stringify(previousDefinition) !==
+          JSON.stringify(effectiveDefinition);
       const planChanged =
         graphStableIdentity(previousDefinition?.federation?.nativeGraph) !==
           nextPlanIdentity ||
@@ -929,11 +1066,16 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           !effectiveDefinition)
       )
         this.invalidateHistoryScope();
-      else if (planChanged) {
+      else if (queryDefinitionChanged || planChanged) {
+        // Editing the selected query preserves its last completed output as a
+        // previous-run receipt. Fence active executions while keeping their frozen
+        // definition, scope, provenance, and timing attached to that output.
+        ++this.semanticRunLifetime;
         this.invalidateFederatedRun();
         this.invalidateHistoryRequests();
         const result = this.runResult();
         if (
+          planChanged &&
           result?.localResult &&
           result.nativeGraph &&
           this.executedGraphDefinition
@@ -955,7 +1097,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         this.savedPlanReview.reset();
         this.publicDataRevisionAcknowledged.set(false);
       }
-      if (this.queryDef()?.id !== queryState.def?.id) this.ovdbToken.set('');
+      if (this.queryDef()?.id !== queryState.def?.id) this.setOvdbToken('');
       if (effectiveDefinition && this.queryDef()?.id !== effectiveDefinition.id)
         this.federatedMode.set(
           federatedVisibleMode(effectiveDefinition).defaultMode,
@@ -981,7 +1123,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   };
 
   ngOnDestroy(): void {
+    ++this.semanticRunLifetime;
     this.invalidateFederatedRun();
+    this.setDisplayedResult(undefined);
+    this.committedRun.set(undefined);
     this.historySelection++;
     this.savedPlanReview.destroy();
     void this.federatedQuery.dispose().catch(() => undefined);
@@ -1926,6 +2071,169 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
    * the template can call it directly. */
   protected readonly displayValue = displayTypedValue;
 
+  private currentQueryIdentity(): symbol {
+    return this.queryIdentityToken();
+  }
+
+  private setDisplayedResult(result: FederatedQueryResult | undefined): void {
+    this.displayedResultGeneration.update((generation) => generation + 1);
+    this.runResult.set(result);
+  }
+
+  private updateDisplayedAttemptTotalRows(
+    totalRows: number,
+    generation: number | undefined,
+  ): void {
+    if (
+      generation === undefined ||
+      this.displayedResultGeneration() !== generation
+    )
+      return;
+    const displayed = this.runResult();
+    if (!displayed) return;
+    const updated = { ...displayed, totalRows, hasMore: false };
+    this.runResult.set(updated);
+    const committed = this.committedRun();
+    if (committed?.displayedResultGeneration === generation) {
+      const frozenResult = snapshotCommittedResult(updated);
+      this.committedRun.set(
+        Object.freeze({
+          ...committed,
+          result: frozenResult,
+          provenance: frozenResult.provenance,
+        }),
+      );
+    }
+  }
+
+  private showAttemptResult(result: FederatedQueryResult): void {
+    this.selectedHistoricalResult.set(undefined);
+    this.historicalDefinition.set(undefined);
+    this.relatedResultSet.set('affiliations');
+    this.resultPageIndex.set(0);
+    this.resultPageRows.set(result.recordset.rows);
+    this.setDisplayedResult(result);
+  }
+
+  private currentResultTargetIdentity(): string {
+    return JSON.stringify([
+      this.queryDef()?.connectionId,
+      this.selectedSource(),
+      this.envId,
+    ]);
+  }
+
+  private currentResultTargetLabel(
+    definition = this.queryDef(),
+    result?: FederatedQueryResult,
+  ): string {
+    const federationBase = definition?.federation?.ovdbBaseUrl;
+    if (federationBase) {
+      try {
+        return `OVDB at ${new URL(federationBase).origin}`;
+      } catch {
+        return 'Configured OVDB endpoint';
+      }
+    }
+    const connectionId = definition?.connectionId;
+    if (connectionId === 'chinook-sqlite')
+      return 'Chinook SQLite browser fixture';
+    if (connectionId) {
+      const connection = this.activeEnv?.summary?.connections?.[connectionId];
+      return connection?.database
+        ? `Database ${connection.database}`
+        : 'Saved database connection';
+    }
+    const selectedSource = this.selectedSource();
+    const source = selectedSource ?? result?.provenance.source;
+    if (source) {
+      const label = this.availableTargets().find(
+        (target) => target.source === source,
+      )?.label;
+      if (label) return label;
+      if (selectedSource) return 'Selected authorized source';
+      if (result?.provenance.source)
+        return `Source ${result.provenance.source}`;
+    }
+    const environment =
+      this.activeEnv?.title ??
+      this.queryState.environments?.find((item) => item.id === this.envId)
+        ?.title;
+    if (environment) return `Environment ${environment}`;
+    return this.envId ? 'Current environment' : 'Authorized query target';
+  }
+
+  private currentEnvironmentLabel(): string | undefined {
+    return (
+      this.activeEnv?.title ??
+      this.queryState.environments?.find((item) => item.id === this.envId)
+        ?.title
+    );
+  }
+
+  protected previousResultDisplayCount(rowCount: number): number {
+    return Math.min(rowCount, this.resultPageSize);
+  }
+
+  private hasCompleteResult(result: FederatedQueryResult): boolean {
+    const runtimePages = Object.values(result.runtimeRead?.pages ?? {});
+    return (
+      result.truncated !== true &&
+      result.hasMore !== true &&
+      !runtimePages.some((page) => !page.complete || page.possiblyMore)
+    );
+  }
+
+  private commitSuccessfulResult(
+    result: FederatedQueryResult,
+    definition: IQueryDef,
+    timing?: QueryRunTiming,
+  ): void {
+    if (!this.hasCompleteResult(result)) return;
+    const frozenResult = snapshotCommittedResult(result);
+    const request = definition.request as ITextQueryRequest & {
+      readonly method?: string;
+    };
+    const executedDefinition: CommittedQueryDefinition = cloneAndFreeze({
+      request: {
+        queryType: request.queryType,
+        ...(request.queryType === QueryType.HTTP
+          ? typeof request.method === 'string'
+            ? { method: request.method }
+            : {}
+          : typeof request.text === 'string'
+            ? { text: request.text }
+            : {}),
+      },
+      ...(definition.federation?.nativeGraph
+        ? { nativeGraph: definition.federation.nativeGraph }
+        : {}),
+    });
+    const securityContextId = this.agentContext.securityContextId();
+    const resultTarget = this.currentResultTargetLabel(definition, result);
+    this.committedRun.set(
+      Object.freeze({
+        result: frozenResult,
+        displayedResultGeneration: this.displayedResultGeneration(),
+        executedDefinition,
+        queryIdentity: this.currentQueryIdentity(),
+        scope: Object.freeze({
+          storeId: this.project?.ref.storeId,
+          projectId: this.project?.ref.projectId,
+          queryId: this.queryId,
+          ...(securityContextId ? { securityContextId } : {}),
+          ...(this.currentEnvironmentLabel()
+            ? { environment: `Environment ${this.currentEnvironmentLabel()}` }
+            : {}),
+          target: resultTarget,
+        }),
+        targetIdentity: this.currentResultTargetIdentity(),
+        ...(timing ? { timing: Object.freeze({ ...timing }) } : {}),
+        provenance: frozenResult.provenance,
+      }),
+    );
+  }
+
   /** REQ:parameter-auto-binding, REQ:no-hidden-filters, REQ:limitation-visible
    * (INTEGRATION.md §5-6) — runs the query through SemanticApiService (never a
    * browser-built query) with only the bindings the user has actually seen and not
@@ -1958,11 +2266,6 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       return;
     }
     this.historySelection++;
-    this.selectedHistoricalResult.set(undefined);
-    this.historicalDefinition.set(undefined);
-    this.relatedResultSet.set('affiliations');
-    this.resultPageIndex.set(0);
-    this.resultPageRows.set([]);
     this.queryRunTiming.set(undefined);
     if (
       isGithubStoreId(this.project?.ref.storeId) &&
@@ -1978,24 +2281,28 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         JSON.stringify(this.queryDef()) === JSON.stringify(executedDefinition);
       this.running.set(true);
       this.runError.set(undefined);
-      this.runResult.set(undefined);
       void this.publicSqliteQuery
         .run(projectRef, executedDefinition)
         .then((result) => {
           if (!current()) return;
-          this.runResult.set(result);
-          this.queryRunTiming.set({
+          this.showAttemptResult(result);
+          const timing: QueryRunTiming = {
             allResultsLoadedMs: Math.max(0, monotonicTime() - runRequestedAt),
             noRecords: result.recordset.rows.length === 0,
-          });
+          };
+          this.queryRunTiming.set(timing);
+          this.commitSuccessfulResult(result, executedDefinition, timing);
         })
         .catch((error: unknown) => {
-          if (current())
+          if (current()) {
+            if (this.isAuthorizationFailure(error))
+              this.invalidateHistoryScope();
             this.runError.set(
               error instanceof Error
                 ? error.message
                 : 'The public SQLite query failed.',
             );
+          }
         })
         .finally(() => {
           if (lifetime === this.federatedRunLifetime) {
@@ -2013,14 +2320,19 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.running.set(true);
       this.federatedProgress.set(undefined);
       this.runError.set(undefined);
-      this.runResult.set(undefined);
       const runScope = this.historyScope(),
         lifetime = ++this.federatedRunLifetime;
       const executedDefinition = structuredClone(definition);
       const executedIdentity = graphStableIdentity(executedDefinition);
+      const credentialGeneration = this.ovdbCredentialGeneration();
+      const runtimeToken = this.ovdbToken().trim();
+      let reportedTotalRows: number | undefined;
+      let resultPublished = false;
+      let publishedGeneration: number | undefined;
       const current = (): boolean =>
         lifetime === this.federatedRunLifetime &&
         this.historyScope() === runScope &&
+        credentialGeneration === this.ovdbCredentialGeneration() &&
         graphStableIdentity(this.queryDef()) === executedIdentity;
       this.executedGraphDefinition = executedDefinition;
       this.federatedQuery
@@ -2029,13 +2341,18 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           (progress) => {
             if (current()) this.federatedProgress.set(progress);
           },
-          this.ovdbToken().trim(),
+          runtimeToken,
           runMode,
           (totalRows) => {
-            if (current())
-              this.runResult.update((result) =>
-                result ? { ...result, totalRows, hasMore: false } : result,
-              );
+            if (!current()) return;
+            if (!resultPublished) {
+              reportedTotalRows = totalRows;
+              return;
+            }
+            this.updateDisplayedAttemptTotalRows(
+              totalRows,
+              publishedGeneration,
+            );
           },
           runMode === 'full'
             ? {
@@ -2053,10 +2370,16 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
               result.hasMore !== true &&
               result.truncated !== true &&
               !runtimePages.some((page) => !page.complete || page.possiblyMore);
+            const completedResult =
+              reportedTotalRows !== undefined
+                ? { ...result, totalRows: reportedTotalRows, hasMore: false }
+                : result;
+            let timing: QueryRunTiming | undefined;
             if (runMode === 'full' && allResultsComplete) {
               const resultRows =
-                result.totalRows ?? result.recordset.rows.length;
-              this.queryRunTiming.set({
+                completedResult.totalRows ??
+                completedResult.recordset.rows.length;
+              timing = {
                 ...(resultRows === 0 || firstRecordAt === undefined
                   ? {}
                   : {
@@ -2064,17 +2387,25 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
                     }),
                 allResultsLoadedMs: Math.max(0, monotonicTime() - runStartedAt),
                 noRecords: resultRows === 0,
-              });
+              };
+              this.queryRunTiming.set(timing);
             }
             this.executedGraphDefinition = executedDefinition;
-            this.resultPageRows.set(result.recordset.rows);
-            this.runResult.set(result);
-            if (result.localResult && this.project?.ref) {
+            this.showAttemptResult(completedResult);
+            resultPublished = true;
+            publishedGeneration = this.displayedResultGeneration();
+            if (runMode === 'full' && allResultsComplete)
+              this.commitSuccessfulResult(
+                completedResult,
+                executedDefinition,
+                timing,
+              );
+            if (completedResult.localResult && this.project?.ref) {
               void this.federatedQuery
                 .associateLocalResult(
                   this.project.ref,
                   queryId,
-                  result.localResult,
+                  completedResult.localResult,
                 )
                 .then(() =>
                   current() ? this.refreshLocalHistory() : undefined,
@@ -2092,6 +2423,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         })
         .catch((error: unknown) => {
           if (current()) {
+            if (this.isAuthorizationFailure(error))
+              this.invalidateHistoryScope();
             this.queryRunTiming.set(undefined);
             this.runError.set(
               error instanceof Error
@@ -2337,13 +2670,16 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   private invalidateHistoryScope(): void {
+    ++this.semanticRunLifetime;
     this.invalidateFederatedRun();
     this.stopFederatedRun();
     this.invalidateHistoryRequests();
     this.selectedHistoricalResult.set(undefined);
     this.historicalDefinition.set(undefined);
     this.executedGraphDefinition = undefined;
-    this.runResult.set(undefined);
+    this.setDisplayedResult(undefined);
+    this.committedRun.set(undefined);
+    this.runError.set(undefined);
     this.resultPageRows.set([]);
     this.localResults.set([]);
     this.resultPageIndex.set(0);
@@ -2371,7 +2707,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.resultPageIndex.set(0);
       this.resultPageLoading.set(false);
       this.resultPageRows.set(opened.result.recordset.rows);
-      this.runResult.set(opened.result);
+      this.setDisplayedResult(opened.result);
     } catch (error) {
       if (current())
         this.localHistoryError.set(
@@ -2405,7 +2741,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       await this.federatedQuery.deleteLocalResult(id);
       if (
         this.selectedHistoricalResult()?.id === id ||
-        this.runResult()?.localResult?.id === id
+        this.runResult()?.localResult?.id === id ||
+        this.committedRun()?.result.localResult?.id === id
       ) {
         this.invalidateHistoryScope();
       }
@@ -2458,18 +2795,36 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   ): void {
     this.lastRequest = request;
     this.lastRequestScope = requestScope;
+    const definition = this.queryDef();
+    if (!definition) return;
+    const executedDefinition = structuredClone(definition);
+    const queryIdentity = this.currentQueryIdentity();
+    const targetIdentity = this.currentResultTargetIdentity();
+    const runStartedAt = monotonicTime();
+    const lifetime = ++this.semanticRunLifetime;
+    const current = (): boolean =>
+      lifetime === this.semanticRunLifetime &&
+      this.investigationContext.isCurrentScope(requestScope) &&
+      this.currentQueryIdentity() === queryIdentity &&
+      this.currentResultTargetIdentity() === targetIdentity;
     this.semanticApi.runQuery(request).subscribe({
       next: (response) => {
         // Task 15 item 4 — discard a late response for a scope the user has since left
         // (project/environment/principal switch mid-flight): api-contract.md "late
         // responses from another scope are discarded".
-        if (!this.investigationContext.isCurrentScope(requestScope)) {
-          return;
-        }
-        this.runResult.set(response);
+        if (!current()) return;
+        const timing: QueryRunTiming = {
+          allResultsLoadedMs: Math.max(0, monotonicTime() - runStartedAt),
+          noRecords: response.recordset.rows.length === 0,
+        };
+        this.showAttemptResult(response);
+        this.queryRunTiming.set(timing);
+        this.commitSuccessfulResult(response, executedDefinition, timing);
         this.running.set(false);
       },
-      error: (err: unknown) => this.handleRunError(err, request, requestScope),
+      error: (err: unknown) => {
+        if (current()) this.handleRunError(err, request, requestScope);
+      },
     });
   }
 
@@ -2491,6 +2846,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       err instanceof HttpErrorResponse
         ? tryDecodeErrorEnvelope(err.error)
         : undefined;
+    if (this.isAuthorizationFailure(err, envelope?.error.code))
+      this.invalidateHistoryScope();
     this.accessBlockers.set(
       envelope?.details?.authorization?.blockers.map(
         (b) => `${b.layerId ?? 'source'}: ${b.code}`,
@@ -2542,6 +2899,24 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     return Number.isNaN(date.getTime()) ? iso : date.toISOString().slice(0, 10);
   }
 
+  protected committedDefinitionText(
+    definition: CommittedQueryDefinition,
+  ): string {
+    const request = definition.request;
+    if (request.queryType === QueryType.HTTP) {
+      return `${request.method ?? 'HTTP'} request. URL and request body are omitted from this receipt for privacy.`;
+    }
+    if (typeof request.text === 'string') return request.text;
+    return 'Executed request text is unavailable.';
+  }
+
+  protected committedDefinitionPins(
+    definition: CommittedQueryDefinition,
+  ): string | undefined {
+    const plan = definition.nativeGraph;
+    return plan ? JSON.stringify(plan, null, 2) : undefined;
+  }
+
   protected formatQueryDuration(milliseconds: number): string {
     const rounded = Math.round(Math.max(0, milliseconds));
     return rounded < 1000
@@ -2552,5 +2927,20 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private extractErrorMessage(err: unknown): string {
     const message = (err as { message?: unknown } | undefined)?.message;
     return message ? String(message) : 'Failed to run the query';
+  }
+
+  private isAuthorizationFailure(err: unknown, code?: string): boolean {
+    const normalizedCode = code?.toUpperCase();
+    if (
+      normalizedCode === 'ACCESS_DENIED' ||
+      normalizedCode === 'UNAUTHENTICATED' ||
+      normalizedCode === 'STALE_CONTEXT'
+    )
+      return true;
+    if (err instanceof HttpErrorResponse && [401, 403].includes(err.status))
+      return true;
+    return /\b(?:ACCESS[_-]DENIED|UNAUTHENTICATED|UNAUTHORIZED|FORBIDDEN)\b|\bfailed\s*\([^)]*\b(?:401|403)\b[^)]*\)/i.test(
+      this.extractErrorMessage(err),
+    );
   }
 }

@@ -1,5 +1,11 @@
-import { createHostedDemoDbQuery, withHostedDemoDbSource } from '../../hosted-demo-db-query';
-import { toProjectQueryWire, fromProjectQueryWire } from '../../project-query-contract';
+import {
+  createHostedDemoDbQuery,
+  withHostedDemoDbSource,
+} from '../../hosted-demo-db-query';
+import {
+  toProjectQueryWire,
+  fromProjectQueryWire,
+} from '../../project-query-contract';
 import { readFileSync } from 'node:fs';
 import 'fake-indexeddb/auto';
 import { resolve } from 'node:path';
@@ -23,7 +29,14 @@ import {
   SemanticApiService,
   type RunQueryResponse,
 } from '@sneat/datatug-semantic';
-import { BehaviorSubject, Observable, Subject, firstValueFrom, of, throwError } from 'rxjs';
+import {
+  BehaviorSubject,
+  Observable,
+  Subject,
+  firstValueFrom,
+  of,
+  throwError,
+} from 'rxjs';
 
 import {
   QueryPageComponent,
@@ -48,7 +61,13 @@ import { FederatedQueryService } from '../../federated-query.service';
 import { PublicSqliteQueryService } from '../../public-sqlite-query.service';
 import { graphFixturePlan } from '../../public-data/native-graph.spec-helper';
 import { graphStableIdentity } from '../../public-data/native-graph-executor';
-import { createOutputStores, replaceGraphOutput, openLocalResult, deleteLocalResult, type LocalResultDescriptor } from '../../federated-local-results';
+import {
+  createOutputStores,
+  replaceGraphOutput,
+  openLocalResult,
+  deleteLocalResult,
+  type LocalResultDescriptor,
+} from '../../federated-local-results';
 import { INITIAL_CANONICAL_PINS } from '../../public-data/canonical-metadata';
 import {
   SAVED_SCENARIO_PUBLICATION_BLOCKER,
@@ -200,150 +219,204 @@ describe('QueryPageComponent — new SQL draft navigation', () => {
   it.each([
     ['public GitHub project', undefined],
     ['private GitHub clone', 'cloud' as const],
-  ])('restores an editable draft after project context loads in a %s', async (_name, projectApi) => {
-    sessionStorage.clear();
-    const ref = {
-      storeId: 'github.com',
-      projectId: 'demo@buyer@project',
-      ...(projectApi ? { projectApi, branch: 'main' } : {}),
-    };
-    const query: IQueryDef = {
-      id: 'draft-1',
-      title: 'Query #1',
-      draft: true,
-      request: { queryType: QueryType.SQL, text: '' },
-    };
-    const replaceState = vi.fn((state: Record<string, unknown>) => {
+  ])(
+    'restores an editable draft after project context loads in a %s',
+    async (_name, projectApi) => {
+      sessionStorage.clear();
+      const ref = {
+        storeId: 'github.com',
+        projectId: 'demo@buyer@project',
+        ...(projectApi ? { projectApi, branch: 'main' } : {}),
+      };
+      const query: IQueryDef = {
+        id: 'draft-1',
+        title: 'Query #1',
+        draft: true,
+        request: { queryType: QueryType.SQL, text: '' },
+      };
+      const replaceState = vi.fn((state: Record<string, unknown>) => {
+        Object.defineProperty(window, 'history', {
+          value: { ...window.history, state, replaceState },
+          writable: true,
+          configurable: true,
+        });
+      });
       Object.defineProperty(window, 'history', {
-        value: { ...window.history, state, replaceState },
+        value: {
+          ...window.history,
+          state: { action: 'create', project: { ref }, query },
+          replaceState,
+        },
         writable: true,
         configurable: true,
       });
-    });
-    Object.defineProperty(window, 'history', {
-      value: {
-        ...window.history,
-        state: { action: 'create', project: { ref }, query },
-        replaceState,
-      },
-      writable: true,
-      configurable: true,
-    });
-    const currentProject = new Subject<IProjectContext | undefined>();
-    const getRevision = vi.fn(() =>
-      of({
-        query: {
-          id: query.id,
-          title: query.title,
-          type: 'SQL',
-          text: 'SELECT 1',
-          connectionId: 'chinook-sqlite',
-        },
-        revision: 'revision-1',
-        branchHead: 'branch-next',
-        saveSupported: true,
-      }),
-    );
-    const saveRevision = vi.fn((_ref: unknown, request: { query: unknown }) =>
-      of({ query: request.query, revision: 'revision-1', branchHead: 'branch-next' }),
-    );
-    const queryParams = convertToParamMap({
-      id: query.id,
-      editor: 'text',
-      ...(projectApi ? { projectApi, branch: 'main' } : {}),
-    });
-    const params = convertToParamMap({
-      storeId: ref.storeId,
-      projectId: ref.projectId,
-    });
-    await TestBed.configureTestingModule({
-      imports: [QueryPageComponent],
-      schemas: [CUSTOM_ELEMENTS_SCHEMA],
-      providers: [
-        { provide: ErrorLogger, useValue: { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) } },
-        { provide: RandomIdService, useValue: { newRandomId: vi.fn(() => 'draft-1') } },
-        {
-          provide: DatatugNavContextService,
-          useValue: { currentProject, currentEnv: of(undefined), setCurrentEnvironment: vi.fn() },
-        },
-        {
-          provide: ActivatedRoute,
-          useValue: {
-            queryParamMap: of(queryParams),
-            paramMap: of(params),
-            snapshot: { queryParamMap: queryParams, paramMap: params, params: {} },
+      const currentProject = new Subject<IProjectContext | undefined>();
+      const getRevision = vi.fn(() =>
+        of({
+          query: {
+            id: query.id,
+            title: query.title,
+            type: 'SQL',
+            text: 'SELECT 1',
+            connectionId: 'chinook-sqlite',
           },
-        },
-        { provide: Router, useValue: { navigate: vi.fn(() => Promise.resolve(true)), events: of() } },
-        { provide: QueryContextSqlService, useValue: { setSql: vi.fn(), setTarget: vi.fn() } },
-        {
-          provide: QueriesService,
-          useValue: {
-            authorityDenied: () => of(undefined),
-            authentication: () => of({ status: 'signedOut' }),
-            getRevision,
-            capabilities: () => of({ querySave: true }),
-            branches: () =>
-              of({ branches: [{ name: 'main', head: 'branch-initial' }], currentBranch: 'main' }),
-            saveRevision,
-          },
-        },
-        { provide: ProjectService, useValue: { getFull: vi.fn() } },
-        { provide: Coordinator, useValue: { execute: vi.fn() } },
-        QueryEditorStateService,
-        { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn() } },
-        { provide: SemanticApiService, useValue: { runQuery: vi.fn() } },
-        { provide: AgentContextService, useValue: agentContextStub() },
-      ],
-    })
-      .overrideComponent(QueryPageComponent, {
-        set: { imports: [], template: '', schemas: [CUSTOM_ELEMENTS_SCHEMA], providers: [] },
-      })
-      .compileComponents();
-
-    const editor = TestBed.inject(QueryEditorStateService);
-    editor.newQuery({
-      id: query.id,
-      title: query.title,
-      queryType: QueryType.SQL,
-      request: query.request,
-      def: query,
-      isNew: true,
-    });
-    const openQuery = vi.spyOn(editor, 'openQuery');
-    const component = TestBed.createComponent(QueryPageComponent).componentInstance;
-    expect(openQuery).not.toHaveBeenCalled();
-    currentProject.next({ ref });
-    expect(editor.getQueryState(query.id)?.isNew).toBe(true);
-    expect(getRevision).not.toHaveBeenCalled();
-    expect(component.queryBodyText()).toBe('');
-    expect(component.canChoosePublicSqliteSource()).toBe(true);
-    expect(component.queryState.isNew).toBe(true);
-
-    component.queryTextChanged({ detail: { value: 'SELECT 1' } } as unknown as Event);
-    component.publicSqliteSourceChanged({ detail: { value: 'chinook-sqlite' } } as unknown as Event);
-    expect(component.queryDef()?.request).toEqual({ queryType: QueryType.SQL, text: 'SELECT 1' });
-    expect(component.queryDef()?.connectionId).toBe('chinook-sqlite');
-    if (projectApi === 'cloud') {
-      await firstValueFrom(editor.saveQuery(component.queryState, ref));
-      expect(saveRevision).toHaveBeenCalledOnce();
-      expect(saveRevision.mock.calls[0][1]).toMatchObject({
-        ifNoneMatch: true,
-        expectedBranchHead: 'branch-initial',
-        query: { id: query.id, text: 'SELECT 1', connectionId: 'chinook-sqlite' },
+          revision: 'revision-1',
+          branchHead: 'branch-next',
+          saveSupported: true,
+        }),
+      );
+      const saveRevision = vi.fn((_ref: unknown, request: { query: unknown }) =>
+        of({
+          query: request.query,
+          revision: 'revision-1',
+          branchHead: 'branch-next',
+        }),
+      );
+      const queryParams = convertToParamMap({
+        id: query.id,
+        editor: 'text',
+        ...(projectApi ? { projectApi, branch: 'main' } : {}),
       });
-      expect(replaceState).toHaveBeenCalledOnce();
-      expect(history.state.action).toBeUndefined();
-      expect(history.state.query).toBeUndefined();
+      const params = convertToParamMap({
+        storeId: ref.storeId,
+        projectId: ref.projectId,
+      });
+      await TestBed.configureTestingModule({
+        imports: [QueryPageComponent],
+        schemas: [CUSTOM_ELEMENTS_SCHEMA],
+        providers: [
+          {
+            provide: ErrorLogger,
+            useValue: {
+              logError: vi.fn(),
+              logErrorHandler: vi.fn(() => vi.fn()),
+            },
+          },
+          {
+            provide: RandomIdService,
+            useValue: { newRandomId: vi.fn(() => 'draft-1') },
+          },
+          {
+            provide: DatatugNavContextService,
+            useValue: {
+              currentProject,
+              currentEnv: of(undefined),
+              setCurrentEnvironment: vi.fn(),
+            },
+          },
+          {
+            provide: ActivatedRoute,
+            useValue: {
+              queryParamMap: of(queryParams),
+              paramMap: of(params),
+              snapshot: {
+                queryParamMap: queryParams,
+                paramMap: params,
+                params: {},
+              },
+            },
+          },
+          {
+            provide: Router,
+            useValue: {
+              navigate: vi.fn(() => Promise.resolve(true)),
+              events: of(),
+            },
+          },
+          {
+            provide: QueryContextSqlService,
+            useValue: { setSql: vi.fn(), setTarget: vi.fn() },
+          },
+          {
+            provide: QueriesService,
+            useValue: {
+              authorityDenied: () => of(undefined),
+              authentication: () => of({ status: 'signedOut' }),
+              getRevision,
+              capabilities: () => of({ querySave: true }),
+              branches: () =>
+                of({
+                  branches: [{ name: 'main', head: 'branch-initial' }],
+                  currentBranch: 'main',
+                }),
+              saveRevision,
+            },
+          },
+          { provide: ProjectService, useValue: { getFull: vi.fn() } },
+          { provide: Coordinator, useValue: { execute: vi.fn() } },
+          QueryEditorStateService,
+          { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn() } },
+          { provide: SemanticApiService, useValue: { runQuery: vi.fn() } },
+          { provide: AgentContextService, useValue: agentContextStub() },
+        ],
+      })
+        .overrideComponent(QueryPageComponent, {
+          set: {
+            imports: [],
+            template: '',
+            schemas: [CUSTOM_ELEMENTS_SCHEMA],
+            providers: [],
+          },
+        })
+        .compileComponents();
 
-      currentProject.next(undefined);
+      const editor = TestBed.inject(QueryEditorStateService);
+      editor.newQuery({
+        id: query.id,
+        title: query.title,
+        queryType: QueryType.SQL,
+        request: query.request,
+        def: query,
+        isNew: true,
+      });
+      const openQuery = vi.spyOn(editor, 'openQuery');
+      const component =
+        TestBed.createComponent(QueryPageComponent).componentInstance;
+      expect(openQuery).not.toHaveBeenCalled();
       currentProject.next({ ref });
-      const reloaded = TestBed.createComponent(QueryPageComponent).componentInstance;
-      expect(getRevision).toHaveBeenCalledOnce();
-      expect(reloaded.queryBodyText()).toBe('SELECT 1');
-      expect(reloaded.queryDef()?.connectionId).toBe('chinook-sqlite');
-    }
-  });
+      expect(editor.getQueryState(query.id)?.isNew).toBe(true);
+      expect(getRevision).not.toHaveBeenCalled();
+      expect(component.queryBodyText()).toBe('');
+      expect(component.canChoosePublicSqliteSource()).toBe(true);
+      expect(component.queryState.isNew).toBe(true);
+
+      component.queryTextChanged({
+        detail: { value: 'SELECT 1' },
+      } as unknown as Event);
+      component.publicSqliteSourceChanged({
+        detail: { value: 'chinook-sqlite' },
+      } as unknown as Event);
+      expect(component.queryDef()?.request).toEqual({
+        queryType: QueryType.SQL,
+        text: 'SELECT 1',
+      });
+      expect(component.queryDef()?.connectionId).toBe('chinook-sqlite');
+      if (projectApi === 'cloud') {
+        await firstValueFrom(editor.saveQuery(component.queryState, ref));
+        expect(saveRevision).toHaveBeenCalledOnce();
+        expect(saveRevision.mock.calls[0][1]).toMatchObject({
+          ifNoneMatch: true,
+          expectedBranchHead: 'branch-initial',
+          query: {
+            id: query.id,
+            text: 'SELECT 1',
+            connectionId: 'chinook-sqlite',
+          },
+        });
+        expect(replaceState).toHaveBeenCalledOnce();
+        expect(history.state.action).toBeUndefined();
+        expect(history.state.query).toBeUndefined();
+
+        currentProject.next(undefined);
+        currentProject.next({ ref });
+        const reloaded =
+          TestBed.createComponent(QueryPageComponent).componentInstance;
+        expect(getRevision).toHaveBeenCalledOnce();
+        expect(reloaded.queryBodyText()).toBe('SELECT 1');
+        expect(reloaded.queryDef()?.connectionId).toBe('chinook-sqlite');
+      }
+    },
+  );
 });
 
 // REQ:parameter-auto-binding, REQ:no-hidden-filters (INTEGRATION.md §6), Task 15 item 3
@@ -516,7 +589,12 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     historyState: Record<string, unknown> = {},
     definition: IQueryDef = queryDef,
     template = '<ul aria-label="Access blockers">@for (blocker of accessBlockers(); track $index) {<li>{{ blocker }}</li>}</ul>',
-    navigation?: { editor?: Observable<IQueryEditorState>; project: Observable<IProjectContext>; realEditor?: boolean; queries?: unknown },
+    navigation?: {
+      editor?: Observable<IQueryEditorState>;
+      project: Observable<IProjectContext>;
+      realEditor?: boolean;
+      queries?: unknown;
+    },
   ): Promise<QueryPageComponent> {
     Object.defineProperty(window, 'history', {
       value: { ...window.history, state: historyState },
@@ -553,9 +631,29 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
         {
           provide: ActivatedRoute,
           useValue: {
-            queryParamMap: of(convertToParamMap(navigation?.realEditor ? { id: 'q', projectApi: 'cloud', branch: 'work' } : {})),
-            paramMap: of(convertToParamMap(navigation?.realEditor ? { storeId: 'github.com', projectId: 'repo@owner@folder' } : {})),
-            snapshot: { paramMap: convertToParamMap({}), queryParamMap: convertToParamMap(navigation?.realEditor ? { id: 'q', projectApi: 'cloud', branch: 'work' } : {}), params: {} },
+            queryParamMap: of(
+              convertToParamMap(
+                navigation?.realEditor
+                  ? { id: 'q', projectApi: 'cloud', branch: 'work' }
+                  : {},
+              ),
+            ),
+            paramMap: of(
+              convertToParamMap(
+                navigation?.realEditor
+                  ? { storeId: 'github.com', projectId: 'repo@owner@folder' }
+                  : {},
+              ),
+            ),
+            snapshot: {
+              paramMap: convertToParamMap({}),
+              queryParamMap: convertToParamMap(
+                navigation?.realEditor
+                  ? { id: 'q', projectApi: 'cloud', branch: 'work' }
+                  : {},
+              ),
+              params: {},
+            },
           },
         },
         {
@@ -574,29 +672,35 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
         { provide: Coordinator, useValue: { execute: vi.fn() } },
         {
           provide: QueryEditorStateService,
-          ...(navigation?.realEditor ? { useClass: QueryEditorStateService } : { useValue: {
-            queryEditorState: navigation?.editor ?? of(
-              definition === queryDef
-                ? editorState
-                : {
-                    ...editorState,
-                    currentQueryId: definition.id,
-                    activeQueries: [
-                      {
-                        id: definition.id,
-                        queryType: QueryType.SQL,
-                        request: definition.request,
-                        def: definition,
-                      },
-                    ],
-                  },
-            ),
-            updateQueryState: vi.fn(),
-            openQuery: vi.fn(),
-            newQuery: vi.fn(),
-            getQueryState: vi.fn(),
-            saveQuery: vi.fn(),
-          } }),
+          ...(navigation?.realEditor
+            ? { useClass: QueryEditorStateService }
+            : {
+                useValue: {
+                  queryEditorState:
+                    navigation?.editor ??
+                    of(
+                      definition === queryDef
+                        ? editorState
+                        : {
+                            ...editorState,
+                            currentQueryId: definition.id,
+                            activeQueries: [
+                              {
+                                id: definition.id,
+                                queryType: QueryType.SQL,
+                                request: definition.request,
+                                def: definition,
+                              },
+                            ],
+                          },
+                    ),
+                  updateQueryState: vi.fn(),
+                  openQuery: vi.fn(),
+                  newQuery: vi.fn(),
+                  getQueryState: vi.fn(),
+                  saveQuery: vi.fn(),
+                },
+              }),
         },
         { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn() } },
         { provide: SemanticApiService, useValue: { runQuery: runQueryMock } },
@@ -617,7 +721,9 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     })
       .overrideComponent(QueryPageComponent, {
         set: {
-          imports: template.includes('<ion-select') ? [IonSelect, IonSelectOption] : [],
+          imports: template.includes('<ion-select')
+            ? [IonSelect, IonSelectOption]
+            : [],
           template,
           schemas: [CUSTOM_ELEMENTS_SCHEMA],
           providers: [],
@@ -655,57 +761,130 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
   });
 
   it('clears the rendered private editor on same-UID read revocation instead of rendering cached content', async () => {
-    const privateProject = { ref: { storeId: 'github.com', projectId: 'repo@owner@folder', projectApi: 'cloud' as const, branch: 'work' } };
-    const read = new Subject<{ query: ReturnType<typeof toProjectQueryWire>; revision: string; branchHead: string }>();
+    const privateProject = {
+      ref: {
+        storeId: 'github.com',
+        projectId: 'repo@owner@folder',
+        projectApi: 'cloud' as const,
+        branch: 'work',
+      },
+    };
+    const read = new Subject<{
+      query: ReturnType<typeof toProjectQueryWire>;
+      revision: string;
+      branchHead: string;
+    }>();
     const denied = new Subject<typeof privateProject.ref>();
-    const queries = { authentication: () => of({ status: 'authenticated', user: { uid: 'same-actor' } }), authorityDenied: () => denied, getRevision: vi.fn(() => read) };
-    component = await createComponent({}, queryDef, '<p>{{ queryState.title }}</p><pre>{{ queryState.request?.text }}</pre>', { realEditor: true, queries, project: of(privateProject) });
+    const queries = {
+      authentication: () =>
+        of({ status: 'authenticated', user: { uid: 'same-actor' } }),
+      authorityDenied: () => denied,
+      getRevision: vi.fn(() => read),
+    };
+    component = await createComponent(
+      {},
+      queryDef,
+      '<p>{{ queryState.title }}</p><pre>{{ queryState.request?.text }}</pre>',
+      { realEditor: true, queries, project: of(privateProject) },
+    );
     component.project = privateProject;
     const editor = TestBed.inject(QueryEditorStateService);
     editor.openQuery('q');
-    read.next({ query: { ...toProjectQueryWire(createHostedDemoDbQuery('q')), title: 'Private query', text: 'private body' }, revision: 'rev', branchHead: 'head' });
-    runFixture.detectChanges(); await runFixture.whenStable();
+    read.next({
+      query: {
+        ...toProjectQueryWire(createHostedDemoDbQuery('q')),
+        title: 'Private query',
+        text: 'private body',
+      },
+      revision: 'rev',
+      branchHead: 'head',
+    });
+    runFixture.detectChanges();
+    await runFixture.whenStable();
     expect(runFixture.nativeElement.textContent).toContain('private body');
     expect(runFixture.nativeElement.textContent).toContain('Private query');
     component.historicalDefinition.set(queryDef);
-    editor.openQuery('q'); await runFixture.whenStable();
+    editor.openQuery('q');
+    await runFixture.whenStable();
     expect(component.historicalDefinition()).toBeUndefined();
     expect(runFixture.nativeElement.textContent).not.toContain('private body');
-    read.error({ status: 403 }); await runFixture.whenStable();
+    read.error({ status: 403 });
+    await runFixture.whenStable();
     expect(runFixture.nativeElement.textContent).not.toContain('Private query');
     expect(runFixture.nativeElement.textContent).not.toContain('private body');
     expect(component.queryDef()).toBeUndefined();
   });
 
-  it.each(['running', 'saving', 'unsupported'])('disables the actual hosted picker while %s', async (state) => {
-    const definition = createHostedDemoDbQuery('q');
-    component = await createComponent({}, definition, '<ion-select [disabled]="running() || queryState.isSaving || queryState.saveSupported === false" />');
-    // Read the actual production picker expression, so a duplicate binding cannot mask one guard.
-    const html = readFileSync(resolve('libs/datatug/main/src/lib/queries/query/page/query-page.component.html'), 'utf8');
-    const picker = html.match(/<ion-select\b[^>]*aria-label="Hosted DemoDB database and table"[^>]*>[\s\S]*?<\/ion-select>/)?.[0];
-    expect(picker?.match(/\[disabled\]/g)).toHaveLength(1);
-    expect(picker).toContain('[disabled]="running() || queryState.isSaving || queryState.saveSupported === false"');
-    component.running.set(state === 'running');
-    component.queryState = { ...component.queryState, isSaving: state === 'saving', saveSupported: state !== 'unsupported' };
-    runFixture.detectChanges(); await runFixture.whenStable();
-    expect(runFixture.nativeElement.querySelector('ion-select').disabled).toBeTruthy();
-  });
+  it.each(['running', 'saving', 'unsupported'])(
+    'disables the actual hosted picker while %s',
+    async (state) => {
+      const definition = createHostedDemoDbQuery('q');
+      component = await createComponent(
+        {},
+        definition,
+        '<ion-select [disabled]="running() || queryState.isSaving || queryState.saveSupported === false" />',
+      );
+      // Read the actual production picker expression, so a duplicate binding cannot mask one guard.
+      const html = readFileSync(
+        resolve(
+          'libs/datatug/main/src/lib/queries/query/page/query-page.component.html',
+        ),
+        'utf8',
+      );
+      const picker = html.match(
+        /<ion-select\b[^>]*aria-label="Hosted DemoDB database and table"[^>]*>[\s\S]*?<\/ion-select>/,
+      )?.[0];
+      expect(picker?.match(/\[disabled\]/g)).toHaveLength(1);
+      expect(picker).toMatch(
+        /\[disabled\]="\s*running\(\)\s*\|\|\s*queryState\.isSaving\s*\|\|\s*queryState\.saveSupported\s*===\s*false\s*"/,
+      );
+      component.running.set(state === 'running');
+      component.queryState = {
+        ...component.queryState,
+        isSaving: state === 'saving',
+        saveSupported: state !== 'unsupported',
+      };
+      runFixture.detectChanges();
+      await runFixture.whenStable();
+      expect(
+        runFixture.nativeElement.querySelector('ion-select').disabled,
+      ).toBeTruthy();
+    },
+  );
 
-  it.each(['chinook.Customer', 'adventureworks.Person.Person'])('runs a saved/cold-read %s query with no local CLI or environment', async (source) => {
-    const definition = fromProjectQueryWire(toProjectQueryWire(withHostedDemoDbSource(createHostedDemoDbQuery('new-q'), source)));
-    component = await createComponent({}, definition);
-    component.project = { ref: { storeId: 'github.com', projectId: 'user-repo@user@datatug', projectApi: 'cloud', branch: 'work' } };
-    component.envId = undefined;
-    federatedRunMock.mockResolvedValue(historyResultFor(definition));
-    component.runQuery();
-    await runFixture.whenStable();
-    expect(federatedRunMock.mock.calls[0][0]).toEqual(definition);
-    expect(definition.federation?.ovdbBaseUrl).toBe('https://demodb.dev/ovdb');
-    expect(definition.federation?.tables[0].name).toBe(source === 'chinook.Customer' ? 'Customer' : 'Person.Person');
-    expect(runQueryMock).not.toHaveBeenCalled();
-    expect(TestBed.inject(Coordinator).execute).not.toHaveBeenCalled();
-    expect(component.runError()).toBeUndefined();
-  });
+  it.each(['chinook.Customer', 'adventureworks.Person.Person'])(
+    'runs a saved/cold-read %s query with no local CLI or environment',
+    async (source) => {
+      const definition = fromProjectQueryWire(
+        toProjectQueryWire(
+          withHostedDemoDbSource(createHostedDemoDbQuery('new-q'), source),
+        ),
+      );
+      component = await createComponent({}, definition);
+      component.project = {
+        ref: {
+          storeId: 'github.com',
+          projectId: 'user-repo@user@datatug',
+          projectApi: 'cloud',
+          branch: 'work',
+        },
+      };
+      component.envId = undefined;
+      federatedRunMock.mockResolvedValue(historyResultFor(definition));
+      component.runQuery();
+      await runFixture.whenStable();
+      expect(federatedRunMock.mock.calls[0][0]).toEqual(definition);
+      expect(definition.federation?.ovdbBaseUrl).toBe(
+        'https://demodb.dev/ovdb',
+      );
+      expect(definition.federation?.tables[0].name).toBe(
+        source === 'chinook.Customer' ? 'Customer' : 'Person.Person',
+      );
+      expect(runQueryMock).not.toHaveBeenCalled();
+      expect(TestBed.inject(Coordinator).execute).not.toHaveBeenCalled();
+      expect(component.runError()).toBeUndefined();
+    },
+  );
 
   it('maps the current result page to safe AG Grid columns and preserves exact typed values', async () => {
     component = await createComponent();
@@ -733,7 +912,13 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       totalRows: undefined,
     });
     const columns = component.resultGridColumnDefs();
-    expect(columns.map(({ colId, field, headerName }) => ({ colId, field, headerName }))).toEqual([
+    expect(
+      columns.map(({ colId, field, headerName }) => ({
+        colId,
+        field,
+        headerName,
+      })),
+    ).toEqual([
       { colId: 'result_0', field: 'result_0', headerName: 'customer.id' },
       { colId: 'result_1', field: 'result_1', headerName: 'customer.id' },
       { colId: 'result_2', field: 'result_2', headerName: 'payload.data' },
@@ -750,10 +935,17 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     expect(component.resultGridColumnDefs()).toBe(columns);
     expect(component.resultGridRows()).toEqual([]);
 
-    const template = readFileSync(resolve('libs/datatug/main/src/lib/queries/query/page/query-page.component.html'), 'utf8');
+    const template = readFileSync(
+      resolve(
+        'libs/datatug/main/src/lib/queries/query/page/query-page.component.html',
+      ),
+      'utf8',
+    );
     expect(template).toContain('[columnDefs]="resultGridColumnDefs()"');
     expect(template).toContain('[rowData]="resultGridRows()"');
-    expect(template).toContain('[overlayNoRowsTemplate]="resultGridNoRowsTemplate"');
+    expect(template).toContain(
+      '[overlayNoRowsTemplate]="resultGridNoRowsTemplate"',
+    );
     expect(template).not.toContain('<table');
   });
 
@@ -782,18 +974,22 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     });
     await runFixture.whenStable();
     expect(component.publicDataRevisionAcknowledged()).toBe(true);
-    expect(component.savedPlanReview.acknowledged()).toBe('accepted-fingerprint');
+    expect(component.savedPlanReview.acknowledged()).toBe(
+      'accepted-fingerprint',
+    );
 
     const edited = editor.value.activeQueries[0];
     editor.next({
       ...editor.value,
-      activeQueries: [{
-        ...edited,
-        request: {
-          queryType: QueryType.DTQL,
-          text: 'from:\n  name: Person\n  alias: p\nlimit: 5\n',
-        } as unknown as ITextQueryRequest,
-      }],
+      activeQueries: [
+        {
+          ...edited,
+          request: {
+            queryType: QueryType.DTQL,
+            text: 'from:\n  name: Person\n  alias: p\nlimit: 5\n',
+          } as unknown as ITextQueryRequest,
+        },
+      ],
     });
     await runFixture.whenStable();
     expect(component.publicDataRevisionAcknowledged()).toBe(false);
@@ -801,75 +997,741 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
   });
 
   it('opens saved history and pages all three grids locally with original pins and timestamp, no run or metadata fetch', async () => {
-    const definition = { ...queryDef, federation: { ovdbBaseUrl: 'https://runtime.example', tables: [], nativeGraph: graphFixturePlan() } };
-    const template = '<p>{{ selectedHistoricalResult() ? "Historical local result" : "idle" }}</p><p>{{ runResult()?.provenance?.observedAt }}</p><pre>{{ historicalPins() }}</pre><span>{{ relatedResultSet() }} {{ resultTotalRows() }}</span>@for (row of visibleResultRows(); track $index) {<span>{{ displayValue(row[0]) }}</span>}';
+    const definition = {
+      ...queryDef,
+      federation: {
+        ovdbBaseUrl: 'https://runtime.example',
+        tables: [],
+        nativeGraph: graphFixturePlan(),
+      },
+    };
+    const template =
+      '<p>{{ selectedHistoricalResult() ? "Historical local result" : "idle" }}</p><p>{{ runResult()?.provenance?.observedAt }}</p><pre>{{ historicalPins() }}</pre><span>{{ relatedResultSet() }} {{ resultTotalRows() }}</span>@for (row of visibleResultRows(); track $index) {<span>{{ displayValue(row[0]) }}</span>}';
     component = await createComponent({}, definition, template);
     runFixture.detectChanges();
     const service = TestBed.inject(FederatedQueryService);
     const ref = { id: 'datatug-output-100000-abc', generation: 1 };
-    const historical = { localResult: ref, recordset: { columns: [{ name: 'Affiliation', type: 'string' }], rows: [{ type: 'string', value: 'original-affiliation' }] .map((cell) => [cell]) }, totalRows: 150,
-      relatedRecordsets: [{ id: 'locations', label: 'Locations', totalRows: 135, recordset: { columns: [{ name: 'Location', type: 'string' }], rows: [[{ type: 'string', value: 'original-location' }]] } }, { id: 'aliases', label: 'Alternate names', totalRows: 115, recordset: { columns: [{ name: 'Alias', type: 'string' }], rows: [[{ type: 'string', value: 'original-alias' }]] } }],
-      limitations: [], bindingsApplied: [], truncated: false, provenance: { observedAt: '2026-10-01T09:30:00Z', source: 'fixture', queryId: definition.id, mode: 'live', executionProfile: 'protected' } };
-    vi.mocked(service.openLocalResult).mockResolvedValue({ result: historical, executedDefinition: definition, descriptor: { ...ref } as LocalResultDescriptor } as Awaited<ReturnType<typeof service.openLocalResult>>);
-    const metadata = TestBed.inject(PublicDataService); const loadMetadata = vi.spyOn(metadata, 'revalidate');
-    await component.openHistoricalResult(ref.id); await runFixture.whenStable();
-    expect(runFixture.nativeElement.textContent).toContain('Historical local result');
-    expect(runFixture.nativeElement.textContent).toContain('2026-10-01T09:30:00Z');
-    expect(runFixture.nativeElement.textContent).toContain('original-affiliation');
+    const historical = {
+      localResult: ref,
+      recordset: {
+        columns: [{ name: 'Affiliation', type: 'string' }],
+        rows: [{ type: 'string', value: 'original-affiliation' }].map(
+          (cell) => [cell],
+        ),
+      },
+      totalRows: 150,
+      relatedRecordsets: [
+        {
+          id: 'locations',
+          label: 'Locations',
+          totalRows: 135,
+          recordset: {
+            columns: [{ name: 'Location', type: 'string' }],
+            rows: [[{ type: 'string', value: 'original-location' }]],
+          },
+        },
+        {
+          id: 'aliases',
+          label: 'Alternate names',
+          totalRows: 115,
+          recordset: {
+            columns: [{ name: 'Alias', type: 'string' }],
+            rows: [[{ type: 'string', value: 'original-alias' }]],
+          },
+        },
+      ],
+      limitations: [],
+      bindingsApplied: [],
+      truncated: false,
+      provenance: {
+        observedAt: '2026-10-01T09:30:00Z',
+        source: 'fixture',
+        queryId: definition.id,
+        mode: 'live',
+        executionProfile: 'protected',
+      },
+    };
+    vi.mocked(service.openLocalResult).mockResolvedValue({
+      result: historical,
+      executedDefinition: definition,
+      descriptor: { ...ref } as LocalResultDescriptor,
+    } as Awaited<ReturnType<typeof service.openLocalResult>>);
+    const metadata = TestBed.inject(PublicDataService);
+    const loadMetadata = vi.spyOn(metadata, 'revalidate');
+    await component.openHistoricalResult(ref.id);
+    await runFixture.whenStable();
+    expect(runFixture.nativeElement.textContent).toContain(
+      'Historical local result',
+    );
+    expect(runFixture.nativeElement.textContent).toContain(
+      '2026-10-01T09:30:00Z',
+    );
+    expect(runFixture.nativeElement.textContent).toContain(
+      'original-affiliation',
+    );
     expect(component.historicalDefinition()).toEqual(definition);
-    await component.changeRelatedResultSet('locations'); await runFixture.whenStable();
-    expect(component.resultTotalRows()).toBe(135); expect(runFixture.nativeElement.textContent).toContain('original-location');
-    await component.changeRelatedResultSet('aliases'); await runFixture.whenStable();
-    expect(component.resultTotalRows()).toBe(115); expect(runFixture.nativeElement.textContent).toContain('original-alias');
-    federatedGetPageMock.mockResolvedValue([[{ type: 'string', value: 'alias-page-2' }]]);
-    await component.changeResultPage(1); await runFixture.whenStable();
+    await component.changeRelatedResultSet('locations');
+    await runFixture.whenStable();
+    expect(component.resultTotalRows()).toBe(135);
+    expect(runFixture.nativeElement.textContent).toContain('original-location');
+    await component.changeRelatedResultSet('aliases');
+    await runFixture.whenStable();
+    expect(component.resultTotalRows()).toBe(115);
+    expect(runFixture.nativeElement.textContent).toContain('original-alias');
+    federatedGetPageMock.mockResolvedValue([
+      [{ type: 'string', value: 'alias-page-2' }],
+    ]);
+    await component.changeResultPage(1);
+    await runFixture.whenStable();
     expect(federatedGetPageMock).toHaveBeenCalledWith(1, 'aliases', ref);
     expect(runFixture.nativeElement.textContent).toContain('alias-page-2');
-    expect(federatedRunMock).not.toHaveBeenCalled(); expect(runQueryMock).not.toHaveBeenCalled(); expect(loadMetadata).not.toHaveBeenCalled();
+    expect(federatedRunMock).not.toHaveBeenCalled();
+    expect(runQueryMock).not.toHaveBeenCalled();
+    expect(loadMetadata).not.toHaveBeenCalled();
   });
 
   it('shows unavailable local history and discards a delayed old page after choosing a different historical artifact', async () => {
-    component = await createComponent(); const service = TestBed.inject(FederatedQueryService);
-    vi.mocked(service.openLocalResult).mockRejectedValue(new Error('No local result available.'));
-    await component.openHistoricalResult('missing'); expect(component.localHistoryError()).toContain('No local result'); expect(federatedRunMock).not.toHaveBeenCalled();
-    const result = { localResult: { id: 'old', generation: 1 }, recordset: { columns: [], rows: [] }, totalRows: 150, limitations: [], bindingsApplied: [], provenance: { observedAt: 'old', queryId: 'old', source: 'fixture' } };
-    component.runResult.set(result as never); component.selectedHistoricalResult.set(result.localResult);
-    let release!: (rows: unknown) => void; federatedGetPageMock.mockImplementation(() => new Promise((resolve) => { release = resolve; }));
+    component = await createComponent();
+    const service = TestBed.inject(FederatedQueryService);
+    vi.mocked(service.openLocalResult).mockRejectedValue(
+      new Error('No local result available.'),
+    );
+    await component.openHistoricalResult('missing');
+    expect(component.localHistoryError()).toContain('No local result');
+    expect(federatedRunMock).not.toHaveBeenCalled();
+    const result = {
+      localResult: { id: 'old', generation: 1 },
+      recordset: { columns: [], rows: [] },
+      totalRows: 150,
+      limitations: [],
+      bindingsApplied: [],
+      provenance: { observedAt: 'old', queryId: 'old', source: 'fixture' },
+    };
+    component.runResult.set(result as never);
+    component.selectedHistoricalResult.set(result.localResult);
+    let release!: (rows: unknown) => void;
+    federatedGetPageMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
     const pending = component.changeResultPage(1);
-    const next = { ...result, localResult: { id: 'new', generation: 1 }, recordset: { columns: [], rows: [[{ type: 'string', value: 'new-row' }]] } };
-    vi.mocked(service.openLocalResult).mockResolvedValue({ result: next, executedDefinition: queryDef, descriptor: {} as LocalResultDescriptor } as Awaited<ReturnType<typeof service.openLocalResult>>);
-    await component.openHistoricalResult('new'); release([[{ type: 'string', value: 'stale-row' }]]); await pending;
-    expect(component.visibleResultRows()).toEqual(next.recordset.rows); expect(component.resultPageIndex()).toBe(0);
+    const next = {
+      ...result,
+      localResult: { id: 'new', generation: 1 },
+      recordset: {
+        columns: [],
+        rows: [[{ type: 'string', value: 'new-row' }]],
+      },
+    };
+    vi.mocked(service.openLocalResult).mockResolvedValue({
+      result: next,
+      executedDefinition: queryDef,
+      descriptor: {} as LocalResultDescriptor,
+    } as Awaited<ReturnType<typeof service.openLocalResult>>);
+    await component.openHistoricalResult('new');
+    release([[{ type: 'string', value: 'stale-row' }]]);
+    await pending;
+    expect(component.visibleResultRows()).toEqual(next.recordset.rows);
+    expect(component.resultPageIndex()).toBe(0);
   });
 
-  const historyDefinition = (): IQueryDef => ({ ...queryDef, federation: { ovdbBaseUrl: 'https://runtime.example', tables: [], nativeGraph: graphFixturePlan() } });
-  const historyStateFor = (definition: IQueryDef): IQueryEditorState => ({ currentQueryId: definition.id, activeQueries: [{ id: definition.id, queryType: QueryType.DTQL, request: definition.request, def: definition }] }) as IQueryEditorState;
-  const historyResultFor = (definition: IQueryDef, id = 'datatug-output-100000-abc') => ({
-    localResult: { id, generation: 1 }, nativeGraph: { planIdentity: graphStableIdentity(definition.federation?.nativeGraph), stageActions: [] },
-    recordset: { columns: [{ name: 'Affiliation', type: 'string' }], rows: [[{ type: 'string', value: 'original-row' }]] }, totalRows: 150,
-    limitations: [], bindingsApplied: [], truncated: false,
-    provenance: { observedAt: '2026-10-01T09:30:00Z', queryId: definition.id, source: 'synthetic', mode: 'live', executionProfile: 'protected' },
-  }) as Awaited<ReturnType<FederatedQueryService['run']>>;
-  const historyResultTemplate = (): string => readFileSync(resolve('libs/datatug/main/src/lib/queries/query/page/query-page.component.html'), 'utf8').split('  @if (runResult(); as result) {')[1].split('</ion-content>')[0].replace(/^/, '@if (runResult(); as result) {');
+  const historyDefinition = (): IQueryDef => ({
+    ...queryDef,
+    federation: {
+      ovdbBaseUrl: 'https://runtime.example',
+      tables: [],
+      nativeGraph: graphFixturePlan(),
+    },
+  });
+  const historyStateFor = (definition: IQueryDef): IQueryEditorState =>
+    ({
+      currentQueryId: definition.id,
+      activeQueries: [
+        {
+          id: definition.id,
+          queryType: QueryType.DTQL,
+          request: definition.request,
+          def: definition,
+        },
+      ],
+    }) as IQueryEditorState;
+  const historyResultFor = (
+    definition: IQueryDef,
+    id = 'datatug-output-100000-abc',
+  ) =>
+    ({
+      localResult: { id, generation: 1 },
+      nativeGraph: {
+        planIdentity: graphStableIdentity(definition.federation?.nativeGraph),
+        stageActions: [],
+      },
+      recordset: {
+        columns: [{ name: 'Affiliation', type: 'string' }],
+        rows: [[{ type: 'string', value: 'original-row' }]],
+      },
+      totalRows: 150,
+      limitations: [],
+      bindingsApplied: [],
+      truncated: false,
+      provenance: {
+        observedAt: '2026-10-01T09:30:00Z',
+        queryId: definition.id,
+        source: 'synthetic',
+        mode: 'live',
+        executionProfile: 'protected',
+      },
+    }) as Awaited<ReturnType<FederatedQueryService['run']>>;
+  const historyResultTemplate = (): string =>
+    readFileSync(
+      resolve(
+        'libs/datatug/main/src/lib/queries/query/page/query-page.component.html',
+      ),
+      'utf8',
+    )
+      .split('  @if (runResult(); as result) {')[1]
+      .split('</ion-content>')[0]
+      .replace(/^/, '@if (runResult(); as result) {');
+
+  it('retains a frozen successful receipt across a failed and partial rerun, then clears it on scope change', async () => {
+    const definition = historyDefinition();
+    const editor = new BehaviorSubject(historyStateFor(definition));
+    const projects = new BehaviorSubject(project);
+    const template = readFileSync(
+      resolve(
+        'libs/datatug/main/src/lib/queries/query/page/query-page.component.html',
+      ),
+      'utf8',
+    );
+    component = await createComponent({}, definition, template, {
+      editor,
+      project: projects,
+    });
+    let now = 10;
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
+    let finishInitial!: (
+      result: Awaited<ReturnType<FederatedQueryService['run']>>,
+    ) => void;
+    let failRerun!: (error: Error) => void;
+    let finishLate!: (
+      result: Awaited<ReturnType<FederatedQueryService['run']>>,
+    ) => void;
+    federatedRunMock
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishInitial = resolve;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            failRerun = reject;
+          }),
+      )
+      .mockImplementationOnce(() =>
+        Promise.resolve({
+          ...historyResultFor(definition, 'partial-output'),
+          hasMore: true,
+          provenance: {
+            ...historyResultFor(definition).provenance,
+            observedAt: '2026-10-10T10:00:00Z',
+            source: 'partial attempt',
+          },
+        }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishLate = resolve;
+          }),
+      );
+
+    component.runQuery();
+    const firstRunOptions = federatedRunMock.mock.calls[0][5] as {
+      onFirstRecord?: (at: number) => void;
+    };
+    now = 20;
+    firstRunOptions.onFirstRecord?.(performance.timeOrigin + now);
+    now = 42;
+    const firstResult = historyResultFor(definition);
+    finishInitial(firstResult);
+    await runFixture.whenStable();
+
+    const receipt = component.committedRun();
+    expect(receipt?.timing).toEqual({
+      firstRecordMs: 10,
+      allResultsLoadedMs: 32,
+      noRecords: false,
+    });
+    expect(receipt?.result).not.toBe(firstResult);
+    expect(Object.isFrozen(receipt?.result)).toBe(true);
+
+    component.runQuery();
+    failRerun(new Error('The next run failed.'));
+    await runFixture.whenStable();
+    expect(component.runResult()).toBe(firstResult);
+    expect(component.committedRun()).toBe(receipt);
+    expect(runFixture.nativeElement.textContent.replace(/\s+/g, ' ')).toContain(
+      'Previous successful run · query customer-invoices',
+    );
+    expect(
+      runFixture.nativeElement
+        .querySelector('[data-testid="query-run-timings"]')
+        ?.textContent.replace(/\s+/g, ' '),
+    ).toContain('Time to first record: 10 ms · All results loaded in 32 ms');
+    expect(runFixture.nativeElement.textContent).toContain(
+      'The next run failed.',
+    );
+
+    component.runQuery();
+    await runFixture.whenStable();
+    expect(component.runResult()?.hasMore).toBe(true);
+    expect(component.committedRun()).toBe(receipt);
+    expect(
+      runFixture.nativeElement
+        .querySelector('[data-testid="previous-committed-result"]')
+        ?.textContent.replace(/\s+/g, ' '),
+    ).toContain('synthetic · observed 2026-10-01T09:30:00Z');
+    expect(
+      runFixture.nativeElement
+        .querySelector('[data-testid="previous-run-timings"]')
+        ?.textContent.replace(/\s+/g, ' '),
+    ).toContain('Time to first record: 10 ms · All results loaded in 32 ms');
+    expect(
+      runFixture.nativeElement.querySelector(
+        '[data-testid="previous-committed-result"]',
+      )?.textContent,
+    ).toContain('original-row');
+    expect(
+      runFixture.nativeElement.querySelector(
+        '[data-testid="result-provenance"]',
+      )?.textContent,
+    ).toContain('partial attempt');
+
+    component.runQuery();
+    agentContext.securityContextId.set('sctx-2');
+    await runFixture.whenStable();
+    expect(component.committedRun()).toBeUndefined();
+    expect(component.runResult()).toBeUndefined();
+    expect(component.resultGridRows()).toEqual([]);
+    finishLate(firstResult);
+    await runFixture.whenStable();
+    expect(component.committedRun()).toBeUndefined();
+    expect(component.runResult()).toBeUndefined();
+    expect(component.resultGridRows()).toEqual([]);
+    clock.mockRestore();
+  });
+
+  it('applies a late federated row count only to the still-current completed receipt', async () => {
+    const definition = historyDefinition();
+    component = await createComponent({}, definition, historyResultTemplate());
+    federatedRunMock.mockResolvedValue(historyResultFor(definition));
+
+    component.runQuery();
+    await runFixture.whenStable();
+    const originalReceipt = component.committedRun();
+    const onFinished = federatedRunMock.mock.calls.at(-1)?.[4] as
+      | ((totalRows: number) => void)
+      | undefined;
+    expect(originalReceipt?.result.totalRows).toBe(150);
+    expect(onFinished).toBeTypeOf('function');
+
+    onFinished?.(173);
+    await runFixture.whenStable();
+
+    const updatedReceipt = component.committedRun();
+    expect(component.runResult()?.totalRows).toBe(173);
+    expect(updatedReceipt?.result.totalRows).toBe(173);
+    expect(updatedReceipt).not.toBe(originalReceipt);
+    expect(originalReceipt?.result.totalRows).toBe(150);
+    expect(Object.isFrozen(updatedReceipt?.result)).toBe(true);
+  });
+
+  it('keeps the last receipt labeled with its executed query when the selected query body changes', async () => {
+    const definition = historyDefinition();
+    const editor = new BehaviorSubject(historyStateFor(definition));
+    component = await createComponent(
+      {},
+      definition,
+      readFileSync(
+        resolve(
+          'libs/datatug/main/src/lib/queries/query/page/query-page.component.html',
+        ),
+        'utf8',
+      ),
+      { editor, project: new BehaviorSubject(project) },
+    );
+    const result = historyResultFor(definition);
+    federatedRunMock.mockResolvedValue(result);
+
+    component.runQuery();
+    await runFixture.whenStable();
+    const receipt = component.committedRun();
+    expect(receipt?.executedDefinition.request).toEqual(definition.request);
+
+    const editedDefinition = {
+      ...definition,
+      request: { ...definition.request, text: 'select * from changed_source' },
+    };
+    editor.next(historyStateFor(editedDefinition));
+    await runFixture.whenStable();
+
+    expect(component.committedRun()).toBe(receipt);
+    expect(component.committedRun()?.executedDefinition.request).toEqual(
+      definition.request,
+    );
+    expect(component.runResult()).toBe(result);
+    expect(
+      runFixture.nativeElement.querySelector(
+        '[data-testid="previous-committed-result"]',
+      ),
+    ).not.toBeNull();
+    expect(runFixture.nativeElement.textContent).toContain(
+      'Previous successful run',
+    );
+  });
+
+  it('clears and fences federated output when the in-memory bearer token changes or clears', async () => {
+    const definition = historyDefinition();
+    const template = readFileSync(
+      resolve(
+        'libs/datatug/main/src/lib/queries/query/page/query-page.component.html',
+      ),
+      'utf8',
+    );
+    component = await createComponent({}, definition, template);
+    const setToken = (value: string): void => component['setOvdbToken'](value);
+    setToken('first-secret-token');
+
+    let finishInitial!: (
+      result: Awaited<ReturnType<FederatedQueryService['run']>>,
+    ) => void;
+    let finishAfterReplacement!: (
+      result: Awaited<ReturnType<FederatedQueryService['run']>>,
+    ) => void;
+    let finishAfterClear!: (
+      result: Awaited<ReturnType<FederatedQueryService['run']>>,
+    ) => void;
+    federatedRunMock
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishInitial = resolve;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishAfterReplacement = resolve;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishAfterClear = resolve;
+          }),
+      );
+
+    component.runQuery();
+    expect(federatedRunMock.mock.calls.at(-1)?.[2]).toBe('first-secret-token');
+    finishInitial(historyResultFor(definition));
+    await runFixture.whenStable();
+    const receipt = component.committedRun();
+    expect(receipt).toBeDefined();
+    expect(JSON.stringify(receipt)).not.toContain('first-secret-token');
+
+    component.runQuery();
+    setToken('replacement-secret-token');
+    await runFixture.whenStable();
+    expect(component.runResult()).toBeUndefined();
+    expect(component.committedRun()).toBeUndefined();
+    finishAfterReplacement(
+      historyResultFor(definition, 'late-after-replacement'),
+    );
+    await runFixture.whenStable();
+    expect(component.runResult()).toBeUndefined();
+    expect(component.committedRun()).toBeUndefined();
+
+    component.runQuery();
+    expect(federatedRunMock.mock.calls.at(-1)?.[2]).toBe(
+      'replacement-secret-token',
+    );
+    setToken('');
+    await runFixture.whenStable();
+    expect(component.runResult()).toBeUndefined();
+    expect(component.committedRun()).toBeUndefined();
+    finishAfterClear(historyResultFor(definition, 'late-after-clear'));
+    await runFixture.whenStable();
+    expect(component.runResult()).toBeUndefined();
+    expect(component.committedRun()).toBeUndefined();
+  });
+
+  it('freezes an accurate target label and shows only executed text and native graph pins', async () => {
+    const definition: IQueryDef = {
+      ...historyDefinition(),
+      request: {
+        queryType: QueryType.DTQL,
+        text: 'from:\n  name: Person\n  alias: p\nlimit: 5',
+      } as unknown as ITextQueryRequest,
+    };
+    const editor = new BehaviorSubject(historyStateFor(definition));
+    component = await createComponent(
+      {},
+      definition,
+      readFileSync(
+        resolve(
+          'libs/datatug/main/src/lib/queries/query/page/query-page.component.html',
+        ),
+        'utf8',
+      ),
+      { editor, project: new BehaviorSubject(project) },
+    );
+    federatedRunMock.mockResolvedValue(historyResultFor(definition));
+
+    component.runQuery();
+    await runFixture.whenStable();
+    expect(component.committedRun()?.scope.target).toBe(
+      'OVDB at https://runtime.example',
+    );
+
+    editor.next(
+      historyStateFor({
+        ...definition,
+        request: {
+          ...definition.request,
+          text: 'from: changed',
+        } as ITextQueryRequest,
+      }),
+    );
+    await runFixture.whenStable();
+
+    const previous = runFixture.nativeElement.querySelector(
+      '[data-testid="previous-committed-result"]',
+    ) as HTMLElement;
+    expect(previous.textContent).toContain('OVDB at https://runtime.example');
+    expect(previous.textContent).toContain('from:');
+    expect(previous.textContent).toContain('Executed plan and pins');
+    expect(previous.textContent).not.toContain('ovdbBaseUrl');
+    expect(previous.textContent).not.toContain('expectedSourceRights');
+    expect(previous.textContent).not.toContain('runtime.example/ovdb');
+  });
+
+  it('omits HTTP URL and request body from a retained executed-request inspector', async () => {
+    const definition: IQueryDef = {
+      ...queryDef,
+      request: {
+        queryType: QueryType.HTTP,
+        method: 'GET',
+        url: 'https://user:credential@example.test/private?token=url-secret',
+        body: 'request-body-secret',
+      } as IQueryDef['request'],
+    };
+    const editor = new BehaviorSubject(historyStateFor(definition));
+    const template = readFileSync(
+      resolve(
+        'libs/datatug/main/src/lib/queries/query/page/query-page.component.html',
+      ),
+      'utf8',
+    );
+    component = await createComponent({}, definition, template, {
+      editor,
+      project: new BehaviorSubject(project),
+    });
+    component.availableTargets.set([
+      { source: 'opaque-source-17', label: 'Exchange rates (HTTP)' },
+    ]);
+    component.selectedSource.set('opaque-source-17');
+    component.queryState = {
+      ...component.queryState,
+      activeEnv: { id: 'production', title: 'Production' },
+    };
+    const response: RunQueryResponse = {
+      recordset: { columns: [], rows: [] },
+      limitations: [],
+      bindingsApplied: [
+        {
+          parameterId: 'AccessToken',
+          value: { type: 'string', value: 'runtime-binding-secret' },
+          origin: 'manual',
+          originEvidence: 'client-reported',
+        },
+      ],
+      truncated: false,
+      provenance: {
+        source: 'fixture',
+        queryId: definition.id,
+        mode: 'live',
+        observedAt: '2026-10-10T11:00:00Z',
+        executionProfile: 'protected',
+      },
+    };
+    runQueryMock.mockReturnValueOnce(of(response));
+
+    component.runQuery();
+    await runFixture.whenStable();
+    expect(component.committedRun()?.scope.target).toBe(
+      'Exchange rates (HTTP)',
+    );
+    expect(component.committedRun()?.scope.environment).toBe(
+      'Environment Production',
+    );
+    const receipt = component.committedRun();
+    expect(receipt?.executedDefinition.request).toEqual({
+      queryType: QueryType.HTTP,
+      method: 'GET',
+    });
+    expect(typeof receipt?.queryIdentity).toBe('symbol');
+    expect(receipt?.result.bindingsApplied).toEqual([
+      {
+        parameterId: 'AccessToken',
+        type: 'string',
+        set: true,
+        origin: 'manual',
+        originEvidence: 'client-reported',
+      },
+    ]);
+    const serializedReceipt = JSON.stringify(receipt);
+    for (const secret of [
+      'credential',
+      'url-secret',
+      'request-body-secret',
+      'runtime-binding-secret',
+      'example.test',
+    ]) {
+      expect(serializedReceipt).not.toContain(secret);
+    }
+    editor.next(
+      historyStateFor({
+        ...definition,
+        request: {
+          ...definition.request,
+          body: 'new-body',
+        } as IQueryDef['request'],
+      }),
+    );
+    await runFixture.whenStable();
+
+    const previous = runFixture.nativeElement.querySelector(
+      '[data-testid="previous-committed-result"]',
+    ) as HTMLElement;
+    expect(previous.textContent).toContain(
+      'GET request. URL and request body are omitted',
+    );
+    expect(previous.textContent).toContain('Exchange rates (HTTP)');
+    expect(previous.textContent).not.toContain('opaque-source-17');
+    expect(previous.textContent).not.toContain('url-secret');
+    expect(previous.textContent).not.toContain('request-body-secret');
+    expect(previous.textContent).not.toContain('example.test');
+  });
+
+  it('clears retained results after an authorization denial while ordinary failures retain them', async () => {
+    const template = readFileSync(
+      resolve(
+        'libs/datatug/main/src/lib/queries/query/page/query-page.component.html',
+      ),
+      'utf8',
+    );
+    component = await createComponent({}, queryDef, template);
+    const response: RunQueryResponse = {
+      recordset: {
+        columns: [{ name: 'n', type: 'integer' }],
+        rows: [[{ type: 'integer', value: '1' }]],
+      },
+      limitations: [],
+      bindingsApplied: [],
+      truncated: false,
+      provenance: {
+        source: 'fixture',
+        queryId: queryDef.id,
+        mode: 'live',
+        observedAt: '2026-10-10T11:00:00Z',
+        executionProfile: 'protected',
+      },
+    };
+    runQueryMock.mockReturnValueOnce(of(response));
+    component.runQuery();
+    await runFixture.whenStable();
+    expect(component.committedRun()).toBeDefined();
+
+    runQueryMock.mockReturnValueOnce(
+      throwError(
+        () =>
+          new HttpErrorResponse({
+            status: 403,
+            error: {
+              error: {
+                code: 'ACCESS_DENIED',
+                message: 'Access denied',
+                requestId: 'r-denied',
+              },
+            },
+          }),
+      ),
+    );
+    component.runQuery();
+    await runFixture.whenStable();
+
+    expect(component.runError()).toBe('Access denied');
+    expect(component.committedRun()).toBeUndefined();
+    expect(component.runResult()).toBeUndefined();
+    expect(component.resultGridRows()).toEqual([]);
+  });
+
+  it('clears a retained OVDB result when the next federated attempt is denied', async () => {
+    const definition = historyDefinition();
+    component = await createComponent({}, definition, historyResultTemplate());
+    federatedRunMock.mockResolvedValueOnce(historyResultFor(definition));
+    component.runQuery();
+    await runFixture.whenStable();
+    expect(component.committedRun()).toBeDefined();
+
+    federatedRunMock.mockRejectedValueOnce(
+      new Error('OVDB database whole-query execution failed (403).'),
+    );
+    component.runQuery();
+    await runFixture.whenStable();
+
+    expect(component.runError()).toContain('(403)');
+    expect(component.runResult()).toBeUndefined();
+    expect(component.committedRun()).toBeUndefined();
+    expect(component.resultGridRows()).toEqual([]);
+  });
 
   it('reports first decoded record and clean full-result completion from the same monotonic run start', async () => {
     const definition = historyDefinition();
     component = await createComponent({}, definition, historyResultTemplate());
     let now = 10;
     const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
-    let complete!: (result: Awaited<ReturnType<FederatedQueryService['run']>>) => void;
-    federatedRunMock.mockImplementation(() => new Promise((resolve) => { complete = resolve; }));
+    let complete!: (
+      result: Awaited<ReturnType<FederatedQueryService['run']>>,
+    ) => void;
+    federatedRunMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve;
+        }),
+    );
 
     component.runQuery();
-    const extras = federatedRunMock.mock.calls[0][5] as { onFirstRecord?: (at: number) => void };
+    const extras = federatedRunMock.mock.calls[0][5] as {
+      onFirstRecord?: (at: number) => void;
+    };
     now = 20;
     extras.onFirstRecord?.(performance.timeOrigin + now);
     now = 42;
     complete(historyResultFor(definition));
     await runFixture.whenStable();
 
-    expect(component.queryRunTiming()).toEqual({ firstRecordMs: 10, allResultsLoadedMs: 32, noRecords: false });
-    expect(runFixture.nativeElement.textContent.replace(/\s+/g, ' ').trim()).toContain('Time to first record: 10 ms · All results loaded in 32 ms');
+    expect(component.queryRunTiming()).toEqual({
+      firstRecordMs: 10,
+      allResultsLoadedMs: 32,
+      noRecords: false,
+    });
+    expect(
+      runFixture.nativeElement.textContent.replace(/\s+/g, ' ').trim(),
+    ).toContain('Time to first record: 10 ms · All results loaded in 32 ms');
     clock.mockRestore();
   });
 
@@ -878,8 +1740,15 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     component = await createComponent({}, definition, historyResultTemplate());
     let now = 5;
     const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
-    let complete!: (result: Awaited<ReturnType<FederatedQueryService['run']>>) => void;
-    federatedRunMock.mockImplementation(() => new Promise((resolve) => { complete = resolve; }));
+    let complete!: (
+      result: Awaited<ReturnType<FederatedQueryService['run']>>,
+    ) => void;
+    federatedRunMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve;
+        }),
+    );
 
     component.runQuery();
     now = 24;
@@ -890,8 +1759,15 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     });
     await runFixture.whenStable();
 
-    expect(component.queryRunTiming()).toEqual({ allResultsLoadedMs: 19, noRecords: true });
-    expect(runFixture.nativeElement.textContent.replace(/\s+/g, ' ').trim()).toContain('Time to first record: No records · All results loaded in 19 ms');
+    expect(component.queryRunTiming()).toEqual({
+      allResultsLoadedMs: 19,
+      noRecords: true,
+    });
+    expect(
+      runFixture.nativeElement.textContent.replace(/\s+/g, ' ').trim(),
+    ).toContain(
+      'Time to first record: No records · All results loaded in 19 ms',
+    );
     clock.mockRestore();
   });
 
@@ -901,17 +1777,28 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     let now = 5;
     const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
     let fail!: (error: Error) => void;
-    federatedRunMock.mockImplementation(() => new Promise((_resolve, reject) => { fail = reject; }));
+    federatedRunMock.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
 
     component.runQuery();
-    const extras = federatedRunMock.mock.calls[0][5] as { onFirstRecord?: (at: number) => void };
+    const extras = federatedRunMock.mock.calls[0][5] as {
+      onFirstRecord?: (at: number) => void;
+    };
     now = 12;
     extras.onFirstRecord?.(performance.timeOrigin + now);
     fail(new Error('The final result footer was invalid.'));
     await runFixture.whenStable();
 
     expect(component.queryRunTiming()).toBeUndefined();
-    expect(runFixture.nativeElement.querySelector('[data-testid="query-run-timings"]')).toBeNull();
+    expect(
+      runFixture.nativeElement.querySelector(
+        '[data-testid="query-run-timings"]',
+      ),
+    ).toBeNull();
     expect(component.runError()).toContain('final result footer');
     clock.mockRestore();
   });
@@ -926,38 +1813,75 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     await runFixture.whenStable();
 
     expect(component.queryRunTiming()).toBeUndefined();
-    expect(runFixture.nativeElement.querySelector('[data-testid="query-run-timings"]')).toBeNull();
+    expect(
+      runFixture.nativeElement.querySelector(
+        '[data-testid="query-run-timings"]',
+      ),
+    ).toBeNull();
   });
 
   it.each([
     { hasMore: true },
     { truncated: true },
-    { runtimeRead: { pins: {}, pages: { 'db.items': { limit: 10, offset: 0, rows: 10, complete: false, possiblyMore: true } } } },
-  ])('withholds full-result timing when the result is incomplete: %j', async (incomplete) => {
-    const definition = historyDefinition();
-    component = await createComponent({}, definition, historyResultTemplate());
-    federatedRunMock.mockResolvedValue({
-      ...historyResultFor(definition),
-      ...incomplete,
-    });
+    {
+      runtimeRead: {
+        pins: {},
+        pages: {
+          'db.items': {
+            limit: 10,
+            offset: 0,
+            rows: 10,
+            complete: false,
+            possiblyMore: true,
+          },
+        },
+      },
+    },
+  ])(
+    'withholds full-result timing when the result is incomplete: %j',
+    async (incomplete) => {
+      const definition = historyDefinition();
+      component = await createComponent(
+        {},
+        definition,
+        historyResultTemplate(),
+      );
+      federatedRunMock.mockResolvedValue({
+        ...historyResultFor(definition),
+        ...incomplete,
+      });
 
-    component.runQuery();
-    await runFixture.whenStable();
+      component.runQuery();
+      await runFixture.whenStable();
 
-    expect(component.queryRunTiming()).toBeUndefined();
-    expect(runFixture.nativeElement.querySelector('[data-testid="query-run-timings"]')).toBeNull();
-  });
+      expect(component.queryRunTiming()).toBeUndefined();
+      expect(
+        runFixture.nativeElement.querySelector(
+          '[data-testid="query-run-timings"]',
+        ),
+      ).toBeNull();
+    },
+  );
 
   it('discards first-record timing and completion when the user leaves during the run', async () => {
     const definition = historyDefinition();
     component = await createComponent({}, definition, historyResultTemplate());
     let now = 5;
     const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
-    let finish!: (result: Awaited<ReturnType<FederatedQueryService['run']>>) => void;
-    federatedRunMock.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    let finish!: (
+      result: Awaited<ReturnType<FederatedQueryService['run']>>,
+    ) => void;
+    federatedRunMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
 
     component.runQuery();
-    const extras = federatedRunMock.mock.calls[0][5] as { onFirstRecord?: (at: number) => void };
+    const extras = federatedRunMock.mock.calls[0][5] as {
+      onFirstRecord?: (at: number) => void;
+    };
     now = 12;
     extras.onFirstRecord?.(performance.timeOrigin + now);
     component.ngOnDestroy();
@@ -973,22 +1897,43 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
   it('ignores an old first-record event after a replacement run starts', async () => {
     const definition = historyDefinition();
     const editor = new BehaviorSubject(historyStateFor(definition));
-    component = await createComponent({}, definition, historyResultTemplate(), { editor, project: of(project) });
+    component = await createComponent({}, definition, historyResultTemplate(), {
+      editor,
+      project: of(project),
+    });
     let now = 10;
     const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
-    let finishOld!: (result: Awaited<ReturnType<FederatedQueryService['run']>>) => void;
-    let finishNew!: (result: Awaited<ReturnType<FederatedQueryService['run']>>) => void;
+    let finishOld!: (
+      result: Awaited<ReturnType<FederatedQueryService['run']>>,
+    ) => void;
+    let finishNew!: (
+      result: Awaited<ReturnType<FederatedQueryService['run']>>,
+    ) => void;
     federatedRunMock
-      .mockImplementationOnce(() => new Promise((resolve) => { finishOld = resolve; }))
-      .mockImplementationOnce(() => new Promise((resolve) => { finishNew = resolve; }));
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishOld = resolve;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishNew = resolve;
+          }),
+      );
 
     component.runQuery();
-    const oldExtras = federatedRunMock.mock.calls[0][5] as { onFirstRecord?: (at: number) => void };
+    const oldExtras = federatedRunMock.mock.calls[0][5] as {
+      onFirstRecord?: (at: number) => void;
+    };
     Object.assign(definition.federation?.nativeGraph ?? {}, { aliases: false });
     editor.next(historyStateFor(definition));
     now = 20;
     component.runQuery();
-    const newExtras = federatedRunMock.mock.calls[1][5] as { onFirstRecord?: (at: number) => void };
+    const newExtras = federatedRunMock.mock.calls[1][5] as {
+      onFirstRecord?: (at: number) => void;
+    };
     oldExtras.onFirstRecord?.(performance.timeOrigin + 15);
     newExtras.onFirstRecord?.(performance.timeOrigin + 27);
     now = 35;
@@ -997,140 +1942,414 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     finishOld(historyResultFor(definition));
     await Promise.resolve();
 
-    expect(component.queryRunTiming()).toEqual({ firstRecordMs: 7, allResultsLoadedMs: 15, noRecords: false });
+    expect(component.queryRunTiming()).toEqual({
+      firstRecordMs: 7,
+      allResultsLoadedMs: 15,
+      noRecords: false,
+    });
     clock.mockRestore();
   });
 
   it('renders exact plain P1 evidence from actual IndexedDB reopening in the original grid and preserves all three sets', async () => {
-    const definition = historyDefinition(); component = await createComponent({}, definition, historyResultTemplate());
-    const tokens = ['-0', '1e400', '-1e400', '0e400', '1.0000000000000001', '9007199254740990.5', '{"nested":[-0,1e3,9007199254740993]}'];
-    const result = { ...historyResultFor(definition), relatedRecordsets: [{ id: 'locations', label: 'Locations', parentSet: 'affiliations', parentField: 'Affiliation', totalRows: tokens.length, recordset: { columns: [{ name: 'Exact reference evidence', type: 'string' }], rows: tokens.map((token) => [{ type: 'string' as const, value: token }]) } }, { id: 'aliases', label: 'Alternate names', parentSet: 'locations', parentField: 'Location', totalRows: 0, recordset: { columns: [{ name: 'Alias', type: 'string' }], rows: [] } }] } as Awaited<ReturnType<FederatedQueryService['run']>>;
-    const db = await new Promise<IDBDatabase>((resolve, reject) => { const request = indexedDB.open(`datatug-output-100000-${crypto.randomUUID()}`, 2); request.onupgradeneeded = () => createOutputStores(request.result); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
-    const descriptor = await replaceGraphOutput(db, definition, result, result.recordset.rows, 1); db.close();
+    const definition = historyDefinition();
+    component = await createComponent({}, definition, historyResultTemplate());
+    const tokens = [
+      '-0',
+      '1e400',
+      '-1e400',
+      '0e400',
+      '1.0000000000000001',
+      '9007199254740990.5',
+      '{"nested":[-0,1e3,9007199254740993]}',
+    ];
+    const result = {
+      ...historyResultFor(definition),
+      relatedRecordsets: [
+        {
+          id: 'locations',
+          label: 'Locations',
+          parentSet: 'affiliations',
+          parentField: 'Affiliation',
+          totalRows: tokens.length,
+          recordset: {
+            columns: [{ name: 'Exact reference evidence', type: 'string' }],
+            rows: tokens.map((token) => [
+              { type: 'string' as const, value: token },
+            ]),
+          },
+        },
+        {
+          id: 'aliases',
+          label: 'Alternate names',
+          parentSet: 'locations',
+          parentField: 'Location',
+          totalRows: 0,
+          recordset: { columns: [{ name: 'Alias', type: 'string' }], rows: [] },
+        },
+      ],
+    } as Awaited<ReturnType<FederatedQueryService['run']>>;
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open(
+        `datatug-output-100000-${crypto.randomUUID()}`,
+        2,
+      );
+      request.onupgradeneeded = () => createOutputStores(request.result);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const descriptor = await replaceGraphOutput(
+      db,
+      definition,
+      result,
+      result.recordset.rows,
+      1,
+    );
+    db.close();
     try {
-      vi.mocked(TestBed.inject(FederatedQueryService).openLocalResult).mockImplementation(openLocalResult);
-      await component.openHistoricalResult(descriptor.id); await component.changeRelatedResultSet('locations'); await runFixture.whenStable();
-      const values = component.resultGridRows().flatMap((row) => Object.values(row));
-      expect(values).toEqual(tokens); expect(component.historicalDefinition()).toEqual(definition);
-      await component.changeRelatedResultSet('aliases'); await runFixture.whenStable(); expect(component.visibleResultRows()).toEqual([]);
-      await component.changeRelatedResultSet('affiliations'); await runFixture.whenStable(); expect(component.resultGridRows().flatMap((row) => Object.values(row))).toContain('original-row');
-      expect(federatedRunMock).not.toHaveBeenCalled(); expect(runQueryMock).not.toHaveBeenCalled();
-    } finally { await deleteLocalResult(descriptor.id); }
+      vi.mocked(
+        TestBed.inject(FederatedQueryService).openLocalResult,
+      ).mockImplementation(openLocalResult);
+      await component.openHistoricalResult(descriptor.id);
+      await component.changeRelatedResultSet('locations');
+      await runFixture.whenStable();
+      const values = component
+        .resultGridRows()
+        .flatMap((row) => Object.values(row));
+      expect(values).toEqual(tokens);
+      expect(component.historicalDefinition()).toEqual(definition);
+      await component.changeRelatedResultSet('aliases');
+      await runFixture.whenStable();
+      expect(component.visibleResultRows()).toEqual([]);
+      await component.changeRelatedResultSet('affiliations');
+      await runFixture.whenStable();
+      expect(
+        component.resultGridRows().flatMap((row) => Object.values(row)),
+      ).toContain('original-row');
+      expect(federatedRunMock).not.toHaveBeenCalled();
+      expect(runQueryMock).not.toHaveBeenCalled();
+    } finally {
+      await deleteLocalResult(descriptor.id);
+    }
   });
 
-  it.each(['aliases', 'fields', 'selection', 'operator', 'pins', 'in-place'])('marks completed output historical immediately on %s edit and preserves executed pins', async (change) => {
-    const definition = historyDefinition(), originalDefinition = structuredClone(definition), editor = new BehaviorSubject(historyStateFor(definition));
-    component = await createComponent({}, definition, historyResultTemplate(), { editor, project: of(project) });
-    const result = historyResultFor(definition); federatedRunMock.mockResolvedValue(result);
-    component.runQuery(); await runFixture.whenStable();
-    expect(runFixture.nativeElement.querySelector('[data-testid="result-provenance"]').textContent).toContain('live');
-    const changed = change === 'in-place' ? definition : structuredClone(definition), plan = changed.federation?.nativeGraph;
-    if (!plan) throw new Error('Missing graph fixture.');
-    // These are editor drafts, never admitted for execution by this test.
-    if (change === 'aliases' || change === 'in-place') Object.assign(plan, { aliases: false });
-    if (change === 'fields') Object.assign(plan.stages.locations, { fields: [...plan.stages.locations.fields, 'draft_field'] });
-    if (change === 'selection') Object.assign(plan.selection, { rows: 999 });
-    if (change === 'operator') Object.assign(plan.envelope.graphs[0].edges[1], { projection: 'draft-operator/1' });
-    if (change === 'pins') Object.assign(plan.stages.locations.runtime, { manifestSha256: 'e'.repeat(64) });
-    editor.next(historyStateFor(changed)); await runFixture.whenStable();
-    expect(component.runResult()).toBe(result); expect(component.selectedHistoricalResult()).toEqual(result.localResult);
-    expect(component.historicalDefinition()).toEqual(originalDefinition);
-    expect(runFixture.nativeElement.textContent).toContain('Historical local result');
-    expect(runFixture.nativeElement.textContent).toContain('2026-10-01T09:30:00Z');
-    expect(component.resultGridRows().flatMap((row) => Object.values(row))).toContain('original-row');
-    expect(runFixture.nativeElement.querySelector('[data-testid="result-provenance"]').textContent).not.toContain('live');
-    expect(TestBed.inject(FederatedQueryService).dispose).toHaveBeenCalled();
-    expect(federatedRunMock).toHaveBeenCalledOnce(); expect(runQueryMock).not.toHaveBeenCalled();
-  });
+  it.each(['aliases', 'fields', 'selection', 'operator', 'pins', 'in-place'])(
+    'marks completed output historical immediately on %s edit and preserves executed pins',
+    async (change) => {
+      const definition = historyDefinition(),
+        originalDefinition = structuredClone(definition),
+        editor = new BehaviorSubject(historyStateFor(definition));
+      component = await createComponent(
+        {},
+        definition,
+        historyResultTemplate(),
+        { editor, project: of(project) },
+      );
+      const result = historyResultFor(definition);
+      federatedRunMock.mockResolvedValue(result);
+      component.runQuery();
+      await runFixture.whenStable();
+      expect(
+        runFixture.nativeElement.querySelector(
+          '[data-testid="result-provenance"]',
+        ).textContent,
+      ).toContain('live');
+      const changed =
+          change === 'in-place' ? definition : structuredClone(definition),
+        plan = changed.federation?.nativeGraph;
+      if (!plan) throw new Error('Missing graph fixture.');
+      // These are editor drafts, never admitted for execution by this test.
+      if (change === 'aliases' || change === 'in-place')
+        Object.assign(plan, { aliases: false });
+      if (change === 'fields')
+        Object.assign(plan.stages.locations, {
+          fields: [...plan.stages.locations.fields, 'draft_field'],
+        });
+      if (change === 'selection') Object.assign(plan.selection, { rows: 999 });
+      if (change === 'operator')
+        Object.assign(plan.envelope.graphs[0].edges[1], {
+          projection: 'draft-operator/1',
+        });
+      if (change === 'pins')
+        Object.assign(plan.stages.locations.runtime, {
+          manifestSha256: 'e'.repeat(64),
+        });
+      editor.next(historyStateFor(changed));
+      await runFixture.whenStable();
+      expect(component.runResult()).toBe(result);
+      expect(component.selectedHistoricalResult()).toEqual(result.localResult);
+      expect(component.historicalDefinition()).toEqual(originalDefinition);
+      expect(runFixture.nativeElement.textContent).toContain(
+        'Historical local result',
+      );
+      expect(runFixture.nativeElement.textContent).toContain(
+        '2026-10-01T09:30:00Z',
+      );
+      expect(
+        component.resultGridRows().flatMap((row) => Object.values(row)),
+      ).toContain('original-row');
+      expect(
+        runFixture.nativeElement.querySelector(
+          '[data-testid="result-provenance"]',
+        ).textContent,
+      ).not.toContain('live');
+      expect(TestBed.inject(FederatedQueryService).dispose).toHaveBeenCalled();
+      expect(federatedRunMock).toHaveBeenCalledOnce();
+      expect(runQueryMock).not.toHaveBeenCalled();
+    },
+  );
 
-  it.each(['edit', 'history', 'destroy'])('invalidates actual service startup before Worker creation on %s', async (action) => {
-    const definition = historyDefinition(), editor = new BehaviorSubject(historyStateFor(definition));
-    component = await createComponent({}, definition, historyResultTemplate(), { editor, project: of(project) });
-    const service = TestBed.inject(FederatedQueryService), actual = new FederatedQueryService();
-    const construct = vi.fn(); vi.stubGlobal('Worker', construct);
-    let release!: () => void;
-    const cleanup = vi.spyOn(indexedDB, 'databases').mockImplementationOnce(() => new Promise((resolve) => { release = () => resolve([]); }));
-    federatedRunMock.mockImplementation(actual.run.bind(actual));
-    vi.mocked(service.dispose).mockImplementation(actual.dispose.bind(actual));
-    vi.mocked(service.openLocalResult).mockRejectedValue(new Error('Fixture unavailable.'));
-    try {
-      component.runQuery(); await vi.waitFor(() => expect(cleanup).toHaveBeenCalledOnce());
-      if (action === 'edit') { Object.assign(definition.federation?.nativeGraph ?? {}, { aliases: false }); editor.next(historyStateFor(definition)); }
-      if (action === 'history') await component.openHistoricalResult('fixture');
-      if (action === 'destroy') component.ngOnDestroy();
-      await Promise.resolve(); await Promise.resolve();
-      expect(component.running()).toBe(false); expect(component.runResult()).toBeUndefined();
-      release(); await runFixture.whenStable();
-      expect(construct).not.toHaveBeenCalled(); expect(component.runResult()).toBeUndefined(); expect(component.runError()).toBeUndefined();
-    } finally { cleanup.mockRestore(); vi.unstubAllGlobals(); }
-  });
+  it.each(['edit', 'history', 'destroy'])(
+    'invalidates actual service startup before Worker creation on %s',
+    async (action) => {
+      const definition = historyDefinition(),
+        editor = new BehaviorSubject(historyStateFor(definition));
+      component = await createComponent(
+        {},
+        definition,
+        historyResultTemplate(),
+        { editor, project: of(project) },
+      );
+      const service = TestBed.inject(FederatedQueryService),
+        actual = new FederatedQueryService();
+      const construct = vi.fn();
+      vi.stubGlobal('Worker', construct);
+      let release!: () => void;
+      const cleanup = vi.spyOn(indexedDB, 'databases').mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            release = () => resolve([]);
+          }),
+      );
+      federatedRunMock.mockImplementation(actual.run.bind(actual));
+      vi.mocked(service.dispose).mockImplementation(
+        actual.dispose.bind(actual),
+      );
+      vi.mocked(service.openLocalResult).mockRejectedValue(
+        new Error('Fixture unavailable.'),
+      );
+      try {
+        component.runQuery();
+        await vi.waitFor(() => expect(cleanup).toHaveBeenCalledOnce());
+        if (action === 'edit') {
+          Object.assign(definition.federation?.nativeGraph ?? {}, {
+            aliases: false,
+          });
+          editor.next(historyStateFor(definition));
+        }
+        if (action === 'history')
+          await component.openHistoricalResult('fixture');
+        if (action === 'destroy') component.ngOnDestroy();
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(component.running()).toBe(false);
+        expect(component.runResult()).toBeUndefined();
+        release();
+        await runFixture.whenStable();
+        expect(construct).not.toHaveBeenCalled();
+        expect(component.runResult()).toBeUndefined();
+        expect(component.runError()).toBeUndefined();
+      } finally {
+        cleanup.mockRestore();
+        vi.unstubAllGlobals();
+      }
+    },
+  );
 
-  it.each(['edit', 'silent-in-place'])('does not publish delayed output live across %s mutation and fences all old callbacks', async (action) => {
-    const definition = historyDefinition(), editor = new BehaviorSubject(historyStateFor(definition));
-    component = await createComponent({}, definition, historyResultTemplate(), { editor, project: of(project) });
-    let finish!: (value: Awaited<ReturnType<FederatedQueryService['run']>>) => void;
-    federatedRunMock.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
-    component.runQuery(); const oldCall = federatedRunMock.mock.calls.at(-1);
-    Object.assign(definition.federation?.nativeGraph ?? {}, { aliases: false });
-    if (action === 'edit') editor.next(historyStateFor(definition));
-    oldCall?.[1]?.({ phase: 'old' } as Parameters<NonNullable<Parameters<FederatedQueryService['run']>[1]>>[0]);
-    oldCall?.[4]?.(999);
-    finish(historyResultFor(oldCall?.[0] as IQueryDef)); await runFixture.whenStable();
-    expect(component.runResult()).toBeUndefined(); expect(component.federatedProgress()).toBeUndefined();
-    expect(component.resultGridRows().flatMap((row) => Object.values(row))).not.toContain('original-row');
-    expect(component.running()).toBe(false);
-  });
+  it.each(['edit', 'silent-in-place'])(
+    'does not publish delayed output live across %s mutation and fences all old callbacks',
+    async (action) => {
+      const definition = historyDefinition(),
+        editor = new BehaviorSubject(historyStateFor(definition));
+      component = await createComponent(
+        {},
+        definition,
+        historyResultTemplate(),
+        { editor, project: of(project) },
+      );
+      let finish!: (
+        value: Awaited<ReturnType<FederatedQueryService['run']>>,
+      ) => void;
+      federatedRunMock.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      );
+      component.runQuery();
+      const oldCall = federatedRunMock.mock.calls.at(-1);
+      Object.assign(definition.federation?.nativeGraph ?? {}, {
+        aliases: false,
+      });
+      if (action === 'edit') editor.next(historyStateFor(definition));
+      oldCall?.[1]?.({ phase: 'old' } as Parameters<
+        NonNullable<Parameters<FederatedQueryService['run']>[1]>
+      >[0]);
+      oldCall?.[4]?.(999);
+      finish(historyResultFor(oldCall?.[0] as IQueryDef));
+      await runFixture.whenStable();
+      expect(component.runResult()).toBeUndefined();
+      expect(component.federatedProgress()).toBeUndefined();
+      expect(
+        component.resultGridRows().flatMap((row) => Object.values(row)),
+      ).not.toContain('original-row');
+      expect(component.running()).toBe(false);
+    },
+  );
 
-  it.each(['resolve', 'reject'])('old completion %s cannot finalize or report errors into an immediate replacement', async (outcome) => {
-    const definition = historyDefinition(), editor = new BehaviorSubject(historyStateFor(definition));
-    component = await createComponent({}, definition, historyResultTemplate(), { editor, project: of(project) });
-    let finishOld!: (value: Awaited<ReturnType<FederatedQueryService['run']>>) => void, failOld!: (error: Error) => void;
-    let finishNew!: (value: Awaited<ReturnType<FederatedQueryService['run']>>) => void;
-    federatedRunMock.mockImplementationOnce(() => new Promise((resolve, reject) => { finishOld = resolve; failOld = reject; })).mockImplementationOnce(() => new Promise((resolve) => { finishNew = resolve; }));
-    component.runQuery(); const original = structuredClone(definition);
-    Object.assign(definition.federation?.nativeGraph ?? {}, { aliases: false }); editor.next(historyStateFor(definition));
-    component.runQuery(); expect(component.running()).toBe(true);
-    if (outcome === 'resolve') finishOld(historyResultFor(original)); else failOld(new Error('Old failure.'));
-    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
-    expect(component.running()).toBe(true); expect(component.runError()).toBeUndefined(); expect(component.runResult()).toBeUndefined();
-    const replacement = historyResultFor(definition, 'datatug-output-100000-new'); finishNew(replacement); await runFixture.whenStable();
-    expect(component.runResult()).toBe(replacement); expect(component.running()).toBe(false);
-  });
+  it.each(['resolve', 'reject'])(
+    'old completion %s cannot finalize or report errors into an immediate replacement',
+    async (outcome) => {
+      const definition = historyDefinition(),
+        editor = new BehaviorSubject(historyStateFor(definition));
+      component = await createComponent(
+        {},
+        definition,
+        historyResultTemplate(),
+        { editor, project: of(project) },
+      );
+      let finishOld!: (
+          value: Awaited<ReturnType<FederatedQueryService['run']>>,
+        ) => void,
+        failOld!: (error: Error) => void;
+      let finishNew!: (
+        value: Awaited<ReturnType<FederatedQueryService['run']>>,
+      ) => void;
+      federatedRunMock
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve, reject) => {
+              finishOld = resolve;
+              failOld = reject;
+            }),
+        )
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              finishNew = resolve;
+            }),
+        );
+      component.runQuery();
+      const original = structuredClone(definition);
+      Object.assign(definition.federation?.nativeGraph ?? {}, {
+        aliases: false,
+      });
+      editor.next(historyStateFor(definition));
+      component.runQuery();
+      expect(component.running()).toBe(true);
+      if (outcome === 'resolve') finishOld(historyResultFor(original));
+      else failOld(new Error('Old failure.'));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(component.running()).toBe(true);
+      expect(component.runError()).toBeUndefined();
+      expect(component.runResult()).toBeUndefined();
+      const replacement = historyResultFor(
+        definition,
+        'datatug-output-100000-new',
+      );
+      finishNew(replacement);
+      await runFixture.whenStable();
+      expect(component.runResult()).toBe(replacement);
+      expect(component.running()).toBe(false);
+    },
+  );
 
-  it.each(['resolve', 'reject'])('fences delayed local open %s across actual editor and project subscriptions', async (outcome) => {
-    const definition = historyDefinition(), editor = new BehaviorSubject(historyStateFor(definition)), projects = new BehaviorSubject(project);
-    component = await createComponent({}, definition, historyResultTemplate(), { editor, project: projects });
-    const service = TestBed.inject(FederatedQueryService);
-    let resolveOpen!: (value: Awaited<ReturnType<typeof service.openLocalResult>>) => void, rejectOpen!: (error: Error) => void;
-    vi.mocked(service.openLocalResult).mockImplementation(() => new Promise((resolve, reject) => { resolveOpen = resolve; rejectOpen = reject; }));
-    const pending = component.openHistoricalResult('datatug-output-100000-abc');
-    await vi.waitFor(() => expect(service.openLocalResult).toHaveBeenCalledOnce());
-    const other = { ...historyDefinition(), id: 'other-query' };
-    projects.next({ ref: { storeId: 'other-store', projectId: 'other-project' } }); editor.next(historyStateFor(other));
-    const current = historyResultFor(other, 'datatug-output-100000-def'); component.runResult.set(current);
-    if (outcome === 'resolve') resolveOpen({ result: historyResultFor(definition), executedDefinition: definition, descriptor: {} as LocalResultDescriptor });
-    else rejectOpen(new Error('Old artifact failed.'));
-    await pending; await runFixture.whenStable();
-    expect(component.runResult()).toBe(current); expect(component.historicalDefinition()).toBeUndefined();
-    expect(component.localHistoryError()).toBeUndefined(); expect(component.localHistoryLoading()).toBe(false);
-    expect(federatedRunMock).not.toHaveBeenCalled(); expect(runQueryMock).not.toHaveBeenCalled();
-  });
+  it.each(['resolve', 'reject'])(
+    'fences delayed local open %s across actual editor and project subscriptions',
+    async (outcome) => {
+      const definition = historyDefinition(),
+        editor = new BehaviorSubject(historyStateFor(definition)),
+        projects = new BehaviorSubject(project);
+      component = await createComponent(
+        {},
+        definition,
+        historyResultTemplate(),
+        { editor, project: projects },
+      );
+      const service = TestBed.inject(FederatedQueryService);
+      let resolveOpen!: (
+          value: Awaited<ReturnType<typeof service.openLocalResult>>,
+        ) => void,
+        rejectOpen!: (error: Error) => void;
+      vi.mocked(service.openLocalResult).mockImplementation(
+        () =>
+          new Promise((resolve, reject) => {
+            resolveOpen = resolve;
+            rejectOpen = reject;
+          }),
+      );
+      const pending = component.openHistoricalResult(
+        'datatug-output-100000-abc',
+      );
+      await vi.waitFor(() =>
+        expect(service.openLocalResult).toHaveBeenCalledOnce(),
+      );
+      const other = { ...historyDefinition(), id: 'other-query' };
+      projects.next({
+        ref: { storeId: 'other-store', projectId: 'other-project' },
+      });
+      editor.next(historyStateFor(other));
+      const current = historyResultFor(other, 'datatug-output-100000-def');
+      component.runResult.set(current);
+      if (outcome === 'resolve')
+        resolveOpen({
+          result: historyResultFor(definition),
+          executedDefinition: definition,
+          descriptor: {} as LocalResultDescriptor,
+        });
+      else rejectOpen(new Error('Old artifact failed.'));
+      await pending;
+      await runFixture.whenStable();
+      expect(component.runResult()).toBe(current);
+      expect(component.historicalDefinition()).toBeUndefined();
+      expect(component.localHistoryError()).toBeUndefined();
+      expect(component.localHistoryLoading()).toBe(false);
+      expect(federatedRunMock).not.toHaveBeenCalled();
+      expect(runQueryMock).not.toHaveBeenCalled();
+    },
+  );
 
-  it.each([false, true])('clears deleted displayed artifact with historical=%s and keeps another view usable', async (historical) => {
-    const definition = historyDefinition(); component = await createComponent({}, definition, historyResultTemplate());
-    const service = TestBed.inject(FederatedQueryService), result = historyResultFor(definition);
-    component.runResult.set(result); if (historical) component.selectedHistoricalResult.set(result.localResult);
-    if (!result.localResult) throw new Error('Missing graph result.');
-    await component.deleteHistoricalResult(result.localResult.id); await runFixture.whenStable();
-    expect(component.runResult()).toBeUndefined(); expect(component.visibleResultRows()).toEqual([]);
-    expect(component.resultGridRows().flatMap((row) => Object.values(row))).not.toContain('original-row');
-    const other = historyResultFor(definition, 'datatug-output-100000-def');
-    vi.mocked(service.openLocalResult).mockResolvedValue({ result: other, executedDefinition: definition, descriptor: {} as LocalResultDescriptor });
-    if (!other.localResult) throw new Error('Missing other graph result.');
-    await component.openHistoricalResult(other.localResult.id); federatedGetPageMock.mockResolvedValue([[{ type: 'string', value: 'other-page' }]]);
-    await component.changeResultPage(1); expect(component.visibleResultRows()[0][0].value).toBe('other-page');
-    expect(service.deleteLocalResult).toHaveBeenCalledExactlyOnceWith(result.localResult.id);
-  });
+  it.each([false, true])(
+    'clears deleted displayed artifact with historical=%s and keeps another view usable',
+    async (historical) => {
+      const definition = historyDefinition();
+      component = await createComponent(
+        {},
+        definition,
+        historyResultTemplate(),
+      );
+      const service = TestBed.inject(FederatedQueryService),
+        result = historyResultFor(definition);
+      component.runResult.set(result);
+      if (historical)
+        component.selectedHistoricalResult.set(result.localResult);
+      if (!result.localResult) throw new Error('Missing graph result.');
+      await component.deleteHistoricalResult(result.localResult.id);
+      await runFixture.whenStable();
+      expect(component.runResult()).toBeUndefined();
+      expect(component.visibleResultRows()).toEqual([]);
+      expect(
+        component.resultGridRows().flatMap((row) => Object.values(row)),
+      ).not.toContain('original-row');
+      const other = historyResultFor(definition, 'datatug-output-100000-def');
+      vi.mocked(service.openLocalResult).mockResolvedValue({
+        result: other,
+        executedDefinition: definition,
+        descriptor: {} as LocalResultDescriptor,
+      });
+      if (!other.localResult) throw new Error('Missing other graph result.');
+      await component.openHistoricalResult(other.localResult.id);
+      federatedGetPageMock.mockResolvedValue([
+        [{ type: 'string', value: 'other-page' }],
+      ]);
+      await component.changeResultPage(1);
+      expect(component.visibleResultRows()[0][0].value).toBe('other-page');
+      expect(service.deleteLocalResult).toHaveBeenCalledExactlyOnceWith(
+        result.localResult.id,
+      );
+    },
+  );
 
   it('reopens saved immutable provenance without lookup, exposes changed revisions and rejects a stored eligibility flag', async () => {
     const file = INITIAL_CANONICAL_PINS.directory;
@@ -1550,7 +2769,11 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     expect(component.resultTotalRows()).toBe(120_000);
     expect(component.visibleResultRows()).toHaveLength(1);
     await component.changeResultPage(1);
-    expect(federatedGetPageMock).toHaveBeenCalledWith(1, 'affiliations', undefined);
+    expect(federatedGetPageMock).toHaveBeenCalledWith(
+      1,
+      'affiliations',
+      undefined,
+    );
     expect(component.visibleResultRows()).toEqual([
       [{ type: 'integer', value: '101' }],
     ]);
@@ -1997,6 +3220,43 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     ).toBe('affected');
     expect(component.running()).toBe(false);
     expect(component.runError()).toBeUndefined();
+  });
+
+  it('ignores an older semantic response after a newer run of the same query', async () => {
+    component = await createComponent();
+    const earlier = new Subject<RunQueryResponse>();
+    const later = new Subject<RunQueryResponse>();
+    const response = (value: string): RunQueryResponse => ({
+      recordset: {
+        columns: [{ name: 'result', type: 'string' }],
+        rows: [[{ type: 'string' as const, value }]],
+      },
+      limitations: [],
+      bindingsApplied: [],
+      provenance: {
+        source: 'fixture',
+        mode: 'live' as const,
+        observedAt: `2026-10-10T10:00:0${value === 'new' ? '2' : '1'}Z`,
+        queryId: queryDef.id,
+        executionProfile: 'protected' as const,
+      },
+      truncated: false,
+    });
+    runQueryMock.mockReturnValueOnce(earlier).mockReturnValueOnce(later);
+
+    component.runQuery();
+    component.runQuery();
+    const latest = response('new');
+    later.next(latest);
+    await runFixture.whenStable();
+    earlier.next(response('old'));
+    await runFixture.whenStable();
+
+    expect(component.runResult()).toEqual(latest);
+    expect(component.committedRun()?.result.recordset.rows[0][0].value).toBe(
+      'new',
+    );
+    expect(component.running()).toBe(false);
   });
 
   it('runQuery does not include a cleared binding', async () => {
@@ -2786,7 +4046,10 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
     ],
   };
 
-  async function createComponent(def: IQueryDef, template = ''): Promise<QueryPageComponent> {
+  async function createComponent(
+    def: IQueryDef,
+    template = '',
+  ): Promise<QueryPageComponent> {
     Object.defineProperty(window, 'history', {
       value: { ...window.history, state: {} },
       writable: true,
@@ -2853,12 +4116,14 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
           provide: QueryEditorStateService,
           useValue: {
             queryEditorState: editor,
-            updateQueryState: vi.fn((state: IQueryState) => editor.next({
-              ...editor.value,
-              activeQueries: editor.value.activeQueries.map((query) =>
-                query.id === state.id ? state : query,
-              ),
-            })),
+            updateQueryState: vi.fn((state: IQueryState) =>
+              editor.next({
+                ...editor.value,
+                activeQueries: editor.value.activeQueries.map((query) =>
+                  query.id === state.id ? state : query,
+                ),
+              }),
+            ),
             openQuery: vi.fn(),
             newQuery: vi.fn(),
             getQueryState: vi.fn(),
@@ -2928,17 +4193,21 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
       '@if (queryBodyText() !== undefined) {<ion-textarea data-testid="query-body-text" [value]="queryBodyText()" (ionInput)="queryTextChanged($event)"></ion-textarea>}',
     );
     fixture.detectChanges();
-    const getEditor = () => fixture.nativeElement.querySelector(
-      '[data-testid="query-body-text"]',
-    ) as HTMLElement | null;
+    const getEditor = () =>
+      fixture.nativeElement.querySelector(
+        '[data-testid="query-body-text"]',
+      ) as HTMLElement | null;
     expect(getEditor()).not.toBeNull();
 
     const edit = async (value: string) => {
       const editor = getEditor();
       expect(editor).not.toBeNull();
-      editor?.dispatchEvent(new CustomEvent('ionInput', {
-        detail: { value }, bubbles: true,
-      }));
+      editor?.dispatchEvent(
+        new CustomEvent('ionInput', {
+          detail: { value },
+          bubbles: true,
+        }),
+      );
       await fixture.whenStable();
       fixture.detectChanges();
     };
