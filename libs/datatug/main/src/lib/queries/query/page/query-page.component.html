@@ -560,55 +560,12 @@
           }}</ion-text>
         }
         @if (authorPlan(); as plan) {
-          <section class="author-sql-preview" data-testid="author-sql-preview">
-            <div class="author-preview-heading">
-              <div>
-                <h3>SQL preview</h3>
-                <p>Compiled for the pinned SQLite source</p>
-              </div>
-              <span class="author-preview-state">Preview · Not executed</span>
-            </div>
-            <div
-              class="author-sql-scroll"
-              tabindex="0"
-              aria-label="Compiled SQLite SQL"
-            >
-              <pre><code>{{ plan.sql }}</code></pre>
-            </div>
-            <div class="author-binding-list" aria-label="SQL bindings">
-              @for (
-                bindingName of plan.bindingNames;
-                track bindingName;
-                let i = $index
-              ) {
-                <div class="author-binding-row">
-                  <code class="author-binding-index">?{{ i + 1 }}</code>
-                  @if (bindingName === 'CustomerId') {
-                    <span class="author-binding-name"
-                      >&#64;CustomerId · integer</span
-                    >
-                    <span class="author-binding-value">
-                      @if (authorCustomerIdValid()) {
-                        {{ authorCustomerId() }} · ready
-                      } @else if (authorCustomerIdMissing()) {
-                        Required · unset
-                      } @else {
-                        Invalid · enter a whole number
-                      }
-                    </span>
-                  } @else {
-                    <span class="author-binding-name"
-                      >HAVING threshold · integer literal</span
-                    >
-                    <span class="author-binding-value">{{
-                      plan.fixedBindings[i - 1]
-                    }}</span>
-                  }
-                </div>
-              }
-            </div>
-            <p class="author-binding-note">Preview never executes the query.</p>
-          </section>
+          <sneat-author-sql-preview
+            [plan]="plan"
+            [customerId]="authorCustomerId()"
+            [customerIdValid]="authorCustomerIdValid()"
+            [customerIdMissing]="authorCustomerIdMissing()"
+          />
         }
       </ion-card-content>
     </ion-card>

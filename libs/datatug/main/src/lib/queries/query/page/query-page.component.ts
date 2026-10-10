@@ -228,6 +228,7 @@ import type {
 import { graphStableIdentity } from '../../public-data/native-graph-executor';
 import { QueryContextSqlService } from '../../query-context-sql.service';
 import { PublicSqliteQueryService } from '../../public-sqlite-query.service';
+import { AuthorSqlPreviewComponent } from './author-sql-preview.component';
 import type { PublicSqliteQueryPreview } from '../../public-sqlite-tugql';
 import {
   isQueryChanged,
@@ -417,6 +418,7 @@ export function extractLinkedEntityNames(
   templateUrl: './query-page.component.html',
   styleUrl: './query-page.component.scss',
   imports: [
+    AuthorSqlPreviewComponent,
     DatePipe,
     // DatatugNavContextService and EnvironmentService are now
     // providedIn: 'root' (nav-context-root-singletons); QueriesService,

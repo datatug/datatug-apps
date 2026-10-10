@@ -31,7 +31,6 @@
 }
 
 .author-card-heading,
-.author-preview-heading,
 .author-receipt-status {
   display: flex;
   align-items: center;
@@ -47,8 +46,7 @@
   letter-spacing: 0.11em;
 }
 
-.author-source-badge,
-.author-preview-state {
+.author-source-badge {
   flex: 0 0 auto;
   padding: 0.4rem 0.65rem;
   border: 1px solid var(--ion-color-step-150, #e5e7eb);
@@ -112,113 +110,6 @@
   display: block;
   margin-top: 0.75rem;
   line-height: 1.5;
-}
-
-.author-sql-preview {
-  margin-top: 1.25rem;
-  padding: 1rem;
-  border: 1px solid var(--ion-color-step-150, #e5e7eb);
-  border-radius: 0.85rem;
-  background: var(--ion-background-color, #fff);
-}
-
-.author-preview-heading {
-  margin-bottom: 0.8rem;
-}
-
-.author-preview-heading h3 {
-  margin: 0;
-  color: var(--ion-color-dark);
-  font-size: 0.95rem;
-  font-weight: 650;
-}
-
-.author-preview-heading p {
-  margin: 0.25rem 0 0;
-  color: var(--ion-color-medium-shade);
-  font-size: 0.8rem;
-}
-
-.author-sql-scroll {
-  max-width: 100%;
-  overflow-x: auto;
-  border: 1px solid var(--ion-color-step-150, #e5e7eb);
-  border-radius: 0.65rem;
-  background: var(--ion-color-step-50, #f8fafc);
-  scrollbar-color: var(--ion-color-step-400, #94a3b8) transparent;
-}
-
-.author-sql-scroll:focus-visible {
-  outline: 2px solid var(--ion-color-primary);
-  outline-offset: 2px;
-}
-
-.author-sql-scroll pre {
-  width: max-content;
-  min-width: 100%;
-  margin: 0;
-  padding: 0.9rem 1rem;
-  color: var(--ion-color-dark);
-  font:
-    0.84rem/1.6 ui-monospace,
-    SFMono-Regular,
-    Menlo,
-    monospace;
-  white-space: pre;
-}
-
-.author-binding-note {
-  margin: 0.55rem 0 0;
-  color: var(--ion-color-medium-shade);
-  font-size: 0.82rem;
-  line-height: 1.55;
-}
-
-.author-binding-list {
-  margin-top: 0.8rem;
-  overflow: hidden;
-  border: 1px solid var(--ion-color-step-150, #e5e7eb);
-  border-radius: 0.65rem;
-}
-
-.author-binding-row {
-  display: grid;
-  grid-template-columns: 2.5rem minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.6rem 0.75rem;
-  color: var(--ion-color-medium-shade);
-  font-size: 0.8rem;
-  line-height: 1.4;
-}
-
-.author-binding-row + .author-binding-row {
-  border-top: 1px solid var(--ion-color-step-150, #e5e7eb);
-}
-
-.author-binding-index,
-.author-binding-name {
-  color: var(--ion-color-dark);
-  font-weight: 600;
-}
-
-.author-binding-index {
-  width: fit-content;
-  padding: 0.1rem 0.3rem;
-  border-radius: 0.3rem;
-  background: var(--ion-color-step-100, #f1f5f9);
-}
-
-.author-binding-value {
-  text-align: end;
-  overflow-wrap: anywhere;
-}
-
-.author-binding-note code {
-  padding: 0.1rem 0.3rem;
-  border-radius: 0.3rem;
-  background: var(--ion-color-step-100, #f1f5f9);
-  color: var(--ion-color-dark);
 }
 
 .author-receipt {
@@ -333,10 +224,6 @@
     margin-top: 0.1rem;
   }
 
-  .author-sql-preview {
-    padding: 0.75rem;
-  }
-
   .author-receipt {
     margin-block: 0.65rem 1rem;
     padding: 1rem;
@@ -346,20 +233,5 @@
 @media (max-width: 350px) {
   .query-page-title {
     max-width: 32vw;
-  }
-
-  .author-preview-heading {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .author-binding-row {
-    grid-template-columns: 2.25rem minmax(0, 1fr);
-  }
-
-  .author-binding-value {
-    grid-column: 2;
-    text-align: start;
   }
 }
