@@ -1,0 +1,226 @@
+<ion-card data-testid="incident-compare-panel">
+  <ion-card-content>
+    <h2>Compare affected vs control</h2>
+    <p>
+      Runs the saved query once for the affected cohort and once for the healthy
+      control. Matching rows page from the agent's private cache when it is
+      available.
+    </p>
+    <ion-item lines="none">
+      <ion-input
+        label="Saved query ID"
+        labelPlacement="stacked"
+        [value]="queryId()"
+        (ionInput)="onQueryInput($event)"
+        data-testid="incident-compare-query"
+      />
+    </ion-item>
+    <ion-item lines="none">
+      <ion-input
+        label="Distribution column (optional)"
+        labelPlacement="stacked"
+        [value]="distributionColumn()"
+        (ionInput)="onDistributionInput($event)"
+        data-testid="incident-compare-distribution"
+      />
+    </ion-item>
+    <ion-button
+      data-testid="incident-compare-run"
+      [disabled]="!canRun()"
+      (click)="run()"
+    >
+      Compare affected vs control
+    </ion-button>
+    @if (loading()) {
+      <p><ion-note>Comparing…</ion-note></p>
+    }
+    @if (error(); as message) {
+      <p>
+        <ion-note color="danger" role="alert">{{ message }}</ion-note>
+      </p>
+    }
+  </ion-card-content>
+
+  @if (result(); as result) {
+    <ion-card-content>
+      <h3>Summary</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Matching</th>
+            <th>Changed</th>
+            <th>Added</th>
+            <th>Removed</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>{{ result.summary.unchanged }}</td>
+            <td>{{ result.summary.changed }}</td>
+            <td>{{ result.summary.added }}</td>
+            <td>{{ result.summary.removed }}</td>
+          </tr>
+        </tbody>
+      </table>
+      @if (result.truncated) {
+        <ion-note>
+          Diff rows are truncated. Matching rows still page from cache when the
+          agent provides it.
+        </ion-note>
+      }
+      @if (result.policyLimited) {
+        <p><ion-note>Policy limited this comparison.</ion-note></p>
+      }
+
+      <h3>Limitations</h3>
+      <p>
+        <strong>{{ sideLabel('left') }}:</strong>
+        {{ limitations(result.left) }}
+      </p>
+      <p>
+        <strong>{{ sideLabel('right') }}:</strong>
+        {{ limitations(result.right) }}
+      </p>
+
+      <h3>Matching</h3>
+      @if (matchingCountOnly()) {
+        <ion-note>
+          Matching rows: {{ result.summary.unchanged }} (count only; this agent
+          does not page cached matching rows).
+        </ion-note>
+      } @else if (!matchingRows().length) {
+        <ion-note>No matching rows.</ion-note>
+      } @else {
+        <table>
+          <thead>
+            <tr>
+              @for (name of columnNames(result.columns); track name) {
+                <th>{{ name }}</th>
+              }
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of matchingRows(); track row.sortKey) {
+              <tr>
+                @for (cell of rowCells(row); track $index) {
+                  <td>{{ cell }}</td>
+                }
+              </tr>
+            }
+          </tbody>
+        </table>
+        @if (matchingNext()) {
+          <ion-button fill="outline" (click)="loadMoreMatching()"
+            >Load more matching rows</ion-button
+          >
+        }
+      }
+
+      <h3>Changed</h3>
+      @if (!result.changed.length) {
+        <ion-note>No changed rows.</ion-note>
+      } @else {
+        <table>
+          <thead>
+            <tr>
+              <th>Key</th>
+              <th>Column</th>
+              <th>{{ sideLabel('left') }}</th>
+              <th>{{ sideLabel('right') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of result.changed; track keyCells(row)) {
+              @for (change of row.columns; track change.column) {
+                <tr>
+                  <td>{{ keyCells(row) }}</td>
+                  <td>{{ change.column }}</td>
+                  <td>{{ formatValue(change.left) }}</td>
+                  <td>{{ formatValue(change.right) }}</td>
+                </tr>
+              }
+            }
+          </tbody>
+        </table>
+      }
+
+      <h3>Added</h3>
+      @if (!result.added.length) {
+        <ion-note>No added rows.</ion-note>
+      } @else {
+        <table>
+          <thead>
+            <tr>
+              @for (name of columnNames(result.columns); track name) {
+                <th>{{ name }}</th>
+              }
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of result.added; track keyCells(row)) {
+              <tr>
+                @for (cell of rowCells(row); track $index) {
+                  <td>{{ cell }}</td>
+                }
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+
+      <h3>Removed</h3>
+      @if (!result.removed.length) {
+        <ion-note>No removed rows.</ion-note>
+      } @else {
+        <table>
+          <thead>
+            <tr>
+              @for (name of columnNames(result.columns); track name) {
+                <th>{{ name }}</th>
+              }
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of result.removed; track keyCells(row)) {
+              <tr>
+                @for (cell of rowCells(row); track $index) {
+                  <td>{{ cell }}</td>
+                }
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+
+      @if (result.distribution; as distribution) {
+        <h3>Distribution ({{ distribution.column }})</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Value</th>
+              <th>{{ sideLabel('left') }}</th>
+              <th>{{ sideLabel('right') }}</th>
+              <th>Ratio</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (
+              entry of distribution.values;
+              track formatValue(entry.value)
+            ) {
+              <tr>
+                <td>{{ formatValue(entry.value) }}</td>
+                <td>{{ entry.left.count }} ({{ entry.left.pct }}%)</td>
+                <td>{{ entry.right.count }} ({{ entry.right.pct }}%)</td>
+                <td>{{ entry.ratio ?? '—' }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+        @if (distribution.truncated) {
+          <ion-note>Distribution values were truncated.</ion-note>
+        }
+      }
+    </ion-card-content>
+  }
+</ion-card>
