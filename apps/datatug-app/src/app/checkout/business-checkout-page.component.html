@@ -40,8 +40,8 @@
       </p>
     } @else if (returning) {
       <p class="live-mode" role="note">
-        LIVE checkout return. Payment status is checked against the configured
-        DataTug API, and Business access is confirmed only by the service.
+        We’re checking your Business subscription. Access will be available here
+        once confirmed.
       </p>
     }
 
@@ -141,8 +141,8 @@
             Enter test payment details in the secure form. No live payment or
             Business access will be created.
           } @else {
-            Complete payment in the secure form. Business access is confirmed
-            only after the service verifies it.
+            Continue with secure checkout to subscribe to DataTug Business.
+            Access is available once your subscription is confirmed.
           }
         }
         @case ('checking') {
@@ -155,10 +155,12 @@
           Business access is active for this Space.
         }
         @case ('business-ended') {
-          Business access has ended for this Space. A new paid confirmation is required before continuing.
+          Business access has ended for this Space. A new paid confirmation is
+          required before continuing.
         }
         @case ('expired') {
-          This {{ mode().toUpperCase() }} checkout expired. You can return to the pricing page.
+          This {{ mode().toUpperCase() }} checkout expired. You can return to
+          the pricing page.
         }
         @case ('pending') {
           {{ state().message }}
@@ -183,7 +185,9 @@
 
     @if (state().quote; as quote) {
       <section aria-labelledby="quote-heading">
-        <h2 id="quote-heading">Your Business {{ mode().toUpperCase() }} quote</h2>
+        <h2 id="quote-heading">
+          Your Business {{ mode().toUpperCase() }} quote
+        </h2>
         @if (selectedSpace()) {
           <p>
             For <strong>{{ selectedSpace()?.title }}</strong>
@@ -206,9 +210,8 @@
         </p>
         <h3>Early access</h3>
         <p>
-          DataTug Business is in early access. A completed payment alone does
-          not activate Business access; access remains pending reconciliation
-          until the service confirms it.
+          DataTug Business is in early access. Your subscription will be
+          confirmed before Business access is available.
         </p>
         <label class="consent">
           <input
@@ -225,8 +228,8 @@
             I understand this is a TEST checkout and Business access is not
             activated automatically.
           } @else {
-            I understand this is a LIVE payment and Business access is not
-            activated automatically.
+            I understand this is a LIVE Business subscription and access is
+            available only after confirmation.
           }
         </label>
         <p>
@@ -285,7 +288,10 @@
       <p>
         <a
           [routerLink]="['/new-project']"
-          [queryParams]="{ spaceID: state().spaceID }"
+          [queryParams]="{
+            spaceID: state().spaceID,
+            billingIntent: 'space_business',
+          }"
           >Create a project in this Space</a
         >
       </p>

@@ -140,6 +140,21 @@ describe('New project through authenticated common API', () => {
     expect(other.component.spaceID()).toBe('');
   });
 
+  it('forwards the Business billing intent and selected Space to shared project creation', async () => {
+    const h = await harness(false, {
+      spaceID: 'space',
+      billingIntent: 'space_business',
+    });
+    h.component.title.set('Business project');
+    h.component.create();
+    expect(h.createCloud).toHaveBeenCalledWith('firestore', {
+      title: 'Business project',
+      userIDs: [],
+      billingIntent: 'space_business',
+      spaceID: 'space',
+    });
+  });
+
   it('loads a GitHub deep link from URL context and returns to its safe internal page', async () => {
     const h = await harness(false, {
       store: 'github',
@@ -447,6 +462,7 @@ describe('New project through authenticated common API', () => {
     expect(h.createCloud).toHaveBeenCalledWith('firestore', {
       title: 'Cloud',
       userIDs: [],
+      billingIntent: 'personal_pro',
     });
     expect(h.nav.goProject.mock.calls[0][0].ref).toEqual({
       storeId: 'firestore',
@@ -462,6 +478,7 @@ describe('New project through authenticated common API', () => {
     expect(h.create.mock.calls[0][0]).toMatchObject({
       title: 'Project',
       spaceID: 'space',
+      billingIntent: 'personal_pro',
       operationId: expect.any(String),
       github: {
         repositoryID: 12,
@@ -484,6 +501,16 @@ describe('New project through authenticated common API', () => {
     });
     expect(h.nav.goProject.mock.calls[0][2]).toEqual({ replaceUrl: true });
     expect(h.createCloud).not.toHaveBeenCalled();
+  });
+
+  it('forwards space_business to GitHub project creation when requested by the Business return', async () => {
+    const h = await harness(false, { billingIntent: 'space_business' });
+    h.select();
+    h.component.create();
+    expect(h.create.mock.calls[0][0]).toMatchObject({
+      spaceID: 'space',
+      billingIntent: 'space_business',
+    });
   });
   it.each([
     ['', 'repo@owner@datatug', 'datatug'],

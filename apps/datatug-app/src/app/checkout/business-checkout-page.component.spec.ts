@@ -74,7 +74,13 @@ async function render(
 ) {
   const routeQuery =
     testRailByDefault && query.checkout === undefined
-      ? { ...query, checkout: 'test' }
+      ? {
+          ...(query.planID ? { planID: query.planID } : {}),
+          checkout: 'test',
+          ...Object.fromEntries(
+            Object.entries(query).filter(([key]) => key !== 'planID'),
+          ),
+        }
       : query;
   states = new BehaviorSubject(initialAuth);
   userStates = new BehaviorSubject<ISneatUserState>({
@@ -172,12 +178,16 @@ it('defaults to the closed LIVE rail and requires an explicit TEST selection', a
     'buyer',
     false,
   );
-  expect(root.textContent).toContain('LIVE Business checkout is not enabled yet.');
-  expect(root.querySelector('button[aria-pressed="true"]')?.textContent).toContain('LIVE');
+  expect(root.textContent).toContain(
+    'LIVE Business checkout is not enabled yet.',
+  );
+  expect(
+    root.querySelector('button[aria-pressed="true"]')?.textContent,
+  ).toContain('LIVE');
   expect(fetcher).not.toHaveBeenCalled();
   const navigate = vi.spyOn(TestBed.inject(Router), 'navigate');
-  const testRail = Array.from(root.querySelectorAll('button')).find((button) =>
-    button.textContent?.trim() === 'TEST',
+  const testRail = Array.from(root.querySelectorAll('button')).find(
+    (button) => button.textContent?.trim() === 'TEST',
   );
   testRail?.click();
   expect(navigate).toHaveBeenCalledWith(
@@ -196,14 +206,19 @@ it.each([
   { checkout: ['test', 'test'] },
   { checkout: 'test', mode: 'live' },
   { checkout: 'live' },
-])('rejects ambiguous Business rail selectors without an API call', async (query) => {
-  const root = await render(
-    { planID: 'datatug-business-usage-monthly', ...query },
-    TEST_CHECKOUT_ORIGIN,
-  );
-  expect(root.textContent).toContain('The checkout rail selector is invalid.');
-  expect(fetcher).not.toHaveBeenCalled();
-});
+])(
+  'rejects ambiguous Business rail selectors without an API call',
+  async (query) => {
+    const root = await render(
+      { planID: 'datatug-business-usage-monthly', ...query },
+      TEST_CHECKOUT_ORIGIN,
+    );
+    expect(root.textContent).toContain(
+      'The checkout rail selector is invalid.',
+    );
+    expect(fetcher).not.toHaveBeenCalled();
+  },
+);
 
 it('rejects a return whose explicit mode conflicts with its session prefix', async () => {
   const root = await render(
@@ -214,7 +229,9 @@ it('rejects a return whose explicit mode conflicts with its session prefix', asy
     false,
     true,
   );
-  expect(root.textContent).toContain('does not identify a valid TEST or LIVE session');
+  expect(root.textContent).toContain(
+    'does not identify a valid TEST or LIVE session',
+  );
   expect(fetcher).not.toHaveBeenCalled();
 });
 
@@ -377,7 +394,9 @@ it('supports a cold deep link, gets the authenticated quote before consent, and 
   expect(root.textContent).toContain('Your Business TEST quote');
   expect(root.textContent).toContain('Shared group');
   expect(root.textContent).toContain('€99.00');
-  expect(root.textContent).toContain('access remains pending reconciliation');
+  expect(root.textContent).toContain(
+    'subscription will be confirmed before Business access is available',
+  );
   expect(fetcher).toHaveBeenCalledOnce();
   const [url, options] = fetcher.mock.calls[0];
   expect(String(url)).toBe(
@@ -409,7 +428,10 @@ it('allows Space reselection from the quote review before consent', async () => 
   expect(navigate).toHaveBeenCalledWith(
     [],
     expect.objectContaining({
-      queryParams: { planID: 'datatug-business-usage-monthly' },
+      queryParams: {
+        planID: 'datatug-business-usage-monthly',
+        checkout: 'test',
+      },
     }),
   );
 });
@@ -513,7 +535,10 @@ it('allows Space reselection before consent and invalidates the previous quote r
   expect(navigate).toHaveBeenCalledWith(
     [],
     expect.objectContaining({
-      queryParams: { planID: 'datatug-business-usage-monthly' },
+      queryParams: {
+        planID: 'datatug-business-usage-monthly',
+        checkout: 'test',
+      },
     }),
   );
   resolveFetch({

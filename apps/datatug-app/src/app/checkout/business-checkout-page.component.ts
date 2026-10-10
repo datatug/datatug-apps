@@ -164,7 +164,9 @@ export class BusinessCheckoutPageComponent {
     const period = this.returning ? undefined : (requestedPeriod ?? 'monthly');
     const spaceID = validSpaceID(spaceParam) ? spaceParam : '';
     const sessionID = this.returning ? params.get('session_id') : null;
-    const sessionMode = this.returning ? modeForSessionID(sessionID) : undefined;
+    const sessionMode = this.returning
+      ? modeForSessionID(sessionID)
+      : undefined;
     const rawReturnMode = this.returning ? params.get('mode') : null;
     const returnMode =
       rawReturnMode === 'test' || rawReturnMode === 'live'
@@ -185,9 +187,7 @@ export class BusinessCheckoutPageComponent {
         ? 'test'
         : 'live';
     this.mode.set(mode);
-    this.enabled.set(
-      this.returning || mode === 'test' || this.liveEnabled,
-    );
+    this.enabled.set(this.returning || mode === 'test' || this.liveEnabled);
     this.state.set({ stage: 'loading' });
     this.selectedSpaceID.set(spaceID);
     if (period) this.period.set(period);
@@ -217,7 +217,7 @@ export class BusinessCheckoutPageComponent {
     const extras = params.keys.some(
       (key) => !allowed.includes(key) || params.getAll(key).length !== 1,
     );
-    const canonicalParams = this.returning
+    const canonicalParams: Record<string, string> = this.returning
       ? {
           ...(spaceID ? { spaceID } : {}),
           ...(returnMode && sessionID ? { session_id: sessionID } : {}),
@@ -233,10 +233,14 @@ export class BusinessCheckoutPageComponent {
     const currentParams = Object.fromEntries(
       params.keys.map((key) => [key, params.get(key)]),
     );
-    if (
-      extras ||
-      JSON.stringify(currentParams) !== JSON.stringify(canonicalParams)
-    ) {
+    const currentParamKeys = Object.keys(currentParams);
+    const canonicalParamKeys = Object.keys(canonicalParams);
+    const paramsMatch =
+      currentParamKeys.length === canonicalParamKeys.length &&
+      canonicalParamKeys.every(
+        (key) => currentParams[key] === canonicalParams[key],
+      );
+    if (extras || !paramsMatch) {
       void this.router.navigate([], {
         relativeTo: this.route,
         queryParams: canonicalParams,
@@ -248,8 +252,7 @@ export class BusinessCheckoutPageComponent {
     if (invalidPlan) {
       this.state.set({
         stage: 'unavailable',
-        message:
-          `Choose a monthly or annual Business plan to review its ${mode.toUpperCase()} quote.`,
+        message: `Choose a monthly or annual Business plan to review its ${mode.toUpperCase()} quote.`,
       });
       return;
     }
@@ -376,10 +379,7 @@ export class BusinessCheckoutPageComponent {
       return isTrustedBusinessCheckoutOrigin(this.configuredApiOrigin, mode)
         ? this.configuredApiOrigin
         : null;
-    return isTrustedBusinessCheckoutOrigin(
-      this.configuredLiveApiOrigin,
-      mode,
-    )
+    return isTrustedBusinessCheckoutOrigin(this.configuredLiveApiOrigin, mode)
       ? this.configuredLiveApiOrigin
       : null;
   }

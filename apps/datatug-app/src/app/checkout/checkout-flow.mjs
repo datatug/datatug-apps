@@ -436,10 +436,7 @@ export function createReturnFlow({
             render({ stage: 'expired', user, status });
             return;
           }
-          if (
-            serviceScope.mode === 'live' &&
-            status.accessStatus === 'ended'
-          ) {
+          if (serviceScope.mode === 'live' && status.accessStatus === 'ended') {
             render({ stage: 'business-ended', user });
             return;
           }
@@ -463,7 +460,7 @@ export function createReturnFlow({
                     stage: 'pending',
                     user,
                     message:
-                      'Your live payment is complete. Business access is pending reconciliation and has not been activated by this page.',
+                      'We’re confirming your Business subscription. Check again shortly.',
                   },
             );
             return;
@@ -502,7 +499,7 @@ export function createReturnFlow({
           message: serviceScope
             ? (serviceScope.mode ?? 'test') === 'test'
               ? 'Test checkout is still processing. Business access is pending reconciliation.'
-              : 'Live checkout is still processing. Business access is pending reconciliation.'
+              : 'We’re confirming your Business subscription. Check again shortly.'
             : 'Payment is being processed. Your plan is not confirmed yet; check again shortly.',
         });
     } catch (error) {

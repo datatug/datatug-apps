@@ -50,6 +50,7 @@ import {
   ProjectQueryApiService,
   DATATUG_DEMO_PROJECT_TEMPLATE,
   type CreateGithubProject,
+  type ProjectBillingIntent,
 } from '../../services/project/project-query-api.service';
 import { safeNewProjectReturnUrl } from './new-project.service';
 
@@ -105,6 +106,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   readonly title = signal('');
   readonly githubFolder = signal('datatug');
   readonly spaceID = signal('');
+  readonly billingIntent = signal<ProjectBillingIntent>('personal_pro');
   readonly spaceTitle = signal('');
   readonly isCreatingSpace = signal(false);
   readonly branch = signal('');
@@ -194,6 +196,12 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     const requestedSpaceID = this.route.snapshot.queryParamMap.get('spaceID');
     if (requestedSpaceID && /^[A-Za-z0-9_-]{1,128}$/.test(requestedSpaceID))
       this.requestedSpaceID.set(requestedSpaceID);
+    this.billingIntent.set(
+      this.route.snapshot.queryParamMap.get('billingIntent') ===
+        'space_business'
+        ? 'space_business'
+        : 'personal_pro',
+    );
     this.userService.userState
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((state) => {
@@ -430,9 +438,23 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       return;
     }
     if (this.store() !== 'github') {
+      if (
+        this.billingIntent() === 'space_business' &&
+        !this.spaces().some((space) => space.id === this.spaceID())
+      ) {
+        this.formError.set(
+          'Choose a Business Space before creating the project.',
+        );
+        return;
+      }
       this.isCreating.set(true);
       this.projectService
-        .createNewProject('firestore', { title: this.title(), userIDs: [] })
+        .createNewProject('firestore', {
+          title: this.title(),
+          userIDs: [],
+          billingIntent: this.billingIntent(),
+          ...(this.spaceID() ? { spaceID: this.spaceID() } : {}),
+        })
         .subscribe({
           next: (projectId) => {
             clearNewProjectDraft();
@@ -469,6 +491,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     const fields = {
       title: this.title(),
       spaceID: this.spaceID(),
+      billingIntent: this.billingIntent(),
       github: {
         repositoryID: repo.id,
         owner: repo.owner,
