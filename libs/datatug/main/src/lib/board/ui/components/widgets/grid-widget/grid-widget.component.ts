@@ -10,6 +10,8 @@ import {
 import { DataGridComponent } from '@sneat/datagrid';
 import { IGridDef } from '@sneat/grid';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
+import { IRecordset } from '../../../../../dto/execute';
+import { recordsetToGridDef } from '../../../../../services/repo/datatug-store.service';
 
 @Component({
   selector: 'sneat-datatug-grid-widget',

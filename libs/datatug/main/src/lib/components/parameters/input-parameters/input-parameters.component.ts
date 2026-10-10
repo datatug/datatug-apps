@@ -8,6 +8,12 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
+  IParameter,
+  IParameterDef,
+  IParamWithDefAndValue,
+  ParameterValue,
+} from '../../../models/definition/parameter';
+import {
   IonBadge,
   IonButton,
   IonButtons,
