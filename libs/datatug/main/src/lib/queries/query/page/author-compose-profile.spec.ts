@@ -28,6 +28,21 @@ const GROUPED = [
   '',
 ].join('\n');
 
+const STYLED_GROUPED = [
+  'PARAMETERS (',
+  '\t@CustomerId INTEGER REQUIRED',
+  ')',
+  'FROM main.Invoice AS i',
+  'WHERE i.CustomerId = @CustomerId',
+  'GROUP BY i.CustomerId',
+  'HAVING count(*) >= 7',
+  'LIMIT 100',
+  'SELECT',
+  '\ti.CustomerId AS customer,',
+  '\tcount(*) AS total',
+  '',
+].join('\n');
+
 describe('author compose profile', () => {
   it('reads the maintained Invoice source without changing its text', () => {
     const before = SIMPLE;
@@ -123,6 +138,60 @@ describe('author compose profile', () => {
       limit: 100,
     });
     expect(result).toContain('select i.CustomerId as customer, count(*) as total');
+  });
+
+  it('patches only HAVING and LIMIT literals while preserving uppercase, tabs, and block SELECT layout', () => {
+    expect(parseTugQL(STYLED_GROUPED).diagnostics).toEqual([]);
+    const styledProfile = readAuthorComposeProfile(STYLED_GROUPED);
+    expect(styledProfile.reason).toBeUndefined();
+    expect(styledProfile).toMatchObject({
+      supported: true,
+      grouped: true,
+      countExpression: 'star',
+      havingOperator: '>=',
+      threshold: 7,
+    });
+    const result = updateAuthorComposeSource(STYLED_GROUPED, {
+      grouped: true,
+      includeInvoiceDate: false,
+      countExpression: 'star',
+      havingOperator: '>',
+      threshold: 12,
+      limit: 25,
+    });
+    expect(result).toBe(
+      STYLED_GROUPED.replace('HAVING count(*) >= 7', 'HAVING count(*) > 12').replace(
+        'LIMIT 100',
+        'LIMIT 25',
+      ),
+    );
+  });
+
+  it('uses authored uppercase and tab style when a structural Compose edit regenerates the source', () => {
+    const source = [
+      'PARAMETERS (',
+      '\t@CustomerId INTEGER REQUIRED',
+      ')',
+      'FROM main.Invoice AS i',
+      'WHERE i.CustomerId = @CustomerId',
+      'LIMIT 100',
+      'SELECT i.InvoiceId AS id',
+      '',
+    ].join('\n');
+    const result = updateAuthorComposeSource(source, {
+      grouped: true,
+      includeInvoiceDate: false,
+      countExpression: 'star',
+      havingOperator: '>=',
+      threshold: 7,
+      limit: 100,
+    });
+    expect(result).toContain('\t@CustomerId INTEGER REQUIRED');
+    expect(result).toContain('FROM main.Invoice AS i');
+    expect(result).toContain('GROUP BY i.CustomerId');
+    expect(result).toContain('HAVING count(*) >= 7');
+    expect(result).toContain('SELECT i.CustomerId, count(*) AS InvoiceCount');
+    expect(result).not.toContain('\n  @CustomerId');
   });
 
   it.each([

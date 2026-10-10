@@ -7,6 +7,7 @@ import { QueriesService } from './queries.service';
 import { ProjectService } from '../services/project/project.service';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import { QueryType } from '../models/definition/query-def';
+import type { IQueryDef } from '../models/definition/query-def';
 import {
   createHostedDemoDbQuery,
   withHostedDemoDbSource,
@@ -45,6 +46,71 @@ describe('QueryEditorStateService', () => {
 
   it('should be created', () => {
     expect(TestBed.inject(QueryEditorStateService)).toBeTruthy();
+  });
+
+  it('opens an authorized target while preserving its draft and narrowing fresh save capability', () => {
+    const service = TestBed.inject(QueryEditorStateService);
+    const original: IQueryDef = {
+      id: 'chinook-invoice-author-draft-test',
+      title: 'Invoice Author',
+      request: { queryType: QueryType.DTQL, text: 'from Invoice\nlimit 10' },
+    };
+    const state = service.newQuery({
+      id: original.id,
+      queryType: QueryType.DTQL,
+      def: original,
+      request: {
+        queryType: QueryType.DTQL,
+        text: 'from Invoice\nlimit 3',
+      },
+      revision: 'draft-base',
+      saveSupported: true,
+    });
+    const authorized: IQueryDef = {
+      ...original,
+      request: { queryType: QueryType.DTQL, text: 'from Invoice\nlimit 100' },
+    };
+
+    const opened = service.openAuthorizedQuery(original.id, authorized, undefined, {
+      revision: 'fresh-revision',
+      branchHead: 'fresh-head',
+      saveSupported: false,
+      unsupportedSaveReason: 'This query has fields the save API cannot preserve.',
+    });
+
+    expect(opened.request?.queryType).toBe(QueryType.DTQL);
+    expect((opened.request as { text?: string }).text).toBe('from Invoice\nlimit 3');
+    expect(opened.def).toBe(original);
+    expect(opened.revision).toBe('draft-base');
+    expect(opened.saveSupported).toBe(false);
+    expect(opened.saveError).toContain('fields the save API cannot preserve');
+    expect(service.getQueryState(original.id)).toMatchObject(opened);
+    expect(state.id).toBe(original.id);
+  });
+
+  it('opens a newly authorized definition with its read revision', () => {
+    const service = TestBed.inject(QueryEditorStateService);
+    const definition: IQueryDef = {
+      id: 'chinook-invoice-author-fresh-read-test',
+      title: 'Invoice Author',
+      request: { queryType: QueryType.DTQL, text: 'from Invoice\nlimit 10' },
+    };
+
+    const opened = service.openAuthorizedQuery(definition.id, definition, undefined, {
+      revision: 'authorized-revision',
+      branchHead: 'authorized-head',
+      saveSupported: true,
+    });
+
+    expect(opened).toMatchObject({
+      id: definition.id,
+      def: definition,
+      request: definition.request,
+      revision: 'authorized-revision',
+      branchHead: 'authorized-head',
+      saveSupported: true,
+    });
+    expect(service.getQueryState(definition.id)).toMatchObject(opened);
   });
 });
 

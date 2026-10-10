@@ -131,7 +131,7 @@ interface CommittedQueryRun {
 }
 import { RandomIdService } from '@sneat/random';
 import { distinctUntilChanged, takeUntil } from 'rxjs/operators';
-import { Subject } from 'rxjs';
+import { firstValueFrom, Subject } from 'rxjs';
 import {
   IonBackButton,
   IonBadge,
@@ -182,6 +182,7 @@ import {
   TypedValue,
 } from '@sneat/datatug-semantic';
 import { IProjectRef, equalProjectRef } from '../../../core/project-context';
+import { fromProjectQueryWire } from '../../project-query-contract';
 import { DatatugCoreModule } from '../../../core/datatug-core.module';
 import {
   IQueryEditorState,
@@ -854,6 +855,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     button.type = 'button';
     button.className = 'author-customer-lookup-action';
     button.dataset['testid'] = 'author-customer-lookup-action';
+    button.dataset['gridRow'] = String(rowIndex);
+    button.dataset['gridColumn'] = params.column?.getColId() ?? '';
     button.textContent = 'Look up invoices';
     button.setAttribute(
       'aria-label',
@@ -901,14 +904,24 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     if (event.key !== 'Tab' && event.key !== 'Enter' && event.key !== ' ') {
       return false;
     }
+    const rowIndex = params.node.rowIndex;
+    if (rowIndex === null) return false;
+    const columnId = params.column.getColId();
     const eventTarget = event.target;
     if (!(eventTarget instanceof Element)) return false;
     const gridCell = eventTarget.closest<HTMLElement>('.ag-cell');
     const button = gridCell?.querySelector<HTMLButtonElement>(
       '.author-customer-lookup-action',
     );
+    if (
+      button?.dataset['gridRow'] !== String(rowIndex) ||
+      button?.dataset['gridColumn'] !== columnId
+    ) {
+      return false;
+    }
     if (!button || event.target === button) return false;
     if (event.key === 'Tab') {
+      if (event.shiftKey) return false;
       event.preventDefault();
       button.focus();
       return true;
@@ -1052,7 +1065,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const detail = (event as CustomEvent<{ value?: string }>).detail;
     const target = event.target as HTMLInputElement | null;
     const value = detail?.value ?? target?.value ?? '';
-    if (value !== this.authorCustomerId()) {
+    const previousOrigin = this.authorCustomerIdOrigin();
+    const originChanged =
+      previousOrigin.origin !== 'manual' ||
+      previousOrigin.originEvidence !== 'client-reported' ||
+      previousOrigin.sourceQueryId !== undefined ||
+      previousOrigin.sourceColumn !== undefined;
+    if (value !== this.authorCustomerId() || originChanged) {
       this.authorBindingRevision.update((revision) => revision + 1);
     }
     this.authorCustomerId.set(value);
@@ -1075,14 +1094,14 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.queryEditorStateService.updateQueryState(next);
   }
 
-  private openAuthorCustomerLookup(
+  private async openAuthorCustomerLookup(
     columnIndex: number,
     columnName: string,
     rowIndex: number,
     expectedExecutionId: string,
     expectedCustomerId: string,
     expectedQueryIdentity: symbol,
-  ): void {
+  ): Promise<void> {
     const result = this.runResult();
     const receipt = result?.publicSqliteReceipt;
     if (
@@ -1118,24 +1137,81 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
     const sourceQueryId = this.queryId;
     const activeEnvironment = this.queryState.activeEnv?.id;
-    this.authorBindingRevision.update((revision) => revision + 1);
+    const sourceProjectRef = projectRef;
+    const sourceEnvironment = this.queryState.activeEnv?.id;
+    const sourceDefinition = this.queryDef();
+    const sourceSecurityContextId = this.agentContext.securityContextId();
+    const sourceDraftRevision = this.authorDraftRevision();
+    const sourceBindingRevision = this.authorBindingRevision();
+    let lookupDefinition: IQueryDef;
+    let lookupRevision:
+      | {
+          revision: string;
+          branchHead?: string;
+          saveSupported?: boolean;
+          unsupportedSaveReason?: string;
+        }
+      | undefined;
+    try {
+      if (sourceProjectRef.projectApi) {
+        const loaded = await firstValueFrom(
+          this.queriesService.getRevision(
+            sourceProjectRef,
+            CUSTOMER_INVOICE_LOOKUP_QUERY_ID,
+          ),
+        );
+        lookupDefinition = fromProjectQueryWire(loaded.query);
+        lookupRevision = loaded;
+      } else {
+        lookupDefinition = await firstValueFrom(
+          this.queriesService.getQuery(
+            sourceProjectRef,
+            CUSTOMER_INVOICE_LOOKUP_QUERY_ID,
+          ),
+        );
+      }
+    } catch (error: unknown) {
+      // A cloud 401/403 is also delivered through QueriesService's authority
+      // invalidation stream. Never restore cached private data in that case.
+      if (this.queryId === sourceQueryId && this.runResult() === result) {
+        this.authorError.set(
+          'The invoice lookup could not be opened. Your current results are still available.',
+        );
+      }
+      return;
+    }
+    if (
+      !equalProjectRef(this.project?.ref, sourceProjectRef) ||
+      this.queryId !== sourceQueryId ||
+      this.queryDef() !== sourceDefinition ||
+      this.queryState.activeEnv?.id !== sourceEnvironment ||
+      this.agentContext.securityContextId() !== sourceSecurityContextId ||
+      this.authorDraftRevision() !== sourceDraftRevision ||
+      this.authorBindingRevision() !== sourceBindingRevision ||
+      this.runResult() !== result ||
+      this.runResult()?.publicSqliteReceipt?.executionId !== expectedExecutionId ||
+      this.currentQueryIdentity() !== expectedQueryIdentity
+    ) {
+      return;
+    }
     this.authorMode.set('compose');
     this.authorPlan.set(undefined);
     this.authorError.set(undefined);
-    this.setDisplayedResult(undefined);
-    this.committedRun.set(undefined);
-    this.queryRunTiming.set(undefined);
-    this.runError.set(undefined);
-    this.resultPageRows.set([]);
-    this.resultPageIndex.set(0);
-    this.selectedHistoricalResult.set(undefined);
-    this.historicalDefinition.set(undefined);
-
-    this.queryEditorStateService.openQuery(CUSTOMER_INVOICE_LOOKUP_QUERY_ID);
-    const lookup = this.queryEditorStateService.getQueryState(
-      CUSTOMER_INVOICE_LOOKUP_QUERY_ID,
-    );
-    if (!lookup) return;
+    let lookup: IQueryState;
+    try {
+      lookup = this.queryEditorStateService.openAuthorizedQuery(
+        CUSTOMER_INVOICE_LOOKUP_QUERY_ID,
+        lookupDefinition,
+        sourceProjectRef,
+        lookupRevision,
+      );
+    } catch {
+      this.authorError.set(
+        'The invoice lookup could not be opened. Your current results are still available.',
+      );
+      return;
+    }
+    this.authorBindingRevision.update((revision) => revision + 1);
     this.queryEditorStateService.updateQueryState({
       ...lookup,
       authorBindings: {
@@ -1152,9 +1228,6 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         },
       },
     });
-    this.queryEditorStateService.setCurrentQuery(
-      CUSTOMER_INVOICE_LOOKUP_QUERY_ID,
-    );
     void this.router
       .navigate([], {
         relativeTo: this.route,
@@ -1269,7 +1342,15 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       result.publicSqliteReceipt?.draftRevision !==
         this.authorDraftRevision() ||
       applied?.value.type !== 'integer' ||
-      Number(applied.value.value) !== Number(this.authorCustomerId())
+      Number(applied.value.value) !== Number(this.authorCustomerId()) ||
+      applied.origin !== this.authorCustomerIdOrigin().origin ||
+      applied.originEvidence !==
+        this.authorCustomerIdOrigin().originEvidence ||
+      (this.authorCustomerIdOrigin().origin === 'selection' &&
+        (result.publicSqliteReceipt?.clientReportedBinding?.sourceQueryId !==
+          this.authorCustomerIdOrigin().sourceQueryId ||
+          result.publicSqliteReceipt?.clientReportedBinding?.sourceColumn !==
+            this.authorCustomerIdOrigin().sourceColumn))
     );
   }
 

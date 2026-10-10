@@ -1,4 +1,4 @@
-import { formatTugQL, parseTugQL } from '@dalgo/core';
+import { formatTugQL, parseTugQL, type TugQLFormatOptions } from '@dalgo/core';
 
 export type AuthorHavingOperator = '=' | '!=' | '<' | '<=' | '>' | '>=';
 
@@ -237,6 +237,136 @@ export interface AuthorComposeChanges {
   readonly limit: number;
 }
 
+function formatterOptions(source: string): TugQLFormatOptions {
+  const firstClause = source.match(
+    /^(?:parameters|from|where|group by|having|limit|select)\b/imu,
+  )?.[0];
+  const parameterIndent = source.match(/^(\t+| {2,})@CustomerId\b/mu)?.[1];
+  return {
+    keywordCase: firstClause === firstClause?.toUpperCase() ? 'uppercase' : 'lowercase',
+    indentation: parameterIndent?.startsWith('\t') ? 'tab' : 'two-spaces',
+  };
+}
+
+/**
+ * Finds a single literal inside a parser-admitted clause and replaces only
+ * that token. `readAuthorComposeProfile` has already established the clause
+ * semantics; this locator deliberately cannot admit or reinterpret a query.
+ */
+function replaceClauseLiteral(
+  source: string,
+  clauseName: 'having' | 'limit',
+  expectedValue: number,
+  replacement: number,
+): string | undefined {
+  const lines = source.split(/(?<=\n)/u);
+  const start = lines.findIndex((line) =>
+    new RegExp(`^${clauseName}\\b`, 'iu').test(line),
+  );
+  if (start < 0) return undefined;
+  let end = start + 1;
+  while (
+    end < lines.length &&
+    !/^(?:group\s+by|having|limit|select)\b/iu.test(lines[end] ?? '')
+  ) {
+    end += 1;
+  }
+  const clause = lines.slice(start, end).join('');
+  const numbers = [...clause.matchAll(/(?<![\w@])(-?\d+)(?!\w)/gu)];
+  if (numbers.length !== 1 || Number(numbers[0]?.[1]) !== expectedValue) {
+    return undefined;
+  }
+  const match = numbers[0];
+  const localIndex = match.index;
+  if (localIndex === undefined) return undefined;
+  const absoluteIndex = lines.slice(0, start).join('').length + localIndex;
+  const oldValue = match[1];
+  if (oldValue === undefined) return undefined;
+  return `${source.slice(0, absoluteIndex)}${replacement}${source.slice(absoluteIndex + oldValue.length)}`;
+}
+
+function replaceHavingOperator(
+  source: string,
+  expected: AuthorHavingOperator,
+  replacement: AuthorHavingOperator,
+): string | undefined {
+  const lines = source.split(/(?<=\n)/u);
+  const start = lines.findIndex((line) => /^having\b/iu.test(line));
+  if (start < 0) return undefined;
+  let end = start + 1;
+  while (end < lines.length && !/^(?:limit|select)\b/iu.test(lines[end] ?? '')) {
+    end += 1;
+  }
+  const clause = lines.slice(start, end).join('');
+  const operators = [...clause.matchAll(/(?<![<>=!])(?:==|!=|<=|>=|=|<|>)(?![=])/gu)];
+  if (operators.length !== 1) return undefined;
+  const match = operators[0];
+  const raw = match?.[0];
+  const normalized = raw === '==' ? '=' : raw;
+  if (normalized !== expected || match?.index === undefined) return undefined;
+  const absoluteIndex = lines.slice(0, start).join('').length + match.index;
+  return `${source.slice(0, absoluteIndex)}${replacement === '=' ? '==' : replacement}${source.slice(absoluteIndex + raw.length)}`;
+}
+
+type LocalizedClauseUpdate =
+  | { readonly structural: true }
+  | { readonly structural: false; readonly source?: string };
+
+function updateNonStructuralClauses(
+  source: string,
+  current: AuthorComposeProfile,
+  changes: AuthorComposeChanges,
+): LocalizedClauseUpdate {
+  if (
+    current.grouped !== changes.grouped ||
+    (current.grouped && current.countExpression !== changes.countExpression) ||
+    (!current.grouped && current.includeInvoiceDate !== changes.includeInvoiceDate)
+  ) {
+    return { structural: true };
+  }
+  let result = source;
+  if (current.grouped && current.havingOperator !== changes.havingOperator) {
+    const updated = replaceHavingOperator(
+      result,
+      current.havingOperator ?? '>=',
+      changes.havingOperator,
+    );
+    if (updated === undefined) return { structural: false };
+    result = updated;
+  }
+  if (current.grouped && current.threshold !== changes.threshold) {
+    const updated = replaceClauseLiteral(
+      result,
+      'having',
+      current.threshold ?? 7,
+      changes.threshold,
+    );
+    if (updated === undefined) return { structural: false };
+    result = updated;
+  }
+  if (current.limit !== changes.limit) {
+    const updated = replaceClauseLiteral(result, 'limit', current.limit ?? 100, changes.limit);
+    if (updated === undefined) return { structural: false };
+    result = updated;
+  }
+  const reparsed = readAuthorComposeProfile(result);
+  if (
+    !reparsed.supported ||
+    !reparsed.writable ||
+    reparsed.grouped !== changes.grouped ||
+    reparsed.limit !== changes.limit ||
+    (changes.grouped &&
+      (reparsed.havingOperator !== changes.havingOperator ||
+        reparsed.threshold !== changes.threshold ||
+        reparsed.countExpression !== changes.countExpression)) ||
+    (!changes.grouped &&
+      reparsed.includeInvoiceDate !== changes.includeInvoiceDate)
+  ) {
+    return { structural: false };
+  }
+  return { structural: false, source: result };
+}
+
 /** Generates, formats, then reparses a complete supported document before it can replace Code. */
 export function updateAuthorComposeSource(
   source: string,
@@ -252,6 +382,8 @@ export function updateAuthorComposeSource(
   ) {
     return undefined;
   }
+  const localized = updateNonStructuralClauses(source, current, changes);
+  if (!localized.structural) return localized.source;
   const parsed = parseTugQL(source);
   const tree = parsed.document.tree;
   const query = record(tree?.query);
@@ -292,9 +424,24 @@ export function updateAuthorComposeSource(
       `select ${field('InvoiceId')}${invoiceIdAlias ? ` as ${invoiceIdAlias}` : ''}${changes.includeInvoiceDate ? `, ${field('InvoiceDate')}${invoiceDateAlias ? ` as ${invoiceDateAlias}` : ''}` : ''}`,
     );
   }
-  const formatted = formatTugQL(clauses.join('\n'));
+  const newline = source.includes('\r\n') ? '\r\n' : '\n';
+  const formatted = formatTugQL(clauses.join(newline), formatterOptions(source));
   if (formatted.diagnostics.length) return undefined;
   const candidate = formatted.source;
   const candidateProfile = readAuthorComposeProfile(candidate);
-  return candidateProfile.supported && candidateProfile.writable ? candidate : undefined;
+  if (
+    !candidateProfile.supported ||
+    !candidateProfile.writable ||
+    candidateProfile.grouped !== changes.grouped ||
+    candidateProfile.limit !== changes.limit ||
+    (changes.grouped &&
+      (candidateProfile.havingOperator !== changes.havingOperator ||
+        candidateProfile.threshold !== changes.threshold ||
+        candidateProfile.countExpression !== changes.countExpression)) ||
+    (!changes.grouped &&
+      candidateProfile.includeInvoiceDate !== changes.includeInvoiceDate)
+  ) {
+    return undefined;
+  }
+  return candidate;
 }

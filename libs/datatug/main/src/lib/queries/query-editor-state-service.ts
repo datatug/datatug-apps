@@ -37,6 +37,7 @@ import {
   QueryType,
 } from '../models/definition/query-def';
 import { IQueryEditorState, IQueryState } from '../editor/models';
+import type { ProjectQueryRevision } from './project-query-contract';
 
 export const isQueryChanged = (queryState: IQueryState): boolean => {
   if (!queryState) {
@@ -215,6 +216,92 @@ export class QueryEditorStateService {
         }
       : { currentQueryId: id, activeQueries: [] };
     $state.next(newState);
+  }
+
+  /**
+   * Opens a definition whose read has already completed through the authorized
+   * QueriesService path. This avoids publishing an empty placeholder before a
+   * caller's preflight read succeeds, while preserving an existing local draft.
+   */
+  public openAuthorizedQuery(
+    id: string,
+    def: IQueryDef,
+    expectedProjectRef?: IProjectRef,
+    revision?: Pick<
+      ProjectQueryRevision,
+      'revision' | 'branchHead' | 'saveSupported' | 'unsupportedSaveReason'
+    >,
+  ): IQueryState {
+    if (
+      expectedProjectRef &&
+      !equalProjectRef(this.currentProject?.ref, expectedProjectRef)
+    ) {
+      throw new Error('The active project changed before the query could open.');
+    }
+    if (def.id !== id) {
+      throw new Error('The authorized query definition does not match its ID.');
+    }
+    const editorState: IQueryEditorState = $state.value ?? {
+      activeQueries: [],
+    };
+    const cached = editorState.activeQueries.find((query) => query.id === id);
+    let queryState: IQueryState;
+    if (cached?.def) {
+      queryState = {
+        ...cached,
+        isLoading: false,
+        ...(revision
+          ? {
+              // Keep the draft's compare-and-swap base, but never retain a
+              // capability that the fresh authorized read has revoked.
+              saveSupported:
+                revision.saveSupported !== false &&
+                cached.saveSupported !== false,
+              saveError:
+                revision.saveSupported === false
+                  ? revision.unsupportedSaveReason ??
+                    'This query can be read, but the current save API cannot preserve all its fields.'
+                  : cached.saveSupported === false
+                    ? cached.saveError
+                    : undefined,
+            }
+          : { saveError: undefined }),
+      };
+      // A fresh authorization check does not silently rebase an existing draft.
+    } else {
+      queryState = {
+        ...(cached ?? {}),
+        id,
+        queryType: def.request.queryType,
+        def,
+        request: cached?.isLoading ? def.request : (cached?.request ?? def.request),
+        title: cached?.title ?? def.title,
+        isLoading: false,
+        ...(revision
+          ? {
+              revision: revision.revision,
+              branchHead: revision.branchHead,
+              saveSupported: revision.saveSupported !== false,
+              saveError:
+                revision.saveSupported === false
+                  ? revision.unsupportedSaveReason ??
+                    'This query can be read, but the current save API cannot preserve all its fields.'
+                  : undefined,
+            }
+          : {}),
+      };
+    }
+    queryState = this.updateQueryStateWithEnvs(queryState);
+    const activeQueries = editorState.activeQueries.filter(
+      (query) => query.id !== id,
+    );
+    const next: IQueryEditorState = {
+      ...editorState,
+      currentQueryId: id,
+      activeQueries: [queryState, ...activeQueries],
+    };
+    $state.next(this.updateQueryStatesWithEnvs(next));
+    return queryState;
   }
 
   public closeQuery(query: IQueryState): void {
