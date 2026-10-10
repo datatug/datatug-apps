@@ -511,3 +511,68 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
     expect(header.documentWidth).toBeLessThanOrEqual(header.viewportWidth);
   }
 });
+
+test('multiline SELECT requires a block while compact and canonical queries preview identically', async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await page.goto(AUTHOR_URL);
+  const author = page.getByTestId('tugql-author');
+  await expect(author).toBeVisible({ timeout: 20_000 });
+  await author.getByTestId('author-code-tab').click();
+
+  const editor = author.getByTestId('query-body-text').locator('textarea');
+  const customerId = author.getByTestId('author-customer-id').locator('input');
+  await customerId.fill('');
+  const compactSource = await editor.inputValue();
+  expect(compactSource).toMatch(/select i\.InvoiceId, i\.InvoiceDate\s*$/u);
+
+  const bareMultilineSource = compactSource.replace(
+    /select i\.InvoiceId, i\.InvoiceDate\s*$/u,
+    'select\n  i.InvoiceId\n  i.InvoiceDate',
+  );
+  expect(bareMultilineSource).not.toBe(compactSource);
+  await editor.fill(bareMultilineSource);
+  await author.getByTestId('author-preview').click();
+
+  await expect(author.getByTestId('author-error')).toContainText(
+    "multiline SELECT requires '(' on the SELECT header line",
+  );
+  await expect(editor).toHaveValue(bareMultilineSource);
+  await expect(author.getByTestId('author-sql-preview')).toHaveCount(0);
+  await expect(author.getByTestId('author-run')).toHaveAttribute(
+    'disabled',
+    '',
+  );
+
+  const blockSource = compactSource.replace(
+    /select i\.InvoiceId, i\.InvoiceDate\s*$/u,
+    'select (\n  i.InvoiceId\n  i.InvoiceDate\n)',
+  );
+  await editor.fill(blockSource);
+  await author.getByTestId('author-preview').click();
+
+  const blockPreview = author.getByTestId('author-sql-preview');
+  await expect(blockPreview).toBeVisible();
+  await expect(blockPreview).toContainText('Required · unset');
+  await expect(author.getByTestId('author-error')).toHaveCount(0);
+  const blockSql = await blockPreview.locator('pre').textContent();
+  expect(blockSql).toContain('"i"."InvoiceId"');
+  expect(blockSql).toContain('"i"."InvoiceDate"');
+  await expect(author.getByTestId('author-run')).toHaveAttribute(
+    'disabled',
+    '',
+  );
+
+  await editor.fill(compactSource);
+  await author.getByTestId('author-preview').click();
+  const compactPreview = author.getByTestId('author-sql-preview');
+  await expect(compactPreview).toBeVisible();
+  await expect(compactPreview).toContainText('Required · unset');
+  await expect(compactPreview.locator('pre')).toHaveText(blockSql ?? '');
+  await expect(author.getByTestId('author-error')).toHaveCount(0);
+  await expect(author.getByTestId('author-run')).toHaveAttribute(
+    'disabled',
+    '',
+  );
+});

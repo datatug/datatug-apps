@@ -37,9 +37,10 @@ const STYLED_GROUPED = [
   'GROUP BY i.CustomerId',
   'HAVING count(*) >= 7',
   'LIMIT 100',
-  'SELECT',
-  '\ti.CustomerId AS customer,',
+  'SELECT (',
+  '\ti.CustomerId AS customer',
   '\tcount(*) AS total',
+  ')',
   '',
 ].join('\n');
 
@@ -167,7 +168,7 @@ describe('author compose profile', () => {
     );
   });
 
-  it('keeps the legacy comma-separated multiline projection editable without changing its layout', () => {
+  it('rejects a legacy comma-separated multiline projection without changing its draft', () => {
     const source = [
       'PARAMETERS (',
       '\t@CustomerId INTEGER REQUIRED',
@@ -180,10 +181,6 @@ describe('author compose profile', () => {
       '\ti.InvoiceDate AS issued',
       '',
     ].join('\n');
-    const expected = source.replace(
-      '\ti.InvoiceId AS id,\n\ti.InvoiceDate AS issued',
-      '\ti.InvoiceId AS id',
-    );
     const result = updateAuthorComposeSource(source, {
       grouped: false,
       includeInvoiceDate: false,
@@ -192,15 +189,21 @@ describe('author compose profile', () => {
       threshold: 7,
       limit: 100,
     });
-    expect(result).toBe(expected);
-    expect(parseTugQL(result ?? '').diagnostics).toEqual([]);
-    expect(readAuthorComposeProfile(result ?? '')).toMatchObject({
-      supported: true,
-      includeInvoiceDate: false,
+    expect(parseTugQL(source).diagnostics).toMatchObject([
+      {
+        code: 'invalid_select',
+        message: "multiline SELECT requires '(' on the SELECT header line",
+      },
+    ]);
+    expect(result).toBeUndefined();
+    expect(readAuthorComposeProfile(source)).toMatchObject({
+      supported: false,
+      writable: false,
     });
+    expect(source).toContain('\ti.InvoiceId AS id,\n\ti.InvoiceDate AS issued');
   });
 
-  it('adds InvoiceDate to a legacy comma-separated multiline projection and retains the final newline', () => {
+  it('refuses to expand a legacy bare multiline projection and retains its draft', () => {
     const source = [
       'PARAMETERS (',
       '\t@CustomerId INTEGER REQUIRED',
@@ -220,18 +223,18 @@ describe('author compose profile', () => {
       threshold: 7,
       limit: 100,
     });
-    expect(result).toBe(
-      source.replace(
-        '\ti.InvoiceId AS id\n',
-        '\ti.InvoiceId AS id,\n\ti.InvoiceDate\n',
-      ),
-    );
-    expect(parseTugQL(result ?? '').diagnostics).toEqual([]);
-    expect(readAuthorComposeProfile(result ?? '')).toMatchObject({
-      supported: true,
-      includeInvoiceDate: true,
-      invoiceIdAlias: 'id',
+    expect(parseTugQL(source).diagnostics).toMatchObject([
+      {
+        code: 'invalid_select',
+        message: "multiline SELECT requires '(' on the SELECT header line",
+      },
+    ]);
+    expect(result).toBeUndefined();
+    expect(readAuthorComposeProfile(source)).toMatchObject({
+      supported: false,
+      writable: false,
     });
+    expect(source).toContain('\ti.InvoiceId AS id\n');
   });
 
   it('removes an optional projection from an approved comma-free parenthesized block', () => {
