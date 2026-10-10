@@ -1,0 +1,233 @@
+.query-page-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: min(54vw, 38rem);
+}
+
+.query-save-button {
+  --padding-start: 0.75rem;
+  --padding-end: 0.75rem;
+}
+
+.author-card {
+  width: calc(100% - 2rem);
+  max-width: 68rem;
+  margin: 1rem auto 1.5rem;
+  border: 1px solid var(--ion-color-step-150, #e5e7eb);
+  border-radius: 1rem;
+  box-shadow: 0 0.5rem 1.5rem rgb(15 23 42 / 6%);
+}
+
+.author-card ion-card-header {
+  padding: 1.5rem 1.5rem 0.75rem;
+}
+
+.author-card ion-card-content {
+  padding: 0 1.5rem 1.5rem;
+}
+
+.author-card-heading,
+.author-receipt-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.author-eyebrow {
+  margin: 0 0 0.4rem;
+  color: var(--ion-color-primary-shade);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+}
+
+.author-source-badge {
+  flex: 0 0 auto;
+  padding: 0.4rem 0.65rem;
+  border: 1px solid var(--ion-color-step-150, #e5e7eb);
+  border-radius: 999px;
+  color: var(--ion-color-medium-shade);
+  font-size: 0.75rem;
+  line-height: 1.2;
+}
+
+.author-description {
+  margin: 0 0 1.15rem;
+  color: var(--ion-color-medium-shade);
+  line-height: 1.5;
+}
+
+.author-mode-switch {
+  width: fit-content;
+  margin: 0 0 1.4rem;
+  padding: 0.2rem;
+  border: 1px solid var(--ion-color-step-150, #e5e7eb);
+  border-radius: 0.8rem;
+  background: var(--ion-color-step-50, #f8fafc);
+}
+
+.author-mode-switch ion-button {
+  margin: 0;
+  min-height: 2.5rem;
+  --border-radius: 0.6rem;
+}
+
+.author-section-title {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.author-customer-input {
+  display: block;
+  max-width: 24rem;
+  margin-bottom: 1rem;
+}
+
+.author-card details {
+  margin: 0.65rem 0 1rem;
+  color: var(--ion-color-medium-shade);
+  line-height: 1.55;
+}
+
+.author-card details summary,
+.author-receipt-details summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.author-card ion-button {
+  min-height: 2.75rem;
+  margin-inline-end: 0.5rem;
+}
+
+.author-card [data-testid='author-error'] {
+  display: block;
+  margin-top: 0.75rem;
+  line-height: 1.5;
+}
+
+.author-receipt {
+  width: calc(100% - 2rem);
+  max-width: 68rem;
+  margin: 1rem auto 1.5rem;
+  padding: 1.25rem 1.5rem;
+  border: 1px solid var(--ion-color-step-150, #e5e7eb);
+  border-inline-start: 4px solid var(--ion-color-success, #2dd36f);
+  border-radius: 0.9rem;
+  background: var(--ion-background-color, #fff);
+  box-shadow: 0 0.35rem 1rem rgb(15 23 42 / 5%);
+}
+
+.author-receipt:has(.receipt-status-dot.previous) {
+  border-inline-start-color: var(--ion-color-warning, #ffc409);
+}
+
+.author-receipt-status {
+  justify-content: flex-start;
+  color: var(--ion-color-dark);
+  font-size: 0.84rem;
+}
+
+.receipt-status-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--ion-color-success, #2dd36f);
+}
+
+.receipt-status-dot.previous {
+  background: var(--ion-color-warning, #ffc409);
+}
+
+.author-receipt-primary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 1rem;
+  margin: 0.4rem 0;
+  color: var(--ion-color-dark);
+  font-size: 1.1rem;
+  font-weight: 650;
+}
+
+.author-receipt-primary span {
+  color: var(--ion-color-medium-shade);
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.author-receipt-secondary {
+  margin: 0;
+  color: var(--ion-color-medium-shade);
+  font-size: 0.82rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.author-receipt-details {
+  margin-top: 0.85rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--ion-color-step-150, #e5e7eb);
+}
+
+.author-receipt-details p,
+.author-receipt-details pre {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  line-height: 1.55;
+}
+
+@media (max-width: 430px) {
+  .query-page-title {
+    max-width: min(43vw, 10rem);
+  }
+
+  .query-save-button {
+    --padding-start: 0.55rem;
+    --padding-end: 0.55rem;
+  }
+
+  .query-save-button ion-icon {
+    margin-inline: 0;
+  }
+
+  .query-save-label {
+    display: none;
+  }
+
+  .author-card {
+    margin-block: 0.65rem 1rem;
+  }
+
+  .author-card ion-card-header {
+    padding: 1.1rem 1rem 0.55rem;
+  }
+
+  .author-card ion-card-content {
+    padding: 0 1rem 1rem;
+  }
+
+  .author-card-heading {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+  }
+
+  .author-source-badge {
+    margin-top: 0.1rem;
+  }
+
+  .author-receipt {
+    margin-block: 0.65rem 1rem;
+    padding: 1rem;
+  }
+}
+
+@media (max-width: 350px) {
+  .query-page-title {
+    max-width: 32vw;
+  }
+}

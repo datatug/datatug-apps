@@ -14,6 +14,14 @@ export interface PublicSqlitePreparedPlan {
   readonly draftRevision: number;
 }
 
+/** A structural preview has no user-provided values and is safe to show before Run. */
+export type PublicSqliteQueryPreview = Omit<
+  PublicSqlitePreparedPlan,
+  'bindings'
+> & {
+  readonly fixedBindings: readonly (string | number | null)[];
+};
+
 export type PublicSqliteExecutionReceipt = Omit<
   PublicSqlitePreparedPlan,
   'bindings'
@@ -117,8 +125,13 @@ export function compilePublicSqliteTugQL(
     readonly schemaVersion: string;
     readonly draftRevision: number;
   },
-): PublicSqlitePreparedPlan {
+): PublicSqliteQueryPreview {
   const query = resolved.query;
+  if (query.where !== undefined) {
+    throw new Error(
+      'Compile only the structurally resolved query with its guarded CustomerId predicate removed.',
+    );
+  }
   const limit = query.limit;
   if (
     query.kind !== 'recursive-dtql' ||
@@ -208,44 +221,36 @@ export function compilePublicSqliteTugQL(
     }
   }
 
-  const condition = query.where;
-  let sql = `SELECT ${projection.join(', ')} FROM ${quoteIdentifier('Invoice')} AS ${quoteIdentifier(alias)}`;
-  const bindings: (string | number | null)[] = [];
+  const sql = [
+    `SELECT ${projection.join(',\n  ')}`,
+    `FROM ${quoteIdentifier('Invoice')} AS ${quoteIdentifier(alias)}`,
+  ];
   const bindingNames = ['CustomerId'];
-  if (condition !== undefined) {
-    if (
-      condition.kind !== 'comparison' ||
-      condition.operator !== '==' ||
-      condition.left.kind !== 'field' ||
-      condition.left.field.source !== alias ||
-      condition.left.field.field !== 'CustomerId' ||
-      condition.right.kind !== 'literal' ||
-      typeof condition.right.value !== 'number' ||
-      !Number.isSafeInteger(condition.right.value)
-    ) {
-      throw new Error('Filter Invoice with one integer CustomerId equality.');
-    }
-    sql += ` WHERE ${quoteIdentifier(alias)}.${quoteIdentifier('CustomerId')} = ?`;
-    bindings.push(condition.right.value);
-  } else {
-    throw new Error(
-      'Set the required integer CustomerId filter before previewing.',
-    );
-  }
+  // `requireCustomerIdParameterSource` checks the original author tree before
+  // resolution. The resolver receives a parameter-free structural document;
+  // this fixed predicate is then added to the same compiler output for preview
+  // and execution, without inventing a binding value.
+  sql.push(
+    `WHERE ${quoteIdentifier(alias)}.${quoteIdentifier('CustomerId')} = ?`,
+  );
+  const fixedBindings: (string | number | null)[] = [];
   if (grouped && havingSql !== undefined && havingThreshold !== undefined) {
-    sql += ` GROUP BY ${quoteIdentifier(alias)}.${quoteIdentifier('CustomerId')} HAVING ${havingSql}`;
-    bindings.push(havingThreshold);
+    sql.push(
+      `GROUP BY ${quoteIdentifier(alias)}.${quoteIdentifier('CustomerId')}`,
+      `HAVING ${havingSql}`,
+    );
+    fixedBindings.push(havingThreshold);
     bindingNames.push('HAVING threshold (literal)');
   } else if (grouped) {
     throw new Error(
       'Grouped Invoice queries require CustomerId, COUNT, an integer HAVING threshold, and a bounded LIMIT.',
     );
   }
-  sql += ` LIMIT ${limit}`;
+  sql.push(`LIMIT ${limit}`);
 
   return Object.freeze({
-    sql,
-    bindings: Object.freeze(bindings),
+    sql: sql.join('\n'),
+    fixedBindings: Object.freeze(fixedBindings),
     bindingNames: Object.freeze(bindingNames),
     sourceId: 'chinook-sqlite',
     fixtureSha256: options.fixtureSha256,

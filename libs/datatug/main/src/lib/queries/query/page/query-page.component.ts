@@ -1,4 +1,5 @@
 import { SourceRightsNoticeComponent } from '@sneat/datatug-semantic';
+import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { PublicDataService } from '../../public-data/public-data.service';
 import { ConfiguredPublicDataSourcesService } from '../../public-data/configured-public-data-sources.service';
@@ -227,7 +228,8 @@ import type {
 import { graphStableIdentity } from '../../public-data/native-graph-executor';
 import { QueryContextSqlService } from '../../query-context-sql.service';
 import { PublicSqliteQueryService } from '../../public-sqlite-query.service';
-import type { PublicSqlitePreparedPlan } from '../../public-sqlite-tugql';
+import { AuthorSqlPreviewComponent } from './author-sql-preview.component';
+import type { PublicSqliteQueryPreview } from '../../public-sqlite-tugql';
 import {
   isQueryChanged,
   QueryEditorStateService,
@@ -414,7 +416,10 @@ export function extractLinkedEntityNames(
 @Component({
   selector: 'sneat-datatug-sql-editor',
   templateUrl: './query-page.component.html',
+  styleUrl: './query-page.component.scss',
   imports: [
+    AuthorSqlPreviewComponent,
+    DatePipe,
     // DatatugNavContextService and EnvironmentService are now
     // providedIn: 'root' (nav-context-root-singletons); QueriesService,
     // QueryContextSqlService, QueryEditorStateService and Coordinator
@@ -500,10 +505,18 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public editorTab: 'text' | 'builder' = 'text';
   public readonly authorMode = signal<'compose' | 'code'>('compose');
   public readonly authorCustomerId = signal('');
+  public readonly authorBindingRevision = signal(0);
   public readonly authorDraftRevision = signal(0);
-  public readonly authorPreviewOpen = signal(false);
-  public readonly authorPlan = signal<PublicSqlitePreparedPlan | undefined>(
+  public readonly authorPlan = signal<PublicSqliteQueryPreview | undefined>(
     undefined,
+  );
+  public readonly authorCustomerIdValid = computed(
+    () =>
+      /^-?\d+$/u.test(this.authorCustomerId()) &&
+      Number.isSafeInteger(Number(this.authorCustomerId())),
+  );
+  public readonly authorCustomerIdMissing = computed(
+    () => this.authorCustomerId().trim().length === 0,
   );
   public readonly authorError = signal<string | undefined>(undefined);
   public readonly isTugqlAuthorJourney = computed(
@@ -885,9 +898,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const detail = (event as CustomEvent<{ value?: string }>).detail;
     const target = event.target as HTMLInputElement | null;
     const value = detail?.value ?? target?.value ?? '';
+    if (value !== this.authorCustomerId()) {
+      this.authorBindingRevision.update((revision) => revision + 1);
+    }
     this.authorCustomerId.set(value);
-    this.authorDraftRevision.update((revision) => revision + 1);
-    this.authorPlan.set(undefined);
     this.authorError.set(undefined);
     const next: IQueryState = {
       ...this.queryState,
@@ -910,7 +924,6 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const queryIdSnapshot = this.queryId;
     const projectSnapshot = JSON.stringify(project);
     const securityContextIdSnapshot = this.agentContext.securityContextId();
-    const customerIdSnapshot = this.authorCustomerId();
     const lifetime = ++this.authorPreviewLifetime;
     const isCurrent = (): boolean =>
       lifetime === this.authorPreviewLifetime &&
@@ -920,21 +933,17 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.queryId === queryIdSnapshot &&
       JSON.stringify(this.queryDef()) === definitionSnapshot &&
       JSON.stringify(this.project?.ref) === projectSnapshot &&
-      this.agentContext.securityContextId() === securityContextIdSnapshot &&
-      this.authorCustomerId() === customerIdSnapshot;
+      this.agentContext.securityContextId() === securityContextIdSnapshot;
     this.authorPlan.set(undefined);
-    this.authorPreviewOpen.set(false);
     this.authorError.set(undefined);
     try {
       const plan = await this.publicSqliteQuery.prepareTugQL(
         project,
         definition,
         revision,
-        customerIdSnapshot,
       );
       if (isCurrent()) {
         this.authorPlan.set(plan);
-        this.authorPreviewOpen.set(true);
       }
     } catch (error: unknown) {
       if (isCurrent())
@@ -944,18 +953,25 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     }
   }
 
-  public authorPreviewToggled(event: Event): void {
-    const details = event.target as HTMLDetailsElement | null;
-    if (details) this.authorPreviewOpen.set(details.open);
-  }
-
   public publicSqliteCustomerIdLabel(result: FederatedQueryResult): string {
     const applied = result.bindingsApplied.find(
       (binding) => binding.parameterId === 'CustomerId',
     );
-    return applied?.value.type === 'integer'
-      ? applied.value.value
-      : 'applied';
+    return applied?.value.type === 'integer' ? applied.value.value : 'applied';
+  }
+
+  public publicSqliteRunIsStale(result: FederatedQueryResult): boolean {
+    const applied = result.bindingsApplied.find(
+      (binding) => binding.parameterId === 'CustomerId',
+    );
+    return (
+      this.displayedResultIsPreviousRun() ||
+      !this.authorCustomerIdValid() ||
+      result.publicSqliteReceipt?.draftRevision !==
+        this.authorDraftRevision() ||
+      applied?.value.type !== 'integer' ||
+      Number(applied.value.value) !== Number(this.authorCustomerId())
+    );
   }
 
   /** Entity/collection names this query references — see
@@ -2386,6 +2402,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       definition.request.queryType === QueryType.DTQL
     ) {
       if (this.running()) return;
+      if (!this.authorCustomerIdValid()) {
+        this.runError.set(
+          'Enter a whole-number CustomerId before running this query.',
+        );
+        return;
+      }
       const previewPlan = this.authorPlan();
       if (!previewPlan) {
         this.runError.set('Preview the current TugQL draft before Run.');
@@ -2394,6 +2416,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       const runScope = this.historyScope();
       const executedDefinition = structuredClone(definition);
       const draftRevision = this.authorDraftRevision();
+      const bindingRevision = this.authorBindingRevision();
       const customerId = this.authorCustomerId();
       const queryIdSnapshot = this.queryId;
       const projectSnapshot = JSON.stringify(projectRef);
@@ -2406,6 +2429,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         this.queryId === queryIdSnapshot &&
         JSON.stringify(this.project?.ref) === projectSnapshot &&
         this.authorDraftRevision() === draftRevision &&
+        this.authorBindingRevision() === bindingRevision &&
         this.authorCustomerId() === customerId &&
         this.authorPlan() === previewPlan &&
         JSON.stringify(this.queryDef()) === JSON.stringify(executedDefinition);

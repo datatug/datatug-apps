@@ -2,6 +2,8 @@ import initSqlJs from 'sql.js';
 import { TestBed } from '@angular/core/testing';
 import { NEVER, of } from 'rxjs';
 import { QueryType } from '../models/definition/query-def';
+import type { IQueryDef } from '../models/definition/query-def';
+import type { IProjectRef } from '../core/project-context';
 import { GithubProjectReaderService } from '../services/repo/github/github-project-reader.service';
 import { ProjectQueryApiService } from '../services/project/project-query-api.service';
 import {
@@ -118,12 +120,14 @@ it('executes prepared integer bindings through the same SQLite worker path', asy
 
   const groupedSql =
     'SELECT CustomerId, COUNT(*) AS InvoiceCount FROM Invoice WHERE CustomerId = ? GROUP BY CustomerId HAVING COUNT(*) >= ? LIMIT 10';
-  await expect(
-    executePinnedSql(groupedSql, fixture, [2, 2]),
-  ).resolves.toEqual({ columns: ['CustomerId', 'InvoiceCount'], rows: [[2, 2]] });
-  await expect(
-    executePinnedSql(groupedSql, fixture, [2, 3]),
-  ).resolves.toEqual({ columns: ['CustomerId', 'InvoiceCount'], rows: [] });
+  await expect(executePinnedSql(groupedSql, fixture, [2, 2])).resolves.toEqual({
+    columns: ['CustomerId', 'InvoiceCount'],
+    rows: [[2, 2]],
+  });
+  await expect(executePinnedSql(groupedSql, fixture, [2, 3])).resolves.toEqual({
+    columns: ['CustomerId', 'InvoiceCount'],
+    rows: [],
+  });
 });
 
 it('cancels a started Author worker and terminates it promptly', async () => {
@@ -301,4 +305,168 @@ it('fetches only the pinned public fixture without credentials and refuses chang
   } finally {
     vi.unstubAllGlobals();
   }
+});
+
+describe('Author TugQL structural preview and Run binding', () => {
+  const columns = [
+    { name: 'CustomerId', dbType: 'INTEGER', isNullable: false },
+    { name: 'InvoiceId', dbType: 'INTEGER', isNullable: false },
+    { name: 'InvoiceDate', dbType: 'DATETIME', isNullable: false },
+  ];
+  const project: IProjectRef = {
+    storeId: 'github.com',
+    projectId: 'demo@buyer@project',
+    projectApi: 'cloud',
+    branch: 'main',
+  };
+  const definition = (text: string): IQueryDef => ({
+    id: 'chinook-invoice-author',
+    connectionId: 'chinook-sqlite',
+    request: { queryType: QueryType.DTQL, text },
+  });
+  const groupedSource = [
+    'parameters (',
+    '  @CustomerId integer required',
+    ')',
+    'from Invoice as i',
+    'where i.CustomerId = @CustomerId',
+    'group by i.CustomerId',
+    'having count(*) >= 7',
+    'limit 10',
+    'select i.CustomerId, count(*) as InvoiceCount',
+    '',
+  ].join('\n');
+  const reader = {
+    getRawJson: vi.fn((_projectId: string, path: string) =>
+      of(path.includes('dbmodels/') ? { columns } : catalog),
+    ),
+  };
+  const projectApi = { connectionCatalog: vi.fn(() => of(catalog)) };
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        PublicSqliteQueryService,
+        { provide: GithubProjectReaderService, useValue: reader },
+        { provide: ProjectQueryApiService, useValue: projectApi },
+      ],
+    });
+    reader.getRawJson.mockClear();
+    projectApi.connectionCatalog.mockClear();
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('previews SQL with the required binding unset and does not create a worker', async () => {
+    const worker = vi.fn(() => {
+      throw new Error('Preview must not create a Worker.');
+    });
+    vi.stubGlobal('Worker', worker);
+
+    const preview = await TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+      project,
+      definition(groupedSource),
+      4,
+    );
+
+    expect(preview.sql).toContain('WHERE "i"."CustomerId" = ?');
+    expect(preview.sql).toContain('HAVING COUNT(*) >= ?');
+    expect(preview.sql).not.toContain('= 42');
+    expect(preview.fixedBindings).toEqual([7]);
+    expect(preview.bindingNames).toEqual([
+      'CustomerId',
+      'HAVING threshold (literal)',
+    ]);
+    expect(preview).not.toHaveProperty('bindings');
+    expect(worker).not.toHaveBeenCalled();
+    expect(reader.getRawJson).toHaveBeenCalledWith(
+      'demo@buyer@project',
+      'dbmodels/chinook/main/tables/Invoice/main.Invoice.columns.json',
+    );
+  });
+
+  it('rejects duplicate output aliases through the normal TugQL resolver', async () => {
+    const duplicateAlias = [
+      'parameters (',
+      '  @CustomerId integer required',
+      ')',
+      'from Invoice as i',
+      'where i.CustomerId = @CustomerId',
+      'limit 10',
+      'select i.InvoiceId as Value, i.InvoiceDate as Value',
+      '',
+    ].join('\n');
+
+    await expect(
+      TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+        project,
+        definition(duplicateAlias),
+        1,
+      ),
+    ).rejects.toThrow();
+  });
+
+  it('blocks an invalid Run and binds a valid value into the recompiled template', async () => {
+    const workerMessages: Record<string, unknown>[] = [];
+    let workerTerminated = false;
+    class ReceiptWorker {
+      public onmessage: ((event: MessageEvent) => void) | null = null;
+      public onerror: (() => void) | null = null;
+      public postMessage(message: Record<string, unknown>): void {
+        workerMessages.push(message);
+        queueMicrotask(() =>
+          this.onmessage?.({
+            data: {
+              ok: true,
+              result: {
+                columns: ['CustomerId', 'InvoiceCount'],
+                rows: [[2, 7]],
+              },
+              receipt: {
+                executionId: '00000000-0000-4000-8000-000000000001',
+                sql: message['sql'],
+                bindings: message['bindings'],
+                bindingNames: message['bindingNames'],
+                fixtureSha256: message['fixtureSha256'],
+                schemaVersion: message['schemaVersion'],
+                draftRevision: message['draftRevision'],
+                schemaFingerprint:
+                  'CustomerId:INTEGER|InvoiceId:INTEGER|InvoiceDate:DATETIME',
+              },
+            },
+          } as MessageEvent),
+        );
+      }
+      public terminate(): void {
+        workerTerminated = true;
+      }
+    }
+    vi.stubGlobal('Worker', ReceiptWorker);
+
+    const service = TestBed.inject(PublicSqliteQueryService);
+    const query = definition(groupedSource);
+    const preview = await service.prepareTugQL(project, query, 8);
+    await expect(
+      service.runTugQL(project, query, 8, '', preview),
+    ).rejects.toThrow('whole-number CustomerId');
+    expect(workerMessages).toHaveLength(0);
+
+    const result = await service.runTugQL(project, query, 8, '42', preview);
+    expect(workerMessages).toHaveLength(1);
+    expect(workerMessages[0]['sql']).toBe(preview.sql);
+    expect(workerMessages[0]['bindings']).toEqual([42, 7]);
+    expect(workerMessages[0]['bindingNames']).toEqual([
+      'CustomerId',
+      'HAVING threshold (literal)',
+    ]);
+    expect(workerTerminated).toBe(true);
+    expect(result.bindingsApplied).toEqual([
+      {
+        parameterId: 'CustomerId',
+        value: { type: 'integer', value: '42' },
+        origin: 'manual',
+        originEvidence: 'client-reported',
+      },
+    ]);
+  });
 });
