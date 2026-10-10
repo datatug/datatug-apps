@@ -124,7 +124,21 @@ export class AgentContextService {
 
 function hasHttpOrigin(baseUrl: string): boolean {
   try {
-    const url = new URL(baseUrl);
+    const schemeRelative = baseUrl.startsWith('//');
+    const pageProtocol = globalThis.location?.protocol;
+    if (
+      schemeRelative &&
+      pageProtocol !== 'http:' &&
+      pageProtocol !== 'https:'
+    ) {
+      return false;
+    }
+    // `getStoreUrl()` intentionally returns protocol-relative agent origins for
+    // bare host:port local stores. Resolve those only against a real HTTP(S)
+    // browser page; don't assume a scheme in non-browser contexts.
+    const url = new URL(
+      schemeRelative ? `${pageProtocol}${baseUrl}` : baseUrl,
+    );
     return (
       (url.protocol === 'http:' || url.protocol === 'https:') &&
       url.hostname.length > 0

@@ -4,6 +4,8 @@ import {
   provideHttpClientTesting,
 } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { URL as NodeURL } from 'node:url';
+import { vi } from 'vitest';
 import { AgentInfo } from '../../contract/types';
 import { AgentContextService } from './agent-context.service';
 
@@ -29,6 +31,7 @@ describe('AgentContextService', () => {
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
     httpMock.verify();
   });
 
@@ -72,6 +75,22 @@ describe('AgentContextService', () => {
     expect(other.securityContextId()).toBe('agent-b-context');
     expect(service.securityContextId()).toBe('sctx-1');
     expect(service.contextFor(`${OTHER_BASE_URL}/`)).toBe(other);
+  });
+
+  it('fetches agent-info for a protocol-relative agent URL used by local stores', () => {
+    // The DOM test environment's URL polyfill silently falls back to localhost
+    // for a scheme-relative URL. Use the browser-standard URL parser behavior
+    // here so this test catches an unqualified `new URL(baseUrl)` guard.
+    vi.stubGlobal('URL', NodeURL);
+    const service = TestBed.inject(AgentContextService);
+    httpMock.expectOne(`${BASE_URL}/agent-info`).flush(AGENT_INFO);
+
+    const localAgent = service.contextFor('//127.0.0.1:8989/datatug');
+    httpMock
+      .expectOne('//127.0.0.1:8989/datatug/agent-info')
+      .flush({ ...AGENT_INFO, securityContextId: 'local-agent-context' });
+
+    expect(localAgent.securityContextId()).toBe('local-agent-context');
   });
 
   it('does not fetch agent-info when an explicit context has no HTTP(S) origin', () => {
