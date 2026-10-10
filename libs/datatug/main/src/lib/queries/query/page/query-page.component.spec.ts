@@ -23,6 +23,7 @@ import { By } from '@angular/platform-browser';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { IonSelect, IonSelectOption, NavController } from '@ionic/angular';
 import { Firestore } from 'firebase/firestore';
+import { parseTugQL, resolveTugQL } from '@dalgo/core';
 import { ErrorLogger } from '@sneat/core';
 import { RANDOM_ID_OPTIONS, RandomIdService } from '@sneat/random';
 import {
@@ -872,6 +873,108 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     expect(component.authorFormatStatus()).toContain(
       "multiline SELECT requires '(' on the SELECT header line",
     );
+  });
+
+  it.each([
+    [
+      'multiline string',
+      "from Invoice as i\nwhere i.Name = 'Mixed\nCase'\nselect i.InvoiceId",
+    ],
+    [
+      'multiline quoted identifier',
+      'from Invoice as i\nwhere i."MiXeD\nCase" = 1\nselect i.InvoiceId',
+    ],
+  ] as const)(
+    'keeps a %s draft exact and reports a diagnostic without previewing or running',
+    async (_kind, source) => {
+      component = await createTugQLAuthor(source);
+      const plan = { sql: 'prepared' } as never;
+      component.authorPlan.set(plan);
+      const revision = component.authorDraftRevision();
+      const sqlite = TestBed.inject(PublicSqliteQueryService);
+      const prepare = vi.spyOn(sqlite, 'prepareTugQL');
+      const execute = vi.spyOn(sqlite, 'runTugQL');
+
+      component.formatAuthorTugQL();
+
+      expect(component.queryBodyText()).toBe(source);
+      expect(component.authorFormatStatus()).toBe(
+        'TugQL was not changed: quoted value cannot continue across lines',
+      );
+      expect(component.authorPlan()).toBe(plan);
+      expect(component.authorDraftRevision()).toBe(revision);
+      expect(prepare).not.toHaveBeenCalled();
+      expect(execute).not.toHaveBeenCalled();
+    },
+  );
+
+  it('formats single-line doubled quotes, tabs, and Unicode without changing the literal', async () => {
+    const literal = "'Tab\t雪 ''quoted'''";
+    const source = `FrOm Invoice as i\nWhErE i.Name = ${literal}\nSeLeCt i.InvoiceId`;
+    component = await createTugQLAuthor(source);
+
+    component.formatAuthorTugQL();
+
+    const formatted = component.queryBodyText() ?? '';
+    expect(formatted).not.toBe(source);
+    expect(formatted).toContain(literal);
+    expect(parseTugQL(formatted).diagnostics).toEqual([]);
+    expect(component.authorFormatStatus()).toContain('TugQL formatted');
+
+    component.undoAuthorTugQLFormat();
+    expect(component.queryBodyText()).toBe(source);
+  });
+
+  it('keeps a compact parenthesized CTE and scalar SELECT resolvable after formatting', async () => {
+    const source = [
+      'WITH Recent AS (',
+      '  FrOm Invoice AS i',
+      '  LIMIT 1',
+      '  SELECT i.InvoiceId',
+      ')',
+      'FROM Recent AS r',
+      'SELECT (',
+      '  Latest AS (',
+      '    FROM Recent AS nested',
+      '    LIMIT 1',
+      '    SELECT nested.InvoiceId',
+      '  )',
+      ')',
+    ].join('\n');
+    component = await createTugQLAuthor(source);
+
+    component.formatAuthorTugQL();
+
+    const parsed = parseTugQL(component.queryBodyText() ?? '');
+    expect(component.authorFormatStatus()).toContain('TugQL formatted');
+    expect(parsed.diagnostics).toEqual([]);
+    const resolution = resolveTugQL(parsed.document, {
+      authorizedSchemas: [
+        {
+          version: 'schema-v1',
+          tables: [
+            {
+              name: 'Invoice',
+              fields: [
+                { name: 'InvoiceId', type: 'integer', authorized: true },
+              ],
+            },
+          ],
+        },
+      ],
+      relationships: [],
+      pinnedImports: [],
+      bindings: [],
+    });
+
+    expect(resolution.diagnostics).toEqual([]);
+    expect(resolution.resolved?.columns).toEqual([
+      {
+        name: 'Latest',
+        type: 'integer',
+        lineage: [{ source: 'i', field: 'InvoiceId' }],
+      },
+    ]);
   });
 
   it('recognizes the maintained TugQL definition when query state still says SQL', async () => {

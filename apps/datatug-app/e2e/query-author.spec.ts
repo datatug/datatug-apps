@@ -104,6 +104,33 @@ test('Code formats TugQL reversibly before explicit Preview and worker Run', asy
   await expect(editor).toHaveValue(mixed);
   await expect(author.getByTestId('author-sql-preview')).toHaveCount(0);
 
+  const malformed = mixed.replace(
+    /^(\s*)where\b.*$/imu,
+    "$1WHERE i.Name = 'Mixed\nCase'",
+  );
+  expect(malformed).not.toBe(mixed);
+  await editor.fill(malformed);
+  await author.getByTestId('author-format-tugql').click();
+  await expect(editor).toHaveValue(malformed);
+  const formatStatus = author.getByTestId('author-format-status');
+  await expect(formatStatus).toContainText(
+    'TugQL was not changed: quoted value cannot continue across lines',
+  );
+  expect(
+    (await formatStatus.innerText()).match(
+      /quoted value cannot continue across lines/gu,
+    ),
+  ).toHaveLength(1);
+  await expect(author.getByTestId('author-sql-preview')).toHaveCount(0);
+  await expect(page.getByTestId('author-execution-receipt')).toHaveCount(0);
+  await expect(author.getByTestId('author-run')).toHaveAttribute(
+    'disabled',
+    '',
+  );
+
+  await editor.fill(mixed);
+  await expect(editor).toHaveValue(mixed);
+
   await author.getByTestId('author-format-tugql').click();
   await expect(editor).not.toHaveValue(mixed);
   await author.getByTestId('author-preview').click();

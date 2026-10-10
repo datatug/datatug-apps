@@ -1170,6 +1170,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.authorFormatStatus.set(
         `TugQL was not changed: ${formatted.diagnostics
           .map((item) => item.message)
+          .filter(
+            (message, index, messages) => messages.indexOf(message) === index,
+          )
           .join(' ')}`,
       );
       return;
