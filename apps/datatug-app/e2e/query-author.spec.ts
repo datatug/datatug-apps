@@ -158,7 +158,12 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
     'manual · client-reported',
   );
   await author.getByTestId('author-run').click();
-  await expect(joinReceipt).toContainText('Executed');
+  await expect(joinReceipt).toContainText('Customer ID 2');
+  await expect(
+    rows
+      .nth(1)
+      .getByRole('button', { name: 'Look up invoices for Customer ID 2' }),
+  ).toBeVisible();
   await firstRunAction?.evaluate((button) => button.click());
   await expect(page).toHaveURL(/id=chinook-customer-invoice-join/u);
   await author.getByTestId('author-customer-id').locator('input').fill('1');
@@ -170,7 +175,14 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
   // “7 rows” can race the refreshed grid and start keyboard navigation against
   // the old receipt. Bind the keyboard journey to the new worker execution.
   await expect(executionId).not.toHaveText(previousExecutionId ?? '');
+  await expect(joinReceipt).toContainText('Customer ID 1');
   await expect(joinReceipt).toContainText('7 rows');
+  await expect(rows.nth(1)).toContainText('98');
+  await expect(
+    rows
+      .nth(1)
+      .getByRole('button', { name: 'Look up invoices for Customer ID 1' }),
+  ).toBeVisible();
 
   const lookupActions = page.getByRole('button', {
     name: 'Look up invoices for Customer ID 1',
