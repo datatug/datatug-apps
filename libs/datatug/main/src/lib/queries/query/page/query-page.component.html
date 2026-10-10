@@ -448,20 +448,18 @@
           >
         </ion-buttons>
         <p>Invoices for customer</p>
-        <ion-item lines="none">
-          <ion-input
-            data-testid="author-customer-id"
-            type="number"
-            inputmode="numeric"
-            fill="outline"
-            label="Customer ID"
-            labelPlacement="stacked"
-            helperText="Required · integer"
-            [value]="authorCustomerId()"
-            [disabled]="queryState.isSaving || running()"
-            (ionInput)="authorCustomerIdChanged($event)"
-          />
-        </ion-item>
+        <ion-input
+          data-testid="author-customer-id"
+          type="number"
+          inputmode="numeric"
+          fill="outline"
+          label="Customer ID"
+          labelPlacement="floating"
+          helperText="Required · integer"
+          [value]="authorCustomerId()"
+          [disabled]="queryState.isSaving || running()"
+          (ionInput)="authorCustomerIdChanged($event)"
+        />
         @if (authorMode() === 'compose') {
           <details>
             <summary>Supported syntax</summary>
@@ -973,6 +971,13 @@
           {{ resultTotalRows() }} rows · Customer ID
           {{ publicSqliteCustomerIdLabel(result) }} applied · pinned snapshot ·
           queried {{ result.provenance.observedAt }}
+          @if (displayedResultIsPreviousRun()) {
+            @if (committedRun()?.timing; as timing) {
+              · loaded in {{ formatQueryDuration(timing.allResultsLoadedMs) }}
+            }
+          } @else if (queryRunTiming(); as timing) {
+            · loaded in {{ formatQueryDuration(timing.allResultsLoadedMs) }}
+          }
         </p>
         <details>
           <summary>Execution details</summary>
@@ -1012,7 +1017,7 @@
         <pre style="white-space: pre-wrap">{{ historicalPins() }}</pre>
       </details>
     }
-    @if (displayedResultIsPreviousRun()) {
+    @if (displayedResultIsPreviousRun() && !result.publicSqliteReceipt) {
       <ion-text color="medium" data-testid="previous-run-label">
         <p>
           Previous successful run · query {{ committedRun()?.scope?.queryId }} ·
@@ -1049,42 +1054,42 @@
          recorded date comes from Result.provenance.observedAt, which for a snapshot
          response is the fixture's actual capture time (never "now" — see
          datatug-cli's pkg/httpsource snapshot handling). -->
-    <div class="ion-padding-horizontal">
-      <ion-text color="medium" data-testid="result-provenance">
-        @if (result.publicSqliteReceipt) {
-          Pinned snapshot · queried {{ result.provenance.observedAt }}
-        } @else if (result.provenance.mode === 'snapshot') {
-          snapshot · recorded
-          {{ formatRecordedDate(result.provenance.observedAt) }} ·
-          {{ result.provenance.source }}
-        } @else if (!selectedHistoricalResult()) {
-          live · {{ result.provenance.source }}
-        } @else {
-          recorded local output · {{ result.provenance.source }}
-        }
-      </ion-text>
-
-      @if (
-        !selectedHistoricalResult() &&
-          (displayedResultIsPreviousRun()
-            ? committedRun()?.timing
-            : queryRunTiming());
-        as timing
-      ) {
-        <p data-testid="query-run-timings">
-          Time to first record:
-          @if (timing.noRecords) {
-            No records
-          } @else if (timing.firstRecordMs !== undefined) {
-            {{ formatQueryDuration(timing.firstRecordMs) }}
+    @if (!result.publicSqliteReceipt) {
+      <div class="ion-padding-horizontal">
+        <ion-text color="medium" data-testid="result-provenance">
+          @if (result.provenance.mode === 'snapshot') {
+            snapshot · recorded
+            {{ formatRecordedDate(result.provenance.observedAt) }} ·
+            {{ result.provenance.source }}
+          } @else if (!selectedHistoricalResult()) {
+            live · {{ result.provenance.source }}
           } @else {
-            Unavailable
+            recorded local output · {{ result.provenance.source }}
           }
-          · All results loaded in
-          {{ formatQueryDuration(timing.allResultsLoadedMs) }}
-        </p>
-      }
-    </div>
+        </ion-text>
+
+        @if (
+          !selectedHistoricalResult() &&
+            (displayedResultIsPreviousRun()
+              ? committedRun()?.timing
+              : queryRunTiming());
+          as timing
+        ) {
+          <p data-testid="query-run-timings">
+            Time to first record:
+            @if (timing.noRecords) {
+              No records
+            } @else if (timing.firstRecordMs !== undefined) {
+              {{ formatQueryDuration(timing.firstRecordMs) }}
+            } @else {
+              Unavailable
+            }
+            · All results loaded in
+            {{ formatQueryDuration(timing.allResultsLoadedMs) }}
+          </p>
+        }
+      </div>
+    }
 
     @if (result.bindingsApplied.length && !result.publicSqliteReceipt) {
       <!-- REQ:no-hidden-filters — "the results header MUST list the bindings that

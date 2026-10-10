@@ -22,7 +22,7 @@ test.beforeEach(async ({ context }) => {
 
 test('cold saved CustomerId count supports parameterized HAVING thresholds in the worker', async ({
   page,
-}) => {
+}, testInfo) => {
   test.setTimeout(60_000);
   await page.goto(COUNT_AUTHOR_URL);
   const author = page.getByTestId('tugql-author');
@@ -51,10 +51,17 @@ test('cold saved CustomerId count supports parameterized HAVING thresholds in th
   await expect(rows).toHaveCount(2);
   await expect(rows.nth(1)).toContainText('1');
   await expect(rows.nth(1)).toContainText('7');
+  await expect(receipt).toContainText('loaded in');
+  await expect(page.getByTestId('result-provenance')).toHaveCount(0);
+  await expect(page.getByTestId('query-run-timings')).toHaveCount(0);
+  await author.getByTestId('author-compose-tab').click();
+  await expect(editor).toHaveCount(0);
   await page.screenshot({
-    path: '/private/tmp/query-author-having-success.png',
+    path: testInfo.outputPath('query-author-having-success.png'),
     fullPage: true,
   });
+  await author.getByTestId('author-code-tab').click();
+  await expect(editor).toBeVisible();
   await receipt.getByText('Execution details').click();
   await expect(receipt).toContainText('HAVING threshold (literal)');
 
@@ -75,7 +82,7 @@ test('cold saved CustomerId count supports parameterized HAVING thresholds in th
 
 test('cold saved Chinook query previews and runs the same bound TugQL plan in the real SQLite worker', async ({
   page,
-}) => {
+}, testInfo) => {
   test.setTimeout(60_000);
   const errors: string[] = [];
   page.on('console', (message) => {
@@ -110,7 +117,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expect(receipt).toBeVisible({ timeout: 20_000 });
   await expect(receipt).toContainText('Executed · 7 rows · Customer ID 1 applied');
   await page.screenshot({
-    path: '/private/tmp/query-author-browser-success.png',
+    path: testInfo.outputPath('query-author-browser-success.png'),
     fullPage: true,
   });
   const executionDetails = receipt.getByText('Execution details');
@@ -118,9 +125,9 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expect(receipt).toContainText('Worker execution ID');
   await expect(receipt).toContainText('Input origin: manual · client-reported');
   await expect(receipt).toContainText('The executed request matched the preview at Run time');
-  await expect(page.getByTestId('result-provenance')).toContainText(
-    'Pinned snapshot · queried',
-  );
+  await expect(receipt).toContainText('loaded in');
+  await expect(page.getByTestId('result-provenance')).toHaveCount(0);
+  await expect(page.getByTestId('query-run-timings')).toHaveCount(0);
   const executionId = await receipt.textContent();
   expect(executionId).toMatch(/execution ID [0-9a-f-]{36}/iu);
   const rows = page.getByRole('grid').getByRole('row');
