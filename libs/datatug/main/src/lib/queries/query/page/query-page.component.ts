@@ -1,4 +1,5 @@
 import { SourceRightsNoticeComponent } from '@sneat/datatug-semantic';
+import { formatTugQL, type TugQLFormatOptions } from '@dalgo/core';
 import { DatePipe, NgTemplateOutlet } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { PublicDataService } from '../../public-data/public-data.service';
@@ -143,6 +144,13 @@ interface CommittedQueryRun {
   readonly targetIdentity: string;
   readonly timing?: QueryRunTiming;
   readonly provenance: FederatedQueryResult['provenance'];
+}
+
+interface AuthorFormatUndo {
+  readonly originalSource: string;
+  readonly formattedSource: string;
+  readonly scopeKey: string;
+  readonly queryIdentity: symbol;
 }
 import { RandomIdService } from '@sneat/random';
 import { distinctUntilChanged, takeUntil } from 'rxjs/operators';
@@ -550,6 +558,24 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public showQueryBuilder?: boolean;
   public editorTab: 'text' | 'builder' = 'text';
   public readonly authorMode = signal<'compose' | 'code'>('compose');
+  private readonly authorFormatUndo = signal<AuthorFormatUndo | undefined>(
+    undefined,
+  );
+  public readonly authorFormatStatus = signal('');
+  public readonly canUndoAuthorFormat = computed(() => {
+    const undo = this.authorFormatUndo();
+    if (!undo) return false;
+    const current = this.currentAuthorFormatContext();
+    return (
+      !!current &&
+      this.authorMode() === 'code' &&
+      !this.running() &&
+      !this.queryState.isSaving &&
+      current.scopeKey === undo.scopeKey &&
+      current.queryIdentity === undo.queryIdentity &&
+      this.queryBodyText() === undo.formattedSource
+    );
+  });
   public readonly authorCustomerId = signal('');
   public readonly authorBindingRevision = signal(0);
   public readonly authorDraftRevision = signal(0);
@@ -1073,6 +1099,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       request: { ...this.queryState.request, text } as ITextQueryRequest,
     };
     if (isAuthorDraft) {
+      this.authorFormatUndo.set(undefined);
+      this.authorFormatStatus.set('');
       this.invalidateAuthorDefinitionRun();
       ++this.authorLookupRequestRevision;
       this.queryDef.update((definition) =>
@@ -1095,6 +1123,106 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.authorMode.set(mode);
   }
 
+  private currentAuthorFormatContext():
+    | { readonly scopeKey: string; readonly queryIdentity: symbol }
+    | undefined {
+    const definition = this.queryDef();
+    if (
+      !definition ||
+      definition.connectionId !== 'chinook-sqlite' ||
+      definition.request.queryType !== QueryType.DTQL ||
+      this.queryBodyText() === undefined
+    )
+      return undefined;
+    return {
+      scopeKey: JSON.stringify({
+        queryId: this.queryState.id,
+        definitionId: definition.id,
+        project: this.project?.ref,
+        environment: this.queryState.activeEnv?.id ?? this.envId,
+        securityContextId: this.agentContext.securityContextId(),
+      }),
+      queryIdentity: this.currentQueryIdentity(),
+    };
+  }
+
+  private canFormatAuthorTugQL(): boolean {
+    return (
+      !!this.currentAuthorFormatContext() &&
+      this.authorMode() === 'code' &&
+      !this.running() &&
+      !this.queryState.isSaving
+    );
+  }
+
+  public formatAuthorTugQL(): void {
+    if (!this.canFormatAuthorTugQL()) return;
+    const source = this.queryBodyText();
+    if (source === undefined) return;
+    const options: TugQLFormatOptions = {
+      keywordCase: 'preserve-existing',
+      indentation: 'preserve-existing',
+      defaultKeywordCase: 'lowercase',
+      defaultIndentation: 'two-spaces',
+    };
+    const formatted = formatTugQL(source, options);
+    if (formatted.diagnostics.length) {
+      this.authorFormatStatus.set(
+        `TugQL was not changed: ${formatted.diagnostics
+          .map((item) => item.message)
+          .filter(
+            (message, index, messages) => messages.indexOf(message) === index,
+          )
+          .join(' ')}`,
+      );
+      return;
+    }
+    if (formatted.source === source) {
+      this.authorFormatStatus.set('TugQL is already formatted.');
+      return;
+    }
+
+    this.queryTextChanged(
+      new CustomEvent('ionInput', { detail: { value: formatted.source } }),
+    );
+    const current = this.currentAuthorFormatContext();
+    if (!current) return;
+    this.authorFormatUndo.set({
+      originalSource: source,
+      formattedSource: formatted.source,
+      scopeKey: current.scopeKey,
+      queryIdentity: current.queryIdentity,
+    });
+    this.authorFormatStatus.set(
+      'TugQL formatted. Preview again before running.',
+    );
+  }
+
+  public undoAuthorTugQLFormat(): void {
+    const undo = this.authorFormatUndo();
+    if (!undo || !this.canFormatAuthorTugQL()) return;
+    const current = this.currentAuthorFormatContext();
+    if (
+      !current ||
+      current.scopeKey !== undo.scopeKey ||
+      current.queryIdentity !== undo.queryIdentity ||
+      this.queryBodyText() !== undo.formattedSource
+    ) {
+      this.authorFormatUndo.set(undefined);
+      this.authorFormatStatus.set(
+        'Undo format is no longer available because this draft or query context changed.',
+      );
+      return;
+    }
+    this.authorFormatUndo.set(undefined);
+    this.queryTextChanged(
+      new CustomEvent('ionInput', {
+        detail: { value: undo.originalSource },
+      }),
+    );
+    this.authorFormatStatus.set('Formatting undone.');
+  }
+
   private syncAuthorMode(definition?: IQueryDef, resolveDefault = false): void {
     const nextScopeKey = JSON.stringify({
       queryId: this.queryState.id,
@@ -1112,6 +1240,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.authorModeContextKey = nextContextKey;
     }
     if (nextScopeKey !== this.authorModeScopeKey) {
+      this.authorFormatUndo.set(undefined);
+      this.authorFormatStatus.set('');
       ++this.authorLookupFocusRevision;
       this.authorModeScopeKey = nextScopeKey;
       this.authorModeDefaultResolved = false;
