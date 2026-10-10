@@ -181,46 +181,6 @@ it('checks the pinned relationship schema and returns deterministically ordered 
 });
 
 const pinnedFixturePath = process.env['DATATUG_CHINOOK_FIXTURE_PATH'];
-it.skipIf(!pinnedFixturePath)(
-  'executes the joined profile against the hash-pinned public Chinook fixture',
-  async () => {
-    const fixture = new Uint8Array(await readFile(pinnedFixturePath as string));
-    expect(fixture.byteLength).toBe(1007616);
-    const digest = await crypto.subtle.digest('SHA-256', fixture);
-    expect(
-      [...new Uint8Array(digest)]
-        .map((part) => part.toString(16).padStart(2, '0'))
-        .join(''),
-    ).toBe('7651ba378ac2fcd0dfc3c66fb101f7a7eed3ba39a612ec642b96e20702061f15');
-    const sql =
-      'SELECT "i"."InvoiceId" AS "InvoiceId", "i"."CustomerId" AS "CustomerId", "c"."FirstName" AS "FirstName", "c"."LastName" AS "LastName", "c"."Email" AS "Email" FROM "Invoice" AS "i" INNER JOIN "Customer" AS "c" ON "i"."CustomerId" = "c"."CustomerId" WHERE "i"."CustomerId" = ? ORDER BY "i"."InvoiceId" ASC LIMIT 100';
-    const result = await executePinnedSql(sql, fixture, [1], true, true, [
-      'InvoiceId',
-      'CustomerId',
-      'FirstName',
-      'LastName',
-      'Email',
-    ]);
-    expect(result.rows.map((row) => row[0])).toEqual([
-      98, 121, 143, 195, 316, 327, 382,
-    ]);
-    expect(result.rows.map((row) => row[4])).toEqual(
-      Array(7).fill('luisg@embraer.com.br'),
-    );
-    expect(result.schemaFingerprint).toContain(
-      'FK_Invoice_Customer_CustomerId:Invoice.CustomerId->Customer.CustomerId',
-    );
-    const limited = await executePinnedSql(
-      sql.replace('LIMIT 100', 'LIMIT 3'),
-      fixture,
-      [1],
-      true,
-      true,
-      ['InvoiceId', 'CustomerId', 'FirstName', 'LastName', 'Email'],
-    );
-    expect(limited.rows.map((row) => row[0])).toEqual([98, 121, 143]);
-  },
-);
 
 it('cancels a started Author worker and terminates it promptly', async () => {
   const workerInstances: Array<{
@@ -468,6 +428,106 @@ describe('Author TugQL structural preview and Run binding', () => {
   });
 
   afterEach(() => vi.unstubAllGlobals());
+
+  it.skipIf(!pinnedFixturePath)(
+    'executes the admitted compiled join SQL and bindings against the hash-pinned fixture',
+    async () => {
+      const fixture = new Uint8Array(
+        await readFile(pinnedFixturePath as string),
+      );
+      expect(fixture.byteLength).toBe(1007616);
+      const digest = await crypto.subtle.digest('SHA-256', fixture);
+      expect(
+        [...new Uint8Array(digest)]
+          .map((part) => part.toString(16).padStart(2, '0'))
+          .join(''),
+      ).toBe(
+        '7651ba378ac2fcd0dfc3c66fb101f7a7eed3ba39a612ec642b96e20702061f15',
+      );
+      const customerColumns = [
+        {
+          name: 'CustomerId',
+          dbType: 'INTEGER',
+          isNullable: false,
+          pkPosition: 1,
+        },
+        { name: 'FirstName', dbType: 'NVARCHAR(40)', isNullable: false },
+        { name: 'LastName', dbType: 'NVARCHAR(20)', isNullable: false },
+        { name: 'Email', dbType: 'NVARCHAR(60)', isNullable: false },
+      ];
+      const refs = {
+        version: 1,
+        foreignKeys: [
+          {
+            name: 'FK_Invoice_Customer_CustomerId',
+            table: { schema: 'main', name: 'Invoice' },
+            columns: ['CustomerId'],
+            refTable: { schema: 'main', name: 'Customer' },
+            refColumns: ['CustomerId'],
+          },
+        ],
+      };
+      reader.getRawJson.mockImplementation((_projectId, path) =>
+        of(
+          path.endsWith('Customer/main.Customer.columns.json')
+            ? { columns: customerColumns }
+            : path.endsWith('chinook.refs.json')
+              ? refs
+              : path.endsWith('Invoice/main.Invoice.columns.json')
+                ? { columns }
+                : catalog,
+        ),
+      );
+      const source = (limit: 3 | 100) =>
+        [
+          'parameters (',
+          '  @CustomerId integer required',
+          ')',
+          'from Invoice as i',
+          'join Customer as c',
+          '  on i.CustomerId = c.CustomerId',
+          'where i.CustomerId = @CustomerId',
+          `limit ${limit}`,
+          'select i.InvoiceId, i.CustomerId, c.FirstName, c.LastName, c.Email',
+          '',
+        ].join('\n');
+      const service = TestBed.inject(PublicSqliteQueryService);
+      const runCompiledPlan = async (limit: 3 | 100) => {
+        const preview = await service.prepareTugQL(
+          project,
+          joinedDefinition(source(limit)),
+          90 + limit,
+        );
+        expect(preview).not.toHaveProperty('expandedSource');
+        expect(preview.relationship?.id).toBe(
+          'FK_Invoice_Customer_CustomerId',
+        );
+        expect(preview.sql).toContain('INNER JOIN "Customer" AS "c"');
+        expect(preview.sql).toContain('ORDER BY "i"."InvoiceId" ASC');
+        const result = await executePinnedSql(
+          preview.sql,
+          fixture,
+          [1, ...preview.fixedBindings],
+          true,
+          true,
+          preview.outputColumns?.map((column) => column.name),
+        );
+        return result;
+      };
+      const result = await runCompiledPlan(100);
+      expect(result.rows.map((row) => row[0])).toEqual([
+        98, 121, 143, 195, 316, 327, 382,
+      ]);
+      expect(result.rows.map((row) => row[4])).toEqual(
+        Array(7).fill('luisg@embraer.com.br'),
+      );
+      expect(result.schemaFingerprint).toContain(
+        'FK_Invoice_Customer_CustomerId:Invoice.CustomerId->Customer.CustomerId',
+      );
+      const limited = await runCompiledPlan(3);
+      expect(limited.rows.map((row) => row[0])).toEqual([98, 121, 143]);
+    },
+  );
 
   it('previews SQL with the required binding unset and does not create a worker', async () => {
     const worker = vi.fn(() => {
