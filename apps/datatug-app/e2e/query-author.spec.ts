@@ -51,6 +51,10 @@ test('cold saved CustomerId count supports parameterized HAVING thresholds in th
   await expect(rows).toHaveCount(2);
   await expect(rows.nth(1)).toContainText('1');
   await expect(rows.nth(1)).toContainText('7');
+  await page.screenshot({
+    path: '/private/tmp/query-author-having-success.png',
+    fullPage: true,
+  });
   await receipt.getByText('Execution details').click();
   await expect(receipt).toContainText('HAVING threshold (literal)');
 

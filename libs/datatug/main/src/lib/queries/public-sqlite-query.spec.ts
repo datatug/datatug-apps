@@ -127,14 +127,12 @@ it('executes prepared integer bindings through the same SQLite worker path', asy
 });
 
 it('cancels a started Author worker and terminates it promptly', async () => {
-  let workerInstance:
-    | {
-        onmessage: ((event: MessageEvent) => void) | null;
-        onerror: (() => void) | null;
-        posted: boolean;
-        terminated: boolean;
-      }
-    | undefined;
+  const workerInstances: Array<{
+    onmessage: ((event: MessageEvent) => void) | null;
+    onerror: (() => void) | null;
+    posted: boolean;
+    terminated: boolean;
+  }> = [];
   class PendingWorker {
     public onmessage: ((event: MessageEvent) => void) | null = null;
     public onerror: (() => void) | null = null;
@@ -147,7 +145,7 @@ it('cancels a started Author worker and terminates it promptly', async () => {
       this.terminated = true;
     }
     constructor() {
-      workerInstance = this;
+      workerInstances.push(this);
     }
   }
   TestBed.configureTestingModule({
@@ -192,10 +190,10 @@ it('cancels a started Author worker and terminates it promptly', async () => {
       plan,
       controller.signal,
     );
-    await vi.waitFor(() => expect(workerInstance?.posted).toBe(true));
+    await vi.waitFor(() => expect(workerInstances.at(-1)?.posted).toBe(true));
     controller.abort();
     await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
-    expect(workerInstance?.terminated).toBe(true);
+    expect(workerInstances.at(-1)?.terminated).toBe(true);
   } finally {
     vi.unstubAllGlobals();
   }
