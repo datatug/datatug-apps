@@ -94,8 +94,8 @@ test('Code formats TugQL reversibly before explicit Preview and worker Run', asy
   await expect(editor).not.toHaveValue(mixed);
   const formatted = await editor.inputValue();
   expect(formatted).not.toBe(mixed);
-  await expect(author.getByTestId('author-format-status')).toContainText(
-    'Preview again before running',
+  await expect(author.getByTestId('author-format-status')).toHaveText(
+    'TugQL formatted.',
   );
   await expect(author.getByTestId('author-sql-preview')).toHaveCount(0);
   await expect(page.getByTestId('author-execution-receipt')).toHaveCount(0);
@@ -162,6 +162,9 @@ test('Code formats TugQL reversibly before explicit Preview and worker Run', asy
       rows.nth(index + 1).getByRole('gridcell').first(),
     ).toHaveText(invoiceId);
   }
+  await expect(author.getByTestId('author-format-status')).toHaveText(
+    'TugQL formatted.',
+  );
 });
 
 test('Invoice Customer join makes missing ON reviewable and opens an explicit typed lookup', async ({

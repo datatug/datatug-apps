@@ -1193,9 +1193,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       scopeKey: current.scopeKey,
       queryIdentity: current.queryIdentity,
     });
-    this.authorFormatStatus.set(
-      'TugQL formatted. Preview again before running.',
-    );
+    this.authorFormatStatus.set('TugQL formatted.');
   }
 
   public undoAuthorTugQLFormat(): void {

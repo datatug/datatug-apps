@@ -919,7 +919,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     expect(formatted).not.toBe(source);
     expect(formatted).toContain(literal);
     expect(parseTugQL(formatted).diagnostics).toEqual([]);
-    expect(component.authorFormatStatus()).toContain('TugQL formatted');
+    expect(component.authorFormatStatus()).toBe('TugQL formatted.');
 
     component.undoAuthorTugQLFormat();
     expect(component.queryBodyText()).toBe(source);
@@ -946,7 +946,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     component.formatAuthorTugQL();
 
     const parsed = parseTugQL(component.queryBodyText() ?? '');
-    expect(component.authorFormatStatus()).toContain('TugQL formatted');
+    expect(component.authorFormatStatus()).toBe('TugQL formatted.');
     expect(parsed.diagnostics).toEqual([]);
     const resolution = resolveTugQL(parsed.document, {
       authorizedSchemas: [
