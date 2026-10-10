@@ -11,6 +11,7 @@ import 'fake-indexeddb/auto';
 import { resolve } from 'node:path';
 import { nativeFixture } from '../../public-data/native-fixture.spec-helper';
 import { PublicDataService } from '../../public-data/public-data.service';
+import { NgTemplateOutlet } from '@angular/common';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import {
   ChangeDetectorRef,
@@ -674,6 +675,172 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     expect(component.authorPlan()).toBe(preview);
   });
 
+  it('marks a committed result previous when same-value selection provenance is changed to manual', async () => {
+    component = await createComponent();
+    component.authorCustomerId.set('1');
+    component.authorDraftRevision.set(2);
+    component.queryState = {
+      ...component.queryState,
+      authorBindings: { CustomerId: '1' },
+      authorBindingProvenance: {
+        CustomerId: {
+          origin: 'selection',
+          originEvidence: 'client-reported',
+          sourceQueryId: 'chinook-customer-invoice-join',
+          sourceColumn: 'CustomerId',
+        },
+      },
+    };
+    const result = {
+      bindingsApplied: [
+        {
+          parameterId: 'CustomerId',
+          value: { type: 'integer', value: '1' },
+          origin: 'selection',
+          originEvidence: 'client-reported',
+        },
+      ],
+      publicSqliteReceipt: {
+        draftRevision: 2,
+        clientReportedBinding: {
+          origin: 'selection',
+          originEvidence: 'client-reported',
+          sourceQueryId: 'chinook-customer-invoice-join',
+          sourceColumn: 'CustomerId',
+        },
+      },
+    };
+    component.runResult.set(result as never);
+    expect(component.publicSqliteRunIsStale(result as never)).toBe(false);
+    const bindingRevision = component.authorBindingRevision();
+
+    component.authorCustomerIdChanged(
+      new CustomEvent('ionInput', { detail: { value: '1' } }),
+    );
+
+    expect(component.authorBindingRevision()).toBe(bindingRevision + 1);
+    expect(component.authorCustomerIdOrigin()).toMatchObject({
+      origin: 'manual',
+      originEvidence: 'client-reported',
+    });
+    expect(component.publicSqliteRunIsStale(result as never)).toBe(true);
+  });
+
+  it('retains executed results when the authorized lookup read fails', async () => {
+    const definition: IQueryDef = {
+      ...queryDef,
+      id: 'chinook-customer-invoice-join',
+      connectionId: 'chinook-sqlite',
+      request: {
+        queryType: QueryType.DTQL,
+        text: 'from Invoice as i join Customer as c on i.CustomerId = c.CustomerId',
+      } as unknown as ITextQueryRequest,
+    };
+    component = await createComponent({}, definition);
+    component.project = {
+      ref: {
+        storeId: 'github.com',
+        projectId: 'demo@buyer@project',
+        projectApi: 'cloud',
+        branch: 'main',
+      },
+    };
+    component.queryState = {
+      ...component.queryState,
+      id: definition.id,
+      queryType: QueryType.DTQL,
+      request: definition.request,
+      authorBindings: { CustomerId: '1' },
+      authorBindingProvenance: {
+        CustomerId: { origin: 'manual', originEvidence: 'client-reported' },
+      },
+    };
+    component.queryDef.set(definition);
+    component.authorCustomerId.set('1');
+    const result = {
+      recordset: {
+        columns: [{ name: 'CustomerId', type: 'integer' }],
+        rows: [[{ type: 'integer', value: '1' }]],
+      },
+      limitations: [],
+      truncated: false,
+      provenance: {
+        source: 'fixture',
+        queryId: definition.id,
+        mode: 'live',
+        observedAt: '2026-10-10T00:00:00Z',
+        executionProfile: 'protected',
+      },
+      bindingsApplied: [
+        {
+          parameterId: 'CustomerId',
+          value: { type: 'integer', value: '1' },
+          origin: 'manual',
+          originEvidence: 'client-reported',
+        },
+      ],
+      publicSqliteReceipt: {
+        executionId: 'join-run-1',
+        draftRevision: 0,
+        sql: 'SELECT 1',
+        bindingNames: ['CustomerId'],
+        sourceId: 'chinook-sqlite',
+        fixtureSha256: 'fixture',
+        schemaVersion: 'schema',
+        relationship: {
+          id: 'FK_Invoice_Customer_CustomerId',
+          version: '1',
+          fromSource: 'Invoice',
+          toSource: 'Customer',
+          joinType: 'inner',
+          pairs: [{ fromField: 'CustomerId', toField: 'CustomerId' }],
+        },
+        outputColumns: [
+          {
+            name: 'CustomerId',
+            type: 'integer',
+            lineage: [{ source: 'Invoice', field: 'CustomerId' }],
+          },
+        ],
+        clientReportedBinding: {
+          origin: 'manual',
+          originEvidence: 'client-reported',
+        },
+      },
+    };
+    component.runResult.set(result as never);
+    const getRevision = vi.fn(() => throwError(() => new Error('read denied')));
+    Object.assign(TestBed.inject(QueriesService), { getRevision });
+    const editor = TestBed.inject(QueryEditorStateService);
+    const openAuthorizedQuery = vi.spyOn(editor, 'openAuthorizedQuery');
+    const internals = component as unknown as {
+      currentQueryIdentity(): symbol;
+      openAuthorCustomerLookup(
+        columnIndex: number,
+        columnName: string,
+        rowIndex: number,
+        executionId: string,
+        customerId: string,
+        identity: symbol,
+      ): Promise<void>;
+    };
+
+    await internals.openAuthorCustomerLookup(
+      0,
+      'CustomerId',
+      0,
+      'join-run-1',
+      '1',
+      internals.currentQueryIdentity(),
+    );
+
+    expect(getRevision).toHaveBeenCalledOnce();
+    expect(component.queryId).toBe(definition.id);
+    expect(component.runResult()).toBe(result);
+    expect(component.authorError()).toContain('lookup could not be opened');
+    expect(openAuthorizedQuery).not.toHaveBeenCalled();
+  });
+
   async function createComponent(
     historyState: Record<string, unknown> = {},
     definition: IQueryDef = queryDef,
@@ -785,6 +952,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
                     ),
                   updateQueryState: vi.fn(),
                   openQuery: vi.fn(),
+                  openAuthorizedQuery: vi.fn(),
                   newQuery: vi.fn(),
                   getQueryState: vi.fn(),
                   saveQuery: vi.fn(),
@@ -810,9 +978,12 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     })
       .overrideComponent(QueryPageComponent, {
         set: {
-          imports: template.includes('<ion-select')
-            ? [IonSelect, IonSelectOption]
-            : [],
+          imports: [
+            NgTemplateOutlet,
+            ...(template.includes('<ion-select')
+              ? [IonSelect, IonSelectOption]
+              : []),
+          ],
           template,
           schemas: [CUSTOM_ELEMENTS_SCHEMA],
           providers: [],
@@ -1280,7 +1451,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       'utf8',
     )
       .split('  @if (runResult(); as result) {')[1]
-      .split('</ion-content>')[0]
+      .split('  </ng-template>')[0]
       .replace(/^/, '@if (runResult(); as result) {');
 
   it('retains a frozen successful receipt across a failed and partial rerun, then clears it on scope change', async () => {
@@ -2544,6 +2715,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
         );
         const template = html
           .split('<ion-content color="light">')[1]
+          .split('  <ng-template #queryEditor>')[1]
           .split(
             '  @if (!isTugqlAuthorJourney()) {\n    <ion-card>\n      <ion-item>\n        <ion-input',
           )[0];

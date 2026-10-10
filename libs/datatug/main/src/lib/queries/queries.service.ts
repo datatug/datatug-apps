@@ -98,6 +98,7 @@ interface IWireQueryItem {
   draft?: boolean;
   connectionId?: string;
   parameters?: IParameterDef[];
+  relationshipBindings?: IQueryDef['relationshipBindings'];
   dbModel?: string;
   targets?: IQueryTarget[];
   recordsets?: IRecordsetDef[];

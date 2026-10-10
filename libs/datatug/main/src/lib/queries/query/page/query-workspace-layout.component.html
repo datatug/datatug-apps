@@ -1,0 +1,38 @@
+<nav class="workspace-mobile-navigation" aria-label="Query workspace views">
+  <ion-buttons>
+    <ion-button
+      id="workspace-editor-tab"
+      [attr.aria-pressed]="mobilePane() === 'editor'"
+      [fill]="mobilePane() === 'editor' ? 'solid' : 'clear'"
+      (click)="mobilePane.set('editor')"
+    >
+      Editor
+    </ion-button>
+    <ion-button
+      id="workspace-results-tab"
+      [attr.aria-pressed]="mobilePane() === 'results'"
+      [fill]="mobilePane() === 'results' ? 'solid' : 'clear'"
+      (click)="mobilePane.set('results')"
+    >
+      Results
+    </ion-button>
+  </ion-buttons>
+</nav>
+<div
+  class="workspace-pane workspace-editor-pane"
+  id="workspace-editor-pane"
+  role="region"
+  aria-label="Query editor"
+  [class.mobile-inactive]="mobilePane() !== 'editor'"
+>
+  <ng-content select="[query-workspace-editor]" />
+</div>
+<div
+  class="workspace-pane workspace-results-pane"
+  id="workspace-results-pane"
+  role="region"
+  aria-label="Query results"
+  [class.mobile-inactive]="mobilePane() !== 'results'"
+>
+  <ng-content select="[query-workspace-results]" />
+</div>

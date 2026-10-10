@@ -1,5 +1,5 @@
 import { SourceRightsNoticeComponent } from '@sneat/datatug-semantic';
-import { DatePipe } from '@angular/common';
+import { DatePipe, NgTemplateOutlet } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { PublicDataService } from '../../public-data/public-data.service';
 import { ConfiguredPublicDataSourcesService } from '../../public-data/configured-public-data-sources.service';
@@ -27,6 +27,8 @@ import {
   AllCommunityModule,
   ModuleRegistry,
   type ColDef,
+  type ICellRendererParams,
+  type SuppressKeyboardEventParams,
 } from 'ag-grid-community';
 import {
   ErrorLogger,
@@ -43,6 +45,8 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 interface QueryResultGridRow {
   readonly [columnId: string]: string;
 }
+
+const CUSTOMER_INVOICE_LOOKUP_QUERY_ID = 'chinook-invoice-author';
 
 // displayTypedValue converts integer strings through Number(), which can round wide values.
 const displayQueryResultValue = (value: TypedValue): string =>
@@ -127,7 +131,7 @@ interface CommittedQueryRun {
 }
 import { RandomIdService } from '@sneat/random';
 import { distinctUntilChanged, takeUntil } from 'rxjs/operators';
-import { Subject } from 'rxjs';
+import { firstValueFrom, Subject } from 'rxjs';
 import {
   IonBackButton,
   IonBadge,
@@ -178,11 +182,13 @@ import {
   TypedValue,
 } from '@sneat/datatug-semantic';
 import { IProjectRef, equalProjectRef } from '../../../core/project-context';
+import { fromProjectQueryWire } from '../../project-query-contract';
 import { DatatugCoreModule } from '../../../core/datatug-core.module';
 import {
   IQueryEditorState,
   IQueryEnvState,
   IQueryState,
+  AuthorBindingProvenance,
 } from '../../../editor/models';
 import { Coordinator } from '../../../executor/coordinator';
 import {
@@ -229,7 +235,16 @@ import { graphStableIdentity } from '../../public-data/native-graph-executor';
 import { QueryContextSqlService } from '../../query-context-sql.service';
 import { PublicSqliteQueryService } from '../../public-sqlite-query.service';
 import { AuthorSqlPreviewComponent } from './author-sql-preview.component';
-import type { PublicSqliteQueryPreview } from '../../public-sqlite-tugql';
+import { AuthorComposeControlsComponent } from './author-compose-controls.component';
+import {
+  customerIdLookupValue,
+  hasVerifiedCustomerIdLineage,
+} from './author-customer-lookup';
+import { QueryWorkspaceLayoutComponent } from './query-workspace-layout.component';
+import type {
+  PublicSqliteExecutionReceipt,
+  PublicSqliteQueryPreview,
+} from '../../public-sqlite-tugql';
 import {
   isQueryChanged,
   QueryEditorStateService,
@@ -418,8 +433,11 @@ export function extractLinkedEntityNames(
   templateUrl: './query-page.component.html',
   styleUrl: './query-page.component.scss',
   imports: [
+    AuthorComposeControlsComponent,
     AuthorSqlPreviewComponent,
+    QueryWorkspaceLayoutComponent,
     DatePipe,
+    NgTemplateOutlet,
     // DatatugNavContextService and EnvironmentService are now
     // providedIn: 'root' (nav-context-root-singletons); QueriesService,
     // QueryContextSqlService, QueryEditorStateService and Coordinator
@@ -744,17 +762,48 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     return rows.slice(start, start + this.resultPageSize);
   });
   public readonly resultGridColumnDefs = computed<ColDef<QueryResultGridRow>[]>(
-    () =>
-      (this.displayedRecordset()?.columns ?? []).map((column, index) => {
+    () => {
+      const result = this.runResult();
+      const receipt = result?.publicSqliteReceipt;
+      const canOfferLookup =
+        !!result &&
+        this.relatedResultSet() === 'affiliations' &&
+        !this.selectedHistoricalResult() &&
+        !this.displayedResultIsPreviousRun() &&
+        !this.publicSqliteRunIsStale(result);
+      return (this.displayedRecordset()?.columns ?? []).map((column, index) => {
         const columnId = `result_${index}`;
+        const canLookupCustomer = hasVerifiedCustomerIdLineage(
+          receipt,
+          index,
+          column.name,
+        ) && canOfferLookup;
         return {
           colId: columnId,
           field: columnId,
           headerName: column.name,
           sortable: false,
           minWidth: 120,
+          ...(canLookupCustomer
+            ? {
+                cellRenderer: (
+                  params: ICellRendererParams<QueryResultGridRow, string>,
+                ) =>
+                  this.renderCustomerLookupCell(
+                    params,
+                    receipt,
+                    this.currentQueryIdentity(),
+                    index,
+                    column.name,
+                  ),
+              suppressKeyboardEvent: (
+                params: SuppressKeyboardEventParams<QueryResultGridRow, string>,
+              ) => this.suppressCustomerLookupKeyboardEvent(params),
+              }
+            : {}),
         };
-      }),
+      });
+    },
   );
   public readonly resultGridRows = computed<QueryResultGridRow[]>(() =>
     this.visibleResultRows().map((row) =>
@@ -771,6 +820,116 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   };
   public readonly resultGridNoRowsTemplate =
     '<span class="ag-overlay-no-rows-center">No rows.</span>';
+
+  private renderCustomerLookupCell(
+    params: ICellRendererParams<QueryResultGridRow, string>,
+    receipt: PublicSqliteExecutionReceipt | undefined,
+    queryIdentity: symbol,
+    columnIndex: number,
+    columnName: string,
+  ): HTMLElement {
+    const value = document.createElement('span');
+    value.textContent = params.value ?? '';
+    const rowIndex = params.node.rowIndex;
+    const result = this.runResult();
+    const current =
+      !!result &&
+      rowIndex !== null &&
+      this.relatedResultSet() === 'affiliations' &&
+      !this.selectedHistoricalResult() &&
+      !this.displayedResultIsPreviousRun() &&
+      !this.publicSqliteRunIsStale(result);
+    const customerId = customerIdLookupValue(
+      receipt,
+      columnIndex,
+      columnName,
+      rowIndex === null ? undefined : this.visibleResultRows()[rowIndex]?.[columnIndex],
+      current,
+    );
+    if (!customerId) return value;
+
+    const cell = document.createElement('div');
+    cell.className = 'author-customer-cell';
+    cell.append(value);
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'author-customer-lookup-action';
+    button.dataset['testid'] = 'author-customer-lookup-action';
+    button.dataset['gridRow'] = String(rowIndex);
+    button.dataset['gridColumn'] = params.column?.getColId() ?? '';
+    button.textContent = 'Look up invoices';
+    button.setAttribute(
+      'aria-label',
+      `Look up invoices for Customer ID ${customerId}`,
+    );
+    button.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        event.stopPropagation();
+        button.click();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      event.preventDefault();
+      event.stopPropagation();
+      params.api.tabToNextCell(event);
+    });
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      if (rowIndex !== null && receipt?.executionId) {
+        this.openAuthorCustomerLookup(
+          columnIndex,
+          columnName,
+          rowIndex,
+          receipt.executionId,
+          customerId,
+          queryIdentity,
+        );
+      }
+    });
+    cell.append(button);
+    return cell;
+  }
+
+  /**
+   * AG Grid keeps keyboard focus on the gridcell and does not include controls
+   * in a cell renderer in its normal Tab sequence. Let Tab enter this action
+   * from the focused CustomerId cell; the button itself delegates Tab back to
+   * AG Grid so navigation continues through cells and out of the grid.
+   */
+  private suppressCustomerLookupKeyboardEvent(
+    params: SuppressKeyboardEventParams<QueryResultGridRow, string>,
+  ): boolean {
+    const event = params.event;
+    if (event.key !== 'Tab' && event.key !== 'Enter' && event.key !== ' ') {
+      return false;
+    }
+    const rowIndex = params.node.rowIndex;
+    if (rowIndex === null) return false;
+    const columnId = params.column.getColId();
+    const eventTarget = event.target;
+    if (!(eventTarget instanceof Element)) return false;
+    const gridCell = eventTarget.closest<HTMLElement>('.ag-cell');
+    const button = gridCell?.querySelector<HTMLButtonElement>(
+      '.author-customer-lookup-action',
+    );
+    if (
+      button?.dataset['gridRow'] !== String(rowIndex) ||
+      button?.dataset['gridColumn'] !== columnId
+    ) {
+      return false;
+    }
+    if (!button || event.target === button) return false;
+    if (event.key === 'Tab') {
+      if (event.shiftKey) return false;
+      event.preventDefault();
+      button.focus();
+      return true;
+    }
+    event.preventDefault();
+    button.click();
+    return true;
+  }
   public readonly resultPageEnd = computed(() =>
     Math.min(
       (this.resultPageIndex() + 1) * this.resultPageSize,
@@ -867,7 +1026,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   public queryTextChanged(event: Event): void {
-    if (this.queryState.saveSupported === false) return;
+    const isAuthorDraft = this.isTugqlAuthorJourney();
+    // Local Author editing is independent of whether this rich query can be
+    // serialized back to its current remote source. Save remains gated, but a
+    // supported local draft must still update in Compose and Code.
+    if (this.queryState.saveSupported === false && !isAuthorDraft) return;
     const text = (event as CustomEvent<{ value?: string }>).detail.value ?? '';
     if (
       !this.queryState.request ||
@@ -878,7 +1041,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       ...this.queryState,
       request: { ...this.queryState.request, text } as ITextQueryRequest,
     };
-    if (this.isTugqlAuthorJourney()) {
+    if (isAuthorDraft) {
       this.authorDraftRevision.update((revision) => revision + 1);
       this.authorPlan.set(undefined);
       this.authorError.set(undefined);
@@ -890,6 +1053,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.authorMode.set(mode);
   }
 
+  public authorComposeTextChanged(text: string): void {
+    this.queryTextChanged(new CustomEvent('ionInput', { detail: { value: text } }));
+  }
+
   public cancelAuthorRun(): void {
     this.authorRunAbort?.abort();
   }
@@ -898,7 +1065,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const detail = (event as CustomEvent<{ value?: string }>).detail;
     const target = event.target as HTMLInputElement | null;
     const value = detail?.value ?? target?.value ?? '';
-    if (value !== this.authorCustomerId()) {
+    const previousOrigin = this.authorCustomerIdOrigin();
+    const originChanged =
+      previousOrigin.origin !== 'manual' ||
+      previousOrigin.originEvidence !== 'client-reported' ||
+      previousOrigin.sourceQueryId !== undefined ||
+      previousOrigin.sourceColumn !== undefined;
+    if (value !== this.authorCustomerId() || originChanged) {
       this.authorBindingRevision.update((revision) => revision + 1);
     }
     this.authorCustomerId.set(value);
@@ -909,9 +1082,167 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         ...(this.queryState.authorBindings ?? {}),
         CustomerId: value,
       },
+      authorBindingProvenance: {
+        ...(this.queryState.authorBindingProvenance ?? {}),
+        CustomerId: {
+          origin: 'manual',
+          originEvidence: 'client-reported',
+        },
+      },
     };
     this.queryState = next;
     this.queryEditorStateService.updateQueryState(next);
+  }
+
+  private async openAuthorCustomerLookup(
+    columnIndex: number,
+    columnName: string,
+    rowIndex: number,
+    expectedExecutionId: string,
+    expectedCustomerId: string,
+    expectedQueryIdentity: symbol,
+  ): Promise<void> {
+    const result = this.runResult();
+    const receipt = result?.publicSqliteReceipt;
+    if (
+      !result ||
+      receipt?.executionId !== expectedExecutionId ||
+      this.currentQueryIdentity() !== expectedQueryIdentity
+    ) {
+      return;
+    }
+    const row = this.visibleResultRows()[rowIndex];
+    const isCurrent =
+      !!result &&
+      this.relatedResultSet() === 'affiliations' &&
+      !this.selectedHistoricalResult() &&
+      !this.displayedResultIsPreviousRun() &&
+      !this.publicSqliteRunIsStale(result);
+    const customerId = customerIdLookupValue(
+      receipt,
+      columnIndex,
+      columnName,
+      row?.[columnIndex],
+      isCurrent,
+    );
+    const projectRef = this.project?.ref;
+    if (
+      !customerId ||
+      customerId !== expectedCustomerId ||
+      !projectRef ||
+      !this.queryId
+    ) {
+      return;
+    }
+
+    const sourceQueryId = this.queryId;
+    const activeEnvironment = this.queryState.activeEnv?.id;
+    const sourceProjectRef = projectRef;
+    const sourceEnvironment = this.queryState.activeEnv?.id;
+    const sourceDefinition = this.queryDef();
+    const sourceSecurityContextId = this.agentContext.securityContextId();
+    const sourceDraftRevision = this.authorDraftRevision();
+    const sourceBindingRevision = this.authorBindingRevision();
+    let lookupDefinition: IQueryDef;
+    let lookupRevision:
+      | {
+          revision: string;
+          branchHead?: string;
+          saveSupported?: boolean;
+          unsupportedSaveReason?: string;
+        }
+      | undefined;
+    try {
+      if (sourceProjectRef.projectApi) {
+        const loaded = await firstValueFrom(
+          this.queriesService.getRevision(
+            sourceProjectRef,
+            CUSTOMER_INVOICE_LOOKUP_QUERY_ID,
+          ),
+        );
+        lookupDefinition = fromProjectQueryWire(loaded.query);
+        lookupRevision = loaded;
+      } else {
+        lookupDefinition = await firstValueFrom(
+          this.queriesService.getQuery(
+            sourceProjectRef,
+            CUSTOMER_INVOICE_LOOKUP_QUERY_ID,
+          ),
+        );
+      }
+    } catch {
+      // A cloud 401/403 is also delivered through QueriesService's authority
+      // invalidation stream. Never restore cached private data in that case.
+      if (this.queryId === sourceQueryId && this.runResult() === result) {
+        this.authorError.set(
+          'The invoice lookup could not be opened. Your current results are still available.',
+        );
+      }
+      return;
+    }
+    if (
+      !equalProjectRef(this.project?.ref, sourceProjectRef) ||
+      this.queryId !== sourceQueryId ||
+      this.queryDef() !== sourceDefinition ||
+      this.queryState.activeEnv?.id !== sourceEnvironment ||
+      this.agentContext.securityContextId() !== sourceSecurityContextId ||
+      this.authorDraftRevision() !== sourceDraftRevision ||
+      this.authorBindingRevision() !== sourceBindingRevision ||
+      this.runResult() !== result ||
+      this.runResult()?.publicSqliteReceipt?.executionId !== expectedExecutionId ||
+      this.currentQueryIdentity() !== expectedQueryIdentity
+    ) {
+      return;
+    }
+    this.authorMode.set('compose');
+    this.authorPlan.set(undefined);
+    this.authorError.set(undefined);
+    let lookup: IQueryState;
+    try {
+      lookup = this.queryEditorStateService.openAuthorizedQuery(
+        CUSTOMER_INVOICE_LOOKUP_QUERY_ID,
+        lookupDefinition,
+        sourceProjectRef,
+        lookupRevision,
+      );
+    } catch {
+      this.authorError.set(
+        'The invoice lookup could not be opened. Your current results are still available.',
+      );
+      return;
+    }
+    this.authorBindingRevision.update((revision) => revision + 1);
+    this.queryEditorStateService.updateQueryState({
+      ...lookup,
+      authorBindings: {
+        ...(lookup.authorBindings ?? {}),
+        CustomerId: customerId,
+      },
+      authorBindingProvenance: {
+        ...(lookup.authorBindingProvenance ?? {}),
+        CustomerId: {
+          origin: 'selection',
+          originEvidence: 'client-reported',
+          sourceQueryId,
+          sourceColumn: columnName,
+        },
+      },
+    });
+    void this.router
+      .navigate([], {
+        relativeTo: this.route,
+        queryParams: {
+          id: CUSTOMER_INVOICE_LOOKUP_QUERY_ID,
+          editor: 'text',
+          ...(activeEnvironment ? { env: activeEnvironment } : {}),
+        },
+        queryParamsHandling: 'merge',
+      })
+      .catch(
+        this.errorLogger.logErrorHandler(
+          'Failed to open the Customer invoice lookup query',
+        ),
+      );
   }
 
   public async previewTugql(): Promise<void> {
@@ -943,6 +1274,38 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         revision,
       );
       if (isCurrent()) {
+        if (plan.expandedSource !== undefined) {
+          if (
+            plan.expandedSource ===
+            (definition.request as ITextQueryRequest).text
+          ) {
+            this.authorError.set(
+              'The relationship completion did not change the draft. Review the JOIN in Code.',
+            );
+            return;
+          }
+          this.authorMode.set('code');
+          this.queryTextChanged(
+            new CustomEvent('ionInput', {
+              detail: { value: plan.expandedSource },
+            }),
+          );
+          if (this.queryDef()?.request.queryType !== QueryType.DTQL) return;
+          if (
+            (this.queryDef()?.request as ITextQueryRequest | undefined)?.text !==
+            plan.expandedSource
+          ) {
+            this.authorError.set(
+              'The relationship completion could not be applied to this draft. Review the JOIN in Code.',
+            );
+            return;
+          }
+          // A missing or shorthand ON clause is never hidden inside a preview
+          // plan or run. Show the exact source edit in Code, then compile that
+          // now-visible draft again; the user must still choose Run explicitly.
+          void this.previewTugql();
+          return;
+        }
         this.authorPlan.set(plan);
       }
     } catch (error: unknown) {
@@ -960,6 +1323,15 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     return applied?.value.type === 'integer' ? applied.value.value : 'applied';
   }
 
+  public authorCustomerIdOrigin(): AuthorBindingProvenance {
+    return (
+      this.queryState.authorBindingProvenance?.['CustomerId'] ?? {
+        origin: 'manual',
+        originEvidence: 'client-reported',
+      }
+    );
+  }
+
   public publicSqliteRunIsStale(result: FederatedQueryResult): boolean {
     const applied = result.bindingsApplied.find(
       (binding) => binding.parameterId === 'CustomerId',
@@ -970,7 +1342,15 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       result.publicSqliteReceipt?.draftRevision !==
         this.authorDraftRevision() ||
       applied?.value.type !== 'integer' ||
-      Number(applied.value.value) !== Number(this.authorCustomerId())
+      Number(applied.value.value) !== Number(this.authorCustomerId()) ||
+      applied.origin !== this.authorCustomerIdOrigin().origin ||
+      applied.originEvidence !==
+        this.authorCustomerIdOrigin().originEvidence ||
+      (this.authorCustomerIdOrigin().origin === 'selection' &&
+        (result.publicSqliteReceipt?.clientReportedBinding?.sourceQueryId !==
+          this.authorCustomerIdOrigin().sourceQueryId ||
+          result.publicSqliteReceipt?.clientReportedBinding?.sourceColumn !==
+            this.authorCustomerIdOrigin().sourceColumn))
     );
   }
 
@@ -2443,6 +2823,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           customerId,
           previewPlan,
           controller.signal,
+          this.authorCustomerIdOrigin(),
         )
         .then((result) => {
           if (!current()) return;

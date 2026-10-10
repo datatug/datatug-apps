@@ -1,0 +1,87 @@
+:host {
+  display: block;
+  min-width: 0;
+}
+
+.workspace-mobile-navigation {
+  display: none;
+}
+
+.workspace-pane {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+:host ::ng-deep .author-results-empty {
+  display: grid;
+  justify-items: start;
+  gap: 0.45rem;
+  min-height: 12rem;
+  padding: 1.5rem;
+  border: 1px solid var(--ion-color-step-150, #e5e7eb);
+  border-radius: 1rem;
+  background: var(--ion-background-color, #fff);
+}
+
+:host ::ng-deep .author-results-empty p,
+:host ::ng-deep .author-results-empty h2 {
+  margin: 0;
+}
+
+:host ::ng-deep .author-results-empty p:last-child {
+  max-width: 38rem;
+  color: var(--ion-color-medium-shade);
+  line-height: 1.55;
+}
+
+:host ::ng-deep .author-results-eyebrow {
+  color: var(--ion-color-primary-shade);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+@media (min-width: 701px) {
+  :host {
+    display: grid;
+    grid-template-columns: minmax(20rem, 0.92fr) minmax(0, 1.08fr);
+    align-items: start;
+    gap: 1.25rem;
+    padding: 1rem;
+  }
+}
+
+@media (max-width: 700px) {
+  :host {
+    padding: 1rem;
+  }
+
+  .workspace-mobile-navigation {
+    display: block;
+    margin-bottom: 0.8rem;
+  }
+
+  .workspace-mobile-navigation ion-buttons {
+    width: fit-content;
+    padding: 0.2rem;
+    border: 1px solid var(--ion-color-step-150, #e5e7eb);
+    border-radius: 0.75rem;
+    background: var(--ion-color-step-50, #f8fafc);
+  }
+
+  .workspace-mobile-navigation ion-button {
+    min-height: 2.5rem;
+    margin: 0;
+    --border-radius: 0.55rem;
+  }
+
+  .workspace-pane.mobile-inactive {
+    display: none;
+  }
+}
+
+@media (max-width: 340px) {
+  :host {
+    padding-inline: 1rem;
+  }
+}

@@ -10,6 +10,25 @@ const MAX_RESULT_BYTES = 1 << 20;
 const MAX_SQL_BYTES = 64 << 10;
 
 type Cell = string | number | null;
+interface WorkerRelationship {
+  readonly id: string;
+  readonly version: string;
+  readonly fromSource: string;
+  readonly toSource: string;
+  readonly joinType: 'inner';
+  readonly pairs: readonly {
+    readonly fromField: string;
+    readonly toField: string;
+  }[];
+}
+interface WorkerOutputColumn {
+  readonly name: string;
+  readonly type: 'integer' | 'string';
+  readonly lineage: readonly {
+    readonly source: string;
+    readonly field: string;
+  }[];
+}
 interface RunMessage {
   readonly sql: string;
   readonly bindings?: readonly (string | number | null)[];
@@ -18,6 +37,8 @@ interface RunMessage {
   readonly schemaVersion?: string;
   readonly draftRevision?: number;
   readonly authorProfile?: boolean;
+  readonly relationship?: WorkerRelationship;
+  readonly outputColumns?: readonly WorkerOutputColumn[];
 }
 interface WorkerExecutionReceipt {
   readonly executionId: string;
@@ -28,10 +49,13 @@ interface WorkerExecutionReceipt {
   readonly schemaVersion: string;
   readonly draftRevision: number;
   readonly schemaFingerprint: string;
+  readonly relationship?: WorkerRelationship;
+  readonly outputColumns?: readonly WorkerOutputColumn[];
 }
 interface ResultMessage {
   readonly columns: readonly string[];
   readonly rows: readonly (readonly Cell[])[];
+  readonly schemaFingerprint?: string;
 }
 
 function bindParameterCount(sql: string): number {
@@ -73,7 +97,10 @@ function bindParameterCount(sql: string): number {
   return count;
 }
 
-function verifyPinnedInvoiceSchema(db: import('sql.js').Database): string {
+function verifyPinnedInvoiceSchema(
+  db: import('sql.js').Database,
+  joined: boolean,
+): string {
   const result = db.exec('PRAGMA table_info("Invoice")')[0];
   const actual = new Map(
     (result?.values ?? []).map(
@@ -89,7 +116,40 @@ function verifyPinnedInvoiceSchema(db: import('sql.js').Database): string {
     if (actual.get(name) !== type)
       throw new Error(`Pinned Chinook Invoice schema mismatch at ${name}.`);
   }
-  return [...expected].map(([name, type]) => `${name}:${type}`).join('|');
+  const invoiceFingerprint = [...expected]
+    .map(([name, type]) => `${name}:${type}`)
+    .join('|');
+  if (!joined) return invoiceFingerprint;
+  const customer = db.exec('PRAGMA table_info("Customer")')[0];
+  const customerColumns = customer?.values ?? [];
+  const customerId = customerColumns.filter(
+    (row) => String(row[1]) === 'CustomerId',
+  );
+  if (
+    customerId.length !== 1 ||
+    String(customerId[0]?.[2]).toUpperCase() !== 'INTEGER' ||
+    Number(customerId[0]?.[5]) !== 1
+  )
+    throw new Error('Pinned Chinook Customer primary key mismatch.');
+  const fk = db.exec('PRAGMA foreign_key_list("Invoice")')[0]?.values ?? [];
+  const customerFks = fk.filter((row) => String(row[2]) === 'Customer');
+  if (
+    customerFks.length !== 1 ||
+    String(customerFks[0]?.[3]) !== 'CustomerId' ||
+    String(customerFks[0]?.[4]) !== 'CustomerId'
+  )
+    throw new Error('Pinned Chinook Invoice foreign key mismatch.');
+  for (const name of ['FirstName', 'LastName', 'Email']) {
+    const matches = customerColumns.filter((row) => String(row[1]) === name);
+    if (
+      matches.length !== 1 ||
+      !/^(?:N?VARCHAR|N?CHAR|TEXT|CLOB)(?:\b|\()/iu.test(
+        String(matches[0]?.[2]).trim(),
+      )
+    )
+      throw new Error(`Pinned Chinook Customer schema mismatch at ${name}.`);
+  }
+  return `${invoiceFingerprint}|CustomerId:INTEGER:PK|FirstName:STRING|LastName:STRING|Email:STRING|FK_Invoice_Customer_CustomerId:Invoice.CustomerId->Customer.CustomerId`;
 }
 
 export async function readPinnedFixture(): Promise<Uint8Array> {
@@ -137,6 +197,8 @@ export async function executePinnedSql(
   fixture?: Uint8Array,
   bindings: readonly (string | number | null)[] = [],
   authorProfile = false,
+  joined = false,
+  expectedOutputColumnNames?: readonly string[],
 ): Promise<ResultMessage> {
   if (
     typeof sql !== 'string' ||
@@ -156,7 +218,7 @@ export async function executePinnedSql(
   const db = new SQL.Database(fixture ?? (await readPinnedFixture()));
   try {
     const schemaFingerprint = authorProfile
-      ? verifyPinnedInvoiceSchema(db)
+      ? verifyPinnedInvoiceSchema(db, joined)
       : undefined;
     db.run('PRAGMA query_only = ON');
     db.run('PRAGMA trusted_schema = OFF');
@@ -208,6 +270,17 @@ export async function executePinnedSql(
     }
     if (statements !== 1)
       throw new Error('Use one read-only SELECT statement.');
+    if (
+      expectedOutputColumnNames &&
+      (expectedOutputColumnNames.length !== columns.length ||
+        expectedOutputColumnNames.some(
+          (name, index) => columns[index] !== name,
+        ))
+    ) {
+      throw new Error(
+        'The SQLite result columns differ from the prepared output lineage.',
+      );
+    }
     return {
       columns,
       rows,
@@ -229,12 +302,15 @@ if (
       undefined,
       event.data.bindings ?? [],
       event.data.authorProfile === true,
+      event.data.relationship !== undefined,
+      event.data.outputColumns?.map((column) => column.name),
     )
       .then((result) => {
         if (
           !event.data.authorProfile ||
           !event.data.fixtureSha256 ||
           !event.data.schemaVersion ||
+          typeof event.data.draftRevision !== 'number' ||
           !Number.isSafeInteger(event.data.draftRevision) ||
           !event.data.bindingNames?.length
         ) {
@@ -250,6 +326,12 @@ if (
           schemaVersion: event.data.schemaVersion,
           draftRevision: event.data.draftRevision,
           schemaFingerprint: result.schemaFingerprint ?? '',
+          ...(event.data.relationship
+            ? { relationship: event.data.relationship }
+            : {}),
+          ...(event.data.outputColumns
+            ? { outputColumns: event.data.outputColumns }
+            : {}),
         };
         self.postMessage({ ok: true, result, receipt });
       })
