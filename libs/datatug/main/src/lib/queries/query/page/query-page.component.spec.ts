@@ -500,6 +500,29 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     ],
   } as unknown as IQueryEditorState;
 
+  async function createTugQLAuthor(source: string): Promise<QueryPageComponent> {
+    const definition: IQueryDef = {
+      ...queryDef,
+      id: 'chinook-invoice-author',
+      connectionId: 'chinook-sqlite',
+      request: { queryType: QueryType.DTQL, text: source },
+    };
+    const created = await createComponent({}, definition);
+    created.queryState = {
+      ...created.queryState,
+      id: definition.id,
+      connectionId: definition.connectionId,
+      queryType: QueryType.DTQL,
+      request: definition.request,
+    };
+    created.project = {
+      ref: { storeId: 'github.com', projectId: 'demo@buyer@project' },
+    };
+    created.queryDef.set(definition);
+    created.setAuthorMode('code');
+    return created;
+  }
+
   it('offers explicit SQLite binding for a cloned GitHub project, not only the canonical demo ID', async () => {
     component = await createComponent();
     expect(component.canChoosePublicSqliteSource()).toBe(false);
@@ -757,6 +780,195 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       source.replace('limit 100', 'limit 90'),
     );
   });
+
+  it('formats mixed keyword case and indentation, preserves comments and identifiers, and restores exact source', async () => {
+    const source = [
+      'PARAMETERS (',
+      '\t@CustomerId INTEGER REQUIRED',
+      ')',
+      'fRoM Invoice AS i',
+      '-- Keep CustomerId and MixedCase exactly as authored',
+      'wHeRe i.CustomerId = @CustomerId',
+      'LiMiT 100',
+      'sElEcT i.InvoiceId',
+    ].join('\n');
+    component = await createTugQLAuthor(source);
+    const plan = {
+      sql: 'prepared',
+      fixedBindings: Object.freeze([]),
+      bindingNames: Object.freeze(['CustomerId']),
+      sourceId: 'chinook-sqlite' as const,
+      fixtureSha256: 'fixture',
+      schemaVersion: 'schema',
+      draftRevision: 1,
+    };
+    component.authorPlan.set(plan);
+    const prepare = vi.spyOn(
+      TestBed.inject(PublicSqliteQueryService),
+      'prepareTugQL',
+    );
+    const execute = vi.spyOn(
+      TestBed.inject(PublicSqliteQueryService),
+      'runTugQL',
+    );
+
+    component.formatAuthorTugQL();
+    const formatted = component.queryBodyText() ?? '';
+    expect(formatted).toContain('FROM Invoice AS i');
+    expect(formatted).toContain('\t@CustomerId INTEGER REQUIRED');
+    expect(formatted).toContain(
+      '-- Keep CustomerId and MixedCase exactly as authored',
+    );
+    expect(formatted).toContain('i.CustomerId = @CustomerId');
+    expect(formatted).toContain('SELECT i.InvoiceId');
+    expect(formatted).not.toContain('fRoM');
+    expect(component.authorPlan()).toBeUndefined();
+    expect(component.canUndoAuthorFormat()).toBe(true);
+    expect(prepare).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+
+    component.undoAuthorTugQLFormat();
+    expect(component.queryBodyText()).toBe(source);
+    expect(component.canUndoAuthorFormat()).toBe(false);
+    expect(prepare).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('keeps a prepared plan and does not create Undo when formatting is a no-op', async () => {
+    const source = 'from Invoice as i\nlimit 100\nselect i.InvoiceId';
+    component = await createTugQLAuthor(source);
+    const plan = {
+      sql: 'SELECT "InvoiceId" FROM "Invoice" LIMIT 100',
+      fixedBindings: Object.freeze([]),
+      bindingNames: Object.freeze([]),
+      sourceId: 'chinook-sqlite' as const,
+      fixtureSha256: 'fixture',
+      schemaVersion: 'schema',
+      draftRevision: 1,
+    };
+    component.authorPlan.set(plan);
+    const revision = component.authorDraftRevision();
+
+    component.formatAuthorTugQL();
+
+    expect(component.queryBodyText()).toBe(source);
+    expect(component.authorPlan()).toBe(plan);
+    expect(component.authorDraftRevision()).toBe(revision);
+    expect(component.canUndoAuthorFormat()).toBe(false);
+  });
+
+  it('preserves a malformed multiline SELECT exactly and reports the formatter diagnostic', async () => {
+    const source = 'from Invoice\nselect\n  InvoiceId\n  CustomerId';
+    component = await createTugQLAuthor(source);
+    const plan = { sql: 'prepared' } as never;
+    component.authorPlan.set(plan);
+
+    component.formatAuthorTugQL();
+
+    expect(component.queryBodyText()).toBe(source);
+    expect(component.authorPlan()).toBe(plan);
+    expect(component.canUndoAuthorFormat()).toBe(false);
+    expect(component.authorFormatStatus()).toContain('was not changed');
+    expect(component.authorFormatStatus()).toContain(
+      "multiline SELECT requires '(' on the SELECT header line",
+    );
+  });
+
+  it('recognizes the maintained TugQL definition when query state still says SQL', async () => {
+    component = await createTugQLAuthor('FrOm Invoice as i');
+    component.queryState = {
+      ...component.queryState,
+      queryType: QueryType.SQL,
+    };
+
+    component.formatAuthorTugQL();
+
+    expect(component.queryBodyText()).toBe('from Invoice as i');
+    expect(component.canUndoAuthorFormat()).toBe(true);
+  });
+
+  it.each(['compose', 'running', 'saving', 'non-author', 'non-text'] as const)(
+    'guards formatting while %s',
+    async (guard) => {
+      component = await createTugQLAuthor('FrOm Invoice as i');
+      if (guard === 'compose') component.setAuthorMode('compose');
+      if (guard === 'running') component.running.set(true);
+      if (guard === 'saving')
+        component.queryState = { ...component.queryState, isSaving: true };
+      if (guard === 'non-author')
+        component.queryDef.update((current) =>
+          current ? { ...current, connectionId: 'other-source' } : current,
+        );
+      if (guard === 'non-text')
+        component.queryDef.update((current) =>
+          current
+            ? {
+                ...current,
+                request: {
+                  queryType: QueryType.HTTP,
+                  url: 'https://example.test',
+                },
+              }
+            : current,
+        );
+
+      component.formatAuthorTugQL();
+
+      expect(component.queryBodyText()).toBe(
+        guard === 'non-text' ? undefined : 'FrOm Invoice as i',
+      );
+      expect(component.authorDraftRevision()).toBe(0);
+    },
+  );
+
+  it('invalidates Undo after a Compose edit and checks principal scope live before synchronization', async () => {
+    component = await createTugQLAuthor('FrOm Invoice as i');
+    component.formatAuthorTugQL();
+    const formatted = component.queryBodyText();
+    component.setAuthorMode('compose');
+    component.authorComposeTextChanged(`${formatted}\n-- manual edit`);
+    component.setAuthorMode('code');
+    component.undoAuthorTugQLFormat();
+    expect(component.queryBodyText()).toBe(`${formatted}\n-- manual edit`);
+
+    component.authorComposeTextChanged('FrOm Invoice as i');
+    component.formatAuthorTugQL();
+    expect(component.canUndoAuthorFormat()).toBe(true);
+    agentContext.securityContextId.set('sctx-2');
+    component.undoAuthorTugQLFormat();
+    expect(component.queryBodyText()).toBe(formatted);
+    expect(component.canUndoAuthorFormat()).toBe(false);
+  });
+
+  it.each(['query', 'project', 'environment'] as const)(
+    'does not restore formatted source after the live %s scope changes before synchronization',
+    async (scope) => {
+      component = await createTugQLAuthor('FrOm Invoice as i');
+      component.formatAuthorTugQL();
+      const formatted = component.queryBodyText();
+      expect(component.canUndoAuthorFormat()).toBe(true);
+
+      if (scope === 'query') {
+        component.queryDef.update((definition) =>
+          definition ? { ...definition, id: 'another-query' } : definition,
+        );
+      } else if (scope === 'project') {
+        component.project = {
+          ref: { storeId: 'github.com', projectId: 'another-project' },
+        };
+      } else {
+        component.envId = 'staging';
+      }
+
+      component.undoAuthorTugQLFormat();
+
+      expect(component.queryBodyText()).toBe(formatted);
+      expect(component.canUndoAuthorFormat()).toBe(false);
+      expect(component.authorFormatStatus()).toContain(
+        'draft or query context changed',
+      );
+    },
+  );
 
   it('waits for an asynchronously loaded definition before choosing the cold mode', async () => {
     const source = [

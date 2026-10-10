@@ -91,6 +91,11 @@
   margin: 0;
 }
 
+.author-code-editor {
+  --ion-font-family: monospace;
+  tab-size: 2;
+}
+
 .author-card details {
   margin: 0.65rem 0 1rem;
   color: var(--ion-color-medium-shade);

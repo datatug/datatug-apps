@@ -558,7 +558,24 @@
             (editInCode)="setAuthorMode('code')"
           />
         } @else {
+          <div class="author-actions">
+            <ion-button
+              data-testid="author-format-tugql"
+              fill="outline"
+              [disabled]="running() || queryState.isSaving"
+              (click)="formatAuthorTugQL()"
+              >Format TugQL</ion-button
+            >
+            <ion-button
+              data-testid="author-undo-format"
+              fill="clear"
+              [disabled]="!canUndoAuthorFormat()"
+              (click)="undoAuthorTugQLFormat()"
+              >Undo format</ion-button
+            >
+          </div>
           <ion-textarea
+            class="author-code-editor"
             data-testid="query-body-text"
             rows="8"
             autoGrow="false"
@@ -572,6 +589,16 @@
             "
             (ionInput)="queryTextChanged($event)"
           />
+          @if (authorFormatStatus()) {
+            <p
+              class="author-format-status"
+              data-testid="author-format-status"
+              role="status"
+              aria-live="polite"
+            >
+              {{ authorFormatStatus() }}
+            </p>
+          }
         }
         @if (authorPlan(); as plan) {
           <sneat-author-sql-preview

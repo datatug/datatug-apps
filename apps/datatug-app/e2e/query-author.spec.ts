@@ -71,6 +71,72 @@ test('Compose HAVING edits replace the shared draft before Preview and worker Ru
   await expect(editor).toHaveValue(/having count\(\*\) >= 8\n/u);
 });
 
+test('Code formats TugQL reversibly before explicit Preview and worker Run', async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await page.goto(AUTHOR_URL);
+  const author = page.getByTestId('tugql-author');
+  await expect(author).toBeVisible({ timeout: 20_000 });
+  await author.getByTestId('author-code-tab').click();
+  const editor = author.getByTestId('query-body-text').locator('textarea');
+  const original = await editor.inputValue();
+  const mixed = original
+    .replace(/^(\s*)from\b/imu, '$1FrOm')
+    .replace(/^(\s*)where\b/imu, '$1WhErE')
+    .replace(/^(\s*)limit\b/imu, '$1LiMiT')
+    .replace(/^(\s*)select\b/imu, '$1sElEcT')
+    .replace(/^( {2,})/gmu, '\t');
+  expect(mixed).not.toBe(original);
+  await editor.fill(mixed);
+
+  await author.getByTestId('author-format-tugql').click();
+  await expect(editor).not.toHaveValue(mixed);
+  const formatted = await editor.inputValue();
+  expect(formatted).not.toBe(mixed);
+  await expect(author.getByTestId('author-format-status')).toContainText(
+    'Preview again before running',
+  );
+  await expect(author.getByTestId('author-sql-preview')).toHaveCount(0);
+  await expect(page.getByTestId('author-execution-receipt')).toHaveCount(0);
+
+  await author.getByTestId('author-undo-format').click();
+  await expect(editor).toHaveValue(mixed);
+  await expect(author.getByTestId('author-sql-preview')).toHaveCount(0);
+
+  await author.getByTestId('author-format-tugql').click();
+  await expect(editor).not.toHaveValue(mixed);
+  await author.getByTestId('author-preview').click();
+  const preview = author.getByTestId('author-sql-preview');
+  await expect(preview).toContainText('Preview · Not executed');
+  await expect(preview).toContainText('Required · unset');
+  await expect(author.getByTestId('author-run')).toHaveAttribute(
+    'disabled',
+    '',
+  );
+
+  await author.getByTestId('author-customer-id').locator('input').fill('1');
+  await author.getByTestId('author-run').click();
+  const receipt = page.getByTestId('author-execution-receipt');
+  await expect(receipt).toContainText('Executed');
+  await expect(receipt).toContainText('7 rows');
+  const rows = page.getByRole('grid').getByRole('row');
+  await expect(rows).toHaveCount(8);
+  for (const [index, invoiceId] of [
+    '98',
+    '121',
+    '143',
+    '195',
+    '316',
+    '327',
+    '382',
+  ].entries()) {
+    await expect(
+      rows.nth(index + 1).getByRole('gridcell').first(),
+    ).toHaveText(invoiceId);
+  }
+});
+
 test('Invoice Customer join makes missing ON reviewable and opens an explicit typed lookup', async ({
   page,
 }) => {
