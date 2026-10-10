@@ -730,6 +730,32 @@ describe('Author TugQL structural preview and Run binding', () => {
     expect(reader.getRawJson).not.toHaveBeenCalled();
   });
 
+  it('rejects case-insensitively colliding CTE and Customer aliases', async () => {
+    const conflictingAliases = cteSource
+      .replace('join Customer as c', 'join Customer as TOTALS')
+      .replaceAll('c.', 'TOTALS.');
+    await expect(
+      TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+        project,
+        definition(conflictingAliases),
+        20,
+      ),
+    ).rejects.toThrow('CTE and Customer aliases must be distinct');
+  });
+
+  it('allows an inner Invoice alias to match the outer CTE alias in its nested scope', async () => {
+    const sameNestedAlias = cteSource
+      .replace('from Invoice as i', 'from Invoice as totals')
+      .replaceAll('i.', 'totals.');
+    const preview = await TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+      project,
+      definition(sameNestedAlias),
+      20,
+    );
+    expect(preview.sql).toContain('FROM "Invoice" AS "totals"');
+    expect(preview.sql).toContain(') AS "totals"');
+  });
+
   it('rejects a CTE projection missing either required Customer string field', async () => {
     for (const source of [
       cteSource.replace('  c.LastName\n', ''),
@@ -812,6 +838,28 @@ describe('Author TugQL structural preview and Run binding', () => {
     ]);
   });
 
+  it('rejects case-insensitively colliding aliases in the legacy Invoice join', async () => {
+    const source = [
+      'parameters (',
+      '  @CustomerId integer required',
+      ')',
+      'from Invoice as i',
+      'join Customer as I',
+      '  on i.CustomerId = I.CustomerId',
+      'where i.CustomerId = @CustomerId',
+      'limit 100',
+      'select i.InvoiceId, i.CustomerId, I.FirstName, I.LastName, I.Email',
+      '',
+    ].join('\n');
+    await expect(
+      TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+        project,
+        joinedDefinition(source),
+        21,
+      ),
+    ).rejects.toThrow('Invoice and Customer aliases must be distinct');
+  });
+
   it('rejects a missing or tampered CTE proof at the worker boundary', async () => {
     const preview = await TestBed.inject(PublicSqliteQueryService).prepareTugQL(
       project,
@@ -875,6 +923,58 @@ describe('Author TugQL structural preview and Run binding', () => {
       { profile: 'customer-count-cte', resolvedQuery: invoiceScan },
       'customer-count-cte',
     )).rejects.toThrow('independently compiled profile');
+    for (const duplicateAlias of ['InvoiceCount', 'invoicecount']) {
+      const duplicateInnerExports = structuredClone(
+        preview.authorProof.resolvedQuery,
+      ) as unknown as {
+        from: {
+          as: string;
+          query: { columns: Array<{ as?: string }> };
+          joins: Array<{
+            on: Array<{
+              left: { source: string; field: string };
+              right: { source: string; field: string };
+            }>;
+          }>;
+        };
+        orderBy: Array<{ field: { source: string; field: string } }>;
+        columns: Array<{
+          expression: {
+            kind: 'field';
+            field: { source: string; field: string };
+          };
+          as?: string;
+        }>;
+      };
+      const keyExport = duplicateInnerExports.from.query.columns[0];
+      const countExport = duplicateInnerExports.from.query.columns[1];
+      const outerOrder = duplicateInnerExports.orderBy[0];
+      const outerKey = duplicateInnerExports.columns[0];
+      if (!keyExport || !countExport || !outerOrder || !outerKey)
+        throw new Error('The compiled CTE proof must contain both exports and its outer key.');
+      keyExport.as = duplicateAlias;
+      countExport.as = duplicateAlias;
+      for (const side of [
+        duplicateInnerExports.from.joins[0]?.on[0]?.left,
+        duplicateInnerExports.from.joins[0]?.on[0]?.right,
+      ]) {
+        if (side?.source === duplicateInnerExports.from.as)
+          side.field = duplicateAlias;
+      }
+      outerOrder.field.field = duplicateAlias;
+      outerKey.expression.field.field = duplicateAlias;
+      outerKey.as = 'CustomerId';
+      await expect(invoke(
+        preview.sql,
+        [1, ...preview.fixedBindings],
+        outputNames,
+        {
+          profile: 'customer-count-cte',
+          resolvedQuery: duplicateInnerExports as unknown as typeof preview.authorProof.resolvedQuery,
+        },
+        'customer-count-cte',
+      )).rejects.toThrow('key and count outputs must have distinct names');
+    }
     await expect(executePinnedSql(
       preview.sql,
       undefined,

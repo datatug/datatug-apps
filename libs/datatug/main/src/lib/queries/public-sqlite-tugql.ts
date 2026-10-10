@@ -214,6 +214,8 @@ export function compilePublicSqliteTugQL(
   const invoiceAlias = query.from.alias ?? 'Invoice';
   const customerAlias =
     join?.from.kind === 'table' ? (join.from.alias ?? 'Customer') : 'Customer';
+  if (isJoined && invoiceAlias.toLowerCase() === customerAlias.toLowerCase())
+    throw new Error('Invoice and Customer aliases must be distinct in the join.');
   const onPredicate = join?.on[0];
   const onMatchesRelationship =
     onPredicate?.operator === '==' &&
@@ -513,6 +515,8 @@ function compileCustomerCountCte(
   ) {
     throw new Error('This preview supports one bounded Invoice count CTE joined to Customer by its explicit key.');
   }
+  if (cteAlias.toLowerCase() === customerAlias.toLowerCase())
+    throw new Error('The CTE and Customer aliases must be distinct in the outer query.');
   const group = cte.groupBy?.[0];
   const having = cte.having;
   if (
@@ -535,6 +539,8 @@ function compileCustomerCountCte(
   ) {
     throw new Error('The CTE must group Invoice.CustomerId and project its integer COUNT with an integer HAVING literal.');
   }
+  if (keyOutput.toLowerCase() === countOutput.toLowerCase())
+    throw new Error('The CTE key and count outputs must have distinct names.');
   const countExpression = cte.columns[1].expression;
   const count = countSql(countExpression, invoiceAlias);
   if (countSql(having.left, invoiceAlias) !== count)
