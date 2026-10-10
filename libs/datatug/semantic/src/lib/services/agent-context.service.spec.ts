@@ -74,6 +74,21 @@ describe('AgentContextService', () => {
     expect(service.contextFor(`${OTHER_BASE_URL}/`)).toBe(other);
   });
 
+  it('does not fetch agent-info when an explicit context has no HTTP(S) origin', () => {
+    const service = TestBed.inject(AgentContextService);
+    httpMock.expectOne(`${BASE_URL}/agent-info`).flush(AGENT_INFO);
+
+    const noAgent = service.contextFor('about:blank');
+    expect(noAgent.info()).toBeUndefined();
+    let refreshError: unknown;
+    noAgent.refresh().subscribe({ error: (error) => (refreshError = error) });
+
+    expect(refreshError).toEqual(
+      new Error('No HTTP(S) DataTug agent is configured for this page.'),
+    );
+    httpMock.expectNone((request) => request.url.includes('about:blank'));
+  });
+
   it('refreshes only the requested agent context', () => {
     const service = TestBed.inject(AgentContextService);
     httpMock.expectOne(`${BASE_URL}/agent-info`).flush(AGENT_INFO);
