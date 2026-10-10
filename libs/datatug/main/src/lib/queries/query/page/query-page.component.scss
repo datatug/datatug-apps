@@ -10,28 +10,32 @@
 }
 
 .author-card {
-  width: calc(100% - 2rem);
-  max-width: 68rem;
-  margin: 1rem auto 1.5rem;
+  width: 100%;
+  max-width: none;
+  margin: 0;
   border: 1px solid var(--ion-color-step-150, #e5e7eb);
   border-radius: 1rem;
   box-shadow: 0 0.5rem 1.5rem rgb(15 23 42 / 6%);
 }
 
 .author-card ion-card-header {
-  padding: 1.5rem 1.5rem 0.75rem;
+  padding: 1rem 1.5rem 0.35rem;
 }
 
 .author-card ion-card-content {
-  padding: 0 1.5rem 1.5rem;
+  padding: 0 1.5rem 1.25rem;
 }
 
 .author-card-heading,
 .author-receipt-status {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 1rem;
+}
+
+.author-card-heading ion-card-title {
+  font-size: 1.25rem;
+  line-height: 1.25;
 }
 
 .author-eyebrow {
@@ -43,7 +47,8 @@
 }
 
 .author-source-badge {
-  flex: 0 0 auto;
+  display: inline-flex;
+  margin-top: 0.55rem;
   padding: 0.4rem 0.65rem;
   border: 1px solid var(--ion-color-step-150, #e5e7eb);
   border-radius: 999px;
@@ -52,15 +57,9 @@
   line-height: 1.2;
 }
 
-.author-description {
-  margin: 0 0 1.15rem;
-  color: var(--ion-color-medium-shade);
-  line-height: 1.5;
-}
-
 .author-mode-switch {
   width: fit-content;
-  margin: 0 0 1.4rem;
+  margin: 0.2rem 0 0.65rem;
   padding: 0.2rem;
   border: 1px solid var(--ion-color-step-150, #e5e7eb);
   border-radius: 0.8rem;
@@ -73,16 +72,23 @@
   --border-radius: 0.6rem;
 }
 
-.author-section-title {
-  margin: 0 0 0.75rem;
-  font-size: 1rem;
-  font-weight: 650;
-}
-
 .author-customer-input {
   display: block;
   max-width: 24rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.15rem;
+}
+
+.author-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0 0 0.65rem;
+}
+
+.author-actions ion-button {
+  min-height: 2.65rem;
+  margin: 0;
 }
 
 .author-card details {
@@ -109,9 +115,9 @@
 }
 
 .author-receipt {
-  width: calc(100% - 2rem);
-  max-width: 68rem;
-  margin: 1rem auto 1.5rem;
+  width: 100%;
+  max-width: none;
+  margin: 0 0 1rem;
   padding: 1.25rem 1.5rem;
   border: 1px solid var(--ion-color-step-150, #e5e7eb);
   border-inline-start: 4px solid var(--ion-color-success, #2dd36f);
@@ -198,32 +204,19 @@
     display: none;
   }
 
-  .author-card {
-    margin-block: 0.65rem 1rem;
-  }
-
   .author-card ion-card-header {
-    padding: 1.1rem 1rem 0.55rem;
+    padding: 0.85rem 1rem 0.3rem;
   }
 
   .author-card ion-card-content {
     padding: 0 1rem 1rem;
   }
 
-  .author-card-heading {
-    align-items: flex-start;
-    flex-wrap: wrap;
-    gap: 0.65rem;
-  }
-
   .author-source-badge {
-    margin-top: 0.1rem;
+    margin-top: 0.4rem;
   }
 
-  .author-receipt {
-    margin-block: 0.65rem 1rem;
-    padding: 1rem;
-  }
+  .author-receipt { padding: 1rem; }
 }
 
 @media (max-width: 350px) {

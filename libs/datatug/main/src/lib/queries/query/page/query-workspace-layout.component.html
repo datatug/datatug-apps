@@ -1,0 +1,42 @@
+<div class="workspace-mobile-navigation" role="tablist" aria-label="Query workspace">
+  <ion-buttons>
+    <ion-button
+      role="tab"
+      id="workspace-editor-tab"
+      aria-controls="workspace-editor-pane"
+      [attr.aria-selected]="mobilePane() === 'editor'"
+      [fill]="mobilePane() === 'editor' ? 'solid' : 'clear'"
+      (click)="mobilePane.set('editor')"
+    >
+      Editor
+    </ion-button>
+    <ion-button
+      role="tab"
+      id="workspace-results-tab"
+      aria-controls="workspace-results-pane"
+      [attr.aria-selected]="mobilePane() === 'results'"
+      [fill]="mobilePane() === 'results' ? 'solid' : 'clear'"
+      (click)="mobilePane.set('results')"
+    >
+      Results
+    </ion-button>
+  </ion-buttons>
+</div>
+<div
+  class="workspace-pane workspace-editor-pane"
+  id="workspace-editor-pane"
+  role="tabpanel"
+  aria-labelledby="workspace-editor-tab"
+  [class.mobile-inactive]="mobilePane() !== 'editor'"
+>
+  <ng-content select="[query-workspace-editor]" />
+</div>
+<div
+  class="workspace-pane workspace-results-pane"
+  id="workspace-results-pane"
+  role="tabpanel"
+  aria-labelledby="workspace-results-tab"
+  [class.mobile-inactive]="mobilePane() !== 'results'"
+>
+  <ng-content select="[query-workspace-results]" />
+</div>

@@ -33,6 +33,7 @@
 </ion-header>
 
 <ion-content color="light">
+  <ng-template #queryEditor>
   @if (project?.ref?.projectApi && !isTugqlAuthorJourney()) {
     <ion-item
       ><ion-label>Branch: {{ project?.ref?.branch }}</ion-label
@@ -438,14 +439,10 @@
               queryState.title || 'Chinook Invoice query'
             }}</ion-card-title>
           </div>
-          <span class="author-source-badge">Chinook · SQLite</span>
         </div>
+        <span class="author-source-badge">Chinook · SQLite</span>
       </ion-card-header>
       <ion-card-content>
-        <p class="author-description">
-          Preview the SQL structure, then run the bounded query for one
-          customer.
-        </p>
         <ion-buttons class="author-mode-switch">
           <ion-button
             data-testid="author-compose-tab"
@@ -462,7 +459,6 @@
             >Code</ion-button
           >
         </ion-buttons>
-        <h2 class="author-section-title">Invoices for customer</h2>
         <ion-input
           class="author-customer-input"
           data-testid="author-customer-id"
@@ -493,71 +489,69 @@
           [disabled]="queryState.isSaving || running()"
           (ionInput)="authorCustomerIdChanged($event)"
         />
+        <div class="author-actions">
+          <ion-button
+            data-testid="author-preview"
+            class="author-preview-button"
+            [disabled]="running() || queryState.isSaving"
+            (click)="previewTugql()"
+            >Preview SQL</ion-button
+          >
+          <ion-button
+            data-testid="author-run"
+            class="author-run-button"
+            color="primary"
+            [disabled]="
+              running() ||
+              queryState.isSaving ||
+              !authorPlan() ||
+              !authorCustomerIdValid() ||
+              !queryId ||
+              !project
+            "
+            (click)="runQuery()"
+          >
+            @if (running()) {
+              <ion-spinner name="dots" slot="start" />
+            }
+            Run
+          </ion-button>
+          @if (running()) {
+            <ion-button
+              data-testid="author-cancel"
+              fill="clear"
+              (click)="cancelAuthorRun()"
+            >
+              Cancel
+            </ion-button>
+          }
+        </div>
+        @if (authorError()) {
+          <ion-text color="danger" data-testid="author-error">{{
+            authorError()
+          }}</ion-text>
+        }
         @if (authorMode() === 'compose') {
-          <details>
-            <summary>Supported syntax</summary>
-            <p>
-              This browser profile runs a bounded Invoice scan with the required
-              integer CustomerId equality, InvoiceId and optional InvoiceDate,
-              and a limit from 1 to 100. Grouped CustomerId queries support
-              COUNT(*) or COUNT(InvoiceId) with an integer literal =, !=, <, <=,
-              >, or >= HAVING threshold. Other TugQL can be edited in Code, but
-              Preview will explain if this SQLite profile cannot run it.
-            </p>
-          </details>
+          <sneat-author-compose-controls
+            [source]="queryBodyText() ?? ''"
+            (sourceChanged)="authorComposeTextChanged($event)"
+            (editInCode)="setAuthorMode('code')"
+          />
         } @else {
           <ion-textarea
             data-testid="query-body-text"
             rows="8"
             autoGrow="false"
             fill="outline"
-            label="TugQL"
+            label="TugQL · Query"
             labelPlacement="stacked"
             [value]="queryBodyText()"
             [disabled]="queryState.isSaving || running()"
-            [readonly]="queryState.saveSupported === false"
+            [readonly]="
+              queryState.saveSupported === false && !isTugqlAuthorJourney()
+            "
             (ionInput)="queryTextChanged($event)"
           />
-        }
-        <ion-button
-          data-testid="author-preview"
-          class="author-preview-button"
-          [disabled]="running() || queryState.isSaving"
-          (click)="previewTugql()"
-          >Preview SQL</ion-button
-        >
-        <ion-button
-          data-testid="author-run"
-          class="author-run-button"
-          color="primary"
-          [disabled]="
-            running() ||
-            queryState.isSaving ||
-            !authorPlan() ||
-            !authorCustomerIdValid() ||
-            !queryId ||
-            !project
-          "
-          (click)="runQuery()"
-        >
-          @if (running()) {
-            <ion-spinner name="dots" slot="start" />
-          }
-          Run
-        </ion-button>
-        @if (running()) {
-          <ion-button
-            data-testid="author-cancel"
-            fill="clear"
-            (click)="cancelAuthorRun()"
-          >
-            Cancel
-          </ion-button>
-        }
-        @if (authorError()) {
-          <ion-text color="danger" data-testid="author-error">{{
-            authorError()
-          }}</ion-text>
         }
         @if (authorPlan(); as plan) {
           <sneat-author-sql-preview
@@ -809,7 +803,16 @@
       }
     </ion-card>
   }
+  </ng-template>
 
+  <ng-template #queryResults>
+  @if (isTugqlAuthorJourney() && !runResult() && !running()) {
+    <section class="author-results-empty" role="status" data-testid="author-results-empty">
+      <p class="author-results-eyebrow">RESULTS</p>
+      <h2>Not executed</h2>
+      <p>SQL preview checks the query shape only. Choose a Customer ID and run the query to load rows and an execution receipt.</p>
+    </section>
+  }
   @if ((running() || resultPageLoading()) && federatedProgress(); as progress) {
     <p role="status" aria-live="polite">
       {{
@@ -1209,5 +1212,20 @@
         [compact]="true"
       />
     </div>
+  }
+  </ng-template>
+
+  @if (isTugqlAuthorJourney()) {
+    <sneat-query-workspace-layout>
+      <div query-workspace-editor>
+        <ng-container *ngTemplateOutlet="queryEditor" />
+      </div>
+      <div query-workspace-results>
+        <ng-container *ngTemplateOutlet="queryResults" />
+      </div>
+    </sneat-query-workspace-layout>
+  } @else {
+    <ng-container *ngTemplateOutlet="queryEditor" />
+    <ng-container *ngTemplateOutlet="queryResults" />
   }
 </ion-content>

@@ -1,0 +1,97 @@
+<section class="compose-controls" aria-label="Compose supported Invoice query">
+  @if (profile().supported && profile().writable) {
+    <p class="compose-caption">Result shape</p>
+    <div class="compose-control-row">
+      <label class="compose-check compose-group-toggle">
+        <input
+          type="checkbox"
+          [checked]="profile().grouped"
+          (change)="update({ grouped: $any($event.target).checked })"
+        />
+        Group by CustomerId and count invoices
+      </label>
+      <label class="compose-field compose-limit">
+        <span>Row limit</span>
+        <input
+          type="number"
+          min="1"
+          max="100"
+          step="1"
+          aria-label="Row limit"
+          [value]="profile().limit"
+          (change)="numberChanged($event, 'limit')"
+        />
+      </label>
+    </div>
+    @if (profile().grouped) {
+      <fieldset>
+        <legend>Grouping and count</legend>
+        <label class="compose-field">
+          <span>Group and count</span>
+          <select
+            aria-label="Count expression"
+            [value]="profile().countExpression"
+            (change)="
+              update({
+                countExpression: $any($event.target).value === 'InvoiceId' ? 'InvoiceId' : 'star'
+              })
+            "
+          >
+            <option value="star">COUNT(*)</option>
+            <option value="InvoiceId">COUNT(InvoiceId)</option>
+          </select>
+        </label>
+        <label class="compose-field">
+          <span>HAVING count</span>
+          <span class="compose-inline-field">
+            <select
+              aria-label="HAVING comparison"
+              [value]="profile().havingOperator"
+              (change)="operatorChanged($event)"
+            >
+              <option value="=">=</option>
+              <option value="!=">!=</option>
+              <option value="&lt;">&lt;</option>
+              <option value="&lt;=">&lt;=</option>
+              <option value="&gt;">&gt;</option>
+              <option value="&gt;=">&gt;=</option>
+            </select>
+            <input
+              type="number"
+              step="1"
+              aria-label="HAVING threshold"
+              [value]="profile().threshold"
+              (change)="numberChanged($event, 'threshold')"
+            />
+          </span>
+        </label>
+      </fieldset>
+    } @else {
+      <fieldset>
+        <legend>Invoice columns</legend>
+        <label class="compose-check">
+          <input type="checkbox" checked disabled />
+          InvoiceId · required first column
+        </label>
+        <label class="compose-check">
+          <input
+            type="checkbox"
+            [checked]="profile().includeInvoiceDate"
+            (change)="update({ includeInvoiceDate: $any($event.target).checked })"
+          />
+          InvoiceDate
+        </label>
+      </fieldset>
+    }
+    @if (controlError(); as error) {
+      <p class="compose-error" role="alert">{{ error }}</p>
+    }
+  } @else {
+    <div class="compose-unavailable" role="status">
+      <strong>Compose is unavailable for this source.</strong>
+      <span>{{ profile().reason }}</span>
+      <span>Your TugQL source has not been changed. Edit it in Code.</span>
+      <button type="button" (click)="editInCode.emit()">Open Code</button>
+    </div>
+  }
+</section>

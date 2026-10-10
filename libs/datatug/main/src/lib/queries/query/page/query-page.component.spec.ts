@@ -11,6 +11,7 @@ import 'fake-indexeddb/auto';
 import { resolve } from 'node:path';
 import { nativeFixture } from '../../public-data/native-fixture.spec-helper';
 import { PublicDataService } from '../../public-data/public-data.service';
+import { NgTemplateOutlet } from '@angular/common';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import {
   ChangeDetectorRef,
@@ -810,9 +811,12 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     })
       .overrideComponent(QueryPageComponent, {
         set: {
-          imports: template.includes('<ion-select')
-            ? [IonSelect, IonSelectOption]
-            : [],
+          imports: [
+            NgTemplateOutlet,
+            ...(template.includes('<ion-select')
+              ? [IonSelect, IonSelectOption]
+              : []),
+          ],
           template,
           schemas: [CUSTOM_ELEMENTS_SCHEMA],
           providers: [],
@@ -1280,7 +1284,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       'utf8',
     )
       .split('  @if (runResult(); as result) {')[1]
-      .split('</ion-content>')[0]
+      .split('  </ng-template>')[0]
       .replace(/^/, '@if (runResult(); as result) {');
 
   it('retains a frozen successful receipt across a failed and partial rerun, then clears it on scope change', async () => {
@@ -2544,6 +2548,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
         );
         const template = html
           .split('<ion-content color="light">')[1]
+          .split('  <ng-template #queryEditor>')[1]
           .split(
             '  @if (!isTugqlAuthorJourney()) {\n    <ion-card>\n      <ion-item>\n        <ion-input',
           )[0];

@@ -1,5 +1,5 @@
 import { SourceRightsNoticeComponent } from '@sneat/datatug-semantic';
-import { DatePipe } from '@angular/common';
+import { DatePipe, NgTemplateOutlet } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { PublicDataService } from '../../public-data/public-data.service';
 import { ConfiguredPublicDataSourcesService } from '../../public-data/configured-public-data-sources.service';
@@ -229,6 +229,8 @@ import { graphStableIdentity } from '../../public-data/native-graph-executor';
 import { QueryContextSqlService } from '../../query-context-sql.service';
 import { PublicSqliteQueryService } from '../../public-sqlite-query.service';
 import { AuthorSqlPreviewComponent } from './author-sql-preview.component';
+import { AuthorComposeControlsComponent } from './author-compose-controls.component';
+import { QueryWorkspaceLayoutComponent } from './query-workspace-layout.component';
 import type { PublicSqliteQueryPreview } from '../../public-sqlite-tugql';
 import {
   isQueryChanged,
@@ -418,8 +420,11 @@ export function extractLinkedEntityNames(
   templateUrl: './query-page.component.html',
   styleUrl: './query-page.component.scss',
   imports: [
+    AuthorComposeControlsComponent,
     AuthorSqlPreviewComponent,
+    QueryWorkspaceLayoutComponent,
     DatePipe,
+    NgTemplateOutlet,
     // DatatugNavContextService and EnvironmentService are now
     // providedIn: 'root' (nav-context-root-singletons); QueriesService,
     // QueryContextSqlService, QueryEditorStateService and Coordinator
@@ -867,7 +872,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   public queryTextChanged(event: Event): void {
-    if (this.queryState.saveSupported === false) return;
+    const isAuthorDraft = this.isTugqlAuthorJourney();
+    // Local Author editing is independent of whether this rich query can be
+    // serialized back to its current remote source. Save remains gated, but a
+    // supported local draft must still update in Compose and Code.
+    if (this.queryState.saveSupported === false && !isAuthorDraft) return;
     const text = (event as CustomEvent<{ value?: string }>).detail.value ?? '';
     if (
       !this.queryState.request ||
@@ -878,7 +887,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       ...this.queryState,
       request: { ...this.queryState.request, text } as ITextQueryRequest,
     };
-    if (this.isTugqlAuthorJourney()) {
+    if (isAuthorDraft) {
       this.authorDraftRevision.update((revision) => revision + 1);
       this.authorPlan.set(undefined);
       this.authorError.set(undefined);
@@ -888,6 +897,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   public setAuthorMode(mode: 'compose' | 'code'): void {
     this.authorMode.set(mode);
+  }
+
+  public authorComposeTextChanged(text: string): void {
+    this.queryTextChanged(new CustomEvent('ionInput', { detail: { value: text } }));
   }
 
   public cancelAuthorRun(): void {

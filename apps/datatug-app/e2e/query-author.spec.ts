@@ -20,6 +20,48 @@ test.beforeEach(async ({ context }) => {
   }
 });
 
+test('Compose HAVING edits replace the shared draft before Preview and worker Run', async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await page.goto(COUNT_AUTHOR_URL);
+  const author = page.getByTestId('tugql-author');
+  await expect(author).toBeVisible({ timeout: 20_000 });
+
+  const threshold = author.getByRole('spinbutton', { name: 'HAVING threshold' });
+  await threshold.fill('8');
+  await threshold.press('Tab');
+  await author.getByTestId('author-code-tab').click();
+  const editor = author.getByTestId('query-body-text').locator('textarea');
+  await expect(editor).toHaveValue(/having count\(\*\) >= 8/u);
+
+  await author.getByTestId('author-preview').click();
+  const preview = author.getByTestId('author-sql-preview');
+  await expect(preview).toContainText('Preview · Not executed');
+  await expect(preview.locator('pre')).toContainText('HAVING COUNT(*) >= ?');
+  await expect(preview.locator('pre')).not.toContainText('>= 8');
+
+  await author.getByTestId('author-customer-id').locator('input').fill('1');
+  await author.getByTestId('author-run').click();
+  const receipt = page.getByTestId('author-execution-receipt');
+  await expect(receipt).toContainText('Executed');
+  await expect(receipt).toContainText('0 rows');
+  await expect(page.getByRole('grid').getByRole('row')).toHaveCount(1);
+
+  await author.getByTestId('author-compose-tab').click();
+  const thresholdControl = author.getByRole('spinbutton', {
+    name: 'HAVING threshold',
+  });
+  await thresholdControl.fill('8.5');
+  await thresholdControl.press('Tab');
+  await expect(thresholdControl).toHaveValue('8');
+  await expect(author.getByRole('alert')).toContainText(
+    'Enter a whole-number HAVING threshold',
+  );
+  await author.getByTestId('author-code-tab').click();
+  await expect(editor).toHaveValue(/having count\(\*\) >= 8\n/u);
+});
+
 test('cold saved CustomerId count supports parameterized HAVING thresholds in the worker', async ({
   page,
 }, testInfo) => {
@@ -127,10 +169,23 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expect(author).toBeVisible({ timeout: 20_000 });
   await expect(author.getByTestId('author-compose-tab')).toBeVisible();
   await expect(author.getByTestId('author-code-tab')).toBeVisible();
+  await expect(page.getByTestId('author-results-empty')).toBeVisible();
+  await expect(page.locator('#workspace-editor-pane')).toBeVisible();
+  await expect(page.locator('#workspace-results-pane')).toBeVisible();
   await expect(author.getByTestId('author-run')).toHaveAttribute(
     'disabled',
     '',
   );
+
+  const invoiceDate = author.getByLabel('InvoiceDate', { exact: true });
+  await expect(invoiceDate).toBeChecked();
+  await invoiceDate.uncheck();
+  await author.getByTestId('author-code-tab').click();
+  const editor = author.getByTestId('query-body-text').locator('textarea');
+  await expect(editor).toHaveValue(/select i\.InvoiceId\s*$/u);
+  await expect(editor).not.toHaveValue(/InvoiceDate/u);
+  await author.getByTestId('author-compose-tab').click();
+  await expect(invoiceDate).not.toBeChecked();
 
   const customerId = author.getByTestId('author-customer-id').locator('input');
   await customerId.fill('');
@@ -170,6 +225,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expect(receipt).toContainText('Executed');
   await expect(receipt).toContainText('7 rows');
   await expect(receipt).toContainText('Customer ID 1');
+  await expect(receipt).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath('query-author-browser-success.png'),
     fullPage: true,
@@ -194,6 +250,10 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
 
   for (const width of [390, 320]) {
     await page.setViewportSize({ width, height: 844 });
+    await page.getByRole('tab', { name: 'Results' }).click();
+    await expect(receipt).toBeVisible();
+    await page.getByRole('tab', { name: 'Editor' }).click();
+    await expect(author).toBeVisible();
     const header = await page.evaluate(() => {
       const bounds = (selector: string): DOMRect | undefined =>
         document.querySelector(selector)?.getBoundingClientRect();

@@ -1,0 +1,140 @@
+:host {
+  display: block;
+}
+
+.compose-controls {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1rem;
+  border: 1px solid var(--ion-color-step-150, #e5e7eb);
+  border-radius: 0.8rem;
+  background: var(--ion-background-color, #fff);
+}
+
+.compose-caption {
+  margin: 0;
+  color: var(--ion-color-medium-shade);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.compose-error {
+  margin: 0;
+  color: var(--ion-color-danger-shade);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+fieldset {
+  display: grid;
+  gap: 0.65rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--ion-color-step-150, #e5e7eb);
+  border-radius: 0.65rem;
+}
+
+legend {
+  padding-inline: 0.25rem;
+  font-size: 0.84rem;
+  font-weight: 650;
+}
+
+.compose-check,
+.compose-field {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+  color: var(--ion-color-dark);
+  font-size: 0.9rem;
+}
+
+.compose-field {
+  justify-content: space-between;
+}
+
+.compose-check input {
+  width: 1.1rem;
+  height: 1.1rem;
+  flex: 0 0 auto;
+  accent-color: var(--ion-color-primary);
+}
+
+.compose-field select,
+.compose-field input,
+.compose-inline-field select,
+.compose-inline-field input {
+  min-width: 0;
+  min-height: 2.5rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--ion-color-step-250, #cbd5e1);
+  border-radius: 0.5rem;
+  background: var(--ion-background-color, #fff);
+  color: var(--ion-color-dark);
+  font: inherit;
+}
+
+.compose-field > select,
+.compose-field > input {
+  width: min(9rem, 50%);
+}
+
+.compose-inline-field {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.compose-inline-field select {
+  width: 4.5rem;
+}
+
+.compose-inline-field input {
+  width: 6rem;
+}
+
+.compose-control-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+}
+
+.compose-limit {
+  justify-content: flex-start;
+}
+
+.compose-limit input {
+  width: 5.5rem;
+}
+
+.compose-unavailable {
+  display: grid;
+  gap: 0.45rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.compose-unavailable button {
+  justify-self: start;
+  min-height: 2.5rem;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--ion-color-primary);
+  border-radius: 0.55rem;
+  background: transparent;
+  color: var(--ion-color-primary-shade);
+  font: inherit;
+  font-weight: 600;
+}
+
+@media (max-width: 600px) {
+  .compose-controls {
+    padding: 0.8rem;
+  }
+
+  .compose-control-row {
+    align-items: flex-start;
+  }
+}
