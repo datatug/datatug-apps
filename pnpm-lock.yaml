@@ -71,11 +71,11 @@ importers:
         specifier: 8.1.0
         version: 8.1.0
       '@dalgo/core':
-        specifier: github:dal-go/dalgo-js#1534acd4d0e4a104c58eba09fb9c25619efc8f24
-        version: https://codeload.github.com/dal-go/dalgo-js/tar.gz/1534acd4d0e4a104c58eba09fb9c25619efc8f24
+        specifier: github:dal-go/dalgo-js#a13be90e271bd40351c0810aa10089875f60422f
+        version: https://codeload.github.com/dal-go/dalgo-js/tar.gz/a13be90e271bd40351c0810aa10089875f60422f
       '@dalgo/indexeddb':
         specifier: github:dal-go/dalgo-http-adapters#519665be7bab21bae3c388eb2395afb8b6df1be9&path:/packages/indexeddb
-        version: https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/519665be7bab21bae3c388eb2395afb8b6df1be9#path:/packages/indexeddb(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/1534acd4d0e4a104c58eba09fb9c25619efc8f24)
+        version: https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/519665be7bab21bae3c388eb2395afb8b6df1be9#path:/packages/indexeddb(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/a13be90e271bd40351c0810aa10089875f60422f)
       '@firebase/auth':
         specifier: 1.12.1
         version: 1.12.1(@firebase/app@0.14.9)
@@ -2000,9 +2000,9 @@ packages:
   '@dabh/diagnostics@2.0.8':
     resolution: {integrity: sha512-R4MSXTVnuMzGD7bzHdW2ZhhdPC/igELENcq5IjEverBvq5hn1SXCWcsi6eSsdWP0/Ur+SItRRjAktmdoX/8R/Q==}
 
-  '@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/1534acd4d0e4a104c58eba09fb9c25619efc8f24':
-    resolution: {gitHosted: true, integrity: sha512-mcNxif6K5ueHV7DZPQ5wVxnzHhJL2GcaN3F/pn6EUM94Hv3NusW0rHL7b+GFBmhXo1eMBYQiMol4n78yfw2qyQ==, tarball: https://codeload.github.com/dal-go/dalgo-js/tar.gz/1534acd4d0e4a104c58eba09fb9c25619efc8f24}
-    version: 0.2.0
+  '@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/a13be90e271bd40351c0810aa10089875f60422f':
+    resolution: {gitHosted: true, integrity: sha512-BiFTvwYRrYqIzQJJAPbMr/Caz5AO33Ku7w8UQWEt6neztTrbVBHGpgvqX9ESLDN6nzI2HcWR8vCBwP7oEZ5Hng==, tarball: https://codeload.github.com/dal-go/dalgo-js/tar.gz/a13be90e271bd40351c0810aa10089875f60422f}
+    version: 0.7.1
     engines: {node: '>=20'}
 
   '@dalgo/indexeddb@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/519665be7bab21bae3c388eb2395afb8b6df1be9#path:/packages/indexeddb':
@@ -13770,13 +13770,13 @@ snapshots:
       enabled: 2.0.0
       kuler: 2.0.0
 
-  '@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/1534acd4d0e4a104c58eba09fb9c25619efc8f24':
+  '@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/a13be90e271bd40351c0810aa10089875f60422f':
     dependencies:
       yaml: 2.8.2
 
-  '@dalgo/indexeddb@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/519665be7bab21bae3c388eb2395afb8b6df1be9#path:/packages/indexeddb(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/1534acd4d0e4a104c58eba09fb9c25619efc8f24)':
+  '@dalgo/indexeddb@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/519665be7bab21bae3c388eb2395afb8b6df1be9#path:/packages/indexeddb(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/a13be90e271bd40351c0810aa10089875f60422f)':
     dependencies:
-      '@dalgo/core': https://codeload.github.com/dal-go/dalgo-js/tar.gz/1534acd4d0e4a104c58eba09fb9c25619efc8f24
+      '@dalgo/core': https://codeload.github.com/dal-go/dalgo-js/tar.gz/a13be90e271bd40351c0810aa10089875f60422f
 
   '@discoveryjs/json-ext@1.1.0': {}
 
