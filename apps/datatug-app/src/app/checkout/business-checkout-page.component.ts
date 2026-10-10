@@ -437,7 +437,10 @@ export class BusinessCheckoutPageComponent {
     void this.router.navigate(['/']);
   }
   protected backToPricing(): string {
-    return 'https://datatug.io/pricing/';
+    return (
+      'https://datatug.app/en/pricing/' +
+      (this.mode() === 'test' ? '?checkout=test' : '')
+    );
   }
 
   ionViewWillLeave(): void {

@@ -262,10 +262,13 @@ it('default LIVE checkout uses authenticated normal API config and session for t
   expect(root.textContent).toContain('€190.00');
   expect(root.textContent).not.toContain('Test mode');
   expect(
-    root.querySelector('a[href="https://datatug.io/terms/"]'),
+    root.querySelector('a[href="https://datatug.app/en/terms/"]'),
   ).not.toBeNull();
   expect(
-    root.querySelector('a[href="https://datatug.io/privacy/"]'),
+    root.querySelector('a[href="https://datatug.app/en/privacy/"]'),
+  ).not.toBeNull();
+  expect(
+    root.querySelector('a[href="https://datatug.app/en/pricing/"]'),
   ).not.toBeNull();
   expect(root.textContent).toContain(
     'Please review these policies before continuing to payment.',
