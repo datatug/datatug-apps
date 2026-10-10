@@ -1087,7 +1087,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.invalidateHistoryScope();
   }
 
-  public queryTextChanged(event: Event): void {
+  public queryTextChanged(event: Event, reportActivity = true): void {
     const isAuthorDraft = this.isTugqlAuthorJourney();
     // Local Author editing is independent of whether this rich query can be
     // serialized back to its current remote source. Save remains gated, but a
@@ -1100,7 +1100,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     )
       return;
     const previousText = (this.queryState.request as ITextQueryRequest).text;
-    if (text !== previousText) this.reportGitHubQueryEdit(this.project?.ref);
+    if (reportActivity && text !== previousText)
+      this.reportGitHubQueryEdit(this.project?.ref);
     this.queryState = {
       ...this.queryState,
       request: { ...this.queryState.request, text } as ITextQueryRequest,
@@ -1191,6 +1192,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
     this.queryTextChanged(
       new CustomEvent('ionInput', { detail: { value: formatted.source } }),
+      false,
     );
     const current = this.currentAuthorFormatContext();
     if (!current) return;
@@ -1224,6 +1226,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       new CustomEvent('ionInput', {
         detail: { value: undo.originalSource },
       }),
+      false,
     );
     this.authorFormatStatus.set('Formatting undone.');
   }
@@ -3896,7 +3899,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     ) {
       return;
     }
-    const key = JSON.stringify({ ref, queryId: this.queryId });
+    const key = JSON.stringify({
+      ref,
+      queryId: this.queryId,
+      bindingGeneration: this.githubProjectActivity.bindingGeneration,
+    });
     const now = Date.now();
     const last = this.lastGitHubQueryEditReport;
     if (

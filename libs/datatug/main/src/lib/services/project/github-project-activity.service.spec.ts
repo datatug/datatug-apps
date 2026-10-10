@@ -169,9 +169,11 @@ describe('GitHubProjectActivityService', () => {
 
   it('invalidates an issued session when the authenticated actor changes', async () => {
     const service = TestBed.inject(GitHubProjectActivityService);
+    const previousGeneration = service.bindingGeneration;
     const session = await firstValueFrom(service.resolve(ref));
     if (!session) throw new Error('Expected an activity session');
     authState.next({ status: 'authenticated', user: { uid: 'actor-two' } });
+    expect(service.bindingGeneration).toBeGreaterThan(previousGeneration);
     await expect(
       firstValueFrom(
         service.report(session, 'another-operation-id', 'query_edit'),

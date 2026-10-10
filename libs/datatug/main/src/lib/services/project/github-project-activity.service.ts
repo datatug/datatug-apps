@@ -135,6 +135,11 @@ export class GitHubProjectActivityService {
   >(undefined);
   readonly current = this.$current.asObservable();
 
+  /** Changes whenever auth or project scope changes, for caller-side throttles. */
+  get bindingGeneration(): number {
+    return this.generation;
+  }
+
   constructor() {
     this.auth.authState.subscribe((state) => {
       const next =

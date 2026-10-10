@@ -88,6 +88,7 @@ function agentContextStub(securityContextId: string | undefined = 'sctx-1') {
 
 function githubProjectActivityStub() {
   return {
+    bindingGeneration: 0,
     resolve: vi.fn(() => of(undefined)),
     reportForCurrentProject: vi.fn(() => of(undefined)),
   };
@@ -578,6 +579,10 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     );
     component.queryTextChanged(
       new CustomEvent('ionInput', { detail: { value: 'SELECT 1' } }),
+    );
+    component.queryTextChanged(
+      new CustomEvent('ionInput', { detail: { value: 'SELECT 2' } }),
+      false,
     );
 
     expect(activity.reportForCurrentProject).toHaveBeenCalledOnce();
