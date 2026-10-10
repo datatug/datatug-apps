@@ -54,11 +54,26 @@ test('cold saved CustomerId count supports parameterized HAVING thresholds in th
   await expect(receipt).toContainText('loaded in');
   await expect(page.getByTestId('result-provenance')).toHaveCount(0);
   await expect(page.getByTestId('query-run-timings')).toHaveCount(0);
-  await author.getByTestId('author-compose-tab').click();
+  const composeTab = author.getByTestId('author-compose-tab');
+  const codeTab = author.getByTestId('author-code-tab');
+  await composeTab.click();
   await expect(editor).toHaveCount(0);
+  await expect(composeTab).toHaveAttribute('fill', 'solid');
+  await expect(codeTab).toHaveAttribute('fill', 'clear');
+  await expect(composeTab).toHaveClass(/button-solid/u);
+  await expect(codeTab).toHaveClass(/button-clear/u);
+  await expect(composeTab).toHaveAttribute('aria-pressed', 'true');
+  await expect(codeTab).toHaveAttribute('aria-pressed', 'false');
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
   await page.screenshot({
     path: testInfo.outputPath('query-author-having-success.png'),
     fullPage: true,
+    animations: 'disabled',
   });
   await author.getByTestId('author-code-tab').click();
   await expect(editor).toBeVisible();

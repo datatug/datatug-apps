@@ -436,12 +436,14 @@
         <ion-buttons>
           <ion-button
             data-testid="author-compose-tab"
+            [attr.aria-pressed]="authorMode() === 'compose'"
             [fill]="authorMode() === 'compose' ? 'solid' : 'clear'"
             (click)="setAuthorMode('compose')"
             >Compose</ion-button
           >
           <ion-button
             data-testid="author-code-tab"
+            [attr.aria-pressed]="authorMode() === 'code'"
             [fill]="authorMode() === 'code' ? 'solid' : 'clear'"
             (click)="setAuthorMode('code')"
             >Code</ion-button
@@ -971,12 +973,14 @@
           {{ resultTotalRows() }} rows · Customer ID
           {{ publicSqliteCustomerIdLabel(result) }} applied · pinned snapshot ·
           queried {{ result.provenance.observedAt }}
-          @if (displayedResultIsPreviousRun()) {
-            @if (committedRun()?.timing; as timing) {
+          @if (!selectedHistoricalResult()) {
+            @if (displayedResultIsPreviousRun()) {
+              @if (committedRun()?.timing; as timing) {
+                · loaded in {{ formatQueryDuration(timing.allResultsLoadedMs) }}
+              }
+            } @else if (queryRunTiming(); as timing) {
               · loaded in {{ formatQueryDuration(timing.allResultsLoadedMs) }}
             }
-          } @else if (queryRunTiming(); as timing) {
-            · loaded in {{ formatQueryDuration(timing.allResultsLoadedMs) }}
           }
         </p>
         <details>
