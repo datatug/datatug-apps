@@ -308,6 +308,62 @@ function replaceHavingOperator(
   return `${source.slice(0, absoluteIndex)}${replacement === '=' ? '==' : replacement}${source.slice(absoluteIndex + raw.length)}`;
 }
 
+/**
+ * Toggles the optional projection within the parser-admitted single-source
+ * Invoice profile. It edits only the final projection item, preserving the
+ * authored SELECT layout, casing, line endings, and trailing whitespace.
+ */
+function replaceInvoiceDateProjection(
+  source: string,
+  includeInvoiceDate: boolean,
+): string | undefined {
+  const select = /(^|\n)([ \t]*)(select)\b/iu.exec(source);
+  if (!select || select.index === undefined) return undefined;
+  const tokenStart = select.index + (select[1]?.length ?? 0) + (select[2]?.length ?? 0);
+  const contentStart = tokenStart + (select[3]?.length ?? 0);
+  const content = source.slice(contentStart);
+  const leading = content.match(/^\s*/u)?.[0] ?? '';
+  const trailing = content.match(/\s*$/u)?.[0] ?? '';
+  const trimmedEnd = content.length - trailing.length;
+  const core = content.slice(leading.length, trimmedEnd);
+  if (!core) return undefined;
+  const separator = /\r\n/u.test(source) ? '\r\n' : '\n';
+
+  if (!includeInvoiceDate) {
+    const dateItem = /,\s*(?:(?:[A-Za-z_][\w]*)\.)?InvoiceDate(?:\s+as\s+[A-Za-z_][\w]*)?$/iu.exec(core);
+    if (!dateItem || dateItem.index === undefined) return undefined;
+    const nextCore = core.slice(0, dateItem.index);
+    if (!nextCore.trim()) return undefined;
+    return `${source.slice(0, contentStart)}${leading}${nextCore}${trailing}`;
+  }
+
+  const invoiceId = /(?:(?:[A-Za-z_][\w]*)\.)?(InvoiceId)(?:\s+as\s+[A-Za-z_][\w]*)?$/iu.exec(core);
+  if (!invoiceId || invoiceId.index === undefined) return undefined;
+  const expression = invoiceId[0];
+  const field = invoiceId[1];
+  if (!field) return undefined;
+  const dateField =
+    field === field.toUpperCase()
+      ? 'INVOICEDATE'
+      : field === field.toLowerCase()
+        ? 'invoicedate'
+        : 'InvoiceDate';
+  const fieldExpression = /^(?:(?:[A-Za-z_][\w]*)\.)?InvoiceId/iu.exec(
+    expression,
+  )?.[0];
+  if (!fieldExpression) return undefined;
+  const dateExpression = fieldExpression.replace(/InvoiceId/iu, dateField);
+  const lastLine = core.split(/\r?\n/u).at(-1) ?? core;
+  const indent = core.includes('\n') || core.includes('\r')
+    ? lastLine.match(/^[ \t]*/u)?.[0] ?? ''
+    : leading.match(/(?:^|\r?\n)([ \t]*)$/u)?.[1] ?? '';
+  const blockLayout = /[\r\n]/u.test(leading + core);
+  const addition = blockLayout
+    ? `,${separator}${indent}${dateExpression}`
+    : `, ${dateExpression}`;
+  return `${source.slice(0, contentStart)}${leading}${core}${addition}${trailing}`;
+}
+
 type LocalizedClauseUpdate =
   | { readonly structural: true }
   | { readonly structural: false; readonly source?: string };
@@ -319,12 +375,22 @@ function updateNonStructuralClauses(
 ): LocalizedClauseUpdate {
   if (
     current.grouped !== changes.grouped ||
-    (current.grouped && current.countExpression !== changes.countExpression) ||
-    (!current.grouped && current.includeInvoiceDate !== changes.includeInvoiceDate)
+    (current.grouped && current.countExpression !== changes.countExpression)
   ) {
     return { structural: true };
   }
   let result = source;
+  if (
+    !current.grouped &&
+    current.includeInvoiceDate !== changes.includeInvoiceDate
+  ) {
+    const updated = replaceInvoiceDateProjection(
+      result,
+      changes.includeInvoiceDate,
+    );
+    if (updated === undefined) return { structural: false };
+    result = updated;
+  }
   if (current.grouped && current.havingOperator !== changes.havingOperator) {
     const updated = replaceHavingOperator(
       result,

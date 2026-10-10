@@ -167,6 +167,73 @@ describe('author compose profile', () => {
     );
   });
 
+  it('toggles InvoiceDate in a block SELECT without changing casing, indentation, or the final newline', () => {
+    const source = [
+      'PARAMETERS (',
+      '\t@CustomerId INTEGER REQUIRED',
+      ')',
+      'FROM main.Invoice AS i',
+      'WHERE i.CustomerId = @CustomerId',
+      'LIMIT 100',
+      'SELECT',
+      '\ti.InvoiceId AS id,',
+      '\ti.InvoiceDate AS issued',
+      '',
+    ].join('\n');
+    const expected = source.replace(
+      '\ti.InvoiceId AS id,\n\ti.InvoiceDate AS issued',
+      '\ti.InvoiceId AS id',
+    );
+    const result = updateAuthorComposeSource(source, {
+      grouped: false,
+      includeInvoiceDate: false,
+      countExpression: 'star',
+      havingOperator: '>=',
+      threshold: 7,
+      limit: 100,
+    });
+    expect(result).toBe(expected);
+    expect(parseTugQL(result ?? '').diagnostics).toEqual([]);
+    expect(readAuthorComposeProfile(result ?? '')).toMatchObject({
+      supported: true,
+      includeInvoiceDate: false,
+    });
+  });
+
+  it('adds InvoiceDate using the authored block projection style and retains the final newline', () => {
+    const source = [
+      'PARAMETERS (',
+      '\t@CustomerId INTEGER REQUIRED',
+      ')',
+      'FROM main.Invoice AS i',
+      'WHERE i.CustomerId = @CustomerId',
+      'LIMIT 100',
+      'SELECT',
+      '\ti.InvoiceId AS id',
+      '',
+    ].join('\n');
+    const result = updateAuthorComposeSource(source, {
+      grouped: false,
+      includeInvoiceDate: true,
+      countExpression: 'star',
+      havingOperator: '>=',
+      threshold: 7,
+      limit: 100,
+    });
+    expect(result).toBe(
+      source.replace(
+        '\ti.InvoiceId AS id\n',
+        '\ti.InvoiceId AS id,\n\ti.InvoiceDate\n',
+      ),
+    );
+    expect(parseTugQL(result ?? '').diagnostics).toEqual([]);
+    expect(readAuthorComposeProfile(result ?? '')).toMatchObject({
+      supported: true,
+      includeInvoiceDate: true,
+      invoiceIdAlias: 'id',
+    });
+  });
+
   it('uses authored uppercase and tab style when a structural Compose edit regenerates the source', () => {
     const source = [
       'PARAMETERS (',

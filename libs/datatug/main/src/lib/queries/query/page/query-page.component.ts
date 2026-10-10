@@ -1170,7 +1170,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           ),
         );
       }
-    } catch (error: unknown) {
+    } catch {
       // A cloud 401/403 is also delivered through QueriesService's authority
       // invalidation stream. Never restore cached private data in that case.
       if (this.queryId === sourceQueryId && this.runResult() === result) {

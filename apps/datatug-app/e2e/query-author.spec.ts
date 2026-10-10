@@ -128,7 +128,14 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
   await firstRunAction?.evaluate((button) => button.click());
   await expect(page).toHaveURL(/id=chinook-customer-invoice-join/u);
   await author.getByTestId('author-customer-id').locator('input').fill('1');
+  await joinReceipt.getByText('Execution details', { exact: true }).click();
+  const executionId = joinReceipt.getByText(/^Worker execution ID /u);
+  const previousExecutionId = await executionId.textContent();
   await author.getByTestId('author-run').click();
+  // The previous CustomerId=2 run has the same row count, so waiting only for
+  // “7 rows” can race the refreshed grid and start keyboard navigation against
+  // the old receipt. Bind the keyboard journey to the new worker execution.
+  await expect(executionId).not.toHaveText(previousExecutionId ?? '');
   await expect(joinReceipt).toContainText('7 rows');
 
   const lookupActions = page.getByRole('button', {
@@ -139,6 +146,7 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
   const invoiceIdCell = firstResultRow.getByRole('gridcell').nth(0);
   const customerIdCell = firstResultRow.getByRole('gridcell').nth(1);
   const firstNameCell = firstResultRow.getByRole('gridcell').nth(2);
+  await expect(firstLookupAction).toBeVisible();
   await invoiceIdCell.click();
   await page.keyboard.press('Tab');
   await expect(customerIdCell).toBeFocused();
