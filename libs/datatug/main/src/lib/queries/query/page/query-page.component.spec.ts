@@ -19,6 +19,7 @@ import {
   signal,
 } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { IonSelect, IonSelectOption, NavController } from '@ionic/angular';
 import { Firestore } from 'firebase/firestore';
@@ -57,6 +58,7 @@ import { QueriesService } from '../../queries.service';
 import { Coordinator } from '../../../executor/coordinator';
 import { ProjectService } from '../../../services/project/project.service';
 import { QueryEditorStateService } from '../../query-editor-state-service';
+import { QueryWorkspaceLayoutComponent } from './query-workspace-layout.component';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
 import { FederatedQueryService } from '../../federated-query.service';
 import { PublicSqliteQueryService } from '../../public-sqlite-query.service';
@@ -80,6 +82,38 @@ function agentContextStub(securityContextId: string | undefined = 'sctx-1') {
     securityContextId: signal(securityContextId),
     refresh: vi.fn(() => of(undefined)),
   };
+}
+
+function setRouterNavigation(
+  router: Router,
+  info: unknown,
+  id: number,
+  successful = false,
+): void {
+  const currentNavigation = router.currentNavigation as unknown as ReturnType<
+    typeof vi.fn
+  >;
+  const lastSuccessfulNavigation = router.lastSuccessfulNavigation as unknown as ReturnType<
+    typeof vi.fn
+  >;
+  currentNavigation.mockReturnValue({ id, extras: { info } });
+  if (successful) {
+    lastSuccessfulNavigation.mockReturnValue({ id, extras: { info } });
+  }
+}
+
+function clearCurrentRouterNavigation(router: Router): void {
+  const currentNavigation = router.currentNavigation as unknown as ReturnType<
+    typeof vi.fn
+  >;
+  currentNavigation.mockReturnValue(null);
+}
+
+function setRouteId(id: string): void {
+  Object.defineProperty(TestBed.inject(ActivatedRoute), 'snapshot', {
+    configurable: true,
+    value: { queryParamMap: convertToParamMap({ id }) },
+  });
 }
 
 describe('SqlEditorPage', () => {
@@ -129,6 +163,8 @@ describe('SqlEditorPage', () => {
           useValue: {
             navigate: vi.fn(() => Promise.resolve(true)),
             events: of(),
+            currentNavigation: vi.fn(() => null),
+            lastSuccessfulNavigation: vi.fn(() => null),
           },
         },
         {
@@ -806,6 +842,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     const internals = component as unknown as {
       focusAuthorLookupAfterRender(): void;
       invalidateHistoryScope(): void;
+      setQueryId(id?: string | null, isNew?: boolean): void;
     };
 
     internals.focusAuthorLookupAfterRender();
@@ -922,6 +959,9 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
 
     expect(router.navigate).toHaveBeenCalledOnce();
     expect(focusAuthorLookupAfterRender).not.toHaveBeenCalled();
+    expect(component.queryId).toBe(definition.id);
+    expect(component.queryState.authorBindings?.['CustomerId']).toBe('1');
+    expect(editor.openAuthorizedQuery).not.toHaveBeenCalled();
 
     vi.mocked(router.navigate).mockRejectedValue(new Error('route rejected'));
     await internals.openAuthorCustomerLookup(
@@ -935,6 +975,611 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
 
     expect(router.navigate).toHaveBeenCalledTimes(2);
     expect(focusAuthorLookupAfterRender).not.toHaveBeenCalled();
+    expect(component.queryId).toBe(definition.id);
+    expect(component.queryState.authorBindings?.['CustomerId']).toBe('1');
+    expect(editor.openAuthorizedQuery).not.toHaveBeenCalled();
+  });
+
+  it('selects the mobile Editor pane before focusing a successfully opened lookup', async () => {
+    const scenario = await createJoinedLookupScenario(
+      '<sneat-query-workspace-layout><div query-workspace-editor><h2 #authorLookupHeading tabindex="-1">Invoice lookup</h2></div><div query-workspace-results>Results</div></sneat-query-workspace-layout>',
+    );
+    const layout = runFixture.debugElement.query(
+      By.directive(QueryWorkspaceLayoutComponent),
+    ).componentInstance as QueryWorkspaceLayoutComponent;
+    const focusAuthorLookupAfterRender = vi.spyOn(
+      component as unknown as { focusAuthorLookupAfterRender(): void },
+      'focusAuthorLookupAfterRender',
+    );
+    layout.mobilePane.set('results');
+    const targetState: IQueryState = {
+      id: scenario.lookupDefinition.id,
+      queryType: QueryType.DTQL,
+      request: scenario.lookupDefinition.request,
+      def: scenario.lookupDefinition,
+    };
+    vi.mocked(scenario.editor.openAuthorizedQuery).mockImplementation(() => {
+      component.queryState = targetState;
+      component.queryDef.set(scenario.lookupDefinition);
+      return targetState;
+    });
+    const updateQueryState = vi.mocked(scenario.editor.updateQueryState);
+    vi.mocked(scenario.router.navigate).mockImplementation(async (_commands, extras) => {
+      const navigationInfo = extras?.info;
+      setRouterNavigation(scenario.router, navigationInfo, 41);
+      setRouteId(scenario.lookupDefinition.id);
+      scenario.internals.setQueryId(scenario.lookupDefinition.id);
+      setRouterNavigation(scenario.router, navigationInfo, 41, true);
+      return true;
+    });
+
+    runFixture.detectChanges();
+
+    await scenario.internals.openAuthorCustomerLookup(
+      0,
+      'CustomerId',
+      0,
+      'join-run-1',
+      '1',
+      scenario.internals.currentQueryIdentity(),
+    );
+    runFixture.detectChanges();
+    await runFixture.whenStable();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(scenario.router.navigate).toHaveBeenCalledOnce();
+    expect(scenario.editor.openAuthorizedQuery).toHaveBeenCalledOnce();
+    expect(layout.mobilePane()).toBe('editor');
+    expect(focusAuthorLookupAfterRender).toHaveBeenCalledOnce();
+    expect(updateQueryState).toHaveBeenCalledWith(
+      expect.objectContaining({
+        authorBindings: { CustomerId: '1' },
+        authorBindingProvenance: {
+          CustomerId: expect.objectContaining({
+            origin: 'selection',
+            sourceQueryId: scenario.definition.id,
+          }),
+        },
+      }),
+    );
+    expect(runQueryMock).not.toHaveBeenCalled();
+  });
+
+  it('does not commit a selected lookup after its navigation scope changes', async () => {
+    const scenario = await createJoinedLookupScenario();
+    const route = TestBed.inject(ActivatedRoute);
+    const focus = vi.spyOn(
+      component as unknown as { focusAuthorLookupAfterRender(): void },
+      'focusAuthorLookupAfterRender',
+    );
+    const targetState: IQueryState = {
+      id: scenario.lookupDefinition.id,
+      queryType: QueryType.DTQL,
+      request: scenario.lookupDefinition.request,
+      def: scenario.lookupDefinition,
+    };
+    vi.mocked(scenario.editor.openAuthorizedQuery).mockReturnValue(targetState);
+    const updateQueryState = vi.mocked(scenario.editor.updateQueryState);
+    let resolveNavigation!: (navigated: boolean) => void;
+    vi.mocked(scenario.router.navigate).mockImplementation(
+      (_commands, extras) =>
+        new Promise<boolean>((resolve) => {
+          resolveNavigation = resolve;
+          Object.defineProperty(route, 'snapshot', {
+            configurable: true,
+            value: {
+              queryParamMap: convertToParamMap({
+                id: scenario.lookupDefinition.id,
+              }),
+            },
+          });
+          setRouterNavigation(scenario.router, extras?.info, 42);
+          scenario.internals.setQueryId(scenario.lookupDefinition.id);
+          const complete = resolve;
+          resolveNavigation = (navigated) => {
+            if (navigated)
+              setRouterNavigation(
+                scenario.router,
+                extras?.info,
+                42,
+                true,
+              );
+            complete(navigated);
+          };
+        }),
+    );
+
+    const pending = scenario.internals.openAuthorCustomerLookup(
+      0,
+      'CustomerId',
+      0,
+      'join-run-1',
+      '1',
+      scenario.internals.currentQueryIdentity(),
+    );
+    await vi.waitFor(() => expect(resolveNavigation).toBeTypeOf('function'));
+    agentContext.securityContextId.set('sctx-after-navigation');
+    scenario.internals.syncScopeAndBindings();
+    resolveNavigation(true);
+    await pending;
+
+    expect(scenario.editor.openAuthorizedQuery).not.toHaveBeenCalled();
+    expect(scenario.editor.openQuery).toHaveBeenCalledWith(
+      scenario.lookupDefinition.id,
+    );
+    expect(updateQueryState).not.toHaveBeenCalled();
+    expect(component.queryState.authorBindings?.['CustomerId']).toBe('1');
+    expect(focus).not.toHaveBeenCalled();
+  });
+
+  it('restores source URL and state when an observed target navigation is canceled', async () => {
+    const scenario = await createJoinedLookupScenario();
+    let cancelTargetNavigation!: () => void;
+    vi.mocked(scenario.router.navigate).mockImplementation(
+      (_commands, extras) => {
+        const id = extras?.queryParams?.['id'];
+        const info = extras?.info;
+        if (id === scenario.lookupDefinition.id) {
+          setRouterNavigation(scenario.router, info, 60);
+          setRouteId(scenario.lookupDefinition.id);
+          scenario.internals.setQueryId(scenario.lookupDefinition.id);
+          return new Promise<boolean>((resolve) => {
+            cancelTargetNavigation = () => resolve(false);
+          });
+        }
+
+        setRouterNavigation(scenario.router, info, 61);
+        setRouteId(scenario.definition.id);
+        scenario.internals.setQueryId(scenario.definition.id);
+        setRouterNavigation(scenario.router, info, 61, true);
+        return Promise.resolve(true);
+      },
+    );
+    const pending = scenario.internals.openAuthorCustomerLookup(
+      0,
+      'CustomerId',
+      0,
+      'join-run-1',
+      '1',
+      scenario.internals.currentQueryIdentity(),
+    );
+    await vi.waitFor(() =>
+      expect(cancelTargetNavigation).toBeTypeOf('function'),
+    );
+    cancelTargetNavigation();
+    await pending;
+
+    expect(scenario.router.navigate).toHaveBeenCalledTimes(2);
+    expect(TestBed.inject(ActivatedRoute).snapshot.queryParamMap.get('id')).toBe(
+      scenario.definition.id,
+    );
+    expect(component.queryId).toBe(scenario.definition.id);
+    expect(scenario.editor.openQuery).not.toHaveBeenCalledWith(
+      scenario.lookupDefinition.id,
+    );
+    expect(scenario.editor.openAuthorizedQuery).not.toHaveBeenCalled();
+    expect(scenario.editor.updateQueryState).not.toHaveBeenCalled();
+  });
+
+  it('reconciles a still-owned target URL if source rollback is rejected', async () => {
+    const scenario = await createJoinedLookupScenario();
+    let cancelTargetNavigation!: () => void;
+    vi.mocked(scenario.router.navigate).mockImplementation(
+      (_commands, extras) => {
+        const id = extras?.queryParams?.['id'];
+        const info = extras?.info;
+        if (id === scenario.lookupDefinition.id) {
+          setRouterNavigation(scenario.router, info, 62);
+          setRouteId(scenario.lookupDefinition.id);
+          scenario.internals.setQueryId(scenario.lookupDefinition.id);
+          return new Promise<boolean>((resolve) => {
+            cancelTargetNavigation = () => resolve(false);
+          });
+        }
+        setRouterNavigation(scenario.router, info, 63);
+        return Promise.resolve(false).then((navigated) => {
+          clearCurrentRouterNavigation(scenario.router);
+          return navigated;
+        });
+      },
+    );
+    const pending = scenario.internals.openAuthorCustomerLookup(
+      0,
+      'CustomerId',
+      0,
+      'join-run-1',
+      '1',
+      scenario.internals.currentQueryIdentity(),
+    );
+    await vi.waitFor(() =>
+      expect(cancelTargetNavigation).toBeTypeOf('function'),
+    );
+    cancelTargetNavigation();
+    await pending;
+
+    expect(scenario.router.navigate).toHaveBeenCalledTimes(2);
+    expect(scenario.router.navigate.mock.calls[1][1]).toEqual(
+      expect.objectContaining({ replaceUrl: true }),
+    );
+    expect(TestBed.inject(ActivatedRoute).snapshot.queryParamMap.get('id')).toBe(
+      scenario.lookupDefinition.id,
+    );
+    expect(scenario.editor.openQuery).toHaveBeenCalledWith(
+      scenario.lookupDefinition.id,
+    );
+    expect(scenario.editor.openAuthorizedQuery).not.toHaveBeenCalled();
+    expect(scenario.editor.updateQueryState).not.toHaveBeenCalled();
+    expect(component.queryState.authorBindingProvenance?.['CustomerId']?.origin).toBe(
+      'manual',
+    );
+  });
+
+  it('does not roll back over a newer navigation to the same lookup target', async () => {
+    const scenario = await createJoinedLookupScenario();
+    let resolveLookupNavigation!: (navigated: boolean) => void;
+    let lookupNavigationInfo: unknown;
+    vi.mocked(scenario.router.navigate).mockImplementation(
+      (_commands, extras) => {
+        lookupNavigationInfo = extras?.info;
+        setRouterNavigation(scenario.router, lookupNavigationInfo, 70);
+        setRouteId(scenario.lookupDefinition.id);
+        scenario.internals.setQueryId(scenario.lookupDefinition.id);
+        return new Promise<boolean>((resolve) => {
+          resolveLookupNavigation = resolve;
+        });
+      },
+    );
+    const pending = scenario.internals.openAuthorCustomerLookup(
+      0,
+      'CustomerId',
+      0,
+      'join-run-1',
+      '1',
+      scenario.internals.currentQueryIdentity(),
+    );
+    await vi.waitFor(() =>
+      expect(resolveLookupNavigation).toBeTypeOf('function'),
+    );
+
+    const independentNavigationInfo = { source: 'user-navigation' };
+    setRouterNavigation(scenario.router, independentNavigationInfo, 71);
+    setRouteId(scenario.lookupDefinition.id);
+    scenario.internals.setQueryId(scenario.lookupDefinition.id);
+    setRouterNavigation(scenario.router, independentNavigationInfo, 71, true);
+    resolveLookupNavigation(true);
+    await pending;
+
+    expect(scenario.router.navigate).toHaveBeenCalledOnce();
+    expect(scenario.editor.openQuery).toHaveBeenCalledWith(
+      scenario.lookupDefinition.id,
+    );
+    expect(scenario.editor.openAuthorizedQuery).not.toHaveBeenCalled();
+    expect(scenario.editor.updateQueryState).not.toHaveBeenCalled();
+    expect(component.queryState.authorBindingProvenance?.['CustomerId']?.origin).toBe(
+      'manual',
+    );
+  });
+
+  it('keeps an edit made before the owned route emission and never applies the stale selection', async () => {
+    const scenario = await createJoinedLookupScenario();
+    let emitLookupRoute!: () => void;
+    let resolveLookupNavigation!: (navigated: boolean) => void;
+    vi.mocked(scenario.router.navigate).mockImplementation(
+      (_commands, extras) => {
+        if (extras?.queryParams?.['id'] === scenario.lookupDefinition.id) {
+          const navigationInfo = extras.info;
+          setRouterNavigation(scenario.router, navigationInfo, 80);
+          return new Promise<boolean>((resolve) => {
+            resolveLookupNavigation = (navigated) => {
+              if (navigated)
+                setRouterNavigation(scenario.router, navigationInfo, 80, true);
+              resolve(navigated);
+            };
+            emitLookupRoute = () => {
+              setRouteId(scenario.lookupDefinition.id);
+              scenario.internals.setQueryId(scenario.lookupDefinition.id);
+            };
+          });
+        }
+
+        const restoreInfo = extras?.info;
+        setRouterNavigation(scenario.router, restoreInfo, 81);
+        setRouteId(scenario.definition.id);
+        scenario.internals.setQueryId(scenario.definition.id);
+        setRouterNavigation(scenario.router, restoreInfo, 81, true);
+        return Promise.resolve(true);
+      },
+    );
+    const pending = scenario.internals.openAuthorCustomerLookup(
+      0,
+      'CustomerId',
+      0,
+      'join-run-1',
+      '1',
+      scenario.internals.currentQueryIdentity(),
+    );
+    await vi.waitFor(() =>
+      expect(emitLookupRoute).toBeTypeOf('function'),
+    );
+    component.authorCustomerIdChanged(
+      new CustomEvent('ionChange', { detail: { value: '2' } }),
+    );
+    emitLookupRoute();
+    resolveLookupNavigation(true);
+    await pending;
+
+    expect(scenario.router.navigate).toHaveBeenCalledTimes(2);
+    expect(scenario.router.navigate.mock.calls[1][1]?.queryParams).toEqual(
+      expect.objectContaining({ id: scenario.definition.id }),
+    );
+    expect(scenario.router.navigate.mock.calls[1][1]).toEqual(
+      expect.objectContaining({ replaceUrl: true }),
+    );
+    expect(scenario.editor.openAuthorizedQuery).not.toHaveBeenCalled();
+    expect(scenario.editor.updateQueryState).toHaveBeenCalledWith(
+      expect.objectContaining({
+        authorBindings: { CustomerId: '2' },
+        authorBindingProvenance: {
+          CustomerId: expect.objectContaining({ origin: 'manual' }),
+        },
+      }),
+    );
+    expect(component.queryState.authorBindings?.['CustomerId']).toBe('2');
+  });
+
+  it('restores the source route when an edit makes an observed lookup navigation stale', async () => {
+    const scenario = await createJoinedLookupScenario();
+    let resolveNavigation!: (navigated: boolean) => void;
+    vi.mocked(scenario.router.navigate).mockImplementation(
+      (_commands, extras) => {
+        const id = extras?.queryParams?.['id'];
+        if (id === scenario.lookupDefinition.id) {
+          setRouteId(scenario.lookupDefinition.id);
+          setRouterNavigation(scenario.router, extras?.info, 43);
+          scenario.internals.setQueryId(id);
+          return new Promise<boolean>((resolve) => {
+            resolveNavigation = (navigated) => {
+              if (navigated)
+                setRouterNavigation(
+                  scenario.router,
+                  extras?.info,
+                  43,
+                  true,
+                );
+              resolve(navigated);
+            };
+          });
+        }
+        setRouteId(scenario.definition.id);
+        setRouterNavigation(scenario.router, extras?.info, 44);
+        scenario.internals.setQueryId(scenario.definition.id);
+        setRouterNavigation(scenario.router, extras?.info, 44, true);
+        return Promise.resolve(true);
+      },
+    );
+
+    const pending = scenario.internals.openAuthorCustomerLookup(
+      0,
+      'CustomerId',
+      0,
+      'join-run-1',
+      '1',
+      scenario.internals.currentQueryIdentity(),
+    );
+    await vi.waitFor(() => expect(resolveNavigation).toBeTypeOf('function'));
+    component.queryTextChanged(
+      new CustomEvent('ionChange', { detail: { value: 'from Invoice as i -- keep local draft' } }),
+    );
+    resolveNavigation(true);
+    await pending;
+
+    expect(scenario.router.navigate).toHaveBeenCalledTimes(2);
+    expect(scenario.router.navigate.mock.calls[1][1]?.queryParams).toEqual(
+      expect.objectContaining({ id: scenario.definition.id }),
+    );
+    expect(scenario.editor.openAuthorizedQuery).not.toHaveBeenCalled();
+    expect(component.queryState.request?.text).toContain('keep local draft');
+    expect(component.queryState.authorBindingProvenance?.['CustomerId']?.origin).toBe(
+      'manual',
+    );
+  });
+
+  it('does not show an old navigation failure after the CustomerId changes', async () => {
+    const scenario = await createJoinedLookupScenario();
+    let resolveNavigation!: (navigated: boolean) => void;
+    vi.mocked(scenario.router.navigate).mockImplementation(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveNavigation = resolve;
+        }),
+    );
+    const pending = scenario.internals.openAuthorCustomerLookup(
+      0,
+      'CustomerId',
+      0,
+      'join-run-1',
+      '1',
+      scenario.internals.currentQueryIdentity(),
+    );
+    await vi.waitFor(() => expect(resolveNavigation).toBeTypeOf('function'));
+    component.authorCustomerIdChanged(
+      new CustomEvent('ionChange', { detail: { value: '2' } }),
+    );
+    resolveNavigation(false);
+    await pending;
+
+    expect(component.authorCustomerId()).toBe('2');
+    expect(component.authorError()).toBeUndefined();
+    expect(scenario.editor.openAuthorizedQuery).not.toHaveBeenCalled();
+    expect(runQueryMock).not.toHaveBeenCalled();
+  });
+
+  it('aborts and invalidates an active author run when Code is edited', async () => {
+    const definition: IQueryDef = {
+      ...queryDef,
+      id: 'author-edit-test',
+      connectionId: 'chinook-sqlite',
+      request: {
+        queryType: QueryType.DTQL,
+        text: 'from Invoice as i',
+      } as unknown as ITextQueryRequest,
+    };
+    component = await createComponent({}, definition);
+    component.queryState = {
+      ...component.queryState,
+      id: definition.id,
+      queryType: QueryType.DTQL,
+      request: definition.request,
+    };
+    component.queryDef.set(definition);
+    component.running.set(true);
+    const abortController = new AbortController();
+    (component as unknown as { authorRunAbort?: AbortController }).authorRunAbort =
+      abortController;
+
+    component.queryTextChanged(
+      new CustomEvent('ionInput', {
+        detail: { value: 'from Invoice as i limit 3' },
+      }),
+    );
+
+    expect(abortController.signal.aborted).toBe(true);
+    expect(component.running()).toBe(false);
+    expect(component.authorDraftRevision()).toBe(1);
+    expect(component.queryDef()?.request.text).toBe(
+      'from Invoice as i limit 3',
+    );
+  });
+
+  it('leaves the real shared editor on the source when lookup navigation is canceled', async () => {
+    const source: IQueryDef = {
+      id: 'q',
+      connectionId: 'chinook-sqlite',
+      request: {
+        queryType: QueryType.DTQL,
+        text: 'from Invoice as i join Customer as c on i.CustomerId = c.CustomerId',
+      } as unknown as ITextQueryRequest,
+    };
+    const target: IQueryDef = {
+      id: 'chinook-invoice-author',
+      connectionId: 'chinook-sqlite',
+      request: { queryType: QueryType.DTQL, text: 'from Invoice as i' },
+    };
+    const privateProject = {
+      ref: {
+        storeId: 'github.com',
+        projectId: 'repo@owner@folder',
+        projectApi: 'cloud' as const,
+        branch: 'work',
+      },
+    };
+    const getRevision = vi.fn((_ref: unknown, id: string) =>
+      of({
+        query: toProjectQueryWire(id === source.id ? source : target),
+        revision: `rev-${id}`,
+        branchHead: 'head',
+        saveSupported: false,
+      }),
+    );
+    const queries = {
+      authentication: () =>
+        of({ status: 'authenticated', user: { uid: 'lookup-test-user' } }),
+      authorityDenied: () => new Subject<typeof privateProject.ref>(),
+      getRevision,
+    };
+    component = await createComponent(
+      {},
+      source,
+      '<p></p>',
+      { realEditor: true, queries, project: of(privateProject) },
+    );
+    component.project = privateProject;
+    runFixture.detectChanges();
+    await runFixture.whenStable();
+    const editor = TestBed.inject(QueryEditorStateService);
+    editor.openAuthorizedQuery(source.id, source);
+    runFixture.detectChanges();
+    await runFixture.whenStable();
+    expect(editor.getQueryState(source.id)?.def?.id).toBe(source.id);
+    expect(component.queryId).toBe(source.id);
+    expect(component.queryDef()).toMatchObject(source);
+
+    component.authorCustomerId.set('1');
+    component.runResult.set({
+      recordset: {
+        columns: [{ name: 'CustomerId', type: 'integer' }],
+        rows: [[{ type: 'integer', value: '1' }]],
+      },
+      publicSqliteReceipt: {
+        executionId: 'source-run',
+        draftRevision: 0,
+        relationship: {
+          id: 'FK_Invoice_Customer_CustomerId',
+          version: '1',
+          fromSource: 'i',
+          toSource: 'c',
+          joinType: 'inner',
+          pairs: [{ fromField: 'CustomerId', toField: 'CustomerId' }],
+        },
+        outputColumns: [
+          {
+            name: 'CustomerId',
+            type: 'integer',
+            lineage: [{ source: 'i', field: 'CustomerId' }],
+          },
+        ],
+        clientReportedBinding: {
+          origin: 'manual',
+          originEvidence: 'client-reported',
+        },
+      },
+      bindingsApplied: [
+        {
+          parameterId: 'CustomerId',
+          value: { type: 'integer', value: '1' },
+          origin: 'manual',
+          originEvidence: 'client-reported',
+        },
+      ],
+    } as never);
+    const openAuthorizedQuery = vi.spyOn(editor, 'openAuthorizedQuery');
+    const router = TestBed.inject(Router);
+    vi.mocked(router.navigate).mockResolvedValue(false);
+    const internals = component as unknown as {
+      currentQueryIdentity(): symbol;
+      openAuthorCustomerLookup(
+        columnIndex: number,
+        columnName: string,
+        rowIndex: number,
+        executionId: string,
+        customerId: string,
+        identity: symbol,
+      ): Promise<void>;
+    };
+
+    await internals.openAuthorCustomerLookup(
+      0,
+      'CustomerId',
+      0,
+      'source-run',
+      '1',
+      internals.currentQueryIdentity(),
+    );
+
+    expect(getRevision).toHaveBeenCalledWith(
+      privateProject.ref,
+      target.id,
+    );
+    const state = await firstValueFrom(editor.queryEditorState);
+    expect(router.navigate).toHaveBeenCalledOnce();
+    expect(openAuthorizedQuery).not.toHaveBeenCalled();
+    expect(state.currentQueryId).toBe(source.id);
+    expect(editor.getQueryState(source.id)?.authorBindings).toBeUndefined();
+    expect(editor.getQueryState(target.id)).toBeUndefined();
+    expect(component.queryId).toBe(source.id);
+    expect(component.runResult()?.publicSqliteReceipt?.executionId).toBe(
+      'source-run',
+    );
   });
 
   it('marks a committed result previous when same-value selection provenance is changed to manual', async () => {
@@ -1184,6 +1829,8 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
           useValue: {
             navigate: vi.fn(() => Promise.resolve(true)),
             events: of(),
+            currentNavigation: vi.fn(() => null),
+            lastSuccessfulNavigation: vi.fn(() => null),
           },
         },
         {
@@ -1247,6 +1894,9 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
         set: {
           imports: [
             NgTemplateOutlet,
+            ...(template.includes('<sneat-query-workspace-layout')
+              ? [QueryWorkspaceLayoutComponent]
+              : []),
             ...(template.includes('<ion-select')
               ? [IonSelect, IonSelectOption]
               : []),
@@ -1282,6 +1932,131 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     originEvidence: 'client-reported' as const,
     factId: 'selection-customer-5',
   };
+
+  async function createJoinedLookupScenario(
+    template = '<p></p>',
+  ): Promise<{
+    definition: IQueryDef;
+    lookupDefinition: IQueryDef;
+    editor: QueryEditorStateService;
+    router: Router;
+    internals: {
+      currentQueryIdentity(): symbol;
+      openAuthorCustomerLookup(
+        columnIndex: number,
+        columnName: string,
+        rowIndex: number,
+        executionId: string,
+        customerId: string,
+        identity: symbol,
+      ): Promise<void>;
+      setQueryId(id?: string | null, isNew?: boolean): void;
+      pendingAuthorLookupNavigation?: {
+        routeObserved: boolean;
+        observedNavigationId?: number;
+        routeSuperseded: boolean;
+      };
+      syncScopeAndBindings(): void;
+    };
+  }> {
+    const definition: IQueryDef = {
+      ...queryDef,
+      id: 'chinook-customer-invoice-join',
+      connectionId: 'chinook-sqlite',
+      request: {
+        queryType: QueryType.DTQL,
+        text: 'from Invoice as i join Customer as c on i.CustomerId = c.CustomerId',
+      } as unknown as ITextQueryRequest,
+    };
+    component = await createComponent({}, definition, template);
+    component.project = {
+      ref: { storeId: 'github.com', projectId: 'demo@buyer@project' },
+    };
+    component.queryState = {
+      ...component.queryState,
+      id: definition.id,
+      queryType: QueryType.DTQL,
+      request: definition.request,
+      authorBindings: { CustomerId: '1' },
+      authorBindingProvenance: {
+        CustomerId: { origin: 'manual', originEvidence: 'client-reported' },
+      },
+    };
+    component.queryDef.set(definition);
+    component.authorCustomerId.set('1');
+    component.runResult.set({
+      recordset: {
+        columns: [{ name: 'CustomerId', type: 'integer' }],
+        rows: [[{ type: 'integer', value: '1' }]],
+      },
+      publicSqliteReceipt: {
+        executionId: 'join-run-1',
+        draftRevision: 0,
+        relationship: {
+          id: 'FK_Invoice_Customer_CustomerId',
+          version: '1',
+          fromSource: 'i',
+          toSource: 'c',
+          joinType: 'inner',
+          pairs: [{ fromField: 'CustomerId', toField: 'CustomerId' }],
+        },
+        outputColumns: [
+          {
+            name: 'CustomerId',
+            type: 'integer',
+            lineage: [{ source: 'i', field: 'CustomerId' }],
+          },
+        ],
+        clientReportedBinding: {
+          origin: 'manual',
+          originEvidence: 'client-reported',
+        },
+      },
+      bindingsApplied: [
+        {
+          parameterId: 'CustomerId',
+          value: { type: 'integer', value: '1' },
+          origin: 'manual',
+          originEvidence: 'client-reported',
+        },
+      ],
+    } as never);
+
+    const lookupDefinition: IQueryDef = {
+      ...definition,
+      id: 'chinook-invoice-author',
+      request: { queryType: QueryType.DTQL, text: 'from Invoice as i' },
+    };
+    Object.assign(TestBed.inject(QueriesService), {
+      getQuery: vi.fn(() => of(lookupDefinition)),
+    });
+    const editor = TestBed.inject(QueryEditorStateService);
+    const router = TestBed.inject(Router);
+    return {
+      definition,
+      lookupDefinition,
+      editor,
+      router,
+      internals: component as unknown as {
+        currentQueryIdentity(): symbol;
+        openAuthorCustomerLookup(
+          columnIndex: number,
+          columnName: string,
+          rowIndex: number,
+          executionId: string,
+          customerId: string,
+          identity: symbol,
+        ): Promise<void>;
+        setQueryId(id?: string | null, isNew?: boolean): void;
+        pendingAuthorLookupNavigation?: {
+          routeObserved: boolean;
+          observedNavigationId?: number;
+          routeSuperseded: boolean;
+        };
+        syncScopeAndBindings(): void;
+      },
+    };
+  }
 
   beforeEach(() => {
     sessionStorage.clear();

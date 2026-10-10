@@ -79,6 +79,18 @@ interface QueryRunTiming {
   readonly noRecords: boolean;
 }
 
+interface PendingAuthorLookupNavigation {
+  readonly targetId: string;
+  readonly requestRevision: number;
+  readonly projectRef: IProjectRef;
+  readonly environment?: string;
+  readonly securityContextId?: string;
+  routeObserved: boolean;
+  navigationSucceeded?: boolean;
+  observedNavigationId?: number;
+  routeSuperseded: boolean;
+}
+
 interface CommittedQueryDefinition {
   readonly request: {
     readonly queryType: QueryType;
@@ -519,11 +531,17 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private readonly changeDetector = inject(ChangeDetectorRef);
   private authorRunAbort?: AbortController;
   private authorLookupFocusRevision = 0;
+  private authorLookupRequestRevision = 0;
+  private pendingAuthorLookupNavigation?: PendingAuthorLookupNavigation;
   private authorModeScopeKey = '';
+  private authorModeContextKey = '';
   private authorModeDefaultResolved = false;
   private authorModeExplicit = false;
   @ViewChild('authorLookupHeading', { read: ElementRef })
   private authorLookupHeading?: ElementRef<HTMLElement>;
+
+  @ViewChild(QueryWorkspaceLayoutComponent)
+  private authorWorkspaceLayout?: QueryWorkspaceLayoutComponent;
 
   public project?: IProjectContext;
   private navigationDraft?: { ref: IProjectRef; query: IQueryDef };
@@ -1055,6 +1073,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       request: { ...this.queryState.request, text } as ITextQueryRequest,
     };
     if (isAuthorDraft) {
+      this.invalidateAuthorDefinitionRun();
+      ++this.authorLookupRequestRevision;
       this.queryDef.update((definition) =>
         definition
           ? {
@@ -1082,6 +1102,15 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       environment: this.queryState.activeEnv?.id ?? this.envId,
       securityContextId: this.agentContext.securityContextId(),
     });
+    const nextContextKey = JSON.stringify({
+      project: this.project?.ref,
+      environment: this.queryState.activeEnv?.id ?? this.envId,
+      securityContextId: this.agentContext.securityContextId(),
+    });
+    if (nextContextKey !== this.authorModeContextKey) {
+      ++this.authorLookupRequestRevision;
+      this.authorModeContextKey = nextContextKey;
+    }
     if (nextScopeKey !== this.authorModeScopeKey) {
       ++this.authorLookupFocusRevision;
       this.authorModeScopeKey = nextScopeKey;
@@ -1101,7 +1130,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.authorMode.set(
         definition.connectionId === 'chinook-sqlite' &&
           request?.queryType === QueryType.DTQL &&
-          readAuthorComposeProfile(request.text ?? '').supported
+          readAuthorComposeProfile(
+            (request as ITextQueryRequest).text ?? '',
+          ).supported
           ? 'compose'
           : 'code',
       );
@@ -1119,6 +1150,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.authorRunAbort?.abort();
   }
 
+  private invalidateAuthorDefinitionRun(): void {
+    ++this.semanticRunLifetime;
+    this.invalidateFederatedRun();
+    this.invalidateHistoryRequests();
+    this.stopFederatedRun();
+  }
+
   public authorCustomerIdChanged(event: Event): void {
     const detail = (event as CustomEvent<{ value?: string }>).detail;
     const target = event.target as HTMLInputElement | null;
@@ -1131,6 +1169,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       previousOrigin.sourceColumn !== undefined;
     if (value !== this.authorCustomerId() || originChanged) {
       this.authorBindingRevision.update((revision) => revision + 1);
+      ++this.authorLookupRequestRevision;
     }
     this.authorCustomerId.set(value);
     this.authorError.set(undefined);
@@ -1160,7 +1199,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     expectedCustomerId: string,
     expectedQueryIdentity: symbol,
   ): Promise<void> {
-    const lookupRequestRevision = ++this.authorLookupFocusRevision;
+    const lookupRequestRevision = ++this.authorLookupRequestRevision;
+    ++this.authorLookupFocusRevision;
     const result = this.runResult();
     const receipt = result?.publicSqliteReceipt;
     if (
@@ -1195,13 +1235,27 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     }
 
     const sourceQueryId = this.queryId;
-    const activeEnvironment = this.queryState.activeEnv?.id;
+    const activeEnvironment =
+      this.queryState.activeEnv?.id ?? this.envId;
     const sourceProjectRef = projectRef;
-    const sourceEnvironment = this.queryState.activeEnv?.id;
+    const sourceEnvironment = activeEnvironment;
     const sourceDefinition = this.queryDef();
     const sourceSecurityContextId = this.agentContext.securityContextId();
     const sourceDraftRevision = this.authorDraftRevision();
     const sourceBindingRevision = this.authorBindingRevision();
+    const requestIsCurrent = (): boolean =>
+      this.authorLookupRequestRevision === lookupRequestRevision &&
+      equalProjectRef(this.project?.ref, sourceProjectRef) &&
+      this.queryId === sourceQueryId &&
+      this.queryDef() === sourceDefinition &&
+      (this.queryState.activeEnv?.id ?? this.envId) === sourceEnvironment &&
+      this.agentContext.securityContextId() === sourceSecurityContextId &&
+      this.authorDraftRevision() === sourceDraftRevision &&
+      this.authorBindingRevision() === sourceBindingRevision &&
+      this.runResult() === result &&
+      this.runResult()?.publicSqliteReceipt?.executionId ===
+        expectedExecutionId &&
+      this.currentQueryIdentity() === expectedQueryIdentity;
     let lookupDefinition: IQueryDef;
     let lookupRevision:
       | {
@@ -1232,29 +1286,85 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     } catch {
       // A cloud 401/403 is also delivered through QueriesService's authority
       // invalidation stream. Never restore cached private data in that case.
-      if (this.queryId === sourceQueryId && this.runResult() === result) {
+      if (requestIsCurrent()) {
         this.authorError.set(
           'The invoice lookup could not be opened. Your current results are still available.',
         );
       }
       return;
     }
-    if (
-      !equalProjectRef(this.project?.ref, sourceProjectRef) ||
-      this.queryId !== sourceQueryId ||
-      this.queryDef() !== sourceDefinition ||
-      this.queryState.activeEnv?.id !== sourceEnvironment ||
-      this.agentContext.securityContextId() !== sourceSecurityContextId ||
-      this.authorDraftRevision() !== sourceDraftRevision ||
-      this.authorBindingRevision() !== sourceBindingRevision ||
-      this.authorLookupFocusRevision !== lookupRequestRevision ||
-      this.runResult() !== result ||
-      this.runResult()?.publicSqliteReceipt?.executionId !==
-        expectedExecutionId ||
-      this.currentQueryIdentity() !== expectedQueryIdentity
-    ) {
+    if (!requestIsCurrent()) return;
+    const pendingNavigation: PendingAuthorLookupNavigation = {
+      targetId: CUSTOMER_INVOICE_LOOKUP_QUERY_ID,
+      requestRevision: lookupRequestRevision,
+      projectRef: sourceProjectRef,
+      environment: sourceEnvironment,
+      securityContextId: sourceSecurityContextId,
+      routeObserved: false,
+      routeSuperseded: false,
+    };
+    this.pendingAuthorLookupNavigation = pendingNavigation;
+    let navigated = false;
+    try {
+      navigated = await this.router.navigate([], {
+        relativeTo: this.route,
+        info: pendingNavigation,
+        queryParams: {
+          id: CUSTOMER_INVOICE_LOOKUP_QUERY_ID,
+          editor: 'text',
+          ...(activeEnvironment ? { env: activeEnvironment } : {}),
+        },
+        queryParamsHandling: 'merge',
+      });
+    } catch (error: unknown) {
+      this.errorLogger.logError(
+        error,
+        'Failed to open the Customer invoice lookup query',
+      );
+      if (this.pendingAuthorLookupNavigation === pendingNavigation)
+        this.pendingAuthorLookupNavigation = undefined;
+      await this.restoreSourceRouteIfLookupIsStillCurrent(
+        pendingNavigation,
+        sourceQueryId,
+        activeEnvironment,
+      );
+      if (requestIsCurrent())
+        this.authorError.set(
+          'The invoice lookup could not be opened. Your current results are still available.',
+        );
       return;
     }
+    if (this.pendingAuthorLookupNavigation === pendingNavigation)
+      this.pendingAuthorLookupNavigation = undefined;
+    pendingNavigation.navigationSucceeded = navigated;
+    if (!navigated) {
+      await this.restoreSourceRouteIfLookupIsStillCurrent(
+        pendingNavigation,
+        sourceQueryId,
+        activeEnvironment,
+      );
+      if (requestIsCurrent())
+        this.authorError.set(
+          'The invoice lookup could not be opened. Your current results are still available.',
+        );
+      return;
+    }
+
+    // The route transition changes the current query as part of Angular's
+    // query-param subscription. Recheck the original action and context after
+    // that asynchronous boundary before publishing the selected binding.
+    if (
+      !requestIsCurrent() ||
+      !this.isLatestAuthorLookupNavigation(pendingNavigation)
+    ) {
+      await this.restoreSourceRouteIfLookupIsStillCurrent(
+        pendingNavigation,
+        sourceQueryId,
+        activeEnvironment,
+      );
+      return;
+    }
+
     this.authorMode.set('compose');
     this.authorPlan.set(undefined);
     this.authorError.set(undefined);
@@ -1267,9 +1377,20 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         lookupRevision,
       );
     } catch {
-      this.authorError.set(
-        'The invoice lookup could not be opened. Your current results are still available.',
-      );
+      // The source draft/result was deliberately kept intact until navigation
+      // succeeded. If opening its preflighted target still fails synchronously,
+      // restore the source URL without asking the state service to reload it.
+      if (requestIsCurrent()) {
+        await this.restoreSourceRouteIfLookupIsStillCurrent(
+          pendingNavigation,
+          sourceQueryId,
+          activeEnvironment,
+        );
+      }
+      if (requestIsCurrent())
+        this.authorError.set(
+          'The invoice lookup could not be opened. Your current results are still available.',
+        );
       return;
     }
     this.authorBindingRevision.update((revision) => revision + 1);
@@ -1289,25 +1410,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         },
       },
     });
-    let navigated = false;
-    try {
-      navigated = await this.router.navigate([], {
-        relativeTo: this.route,
-        queryParams: {
-          id: CUSTOMER_INVOICE_LOOKUP_QUERY_ID,
-          editor: 'text',
-          ...(activeEnvironment ? { env: activeEnvironment } : {}),
-        },
-        queryParamsHandling: 'merge',
-      });
-    } catch (error: unknown) {
-      this.errorLogger.logError(
-        error,
-        'Failed to open the Customer invoice lookup query',
-      );
-      return;
-    }
-    if (navigated) this.focusAuthorLookupAfterRender();
+    this.authorWorkspaceLayout?.mobilePane.set('editor');
+    this.focusAuthorLookupAfterRender();
   }
 
   private focusAuthorLookupAfterRender(): void {
@@ -1330,6 +1434,126 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       },
       { injector: this.injector },
     );
+  }
+
+  private isLatestAuthorLookupNavigation(
+    pendingNavigation: PendingAuthorLookupNavigation,
+  ): boolean {
+    const latest = this.router.lastSuccessfulNavigation?.();
+    const inFlight = this.router.currentNavigation?.();
+    return (
+      pendingNavigation.routeObserved &&
+      !pendingNavigation.routeSuperseded &&
+      !!latest &&
+      pendingNavigation.observedNavigationId !== undefined &&
+      latest.id === pendingNavigation.observedNavigationId &&
+      latest.extras.info === pendingNavigation &&
+      (!inFlight || inFlight.id === pendingNavigation.observedNavigationId)
+    );
+  }
+
+  private async restoreSourceRouteIfLookupIsStillCurrent(
+    pendingNavigation: PendingAuthorLookupNavigation,
+    sourceQueryId: string,
+    environment?: string,
+  ): Promise<void> {
+    const routedId = this.route.snapshot.queryParamMap.get('id');
+    const latest = this.router.lastSuccessfulNavigation?.();
+    const inFlight = this.router.currentNavigation?.();
+    const newerNavigationStarted =
+      (!!inFlight && inFlight.id !== pendingNavigation.observedNavigationId) ||
+      (!!latest &&
+        pendingNavigation.observedNavigationId !== undefined &&
+        latest.id > pendingNavigation.observedNavigationId &&
+        latest.extras.info !== pendingNavigation);
+    if (
+      !pendingNavigation.routeObserved ||
+      pendingNavigation.routeSuperseded ||
+      newerNavigationStarted ||
+      this.pendingAuthorLookupNavigation ||
+      routedId !== pendingNavigation.targetId
+    ) {
+      return;
+    }
+    const routeStillOwned = this.isLatestAuthorLookupNavigation(pendingNavigation);
+    const sameScope =
+      equalProjectRef(this.project?.ref, pendingNavigation.projectRef) &&
+      (this.queryState.activeEnv?.id ?? this.envId) ===
+        pendingNavigation.environment &&
+      this.agentContext.securityContextId() ===
+        pendingNavigation.securityContextId;
+    if (!sameScope) {
+      // The route is still the actual user-visible destination, but its
+      // original source-scope request is stale. Reconcile a successful route
+      // through the normal authorized loader without applying the old selected
+      // binding. Never restore an old source route or load a failed target in a
+      // different security context.
+      if (routeStillOwned && this.queryId !== routedId)
+        this.queryEditorStateService.openQuery(routedId);
+      return;
+    }
+    if (this.queryId !== sourceQueryId) return;
+    const projectRef = this.project?.ref;
+    if (!projectRef) return;
+    const restore: PendingAuthorLookupNavigation = {
+      targetId: sourceQueryId,
+      requestRevision: this.authorLookupRequestRevision,
+      projectRef,
+      environment: this.queryState.activeEnv?.id ?? this.envId,
+      securityContextId: this.agentContext.securityContextId(),
+      routeObserved: false,
+      routeSuperseded: false,
+    };
+    this.pendingAuthorLookupNavigation = restore;
+    let restored = false;
+    try {
+      restored = await this.router.navigate([], {
+        relativeTo: this.route,
+        info: restore,
+        queryParams: {
+          id: sourceQueryId,
+          editor: 'text',
+          ...(environment ? { env: environment } : {}),
+        },
+        queryParamsHandling: 'merge',
+        replaceUrl: true,
+      });
+    } catch (error: unknown) {
+      this.errorLogger.logError(
+        error,
+        'Failed to restore the source query after lookup navigation',
+      );
+    } finally {
+      if (this.pendingAuthorLookupNavigation === restore)
+        this.pendingAuthorLookupNavigation = undefined;
+    }
+    const latestAfterRestore = this.router.lastSuccessfulNavigation?.();
+    const inFlightAfterRestore = this.router.currentNavigation?.();
+    const newerNavigationAfterRestore =
+      (!!inFlightAfterRestore &&
+        inFlightAfterRestore.id !== restore.observedNavigationId) ||
+      (!!latestAfterRestore &&
+        restore.observedNavigationId !== undefined &&
+        latestAfterRestore.id > restore.observedNavigationId &&
+        latestAfterRestore.extras.info !== restore);
+    if (
+      !restore.routeSuperseded &&
+      !newerNavigationAfterRestore &&
+      !this.pendingAuthorLookupNavigation &&
+      this.authorLookupRequestRevision === restore.requestRevision &&
+      equalProjectRef(this.project?.ref, restore.projectRef) &&
+      (this.queryState.activeEnv?.id ?? this.envId) === restore.environment &&
+      this.agentContext.securityContextId() === restore.securityContextId &&
+      pendingNavigation.routeObserved &&
+      !restored &&
+      this.route.snapshot.queryParamMap.get('id') === routedId &&
+      this.queryId === sourceQueryId
+    ) {
+      // A canceled or rejected rollback left the destination URL active. Load
+      // that still-owned route through the authorized state service so
+      // the page cannot show the source query beneath a destination URL.
+      this.queryEditorStateService.openQuery(routedId);
+    }
   }
 
   public async previewTugql(): Promise<void> {
@@ -1718,6 +1942,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   ngOnDestroy(): void {
     ++this.authorLookupFocusRevision;
+    ++this.authorLookupRequestRevision;
+    this.pendingAuthorLookupNavigation = undefined;
     this.authorRunAbort?.abort();
     this.authorRunAbort = undefined;
     ++this.semanticRunLifetime;
@@ -2015,6 +2241,20 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   private setQueryId(id?: string | null, isNew = false): void {
+    const pendingNavigation = this.pendingAuthorLookupNavigation;
+    const currentNavigation = this.router.currentNavigation?.();
+    const isOwnedNavigation =
+      !!pendingNavigation &&
+      pendingNavigation.targetId === id &&
+      currentNavigation?.extras.info === pendingNavigation;
+    if (pendingNavigation && !isOwnedNavigation && currentNavigation) {
+      pendingNavigation.routeSuperseded = true;
+    }
+    if (isOwnedNavigation && pendingNavigation) {
+      pendingNavigation.routeObserved = true;
+      pendingNavigation.observedNavigationId = currentNavigation?.id;
+      return;
+    }
     if (this.queryId === id) {
       return;
     }

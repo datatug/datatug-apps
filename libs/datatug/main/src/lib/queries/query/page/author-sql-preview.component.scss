@@ -99,6 +99,16 @@
   margin: 0;
   line-height: 1.45;
 }
+.author-source-fingerprint {
+  margin-top: 0.5rem;
+  font-size: 0.74rem;
+}
+.author-source-fingerprint summary {
+  cursor: pointer;
+}
+.author-source-fingerprint code {
+  display: block;
+}
 .author-source-section ul,
 .author-output-columns {
   display: grid;

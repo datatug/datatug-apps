@@ -35,9 +35,7 @@
           <h4>Declared relationship</h4>
           <p>
             {{ relationship.fromSource }} → {{ relationship.toSource }} ·
-            {{ relationship.joinType }} · {{ relationship.id }} v{{
-              relationship.version
-            }}
+            {{ relationship.joinType }} · {{ relationship.id }}
           </p>
           <ul>
             @for (pair of relationship.pairs; track $index) {
@@ -47,6 +45,10 @@
               </li>
             }
           </ul>
+          <details class="author-source-fingerprint">
+            <summary>Relationship definition fingerprint</summary>
+            <code>{{ relationship.version }}</code>
+          </details>
         </section>
       }
       @if (plan().outputColumns?.length) {

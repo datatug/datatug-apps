@@ -80,7 +80,7 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
   );
   const author = page.getByTestId('tugql-author');
   await expect(author).toBeVisible({ timeout: 20_000 });
-  await expect(author.getByTestId('author-code-tab')).toHaveAttribute(
+  await expect(author.getByRole('button', { name: 'Code', exact: true })).toHaveAttribute(
     'aria-pressed',
     'true',
   );
@@ -109,9 +109,20 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
   await expect(preparedMetadata).toContainText(
     'FK_Invoice_Customer_CustomerId',
   );
-  await expect(preparedMetadata).toContainText('Invoice.CustomerId');
-  await expect(preparedMetadata).toContainText('Customer.CustomerId');
-  await expect(preparedMetadata).toContainText('i.CustomerId');
+  const declaredRelationship = preparedMetadata.locator(
+    '[aria-label="Prepared relationship"]',
+  );
+  const relationshipPairs = declaredRelationship.locator('li');
+  await expect(relationshipPairs).toHaveCount(1);
+  await expect(relationshipPairs.first()).toHaveText(
+    'i.CustomerId → c.CustomerId',
+  );
+  await expect(
+    declaredRelationship.getByText('Relationship definition fingerprint'),
+  ).toBeVisible();
+  await expect(
+    declaredRelationship.locator('.author-source-fingerprint'),
+  ).not.toHaveAttribute('open', '');
   await expect(preparedMetadata).toContainText(
     'Prepared metadata · not worker-verified or executed.',
   );
@@ -169,6 +180,9 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
   const invoiceIdCell = firstResultRow.getByRole('gridcell').nth(0);
   const customerIdCell = firstResultRow.getByRole('gridcell').nth(1);
   const firstNameCell = firstResultRow.getByRole('gridcell').nth(2);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('#workspace-results-tab').click();
+  await expect(page.locator('#workspace-results-pane')).toBeVisible();
   await expect(firstLookupAction).toBeVisible();
   await invoiceIdCell.click();
   await page.keyboard.press('Tab');
@@ -189,11 +203,15 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
   await expect(page).toHaveURL(/id=chinook-invoice-author/u);
   const lookupAuthor = page.getByTestId('tugql-author');
   await expect(lookupAuthor).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Editor', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#workspace-editor-pane')).toBeVisible();
   await expect(lookupAuthor.locator('ion-card-title')).toBeFocused();
   await expect(
     lookupAuthor.getByTestId('author-customer-id').locator('input'),
   ).toHaveValue('1');
-  await expect(page.getByTestId('author-results-empty')).toBeVisible();
+  await expect(page.getByTestId('author-results-empty')).toHaveCount(1);
   await expect(lookupAuthor.getByTestId('author-binding-origin')).toContainText(
     'selection · client-reported',
   );
@@ -213,6 +231,8 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
   await expect(lookupAuthor.getByTestId('author-run')).toBeEnabled();
   await expect(page.getByTestId('author-execution-receipt')).toHaveCount(0);
   await lookupAuthor.getByTestId('author-run').click();
+  await page.locator('#workspace-results-tab').click();
+  await expect(page.locator('#workspace-results-pane')).toBeVisible();
   const lookupReceipt = page.getByTestId('author-execution-receipt');
   await expect(lookupReceipt).toContainText('Executed');
   await expect(lookupReceipt).toContainText('7 rows');

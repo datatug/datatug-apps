@@ -23,7 +23,7 @@ describe('AuthorSqlPreviewComponent', () => {
       draftRevision: 3,
       relationship: {
         id: 'FK_Invoice_Customer_CustomerId',
-        version: '1',
+        version: 'fp-main.Invoice.CustomerId-main.Customer.CustomerId',
         fromSource: 'Invoice',
         toSource: 'Customer',
         joinType: 'inner',
@@ -65,6 +65,18 @@ describe('AuthorSqlPreviewComponent', () => {
     expect(metadata.textContent).toContain('FK_Invoice_Customer_CustomerId');
     expect(metadata.textContent).toContain('Invoice.TenantId');
     expect(metadata.textContent).toContain('Customer.TenantId');
+    const relationship = metadata.querySelector(
+      '[aria-label="Prepared relationship"]',
+    ) as HTMLElement;
+    expect(relationship.textContent).toContain('inner');
+    expect(relationship.textContent).not.toContain(' vfp-');
+    const fingerprint = relationship.querySelector(
+      '.author-source-fingerprint',
+    ) as HTMLDetailsElement;
+    expect(fingerprint.open).toBe(false);
+    expect(fingerprint.textContent).toContain(
+      'fp-main.Invoice.CustomerId-main.Customer.CustomerId',
+    );
     expect(metadata.textContent).toContain(
       'Prepared metadata · not worker-verified or executed.',
     );
@@ -91,7 +103,7 @@ describe('AuthorSqlPreviewComponent', () => {
       draftRevision: 1,
       relationship: {
         id: 'FK_Invoice_Customer_CustomerId',
-        version: '1',
+        version: 'fp-main.Invoice.CustomerId-main.Customer.CustomerId',
         fromSource: 'Invoice',
         toSource: 'Customer',
         joinType: 'inner',
