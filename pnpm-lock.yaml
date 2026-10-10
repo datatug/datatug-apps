@@ -291,8 +291,8 @@ importers:
         specifier: ^3.6.0
         version: 3.7.0
       '@sneat/build-info':
-        specifier: 0.27.23
-        version: 0.27.23
+        specifier: 0.27.30
+        version: 0.27.30
       '@swc-node/register':
         specifier: 1.12.1
         version: 1.12.1(@swc/core@1.16.2(@swc/helpers@0.5.23))(@swc/types@0.1.28)(supports-color@7.2.0)(typescript@6.0.3)
@@ -5457,8 +5457,8 @@ packages:
       '@sneat/space-services': 0.27.6
       firebase: '*'
 
-  '@sneat/build-info@0.27.23':
-    resolution: {integrity: sha512-cy68+QpG/GJPpzrkhvZB8Ak7MBseugqe7ddsaZQ6JQBhUIyfHzgv9Vosxc0ZdgFIcLhlhKjQXy71goEwB8CFcA==}
+  '@sneat/build-info@0.27.30':
+    resolution: {integrity: sha512-JnUDlOiFRLba4t0D6+5mZu0pUWlFiHC6+1z1wm+MCqN2xWZtJdQqMqV+X5BgTPiA5tClhp/yEX4SkL3lO0epQQ==}
     engines: {node: '>=18'}
     hasBin: true
 
@@ -16976,7 +16976,7 @@ snapshots:
       firebase: 12.10.0
       tslib: 2.8.1
 
-  '@sneat/build-info@0.27.23': {}
+  '@sneat/build-info@0.27.30': {}
 
   '@sneat/components@0.27.23(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(@ionic/angular@9.0.0(6ff9fc4b486d8c68e67889d2ebc5db9b))(@sneat/core-public@0.27.23(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))':
     dependencies:
