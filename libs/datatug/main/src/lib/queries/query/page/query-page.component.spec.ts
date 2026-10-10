@@ -1001,6 +1001,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     vi.mocked(scenario.editor.openAuthorizedQuery).mockImplementation(() => {
       component.queryState = targetState;
       component.queryDef.set(scenario.lookupDefinition);
+      runFixture.detectChanges();
       return targetState;
     });
     const updateQueryState = vi.mocked(scenario.editor.updateQueryState);
@@ -1009,11 +1010,22 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       setRouterNavigation(scenario.router, navigationInfo, 41);
       setRouteId(scenario.lookupDefinition.id);
       scenario.internals.setQueryId(scenario.lookupDefinition.id);
+      runFixture.detectChanges();
       setRouterNavigation(scenario.router, navigationInfo, 41, true);
       return true;
     });
 
     runFixture.detectChanges();
+    await runFixture.whenStable();
+    const heading = runFixture.nativeElement.querySelector('h2') as HTMLElement;
+    const headingFocus = vi.spyOn(heading, 'focus');
+    expect(
+      (
+        component as unknown as {
+          authorLookupHeading?: { nativeElement: HTMLElement };
+        }
+      ).authorLookupHeading?.nativeElement,
+    ).toBe(heading);
 
     await scenario.internals.openAuthorCustomerLookup(
       0,
@@ -1024,13 +1036,14 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       scenario.internals.currentQueryIdentity(),
     );
     runFixture.detectChanges();
+    await runFixture.whenRenderingDone();
     await runFixture.whenStable();
-    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(scenario.router.navigate).toHaveBeenCalledOnce();
     expect(scenario.editor.openAuthorizedQuery).toHaveBeenCalledOnce();
     expect(layout.mobilePane()).toBe('editor');
     expect(focusAuthorLookupAfterRender).toHaveBeenCalledOnce();
+    expect(headingFocus).toHaveBeenCalledOnce();
     expect(updateQueryState).toHaveBeenCalledWith(
       expect.objectContaining({
         authorBindings: { CustomerId: '1' },
@@ -1043,6 +1056,64 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       }),
     );
     expect(runQueryMock).not.toHaveBeenCalled();
+  });
+
+  it('cancels scheduled lookup focus when CustomerId changes before the next render', async () => {
+    const scenario = await createJoinedLookupScenario(
+      '<h2 #authorLookupHeading tabindex="-1">Invoice lookup</h2>',
+    );
+    component.queryState = {
+      ...component.queryState,
+      id: scenario.lookupDefinition.id,
+      queryType: QueryType.DTQL,
+      request: scenario.lookupDefinition.request,
+    };
+    component.queryDef.set(scenario.lookupDefinition);
+    runFixture.detectChanges();
+    await runFixture.whenStable();
+    const heading = runFixture.nativeElement.querySelector('h2') as HTMLElement;
+    const headingFocus = vi.spyOn(heading, 'focus');
+    (
+      component as unknown as { focusAuthorLookupAfterRender(): void }
+    ).focusAuthorLookupAfterRender();
+
+    component.authorCustomerIdChanged(
+      new CustomEvent('ionChange', { detail: { value: '2' } }),
+    );
+    runFixture.detectChanges();
+    await runFixture.whenStable();
+
+    expect(headingFocus).not.toHaveBeenCalled();
+  });
+
+  it('cancels scheduled lookup focus when the author draft changes before the next render', async () => {
+    const scenario = await createJoinedLookupScenario(
+      '<h2 #authorLookupHeading tabindex="-1">Invoice lookup</h2>',
+    );
+    component.queryState = {
+      ...component.queryState,
+      id: scenario.lookupDefinition.id,
+      queryType: QueryType.DTQL,
+      request: scenario.lookupDefinition.request,
+    };
+    component.queryDef.set(scenario.lookupDefinition);
+    runFixture.detectChanges();
+    await runFixture.whenStable();
+    const heading = runFixture.nativeElement.querySelector('h2') as HTMLElement;
+    const headingFocus = vi.spyOn(heading, 'focus');
+    (
+      component as unknown as { focusAuthorLookupAfterRender(): void }
+    ).focusAuthorLookupAfterRender();
+
+    component.queryTextChanged(
+      new CustomEvent('ionChange', {
+        detail: { value: 'from Invoice as i\nselect i.InvoiceId' },
+      }),
+    );
+    runFixture.detectChanges();
+    await runFixture.whenStable();
+
+    expect(headingFocus).not.toHaveBeenCalled();
   });
 
   it('does not commit a selected lookup after its navigation scope changes', async () => {
