@@ -128,7 +128,10 @@ export class GitHubProjectActivityService {
 
   private actorID?: string;
   private currentProject?: IProjectRef;
+  /** Invalidates pending capability/context requests. */
   private generation = 0;
+  /** Changes only when authenticated actor or selected project changes. */
+  private identityGeneration = 0;
   private bound?: BoundSession;
   private readonly $current = new BehaviorSubject<
     GitHubProjectActivitySession | undefined
@@ -137,7 +140,7 @@ export class GitHubProjectActivityService {
 
   /** Changes whenever auth or project scope changes, for caller-side throttles. */
   get bindingGeneration(): number {
-    return this.generation;
+    return this.identityGeneration;
   }
 
   constructor() {
@@ -146,13 +149,13 @@ export class GitHubProjectActivityService {
         state.status === 'authenticated' ? state.user?.uid : undefined;
       if (next !== this.actorID) {
         this.actorID = next;
-        this.invalidate();
+        this.invalidate(true);
       }
     });
     this.projects.current$.subscribe((ref) => {
       if (!equalProjectRef(ref, this.currentProject)) {
         this.currentProject = ref;
-        this.invalidate();
+        this.invalidate(true);
       }
     });
   }
@@ -174,6 +177,13 @@ export class GitHubProjectActivityService {
 
     return this.projectQueries.capabilities(ref).pipe(
       switchMap((capabilities) => {
+        if (
+          generation !== this.generation ||
+          this.actorID !== actorID ||
+          !equalProjectRef(this.currentProject, ref)
+        ) {
+          return of(undefined);
+        }
         const scope = readActivityScope(capabilities);
         if (!scope) return of(undefined);
         const params = new HttpParams({
@@ -275,8 +285,9 @@ export class GitHubProjectActivityService {
     );
   }
 
-  private invalidate(): void {
+  private invalidate(identityChanged = false): void {
     this.generation++;
+    if (identityChanged) this.identityGeneration++;
     this.bound = undefined;
     this.$current.next(undefined);
   }

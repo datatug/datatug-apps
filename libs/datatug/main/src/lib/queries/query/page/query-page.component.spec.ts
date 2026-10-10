@@ -582,6 +582,12 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     );
     component.queryTextChanged(
       new CustomEvent('ionInput', { detail: { value: 'SELECT 2' } }),
+    );
+    component.queryTextChanged(
+      new CustomEvent('ionInput', { detail: { value: 'SELECT 3' } }),
+    );
+    component.queryTextChanged(
+      new CustomEvent('ionInput', { detail: { value: 'SELECT 3' } }),
       false,
     );
 

@@ -7,6 +7,7 @@ import { SneatAuthStateService } from '@sneat/auth-core';
 import { ProjectContextService } from './project-context.service';
 import { ProjectQueryApiService } from './project-query-api.service';
 import { GitHubProjectActivityService } from './github-project-activity.service';
+import { ProjectQueryCapabilities } from '../../queries/project-query-contract';
 
 describe('GitHubProjectActivityService', () => {
   const ref: IProjectRef = {
@@ -88,11 +89,46 @@ describe('GitHubProjectActivityService', () => {
   });
 
   it('does not request or invent usage when capabilities omit Business scope', async () => {
-    capabilities.mockReturnValueOnce(of({}));
     const service = TestBed.inject(GitHubProjectActivityService);
+    const session = await firstValueFrom(service.resolve(ref));
+    if (!session) throw new Error('Expected an activity session');
+    const bindingGeneration = service.bindingGeneration;
+
+    capabilities.mockReturnValueOnce(of({}));
     await expect(firstValueFrom(service.resolve(ref))).resolves.toBeUndefined();
-    expect(get).not.toHaveBeenCalled();
+    expect(service.bindingGeneration).toBe(bindingGeneration);
+    expect(get).toHaveBeenCalledOnce();
     await expect(firstValueFrom(service.current)).resolves.toBeUndefined();
+    await expect(
+      firstValueFrom(service.report(session, 'stale-operation-id', 'query_edit')),
+    ).rejects.toThrow('no longer current');
+  });
+
+  it('drops a pending scoped response after a later no-scope capability result', async () => {
+    const lateCapabilities = new Subject<ProjectQueryCapabilities>();
+    capabilities
+      .mockReturnValueOnce(lateCapabilities.asObservable())
+      .mockReturnValueOnce(of({}));
+    const service = TestBed.inject(GitHubProjectActivityService);
+    const bindingGeneration = service.bindingGeneration;
+    const lateResolve = firstValueFrom(service.resolve(ref));
+
+    await expect(firstValueFrom(service.resolve(ref))).resolves.toBeUndefined();
+    lateCapabilities.next({
+      queryRead: true,
+      querySave: true,
+      branches: true,
+      branchMerge: false,
+      reviewedCommit: false,
+      pullCurrent: false,
+      pushCurrent: false,
+      activityScope: scope,
+    });
+    lateCapabilities.complete();
+
+    await expect(lateResolve).resolves.toBeUndefined();
+    expect(service.bindingGeneration).toBe(bindingGeneration);
+    expect(get).not.toHaveBeenCalled();
   });
 
   it('refreshes an expired server context before reporting activity', async () => {
