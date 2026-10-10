@@ -130,7 +130,7 @@ export function validSpaceServiceQuote(quote, selection, now = Date.now()) {
     discount?.kind === 'none'
       ? discount.percentOff === 0 && amount?.due === amount?.list
       : discount?.kind === 'launch' &&
-        mode === 'live' &&
+        (mode === 'test' || mode === 'live') &&
         discount.percentOff === 30 &&
         amount?.due === Math.round(amount?.list * 0.7);
   if (

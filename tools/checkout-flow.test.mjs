@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { selection, returnSelection, checkoutChoice, pricingReturnUrl } from '../apps/datatug-app/src/app/checkout/checkout-config.mjs';
-import { CheckoutError, checkoutApi, discountDescription, validQuote } from '../apps/datatug-app/src/app/checkout/checkout-api.mjs';
+import { CheckoutError, checkoutApi, discountDescription, validQuote, validSpaceServiceQuote } from '../apps/datatug-app/src/app/checkout/checkout-api.mjs';
 import { createCheckoutFlow, createReturnFlow } from '../apps/datatug-app/src/app/checkout/checkout-flow.mjs';
 import { createStripeCheckoutAdapter, StripeCheckoutStageError } from '../apps/datatug-app/src/app/checkout/checkout-provider.mjs';
 
@@ -9,6 +9,43 @@ const flush = () => new Promise((resolve) => setImmediate(resolve));
 const configured = { PUBLIC_DATATUG_PRO_CHECKOUT_ENABLED: 'true', PUBLIC_DATATUG_API_ORIGIN: 'https://api.example.invalid', PUBLIC_DATATUG_CHECKOUT_MODE: 'test', PUBLIC_DATATUG_FIREBASE_API_KEY: 'public-test-key', PUBLIC_DATATUG_FIREBASE_AUTH_DOMAIN: 'auth.sneat.co', PUBLIC_DATATUG_FIREBASE_PROJECT_ID: 'sneat-eur3-1', PUBLIC_DATATUG_FIREBASE_APP_ID: 'public-app' };
 const serverConfig = { site: 'datatug', mode: 'test', publishableKey: 'pk_test_fake', plans: [{ id: 'datatug-pro-monthly', accountRequired: true, accountKind: 'personal', taxIncluded: true }] };
 const quote = (overrides = {}) => ({ sessionId: 'cs_test_one', clientSecret: 'cs_test_one_secret_fake', mode: 'test', accountId: 'personal-buyer', accountKind: 'personal', amount: { currency: 'eur', list: 1900, due: 950, taxIncluded: true }, appliedDiscount: { kind: 'invitation', percentOff: 50, duration: 'repeating', durationMonths: 12 }, offer: { id: 'launch', applied: false, reserved: true, percentOff: 30, duration: 'forever', left: 4 }, ...overrides });
+
+test('Business quote validation accepts only the reviewed 30 percent launch amount in TEST and LIVE', () => {
+  for (const mode of ['test', 'live']) {
+    for (const plan of [
+      { planID: 'datatug-business-usage-monthly', list: 9900, due: 6930, interval: 'month' },
+      { planID: 'datatug-business-usage-annual', list: 99000, due: 69300, interval: 'year' },
+    ]) {
+      const selection = { spaceID: 'datatug-business-space', planID: plan.planID, mode };
+      const businessQuote = {
+        quoteID: 'business-quote',
+        spaceID: selection.spaceID,
+        serviceID: 'datatug',
+        planID: plan.planID,
+        mode,
+        accountKind: 'organisation',
+        amount: { currency: 'eur', list: plan.list, due: plan.due, taxIncluded: true },
+        quantity: 1,
+        period: { interval: plan.interval, count: 1 },
+        appliedDiscount: { kind: 'launch', percentOff: 30 },
+        expiresAtUTC: new Date(Date.now() + 60_000).toISOString(),
+        claimed: false,
+      };
+
+      assert.equal(validSpaceServiceQuote(businessQuote, selection), true, `${mode} ${plan.interval} launch quote`);
+      assert.equal(validSpaceServiceQuote({ ...businessQuote, appliedDiscount: { kind: 'launch', percentOff: 20 } }, selection), false);
+      assert.equal(validSpaceServiceQuote({ ...businessQuote, amount: { ...businessQuote.amount, due: plan.due + 1 } }, selection), false);
+      assert.equal(validSpaceServiceQuote({ ...businessQuote, mode: mode === 'test' ? 'live' : 'test' }, selection), false);
+      assert.equal(validSpaceServiceQuote(businessQuote, { ...selection, mode: 'preview' }), false);
+      assert.equal(validSpaceServiceQuote({ ...businessQuote, spaceID: 'other-space' }, selection), false);
+      assert.equal(validSpaceServiceQuote({ ...businessQuote, serviceID: 'other-service' }, selection), false);
+      const otherPlanID = plan.planID === 'datatug-business-usage-monthly'
+        ? 'datatug-business-usage-annual'
+        : 'datatug-business-usage-monthly';
+      assert.equal(validSpaceServiceQuote({ ...businessQuote, planID: otherPlanID }, selection), false);
+    }
+  }
+});
 
 function fakeAuth() {
   let callback;
