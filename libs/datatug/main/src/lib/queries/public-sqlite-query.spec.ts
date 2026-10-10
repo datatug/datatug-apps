@@ -369,6 +369,22 @@ describe('Author TugQL structural preview and Run binding', () => {
     { name: 'InvoiceId', dbType: 'INTEGER', isNullable: false },
     { name: 'InvoiceDate', dbType: 'DATETIME', isNullable: false },
   ];
+  const customerColumns = [
+    { name: 'CustomerId', dbType: 'INTEGER', isNullable: false, pkPosition: 1 },
+    { name: 'FirstName', dbType: 'NVARCHAR(40)', isNullable: false },
+    { name: 'LastName', dbType: 'NVARCHAR(20)', isNullable: false },
+    { name: 'Email', dbType: 'NVARCHAR(60)', isNullable: false },
+  ];
+  const refs = {
+    version: 1,
+    foreignKeys: [{
+      name: 'FK_Invoice_Customer_CustomerId',
+      table: { schema: 'main', name: 'Invoice' },
+      columns: ['CustomerId'],
+      refTable: { schema: 'main', name: 'Customer' },
+      refColumns: ['CustomerId'],
+    }],
+  };
   const project: IProjectRef = {
     storeId: 'github.com',
     projectId: 'demo@buyer@project',
@@ -405,10 +421,45 @@ describe('Author TugQL structural preview and Run binding', () => {
     'select i.CustomerId, count(*) as InvoiceCount',
     '',
   ].join('\n');
+  const cteSource = [
+    'parameters (',
+    '  @CustomerId integer required',
+    ')',
+    'with CustomerCounts as (',
+    '  from Invoice as i',
+    '  where i.CustomerId = @CustomerId',
+    '  group by i.CustomerId',
+    '  having count(*) >= 7',
+    '  limit 100',
+    '  select (',
+    '    i.CustomerId',
+    '    count(*) as InvoiceCount',
+    '  )',
+    ')',
+    'from CustomerCounts as totals',
+    'join Customer as c',
+    '  on totals.CustomerId = c.CustomerId',
+    'order by totals.CustomerId asc',
+    'limit 10',
+    'select (',
+    '  totals.CustomerId',
+    '  totals.InvoiceCount',
+    '  c.FirstName',
+    '  c.LastName',
+    '  c.Email',
+    ')',
+    '',
+  ].join('\n');
   const reader = {
     getRawJson: vi.fn(
       (_projectId: string, path: string): Observable<unknown> =>
-        of(path.includes('dbmodels/') ? { columns } : catalog),
+        of(path.endsWith('Customer/main.Customer.columns.json')
+          ? { columns: customerColumns }
+          : path.endsWith('chinook.refs.json')
+            ? refs
+            : path.endsWith('Invoice/main.Invoice.columns.json')
+              ? { columns }
+              : catalog),
     ),
   };
   const projectApi = { connectionCatalog: vi.fn(() => of(catalog)) };
@@ -423,7 +474,13 @@ describe('Author TugQL structural preview and Run binding', () => {
     });
     reader.getRawJson.mockReset();
     reader.getRawJson.mockImplementation((_projectId: string, path: string) =>
-      of(path.includes('dbmodels/') ? { columns } : catalog),
+      of(path.endsWith('Customer/main.Customer.columns.json')
+        ? { columns: customerColumns }
+        : path.endsWith('chinook.refs.json')
+          ? refs
+          : path.endsWith('Invoice/main.Invoice.columns.json')
+            ? { columns }
+            : catalog),
     );
     projectApi.connectionCatalog.mockClear();
   });
@@ -527,6 +584,40 @@ describe('Author TugQL structural preview and Run binding', () => {
       );
       const limited = await runCompiledPlan(3);
       expect(limited.rows.map((row) => row[0])).toEqual([98, 121, 143]);
+
+      const compileAndRunCte = async (source: string, revision: number) => {
+        const preview = await service.prepareTugQL(
+          project,
+          definition(source),
+          revision,
+        );
+        return executePinnedSql(
+          preview.sql,
+          fixture,
+          [1, ...preview.fixedBindings],
+          true,
+          true,
+          preview.outputColumns?.map((column) => column.name),
+          preview.authorProof,
+          preview.bindingNames,
+          preview.schemaVersion,
+          preview.draftRevision,
+          preview.authorProof?.profile,
+          preview.fixtureSha256,
+        );
+      };
+      const cteResult = await compileAndRunCte(cteSource, 101);
+      expect(cteResult.columns).toEqual([
+        'CustomerId', 'InvoiceCount', 'FirstName', 'LastName', 'Email',
+      ]);
+      expect(cteResult.rows).toEqual([
+        [1, 7, 'Luís', 'Gonçalves', 'luisg@embraer.com.br'],
+      ]);
+      const cteOverSeven = await compileAndRunCte(
+        cteSource.replace('having count(*) >= 7', 'having count(*) > 7'),
+        102,
+      );
+      expect(cteOverSeven.rows).toEqual([]);
     },
   );
 
@@ -556,6 +647,211 @@ describe('Author TugQL structural preview and Run binding', () => {
       'demo@buyer@project',
       'dbmodels/chinook/main/tables/Invoice/main.Invoice.columns.json',
     );
+  });
+
+  it('previews the bounded customer-count CTE without a physical relationship receipt', async () => {
+    const worker = vi.fn(() => {
+      throw new Error('Preview must not create a Worker.');
+    });
+    vi.stubGlobal('Worker', worker);
+    const preview = await TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+      project,
+      definition(cteSource),
+      19,
+    );
+
+    expect(preview.sql).toContain('FROM (\nSELECT "i"."CustomerId" AS "CustomerId"');
+    expect(preview.sql).toContain('INNER JOIN "Customer" AS "c"');
+    expect(preview.sql).toContain('"totals"."CustomerId" = "c"."CustomerId"');
+    expect(preview.sql).toContain('HAVING COUNT(*) >= ?');
+    expect(preview.sql).not.toContain('= 1');
+    expect(preview.sql).not.toContain('>= 7');
+    expect(preview).not.toHaveProperty('relationship');
+    expect(preview).not.toHaveProperty('bindings');
+    expect(preview.fixedBindings).toEqual([7]);
+    expect(preview.authorProof?.profile).toBe('customer-count-cte');
+    expect(preview.outputColumns).toEqual([
+      { name: 'CustomerId', type: 'integer', lineage: [{ source: 'i', field: 'CustomerId' }] },
+      { name: 'InvoiceCount', type: 'integer', lineage: [] },
+      { name: 'FirstName', type: 'string', lineage: [{ source: 'c', field: 'FirstName' }] },
+      { name: 'LastName', type: 'string', lineage: [{ source: 'c', field: 'LastName' }] },
+      { name: 'Email', type: 'string', lineage: [{ source: 'c', field: 'Email' }] },
+    ]);
+    expect(worker).not.toHaveBeenCalled();
+  });
+
+  it('rejects a CTE CustomerId predicate moved to the outer query before schema reads', async () => {
+    const malformed = cteSource.replace(
+      '  where i.CustomerId = @CustomerId\n',
+      '',
+    ).replace(
+      'order by totals.CustomerId asc',
+      'where totals.CustomerId = @CustomerId\norder by totals.CustomerId asc',
+    );
+    await expect(
+      TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+        project,
+        definition(malformed),
+        20,
+      ),
+    ).rejects.toThrow('predicate must stay inside the referenced CTE');
+    expect(reader.getRawJson).not.toHaveBeenCalled();
+  });
+
+  it('still verifies the physical Customer primary key for a derived CTE join', async () => {
+    reader.getRawJson.mockImplementation((_projectId, path) =>
+      of(path.endsWith('Customer/main.Customer.columns.json')
+        ? {
+            columns: customerColumns.map((column) =>
+              column.name === 'CustomerId' ? { ...column, pkPosition: 0 } : column,
+            ),
+          }
+        : path.endsWith('chinook.refs.json')
+          ? refs
+          : path.endsWith('Invoice/main.Invoice.columns.json')
+            ? { columns }
+            : catalog),
+    );
+    await expect(
+      TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+        project,
+        definition(cteSource),
+        20,
+      ),
+    ).rejects.toThrow('Customer.CustomerId must be the non-null INTEGER primary key.');
+  });
+
+  it('keeps renamed CTE, key, and count aliases with a reversed explicit join', async () => {
+    const renamed = [
+      'parameters (',
+      '  @CustomerId integer required',
+      ')',
+      'with InvoiceTotals as (',
+      '  from Invoice as i',
+      '  where i.CustomerId = @CustomerId',
+      '  group by i.CustomerId',
+      '  having count(*) >= 7',
+      '  limit 100',
+      '  select (',
+      '    i.CustomerId as CustomerKey',
+      '    count(*) as InvoiceTotal',
+      '  )',
+      ')',
+      'from InvoiceTotals as counts',
+      'join Customer as c',
+      '  on c.CustomerId = counts.CustomerKey',
+      'order by counts.CustomerKey asc',
+      'limit 10',
+      'select (',
+      '  counts.CustomerKey',
+      '  counts.InvoiceTotal',
+      '  c.FirstName',
+      ')',
+      '',
+    ].join('\n');
+    const preview = await TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+      project,
+      definition(renamed),
+      21,
+    );
+    expect(preview.sql).toContain('AS "CustomerKey"');
+    expect(preview.sql).toContain('AS "InvoiceTotal"');
+    expect(preview.sql).toContain('"counts"."CustomerKey" = "c"."CustomerId"');
+    expect(preview.outputColumns?.slice(0, 2)).toEqual([
+      { name: 'CustomerKey', type: 'integer', lineage: [{ source: 'i', field: 'CustomerId' }] },
+      { name: 'InvoiceTotal', type: 'integer', lineage: [] },
+    ]);
+  });
+
+  it('rejects a missing or tampered CTE proof at the worker boundary', async () => {
+    const preview = await TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+      project,
+      definition(cteSource),
+      22,
+    );
+    const outputNames = preview.outputColumns?.map((column) => column.name);
+    const invoke = (
+      sql: string,
+      bindings: readonly (string | number | null)[],
+      columns: readonly string[] | undefined,
+      proof: typeof preview.authorProof,
+      profile: 'customer-count-cte' | undefined,
+    ) =>
+      executePinnedSql(
+        sql,
+        undefined,
+        bindings,
+        true,
+        true,
+        columns,
+        proof,
+        preview.bindingNames,
+        preview.schemaVersion,
+        preview.draftRevision,
+        profile,
+        preview.fixtureSha256,
+      );
+
+    // Supplying each changed field explicitly exercises the immutable request
+    // that the browser worker receives from Run.
+    await expect(invoke(
+      preview.sql,
+      [1, ...preview.fixedBindings],
+      outputNames,
+      undefined,
+      'customer-count-cte',
+    )).rejects.toThrow('proof or pinned fixture identity');
+    await expect(executePinnedSql(
+      preview.sql,
+      undefined,
+      [1, ...preview.fixedBindings],
+      true,
+      true,
+      outputNames,
+      preview.authorProof,
+      preview.bindingNames,
+      preview.schemaVersion,
+      preview.draftRevision,
+      preview.authorProof?.profile,
+      'bad-fixture-hash',
+    )).rejects.toThrow('proof or pinned fixture identity');
+    await expect(invoke(
+      preview.sql,
+      [1, ...preview.fixedBindings],
+      outputNames,
+      preview.authorProof
+        ? { ...preview.authorProof, profile: 'wrong' as 'customer-count-cte' }
+        : undefined,
+      'customer-count-cte',
+    )).rejects.toThrow('proof or pinned fixture identity');
+    await expect(invoke(
+      `${preview.sql} `,
+      [1, ...preview.fixedBindings],
+      outputNames,
+      preview.authorProof,
+      'customer-count-cte',
+    )).rejects.toThrow('independently compiled profile');
+    await expect(invoke(
+      preview.sql,
+      [1, ...preview.fixedBindings],
+      ['ChangedOutput'],
+      preview.authorProof,
+      'customer-count-cte',
+    )).rejects.toThrow('independently compiled profile');
+    await expect(invoke(
+      preview.sql,
+      [1, 8],
+      outputNames,
+      preview.authorProof,
+      'customer-count-cte',
+    )).rejects.toThrow('independently compiled profile');
+    await expect(invoke(
+      preview.sql,
+      [1, ...preview.fixedBindings],
+      outputNames,
+      undefined,
+      undefined,
+    )).rejects.toThrow('proof or pinned fixture identity');
   });
 
   it('previews a resolver-backed Invoice to Customer join and returns a source-preserving completion', async () => {

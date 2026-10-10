@@ -302,20 +302,29 @@ export class PublicSqliteQueryService {
       throw new Error(diagnosticsMessage(parsed.diagnostics));
     const tree = parsed.document.tree;
     if (!tree) throw new Error('The TugQL draft is incomplete.');
-    if (tree.definitions?.length)
-      throw new Error(
-        'WITH and saved-query imports are not supported by this SQLite preview.',
-      );
+    const authorCte = tree.definitions?.length === 1 && tree.definitions[0]?.kind === 'cte'
+      ? tree.definitions[0]
+      : undefined;
+    const cteProfile = tree.definitions !== undefined;
+    if (cteProfile && !authorCte)
+      throw new Error('This SQLite preview supports exactly one non-recursive Invoice count CTE.');
+    if (authorCte && (tree.query['where'] !== undefined ||
+      (tree.query.from as Record<string, unknown>)['name'] !== authorCte.name))
+      throw new Error('The CustomerId predicate must stay inside the referenced CTE, with no outer WHERE.');
+    if (authorCte && (authorCte.query.definitions?.length || authorCte.query.query['where'] === undefined))
+      throw new Error('The CTE must contain one Invoice query with its CustomerId parameter predicate.');
     const rawFrom = tree.query.from as Readonly<Record<string, unknown>>;
     const rawJoins = Array.isArray(rawFrom['joins'])
       ? (rawFrom['joins'] as readonly Readonly<Record<string, unknown>>[])
       : [];
     const joined = rawJoins.length > 0;
     const savedBindings = definition.relationshipBindings ?? [];
-    if (joined && savedBindings.length !== 1)
+    if (joined && !authorCte && savedBindings.length !== 1)
       throw new Error(
         'Save this joined query with its declared relationship binding before previewing.',
       );
+    if (authorCte && savedBindings.length)
+      throw new Error('The explicit CTE Customer join does not use an Invoice relationship binding.');
     if (!joined && savedBindings.length)
       throw new Error(
         'The saved relationship binding does not match this single-table query.',
@@ -488,7 +497,7 @@ export class PublicSqliteQueryService {
         type: name === 'CustomerId' ? 'integer' : 'string',
       }));
       const savedBinding = savedBindings[0];
-      if (
+      if (!authorCte && (
         !savedBinding ||
         savedBinding.id !== CUSTOMER_INVOICE_FK.name ||
         savedBinding.version !== CUSTOMER_INVOICE_FK_VERSION ||
@@ -499,12 +508,12 @@ export class PublicSqliteQueryService {
         savedBinding.pairs.length !== 1 ||
         savedBinding.pairs[0]?.fromField !== 'CustomerId' ||
         savedBinding.pairs[0]?.toField !== 'CustomerId'
-      )
+      ))
         throw new Error(
           'The saved relationship binding is stale, changed, or unsupported.',
         );
-      const relationshipVersion = savedBinding.version;
-      relationship = Object.freeze({
+      const relationshipVersion = savedBinding?.version ?? CUSTOMER_INVOICE_FK_VERSION;
+      if (!authorCte) relationship = Object.freeze({
         id: CUSTOMER_INVOICE_FK.name,
         version: relationshipVersion,
         fromSource: String(rawFrom['alias'] ?? 'Invoice'),
@@ -515,7 +524,7 @@ export class PublicSqliteQueryService {
         ),
         joinType: 'inner',
         pairs: Object.freeze(
-          savedBinding.pairs.map((pair) => Object.freeze({ ...pair })),
+          (savedBinding?.pairs ?? []).map((pair) => Object.freeze({ ...pair })),
         ),
       });
       schemaVersion = JSON.stringify({
@@ -546,10 +555,20 @@ export class PublicSqliteQueryService {
     delete parameterFreeTree.parameters;
     const structuralQuery = { ...tree.query };
     delete structuralQuery['where'];
+    let definitions = tree.definitions;
+    if (authorCte) {
+      const bodyQuery = { ...authorCte.query.query };
+      delete (bodyQuery as Record<string, unknown>)['where'];
+      definitions = [{
+        ...authorCte,
+        query: { ...authorCte.query, query: bodyQuery },
+      }];
+    }
     const structuralDocument: TugQLDocument = {
       sourceMetadata: parsed.document.sourceMetadata,
       tree: {
         ...parameterFreeTree,
+        ...(definitions ? { definitions } : {}),
         query: structuralQuery,
       },
     };
@@ -601,7 +620,7 @@ export class PublicSqliteQueryService {
           'The TugQL draft could not be resolved against the admitted Invoice schema.',
       );
     if (
-      joined &&
+      joined && !authorCte &&
       (!relationship ||
         authorization.resolved.relationships.length !== 1 ||
         authorization.resolved.relationships[0]?.id !== relationship.id ||
@@ -855,8 +874,12 @@ export class PublicSqliteQueryService {
           schemaVersion: plan.schemaVersion,
           draftRevision: plan.draftRevision,
           authorProfile: true,
+          ...(plan.authorProof
+            ? { authorProfileKind: plan.authorProof.profile }
+            : {}),
           ...(plan.relationship ? { relationship: plan.relationship } : {}),
           ...(plan.outputColumns ? { outputColumns: plan.outputColumns } : {}),
+          ...(plan.authorProof ? { authorProof: plan.authorProof } : {}),
         });
       });
       if (!reply.ok || !reply.result)
@@ -872,7 +895,7 @@ export class PublicSqliteQueryService {
         receipt.schemaVersion !== plan.schemaVersion ||
         receipt.draftRevision !== plan.draftRevision ||
         receipt.schemaFingerprint !==
-          (plan.relationship
+          (plan.relationship || plan.authorProof
             ? JOINED_SCHEMA_FINGERPRINT
             : 'CustomerId:INTEGER|InvoiceId:INTEGER|InvoiceDate:DATETIME') ||
         JSON.stringify(receipt.relationship) !==

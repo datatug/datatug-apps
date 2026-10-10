@@ -1,4 +1,9 @@
 import initSqlJs from 'sql.js';
+import type { TugQLResolved } from '@dalgo/core';
+import {
+  compilePublicSqliteTugQL,
+  type PublicSqliteAuthorProof,
+} from './public-sqlite-tugql';
 
 const FIXTURE_URL = 'https://chinook.demodb.dev/data/chinook.sqlite';
 const FIXTURE_SHA256 =
@@ -37,8 +42,10 @@ interface RunMessage {
   readonly schemaVersion?: string;
   readonly draftRevision?: number;
   readonly authorProfile?: boolean;
+  readonly authorProfileKind?: 'customer-count-cte';
   readonly relationship?: WorkerRelationship;
   readonly outputColumns?: readonly WorkerOutputColumn[];
+  readonly authorProof?: PublicSqliteAuthorProof;
 }
 interface WorkerExecutionReceipt {
   readonly executionId: string;
@@ -199,6 +206,12 @@ export async function executePinnedSql(
   authorProfile = false,
   joined = false,
   expectedOutputColumnNames?: readonly string[],
+  authorProof?: PublicSqliteAuthorProof,
+  bindingNames?: readonly string[],
+  schemaVersion?: string,
+  draftRevision?: number,
+  authorProfileKind?: 'customer-count-cte',
+  fixtureSha256?: string,
 ): Promise<ResultMessage> {
   if (
     typeof sql !== 'string' ||
@@ -206,6 +219,43 @@ export async function executePinnedSql(
     !/^\s*(?:select|with)\b/i.test(sql)
   ) {
     throw new Error('Use one read-only SELECT statement of at most 64 KiB.');
+  }
+  if (
+    (authorProfileKind === 'customer-count-cte' && !authorProof) ||
+    (authorProof && authorProfileKind !== 'customer-count-cte') ||
+    (authorProof && authorProof.profile !== 'customer-count-cte') ||
+    (authorProfileKind === 'customer-count-cte' && fixtureSha256 !== FIXTURE_SHA256) ||
+    (authorProfile && fixtureSha256 !== undefined && fixtureSha256 !== FIXTURE_SHA256) ||
+    (authorProfile && /\bFROM\s*\(\s*SELECT[\s\S]*\bFROM\s+"Invoice"/iu.test(sql) &&
+      /\bINNER\s+JOIN\s+"Customer"/iu.test(sql) && !authorProof)
+  )
+    throw new Error('The Author CTE proof or pinned fixture identity is missing or invalid.');
+  if (authorProof) {
+    const resolved = {
+      query: authorProof.resolvedQuery,
+      columns: [],
+      schemaVersion: schemaVersion ?? '',
+      dependencies: [],
+      relationships: [],
+    } as unknown as TugQLResolved;
+    const derived = compilePublicSqliteTugQL(resolved, {
+      fixtureSha256: FIXTURE_SHA256,
+      schemaVersion: schemaVersion ?? '',
+      draftRevision: draftRevision ?? -1,
+    });
+    const bindingsMatch = bindings.length === 1 + derived.fixedBindings.length &&
+      Number.isSafeInteger(bindings[0]) &&
+      JSON.stringify(bindings.slice(1)) === JSON.stringify(derived.fixedBindings);
+    if (
+      !authorProfile ||
+      sql !== derived.sql ||
+      JSON.stringify(bindingNames) !== JSON.stringify(derived.bindingNames) ||
+      JSON.stringify(expectedOutputColumnNames) !==
+        JSON.stringify(derived.outputColumns?.map((column) => column.name)) ||
+      !bindingsMatch
+    )
+      throw new Error('The Author CTE execution request differs from the independently compiled profile.');
+    joined = true;
   }
   const SQL = await initSqlJs(
     fixture
@@ -302,8 +352,14 @@ if (
       undefined,
       event.data.bindings ?? [],
       event.data.authorProfile === true,
-      event.data.relationship !== undefined,
+      event.data.relationship !== undefined || event.data.authorProof !== undefined,
       event.data.outputColumns?.map((column) => column.name),
+      event.data.authorProof,
+      event.data.bindingNames,
+      event.data.schemaVersion,
+      event.data.draftRevision,
+      event.data.authorProfileKind,
+      event.data.fixtureSha256,
     )
       .then((result) => {
         if (
@@ -329,9 +385,26 @@ if (
           ...(event.data.relationship
             ? { relationship: event.data.relationship }
             : {}),
-          ...(event.data.outputColumns
-            ? { outputColumns: event.data.outputColumns }
-            : {}),
+          ...(event.data.authorProof
+            ? {
+                outputColumns: compilePublicSqliteTugQL(
+                  {
+                    query: event.data.authorProof.resolvedQuery,
+                    columns: [],
+                    schemaVersion: event.data.schemaVersion ?? '',
+                    dependencies: [],
+                    relationships: [],
+                  } as unknown as TugQLResolved,
+                  {
+                    fixtureSha256: FIXTURE_SHA256,
+                    schemaVersion: event.data.schemaVersion ?? '',
+                    draftRevision: event.data.draftRevision ?? -1,
+                  },
+                ).outputColumns,
+              }
+            : event.data.outputColumns
+              ? { outputColumns: event.data.outputColumns }
+              : {}),
         };
         self.postMessage({ ok: true, result, receipt });
       })

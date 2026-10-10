@@ -7,6 +7,8 @@ const AUTHOR_URL =
   '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-invoice-author?id=chinook-invoice-author&editor=text&env=local';
 const COUNT_AUTHOR_URL =
   '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-customer-invoice-count?id=chinook-customer-invoice-count&editor=text&env=local';
+const CTE_AUTHOR_URL =
+  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-customer-count-cte?id=chinook-customer-count-cte&editor=text&env=local';
 
 test.skip(
   !DEMO_REPO,
@@ -69,6 +71,41 @@ test('Compose HAVING edits replace the shared draft before Preview and worker Ru
   );
   await author.getByTestId('author-code-tab').click();
   await expect(editor).toHaveValue(/having count\(\*\) >= 8\n/u);
+});
+
+test('Customer count CTE previews without values and runs against the pinned fixture', async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await page.goto(CTE_AUTHOR_URL);
+  const author = page.getByTestId('tugql-author');
+  await expect(author).toBeVisible({ timeout: 20_000 });
+  await author.getByTestId('author-preview').click();
+  const preview = author.getByTestId('author-sql-preview');
+  await expect(preview).toContainText('Preview · Not executed');
+  await expect(preview).toContainText('Required · unset');
+  await expect(preview.locator('pre')).toContainText('HAVING COUNT(*) >= ?');
+  await expect(preview.locator('pre')).not.toContainText('>= 7');
+  await expect(preview.locator('pre')).not.toContainText('= 1');
+  await expect(author.getByTestId('author-run')).toHaveAttribute(
+    'disabled',
+    '',
+  );
+
+  await author.getByTestId('author-customer-id').locator('input').fill('1');
+  await author.getByTestId('author-run').click();
+  const receipt = page.getByTestId('author-execution-receipt');
+  await expect(receipt).toContainText('Executed');
+  await expect(receipt).toContainText('1 rows');
+  const rows = page.getByRole('grid').getByRole('row');
+  await expect(rows).toHaveCount(2);
+  const resultCells = rows.nth(1).getByRole('gridcell');
+  await expect(resultCells.nth(0)).toHaveText('1');
+  await expect(resultCells.nth(1)).toHaveText('7');
+  await expect(resultCells.nth(2)).toHaveText('Luís');
+  await expect(resultCells.nth(3)).toHaveText('Gonçalves');
+  await expect(resultCells.nth(4)).toHaveText('luisg@embraer.com.br');
+  await expect(receipt).not.toContainText('Worker-verified relationship');
 });
 
 test('Code formats TugQL reversibly before explicit Preview and worker Run', async ({
