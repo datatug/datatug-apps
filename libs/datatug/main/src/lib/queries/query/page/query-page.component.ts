@@ -1416,11 +1416,15 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   private focusAuthorLookupAfterRender(): void {
     const focusRevision = ++this.authorLookupFocusRevision;
+    const expectedDraftRevision = this.authorDraftRevision();
+    const expectedBindingRevision = this.authorBindingRevision();
     const expectedProject = JSON.stringify(this.project?.ref);
     const expectedEnvironment = this.queryState.activeEnv?.id;
     const expectedSecurityContext = this.agentContext.securityContextId();
     const canFocus = (): boolean =>
       focusRevision === this.authorLookupFocusRevision &&
+      expectedDraftRevision === this.authorDraftRevision() &&
+      expectedBindingRevision === this.authorBindingRevision() &&
       this.queryId === CUSTOMER_INVOICE_LOOKUP_QUERY_ID &&
       JSON.stringify(this.project?.ref) === expectedProject &&
       this.queryState.activeEnv?.id === expectedEnvironment &&
