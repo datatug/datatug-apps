@@ -315,6 +315,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       return;
     }
     this.formError.set(undefined);
+    clearBusinessGithubContinuation();
     if (!this.saveDraft()) return;
     if (this.billingIntent() === 'space_business') {
       const actorID = this.userID();

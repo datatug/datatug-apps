@@ -13,7 +13,10 @@ import { DatatugNavService } from '../../services/nav/datatug-nav.service';
 import { ProjectService } from '../../services/project/project.service';
 import { ProjectQueryApiService } from '../../services/project/project-query-api.service';
 import { GithubConnectionService } from '../../services/repo/github/github-connection.service';
-import { takeBusinessGithubContinuation } from './business-github-continuation';
+import {
+  saveBusinessGithubContinuation,
+  takeBusinessGithubContinuation,
+} from './business-github-continuation';
 
 // The app registers its icon set in main.ts. Mirror the icons this real
 // template uses so happy-dom renders embedded SVGs instead of fetching them.
@@ -239,6 +242,16 @@ describe('New project through authenticated common API', () => {
         Object.keys(sessionStorage).map((key) => sessionStorage.getItem(key)),
       ),
     ).not.toMatch(/token|secret|authorizationURL/i);
+  });
+
+  it('clears abandoned Business context when the actor starts personal GitHub OAuth', async () => {
+    expect(saveBusinessGithubContinuation('actor', 'space')).toBe(true);
+    const h = await harness(false, { store: 'github' });
+
+    h.component.signInToGithub();
+
+    expect(h.connection.start).toHaveBeenCalledTimes(1);
+    expect(takeBusinessGithubContinuation('actor')).toBeUndefined();
   });
 
   it('forwards the Business billing intent and selected Space to shared project creation', async () => {
