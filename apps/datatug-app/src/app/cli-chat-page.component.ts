@@ -192,7 +192,7 @@ interface CliSession {
                   </div>
                   @if (httpTab(message.ID) === 'Raw') { <pre>{{ rawHttp(response) }}</pre> }
                   @else if (httpTab(message.ID) === 'Headers') { <pre>{{ httpHeaders(response) }}</pre> }
-                  @else if (message.Kind === 'markdown' || response.ContentType?.includes('markdown')) { <div class="markdown-body" [innerHTML]="renderMarkdown(message.Text)"></div> }
+                  @else if (message.Kind === 'markdown' || (response.ContentType && response.ContentType.includes('markdown'))) { <div class="markdown-body" [innerHTML]="renderMarkdown(message.Text)"></div> }
                   @else { <p>{{ message.Text }}</p> }
                 } @else if (message.Kind === 'markdown') { <div class="markdown-body" [innerHTML]="renderMarkdown(message.Text)"></div> }
                 @else { <p>{{ message.Text }}</p> }
