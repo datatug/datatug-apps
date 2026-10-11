@@ -3,12 +3,15 @@ import { installFakeGithub } from './helpers/fake-github';
 
 const DEMO_REPO = process.env['DATATUG_E2E_GITHUB_FAKE'];
 const JOIN_DEMO_REPO = process.env['DATATUG_E2E_GITHUB_JOIN'] ?? DEMO_REPO;
+const GRAPH_DEMO_REPO = process.env['DATATUG_E2E_GITHUB_GRAPH'] ?? DEMO_REPO;
 const AUTHOR_URL =
   '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-invoice-author?id=chinook-invoice-author&editor=text&env=local';
 const COUNT_AUTHOR_URL =
   '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-customer-invoice-count?id=chinook-customer-invoice-count&editor=text&env=local';
 const CTE_AUTHOR_URL =
   '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-customer-count-cte?id=chinook-customer-count-cte&editor=text&env=local';
+const CTE_GRAPH_AUTHOR_URL =
+  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-customer-count-graph?id=chinook-customer-count-graph&editor=text&env=local';
 
 test.skip(
   !DEMO_REPO,
@@ -19,7 +22,9 @@ test.beforeEach(async ({ context }, testInfo) => {
   if (DEMO_REPO) {
     const repository = testInfo.title.includes('Invoice Customer join')
       ? JOIN_DEMO_REPO
-      : DEMO_REPO;
+      : testInfo.title.includes('bounded CTE graph')
+        ? GRAPH_DEMO_REPO
+        : DEMO_REPO;
     await installFakeGithub(context, [
       {
         fullName: 'datatug/datatug-demo-project',
@@ -122,6 +127,64 @@ test('Customer count CTE previews without values and runs against the pinned fix
   await expect(author.getByTestId('author-run')).toBeEnabled();
   await author.getByTestId('author-run').click();
   await expect(receipt).toContainText('0 rows');
+});
+
+test('bounded CTE graph previews, runs, preserves results while stale, and runs zero rows', async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await page.goto(CTE_GRAPH_AUTHOR_URL);
+  const author = page.getByTestId('tugql-author');
+  await expect(author).toBeVisible({ timeout: 20_000 });
+  await author.getByTestId('author-code-tab').click();
+  const editor = author.getByTestId('query-body-text').locator('textarea');
+  const original = await editor.inputValue();
+  await expect(editor).toHaveValue(/with CustomerCounts as \(/u);
+  await expect(editor).toHaveValue(/with EligibleCounts as \(/u);
+  await expect(editor).toHaveValue(/with CustomerFields as \(/u);
+
+  await author.getByTestId('author-preview').click();
+  const preview = author.getByTestId('author-sql-preview');
+  await expect(preview).toContainText('Preview · Not executed');
+  await expect(preview).toContainText('Required · unset');
+  await expect(preview.locator('pre')).toContainText('HAVING COUNT(*) >= ?');
+  await expect(preview.locator('pre')).not.toContainText('>= 7');
+  await expect(preview.locator('pre')).not.toContainText('= 1');
+  await expect(author.getByTestId('author-run')).toHaveAttribute(
+    'disabled',
+    '',
+  );
+
+  await author.getByTestId('author-customer-id').locator('input').fill('1');
+  await author.getByTestId('author-run').click();
+  const receipt = page.getByTestId('author-execution-receipt');
+  await expect(receipt).toContainText('Executed');
+  await expect(receipt).toContainText('1 row');
+  const rows = page.getByRole('grid').getByRole('row');
+  await expect(rows).toHaveCount(2);
+  const resultCells = rows.nth(1).getByRole('gridcell');
+  await expect(resultCells.nth(0)).toHaveText('1');
+  await expect(resultCells.nth(1)).toHaveText('7');
+  await expect(resultCells.nth(2)).toHaveText('Luís');
+  await expect(resultCells.nth(3)).toHaveText('Gonçalves');
+  await expect(resultCells.nth(4)).toHaveText('luisg@embraer.com.br');
+  const retainedReceipt = await receipt.innerText();
+
+  await editor.fill(original.replace('where counts.InvoiceCount >= 7', 'where counts.InvoiceCount >= 8'));
+  await expect(author.getByTestId('author-run')).toHaveAttribute('disabled', '');
+  await expect(author.getByTestId('author-sql-preview')).toHaveCount(0);
+  await expect(receipt).toContainText('Executed');
+  await expect(receipt).toHaveText(retainedReceipt);
+
+  await author.getByTestId('author-preview').click();
+  await expect(author.getByTestId('author-sql-preview').locator('pre'))
+    .toContainText('HAVING COUNT(*) >= ?');
+  await expect(author.getByTestId('author-run')).toBeEnabled();
+  await author.getByTestId('author-run').click();
+  await expect(receipt).toContainText('0 rows');
+
+  await editor.fill(original);
+  await expect(editor).toHaveValue(original);
 });
 
 test('Code formats TugQL reversibly before explicit Preview and worker Run', async ({
