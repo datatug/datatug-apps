@@ -110,7 +110,22 @@ test('Customer count CTE previews without values and runs against the pinned fix
   await expect(resultCells.nth(1)).toHaveText('7');
   await expect(resultCells.nth(2)).toHaveText('Luís');
   await expect(resultCells.nth(3)).toHaveText('Gonçalves');
-  await expect(resultCells.nth(4)).toHaveText('luisg@embraer.com.br');
+  const lastNameCell = page.getByRole('gridcell', {
+    name: 'Gonçalves',
+    exact: true,
+  });
+  await lastNameCell.click();
+  await lastNameCell.press('ArrowRight');
+  const resultGrid = page.getByRole('grid');
+  await expect(
+    resultGrid.getByRole('columnheader', { name: 'Email', exact: true }),
+  ).toBeVisible();
+  await expect(
+    resultGrid.getByRole('gridcell', {
+      name: 'luisg@embraer.com.br',
+      exact: true,
+    }),
+  ).toBeVisible();
   await expect(receipt).not.toContainText('Worker-verified relationship');
 
   await author.getByTestId('author-code-tab').click();
@@ -167,14 +182,51 @@ test('bounded CTE graph previews, runs, preserves results while stale, and runs 
   await expect(resultCells.nth(1)).toHaveText('7');
   await expect(resultCells.nth(2)).toHaveText('Luís');
   await expect(resultCells.nth(3)).toHaveText('Gonçalves');
-  await expect(resultCells.nth(4)).toHaveText('luisg@embraer.com.br');
-  const retainedReceipt = await receipt.innerText();
-
+  const lastNameCell = page.getByRole('gridcell', {
+    name: 'Gonçalves',
+    exact: true,
+  });
+  await lastNameCell.click();
+  await lastNameCell.press('ArrowRight');
+  const resultGrid = page.getByRole('grid');
+  await expect(
+    resultGrid.getByRole('columnheader', { name: 'Email', exact: true }),
+  ).toBeVisible();
+  await expect(
+    resultGrid.getByRole('gridcell', {
+      name: 'luisg@embraer.com.br',
+      exact: true,
+    }),
+  ).toBeVisible();
+  const retainedExecutionId = (await receipt.textContent())?.match(
+    /Worker execution ID ([0-9a-f-]+)/u,
+  )?.[1];
+  expect(retainedExecutionId).toBeTruthy();
   await editor.fill(original.replace('where counts.InvoiceCount >= 7', 'where counts.InvoiceCount >= 8'));
   await expect(author.getByTestId('author-run')).toHaveAttribute('disabled', '');
   await expect(author.getByTestId('author-sql-preview')).toHaveCount(0);
-  await expect(receipt).toContainText('Executed');
-  await expect(receipt).toHaveText(retainedReceipt);
+  await expect(receipt.locator('.author-receipt-status')).toHaveText(
+    'Previous run',
+  );
+  expect(await receipt.textContent()).toContain(
+    `Worker execution ID ${retainedExecutionId}`,
+  );
+  await expect(rows).toHaveCount(2);
+  const retainedCountCell = resultGrid.getByRole('gridcell', {
+    name: '7',
+    exact: true,
+  });
+  await retainedCountCell.click();
+  await retainedCountCell.press('ArrowLeft');
+  await expect(
+    resultGrid.getByRole('columnheader', {
+      name: 'CustomerId',
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    resultGrid.getByRole('gridcell', { name: '1', exact: true }),
+  ).toBeVisible();
 
   await author.getByTestId('author-preview').click();
   await expect(author.getByTestId('author-sql-preview').locator('pre'))
