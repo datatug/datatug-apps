@@ -121,6 +121,32 @@ describe('AuthorCodeEditorComponent', () => {
     expect(changed).not.toHaveBeenCalled();
   });
 
+  it('shows a touch suggestions control only for editable TugQL', () => {
+    fixture.detectChanges();
+    let suggestions = fixture.nativeElement.querySelector(
+      '.author-code-suggestions',
+    ) as HTMLButtonElement;
+    expect(suggestions).not.toBeNull();
+    expect(suggestions.getAttribute('aria-label')).toBe(
+      'Suggestions (Ctrl+Space)',
+    );
+    expect(suggestions.disabled).toBe(false);
+
+    fixture.componentRef.setInput('readOnly', true);
+    fixture.detectChanges();
+    suggestions = fixture.nativeElement.querySelector(
+      '.author-code-suggestions',
+    ) as HTMLButtonElement;
+    expect(suggestions.disabled).toBe(true);
+
+    fixture.componentRef.setInput('readOnly', false);
+    fixture.componentRef.setInput('language', 'SQL');
+    fixture.detectChanges();
+    expect(
+      fixture.nativeElement.querySelector('.author-code-suggestions'),
+    ).toBeNull();
+  });
+
   it('keeps CRLF bytes and the caret when a user edit is echoed back through the text input', () => {
     const source = 'select InvoiceId\r\nfrom Invoice';
     fixture.componentRef.setInput('text', source);

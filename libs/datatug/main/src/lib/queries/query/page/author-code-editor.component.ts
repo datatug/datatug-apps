@@ -12,6 +12,7 @@ import {
   signal,
 } from '@angular/core';
 import { CodeEditor } from '@acrodata/code-editor';
+import { closeCompletion, startCompletion } from '@codemirror/autocomplete';
 import {
   EditorState,
   Prec,
@@ -28,6 +29,7 @@ import {
   createTugqlEditorExtensions,
   TUGQL_LANGUAGE_DESCRIPTIONS,
 } from './tugql-syntax';
+import { createTugqlCompletionExtension } from './tugql-completion';
 
 interface EditorInstance {
   readonly generation: number;
@@ -74,6 +76,13 @@ export class AuthorCodeEditorComponent implements OnChanges, AfterViewInit {
       this.editor &&
       getRawSource(this.editor.view.state) !== this.text();
     const editorConfigurationChanged = changes['label'] || changes['language'];
+    if (
+      (changes['readOnly'] || changes['disabled']) &&
+      (this.readOnly() || this.disabled())
+    ) {
+      const view = this.editor?.view;
+      if (view) closeCompletion(view);
+    }
     if (textChangedExternally || editorConfigurationChanged) {
       this.replaceInstance(this.text());
     }
@@ -83,8 +92,23 @@ export class AuthorCodeEditorComponent implements OnChanges, AfterViewInit {
     this.viewReady = true;
   }
 
+  public requestSuggestions(): void {
+    if (this.language() !== 'TugQL' || this.readOnly() || this.disabled()) return;
+    const view = this.editor?.view;
+    if (!view) return;
+    view.focus();
+    startCompletion(view);
+  }
+
   private replaceInstance(value: string): void {
     const extensions = createTugqlEditorExtensions(this.label());
+    if (this.language() === 'TugQL') {
+      extensions.push(
+        createTugqlCompletionExtension(
+          () => this.language() === 'TugQL' && !this.readOnly() && !this.disabled(),
+        ),
+      );
+    }
     extensions.push(...createRawSourceExtensions(value));
     extensions.push(
       Prec.highest(

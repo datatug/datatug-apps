@@ -1,4 +1,18 @@
-<div class="author-code-label">{{ label() }}</div>
+<div class="author-code-header">
+  <div class="author-code-label">{{ label() }}</div>
+  @if (language() === 'TugQL') {
+    <button
+      class="author-code-suggestions"
+      type="button"
+      aria-label="Suggestions (Ctrl+Space)"
+      title="Show TugQL suggestions · Ctrl+Space"
+      [disabled]="readOnly() || disabled()"
+      (click)="requestSuggestions()"
+    >
+      Suggestions <span aria-hidden="true">Ctrl+Space</span>
+    </button>
+  }
+</div>
 @for (editor of [instance()]; track editor.generation) {
   <code-editor
     class="author-code-editor-view"

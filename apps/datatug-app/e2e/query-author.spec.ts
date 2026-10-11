@@ -14,6 +14,9 @@ const CTE_AUTHOR_URL =
   '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-customer-count-cte?id=chinook-customer-count-cte&editor=text&env=local';
 const CTE_GRAPH_AUTHOR_URL =
   '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-customer-count-graph?id=chinook-customer-count-graph&editor=text&env=local';
+// @codemirror/autocomplete's installed default; Enter is intentionally ignored
+// until the option has been visible for this interaction window.
+const COMPLETION_INTERACTION_DELAY_MS = 75;
 
 const savedQuerySource = (queryId: string, repository = DEMO_REPO): string =>
   readFileSync(
@@ -98,6 +101,38 @@ const contrastRatio = async (token: Locator): Promise<number> =>
         (Math.min(foreground, background) + 0.05),
     };
   }).then(({ ratio }) => ratio);
+
+const completionContrastRatio = async (token: Locator): Promise<number> =>
+  token.evaluate((element) => {
+    const channel = (value: string): number[] =>
+      [...value.matchAll(/[\d.]+/gu)].map((match) => Number(match[0]));
+    const luminance = (color: string): number => {
+      const rgb = channel(color)
+        .slice(0, 3)
+        .map((value) => {
+          const normalized = value / 255;
+          return normalized <= 0.04045
+            ? normalized / 12.92
+            : ((normalized + 0.055) / 1.055) ** 2.4;
+        });
+      return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
+    };
+    const foreground = luminance(getComputedStyle(element).color);
+    let surface: Element | null = element;
+    let backgroundColor = getComputedStyle(surface).backgroundColor;
+    while (backgroundColor === 'rgba(0, 0, 0, 0)' && surface.parentElement) {
+      surface = surface.parentElement;
+      backgroundColor = getComputedStyle(surface).backgroundColor;
+    }
+    if (backgroundColor === 'rgba(0, 0, 0, 0)') {
+      throw new Error('Completion popup has no resolved background color');
+    }
+    const background = luminance(backgroundColor);
+    return (
+      (Math.max(foreground, background) + 0.05) /
+      (Math.min(foreground, background) + 0.05)
+    );
+  });
 
 test.skip(
   !DEMO_REPO,
@@ -247,6 +282,135 @@ test('TugQL and SQL coloring preserves editable source, keyboard undo, and reada
     )
     .toBeLessThanOrEqual(1);
 
+});
+
+test('TugQL suggestions are explicit, source-safe, and touch reachable', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(90_000);
+  const isMobile = testInfo.project.use.isMobile === true;
+  let workersStarted = 0;
+  page.on('worker', () => workersStarted++);
+  await page.goto(AUTHOR_URL);
+  const author = page.getByTestId('tugql-author');
+  const runButton = author.getByTestId('author-run').locator('button');
+  await expect(author).toBeVisible({ timeout: 20_000 });
+
+  if (isMobile) {
+    await page.locator('#workspace-results-tab').click();
+    await expect(page.getByTestId('author-results-empty')).toBeVisible();
+    await page.locator('#workspace-editor-tab').click();
+  }
+
+  const customerId = author.getByTestId('author-customer-id').locator('input');
+  await customerId.fill('1');
+  await author.getByTestId('author-preview').click();
+  await expect(runButton).toBeEnabled();
+  await author.getByTestId('author-run').click();
+  if (isMobile) await page.locator('#workspace-results-tab').click();
+  const receipt = page.getByTestId('author-execution-receipt');
+  await expect(receipt).toContainText('Executed');
+  await expect(receipt).toContainText('7 rows');
+  await expect.poll(() => workersStarted).toBe(1);
+  const executionId = (await receipt.textContent())?.match(
+    /execution ID ([0-9a-f-]{36})/iu,
+  )?.[1];
+  expect(executionId).toBeTruthy();
+  const boundCustomerId = await customerId.inputValue();
+
+  if (isMobile) await page.locator('#workspace-editor-tab').click();
+  await author.getByTestId('author-code-tab').click();
+  const editor = author.getByTestId('query-body-text').locator('.cm-content');
+  const incompleteDraft = [
+    'parameters (',
+    '  @CustomerId integer required',
+    ')',
+    'from Invoice as i',
+    'where i.CustomerId = @C',
+  ].join('\n');
+  await pasteCode(page, editor, incompleteDraft);
+  const popup = author.locator('.cm-tooltip-autocomplete');
+  await expect(popup).toHaveCount(0);
+
+  if (!isMobile) await page.setViewportSize({ width: 320, height: 780 });
+
+  if (isMobile) {
+    await author.getByRole('button', { name: 'Suggestions (Ctrl+Space)' }).tap();
+  } else {
+    await editor.press('Control+Space');
+  }
+  await expect(popup).toBeVisible();
+  const lightPopupBackground = await popup.evaluate(
+    (element) => getComputedStyle(element).backgroundColor,
+  );
+  expect(lightPopupBackground).not.toBe('rgba(0, 0, 0, 0)');
+  expect(await completionContrastRatio(popup.locator('li').first())).toBeGreaterThanOrEqual(4.5);
+  const popupBounds = await popup.boundingBox();
+  const viewport = page.viewportSize();
+  if (!popupBounds || !viewport) {
+    throw new Error('The completion popup or viewport has no measurable bounds');
+  }
+  expect(popupBounds.x).toBeGreaterThanOrEqual(0);
+  expect(popupBounds.x + popupBounds.width).toBeLessThanOrEqual(
+    viewport.width + 1,
+  );
+  const option = popup.locator('.cm-completionLabel', { hasText: /^CustomerId$/u });
+  await expect(option).toBeVisible();
+  await page.locator('ion-app').evaluate((app) => app.classList.add('ion-palette-dark'));
+  const darkPopupBackground = await popup.evaluate(
+    (element) => getComputedStyle(element).backgroundColor,
+  );
+  expect(darkPopupBackground).not.toBe(lightPopupBackground);
+  expect(await completionContrastRatio(popup.locator('li').first())).toBeGreaterThanOrEqual(4.5);
+  await page.emulateMedia({ forcedColors: 'active' });
+  expect(await completionContrastRatio(popup.locator('li').first())).toBeGreaterThanOrEqual(4.5);
+  await page.emulateMedia({ forcedColors: 'none' });
+  await page.locator('ion-app').evaluate((app) => app.classList.remove('ion-palette-dark'));
+  await editor.press('Escape');
+  await expect(popup).toHaveCount(0);
+  await expectEditorSource(page, editor, incompleteDraft);
+
+  // Enter remains an ordinary newline when no completion list is open.
+  await editor.press('Enter');
+  await expectEditorSource(page, editor, `${incompleteDraft}\n`);
+  await editor.press('ControlOrMeta+z');
+  await expectEditorSource(page, editor, incompleteDraft);
+
+  if (isMobile) {
+    await author.getByRole('button', { name: 'Suggestions (Ctrl+Space)' }).tap();
+  } else {
+    await editor.press('Control+Space');
+  }
+  await expect(popup).toBeVisible();
+  const acceptedOption = popup.locator('.cm-completionLabel', {
+    hasText: /^CustomerId$/u,
+  });
+  await expect(popup.locator('li[aria-selected="true"]')).toBeVisible();
+  await page.waitForTimeout(COMPLETION_INTERACTION_DELAY_MS + 25);
+  if (isMobile) {
+    await acceptedOption.tap();
+  } else {
+    await editor.press('Enter');
+  }
+  const acceptedDraft = incompleteDraft.replace(/@C$/u, '@CustomerId');
+  await expectEditorSource(page, editor, acceptedDraft);
+  await expect(editor).toBeFocused();
+  await expect(author.getByTestId('author-sql-preview')).toHaveCount(0);
+  await expect(runButton).toBeDisabled();
+  await editor.press('ControlOrMeta+z');
+  await expectEditorSource(page, editor, incompleteDraft);
+  // Use the physical key so Shift remains part of CodeMirror's redo chord.
+  await editor.press('ControlOrMeta+Shift+KeyZ');
+  await expectEditorSource(page, editor, acceptedDraft);
+
+  const resultsTab = page.locator('#workspace-results-tab');
+  if (await resultsTab.isVisible()) await resultsTab.click();
+  await expect(receipt).toContainText('Previous run');
+  await expect(receipt).toContainText('7 rows');
+  expect(await receipt.textContent()).toContain(executionId);
+  expect(await customerId.inputValue()).toBe(boundCustomerId);
+  expect(workersStarted).toBe(1);
+  expect(await page.getByRole('grid').getByRole('row').count()).toBe(8);
 });
 
 test('Compose HAVING edits replace the shared draft before Preview and worker Run', async ({

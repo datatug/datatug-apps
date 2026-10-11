@@ -2,7 +2,8 @@
 
 ## Query authoring in mobile WebKit
 
-The optional query-only WebKit profile covers coloring and native editing,
+The optional query-only WebKit profile covers coloring, explicit TugQL
+suggestions and native editing,
 the saved Invoice → Customer Compose/Code/Preview/Run journey, and the maintained
 two-fixture comparison. It uses the iPhone 13 browser profile and also checks
 320px and 390px layouts. This is automated WebKit coverage; physical iPhone
