@@ -812,6 +812,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   }
 
   // Start from the saved unjoined source again, then choose Email explicitly.
+  await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto(AUTHOR_URL);
   const secondAuthor = page.getByTestId('tugql-author');
   await expect(secondAuthor).toBeVisible({ timeout: 20_000 });
