@@ -12,11 +12,57 @@
 }
 
 .author-code-label {
-  display: block;
-  padding: 0.65rem 0.75rem 0.4rem;
+  min-width: 0;
   color: var(--ion-color-dark, #1f2937);
   font-size: 0.9rem;
   font-weight: 600;
+}
+
+.author-code-header {
+  display: flex;
+  min-height: 3.5rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem 0.25rem 0.75rem;
+}
+
+.author-code-suggestions {
+  display: inline-flex;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border: 1px solid var(--ion-color-step-250, #cbd5e1);
+  border-radius: 0.45rem;
+  padding: 0.25rem 0.5rem;
+  background: var(--ion-background-color, #ffffff);
+  color: var(--ion-color-dark, #1f2937);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.author-code-suggestions span {
+  color: var(--ion-color-medium, #64748b);
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.author-code-suggestions:hover:not(:disabled) {
+  border-color: var(--ion-color-primary, #1d4ed8);
+}
+
+.author-code-suggestions:focus-visible {
+  outline: 2px solid var(--ion-color-primary, #1d4ed8);
+  outline-offset: 2px;
+}
+
+.author-code-suggestions:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 :host-context(.ion-palette-dark) {
@@ -24,9 +70,38 @@
   --ion-color-dark: #f8fafc;
   --ion-color-dark-shade: #e2e8f0;
   --ion-color-step-250: #4b5563;
+  --ion-color-medium: #cbd5e1;
   --tugql-keyword: #93c5fd;
   --tugql-parameter: #d8b4fe;
   --tugql-string: #86efac;
   --tugql-number: #fcd34d;
   --tugql-comment: #cbd5e1;
+}
+
+@media (max-width: 380px) {
+  .author-code-suggestions span {
+    display: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .author-code-suggestions {
+    border-color: ButtonText;
+    color: ButtonText;
+  }
+  .author-code-suggestions:focus-visible {
+    outline-color: Highlight;
+  }
+
+  :host ::ng-deep .cm-tooltip.cm-tooltip-autocomplete {
+    border: 1px solid CanvasText;
+    background: Canvas;
+    color: CanvasText;
+    box-shadow: none;
+  }
+
+  :host ::ng-deep .cm-tooltip.cm-tooltip-autocomplete ul li[aria-selected] {
+    background: Highlight;
+    color: HighlightText;
+  }
 }

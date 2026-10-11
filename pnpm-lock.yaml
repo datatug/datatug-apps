@@ -70,6 +70,9 @@ importers:
       '@capacitor/core':
         specifier: 8.1.0
         version: 8.1.0
+      '@codemirror/autocomplete':
+        specifier: 6.20.3
+        version: 6.20.3
       '@codemirror/commands':
         specifier: 6.10.4
         version: 6.10.4
