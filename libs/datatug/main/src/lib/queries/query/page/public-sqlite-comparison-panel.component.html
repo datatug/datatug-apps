@@ -1,0 +1,143 @@
+<section class="comparison-panel" aria-labelledby="compare-title" data-testid="comparison-panel">
+  <header class="comparison-heading">
+    <div>
+      <p class="comparison-eyebrow">Compare query results</p>
+      <h2 id="compare-title">Compare this query</h2>
+      <p class="comparison-blocked" role="status" aria-live="polite">{{ blockedReason() }}</p>
+      @if (message()) { <p class="comparison-message" role="status" aria-live="polite">{{ message() }}</p> }
+    </div>
+    <button type="button" class="primary-action" data-testid="comparison-run-both"
+      [disabled]="busy() || !blockedReason().startsWith('Ready')"
+      (click)="runBoth.emit()">Run both</button>
+  </header>
+
+  @if (snapshot(); as session) {
+    <div class="frozen-context" data-testid="comparison-frozen-context">
+      @if (session.invalidated) { <strong class="previous-run">Previous run</strong> }
+      <strong>Frozen draft revision {{ session.context.draftRevision }}</strong>
+      <span>{{ customerBinding() }}</span>
+      <span>Each side is an independent browser observation.</span>
+    </div>
+    <div class="comparison-sides">
+      @for (side of sides(); track side.target.id) {
+        <article class="comparison-side" [attr.data-testid]="'comparison-side-' + side.target.role">
+          <header>
+            <div>
+              <h3>{{ sideLabel(side) }}</h3>
+              <p>{{ side.target.displayLabel }}</p>
+            </div>
+            <span class="side-status" role="status" aria-live="polite">{{ statusText(side) }}</span>
+          </header>
+          <p class="environment-label">{{ side.target.environmentLabel }}</p>
+          @if (session.invalidated) { <p class="previous-run">Previous run · not eligible for another Compare</p> }
+          @if (side.observation; as observation) {
+            <dl class="side-receipt">
+              <div><dt>Rows</dt><dd>Complete for this query (LIMIT {{ queryLimit() }}) · {{ observation.rowCount }} observed</dd></div>
+              <div><dt>Observed</dt><dd>{{ observation.observedAt | date: 'mediumTime' }}</dd></div>
+            </dl>
+            <details>
+              <summary>Observed rows, execution ID, schema and provenance</summary>
+              <div class="observation-table-scroll" tabindex="0" aria-label="Observed query result rows">
+                <table>
+                  <thead><tr>@for (column of observation.columns; track column.name) { <th scope="col">{{ column.name }}</th> }</tr></thead>
+                  <tbody>
+                    @for (row of observation.rows; track $index) {
+                      <tr>@for (value of row; track $index) { <td>{{ value === null ? 'NULL' : value }}</td> }</tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+              <dl class="side-receipt">
+                <div><dt>Execution ID</dt><dd><code>{{ observation.executionId }}</code> · browser bookkeeping only</dd></div>
+                <div><dt>Fixture SHA-256</dt><dd><code>{{ side.target.sha256 }}</code></dd></div>
+                <div><dt>Runtime schema profile</dt><dd><code>{{ observation.schemaFingerprint }}</code></dd></div>
+                <div><dt>Provider schema digest</dt><dd><code>{{ observation.schemaSha256 }}</code></dd></div>
+                <div><dt>Provider source</dt><dd><code>{{ side.target.provenance.providerRepository }}@{{ side.target.provenance.providerCommit }}</code></dd></div>
+                <div><dt>Manifest</dt><dd><code>{{ side.target.provenance.manifestPath }} · {{ side.target.provenance.manifestSha256 }}</code></dd></div>
+                <div><dt>Hosting commit</dt><dd><code>{{ side.target.provenance.hostMergeCommit }}</code></dd></div>
+              </dl>
+            </details>
+          }
+          @if (side.status === 'running') {
+            <button type="button" class="secondary-action" [attr.aria-label]="'Cancel ' + sideLabel(side) + ' query'"
+              (click)="cancelSide.emit(side.target.id)">Cancel {{ sideLabel(side) }}</button>
+          } @else if (side.status === 'failed' || side.status === 'cancelled') {
+            <button type="button" class="secondary-action" [disabled]="busy()"
+              (click)="retrySide.emit(side.target.id)">Retry {{ sideLabel(side) }}</button>
+          }
+        </article>
+      }
+    </div>
+    <div class="compare-actions">
+      <button type="button" class="primary-action" data-testid="comparison-compare"
+        [disabled]="!canCompare()" (click)="compare.emit()">Compare complete results</button>
+      @if (!canCompare()) { <span>Compare unlocks when both sides have complete current results.</span> }
+    </div>
+  } @else {
+    <p class="comparison-empty">Preview the supported query, review these two pinned targets, then explicitly run both. Viewing targets and Preview do not start query workers.</p>
+    <div class="comparison-sides">
+      @for (target of targetList; track target.id) {
+        <article class="comparison-side" [attr.data-testid]="'comparison-target-' + target.role">
+          <h3>{{ targetLabel(target) }}</h3>
+          <p>{{ target.displayLabel }}</p>
+          <p class="environment-label">{{ target.environmentLabel }}</p>
+          <details>
+            <summary>Target identity and provenance</summary>
+            <dl class="side-receipt">
+              <div><dt>Fixture URL</dt><dd><code>{{ target.url }}</code></dd></div>
+              <div><dt>Fixture SHA-256</dt><dd><code>{{ target.sha256 }}</code></dd></div>
+              <div><dt>Size</dt><dd>{{ target.bytes }} bytes</dd></div>
+              <div><dt>Provider source</dt><dd><code>{{ target.provenance.providerRepository }}@{{ target.provenance.providerCommit }}</code></dd></div>
+              <div><dt>Manifest</dt><dd><code>{{ target.provenance.manifestPath }} · {{ target.provenance.manifestSha256 }}</code></dd></div>
+              <div><dt>Hosting commit</dt><dd><code>{{ target.provenance.hostMergeCommit }}</code></dd></div>
+            </dl>
+          </details>
+        </article>
+      }
+    </div>
+  }
+
+  @if (result(); as comparison) {
+    <section class="diff-results" aria-labelledby="diff-title" data-testid="comparison-result">
+      <h3 id="diff-title">{{ comparison.label }}</h3>
+      <p>Bounded query-result differences; one-sided keys do not establish a database deletion or cause.</p>
+      <p>Raw text comparison · no date/time normalization. Complete only for the bounded query; this does not compare the whole dataset.</p>
+      <div class="diff-summary" aria-label="Difference summary">
+        <span>{{ comparison.diff.summary.changed }} changed</span>
+        <span>{{ comparison.diff.summary.removed }} baseline-only</span>
+        <span>{{ comparison.diff.summary.added }} candidate-only</span>
+        <span>{{ comparison.diff.summary.unchanged }} unchanged</span>
+      </div>
+      @if (comparison.diff.truncated) {
+        <p class="diff-truncated" role="status">The complete inputs were compared; the displayed difference output is capped.</p>
+      }
+      <nav class="diff-filters" aria-label="Filter comparison differences">
+        <button type="button" [attr.aria-pressed]="filter() === 'all'" (click)="filter.set('all')">All</button>
+        <button type="button" [attr.aria-pressed]="filter() === 'changed'" (click)="filter.set('changed')">Changed</button>
+        <button type="button" [attr.aria-pressed]="filter() === 'baseline-only'" (click)="filter.set('baseline-only')">Baseline-only</button>
+        <button type="button" [attr.aria-pressed]="filter() === 'candidate-only'" (click)="filter.set('candidate-only')">Candidate-only</button>
+      </nav>
+      @if (differences().length) {
+        <div class="diff-list">
+          @for (item of differences(); track item.kind + item.key) {
+            <article class="diff-row">
+              <strong>{{ item.kind === 'changed' ? 'Changed' : item.kind === 'baseline-only' ? 'Baseline-only' : 'Candidate-only' }} · InvoiceId {{ item.key }}</strong>
+              @if (item.changed; as changed) {
+                @for (column of comparison.diff.columns; track column.name) {
+                  @if (!comparison.diff.key.includes(column.name) && changeValue(changed, column.name, 'left') !== changeValue(changed, column.name, 'right')) {
+                    <p><code>{{ column.name }}</code>: <span class="before">{{ changeValue(changed, column.name, 'left') }}</span> → <span class="after">{{ changeValue(changed, column.name, 'right') }}</span></p>
+                  }
+                }
+              } @else if (item.row) {
+                <p>{{ item.kind === 'baseline-only' ? 'Key observed only in Baseline' : 'Key observed only in Candidate' }}.</p>
+              }
+            </article>
+          }
+        </div>
+      } @else {
+        <p>No differences in this filter.</p>
+      }
+      <p class="session-only">This is page-memory output. It expires when this page closes or refreshes and is not durable or citable evidence.</p>
+    </section>
+  }
+</section>

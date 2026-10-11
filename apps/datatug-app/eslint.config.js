@@ -5,6 +5,11 @@ const { sneatLibConfig } = require('../../eslint.lib.config.js');
 module.exports = [
   ...baseConfig,
   ...sneatLibConfig(__dirname),
+  // Populated from the lock-verified Core release by the app's build target.
+  // These third-party generated sources are validated by the artifact consumer, not authored here.
+  {
+    ignores: ['apps/datatug-app/src/assets/recordsetcompare/**'],
+  },
   {
     files: ['**/*.ts'],
     rules: {

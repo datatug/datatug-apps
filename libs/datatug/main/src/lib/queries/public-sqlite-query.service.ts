@@ -21,6 +21,14 @@ import { ProjectQueryApiService } from '../services/project/project-query-api.se
 import type { IProjectRef } from '../core/project-context';
 import type { FederatedQueryResult } from './federated-query-executor';
 import {
+  admitPublicSqliteComparisonFixtures,
+  assertComparisonProject,
+  isSupportedPublicSqliteComparisonProjection,
+  publicSqliteComparisonTarget,
+  type ComparisonFixtureTarget,
+  type ComparisonWorkerObservation,
+} from './public-sqlite-comparison';
+import {
   compilePublicSqliteTugQL,
   preparePublicSqliteCteStructuralDocument,
   requireCustomerIdParameterSource,
@@ -62,6 +70,7 @@ function firstValueFromAbortable<T>(
 
 interface ConnectionCatalog {
   readonly format?: string;
+  readonly comparisonFixtures?: readonly unknown[];
   readonly connections?: readonly {
     readonly id?: string;
     readonly dataset?: string;
@@ -113,6 +122,8 @@ interface WorkerResult {
     readonly bindings: readonly (string | number | null)[];
     readonly bindingNames: readonly string[];
     readonly fixtureSha256: string;
+    readonly targetId?: ComparisonFixtureTarget['id'];
+    readonly schemaSha256?: string;
     readonly schemaVersion: string;
     readonly draftRevision: number;
     readonly schemaFingerprint: string;
@@ -306,11 +317,188 @@ export class PublicSqliteQueryService {
   private readonly reader = inject(GithubProjectReaderService);
   private readonly projectApi = inject(ProjectQueryApiService);
 
+  /** Executes one side in a fresh worker after re-reading the exact pair admission. */
+  async runComparisonSide(
+    project: IProjectRef,
+    definition: IQueryDef,
+    plan: PublicSqlitePreparedPlan,
+    targetId: ComparisonFixtureTarget['id'],
+    signal?: AbortSignal,
+  ): Promise<ComparisonWorkerObservation> {
+    assertComparisonProject(project);
+    const target = publicSqliteComparisonTarget(targetId);
+    if (
+      definition.connectionId !== CONNECTION_ID ||
+      plan.sourceId !== CONNECTION_ID ||
+      plan.fixtureSha256 !== FIXTURE_SHA256 ||
+      ('expandedSource' in plan && plan.expandedSource !== undefined) ||
+      !plan.relationship ||
+      plan.relationship.joinType !== 'inner' ||
+      !Object.isFrozen(plan) ||
+      !Object.isFrozen(plan.bindings) ||
+      !Number.isSafeInteger(plan.draftRevision) ||
+      plan.draftRevision < 0 ||
+      !Number.isInteger(plan.authorProof.resolvedQuery.limit) ||
+      (plan.authorProof.resolvedQuery.limit ?? 0) < 1 ||
+      (plan.authorProof.resolvedQuery.limit ?? 101) > 100
+    ) {
+      throw new Error('The frozen query is not eligible for fixture comparison.');
+    }
+    if (plan.authorProof.profile !== 'invoice-query')
+      throw new Error('Fixture comparison supports only the pinned Invoice query profile.');
+    const columns = plan.outputColumns;
+    if (!columns || !isSupportedPublicSqliteComparisonProjection(plan)) {
+      throw new Error('Comparison requires InvoiceId followed by supported raw text columns.');
+    }
+
+    const preview = await this.prepareTugQL(project, definition, plan.draftRevision, signal, true);
+    if (preview.expandedSource !== undefined)
+      throw new Error(
+        'Apply the displayed relationship completion and Preview the updated draft before comparing.',
+      );
+    const { fixedBindings, bindingSlots, ...previewPlan } = preview;
+    if (JSON.stringify(preview.bindingNames) !== JSON.stringify(plan.bindingNames))
+      throw new Error('The comparison binding slots changed after Preview.');
+    let expectedBindings: readonly (string | number | null)[];
+    if (bindingSlots) {
+      if (bindingSlots.length !== plan.bindings.length)
+        throw new Error('The comparison binding slots changed after Preview.');
+      expectedBindings = bindingSlots.map((slot, index) => {
+        const value = plan.bindings[index];
+        if (slot.kind === 'customer-id') {
+          if (typeof value !== 'number' || !Number.isSafeInteger(value))
+            throw new Error('Comparison requires a whole-number CustomerId binding.');
+          return value;
+        }
+        if (value !== slot.value)
+          throw new Error('The prepared literal bindings changed after Preview.');
+        return slot.value;
+      });
+    } else {
+      const customerId = plan.bindings[0];
+      if (
+        preview.bindingNames[0] !== 'CustomerId' ||
+        typeof customerId !== 'number' ||
+        !Number.isSafeInteger(customerId) ||
+        plan.bindings.length !== fixedBindings.length + 1
+      )
+        throw new Error('Comparison requires the current whole-number CustomerId binding.');
+      expectedBindings = [customerId, ...fixedBindings];
+    }
+    if (
+      JSON.stringify(previewPlan) !== JSON.stringify({ ...plan, bindings: undefined }) ||
+      JSON.stringify(expectedBindings) !== JSON.stringify(plan.bindings)
+    ) {
+      throw new Error('The saved draft, schema, relationship, or bindings changed after Preview.');
+    }
+    if (typeof Worker === 'undefined')
+      throw new Error('This browser does not support SQLite query workers.');
+
+    const worker = new Worker(
+      new URL('./public-sqlite-query.worker.ts', import.meta.url),
+      { type: 'module' },
+    );
+    try {
+      const reply = await new Promise<WorkerResult>((resolve, reject) => {
+        const cleanup = (): void => {
+          clearTimeout(timer);
+          signal?.removeEventListener('abort', onAbort);
+        };
+        const onAbort = (): void => {
+          cleanup();
+          reject(abortError());
+        };
+        const timer = setTimeout(() => {
+          cleanup();
+          reject(new Error('The browser SQLite comparison exceeded 10 seconds.'));
+        }, RUN_TIMEOUT_MS);
+        if (signal?.aborted) {
+          onAbort();
+          return;
+        }
+        signal?.addEventListener('abort', onAbort, { once: true });
+        worker.onmessage = (event: MessageEvent<WorkerResult>) => {
+          cleanup();
+          resolve(event.data);
+        };
+        worker.onerror = () => {
+          cleanup();
+          reject(new Error('The browser SQLite comparison worker failed.'));
+        };
+        worker.postMessage({
+          mode: 'comparison',
+          comparisonTarget: target,
+          sql: plan.sql,
+          bindings: plan.bindings,
+          bindingNames: plan.bindingNames,
+          fixtureSha256: plan.fixtureSha256,
+          schemaVersion: plan.schemaVersion,
+          draftRevision: plan.draftRevision,
+          authorProfile: true,
+          authorProfileKind: plan.authorProof.profile,
+          relationship: plan.relationship,
+          outputColumns: plan.outputColumns,
+          authorProof: plan.authorProof,
+        });
+      });
+      if (!reply.ok || !reply.result)
+        throw new Error(reply.error ?? 'The browser SQLite comparison failed.');
+      const receipt = reply.receipt;
+      if (
+        !receipt?.executionId ||
+        receipt.sql !== plan.sql ||
+        JSON.stringify(receipt.bindings) !== JSON.stringify(plan.bindings) ||
+        JSON.stringify(receipt.bindingNames) !== JSON.stringify(plan.bindingNames) ||
+        receipt.fixtureSha256 !== target.sha256 ||
+        receipt.targetId !== target.id ||
+        receipt.schemaSha256 !== target.schemaSha256 ||
+        receipt.schemaVersion !== plan.schemaVersion ||
+        receipt.draftRevision !== plan.draftRevision ||
+        receipt.schemaFingerprint !== JOINED_SCHEMA_FINGERPRINT ||
+        JSON.stringify(receipt.relationship) !== JSON.stringify(plan.relationship) ||
+        JSON.stringify(receipt.outputColumns) !== JSON.stringify(plan.outputColumns) ||
+        JSON.stringify(reply.result.columns) !==
+          JSON.stringify(columns?.map((column) => column.name))
+      ) {
+        throw new Error('The SQLite worker receipt did not match its comparison target.');
+      }
+      const seenKeys = new Set<number>();
+      for (const row of reply.result.rows) {
+        const keyValue = row[0];
+        if (!Number.isSafeInteger(keyValue) || seenKeys.has(keyValue as number))
+          throw new Error('Comparison rows require unique, non-null safe-integer InvoiceId keys.');
+        seenKeys.add(keyValue as number);
+        if (row.slice(1).some((cell) => cell !== null && typeof cell !== 'string'))
+          throw new Error('Comparison supports only raw text result cells after InvoiceId.');
+      }
+      return Object.freeze({
+        kind: 'browser-session',
+        targetId: target.id,
+        fixtureSha256: target.sha256,
+        schemaSha256: target.schemaSha256,
+        schemaFingerprint: receipt.schemaFingerprint,
+        columns: Object.freeze(columns.map((column) => Object.freeze({
+          name: column.name,
+          type: column.type,
+        }))),
+        executionId: receipt.executionId,
+        observedAt: new Date().toISOString(),
+        rowCount: reply.result.rows.length,
+        rows: Object.freeze(reply.result.rows.map((row) => Object.freeze([...row]))),
+        resultComplete: true,
+        expiresWithSession: true,
+      });
+    } finally {
+      worker.terminate();
+    }
+  }
+
   /** One live, source-qualified metadata read shared by discovery and Preview/Run. */
   private async readAdmittedSchemaSnapshot(
     project: IProjectRef,
     includeRelationship: boolean,
     signal?: AbortSignal,
+    includeComparisonPair = false,
   ): Promise<AdmittedSchemaSnapshot> {
     const deadline = Date.now() + RUN_TIMEOUT_MS;
     const [catalog, invoiceFile, customerFile, refs] = await Promise.all([
@@ -353,6 +541,7 @@ export class PublicSqliteQueryService {
     if (Date.now() > deadline)
       throw new Error('The public SQLite schema check exceeded 10 seconds.');
     admitPublicSqliteSource(catalog, CONNECTION_ID);
+    if (includeComparisonPair) admitPublicSqliteComparisonFixtures(catalog);
 
     const invoiceColumns = invoiceFile?.columns;
     if (!invoiceColumns?.length)
@@ -468,6 +657,7 @@ export class PublicSqliteQueryService {
     definition: IQueryDef,
     draftRevision: number,
     signal?: AbortSignal,
+    comparisonPair = false,
   ): Promise<PublicSqliteQueryPreview> {
     if (
       definition.request.queryType !== QueryType.DTQL ||
@@ -514,7 +704,7 @@ export class PublicSqliteQueryService {
       );
     if (definition.connectionId !== CONNECTION_ID)
       throw new Error('This query has no admitted public browser SQLite source.');
-    const snapshot = await this.readAdmittedSchemaSnapshot(project, joined, signal);
+    const snapshot = await this.readAdmittedSchemaSnapshot(project, joined, signal, comparisonPair);
     const requiredFields = ['CustomerId', 'InvoiceId', 'InvoiceDate'];
     const expectedTypes: Readonly<Record<string, string>> = {
       CustomerId: 'INTEGER',

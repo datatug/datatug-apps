@@ -14,6 +14,7 @@ import { cliChatCapability } from './cli-chat-capability';
 import { DEMO_HANDOFF_KEY, DEMO_HANDOFF_STASH, handoffAsked, handoffDecision, searchAsksQuestion, searchOfQueryParams } from './demo-handoff-asked';
 import { handoffUrlMatcher, routeSegments } from './demo-handoff-path';
 import { CheckoutLoadErrorComponent } from './checkout/checkout-load-error.component';
+import recordsetcompareLock from '../../recordsetcompare-lock.json';
 
 // Task 13 (S108, spec/research/2026-09-09-layered-acl-reconciliation.md,
 // datatug/datatug): the read-only worktree
@@ -258,7 +259,25 @@ export const routes: Routes = [
   },
   {
     path: '',
-    loadChildren: () =>
-      import('@sneat/datatug-main').then((m) => m.DatatugRoutingModule),
+    loadChildren: async () => {
+      const main = await import('@sneat/datatug-main');
+      return [
+        {
+          path: '',
+          providers: [
+            {
+              provide: main.PUBLIC_SQLITE_COMPARE_WASM_PIN,
+              useValue: Object.freeze({
+                wasmSHA256:
+                  recordsetcompareLock.files['recordsetcompare.wasm'].sha256,
+                wasmBytes:
+                  recordsetcompareLock.files['recordsetcompare.wasm'].bytes,
+              }),
+            },
+          ],
+          loadChildren: () => main.DatatugRoutingModule,
+        },
+      ];
+    },
   },
 ];

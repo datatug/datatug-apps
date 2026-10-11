@@ -8,11 +8,17 @@ import {
   type PublicSqliteOutputColumn,
   type PublicSqliteRelationshipReceipt,
 } from './public-sqlite-tugql';
+import {
+  publicSqliteComparisonTarget,
+  type ComparisonFixtureTarget,
+} from './public-sqlite-comparison';
 
 const FIXTURE_URL = 'https://chinook.demodb.dev/data/chinook.sqlite';
 const FIXTURE_SHA256 =
   '7651ba378ac2fcd0dfc3c66fb101f7a7eed3ba39a612ec642b96e20702061f15';
 const FIXTURE_BYTES = 1007616;
+const PUBLIC_COMPARISON_SCHEMA_SHA256 =
+  '8392c76c7fd8da3bce20d1cec2c60223692a08915787f5c7393cec1c0b6acb94';
 const MAX_ROWS = 1000;
 const MAX_COLUMNS = 40;
 const MAX_RESULT_BYTES = 1 << 20;
@@ -22,6 +28,8 @@ type Cell = string | number | null;
 type WorkerRelationship = PublicSqliteRelationshipReceipt;
 type WorkerOutputColumn = PublicSqliteOutputColumn;
 interface RunMessage {
+  readonly mode?: 'author' | 'comparison';
+  readonly comparisonTarget?: ComparisonFixtureTarget;
   readonly sql: string;
   readonly bindings?: readonly (string | number | null)[];
   readonly bindingNames?: readonly string[];
@@ -40,6 +48,8 @@ interface WorkerExecutionReceipt {
   readonly bindings: readonly (string | number | null)[];
   readonly bindingNames: readonly string[];
   readonly fixtureSha256: string;
+  readonly targetId?: ComparisonFixtureTarget['id'];
+  readonly schemaSha256?: string;
   readonly schemaVersion: string;
   readonly draftRevision: number;
   readonly schemaFingerprint: string;
@@ -89,6 +99,14 @@ function bindParameterCount(sql: string): number {
     }
   }
   return count;
+}
+
+export function publicSqliteWasmOptions(origin: string): {
+  readonly locateFile: () => string;
+} {
+  return {
+    locateFile: () => new URL('/assets/sql-wasm.wasm', origin).href,
+  };
 }
 
 function verifyPinnedInvoiceSchema(
@@ -186,6 +204,60 @@ export async function readPinnedFixture(): Promise<Uint8Array> {
   return bytes;
 }
 
+/** Fetches only an exact catalog-pinned comparison asset and verifies all bytes. */
+export async function readComparisonFixture(
+  target: ComparisonFixtureTarget,
+  signal?: AbortSignal,
+): Promise<Uint8Array> {
+  const pinned = publicSqliteComparisonTarget(target.id);
+  if (JSON.stringify(target) !== JSON.stringify(pinned))
+    throw new Error('The comparison target differs from its browser pin.');
+  const response = await fetch(pinned.url, {
+    redirect: 'error',
+    credentials: 'omit',
+    cache: 'no-store',
+    signal,
+  });
+  if (!response.ok || !response.body)
+    throw new Error('The public comparison fixture is unavailable.');
+  const contentLength = response.headers.get('content-length');
+  if (contentLength !== null && Number(contentLength) !== pinned.bytes)
+    throw new Error('The public comparison fixture length differs from its pin.');
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  try {
+    while (true) {
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+      const { done, value } = await reader.read();
+      if (done) break;
+      length += value.byteLength;
+      if (length > pinned.bytes) {
+        await reader.cancel();
+        throw new Error('The public comparison fixture exceeds its pinned size.');
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  if (length !== pinned.bytes)
+    throw new Error('The public comparison fixture size differs from its pin.');
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  const actual = [...new Uint8Array(digest)]
+    .map((part) => part.toString(16).padStart(2, '0'))
+    .join('');
+  if (actual !== pinned.sha256)
+    throw new Error('The public comparison fixture hash differs from its pin.');
+  return bytes;
+}
+
 export async function executePinnedSql(
   sql: string,
   fixture?: Uint8Array,
@@ -201,6 +273,7 @@ export async function executePinnedSql(
   fixtureSha256?: string,
   expectedOutputColumns?: readonly WorkerOutputColumn[],
   authorRelationship?: WorkerRelationship,
+  comparisonTarget?: ComparisonFixtureTarget,
 ): Promise<ResultMessage> {
   if (
     typeof sql !== 'string' ||
@@ -227,6 +300,16 @@ export async function executePinnedSql(
     ))
   )
     throw new Error('The Author profile proof or execution metadata is missing or invalid.');
+  if (comparisonTarget) {
+    const pinned = publicSqliteComparisonTarget(comparisonTarget.id);
+    if (
+      JSON.stringify(comparisonTarget) !== JSON.stringify(pinned) ||
+      !authorProfile ||
+      fixtureSha256 !== FIXTURE_SHA256 ||
+      pinned.schemaSha256 !== PUBLIC_COMPARISON_SCHEMA_SHA256
+    )
+      throw new Error('The comparison target or shared schema pin is invalid.');
+  }
   let rawInvoiceDateColumnIndexes: readonly number[] = [];
   if (authorProof) {
     const allowedProofKeys = authorProfileKind === 'bounded-cte-query'
@@ -343,14 +426,7 @@ export async function executePinnedSql(
       throw new Error('The raw InvoiceDate storage rule has no projected InvoiceDate output.');
     joined = derived.authorProof.profile === 'customer-count-cte' || derived.authorProof.profile === 'bounded-cte-query' || derived.relationship !== undefined;
   }
-  const SQL = await initSqlJs(
-    fixture
-      ? undefined
-      : {
-          locateFile: () =>
-            new URL('/assets/sql-wasm.wasm', self.location.origin).href,
-        },
-  );
+  const SQL = await initSqlJs(publicSqliteWasmOptions(self.location.origin));
   const db = new SQL.Database(fixture ?? (await readPinnedFixture()));
   try {
     const schemaFingerprint = authorProfile
@@ -437,9 +513,20 @@ if (
   typeof Window === 'undefined'
 ) {
   self.onmessage = (event: MessageEvent<RunMessage>) => {
-    void executePinnedSql(
+    const mode = event.data.mode ?? 'author';
+    const comparisonTarget = event.data.comparisonTarget;
+    if (
+      (mode !== 'author' && mode !== 'comparison') ||
+      (mode === 'comparison') !== (comparisonTarget !== undefined) ||
+      (mode === 'comparison' && event.data.authorProfile !== true)
+    ) {
+      self.postMessage({ ok: false, error: 'The SQLite worker request mode is invalid.' });
+      return;
+    }
+    void (comparisonTarget ? readComparisonFixture(comparisonTarget) : Promise.resolve(undefined))
+      .then((fixture) => executePinnedSql(
       event.data.sql,
-      undefined,
+      fixture,
       event.data.bindings ?? [],
       event.data.authorProfile === true,
       event.data.relationship !== undefined || event.data.authorProof !== undefined,
@@ -452,7 +539,8 @@ if (
       event.data.fixtureSha256,
       event.data.outputColumns,
       event.data.relationship,
-    )
+      comparisonTarget,
+    ))
       .then((result) => {
         if (!event.data.authorProfile) {
           self.postMessage({ ok: true, result });
@@ -481,7 +569,13 @@ if (
           sql: event.data.sql,
           bindings: event.data.bindings ?? [],
           bindingNames: event.data.bindingNames as readonly string[],
-          fixtureSha256: event.data.fixtureSha256 as string,
+      fixtureSha256: event.data.comparisonTarget?.sha256 ?? event.data.fixtureSha256 as string,
+      ...(event.data.comparisonTarget
+        ? {
+            targetId: event.data.comparisonTarget.id,
+            schemaSha256: event.data.comparisonTarget.schemaSha256,
+          }
+        : {}),
           schemaVersion,
           draftRevision,
           schemaFingerprint: result.schemaFingerprint ?? '',

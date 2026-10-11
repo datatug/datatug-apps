@@ -17,6 +17,7 @@ import {
 } from './public-sqlite-query.service';
 import {
   executePinnedSql,
+  publicSqliteWasmOptions,
   readPinnedFixture,
 } from './public-sqlite-query.worker';
 import type {
@@ -352,6 +353,12 @@ it('signals Space activity only after the admitted SQL reaches a browser worker'
 
 describe('bounded SQLite worker', () => {
   let fixture: Uint8Array;
+  it('uses the app-copied SQL.js wasm asset for supplied comparison fixture bytes', () => {
+    expect(publicSqliteWasmOptions('http://localhost:4387').locateFile()).toBe(
+      'http://localhost:4387/assets/sql-wasm.wasm',
+    );
+  });
+
   beforeAll(async () => {
     const SQL = await initSqlJs();
     const db = new SQL.Database();

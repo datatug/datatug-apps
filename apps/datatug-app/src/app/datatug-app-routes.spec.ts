@@ -41,6 +41,35 @@ import {
 // competing store-id/agent-URL convention; this guards against either ever
 // being silently reintroduced.
 describe('DataTug app routes', () => {
+  it('provides the verified compare WASM pin only in the lazy DataTug feature route', async () => {
+    const featureRoute = routes.find((route) => route.path === '' && !route.outlet);
+    if (!featureRoute?.loadChildren) {
+      throw new Error('The lazy DataTug feature route should be configured');
+    }
+    const lazyChildren = await featureRoute.loadChildren();
+    if (!Array.isArray(lazyChildren)) {
+      throw new Error('The lazy DataTug feature route should return scoped routes');
+    }
+    expect(lazyChildren).toHaveLength(1);
+    const wrapper = lazyChildren[0];
+    expect(wrapper?.path).toBe('');
+    expect(wrapper?.providers).toHaveLength(1);
+    const provider = wrapper?.providers?.[0] as {
+      provide: unknown;
+      useValue: unknown;
+    };
+    expect(String(provider.provide)).toContain('PUBLIC_SQLITE_COMPARE_WASM_PIN');
+    expect(provider.useValue).toEqual({
+      wasmSHA256: '411aa361affa0eae77d1a9025615b0ab5033e27dbd730333e9eb62eceb97d262',
+      wasmBytes: 5911491,
+    });
+    if (!wrapper?.loadChildren) {
+      throw new Error('The scoped route should preserve lazy DataTug routing');
+    }
+    const feature = await wrapper.loadChildren();
+    expect(feature).toHaveProperty('name', 'DatatugRoutingModule');
+  });
+
   it('does not register the layered-ACL branch competing agent-URL routes', () => {
     const paths = routes.map((route) => route.path);
     expect(paths).not.toContain('agent/:agentId');
