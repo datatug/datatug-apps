@@ -70,7 +70,6 @@ import {
   type FederatedQueryResult,
 } from '../../federated-query.service';
 import { PublicSqliteQueryService } from '../../public-sqlite-query.service';
-import type { PublicSqliteQueryPreview } from '../../public-sqlite-tugql';
 import { testAuthorProof } from './author-query-proof.spec-helper';
 import { GitHubProjectActivityService } from '../../../services/project/github-project-activity.service';
 import { graphFixturePlan } from '../../public-data/native-graph.spec-helper';
