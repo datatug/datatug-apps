@@ -913,6 +913,7 @@ export class PublicSqliteQueryService {
       origin: 'manual',
       originEvidence: 'client-reported',
     },
+    onDispatched?: () => void,
   ): Promise<FederatedQueryResult> {
     const clientReportedBinding = Object.freeze({ ...bindingProvenance });
     if (
@@ -961,6 +962,7 @@ export class PublicSqliteQueryService {
       preparedPlan,
       signal,
       clientReportedBinding,
+      onDispatched,
     );
     return result;
   }
@@ -1059,6 +1061,7 @@ export class PublicSqliteQueryService {
     plan: PublicSqlitePreparedPlan,
     signal?: AbortSignal,
     bindingProvenance?: PublicSqliteClientReportedBinding,
+    onDispatched?: () => void,
   ): Promise<FederatedQueryResult> {
     if (
       definition.connectionId !== plan.sourceId ||
@@ -1127,6 +1130,7 @@ export class PublicSqliteQueryService {
           ...(plan.outputColumns ? { outputColumns: plan.outputColumns } : {}),
           authorProof: plan.authorProof,
         });
+        onDispatched?.();
       });
       if (!reply.ok || !reply.result)
         throw new Error(reply.error ?? 'The browser SQLite query failed.');

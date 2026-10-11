@@ -1371,6 +1371,61 @@ select (
     expect(activity.reportForCurrentProject).toHaveBeenCalledWith(component.project.ref, 'test-id', 'query_execution_dispatched');
   });
 
+  it.each(['source rejected', 'dispatched', 'worker failed'])(
+    'reports GitHub SQL only after worker dispatch: %s',
+    async (outcome) => {
+      component = await createComponent();
+      component.project = {
+        ref: {
+          storeId: 'github.com',
+          projectId: 'demo@buyer@project',
+          projectApi: 'cloud',
+          branch: 'main',
+        },
+      };
+      component.queryDef.set({
+        ...queryDef,
+        connectionId: 'chinook-sqlite',
+        request: {
+          queryType: QueryType.SQL,
+          text: 'SELECT 1',
+        } as ISqlQueryRequest,
+      });
+      const activity = TestBed.inject(
+        GitHubProjectActivityService,
+      ) as unknown as ReturnType<typeof githubProjectActivityStub>;
+      activity.reportForCurrentProject.mockClear();
+      vi.spyOn(
+        TestBed.inject(PublicSqliteQueryService),
+        'run',
+      ).mockImplementation(async (_ref, _definition, onDispatched) => {
+        expect(activity.reportForCurrentProject).not.toHaveBeenCalled();
+        if (outcome === 'source rejected') throw new Error('Source refused');
+        onDispatched?.();
+        if (outcome === 'worker failed')
+          throw new Error('Worker failed after dispatch');
+        return {
+          recordset: { columns: [], rows: [] },
+          limitations: [],
+          bindingsApplied: [],
+          truncated: false,
+          provenance: {
+            source: 'fixture',
+            queryId: queryDef.id,
+            mode: 'snapshot',
+            observedAt: '2026-10-09T00:00:00Z',
+            executionProfile: 'protected',
+          },
+        };
+      });
+      component.runQuery();
+      await vi.waitFor(() => expect(component.running()).toBe(false));
+      expect(activity.reportForCurrentProject).toHaveBeenCalledTimes(
+        outcome === 'source rejected' ? 0 : 1,
+      );
+    },
+  );
+
   it('keeps shared Save disabled for a query-use viewer and ignores stale project capabilities', async () => {
     const projects = new Subject<IProjectContext>();
     const first = new Subject<{ querySave: boolean }>();
@@ -1515,8 +1570,9 @@ select (
     const rows = Array.from({ length: 150 }, (_, index) => [
       { type: 'integer' as const, value: String(index) },
     ]);
-    vi.spyOn(TestBed.inject(PublicSqliteQueryService), 'run').mockResolvedValue(
-      {
+    vi.spyOn(TestBed.inject(PublicSqliteQueryService), 'run').mockImplementation(async (_ref, _definition, onDispatched) => {
+      onDispatched?.();
+      return {
         recordset: { columns: [{ name: 'n', type: 'integer' }], rows },
         limitations: [],
         bindingsApplied: [],
@@ -1528,8 +1584,8 @@ select (
           observedAt: '2026-10-09T00:00:00Z',
           executionProfile: 'protected',
         },
-      },
-    );
+      };
+    });
     component.runQuery();
     expect(activity.reportForCurrentProject).toHaveBeenCalledWith(
       component.project.ref,
