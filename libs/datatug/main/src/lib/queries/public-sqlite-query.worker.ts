@@ -227,10 +227,11 @@ export async function executePinnedSql(
     ))
   )
     throw new Error('The Author profile proof or execution metadata is missing or invalid.');
+  let rawInvoiceDateColumnIndexes: readonly number[] = [];
   if (authorProof) {
     const allowedProofKeys = authorProfileKind === 'bounded-cte-query'
       ? ['profile', 'resolvedQuery', 'authoredSource']
-      : ['profile', 'resolvedQuery', 'relationship'];
+      : ['profile', 'resolvedQuery', 'relationship', 'rawInvoiceDateTextRule'];
     if (
       !authorProof ||
       typeof authorProof !== 'object' ||
@@ -323,6 +324,23 @@ export async function executePinnedSql(
       !bindingsMatch
     )
       throw new Error('The Author execution request differs from its independently compiled profile.');
+    const derivedDateRule = derived.authorProof?.rawInvoiceDateTextRule;
+    if (authorProof.rawInvoiceDateTextRule !== derivedDateRule)
+      throw new Error('The InvoiceDate storage rule differs from the independent Author proof.');
+    const invoiceAlias = derived.authorProof?.resolvedQuery.from.alias ?? 'Invoice';
+    rawInvoiceDateColumnIndexes = Object.freeze(
+      (derived.outputColumns ?? [])
+        .map((column, index) =>
+          column.lineage.some((item) => item.source === invoiceAlias && item.field === 'InvoiceDate')
+            ? index
+            : -1,
+        )
+        .filter((index) => index >= 0),
+    );
+    if (rawInvoiceDateColumnIndexes.length && derivedDateRule !== 'chinook-invoice-datetime-text/v1')
+      throw new Error('The joined InvoiceDate output is missing its raw-text storage rule.');
+    if (!rawInvoiceDateColumnIndexes.length && derivedDateRule !== undefined)
+      throw new Error('The raw InvoiceDate storage rule has no projected InvoiceDate output.');
     joined = derived.authorProof.profile === 'customer-count-cte' || derived.authorProof.profile === 'bounded-cte-query' || derived.relationship !== undefined;
   }
   const SQL = await initSqlJs(
@@ -369,6 +387,10 @@ export async function executePinnedSql(
         if (rows.length >= MAX_ROWS)
           throw new Error('The query exceeds the 1,000-row browser limit.');
         const raw = statement.get();
+        if (rawInvoiceDateColumnIndexes.some((index) =>
+          raw[index] === null || typeof raw[index] !== 'string',
+        ))
+          throw new Error('The joined InvoiceDate result must remain non-null SQLite text.');
         const row = raw.map((cell): Cell => {
           if (
             cell === null ||

@@ -307,6 +307,8 @@ it('previews the bounded typed Invoice scan without requiring or inventing a bin
   expect(plan.fixedBindings).toEqual([]);
   expect(plan.bindingNames).toEqual(['CustomerId']);
   expect(plan.sql).not.toContain('42');
+  expect(plan.authorProof.rawInvoiceDateTextRule).toBeUndefined();
+  expect(plan.outputColumns).toBeUndefined();
   expect(Object.isFrozen(plan)).toBe(true);
   expect(Object.isFrozen(plan.fixedBindings)).toBe(true);
   expect(Object.isFrozen(plan.bindingNames)).toBe(true);
@@ -542,14 +544,29 @@ it('resolves and compiles only the declared Invoice to Customer relationship', (
   const timestampResolved = timestampProjection.resolved;
   if (!timestampResolved)
     throw new Error('Expected resolved timestamp projection.');
-  expect(() =>
-    compilePublicSqliteTugQL(timestampResolved, {
+  const timestampPlan = compilePublicSqliteTugQL(timestampResolved, {
       fixtureSha256: 'fixture-sha256',
       schemaVersion: 'joined-schema-v1',
       draftRevision: 1,
       relationship,
-    }),
-  ).toThrow('Only InvoiceId, CustomerId, FirstName, LastName, and Email projections are supported.');
+    });
+  expect(timestampPlan.authorProof.rawInvoiceDateTextRule).toBe('chinook-invoice-datetime-text/v1');
+  expect(timestampPlan.outputColumns).toContainEqual({
+    name: 'InvoiceDate',
+    type: 'string',
+    lineage: [{ source: 'i', field: 'InvoiceDate' }],
+  });
+  const customerDate = structuredClone(timestampResolved);
+  const dateColumn = customerDate.query.columns?.[1];
+  if (!dateColumn || dateColumn.expression.kind !== 'field')
+    throw new Error('Expected InvoiceDate field projection.');
+  Object.defineProperty(dateColumn.expression.field, 'source', { value: 'c' });
+  expect(() => compilePublicSqliteTugQL(customerDate, {
+    fixtureSha256: 'fixture-sha256',
+    schemaVersion: 'joined-schema-v1',
+    draftRevision: 1,
+    relationship,
+  })).toThrow('Only InvoiceId, CustomerId, InvoiceDate, FirstName, LastName, and Email projections are supported.');
   const unmatched = resolveJoin('\n  on i.InvoiceId = c.CustomerId');
   expect(unmatched.diagnostics).toHaveLength(0);
   expect(unmatched.resolved?.relationships).toEqual([]);

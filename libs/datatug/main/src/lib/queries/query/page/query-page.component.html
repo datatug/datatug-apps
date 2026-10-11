@@ -464,6 +464,20 @@
             >Code</ion-button
           >
         </ion-buttons>
+        <sneat-author-relationship-sources
+          [sources]="authorSourceMetadata()"
+          [currentLimit]="authorCurrentLimit()"
+          [loading]="authorSourceLoading()"
+          [review]="authorSourceReview()"
+          [choices]="authorCustomerOutputChoices"
+          [selectedFields]="authorSourceSelectedFields()"
+          [disabled]="authorSourceLoading() || running() || queryState.isSaving === true"
+          [statusMessage]="authorSourceMessage()"
+          (disclosureChanged)="authorSourcesToggled($event)"
+          (customerFieldChanged)="authorSourceFieldSelectionChanged($event.field, $event.checked)"
+          (reviewRequested)="reviewAuthorRelationship()"
+          (applyRequested)="applyAuthorRelationshipReview()"
+        />
         <ion-input
           class="author-customer-input"
           data-testid="author-customer-id"

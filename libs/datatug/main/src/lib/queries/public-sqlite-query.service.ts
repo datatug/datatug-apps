@@ -12,6 +12,7 @@ import {
 import type { TypedValue } from '@sneat/datatug-semantic';
 import type {
   IQueryDef,
+  IQueryRelationshipBinding,
   ITextQueryRequest,
 } from '../models/definition/query-def';
 import { QueryType } from '../models/definition/query-def';
@@ -147,6 +148,32 @@ interface ForeignKeysFile {
   }[];
 }
 
+interface AdmittedColumn {
+  readonly name: string;
+  readonly dbType: string;
+  readonly isNullable?: boolean;
+  readonly pkPosition?: number;
+}
+
+interface AdmittedSchemaSnapshot {
+  readonly invoiceColumns: readonly AdmittedColumn[];
+  readonly customerColumns?: readonly AdmittedColumn[];
+  readonly schemaVersion: string;
+  readonly relationshipVersion?: string;
+  readonly relationship?: IQueryRelationshipBinding;
+}
+
+export interface PublicSqliteSourceDiscovery {
+  readonly fixtureSha256: string;
+  readonly schemaVersion: string;
+  readonly invoiceFields: readonly { readonly name: string; readonly type: string }[];
+  readonly customerFields: readonly { readonly name: string; readonly type: string }[];
+  readonly relationship: IQueryRelationshipBinding;
+  readonly relationshipProvenance: 'chinook.refs.json · Core v1 declared foreign key';
+  readonly cardinality: 'many invoices to one customer · declared';
+  readonly crossSourceCost: 'unknown';
+}
+
 const CUSTOMER_INVOICE_FK = Object.freeze({
   name: PUBLIC_CHINOOK_CUSTOMER_FK,
   table: { schema: 'main', name: 'Invoice' },
@@ -238,7 +265,6 @@ function expandedJoinSource(
   return lines.join('');
 }
 
-const fixtureCatalogVersion = FIXTURE_SHA256;
 const JOINED_SCHEMA_FINGERPRINT =
   'CustomerId:INTEGER|InvoiceId:INTEGER|InvoiceDate:DATETIME|CustomerId:INTEGER:PK|FirstName:STRING|LastName:STRING|Email:STRING|FK_Invoice_Customer_CustomerId:Invoice.CustomerId->Customer.CustomerId';
 
@@ -280,6 +306,162 @@ export class PublicSqliteQueryService {
   private readonly reader = inject(GithubProjectReaderService);
   private readonly projectApi = inject(ProjectQueryApiService);
 
+  /** One live, source-qualified metadata read shared by discovery and Preview/Run. */
+  private async readAdmittedSchemaSnapshot(
+    project: IProjectRef,
+    includeRelationship: boolean,
+    signal?: AbortSignal,
+  ): Promise<AdmittedSchemaSnapshot> {
+    const deadline = Date.now() + RUN_TIMEOUT_MS;
+    const [catalog, invoiceFile, customerFile, refs] = await Promise.all([
+      firstValueFromAbortable(
+        (project.projectApi === 'cloud'
+          ? this.projectApi.connectionCatalog<ConnectionCatalog>(project)
+          : this.reader.getRawJson<ConnectionCatalog>(
+              project.projectId,
+              'connections/demo-db.json',
+            )
+        ).pipe(timeout({ first: RUN_TIMEOUT_MS })),
+        signal,
+      ),
+      firstValueFromAbortable(
+        this.reader.getRawJson<TableColumnsFile>(
+          project.projectId,
+          'dbmodels/chinook/main/tables/Invoice/main.Invoice.columns.json',
+        ).pipe(timeout({ first: RUN_TIMEOUT_MS })),
+        signal,
+      ),
+      includeRelationship
+        ? firstValueFromAbortable(
+            this.reader.getRawJson<TableColumnsFile>(
+              project.projectId,
+              'dbmodels/chinook/main/tables/Customer/main.Customer.columns.json',
+            ).pipe(timeout({ first: RUN_TIMEOUT_MS })),
+            signal,
+          )
+        : Promise.resolve(undefined),
+      includeRelationship
+        ? firstValueFromAbortable(
+            this.reader.getRawJson<ForeignKeysFile>(
+              project.projectId,
+              'dbmodels/chinook/chinook.refs.json',
+            ).pipe(timeout({ first: RUN_TIMEOUT_MS })),
+            signal,
+          )
+        : Promise.resolve(undefined),
+    ]);
+    if (Date.now() > deadline)
+      throw new Error('The public SQLite schema check exceeded 10 seconds.');
+    admitPublicSqliteSource(catalog, CONNECTION_ID);
+
+    const invoiceColumns = invoiceFile?.columns;
+    if (!invoiceColumns?.length)
+      throw new Error('The admitted Chinook Invoice schema is unavailable.');
+    const invoiceNames = ['CustomerId', 'InvoiceId', 'InvoiceDate'];
+    const expectedTypes: Readonly<Record<string, string>> = {
+      CustomerId: 'INTEGER',
+      InvoiceId: 'INTEGER',
+      InvoiceDate: 'DATETIME',
+    };
+    const admittedInvoice = invoiceNames.map((name) => {
+      const matches = invoiceColumns.filter((column) => column.name === name);
+      const column = matches[0];
+      if (matches.length !== 1 || column?.dbType?.trim().toUpperCase() !== expectedTypes[name])
+        throw new Error(`The admitted Chinook Invoice schema is missing ${name}.`);
+      return {
+        name,
+        dbType: column.dbType as string,
+        isNullable: column.isNullable,
+        ...(column.pkPosition !== undefined ? { pkPosition: column.pkPosition } : {}),
+      };
+    });
+
+    const customerColumns = customerFile?.columns;
+    let admittedCustomer: AdmittedColumn[] | undefined;
+    let relationship: IQueryRelationshipBinding | undefined;
+    let relationshipVersion: string | undefined;
+    let foreignKeyVersion: number | undefined;
+    if (includeRelationship) {
+      if (!customerColumns?.length)
+        throw new Error('The admitted Chinook Customer schema is unavailable.');
+      const customerNames = ['CustomerId', 'FirstName', 'LastName', 'Email'];
+      admittedCustomer = customerNames.map((name) => {
+      const matches = customerColumns.filter((column) => column.name === name);
+      const column = matches[0];
+      if (matches.length !== 1 || !column?.dbType)
+        throw new Error(`The admitted Chinook Customer schema is missing ${name}.`);
+      if (name === 'CustomerId') {
+        if (column.dbType.trim().toUpperCase() !== 'INTEGER' || column.pkPosition !== 1 || column.isNullable !== false)
+          throw new Error('Customer.CustomerId must be the non-null INTEGER primary key.');
+      } else if (!/^(?:N?VARCHAR|N?CHAR|TEXT|CLOB)(?:\b|\()/iu.test(column.dbType.trim())) {
+        throw new Error(`The admitted Chinook Customer ${name} field must be a string.`);
+      }
+      return {
+        name,
+        dbType: column.dbType,
+        isNullable: column.isNullable,
+        ...(column.pkPosition !== undefined ? { pkPosition: column.pkPosition } : {}),
+      };
+      });
+      const candidates = refs?.foreignKeys?.filter(
+      (item) => (item.table?.name === 'Invoice' && item.refTable?.name === 'Customer') ||
+        (item.table?.name === 'Customer' && item.refTable?.name === 'Invoice'),
+    ) ?? [];
+    const namedRelationships = refs?.foreignKeys?.filter((item) => item.name === CUSTOMER_INVOICE_FK.name) ?? [];
+    const exact = candidates.filter((item) =>
+      item.name === CUSTOMER_INVOICE_FK.name &&
+      item.table?.schema === 'main' && item.table.name === 'Invoice' &&
+      JSON.stringify(item.columns) === JSON.stringify(CUSTOMER_INVOICE_FK.columns) &&
+      item.refTable?.schema === 'main' && item.refTable.name === 'Customer' &&
+      JSON.stringify(item.refColumns) === JSON.stringify(CUSTOMER_INVOICE_FK.refColumns),
+    );
+      if (refs?.version !== 1 || namedRelationships.length !== 1 || exact.length !== 1 || candidates.length !== 1)
+        throw new Error('The declared Invoice-to-Customer foreign key is missing, changed, or ambiguous.');
+      relationshipVersion = CUSTOMER_INVOICE_FK_VERSION;
+      relationship = Object.freeze({
+        id: CUSTOMER_INVOICE_FK.name,
+        version: relationshipVersion,
+        from: Object.freeze({ schema: 'main', table: 'Invoice' }),
+        to: Object.freeze({ schema: 'main', table: 'Customer' }),
+        pairs: Object.freeze([Object.freeze({ fromField: 'CustomerId', toField: 'CustomerId' })]),
+      });
+      foreignKeyVersion = refs.version;
+    }
+    const schemaVersion = includeRelationship
+      ? JSON.stringify({
+          fixtureSha256: FIXTURE_SHA256,
+          invoice: admittedInvoice,
+          customer: admittedCustomer,
+          foreignKeysVersion: foreignKeyVersion,
+          foreignKey: CUSTOMER_INVOICE_FK,
+        })
+      : `${FIXTURE_SHA256}:${JSON.stringify(admittedInvoice)}`;
+    return Object.freeze({
+      invoiceColumns: Object.freeze(admittedInvoice),
+      ...(admittedCustomer ? { customerColumns: Object.freeze(admittedCustomer) } : {}),
+      schemaVersion,
+      relationshipVersion,
+      ...(relationship ? { relationship } : {}),
+    });
+  }
+
+  public async discoverInvoiceCustomerSources(
+    project: IProjectRef,
+    signal?: AbortSignal,
+  ): Promise<PublicSqliteSourceDiscovery> {
+    const snapshot = await this.readAdmittedSchemaSnapshot(project, true, signal);
+    return Object.freeze({
+      fixtureSha256: FIXTURE_SHA256,
+      schemaVersion: snapshot.schemaVersion,
+      invoiceFields: Object.freeze(snapshot.invoiceColumns.map((column) => ({ name: column.name, type: tugqlType(column.dbType) }))),
+      customerFields: Object.freeze((snapshot.customerColumns ?? []).map((column) => ({ name: column.name, type: tugqlType(column.dbType) }))),
+      relationship: snapshot.relationship as IQueryRelationshipBinding,
+      relationshipProvenance: 'chinook.refs.json · Core v1 declared foreign key',
+      cardinality: 'many invoices to one customer · declared',
+      crossSourceCost: 'unknown',
+    });
+  }
+
   /** Compile only after re-reading both admitted-source and typed schema metadata. */
   async prepareTugQL(
     project: IProjectRef,
@@ -296,7 +478,6 @@ export class PublicSqliteQueryService {
         'This preview supports the admitted Chinook Invoice TugQL source only.',
       );
     }
-    const deadline = Date.now() + RUN_TIMEOUT_MS;
     const request = definition.request as ITextQueryRequest;
     const parsed = parseTugQL(request.text);
     if (parsed.diagnostics.length)
@@ -331,170 +512,27 @@ export class PublicSqliteQueryService {
       throw new Error(
         'This preview supports one INNER Invoice-to-Customer relationship only.',
       );
-    const [catalog, metadata, customerMetadata, refs] = await Promise.all([
-      firstValueFromAbortable(
-        (project.projectApi === 'cloud'
-          ? this.projectApi.connectionCatalog<ConnectionCatalog>(project)
-          : this.reader.getRawJson<ConnectionCatalog>(
-              project.projectId,
-              'connections/demo-db.json',
-            )
-        ).pipe(timeout({ first: RUN_TIMEOUT_MS })),
-        signal,
-      ),
-      firstValueFromAbortable(
-        this.reader
-          .getRawJson<TableColumnsFile>(
-            project.projectId,
-            'dbmodels/chinook/main/tables/Invoice/main.Invoice.columns.json',
-          )
-          .pipe(timeout({ first: RUN_TIMEOUT_MS })),
-        signal,
-      ),
-      joined
-        ? firstValueFromAbortable(
-            this.reader
-              .getRawJson<TableColumnsFile>(
-                project.projectId,
-                'dbmodels/chinook/main/tables/Customer/main.Customer.columns.json',
-              )
-              .pipe(timeout({ first: RUN_TIMEOUT_MS })),
-            signal,
-          )
-        : Promise.resolve(undefined),
-      joined
-        ? firstValueFromAbortable(
-            this.reader
-              .getRawJson<ForeignKeysFile>(
-                project.projectId,
-                'dbmodels/chinook/chinook.refs.json',
-              )
-              .pipe(timeout({ first: RUN_TIMEOUT_MS })),
-            signal,
-          )
-        : Promise.resolve(undefined),
-    ]);
-    if (Date.now() > deadline)
-      throw new Error('The public SQLite schema check exceeded 10 seconds.');
-    admitPublicSqliteSource(catalog, definition.connectionId);
-    const columns = metadata?.columns;
-    if (!columns?.length)
-      throw new Error('The admitted Chinook Invoice schema is unavailable.');
+    if (definition.connectionId !== CONNECTION_ID)
+      throw new Error('This query has no admitted public browser SQLite source.');
+    const snapshot = await this.readAdmittedSchemaSnapshot(project, joined, signal);
     const requiredFields = ['CustomerId', 'InvoiceId', 'InvoiceDate'];
-    const available = new Map(
-      columns.map((column) => [column.name, column] as const),
-    );
     const expectedTypes: Readonly<Record<string, string>> = {
       CustomerId: 'INTEGER',
       InvoiceId: 'INTEGER',
       InvoiceDate: 'DATETIME',
     };
-    for (const name of requiredFields) {
-      if (
-        columns.filter((column) => column.name === name).length !== 1 ||
-        available.get(name)?.dbType?.trim().toUpperCase() !==
-          expectedTypes[name]
-      )
-        throw new Error(
-          `The admitted Chinook Invoice schema is missing ${name}.`,
-        );
-    }
-    const invoiceSchema = columns
-      .filter((column) => column.name && requiredFields.includes(column.name))
-      .map((column) => ({
-        name: column.name,
-        dbType: column.dbType,
-        isNullable: column.isNullable,
-      }));
-    let customerFields: readonly { name: string; type: string }[] = [];
+    const customerFields = (snapshot.customerColumns ?? []).map((column) => ({
+      name: column.name,
+      type: tugqlType(column.dbType),
+    }));
     let relationship: PublicSqliteRelationshipReceipt | undefined;
-    let schemaVersion = `${fixtureCatalogVersion}:${JSON.stringify(
-      columns
-        .filter((column) => column.name && requiredFields.includes(column.name))
-        .map((column) => ({
-          name: column.name,
-          dbType: column.dbType,
-          isNullable: column.isNullable,
-        })),
-    )}`;
+    const schemaVersion = snapshot.schemaVersion;
     if (joined) {
-      const customerColumns = customerMetadata?.columns;
-      if (!customerColumns?.length)
-        throw new Error('The admitted Chinook Customer schema is unavailable.');
-      const requiredCustomer = ['CustomerId', 'FirstName', 'LastName', 'Email'];
-      const byName = new Map(
-        customerColumns.map((column) => [column.name, column] as const),
-      );
-      for (const name of requiredCustomer) {
-        if (
-          customerColumns.filter((column) => column.name === name).length !== 1
-        )
-          throw new Error(
-            `The admitted Chinook Customer schema is missing ${name}.`,
-          );
-        const column = byName.get(name);
-        if (name === 'CustomerId') {
-          if (
-            column?.dbType?.trim().toUpperCase() !== 'INTEGER' ||
-            column.pkPosition !== 1 ||
-            column.isNullable !== false
-          )
-            throw new Error(
-              'Customer.CustomerId must be the non-null INTEGER primary key.',
-            );
-        } else if (
-          !column?.dbType ||
-          !/^(?:N?VARCHAR|N?CHAR|TEXT|CLOB)(?:\b|\()/iu.test(
-            column.dbType.trim(),
-          )
-        ) {
-          throw new Error(
-            `The admitted Chinook Customer ${name} field must be a string.`,
-          );
-        }
-      }
-      const candidates =
-        refs?.foreignKeys?.filter(
-          (item) =>
-            (item.table?.name === 'Invoice' &&
-              item.refTable?.name === 'Customer') ||
-            (item.table?.name === 'Customer' &&
-              item.refTable?.name === 'Invoice'),
-        ) ?? [];
-      const namedRelationships =
-        refs?.foreignKeys?.filter(
-          (item) => item.name === CUSTOMER_INVOICE_FK.name,
-        ) ?? [];
-      const exact = candidates.filter(
-        (item) =>
-          item.name === CUSTOMER_INVOICE_FK.name &&
-          item.table?.schema === 'main' &&
-          item.table.name === 'Invoice' &&
-          JSON.stringify(item.columns) ===
-            JSON.stringify(CUSTOMER_INVOICE_FK.columns) &&
-          item.refTable?.schema === 'main' &&
-          item.refTable.name === 'Customer' &&
-          JSON.stringify(item.refColumns) ===
-            JSON.stringify(CUSTOMER_INVOICE_FK.refColumns),
-      );
-      if (
-        refs?.version !== 1 ||
-        namedRelationships.length !== 1 ||
-        exact.length !== 1 ||
-        candidates.length !== 1
-      )
-        throw new Error(
-          'The declared Invoice-to-Customer foreign key is missing, changed, or ambiguous.',
-        );
-      customerFields = requiredCustomer.map((name) => ({
-        name,
-        type: name === 'CustomerId' ? 'integer' : 'string',
-      }));
       const savedBinding = savedBindings[0];
       if (!cteProfile && (
         !savedBinding ||
-        savedBinding.id !== CUSTOMER_INVOICE_FK.name ||
-        savedBinding.version !== CUSTOMER_INVOICE_FK_VERSION ||
+        savedBinding.id !== snapshot.relationship?.id ||
+        savedBinding.version !== snapshot.relationship?.version ||
         savedBinding.from.schema !== 'main' ||
         savedBinding.from.table !== 'Invoice' ||
         savedBinding.to.schema !== 'main' ||
@@ -506,10 +544,10 @@ export class PublicSqliteQueryService {
         throw new Error(
           'The saved relationship binding is stale, changed, or unsupported.',
         );
-      const relationshipVersion = savedBinding?.version ?? CUSTOMER_INVOICE_FK_VERSION;
+      const relationshipVersion = savedBinding?.version ?? snapshot.relationshipVersion;
       if (!cteProfile) relationship = Object.freeze({
-        id: CUSTOMER_INVOICE_FK.name,
-        version: relationshipVersion,
+        id: snapshot.relationship?.id ?? CUSTOMER_INVOICE_FK.name,
+        version: relationshipVersion ?? CUSTOMER_INVOICE_FK_VERSION,
         fromSource: String(rawFrom['alias'] ?? 'Invoice'),
         toSource: String(
           (rawJoins[0]?.['from'] as Record<string, unknown> | undefined)?.[
@@ -518,20 +556,8 @@ export class PublicSqliteQueryService {
         ),
         joinType: 'inner',
         pairs: Object.freeze(
-          (savedBinding?.pairs ?? []).map((pair) => Object.freeze({ ...pair })),
+          (savedBinding?.pairs ?? snapshot.relationship?.pairs ?? []).map((pair) => Object.freeze({ ...pair })),
         ),
-      });
-      schemaVersion = JSON.stringify({
-        fixtureSha256: FIXTURE_SHA256,
-        invoice: invoiceSchema,
-        customer: requiredCustomer.map((name) => ({
-          name,
-          dbType: byName.get(name)?.dbType,
-          isNullable: byName.get(name)?.isNullable,
-          pkPosition: byName.get(name)?.pkPosition ?? 0,
-        })),
-        foreignKeysVersion: refs.version,
-        foreignKey: CUSTOMER_INVOICE_FK,
       });
     }
     if (!structuralDocument) {
@@ -633,6 +659,46 @@ export class PublicSqliteQueryService {
       ...(relationship ? { relationship } : {}),
       ...(expandedSource ? { expandedSource } : {}),
     });
+    if (joined && !cteProfile) {
+      const compilerColumns = preview.outputColumns ?? [];
+      const resolverColumns = authorization.resolved.columns;
+      const invoiceAlias = relationship?.fromSource ?? String(rawFrom['alias'] ?? 'Invoice');
+      const dateIndexes = resolverColumns
+        .map((column, index) =>
+          column.lineage?.some((item) => item.source === invoiceAlias && item.field === 'InvoiceDate')
+            ? index
+            : -1,
+        )
+        .filter((index) => index >= 0);
+      const hasInvoiceDate = dateIndexes.length > 0;
+      if (
+        compilerColumns.length !== resolverColumns.length ||
+        (hasInvoiceDate && preview.authorProof.rawInvoiceDateTextRule !== 'chinook-invoice-datetime-text/v1')
+      )
+        throw new Error('The joined Invoice projection differs from Core resolution or lacks the pinned raw InvoiceDate rule.');
+      for (let index = 0; index < resolverColumns.length; index++) {
+        const resolvedColumn = resolverColumns[index];
+        const compiledColumn = compilerColumns[index];
+        if (!resolvedColumn || !compiledColumn ||
+            resolvedColumn.name !== compiledColumn.name ||
+            JSON.stringify(resolvedColumn.lineage ?? []) !== JSON.stringify(compiledColumn.lineage))
+          throw new Error('The joined compiler output names or lineage differ from Core resolution.');
+        const sourceQualifiedDate = dateIndexes.includes(index);
+        const resolvedType = resolvedColumn.type.toLowerCase();
+        if (sourceQualifiedDate) {
+          if (!/(?:date|time)/u.test(resolvedType) || compiledColumn.type !== 'string')
+            throw new Error('Invoice.InvoiceDate must resolve as DATETIME and lower to pinned raw SQLite text.');
+        } else {
+          const expectedType = /int/u.test(resolvedType)
+            ? 'integer'
+            : /char|text|string/u.test(resolvedType)
+              ? 'string'
+              : 'unsupported';
+          if (compiledColumn.type !== expectedType)
+            throw new Error('The joined compiler output type differs from Core resolution.');
+        }
+      }
+    }
     if (cteProfile) {
       const compilerColumns = preview.outputColumns ?? [];
       const resolverColumns = authorization.resolved.columns.map((column) => ({
