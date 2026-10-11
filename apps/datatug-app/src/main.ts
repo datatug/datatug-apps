@@ -35,8 +35,6 @@ import { provideCheckoutAnalyticsPrivacy } from './app/checkout/checkout-analyti
 import { routes } from './app/datatug-app-routes';
 import { DatatugAppComponent } from './app/datatug-app.component';
 import { buildInfo } from './build-info';
-import recordsetcompareLock from '../recordsetcompare-lock.json';
-import { PUBLIC_SQLITE_COMPARE_WASM_PIN } from '@sneat/datatug-main/compare-pin';
 import {
   datatugAppEnvironmentConfig as environmentConfig,
   datatugBusinessCheckoutApiOrigin,
@@ -63,13 +61,6 @@ if (datatugAppEnvironmentConfig.posthog) {
 bootstrapApplication(DatatugAppComponent, {
   providers: [
     provideZonelessChangeDetection(),
-    {
-      provide: PUBLIC_SQLITE_COMPARE_WASM_PIN,
-      useValue: Object.freeze({
-        wasmSHA256: recordsetcompareLock.files['recordsetcompare.wasm'].sha256,
-        wasmBytes: recordsetcompareLock.files['recordsetcompare.wasm'].bytes,
-      }),
-    },
     provideCheckoutAnalyticsPrivacy(),
     provideDatatugBusinessCheckoutApiOrigin(
       datatugBusinessCheckoutApiOrigin,

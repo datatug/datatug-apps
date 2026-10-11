@@ -169,6 +169,7 @@ describe('public SQLite comparison side service', () => {
   }
 
   beforeEach(() => {
+    expect(_planBindings).toEqual([1]);
     messages = [];
     workers = [];
     TestBed.configureTestingModule({

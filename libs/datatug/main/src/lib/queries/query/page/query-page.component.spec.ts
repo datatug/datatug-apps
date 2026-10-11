@@ -780,14 +780,16 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     async (access) => {
       component = await createTugQLAuthor(authorSource);
       await settleQueryPage();
+      const project = component.project;
+      if (!project) throw new Error('Test project should be available');
       component.project = {
-        ...component.project!,
+        ...project,
         summary: access
           ? { id: 'demo@buyer@project', title: 'Demo project', access }
           : undefined,
       };
       (component as unknown as { comparisonAccessProjectRef?: IProjectRef }).comparisonAccessProjectRef =
-        component.project.ref;
+        project.ref;
       component.comparisonProjectAccess.set(access);
       (component as unknown as { syncScopeAndBindings(): void }).syncScopeAndBindings();
       component.authorCustomerId.set('1');
@@ -824,12 +826,14 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     const running = component.runComparisonBoth();
     await vi.waitFor(() => expect(pending).toHaveLength(2));
     component.comparisonResult.set(oldResult);
+    const project = component.project;
+    if (!project) throw new Error('Test project should be available');
     component.project = {
-      ...component.project!,
+      ...project,
       summary: { id: 'demo@buyer@project', title: 'Demo project', access: 'private' },
     };
     (component as unknown as { comparisonAccessProjectRef?: IProjectRef }).comparisonAccessProjectRef =
-      component.project.ref;
+      project.ref;
     component.comparisonProjectAccess.set('private');
     (component as unknown as { syncScopeAndBindings(): void }).syncScopeAndBindings();
 
