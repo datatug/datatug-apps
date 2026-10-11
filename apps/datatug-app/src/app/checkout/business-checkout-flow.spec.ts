@@ -9,6 +9,11 @@ import {
   createReturnFlow,
   createSpaceServiceCheckoutFlow,
 } from './checkout-flow.mjs';
+import { stripeCheckoutAdapter } from './checkout-provider.mjs';
+
+vi.mock('@stripe/stripe-js', () => {
+  throw new Error('private module load details must not escape');
+});
 
 const selection = {
   spaceID: 'space_1',
@@ -221,6 +226,59 @@ it('waits for explicit acknowledgement before session creation and prevents dupl
     providerAmountTotal: null,
   });
   flow.dispose();
+});
+
+it('reports a lazy Stripe module-load failure safely and retries the same quote', async () => {
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  const harness = authHarness();
+  const api = {
+    serviceQuote: vi.fn().mockResolvedValue(quote()),
+    serviceSession: vi.fn().mockResolvedValue(session(null)),
+  };
+  const states: Record<string, unknown>[] = [];
+  const flow = createSpaceServiceCheckoutFlow({
+    auth: harness.auth as never,
+    api: api as never,
+    provider: {
+      mount: async (options: unknown) =>
+        (await stripeCheckoutAdapter()).mount(options as never),
+    } as never,
+    selection,
+    render: (state) => states.push(state),
+  });
+  try {
+    flow.start();
+    harness.emit(user);
+    await flush();
+    expect(states.at(-1)?.stage).toBe('quote');
+
+    await flow.acknowledge({} as HTMLElement);
+    expect(states.at(-1)).toMatchObject({
+      stage: 'error',
+      retrySameQuote: true,
+      message:
+        'Checkout is unavailable right now. A previous attempt may still be resolving; retry this same selection later.',
+    });
+
+    await flow.acknowledge({} as HTMLElement);
+    expect(api.serviceQuote).toHaveBeenCalledOnce();
+    expect(api.serviceSession.mock.calls).toEqual([
+      [selection.spaceID, 'quote_1'],
+      [selection.spaceID, 'quote_1'],
+    ]);
+    expect(states.at(-1)).toMatchObject({
+      stage: 'error',
+      retrySameQuote: true,
+    });
+    expect(JSON.stringify(states)).not.toContain('private module load details');
+    expect(warn.mock.calls).toEqual([
+      ['stripe_checkout_stage phase=loadStripe code=unknown'],
+      ['stripe_checkout_stage phase=loadStripe code=unknown'],
+    ]);
+  } finally {
+    flow.dispose();
+    warn.mockRestore();
+  }
 });
 
 it('does not mount a session whose provider total differs from the accepted quote', async () => {

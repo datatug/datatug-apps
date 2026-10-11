@@ -26,6 +26,7 @@ import { combineLatest, filter, Subscription, take, timeout } from 'rxjs';
 import type { CheckoutState } from './checkout-contracts';
 import { appCheckoutAuth } from './checkout-auth';
 import { checkoutApi } from './checkout-api.mjs';
+import { stripeCheckoutAdapter } from './checkout-provider.mjs';
 import {
   createReturnFlow,
   createSpaceServiceCheckoutFlow,
@@ -365,8 +366,6 @@ export class BusinessCheckoutPageComponent {
       ready: () => !!this.selectedSpace(),
       provider: {
         async mount(options) {
-          const { stripeCheckoutAdapter } =
-            await import('./checkout-provider.mjs');
           return (await stripeCheckoutAdapter()).mount(options);
         },
       },
