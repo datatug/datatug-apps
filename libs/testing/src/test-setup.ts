@@ -3,9 +3,8 @@ import {
   setupAngularTestingEnvironment,
   setupGlobalMocks,
 } from './base-test-setup';
-import { ErrorLogger, AnalyticsService } from '@sneat/core';
+import { ErrorLogger, AnalyticsService, SNEAT_FIREBASE_AUTH } from '@sneat/core';
 import { Firestore } from 'firebase/firestore';
-import { SNEAT_FIREBASE_AUTH } from '@sneat/app-auth';
 
 export function configureGlobalTestBed() {
   try {
