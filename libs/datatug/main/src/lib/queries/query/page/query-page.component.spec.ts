@@ -49,6 +49,7 @@ import {
 } from './query-page.component';
 import { IQueryEditorState, IQueryState } from '../../../editor/models';
 import { IProjectContext } from '../../../nav/nav-models';
+import type { IProjectRef } from '../../../core/project-context';
 import {
   IQueryDef,
   IHttpQueryRequest,
@@ -763,6 +764,113 @@ select (
       request: { queryType: QueryType.SQL, text: 'SELECT 1' } as ISqlQueryRequest,
     });
     expect(component.canChoosePublicSqliteSource()).toBe(true);
+  });
+
+  it('lets a Space query-use viewer edit and dispatch saved public SQL, then reports actual dispatch', async () => {
+    component = await createComponent();
+    component.project = { ref: { storeId: 'firestore', spaceID: 'space_1', projectId: 'project_1' } };
+    component.queryState = { ...component.queryState, saveSupported: false };
+    component.queryDef.set({ ...queryDef, connectionId: 'chinook-sqlite',
+      request: { queryType: QueryType.SQL, text: 'SELECT 1' } as ISqlQueryRequest });
+    const activity = TestBed.inject(GitHubProjectActivityService) as unknown as ReturnType<typeof githubProjectActivityStub>;
+    const run = vi.spyOn(TestBed.inject(PublicSqliteQueryService), 'run').mockImplementation(async (_ref, _definition, onDispatched) => {
+      onDispatched?.();
+      return {
+      recordset: { columns: [{ name: 'n', type: 'integer' }], rows: [[{ type: 'integer', value: '1' }]] },
+      limitations: [], bindingsApplied: [], truncated: false,
+      provenance: { source: 'fixture', queryId: queryDef.id, mode: 'snapshot', observedAt: '2026-10-09T00:00:00Z', executionProfile: 'protected' },
+    }; });
+    expect(component.canChoosePublicSqliteSource()).toBe(true);
+    component.queryTextChanged(new CustomEvent('ionInput', { detail: { value: 'SELECT 2' } }));
+    expect(activity.reportForCurrentProject).toHaveBeenCalledWith(component.project.ref, 'test-id', 'query_edit');
+    activity.reportForCurrentProject.mockClear();
+    component.runQuery();
+    await vi.waitFor(() => expect(run).toHaveBeenCalledOnce());
+    expect(run.mock.calls[0][2]).toBeTypeOf('function');
+    expect(activity.reportForCurrentProject).toHaveBeenCalledWith(component.project.ref, 'test-id', 'query_execution_dispatched');
+  });
+
+  it('keeps shared Save disabled for a query-use viewer and ignores stale project capabilities', async () => {
+    const projects = new Subject<IProjectContext>();
+    const first = new Subject<{ querySave: boolean }>();
+    const second = new Subject<{ querySave: boolean }>();
+    const capabilities = vi.fn((ref: IProjectRef) =>
+      ref.projectId === 'project_1' ? first.asObservable() : second.asObservable(),
+    );
+    component = await createComponent({}, queryDef, '<p></p>', {
+      project: projects,
+      queries: { capabilities },
+    });
+    const firstRef: IProjectRef = {
+      storeId: 'firestore', spaceID: 'space_1', projectId: 'project_1',
+    };
+    const secondRef: IProjectRef = {
+      storeId: 'firestore', spaceID: 'space_1', projectId: 'project_2',
+    };
+    projects.next({ ref: firstRef });
+    expect(component.canSaveQuery()).toBe(false);
+    projects.next({ ref: secondRef });
+    first.next({ querySave: true });
+    expect(component.canSaveQuery()).toBe(false);
+    second.next({ querySave: false });
+    expect(component.canSaveQuery()).toBe(false);
+    projects.next({ ref: firstRef });
+    first.next({ querySave: true });
+    expect(component.canSaveQuery()).toBe(true);
+  });
+
+  it('cold-loads a folder-qualified shared query from the route without a redundant ID parameter', async () => {
+    const ref: IProjectRef = {
+      storeId: 'firestore', spaceID: 'space_1', projectId: 'project_1',
+    };
+    const id = 'folder/genre-mix';
+    const saved = toProjectQueryWire({
+      id: 'genre-mix',
+      title: 'Genre mix',
+      connectionId: 'chinook-sqlite',
+      request: { queryType: QueryType.SQL, text: 'SELECT COUNT(*) FROM Track' } as ISqlQueryRequest,
+    }, id);
+    const getRevision = vi.fn(() => of({
+      query: saved, revision: 'revision-1', saveSupported: true,
+    }));
+    component = await createComponent({}, queryDef, '<p></p>', {
+      realEditor: true,
+      project: of({ ref }),
+      routeRef: ref,
+      routeId: id,
+      queries: {
+        authentication: () => of({ status: 'authenticated', user: { uid: 'actor_1' } }),
+        authorityDenied: () => of(undefined),
+        capabilities: () => of({ querySave: true }),
+        getRevision,
+      },
+    });
+    await vi.waitFor(() => expect(getRevision).toHaveBeenCalledWith(ref, id));
+    expect(component.queryId).toBe(id);
+    expect(component.queryDef()?.connectionId).toBe('chinook-sqlite');
+    expect(component.queryBodyText()).toBe('SELECT COUNT(*) FROM Track');
+  });
+
+  it('does not read a shared query when path and explicit ID disagree', async () => {
+    const ref: IProjectRef = {
+      storeId: 'firestore', spaceID: 'space_1', projectId: 'project_1',
+    };
+    const getRevision = vi.fn();
+    component = await createComponent({}, queryDef, '<p></p>', {
+      realEditor: true,
+      project: of({ ref }),
+      routeRef: ref,
+      routeId: 'genre-mix',
+      urlQueryId: 'other-query',
+      queries: {
+        authentication: () => of({ status: 'authenticated', user: { uid: 'actor_1' } }),
+        authorityDenied: () => of(undefined),
+        capabilities: () => of({ querySave: true }),
+        getRevision,
+      },
+    });
+    expect(getRevision).not.toHaveBeenCalled();
+    expect(component.runError()).toContain('Query URL and query ID disagree');
   });
 
   it('reports a changed GitHub query draft once without counting an unchanged editor value', async () => {
@@ -2425,6 +2533,9 @@ select (
       project: Observable<IProjectContext>;
       realEditor?: boolean;
       queries?: unknown;
+      routeId?: string;
+      urlQueryId?: string;
+      routeRef?: IProjectRef;
     },
   ): Promise<QueryPageComponent> {
     Object.defineProperty(window, 'history', {
@@ -2468,24 +2579,26 @@ select (
           useValue: {
             queryParamMap: of(
               convertToParamMap(
-                navigation?.realEditor
+                navigation?.realEditor && !navigation.routeId
                   ? { id: 'q', projectApi: 'cloud', branch: 'work' }
-                  : {},
+                  : navigation?.urlQueryId ? { id: navigation.urlQueryId } : {},
               ),
             ),
             paramMap: of(
               convertToParamMap(
-                navigation?.realEditor
+                navigation?.realEditor && !navigation.routeId
                   ? { storeId: 'github.com', projectId: 'repo@owner@folder' }
-                  : {},
+                  : navigation?.routeId ? { ...navigation.routeRef, queryId: navigation.routeId } : {},
               ),
             ),
             snapshot: {
-              paramMap: convertToParamMap({}),
+              paramMap: convertToParamMap(
+                navigation?.routeId ? { ...navigation.routeRef, queryId: navigation.routeId } : {},
+              ),
               queryParamMap: convertToParamMap(
-                navigation?.realEditor
+                navigation?.realEditor && !navigation.routeId
                   ? { id: 'q', projectApi: 'cloud', branch: 'work' }
-                  : {},
+                  : navigation?.urlQueryId ? { id: navigation.urlQueryId } : {},
               ),
               params: {},
             },

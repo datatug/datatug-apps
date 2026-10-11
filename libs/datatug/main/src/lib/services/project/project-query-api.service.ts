@@ -8,7 +8,7 @@ import {
   readGithubProjectId,
 } from '@datatug/project-address';
 import { type Observable, throwError, Subject, tap } from 'rxjs';
-import { IProjectRef } from '../../core/project-context';
+import { IProjectRef, isSharedProjectRef } from '../../core/project-context';
 import { buildAgentUrl } from '../repo/agent-url';
 import {
   type ProjectQueryCapabilities,
@@ -77,12 +77,13 @@ export class ProjectQueryApiService {
   private readonly api = inject(SneatApiService);
   private readonly http = inject(HttpClient);
 
-  private reference(ref: IProjectRef): { storage: string; project: string } {
+  private reference(ref: IProjectRef): { storage: string; project: string; spaceID?: string } {
     if (ref.projectApi) projectApiQuery(ref);
-    if (ref.spaceID !== undefined)
-      throw new Error(
-        'Shared metadata-only projects do not support this query API',
-      );
+    if (ref.spaceID !== undefined) {
+      if (!isSharedProjectRef(ref))
+        throw new Error('Invalid shared project reference');
+      return { storage: 'firestore', spaceID: ref.spaceID, project: ref.projectId };
+    }
     if (ref.storeId === 'github' || ref.storeId === 'github.com') {
       const address = readGithubProjectId(ref.projectId);
       if (!address.ok) throw new Error('Invalid GitHub project reference');
@@ -119,7 +120,7 @@ export class ProjectQueryApiService {
         tap({
           error: (error) => {
             if (
-              ref.projectApi === 'cloud' &&
+              (ref.projectApi === 'cloud' || isSharedProjectRef(ref)) &&
               [401, 403].includes(error?.status)
             )
               this.deniedReads.next(ref);
@@ -132,20 +133,16 @@ export class ProjectQueryApiService {
   }
 
   summary(ref: IProjectRef): Observable<IProjectSummary> {
-    return this.get(ref, 'projects/project_summary', {
-      branch: ref.branch ?? '',
-    });
+    return this.get(ref, 'projects/project_summary', ref.branch ? { branch: ref.branch } : undefined);
   }
 
   /** Authenticated, fixed-file catalogue read for private GitHub projects. */
   connectionCatalog<T>(ref: IProjectRef): Observable<T> {
-    return this.get(ref, 'projects/connection_catalog', {
-      branch: ref.branch ?? '',
-    });
+    return this.get(ref, 'projects/connection_catalog', ref.branch ? { branch: ref.branch } : undefined);
   }
 
   folder<T>(ref: IProjectRef): Observable<T> {
-    return this.get(ref, 'queries/all_queries', { branch: ref.branch ?? '' });
+    return this.get(ref, 'queries/all_queries', ref.branch ? { branch: ref.branch } : undefined);
   }
 
   capabilities(ref: IProjectRef): Observable<ProjectQueryCapabilities> {

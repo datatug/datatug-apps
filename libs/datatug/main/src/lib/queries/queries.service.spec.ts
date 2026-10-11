@@ -1,5 +1,7 @@
 import { TestBed } from '@angular/core/testing';
-import { of } from 'rxjs';
+import { lastValueFrom, of } from 'rxjs';
+import { SneatAuthStateService } from '@sneat/auth-core';
+import { ProjectQueryApiService } from '../services/project/project-query-api.service';
 
 import {
   AGENT_PERSONAL_QUERIES_UNSUPPORTED_MESSAGE,
@@ -32,6 +34,28 @@ describe('QueriesService', () => {
   it('should be created', () => {
     expect(TestBed.inject(QueriesService)).toBeTruthy();
   });
+});
+
+it('loads a Space-owned saved-query folder through authenticated revision transport', async () => {
+  const ref: IProjectRef = { storeId: 'firestore', spaceID: 'S1', projectId: 'P1' };
+  const folder = vi.fn(() => of({ id: '~', items: [{ id: 'genre-mix', title: 'Genre mix', type: 'SQL', connectionId: 'chinook-sqlite' }] }));
+  const read = vi.fn(() => of({ query: { folderPath: '', id: 'genre-mix', title: 'Genre mix', type: 'SQL', text: 'SELECT 1', connectionId: 'chinook-sqlite' }, revision: 'r1' }));
+  const raw = vi.fn();
+  TestBed.configureTestingModule({ providers: [
+    QueriesService,
+    { provide: QUERY_PROJ_ITEM_SERVICE, useValue: { getFolder: raw, getProjItem: raw } },
+    { provide: GithubProjectReaderService, useValue: { getQueriesFolder: raw, getQuery: raw } },
+    { provide: SneatAuthStateService, useValue: { authState: of({ status: 'authenticated', user: { uid: 'actor_1' } }) } },
+    { provide: ProjectQueryApiService, useValue: { folder, read } },
+  ] });
+  const service = TestBed.inject(QueriesService);
+  const result = await lastValueFrom(service.getQueriesFolder(ref, '~', 'shared'));
+  expect(folder).toHaveBeenCalledWith(ref);
+  expect(result?.items?.[0]).toMatchObject({ id: 'genre-mix', connectionId: 'chinook-sqlite', request: { queryType: 'SQL', text: '' } });
+  const detail = await lastValueFrom(service.getQuery(ref, 'genre-mix'));
+  expect(read).toHaveBeenCalledWith(ref, 'genre-mix', undefined);
+  expect(detail.request).toEqual({ queryType: 'SQL', text: 'SELECT 1' });
+  expect(raw).not.toHaveBeenCalled();
 });
 
 /**

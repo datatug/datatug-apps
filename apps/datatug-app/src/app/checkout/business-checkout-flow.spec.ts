@@ -516,6 +516,72 @@ it('grants the active return state only for a matching LIVE paid status', async 
   flow.dispose();
 });
 
+it('shows native TEST active access only for the matching Space, service, mode and session', async () => {
+  const status = {
+    spaceID: selection.spaceID,
+    serviceID: 'datatug',
+    planID: selection.planID,
+    mode: 'test',
+    sessionID: 'cs_test_123',
+    status: 'complete',
+    providerAmountTotal: 6930,
+    accessStatus: 'active',
+  };
+  for (const [candidate, expected] of [
+    [status, 'business-active'],
+    [{ ...status, accessStatus: 'pending_reconciliation' }, 'test-complete'],
+    [{ ...status, serviceID: 'other' }, 'error'],
+    [{ ...status, spaceID: 'other' }, 'error'],
+    [{ ...status, sessionID: 'cs_test_other' }, 'error'],
+    [{ ...status, mode: 'live' }, 'error'],
+  ] as const) {
+    const harness = authHarness();
+    const states: Record<string, unknown>[] = [];
+    const flow = createReturnFlow({
+      auth: harness.auth as never,
+      api: { serviceStatus: vi.fn().mockResolvedValue(candidate) } as never,
+      mode: 'test',
+      sessionId: 'cs_test_123',
+      serviceScope: { spaceID: selection.spaceID, mode: 'test' },
+      wait: async () => undefined,
+      render: (state) => states.push(state),
+    });
+    flow.start();
+    harness.emit(user);
+    await flush();
+    expect(states.at(-1)?.stage).toBe(expected);
+    flow.dispose();
+  }
+});
+
+it('shows a matching ended TEST service without implying active access', async () => {
+  const harness = authHarness();
+  const states: Record<string, unknown>[] = [];
+  const status = {
+    spaceID: selection.spaceID,
+    serviceID: 'datatug',
+    planID: selection.planID,
+    mode: 'test',
+    sessionID: 'cs_test_123',
+    status: 'complete',
+    providerAmountTotal: 6930,
+    accessStatus: 'ended',
+  };
+  const flow = createReturnFlow({
+    auth: harness.auth as never,
+    api: { serviceStatus: vi.fn().mockResolvedValue(status) } as never,
+    mode: 'test',
+    sessionId: 'cs_test_123',
+    serviceScope: { spaceID: selection.spaceID, mode: 'test' },
+    render: (state) => states.push(state),
+  });
+  flow.start();
+  harness.emit(user);
+  await flush();
+  expect(states.at(-1)?.stage).toBe('business-ended');
+  flow.dispose();
+});
+
 it('keeps ended and unverified LIVE access out of the active state', async () => {
   for (const accessStatus of ['ended', 'pending_reconciliation']) {
     const harness = authHarness();

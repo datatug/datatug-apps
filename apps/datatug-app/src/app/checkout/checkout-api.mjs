@@ -198,8 +198,8 @@ export function validSpaceServiceStatus(status, selection) {
   const mode = selection?.mode ?? 'test';
   const validAccessStatus =
     status?.accessStatus === 'pending_reconciliation' ||
-    (mode === 'live' &&
-      (status?.accessStatus === 'active' || status?.accessStatus === 'ended'));
+    status?.accessStatus === 'active' ||
+    status?.accessStatus === 'ended';
   return (
     !!selection &&
     validSpaceID(selection.spaceID) &&

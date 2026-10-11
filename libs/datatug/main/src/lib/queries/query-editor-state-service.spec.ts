@@ -285,6 +285,43 @@ describe('QueryEditorStateService — GitHub public SQLite save', () => {
   });
 });
 
+describe('QueryEditorStateService — Space-owned saved SQL', () => {
+  it('saves a new bound SQL query without Git branches and retains its revision', async () => {
+    const project = {
+      ref: { storeId: 'firestore', spaceID: 'space_1', projectId: 'project_1' },
+      summary: { id: 'project_1', title: 'Shared demo', access: 'protected' as const },
+    };
+    const saveRevision = vi.fn((_ref, request) => of({ query: request.query, revision: 'revision_1' }));
+    const branches = vi.fn();
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ providers: [
+      QueryEditorStateService,
+      { provide: ErrorLogger, useValue: { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) } },
+      { provide: QueriesService, useValue: {
+        capabilities: () => of({ querySave: true }), saveRevision, branches,
+        authorityDenied: () => EMPTY,
+        authentication: () => of({ status: 'authenticated', user: { uid: 'actor_1' } }),
+      } },
+      { provide: ProjectService, useValue: { getFull: vi.fn() } },
+      { provide: DatatugNavContextService, useValue: { currentProject: of(project), currentEnv: of(undefined) } },
+    ] });
+    const service = TestBed.inject(QueryEditorStateService);
+    const def = { id: 'genre-mix', title: 'Genre mix', request: { queryType: QueryType.SQL, text: 'SELECT 1' } };
+    const state = service.newQuery({ id: def.id, title: def.title, queryType: QueryType.SQL,
+      request: def.request, def, connectionId: 'chinook-sqlite', isNew: true });
+    await firstValueFrom(service.saveQuery(state, project.ref));
+    expect(saveRevision).toHaveBeenCalledOnce();
+    expect(saveRevision.mock.calls[0][1]).toMatchObject({
+      ifNoneMatch: true, query: { id: 'genre-mix', type: QueryType.SQL,
+        text: 'SELECT 1', connectionId: 'chinook-sqlite' },
+    });
+    expect(saveRevision.mock.calls[0][1]).not.toHaveProperty('branch');
+    expect(saveRevision.mock.calls[0][1]).not.toHaveProperty('expectedBranchHead');
+    expect(branches).not.toHaveBeenCalled();
+    expect(service.getQueryState(def.id)).toMatchObject({ isNew: false, revision: 'revision_1' });
+  });
+});
+
 /**
  * Regression (lane S92, journey J2/J3): `GET /datatug/queries/get_query`
  * used to 500 for every query in this demo project when given only a

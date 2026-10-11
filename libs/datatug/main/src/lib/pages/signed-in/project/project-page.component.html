@@ -84,8 +84,9 @@
 
   @if (project()?.ref?.spaceID) {
     <ion-card>
-      <ion-item><ion-label>Read-only project metadata</ion-label></ion-item>
+      <ion-item><ion-label>Shared project</ion-label></ion-item>
       @if (metadataState() === 'available') {
+        <ion-item button (click)="goProjFolder('query')"><ion-label>Queries</ion-label></ion-item>
         <ion-item
           ><ion-label>Space: {{ project()?.ref?.spaceID }}</ion-label></ion-item
         >

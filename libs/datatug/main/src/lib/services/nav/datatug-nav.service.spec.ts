@@ -40,7 +40,7 @@ describe('DatatugNavService', () => {
     expect(service).toBeTruthy();
   });
 
-  it('navigates a shared reference to its scoped overview and refuses queries/chat/table pages', () => {
+  it('navigates a shared reference to its scoped overview and queries while refusing chat and table pages', () => {
     const project: IProjectContext = {
       ref: { storeId: 'firestore', spaceID: 'S1', projectId: 'same' },
     };
@@ -51,6 +51,11 @@ describe('DatatugNavService', () => {
     );
     navMock.navigateRoot?.mockClear();
     service.goProject(project, 'queries');
+    expect(navMock.navigateRoot).toHaveBeenCalledWith(
+      '/space/S1/store/firestore/project/same/queries',
+      undefined,
+    );
+    navMock.navigateRoot?.mockClear();
     service.goProject(project, 'chat');
     service.goTable({
       project,

@@ -31,6 +31,26 @@ it('embeds the shared auth panel for signed-out Business checkout', () => {
   expect(template).not.toContain('Sign in to continue</button>');
 });
 
+it('labels TEST activity separately from LIVE access on the return page', async () => {
+  const root = await render(
+    { spaceID: 'group_1', mode: 'test', session_id: 'cs_test_123' },
+    TEST_CHECKOUT_ORIGIN,
+    authenticated,
+    'buyer',
+    false,
+    true,
+  );
+  const state = fixture.componentInstance['state'];
+  state.set({ stage: 'business-active', spaceID: 'group_1' });
+  fixture.detectChanges();
+  expect(root.textContent).toContain('TEST Business access is active');
+  expect(root.textContent).toContain('does not activate LIVE access');
+  expect(root.textContent).not.toContain('Create a project in this Space');
+  state.set({ stage: 'business-ended' });
+  fixture.detectChanges();
+  expect(root.textContent).toContain('TEST Business access has ended');
+});
+
 const authenticated = {
   status: 'authenticated',
   loadingPhase: 'ready',

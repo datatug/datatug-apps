@@ -315,7 +315,7 @@ export class PublicSqliteQueryService {
     const deadline = Date.now() + RUN_TIMEOUT_MS;
     const [catalog, invoiceFile, customerFile, refs] = await Promise.all([
       firstValueFromAbortable(
-        (project.projectApi === 'cloud'
+        (project.projectApi === 'cloud' || project.spaceID !== undefined
           ? this.projectApi.connectionCatalog<ConnectionCatalog>(project)
           : this.reader.getRawJson<ConnectionCatalog>(
               project.projectId,
@@ -778,6 +778,7 @@ export class PublicSqliteQueryService {
   async run(
     project: IProjectRef,
     definition: IQueryDef,
+    onDispatched?: () => void,
   ): Promise<FederatedQueryResult> {
     if (
       definition.request.queryType !== QueryType.SQL ||
@@ -791,7 +792,7 @@ export class PublicSqliteQueryService {
     }
     const deadline = Date.now() + RUN_TIMEOUT_MS;
     const catalog = await firstValueFrom(
-      (project.projectApi === 'cloud'
+      (project.projectApi === 'cloud' || project.spaceID !== undefined
         ? this.projectApi.connectionCatalog<ConnectionCatalog>(project)
         : this.reader.getRawJson<ConnectionCatalog>(
             project.projectId,
@@ -834,6 +835,7 @@ export class PublicSqliteQueryService {
           reject(new Error('The browser SQLite worker failed.'));
         };
         worker.postMessage({ sql });
+        onDispatched?.();
       });
       if (!reply.ok || !reply.result)
         throw new Error(reply.error ?? 'The browser SQLite query failed.');
@@ -879,7 +881,7 @@ export class PublicSqliteQueryService {
       );
     }
     const catalog = await firstValueFromAbortable(
-      (project.projectApi === 'cloud'
+      (project.projectApi === 'cloud' || project.spaceID !== undefined
         ? this.projectApi.connectionCatalog<ConnectionCatalog>(project)
         : this.reader.getRawJson<ConnectionCatalog>(
             project.projectId,

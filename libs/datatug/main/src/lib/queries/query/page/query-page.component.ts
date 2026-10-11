@@ -44,6 +44,14 @@ import {
 const isGithubStoreId = (storeId?: string): boolean =>
   storeId === STORE_ID_GITHUB_COM || storeId === STORE_TYPE_GITHUB;
 
+const isBrowserSqlProject = (ref?: IProjectRef): boolean =>
+  !!ref && (isGithubStoreId(ref.storeId) || isSharedProjectRef(ref));
+
+const hasQueryActivity = (ref?: IProjectRef): boolean =>
+  !!ref &&
+  ((isGithubStoreId(ref.storeId) && ref.projectApi === 'cloud') ||
+    isSharedProjectRef(ref));
+
 ModuleRegistry.registerModules([AllCommunityModule]);
 
 interface QueryResultGridRow {
@@ -73,6 +81,8 @@ const cloneAndFreeze = <T>(value: T): T => {
  * command to run, not a thrown error"). */
 export const GITHUB_QUERY_RUN_MESSAGE =
   'This project is browsed read-only from GitHub — running a query needs a DataTug agent. Clone the repo and run `datatug serve --project <path>` to execute it.';
+export const SHARED_QUERY_RUN_MESSAGE =
+  'Choose the pinned public SQLite source to run a SQL query in this browser.';
 
 interface QueryRunTiming {
   readonly firstRecordMs?: number;
@@ -204,7 +214,7 @@ import {
   tryDecodeErrorEnvelope,
   TypedValue,
 } from '@sneat/datatug-semantic';
-import { IProjectRef, equalProjectRef } from '../../../core/project-context';
+import { IProjectRef, equalProjectRef, isSharedProjectRef } from '../../../core/project-context';
 import { fromProjectQueryWire } from '../../project-query-contract';
 import { DatatugCoreModule } from '../../../core/datatug-core.module';
 import {
@@ -1073,10 +1083,14 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   public canChoosePublicSqliteSource(): boolean {
     return (
-      isGithubStoreId(this.project?.ref.storeId) &&
-      this.queryDef()?.request.queryType === QueryType.SQL &&
-      this.queryState.saveSupported !== false
+      isBrowserSqlProject(this.project?.ref) &&
+      this.queryDef()?.request.queryType === QueryType.SQL
     );
+  }
+
+  public readonly sharedQuerySaveAllowed = signal(false);
+  public canSaveQuery(): boolean {
+    return !this.project || !isSharedProjectRef(this.project.ref) || this.sharedQuerySaveAllowed();
   }
 
   public publicSqliteSourceChanged(event: Event): void {
@@ -1122,7 +1136,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     // Local Author editing is independent of whether this rich query can be
     // serialized back to its current remote source. Save remains gated, but a
     // supported local draft must still update in Compose and Code.
-    if (this.queryState.saveSupported === false && !isAuthorDraft) return;
+    if (this.queryState.saveSupported === false && !isAuthorDraft && !this.project?.ref.spaceID) return;
     const text = (event as CustomEvent<{ value?: string }>).detail.value ?? '';
     if (
       !this.queryState.request ||
@@ -2272,7 +2286,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           ) !== nextPlanIdentity);
       if (
         scopeChanged ||
-        (this.project?.ref.projectApi === 'cloud' &&
+        ((this.project?.ref.projectApi === 'cloud' || (this.project && isSharedProjectRef(this.project.ref))) &&
           previousDefinition &&
           !effectiveDefinition)
       )
@@ -2439,10 +2453,24 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           this.invalidateHistoryScope();
         const previousRef = this.project?.ref;
         this.project = currentProject;
-        if (
-          isGithubStoreId(currentProject.ref.storeId) &&
-          currentProject.ref.projectApi === 'cloud'
-        ) {
+        if (!equalProjectRef(previousRef, currentProject.ref)) {
+          this.sharedQuerySaveAllowed.set(false);
+          if (isSharedProjectRef(currentProject.ref)) {
+            this.queriesService.capabilities(currentProject.ref)
+              .pipe(takeUntil(this.destroyed))
+              .subscribe({
+                next: (capabilities) => {
+                  if (equalProjectRef(this.project?.ref, currentProject.ref))
+                    this.sharedQuerySaveAllowed.set(capabilities.querySave === true);
+                },
+                error: () => {
+                  if (equalProjectRef(this.project?.ref, currentProject.ref))
+                    this.sharedQuerySaveAllowed.set(false);
+                },
+              });
+          }
+        }
+        if (hasQueryActivity(currentProject.ref)) {
           this.githubProjectActivity.resolve(currentProject.ref).subscribe({
             error: (error: unknown) =>
               this.errorLogger.logError(
@@ -2453,12 +2481,14 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         }
         this.restoreNavigationDraft(currentProject.ref);
         if (
-          currentProject.ref.projectApi &&
+          (currentProject.ref.projectApi || isSharedProjectRef(currentProject.ref)) &&
           !equalProjectRef(previousRef, currentProject.ref)
         ) {
-          const id =
-            this.route.snapshot.queryParamMap.get('id') ||
-            this.route.snapshot.paramMap.get('queryId');
+          const routeId = this.route.snapshot.paramMap.get('queryId');
+          const parameterId = this.route.snapshot.queryParamMap.get('id');
+          const id = routeId && parameterId && routeId !== parameterId
+            ? undefined
+            : routeId || parameterId;
           if (id) this.queryEditorStateService.openQuery(id);
         }
         if (this.queryDef()?.federation?.nativeGraph)
@@ -2604,7 +2634,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         // as the active environment for a direct URL load, only a click-
         // through from within the app already had a matching `queryState`
         // by the time `env` was applied).
-        let queryId = queryParams.get('id');
+        const routeId = this.route.snapshot.paramMap.get('queryId');
+        const parameterId = queryParams.get('id');
+        if (routeId && parameterId && routeId !== parameterId) {
+          this.runError.set('Query URL and query ID disagree.');
+          return;
+        }
+        let queryId = routeId || parameterId;
         const isNew = !queryId;
         if (isNew) {
           queryId = this.randomIdService.newRandomId();
@@ -2790,7 +2826,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   public queryTitleChanged(event: Event): void {
-    if (this.queryState.saveSupported === false) return;
+    if (this.queryState.saveSupported === false && !this.project?.ref.spaceID) return;
     const ce = event as CustomEvent;
     this.queryState = {
       ...this.queryState,
@@ -2906,6 +2942,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   public saveChanges(): void {
+    if (!this.canSaveQuery()) return;
     if (!this.isChanged) {
       alert('Query does not require saving as is not changed yet');
       return;
@@ -3597,8 +3634,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       return;
     }
     if (
-      isGithubStoreId(this.project?.ref.storeId) &&
-      definition?.connectionId
+      isBrowserSqlProject(this.project?.ref) &&
+      definition?.connectionId &&
+      definition.request.queryType === QueryType.SQL
     ) {
       if (this.running()) return;
       const runScope = this.historyScope();
@@ -3610,9 +3648,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         JSON.stringify(this.queryDef()) === JSON.stringify(executedDefinition);
       this.running.set(true);
       this.runError.set(undefined);
-      this.reportGitHubQueryDispatch(projectRef);
+      if (!isSharedProjectRef(projectRef)) this.reportGitHubQueryDispatch(projectRef);
       void this.publicSqliteQuery
-        .run(projectRef, executedDefinition)
+        .run(projectRef, executedDefinition, isSharedProjectRef(projectRef)
+          ? () => this.reportGitHubQueryDispatch(projectRef)
+          : undefined)
         .then((result) => {
           if (!current()) return;
           this.showAttemptResult(result);
@@ -3783,8 +3823,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     // GitHub-store query did nothing at all — no message, no thrown error,
     // just nothing — for deliverable 2, "an explicit, friendly notice...
     // not a thrown error").
-    if (isGithubStoreId(this.project?.ref.storeId)) {
-      this.runError.set(GITHUB_QUERY_RUN_MESSAGE);
+    if (isBrowserSqlProject(this.project?.ref)) {
+      this.runError.set(this.project && isSharedProjectRef(this.project.ref)
+        ? SHARED_QUERY_RUN_MESSAGE : GITHUB_QUERY_RUN_MESSAGE);
       return;
     }
     const environment = this.envId;
@@ -4125,8 +4166,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private reportGitHubQueryDispatch(ref?: IProjectRef): void {
     if (
       !ref ||
-      !isGithubStoreId(ref.storeId) ||
-      ref.projectApi !== 'cloud'
+      !hasQueryActivity(ref)
     ) {
       return;
     }
@@ -4148,8 +4188,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private reportGitHubQueryEdit(ref?: IProjectRef): void {
     if (
       !ref ||
-      !isGithubStoreId(ref.storeId) ||
-      ref.projectApi !== 'cloud'
+      !hasQueryActivity(ref)
     ) {
       return;
     }
