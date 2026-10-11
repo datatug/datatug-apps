@@ -75,6 +75,11 @@ const cloneAndFreeze = <T>(value: T): T => {
   return clone;
 };
 
+const sha256Text = async (value: string): Promise<string> => {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+};
+
 /** Shown instead of ever calling `SemanticApiService.runQuery()` for a
  * GitHub-store project — there is no CLI agent to execute against (founder
  * ruling 2026-09-11, deliverable 2: "an explicit, friendly notice with the
@@ -271,6 +276,20 @@ import {
   PublicSqliteQueryService,
   type PublicSqliteSourceDiscovery,
 } from '../../public-sqlite-query.service';
+import type { PublicSqlitePreparedPlan } from '../../public-sqlite-tugql';
+import { PUBLIC_SQLITE_COMPARE_WASM_PIN } from '../../public-sqlite-comparison-pin.token';
+import {
+  PublicSqliteComparisonSession,
+  PUBLIC_CHINOOK_COMPARISON_TARGETS,
+  isSupportedPublicSqliteComparisonProjection,
+  compareSessionObservations,
+  type ComparisonContextSnapshot,
+  type ComparisonFixtureTarget,
+  type ComparisonSessionSnapshot,
+  type ComparisonSideToken,
+  type SessionCompareResult,
+} from '../../public-sqlite-comparison';
+import { PublicSqliteComparisonPanelComponent } from './public-sqlite-comparison-panel.component';
 import {
   reviewAuthorRelationshipSource,
   type AuthorCustomerField,
@@ -482,6 +501,7 @@ export function extractLinkedEntityNames(
     AuthorComposeControlsComponent,
     AuthorSqlPreviewComponent,
     AuthorRelationshipSourcesComponent,
+    PublicSqliteComparisonPanelComponent,
     QueryWorkspaceLayoutComponent,
     DatePipe,
     NgTemplateOutlet,
@@ -562,6 +582,18 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private readonly envService = inject(EnvironmentService);
   private readonly changeDetector = inject(ChangeDetectorRef);
   private authorRunAbort?: AbortController;
+  private readonly comparisonSession = new PublicSqliteComparisonSession();
+  private comparisonPreparedPlan?: PublicSqlitePreparedPlan;
+  private comparisonAccessGeneration = 0;
+  private comparisonAbort?: AbortController;
+  private comparisonGeneration = 0;
+  private comparisonObservedScopeIdentity?: string;
+  private comparisonRouteProjectRef?: IProjectRef;
+  /** Full ref for the latest accepted nav-context summary; stale page summaries cannot restore access. */
+  private comparisonAccessProjectRef?: IProjectRef;
+  private readonly comparisonWasmPin = inject(PUBLIC_SQLITE_COMPARE_WASM_PIN, {
+    optional: true,
+  });
   private authorLookupFocusRevision = 0;
   private authorLookupRequestRevision = 0;
   private pendingAuthorLookupNavigation?: PendingAuthorLookupNavigation;
@@ -607,6 +639,40 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly authorPlan = signal<PublicSqliteQueryPreview | undefined>(
     undefined,
   );
+  public readonly queryView = signal<'author' | 'compare'>('author');
+  public readonly comparisonSnapshot = signal<ComparisonSessionSnapshot | undefined>(undefined);
+  public readonly comparisonResult = signal<SessionCompareResult | undefined>(undefined);
+  public readonly comparisonBusy = signal(false);
+  public readonly comparisonMessage = signal('');
+  public readonly comparisonCustomerBinding = signal('No comparison pair has been run.');
+  public readonly comparisonQueryLimit = signal('—');
+  /** Access comes from the ref-matched project summary, never ambient auth state. */
+  public readonly comparisonProjectAccess = signal<'public' | 'private' | 'protected' | undefined>(undefined);
+  public readonly comparisonBlocker = computed(() => {
+    const project = this.project?.ref;
+    if (!project || !isGithubStoreId(project.storeId) || project.spaceID !== undefined || project.projectApi === 'cloud')
+      return 'Compare is available for admitted public GitHub projects.';
+    if (this.comparisonProjectAccess() !== 'public')
+      return 'Public project access is required; wait for the matching project summary to load.';
+    const definition = this.queryDef();
+    if (!definition || !this.isTugqlAuthorJourney() || definition.connectionId !== 'chinook-sqlite')
+      return 'Compare is available for the admitted Chinook Invoice TugQL query.';
+    const plan = this.authorPlan();
+    if (!plan || plan.draftRevision !== this.authorDraftRevision())
+      return 'Preview SQL to check the current draft before running both fixtures.';
+    if (plan.expandedSource !== undefined)
+      return 'Review and apply the displayed relationship completion in Code, then Preview the updated draft before comparing.';
+    if (plan.authorProof.profile !== 'invoice-query' || !plan.relationship ||
+        !Number.isSafeInteger(plan.authorProof.resolvedQuery.limit) ||
+        (plan.authorProof.resolvedQuery.limit ?? 0) < 1 ||
+        (plan.authorProof.resolvedQuery.limit ?? 101) > 100)
+      return 'Compare supports the bounded Invoice-to-Customer query profile only.';
+    if (!isSupportedPublicSqliteComparisonProjection(plan))
+      return 'Select InvoiceId plus supported text fields such as InvoiceDate before comparing.';
+    if (!this.authorCustomerIdValid())
+      return 'Enter a whole-number Customer ID binding before running both fixtures.';
+    return 'Ready · Preview is current; both fixture queries will use the same frozen binding.';
+  });
   public readonly authorCustomerIdValid = computed(
     () =>
       /^-?\d+$/u.test(this.authorCustomerId()) &&
@@ -1103,6 +1169,305 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     });
   }
 
+  public setQueryView(view: 'author' | 'compare'): void {
+    this.queryView.set(view);
+  }
+
+  private invalidateComparison(reason: string): void {
+    this.comparisonAccessGeneration++;
+    this.comparisonGeneration++;
+    this.comparisonAbort?.abort();
+    this.comparisonAbort = undefined;
+    const snapshot = this.comparisonSession.snapshot();
+    if (snapshot && !snapshot.invalidated) {
+      this.comparisonSession.invalidate(reason);
+      this.comparisonSnapshot.set(this.comparisonSession.snapshot());
+    }
+    this.comparisonBusy.set(false);
+    if (snapshot) this.comparisonMessage.set(`${reason} The earlier observation is retained as previous page-memory output.`);
+  }
+
+  private expireComparisonSession(reason: string): void {
+    this.invalidateComparison(reason);
+    this.comparisonSession.clear();
+    this.comparisonSnapshot.set(undefined);
+    this.comparisonResult.set(undefined);
+    this.comparisonPreparedPlan = undefined;
+    this.comparisonCustomerBinding.set('No comparison pair has been run.');
+    this.comparisonQueryLimit.set('—');
+    this.comparisonMessage.set('The comparison session ended when this page was left or closed.');
+  }
+
+  /** Ionic caches routed pages, so comparison memory must expire on leave as well as destroy. */
+  public ionViewWillLeave(): void {
+    this.expireComparisonSession('The comparison session ended when this page was left.');
+  }
+
+  private comparisonInputKey(): string {
+    return JSON.stringify({
+      project: this.project?.ref,
+      accessClassification: this.comparisonProjectAccess(),
+      agentSecurityContextId: this.agentContext.securityContextId(),
+      queryId: this.queryId,
+      definition: this.queryDef(),
+      source: this.queryBodyText(),
+      draftRevision: this.authorDraftRevision(),
+      bindingRevision: this.authorBindingRevision(),
+      customerId: this.authorCustomerId(),
+      accessGeneration: this.comparisonAccessGeneration,
+    });
+  }
+
+  private preparedComparisonPlan(
+    preview: PublicSqliteQueryPreview,
+  ): PublicSqlitePreparedPlan {
+    if (preview.expandedSource !== undefined)
+      throw new Error(
+        'Review and apply the displayed relationship completion in Code, then Preview the updated draft before comparing.',
+      );
+    const customerId = Number(this.authorCustomerId());
+    if (!this.authorCustomerIdValid() || !Number.isSafeInteger(customerId))
+      throw new Error('Compare requires a whole-number CustomerId binding.');
+    const { fixedBindings, bindingSlots, ...base } = preview;
+    const bindings = bindingSlots
+      ? bindingSlots.map((slot) => slot.kind === 'customer-id' ? customerId : slot.value)
+      : (() => {
+          if (preview.bindingNames[0] !== 'CustomerId')
+            throw new Error('The frozen query is missing its CustomerId binding.');
+          return [customerId, ...fixedBindings];
+        })();
+    return cloneAndFreeze({ ...base, bindings }) as PublicSqlitePreparedPlan;
+  }
+
+  private async comparisonContext(
+    plan: PublicSqlitePreparedPlan,
+    project: IProjectRef,
+  ): Promise<ComparisonContextSnapshot> {
+    this.assertPublicComparisonScope(project);
+    const relationship = plan.relationship;
+    if (!relationship) throw new Error('Preview the declared Invoice-to-Customer relationship first.');
+    const draftRevision = this.authorDraftRevision();
+    return Object.freeze({
+      projectRef: JSON.stringify(project),
+      pageMemoryScope: `public-github:${JSON.stringify(project)}`,
+      accessClassification: 'public',
+      ...(this.agentContext.securityContextId()
+        ? { agentSecurityContextId: this.agentContext.securityContextId() }
+        : {}),
+      accessGeneration: this.comparisonAccessGeneration,
+      draftRevision,
+      authoredSourceFingerprint: await sha256Text(this.queryBodyText() ?? ''),
+      relationshipFingerprint: await sha256Text(JSON.stringify(relationship)),
+      typedBindingsFingerprint: await sha256Text(JSON.stringify({ CustomerId: plan.bindings[0] })),
+    });
+  }
+
+  private assertPublicComparisonScope(project: IProjectRef): void {
+    if (
+      !equalProjectRef(this.project?.ref, project) ||
+      this.comparisonProjectAccess() !== 'public' ||
+      !isGithubStoreId(project.storeId) ||
+      project.spaceID !== undefined ||
+      project.projectApi === 'cloud'
+    )
+      throw new Error('Public project access is required for this comparison session.');
+  }
+
+  private assertComparisonInputCurrent(key: string): void {
+    if (this.comparisonInputKey() !== key)
+      throw new Error('The draft, binding, project, or access context changed. Preview again before comparing.');
+  }
+
+  public async runComparisonBoth(): Promise<void> {
+    if (!this.comparisonBlocker().startsWith('Ready')) return;
+    const project = this.project?.ref;
+    const definition = this.queryDef();
+    if (!project || !definition) return;
+    const inputKey = this.comparisonInputKey();
+    const reviewedPreview = this.authorPlan();
+    if (!reviewedPreview || reviewedPreview.draftRevision !== this.authorDraftRevision()) return;
+    const reviewedPreviewJson = JSON.stringify(reviewedPreview);
+    const operation = ++this.comparisonGeneration;
+    this.comparisonBusy.set(true);
+    this.comparisonMessage.set('Rechecking the admitted project metadata before either worker starts.');
+    try {
+      const preview = await this.publicSqliteQuery.prepareTugQL(
+        project,
+        definition,
+        this.authorDraftRevision(),
+        undefined,
+        true,
+      );
+      this.assertComparisonInputCurrent(inputKey);
+      if (preview.expandedSource !== undefined)
+        throw new Error(
+          'Review and apply the displayed relationship completion in Code, then Preview the updated draft before comparing.',
+        );
+      if (
+        JSON.stringify(preview) !== reviewedPreviewJson ||
+        JSON.stringify(this.authorPlan()) !== reviewedPreviewJson
+      )
+        throw new Error(
+          'The project metadata or compiled SQL changed after Preview. Preview again to review the current plan before running both fixtures.',
+        );
+      const plan = this.preparedComparisonPlan(preview);
+      if (plan.authorProof.profile !== 'invoice-query' || !plan.relationship)
+        throw new Error('The live query profile does not support fixture comparison.');
+      this.comparisonCustomerBinding.set(`CustomerId ${String(plan.bindings[0])} · frozen integer binding`);
+      this.comparisonQueryLimit.set(String(plan.authorProof.resolvedQuery.limit));
+      const context = await this.comparisonContext(plan, project);
+      this.assertComparisonInputCurrent(inputKey);
+      if (operation !== this.comparisonGeneration) return;
+      const snapshot = this.comparisonSession.begin(context);
+      // A previous diff remains visible until the replacement pair has passed its
+      // fresh metadata, Preview-plan and authorization-context admission checks.
+      this.comparisonResult.set(undefined);
+      this.comparisonPreparedPlan = plan;
+      this.comparisonSnapshot.set(snapshot);
+      this.comparisonMessage.set('Both independent fixture queries are running.');
+      await Promise.all(PUBLIC_CHINOOK_COMPARISON_TARGETS.map(async (target) => {
+        const token = this.comparisonSession.startSide(target.id);
+        this.comparisonSnapshot.set(this.comparisonSession.snapshot());
+        await this.runComparisonSide(token, project, definition, plan, operation);
+      }));
+    } catch (error) {
+      if (operation === this.comparisonGeneration) {
+        this.comparisonMessage.set(error instanceof Error ? error.message : 'The comparison pair could not start.');
+        this.authorError.set(error instanceof Error ? error.message : 'The comparison pair could not start.');
+      }
+    } finally {
+      if (operation === this.comparisonGeneration) this.comparisonBusy.set(false);
+    }
+  }
+
+  private async runComparisonSide(
+    token: ComparisonSideToken,
+    project: IProjectRef,
+    definition: IQueryDef,
+    plan: PublicSqlitePreparedPlan,
+    operation: number,
+  ): Promise<void> {
+    try {
+      const observation = await this.publicSqliteQuery.runComparisonSide(
+        project,
+        definition,
+        plan,
+        token.target.id,
+        token.signal,
+      );
+      if (operation !== this.comparisonGeneration) return;
+      this.comparisonSession.completeSide(token, observation);
+    } catch (error) {
+      if (operation === this.comparisonGeneration) {
+        this.comparisonSession.failSide(
+          token,
+          error instanceof Error ? error.message : 'The fixture query failed.',
+        );
+      }
+    } finally {
+      if (operation === this.comparisonGeneration)
+        this.comparisonSnapshot.set(this.comparisonSession.snapshot());
+    }
+  }
+
+  public async retryComparisonSide(targetId: ComparisonFixtureTarget['id']): Promise<void> {
+    const snapshot = this.comparisonSession.snapshot();
+    const plan = this.comparisonPreparedPlan;
+    const project = this.project?.ref;
+    const definition = this.queryDef();
+    if (!snapshot || snapshot.invalidated || !plan || !project || !definition || this.comparisonBusy()) return;
+    try {
+      this.assertPublicComparisonScope(project);
+    } catch (error) {
+      this.invalidateComparison(error instanceof Error ? error.message : 'The public project scope changed.');
+      return;
+    }
+    const inputKey = this.comparisonInputKey();
+    this.comparisonBusy.set(true);
+    this.comparisonMessage.set(`Retrying the ${targetId === 'chinook-baseline' ? 'Baseline' : 'Candidate'} query.`);
+    const operation = this.comparisonGeneration;
+    try {
+      this.assertComparisonInputCurrent(inputKey);
+      const token = this.comparisonSession.startSide(targetId);
+      this.comparisonSnapshot.set(this.comparisonSession.snapshot());
+      await this.runComparisonSide(token, project, definition, plan, operation);
+    } finally {
+      if (operation === this.comparisonGeneration) this.comparisonBusy.set(false);
+    }
+  }
+
+  public cancelComparisonSide(targetId: ComparisonFixtureTarget['id']): void {
+    this.comparisonSession.cancelSide(targetId);
+    this.comparisonSnapshot.set(this.comparisonSession.snapshot());
+  }
+
+  public async compareCompletedResults(): Promise<void> {
+    const snapshot = this.comparisonSession.snapshot();
+    const plan = this.comparisonPreparedPlan;
+    const project = this.project?.ref;
+    const definition = this.queryDef();
+    if (!snapshot || snapshot.invalidated || !plan || !project || !definition || this.comparisonBusy()) return;
+    try {
+      this.assertPublicComparisonScope(project);
+    } catch (error) {
+      this.invalidateComparison(error instanceof Error ? error.message : 'The public project scope changed.');
+      return;
+    }
+    if (!snapshot.sides.every((side) => side.status === 'complete' && side.observation)) return;
+    if (!this.comparisonWasmPin) {
+      this.authorError.set('The verified Core comparison asset is not configured for this build.');
+      return;
+    }
+    const inputKey = this.comparisonInputKey();
+    const operation = ++this.comparisonGeneration;
+    const controller = new AbortController();
+    this.comparisonAbort = controller;
+    this.comparisonBusy.set(true);
+    this.comparisonMessage.set('Checking current project metadata and the verified Core comparison module.');
+    this.authorError.set(undefined);
+    try {
+      // Explicit Compare re-reads the current catalog and schemas before Core sees either result.
+      const livePreview = await this.publicSqliteQuery.prepareTugQL(
+        project,
+        definition,
+        this.authorDraftRevision(),
+        controller.signal,
+        true,
+      );
+      this.assertComparisonInputCurrent(inputKey);
+      const livePlan = this.preparedComparisonPlan(livePreview);
+      if (JSON.stringify(livePlan) !== JSON.stringify(plan))
+        throw new Error('The current catalog, schema, relationship, or query no longer matches both observations. Run both again.');
+      const liveContext = await this.comparisonContext(livePlan, project);
+      if (JSON.stringify(liveContext) !== JSON.stringify(snapshot.context))
+        throw new Error('The draft, typed binding, project, or principal changed. Run both again.');
+      const baseline = snapshot.sides.find((side) => side.target.role === 'baseline')?.observation;
+      const candidate = snapshot.sides.find((side) => side.target.role === 'candidate')?.observation;
+      if (!baseline || !candidate) throw new Error('Both fixture observations must be complete before Compare.');
+      const result = await compareSessionObservations(
+        baseline,
+        candidate,
+        snapshot.context,
+        snapshot.generation,
+        this.comparisonWasmPin,
+        controller.signal,
+      );
+      this.assertComparisonInputCurrent(inputKey);
+      if (operation !== this.comparisonGeneration || this.comparisonSession.snapshot()?.generation !== snapshot.generation)
+        return;
+      this.comparisonResult.set(result);
+      this.comparisonMessage.set('Comparison finished from two complete bounded query observations.');
+    } catch (error) {
+      if (operation === this.comparisonGeneration) {
+        this.comparisonMessage.set(error instanceof Error ? error.message : 'Core could not compare these complete results.');
+        this.authorError.set(error instanceof Error ? error.message : 'Core could not compare these complete results.');
+      }
+    } finally {
+      if (this.comparisonAbort === controller) this.comparisonAbort = undefined;
+      if (operation === this.comparisonGeneration) this.comparisonBusy.set(false);
+    }
+  }
+
   public hostedDemoDbSourceChanged(event: Event): void {
     const sourceId = (event as CustomEvent<{ value: string }>).detail.value;
     const definition = this.queryDef();
@@ -1166,6 +1531,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.authorDraftRevision.update((revision) => revision + 1);
       this.authorPlan.set(undefined);
       this.authorError.set(undefined);
+      this.invalidateComparison('The query draft changed; run both fixtures again.');
     }
     this.queryEditorStateService.updateQueryState(this.queryState);
   }
@@ -1285,6 +1651,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       : fields.filter((item) => item !== field);
     const order: readonly AuthorCustomerField[] = ['FirstName', 'LastName', 'Email'];
     this.authorSourceSelectedFields.set(order.filter((item) => next.includes(item)));
+    this.invalidateComparison('The selected relationship projection changed.');
     this.buildAuthorSourceReview();
   }
 
@@ -1576,6 +1943,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     if (value !== this.authorCustomerId() || originChanged) {
       this.authorBindingRevision.update((revision) => revision + 1);
       ++this.authorLookupRequestRevision;
+      this.invalidateComparison('The CustomerId binding changed; run both fixtures again.');
     }
     this.authorCustomerId.set(value);
     this.authorError.set(undefined);
@@ -2183,6 +2551,21 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const projectId = this.project?.ref.projectId;
     const environment = this.envId;
     const securityContextId = this.agentContext.securityContextId();
+    const accessClassification = equalProjectRef(
+      this.comparisonAccessProjectRef,
+      this.project?.ref,
+    )
+      ? this.comparisonProjectAccess()
+      : undefined;
+    const scopeIdentity = JSON.stringify({
+      project: this.project?.ref,
+      queryId: this.queryId,
+      accessClassification,
+      securityContextId,
+    });
+    if (this.comparisonObservedScopeIdentity && this.comparisonObservedScopeIdentity !== scopeIdentity)
+      this.invalidateComparison('The project, access classification, query, or agent context changed.');
+    this.comparisonObservedScopeIdentity = scopeIdentity;
     if (
       this.hasObservedSecurityContext &&
       this.observedSecurityContextId !== securityContextId
@@ -2216,6 +2599,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.editorState = editorState;
       if (!editorState?.currentQueryId) {
         if (this.queryId) {
+          this.invalidateComparison('The selected query was closed.');
           this.invalidateHistoryScope();
           this.queryDef.set(undefined);
           this.queryState = {
@@ -2254,6 +2638,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         }
       }
       const previousDefinition = this.queryDef();
+      const previousCustomerId = this.authorCustomerId();
       const scopeChanged = this.queryId !== queryState.id;
       const effectiveDefinition = queryState.def
         ? {
@@ -2289,9 +2674,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         ((this.project?.ref.projectApi === 'cloud' || (this.project && isSharedProjectRef(this.project.ref))) &&
           previousDefinition &&
           !effectiveDefinition)
-      )
+      ) {
+        this.invalidateComparison('The selected query or project scope changed.');
         this.invalidateHistoryScope();
-      else if (queryDefinitionChanged || planChanged) {
+      } else if (queryDefinitionChanged || planChanged) {
+        this.invalidateComparison('The saved query definition changed.');
         // Editing the selected query preserves its last completed output as a
         // previous-run receipt. Fence active executions while keeping their frozen
         // definition, scope, provenance, and timing attached to that output.
@@ -2314,6 +2701,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.authorCustomerId.set(
         queryState.authorBindings?.['CustomerId'] ?? '',
       );
+      if (previousCustomerId !== this.authorCustomerId())
+        this.invalidateComparison('The CustomerId binding changed.');
       // Signal write (zoneless-safe, unlike the plain-field write just
       // above) — see `queryDef`'s own doc comment.
       const definitionChanged =
@@ -2351,6 +2740,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   };
 
   ngOnDestroy(): void {
+    this.expireComparisonSession('This page session ended.');
     ++this.authorLookupFocusRevision;
     ++this.authorLookupRequestRevision;
     this.pendingAuthorLookupNavigation = undefined;
@@ -2436,12 +2826,23 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       .pipe(takeUntil(this.destroyed))
       .subscribe((currentProject) => {
         if (!currentProject) {
+          if (this.project) {
+            this.comparisonAccessProjectRef = undefined;
+            this.comparisonProjectAccess.set(undefined);
+            this.invalidateComparison('The current project context was cleared.');
+          }
           return; // TODO: cleanup query state?
         }
         if (
+          this.comparisonRouteProjectRef &&
+          !equalProjectRef(this.comparisonRouteProjectRef, currentProject.ref)
+        ) return;
+        if (
           equalProjectRef(this.project?.ref, currentProject.ref) &&
           this.project?.summary?.environments?.length ===
-            currentProject.summary?.environments?.length
+            currentProject.summary?.environments?.length &&
+          this.project?.summary?.access === currentProject.summary?.access &&
+          this.comparisonProjectAccess() === currentProject.summary?.access
         ) {
           this.restoreNavigationDraft(currentProject.ref);
           return;
@@ -2453,6 +2854,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           this.invalidateHistoryScope();
         const previousRef = this.project?.ref;
         this.project = currentProject;
+        this.comparisonAccessProjectRef = currentProject.ref;
+        this.comparisonProjectAccess.set(currentProject.summary?.access);
         if (!equalProjectRef(previousRef, currentProject.ref)) {
           this.sharedQuerySaveAllowed.set(false);
           if (isSharedProjectRef(currentProject.ref)) {
@@ -2656,13 +3059,22 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   private onProjRefChanged = (ref: IProjectRef) => {
+    this.comparisonRouteProjectRef = ref;
     const prevProject = this.project;
     if (
       ref.projectId !== prevProject?.ref.projectId ||
       ref.storeId !== prevProject?.ref.storeId
     )
       this.invalidateHistoryScope();
-    this.project = newProjectContextFromRef(ref);
+    const sameResolvedProject = equalProjectRef(prevProject?.ref, ref) && !!prevProject?.summary;
+    this.project = sameResolvedProject ? prevProject : newProjectContextFromRef(ref);
+    // A genuinely new route ref arrives before its summary and has no admission.
+    // Preserve a summary only when it already belongs to this exact full ref.
+    if (!sameResolvedProject) {
+      this.comparisonAccessProjectRef = undefined;
+      this.comparisonProjectAccess.set(undefined);
+    }
+    this.syncScopeAndBindings();
     if (this.queryDef()?.federation?.nativeGraph)
       void this.refreshLocalHistory();
     if (

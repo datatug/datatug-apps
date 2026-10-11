@@ -74,6 +74,9 @@ import {
   PublicSqliteQueryService,
   type PublicSqliteSourceDiscovery,
 } from '../../public-sqlite-query.service';
+import type { PublicSqliteQueryPreview } from '../../public-sqlite-tugql';
+import { PUBLIC_CHINOOK_COMPARISON_TARGETS } from '../../public-sqlite-comparison';
+import type { ComparisonWorkerObservation } from '../../public-sqlite-comparison';
 import { testAuthorProof } from './author-query-proof.spec-helper';
 import { GitHubProjectActivityService } from '../../../services/project/github-project-activity.service';
 import { graphFixturePlan } from '../../public-data/native-graph.spec-helper';
@@ -99,7 +102,7 @@ const resolve = (path: string): string => resolvePath(repositoryRoot, path);
 
 function agentContextStub(securityContextId: string | undefined = 'sctx-1') {
   return {
-    securityContextId: signal(securityContextId),
+    securityContextId: signal<string | undefined>(securityContextId),
     refresh: vi.fn(() => of(undefined)),
   };
 }
@@ -542,14 +545,22 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     ],
   } as unknown as IQueryEditorState;
 
-  async function createTugQLAuthor(source: string): Promise<QueryPageComponent> {
+  async function createTugQLAuthor(
+    source: string,
+    projectEvents?: Observable<IProjectContext | undefined>,
+  ): Promise<QueryPageComponent> {
     const definition: IQueryDef = {
       ...queryDef,
       id: 'chinook-invoice-author',
       connectionId: 'chinook-sqlite',
       request: { queryType: QueryType.DTQL, text: source } as ITextQueryRequest,
     };
-    const created = await createComponent({}, definition);
+    const created = await createComponent(
+      {},
+      definition,
+      undefined,
+      projectEvents ? { project: projectEvents } : undefined,
+    );
     created.queryState = {
       ...created.queryState,
       id: definition.id,
@@ -559,10 +570,19 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     };
     created.project = {
       ref: { storeId: 'github.com', projectId: 'demo@buyer@project' },
+      summary: { id: 'demo@buyer@project', title: 'Demo project', access: 'public' },
     };
+    (created as unknown as { comparisonAccessProjectRef?: IProjectRef }).comparisonAccessProjectRef =
+      created.project.ref;
+    created.comparisonProjectAccess.set('public');
     created.queryDef.set(definition);
     created.setAuthorMode('code');
     return created;
+  }
+
+  async function settleQueryPage(): Promise<void> {
+    runFixture.detectChanges();
+    await runFixture.whenStable();
   }
 
   const sourceDiscovery: PublicSqliteSourceDiscovery = {
@@ -601,6 +621,492 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     'select i.InvoiceId, i.InvoiceDate',
     '',
   ].join('\n');
+
+  function comparisonPreview(
+    draftRevision: number,
+    overrides: Partial<PublicSqliteQueryPreview> = {},
+  ): PublicSqliteQueryPreview {
+    return {
+      fixedBindings: [],
+      bindingNames: ['CustomerId'],
+      sql: 'SELECT i.InvoiceId, i.InvoiceDate FROM Invoice as i WHERE i.CustomerId = @CustomerId ORDER BY i.InvoiceId LIMIT 100',
+      sourceId: 'chinook-sqlite',
+      fixtureSha256: PUBLIC_CHINOOK_COMPARISON_TARGETS[0]?.sha256 ?? '',
+      schemaVersion: 'schema-v1',
+      draftRevision,
+      authorProof: { profile: 'invoice-query', resolvedQuery: { limit: 100 } },
+      outputColumns: [
+        { name: 'InvoiceId', type: 'integer', lineage: [{ source: 'i', field: 'InvoiceId' }] },
+        { name: 'InvoiceDate', type: 'string', lineage: [{ source: 'i', field: 'InvoiceDate' }] },
+      ],
+      relationship: {
+        id: 'invoice-customer',
+        version: 'schema-v1',
+        fromSource: 'i',
+        toSource: 'c',
+        joinType: 'inner',
+        pairs: [{ fromField: 'CustomerId', toField: 'CustomerId' }],
+      },
+      ...overrides,
+    } as PublicSqliteQueryPreview;
+  }
+
+  function comparisonObservation(targetIndex: number): ComparisonWorkerObservation {
+    const target = PUBLIC_CHINOOK_COMPARISON_TARGETS[targetIndex];
+    if (!target) throw new Error('Expected a pinned comparison target.');
+    return {
+      kind: 'browser-session',
+      targetId: target.id,
+      fixtureSha256: target.sha256,
+      schemaSha256: target.schemaSha256,
+      schemaFingerprint: 'invoice-customer-schema-v1',
+      columns: [
+        { name: 'InvoiceId', type: 'integer' },
+        { name: 'InvoiceDate', type: 'string' },
+      ],
+      executionId: `execution-${target.id}`,
+      observedAt: '2026-10-11T12:00:00.000Z',
+      rowCount: 1,
+      rows: [[1001, '2022-03-11 00:00:00']],
+      resultComplete: true,
+    };
+  }
+
+  it('keeps cold open, Author/Compare view changes, and parameter-free Preview worker-free', async () => {
+    component = await createTugQLAuthor(authorSource);
+    const sqlite = TestBed.inject(PublicSqliteQueryService);
+    const preview = vi.spyOn(sqlite, 'prepareTugQL').mockResolvedValue({
+      fixedBindings: [], bindingNames: ['CustomerId'], sourceId: 'chinook-sqlite',
+      fixtureSha256: 'fixture-sha256', schemaVersion: 'schema-v1',
+      draftRevision: component.authorDraftRevision(), authorProof: {
+        profile: 'invoice-query', resolvedQuery: { limit: 100 },
+      }, relationship: {
+        id: 'invoice-customer', version: 'schema-v1', fromSource: 'i', toSource: 'c',
+        joinType: 'inner', pairs: [{ fromField: 'CustomerId', toField: 'CustomerId' }],
+      },
+    } as unknown as PublicSqliteQueryPreview);
+    const compareSide = vi.spyOn(sqlite, 'runComparisonSide');
+    const authorRun = vi.spyOn(sqlite, 'runTugQL');
+
+    expect(component.comparisonSnapshot()).toBeUndefined();
+    component.setQueryView('compare');
+    component.setQueryView('author');
+    await component.previewTugql();
+
+    expect(preview).toHaveBeenCalledTimes(1);
+    expect(compareSide).not.toHaveBeenCalled();
+    expect(authorRun).not.toHaveBeenCalled();
+  });
+
+  it('requires applying freshly proposed relationship completion before either comparison worker starts', async () => {
+    component = await createTugQLAuthor(authorSource);
+    await settleQueryPage();
+    component.authorCustomerId.set('1');
+    component.authorPlan.set(comparisonPreview(component.authorDraftRevision()));
+    const sqlite = TestBed.inject(PublicSqliteQueryService);
+    vi.spyOn(sqlite, 'prepareTugQL').mockResolvedValue(
+      comparisonPreview(component.authorDraftRevision(), {
+        expandedSource: `${authorSource}\njoin Customer as c on i.CustomerId = c.CustomerId`,
+      }),
+    );
+    const compareSide = vi.spyOn(sqlite, 'runComparisonSide');
+
+    expect(component.comparisonBlocker()).toContain('Ready');
+    component.authorPlan.set(comparisonPreview(component.authorDraftRevision(), {
+      expandedSource: `${authorSource}\njoin Customer as c on i.CustomerId = c.CustomerId`,
+    }));
+    expect(component.comparisonBlocker()).toContain('Review and apply the displayed relationship completion');
+    component.authorPlan.set(comparisonPreview(component.authorDraftRevision()));
+    await component.runComparisonBoth();
+
+    expect(compareSide).not.toHaveBeenCalled();
+    expect(component.comparisonSnapshot()).toBeUndefined();
+    expect(component.comparisonMessage()).toContain('Review and apply the displayed relationship completion');
+  });
+
+  it('blocks the maintained integer-heavy projection before comparison workers start', async () => {
+    component = await createTugQLAuthor(authorSource);
+    await settleQueryPage();
+    component.authorCustomerId.set('1');
+    component.authorPlan.set(comparisonPreview(component.authorDraftRevision(), {
+      outputColumns: [
+        { name: 'InvoiceId', type: 'integer', lineage: [{ source: 'i', field: 'InvoiceId' }] },
+        { name: 'CustomerId', type: 'integer', lineage: [{ source: 'i', field: 'CustomerId' }] },
+        { name: 'FirstName', type: 'string', lineage: [{ source: 'c', field: 'FirstName' }] },
+      ],
+    }));
+    const sqlite = TestBed.inject(PublicSqliteQueryService);
+    const runSide = vi.spyOn(sqlite, 'runComparisonSide');
+
+    expect(component.comparisonBlocker()).toContain('Select InvoiceId plus supported text fields');
+    await component.runComparisonBoth();
+
+    expect(runSide).not.toHaveBeenCalled();
+    expect(component.comparisonSnapshot()).toBeUndefined();
+  });
+
+  it('allows an admitted public GitHub project without an agent context', async () => {
+    component = await createTugQLAuthor(authorSource);
+    agentContext.securityContextId.set(undefined);
+    await settleQueryPage();
+    component.authorCustomerId.set('1');
+    component.authorPlan.set(comparisonPreview(component.authorDraftRevision()));
+    const sqlite = TestBed.inject(PublicSqliteQueryService);
+    vi.spyOn(sqlite, 'prepareTugQL').mockResolvedValue(
+      comparisonPreview(component.authorDraftRevision()),
+    );
+    const runSide = vi.spyOn(sqlite, 'runComparisonSide').mockImplementation(
+      async (_project, _definition, _plan, target) =>
+        comparisonObservation(target === 'chinook-baseline' ? 0 : 1),
+    );
+
+    expect(component.comparisonBlocker()).toContain('Ready');
+    await component.runComparisonBoth();
+
+    expect(runSide).toHaveBeenCalledTimes(2);
+    expect(component.comparisonSnapshot()?.context).toMatchObject({
+      accessClassification: 'public',
+      pageMemoryScope: `public-github:${JSON.stringify(component.project?.ref)}`,
+    });
+    expect(component.comparisonSnapshot()?.context).not.toHaveProperty('agentSecurityContextId');
+    expect(component.comparisonSnapshot()?.sides.map((side) => side.status)).toEqual([
+      'complete',
+      'complete',
+    ]);
+  });
+
+  it.each(['private', 'protected', undefined] as const)(
+    'blocks a %s or unknown project summary even when an agent context exists',
+    async (access) => {
+      component = await createTugQLAuthor(authorSource);
+      await settleQueryPage();
+      component.project = {
+        ...component.project!,
+        summary: access
+          ? { id: 'demo@buyer@project', title: 'Demo project', access }
+          : undefined,
+      };
+      (component as unknown as { comparisonAccessProjectRef?: IProjectRef }).comparisonAccessProjectRef =
+        component.project.ref;
+      component.comparisonProjectAccess.set(access);
+      (component as unknown as { syncScopeAndBindings(): void }).syncScopeAndBindings();
+      component.authorCustomerId.set('1');
+      component.authorPlan.set(comparisonPreview(component.authorDraftRevision()));
+      const sqlite = TestBed.inject(PublicSqliteQueryService);
+      const runSide = vi.spyOn(sqlite, 'runComparisonSide');
+
+      expect(component.comparisonBlocker()).toContain('Public project access is required');
+      await component.runComparisonBoth();
+      await component.retryComparisonSide('chinook-baseline');
+      await component.compareCompletedResults();
+
+      expect(runSide).not.toHaveBeenCalled();
+      expect(component.comparisonSnapshot()).toBeUndefined();
+    },
+  );
+
+  it('invalidates active workers and blocks Retry and Compare on a public-to-private change', async () => {
+    component = await createTugQLAuthor(authorSource);
+    await settleQueryPage();
+    component.authorCustomerId.set('1');
+    component.authorPlan.set(comparisonPreview(component.authorDraftRevision()));
+    const sqlite = TestBed.inject(PublicSqliteQueryService);
+    const prepare = vi.spyOn(sqlite, 'prepareTugQL').mockResolvedValue(
+      comparisonPreview(component.authorDraftRevision()),
+    );
+    const pending: { signal?: AbortSignal; resolve: (value: ComparisonWorkerObservation) => void }[] = [];
+    const runSide = vi.spyOn(sqlite, 'runComparisonSide').mockImplementation(
+      (_project, _definition, _plan, _target, signal) =>
+        new Promise((resolve) => pending.push({ signal, resolve })),
+    );
+    const oldResult = { kind: 'session-comparison', diff: { summary: { changed: 1 } } } as never;
+
+    const running = component.runComparisonBoth();
+    await vi.waitFor(() => expect(pending).toHaveLength(2));
+    component.comparisonResult.set(oldResult);
+    component.project = {
+      ...component.project!,
+      summary: { id: 'demo@buyer@project', title: 'Demo project', access: 'private' },
+    };
+    (component as unknown as { comparisonAccessProjectRef?: IProjectRef }).comparisonAccessProjectRef =
+      component.project.ref;
+    component.comparisonProjectAccess.set('private');
+    (component as unknown as { syncScopeAndBindings(): void }).syncScopeAndBindings();
+
+    expect(pending.every((entry) => entry.signal?.aborted)).toBe(true);
+    expect(component.comparisonSnapshot()?.invalidated).toBe(true);
+    expect(component.comparisonBlocker()).toContain('Public project access is required');
+    await component.retryComparisonSide('chinook-baseline');
+    await component.compareCompletedResults();
+    expect(prepare).toHaveBeenCalledTimes(1);
+    expect(runSide).toHaveBeenCalledTimes(2);
+    expect(component.comparisonResult()).toBe(oldResult);
+
+    pending.forEach((entry, index) => entry.resolve(comparisonObservation(index)));
+    await running;
+    expect(component.comparisonSnapshot()?.sides.some((side) => side.status === 'complete')).toBe(false);
+    expect(component.comparisonResult()).toBe(oldResult);
+  });
+
+  it('clears public admission and fences active work when currentProject becomes undefined', async () => {
+    const projectEvents = new Subject<IProjectContext | undefined>();
+    component = await createTugQLAuthor(authorSource, projectEvents);
+    await settleQueryPage();
+    component.authorCustomerId.set('1');
+    component.authorPlan.set(comparisonPreview(component.authorDraftRevision()));
+    const sqlite = TestBed.inject(PublicSqliteQueryService);
+    const prepare = vi.spyOn(sqlite, 'prepareTugQL').mockResolvedValue(
+      comparisonPreview(component.authorDraftRevision()),
+    );
+    const pending: { signal?: AbortSignal; resolve: (value: ComparisonWorkerObservation) => void }[] = [];
+    const runSide = vi.spyOn(sqlite, 'runComparisonSide').mockImplementation(
+      (_project, _definition, _plan, _target, signal) =>
+        new Promise((resolve) => pending.push({ signal, resolve })),
+    );
+    const previousResult = { kind: 'session-comparison', diff: { summary: { changed: 1 } } } as never;
+    const sourceBeforeClear = component.queryBodyText();
+
+    const running = component.runComparisonBoth();
+    await vi.waitFor(() => expect(pending).toHaveLength(2));
+    component.comparisonResult.set(previousResult);
+    projectEvents.next(undefined);
+    // Environment/query updates can sync bindings after navigation clears the
+    // nav project. A retained page summary must not restore public admission.
+    (component as unknown as { syncScopeAndBindings(): void }).syncScopeAndBindings();
+
+    expect(component.comparisonProjectAccess()).toBeUndefined();
+    expect(component.comparisonSnapshot()?.invalidated).toBe(true);
+    expect(pending.every((entry) => entry.signal?.aborted)).toBe(true);
+    expect(component.comparisonBlocker()).toContain('Public project access is required');
+    await component.retryComparisonSide('chinook-baseline');
+    await component.compareCompletedResults();
+    expect(prepare).toHaveBeenCalledTimes(1);
+    expect(runSide).toHaveBeenCalledTimes(2);
+    expect(component.queryBodyText()).toBe(sourceBeforeClear);
+    expect(component.comparisonResult()).toBe(previousResult);
+
+    pending.forEach((entry, index) => entry.resolve(comparisonObservation(index)));
+    await running;
+    expect(component.comparisonSnapshot()?.sides.some((side) => side.status === 'complete')).toBe(false);
+    expect(component.comparisonResult()).toBe(previousResult);
+  });
+
+  it('treats a route-only project reference as unknown until the matching public summary arrives', async () => {
+    const projectEvents = new Subject<IProjectContext>();
+    component = await createTugQLAuthor(authorSource, projectEvents);
+    await settleQueryPage();
+    component.authorCustomerId.set('1');
+    component.authorPlan.set(comparisonPreview(component.authorDraftRevision()));
+    const sqlite = TestBed.inject(PublicSqliteQueryService);
+    const runSide = vi.spyOn(sqlite, 'runComparisonSide');
+    const currentRef = component.project?.ref;
+    if (!currentRef) throw new Error('Expected the maintained public project.');
+    (component as unknown as { onProjRefChanged(ref: typeof currentRef): void }).onProjRefChanged(currentRef);
+
+    expect(component.comparisonProjectAccess()).toBe('public');
+    expect(component.comparisonBlocker()).toContain('Ready');
+
+    (component as unknown as { onProjRefChanged(ref: { storeId: string; projectId: string; branch: string }): void }).onProjRefChanged({
+      storeId: 'github.com',
+      projectId: 'another/public/project',
+      branch: 'main',
+    });
+
+    expect(component.comparisonProjectAccess()).toBeUndefined();
+    expect(component.comparisonBlocker()).toContain('Public project access is required');
+    await component.runComparisonBoth();
+    expect(runSide).not.toHaveBeenCalled();
+
+    projectEvents.next({
+      ref: currentRef,
+      summary: { id: 'demo@buyer@project', title: 'Old project', access: 'public' },
+    });
+    expect(component.project?.ref.projectId).toBe('another/public/project');
+    expect(component.comparisonProjectAccess()).toBeUndefined();
+
+    projectEvents.next({
+      ref: { storeId: 'github.com', projectId: 'another/public/project', branch: 'main' },
+      summary: { id: 'another/public/project', title: 'New project', access: 'public' },
+    });
+    expect(component.comparisonProjectAccess()).toBe('public');
+  });
+
+  it.each([
+    ['schema metadata', { schemaVersion: 'schema-v2' }],
+    ['compiled SQL', { sql: 'SELECT i.InvoiceId FROM Invoice as i LIMIT 99' }],
+  ] as const)(
+    'refuses fresh %s changes at the same draft revision and preserves the prior diff', async (_label, changed) => {
+      component = await createTugQLAuthor(authorSource);
+      await settleQueryPage();
+      component.authorCustomerId.set('1');
+      const reviewed = comparisonPreview(component.authorDraftRevision());
+      component.authorPlan.set(reviewed);
+      const sqlite = TestBed.inject(PublicSqliteQueryService);
+      const prepare = vi.spyOn(sqlite, 'prepareTugQL')
+        .mockResolvedValueOnce(reviewed)
+        .mockResolvedValueOnce(comparisonPreview(component.authorDraftRevision(), changed));
+      const runSide = vi.spyOn(sqlite, 'runComparisonSide').mockImplementation(
+        async (_project, _definition, _plan, target) =>
+          comparisonObservation(target === 'chinook-baseline' ? 0 : 1),
+      );
+
+      await component.runComparisonBoth();
+      const previousSnapshot = component.comparisonSnapshot();
+      const previousResult = { kind: 'session-comparison', diff: { summary: { changed: 0 } } } as never;
+      component.comparisonResult.set(previousResult);
+      expect(previousSnapshot?.sides.every((side) => side.status === 'complete')).toBe(true);
+      const startsBeforeRecheck = runSide.mock.calls.length;
+
+      await component.runComparisonBoth();
+
+      expect(prepare).toHaveBeenCalledTimes(2);
+      expect(runSide).toHaveBeenCalledTimes(startsBeforeRecheck);
+      expect(component.comparisonSnapshot()).toBe(previousSnapshot);
+      expect(component.comparisonResult()).toBe(previousResult);
+      expect(component.comparisonMessage()).toContain('changed after Preview');
+    },
+  );
+
+  it('retries only the failed side with the same frozen CustomerId binding', async () => {
+    component = await createTugQLAuthor(authorSource);
+    await settleQueryPage();
+    component.authorCustomerId.set('1');
+    component.authorPlan.set(comparisonPreview(component.authorDraftRevision()));
+    const sqlite = TestBed.inject(PublicSqliteQueryService);
+    vi.spyOn(sqlite, 'prepareTugQL').mockResolvedValue(
+      comparisonPreview(component.authorDraftRevision()),
+    );
+    const calls: { target: string; bindings: readonly unknown[] }[] = [];
+    let baselineAttempts = 0;
+    vi.spyOn(sqlite, 'runComparisonSide').mockImplementation(async (_project, _definition, plan, target) => {
+      calls.push({ target, bindings: plan.bindings });
+      if (target === 'chinook-baseline' && baselineAttempts++ === 0)
+        throw new Error('fixture network failure');
+      return comparisonObservation(target === 'chinook-baseline' ? 0 : 1);
+    });
+
+    await component.runComparisonBoth();
+    expect(component.comparisonSnapshot(), component.comparisonMessage()).toBeDefined();
+    expect(component.comparisonSnapshot()?.sides.map((side) => side.status)).toEqual([
+      'failed',
+      'complete',
+    ]);
+    await component.retryComparisonSide('chinook-baseline');
+
+    expect(calls.map((call) => call.target)).toEqual([
+      'chinook-baseline',
+      'chinook-candidate',
+      'chinook-baseline',
+    ]);
+    expect(calls.map((call) => call.bindings)).toEqual([[1], [1], [1]]);
+    expect(component.comparisonSnapshot()?.sides.map((side) => side.status)).toEqual([
+      'complete',
+      'complete',
+    ]);
+  });
+
+  it.each(['principal change', 'draft edit and byte-for-byte revert'] as const)(
+    'fences a late fixture response after a %s', async (change) => {
+      component = await createTugQLAuthor(authorSource);
+      await settleQueryPage();
+      component.authorCustomerId.set('1');
+      component.authorPlan.set(comparisonPreview(component.authorDraftRevision()));
+      const sqlite = TestBed.inject(PublicSqliteQueryService);
+      vi.spyOn(sqlite, 'prepareTugQL').mockResolvedValue(
+        comparisonPreview(component.authorDraftRevision()),
+      );
+      const pending: {
+        signal?: AbortSignal;
+        resolve: (value: ComparisonWorkerObservation) => void;
+      }[] = [];
+      vi.spyOn(sqlite, 'runComparisonSide').mockImplementation(
+        (_project, _definition, _plan, target, signal) =>
+          new Promise((resolve) => pending.push({
+            signal,
+            resolve: (observation) => resolve(observation),
+          })),
+      );
+
+      const running = component.runComparisonBoth();
+      await vi.waitFor(() => expect(pending).toHaveLength(2));
+      if (change === 'principal change') {
+        agentContext.securityContextId.set('sctx-next');
+        await vi.waitFor(() => expect(component.comparisonSnapshot()?.invalidated).toBe(true));
+      } else {
+        component.queryTextChanged(new CustomEvent('ionInput', {
+          detail: { value: authorSource.replace('limit 100', 'limit 99') },
+        }), false);
+        component.queryTextChanged(new CustomEvent('ionInput', {
+          detail: { value: authorSource },
+        }), false);
+        expect(component.queryBodyText()).toBe(authorSource);
+      }
+      expect(pending.every((entry) => entry.signal?.aborted)).toBe(true);
+      expect(component.comparisonSnapshot()?.invalidated).toBe(true);
+      pending.forEach((entry, index) => entry.resolve(comparisonObservation(index)));
+      await running;
+
+      expect(component.comparisonSnapshot()?.sides.some((side) => side.status === 'complete')).toBe(false);
+      expect(component.comparisonResult()).toBeUndefined();
+    },
+  );
+
+  it('aborts in-flight fixture workers when the query page is destroyed', async () => {
+    component = await createTugQLAuthor(authorSource);
+    await settleQueryPage();
+    component.authorCustomerId.set('1');
+    component.authorPlan.set(comparisonPreview(component.authorDraftRevision()));
+    const sqlite = TestBed.inject(PublicSqliteQueryService);
+    vi.spyOn(sqlite, 'prepareTugQL').mockResolvedValue(
+      comparisonPreview(component.authorDraftRevision()),
+    );
+    const pending: {
+      signal?: AbortSignal;
+      resolve: (value: ComparisonWorkerObservation) => void;
+    }[] = [];
+    vi.spyOn(sqlite, 'runComparisonSide').mockImplementation(
+      (_project, _definition, _plan, _target, signal) =>
+        new Promise((resolve) => pending.push({
+          signal,
+          resolve: (observation) => resolve(observation),
+        })),
+    );
+
+    const running = component.runComparisonBoth();
+    await vi.waitFor(() => expect(pending).toHaveLength(2));
+    component.ngOnDestroy();
+    expect(pending.every((entry) => entry.signal?.aborted)).toBe(true);
+    pending.forEach((entry, index) => entry.resolve(comparisonObservation(index)));
+    await running;
+    expect(component.comparisonSnapshot()).toBeUndefined();
+    expect(component.comparisonResult()).toBeUndefined();
+  });
+
+  it('expires rows and retry eligibility when Ionic leaves the cached query page', async () => {
+    component = await createTugQLAuthor(authorSource);
+    await settleQueryPage();
+    component.authorCustomerId.set('1');
+    component.authorPlan.set(comparisonPreview(component.authorDraftRevision()));
+    const sqlite = TestBed.inject(PublicSqliteQueryService);
+    vi.spyOn(sqlite, 'prepareTugQL').mockResolvedValue(
+      comparisonPreview(component.authorDraftRevision()),
+    );
+    const runSide = vi.spyOn(sqlite, 'runComparisonSide').mockImplementation(
+      async (_project, _definition, _plan, target) =>
+        comparisonObservation(target === 'chinook-baseline' ? 0 : 1),
+    );
+    await component.runComparisonBoth();
+    expect(component.comparisonSnapshot()?.sides.every((side) => side.status === 'complete')).toBe(true);
+    component.comparisonResult.set({ kind: 'session-comparison' } as never);
+
+    component.ionViewWillLeave();
+    await component.retryComparisonSide('chinook-baseline');
+
+    expect(component.comparisonSnapshot()).toBeUndefined();
+    expect(component.comparisonResult()).toBeUndefined();
+    expect(component.comparisonCustomerBinding()).toBe('No comparison pair has been run.');
+    expect(runSide).toHaveBeenCalledTimes(2);
+  });
 
   it.each([
     ['principal', () => agentContext.securityContextId.set('sctx-changed')],
@@ -2530,7 +3036,7 @@ select (
     template = '<ul aria-label="Access blockers">@for (blocker of accessBlockers(); track $index) {<li>{{ blocker }}</li>}</ul>',
     navigation?: {
       editor?: Observable<IQueryEditorState>;
-      project: Observable<IProjectContext>;
+      project: Observable<IProjectContext | undefined>;
       realEditor?: boolean;
       queries?: unknown;
       routeId?: string;

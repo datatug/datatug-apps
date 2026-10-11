@@ -430,6 +430,31 @@
   @if (queryState.queryType === 'HTTP') {
     <sneat-datatug-http-query-editor />
   } @else if (isTugqlAuthorJourney()) {
+    <ion-buttons class="query-view-switch" role="group" aria-label="Query workspace view">
+      <ion-button data-testid="query-view-author"
+        [attr.aria-pressed]="queryView() === 'author'"
+        [fill]="queryView() === 'author' ? 'solid' : 'clear'"
+        (click)="setQueryView('author')">Author</ion-button>
+      <ion-button data-testid="query-view-compare"
+        [attr.aria-pressed]="queryView() === 'compare'"
+        [fill]="queryView() === 'compare' ? 'solid' : 'clear'"
+        (click)="setQueryView('compare')">Compare</ion-button>
+    </ion-buttons>
+    @if (queryView() === 'compare') {
+      <sneat-public-sqlite-comparison-panel
+        [snapshot]="comparisonSnapshot()"
+        [result]="comparisonResult()"
+        [blockedReason]="comparisonBlocker()"
+        [customerBinding]="comparisonCustomerBinding()"
+        [queryLimit]="comparisonQueryLimit()"
+        [message]="comparisonMessage()"
+        [busy]="comparisonBusy()"
+        (runBoth)="runComparisonBoth()"
+        (retrySide)="retryComparisonSide($event)"
+        (cancelSide)="cancelComparisonSide($event)"
+        (compare)="compareCompletedResults()"
+      />
+    } @else {
     <ion-card class="author-card" data-testid="tugql-author">
       <ion-card-header>
         <div class="author-card-heading">
@@ -624,6 +649,7 @@
         }
       </ion-card-content>
     </ion-card>
+    }
   } @else if (editorTab === 'text') {
     <!-- Saved query text is editable and persists with its definition through
          the selected project's query API. -->

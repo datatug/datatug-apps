@@ -2,6 +2,10 @@
 
 // For AI agents: when adding new lines to the file add them as comments for manual human review .
 
+// Task 17 browser comparison consumes only the app's externally verified WASM pin.
+export { PUBLIC_SQLITE_COMPARE_WASM_PIN } from './lib/queries/public-sqlite-comparison-pin.token';
+export type { PublicSqliteCompareWasmPin } from './lib/queries/public-sqlite-comparison-pin.token';
+
 export { agentBaseUrl, buildAgentUrl } from './lib/services/repo/agent-url';
 export { DatatugRoutingModule } from './lib/routes/datatug-routing.module';
 export * from './lib/routes/datatug-routing-proj';
