@@ -32,7 +32,8 @@ h3 {
 
 .choices button,
 .space-list button,
-.create-space button {
+.create-space button,
+.create-space input {
   min-height: 2.75rem;
   padding: 0.55rem 0.85rem;
   border: 1px solid var(--ion-color-medium, #92949c);
@@ -83,13 +84,8 @@ h3 {
 .create-space input {
   box-sizing: border-box;
   width: 100%;
-  min-height: 2.75rem;
-  padding: 0.55rem;
   font: inherit;
-  color: var(--ion-text-color, #222);
-  background: var(--ion-background-color, #fff);
-  border: 1px solid var(--ion-color-medium, #92949c);
-  border-radius: 0.35rem;
+  cursor: text;
 }
 
 dl {
