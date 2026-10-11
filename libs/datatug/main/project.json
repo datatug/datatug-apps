@@ -28,6 +28,15 @@
         "tsConfig": "libs/datatug/main/tsconfig.spec.json"
       }
     },
+    "typecheck-spec": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit --project libs/datatug/main/tsconfig.spec.json"
+      },
+      "cache": false,
+      "inputs": ["default"],
+      "outputs": []
+    },
     "lint": {
       "executor": "@nx/eslint:lint"
     }
