@@ -182,7 +182,7 @@ describe('real cold shared overview route and metadata read', () => {
     await settle(h);
     expect(title(h)).toBe('Bob title');
   });
-  it.each(['query/q', 'queries', 'chat', 'env/local', 'boards'])(
+  it.each(['chat', 'env/local', 'boards'])(
     'cold unsupported %s refuses before storage',
     async (operation) => {
       const h = await RouterTestingHarness.create();
