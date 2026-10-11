@@ -5,6 +5,7 @@ import {
   computed,
   effect,
   inject,
+  Injector,
   signal,
   ViewChild,
 } from '@angular/core';
@@ -20,7 +21,8 @@ import {
   SneatUserService,
 } from '@sneat/auth-core';
 import { AuthPanelComponent } from '@sneat/auth-ui';
-import { Subscription } from 'rxjs';
+import { SpaceService, SpaceServiceModule } from '@sneat/space-services';
+import { combineLatest, filter, Subscription, take, timeout } from 'rxjs';
 import type { CheckoutState } from './checkout-contracts';
 import { appCheckoutAuth } from './checkout-auth';
 import { checkoutApi } from './checkout-api.mjs';
@@ -69,6 +71,7 @@ const modeForSessionID = (value: string | null): CheckoutMode | undefined =>
     IonTitle,
     IonContent,
     AuthPanelComponent,
+    SpaceServiceModule,
   ],
   templateUrl: './business-checkout-page.component.html',
   styleUrl: './business-checkout-page.component.scss',
@@ -79,6 +82,10 @@ export class BusinessCheckoutPageComponent {
   private readonly router = inject(Router);
   private readonly auth = inject(SneatAuthStateService);
   private readonly userService = inject(SneatUserService);
+  private readonly injector = inject(Injector);
+  private spaceCreation?: Subscription;
+  private creationActor = '';
+  private creationGeneration = 0;
   private readonly configuredApiOrigin = inject(
     DATATUG_BUSINESS_CHECKOUT_API_ORIGIN,
   );
@@ -104,6 +111,28 @@ export class BusinessCheckoutPageComponent {
   protected readonly accepted = signal(false);
   protected readonly authReturnTo = signal<string | undefined>(undefined);
   protected readonly state = signal<CheckoutState>({ stage: 'loading' });
+  protected readonly spaceName = signal('');
+  protected readonly spaceCreationStage = signal<
+    'idle' | 'creating' | 'waiting'
+  >('idle');
+  protected readonly spaceCreationError = signal('');
+  protected readonly createdSpaceID = signal('');
+  private readonly uncertainCreationActors = signal<ReadonlySet<string>>(
+    new Set(),
+  );
+  protected readonly spaceCreationUncertain = computed(() =>
+    this.uncertainCreationActors().has(this.authState()?.user?.uid ?? ''),
+  );
+  protected readonly canCreateSpace = computed(
+    () =>
+      !this.returning &&
+      !this.leftPage &&
+      this.apiAvailable() &&
+      !this.selectedSpace() &&
+      !this.selectionLocked() &&
+      this.state().stage === 'select-space' &&
+      isSneatAccountReady(this.authState(), this.userState()),
+  );
   protected readonly selectionLocked = computed(() => {
     const current = this.state();
     return (
@@ -138,6 +167,17 @@ export class BusinessCheckoutPageComponent {
       this.start(params),
     );
     effect(() => {
+      const auth = this.authState();
+      const user = this.userState();
+      if (
+        this.creationActor &&
+        (auth?.user?.uid !== this.creationActor ||
+          user?.user?.uid !== this.creationActor)
+      ) {
+        this.cancelSpaceCreation();
+      }
+    });
+    effect(() => {
       const userID = this.state().user?.id;
       const space = this.selectedSpace();
       const stage = this.state().stage;
@@ -152,6 +192,7 @@ export class BusinessCheckoutPageComponent {
   }
 
   private start(params: ParamMap = this.route.snapshot.queryParamMap): void {
+    this.cancelSpaceCreation();
     this.flow?.dispose();
     this.accepted.set(false);
     this.authReturnTo.set(undefined);
@@ -340,6 +381,149 @@ export class BusinessCheckoutPageComponent {
       this.accepted.set(false);
   }
 
+  protected createSpace(event: Event): void {
+    event.preventDefault();
+    if (
+      this.leftPage ||
+      !this.canCreateSpace() ||
+      this.spaceCreationStage() !== 'idle' ||
+      this.spaceCreationUncertain() ||
+      this.createdSpaceID()
+    )
+      return;
+    const title = this.spaceName().trim();
+    if (!title || title.length > 100) {
+      this.spaceCreationError.set(
+        'Enter a Space name of up to 100 characters.',
+      );
+      return;
+    }
+    this.spaceCreationError.set('');
+    const actor = this.authState()?.user?.uid;
+    if (!actor) return;
+    this.creationActor = actor;
+    const generation = ++this.creationGeneration;
+    const operation = new Subscription();
+    this.spaceCreation = operation;
+    this.spaceCreationStage.set('creating');
+    try {
+      const creation = this.injector
+        .get(SpaceService)
+        .createSpace({ type: 'group', title });
+      // Once dispatched, failure/cancellation cannot prove that the native write did not finish.
+      this.uncertainCreationActors.update(
+        (actors) => new Set([...actors, actor]),
+      );
+      operation.add(
+        creation.pipe(take(1), timeout(30_000)).subscribe({
+          next: (space) => {
+            if (!this.creationIsCurrent(generation)) return;
+            if (!validSpaceID(space?.id)) {
+              this.spaceCreationStage.set('idle');
+              this.spaceCreationError.set(
+                'Unable to confirm the new Space. Check your Spaces before trying again.',
+              );
+              return;
+            }
+            this.uncertainCreationActors.update(
+              (actors) => new Set([...actors].filter((id) => id !== actor)),
+            );
+            this.createdSpaceID.set(space.id);
+            this.waitForCreatedSpace(generation, operation);
+          },
+          error: () => {
+            if (!this.creationIsCurrent(generation)) return;
+            this.spaceCreationStage.set('idle');
+            this.spaceCreationError.set(
+              'Unable to confirm Space creation. Check your Spaces before trying again.',
+            );
+          },
+          complete: () => {
+            if (!this.creationIsCurrent(generation) || this.createdSpaceID())
+              return;
+            this.spaceCreationStage.set('idle');
+            this.spaceCreationError.set(
+              'Unable to confirm Space creation. Select the Space above if it appears on your account.',
+            );
+          },
+        }),
+      );
+    } catch {
+      this.spaceCreationStage.set('idle');
+      this.spaceCreationError.set('Unable to create a Space. Please retry.');
+    }
+  }
+
+  protected checkCreatedSpace(): void {
+    if (
+      this.leftPage ||
+      !this.canCreateSpace() ||
+      !this.createdSpaceID() ||
+      this.spaceCreationStage() !== 'idle'
+    )
+      return;
+    const operation = new Subscription();
+    this.spaceCreation?.unsubscribe();
+    this.spaceCreation = operation;
+    this.waitForCreatedSpace(this.creationGeneration, operation);
+  }
+
+  private creationIsCurrent(generation: number): boolean {
+    return (
+      generation === this.creationGeneration &&
+      !this.leftPage &&
+      this.authState()?.user?.uid === this.creationActor &&
+      this.userState()?.user?.uid === this.creationActor
+    );
+  }
+
+  private waitForCreatedSpace(
+    generation: number,
+    operation: Subscription,
+  ): void {
+    this.spaceCreationStage.set('waiting');
+    this.spaceCreationError.set('');
+    operation.add(
+      combineLatest([this.auth.authState, this.userService.userState])
+        .pipe(
+          filter(
+            ([auth, user]) =>
+              isSneatAccountReady(auth, user) &&
+              manageableBusinessSpaces(user.record?.spaces).some(
+                (space) => space.id === this.createdSpaceID(),
+              ),
+          ),
+          take(1),
+          timeout(15_000),
+        )
+        .subscribe({
+          next: () => {
+            if (!this.creationIsCurrent(generation)) return;
+            const id = this.createdSpaceID();
+            this.spaceCreationStage.set('idle');
+            this.chooseSpace(id);
+          },
+          error: () => {
+            if (!this.creationIsCurrent(generation)) return;
+            this.spaceCreationStage.set('idle');
+            this.spaceCreationError.set(
+              'Space created. Owner or admin access has not appeared on your account yet. Check access again to continue.',
+            );
+          },
+        }),
+    );
+  }
+
+  private cancelSpaceCreation(): void {
+    ++this.creationGeneration;
+    this.spaceCreation?.unsubscribe();
+    this.spaceCreation = undefined;
+    this.creationActor = '';
+    this.createdSpaceID.set('');
+    this.spaceCreationStage.set('idle');
+    this.spaceCreationError.set('');
+  }
+
   protected chooseSpace(spaceID: string): void {
     if (this.selectionLocked()) return;
     if (spaceID && !this.spaces().some((space) => space.id === spaceID)) return;
@@ -385,6 +569,7 @@ export class BusinessCheckoutPageComponent {
   }
 
   private navigateSelection(queryParams: Record<string, string>): void {
+    this.cancelSpaceCreation();
     const user = this.state().user;
     this.flow?.dispose();
     this.flow = undefined;
@@ -407,6 +592,7 @@ export class BusinessCheckoutPageComponent {
   }
 
   protected async signOut(): Promise<void> {
+    this.cancelSpaceCreation();
     try {
       await this.flow?.signOut();
     } catch {
@@ -444,6 +630,7 @@ export class BusinessCheckoutPageComponent {
   }
 
   ionViewWillLeave(): void {
+    this.cancelSpaceCreation();
     this.leftPage = true;
     this.flow?.dispose();
   }
@@ -455,6 +642,7 @@ export class BusinessCheckoutPageComponent {
   }
 
   ngOnDestroy(): void {
+    this.cancelSpaceCreation();
     this.routeSubscription.unsubscribe();
     this.flow?.dispose();
   }

@@ -100,6 +100,67 @@
           } @else if (state().stage !== 'sign-in') {
             <p>No eligible shared Spaces are available on this account.</p>
           }
+          @if (canCreateSpace()) {
+            <form class="create-space" (submit)="createSpace($event)">
+              <h3>Create a shared Space</h3>
+              <p>
+                Your new Space will be selected after owner access is confirmed.
+              </p>
+              <label for="business-space-name">Space name</label>
+              <input
+                id="business-space-name"
+                name="spaceName"
+                type="text"
+                maxlength="100"
+                required
+                autocomplete="organization"
+                [value]="spaceName()"
+                [disabled]="
+                  spaceCreationStage() !== 'idle' ||
+                  !!createdSpaceID() ||
+                  spaceCreationUncertain()
+                "
+                (input)="spaceName.set($any($event.target).value)"
+              />
+              @if (createdSpaceID()) {
+                <button
+                  type="button"
+                  [disabled]="spaceCreationStage() !== 'idle'"
+                  (click)="checkCreatedSpace()"
+                >
+                  Check Space access
+                </button>
+              } @else {
+                <button
+                  type="submit"
+                  [disabled]="
+                    spaceCreationStage() !== 'idle' ||
+                    !spaceName().trim() ||
+                    spaceCreationUncertain()
+                  "
+                >
+                  {{
+                    spaceCreationStage() === 'creating'
+                      ? 'Creating Space…'
+                      : 'Create Space'
+                  }}
+                </button>
+              }
+              <p role="status" aria-live="polite">
+                @if (spaceCreationStage() === 'waiting') {
+                  Waiting for owner access…
+                }
+                @if (
+                  spaceCreationUncertain() && spaceCreationStage() === 'idle'
+                ) {
+                  Space creation may have completed. Select the Space above when
+                  it appears on your account.
+                } @else {
+                  {{ spaceCreationError() }}
+                }
+              </p>
+            </form>
+          }
         </section>
       } @else {
         <p class="selected-space">
@@ -158,8 +219,8 @@
           }
         }
         @case ('business-ended') {
-          {{ mode().toUpperCase() }} Business access has ended for this Space.
-          A new paid confirmation in this mode is required before continuing.
+          {{ mode().toUpperCase() }} Business access has ended for this Space. A
+          new paid confirmation in this mode is required before continuing.
         }
         @case ('expired') {
           This {{ mode().toUpperCase() }} checkout expired. You can return to
@@ -287,7 +348,11 @@
       </p>
       <p><a routerLink="/">Continue to DataTug</a></p>
     }
-    @if (state().stage === 'business-active' && state().spaceID && mode() === 'live') {
+    @if (
+      state().stage === 'business-active' &&
+      state().spaceID &&
+      mode() === 'live'
+    ) {
       <p>
         <a
           [routerLink]="['/new-project']"
