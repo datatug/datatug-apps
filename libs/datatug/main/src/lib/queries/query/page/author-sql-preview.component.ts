@@ -1,5 +1,6 @@
-import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import type { PublicSqliteQueryPreview } from '../../public-sqlite-tugql';
+import { tokenizeTugql } from './tugql-syntax';
 
 interface AuthorSqlBindingDisplay {
   readonly kind: 'customer-id' | 'literal';
@@ -18,6 +19,7 @@ export class AuthorSqlPreviewComponent {
   public readonly customerId = input('');
   public readonly customerIdValid = input(false);
   public readonly customerIdMissing = input(true);
+  public readonly sqlTokens = computed(() => tokenizeTugql(this.plan().sql));
 
   public get bindings(): readonly AuthorSqlBindingDisplay[] {
     const plan = this.plan();

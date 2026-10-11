@@ -613,20 +613,16 @@
               >Undo format</ion-button
             >
           </div>
-          <ion-textarea
+          <sneat-author-code-editor
             class="author-code-editor"
             data-testid="query-body-text"
-            rows="8"
-            autoGrow="false"
-            fill="outline"
             label="TugQL · Query"
-            labelPlacement="stacked"
-            [value]="queryBodyText()"
+            [text]="queryBodyText() ?? ''"
             [disabled]="queryState.isSaving || running()"
-            [readonly]="
+            [readOnly]="
               queryState.saveSupported === false && !isTugqlAuthorJourney()
             "
-            (ionInput)="queryTextChanged($event)"
+            (textChange)="authorCodeChanged($event)"
           />
           @if (authorFormatStatus()) {
             <p

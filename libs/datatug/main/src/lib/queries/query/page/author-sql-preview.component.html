@@ -7,7 +7,7 @@
     <span class="author-preview-state">Preview · Not executed</span>
   </div>
   <div class="author-sql-scroll" tabindex="0" aria-label="Compiled SQLite SQL">
-    <pre><code>{{ plan().sql }}</code></pre>
+    <pre><code>@for (token of sqlTokens(); track $index) {<span [class]="token.kind ? 'tugql-token-' + token.kind : null">{{ token.text }}</span>}</code></pre>
   </div>
   <details
     class="author-source-inspector"
