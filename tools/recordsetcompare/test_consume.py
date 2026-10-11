@@ -336,6 +336,14 @@ class ConsumeTests(unittest.TestCase):
             with self.assertRaisesRegex(consume.VerificationError, "gh verification timed out"):
                 consume.run_command(["gh", "api"])
 
+    def test_verification_command_forces_official_github_host_over_inherited_enterprise_host(self):
+        result = subprocess.CompletedProcess(["gh", "api"], 0, stdout="{}", stderr="")
+        with patch.dict(consume.os.environ, {"GH_HOST": "enterprise.invalid"}), patch.object(
+            consume.subprocess, "run", return_value=result
+        ) as run:
+            self.assertEqual(consume.run_command(["gh", "api"]), "{}")
+        self.assertEqual(run.call_args.kwargs["env"]["GH_HOST"], "github.com")
+
     def test_streaming_download_refuses_non_github_redirects_and_downgrade(self):
         for target in (
             "https://attacker.example/download",

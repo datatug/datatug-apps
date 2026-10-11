@@ -60,6 +60,8 @@ class VerificationError(RuntimeError):
 
 def run_command(args: list[str], *, cwd: Path = ROOT) -> str:
     """Run a verifier command without printing credentials or raw environment."""
+    command_env = os.environ.copy()
+    command_env["GH_HOST"] = "github.com"
     try:
         result = subprocess.run(
             args,
@@ -67,7 +69,7 @@ def run_command(args: list[str], *, cwd: Path = ROOT) -> str:
             check=False,
             capture_output=True,
             text=True,
-            env=os.environ.copy(),
+            env=command_env,
             timeout=VERIFICATION_COMMAND_TIMEOUT_SECONDS,
         )
     except FileNotFoundError as error:
