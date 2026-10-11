@@ -7,7 +7,16 @@ import {
   toProjectQueryWire,
   UnsupportedQueryContractError,
 } from './project-query-contract';
-import { QueryType } from '../models/definition/query-def';
+import {
+  QueryType,
+  type IHttpQueryRequest,
+  type ISqlQueryRequest,
+} from '../models/definition/query-def';
+import type { ProjectQueryReadWire, ProjectQueryWire } from './project-query-contract';
+
+function asReadWire(wire: ProjectQueryWire): ProjectQueryReadWire {
+  return { ...wire };
+}
 
 describe('common project query contract', () => {
   it.each(['chinook.Customer', 'adventureworks.Person.Person'])(
@@ -20,7 +29,7 @@ describe('common project query contract', () => {
       const wire = toProjectQueryWire(query);
       expect(wire.folderPath).toBe('~');
       expect(wire.type).toBe(QueryType.DTQL);
-      expect(fromProjectQueryWire(wire)).toEqual(query);
+      expect(fromProjectQueryWire(asReadWire(wire))).toEqual(query);
       expect(wire.federation).not.toBe(query.federation);
     },
   );
@@ -28,7 +37,7 @@ describe('common project query contract', () => {
     const query = {
       id: 'q',
       title: 'SQL',
-      request: { queryType: QueryType.SQL, text: '\nSELECT 1;\n' },
+      request: { queryType: QueryType.SQL, text: '\nSELECT 1;\n' } as ISqlQueryRequest,
     };
     expect(toProjectQueryWire(query, 'folder/q')).toMatchObject({
       folderPath: 'folder',
@@ -38,7 +47,7 @@ describe('common project query contract', () => {
     expect(
       toProjectQueryWire({
         ...query,
-        request: { queryType: QueryType.SQL, text: '' },
+        request: { queryType: QueryType.SQL, text: '' } as ISqlQueryRequest,
       }).text,
     ).toBe('');
   });
@@ -46,11 +55,11 @@ describe('common project query contract', () => {
     const query = {
       id: 'chinook-customer-genre-mix',
       connectionId: 'chinook-sqlite',
-      request: { queryType: QueryType.SQL, text: 'SELECT Genre FROM Genre' },
+      request: { queryType: QueryType.SQL, text: 'SELECT Genre FROM Genre' } as ISqlQueryRequest,
     };
     const wire = toProjectQueryWire(query, 'demodb/chinook-customer-genre-mix');
     expect(wire.connectionId).toBe('chinook-sqlite');
-    expect(fromProjectQueryWire(wire)).toEqual(query);
+    expect(fromProjectQueryWire(asReadWire(wire))).toEqual(query);
   });
   it('preserves a saved relationship pin on read and refuses a lossy project-query save', () => {
     const relationshipBindings = [
@@ -93,9 +102,11 @@ describe('common project query contract', () => {
     'readReceipt',
   ])('refuses richer federation %s without changing the draft', (key) => {
     const query = createHostedDemoDbQuery('q');
+    const federation = query.federation;
+    if (!federation) throw new Error('Expected hosted federation metadata.');
     const enriched = {
       ...query,
-      federation: { ...query.federation, [key]: {} },
+      federation: { ...federation, [key]: {} },
     };
     const before = JSON.stringify(enriched);
     expect(() => toProjectQueryWire(enriched)).toThrow(
@@ -107,7 +118,7 @@ describe('common project query contract', () => {
     expect(() =>
       toProjectQueryWire({
         id: 'q',
-        request: { queryType: QueryType.HTTP, url: '/foo' },
+        request: { queryType: QueryType.HTTP, url: '/foo', method: 'GET' } as IHttpQueryRequest,
       }),
     ).toThrow(UnsupportedQueryContractError);
     expect(() =>

@@ -790,17 +790,18 @@ describe('IncidentClientService', () => {
     });
 
     it.each([
-      ['incident.created', CREATED_PAYLOAD],
-      ['incident.status', { status: 'investigating' }],
-      ['incident.outcome', { outcome: 'resolved' }],
+      ['incident.created', CREATED_PAYLOAD, {}],
+      ['incident.status', { status: 'investigating' }, {}],
+      ['incident.outcome', { outcome: 'resolved' }, {}],
       [
         'incident.merged',
         {
           into: { storeId: 'ops', incidentId: 'INC-2' },
           mergeId: 'merge-1',
         },
+        {},
       ],
-      ['note.added', { body: 'Payment API is slow' }],
+      ['note.added', { body: 'Payment API is slow' }, {}],
       [
         'context.fact.added',
         {
@@ -819,6 +820,7 @@ describe('IncidentClientService', () => {
             },
           },
         },
+        {},
       ],
       [
         'context.fact.promoted',
@@ -834,9 +836,10 @@ describe('IncidentClientService', () => {
           },
           role: 'affected',
         },
+        {},
       ],
-      ['context.fact.rejected', { layer: 'hypothesis:H17' }],
-      ['context.fact.rejected', { layer: 'hypothesis:checkout / EU west' }],
+      ['context.fact.rejected', { layer: 'hypothesis:H17' }, {}],
+      ['context.fact.rejected', { layer: 'hypothesis:checkout / EU west' }, {}],
       [
         'compare.run',
         { key: ['Invoice.ID'] },
@@ -1109,6 +1112,10 @@ describe('IncidentClientService', () => {
         },
       },
     };
+    if (request.event.type !== 'context.fact.promoted') {
+      throw new Error('Expected a context fact promotion request.');
+    }
+    const promotedFact = request.event.payload.fact;
 
     it('POSTs the frozen append request and strictly decodes the committed event and projection', () => {
       let result: unknown;
@@ -1134,7 +1141,7 @@ describe('IncidentClientService', () => {
         contextPromotions: [
           {
             eventId: 'event-1',
-            fact: request.event.payload.fact,
+            fact: promotedFact,
             role: 'affected',
           },
         ],
@@ -1174,7 +1181,7 @@ describe('IncidentClientService', () => {
         .subscribe((value) => (result = value));
       const duplicate = {
         eventId: 'event-2',
-        fact: request.event.payload.fact,
+        fact: promotedFact,
         role: 'affected' as const,
       };
       httpMock.expectOne(`${BASE_URL}/INC-1/events`).flush({
@@ -1212,7 +1219,7 @@ describe('IncidentClientService', () => {
           contextPromotions: [
             {
               eventId: 'event-1',
-              fact: request.event.payload.fact,
+              fact: promotedFact,
               role: 'affected',
             },
           ],
@@ -1243,7 +1250,7 @@ describe('IncidentClientService', () => {
           contextPromotions: [
             {
               eventId: 'event-shared',
-              fact: request.event.payload.fact,
+              fact: promotedFact,
               role: 'affected',
             },
           ],

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { runFederatedQuery } from './federated-query-executor';
-import { QueryType, type IQueryDef } from '../models/definition/query-def';
+import { QueryType, type IQueryDef, type ITextQueryRequest } from '../models/definition/query-def';
 import { OVDB_ERROR_STREAM_MIME } from './ovdb-json-record-stream';
 
 const definition: IQueryDef = {
@@ -52,10 +52,10 @@ columns:
   - {aggregate: {function: count, args: [{field: TrackId, source: track}]}, as: TrackCount}
   - {aggregate: {function: sum, args: [{field: Milliseconds, source: track}]}, as: TotalMilliseconds}
 limit: 10`;
-    const saved = { ...definition, request: { queryType: QueryType.DTQL, text: yaml },
+    const saved = { ...definition, request: { queryType: QueryType.DTQL, text: yaml } as ITextQueryRequest,
       federation: { ...definition.federation, tables: definition.federation?.tables.map((table) =>
         ({ ...table, schema: 'chinook', fields: table.name === 'Track' ? [...table.fields, 'Milliseconds'] : table.fields })) },
-      recordsets: [{ columns: [{ name: 'Artist', type: 'string' }, { name: 'TrackCount', type: 'integer' },
+      recordsets: [{ name: 'Artists', columns: [{ name: 'Artist', type: 'string' }, { name: 'TrackCount', type: 'integer' },
         { name: 'TotalMilliseconds', type: 'integer' }] }],
     } as IQueryDef;
     const calls: { url: string; init?: RequestInit }[] = [];
@@ -105,8 +105,8 @@ limit: 10`;
       return new Response(stream, { headers: { 'Content-Type': 'application/json' } });
     });
     const events: string[] = [];
-    const firstRecord = vi.fn(() => events.push('first-record'));
-    const first = vi.fn(() => events.push('stage-record'));
+    const firstRecord = vi.fn(async () => { events.push('first-record'); });
+    const first = vi.fn(async () => { events.push('stage-record'); });
     let settled = false;
     const run = runFederatedQuery(definition, undefined, 'in-memory-token', undefined, undefined, 'full', undefined, undefined,
       { fetch: fetcher, onFirstRecord: firstRecord, onNativeRecord: first });

@@ -336,12 +336,14 @@ describe('bounded declared source with real OVDB target transport', () => {
         new AbortController().signal,
         pins,
       );
+      const declaredSource = discovery.declaredSources?.[0];
+      if (!declaredSource) throw new Error('Expected a verified fixture source.');
       const definition = metadata.scenario(
-        fixture.contract.source,
+        declaredSource.source,
         discovery,
         discovery.suggestions[0],
         { userRows: 1000, userOffset: 0 },
-        discovery.declaredSources?.[0],
+        declaredSource,
       );
       fixture.http.mockClear();
       await expect(

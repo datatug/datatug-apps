@@ -871,7 +871,7 @@ describe('Author TugQL structural preview and Run binding', () => {
       sql: string,
       bindings: readonly (string | number | null)[],
       columns: readonly string[] | undefined,
-      proof: typeof preview.authorProof,
+      proof: typeof preview.authorProof | undefined,
       profile: 'invoice-query' | 'customer-count-cte' | undefined,
       fullColumns: typeof preview.outputColumns = preview.outputColumns,
       relationship: typeof preview.relationship = preview.relationship,

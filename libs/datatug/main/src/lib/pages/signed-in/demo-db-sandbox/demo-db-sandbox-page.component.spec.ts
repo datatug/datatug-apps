@@ -1,6 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { provideRouter } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
+import type { ISneatAuthUser } from '@sneat/auth-core';
 import { BehaviorSubject, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -32,18 +33,29 @@ const sandboxInfo = {
 describe('DemoDbSandboxPageComponent', () => {
   const signedOut: IDatatugUserState = {
     status: 'notAuthenticated',
-    user: null,
-    record: null,
+    user: undefined,
+    record: undefined,
   };
+  const authUser = (uid: string, isAnonymous: boolean): ISneatAuthUser => ({
+    uid,
+    isAnonymous,
+    emailVerified: false,
+    providerData: [],
+    displayName: null,
+    email: null,
+    phoneNumber: null,
+    photoURL: null,
+    providerId: 'firebase',
+  });
   const signedIn: IDatatugUserState = {
     status: 'authenticated',
-    user: { uid: 'registered-user', isAnonymous: false },
-    record: null,
+    user: authUser('registered-user', false),
+    record: undefined,
   };
   const anonymous: IDatatugUserState = {
     status: 'authenticated',
-    user: { uid: 'anonymous-user', isAnonymous: true },
-    record: null,
+    user: authUser('anonymous-user', true),
+    record: undefined,
   };
 
   function setup(
@@ -150,7 +162,7 @@ describe('DemoDbSandboxPageComponent', () => {
           throwError(() => new HttpErrorResponse({ status: 404 })),
         )
         .mockReturnValue(of(sandboxInfo)),
-      create: vi.fn(() => of(sandboxInfo)),
+      create: vi.fn((_requestId: string) => of(sandboxInfo)),
       delete: vi.fn(() => of({})),
       query: vi.fn(() => of(queryResult)),
     };

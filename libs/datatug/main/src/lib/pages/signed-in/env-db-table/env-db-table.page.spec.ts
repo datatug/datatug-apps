@@ -134,13 +134,13 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
     name: 'Customer',
     meta: {
       name: 'Customer',
+      dbType: 'BASE TABLE',
       schema: 'main',
       columns: [
         { name: 'CustomerId', dbType: 'integer' },
         { name: 'FirstName', dbType: 'string' },
       ],
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any,
+    },
   };
 
   async function createComponent(
@@ -317,10 +317,12 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
   // there is no second, parallel cell-click mechanism left beside the context panel.
   it('does not select an FK-backed cell that the server has not mapped semantically', async () => {
     component = await createComponent([]);
+    const meta = table.meta;
+    if (!meta) throw new Error('Expected the fixture table metadata');
     component.table = {
       ...table,
       meta: {
-        ...(table.meta as Record<string, unknown>),
+        ...meta,
         foreignKeys: [
           {
             name: 'FK_Customer_Country',
@@ -328,8 +330,7 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
             refTable: { schema: 'main', name: 'Country' },
           },
         ],
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } as any,
+      },
     };
 
     const cellEl = document.createElement('div');

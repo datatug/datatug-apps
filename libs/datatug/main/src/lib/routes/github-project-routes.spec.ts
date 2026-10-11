@@ -774,7 +774,7 @@ describe('navigating to a short address', () => {
         ],
       });
       const result = await TestBed.runInInjectionContext(() =>
-        githubAddressCanMatch({} as never, segments('/project/github.com/O/r')),
+        githubAddressCanMatch({} as never, segments('/project/github.com/O/r'), {} as never),
       );
       expect(TestBed.inject(Router).serializeUrl(result as never)).toBe(
         '/project/github.com/o/r',
@@ -788,7 +788,7 @@ describe('navigating to a short address', () => {
         ],
       });
       const result = await TestBed.runInInjectionContext(() =>
-        githubAddressCanMatch({} as never, segments('/project/github.com/o/r')),
+        githubAddressCanMatch({} as never, segments('/project/github.com/o/r'), {} as never),
       );
       expect(result).toBe(false);
     });

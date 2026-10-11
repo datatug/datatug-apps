@@ -86,7 +86,7 @@ function fixture(
     signal?: AbortSignal | null;
   }[] = [];
   const http: typeof fetch = vi.fn(async (_url, init) => {
-    if (/\/v1\/databases\/[^/]+$/.test(String(_url))) return response({});
+    if (/\/v1\/databases\/[^/]+$/.test(String(_url))) return response([]);
     const query = JSON.parse(String(init?.body));
     const name = query.from.name;
     calls.push({
@@ -185,7 +185,7 @@ describe('configured immutable federation (synthetic transport, publication gate
     expect(f.calls).toEqual([]);
     await localRead(transport);
     expect(f.calls.map((c) => c.name)).toEqual(['Customer', 'Countries']);
-    expect(f.calls[1].query.where).toEqual({
+    expect(f.calls[1].query['where']).toEqual({
       left: { field: 'raw' },
       op: 'In',
       right: { values: [' USA'] },
@@ -537,7 +537,7 @@ describe('explicit immutable save and hostile transport boundaries', () => {
       user: pins,
       geo: pins,
     });
-    expect(d.federation?.bounds?.runtime?.databases.user).toEqual(initial);
+    expect(d.federation?.bounds?.runtime?.databases['user']).toEqual(initial);
     const changed = {
       ...d,
       request: { ...d.request, text: '{}' },

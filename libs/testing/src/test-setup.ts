@@ -4,8 +4,8 @@ import {
   setupGlobalMocks,
 } from './base-test-setup';
 import { ErrorLogger, AnalyticsService } from '@sneat/core';
-import { Auth } from 'firebase/auth';
 import { Firestore } from 'firebase/firestore';
+import { SNEAT_FIREBASE_AUTH } from '@sneat/app-auth';
 
 export function configureGlobalTestBed() {
   try {
@@ -28,7 +28,7 @@ export function configureGlobalTestBed() {
           },
         },
         {
-          provide: Auth,
+          provide: SNEAT_FIREBASE_AUTH,
           useValue: {
             onIdTokenChanged: vi.fn(() => () => void 0),
             onAuthStateChanged: vi.fn(() => () => void 0),

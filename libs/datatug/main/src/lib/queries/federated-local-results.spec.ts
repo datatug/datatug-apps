@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { TypedValue } from '@sneat/datatug-semantic';
+import { decodeSourceRights, type TypedValue } from '@sneat/datatug-semantic';
 import rightsFixture from '@sneat/datatug-semantic/fixtures/client-only-source-rights.json';
 import type { IQueryDef } from '../models/definition/query-def';
 import type { FederatedQueryResult } from './federated-query-executor';
@@ -50,10 +50,19 @@ afterEach(async () => {
 describe('local graph artifact transaction and lifecycle', () => {
   it('keeps captured source notices in supported history and refuses unsafe or oversized metadata before replacing rows', async () => {
     const db = await database(), primary = rows(2, 'rights');
-    const captured = { ...result(primary, 1, 0, 'rights'), ...structuredClone(rightsFixture.structured) };
+    const captured = {
+      ...result(primary, 1, 0, 'rights'),
+      ...structuredClone(rightsFixture.structured),
+      sourceRights: decodeSourceRights(rightsFixture.structured.sourceRights),
+    };
     const descriptor = await replaceGraphOutput(db, definition, captured, primary, 1); db.close();
     const fetcher = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('No history traffic'));
-    captured.sourceRights[0].declaration.text = 'Changed live terms';
+    const changedSourceRights = captured.sourceRights.map((right, index) =>
+      index === 0
+        ? { ...right, declaration: { ...right.declaration, text: 'Changed live terms' } }
+        : right,
+    );
+    expect(changedSourceRights).not.toEqual(captured.sourceRights);
     const opened = await openLocalResult(descriptor.id);
     expect(opened.result.sourceRights).toEqual(rightsFixture.structured.sourceRights);
     expect(opened.result.usedSourceIds).toEqual(rightsFixture.structured.usedSourceIds);

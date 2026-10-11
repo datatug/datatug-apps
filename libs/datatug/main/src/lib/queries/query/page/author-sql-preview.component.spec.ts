@@ -21,6 +21,10 @@ describe('AuthorSqlPreviewComponent', () => {
       fixtureSha256: 'a'.repeat(64),
       schemaVersion: '1',
       draftRevision: 3,
+      authorProof: {
+        profile: 'invoice-query',
+        resolvedQuery: {} as PublicSqliteQueryPreview['authorProof']['resolvedQuery'],
+      },
       relationship: {
         id: 'FK_Invoice_Customer_CustomerId',
         version: 'fp-main.Invoice.CustomerId-main.Customer.CustomerId',
@@ -81,8 +85,10 @@ describe('AuthorSqlPreviewComponent', () => {
       'Prepared metadata · not worker-verified or executed.',
     );
     const outputRows = Array.from(
-      fixture.nativeElement.querySelectorAll('.author-output-columns li'),
-    ).map((row: Element) =>
+      (fixture.nativeElement as HTMLElement).querySelectorAll(
+        '.author-output-columns li',
+      ),
+    ).map((row) =>
       Array.from(row.children).map((cell) => cell.textContent?.trim()),
     );
     expect(outputRows).toEqual([
@@ -101,6 +107,10 @@ describe('AuthorSqlPreviewComponent', () => {
       fixtureSha256: 'old-pin',
       schemaVersion: '1',
       draftRevision: 1,
+      authorProof: {
+        profile: 'invoice-query',
+        resolvedQuery: {} as PublicSqliteQueryPreview['authorProof']['resolvedQuery'],
+      },
       relationship: {
         id: 'FK_Invoice_Customer_CustomerId',
         version: 'fp-main.Invoice.CustomerId-main.Customer.CustomerId',

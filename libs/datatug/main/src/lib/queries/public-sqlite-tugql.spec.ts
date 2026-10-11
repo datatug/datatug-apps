@@ -16,7 +16,7 @@ const resolve = (source: string) => {
   const parameterFreeTree = { ...tree };
   delete parameterFreeTree.parameters;
   const structuralQuery = { ...tree.query };
-  delete structuralQuery.where;
+  delete structuralQuery['where'];
   const result = resolveTugQL(
     {
       sourceMetadata: parsed.document.sourceMetadata,
@@ -52,9 +52,10 @@ it('previews the bounded typed Invoice scan without requiring or inventing a bin
   const source = `parameters (\n  @CustomerId integer required\n)\nfrom Invoice as i\nwhere i.CustomerId = @CustomerId\nlimit 7\nselect i.InvoiceId, i.InvoiceDate\n`;
   const parsed = parseTugQL(source);
   expect(parsed.diagnostics).toEqual([]);
-  if (!parsed.document.tree) throw new Error('Expected parsed TugQL tree.');
+  const parsedTree = parsed.document.tree;
+  if (!parsedTree) throw new Error('Expected parsed TugQL tree.');
   expect(() =>
-    requireCustomerIdParameterSource(parsed.document.tree),
+    requireCustomerIdParameterSource(parsedTree),
   ).not.toThrow();
   const plan = compilePublicSqliteTugQL(resolve(source), {
     fixtureSha256: 'fixture-sha256',
@@ -99,9 +100,10 @@ it('fails closed when the structural compiler receives any WHERE clause', () => 
     bindings: [],
   });
   expect(resolution.diagnostics).toEqual([]);
-  if (!resolution.resolved) throw new Error('Expected TugQL resolution.');
+  const resolved = resolution.resolved;
+  if (!resolved) throw new Error('Expected TugQL resolution.');
   expect(() =>
-    compilePublicSqliteTugQL(resolution.resolved, {
+    compilePublicSqliteTugQL(resolved, {
       fixtureSha256: 'fixture-sha256',
       schemaVersion: 'invoice-schema-v1',
       draftRevision: 1,
@@ -299,10 +301,11 @@ it('resolves and compiles only the declared Invoice to Customer relationship', (
     'i.InvoiceId, i.InvoiceDate, i.CustomerId, c.FirstName, c.LastName, c.Email',
   );
   expect(timestampProjection.diagnostics).toEqual([]);
-  if (!timestampProjection.resolved)
+  const timestampResolved = timestampProjection.resolved;
+  if (!timestampResolved)
     throw new Error('Expected resolved timestamp projection.');
   expect(() =>
-    compilePublicSqliteTugQL(timestampProjection.resolved, {
+    compilePublicSqliteTugQL(timestampResolved, {
       fixtureSha256: 'fixture-sha256',
       schemaVersion: 'joined-schema-v1',
       draftRevision: 1,
@@ -400,8 +403,9 @@ it('does not infer parameter identity from a matching literal value', () => {
     `parameters (\n  @CustomerId integer required\n)\nfrom Invoice as i\nwhere i.CustomerId = 42\nlimit 10\nselect i.InvoiceId\n`,
   );
   expect(parsed.diagnostics).toEqual([]);
-  if (!parsed.document.tree) throw new Error('Expected parsed TugQL tree.');
-  expect(() => requireCustomerIdParameterSource(parsed.document.tree)).toThrow(
+  const parsedTree = parsed.document.tree;
+  if (!parsedTree) throw new Error('Expected parsed TugQL tree.');
+  expect(() => requireCustomerIdParameterSource(parsedTree)).toThrow(
     'Use the declared @CustomerId parameter',
   );
 });
@@ -410,9 +414,10 @@ it('accepts built-in parameter type casing and preserves grouped output aliases'
   const source = `PARAMETERS (\n  @CustomerId INTEGER REQUIRED\n)\nFROM Invoice AS i\nWHERE i.CustomerId = @CustomerId\nGROUP BY i.CustomerId\nHAVING count(*) >= 7\nLIMIT 10\nSELECT i.CustomerId AS Customer, count(*) AS Invoices\n`;
   const parsed = parseTugQL(source);
   expect(parsed.diagnostics).toEqual([]);
-  if (!parsed.document.tree) throw new Error('Expected parsed TugQL tree.');
+  const parsedTree = parsed.document.tree;
+  if (!parsedTree) throw new Error('Expected parsed TugQL tree.');
   expect(() =>
-    requireCustomerIdParameterSource(parsed.document.tree),
+    requireCustomerIdParameterSource(parsedTree),
   ).not.toThrow();
   const plan = compilePublicSqliteTugQL(resolve(source), {
     fixtureSha256: 'fixture-sha256',
@@ -429,8 +434,9 @@ it('rejects a parameterized HAVING threshold in the native literal-only profile'
     `parameters (\n  @CustomerId integer required\n  @MinCount integer required\n)\nfrom Invoice as i\nwhere i.CustomerId = @CustomerId\ngroup by i.CustomerId\nhaving count(*) >= @MinCount\nlimit 10\nselect i.CustomerId, count(*) as InvoiceCount\n`,
   );
   expect(parsed.diagnostics).toEqual([]);
-  if (!parsed.document.tree) throw new Error('Expected parsed TugQL tree.');
-  expect(() => requireLiteralHavingThreshold(parsed.document.tree)).toThrow(
+  const parsedTree = parsed.document.tree;
+  if (!parsedTree) throw new Error('Expected parsed TugQL tree.');
+  expect(() => requireLiteralHavingThreshold(parsedTree)).toThrow(
     'integer literal HAVING threshold',
   );
 });
