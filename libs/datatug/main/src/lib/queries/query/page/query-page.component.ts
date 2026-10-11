@@ -619,6 +619,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     readonly scopeKey: string;
     readonly queryIdentity: symbol;
     readonly source: string;
+    readonly draftRevision: number;
     readonly selectedFields: readonly AuthorCustomerField[];
     readonly reviewGeneration: number;
     readonly schemaVersion: string;
@@ -1299,6 +1300,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       scopeKey: context.scopeKey,
       queryIdentity: context.queryIdentity,
       source: context.source,
+      draftRevision: context.draftRevision,
       selectedFields: Object.freeze([...this.authorSourceSelectedFields()]),
       reviewGeneration,
       schemaVersion: discovery.schemaVersion,
@@ -1318,6 +1320,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         reviewed.scopeKey !== context.scopeKey ||
         reviewed.queryIdentity !== context.queryIdentity ||
         reviewed.source !== context.source ||
+        reviewed.draftRevision !== context.draftRevision ||
         reviewed.reviewGeneration !== reviewGeneration ||
         JSON.stringify(reviewed.selectedFields) !== JSON.stringify(selectedFields) ||
         reviewed.schemaVersion !== discovery.schemaVersion) {
@@ -1333,6 +1336,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       if (applyGeneration !== this.authorSourceRequestGeneration ||
           this.authorSourceReview() !== review ||
           this.authorSourceReviewGeneration !== reviewGeneration ||
+          this.authorDraftRevision() !== reviewed.draftRevision ||
           JSON.stringify(this.authorSourceSelectedFields()) !== JSON.stringify(selectedFields) ||
           this.authorSourceReviewContext !== reviewed ||
           !this.isCurrentAuthorSourceContext(context) || currentDiscovery.schemaVersion !== reviewed.schemaVersion ||

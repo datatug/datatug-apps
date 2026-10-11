@@ -647,6 +647,42 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     },
   );
 
+  it('refuses a reviewed Apply after the draft is edited and restored byte-for-byte', async () => {
+    component = await createTugQLAuthor(authorSource);
+    const discovery = vi.spyOn(
+      TestBed.inject(PublicSqliteQueryService),
+      'discoverInvoiceCustomerSources',
+    ).mockResolvedValue(sourceDiscovery);
+    const update = vi.spyOn(
+      TestBed.inject(QueryEditorStateService),
+      'updateQueryState',
+    );
+    component.authorSourcesToggled({
+      currentTarget: { open: true },
+    } as unknown as Event);
+    await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
+    component.reviewAuthorRelationship();
+    const reviewedRevision = component.authorDraftRevision();
+
+    component.queryTextChanged(new CustomEvent('ionInput', {
+      detail: { value: authorSource.replace('limit 100', 'limit 99') },
+    }), false);
+    component.queryTextChanged(new CustomEvent('ionInput', {
+      detail: { value: authorSource },
+    }), false);
+    expect(component.queryBodyText()).toBe(authorSource);
+    expect(component.authorDraftRevision()).toBe(reviewedRevision + 2);
+
+    await component.applyAuthorRelationshipReview();
+
+    expect(discovery).toHaveBeenCalledTimes(1);
+    expect(component.queryBodyText()).toBe(authorSource);
+    expect(component.authorSourceReview()).toBeUndefined();
+    expect(component.authorSourceMessage()).toContain('This review is stale');
+    expect(update).toHaveBeenCalledTimes(2);
+  });
+
   it('applies the reviewed source and binding atomically while retaining the prior manual-binding result', async () => {
     component = await createTugQLAuthor(authorSource);
     const sqlite = TestBed.inject(PublicSqliteQueryService);
