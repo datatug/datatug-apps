@@ -320,36 +320,99 @@ it('bounds a stalled authenticated catalogue read before launching a worker', as
   }
 });
 
-it('signals Space activity only after the admitted SQL reaches a browser worker', async () => {
-  const events: string[] = [];
-  class AnsweringWorker {
-    public onmessage: ((event: MessageEvent) => void) | null = null;
-    public onerror: (() => void) | null = null;
-    public postMessage(): void {
-      events.push('post');
-      this.onmessage?.({ data: { ok: true, result: { columns: ['n'], rows: [[1]] } } } as MessageEvent);
+it.each([
+  'shared',
+  'github',
+  'worker-error',
+  'source-error',
+  'worker-construction-error',
+])(
+  'signals activity only after admitted SQL worker dispatch: %s',
+  async (scenario) => {
+    const events: string[] = [];
+    class AnsweringWorker {
+      public onmessage: ((event: MessageEvent) => void) | null = null;
+      public onerror: (() => void) | null = null;
+      public postMessage(): void {
+        events.push('post');
+        if (scenario === 'worker-error') {
+          this.onerror?.();
+          return;
+        }
+        this.onmessage?.({
+          data: { ok: true, result: { columns: ['n'], rows: [[1]] } },
+        } as MessageEvent);
+      }
+      public terminate(): void {
+        events.push('terminate');
+      }
     }
-    public terminate(): void { events.push('terminate'); }
-  }
-  const catalogRead = vi.fn(() => of(catalog));
-  TestBed.configureTestingModule({ providers: [
-    PublicSqliteQueryService,
-    { provide: GithubProjectReaderService, useValue: { getRawJson: vi.fn() } },
-    { provide: ProjectQueryApiService, useValue: { connectionCatalog: catalogRead } },
-  ] });
-  vi.stubGlobal('Worker', AnsweringWorker);
-  try {
-    const ref: IProjectRef = { storeId: 'firestore', spaceID: 'space_1', projectId: 'project_1' };
-    const result = await TestBed.inject(PublicSqliteQueryService).run(ref,
-      { id: 'q', connectionId: 'chinook-sqlite', request: { queryType: QueryType.SQL, text: 'SELECT 1' } as ISqlQueryRequest },
-      () => events.push('report'));
-    expect(result.recordset.rows).toEqual([[{ type: 'integer', value: '1' }]]);
-    expect(catalogRead).toHaveBeenCalledWith(ref);
-    expect(events).toEqual(['post', 'report', 'terminate']);
-  } finally {
-    vi.unstubAllGlobals();
-  }
-});
+    const catalogRead = vi.fn(() =>
+      of(scenario === 'source-error' ? {} : catalog),
+    );
+    TestBed.configureTestingModule({
+      providers: [
+        PublicSqliteQueryService,
+        {
+          provide: GithubProjectReaderService,
+          useValue: { getRawJson: vi.fn() },
+        },
+        {
+          provide: ProjectQueryApiService,
+          useValue: { connectionCatalog: catalogRead },
+        },
+      ],
+    });
+    vi.stubGlobal(
+      'Worker',
+      scenario === 'worker-construction-error'
+        ? class {
+            constructor() {
+              throw new Error('Worker unavailable');
+            }
+          }
+        : AnsweringWorker,
+    );
+    try {
+      const ref: IProjectRef =
+        scenario === 'shared'
+          ? { storeId: 'firestore', spaceID: 'space_1', projectId: 'project_1' }
+          : {
+              storeId: 'github.com',
+              projectId: 'demo@buyer@project',
+              projectApi: 'cloud',
+              branch: 'main',
+            };
+      const pending = TestBed.inject(PublicSqliteQueryService).run(
+        ref,
+        {
+          id: 'q',
+          connectionId: 'chinook-sqlite',
+          request: {
+            queryType: QueryType.SQL,
+            text: 'SELECT 1',
+          } as ISqlQueryRequest,
+        },
+        () => events.push('report'),
+      );
+      if (scenario.endsWith('error')) {
+        await expect(pending).rejects.toThrow();
+        expect(events).toEqual(
+          scenario === 'worker-error' ? ['post', 'report', 'terminate'] : [],
+        );
+      } else {
+        const result = await pending;
+        expect(result.recordset.rows).toEqual([
+          [{ type: 'integer', value: '1' }],
+        ]);
+        expect(events).toEqual(['post', 'report', 'terminate']);
+      }
+      expect(catalogRead).toHaveBeenCalledWith(ref);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  },
+);
 
 describe('bounded SQLite worker', () => {
   let fixture: Uint8Array;
@@ -1792,12 +1855,15 @@ select (
     const service = TestBed.inject(PublicSqliteQueryService);
     const query = definition(groupedSource);
     const preview = await service.prepareTugQL(project, query, 8);
+    const onDispatched = vi.fn();
     await expect(
-      service.runTugQL(project, query, 8, '', preview),
+      service.runTugQL(project, query, 8, '', preview, undefined, undefined, onDispatched),
     ).rejects.toThrow('whole-number CustomerId');
     expect(workerMessages).toHaveLength(0);
 
-    const result = await service.runTugQL(project, query, 8, '42', preview);
+    expect(onDispatched).not.toHaveBeenCalled();
+    const result = await service.runTugQL(project, query, 8, '42', preview, undefined, undefined, onDispatched);
+    expect(onDispatched).toHaveBeenCalledOnce();
     expect(workerMessages).toHaveLength(1);
     expect(workerMessages[0]['sql']).toBe(preview.sql);
     expect(workerMessages[0]['bindings']).toEqual([42, 7]);

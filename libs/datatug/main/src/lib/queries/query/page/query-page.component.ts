@@ -4053,7 +4053,6 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         JSON.stringify(this.queryDef()) === JSON.stringify(executedDefinition);
       this.running.set(true);
       this.runError.set(undefined);
-      this.reportGitHubQueryDispatch(projectRef);
       void this.publicSqliteQuery
         .runTugQL(
           projectRef,
@@ -4063,6 +4062,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           previewPlan,
           controller.signal,
           this.authorCustomerIdOrigin(),
+          () => this.reportGitHubQueryDispatch(projectRef),
         )
         .then((result) => {
           if (!current()) return;
@@ -4113,11 +4113,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         JSON.stringify(this.queryDef()) === JSON.stringify(executedDefinition);
       this.running.set(true);
       this.runError.set(undefined);
-      if (!isSharedProjectRef(projectRef)) this.reportGitHubQueryDispatch(projectRef);
       void this.publicSqliteQuery
-        .run(projectRef, executedDefinition, isSharedProjectRef(projectRef)
-          ? () => this.reportGitHubQueryDispatch(projectRef)
-          : undefined)
+        .run(projectRef, executedDefinition,
+          () => this.reportGitHubQueryDispatch(projectRef))
         .then((result) => {
           if (!current()) return;
           this.showAttemptResult(result);
