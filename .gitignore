@@ -66,3 +66,9 @@ specscore.local.yaml
 apps/datatug-app/src/build-info.generated.ts
 # build-info.json is the curl-able JSON sibling, copied to the dist root.
 apps/datatug-app/src/build-info.json
+
+# Downloaded only after online verification against the tracked release lock.
+# Never commit generated third-party binaries; the app build copies this into
+# dist and the separate emitted-dist verifier checks all pinned bytes.
+apps/datatug-app/src/assets/recordsetcompare/
+tools/recordsetcompare/__pycache__/

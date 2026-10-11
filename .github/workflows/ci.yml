@@ -19,6 +19,12 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      attestations: read
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -55,8 +61,22 @@ jobs:
       - name: test:wrangler-routes (preserve production app hostnames)
         run: pnpm run test:wrangler-routes
 
+      - name: test:RecordsetCompare artifact verifier guards
+        run: python3 -m unittest discover -s tools/recordsetcompare -p 'test_*.py' -v
+
       - name: nx build affected
         run: pnpm nx affected --target=build --base=${{ env.NX_BASE }} --parallel=8
+
+      - name: Find affected datatug-app target
+        id: affected-app
+        run: |
+          projects="$(pnpm exec nx show projects --affected --json)"
+          app_affected="$(PROJECTS_JSON="$projects" node -e 'process.stdout.write(JSON.parse(process.env.PROJECTS_JSON).includes("datatug-app") ? "true" : "false")')"
+          echo "datatug_app=$app_affected" >> "$GITHUB_OUTPUT"
+
+      - name: Verify emitted RecordsetCompare assets
+        if: steps.affected-app.outputs.datatug_app == 'true'
+        run: python3 tools/recordsetcompare/consume.py verify-dist
 
   test:
     runs-on: ubuntu-latest
@@ -88,6 +108,12 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     needs: build
+    permissions:
+      actions: read
+      contents: read
+      attestations: read
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -162,8 +188,13 @@ jobs:
     # env var below in sync when bumping DATATUG_CLI_REF.
     name: journey e2e (real datatug-cli agent)
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      attestations: read
     needs: build
     env:
+      GH_TOKEN: ${{ github.token }}
       # Pinned datatug-cli release tag (not `main`) so this job is
       # reproducible. Bump by checking the newest `vX.Y.Z` tag:
       #   git ls-remote --tags https://github.com/datatug/datatug-cli.git
@@ -244,7 +275,7 @@ jobs:
       # for the actual test run (`nx run datatug-app:serve:development`), so
       # this is a production-config build check, not a second server.
       - name: Build datatug-app
-        run: pnpm exec nx run datatug-app:build
+        run: python3 tools/recordsetcompare/build_app.py
 
       - name: Run journey e2e (J1-J4, real datatug-cli agent)
         env:

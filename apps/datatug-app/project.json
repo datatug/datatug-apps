@@ -27,9 +27,27 @@
       },
       "cache": false
     },
+    "prepare-recordsetcompare": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 tools/recordsetcompare/consume.py prepare",
+        "cwd": "."
+      },
+      "cache": false
+    },
+    "verify-recordsetcompare-dist": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 tools/recordsetcompare/consume.py verify-dist",
+        "cwd": "."
+      },
+      "cache": false
+    },
     "build": {
       "executor": "@angular-devkit/build-angular:application",
-      "dependsOn": ["stamp-build-info"],
+      "dependsOn": ["stamp-build-info", "prepare-recordsetcompare"],
+      "inputs": ["production", "{workspaceRoot}/tools/recordsetcompare/**/*"],
+      "cache": false,
       "outputs": ["{options.outputPath}"],
       "options": {
         "outputPath": "dist/apps/datatug-app",
@@ -124,7 +142,7 @@
     },
     "serve": {
       "executor": "@angular-devkit/build-angular:dev-server",
-      "dependsOn": ["stamp-build-info"],
+      "dependsOn": ["stamp-build-info", "prepare-recordsetcompare"],
       "configurations": {
         "production": {
           "buildTarget": "datatug-app:build:production"
