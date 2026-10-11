@@ -1203,6 +1203,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   /** Ionic caches routed pages, so comparison memory must expire on leave as well as destroy. */
   public ionViewWillLeave(): void {
     this.expireComparisonSession('The comparison session ended when this page was left.');
+    this.changeDetector.detectChanges();
   }
 
   private comparisonInputKey(): string {

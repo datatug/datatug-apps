@@ -128,4 +128,21 @@ test('compares the maintained Chinook invoice query against two public fixtures 
     }));
     expect(dimensions.content).toBeLessThanOrEqual(dimensions.viewport);
   }
+
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await page.locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Queries' }).click();
+  await expect(page).toHaveURL(/\/-\/queries/u);
+  const demoFolder = page.locator('sneat-datatug-queries-tab ion-item', { hasText: 'demodb' });
+  await expect(demoFolder).toBeVisible();
+  await demoFolder.click();
+  const savedCompareQuery = page.locator('sneat-datatug-queries-tab ion-item', {
+    hasText: 'Chinook Invoice Comparison',
+  });
+  await expect(savedCompareQuery).toBeVisible();
+  await savedCompareQuery.click();
+  await expect(page).toHaveURL(/\/query\/demodb%2Fchinook-invoice-compare/u);
+  await expect(page.getByTestId('tugql-author')).toBeVisible();
+  await expect(page.getByTestId('author-customer-id').locator('input')).toHaveValue('');
+  await expect(page.getByTestId('comparison-result')).toHaveCount(0);
+  expect(await page.evaluate(() => (window as unknown as { __compareWorkerStarts: number }).__compareWorkerStarts)).toBe(3);
 });
