@@ -307,9 +307,10 @@ describe('New project through authenticated common API', () => {
     expect(saved.actorID).toBeUndefined();
     expect(JSON.stringify(saved)).not.toContain('token');
 
-    const signIn = Array.from(
-      h.fixture.nativeElement.querySelectorAll('ion-button'),
-    ).find((button: Element) =>
+    const buttons = h.fixture.nativeElement.querySelectorAll(
+      'ion-button',
+    ) as NodeListOf<HTMLElement>;
+    const signIn = Array.from(buttons).find((button) =>
       button.textContent?.includes('Sign in to continue'),
     ) as HTMLElement | undefined;
     signIn?.click();
@@ -437,7 +438,7 @@ describe('New project through authenticated common API', () => {
     h.fixture.detectChanges();
     await h.fixture.whenStable();
     h.fixture.detectChanges();
-    expect(h.component.isGithubSignedIn()).toBe(true);
+    expect(h.component['isGithubSignedIn']()).toBe(true);
     expect(h.component['githubRepos']()).toHaveLength(0);
 
     const install = h.fixture.nativeElement.querySelector(
@@ -459,7 +460,7 @@ describe('New project through authenticated common API', () => {
     h.connection.repositories.mockReturnValue(pendingRefresh as never);
     h.component.loadGithubRepos();
     h.fixture.detectChanges();
-    expect(h.component.isGithubSignedIn()).toBe(true);
+    expect(h.component['isGithubSignedIn']()).toBe(true);
     expect(h.component['isLoadingRepos']()).toBe(true);
     expect(h.fixture.nativeElement.innerHTML).not.toContain(
       'No repositories with write access are available yet',
@@ -510,8 +511,8 @@ describe('New project through authenticated common API', () => {
     expect(h.fixture.nativeElement.textContent).toContain(
       'Connect or reconnect GitHub',
     );
-    expect(h.component.isGithubSignedIn()).toBe(false);
-    expect(h.component.isLoadingRepos()).toBe(false);
+    expect(h.component['isGithubSignedIn']()).toBe(false);
+    expect(h.component['isLoadingRepos']()).toBe(false);
 
     h.component['formError'].set('Branches could not be loaded.');
     h.connection.repositories.mockReturnValue(of({ repositories: [repo] }));
@@ -526,7 +527,7 @@ describe('New project through authenticated common API', () => {
       'Branches could not be loaded.',
     );
     expect(h.component['githubReposError']()).toBeUndefined();
-    expect(h.component.isGithubSignedIn()).toBe(true);
+    expect(h.component['isGithubSignedIn']()).toBe(true);
     expect(h.fixture.nativeElement.textContent).toContain('owner/repo');
   });
   it('lets a fresh signed-in user create/select a top-level group Space through the existing Sneat API before GitHub project creation', async () => {

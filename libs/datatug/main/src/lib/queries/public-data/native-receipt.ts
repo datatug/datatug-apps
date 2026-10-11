@@ -41,7 +41,7 @@ function int64(value: unknown): bigint {
   )
     throw new Error('Native count must be an exact JSON integer.');
   const count = BigInt(value.token);
-  if (count < 0n || count > 9223372036854775807n)
+  if (count < BigInt(0) || count > BigInt('9223372036854775807'))
     throw new Error('Native count exceeds nonnegative int64.');
   return count;
 }
@@ -140,7 +140,7 @@ export async function verifyNativeReceipt(
     !sameRef(receipt['model'], target.model) ||
     !sameRef(receipt['binding'], target.binding.document) ||
     !sameRef(receipt['dataset'], native.dataset) ||
-    int64(receipt['duplicates']) !== 0n
+    int64(receipt['duplicates']) !== BigInt(0)
   )
     throw new Error(
       'Native generation scope/model/binding/data/uniqueness mismatch.',

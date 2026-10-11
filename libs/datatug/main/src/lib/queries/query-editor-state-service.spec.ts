@@ -7,7 +7,7 @@ import { QueriesService } from './queries.service';
 import { ProjectService } from '../services/project/project.service';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import { QueryType } from '../models/definition/query-def';
-import type { IQueryDef } from '../models/definition/query-def';
+import type { IQueryDef, ITextQueryRequest } from '../models/definition/query-def';
 import {
   createHostedDemoDbQuery,
   withHostedDemoDbSource,
@@ -53,7 +53,7 @@ describe('QueryEditorStateService', () => {
     const original: IQueryDef = {
       id: 'chinook-invoice-author-draft-test',
       title: 'Invoice Author',
-      request: { queryType: QueryType.DTQL, text: 'from Invoice\nlimit 10' },
+      request: { queryType: QueryType.DTQL, text: 'from Invoice\nlimit 10' } as ITextQueryRequest,
     };
     const state = service.newQuery({
       id: original.id,
@@ -62,13 +62,13 @@ describe('QueryEditorStateService', () => {
       request: {
         queryType: QueryType.DTQL,
         text: 'from Invoice\nlimit 3',
-      },
+      } as ITextQueryRequest,
       revision: 'draft-base',
       saveSupported: true,
     });
     const authorized: IQueryDef = {
       ...original,
-      request: { queryType: QueryType.DTQL, text: 'from Invoice\nlimit 100' },
+      request: { queryType: QueryType.DTQL, text: 'from Invoice\nlimit 100' } as ITextQueryRequest,
     };
 
     const opened = service.openAuthorizedQuery(original.id, authorized, undefined, {
@@ -93,7 +93,7 @@ describe('QueryEditorStateService', () => {
     const definition: IQueryDef = {
       id: 'chinook-invoice-author-fresh-read-test',
       title: 'Invoice Author',
-      request: { queryType: QueryType.DTQL, text: 'from Invoice\nlimit 10' },
+      request: { queryType: QueryType.DTQL, text: 'from Invoice\nlimit 10' } as ITextQueryRequest,
     };
 
     const opened = service.openAuthorizedQuery(definition.id, definition, undefined, {
@@ -131,7 +131,7 @@ describe('QueryEditorStateService — hosted DemoDB query creation and save', ()
     const pendingCreate = new Subject<
       ReturnType<typeof createHostedDemoDbQuery>
     >();
-    const createQuery = vi.fn(() => pendingCreate);
+    const createQuery = vi.fn<QueriesService['createQuery']>(() => pendingCreate);
 
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
@@ -174,7 +174,7 @@ describe('QueryEditorStateService — hosted DemoDB query creation and save', ()
     const newerRequest = {
       queryType: QueryType.DTQL,
       text: 'from:\n  database: adventureworks\n  schema: Person\n  name: Person\n  alias: p\nlimit: 5\n',
-    };
+    } as ITextQueryRequest;
     service.updateQueryState({
       ...savingState,
       title: 'Edited while saving',

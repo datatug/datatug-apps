@@ -8,8 +8,10 @@ import {
 import {
   AgentContextService,
   InvestigationContextService,
+  type ContextScope,
 } from '@sneat/datatug-semantic';
 import { BehaviorSubject, defer, of, Subject } from 'rxjs';
+import type { Mock } from 'vitest';
 import { IncidentListPageComponent } from './incident-list-page.component';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { IncidentClientService } from '../../../incidents/incident-client.service';
@@ -55,7 +57,10 @@ describe('IncidentListPageComponent', () => {
   let queryParamMap$: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
   let securityContextId: ReturnType<typeof signal<string | undefined>>;
   let refreshAgentContextSpy: ReturnType<typeof vi.fn>;
-  let setInvestigationScopeSpy: ReturnType<typeof vi.fn>;
+  let setInvestigationScopeSpy: Mock<(
+    scope: Omit<ContextScope, 'agentUrl'> | ContextScope,
+    agentUrl?: string,
+  ) => void>;
   let clearInvestigationContextSpy: ReturnType<typeof vi.fn>;
   let isCurrentInvestigationScopeSpy: ReturnType<typeof vi.fn>;
   let listResult$: Subject<IncidentApiResult<IncidentSummary[]>>;
@@ -150,7 +155,7 @@ describe('IncidentListPageComponent', () => {
     expect(listSpy).not.toHaveBeenCalled();
   });
 
-  it.each([
+  it.each<[Record<string, string>, string]>([
     [{ agent: 'agent-b:8989' }, 'agent B'],
     [{ project: 'other-project' }, 'an explicit project'],
   ])(

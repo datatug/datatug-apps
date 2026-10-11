@@ -1,13 +1,13 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { Subject, of } from 'rxjs';
+import { Observable, Subject, of } from 'rxjs';
 
 import { SneatDatatugPageTitleComponent } from './sneat-datatug-page-title.component';
 import { IProjectContext } from '../../nav/nav-models';
 import { DatatugNavContextService } from '../../services/nav/datatug-nav-context.service';
 
 function createFixture(
-  currentProject$: ReturnType<typeof of<IProjectContext | undefined>> | Subject<IProjectContext | undefined>,
+  currentProject$: Observable<IProjectContext | undefined>,
 ): ComponentFixture<SneatDatatugPageTitleComponent> {
   return TestBed.configureTestingModule({
     imports: [SneatDatatugPageTitleComponent],

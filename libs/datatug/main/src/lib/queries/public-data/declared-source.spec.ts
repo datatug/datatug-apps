@@ -177,8 +177,10 @@ describe('configured private-schema-shaped public fixture declaration without gl
       abort(),
       state.pins,
     );
+    const source = discovery.declaredSources?.[0]?.source;
+    if (!source) throw new Error('Expected a verified configured source.');
     const plan = state.metadata.scenario(
-      state.fixture.contract.source,
+      source,
       discovery,
       discovery.suggestions[0],
       { userRows: 1000, userOffset: 0 },

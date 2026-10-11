@@ -11,10 +11,18 @@ import {
   nativeGraphRunResponse,
   nativeProjection,
   assertNativeGraphPlan,
+  type NativeGraphPlan,
 } from './native-graph-executor';
 import { classifyP1Token } from './p1-wire-evidence';
 
 const budgets: BoundedRunBudget[] = [];
+type Mutable<T> = T extends string
+  ? T
+  : T extends readonly unknown[]
+  ? { -readonly [Key in keyof T]: Mutable<T[Key]> }
+  : T extends object
+    ? { -readonly [Key in keyof T]: Mutable<T[Key]> }
+    : T;
 afterEach(() => budgets.splice(0).forEach((b) => b.close()));
 async function executeReference(raw: string | undefined, mixed = false) {
   const plan = graphFixturePlan(false),
@@ -175,7 +183,7 @@ describe('P1 actual strict ordinary-page wire boundary (synthetic pinned mounts,
     });
   });
   it('validates historical plan shape without transport and refuses a mutated pin association', () => {
-    const p = graphFixturePlan();
+    const p = structuredClone(graphFixturePlan()) as Mutable<NativeGraphPlan>;
     expect(assertNativeGraphPlan(p).id).toBe('w1-ror-geonames-context/1');
     p.stages.locations.runtime.sourceSha256 = 'f'.repeat(64);
     expect(() => assertNativeGraphPlan(p)).toThrow();

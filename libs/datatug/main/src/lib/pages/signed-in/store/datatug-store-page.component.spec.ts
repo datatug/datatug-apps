@@ -26,7 +26,7 @@ import {
 } from '@ionic/angular';
 import { SneatErrorCardComponent } from '@sneat/components';
 import { ErrorLogger } from '@sneat/core';
-import { BehaviorSubject, of } from 'rxjs';
+import { BehaviorSubject, of, type Observable } from 'rxjs';
 
 import {
   DatatugStorePageComponent,
@@ -136,7 +136,7 @@ describe('StorePageComponent', () => {
         {
           provide: DatatugUserService,
           useValue: {
-            datatugUserState: of({ status: undefined, record: null }),
+            datatugUserState: of({ status: undefined, record: undefined }),
           },
         },
       ],
@@ -194,7 +194,7 @@ describe('StorePageComponent', () => {
         lastCheckedAt: new Date(),
       };
       const agentStateService = TestBed.inject(AgentStateService) as {
-        watchAgentInfo: (storeId: string) => ReturnType<typeof of<IAgentState>>;
+        watchAgentInfo: (storeId: string) => Observable<IAgentState>;
       };
       agentStateService.watchAgentInfo = () => of(emittedState);
 
@@ -374,14 +374,16 @@ describe('StorePageComponent', () => {
     });
 
     it('builds the project id of <repository>, <owner> and <folder> from the form fields (defaults) and navigates to the project page', () => {
-      const nav = TestBed.inject(DatatugNavService) as {
-        goProject: ReturnType<typeof vi.fn>;
-      };
+      const nav = TestBed.inject(DatatugNavService);
 
       component.openGithubProject(new Event('submit'));
 
-      expect(nav.goProject).toHaveBeenCalledTimes(1);
-      const projectContext = nav.goProject.mock.calls[0][0];
+      const goProject = vi.mocked(nav.goProject);
+      expect(goProject).toHaveBeenCalledTimes(1);
+      const call = goProject.mock.lastCall;
+      if (!call) throw new Error('Expected project navigation');
+      const projectContext = call[0];
+      if (!projectContext) throw new Error('Expected project context');
       expect(projectContext.ref).toEqual({
         projectId: FORM_DEFAULT_PROJECT_ID,
         storeId: 'github.com',
@@ -390,16 +392,17 @@ describe('StorePageComponent', () => {
     });
 
     it('builds the id from edited owner/repository/folder fields', () => {
-      const nav = TestBed.inject(DatatugNavService) as {
-        goProject: ReturnType<typeof vi.fn>;
-      };
+      const nav = TestBed.inject(DatatugNavService);
 
       component.updateGithubField('owner', 'my-org');
       component.updateGithubField('repository', 'my-repo');
       component.updateGithubField('folder', 'my-folder');
       component.openGithubProject(new Event('submit'));
 
-      const projectContext = nav.goProject.mock.calls[0][0];
+      const call = vi.mocked(nav.goProject).mock.lastCall;
+      if (!call) throw new Error('Expected project navigation');
+      const projectContext = call[0];
+      if (!projectContext) throw new Error('Expected project context');
       expect(projectContext.ref.projectId).toBe('my-repo@my-org@my-folder');
     });
 
@@ -411,40 +414,37 @@ describe('StorePageComponent', () => {
     ])(
       'writes the one id of the project for %s/%s in %s',
       (owner, repo, folder, id) => {
-        const nav = TestBed.inject(DatatugNavService) as {
-          goProject: ReturnType<typeof vi.fn>;
-        };
+        const nav = TestBed.inject(DatatugNavService);
 
         component.updateGithubField('owner', owner);
         component.updateGithubField('repository', repo);
         component.updateGithubField('folder', folder);
         component.openGithubProject(new Event('submit'));
 
-        expect(nav.goProject.mock.calls[0][0].ref.projectId).toBe(id);
+        const call = vi.mocked(nav.goProject).mock.lastCall;
+        if (!call) throw new Error('Expected project navigation');
+        if (!call[0]) throw new Error('Expected project context');
+        expect(call[0].ref.projectId).toBe(id);
       },
     );
 
     it('rejects an empty field without navigating', () => {
-      const nav = TestBed.inject(DatatugNavService) as {
-        goProject: ReturnType<typeof vi.fn>;
-      };
+      const nav = TestBed.inject(DatatugNavService);
 
       component.updateGithubField('owner', '');
       component.openGithubProject(new Event('submit'));
 
-      expect(nav.goProject).not.toHaveBeenCalled();
+      expect(vi.mocked(nav.goProject)).not.toHaveBeenCalled();
       expect(component.githubFormError()).toBeTruthy();
     });
 
     it('rejects a field containing "@" without navigating', () => {
-      const nav = TestBed.inject(DatatugNavService) as {
-        goProject: ReturnType<typeof vi.fn>;
-      };
+      const nav = TestBed.inject(DatatugNavService);
 
       component.updateGithubField('repository', 'bad@repo');
       component.openGithubProject(new Event('submit'));
 
-      expect(nav.goProject).not.toHaveBeenCalled();
+      expect(vi.mocked(nav.goProject)).not.toHaveBeenCalled();
       expect(component.githubFormError()).toBeTruthy();
     });
   });
@@ -473,7 +473,7 @@ describe('StorePageComponent', () => {
 
       authState = new BehaviorSubject<IDatatugUserState>({
         status: 'notAuthenticated',
-        record: null,
+        record: undefined,
       });
 
       await TestBed.configureTestingModule({
@@ -551,7 +551,7 @@ describe('StorePageComponent', () => {
       (f.nativeElement as HTMLElement).innerHTML;
 
     it('anonymous + GitHub store: lists the demo project and shows the "Open a GitHub project" form, no sign-in prompt', () => {
-      authState.next({ status: 'notAuthenticated', record: null });
+      authState.next({ status: 'notAuthenticated', record: undefined });
 
       const f = render('github.com', [...GITHUB_DEMO_PROJECTS]);
 
@@ -583,7 +583,7 @@ describe('StorePageComponent', () => {
     });
 
     it('anonymous + firestore: still shows "Please sign in to see projects" (unchanged)', () => {
-      authState.next({ status: 'notAuthenticated', record: null });
+      authState.next({ status: 'notAuthenticated', record: undefined });
 
       const f = render('firestore', undefined);
 
@@ -593,7 +593,7 @@ describe('StorePageComponent', () => {
     });
 
     it('anonymous + agent store: still shows "Please sign in to see projects" (current behaviour preserved)', () => {
-      authState.next({ status: 'notAuthenticated', record: null });
+      authState.next({ status: 'notAuthenticated', record: undefined });
 
       const f = render('http-localhost:8989', undefined);
 
@@ -603,7 +603,7 @@ describe('StorePageComponent', () => {
     });
 
     it('authenticated + firestore: shows the project list, not the sign-in prompt (sanity check the gate still opens)', () => {
-      authState.next({ status: 'authenticated', record: null });
+      authState.next({ status: 'authenticated', record: undefined });
 
       const f = render('firestore', []);
 

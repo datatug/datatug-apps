@@ -8,12 +8,15 @@ import {
 import {
   AgentContextService,
   InvestigationContextService,
+  type ContextScope,
 } from '@sneat/datatug-semantic';
 import { BehaviorSubject, defer, Observable, of, Subject } from 'rxjs';
+import type { Mock } from 'vitest';
 import { IncidentDetailPageComponent } from './incident-detail-page.component';
 import { IncidentClientService } from '../../../incidents/incident-client.service';
 import {
   IncidentApiResult,
+  IncidentCanonicalProjectScope,
   IncidentDetail,
   IncidentFactView,
   IncidentRequestContext,
@@ -74,7 +77,10 @@ describe('IncidentDetailPageComponent', () => {
   let navEnvironment$: BehaviorSubject<{ id: string } | undefined>;
   let securityContextId: ReturnType<typeof signal<string | undefined>>;
   let refreshAgentContextSpy: ReturnType<typeof vi.fn>;
-  let setInvestigationScopeSpy: ReturnType<typeof vi.fn>;
+  let setInvestigationScopeSpy: Mock<(
+    scope: Omit<ContextScope, 'agentUrl'> | ContextScope,
+    agentUrl?: string,
+  ) => void>;
   let clearInvestigationContextSpy: ReturnType<typeof vi.fn>;
   let isCurrentInvestigationScopeSpy: ReturnType<typeof vi.fn>;
   let getSpy: ReturnType<typeof vi.fn>;
@@ -199,7 +205,7 @@ describe('IncidentDetailPageComponent', () => {
     );
   });
 
-  it.each([
+  it.each<[Record<string, string>, string]>([
     [{ agent: 'agent-b:8989' }, 'agent B'],
     [{ project: 'operations' }, 'an explicit project'],
   ])(
@@ -440,9 +446,12 @@ describe('IncidentDetailPageComponent', () => {
     );
     fixture.detectChanges();
 
-    const note = Array.from(
-      fixture.nativeElement.querySelectorAll('ion-note'),
-    ).find((item) => item.textContent?.includes('Timeline cannot be loaded.'));
+    const notes = fixture.nativeElement.querySelectorAll(
+      'ion-note',
+    ) as NodeListOf<HTMLElement>;
+    const note = Array.from(notes).find((item) =>
+      item.textContent?.includes('Timeline cannot be loaded.'),
+    );
     expect(note?.getAttribute('role')).toBe('alert');
   });
 
@@ -658,9 +667,15 @@ describe('IncidentDetailPageComponent', () => {
     );
     paramMap$.next(convertToParamMap({ storeId: 'ops', incidentId: 'INC-2' }));
     fixture.detectChanges();
-    if (!overlay.scope) {
-      throw new Error('Expected the incident overlay to retain project scope');
+    if (!overlay.scope?.environment) {
+      throw new Error(
+        'Expected the incident overlay to retain canonical project scope',
+      );
     }
+    const promotedScope: IncidentCanonicalProjectScope = {
+      ...overlay.scope,
+      environment: overlay.scope.environment,
+    };
 
     appendResult$.next({
       kind: 'ok',
@@ -671,7 +686,7 @@ describe('IncidentDetailPageComponent', () => {
           type: 'context.fact.promoted',
           payload: {
             fact: {
-              scope: overlay.scope,
+              scope: promotedScope,
               id: overlay.id,
               layer: 'hypothesis:H17',
             },

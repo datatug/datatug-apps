@@ -24,6 +24,23 @@ import type {
   PublicSqlitePreparedPlan,
 } from './public-sqlite-tugql';
 
+const invoiceAuthorProof: PublicSqlitePreparedPlan['authorProof'] = {
+  profile: 'invoice-query',
+  resolvedQuery: {
+    kind: 'recursive-dtql',
+    from: { kind: 'table', name: 'Invoice', alias: 'i', joins: [] },
+    limit: 10,
+    columns: [
+      {
+        expression: {
+          kind: 'field',
+          field: { source: 'i', field: 'InvoiceId' },
+        },
+      },
+    ],
+  },
+};
+
 const catalog = {
   format: 'datatug-demo-connections/v1',
   connections: [
@@ -234,10 +251,7 @@ it('cancels a started Author worker and terminates it promptly', async () => {
         '7651ba378ac2fcd0dfc3c66fb101f7a7eed3ba39a612ec642b96e20702061f15',
       schemaVersion: 'fixture:typed-invoice-v1',
       draftRevision: 1,
-      authorProof: {
-        profile: 'invoice-query' as const,
-        resolvedQuery: {} as PublicSqlitePreparedPlan['authorProof']['resolvedQuery'],
-      },
+      authorProof: invoiceAuthorProof,
     });
     const pending = service['executePlan'](
       {

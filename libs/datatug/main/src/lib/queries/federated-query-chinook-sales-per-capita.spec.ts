@@ -128,12 +128,15 @@ describe('saved query sales/chinook-sales-per-capita in the browser executor', (
     'runs a saved one-table $id definition through the browser OVDB path',
     async (source) => {
     const base = 'https://ovdb.example.test';
-    const definition = withHostedDemoDbSource(
+    const starter = withHostedDemoDbSource(
       createHostedDemoDbQuery('customers'),
       source.id,
     );
-    if (!definition.federation) throw new Error('Expected hosted federation definition');
-    definition.federation.ovdbBaseUrl = base;
+    if (!starter.federation) throw new Error('Expected hosted federation definition');
+    const definition: IQueryDef = {
+      ...starter,
+      federation: { ...starter.federation, ovdbBaseUrl: base },
+    };
     const requests: { url: string; body?: string }[] = [];
     const values = Object.fromEntries(source.columns.map((field, index) => [field, index + 1]));
     vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {

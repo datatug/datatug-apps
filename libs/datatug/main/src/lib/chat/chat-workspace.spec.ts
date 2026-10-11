@@ -60,7 +60,7 @@ describe('Chat workspace actions', () => {
     expect(second.selections[firstId].rows).toEqual([2]);
     expect(second.selections[second.currentSelectionId as string].rows).toEqual([1]);
     expect(Object.keys(second.views)).toHaveLength(2);
-    expect(record.rows[2].CustomerId).toBe(30);
+    expect(record.rows[2]['CustomerId']).toBe(30);
   });
 
   it('restores attachments and a dock without copying or deleting the RecordSet', () => {

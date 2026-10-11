@@ -326,7 +326,9 @@ describe('closed native graph metadata, never admission', () => {
         );
       vi.spyOn(f.reader, 'json').mockImplementation(async (ref, ancestry) => {
         const parsed = await original(ref, ancestry);
-        return models.includes(immutableUrl(ref)) ? edit(parsed) : parsed;
+        return models.includes(immutableUrl(ref))
+          ? (edit(parsed) as MetadataObject)
+          : parsed;
       });
       return readNativeGraphMetadata(f.attachment, f.provider, indexes, f.reader);
     }

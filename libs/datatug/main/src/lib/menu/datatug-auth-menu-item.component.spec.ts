@@ -67,7 +67,7 @@ describe('DatatugAuthMenuItemComponent', () => {
   it('navigates to root on logout', async () => {
     const component = fixture.componentInstance;
     const click = new Event('click');
-    await component.logout(click);
+    await component['logout'](click);
     expect(menuCtrl.close).toHaveBeenCalled();
     expect(navCtrl.navigateRoot).toHaveBeenCalledWith('/');
   });

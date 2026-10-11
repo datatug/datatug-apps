@@ -1,6 +1,17 @@
-import { parseDTQL } from '@dalgo/core';
+import { isJoinedDTQLQuery, parseDTQL } from '@dalgo/core';
 import { describe, expect, it } from 'vitest';
-import { QueryType } from '../models/definition/query-def';
+import {
+  QueryType,
+  type IQueryDef,
+  type ITextQueryRequest,
+} from '../models/definition/query-def';
+
+function textRequest(definition: IQueryDef): string {
+  if (definition.request.queryType !== QueryType.DTQL) {
+    throw new Error('Expected a text-based DTQL definition.');
+  }
+  return (definition.request as ITextQueryRequest).text;
+}
 import {
   createHostedDemoDbQuery,
   HOSTED_DEMO_DB_OVDB_BASE_URL,
@@ -16,7 +27,9 @@ describe('hosted DemoDB query definitions', () => {
     const selected = withHostedDemoDbSource(initial, source.id);
     expect(isHostedDemoDbStarterQuery(selected)).toBe(true);
     const tables = selected.federation?.tables;
-    const parsed = parseDTQL(selected.request.queryType === QueryType.DTQL ? selected.request.text : '', { tables });
+    if (!tables) throw new Error('Expected hosted source table metadata.');
+    const parsed = parseDTQL(textRequest(selected), { tables });
+    if (!isJoinedDTQLQuery(parsed)) throw new Error('Expected relation query model.');
 
     expect(selected.request.queryType).toBe(QueryType.DTQL);
     expect(selected.federation).toMatchObject({
@@ -38,10 +51,13 @@ describe('hosted DemoDB query definitions', () => {
     // Model a query-definition reload: both selected source and executable body
     // come from the same persisted IQueryDef, with no client-only selector state.
     const reloaded = JSON.parse(JSON.stringify(selected)) as typeof selected;
+    if (!reloaded.federation?.tables) throw new Error('Expected reloaded table metadata.');
     expect(hostedDemoDbSourceId(reloaded)).toBe(source.id);
-    expect(parseDTQL(reloaded.request.queryType === QueryType.DTQL ? reloaded.request.text : '', {
-      tables: reloaded.federation?.tables,
-    }).from.name).toBe(source.name);
+    const reloadedQuery = parseDTQL(textRequest(reloaded), {
+      tables: reloaded.federation.tables,
+    });
+    if (!isJoinedDTQLQuery(reloadedQuery)) throw new Error('Expected relation query model.');
+    expect(reloadedQuery.from.name).toBe(source.name);
   });
 
   it('hides the destructive source picker after the user authors a custom or joined body', () => {
@@ -56,8 +72,8 @@ describe('hosted DemoDB query definitions', () => {
       ...initial,
       request: {
         queryType: QueryType.DTQL,
-        text: `${initial.request.text}where:\n  field: Country\n  op: ==\n  value: IE\n`,
-      },
+        text: `${textRequest(initial)}where:\n  field: Country\n  op: ==\n  value: IE\n`,
+      } as ITextQueryRequest,
     };
     const joined = {
       ...initial,
@@ -95,12 +111,14 @@ describe('hosted DemoDB query definitions', () => {
 
   it('rejects custom table field metadata before replacing a source', () => {
     const starter = createHostedDemoDbQuery('query-1');
-    const table = starter.federation?.tables[0];
+    const federation = starter.federation;
+    if (!federation) throw new Error('Expected starter federation metadata');
+    const table = federation.tables[0];
     if (!table) throw new Error('Expected starter table metadata');
     const enriched = {
       ...starter,
       federation: {
-        ...starter.federation,
+        ...federation,
         tables: [{ ...table, fields: [...table.fields, 'CustomField'] }],
       },
     };

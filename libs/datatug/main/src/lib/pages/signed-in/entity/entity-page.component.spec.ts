@@ -162,7 +162,7 @@ describe('EntityPage replaces "Loading..." once the source data arrives (zoneles
         options: {
           sources: [
             {
-              contentType: 'text/csv',
+              contentType: 'csv',
               url: '/assets/customer.csv',
               source: 'csv',
               mapping: {},

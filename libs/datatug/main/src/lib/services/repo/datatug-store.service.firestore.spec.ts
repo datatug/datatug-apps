@@ -8,7 +8,7 @@ import {
 } from './datatug-store.service.firestore';
 
 const { docMock, docDataMock } = vi.hoisted(() => ({
-  docMock: vi.fn(() => ({ path: 'stub' })),
+  docMock: vi.fn<(...args: unknown[]) => { path: string }>(() => ({ path: 'stub' })),
   docDataMock: vi.fn(),
 }));
 

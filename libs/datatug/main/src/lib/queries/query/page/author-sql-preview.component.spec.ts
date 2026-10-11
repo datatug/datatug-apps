@@ -1,23 +1,11 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import type { PublicSqliteQueryPreview } from '../../public-sqlite-tugql';
+import { testAuthorProof } from './author-query-proof.spec-helper';
 import { AuthorSqlPreviewComponent } from './author-sql-preview.component';
 
 describe('AuthorSqlPreviewComponent', () => {
   let fixture: ComponentFixture<AuthorSqlPreviewComponent>;
-  const authorProof: PublicSqliteQueryPreview['authorProof'] = {
-    profile: 'invoice-query',
-    resolvedQuery: {
-      kind: 'recursive-dtql',
-      from: { kind: 'table', name: 'Invoice', alias: 'i', joins: [] },
-      limit: 10,
-      columns: [{
-        expression: {
-          kind: 'field',
-          field: { source: 'i', field: 'InvoiceId' },
-        },
-      }],
-    },
-  };
+  const authorProof = testAuthorProof();
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -35,7 +23,7 @@ describe('AuthorSqlPreviewComponent', () => {
       fixtureSha256: 'a'.repeat(64),
       schemaVersion: '1',
       draftRevision: 3,
-      authorProof,
+      authorProof: testAuthorProof(),
       relationship: {
         id: 'FK_Invoice_Customer_CustomerId',
         version: 'fp-main.Invoice.CustomerId-main.Customer.CustomerId',
@@ -96,8 +84,10 @@ describe('AuthorSqlPreviewComponent', () => {
       'Prepared metadata · not worker-verified or executed.',
     );
     const outputRows = Array.from(
-      fixture.nativeElement.querySelectorAll('.author-output-columns li'),
-    ).map((row: Element) =>
+      (fixture.nativeElement as HTMLElement).querySelectorAll(
+        '.author-output-columns li',
+      ),
+    ).map((row) =>
       Array.from(row.children).map((cell) => cell.textContent?.trim()),
     );
     expect(outputRows).toEqual([
@@ -116,7 +106,7 @@ describe('AuthorSqlPreviewComponent', () => {
       fixtureSha256: 'old-pin',
       schemaVersion: '1',
       draftRevision: 1,
-      authorProof,
+      authorProof: testAuthorProof(),
       relationship: {
         id: 'FK_Invoice_Customer_CustomerId',
         version: 'fp-main.Invoice.CustomerId-main.Customer.CustomerId',

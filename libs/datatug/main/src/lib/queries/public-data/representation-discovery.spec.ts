@@ -152,7 +152,9 @@ describe('closed reviewed-helper consumer fixture, never production admission', 
   it('reads URL-only/text-only source terms without promoting the reviewed fixture to public admission', async () => {
     for (const declaration of [{ url: 'https://example.org/terms' }, { text: 'Fixture-only source conditions' }]) {
       const suggestions = await discover(fixtureFiles(), undefined, { licence: declaration, dataRights: sourceRights.structured.sourceRights });
-      expect(suggestions[0].rights.declaration).toEqual(declaration);
+      const suggestion = suggestions[0];
+      if (!suggestion?.rights) throw new Error('Expected a source-rights suggestion.');
+      expect(suggestion.rights.declaration).toEqual(declaration);
       expect(suggestions[0].sourceRights).toEqual(sourceRights.structured.sourceRights);
       expect(suggestions[0].eligible).toBe(false);
     }

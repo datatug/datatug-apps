@@ -31,7 +31,7 @@ describe('frozen source terms before browser federation output', () => {
     expect(() => run().acceptWholeQuery({ sourceRights: rights, usedSourceIds: ['ovdb:fixture-server/private/Notes'] })).toThrow(/Unknown/);
   });
   it('freezes every planned lookup, preserves unused inputs and rejects changed later-page evidence', () => {
-    const mutable = structuredClone(rights);
+    const mutable: SourceRight[] = [...structuredClone(rights)];
     const session = new FederatedSourceRights(
       planned,
       new Map([

@@ -9,7 +9,12 @@ import {
   createHostedDemoDbQuery,
   withHostedDemoDbSource,
 } from './hosted-demo-db-query';
-import { toProjectQueryWire } from './project-query-contract';
+import {
+  toProjectQueryWire,
+  type ProjectQueryReadWire,
+  type ProjectQueryRevision,
+  type ProjectQueryWire,
+} from './project-query-contract';
 import { QueryType } from '../models/definition/query-def';
 import { type IProjectContext } from '../nav/nav-models';
 
@@ -20,8 +25,11 @@ const ref = {
   branch: 'work',
 };
 const draft = createHostedDemoDbQuery('q');
-const response = {
-  query: toProjectQueryWire(draft),
+function asReadWire(wire: ProjectQueryWire): ProjectQueryReadWire {
+  return { ...wire };
+}
+const response: ProjectQueryRevision = {
+  query: asReadWire(toProjectQueryWire(draft)),
   revision: 'revision-2',
   branchHead: 'head-2',
   saveSupported: true,
@@ -40,17 +48,14 @@ function harness() {
       providerData: [{ providerId: 'google.com', uid: 'actor' }],
     },
   });
-  const read = new Subject<typeof response>();
-  const save = new Subject<typeof response>();
+  const read = new Subject<ProjectQueryRevision>();
+  const save = new Subject<ProjectQueryRevision>();
   const denied = new Subject<typeof ref>();
   const queries = {
     authentication: () => auth,
     authorityDenied: () => denied,
-    getRevision: vi.fn(() => read),
-    saveRevision: vi.fn((...args: unknown[]) => {
-      void args;
-      return save;
-    }),
+    getRevision: vi.fn<QueriesService['getRevision']>(() => read),
+    saveRevision: vi.fn<QueriesService['saveRevision']>(() => save),
     capabilities: vi.fn(() => of({ querySave: true })),
     branches: vi.fn(() => of({ branches: [{ name: 'work', head: 'head-1' }] })),
     getQuery: vi.fn(),
@@ -150,17 +155,18 @@ describe('Common API query editor journey', () => {
     h.denied.next(ref);
     expect(h.service.getQueryState('q')).toBeUndefined();
   });
-  it.each([QueryType.SQL, QueryType.DTQL])(
+  it.each([QueryType.SQL, QueryType.DTQL] as const)(
     'opens and conditionally saves a nested plain %s query with a leaf definition ID',
     async (type) => {
       const h = harness();
+      const { federation, ...plainQuery } = response.query;
+      expect(federation).toBeDefined();
       const query = {
-        ...response.query,
+        ...plainQuery,
         folderPath: 'folder/nested',
         id: 'q',
         type,
         text: 'original body',
-        federation: undefined,
       };
       const reply = { ...response, query };
       h.service.openQuery('folder/nested/q');
@@ -203,7 +209,10 @@ describe('Common API query editor journey', () => {
         request: definition.request,
         federation: definition.federation,
       });
-      const result = { ...response, query: toProjectQueryWire(definition) };
+      const result = {
+        ...response,
+        query: asReadWire(toProjectQueryWire(definition)),
+      };
       h.queries.saveRevision.mockImplementation(() => of(result) as never);
       await firstValueFrom(h.service.saveQuery(state, ref));
       expect(h.queries.saveRevision.mock.calls[0][1]).toMatchObject({

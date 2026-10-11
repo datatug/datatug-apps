@@ -181,7 +181,7 @@ describe('closed exact-artifact native contract', () => {
     'composite-key',
   ] as const)('refuses a checked source model with %s', async (mutation) => {
     const fixture = await nativeFixture('ror', true);
-    const schemaRef = fixture.contract.source.schema;
+    const schemaRef = fixture.referenceFile(fixture.contract.source.schema);
     const bytes = fixture.files.get(immutableUrl(schemaRef));
     if (!bytes) throw new Error('Missing fixture model.');
     const model = JSON.parse(bytes);
@@ -243,7 +243,7 @@ describe('closed exact-artifact native contract', () => {
           JSON.stringify(edit(JSON.parse(bytes) as MetadataObject)),
         );
       };
-      const source = await rewrite(contract.source.schema);
+      const source = await rewrite(fixture.referenceFile(contract.source.schema));
       Object.assign(contract.source.schema, { sha256: source.sha256 });
       const targetFile = fixture.own(
         contract.target.model.path,

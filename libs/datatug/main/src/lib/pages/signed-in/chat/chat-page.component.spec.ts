@@ -55,7 +55,12 @@ describe('ChatPageComponent failed turns', () => {
       turn: { id, question: 'Sales by country?', state: 'result' as const },
     })),
   };
-  const data = { ensureSeed: vi.fn(async () => undefined), query: vi.fn() };
+  const data = {
+    ensureSeed: vi.fn<(...args: Parameters<ChinookChatDataService['ensureSeed']>) => Promise<void>>(
+      async () => undefined,
+    ),
+    query: vi.fn(),
+  };
   const joiner = { candidates: vi.fn((): unknown[] => []) };
   const interpreter = {
     interpret: vi.fn<ChatInterpretService['interpret']>(async () => ({

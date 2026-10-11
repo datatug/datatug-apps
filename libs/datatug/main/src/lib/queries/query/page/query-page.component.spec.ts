@@ -6,9 +6,11 @@ import {
   toProjectQueryWire,
   fromProjectQueryWire,
 } from '../../project-query-contract';
+import type { ProjectQueryReadWire } from '../../project-query-contract';
 import { readFileSync } from 'node:fs';
 import 'fake-indexeddb/auto';
-import { resolve } from 'node:path';
+import { dirname, resolve as resolvePath } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { nativeFixture } from '../../public-data/native-fixture.spec-helper';
 import { PublicDataService } from '../../public-data/public-data.service';
 import { NgTemplateOutlet } from '@angular/common';
@@ -49,6 +51,7 @@ import { IQueryEditorState, IQueryState } from '../../../editor/models';
 import { IProjectContext } from '../../../nav/nav-models';
 import {
   IQueryDef,
+  IHttpQueryRequest,
   ISqlQueryRequest,
   ITextQueryRequest,
   QueryType,
@@ -61,8 +64,13 @@ import { ProjectService } from '../../../services/project/project.service';
 import { QueryEditorStateService } from '../../query-editor-state-service';
 import { QueryWorkspaceLayoutComponent } from './query-workspace-layout.component';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
-import { FederatedQueryService } from '../../federated-query.service';
+import {
+  FederatedQueryService,
+  type FederatedQueryProgress,
+  type FederatedQueryResult,
+} from '../../federated-query.service';
 import { PublicSqliteQueryService } from '../../public-sqlite-query.service';
+import { testAuthorProof } from './author-query-proof.spec-helper';
 import { GitHubProjectActivityService } from '../../../services/project/github-project-activity.service';
 import { graphFixturePlan } from '../../public-data/native-graph.spec-helper';
 import { graphStableIdentity } from '../../public-data/native-graph-executor';
@@ -79,26 +87,23 @@ import {
   type PublicDataScenario,
 } from '../../public-data/public-data-scenario';
 
-const invoiceAuthorProof = {
-  profile: 'invoice-query',
-  resolvedQuery: {
-    kind: 'recursive-dtql',
-    from: { kind: 'table', name: 'Invoice', alias: 'i', joins: [] },
-    limit: 10,
-    columns: [{
-      expression: {
-        kind: 'field',
-        field: { source: 'i', field: 'InvoiceId' },
-      },
-    }],
-  },
-} as const;
+const repositoryRoot = resolvePath(
+  dirname(fileURLToPath(import.meta.url)),
+  '../../../../../../../../',
+);
+const resolve = (path: string): string => resolvePath(repositoryRoot, path);
 
 function agentContextStub(securityContextId: string | undefined = 'sctx-1') {
   return {
     securityContextId: signal(securityContextId),
     refresh: vi.fn(() => of(undefined)),
   };
+}
+
+function asReadWire(
+  wire: ReturnType<typeof toProjectQueryWire>,
+): ProjectQueryReadWire {
+  return { ...wire } as ProjectQueryReadWire;
 }
 
 function githubProjectActivityStub() {
@@ -298,7 +303,7 @@ describe('QueryPageComponent — new SQL draft navigation', () => {
         id: 'draft-1',
         title: 'Query #1',
         draft: true,
-        request: { queryType: QueryType.SQL, text: '' },
+        request: { queryType: QueryType.SQL, text: '' } as ISqlQueryRequest,
       };
       const replaceState = vi.fn((state: Record<string, unknown>) => {
         Object.defineProperty(window, 'history', {
@@ -538,7 +543,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       ...queryDef,
       id: 'chinook-invoice-author',
       connectionId: 'chinook-sqlite',
-      request: { queryType: QueryType.DTQL, text: source },
+      request: { queryType: QueryType.DTQL, text: source } as ITextQueryRequest,
     };
     const created = await createComponent({}, definition);
     created.queryState = {
@@ -569,7 +574,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     };
     component.queryDef.set({
       ...queryDef,
-      request: { queryType: QueryType.SQL, text: 'SELECT 1' },
+      request: { queryType: QueryType.SQL, text: 'SELECT 1' } as ISqlQueryRequest,
     });
     expect(component.canChoosePublicSqliteSource()).toBe(true);
   });
@@ -630,7 +635,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     component.queryDef.set({
       ...queryDef,
       connectionId: 'chinook-sqlite',
-      request: { queryType: QueryType.SQL, text: 'SELECT 1' },
+      request: { queryType: QueryType.SQL, text: 'SELECT 1' } as ISqlQueryRequest,
     });
     const rows = Array.from({ length: 150 }, (_, index) => [
       { type: 'integer' as const, value: String(index) },
@@ -679,7 +684,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       const definition = {
         ...queryDef,
         connectionId: 'chinook-sqlite',
-        request: { queryType: QueryType.SQL, text: 'SELECT 1' },
+        request: { queryType: QueryType.SQL, text: 'SELECT 1' } as ISqlQueryRequest,
       };
       component.queryDef.set(definition);
       let resolveRun!: (
@@ -700,7 +705,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       expect(component.running()).toBe(true);
       component.queryDef.set({
         ...definition,
-        request: { queryType: QueryType.SQL, text: 'SELECT 2' },
+        request: { queryType: QueryType.SQL, text: 'SELECT 2' } as ISqlQueryRequest,
       });
       if (outcome === 'resolve')
         resolveRun({
@@ -734,7 +739,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       request: {
         queryType: QueryType.DTQL,
         text: 'from Invoice\nlimit 10\nselect InvoiceId',
-      },
+      } as ITextQueryRequest,
     };
     component = await createComponent({}, authorDefinition);
     component.project = {
@@ -778,7 +783,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       fixtureSha256: 'fixture',
       schemaVersion: 'schema',
       draftRevision: 1,
-      authorProof: invoiceAuthorProof,
+      authorProof: testAuthorProof(),
     });
     await pending;
     expect(component.authorPlan()).toBeUndefined();
@@ -794,7 +799,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       fixtureSha256: 'fixture',
       schemaVersion: 'schema',
       draftRevision: 1,
-      authorProof: invoiceAuthorProof,
+      authorProof: testAuthorProof(),
     });
     component.authorPlan.set(preview);
 
@@ -824,7 +829,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       ...queryDef,
       id: 'chinook-customer-invoice-join',
       connectionId: 'chinook-sqlite',
-      request: { queryType: QueryType.DTQL, text: source },
+      request: { queryType: QueryType.DTQL, text: source } as ITextQueryRequest,
     };
     component = await createComponent({}, definition);
 
@@ -850,7 +855,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       ...queryDef,
       id: 'chinook-invoice-author',
       connectionId: 'chinook-sqlite',
-      request: { queryType: QueryType.DTQL, text: source },
+      request: { queryType: QueryType.DTQL, text: source } as ITextQueryRequest,
     };
     component = await createComponent({}, definition);
 
@@ -884,6 +889,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       fixtureSha256: 'fixture',
       schemaVersion: 'schema',
       draftRevision: 1,
+      authorProof: testAuthorProof(),
     };
     component.authorPlan.set(plan);
     const prepare = vi.spyOn(
@@ -928,6 +934,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       fixtureSha256: 'fixture',
       schemaVersion: 'schema',
       draftRevision: 1,
+      authorProof: testAuthorProof(),
     };
     component.authorPlan.set(plan);
     const revision = component.authorDraftRevision();
@@ -1169,7 +1176,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       ...queryDef,
       id: 'chinook-invoice-author',
       connectionId: 'chinook-sqlite',
-      request: { queryType: QueryType.DTQL, text: source },
+      request: { queryType: QueryType.DTQL, text: source } as ITextQueryRequest,
     };
     const editor = new Subject<IQueryEditorState>();
     component = await createComponent({}, queryDef, '<p></p>', {
@@ -1212,7 +1219,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       ...queryDef,
       id: 'chinook-invoice-author',
       connectionId: 'chinook-sqlite',
-      request: { queryType: QueryType.DTQL, text: source },
+      request: { queryType: QueryType.DTQL, text: source } as ITextQueryRequest,
     };
     component = await createComponent({}, definition);
     component.setAuthorMode('code');
@@ -1316,7 +1323,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     const lookupDefinition: IQueryDef = {
       ...definition,
       id: 'chinook-invoice-author',
-      request: { queryType: QueryType.DTQL, text: 'from Invoice as i' },
+      request: { queryType: QueryType.DTQL, text: 'from Invoice as i' } as ITextQueryRequest,
     };
     const queries = TestBed.inject(QueriesService);
     Object.assign(queries, { getQuery: vi.fn(() => of(lookupDefinition)) });
@@ -1666,7 +1673,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     await pending;
 
     expect(scenario.router.navigate).toHaveBeenCalledTimes(2);
-    expect(scenario.router.navigate.mock.calls[1][1]).toEqual(
+    expect(vi.mocked(scenario.router.navigate).mock.calls[1][1]).toEqual(
       expect.objectContaining({ replaceUrl: true }),
     );
     expect(TestBed.inject(ActivatedRoute).snapshot.queryParamMap.get('id')).toBe(
@@ -1777,10 +1784,10 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     await pending;
 
     expect(scenario.router.navigate).toHaveBeenCalledTimes(2);
-    expect(scenario.router.navigate.mock.calls[1][1]?.queryParams).toEqual(
+    expect(vi.mocked(scenario.router.navigate).mock.calls[1][1]?.queryParams).toEqual(
       expect.objectContaining({ id: scenario.definition.id }),
     );
-    expect(scenario.router.navigate.mock.calls[1][1]).toEqual(
+    expect(vi.mocked(scenario.router.navigate).mock.calls[1][1]).toEqual(
       expect.objectContaining({ replaceUrl: true }),
     );
     expect(scenario.editor.openAuthorizedQuery).not.toHaveBeenCalled();
@@ -1842,11 +1849,13 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     await pending;
 
     expect(scenario.router.navigate).toHaveBeenCalledTimes(2);
-    expect(scenario.router.navigate.mock.calls[1][1]?.queryParams).toEqual(
+    expect(vi.mocked(scenario.router.navigate).mock.calls[1][1]?.queryParams).toEqual(
       expect.objectContaining({ id: scenario.definition.id }),
     );
     expect(scenario.editor.openAuthorizedQuery).not.toHaveBeenCalled();
-    expect(component.queryState.request?.text).toContain('keep local draft');
+    expect((component.queryState.request as ITextQueryRequest).text).toContain(
+      'keep local draft',
+    );
     expect(component.queryState.authorBindingProvenance?.['CustomerId']?.origin).toBe(
       'manual',
     );
@@ -1914,7 +1923,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     expect(abortController.signal.aborted).toBe(true);
     expect(component.running()).toBe(false);
     expect(component.authorDraftRevision()).toBe(1);
-    expect(component.queryDef()?.request.text).toBe(
+    expect((component.queryDef()?.request as ITextQueryRequest).text).toBe(
       'from Invoice as i limit 3',
     );
   });
@@ -1931,7 +1940,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     const target: IQueryDef = {
       id: 'chinook-invoice-author',
       connectionId: 'chinook-sqlite',
-      request: { queryType: QueryType.DTQL, text: 'from Invoice as i' },
+      request: { queryType: QueryType.DTQL, text: 'from Invoice as i' } as ITextQueryRequest,
     };
     const privateProject = {
       ref: {
@@ -2497,7 +2506,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     const lookupDefinition: IQueryDef = {
       ...definition,
       id: 'chinook-invoice-author',
-      request: { queryType: QueryType.DTQL, text: 'from Invoice as i' },
+      request: { queryType: QueryType.DTQL, text: 'from Invoice as i' } as ITextQueryRequest,
     };
     Object.assign(TestBed.inject(QueriesService), {
       getQuery: vi.fn(() => of(lookupDefinition)),
@@ -2630,8 +2639,10 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     'runs a saved/cold-read %s query with no local CLI or environment',
     async (source) => {
       const definition = fromProjectQueryWire(
-        toProjectQueryWire(
-          withHostedDemoDbSource(createHostedDemoDbQuery('new-q'), source),
+        asReadWire(
+          toProjectQueryWire(
+            withHostedDemoDbSource(createHostedDemoDbQuery('new-q'), source),
+          ),
         ),
       );
       component = await createComponent({}, definition);
@@ -2785,11 +2796,11 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     runFixture.detectChanges();
     const service = TestBed.inject(FederatedQueryService);
     const ref = { id: 'datatug-output-100000-abc', generation: 1 };
-    const historical = {
+    const historical: FederatedQueryResult = {
       localResult: ref,
       recordset: {
         columns: [{ name: 'Affiliation', type: 'string' }],
-        rows: [{ type: 'string', value: 'original-affiliation' }].map(
+        rows: [{ type: 'string' as const, value: 'original-affiliation' }].map(
           (cell) => [cell],
         ),
       },
@@ -2798,6 +2809,8 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
         {
           id: 'locations',
           label: 'Locations',
+          parentSet: 'affiliations',
+          parentField: 'Affiliation',
           totalRows: 135,
           recordset: {
             columns: [{ name: 'Location', type: 'string' }],
@@ -2807,6 +2820,8 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
         {
           id: 'aliases',
           label: 'Alternate names',
+          parentSet: 'locations',
+          parentField: 'Location',
           totalRows: 115,
           recordset: {
             columns: [{ name: 'Alias', type: 'string' }],
@@ -2873,15 +2888,22 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     await component.openHistoricalResult('missing');
     expect(component.localHistoryError()).toContain('No local result');
     expect(federatedRunMock).not.toHaveBeenCalled();
-    const result = {
+    const result: FederatedQueryResult = {
       localResult: { id: 'old', generation: 1 },
       recordset: { columns: [], rows: [] },
       totalRows: 150,
       limitations: [],
       bindingsApplied: [],
-      provenance: { observedAt: 'old', queryId: 'old', source: 'fixture' },
+      truncated: false,
+      provenance: {
+        observedAt: 'old',
+        queryId: 'old',
+        source: 'fixture',
+        mode: 'live',
+        executionProfile: 'protected',
+      },
     };
-    component.runResult.set(result as never);
+    component.runResult.set(result);
     component.selectedHistoricalResult.set(result.localResult);
     let release!: (rows: unknown) => void;
     federatedGetPageMock.mockImplementation(
@@ -2934,12 +2956,15 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
   const historyResultFor = (
     definition: IQueryDef,
     id = 'datatug-output-100000-abc',
-  ) =>
+  ): FederatedQueryResult =>
     ({
       localResult: { id, generation: 1 },
       nativeGraph: {
         planIdentity: graphStableIdentity(definition.federation?.nativeGraph),
         stageActions: [],
+        coverage: {},
+        edges: {},
+        ledger: { intermediate: 0, candidates: 0, outputRows: 0, networkBytes: 0 },
       },
       recordset: {
         columns: [{ name: 'Affiliation', type: 'string' }],
@@ -2956,7 +2981,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
         mode: 'live',
         executionProfile: 'protected',
       },
-    }) as Awaited<ReturnType<FederatedQueryService['run']>>;
+    });
   const historyResultTemplate = (): string =>
     readFileSync(
       resolve(
@@ -3955,9 +3980,15 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
         aliases: false,
       });
       if (action === 'edit') editor.next(historyStateFor(definition));
-      oldCall?.[1]?.({ phase: 'old' } as Parameters<
-        NonNullable<Parameters<FederatedQueryService['run']>[1]>
-      >[0]);
+      const oldProgress: FederatedQueryProgress = {
+        stage: 'processing',
+        rowsLoaded: 0,
+        rowsProcessed: 0,
+        requestsCompleted: 0,
+        requestsInFlight: 0,
+        requestsPending: 0,
+      };
+      oldCall?.[1]?.(oldProgress);
       oldCall?.[4]?.(999);
       finish(historyResultFor(oldCall?.[0] as IQueryDef));
       await runFixture.whenStable();
@@ -4364,7 +4395,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     const definition: IQueryDef = {
       ...queryDef,
       id: 'sales',
-      request: { queryType: QueryType.DTQL, text: 'from: Invoice' },
+      request: { queryType: QueryType.DTQL, text: 'from: Invoice' } as ITextQueryRequest,
       federation: { ovdbBaseUrl: 'http://127.0.0.1:50501', tables: [] },
       parameters: [],
     };
@@ -4441,7 +4472,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
             { field: 'name', source: 'c' },
           ],
         }),
-      },
+      } as ITextQueryRequest,
       federation: {
         ovdbBaseUrl: 'http://127.0.0.1:50501',
         tables: [
@@ -4475,7 +4506,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     const definition: IQueryDef = {
       ...queryDef,
       id: 'many-sales',
-      request: { queryType: QueryType.DTQL, text: 'from: Invoice' },
+      request: { queryType: QueryType.DTQL, text: 'from: Invoice' } as ITextQueryRequest,
       federation: { ovdbBaseUrl: 'http://127.0.0.1:50501', tables: [] },
       parameters: [],
     };
@@ -4516,7 +4547,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     const definition: IQueryDef = {
       ...queryDef,
       id: 'paged-sales',
-      request: { queryType: QueryType.DTQL, text: 'from: Invoice' },
+      request: { queryType: QueryType.DTQL, text: 'from: Invoice' } as ITextQueryRequest,
       federation: { ovdbBaseUrl: 'http://127.0.0.1:50501', tables: [] },
       parameters: [],
     };
@@ -5968,7 +5999,7 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
         queryType: QueryType.HTTP,
         url: 'https://example.test',
         method: 'GET',
-      },
+      } as IHttpQueryRequest,
     };
     component = await createComponent(httpDef);
 
@@ -6110,7 +6141,7 @@ describe('extractLinkedEntityNames', () => {
         queryType: QueryType.HTTP,
         url: 'https://example.test',
         method: 'GET',
-      },
+      } as IHttpQueryRequest,
     };
 
     expect(extractLinkedEntityNames(def)).toEqual([]);
