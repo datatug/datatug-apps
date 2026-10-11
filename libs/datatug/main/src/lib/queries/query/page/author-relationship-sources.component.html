@@ -1,0 +1,114 @@
+<details
+  class="author-source-discovery"
+  data-testid="author-source-discovery"
+  (toggle)="onDisclosureToggled($event)"
+>
+  <summary>
+    Sources and relationships
+    @if (sources()) {
+      <span> · relationship available</span>
+    }
+  </summary>
+  @if (loading()) {
+    <p role="status" aria-live="polite">Checking current project metadata…</p>
+  }
+  @if (sources(); as admitted) {
+    <div class="author-source-fields">
+      <section aria-labelledby="author-invoice-fields">
+        <h3 id="author-invoice-fields">Invoice fields</h3>
+        <ul>
+          @for (field of admitted.invoiceFields; track field.name) {
+            <li><code>Invoice.{{ field.name }}</code><span>{{ field.type }}</span></li>
+          }
+        </ul>
+      </section>
+      <section aria-labelledby="author-customer-fields">
+        <h3 id="author-customer-fields">Customer fields</h3>
+        <ul>
+          @for (field of admitted.customerFields; track field.name) {
+            <li><code>Customer.{{ field.name }}</code><span>{{ field.type }}</span></li>
+          }
+        </ul>
+      </section>
+    </div>
+    <dl class="author-source-facts">
+      <div><dt>Declared relationship</dt><dd>Invoice.CustomerId → Customer.CustomerId</dd></div>
+      <div><dt>Cardinality</dt><dd>{{ admitted.cardinality }}</dd></div>
+      <div><dt>Provenance</dt><dd>{{ admitted.relationshipProvenance }}</dd></div>
+      <div><dt>Current LIMIT</dt><dd>{{ currentLimit() }}</dd></div>
+      <div><dt>Cross-source cost</dt><dd>{{ admitted.crossSourceCost }}</dd></div>
+    </dl>
+    <p class="author-source-date-note">Joined InvoiceDate values keep the pinned SQLite DATETIME as raw text.</p>
+    <button
+      type="button"
+      class="author-source-review-button"
+      data-testid="author-source-review"
+      [disabled]="disabled()"
+      (click)="reviewRequested.emit()"
+    >Review relationship</button>
+    @if (review(); as proposed) {
+      <section class="author-source-review" data-testid="author-source-review-panel" aria-labelledby="author-source-review-title">
+        <h3 id="author-source-review-title">Review the proposed draft</h3>
+        <fieldset [disabled]="disabled()">
+          <legend>Customer output fields</legend>
+          @for (field of choices(); track field) {
+            <label>
+              <input
+                type="checkbox"
+                [checked]="selectedFields().includes(field)"
+                (change)="onCustomerFieldChanged(field, $event)"
+              />
+              Customer.{{ field }}
+              @if (field === 'FirstName') {
+                <span class="author-source-suggestion">suggested</span>
+              }
+            </label>
+          }
+        </fieldset>
+        <p class="author-source-join-only">Clear every field to apply the declared relationship without adding an output.</p>
+        <dl class="author-source-facts author-source-binding">
+          <div><dt>Binding</dt><dd>{{ proposed.relationship.id }} · main.{{ proposed.relationship.from.table }}.CustomerId → main.{{ proposed.relationship.to.table }}.CustomerId · {{ proposed.relationship.version }}</dd></div>
+          <div>
+            <dt>Relationship fields</dt>
+            <dd>
+              @for (pair of proposed.relationship.pairs; track pair.fromField) {
+                {{ pair.fromField }} → {{ pair.toField }}
+              }
+            </dd>
+          </div>
+          <div>
+            <dt>Output lineage</dt>
+            <dd>
+              @if (proposed.outputLineage.length) {
+                @for (column of proposed.outputLineage; track column.output) {
+                  {{ column.output }} ← {{ column.source }}.{{ column.field }};
+                }
+              } @else {
+                No output columns
+              }
+              @if (!proposed.selectedFields.length) {
+                · No added Customer outputs
+              }
+            </dd>
+          </div>
+          <div><dt>Current LIMIT</dt><dd>{{ proposed.limit }}</dd></div>
+          <div><dt>Run behavior</dt><dd>Apply does not run. Preview and Run remain explicit.</dd></div>
+        </dl>
+        <div class="author-source-diff" aria-label="Exact source before and after">
+          <div><h4>Current source</h4><pre>{{ proposed.before }}</pre></div>
+          <div><h4>Proposed source</h4><pre>{{ proposed.after }}</pre></div>
+        </div>
+        <button
+          type="button"
+          class="author-source-apply-button"
+          data-testid="author-source-apply"
+          [disabled]="disabled()"
+          (click)="applyRequested.emit()"
+        >Apply reviewed draft</button>
+      </section>
+    }
+  }
+  @if (statusMessage()) {
+    <p class="author-source-status" role="status" aria-live="polite" data-testid="author-source-status">{{ statusMessage() }}</p>
+  }
+</details>

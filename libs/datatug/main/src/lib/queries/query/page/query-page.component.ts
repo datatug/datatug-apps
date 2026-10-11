@@ -268,6 +268,7 @@ import {
 } from './author-relationship-source-edit';
 import { AuthorSqlPreviewComponent } from './author-sql-preview.component';
 import { AuthorComposeControlsComponent } from './author-compose-controls.component';
+import { AuthorRelationshipSourcesComponent } from './author-relationship-sources.component';
 import { readAuthorComposeProfile } from './author-compose-profile';
 import {
   customerIdLookupValue,
@@ -470,6 +471,7 @@ export function extractLinkedEntityNames(
   imports: [
     AuthorComposeControlsComponent,
     AuthorSqlPreviewComponent,
+    AuthorRelationshipSourcesComponent,
     QueryWorkspaceLayoutComponent,
     DatePipe,
     NgTemplateOutlet,
@@ -1159,9 +1161,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.authorMode.set(mode);
   }
 
-  public authorSourcesToggled(event: Event): void {
-    const disclosure = event.currentTarget as HTMLDetailsElement | null;
-    if (disclosure?.open) void this.loadAuthorSources();
+  public authorSourcesToggled(open: boolean): void {
+    if (open) void this.loadAuthorSources();
     else {
       ++this.authorSourceRequestGeneration;
       this.authorSourceLoading.set(false);
@@ -1260,6 +1261,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   public authorSourceFieldChanged(field: AuthorCustomerField, event: Event): void {
     const checked = (event.currentTarget as HTMLInputElement | null)?.checked === true;
+    this.authorSourceFieldSelectionChanged(field, checked);
+  }
+
+  public authorSourceFieldSelectionChanged(field: AuthorCustomerField, checked: boolean): void {
     const fields = this.authorSourceSelectedFields();
     const next = checked
       ? [...fields.filter((item) => item !== field), field]

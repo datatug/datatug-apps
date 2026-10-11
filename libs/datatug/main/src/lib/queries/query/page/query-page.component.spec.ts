@@ -625,9 +625,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       const editor = TestBed.inject(QueryEditorStateService);
       const update = vi.spyOn(editor, 'updateQueryState');
 
-      component.authorSourcesToggled({
-        currentTarget: { open: true },
-      } as unknown as Event);
+      component.authorSourcesToggled(true);
       await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(1));
       await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
       component.reviewAuthorRelationship();
@@ -657,9 +655,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       TestBed.inject(QueryEditorStateService),
       'updateQueryState',
     );
-    component.authorSourcesToggled({
-      currentTarget: { open: true },
-    } as unknown as Event);
+    component.authorSourcesToggled(true);
     await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(1));
     await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
     component.reviewAuthorRelationship();
@@ -705,9 +701,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       },
     };
     component.runResult.set(priorResult as never);
-    component.authorSourcesToggled({
-      currentTarget: { open: true },
-    } as unknown as Event);
+    component.authorSourcesToggled(true);
     await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(1));
     await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
     component.reviewAuthorRelationship();
