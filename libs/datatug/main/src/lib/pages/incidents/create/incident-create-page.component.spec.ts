@@ -300,12 +300,12 @@ describe('IncidentCreatePageComponent', () => {
     expect(guidance?.getAttribute('aria-live')).toBe('polite');
   });
 
-  it.each<[Record<string, string>, string]>([
-    [{ agent: 'agent-b:8989' }, 'agent B'],
-    [{ project: 'operations' }, 'an explicit project'],
+  it.each<Record<string, string>>([
+    { agent: 'agent-b:8989' },
+    { project: 'operations' },
   ])(
     'fails closed and keeps persistent guidance for partial URL scope: %s',
-    async (query, _description) => {
+    async (query) => {
       TestBed.resetTestingModule();
       await render(query);
       peek(fixture.componentInstance).title = 'Do not submit mixed scope';

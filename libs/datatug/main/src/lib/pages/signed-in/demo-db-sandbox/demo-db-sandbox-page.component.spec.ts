@@ -162,7 +162,7 @@ describe('DemoDbSandboxPageComponent', () => {
           throwError(() => new HttpErrorResponse({ status: 404 })),
         )
         .mockReturnValue(of(sandboxInfo)),
-      create: vi.fn((_requestId: string) => of(sandboxInfo)),
+      create: vi.fn(() => of(sandboxInfo)),
       delete: vi.fn(() => of({})),
       query: vi.fn(() => of(queryResult)),
     };

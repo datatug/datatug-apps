@@ -159,7 +159,8 @@ describe('Common API query editor journey', () => {
     'opens and conditionally saves a nested plain %s query with a leaf definition ID',
     async (type) => {
       const h = harness();
-      const { federation: _federation, ...plainQuery } = response.query;
+      const { federation, ...plainQuery } = response.query;
+      expect(federation).toBeDefined();
       const query = {
         ...plainQuery,
         folderPath: 'folder/nested',
