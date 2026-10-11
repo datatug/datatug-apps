@@ -399,7 +399,8 @@ test('TugQL suggestions are explicit, source-safe, and touch reachable', async (
   await expect(runButton).toBeDisabled();
   await editor.press('ControlOrMeta+z');
   await expectEditorSource(page, editor, incompleteDraft);
-  await editor.press('ControlOrMeta+Shift+z');
+  // Use the physical key so Shift remains part of CodeMirror's redo chord.
+  await editor.press('ControlOrMeta+Shift+KeyZ');
   await expectEditorSource(page, editor, acceptedDraft);
 
   const resultsTab = page.locator('#workspace-results-tab');
