@@ -1,0 +1,32 @@
+:host {
+  display: block;
+  min-width: 0;
+  border: 1px solid var(--ion-color-step-250, #cbd5e1);
+  border-radius: 0.65rem;
+  overflow: hidden;
+  --tugql-keyword: #174f91;
+  --tugql-parameter: #713f8f;
+  --tugql-string: #17623a;
+  --tugql-number: #854d0e;
+  --tugql-comment: #57534e;
+}
+
+.author-code-label {
+  display: block;
+  padding: 0.65rem 0.75rem 0.4rem;
+  color: var(--ion-color-dark, #1f2937);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+:host-context(.ion-palette-dark) {
+  --ion-background-color: #121212;
+  --ion-color-dark: #f8fafc;
+  --ion-color-dark-shade: #e2e8f0;
+  --ion-color-step-250: #4b5563;
+  --tugql-keyword: #93c5fd;
+  --tugql-parameter: #d8b4fe;
+  --tugql-string: #86efac;
+  --tugql-number: #fcd34d;
+  --tugql-comment: #cbd5e1;
+}

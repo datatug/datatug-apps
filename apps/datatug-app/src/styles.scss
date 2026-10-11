@@ -53,6 +53,79 @@ ion-item ion-buttons[slot='end'] {
   margin-right: -1em; // TODO: Replace this dirty workaround with proper fix
 }
 
+/* Syntax colors for the read-only SQL preview; the editor uses its local CM theme. */
+.author-sql-preview .tugql-token-keyword {
+  color: var(--tugql-keyword, #174f91);
+  font-weight: 700;
+}
+
+.author-sql-preview .tugql-token-parameter {
+  color: var(--tugql-parameter, #713f8f);
+  font-weight: 650;
+}
+
+.author-sql-preview .tugql-token-string {
+  color: var(--tugql-string, #17623a);
+}
+
+.author-sql-preview .tugql-token-number {
+  color: var(--tugql-number, #854d0e);
+}
+
+.author-sql-preview .tugql-token-comment {
+  color: var(--tugql-comment, #57534e);
+  font-style: italic;
+}
+
+.author-sql-preview .tugql-token-identifier {
+  color: var(--ion-color-dark, #1f2937);
+}
+
+.author-sql-preview .tugql-token-operator,
+.author-sql-preview .tugql-token-punctuation {
+  color: var(--ion-color-dark-shade, #334155);
+}
+
+.ion-palette-dark .author-sql-preview {
+  --ion-background-color: #121212;
+  --ion-color-dark: #f8fafc;
+  --ion-color-dark-shade: #e2e8f0;
+  --ion-color-step-50: #1e1e1e;
+  --ion-color-step-100: #2a2a2a;
+  --ion-color-step-150: #363636;
+  --tugql-keyword: #93c5fd;
+  --tugql-parameter: #d8b4fe;
+  --tugql-string: #86efac;
+  --tugql-number: #fcd34d;
+  --tugql-comment: #cbd5e1;
+}
+
+@media (forced-colors: active) {
+  .author-sql-preview .tugql-token-keyword {
+    color: LinkText;
+    text-decoration: underline;
+  }
+
+  .author-sql-preview .tugql-token-parameter {
+    color: CanvasText;
+    text-decoration: underline dashed;
+  }
+
+  .author-sql-preview .tugql-token-string {
+    color: CanvasText;
+    text-decoration: underline dotted;
+  }
+
+  .author-sql-preview .tugql-token-number {
+    color: CanvasText;
+    font-weight: 700;
+  }
+
+  .author-sql-preview .tugql-token-comment {
+    color: GrayText;
+  }
+}
+
 // Give DataTug modal dialogs and explicitly marked form popovers a roomy
 // viewport-relative default. Selection popovers keep Ionic's compact sizing.
 ion-modal,
