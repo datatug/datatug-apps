@@ -19,6 +19,8 @@ on:
       - wrangler.jsonc
       - package.json
       - pnpm-lock.yaml
+      - nx.json
+      - tools/recordsetcompare/**
       - .github/workflows/deploy.yml
 
 concurrency:
@@ -34,6 +36,13 @@ jobs:
       # datatug-app` (which also runs the stamp-build-info dependency).
       working-directory: .
       build-target: datatug-app
+      # The script runs the app's uncached Nx build (whose dependency performs
+      # online tag/attestation verification), then verifies emitted assets
+      # before Wrangler can publish them.
+      build-command: python3 tools/recordsetcompare/build_app.py
+      build-github-auth: true
+      node-version: '24'
+      pnpm-version: '11.26.0'
       cloudflare-account-id: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
     secrets:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
