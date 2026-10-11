@@ -50,19 +50,22 @@ afterEach(async () => {
 describe('local graph artifact transaction and lifecycle', () => {
   it('keeps captured source notices in supported history and refuses unsafe or oversized metadata before replacing rows', async () => {
     const db = await database(), primary = rows(2, 'rights');
+    const sourceRights = decodeSourceRights(rightsFixture.structured.sourceRights).map((right) => ({
+      ...right,
+      source: { ...right.source },
+      declaration: { ...right.declaration },
+      declaredAt: { ...right.declaredAt },
+      pins: right.pins.map((pin) => ({ ...pin })),
+    }));
     const captured = {
       ...result(primary, 1, 0, 'rights'),
       ...structuredClone(rightsFixture.structured),
-      sourceRights: decodeSourceRights(rightsFixture.structured.sourceRights),
+      sourceRights,
     };
     const descriptor = await replaceGraphOutput(db, definition, captured, primary, 1); db.close();
     const fetcher = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('No history traffic'));
-    const changedSourceRights = captured.sourceRights.map((right, index) =>
-      index === 0
-        ? { ...right, declaration: { ...right.declaration, text: 'Changed live terms' } }
-        : right,
-    );
-    expect(changedSourceRights).not.toEqual(captured.sourceRights);
+    captured.sourceRights[0].declaration.text = 'Changed live terms';
+    expect(captured.sourceRights[0].declaration.text).toBe('Changed live terms');
     const opened = await openLocalResult(descriptor.id);
     expect(opened.result.sourceRights).toEqual(rightsFixture.structured.sourceRights);
     expect(opened.result.usedSourceIds).toEqual(rightsFixture.structured.usedSourceIds);
