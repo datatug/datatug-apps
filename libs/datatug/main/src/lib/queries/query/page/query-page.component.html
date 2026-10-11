@@ -36,7 +36,7 @@
   <ng-template #queryEditor>
   @if (project?.ref?.projectApi && !isTugqlAuthorJourney()) {
     <ion-item
-      ><ion-label>Branch: {{ project?.ref?.branch }}</ion-label
+      ><ion-label>Branch: {{ project.ref.branch }}</ion-label
       ><ion-button
         (click)="loadQueryBranches()"
         [disabled]="queryState.isSaving"
@@ -46,11 +46,11 @@
         >Reload saved query</ion-button
       ></ion-item
     >
-    @if (queryBranches().length && project?.ref?.projectApi === 'cloud') {
+    @if (queryBranches().length && project.ref.projectApi === 'cloud') {
       <ion-item
         ><ion-select
           label="Open branch"
-          [value]="project?.ref?.branch"
+          [value]="project.ref.branch"
           (ionChange)="queryBranchChanged($event)"
           [disabled]="queryState.isSaving"
         >
