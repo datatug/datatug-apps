@@ -635,6 +635,183 @@ describe('Author TugQL structural preview and Run binding', () => {
         102,
       );
       expect(cteOverSeven.rows).toEqual([]);
+
+      const graphSource = [
+        'parameters (',
+        '  @CustomerId integer required',
+        ')',
+        'with CustomerCounts as (',
+        '  from Invoice as i',
+        '  where i.CustomerId = @CustomerId',
+        '  group by i.CustomerId',
+        '  having count(*) >= 7',
+        '  limit 100',
+        '  select (',
+        '    i.CustomerId',
+        '    count(*) as InvoiceCount',
+        '  )',
+        ')',
+        'with EligibleCounts as (',
+        '  from CustomerCounts as counts',
+        '  where counts.InvoiceCount >= 7',
+        '  limit 100',
+        '  select (',
+        '    counts.CustomerId',
+        '    counts.InvoiceCount',
+        '  )',
+        ')',
+        'with CustomerFields as (',
+        '  from Customer as c',
+        '  order by c.CustomerId asc',
+        '  limit 100',
+        '  select (',
+        '    c.CustomerId',
+        '    c.FirstName',
+        '    c.LastName',
+        '    c.Email',
+        '  )',
+        ')',
+        'from EligibleCounts as totals',
+        'join CustomerFields as customer',
+        '  on totals.CustomerId = customer.CustomerId',
+        'order by totals.CustomerId asc',
+        'limit 10',
+        'select (',
+        '  totals.CustomerId',
+        '  totals.InvoiceCount',
+        '  customer.FirstName',
+        '  customer.LastName',
+        '  customer.Email',
+        ')',
+        '',
+      ].join('\n');
+      const graphPreview = await service.prepareTugQL(
+        project,
+        definition(graphSource),
+        103,
+      );
+      expect(graphPreview.authorProof.profile).toBe('bounded-cte-query');
+      expect(graphPreview.relationship).toBeUndefined();
+      expect(graphPreview.bindingNames).toEqual([
+        'CustomerId',
+        'HAVING threshold (literal)',
+        'WHERE literal',
+      ]);
+      const graphResult = await executePinnedSql(
+        graphPreview.sql,
+        fixture,
+        [1, ...graphPreview.fixedBindings],
+        true,
+        true,
+        graphPreview.outputColumns?.map((column) => column.name),
+        graphPreview.authorProof,
+        graphPreview.bindingNames,
+        graphPreview.schemaVersion,
+        graphPreview.draftRevision,
+        graphPreview.authorProof.profile,
+        graphPreview.fixtureSha256,
+        graphPreview.outputColumns,
+      );
+      expect(graphResult.rows).toEqual([
+        [1, 7, 'Luís', 'Gonçalves', 'luisg@embraer.com.br'],
+      ]);
+
+      const emptyGraphPreview = await service.prepareTugQL(
+        project,
+        definition(graphSource.replace(
+          'where counts.InvoiceCount >= 7',
+          'where counts.InvoiceCount >= 8',
+        )),
+        104,
+      );
+      const emptyGraphResult = await executePinnedSql(
+        emptyGraphPreview.sql,
+        fixture,
+        [1, ...emptyGraphPreview.fixedBindings],
+        true,
+        true,
+        emptyGraphPreview.outputColumns?.map((column) => column.name),
+        emptyGraphPreview.authorProof,
+        emptyGraphPreview.bindingNames,
+        emptyGraphPreview.schemaVersion,
+        emptyGraphPreview.draftRevision,
+        emptyGraphPreview.authorProof.profile,
+        emptyGraphPreview.fixtureSha256,
+        emptyGraphPreview.outputColumns,
+      );
+      expect(emptyGraphResult.rows).toEqual([]);
+
+      const nestedLocalSource = `parameters (
+  @CustomerId integer required
+)
+with EligibleCounts as (
+  with CustomerCounts as (
+    from Invoice as i
+    where i.CustomerId = @CustomerId
+    group by i.CustomerId
+    having count(*) >= 7
+    limit 100
+    select (
+      i.CustomerId
+      count(*) as InvoiceCount
+    )
+  )
+  from CustomerCounts as counts
+  where counts.InvoiceCount >= 7
+  limit 100
+  select (
+    counts.CustomerId
+    counts.InvoiceCount
+  )
+)
+with CustomerFields as (
+  from Customer as c
+  order by c.CustomerId asc
+  limit 100
+  select (
+    c.CustomerId
+    c.FirstName
+    c.LastName
+    c.Email
+  )
+)
+from EligibleCounts as totals
+join CustomerFields as customer
+  on totals.CustomerId = customer.CustomerId
+order by totals.CustomerId asc
+limit 10
+select (
+  totals.CustomerId
+  totals.InvoiceCount
+  customer.FirstName
+  customer.LastName
+  customer.Email
+)
+`;
+      const nestedPreview = await service.prepareTugQL(
+        project,
+        definition(nestedLocalSource),
+        105,
+      );
+      expect(nestedPreview.authorProof.profile).toBe('bounded-cte-query');
+      const nestedResult = await executePinnedSql(
+        nestedPreview.sql,
+        fixture,
+        [1, ...nestedPreview.fixedBindings],
+        true,
+        true,
+        nestedPreview.outputColumns?.map((column) => column.name),
+        nestedPreview.authorProof,
+        nestedPreview.bindingNames,
+        nestedPreview.schemaVersion,
+        nestedPreview.draftRevision,
+        nestedPreview.authorProof.profile,
+        nestedPreview.fixtureSha256,
+        nestedPreview.outputColumns,
+      );
+      expect(nestedResult.rows).toEqual([
+        [1, 7, 'Luís', 'Gonçalves', 'luisg@embraer.com.br'],
+      ]);
     },
   );
 
@@ -872,7 +1049,7 @@ describe('Author TugQL structural preview and Run binding', () => {
       bindings: readonly (string | number | null)[],
       columns: readonly string[] | undefined,
       proof: typeof preview.authorProof | undefined,
-      profile: 'invoice-query' | 'customer-count-cte' | undefined,
+      profile: 'invoice-query' | 'customer-count-cte' | 'bounded-cte-query' | undefined,
       fullColumns: typeof preview.outputColumns = preview.outputColumns,
       relationship: typeof preview.relationship = preview.relationship,
     ) =>

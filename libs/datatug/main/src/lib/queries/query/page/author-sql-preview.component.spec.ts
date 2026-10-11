@@ -5,6 +5,7 @@ import { AuthorSqlPreviewComponent } from './author-sql-preview.component';
 
 describe('AuthorSqlPreviewComponent', () => {
   let fixture: ComponentFixture<AuthorSqlPreviewComponent>;
+  const authorProof = testAuthorProof();
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -144,5 +145,44 @@ describe('AuthorSqlPreviewComponent', () => {
     expect(metadata.textContent).toContain(
       'Column lineage is unavailable for this preview.',
     );
+  });
+
+  it('renders ordered SQL binding slots with their own labels and values', () => {
+    fixture.componentRef.setInput('plan', {
+      sql: 'SELECT ... WHERE x = ? AND CustomerId = ? HAVING count(*) >= ?',
+      fixedBindings: [3, 7],
+      bindingNames: [
+        'WHERE literal',
+        'CustomerId',
+        'HAVING threshold (literal)',
+      ],
+      bindingSlots: [
+        { kind: 'literal', name: 'WHERE literal', value: 3 },
+        { kind: 'customer-id', name: 'CustomerId' },
+        { kind: 'literal', name: 'HAVING threshold (literal)', value: 7 },
+      ],
+      sourceId: 'chinook-sqlite',
+      fixtureSha256: 'pin',
+      schemaVersion: '1',
+      draftRevision: 4,
+      authorProof,
+    } satisfies PublicSqliteQueryPreview);
+    fixture.componentRef.setInput('customerId', '1');
+    fixture.componentRef.setInput('customerIdValid', true);
+    fixture.componentRef.setInput('customerIdMissing', false);
+    fixture.detectChanges();
+
+    const rows = Array.from(
+      fixture.nativeElement.querySelectorAll('.author-binding-row'),
+    ) as HTMLElement[];
+    expect(rows.map((row) => [
+      row.querySelector('.author-binding-index')?.textContent,
+      row.querySelector('.author-binding-name')?.textContent,
+      row.querySelector('.author-binding-value')?.textContent?.trim(),
+    ])).toEqual([
+      ['?1', 'WHERE literal · integer literal', '3'],
+      ['?2', '@CustomerId · integer', '1 · ready'],
+      ['?3', 'HAVING threshold · integer literal', '7'],
+    ]);
   });
 });
