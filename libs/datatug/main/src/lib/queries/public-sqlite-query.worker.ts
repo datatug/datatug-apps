@@ -1,7 +1,9 @@
 import initSqlJs from 'sql.js';
+import { parseTugQL, resolveTugQL } from '@dalgo/core';
 import type { TugQLResolved } from '@dalgo/core';
 import {
   compilePublicSqliteTugQL,
+  preparePublicSqliteCteStructuralDocument,
   type PublicSqliteAuthorProof,
   type PublicSqliteOutputColumn,
   type PublicSqliteRelationshipReceipt,
@@ -226,27 +228,89 @@ export async function executePinnedSql(
   )
     throw new Error('The Author profile proof or execution metadata is missing or invalid.');
   if (authorProof) {
+    const allowedProofKeys = authorProfileKind === 'bounded-cte-query'
+      ? ['profile', 'resolvedQuery', 'authoredSource']
+      : ['profile', 'resolvedQuery', 'relationship'];
     if (
-      authorProfileKind === 'customer-count-cte' &&
+      !authorProof ||
+      typeof authorProof !== 'object' ||
+      Array.isArray(authorProof) ||
+      Object.keys(authorProof).some((key) => !allowedProofKeys.includes(key)) ||
+      !authorProof.resolvedQuery
+    )
+      throw new Error('The Author proof contains unsupported or missing fields.');
+    if (
+      (authorProfileKind === 'customer-count-cte' || authorProfileKind === 'bounded-cte-query') &&
       (authorRelationship !== undefined || authorProof.relationship !== undefined)
     )
       throw new Error('The CTE Author profile cannot carry a physical relationship receipt.');
-    const resolved = {
-      query: authorProof.resolvedQuery,
-      columns: [],
-      schemaVersion: schemaVersion ?? '',
-      dependencies: [],
-      relationships: [],
-    } as unknown as TugQLResolved;
+    let resolved: TugQLResolved;
+    let coreOutputColumns: PublicSqliteOutputColumn[] | undefined;
+    if (authorProfileKind === 'bounded-cte-query') {
+      const authoredSource = authorProof.authoredSource;
+      if (typeof authoredSource !== 'string' || new TextEncoder().encode(authoredSource).byteLength > MAX_SQL_BYTES)
+        throw new Error('The bounded CTE Author proof is missing its authored source.');
+      const parsed = parseTugQL(authoredSource);
+      if (parsed.diagnostics.length || !parsed.document.tree)
+        throw new Error('The bounded CTE Author proof contains invalid authored TugQL.');
+      const structuralDocument = preparePublicSqliteCteStructuralDocument(parsed.document);
+      const authorization = resolveTugQL(structuralDocument, {
+        authorizedSchemas: [{
+          version: schemaVersion ?? '',
+          tables: [
+            { name: 'Invoice', fields: [
+              { name: 'CustomerId', type: 'integer', authorized: true },
+              { name: 'InvoiceId', type: 'integer', authorized: true },
+            ] },
+            { name: 'Customer', fields: [
+              { name: 'CustomerId', type: 'integer', authorized: true },
+              { name: 'FirstName', type: 'string', authorized: true },
+              { name: 'LastName', type: 'string', authorized: true },
+              { name: 'Email', type: 'string', authorized: true },
+            ] },
+          ],
+        }],
+        relationships: [],
+        pinnedImports: [],
+        bindings: [],
+      });
+      if (authorization.diagnostics.length || !authorization.resolved)
+        throw new Error('The worker could not independently resolve the bounded CTE source.');
+      if (JSON.stringify(authorization.resolved.query) !== JSON.stringify(authorProof.resolvedQuery))
+        throw new Error('The worker resolved AST differs from the Author proof.');
+      resolved = authorization.resolved;
+      coreOutputColumns = authorization.resolved.columns.map((column) => ({
+        name: column.name,
+        type: column.type.toLowerCase().includes('int') ? 'integer' : column.type.toLowerCase().includes('char') || column.type.toLowerCase().includes('text') || column.type.toLowerCase().includes('string') ? 'string' : 'unsupported',
+        lineage: column.lineage ?? [],
+      })) as PublicSqliteOutputColumn[];
+    } else {
+      resolved = {
+        query: authorProof.resolvedQuery,
+        columns: [],
+        schemaVersion: schemaVersion ?? '',
+        dependencies: [],
+        relationships: [],
+      } as unknown as TugQLResolved;
+    }
     const derived = compilePublicSqliteTugQL(resolved, {
       fixtureSha256: FIXTURE_SHA256,
       schemaVersion: schemaVersion ?? '',
       draftRevision: draftRevision ?? -1,
+      ...(authorProof.authoredSource ? { authoredSource: authorProof.authoredSource } : {}),
       ...(authorProof.relationship ? { relationship: authorProof.relationship } : {}),
     });
-    const bindingsMatch = bindings.length === 1 + derived.fixedBindings.length &&
-      Number.isSafeInteger(bindings[0]) &&
-      JSON.stringify(bindings.slice(1)) === JSON.stringify(derived.fixedBindings);
+    if (coreOutputColumns && JSON.stringify(derived.outputColumns) !== JSON.stringify(coreOutputColumns))
+      throw new Error('The bounded CTE compiler output metadata differs from worker Core resolution.');
+    const bindingsMatch = derived.bindingSlots
+      ? bindings.length === derived.bindingSlots.length && derived.bindingSlots.every((slot, index) =>
+          slot.kind === 'customer-id'
+            ? Number.isSafeInteger(bindings[index])
+            : bindings[index] === slot.value,
+        )
+      : bindings.length === 1 + derived.fixedBindings.length &&
+        Number.isSafeInteger(bindings[0]) &&
+        JSON.stringify(bindings.slice(1)) === JSON.stringify(derived.fixedBindings);
     if (
       !authorProfile ||
       derived.authorProof?.profile !== authorProfileKind ||
@@ -259,7 +323,7 @@ export async function executePinnedSql(
       !bindingsMatch
     )
       throw new Error('The Author execution request differs from its independently compiled profile.');
-    joined = derived.authorProof.profile === 'customer-count-cte' || derived.relationship !== undefined;
+    joined = derived.authorProof.profile === 'customer-count-cte' || derived.authorProof.profile === 'bounded-cte-query' || derived.relationship !== undefined;
   }
   const SQL = await initSqlJs(
     fixture

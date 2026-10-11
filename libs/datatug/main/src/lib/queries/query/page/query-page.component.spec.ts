@@ -79,6 +79,21 @@ import {
   type PublicDataScenario,
 } from '../../public-data/public-data-scenario';
 
+const invoiceAuthorProof = {
+  profile: 'invoice-query',
+  resolvedQuery: {
+    kind: 'recursive-dtql',
+    from: { kind: 'table', name: 'Invoice', alias: 'i', joins: [] },
+    limit: 10,
+    columns: [{
+      expression: {
+        kind: 'field',
+        field: { source: 'i', field: 'InvoiceId' },
+      },
+    }],
+  },
+} as const;
+
 function agentContextStub(securityContextId: string | undefined = 'sctx-1') {
   return {
     securityContextId: signal(securityContextId),
@@ -763,6 +778,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       fixtureSha256: 'fixture',
       schemaVersion: 'schema',
       draftRevision: 1,
+      authorProof: invoiceAuthorProof,
     });
     await pending;
     expect(component.authorPlan()).toBeUndefined();
@@ -778,6 +794,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       fixtureSha256: 'fixture',
       schemaVersion: 'schema',
       draftRevision: 1,
+      authorProof: invoiceAuthorProof,
     });
     component.authorPlan.set(preview);
 
