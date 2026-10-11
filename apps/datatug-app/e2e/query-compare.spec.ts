@@ -20,7 +20,7 @@ test.beforeEach(async ({ context }) => {
 
 test('compares the maintained Chinook invoice query against two public fixtures with the released Core bridge', async ({ page }) => {
   test.setTimeout(120_000);
-  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.setViewportSize({ width: 1280, height: 1000 });
   await page.addInitScript(() => {
     const original = window.Worker;
     let starts = 0;
@@ -57,8 +57,10 @@ test('compares the maintained Chinook invoice query against two public fixtures 
   const compareNativeButton = compareToggle.locator('button');
   await compareNativeButton.focus();
   await compareNativeButton.press('Space');
-  await expect(compareToggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(compareNativeButton).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('tablist', { name: 'Query workspace view' })).toHaveCount(0);
+  await expect(page.getByTestId('author-results-empty')).toHaveCount(0);
+  await expect(page.getByText('Not executed', { exact: true })).toHaveCount(0);
   await expect(page.getByTestId('comparison-target-baseline')).toContainText('Pinned upstream baseline');
   await expect(page.getByTestId('comparison-target-candidate')).toContainText('Synthetic comparison fixture (not production data)');
   expect(await page.evaluate(() => (window as unknown as { __compareWorkerStarts: number }).__compareWorkerStarts)).toBe(0);
@@ -71,6 +73,15 @@ test('compares the maintained Chinook invoice query against two public fixtures 
   const candidate = page.getByTestId('comparison-side-candidate');
   await expect(baseline).toContainText('7 complete rows observed', { timeout: 60_000 });
   await expect(candidate).toContainText('7 complete rows observed', { timeout: 60_000 });
+  const sideWidths = await Promise.all([baseline, candidate].map(async (side) =>
+    (await side.boundingBox())?.width ?? 0,
+  ));
+  console.info(`[comparison-layout] viewport=1280px baseline=${sideWidths[0]}px candidate=${sideWidths[1]}px`);
+  expect(sideWidths.every((width) => width >= 300)).toBe(true);
+  await expect(page.getByTestId('comparison-panel')).toContainText(
+    'Both fixture queries completed with complete bounded results.',
+  );
+  await expect(page.getByTestId('comparison-panel')).not.toContainText('still running');
   expect(await page.evaluate(() => (window as unknown as { __compareWorkerStarts: number }).__compareWorkerStarts)).toBe(2);
   await baseline.getByText('Observed rows, execution ID, schema and provenance').click();
   await candidate.getByText('Observed rows, execution ID, schema and provenance').click();
@@ -99,6 +110,13 @@ test('compares the maintained Chinook invoice query against two public fixtures 
   await expect(result).toContainText('Candidate-only · InvoiceId 97');
   await expect(result).toContainText('Raw text comparison · no date/time normalization');
   await expect(result).toContainText('not durable or citable evidence');
+
+  await page.getByTestId('query-view-author').locator('button').click();
+  await expect(page.getByTestId('tugql-author')).toBeVisible();
+  await expect(page.getByTestId('query-body-text').locator('textarea')).toHaveValue(/i\.InvoiceDate as InvoiceDate/u);
+  await expect(page.getByTestId('author-customer-id').locator('input')).toHaveValue('1');
+  await page.getByTestId('query-view-compare').locator('button').click();
+  await expect(page.getByTestId('comparison-result')).toBeVisible();
 
   for (const width of [390, 320]) {
     await page.setViewportSize({ width, height: 844 });
