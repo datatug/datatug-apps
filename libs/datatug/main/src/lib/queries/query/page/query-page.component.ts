@@ -1365,8 +1365,51 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         );
       }
     } finally {
-      if (operation === this.comparisonGeneration)
+      if (operation === this.comparisonGeneration) {
         this.comparisonSnapshot.set(this.comparisonSession.snapshot());
+        this.updateComparisonRunMessage(operation);
+      }
+    }
+  }
+
+  private updateComparisonRunMessage(operation: number): void {
+    if (operation !== this.comparisonGeneration || this.comparisonResult()) return;
+    const snapshot = this.comparisonSession.snapshot();
+    if (!snapshot || snapshot.invalidated) return;
+
+    const running = snapshot.sides.filter((side) => side.status === 'running');
+    const queued = snapshot.sides.filter((side) => side.status === 'queued');
+    const failed = snapshot.sides.filter((side) => side.status === 'failed');
+    const cancelled = snapshot.sides.filter((side) => side.status === 'cancelled');
+    const label = (side: (typeof snapshot.sides)[number]): string =>
+      side.target.role === 'baseline' ? 'Baseline' : 'Candidate';
+    if (running.length || queued.length) {
+      const pending = [...running, ...queued].map(label);
+      const finishedFailures = failed.map(label);
+      const finishedCancellations = cancelled.map(label);
+      const finished = [
+        ...(finishedFailures.length ? [`${finishedFailures.join(' and ')} fixture quer${finishedFailures.length === 1 ? 'y failed' : 'ies failed'}`] : []),
+        ...(finishedCancellations.length ? [`${finishedCancellations.join(' and ')} fixture quer${finishedCancellations.length === 1 ? 'y was' : 'ies were'} cancelled`] : []),
+      ];
+      this.comparisonMessage.set(
+        `${finished.length ? `${finished.join('; ')}; ` : ''}${pending.join(' and ')} fixture ${pending.length === 1 ? 'query is' : 'queries are'} still running.`,
+      );
+      return;
+    }
+    if (failed.length) {
+      this.comparisonMessage.set(
+        `${failed.map(label).join(' and ')} fixture quer${failed.length === 1 ? 'y failed' : 'ies failed'}. Retry a failed side to continue.`,
+      );
+      return;
+    }
+    if (cancelled.length) {
+      this.comparisonMessage.set(
+        `${cancelled.map(label).join(' and ')} fixture quer${cancelled.length === 1 ? 'y was' : 'ies were'} cancelled. Retry a cancelled side to continue.`,
+      );
+      return;
+    }
+    if (snapshot.sides.every((side) => side.status === 'complete')) {
+      this.comparisonMessage.set('Both fixture queries completed with complete bounded results.');
     }
   }
 
@@ -1399,6 +1442,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public cancelComparisonSide(targetId: ComparisonFixtureTarget['id']): void {
     this.comparisonSession.cancelSide(targetId);
     this.comparisonSnapshot.set(this.comparisonSession.snapshot());
+    this.updateComparisonRunMessage(this.comparisonGeneration);
   }
 
   public async compareCompletedResults(): Promise<void> {

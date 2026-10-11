@@ -1325,7 +1325,9 @@
   }
   </ng-template>
 
-  @if (isTugqlAuthorJourney()) {
+  @if (isTugqlAuthorJourney() && queryView() === 'compare') {
+    <ng-container *ngTemplateOutlet="queryEditor" />
+  } @else if (isTugqlAuthorJourney()) {
     <sneat-query-workspace-layout>
       <div query-workspace-editor>
         <ng-container *ngTemplateOutlet="queryEditor" />

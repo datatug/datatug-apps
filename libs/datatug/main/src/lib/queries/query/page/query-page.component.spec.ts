@@ -995,6 +995,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       'failed',
       'complete',
     ]);
+    expect(component.comparisonMessage()).toContain('Baseline fixture query failed');
     await component.retryComparisonSide('chinook-baseline');
 
     expect(calls.map((call) => call.target)).toEqual([
@@ -1007,6 +1008,46 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       'complete',
       'complete',
     ]);
+    expect(component.comparisonMessage()).toBe('Both fixture queries completed with complete bounded results.');
+  });
+
+  it('reports a cancelled side after the other fixture query completes', async () => {
+    component = await createTugQLAuthor(authorSource);
+    await settleQueryPage();
+    component.authorCustomerId.set('1');
+    component.authorPlan.set(comparisonPreview(component.authorDraftRevision()));
+    const sqlite = TestBed.inject(PublicSqliteQueryService);
+    vi.spyOn(sqlite, 'prepareTugQL').mockResolvedValue(
+      comparisonPreview(component.authorDraftRevision()),
+    );
+    const pending: { target: string; signal?: AbortSignal; resolve: (value: ComparisonWorkerObservation) => void }[] = [];
+    vi.spyOn(sqlite, 'runComparisonSide').mockImplementation(
+      (_project, _definition, _plan, target, signal) =>
+        new Promise((resolve) => pending.push({
+          target,
+          signal,
+          resolve: (observation) => resolve(observation),
+        })),
+    );
+
+    const running = component.runComparisonBoth();
+    await vi.waitFor(() => expect(pending).toHaveLength(2));
+    component.cancelComparisonSide('chinook-baseline');
+    expect(component.comparisonMessage()).toContain('Baseline fixture query was cancelled');
+    expect(component.comparisonMessage()).toContain('Candidate fixture query is still running');
+    const baseline = pending.find((entry) => entry.target === 'chinook-baseline');
+    const candidate = pending.find((entry) => entry.target === 'chinook-candidate');
+    if (!baseline || !candidate) throw new Error('Expected both fixture queries to be running');
+    baseline.resolve(comparisonObservation(0));
+    candidate.resolve(comparisonObservation(1));
+    await running;
+
+    expect(pending.find((entry) => entry.target === 'chinook-baseline')?.signal?.aborted).toBe(true);
+    expect(component.comparisonSnapshot()?.sides.map((side) => side.status)).toEqual([
+      'cancelled',
+      'complete',
+    ]);
+    expect(component.comparisonMessage()).toContain('Baseline fixture query was cancelled');
   });
 
   it.each(['principal change', 'draft edit and byte-for-byte revert'] as const)(
@@ -1047,11 +1088,13 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       }
       expect(pending.every((entry) => entry.signal?.aborted)).toBe(true);
       expect(component.comparisonSnapshot()?.invalidated).toBe(true);
+      const invalidationMessage = component.comparisonMessage();
       pending.forEach((entry, index) => entry.resolve(comparisonObservation(index)));
       await running;
 
       expect(component.comparisonSnapshot()?.sides.some((side) => side.status === 'complete')).toBe(false);
       expect(component.comparisonResult()).toBeUndefined();
+      expect(component.comparisonMessage()).toBe(invalidationMessage);
     },
   );
 
