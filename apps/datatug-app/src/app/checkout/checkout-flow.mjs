@@ -436,12 +436,11 @@ export function createReturnFlow({
             render({ stage: 'expired', user, status });
             return;
           }
-          if (serviceScope.mode === 'live' && status.accessStatus === 'ended') {
+          if (status.accessStatus === 'ended') {
             render({ stage: 'business-ended', user });
             return;
           }
           if (
-            serviceScope.mode === 'live' &&
             status.status === 'complete' &&
             status.accessStatus === 'active'
           ) {

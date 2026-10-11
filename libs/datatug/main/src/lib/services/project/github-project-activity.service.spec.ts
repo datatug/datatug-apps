@@ -87,6 +87,22 @@ describe('GitHubProjectActivityService', () => {
     expect(reportParams.get('spaceID')).toBe(scope.spaceID);
     expect(post.mock.calls[0][1]).not.toHaveProperty('actorID');
   });
+  it('reports actual Space-owned query dispatch under its explicit current project scope', async () => {
+    const sharedRef: IProjectRef = { storeId: 'firestore', spaceID: 'business_space', projectId: 'shared_project' };
+    projects.setCurrent(sharedRef);
+    const service = TestBed.inject(GitHubProjectActivityService);
+    await firstValueFrom(service.reportForCurrentProject(sharedRef, 'operation_1', 'query_execution_dispatched'));
+    expect(capabilities).not.toHaveBeenCalled();
+    const contextParams = get.mock.calls[0][1] as HttpParams;
+    expect(contextParams.get('spaceID')).toBe(sharedRef.spaceID);
+    expect(contextParams.get('project')).toBe(sharedRef.projectId);
+    expect(post.mock.calls[0][1]).toEqual({
+      contextID: 'server-context', operationID: 'operation_1', kind: 'query_execution_dispatched',
+    });
+    projects.setCurrent({ ...sharedRef, projectId: 'another_project' });
+    await expect(firstValueFrom(service.reportForCurrentProject(sharedRef, 'operation_2', 'query_edit'))).rejects.toThrow();
+    expect(post).toHaveBeenCalledOnce();
+  });
 
   it('does not request or invent usage when capabilities omit Business scope', async () => {
     const service = TestBed.inject(GitHubProjectActivityService);
@@ -166,7 +182,7 @@ describe('GitHubProjectActivityService', () => {
     }
   });
 
-  it('rejects non-GitHub or metadata-only refs before reading capabilities', async () => {
+  it('rejects a different Space project or invalid mixed GitHub ref before reading capabilities', async () => {
     const service = TestBed.inject(GitHubProjectActivityService);
     await expect(
       firstValueFrom(
@@ -180,6 +196,20 @@ describe('GitHubProjectActivityService', () => {
     ).rejects.toThrow('current authenticated GitHub project');
     expect(capabilities).not.toHaveBeenCalled();
     expect(get).not.toHaveBeenCalled();
+  });
+
+  it('drops a pending Space context when the actor changes before it returns', async () => {
+    const sharedRef: IProjectRef = { storeId: 'firestore', spaceID: 'business_space', projectId: 'shared_project' };
+    projects.setCurrent(sharedRef);
+    const context = new Subject<unknown>();
+    get.mockReturnValueOnce(context.asObservable());
+    const service = TestBed.inject(GitHubProjectActivityService);
+    const pending = firstValueFrom(service.resolve(sharedRef));
+    authState.next({ status: 'authenticated', user: { uid: 'actor-two' } });
+    context.next({ contextID: 'old-actor-context', expiresAtUTC });
+    context.complete();
+    await expect(pending).resolves.toBeUndefined();
+    expect(post).not.toHaveBeenCalled();
   });
 
   it('drops a late capability response after the project changes', async () => {

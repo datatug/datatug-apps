@@ -145,6 +145,19 @@ describe('ProjectPage', () => {
       });
     });
 
+    it('opens the shared Space query list at its own address', () => {
+      const ref = { storeId: 'firestore', spaceID: 'S1', projectId: 'P1' };
+      const navController = TestBed.inject(NavController) as unknown as {
+        navigateForward: ReturnType<typeof vi.fn>;
+      };
+      setProject(ref);
+      goProjFolder('query');
+      expect(navController.navigateForward).toHaveBeenCalledWith(
+        '/space/S1/store/firestore/project/P1/queries',
+        { state: { project: { ref } } },
+      );
+    });
+
     it('navigates nowhere, and says so, for a project that has no exact address', () => {
       const navController = TestBed.inject(NavController) as unknown as {
         navigateForward: ReturnType<typeof vi.fn>;

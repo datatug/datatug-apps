@@ -593,8 +593,10 @@ export class QueriesTabComponent {
   public supportsFolderMutations(): boolean {
     const ref = this.project()?.ref;
     return !(
-      ref?.projectApi === 'cloud' &&
+      (ref?.spaceID !== undefined) ||
+      (ref?.projectApi === 'cloud' &&
       (ref.storeId === 'github.com' || ref.storeId === 'github')
+      )
     );
   }
 

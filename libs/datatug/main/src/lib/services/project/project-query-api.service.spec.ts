@@ -87,6 +87,31 @@ describe('ProjectQueryApiService', () => {
     expect(params.get('branch')).toBe('work');
     expect(http.get).not.toHaveBeenCalled();
   });
+  it('uses the authenticated Space-qualified transport for shared query read, catalogue and save', async () => {
+    const service = TestBed.inject(ProjectQueryApiService);
+    const ref = { storeId: 'firestore', spaceID: 'space_1', projectId: 'project_1' };
+    await firstValueFrom(service.folder(ref));
+    await firstValueFrom(service.read(ref, 'q'));
+    await firstValueFrom(service.connectionCatalog(ref));
+    for (const call of api.get.mock.calls) {
+      const params = call[1] as HttpParams;
+      expect(params.get('storage')).toBe('firestore');
+      expect(params.get('spaceID')).toBe('space_1');
+      expect(params.get('project')).toBe('project_1');
+      expect(params.has('branch')).toBe(false);
+    }
+    await firstValueFrom(service.save(ref, {
+      operationId: 'operation_1', ifNoneMatch: true,
+      query: toProjectQueryWire(createHostedDemoDbQuery('q')),
+    }));
+    expect(api.post.mock.calls[0][1]).toMatchObject({
+      storage: 'firestore', spaceID: 'space_1', project: 'project_1',
+      operationId: 'operation_1', ifNoneMatch: true,
+    });
+    expect(api.post.mock.calls[0][1]).not.toHaveProperty('branch');
+    expect(http.get).not.toHaveBeenCalled();
+    expect(http.post).not.toHaveBeenCalled();
+  });
   it.each([
     ['Repo@Owner@datatug@working', 'repo@owner@datatug', 'datatug'],
     ['Repo@Owner@datatug@HEAD', 'repo@owner@datatug', 'datatug'],
@@ -168,15 +193,15 @@ describe('ProjectQueryApiService', () => {
     );
     expect(api.post).not.toHaveBeenCalled();
   });
-  it('refuses metadata-only shared refs before any network request', async () => {
+  it('refuses a malformed Space reference before any network request', async () => {
     await expect(
       firstValueFrom(
         TestBed.inject(ProjectQueryApiService).read(
-          { storeId: 'firestore', projectId: 'q', spaceID: 'space' },
+          { storeId: 'firestore', projectId: 'q', spaceID: 'bad space' },
           'query',
         ),
       ),
-    ).rejects.toThrow('metadata-only');
+    ).rejects.toThrow('Invalid shared project reference');
     expect(api.get).not.toHaveBeenCalled();
     expect(http.get).not.toHaveBeenCalled();
   });

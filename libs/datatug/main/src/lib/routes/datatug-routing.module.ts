@@ -134,7 +134,7 @@ export const datatugRoutes: Routes = [
     pathMatch: 'full',
     redirectTo: '/',
   },
-  // Metadata only: no reuse of the private project's child query/write routes.
+  // Space-owned projects expose only their saved-query journey.
   {
     path: 'space/:spaceId/store/:storeId/project/:projectId',
     canMatch: [
@@ -146,15 +146,35 @@ export const datatugRoutes: Routes = [
           projectId: segments[5]?.path,
         }) &&
         (segments.length === 6 ||
-          (segments.length === 7 && segments[6].path === 'overview')),
+          (segments.length === 7 && ['overview', 'queries'].includes(segments[6].path)) ||
+          (segments.length === 8 && segments[6].path === 'query' &&
+            /^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(segments[7].path))),
     ],
-    children: ['', 'overview'].map((path) => ({
+    children: [...['', 'overview'].map((path) => ({
       path,
       loadComponent: () =>
         import('../pages/signed-in/project/project-page.component').then(
           (m) => m.ProjectPageComponent,
         ),
     })),
+      {
+        path: 'queries',
+        loadComponent: () =>
+          import('../queries/queries/queries-page.component').then(
+            (m) => m.QueriesPageComponent,
+          ),
+      },
+      {
+        path: 'query',
+        children: [{
+          path: ':queryId',
+          loadComponent: () =>
+            import('../queries/query/page/query-page.component').then(
+              (m) => m.QueryPageComponent,
+            ),
+        }],
+      },
+    ],
   },
   // The short address of a GitHub project: `/project/github.com/<owner>/<repo>…` (design
   // `demo-as-github-project.md` 3.4). Matched by matchers, not paths; the old `store/…` form below is unchanged.

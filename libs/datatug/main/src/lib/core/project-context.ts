@@ -52,7 +52,7 @@ export function projectRefToString(v?: IProjectRef): string | undefined {
 export const isSharedProjectIdentifier = (v: unknown): v is string =>
   typeof v === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(v);
 
-export function isSharedProjectRef(v: IProjectRef): boolean {
+export function isSharedProjectRef(v: IProjectRef): v is IProjectRef & { readonly storeId: 'firestore'; readonly spaceID: string } {
   return (
     v?.storeId === 'firestore' &&
     isSharedProjectIdentifier(v.spaceID) &&

@@ -13,6 +13,7 @@ import { QueriesPageComponent } from './queries-page.component';
 import { QueriesService } from '../queries.service';
 import { DatatugNavContextService } from '../../services/nav/datatug-nav-context.service';
 import { DatatugNavService } from '../../services/nav/datatug-nav.service';
+import { ProjectContextService } from '../../services/project/project-context.service';
 import { QueriesTabComponent } from './queries-tab.component';
 import { SqlEditorComponent } from '../../components/sqleditor/sql-editor.component';
 import { IProjectContext } from '../../nav/nav-models';
@@ -67,6 +68,10 @@ describe('SqlQueriesPage', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+  it('returns a cold Space query-list URL to its owning project', () => {
+    TestBed.inject(ProjectContextService).setCurrent({ storeId: 'firestore', spaceID: 'S1', projectId: 'P1' });
+    expect(component.defaultBackHref).toBe('/space/S1/store/firestore/project/P1');
   });
 });
 

@@ -11,7 +11,7 @@ import { Injectable, Injector, inject } from '@angular/core';
 import { Observable, throwError, of, switchMap, startWith } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { STORE_ID_GITHUB_COM, STORE_TYPE_GITHUB } from '@sneat/core';
-import { IProjectRef } from '../core/project-context';
+import { IProjectRef, isSharedProjectRef } from '../core/project-context';
 import { IParameterDef } from '../models/definition/parameter';
 import { IRecordsetDef } from '../models/definition/recordset';
 import {
@@ -213,7 +213,7 @@ export class QueriesService {
     folderPath: string,
     rootFolder?: 'shared' | 'personal' | 'bookmarked',
   ): Observable<IQueryFolder | null | undefined> {
-    if (projRef.projectApi === 'cloud') {
+    if (projRef.projectApi === 'cloud' || isSharedProjectRef(projRef)) {
       if (rootFolder === 'personal')
         return throwError(
           () =>
@@ -281,7 +281,7 @@ export class QueriesService {
     return this.injector.get(ProjectQueryApiService).save(ref, save);
   }
   public getQuery(projRef: IProjectRef, id: string): Observable<IQueryDef> {
-    if (projRef.projectApi)
+    if (projRef.projectApi || isSharedProjectRef(projRef))
       return this.getRevision(projRef, id).pipe(
         map((reply) => fromProjectQueryWire(reply.query)),
       );

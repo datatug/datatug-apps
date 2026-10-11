@@ -5,7 +5,7 @@ import {
   QueryType,
 } from '../models/definition/query-def';
 
-/** The supported Core v0.44.0 query envelope. Richer browser plans must refuse a lossy save. */
+/** The supported Core query envelope. Richer browser plans must refuse a lossy save. */
 export interface ProjectQueryWire {
   readonly folderPath: string;
   readonly id: string;

@@ -1,4 +1,4 @@
-import { equalProjectRef } from '../core/project-context';
+import { equalProjectRef, isSharedProjectRef } from '../core/project-context';
 import {
   fromProjectQueryWire,
   toProjectQueryWire,
@@ -173,7 +173,7 @@ export class QueryEditorStateService {
         this.authSubscription?.unsubscribe();
         this.denialSubscription?.unsubscribe();
         this.clearScope();
-        if (currentProject?.ref.projectApi === 'cloud') {
+        if (currentProject && (currentProject.ref.projectApi === 'cloud' || isSharedProjectRef(currentProject.ref))) {
           this.denialSubscription = this.queriesService
             .authorityDenied?.()
             .subscribe((denied) => {
@@ -328,7 +328,7 @@ export class QueryEditorStateService {
       };
       let queryState = state?.activeQueries?.find((q) => q.id === id);
       if (
-        this.currentProject?.ref.projectApi === 'cloud' &&
+        (this.currentProject?.ref.projectApi === 'cloud' || (this.currentProject && isSharedProjectRef(this.currentProject.ref))) &&
         queryState &&
         !queryState.isNew
       ) {
@@ -452,7 +452,7 @@ export class QueryEditorStateService {
     };
     if (this.currentProject) {
       const currentProject = this.currentProject;
-      if (currentProject.ref.projectApi) {
+      if (currentProject.ref.projectApi || isSharedProjectRef(currentProject.ref)) {
         const readVersion = (this.readVersions.get(id) || 0) + 1;
         this.readVersions.set(id, readVersion);
         this.queriesService
@@ -505,7 +505,7 @@ export class QueryEditorStateService {
               )
                 return;
               if (
-                currentProject.ref.projectApi === 'cloud' &&
+                (currentProject.ref.projectApi === 'cloud' || isSharedProjectRef(currentProject.ref)) &&
                 [401, 403].includes(error?.status)
               ) {
                 this.clearScope();
@@ -733,7 +733,7 @@ export class QueryEditorStateService {
           'An attempt to save a query after current project have been changed',
       );
     }
-    if (projectRef.projectApi)
+    if (projectRef.projectApi || isSharedProjectRef(projectRef))
       return this.saveCommonQuery(queryState, projectRef);
     const { id } = queryState;
     if (!id) {
@@ -837,7 +837,7 @@ export class QueryEditorStateService {
         throw new Error(
           'This query cannot be saved losslessly by the current API.',
         );
-      if (!id || !queryState.def || !queryState.request || !ref.branch)
+      if (!id || !queryState.def || !queryState.request || (!isSharedProjectRef(ref) && !ref.branch))
         throw new Error('Load a query and select its branch before saving.');
       const generation = this.generation;
       const query = toProjectQueryWire(
@@ -867,12 +867,12 @@ export class QueryEditorStateService {
           ? prior.request
           : {
               operationId: crypto.randomUUID(),
-              branch: ref.branch,
+              ...(ref.branch ? { branch: ref.branch } : {}),
               query,
               ...(queryState.isNew
                 ? { ifNoneMatch: true as const }
                 : { ifMatch: queryState.revision }),
-              expectedBranchHead: queryState.branchHead,
+              ...(ref.branch ? { expectedBranchHead: queryState.branchHead } : {}),
             };
       if (!queryState.isNew && !queryState.revision)
         throw new Error(
@@ -892,6 +892,8 @@ export class QueryEditorStateService {
             throw new Error(
               'This project does not currently allow saving queries.',
             );
+          if (isSharedProjectRef(ref))
+            return this.queriesService.saveRevision(ref, request);
           if (request.expectedBranchHead)
             return this.queriesService.saveRevision(ref, request);
           return this.queriesService.branches(ref).pipe(

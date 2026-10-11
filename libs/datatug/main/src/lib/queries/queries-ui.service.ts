@@ -1,6 +1,6 @@
 import { ActionSheetController } from '@ionic/angular';
 import { Injectable, inject } from '@angular/core';
-import { IProjectRef } from '../core/project-context';
+import { IProjectRef, isSharedProjectRef } from '../core/project-context';
 import { QueryType } from '../models/definition/query-def';
 import { DatatugNavService } from '../services/nav/datatug-nav.service';
 import { QueryEditorStateService } from './query-editor-state-service';
@@ -59,17 +59,16 @@ export class QueriesUiService {
           role: 'selected',
           handler: createNewQuery(QueryType.SQL),
         },
-        {
+        ...(!isSharedProjectRef(projectRef) ? [{
           text: 'Hosted DemoDB table (DTQL)',
           role: 'selected',
           handler: createNewQuery(QueryType.DTQL),
-        },
-        {
+        }, {
           // icon: 'browser-outline',
           text: 'HTTP',
           role: 'selected',
           handler: createNewQuery(QueryType.HTTP),
-        },
+        }] : []),
         {
           // icon: 'cancel',
           text: 'Cancel',

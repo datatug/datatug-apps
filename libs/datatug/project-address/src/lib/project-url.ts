@@ -57,6 +57,11 @@ export const DEMO_PROJECT_REF: IProjectRef = {
 
 const PROJECT_FILE_NAME = 'datatug-project.json';
 
+function sharedQueryPage(rest: string): boolean {
+  return rest === '' || rest === '/overview' || rest === '/queries' ||
+    /^\/query\/[A-Za-z0-9_-]+(?:%2F[A-Za-z0-9_-]+)*$/.test(rest);
+}
+
 /** Why an address is not accepted. The app words each one for the visitor (design 3.4a). */
 export type ProjectUrlErrorReason =
   /** Not a project address at all (another route). Not an error to show. */
@@ -252,7 +257,7 @@ export function tryProjectUrl(
       ref.storeId !== 'firestore' ||
       !sharedIdentifier(ref.spaceID) ||
       !sharedIdentifier(ref.projectId) ||
-      (rest !== '' && rest !== '/overview')
+      !sharedQueryPage(rest)
     ) {
       return refused('not-representable');
     }
@@ -330,7 +335,7 @@ export function parseProjectUrl(
       segments[4] !== 'project' ||
       !sharedIdentifier(spaceID) ||
       !sharedIdentifier(projectId) ||
-      (rest !== '' && rest !== '/overview')
+      (rest === undefined || !sharedQueryPage(rest))
     ) {
       return { ok: false, reason: 'invalid-path-segment' };
     }

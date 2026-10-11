@@ -13,7 +13,7 @@
       <ion-button
         class="query-save-button"
         slot="end"
-        [disabled]="queryState.isSaving || queryState.saveSupported === false"
+        [disabled]="queryState.isSaving || queryState.saveSupported === false || !canSaveQuery()"
         [fill]="isChanged ? 'solid' : 'clear'"
         [color]="isChanged ? 'danger' : 'medium'"
         aria-label="Save changes"
@@ -407,7 +407,7 @@
       <ion-item>
         <ion-input
           placeholder="Title - is required"
-          [readonly]="queryState.saveSupported === false"
+          [readonly]="queryState.saveSupported === false && !project?.ref?.spaceID"
           [value]="queryState.title"
           [disabled]="queryState.isSaving"
           (ionChange)="queryTitleChanged($event)"
@@ -638,7 +638,7 @@
             autoGrow="true"
             [value]="queryBodyText()"
             [disabled]="queryState.isSaving || running()"
-            [readonly]="queryState.saveSupported === false"
+            [readonly]="queryState.saveSupported === false && !project?.ref?.spaceID"
             (ionInput)="queryTextChanged($event)"
           />
         } @else {

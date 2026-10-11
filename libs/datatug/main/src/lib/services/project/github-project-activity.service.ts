@@ -7,6 +7,7 @@ import { catchError, map, switchMap } from 'rxjs/operators';
 import {
   IProjectRef,
   equalProjectRef,
+  isSharedProjectRef,
 } from '../../core/project-context';
 import {
   GitHubProjectActivityScope,
@@ -68,6 +69,9 @@ function isGithubCloudProject(ref: IProjectRef): boolean {
     ref.projectId.length > 0
   );
 }
+
+const isReportableProject = (ref: IProjectRef): boolean =>
+  isGithubCloudProject(ref) || isSharedProjectRef(ref);
 
 function readActivityScope(
   capabilities: ProjectQueryCapabilities,
@@ -165,7 +169,7 @@ export class GitHubProjectActivityService {
     const actorID = this.actorID;
     const generation = this.generation;
     if (
-      !isGithubCloudProject(ref) ||
+      !isReportableProject(ref) ||
       !actorID ||
       !equalProjectRef(this.currentProject, ref)
     ) {
@@ -175,8 +179,11 @@ export class GitHubProjectActivityService {
       );
     }
 
-    return this.projectQueries.capabilities(ref).pipe(
-      switchMap((capabilities) => {
+    const scopeSource = isSharedProjectRef(ref)
+      ? of({ spaceID: ref.spaceID, projectID: ref.projectId })
+      : this.projectQueries.capabilities(ref).pipe(map(readActivityScope));
+    return scopeSource.pipe(
+      switchMap((scope) => {
         if (
           generation !== this.generation ||
           this.actorID !== actorID ||
@@ -184,7 +191,6 @@ export class GitHubProjectActivityService {
         ) {
           return of(undefined);
         }
-        const scope = readActivityScope(capabilities);
         if (!scope) return of(undefined);
         const params = new HttpParams({
           fromObject: {
@@ -242,7 +248,7 @@ export class GitHubProjectActivityService {
       bound.generation !== this.generation ||
       bound.actorID !== this.actorID ||
       !equalProjectRef(this.currentProject, session.project) ||
-      !isGithubCloudProject(session.project) ||
+      !isReportableProject(session.project) ||
       !isActivityContextCurrent(session.context) ||
       !isActivityID(operationID) ||
       (kind !== 'query_edit' && kind !== 'query_execution_dispatched')
