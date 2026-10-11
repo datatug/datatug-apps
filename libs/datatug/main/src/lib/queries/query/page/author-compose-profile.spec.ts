@@ -44,7 +44,190 @@ const STYLED_GROUPED = [
   '',
 ].join('\n');
 
+const JOINED = [
+  'parameters (',
+  '  @CustomerId integer required',
+  ')',
+  'from Invoice as i',
+  '-- keep this relationship query comment',
+  'join Customer as c',
+  '  on i.CustomerId = c.CustomerId -- keep the declared key note',
+  'where i.CustomerId = @CustomerId',
+  'order by i.InvoiceId',
+  'limit 100 -- keep the row-limit note',
+  'select (',
+  '  i.InvoiceId as id',
+  '  i.InvoiceDate',
+  '  c.FirstName as first_name',
+  '  c.Email as contact',
+  ')',
+  '',
+].join('\n');
+
+const composeChanges = (changes: Partial<{
+  grouped: boolean;
+  includeInvoiceDate: boolean;
+  limit: number;
+}> = {}) => ({
+  grouped: changes.grouped ?? false,
+  includeInvoiceDate: changes.includeInvoiceDate ?? true,
+  countExpression: 'star' as const,
+  havingOperator: '>=' as const,
+  threshold: 7,
+  limit: changes.limit ?? 100,
+});
+
 describe('author compose profile', () => {
+  it('admits only the declared parameterized Invoice-to-Customer scan for joined Compose', () => {
+    expect(parseTugQL(JOINED).diagnostics).toEqual([]);
+    expect(readAuthorComposeProfile(JOINED)).toMatchObject({
+      supported: true,
+      writable: true,
+      grouped: false,
+      joined: true,
+      customerAlias: 'c',
+      includeInvoiceDate: true,
+      invoiceDateToggleSupported: true,
+      limit: 100,
+    });
+  });
+
+  it.each([
+    JOINED.replace('i.CustomerId = c.CustomerId', 'i.CustomerId = c.InvoiceId'),
+    JOINED.replace('order by i.InvoiceId', 'order by i.InvoiceId desc'),
+    JOINED.replace('order by i.InvoiceId\n', ''),
+    JOINED.replace('join Customer as c', 'left join Customer as c'),
+    JOINED.replace('limit 100', 'group by i.CustomerId\nhaving count(*) > 1\nlimit 100'),
+    JOINED.replace('i.InvoiceDate', 'c.InvoiceDate'),
+  ])('keeps an unsupported joined query in Code without changing its draft', (source) => {
+    expect(readAuthorComposeProfile(source)).toMatchObject({
+      supported: false,
+      writable: false,
+    });
+  });
+
+  it('patches only the joined row limit and keeps ON, ordering, aliases, comments, and projection bytes', () => {
+    const result = updateAuthorComposeSource(JOINED, composeChanges({ limit: 75 }));
+    expect(result).toBe(JOINED.replace('limit 100 -- keep the row-limit note', 'limit 75 -- keep the row-limit note'));
+    expect(readAuthorComposeProfile(result ?? '')).toMatchObject({
+      supported: true,
+      joined: true,
+      limit: 75,
+    });
+
+    const numericComment = JOINED.replace(
+      'limit 100 -- keep the row-limit note',
+      'limit 100 -- reviewed 2024',
+    );
+    expect(
+      updateAuthorComposeSource(numericComment, composeChanges({ limit: 75 })),
+    ).toBe(numericComment.replace('limit 100', 'limit 75'));
+  });
+
+  it('removes and restores only InvoiceDate in a joined block SELECT while retaining comments and other aliases', () => {
+    const withoutDate = updateAuthorComposeSource(
+      JOINED,
+      composeChanges({ includeInvoiceDate: false }),
+    );
+    expect(withoutDate).toBe(
+      JOINED.replace('  i.InvoiceDate\n', ''),
+    );
+    expect(withoutDate).toContain('join Customer as c');
+    expect(withoutDate).toContain('order by i.InvoiceId');
+    expect(withoutDate).toContain('c.FirstName as first_name');
+    expect(withoutDate).toContain('c.Email as contact');
+    expect(readAuthorComposeProfile(withoutDate ?? '')).toMatchObject({
+      supported: true,
+      joined: true,
+      includeInvoiceDate: false,
+    });
+
+    const withDate = updateAuthorComposeSource(
+      withoutDate ?? '',
+      composeChanges({ includeInvoiceDate: true }),
+    );
+    expect(withDate).toBe(
+      (withoutDate ?? '').replace(
+        '  i.InvoiceId as id\n',
+        '  i.InvoiceId as id\n  i.InvoiceDate\n',
+      ),
+    );
+    expect(parseTugQL(withDate ?? '').diagnostics).toEqual([]);
+    expect(readAuthorComposeProfile(withDate ?? '')).toMatchObject({
+      supported: true,
+      joined: true,
+      includeInvoiceDate: true,
+    });
+  });
+
+  it.each([
+    JOINED.replace('  i.InvoiceDate\n', '  i.InvoiceDate as issued\n'),
+    JOINED.replace('  i.InvoiceDate\n', '  i.InvoiceDate -- keep this field note\n'),
+    JOINED.replace(
+      '  i.InvoiceDate\n  c.FirstName as first_name\n',
+      '  c.FirstName as first_name\n  i.InvoiceDate\n',
+    ),
+  ])('keeps joined InvoiceDate fixed when toggling would lose authored details', (source) => {
+    expect(readAuthorComposeProfile(source)).toMatchObject({
+      supported: true,
+      joined: true,
+      invoiceDateToggleSupported: false,
+    });
+    expect(readAuthorComposeProfile(source).invoiceDateToggleReason).toContain(
+      'InvoiceDate is fixed',
+    );
+    expect(
+      updateAuthorComposeSource(source, composeChanges({ includeInvoiceDate: false })),
+    ).toBeUndefined();
+    const limited = updateAuthorComposeSource(source, composeChanges({ limit: 75 }));
+    expect(limited).toBe(source.replace('limit 100', 'limit 75'));
+  });
+
+  it('keeps a projection named InvoiceDate from colliding with a newly enabled field', () => {
+    const withoutDate = JOINED
+      .replace('  i.InvoiceDate\n', '')
+      .replace('  c.FirstName as first_name', '  c.FirstName as InvoiceDate');
+    expect(readAuthorComposeProfile(withoutDate)).toMatchObject({
+      supported: true,
+      joined: true,
+      includeInvoiceDate: false,
+      invoiceDateToggleSupported: false,
+    });
+    expect(
+      updateAuthorComposeSource(withoutDate, composeChanges({ includeInvoiceDate: true })),
+    ).toBeUndefined();
+  });
+
+  it('disables InvoiceDate when adding it would exceed six joined outputs', () => {
+    const sixColumnNoDate = JOINED
+      .replace('  i.InvoiceDate\n', '')
+      .replace(
+        '  i.InvoiceId as id\n',
+        '  i.InvoiceId as id\n  i.InvoiceId as invoice_copy\n  i.CustomerId as invoice_customer\n',
+      )
+      .replace('  c.Email as contact\n', '  c.LastName as surname\n  c.Email as contact\n');
+    expect(parseTugQL(sixColumnNoDate).diagnostics).toEqual([]);
+    expect(readAuthorComposeProfile(sixColumnNoDate)).toMatchObject({
+      supported: true,
+      joined: true,
+      includeInvoiceDate: false,
+      invoiceDateToggleSupported: false,
+    });
+    expect(
+      updateAuthorComposeSource(sixColumnNoDate, composeChanges({ includeInvoiceDate: true })),
+    ).toBeUndefined();
+    expect(
+      updateAuthorComposeSource(
+        sixColumnNoDate,
+        composeChanges({ includeInvoiceDate: false, limit: 75 }),
+      ),
+    ).toBe(sixColumnNoDate.replace('limit 100', 'limit 75'));
+  });
+
+  it('never uses structural grouping regeneration for a joined scan', () => {
+    expect(updateAuthorComposeSource(JOINED, composeChanges({ grouped: true }))).toBeUndefined();
+  });
+
   it('reads the maintained Invoice source without changing its text', () => {
     const before = SIMPLE;
     const profile = readAuthorComposeProfile(SIMPLE);

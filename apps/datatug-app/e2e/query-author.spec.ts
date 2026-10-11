@@ -26,11 +26,17 @@ const pasteCode = async (
   editor: Locator,
   source: string,
 ): Promise<void> => {
-  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
-  await page.evaluate((text) => navigator.clipboard.writeText(text), source);
   await editor.click();
   await editor.press('ControlOrMeta+A');
-  await editor.press('ControlOrMeta+V');
+  if (page.context().browser()?.browserType().name() === 'webkit') {
+    // WebKit does not support Playwright's Chromium clipboard permission
+    // grant. insertText still follows the focused editor's native input path.
+    await page.keyboard.insertText(source);
+  } else {
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.evaluate((text) => navigator.clipboard.writeText(text), source);
+    await editor.press('ControlOrMeta+V');
+  }
   await expectEditorSource(page, editor, source);
 };
 
@@ -98,7 +104,21 @@ test.skip(
   'set DATATUG_E2E_GITHUB_FAKE to the demo project checkout containing the saved Author query',
 );
 
-test.beforeEach(async ({ context }, testInfo) => {
+test.beforeEach(async ({ context, page }, testInfo) => {
+  if (testInfo.project.use.browserName === 'webkit') {
+    // The anonymous query journeys do not use Firebase Auth; satisfy only the
+    // local emulator iframe requested by WebKit's auth bootstrap. Query APIs,
+    // comparison workers, and datasets continue through their real test paths.
+    await page.route(
+      /^http:\/\/127\.0\.0\.1:9099\/emulator\/auth\/iframe(?:\?.*)?$/u,
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'text/html',
+          body: '<!doctype html><html><body></body></html>',
+        }),
+    );
+  }
   if (DEMO_REPO) {
     const repository = testInfo.title.includes('Invoice Customer join')
       ? JOIN_DEMO_REPO
@@ -571,9 +591,19 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
   );
   const author = page.getByTestId('tugql-author');
   await expect(author).toBeVisible({ timeout: 20_000 });
+  await expect(author.getByTestId('author-compose-tab')).toHaveAttribute(
+    'fill',
+    'solid',
+  );
+  await expect(author.getByTestId('author-code-tab')).toHaveAttribute(
+    'fill',
+    'clear',
+  );
   await expect(
-    author.getByRole('button', { name: 'Code', exact: true }),
-  ).toHaveAttribute('aria-pressed', 'true');
+    author.locator('sneat-author-compose-controls'),
+  ).toBeVisible();
+  await expect(author.getByTestId('query-body-text')).toHaveCount(0);
+  await author.getByTestId('author-code-tab').click();
   const editor = author.getByTestId('query-body-text').locator('.cm-content');
   const original = savedQuerySource('chinook-customer-invoice-join', JOIN_DEMO_REPO);
   const missingOn = original.replace(
@@ -855,6 +885,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   page,
 }, testInfo) => {
   test.setTimeout(90_000);
+  const isMobile = testInfo.project.use.isMobile === true;
   const errors: string[] = [];
   let workersStarted = 0;
   page.on('worker', () => workersStarted++);
@@ -867,9 +898,20 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expect(author).toBeVisible({ timeout: 20_000 });
   await expect(author.getByTestId('author-compose-tab')).toBeVisible();
   await expect(author.getByTestId('author-code-tab')).toBeVisible();
-  await expect(page.getByTestId('author-results-empty')).toBeVisible();
-  await expect(page.locator('#workspace-editor-pane')).toBeVisible();
-  await expect(page.locator('#workspace-results-pane')).toBeVisible();
+  const editorPane = page.locator('#workspace-editor-pane');
+  const resultsPane = page.locator('#workspace-results-pane');
+  if (isMobile) {
+    await page.locator('#workspace-results-tab').click();
+    await expect(page.getByTestId('author-results-empty')).toBeVisible();
+    await expect(resultsPane).toBeVisible();
+    await expect(editorPane).not.toBeVisible();
+    await page.locator('#workspace-editor-tab').click();
+    await expect(editorPane).toBeVisible();
+  } else {
+    await expect(page.getByTestId('author-results-empty')).toBeVisible();
+    await expect(editorPane).toBeVisible();
+    await expect(resultsPane).toBeVisible();
+  }
   await expect(author.getByTestId('author-run')).toHaveAttribute(
     'disabled',
     '',
@@ -921,6 +963,37 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   );
   expect(workersStarted).toBe(0);
 
+  const joinedSource = await copyEditorSource(page, editor);
+  expect(joinedSource).toContain('join Customer as c');
+  expect(joinedSource).toContain('order by i.InvoiceId');
+  expect(joinedSource).toContain('c.FirstName');
+  await author.getByTestId('author-compose-tab').click();
+  const compose = author.locator('sneat-author-compose-controls');
+  await expect(compose).toBeVisible();
+  await expect(compose).toContainText(
+    'Grouping is unavailable for Invoice–Customer joins',
+  );
+  await expect(
+    compose.getByLabel('Group by CustomerId and count invoices'),
+  ).toHaveCount(0);
+  const joinedLimit = compose.getByRole('spinbutton', { name: 'Row limit' });
+  await expect(joinedLimit).toHaveValue('100');
+  const joinedInvoiceDate = compose.getByLabel('InvoiceDate', { exact: true });
+  await expect(joinedInvoiceDate).toBeChecked();
+  await joinedLimit.fill('75');
+  await joinedLimit.press('Tab');
+  await joinedInvoiceDate.uncheck();
+  await author.getByTestId('author-code-tab').click();
+  const withoutInvoiceDate = joinedSource.replace(', i.InvoiceDate', '');
+  const limitedWithoutDate = withoutInvoiceDate.replace('limit 100', 'limit 75');
+  await expectEditorSource(page, editor, limitedWithoutDate);
+  await author.getByTestId('author-compose-tab').click();
+  await compose.getByLabel('InvoiceDate', { exact: true }).check();
+  await author.getByTestId('author-code-tab').click();
+  const limitedWithDate = joinedSource.replace('limit 100', 'limit 75');
+  await expectEditorSource(page, editor, limitedWithDate);
+  expect(workersStarted).toBe(0);
+
   const customerId = author.getByTestId('author-customer-id').locator('input');
   await customerId.fill('');
   await author.getByTestId('author-preview').click();
@@ -934,7 +1007,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   expect(previewSql).toContain('WHERE "i"."CustomerId" = ?');
   expect(previewSql).toContain('"c"."FirstName"');
   expect(previewSql).toContain('"i"."InvoiceDate"');
-  expect(previewSql).toContain('LIMIT 100');
+  expect(previewSql).toContain('LIMIT 75');
   expect(previewSql).not.toContain('= 1');
   await expect(author.getByTestId('author-run')).toHaveAttribute(
     'disabled',
@@ -957,6 +1030,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expect(preview.locator('pre')).toHaveText(previewSql ?? '');
   await expect(author.getByTestId('author-run')).toBeEnabled();
   await author.getByTestId('author-run').click();
+  if (isMobile) await page.locator('#workspace-results-tab').click();
   const receipt = page.getByTestId('author-execution-receipt');
   await expect(receipt).toBeVisible({ timeout: 20_000 });
   await expect(receipt).toContainText('Executed');
@@ -987,6 +1061,43 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expect(rows.nth(1)).toContainText('Luís');
   await expect(rows.nth(7)).toContainText('382');
   expect(errors).toEqual([]);
+
+  if (isMobile) await page.locator('#workspace-editor-tab').click();
+  await author.getByTestId('author-compose-tab').click();
+  await expect(joinedLimit).toHaveValue('75');
+  await joinedLimit.fill('3');
+  await joinedLimit.press('Tab');
+  await author.getByTestId('author-code-tab').click();
+  const reducedSource = limitedWithDate.replace('limit 75', 'limit 3');
+  await expectEditorSource(page, editor, reducedSource);
+  if (isMobile) await page.locator('#workspace-results-tab').click();
+  await expect(receipt).toBeVisible();
+  await expect(receipt).toContainText('7 rows');
+  if (isMobile) await page.locator('#workspace-editor-tab').click();
+  await expect(author.getByTestId('author-run')).toHaveAttribute('disabled', '');
+  expect(workersStarted).toBe(1);
+
+  await author.getByTestId('author-preview').click();
+  const reducedPreview = author.getByTestId('author-sql-preview');
+  await expect(reducedPreview).toBeVisible();
+  await expect(reducedPreview).toContainText('Preview · Not executed');
+  const reducedPreviewSql = await reducedPreview.locator('pre').textContent();
+  expect(reducedPreviewSql).toContain('LIMIT 3');
+  expect(reducedPreviewSql).toContain('"i"."InvoiceDate"');
+  expect(reducedPreviewSql).toContain('"c"."FirstName"');
+  expect(workersStarted).toBe(1);
+  await author.getByTestId('author-run').click();
+  if (isMobile) await page.locator('#workspace-results-tab').click();
+  await expect(receipt).toContainText('Executed', { timeout: 20_000 });
+  await expect(receipt).toContainText('3 rows');
+  await expect.poll(() => workersStarted).toBe(2);
+  const reducedRows = page.getByRole('grid').getByRole('row');
+  await expect(reducedRows).toHaveCount(4);
+  await expect(reducedRows.nth(1)).toContainText('98');
+  await expect(reducedRows.nth(1)).toContainText('2022-03-11 00:00:00');
+  await expect(reducedRows.nth(1)).toContainText('Luís');
+  await expect(reducedRows.nth(2)).toContainText('121');
+  await expect(reducedRows.nth(3)).toContainText('143');
 
   for (const width of [390, 320]) {
     await page.setViewportSize({ width, height: 844 });
@@ -1050,6 +1161,8 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await page.goto(AUTHOR_URL);
   const secondAuthor = page.getByTestId('tugql-author');
   await expect(secondAuthor).toBeVisible({ timeout: 20_000 });
+  const workersBeforeSecondEmailApply = workersStarted;
+  expect(workersBeforeSecondEmailApply).toBe(2);
   const secondDiscovery = secondAuthor.getByTestId('author-source-discovery');
   await secondDiscovery.locator('summary').click();
   await expect(secondDiscovery).toContainText('Customer.Email', {
@@ -1065,28 +1178,32 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expect(
     secondDiscovery.getByTestId('author-source-status'),
   ).toContainText('Applied the reviewed join and binding', { timeout: 20_000 });
-  expect(workersStarted).toBe(1);
+  expect(workersStarted).toBe(workersBeforeSecondEmailApply);
   await secondAuthor.getByTestId('author-preview').click();
   const secondPreview = secondAuthor.getByTestId('author-sql-preview');
   await expect(secondPreview).toBeVisible();
   const secondPreviewSql = await secondPreview.locator('pre').textContent();
   expect(secondPreviewSql).toContain('"c"."Email"');
+  expect(workersStarted).toBe(workersBeforeSecondEmailApply);
   await secondAuthor
     .getByTestId('author-customer-id')
     .locator('input')
     .fill('1');
   await expect(secondAuthor.getByTestId('author-run')).toBeEnabled();
-  expect(workersStarted).toBe(1);
+  expect(workersStarted).toBe(workersBeforeSecondEmailApply);
   await secondAuthor.getByTestId('author-run').click();
   await expect(page.getByTestId('author-execution-receipt')).toContainText(
     '7 rows',
     { timeout: 20_000 },
   );
-  await expect.poll(() => workersStarted).toBe(2);
+  await expect
+    .poll(() => workersStarted)
+    .toBe(workersBeforeSecondEmailApply + 1);
   const secondRows = page.getByRole('grid').getByRole('row');
   await expect(secondRows).toHaveCount(8);
   await expect(secondRows.nth(1)).toContainText('2022-03-11 00:00:00');
   await expect(secondRows.nth(1)).toContainText('luisg@embraer.com.br');
+  expect(workersStarted).toBe(3);
   expect(errors).toEqual([]);
 });
 
