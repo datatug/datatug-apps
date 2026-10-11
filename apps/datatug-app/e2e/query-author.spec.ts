@@ -835,7 +835,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expect(secondAuthor.getByTestId('author-run')).toBeEnabled();
   expect(workersStarted).toBe(1);
   await secondAuthor.getByTestId('author-run').click();
-  await expect(secondAuthor.getByTestId('author-execution-receipt'))
+  await expect(page.getByTestId('author-execution-receipt'))
     .toContainText('7 rows', { timeout: 20_000 });
   await expect.poll(() => workersStarted).toBe(2);
   const secondRows = page.getByRole('grid').getByRole('row');
