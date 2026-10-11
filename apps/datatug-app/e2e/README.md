@@ -1,5 +1,25 @@
 # datatug-app e2e
 
+## Query authoring in mobile WebKit
+
+The optional query-only WebKit profile covers coloring and native editing,
+the saved Invoice → Customer Compose/Code/Preview/Run journey, and the maintained
+two-fixture comparison. It uses the iPhone 13 browser profile and also checks
+320px and 390px layouts. This is automated WebKit coverage; physical iPhone
+Safari testing is a separate check. The default CI projects remain unchanged.
+
+```sh
+# Use a clean checkout of the maintained demo project and an unused local port.
+DATATUG_E2E_GITHUB_FAKE=/path/to/datatug-demo-project DATATUG_E2E_PORT=4200 \
+  pnpm nx run datatug-app:e2e -- \
+  --config=apps/datatug-app/playwright.query-mobile.config.ts
+```
+
+Install Playwright's WebKit browser before running this optional profile.
+The GitHub reader is served from the local demo checkout; query execution and
+comparison use the real pinned SQLite workers and Core bridge. Reports are
+written under `coverage/apps/datatug-query-mobile/`.
+
 Two kinds of e2e live here.
 
 - `root-and-login.spec.ts`, `debug.spec.ts` (project `chromium`, the default) —

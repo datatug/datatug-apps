@@ -2,14 +2,20 @@
   @if (profile().supported && profile().writable) {
     <p class="compose-caption">Result shape</p>
     <div class="compose-control-row">
-      <label class="compose-check compose-group-toggle">
-        <input
-          type="checkbox"
-          [checked]="profile().grouped"
-          (change)="update({ grouped: $any($event.target).checked })"
-        />
-        Group by CustomerId and count invoices
-      </label>
+      @if (profile().joined) {
+        <p class="compose-grouping-note" role="note">
+          Grouping is unavailable for Invoice–Customer joins. Use Code to edit grouped queries.
+        </p>
+      } @else {
+        <label class="compose-check compose-group-toggle">
+          <input
+            type="checkbox"
+            [checked]="profile().grouped"
+            (change)="update({ grouped: $any($event.target).checked })"
+          />
+          Group by CustomerId and count invoices
+        </label>
+      }
       <label class="compose-field compose-limit">
         <span>Row limit</span>
         <input
@@ -77,10 +83,16 @@
           <input
             type="checkbox"
             [checked]="profile().includeInvoiceDate"
+            [disabled]="profile().joined && !profile().invoiceDateToggleSupported"
             (change)="update({ includeInvoiceDate: $any($event.target).checked })"
           />
           InvoiceDate
         </label>
+        @if (profile().joined && !profile().invoiceDateToggleSupported) {
+          <p class="compose-projection-note" role="note">
+            {{ profile().invoiceDateToggleReason }}
+          </p>
+        }
       </fieldset>
     }
     @if (controlError(); as error) {

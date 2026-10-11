@@ -53,7 +53,12 @@ export class AuthorComposeControlsComponent {
     if (next !== undefined && next !== this.source()) {
       this.sourceChanged.emit(next);
     }
-    if (next === undefined) return false;
+    if (next === undefined) {
+      this.controlError.set(
+        'This edit cannot be applied without changing other query text. The draft was not changed; use Code.',
+      );
+      return false;
+    }
     this.controlError.set(undefined);
     return true;
   }
