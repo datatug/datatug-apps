@@ -296,6 +296,7 @@ import {
   type AuthorRelationshipSourceReview,
 } from './author-relationship-source-edit';
 import { AuthorSqlPreviewComponent } from './author-sql-preview.component';
+import { AuthorCodeEditorComponent } from './author-code-editor.component';
 import { AuthorComposeControlsComponent } from './author-compose-controls.component';
 import { AuthorRelationshipSourcesComponent } from './author-relationship-sources.component';
 import { readAuthorComposeProfile } from './author-compose-profile';
@@ -500,6 +501,7 @@ export function extractLinkedEntityNames(
   imports: [
     AuthorComposeControlsComponent,
     AuthorSqlPreviewComponent,
+    AuthorCodeEditorComponent,
     AuthorRelationshipSourcesComponent,
     PublicSqliteComparisonPanelComponent,
     QueryWorkspaceLayoutComponent,
@@ -1578,6 +1580,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.invalidateComparison('The query draft changed; run both fixtures again.');
     }
     this.queryEditorStateService.updateQueryState(this.queryState);
+  }
+
+  public authorCodeChanged(text: string): void {
+    this.queryTextChanged(
+      new CustomEvent('ionInput', { detail: { value: text } }),
+    );
   }
 
   public setAuthorMode(mode: 'compose' | 'code'): void {

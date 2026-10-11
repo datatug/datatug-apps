@@ -1,0 +1,14 @@
+<div class="author-code-label">{{ label() }}</div>
+@for (editor of [instance()]; track editor.generation) {
+  <code-editor
+    class="author-code-editor-view"
+    [root]="editorRoot"
+    [value]="editor.value"
+    [language]="editor.language"
+    [languages]="languages"
+    [extensions]="editor.extensions"
+    [readonly]="readOnly()"
+    [disabled]="disabled()"
+    [lineWrapping]="true"
+  />
+}

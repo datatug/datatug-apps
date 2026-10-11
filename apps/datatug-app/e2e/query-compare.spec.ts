@@ -37,9 +37,9 @@ test('compares the maintained Chinook invoice query against two public fixtures 
   const author = page.getByTestId('tugql-author');
   await expect(author).toBeVisible({ timeout: 20_000 });
   await author.getByTestId('author-code-tab').click();
-  const editor = author.getByTestId('query-body-text').locator('textarea');
-  await expect(editor).toHaveValue(/i\.InvoiceId as InvoiceId/u);
-  await expect(editor).toHaveValue(/i\.InvoiceDate as InvoiceDate/u);
+  const editor = author.getByTestId('query-body-text').locator('.cm-content');
+  await expect(editor).toContainText(/i\.InvoiceId as InvoiceId/u);
+  await expect(editor).toContainText(/i\.InvoiceDate as InvoiceDate/u);
   const customerId = author.getByTestId('author-customer-id').locator('input');
   await expect(customerId).toHaveValue('');
   await author.getByTestId('author-preview').click();
@@ -113,7 +113,7 @@ test('compares the maintained Chinook invoice query against two public fixtures 
 
   await page.getByTestId('query-view-author').locator('button').click();
   await expect(page.getByTestId('tugql-author')).toBeVisible();
-  await expect(page.getByTestId('query-body-text').locator('textarea')).toHaveValue(/i\.InvoiceDate as InvoiceDate/u);
+  await expect(page.getByTestId('query-body-text').locator('.cm-content')).toContainText(/i\.InvoiceDate as InvoiceDate/u);
   await expect(page.getByTestId('author-customer-id').locator('input')).toHaveValue('1');
   await page.getByTestId('query-view-compare').locator('button').click();
   await expect(page.getByTestId('comparison-result')).toBeVisible();
