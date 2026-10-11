@@ -464,6 +464,120 @@
             >Code</ion-button
           >
         </ion-buttons>
+        <details
+          class="author-source-discovery"
+          data-testid="author-source-discovery"
+          (toggle)="authorSourcesToggled($event)"
+        >
+          <summary>
+            Sources and relationships
+            @if (authorSourceMetadata()) {
+              <span> · relationship available</span>
+            }
+          </summary>
+          @if (authorSourceLoading()) {
+            <p role="status" aria-live="polite">Checking current project metadata…</p>
+          }
+          @if (authorSourceMetadata(); as sources) {
+            <div class="author-source-fields">
+              <section aria-labelledby="author-invoice-fields">
+                <h3 id="author-invoice-fields">Invoice fields</h3>
+                <ul>
+                  @for (field of sources.invoiceFields; track field.name) {
+                    <li><code>Invoice.{{ field.name }}</code><span>{{ field.type }}</span></li>
+                  }
+                </ul>
+              </section>
+              <section aria-labelledby="author-customer-fields">
+                <h3 id="author-customer-fields">Customer fields</h3>
+                <ul>
+                  @for (field of sources.customerFields; track field.name) {
+                    <li><code>Customer.{{ field.name }}</code><span>{{ field.type }}</span></li>
+                  }
+                </ul>
+              </section>
+            </div>
+            <dl class="author-source-facts">
+              <div><dt>Declared relationship</dt><dd>Invoice.CustomerId → Customer.CustomerId</dd></div>
+              <div><dt>Cardinality</dt><dd>{{ sources.cardinality }}</dd></div>
+              <div><dt>Provenance</dt><dd>{{ sources.relationshipProvenance }}</dd></div>
+              <div><dt>Current LIMIT</dt><dd>{{ authorCurrentLimit() }}</dd></div>
+              <div><dt>Cross-source cost</dt><dd>{{ sources.crossSourceCost }}</dd></div>
+            </dl>
+            <p class="author-source-date-note">Joined InvoiceDate values keep the pinned SQLite DATETIME as raw text.</p>
+            <button
+              type="button"
+              class="author-source-review-button"
+              data-testid="author-source-review"
+              [disabled]="authorSourceLoading() || running() || queryState.isSaving"
+              (click)="reviewAuthorRelationship()"
+            >Review relationship</button>
+            @if (authorSourceReview(); as review) {
+              <section class="author-source-review" data-testid="author-source-review-panel" aria-labelledby="author-source-review-title">
+                <h3 id="author-source-review-title">Review the proposed draft</h3>
+                <fieldset [disabled]="authorSourceLoading() || running() || queryState.isSaving">
+                  <legend>Customer output fields</legend>
+                  @for (field of authorCustomerOutputChoices; track field) {
+                    <label>
+                      <input
+                        type="checkbox"
+                        [checked]="authorSourceSelectedFields().includes(field)"
+                        (change)="authorSourceFieldChanged(field, $event)"
+                      />
+                      Customer.{{ field }}
+                      @if (field === 'FirstName') {
+                        <span class="author-source-suggestion">suggested</span>
+                      }
+                    </label>
+                  }
+                </fieldset>
+                <p class="author-source-join-only">Clear every field to apply the declared relationship without adding an output.</p>
+                <dl class="author-source-facts author-source-binding">
+                  <div><dt>Binding</dt><dd>{{ review.relationship.id }} · main.{{ review.relationship.from.table }}.CustomerId → main.{{ review.relationship.to.table }}.CustomerId · {{ review.relationship.version }}</dd></div>
+                  <div>
+                    <dt>Relationship fields</dt>
+                    <dd>
+                      @for (pair of review.relationship.pairs; track pair.fromField) {
+                        {{ pair.fromField }} → {{ pair.toField }}
+                      }
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Output lineage</dt>
+                    <dd>
+                      @if (review.outputLineage.length) {
+                        @for (column of review.outputLineage; track column.output) {
+                          {{ column.output }} ← {{ column.source }}.{{ column.field }};
+                        }
+                      } @else {
+                        No output columns
+                      }
+                      @if (!review.selectedFields.length) {
+                        · No added Customer outputs
+                      }
+                    </dd>
+                  </div>
+                  <div><dt>Current LIMIT</dt><dd>{{ review.limit }}</dd></div>
+                  <div><dt>Run behavior</dt><dd>Apply does not run. Preview and Run remain explicit.</dd></div>
+                </dl>
+                <div class="author-source-diff" aria-label="Exact source before and after">
+                  <div><h4>Current source</h4><pre>{{ review.before }}</pre></div>
+                  <div><h4>Proposed source</h4><pre>{{ review.after }}</pre></div>
+                </div>
+                <button
+                  type="button"
+                  class="author-source-apply-button"
+                  data-testid="author-source-apply"
+                  [disabled]="authorSourceLoading() || running() || queryState.isSaving"
+                  (click)="applyAuthorRelationshipReview()"
+                >Apply reviewed draft</button>
+              </section>
+            }
+          }
+          @if (authorSourceMessage()) {
+            <p class="author-source-status" role="status" aria-live="polite" data-testid="author-source-status">{{ authorSourceMessage() }}</p>
+          }
+        </details>
         <ion-input
           class="author-customer-input"
           data-testid="author-customer-id"

@@ -69,7 +69,10 @@ import {
   type FederatedQueryProgress,
   type FederatedQueryResult,
 } from '../../federated-query.service';
-import { PublicSqliteQueryService } from '../../public-sqlite-query.service';
+import {
+  PublicSqliteQueryService,
+  type PublicSqliteSourceDiscovery,
+} from '../../public-sqlite-query.service';
 import { testAuthorProof } from './author-query-proof.spec-helper';
 import { GitHubProjectActivityService } from '../../../services/project/github-project-activity.service';
 import { graphFixturePlan } from '../../public-data/native-graph.spec-helper';
@@ -560,6 +563,159 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     created.setAuthorMode('code');
     return created;
   }
+
+  const sourceDiscovery: PublicSqliteSourceDiscovery = {
+    fixtureSha256: 'fixture-sha256',
+    schemaVersion: 'schema-v1',
+    invoiceFields: [
+      { name: 'CustomerId', type: 'integer' },
+      { name: 'InvoiceId', type: 'integer' },
+      { name: 'InvoiceDate', type: 'datetime' },
+    ],
+    customerFields: [
+      { name: 'CustomerId', type: 'integer' },
+      { name: 'FirstName', type: 'string' },
+      { name: 'LastName', type: 'string' },
+      { name: 'Email', type: 'string' },
+    ],
+    relationship: {
+      id: 'FK_Invoice_Customer_CustomerId',
+      version: 'relationship-v1',
+      from: { schema: 'main', table: 'Invoice' },
+      to: { schema: 'main', table: 'Customer' },
+      pairs: [{ fromField: 'CustomerId', toField: 'CustomerId' }],
+    },
+    relationshipProvenance: 'chinook.refs.json · Core v1 declared foreign key',
+    cardinality: 'many invoices to one customer · declared',
+    crossSourceCost: 'unknown',
+  };
+
+  const authorSource = [
+    'parameters (',
+    '  @CustomerId integer required',
+    ')',
+    'from Invoice as i',
+    'where i.CustomerId = @CustomerId',
+    'limit 100',
+    'select i.InvoiceId, i.InvoiceDate',
+    '',
+  ].join('\n');
+
+  it.each([
+    ['principal', () => agentContext.securityContextId.set('sctx-changed')],
+    ['environment', (target: QueryPageComponent) => {
+      target.queryState = { ...target.queryState, activeEnv: { id: 'staging' } as never };
+    }],
+    ['review choices', (target: QueryPageComponent) => {
+      target.authorSourceFieldChanged('FirstName', {
+        currentTarget: { checked: false },
+      } as unknown as Event);
+    }],
+  ] as const)(
+    'refuses an Apply whose %s changes while fresh source metadata is loading',
+    async (_change, changeContext) => {
+      component = await createTugQLAuthor(authorSource);
+      let resolveApply!: (value: PublicSqliteSourceDiscovery) => void;
+      const discovery = vi.spyOn(
+        TestBed.inject(PublicSqliteQueryService),
+        'discoverInvoiceCustomerSources',
+      ).mockResolvedValueOnce(sourceDiscovery).mockImplementationOnce(
+        () => new Promise((resolve) => { resolveApply = resolve; }),
+      );
+      const editor = TestBed.inject(QueryEditorStateService);
+      const update = vi.spyOn(editor, 'updateQueryState');
+
+      component.authorSourcesToggled({
+        currentTarget: { open: true },
+      } as unknown as Event);
+      await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(1));
+      await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
+      component.reviewAuthorRelationship();
+      expect(component.authorSourceReview()).toBeDefined();
+
+      const apply = component.applyAuthorRelationshipReview();
+      await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(2));
+      changeContext(component);
+      if (_change === 'principal')
+        expect(component.authorSourceMetadata()).toBeUndefined();
+      resolveApply(sourceDiscovery);
+      await apply;
+
+      expect(component.queryBodyText()).toBe(authorSource);
+      expect(component.authorSourceReview()).toBeUndefined();
+      expect(update).not.toHaveBeenCalled();
+    },
+  );
+
+  it('applies the reviewed source and binding atomically while retaining the prior manual-binding result', async () => {
+    component = await createTugQLAuthor(authorSource);
+    const sqlite = TestBed.inject(PublicSqliteQueryService);
+    const discovery = vi.spyOn(sqlite, 'discoverInvoiceCustomerSources')
+      .mockResolvedValue(sourceDiscovery);
+    const execute = vi.spyOn(sqlite, 'runTugQL');
+    const prepare = vi.spyOn(sqlite, 'prepareTugQL');
+    const editor = TestBed.inject(QueryEditorStateService);
+    const update = vi.spyOn(editor, 'updateQueryState');
+    const priorResult = {
+      bindingsApplied: [{
+        parameterId: 'CustomerId',
+        value: { type: 'integer', value: '1' },
+        origin: 'manual',
+        originEvidence: 'client-reported',
+      }],
+      publicSqliteReceipt: {
+        draftRevision: component.authorDraftRevision(),
+        clientReportedBinding: { origin: 'manual', sourceColumn: 'CustomerId' },
+      },
+    };
+    component.runResult.set(priorResult as never);
+    component.authorSourcesToggled({
+      currentTarget: { open: true },
+    } as unknown as Event);
+    await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
+    component.reviewAuthorRelationship();
+    const reviewed = component.authorSourceReview();
+    expect(reviewed?.after).toContain('join Customer as c');
+    expect(reviewed?.after).toContain('c.FirstName');
+
+    await component.applyAuthorRelationshipReview();
+
+    const definition = component.queryDef();
+    expect((definition?.request as ITextQueryRequest | undefined)?.text).toBe(reviewed?.after);
+    expect(definition?.relationshipBindings).toEqual([sourceDiscovery.relationship]);
+    expect(component.queryState.def).toBe(definition);
+    expect(component.queryState.request).toBe(definition?.request);
+    expect(update).toHaveBeenCalledOnce();
+    expect(update).toHaveBeenCalledWith(component.queryState);
+    expect(component.runResult()).toBe(priorResult);
+    expect(component.publicSqliteRunIsStale(priorResult as never)).toBe(true);
+    expect(component.authorCustomerIdOrigin()).toMatchObject({
+      origin: 'manual',
+      originEvidence: 'client-reported',
+    });
+    expect(component.authorSourceReview()).toBeUndefined();
+    expect(execute).not.toHaveBeenCalled();
+    expect(prepare).not.toHaveBeenCalled();
+  });
+
+  it('discloses the root LIMIT instead of a nested CTE LIMIT', async () => {
+    const cteSource = `with Nested as (
+  from Invoice as i
+  limit 9
+  select (
+    i.InvoiceId
+  )
+)
+from Nested as n
+limit 17
+select (
+  n.InvoiceId
+)
+`;
+    component = await createTugQLAuthor(cteSource);
+    expect(component.authorCurrentLimit()).toBe('17');
+  });
 
   it('offers explicit SQLite binding for a cloned GitHub project, not only the canonical demo ID', async () => {
     component = await createComponent();

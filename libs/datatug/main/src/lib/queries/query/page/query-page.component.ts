@@ -1,5 +1,5 @@
 import { SourceRightsNoticeComponent } from '@sneat/datatug-semantic';
-import { formatTugQL, type TugQLFormatOptions } from '@dalgo/core';
+import { formatTugQL, parseTugQL, type TugQLFormatOptions } from '@dalgo/core';
 import { DatePipe, NgTemplateOutlet } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { PublicDataService } from '../../public-data/public-data.service';
@@ -257,7 +257,15 @@ import type {
 } from '../../federated-local-results';
 import { graphStableIdentity } from '../../public-data/native-graph-executor';
 import { QueryContextSqlService } from '../../query-context-sql.service';
-import { PublicSqliteQueryService } from '../../public-sqlite-query.service';
+import {
+  PublicSqliteQueryService,
+  type PublicSqliteSourceDiscovery,
+} from '../../public-sqlite-query.service';
+import {
+  reviewAuthorRelationshipSource,
+  type AuthorCustomerField,
+  type AuthorRelationshipSourceReview,
+} from './author-relationship-source-edit';
 import { AuthorSqlPreviewComponent } from './author-sql-preview.component';
 import { AuthorComposeControlsComponent } from './author-compose-controls.component';
 import { readAuthorComposeProfile } from './author-compose-profile';
@@ -596,6 +604,25 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     () => this.authorCustomerId().trim().length === 0,
   );
   public readonly authorError = signal<string | undefined>(undefined);
+  public readonly authorSourceDiscovery = signal<PublicSqliteSourceDiscovery | undefined>(undefined);
+  public readonly authorSourceLoading = signal(false);
+  public readonly authorSourceMessage = signal('');
+  public readonly authorSourceReview = signal<AuthorRelationshipSourceReview | undefined>(undefined);
+  public readonly authorSourceSelectedFields = signal<readonly AuthorCustomerField[]>(['FirstName']);
+  public readonly authorCustomerOutputChoices: readonly AuthorCustomerField[] = Object.freeze([
+    'FirstName', 'LastName', 'Email',
+  ]);
+  private authorSourceRequestGeneration = 0;
+  private authorSourceReviewGeneration = 0;
+  private authorSourceScopeKey = '';
+  private authorSourceReviewContext?: {
+    readonly scopeKey: string;
+    readonly queryIdentity: symbol;
+    readonly source: string;
+    readonly selectedFields: readonly AuthorCustomerField[];
+    readonly reviewGeneration: number;
+    readonly schemaVersion: string;
+  };
   public readonly isTugqlAuthorJourney = computed(
     () =>
       this.queryDef()?.connectionId === 'chinook-sqlite' &&
@@ -1129,6 +1156,224 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public setAuthorMode(mode: 'compose' | 'code'): void {
     this.authorModeExplicit = true;
     this.authorMode.set(mode);
+  }
+
+  public authorSourcesToggled(event: Event): void {
+    const disclosure = event.currentTarget as HTMLDetailsElement | null;
+    if (disclosure?.open) void this.loadAuthorSources();
+    else {
+      ++this.authorSourceRequestGeneration;
+      this.authorSourceLoading.set(false);
+    }
+  }
+
+  private currentAuthorSourceContext(): {
+    readonly project: IProjectRef;
+    readonly queryId: string;
+    readonly draftRevision: number;
+    readonly source: string;
+    readonly scopeKey: string;
+    readonly queryIdentity: symbol;
+  } | undefined {
+    const project = this.project?.ref;
+    const definition = this.queryDef();
+    const source = this.queryBodyText();
+    if (!project || !definition || !source || !this.queryState.id || !this.isTugqlAuthorJourney())
+      return undefined;
+    const authorContext = this.currentAuthorFormatContext();
+    if (!authorContext) return undefined;
+    return {
+      project,
+      queryId: this.queryState.id,
+      draftRevision: this.authorDraftRevision(),
+      source,
+      scopeKey: authorContext.scopeKey,
+      queryIdentity: authorContext.queryIdentity,
+    };
+  }
+
+  public authorSourceMetadata(): PublicSqliteSourceDiscovery | undefined {
+    const context = this.currentAuthorSourceContext();
+    return context?.scopeKey === this.authorSourceScopeKey
+      ? this.authorSourceDiscovery()
+      : undefined;
+  }
+
+  public authorCurrentLimit(): string {
+    const source = this.queryBodyText();
+    if (!source) return 'not recognized in this draft';
+    const parsed = parseTugQL(source);
+    if (parsed.diagnostics.length || !parsed.document.tree)
+      return 'not recognized in this draft';
+    const limit = parsed.document.tree.query['limit'];
+    return typeof limit === 'number' && Number.isSafeInteger(limit) && limit > 0
+      ? String(limit)
+      : 'not recognized in this draft';
+  }
+
+  private isCurrentAuthorSourceContext(
+    context: {
+      readonly project: IProjectRef;
+      readonly queryId: string;
+      readonly draftRevision: number;
+      readonly source: string;
+      readonly scopeKey: string;
+      readonly queryIdentity: symbol;
+    } | undefined,
+  ): boolean {
+    const current = this.currentAuthorSourceContext();
+    return !!context && !!current &&
+      current.project.projectId === context.project.projectId &&
+      current.queryId === context.queryId &&
+      current.draftRevision === context.draftRevision &&
+      current.source === context.source &&
+      current.scopeKey === context.scopeKey &&
+      current.queryIdentity === context.queryIdentity;
+  }
+
+  private async loadAuthorSources(): Promise<void> {
+    const context = this.currentAuthorSourceContext();
+    if (!context) {
+      this.authorSourceMessage.set('Open a loaded Chinook Invoice draft to inspect its admitted sources.');
+      return;
+    }
+    const generation = ++this.authorSourceRequestGeneration;
+    this.authorSourceLoading.set(true);
+    this.authorSourceMessage.set('Checking the current project catalog, fields, and declared relationship…');
+    this.authorSourceReview.set(undefined);
+    this.authorSourceReviewContext = undefined;
+    try {
+      const discovery = await this.publicSqliteQuery.discoverInvoiceCustomerSources(context.project);
+      if (generation !== this.authorSourceRequestGeneration || !this.isCurrentAuthorSourceContext(context)) return;
+      this.authorSourceDiscovery.set(discovery);
+      this.authorSourceScopeKey = context.scopeKey;
+      this.authorSourceMessage.set('Current project metadata admitted the Invoice-to-Customer relationship. Cost is unknown.');
+    } catch (error) {
+      if (generation !== this.authorSourceRequestGeneration || !this.isCurrentAuthorSourceContext(context)) return;
+      this.authorSourceDiscovery.set(undefined);
+      this.authorSourceMessage.set(error instanceof Error ? error.message : 'The current source metadata could not be admitted.');
+    } finally {
+      if (generation === this.authorSourceRequestGeneration) this.authorSourceLoading.set(false);
+    }
+  }
+
+  public authorSourceFieldChanged(field: AuthorCustomerField, event: Event): void {
+    const checked = (event.currentTarget as HTMLInputElement | null)?.checked === true;
+    const fields = this.authorSourceSelectedFields();
+    const next = checked
+      ? [...fields.filter((item) => item !== field), field]
+      : fields.filter((item) => item !== field);
+    const order: readonly AuthorCustomerField[] = ['FirstName', 'LastName', 'Email'];
+    this.authorSourceSelectedFields.set(order.filter((item) => next.includes(item)));
+    this.buildAuthorSourceReview();
+  }
+
+  public reviewAuthorRelationship(): void {
+    this.authorSourceSelectedFields.set(['FirstName']);
+    this.buildAuthorSourceReview();
+  }
+
+  private buildAuthorSourceReview(): void {
+    const context = this.currentAuthorSourceContext();
+    const discovery = this.authorSourceMetadata();
+    if (!context || !discovery) {
+      this.authorSourceReviewGeneration++;
+      this.authorSourceMessage.set('Admit current source metadata before reviewing an edit.');
+      return;
+    }
+    const result = reviewAuthorRelationshipSource(
+      context.source,
+      this.authorSourceSelectedFields(),
+      discovery.relationship,
+    );
+    if (!result.ok) {
+      this.authorSourceReviewGeneration++;
+      this.authorSourceReview.set(undefined);
+      this.authorSourceReviewContext = undefined;
+      this.authorSourceMessage.set(result.reason);
+      return;
+    }
+    const reviewGeneration = ++this.authorSourceReviewGeneration;
+    this.authorSourceReview.set(result.review);
+    this.authorSourceReviewContext = {
+      scopeKey: context.scopeKey,
+      queryIdentity: context.queryIdentity,
+      source: context.source,
+      selectedFields: Object.freeze([...this.authorSourceSelectedFields()]),
+      reviewGeneration,
+      schemaVersion: discovery.schemaVersion,
+    };
+    this.authorSourceMessage.set('Review the source and relationship binding before applying. No query has run.');
+  }
+
+  public async applyAuthorRelationshipReview(): Promise<void> {
+    const review = this.authorSourceReview();
+    const reviewed = this.authorSourceReviewContext;
+    const reviewGeneration = this.authorSourceReviewGeneration;
+    const selectedFields = Object.freeze([...this.authorSourceSelectedFields()]);
+    const context = this.currentAuthorSourceContext();
+    const discovery = this.authorSourceMetadata();
+    if (!review || !reviewed || !context || !discovery ||
+        !this.isCurrentAuthorSourceContext(context) ||
+        reviewed.scopeKey !== context.scopeKey ||
+        reviewed.queryIdentity !== context.queryIdentity ||
+        reviewed.source !== context.source ||
+        reviewed.reviewGeneration !== reviewGeneration ||
+        JSON.stringify(reviewed.selectedFields) !== JSON.stringify(selectedFields) ||
+        reviewed.schemaVersion !== discovery.schemaVersion) {
+      this.authorSourceMessage.set('This review is stale. Reopen Sources and relationships, then review the edit again.');
+      this.authorSourceReview.set(undefined);
+      return;
+    }
+    const applyGeneration = ++this.authorSourceRequestGeneration;
+    this.authorSourceLoading.set(true);
+    this.authorSourceMessage.set('Rechecking source metadata before applying the reviewed draft…');
+    try {
+      const currentDiscovery = await this.publicSqliteQuery.discoverInvoiceCustomerSources(context.project);
+      if (applyGeneration !== this.authorSourceRequestGeneration ||
+          this.authorSourceReview() !== review ||
+          this.authorSourceReviewGeneration !== reviewGeneration ||
+          JSON.stringify(this.authorSourceSelectedFields()) !== JSON.stringify(selectedFields) ||
+          this.authorSourceReviewContext !== reviewed ||
+          !this.isCurrentAuthorSourceContext(context) || currentDiscovery.schemaVersion !== reviewed.schemaVersion ||
+          JSON.stringify(currentDiscovery.relationship) !== JSON.stringify(review.relationship)) {
+        this.authorSourceReview.set(undefined);
+        this.authorSourceMessage.set('The source metadata or relationship pin changed. Review the current source again.');
+        return;
+      }
+      const definition = this.queryDef();
+      if (!definition || definition.request.queryType !== QueryType.DTQL) return;
+      const updatedDefinition: IQueryDef = {
+        ...definition,
+        request: { ...definition.request, text: review.after } as ITextQueryRequest,
+        relationshipBindings: [review.relationship],
+      };
+      const nextState: IQueryState = {
+        ...this.queryState,
+        def: updatedDefinition,
+        request: updatedDefinition.request,
+      };
+      this.invalidateAuthorDefinitionRun();
+      ++this.authorLookupRequestRevision;
+      this.authorFormatUndo.set(undefined);
+      this.authorPlan.set(undefined);
+      this.authorError.set(undefined);
+      this.authorDraftRevision.update((revision) => revision + 1);
+      this.queryState = nextState;
+      this.queryDef.set(updatedDefinition);
+      this.queryEditorStateService.updateQueryState(nextState);
+      this.authorSourceReview.set(undefined);
+      this.authorSourceReviewGeneration++;
+      this.authorSourceReviewContext = undefined;
+      this.authorModeExplicit = true;
+      this.authorMode.set('code');
+      this.authorSourceMessage.set('Applied the reviewed join and binding. The prior result is retained; Preview SQL explicitly before Run.');
+    } catch (error) {
+      this.authorSourceMessage.set(error instanceof Error ? error.message : 'The reviewed source edit could not be applied.');
+    } finally {
+      if (applyGeneration === this.authorSourceRequestGeneration)
+        this.authorSourceLoading.set(false);
+    }
   }
 
   private currentAuthorFormatContext():

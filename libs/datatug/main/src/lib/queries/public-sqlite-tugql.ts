@@ -24,6 +24,8 @@ export interface PublicSqliteAuthorProof {
   readonly resolvedQuery: RecursiveDTQLQuery;
   readonly authoredSource?: string;
   readonly relationship?: PublicSqliteRelationshipReceipt;
+  /** Versioned joined-profile rule: preserve SQLite DATETIME storage as raw text. */
+  readonly rawInvoiceDateTextRule?: 'chinook-invoice-datetime-text/v1';
 }
 
 export interface PublicSqliteRelationshipReceipt {
@@ -634,10 +636,11 @@ export function compilePublicSqliteTugQL(
     havingSql = `${havingCount} ${SQL_COMPARISON_OPERATORS[having.operator]} ?`;
     havingThreshold = having.right.value;
   } else {
-    const allowedColumns = isJoined
+      const allowedColumns = isJoined
       ? new Set([
           'InvoiceId',
           'CustomerId',
+          'InvoiceDate',
           'FirstName',
           'LastName',
           'Email',
@@ -653,11 +656,13 @@ export function compilePublicSqliteTugQL(
       if (
         expression.kind !== 'field' ||
         (!invoiceSource && !(isJoined && customerSource)) ||
-        !allowedColumns.has(expression.field.field)
+        !allowedColumns.has(expression.field.field) ||
+        (expression.field.field === 'InvoiceDate' &&
+          (isJoined && !invoiceSource))
       ) {
         throw new Error(
           isJoined
-            ? 'Only InvoiceId, CustomerId, FirstName, LastName, and Email projections are supported.'
+            ? 'Only InvoiceId, CustomerId, InvoiceDate, FirstName, LastName, and Email projections are supported.'
             : 'Only InvoiceId and InvoiceDate projections are supported.',
         );
       }
@@ -760,6 +765,11 @@ export function compilePublicSqliteTugQL(
     authorProof: Object.freeze({
       profile: 'invoice-query' as const,
       resolvedQuery: freezeQuery(query),
+      ...(isJoined && columns.some((column) =>
+        column.expression.kind === 'field' &&
+        column.expression.field.source === invoiceAlias &&
+        column.expression.field.field === 'InvoiceDate',
+      ) ? { rawInvoiceDateTextRule: 'chinook-invoice-datetime-text/v1' as const } : {}),
       ...(options.relationship
         ? { relationship: Object.freeze(options.relationship) }
         : {}),

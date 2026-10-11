@@ -628,8 +628,10 @@ test('cold saved CustomerId count supports parameterized HAVING thresholds in th
 test('cold saved Chinook query previews and runs the same bound TugQL plan in the real SQLite worker', async ({
   page,
 }, testInfo) => {
-  test.setTimeout(60_000);
+  test.setTimeout(90_000);
   const errors: string[] = [];
+  let workersStarted = 0;
+  page.on('worker', () => workersStarted++);
   page.on('console', (message) => {
     if (message.type() === 'error') errors.push(message.text());
   });
@@ -656,6 +658,34 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expect(editor).not.toHaveValue(/InvoiceDate/u);
   await author.getByTestId('author-compose-tab').click();
   await expect(invoiceDate).not.toBeChecked();
+  await invoiceDate.check();
+
+  await author.getByTestId('author-code-tab').click();
+  const sourceDiscovery = author.getByTestId('author-source-discovery');
+  await sourceDiscovery.locator('summary').click();
+  await expect(sourceDiscovery).toContainText('Invoice.InvoiceDate', { timeout: 20_000 });
+  await expect(sourceDiscovery).toContainText('Customer.FirstName');
+  await expect(sourceDiscovery).toContainText('Customer.Email');
+  await expect(sourceDiscovery).toContainText('many invoices to one customer · declared');
+  await sourceDiscovery.getByTestId('author-source-review').click();
+  const review = sourceDiscovery.getByTestId('author-source-review-panel');
+  await expect(review.getByLabel('Customer.FirstName')).toBeChecked();
+  await expect(review.getByLabel('Customer.LastName')).not.toBeChecked();
+  await expect(review.getByLabel('Customer.Email')).not.toBeChecked();
+  await expect(review).toContainText('InvoiceDate');
+  await expect(review).toContainText('Current LIMIT');
+  await expect(author.getByTestId('author-sql-preview')).toHaveCount(0);
+  await sourceDiscovery.getByTestId('author-source-apply').click();
+  await expect(sourceDiscovery.getByTestId('author-source-status'))
+    .toContainText('Applied the reviewed join and binding', { timeout: 20_000 });
+  await author.getByTestId('author-code-tab').click();
+  await expect(editor).toHaveValue(/join Customer as c/u);
+  await expect(editor).toHaveValue(/@CustomerId integer required/u);
+  await expect(editor).toHaveValue(/i\.InvoiceDate/u);
+  await expect(editor).toHaveValue(/c\.FirstName/u);
+  await expect(author.getByTestId('author-sql-preview')).toHaveCount(0);
+  await expect(author.getByTestId('author-run')).toHaveAttribute('disabled', '');
+  expect(workersStarted).toBe(0);
 
   const customerId = author.getByTestId('author-customer-id').locator('input');
   await customerId.fill('');
@@ -668,12 +698,15 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expect(preview).toContainText('Required · unset');
   const previewSql = await preview.locator('pre').textContent();
   expect(previewSql).toContain('WHERE "i"."CustomerId" = ?');
+  expect(previewSql).toContain('"c"."FirstName"');
+  expect(previewSql).toContain('"i"."InvoiceDate"');
   expect(previewSql).toContain('LIMIT 100');
   expect(previewSql).not.toContain('= 1');
   await expect(author.getByTestId('author-run')).toHaveAttribute(
     'disabled',
     '',
   );
+  expect(workersStarted).toBe(0);
 
   await customerId.fill('1.5');
   await expect(preview).toContainText('Invalid · enter a whole number');
@@ -694,6 +727,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expect(receipt).toBeVisible({ timeout: 20_000 });
   await expect(receipt).toContainText('Executed');
   await expect(receipt).toContainText('7 rows');
+  await expect.poll(() => workersStarted).toBe(1);
   await expect(receipt).toContainText('Customer ID 1');
   await expect(receipt).toBeVisible();
   await page.screenshot({
@@ -715,6 +749,8 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   const rows = page.getByRole('grid').getByRole('row');
   await expect(rows).toHaveCount(8);
   await expect(rows.nth(1)).toContainText('98');
+  await expect(rows.nth(1)).toContainText('2022-03-11 00:00:00');
+  await expect(rows.nth(1)).toContainText('Luís');
   await expect(rows.nth(7)).toContainText('382');
   expect(errors).toEqual([]);
 
@@ -774,6 +810,39 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
     expect(header.titleRight).toBeLessThanOrEqual(header.endLeft ?? -1);
     expect(header.documentWidth).toBeLessThanOrEqual(header.viewportWidth);
   }
+
+  // Start from the saved unjoined source again, then choose Email explicitly.
+  await page.goto(AUTHOR_URL);
+  const secondAuthor = page.getByTestId('tugql-author');
+  await expect(secondAuthor).toBeVisible({ timeout: 20_000 });
+  const secondDiscovery = secondAuthor.getByTestId('author-source-discovery');
+  await secondDiscovery.locator('summary').click();
+  await expect(secondDiscovery).toContainText('Customer.Email', { timeout: 20_000 });
+  await secondDiscovery.getByTestId('author-source-review').click();
+  const secondReview = secondDiscovery.getByTestId('author-source-review-panel');
+  await secondReview.getByLabel('Customer.FirstName').uncheck();
+  await secondReview.getByLabel('Customer.Email').check();
+  await secondDiscovery.getByTestId('author-source-apply').click();
+  await expect(secondDiscovery.getByTestId('author-source-status'))
+    .toContainText('Applied the reviewed join and binding', { timeout: 20_000 });
+  expect(workersStarted).toBe(1);
+  await secondAuthor.getByTestId('author-preview').click();
+  const secondPreview = secondAuthor.getByTestId('author-sql-preview');
+  await expect(secondPreview).toBeVisible();
+  const secondPreviewSql = await secondPreview.locator('pre').textContent();
+  expect(secondPreviewSql).toContain('"c"."Email"');
+  await secondAuthor.getByTestId('author-customer-id').locator('input').fill('1');
+  await expect(secondAuthor.getByTestId('author-run')).toBeEnabled();
+  expect(workersStarted).toBe(1);
+  await secondAuthor.getByTestId('author-run').click();
+  await expect(secondAuthor.getByTestId('author-execution-receipt'))
+    .toContainText('7 rows', { timeout: 20_000 });
+  await expect.poll(() => workersStarted).toBe(2);
+  const secondRows = page.getByRole('grid').getByRole('row');
+  await expect(secondRows).toHaveCount(8);
+  await expect(secondRows.nth(1)).toContainText('2022-03-11 00:00:00');
+  await expect(secondRows.nth(1)).toContainText('luisg@embraer.com.br');
+  expect(errors).toEqual([]);
 });
 
 test('multiline SELECT requires a block while compact and canonical queries preview identically', async ({

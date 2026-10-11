@@ -508,6 +508,119 @@ describe('Author TugQL structural preview and Run binding', () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
+  it('discovers only the currently admitted Invoice and Customer fields and declared key', async () => {
+    const discovery = await TestBed.inject(PublicSqliteQueryService)
+      .discoverInvoiceCustomerSources(project);
+
+    expect(discovery.invoiceFields).toEqual([
+      { name: 'CustomerId', type: 'integer' },
+      { name: 'InvoiceId', type: 'integer' },
+      { name: 'InvoiceDate', type: 'datetime' },
+    ]);
+    expect(discovery.customerFields).toEqual([
+      { name: 'CustomerId', type: 'integer' },
+      { name: 'FirstName', type: 'string' },
+      { name: 'LastName', type: 'string' },
+      { name: 'Email', type: 'string' },
+    ]);
+    expect(discovery.relationship).toEqual({
+      id: 'FK_Invoice_Customer_CustomerId',
+      version: expect.stringContaining(':main.Invoice.CustomerId:INTEGER->main.Customer.CustomerId:INTEGER:PRIMARY_KEY:v1'),
+      from: { schema: 'main', table: 'Invoice' },
+      to: { schema: 'main', table: 'Customer' },
+      pairs: [{ fromField: 'CustomerId', toField: 'CustomerId' }],
+    });
+    expect(discovery.cardinality).toContain('declared');
+    expect(discovery.crossSourceCost).toBe('unknown');
+    expect(reader.getRawJson.mock.calls.map((call) => call[1])).toEqual(expect.arrayContaining([
+      'dbmodels/chinook/main/tables/Invoice/main.Invoice.columns.json',
+      'dbmodels/chinook/main/tables/Customer/main.Customer.columns.json',
+      'dbmodels/chinook/chinook.refs.json',
+    ]));
+  });
+
+  it('prepares a single-Invoice scan without requiring unrelated Customer or FK metadata', async () => {
+    reader.getRawJson.mockImplementation((_projectId, path) => {
+      if (path.endsWith('Customer/main.Customer.columns.json') || path.endsWith('chinook.refs.json'))
+        throw new Error(`Unrelated relationship metadata was requested: ${path}`);
+      return of(path.endsWith('Invoice/main.Invoice.columns.json') ? { columns } : catalog);
+    });
+
+    const preview = await TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+      project,
+      definition(groupedSource),
+      4,
+    );
+
+    expect(preview.sql).toContain('FROM "Invoice" AS "i"');
+    expect(reader.getRawJson.mock.calls.some((call) =>
+      String(call[1]).endsWith('Customer/main.Customer.columns.json') ||
+      String(call[1]).endsWith('chinook.refs.json'),
+    )).toBe(false);
+  });
+
+  it('keeps a source-qualified joined InvoiceDate as non-null SQLite text at the worker boundary', async () => {
+    const source = [
+      'parameters (',
+      '  @CustomerId integer required',
+      ')',
+      'from Invoice as i',
+      'join Customer as c',
+      '  on i.CustomerId = c.CustomerId',
+      'where i.CustomerId = @CustomerId',
+      'limit 10',
+      'select i.InvoiceId, i.InvoiceDate, c.FirstName',
+      '',
+    ].join('\n');
+    const preview = await TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+      project,
+      joinedDefinition(source),
+      8,
+    );
+    expect(preview.authorProof?.rawInvoiceDateTextRule)
+      .toBe('chinook-invoice-datetime-text/v1');
+    expect(preview.outputColumns).toContainEqual({
+      name: 'InvoiceDate',
+      type: 'string',
+      lineage: [{ source: 'i', field: 'InvoiceDate' }],
+    });
+
+    const makeFixture = async (dateSql: string): Promise<Uint8Array> => {
+      const SQL = await initSqlJs();
+      const db = new SQL.Database();
+      db.run('CREATE TABLE Customer (CustomerId INTEGER PRIMARY KEY, FirstName NVARCHAR(40), LastName NVARCHAR(20), Email NVARCHAR(60))');
+      db.run('CREATE TABLE Invoice (InvoiceId INTEGER PRIMARY KEY, CustomerId INTEGER NOT NULL REFERENCES Customer(CustomerId), InvoiceDate DATETIME)');
+      db.run("INSERT INTO Customer VALUES (1, 'Ada', 'Lovelace', 'ada@example.test')");
+      db.run(`INSERT INTO Invoice VALUES (10, 1, ${dateSql})`);
+      const fixture = db.export();
+      db.close();
+      return fixture;
+    };
+    const runFixture = (fixture: Uint8Array) => executePinnedSql(
+      preview.sql,
+      fixture,
+      [1],
+      true,
+      true,
+      preview.outputColumns?.map((column) => column.name),
+      preview.authorProof,
+      preview.bindingNames,
+      preview.schemaVersion,
+      preview.draftRevision,
+      preview.authorProof?.profile,
+      preview.fixtureSha256,
+      preview.outputColumns,
+      preview.relationship,
+    );
+
+    await expect(runFixture(await makeFixture("'2009-01-01 00:00:00'")))
+      .resolves.toMatchObject({ rows: [[10, '2009-01-01 00:00:00', 'Ada']] });
+    await expect(runFixture(await makeFixture('NULL')))
+      .rejects.toThrow('joined InvoiceDate result must remain non-null SQLite text');
+    await expect(runFixture(await makeFixture('123')))
+      .rejects.toThrow('joined InvoiceDate result must remain non-null SQLite text');
+  });
+
   it.skipIf(!pinnedFixturePath)(
     'executes the admitted compiled join SQL and bindings against the hash-pinned fixture',
     async () => {
@@ -567,7 +680,7 @@ describe('Author TugQL structural preview and Run binding', () => {
           '  on i.CustomerId = c.CustomerId',
           'where i.CustomerId = @CustomerId',
           `limit ${limit}`,
-          'select i.InvoiceId, i.CustomerId, c.FirstName, c.LastName, c.Email',
+          'select i.InvoiceId, i.InvoiceDate, i.CustomerId, c.FirstName, c.LastName, c.Email',
           '',
         ].join('\n');
       const service = TestBed.inject(PublicSqliteQueryService);
@@ -605,7 +718,21 @@ describe('Author TugQL structural preview and Run binding', () => {
       expect(result.rows.map((row) => row[0])).toEqual([
         98, 121, 143, 195, 316, 327, 382,
       ]);
-      expect(result.rows.map((row) => row[4])).toEqual(
+      expect(result.rows.map((row) => row[1])).toEqual(
+        [
+          '2022-03-11 00:00:00',
+          '2022-06-13 00:00:00',
+          '2022-09-15 00:00:00',
+          '2023-05-06 00:00:00',
+          '2024-10-27 00:00:00',
+          '2024-12-07 00:00:00',
+          '2025-08-07 00:00:00',
+        ],
+      );
+      expect(result.rows.map((row) => row[3])).toEqual(
+        Array(7).fill('Luís'),
+      );
+      expect(result.rows.map((row) => row[5])).toEqual(
         Array(7).fill('luisg@embraer.com.br'),
       );
       expect(result.schemaFingerprint).toContain(
