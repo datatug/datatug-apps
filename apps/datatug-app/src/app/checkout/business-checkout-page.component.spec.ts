@@ -14,7 +14,8 @@ import {
   type ISneatAuthState,
   type ISneatUserState,
 } from '@sneat/auth-core';
-import { BehaviorSubject, of } from 'rxjs';
+import { SpaceService } from '@sneat/space-services';
+import { BehaviorSubject, EMPTY, Observable, of, Subject } from 'rxjs';
 import { TEST_CHECKOUT_ORIGIN } from './checkout-config.mjs';
 import {
   DATATUG_BUSINESS_CHECKOUT_API_ORIGIN,
@@ -58,14 +59,32 @@ const authenticated = {
   user: { uid: 'buyer', email: 'buyer@example.invalid', isAnonymous: false },
 } as ISneatAuthState;
 const spaces = {
-  group_1: { title: 'Shared group', type: 'group', roles: ['owner'] },
-  member_1: { title: 'Member only', type: 'company', roles: ['member'] },
-  personal_1: { title: 'Personal', type: 'personal', roles: ['owner'] },
+  group_1: {
+    title: 'Shared group',
+    type: 'group',
+    roles: ['owner'],
+    userContactID: 'owner-contact',
+  },
+  member_1: {
+    title: 'Member only',
+    type: 'company',
+    roles: ['member'],
+    userContactID: 'member-contact',
+  },
+  personal_1: {
+    title: 'Personal',
+    type: 'personal',
+    roles: ['owner'],
+    userContactID: 'personal-contact',
+  },
 };
 let states: BehaviorSubject<ISneatAuthState>;
 let userStates: BehaviorSubject<ISneatUserState>;
 let fixture: ComponentFixture<BusinessCheckoutPageComponent>;
 let fetcher: ReturnType<typeof vi.fn>;
+let spaceCreator: ReturnType<
+  typeof vi.fn<(request: unknown) => Observable<{ id: string }>>
+>;
 
 function businessQuote(claimed = false) {
   return {
@@ -93,9 +112,9 @@ async function render(
   returning = false,
 ) {
   const routeQuery =
-    testRailByDefault && query.checkout === undefined
+    testRailByDefault && query['checkout'] === undefined
       ? {
-          ...(query.planID ? { planID: query.planID } : {}),
+          ...(query['planID'] ? { planID: query['planID'] } : {}),
           checkout: 'test',
           ...Object.fromEntries(
             Object.entries(query).filter(([key]) => key !== 'planID'),
@@ -106,13 +125,18 @@ async function render(
   userStates = new BehaviorSubject<ISneatUserState>({
     status: 'authenticated',
     user: { ...authenticated.user, uid: recordUID } as ISneatUserState['user'],
-    record: { spaces },
+    record: { title: 'Buyer', spaces },
     userRecordStatus: 'ready',
   } as ISneatUserState);
+  spaceCreator = vi.fn();
   await TestBed.configureTestingModule({
     imports: [BusinessCheckoutPageComponent],
     providers: [
       provideRouter([]),
+      {
+        provide: SpaceService,
+        useValue: { createSpace: (request: unknown) => spaceCreator(request) },
+      },
       { provide: DATATUG_BUSINESS_CHECKOUT_API_ORIGIN, useValue: apiOrigin },
       { provide: DATATUG_BUSINESS_CHECKOUT_LIVE_API_ORIGIN, useValue: null },
       { provide: DATATUG_BUSINESS_CHECKOUT_LIVE_ENABLED, useValue: false },
@@ -222,7 +246,7 @@ it('defaults to the closed LIVE rail and requires an explicit TEST selection', a
   );
 });
 
-it.each([
+it.each<Record<string, string | string[]>>([
   { checkout: ['test', 'test'] },
   { checkout: 'test', mode: 'live' },
   { checkout: 'live' },
@@ -281,7 +305,7 @@ it('shows the unavailable state on a real cold route before query normalization 
           userState: of({
             status: 'authenticated',
             user: authenticated.user,
-            record: { spaces },
+            record: { title: 'Buyer', spaces },
             userRecordStatus: 'ready',
           }),
         },
@@ -337,7 +361,7 @@ it('continues a real cold configured route after canonicalizing its default plan
           userState: of({
             status: 'authenticated',
             user: authenticated.user,
-            record: { spaces },
+            record: { title: 'Buyer', spaces },
             userRecordStatus: 'ready',
           }),
         },
@@ -703,3 +727,319 @@ it.each([
     ).toBe(expected);
   },
 );
+
+function requiredElement<T extends Element>(
+  root: HTMLElement,
+  selector: string,
+): T {
+  const element = root.querySelector<T>(selector);
+  if (!element) throw new Error(`Missing element: ${selector}`);
+  return element;
+}
+
+it('creates a shared Space once, waits for real owner eligibility, and preserves annual TEST selection', async () => {
+  const root = await render(
+    { planID: 'datatug-business-usage-annual' },
+    TEST_CHECKOUT_ORIGIN,
+  );
+  const creation = new Subject<{ id: string }>();
+  spaceCreator.mockReturnValue(creation);
+  const navigate = vi
+    .spyOn(TestBed.inject(Router), 'navigate')
+    .mockResolvedValue(true);
+  const input = requiredElement<HTMLInputElement>(root, '#business-space-name');
+  input.value = '  New team  ';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  const form = requiredElement<HTMLFormElement>(root, 'form.create-space');
+  form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  await fixture.whenStable();
+  expect(spaceCreator).toHaveBeenCalledExactlyOnceWith({
+    type: 'group',
+    title: 'New team',
+  });
+  expect(root.textContent).toContain('Creating Space…');
+  creation.next({ id: 'new_group' });
+  await fixture.whenStable();
+  expect(root.textContent).toContain('Waiting for owner access');
+  expect(navigate).not.toHaveBeenCalled();
+  expect(fetcher).not.toHaveBeenCalled();
+  userStates.next({
+    ...userStates.value,
+    record: {
+      title: 'Buyer',
+      spaces: {
+        ...spaces,
+        new_group: {
+          userContactID: 'new-owner-contact',
+          type: 'group',
+          title: 'New team',
+          roles: ['member'],
+        },
+      },
+    },
+  } as ISneatUserState);
+  await fixture.whenStable();
+  expect(navigate).not.toHaveBeenCalled();
+  userStates.next({
+    ...userStates.value,
+    record: {
+      title: 'Buyer',
+      spaces: {
+        ...spaces,
+        new_group: {
+          userContactID: 'new-owner-contact',
+          type: 'group',
+          title: 'New team',
+          roles: ['owner'],
+        },
+      },
+    },
+  } as ISneatUserState);
+  await fixture.whenStable();
+  expect(navigate).toHaveBeenCalledWith(
+    [],
+    expect.objectContaining({
+      queryParams: {
+        planID: 'datatug-business-usage-annual',
+        checkout: 'test',
+        spaceID: 'new_group',
+      },
+    }),
+  );
+  expect(fetcher).not.toHaveBeenCalled();
+});
+
+it.each(['account', 'period', 'leave', 'destroy'])(
+  'ignores a late Space creation after %s changes',
+  async (change) => {
+    const root = await render(
+      { planID: 'datatug-business-usage-monthly' },
+      TEST_CHECKOUT_ORIGIN,
+    );
+    const creation = new Subject<{ id: string }>();
+    spaceCreator.mockReturnValue(creation);
+    const navigate = vi
+      .spyOn(TestBed.inject(Router), 'navigate')
+      .mockResolvedValue(true);
+    fixture.componentInstance['spaceName'].set('New Space');
+    requiredElement<HTMLFormElement>(root, 'form.create-space').dispatchEvent(
+      new Event('submit', { cancelable: true }),
+    );
+    if (change === 'account')
+      states.next({
+        ...authenticated,
+        user: { ...authenticated.user, uid: 'other' },
+      } as ISneatAuthState);
+    if (change === 'period')
+      fixture.componentInstance['choosePeriod']('annual');
+    if (change === 'leave') fixture.componentInstance.ionViewWillLeave();
+    if (change === 'destroy') fixture.destroy();
+    await fixture.whenStable();
+    navigate.mockClear();
+    creation.next({ id: 'new_group' });
+    userStates.next({
+      ...userStates.value,
+      record: {
+        title: 'Buyer',
+        spaces: {
+          new_group: {
+            userContactID: 'new-owner-contact',
+            type: 'group',
+            title: 'New',
+            roles: ['owner'],
+          },
+        },
+      },
+    } as ISneatUserState);
+    await fixture.whenStable();
+    expect(navigate).not.toHaveBeenCalled();
+    expect(fetcher).not.toHaveBeenCalled();
+  },
+);
+
+it('bounds eligibility waiting and retries access without creating a duplicate Space', async () => {
+  const root = await render(
+    { planID: 'datatug-business-usage-monthly' },
+    TEST_CHECKOUT_ORIGIN,
+  );
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  try {
+    spaceCreator.mockReturnValue(of({ id: 'new_group' }));
+    fixture.componentInstance['spaceName'].set('New Space');
+    requiredElement<HTMLFormElement>(root, 'form.create-space').dispatchEvent(
+      new Event('submit', { cancelable: true }),
+    );
+    await vi.advanceTimersByTimeAsync(15_001);
+    await fixture.whenStable();
+    expect(root.textContent).toContain(
+      'Owner or admin access has not appeared',
+    );
+    expect(
+      requiredElement<HTMLInputElement>(root, '#business-space-name').disabled,
+    ).toBe(true);
+    const navigate = vi
+      .spyOn(TestBed.inject(Router), 'navigate')
+      .mockResolvedValue(true);
+    fixture.componentInstance['checkCreatedSpace']();
+    userStates.next({
+      ...userStates.value,
+      record: {
+        title: 'Buyer',
+        spaces: {
+          new_group: {
+            userContactID: 'new-owner-contact',
+            type: 'group',
+            title: 'New',
+            roles: ['admin'],
+          },
+        },
+      },
+    } as ISneatUserState);
+    await fixture.whenStable();
+    expect(spaceCreator).toHaveBeenCalledTimes(1);
+    expect(navigate).toHaveBeenCalledWith(
+      [],
+      expect.objectContaining({
+        queryParams: expect.objectContaining({ spaceID: 'new_group' }),
+      }),
+    );
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('sanitizes creation errors and refuses blank or unavailable creation', async () => {
+  const root = await render(
+    { planID: 'datatug-business-usage-monthly' },
+    TEST_CHECKOUT_ORIGIN,
+  );
+  const creation = new Subject<{ id: string }>();
+  spaceCreator.mockReturnValue(creation);
+  const form = requiredElement<HTMLFormElement>(root, 'form.create-space');
+  fixture.componentInstance['spaceName'].set('  ');
+  form.dispatchEvent(new Event('submit', { cancelable: true }));
+  expect(spaceCreator).not.toHaveBeenCalled();
+  fixture.componentInstance['spaceName'].set('A Space');
+  form.dispatchEvent(new Event('submit', { cancelable: true }));
+  creation.error(new Error('private backend payload'));
+  await fixture.whenStable();
+  expect(root.textContent).toContain('Space creation may have completed');
+  expect(root.textContent).not.toContain('private backend payload');
+  states.next({ status: 'notAuthenticated' });
+  await fixture.whenStable();
+  fixture.componentInstance['createSpace'](new Event('submit'));
+  expect(spaceCreator).toHaveBeenCalledTimes(1);
+  expect(root.querySelector('form.create-space')).toBeNull();
+});
+
+it.each(['empty', 'invalid-id'])(
+  'fences an uncertain %s create response without blind retries',
+  async (response) => {
+    const root = await render(
+      { planID: 'datatug-business-usage-monthly' },
+      TEST_CHECKOUT_ORIGIN,
+    );
+    spaceCreator.mockReturnValue(
+      response === 'empty' ? EMPTY : of({ id: '../foreign' }),
+    );
+    fixture.componentInstance['spaceName'].set('A Space');
+    const form = requiredElement<HTMLFormElement>(root, 'form.create-space');
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+    await fixture.whenStable();
+    expect(fixture.componentInstance['spaceCreationStage']()).toBe('idle');
+    expect(root.textContent).toContain('Space creation may have completed');
+    expect(
+      requiredElement<HTMLButtonElement>(root, '.create-space button').disabled,
+    ).toBe(true);
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+    expect(spaceCreator).toHaveBeenCalledTimes(1);
+  },
+);
+
+it('fences a timed-out POST and late success across a local period change, while allowing explicit existing-Space selection', async () => {
+  const root = await render(
+    { planID: 'datatug-business-usage-monthly' },
+    TEST_CHECKOUT_ORIGIN,
+  );
+  const creation = new Subject<{ id: string }>();
+  spaceCreator.mockReturnValue(creation);
+  const navigate = vi
+    .spyOn(TestBed.inject(Router), 'navigate')
+    .mockResolvedValue(true);
+  fixture.componentInstance['spaceName'].set('A Space');
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  try {
+    requiredElement<HTMLFormElement>(root, 'form.create-space').dispatchEvent(
+      new Event('submit', { cancelable: true }),
+    );
+    await vi.advanceTimersByTimeAsync(30_001);
+    await fixture.whenStable();
+    expect(root.textContent).toContain('Space creation may have completed');
+    creation.next({ id: 'new_group' });
+    fixture.componentInstance['start'](
+      convertToParamMap({
+        planID: 'datatug-business-usage-annual',
+        checkout: 'test',
+      }),
+    );
+    await fixture.whenStable();
+    fixture.componentInstance['createSpace'](new Event('submit'));
+    expect(spaceCreator).toHaveBeenCalledTimes(1);
+    expect(navigate).not.toHaveBeenCalled();
+    userStates.next({
+      ...userStates.value,
+      record: {
+        title: 'Buyer',
+        spaces: {
+          new_group: {
+            userContactID: 'new-owner-contact',
+            type: 'group',
+            title: 'New',
+            roles: ['owner'],
+          },
+        },
+      },
+    } as ISneatUserState);
+    await fixture.whenStable();
+    expect(navigate).not.toHaveBeenCalled();
+    fixture.componentInstance['chooseSpace']('new_group');
+    expect(navigate).toHaveBeenCalledWith(
+      [],
+      expect.objectContaining({
+        queryParams: {
+          planID: 'datatug-business-usage-annual',
+          checkout: 'test',
+          spaceID: 'new_group',
+        },
+      }),
+    );
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('allows retry after a synchronous pre-dispatch failure and denies creation during payment or after leaving', async () => {
+  const root = await render(
+    { planID: 'datatug-business-usage-monthly' },
+    TEST_CHECKOUT_ORIGIN,
+  );
+  spaceCreator.mockImplementationOnce(() => {
+    throw new Error('local unavailable');
+  });
+  fixture.componentInstance['spaceName'].set('A Space');
+  fixture.componentInstance['createSpace'](new Event('submit'));
+  await fixture.whenStable();
+  expect(root.textContent).toContain('Unable to create a Space. Please retry.');
+  expect(fixture.componentInstance['spaceCreationUncertain']()).toBe(false);
+  fixture.componentInstance['state'].set({ stage: 'payment' });
+  fixture.componentInstance['createSpace'](new Event('submit'));
+  expect(spaceCreator).toHaveBeenCalledTimes(1);
+  fixture.componentInstance['state'].set({
+    stage: 'select-space',
+    user: { id: 'buyer', email: null },
+  });
+  fixture.componentInstance.ionViewWillLeave();
+  fixture.componentInstance['createSpace'](new Event('submit'));
+  expect(spaceCreator).toHaveBeenCalledTimes(1);
+});

@@ -31,7 +31,8 @@ h3 {
 }
 
 .choices button,
-.space-list button {
+.space-list button,
+.create-space button {
   min-height: 2.75rem;
   padding: 0.55rem 0.85rem;
   border: 1px solid var(--ion-color-medium, #92949c);
@@ -48,7 +49,8 @@ h3 {
   outline-offset: 1px;
 }
 
-.choices button:disabled {
+.choices button:disabled,
+.create-space button:disabled {
   cursor: not-allowed;
   opacity: 0.65;
 }
@@ -61,6 +63,33 @@ h3 {
 
 .selected-space {
   margin-block: 1rem;
+}
+
+.create-space {
+  display: grid;
+  gap: 0.65rem;
+  max-width: 30rem;
+  margin-block-start: 1.5rem;
+  padding: 1rem;
+  border: 1px solid var(--ion-color-medium, #92949c);
+  border-radius: 0.35rem;
+}
+
+.create-space h3,
+.create-space p {
+  margin: 0;
+}
+
+.create-space input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.55rem;
+  font: inherit;
+  color: var(--ion-text-color, #222);
+  background: var(--ion-background-color, #fff);
+  border: 1px solid var(--ion-color-medium, #92949c);
+  border-radius: 0.35rem;
 }
 
 dl {
