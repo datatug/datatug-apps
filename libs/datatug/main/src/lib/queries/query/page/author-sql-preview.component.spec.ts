@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import type { PublicSqliteQueryPreview } from '../../public-sqlite-tugql';
+import { testAuthorProof } from './author-query-proof.spec-helper';
 import { AuthorSqlPreviewComponent } from './author-sql-preview.component';
 
 describe('AuthorSqlPreviewComponent', () => {
@@ -21,10 +22,7 @@ describe('AuthorSqlPreviewComponent', () => {
       fixtureSha256: 'a'.repeat(64),
       schemaVersion: '1',
       draftRevision: 3,
-      authorProof: {
-        profile: 'invoice-query',
-        resolvedQuery: {} as PublicSqliteQueryPreview['authorProof']['resolvedQuery'],
-      },
+      authorProof: testAuthorProof(),
       relationship: {
         id: 'FK_Invoice_Customer_CustomerId',
         version: 'fp-main.Invoice.CustomerId-main.Customer.CustomerId',
@@ -107,10 +105,7 @@ describe('AuthorSqlPreviewComponent', () => {
       fixtureSha256: 'old-pin',
       schemaVersion: '1',
       draftRevision: 1,
-      authorProof: {
-        profile: 'invoice-query',
-        resolvedQuery: {} as PublicSqliteQueryPreview['authorProof']['resolvedQuery'],
-      },
+      authorProof: testAuthorProof(),
       relationship: {
         id: 'FK_Invoice_Customer_CustomerId',
         version: 'fp-main.Invoice.CustomerId-main.Customer.CustomerId',

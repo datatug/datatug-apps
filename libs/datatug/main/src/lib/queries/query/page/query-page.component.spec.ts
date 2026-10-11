@@ -71,6 +71,7 @@ import {
 } from '../../federated-query.service';
 import { PublicSqliteQueryService } from '../../public-sqlite-query.service';
 import type { PublicSqliteQueryPreview } from '../../public-sqlite-tugql';
+import { testAuthorProof } from './author-query-proof.spec-helper';
 import { GitHubProjectActivityService } from '../../../services/project/github-project-activity.service';
 import { graphFixturePlan } from '../../public-data/native-graph.spec-helper';
 import { graphStableIdentity } from '../../public-data/native-graph-executor';
@@ -97,13 +98,6 @@ function agentContextStub(securityContextId: string | undefined = 'sctx-1') {
   return {
     securityContextId: signal(securityContextId),
     refresh: vi.fn(() => of(undefined)),
-  };
-}
-
-function testAuthorProof(): PublicSqliteQueryPreview['authorProof'] {
-  return {
-    profile: 'invoice-query',
-    resolvedQuery: {} as PublicSqliteQueryPreview['authorProof']['resolvedQuery'],
   };
 }
 
