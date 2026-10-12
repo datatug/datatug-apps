@@ -510,3 +510,33 @@ The local emulator matrix uses fake payment-provider responses; it does not subm
 ### Read-only runtime catalog check, 12 October 2026
 
 The normal LIVE host’s `GET /v0/checkout/config?site=datatug&mode=live` returned HTTP 200 and lists both Pro periods as personal-account plans and both Business periods as organisation-account plans. The established fixed TEST host `https://datatug-checkout-test-354fvnqbaa-ey.a.run.app` also returns HTTP 200, `site=datatug`, `mode=test` and the same four plan IDs when the request includes the browser’s `Origin: https://datatug.app` header. An earlier read without Origin returned HTTP 404/non-JSON; this was an invalid probe, not evidence of a broken browser endpoint. This catalog read establishes availability only, not a successful provider payment. The frontend retains the fixed TEST origin and must never route TEST traffic to LIVE. No configuration, subscription or payment mutation was made.
+
+### Playwright coverage and TEST boundary correction
+
+The Playwright suite now takes Pro through TEST confirmation as well as its quote,
+and adds payment-loader failure/retry, expired-payment status retry and rejection
+of a TEST session paired with a LIVE return URL. The complete matrix is 30 cases
+across Chromium/mobile WebKit, with real emulator authentication and simulated
+payment HTTP. The opt-in provider suite and commands are documented in the
+[e2e guide](../../../apps/datatug-app/e2e/README.md#subscription-checkout).
+
+A read-only Playwright check of the deployed TEST catalog/preflights reproduced
+an actual host boundary gap: catalog succeeds, but `purchase-setup` preflight
+fails. Source inspection also found the TEST root filter still admitting only
+the old Pro session body, rejecting Business `purchaseId`/`spaceId` and the new
+setup/options routes. A failing host regression reproduces these paths. The
+host correction admits them only with the existing Business TEST arm and exact
+app/approved-local origins, preserves the request body and keeps LIVE, unknown
+fields, duplicate mode, unrelated origins and unarmed Business paths closed.
+Paymentus still owns buyer verification, permissions and financial mutations.
+The fix is locally verified and must reach the dedicated TEST host before the
+real-provider smoke can pass; ordinary normal-host deployment is insufficient.
+
+The already approved local origin is `http://datatug.localhost:4328`, whose TEST
+catalog returned HTTP 200. `http://127.0.0.1:18787` is a visual/auth preview and
+returns HTTP 404 from that same TEST catalog because it is not an allowed origin.
+No allowlist or deployment setting was changed. An existing server owns 4328;
+this task neither stops it nor silently replaces its content. Real unpaid form
+mounting additionally needs designated TEST buyer auth state outside source Git.
+The opt-in suite never enters card details or submits payment, and skips those
+authenticated cases explicitly when auth state is unavailable.

@@ -25,6 +25,13 @@
 
 Separate unsigned-page captures:
 
+The later Playwright revision passes all 30 local cases and extends Pro through
+TEST confirmation, with payment-loader retry, expired-return and mixed-rail
+checks. The images above remain the earlier quote/confirmation evidence rather
+than being silently relabeled as new provider receipts. The separate deployed
+TEST preflight is currently red; see the feature's TEST boundary correction and
+the [e2e guide](../../../apps/datatug-app/e2e/README.md#subscription-checkout).
+
 - [checkout-journey-business-new-unsigned-user-chromium-sign-in](checkout-journey-business-new-unsigned-user-chromium-sign-in.png)
 - [checkout-journey-business-new-unsigned-user-mobile-webkit-sign-in](checkout-journey-business-new-unsigned-user-mobile-webkit-sign-in.png)
 - [checkout-journey-pro-new-unsigned-user-chromium-sign-in](checkout-journey-pro-new-unsigned-user-chromium-sign-in.png)

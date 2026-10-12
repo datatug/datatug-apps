@@ -152,7 +152,9 @@ async function paymentFake(page: Page) {
   let ready = false,
     spaceID = '',
     cancelled = false,
-    setupFailure = false;
+    setupFailure = false,
+    selectedPlan = 'datatug-business-usage-monthly';
+  let statusOverride: Record<string, unknown> = {};
   await page.route('**/v0/**', async (route) => {
     const request = route.request(),
       url = new URL(request.url());
@@ -169,6 +171,7 @@ async function paymentFake(page: Page) {
         : 'datatug-business-usage-monthly';
     const business = plan.includes('business'),
       annual = plan.endsWith('annual');
+    if (url.pathname.endsWith('/session')) selectedPlan = plan;
     const list = (business ? 9900 : 1900) * (annual ? 10 : 1);
     let data: unknown;
     if (url.pathname.endsWith('/users/init_user_record')) {
@@ -225,7 +228,7 @@ async function paymentFake(page: Page) {
     else if (url.pathname.endsWith('/session-status'))
       data = {
         mode: 'test',
-        plan: 'datatug-business-usage-monthly',
+        plan: selectedPlan,
         status: 'complete',
         ready,
         purchase: ready
@@ -236,6 +239,7 @@ async function paymentFake(page: Page) {
               spaceID: spaceID || undefined,
             }
           : undefined,
+        ...statusOverride,
       };
     else if (url.pathname.endsWith('/purchase-setup')) {
       if (setupFailure) {
@@ -275,6 +279,9 @@ async function paymentFake(page: Page) {
     },
     confirm: () => {
       ready = true;
+    },
+    status: (value: Record<string, unknown>) => {
+      statusOverride = value;
     },
   };
 }
@@ -415,9 +422,9 @@ for (const plan of ['pro', 'business'])
           .every((x) => x.origin.includes('datatug-checkout-test')),
       ).toBe(true);
       expect(fake.seen.some((x) => x.path.includes('project'))).toBe(false);
+      fake.confirm();
+      await page.goto('/pricing/return?mode=test&session_id=cs_test_fixture');
       if (plan === 'business') {
-        fake.confirm();
-        await page.goto('/pricing/return?mode=test&session_id=cs_test_fixture');
         await expect(
           page.getByRole('heading', {
             name: 'Your Business subscription is paid. Choose its space.',
@@ -452,6 +459,20 @@ for (const plan of ['pro', 'business'])
         expect(
           fake.seen.filter((x) => x.path.endsWith('/purchase-setup')),
         ).toHaveLength(1);
+      } else {
+        await expect(
+          page.getByText('Test checkout complete.', { exact: false }),
+        ).toBeVisible();
+        await expect(
+          page.getByRole('link', { name: 'Continue to DataTug', exact: true }),
+        ).toBeVisible();
+        await page.reload();
+        await expect(
+          page.getByText('Test checkout complete.', { exact: false }),
+        ).toBeVisible();
+        expect(fake.seen.some((x) => x.path.endsWith('/purchase-setup'))).toBe(
+          false,
+        );
       }
       await expect(page.locator('sneat-auth-panel')).toBeHidden();
       await expect(
@@ -521,4 +542,98 @@ test('Business recovery: delayed reconciliation and permission retry never repay
   expect(
     fake.seen.filter((x) => x.path.endsWith('/purchase-setup')),
   ).toHaveLength(2);
+});
+
+for (const plan of ['pro', 'business']) {
+  test(`${plan}: payment form failure remains retryable and keeps the TEST selection`, async ({
+    page,
+  }) => {
+    const fake = await paymentFake(page);
+    const email = await seed(page, false);
+    // Exercise the actual app adapter's loader failure; never load or submit a
+    // provider form with a fake key. Successful provider mounting has a separate
+    // opt-in suite that uses the real isolated TEST service.
+    await page.route('https://js.stripe.com/**', (route) => route.abort());
+    await page.goto(
+      plan === 'pro'
+        ? '/subscribe?plan=pro&period=monthly&checkout=test'
+        : '/business/checkout?planID=datatug-business-usage-monthly&checkout=test',
+    );
+    await signIn(page, email);
+    const purchaseId = new URL(page.url()).searchParams.get('purchaseId');
+    await page
+      .getByLabel(
+        'I understand this is early access and my subscription starts now.',
+      )
+      .check();
+    await page
+      .getByRole('button', { name: 'Continue to payment', exact: true })
+      .click();
+    await expect(
+      page.getByText(
+        'The payment form could not load. Retry this same selection.',
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(page.locator('ion-menu')).toBeHidden();
+    await page
+      .getByRole('button', { name: 'Retry this selection', exact: true })
+      .click();
+    await expect(
+      page.getByRole('button', { name: 'Continue to payment', exact: true }),
+    ).toBeVisible();
+    expect(new URL(page.url()).searchParams.get('checkout')).toBe('test');
+    expect(new URL(page.url()).searchParams.get('purchaseId')).toBe(purchaseId);
+    const attempts = fake.seen.filter((x) => x.path.endsWith('/session'));
+    expect(attempts).toHaveLength(2);
+    expect(attempts[0].body).toEqual(attempts[1].body);
+    expect(
+      attempts.every((x) => x.origin.includes('datatug-checkout-test')),
+    ).toBe(true);
+    expect(fake.seen.some((x) => x.path.endsWith('/purchase-setup'))).toBe(
+      false,
+    );
+  });
+}
+
+test('expired payment return checks status without creating another payment or business space', async ({
+  page,
+}) => {
+  const fake = await paymentFake(page);
+  fake.status({ status: 'expired' });
+  const email = await seed(page, false);
+  await page.goto('/pricing/return?mode=test&session_id=cs_test_fixture');
+  await signIn(page, email);
+  await expect(
+    page.getByText(
+      'This payment session expired. Check your plan or return to pricing.',
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Check again', exact: true }).click();
+  await expect(
+    page.getByText(
+      'This payment session expired. Check your plan or return to pricing.',
+      { exact: true },
+    ),
+  ).toBeVisible();
+  expect(
+    fake.seen.some((x) => /\/(session|purchase-setup)$/.test(x.path)),
+  ).toBe(false);
+  await expect(page.locator('ion-menu')).toBeHidden();
+});
+
+test('a mismatched TEST session and LIVE return is rejected before authentication or payment HTTP', async ({
+  page,
+}) => {
+  const fake = await paymentFake(page);
+  await page.goto('/pricing/return?mode=live&session_id=cs_test_fixture');
+  await expect(
+    page.getByText(
+      'Checkout is not available for this selection. Choose a plan on the pricing page.',
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(page.locator('sneat-auth-panel')).toHaveCount(0);
+  expect(fake.seen.some((x) => x.path.includes('/checkout/'))).toBe(false);
 });
