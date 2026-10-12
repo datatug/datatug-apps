@@ -311,7 +311,10 @@ const completionContrast = async (
     let surface: Element | null = element;
     while (surface) {
       backgroundLayers.push(getComputedStyle(surface).backgroundColor);
-      surface = surface.parentElement;
+      const root = surface.getRootNode();
+      surface =
+        surface.parentElement ??
+        (root instanceof ShadowRoot ? root.host : null);
     }
     return {
       foregroundColor: getComputedStyle(element).color,
@@ -2399,10 +2402,13 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   expect(errors).toEqual([]);
 });
 
-test('multiline SELECT requires a block while compact and canonical queries preview identically', async ({
+test('Preview syntax errors navigate to the exact unchanged draft without running it', async ({
   page,
-}) => {
+}, testInfo) => {
   test.setTimeout(60_000);
+  const isMobile = testInfo.project.use.isMobile === true;
+  let workersStarted = 0;
+  page.on('worker', () => workersStarted++);
   await page.goto(AUTHOR_URL);
   const author = page.getByTestId('tugql-author');
   await expect(author).toBeVisible({ timeout: 20_000 });
@@ -2414,23 +2420,160 @@ test('multiline SELECT requires a block while compact and canonical queries prev
   const compactSource = savedQuerySource('chinook-invoice-author');
   expect(compactSource).toMatch(/select i\.InvoiceId, i\.InvoiceDate\s*$/u);
 
+  await author.getByTestId('author-preview').click();
+  await expect(author.getByTestId('author-sql-preview')).toContainText(
+    'Preview · Not executed',
+  );
+  await customerId.fill('1');
+  await author.getByTestId('author-preview').click();
+  await author.getByTestId('author-run').click();
+  if (isMobile) await page.locator('#workspace-results-tab').click();
+  const retainedReceipt = page.getByTestId('author-execution-receipt');
+  await expect(retainedReceipt).toContainText('Executed');
+  await expect(retainedReceipt).toContainText('7 rows');
+  await expect.poll(() => workersStarted).toBe(1);
+  const immutableReceiptDetails = retainedReceipt
+    .locator('.author-receipt-details > p')
+    .filter({
+      hasText:
+        /^\s*(Observed at|Worker execution ID|Draft revision|Worker verified bindings)/u,
+    });
+  const retainedReceiptDetails =
+    await immutableReceiptDetails.allTextContents();
+  expect(retainedReceiptDetails).toHaveLength(4);
+  const retainedSql = await retainedReceipt
+    .locator('.author-receipt-details pre')
+    .textContent();
+  const retainedRows = await page
+    .getByRole('grid')
+    .getByRole('row')
+    .allTextContents();
+  expect(retainedRows).toHaveLength(8);
+  if (isMobile) await page.locator('#workspace-editor-tab').click();
+
   const bareMultilineSource = compactSource.replace(
     /select i\.InvoiceId, i\.InvoiceDate\s*$/u,
     'select\n  i.InvoiceId\n  i.InvoiceDate',
   );
   expect(bareMultilineSource).not.toBe(compactSource);
   await pasteCode(page, editor, bareMultilineSource);
+  await author.getByTestId('author-compose-tab').click();
   await author.getByTestId('author-preview').click();
 
-  await expect(author.getByTestId('author-error')).toContainText(
+  const previewError = author.getByRole('alert');
+  await expect(previewError).toContainText(
     "multiline SELECT requires '(' on the SELECT header line",
   );
-  await expectEditorSource(page, editor, bareMultilineSource);
+  await expect(editor).toHaveCount(0);
   await expect(author.getByTestId('author-sql-preview')).toHaveCount(0);
   await expect(author.getByTestId('author-run')).toHaveAttribute(
     'disabled',
     '',
   );
+  await expect(retainedReceipt).toContainText('7 rows');
+  const diagnostic = author.getByRole('button', {
+    name: /^Go to line [1-9]\d*, column [1-9]\d*$/u,
+  });
+  await expect(diagnostic).toBeVisible();
+  await expect(diagnostic).toHaveAttribute(
+    'aria-describedby',
+    'author-preview-error-message',
+  );
+  const target = (await diagnostic.getAttribute('aria-label'))?.match(
+    /^Go to line (\d+), column (\d+)$/u,
+  );
+  expect(target).toBeTruthy();
+  const originalViewport = page.viewportSize();
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect
+      .poll(() =>
+        diagnostic.evaluate((button) => button.getBoundingClientRect().height),
+      )
+      .toBeGreaterThanOrEqual(44);
+    const bounds = await page.evaluate(() => ({
+      viewport: document.documentElement.clientWidth,
+      document: document.documentElement.scrollWidth,
+    }));
+    expect(bounds.document).toBeLessThanOrEqual(bounds.viewport);
+  }
+  const nativeAction = author
+    .getByTestId('author-preview-go-to-error')
+    .locator('button');
+  for (const theme of ['light', 'dark', 'forced-colors']) {
+    await page.locator('ion-app').evaluate((app, dark) => {
+      app.classList.toggle('ion-palette-dark', dark);
+    }, theme === 'dark');
+    await page.emulateMedia({
+      forcedColors: theme === 'forced-colors' ? 'active' : 'none',
+    });
+    await expect(nativeAction).toBeVisible();
+    const colors = await completionContrast(nativeAction);
+    expect(colors.ratio).toBeGreaterThanOrEqual(4.5);
+    console.log(
+      `[preview-action-contrast] ${JSON.stringify({ theme, ...colors })}`,
+    );
+  }
+  await page.emulateMedia({ forcedColors: 'none' });
+  await page.locator('ion-app').evaluate((app) => {
+    app.classList.remove('ion-palette-dark');
+  });
+  if (isMobile) await diagnostic.tap();
+  else {
+    await nativeAction.focus();
+    await expect(nativeAction).toBeFocused();
+    await nativeAction.press('Enter');
+  }
+  await expect(author.getByTestId('author-code-tab')).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expectEditorSource(page, editor, bareMultilineSource);
+  const caret = await editor.evaluate((element) => {
+    const selection = window.getSelection();
+    const focusNode = selection?.focusNode;
+    const line =
+      focusNode instanceof Element
+        ? focusNode.closest('.cm-line')
+        : focusNode?.parentElement?.closest('.cm-line');
+    if (!selection || !focusNode || !line) return undefined;
+    const range = document.createRange();
+    range.selectNodeContents(line);
+    range.setEnd(focusNode, selection.focusOffset);
+    const renderedLines = [...element.querySelectorAll('.cm-line')];
+    return {
+      focused: document.activeElement === element,
+      collapsed: selection.isCollapsed,
+      line: renderedLines.indexOf(line) + 1,
+      column: [...range.toString()].length + 1,
+    };
+  });
+  expect(caret).toEqual({
+    focused: true,
+    collapsed: true,
+    line: Number(target?.[1]),
+    column: Number(target?.[2]),
+  });
+  expect(await copyEditorSource(page, editor)).toBe(bareMultilineSource);
+  await expect(customerId).toHaveValue('1');
+  expect(workersStarted).toBe(1);
+  if (originalViewport && !isMobile)
+    await page.setViewportSize(originalViewport);
+  if (isMobile) await page.locator('#workspace-results-tab').click();
+  await expect(retainedReceipt).toContainText('Previous run');
+  await expect(immutableReceiptDetails).toHaveCount(4);
+  expect(await immutableReceiptDetails.allTextContents()).toEqual(
+    retainedReceiptDetails,
+  );
+  await expect(
+    retainedReceipt.locator('.author-receipt-details pre'),
+  ).toHaveText(retainedSql ?? '');
+  await expect(page.getByRole('grid').getByRole('row')).toHaveCount(8);
+  expect(
+    await page.getByRole('grid').getByRole('row').allTextContents(),
+  ).toEqual(retainedRows);
+  if (isMobile) await page.locator('#workspace-editor-tab').click();
+  await customerId.fill('');
 
   const blockSource = compactSource.replace(
     /select i\.InvoiceId, i\.InvoiceDate\s*$/u,
@@ -2450,6 +2593,7 @@ test('multiline SELECT requires a block while compact and canonical queries prev
     'disabled',
     '',
   );
+  expect(workersStarted).toBe(1);
 
   await pasteCode(page, editor, compactSource);
   await author.getByTestId('author-preview').click();
