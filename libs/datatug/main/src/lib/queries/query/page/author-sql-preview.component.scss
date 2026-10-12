@@ -3,81 +3,59 @@
 }
 
 .author-sql-preview {
-  margin-top: 1.25rem;
-  padding: 1rem;
-  border: 1px solid var(--ion-color-step-150, #e5e7eb);
-  border-radius: 0.85rem;
-  background: var(--ion-background-color, #fff);
-}
-
-.author-preview-heading,
-.preview-tools,
-.preview-buttons {
-  display: flex;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  margin: 0;
+  padding: 0.75rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .author-preview-heading {
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 1rem;
+  grid-column: 1;
+  --min-height: 3rem;
+  --padding-start: 0;
+  --inner-padding-end: 0;
+  --background: transparent;
   margin-bottom: 0.8rem;
 }
 
-.preview-tools {
-  align-items: center;
-  justify-content: flex-end;
-  flex-wrap: wrap;
+.author-preview-actions {
+  grid-column: 2;
   min-width: 0;
+  --min-height: 3rem;
+  --padding-start: 0;
+  --inner-padding-end: 0;
+  --background: transparent;
 }
 
 .preview-buttons {
+  width: 100%;
+  min-width: 0;
   flex-wrap: wrap;
-}
-
-.preview-tools,
-.preview-buttons {
+  justify-content: flex-end;
   gap: 0.45rem;
 }
 
+.author-sql-scroll,
+.copy-status,
+sneat-author-source-inspector,
+.author-binding-list,
+.author-binding-note {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
 .sql-action {
-  display: inline-flex;
-  min-width: 44px;
   min-height: 44px;
-  align-items: center;
-  justify-content: center;
-  padding: 0.5rem 0.7rem;
-  border: 1px solid var(--ion-color-step-250, #cbd5e1);
-  border-radius: 0.55rem;
-  background: var(--ion-background-color, #fff);
-  color: var(--ion-color-primary-shade, #0d6eae);
-  font: inherit;
-  font-size: 0.8rem;
-  font-weight: 600;
-  line-height: 1.2;
-  cursor: pointer;
-  touch-action: manipulation;
-}
-
-.sql-action:hover:not(:disabled) {
-  background: var(--ion-color-step-50, #f8fafc);
-}
-
-.sql-action[aria-pressed='true'] {
-  border-color: var(--ion-color-primary, #3880ff);
-  background: var(--ion-color-primary, #3880ff);
-  color: var(--ion-color-primary-contrast, #fff);
+  margin: 0;
 }
 
 .sql-action:focus-visible,
 .author-sql-scroll:focus-visible {
   outline: 2px solid var(--ion-color-primary, #3880ff);
   outline-offset: 2px;
-}
-
-.sql-action:disabled {
-  cursor: wait;
-  opacity: 0.7;
 }
 
 .author-preview-heading h3 {
@@ -93,16 +71,6 @@
   font-size: 0.8rem;
 }
 
-.author-preview-state {
-  flex: 0 0 auto;
-  padding: 0.4rem 0.65rem;
-  border: 1px solid var(--ion-color-step-150, #e5e7eb);
-  border-radius: 999px;
-  font-size: 0.75rem;
-  line-height: 1.2;
-}
-
-.author-preview-state,
 .copy-status {
   color: var(--ion-color-medium-shade);
 }
@@ -124,12 +92,6 @@
   overflow-x: auto;
   background: var(--ion-color-step-50, #f8fafc);
   scrollbar-color: var(--ion-color-step-400, #94a3b8) transparent;
-}
-
-.author-sql-scroll,
-.author-binding-list {
-  border: 1px solid var(--ion-color-step-150, #e5e7eb);
-  border-radius: 0.65rem;
 }
 
 .author-sql-scroll pre {
@@ -207,19 +169,31 @@
     padding: 0.75rem;
   }
 
-  .author-preview-heading {
-    align-items: flex-start;
+}
+
+@media (max-width: 700px) {
+  .author-sql-preview {
+    grid-template-columns: minmax(0, 1fr);
   }
 
-  .preview-tools {
+  .author-preview-heading,
+  .author-preview-actions {
+    grid-column: 1;
+  }
+
+  .author-preview-actions {
+    --padding-start: 0;
+  }
+
+  .preview-buttons {
     justify-content: flex-start;
   }
 }
 
 @media (max-width: 350px) {
-  .author-preview-heading {
-    flex-direction: column;
-    gap: 0.5rem;
+  .preview-buttons {
+    max-width: 100%;
+    justify-content: flex-start;
   }
 
   .author-binding-row {
@@ -234,24 +208,11 @@
 }
 
 @media (forced-colors: active) {
-  .sql-action {
-    border-color: ButtonText;
-    background: ButtonFace;
-    color: ButtonText;
-  }
-
-  .sql-action[aria-pressed='true'] {
-    border-color: Highlight;
-    background: Highlight;
-    color: HighlightText;
-  }
-
   .sql-action:focus-visible,
   .author-sql-scroll:focus-visible {
     outline-color: Highlight;
   }
 
-  .author-preview-state,
   .copy-status {
     color: CanvasText;
   }

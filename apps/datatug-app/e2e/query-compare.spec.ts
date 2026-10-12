@@ -42,6 +42,7 @@ test('compares the maintained Chinook invoice query against two public fixtures 
   await expect(editor).toContainText(/i\.InvoiceDate as InvoiceDate/u);
   const customerId = author.getByTestId('author-customer-id').locator('input');
   await expect(customerId).toHaveValue('');
+  await author.getByTestId('author-preview-tab').click();
   await author.getByTestId('author-preview').click();
   await expect(author.getByTestId('author-sql-preview')).toContainText('LIMIT 100');
   await expect(author.getByTestId('author-sql-preview')).toContainText('?1');
@@ -113,6 +114,7 @@ test('compares the maintained Chinook invoice query against two public fixtures 
 
   await page.getByTestId('query-view-author').locator('button').click();
   await expect(page.getByTestId('tugql-author')).toBeVisible();
+  await author.getByTestId('author-code-tab').click();
   await expect(page.getByTestId('query-body-text').locator('.cm-content')).toContainText(/i\.InvoiceDate as InvoiceDate/u);
   await expect(page.getByTestId('author-customer-id').locator('input')).toHaveValue('1');
   await page.getByTestId('query-view-compare').locator('button').click();

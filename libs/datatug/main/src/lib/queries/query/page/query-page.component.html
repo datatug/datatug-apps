@@ -477,247 +477,335 @@
       />
     } @else {
     <ion-card class="author-card" data-testid="tugql-author">
-      <ion-card-header>
-        <div class="author-card-heading">
-          <div>
-            <ion-card-title
-              #authorLookupHeading
-              tabindex="-1"
-              role="heading"
-              aria-level="2"
-              data-workspace-heading
-              >{{
-              queryPageTitle()
-            }}</ion-card-title>
-          </div>
-        </div>
-        <span class="author-source-badge">Chinook · pinned SQLite</span>
-      </ion-card-header>
-      <ion-card-content>
-        <div class="author-workbench-tools">
-          <ion-buttons class="author-mode-switch" aria-label="Author mode">
-            <ion-button
-              data-testid="author-compose-tab"
-              class="author-mode-option"
-              [class.is-active]="authorMode() === 'compose'"
-              [attr.aria-pressed]="authorMode() === 'compose'"
-              fill="clear"
-              [color]="authorMode() === 'compose' ? 'primary' : 'medium'"
-              (click)="setAuthorMode('compose')">Compose</ion-button>
-            <ion-button
-              data-testid="author-code-tab"
-              class="author-mode-option"
-              [class.is-active]="authorMode() === 'code'"
-              [attr.aria-pressed]="authorMode() === 'code'"
-              fill="clear"
-              [color]="authorMode() === 'code' ? 'primary' : 'medium'"
-              (click)="setAuthorMode('code')">Code</ion-button>
-          </ion-buttons>
-          <sneat-author-relationship-sources
-            [sources]="authorSourceMetadata()"
-            [currentLimit]="authorCurrentLimit()"
-            [loading]="authorSourceLoading()"
-            [review]="authorSourceReview()"
-            [choices]="authorCustomerOutputChoices"
-            [selectedFields]="authorSourceSelectedFields()"
-            [disabled]="authorSourceLoading() || running() || queryState.isSaving === true"
-            [statusMessage]="authorSourceMessage()"
-            (disclosureChanged)="authorSourcesToggled($event)"
-            (customerFieldChanged)="authorSourceFieldSelectionChanged($event.field, $event.checked)"
-            (reviewRequested)="reviewAuthorRelationship()"
-            (applyRequested)="applyAuthorRelationshipReview()"
-          />
-          @if (authorMode() === 'code') {
-            <div class="author-actions author-format-actions">
-              <ion-button data-testid="author-format-tugql" fill="clear"
-                [disabled]="running() || queryState.isSaving"
-                (click)="formatAuthorTugQL()">Format TugQL</ion-button>
-              <ion-button data-testid="author-undo-format" fill="clear"
-                [disabled]="!canUndoAuthorFormat()"
-                (click)="undoAuthorTugQLFormat()">Undo format</ion-button>
-            </div>
-          }
-        </div>
-        @if (customerInvoiceExample()) {
-          <p data-testid="customer-invoice-example-guidance" role="status">
-            Try Customer ID 1: Preview SQL, then Run. Inspect the invoice rows below;
-            customer 1 has 7 invoices. Change the customer ID to explore another customer,
-            then preview and run again.
-          </p>
-        }
-        <div class="author-run-strip">
-        <ion-input
-          class="author-customer-input"
-          data-testid="author-customer-id"
-          type="number"
-          inputmode="numeric"
-          fill="outline"
-          label="Customer ID"
-          labelPlacement="start"
-          [class.ion-invalid]="
-            !authorCustomerIdMissing() && !authorCustomerIdValid()
-          "
-          [class.ion-touched]="
-            !authorCustomerIdMissing() && !authorCustomerIdValid()
-          "
-          [class.ng-invalid]="
-            !authorCustomerIdMissing() && !authorCustomerIdValid()
-          "
-          [class.ng-touched]="
-            !authorCustomerIdMissing() && !authorCustomerIdValid()
-          "
-          [errorText]="
-            !authorCustomerIdMissing() && !authorCustomerIdValid()
-              ? 'Enter a whole-number Customer ID'
-              : undefined
-          "
-          [value]="authorCustomerId()"
-          [disabled]="queryState.isSaving || running()"
-          (ionInput)="authorCustomerIdChanged($event)"
-        />
-        <div class="author-binding-context">
-          @if (authorCustomerIdOrigin(); as customerIdOrigin) {
-            <p class="author-binding-origin" data-testid="author-binding-origin">
-            @if (customerIdOrigin.origin === 'selection') {
-              Customer ID {{ authorCustomerId() }} · selection ·
-              {{ customerIdOrigin.sourceQueryId }}.{{
-                customerIdOrigin.sourceColumn
-              }} → {{ queryDef()?.title || queryId }} · client-reported.
-            } @else {
-              Customer ID {{ authorCustomerId() || '—' }} · manual ·
-              client-reported.
-            }
-            </p>
-          }
-          @if (!authorCustomerIdValid()) {
-            <p class="author-run-guidance" role="status">
-            @if (authorCustomerIdMissing()) {
-              Enter a Customer ID to enable Run.
-            } @else {
-              Enter a whole-number Customer ID to enable Run.
-            }
-            </p>
-          } @else if (!authorPlan()) {
-            <p class="author-run-guidance" role="status">Preview the current TugQL draft before Run.</p>
-          }
-        </div>
-        <div class="author-actions">
-              <ion-button
-            data-testid="author-preview"
-            class="author-preview-button"
-            fill="outline"
-            [disabled]="running() || queryState.isSaving"
-            (click)="previewTugql()"
-            >Preview SQL</ion-button
-          >
-          <ion-button
-            data-testid="author-run"
-            class="author-run-button"
-            color="primary"
-            [disabled]="
-              running() ||
-              queryState.isSaving ||
-              !authorPlan() ||
-              !authorCustomerIdValid() ||
-              !queryId ||
-              !project
-            "
-            (click)="runQuery()"
-          >
-            @if (running()) {
-              <ion-spinner name="dots" slot="start" />
-            }
-            Run
-          </ion-button>
-          @if (running()) {
-            <ion-button
-              data-testid="author-cancel"
-              fill="clear"
-              (click)="cancelAuthorRun()"
+          <ion-card-header>
+            <ion-item class="author-card-title-row" lines="none">
+              <ion-label class="ion-text-wrap">
+                <ion-card-title
+                  #authorLookupHeading
+                  tabindex="-1"
+                  role="heading"
+                  aria-level="2"
+                  data-workspace-heading
+                  >{{ queryPageTitle() }}</ion-card-title
+                >
+                <p>Chinook · pinned SQLite</p>
+              </ion-label>
+                  <ion-buttons slot="end">
+                    @if (authorMode() === 'code') {
+                      <ion-button
+                        class="author-code-overflow"
+                        [id]="authorCodeEditor.toolsTriggerId"
+                        fill="clear"
+                        aria-label="More editor actions"
+                        title="More editor actions"
+                      >
+                        <ion-icon name="ellipsis-horizontal" aria-hidden="true" />
+                      </ion-button>
+                    }
+
+                    <ion-button
+                      data-testid="author-run"
+                      class="author-run-button"
+                      color="primary"
+                      fill="solid"
+                      [disabled]="
+                        running() ||
+                        queryState.isSaving ||
+                        !authorPlan() ||
+                        !authorCustomerIdValid() ||
+                        !queryId ||
+                        !project
+                      "
+                      (click)="runQuery()"
+                    >
+                      @if (running()) {
+                        <ion-spinner name="dots" slot="start" />
+                      }
+                      Run
+                    </ion-button>
+                    @if (running()) {
+                      <ion-button
+                        data-testid="author-cancel"
+                        fill="clear"
+                        (click)="cancelAuthorRun()"
+                        >Cancel</ion-button
+                      >
+                    }
+                  </ion-buttons>
+            </ion-item>
+          </ion-card-header>
+          <ion-card-content>
+            <sneat-author-code-editor
+              #authorCodeEditor
+              class="author-code-editor"
+              [class.author-no-parameters]="!authorHasCustomerIdParameter()"
+              data-testid="query-body-text"
+              label="TugQL Query"
+              [text]="queryBodyText() ?? ''"
+              [visible]="authorMode() === 'code'"
+              [disabled]="queryState.isSaving || running()"
+              [readOnly]="
+                queryState.saveSupported === false && !isTugqlAuthorJourney()
+              "
+              [formatDiagnostics]="authorFormatDiagnosticItems()"
+              [remainingFormatDiagnosticCount]="
+                authorFormatDiagnosticRemainder()
+              "
+              [canFormat]="authorMode() === 'code'"
+              [canUndoFormat]="canUndoAuthorFormat()"
+              (textChange)="authorCodeChanged($event)"
+              (formatDiagnosticRequested)="
+                navigateToAuthorFormatDiagnostic($event)
+              "
+              (formatRequested)="formatAuthorTugQL()"
+              (undoFormatRequested)="undoAuthorTugQLFormat()"
             >
-              Cancel
-            </ion-button>
-          }
-        </div>
-        @if (authorError()) {
-          <div
-            class="author-actions"
-            data-testid="author-error"
-          >
-            <ion-text
-              id="author-preview-error-message"
-              color="danger"
-              role="alert"
-              aria-live="assertive"
-            >{{ authorError() }}</ion-text>
-            @if (authorPreviewSyntaxDiagnostic(); as diagnostic) {
-              <ion-button
-                data-testid="author-preview-go-to-error"
-                fill="outline"
-                [disabled]="!canNavigateToAuthorPreviewSyntaxDiagnostic()"
-                [attr.aria-label]="
-                  'Go to line ' +
-                  diagnostic.span.start.line +
-                  ', column ' +
-                  diagnostic.span.start.column
-                "
-                aria-describedby="author-preview-error-message"
-                (click)="navigateToAuthorPreviewSyntaxDiagnostic()"
+              <ion-buttons
+                author-editor-tabs
+                class="query-view-switch author-mode-switch"
+                slot="start"
+                role="group"
+                aria-label="Query editor view"
+                data-testid="author-view-tabs"
               >
-                Go to line {{ diagnostic.span.start.line }}, column
-                {{ diagnostic.span.start.column }}
-              </ion-button>
-            }
-          </div>
-        }
-        </div>
-        @if (authorMode() === 'compose') {
-          <sneat-author-compose-controls
-            [source]="queryBodyText() ?? ''"
-            (sourceChanged)="authorComposeTextChanged($event)"
-            (editInCode)="setAuthorMode('code')"
-          />
-        } @else {
-          <sneat-author-code-editor
-            class="author-code-editor"
-            data-testid="query-body-text"
-            label="TugQL · Query"
-            [text]="queryBodyText() ?? ''"
-            [disabled]="queryState.isSaving || running()"
-            [readOnly]="
-              queryState.saveSupported === false && !isTugqlAuthorJourney()
-            "
-            [formatDiagnostics]="authorFormatDiagnosticItems()"
-            [remainingFormatDiagnosticCount]="authorFormatDiagnosticRemainder()"
-            (textChange)="authorCodeChanged($event)"
-            (formatDiagnosticRequested)="navigateToAuthorFormatDiagnostic($event)"
-          />
-          @if (authorFormatStatus()) {
-            <p
-              class="author-format-status"
-              data-testid="author-format-status"
-              role="status"
-              aria-live="polite"
-            >
-              {{ authorFormatStatus() }}
-            </p>
-          }
-        }
-        @if (authorPlan(); as plan) {
-          <details class="author-sql-disclosure" open>
-            <summary>Preview SQL · Not executed</summary>
-            <sneat-author-sql-preview
-              [plan]="plan"
-              [customerId]="authorCustomerId()"
-              [customerIdValid]="authorCustomerIdValid()"
-              [customerIdMissing]="authorCustomerIdMissing()"
-            />
-          </details>
-        }
-      </ion-card-content>
-    </ion-card>
-    }
-  } @else if (editorTab === 'text') {
+                <ion-button
+                  class="author-mode-option"
+                  data-testid="author-compose-tab"
+                  [class.is-active]="authorMode() === 'compose'"
+                  [attr.aria-pressed]="authorMode() === 'compose'"
+                  fill="clear"
+                  [color]="authorMode() === 'compose' ? 'primary' : 'medium'"
+                  (click)="setAuthorMode('compose')"
+                  >Compose</ion-button
+                >
+                <ion-button
+                  class="author-mode-option"
+                  data-testid="author-code-tab"
+                  [class.is-active]="authorMode() === 'code'"
+                  [attr.aria-pressed]="authorMode() === 'code'"
+                  fill="clear"
+                  [color]="authorMode() === 'code' ? 'primary' : 'medium'"
+                  (click)="setAuthorMode('code')"
+                  >TugQL Query</ion-button
+                >
+                <ion-button
+                  class="author-mode-option"
+                  data-testid="author-preview-tab"
+                  [class.is-active]="authorMode() === 'preview'"
+                  [attr.aria-pressed]="authorMode() === 'preview'"
+                  fill="clear"
+                  [color]="authorMode() === 'preview' ? 'primary' : 'medium'"
+                  (click)="setAuthorMode('preview')"
+                  >Preview SQL</ion-button
+                >
+              </ion-buttons>
+              <div author-editor-tools class="author-workbench-tools">
+                <sneat-author-relationship-sources
+                  [sources]="authorSourceMetadata()"
+                  [currentLimit]="authorCurrentLimit()"
+                  [loading]="authorSourceLoading()"
+                  [review]="authorSourceReview()"
+                  [choices]="authorCustomerOutputChoices"
+                  [selectedFields]="authorSourceSelectedFields()"
+                  [disabled]="
+                    authorSourceLoading() ||
+                    running() ||
+                    queryState.isSaving === true
+                  "
+                  [statusMessage]="authorSourceMessage()"
+                  (disclosureChanged)="authorSourcesToggled($event)"
+                  (customerFieldChanged)="
+                    authorSourceFieldSelectionChanged(
+                      $event.field,
+                      $event.checked
+                    )
+                  "
+                  (reviewRequested)="reviewAuthorRelationship()"
+                  (applyRequested)="applyAuthorRelationshipReview()"
+                />
+              </div>
+              <div author-editor-sidebar>
+                @if (authorHasCustomerIdParameter()) {
+                <section aria-label="Parameters">
+                <ion-item lines="none">
+                  <ion-label>Parameters</ion-label>
+                </ion-item>
+                @if (customerInvoiceExample()) {
+                  <p
+                    data-testid="customer-invoice-example-guidance"
+                    role="status"
+                  >
+                    Try Customer ID 1: Preview SQL, then Run. Inspect the
+                    invoice rows below; customer 1 has 7 invoices. Change the
+                    customer ID to explore another customer, then preview and
+                    run again.
+                  </p>
+                }
+                <ion-item class="author-parameter-row" lines="none">
+                  <ion-input
+                    class="author-customer-input"
+                    data-testid="author-customer-id"
+                    type="number"
+                    inputmode="numeric"
+                    label="Customer ID"
+                    labelPlacement="start"
+                    [class.ion-invalid]="
+                      !authorCustomerIdMissing() && !authorCustomerIdValid()
+                    "
+                    [class.ion-touched]="
+                      !authorCustomerIdMissing() && !authorCustomerIdValid()
+                    "
+                    [class.ng-invalid]="
+                      !authorCustomerIdMissing() && !authorCustomerIdValid()
+                    "
+                    [class.ng-touched]="
+                      !authorCustomerIdMissing() && !authorCustomerIdValid()
+                    "
+                    [errorText]="
+                      !authorCustomerIdMissing() && !authorCustomerIdValid()
+                        ? 'Enter a whole-number Customer ID'
+                        : undefined
+                    "
+                    [value]="authorCustomerId()"
+                    [disabled]="queryState.isSaving || running()"
+                    (ionInput)="authorCustomerIdChanged($event)"
+                  />
+                </ion-item>
+                <ion-item lines="none">
+                  <ion-label class="ion-text-wrap">
+                  @if (authorCustomerIdOrigin(); as customerIdOrigin) {
+                    <p
+                      data-testid="author-binding-origin"
+                    >
+                      @if (customerIdOrigin.origin === 'selection') {
+                        Customer ID {{ authorCustomerId() }} · selection ·
+                        {{ customerIdOrigin.sourceQueryId }}.{{
+                          customerIdOrigin.sourceColumn
+                        }}
+                        → {{ queryDef()?.title || queryId }} · client-reported.
+                      } @else {
+                        Customer ID {{ authorCustomerId() || '—' }} · manual ·
+                        client-reported.
+                      }
+                    </p>
+                  }
+                  @if (!authorCustomerIdValid()) {
+                    <p role="status">
+                      @if (authorCustomerIdMissing()) {
+                        Enter a Customer ID to enable Run.
+                      } @else {
+                        Enter a whole-number Customer ID to enable Run.
+                      }
+                    </p>
+                  } @else if (!authorPlan()) {
+                    <p role="status">
+                      Preview the current TugQL draft before Run.
+                    </p>
+                  }
+                  </ion-label>
+                </ion-item>
+                </section>
+                }
+                @if (authorError()) {
+                  <div class="author-actions" data-testid="author-error">
+                    <ion-text
+                      id="author-preview-error-message"
+                      color="danger"
+                      role="alert"
+                      aria-live="assertive"
+                      >{{ authorError() }}</ion-text
+                    >
+                    @if (authorPreviewSyntaxDiagnostic(); as diagnostic) {
+                      <ion-button
+                        size="large"
+                        fill="clear"
+                        data-testid="author-preview-go-to-error"
+                        [disabled]="
+                          !canNavigateToAuthorPreviewSyntaxDiagnostic()
+                        "
+                        [attr.aria-label]="
+                          'Go to line ' +
+                          diagnostic.span.start.line +
+                          ', column ' +
+                          diagnostic.span.start.column
+                        "
+                        aria-describedby="author-preview-error-message"
+                        (click)="navigateToAuthorPreviewSyntaxDiagnostic()"
+                        >Go to line {{ diagnostic.span.start.line }}, column
+                        {{ diagnostic.span.start.column }}</ion-button
+                      >
+                    }
+                  </div>
+                }
+
+              </div>
+              <div author-editor-panel>
+                @if (authorMode() === 'compose') {
+                  <sneat-author-compose-controls
+                    [source]="queryBodyText() ?? ''"
+                    (sourceChanged)="authorComposeTextChanged($event)"
+                    (editInCode)="setAuthorMode('code')"
+                  />
+                }
+                <div
+                  class="author-preview-panel"
+                  [hidden]="authorMode() !== 'preview'"
+                >
+                  @if (authorPlan(); as plan) {
+                    <div
+                      class="author-sql-pane"
+                      data-testid="author-preview-pane"
+                    >
+                      <sneat-author-sql-preview
+                        [plan]="plan"
+                        [customerId]="authorCustomerId()"
+                        [customerIdValid]="authorCustomerIdValid()"
+                        [customerIdMissing]="authorCustomerIdMissing()"
+                        [refreshDisabled]="
+                          running() || queryState.isSaving === true
+                        "
+                        (refreshRequested)="previewTugql()"
+                      />
+                    </div>
+                  } @else {
+                    <section
+                      class="author-preview-empty"
+                      data-testid="author-preview-empty"
+                    >
+                      <h3>SQL preview · Not executed</h3>
+                      <p>
+                        Generate a preview for the current TugQL draft. A
+                        Customer ID is optional for preview; Preview never
+                        executes the query.
+                      </p>
+                      <ion-button
+                        data-testid="author-preview"
+                        fill="outline"
+                        [disabled]="running() || queryState.isSaving"
+                        (click)="previewTugql()"
+                        >Generate SQL preview</ion-button
+                      >
+                    </section>
+                  }
+                </div>
+              </div>
+              <div author-editor-status>
+                @if (authorFormatStatus()) {
+                  <p
+                    class="author-format-status"
+                    data-testid="author-format-status"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    {{ authorFormatStatus() }}
+                  </p>
+                }
+              </div>
+            </sneat-author-code-editor>
+          </ion-card-content>
+        </ion-card>
+      }
+    } @else if (editorTab === 'text') {
     <!-- Saved query text is editable and persists with its definition through
          the selected project's query API. -->
     <ion-card>
@@ -975,7 +1063,11 @@
   <ng-template #queryResults>
   <section class="author-results" [attr.aria-labelledby]="isTugqlAuthorJourney() ? 'author-results-heading' : null">
   @if (isTugqlAuthorJourney()) {
-    <h2 id="author-results-heading" tabindex="-1" data-workspace-heading>Results</h2>
+    <ion-item class="author-results-heading" lines="none">
+      <ion-label>
+        <h2 id="author-results-heading" tabindex="-1" data-workspace-heading>Results</h2>
+      </ion-label>
+    </ion-item>
   }
   @if (isTugqlAuthorJourney() && !runResult() && !running()) {
     <section class="author-results-empty" role="status" data-testid="author-results-empty">

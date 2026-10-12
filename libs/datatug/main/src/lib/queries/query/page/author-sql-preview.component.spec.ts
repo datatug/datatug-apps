@@ -75,11 +75,22 @@ describe('AuthorSqlPreviewComponent', () => {
     installClipboard(writeText);
     setPlan(preview(sql));
 
+    expect(
+      fixture.nativeElement.querySelector('.author-preview-heading')?.tagName,
+    ).toBe('ION-ITEM');
+    expect(
+      fixture.nativeElement.querySelector('.author-preview-heading ion-label'),
+    ).not.toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('.author-preview-actions ion-buttons'),
+    ).not.toBeNull();
+
     const copyButton = fixture.nativeElement.querySelector(
       '[data-testid="author-copy-sql"]',
     ) as HTMLButtonElement;
     expect(copyButton.textContent).toContain('Copy SQL');
-    expect(copyButton.getAttribute('aria-label')).toBe('Copy SQL');
+    expect(copyButton.getAttribute('aria-label') || copyButton.textContent.trim())
+      .toBe('Copy SQL');
     copyButton.click();
     await fixture.whenStable();
 
@@ -94,6 +105,27 @@ describe('AuthorSqlPreviewComponent', () => {
       'Preview · Not executed',
     );
     expect(fixture.nativeElement.textContent).toContain('Required · unset');
+  });
+
+  it('keeps explicit refresh unavailable while execution or saving is active', () => {
+    setPlan(preview('SELECT ?'));
+    const refresh = fixture.nativeElement.querySelector(
+      '[data-testid="author-preview"]',
+    ) as HTMLButtonElement;
+    const requested = vi.fn();
+    fixture.componentInstance.refreshRequested.subscribe(requested);
+
+    fixture.componentRef.setInput('refreshDisabled', true);
+    fixture.detectChanges();
+    expect(refresh.disabled).toBe(true);
+    refresh.click();
+    expect(requested).not.toHaveBeenCalled();
+
+    fixture.componentRef.setInput('refreshDisabled', false);
+    fixture.detectChanges();
+    expect(refresh.disabled).toBe(false);
+    refresh.click();
+    expect(requested).toHaveBeenCalledTimes(1);
   });
 
   it('shows missing and rejected clipboard writes as retryable failure', async () => {

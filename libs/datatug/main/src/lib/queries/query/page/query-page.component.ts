@@ -672,7 +672,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   public showQueryBuilder?: boolean;
   public editorTab: 'text' | 'builder' = 'text';
-  public readonly authorMode = signal<'compose' | 'code'>('compose');
+  public readonly authorMode = signal<'compose' | 'code' | 'preview'>('compose');
   private readonly authorFormatUndo = signal<AuthorFormatUndo | undefined>(
     undefined,
   );
@@ -802,6 +802,18 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly authorCustomerIdMissing = computed(
     () => this.authorCustomerId().trim().length === 0,
   );
+  public readonly authorHasCustomerIdParameter = computed(() => {
+    const source = this.queryBodyText();
+    if (!source) return false;
+    const parsed = parseTugQL(source);
+    const hasDeclaredParameter = parsed.document.tree?.parameters?.some(
+      (parameter) => parameter.name.toLowerCase() === 'customerid',
+    );
+    if (hasDeclaredParameter) return true;
+    if (parsed.diagnostics.length)
+      return /@CustomerId\b/iu.test(source);
+    return false;
+  });
   public readonly authorError = signal<string | undefined>(undefined);
 
   private setAuthorError(message: string | undefined): void {
@@ -1731,7 +1743,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     );
   }
 
-  public setAuthorMode(mode: 'compose' | 'code'): void {
+  public setAuthorMode(mode: 'compose' | 'code' | 'preview'): void {
+    if (mode !== 'compose' && mode !== 'code' && mode !== 'preview') return;
     if (mode !== 'code') {
       this.authorFormatNavigationSnapshot.set(undefined);
       this.clearPreviewDiagnosticNavigation();
@@ -2038,7 +2051,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public canNavigateToAuthorPreviewSyntaxDiagnostic(): boolean {
     const snapshot = this.previewDiagnosticNavigationSnapshot();
     if (!this.isCurrentAuthorPreviewDiagnosticSnapshot(snapshot)) return false;
-    if (this.authorMode() === 'compose') return true;
+    if (this.authorMode() !== 'code') return true;
     return !!this.authorCodeEditor?.isFormatDiagnosticNavigable(
       snapshot.source,
       snapshot.diagnostic.span,
@@ -2053,7 +2066,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     )
       return;
 
-    if (this.authorMode() === 'compose') {
+    if (this.authorMode() !== 'code') {
       const generation = ++this.previewDiagnosticNavigationGeneration;
       this.pendingPreviewDiagnosticNavigation = { generation, snapshot };
       this.authorModeExplicit = true;

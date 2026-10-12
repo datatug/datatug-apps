@@ -5,6 +5,7 @@ import {
   computed,
   inject,
   input,
+  output,
   signal,
   type OnChanges,
   type OnDestroy,
@@ -13,6 +14,7 @@ import {
 import type { PublicSqliteQueryPreview } from '../../public-sqlite-tugql';
 import { AuthorSourceInspectorComponent } from './author-source-inspector.component';
 import { tokenizeTugql } from './tugql-syntax';
+import { IonButton, IonButtons, IonItem, IonLabel } from '@ionic/angular';
 
 interface AuthorSqlBindingDisplay {
   readonly kind: 'customer-id' | 'literal';
@@ -36,13 +38,15 @@ interface SqlCopyOperation {
   templateUrl: './author-sql-preview.component.html',
   styleUrl: './author-sql-preview.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AuthorSourceInspectorComponent],
+  imports: [AuthorSourceInspectorComponent, IonButton, IonButtons, IonItem, IonLabel],
 })
 export class AuthorSqlPreviewComponent implements OnChanges, OnDestroy {
   public readonly plan = input.required<PublicSqliteQueryPreview>();
   public readonly customerId = input('');
   public readonly customerIdValid = input(false);
   public readonly customerIdMissing = input(true);
+  public readonly refreshDisabled = input(false);
+  public readonly refreshRequested = output<void>();
   public readonly sqlTokens = computed(() => tokenizeTugql(this.plan().sql));
   public readonly wrapSql = signal(false);
   private readonly copyFeedback = signal<SqlCopyFeedback | undefined>(
@@ -87,6 +91,11 @@ export class AuthorSqlPreviewComponent implements OnChanges, OnDestroy {
 
   public toggleWrapping(): void {
     this.wrapSql.update((wrapped) => !wrapped);
+  }
+
+  public requestRefresh(): void {
+    if (this.refreshDisabled()) return;
+    this.refreshRequested.emit();
   }
 
   public async copyCurrentSql(): Promise<void> {
