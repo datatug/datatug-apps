@@ -124,7 +124,7 @@ interface CliSession {
           <div><strong>Saved project queries</strong>
             <label>Search <input type="search" [value]="querySearch()" (input)="querySearch.set($any($event.target).value)" /></label>
             @for (query of matchingQueries(); track query.ID) {
-              <div class="saved-query"><span>{{ query.Title || query.ID }} · {{ query.Type }}</span>@if (query.Type === 'DTQL' || query.Type === 'HTTP') { <button type="button" (click)="runSavedQuery(query)">Run</button> }</div>
+              <div class="saved-query"><span>{{ query.Title || query.ID }} · {{ query.Type === 'DTQL' ? 'TugQL' : query.Type }}</span>@if (query.Type === 'DTQL' || query.Type === 'HTTP') { <button type="button" (click)="runSavedQuery(query)">Run</button> }</div>
             } @empty { <p>No saved queries available.</p> }
           </div>
         </section>
