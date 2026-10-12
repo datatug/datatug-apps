@@ -36,8 +36,15 @@ const generateAuthorPreview = async (author: Locator): Promise<void> => {
 const openEditorActions = async (
   page: Page,
   author: Locator,
+  activation: 'pointer' | 'keyboard' = 'pointer',
 ): Promise<Locator> => {
-  await author.getByRole('button', { name: 'More editor actions' }).click();
+  const trigger = author.getByRole('button', { name: 'More editor actions' });
+  if (activation === 'keyboard') {
+    await trigger.focus();
+    await trigger.press('Space');
+  } else {
+    await trigger.click();
+  }
   const menu = page
     .getByTestId('author-code-tools-popover')
     .filter({ visible: true });
@@ -1266,7 +1273,7 @@ test('TugQL suggestions are explicit, source-safe, and touch reachable', async (
   );
   const compactViewport = (page.viewportSize()?.width ?? 1280) <= 700;
   const editorActionsMenu = compactViewport
-    ? await openEditorActions(page, author)
+    ? await openEditorActions(page, author, 'keyboard')
     : undefined;
   const suggestionsControl = compactViewport
     ? editorActionsMenu?.getByRole('button', {
@@ -1428,7 +1435,9 @@ test('Compose HAVING edits replace the shared draft before Preview and worker Ru
   await expect(author).toBeVisible({ timeout: 20_000 });
 
   const original = savedQuerySource('chinook-customer-invoice-count');
-  const rowLimit = author.getByTestId('author-compose-row-limit').locator('input');
+  const rowLimit = author
+    .getByTestId('author-compose-row-limit')
+    .locator('input:not(.cloned-input)');
   await rowLimit.press('ControlOrMeta+A');
   await rowLimit.press('Backspace');
   await expect(rowLimit).toHaveValue('');
@@ -1439,7 +1448,7 @@ test('Compose HAVING edits replace the shared draft before Preview and worker Ru
 
   const threshold = author
     .getByTestId('author-compose-having-threshold')
-    .locator('input');
+    .locator('input:not(.cloned-input)');
   await threshold.press('ControlOrMeta+A');
   await threshold.press('Backspace');
   await expect(threshold).toHaveValue('');
@@ -1492,7 +1501,7 @@ test('Compose HAVING edits replace the shared draft before Preview and worker Ru
   await author.getByTestId('author-compose-tab').click();
   const thresholdControl = author
     .getByTestId('author-compose-having-threshold')
-    .locator('input');
+    .locator('input:not(.cloned-input)');
   await thresholdControl.fill('8.5');
   await thresholdControl.press('Tab');
   await expect(thresholdControl).toHaveValue('8');
@@ -2599,7 +2608,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expect(compose.getByTestId('author-compose-grouped')).toHaveCount(0);
   const joinedLimit = compose
     .getByTestId('author-compose-row-limit')
-    .locator('input');
+    .locator('input:not(.cloned-input)');
   await expect(joinedLimit).toHaveValue('100');
   const joinedInvoiceDate = compose.getByTestId('author-compose-invoice-date');
   await expect.poll(() => ionicCheckboxIsChecked(joinedInvoiceDate)).toBe(true);
