@@ -65,6 +65,60 @@
   cursor: default;
 }
 
+.author-format-diagnostics {
+  border-top: 1px solid var(--ion-color-step-250, #cbd5e1);
+  padding: 0.25rem 0.75rem 0.75rem;
+  color: var(--ion-color-dark, #1f2937);
+}
+
+.author-format-diagnostic-context,
+.author-format-diagnostic-more {
+  margin: 0.35rem 0;
+  color: var(--ion-color-medium, #64748b);
+  font-size: 0.85rem;
+}
+
+.author-format-diagnostics ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.author-format-diagnostic {
+  display: flex;
+  min-height: 2.75rem;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--ion-color-step-250, #cbd5e1);
+  border-radius: 0.4rem;
+  padding: 0.35rem 0.55rem;
+  background: var(--ion-background-color, #fff);
+  color: var(--ion-color-dark, #1f2937);
+  font: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.author-format-diagnostic-location {
+  flex: 0 0 auto;
+  color: var(--ion-color-primary, #1d4ed8);
+  font-variant-numeric: tabular-nums;
+}
+
+.author-format-diagnostic:hover {
+  border-color: var(--ion-color-primary, #1d4ed8);
+}
+
+.author-format-diagnostic:focus-visible {
+  outline: 2px solid var(--ion-color-primary, #1d4ed8);
+  outline-offset: 2px;
+}
+
 :host-context(.ion-palette-dark) {
   --ion-background-color: #121212;
   --ion-color-dark: #f8fafc;
@@ -85,11 +139,13 @@
 }
 
 @media (forced-colors: active) {
-  .author-code-suggestions {
+  .author-code-suggestions,
+  .author-format-diagnostic {
     border-color: ButtonText;
     color: ButtonText;
   }
-  .author-code-suggestions:focus-visible {
+  .author-code-suggestions:focus-visible,
+  .author-format-diagnostic:focus-visible {
     outline-color: Highlight;
   }
 

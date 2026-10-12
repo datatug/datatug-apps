@@ -746,6 +746,161 @@ test('Code formats TugQL reversibly before explicit Preview and worker Run', asy
   );
 });
 
+test('Format diagnostics navigate the unchanged draft without another run', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(60_000);
+  const isMobile = testInfo.project.use.isMobile === true;
+  let workersStarted = 0;
+  page.on('worker', () => workersStarted++);
+  await page.addInitScript(() => {
+    const originalPostMessage = Worker.prototype.postMessage;
+    Worker.prototype.postMessage = new Proxy(originalPostMessage, {
+      apply(target, worker: Worker, args: unknown[]) {
+        const message = args[0];
+        if (
+          typeof message === 'object' &&
+          message !== null &&
+          'sql' in message &&
+          typeof message.sql === 'string' &&
+          'bindings' in message &&
+          Array.isArray(message.bindings)
+        ) {
+          const instrumentedWindow = window as Window & {
+            __datatugQueryExecutionMessages?: number;
+          };
+          instrumentedWindow.__datatugQueryExecutionMessages =
+            (instrumentedWindow.__datatugQueryExecutionMessages ?? 0) + 1;
+        }
+        return Reflect.apply(target, worker, args);
+      },
+    }) as typeof Worker.prototype.postMessage;
+  });
+  const queryExecutionMessages = () =>
+    page.evaluate(
+      () =>
+        (window as Window & {
+          __datatugQueryExecutionMessages?: number;
+        }).__datatugQueryExecutionMessages ?? 0,
+    );
+  await page.goto(AUTHOR_URL);
+  const author = page.getByTestId('tugql-author');
+  await expect(author).toBeVisible({ timeout: 20_000 });
+  await author.getByTestId('author-code-tab').click();
+  const editor = author.getByTestId('query-body-text').locator('.cm-content');
+  const valid = savedQuerySource('chinook-invoice-author');
+  await expectEditorSource(page, editor, valid);
+
+  await author.getByTestId('author-preview').click();
+  const preview = author.getByTestId('author-sql-preview');
+  await expect(preview).toContainText('Preview · Not executed');
+  expect(await queryExecutionMessages()).toBe(0);
+  const customerId = author
+    .getByTestId('author-customer-id')
+    .locator('input:not(.cloned-input)');
+  await customerId.fill('1');
+  await author.getByTestId('author-preview').click();
+  await expect(author.getByTestId('author-sql-preview')).toContainText(
+    'Preview · Not executed',
+  );
+  expect(await queryExecutionMessages()).toBe(0);
+  await author.getByTestId('author-run').click();
+  if (isMobile) await page.locator('#workspace-results-tab').click();
+  const receipt = page.getByTestId('author-execution-receipt');
+  await expect(receipt).toContainText('Executed');
+  await expect(receipt).toContainText('7 rows');
+  await expect.poll(() => workersStarted).toBe(1);
+  await expect.poll(queryExecutionMessages).toBe(1);
+  const executionId = (await receipt.textContent())?.match(
+    /execution ID ([0-9a-f-]{36})/iu,
+  )?.[1];
+  expect(executionId).toBeDefined();
+  const rows = page.getByRole('grid').getByRole('row');
+  await expect(rows).toHaveCount(8);
+  const retainedRows = await rows.allTextContents();
+  if (isMobile) await page.locator('#workspace-editor-tab').click();
+
+  const malformed = valid.replace(
+    'limit 100\nselect i.InvoiceId, i.InvoiceDate',
+    'select i.InvoiceId, i.InvoiceDate\n    limit 100',
+  );
+  expect(malformed).not.toBe(valid);
+  await pasteCode(page, editor, malformed);
+  await author.getByTestId('author-format-tugql').click();
+  await expectEditorSource(page, editor, malformed);
+  await expect(author.getByTestId('author-format-status')).toContainText(
+    'TugQL was not changed',
+  );
+  expect(await queryExecutionMessages()).toBe(1);
+  const diagnostic = author.getByRole('button', {
+    name: 'Go to line 7, column 5: query clauses are out of order',
+  });
+  await expect(diagnostic).toBeVisible();
+  await expect(author.getByTestId('author-sql-preview')).toHaveCount(0);
+
+  const originalViewport = page.viewportSize();
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect
+      .poll(() => diagnostic.evaluate((button) => button.getBoundingClientRect().height))
+      .toBeGreaterThanOrEqual(44);
+    const bounds = await page.evaluate(() => ({
+      viewport: document.documentElement.clientWidth,
+      document: document.documentElement.scrollWidth,
+    }));
+    expect(bounds.document).toBeLessThanOrEqual(bounds.viewport);
+  }
+
+  if (isMobile) await diagnostic.tap();
+  else {
+    await diagnostic.focus();
+    await diagnostic.press('Enter');
+  }
+  await expectEditorSource(page, editor, malformed);
+  const caret = await editor.evaluate((element) => {
+    const selection = window.getSelection();
+    const focusNode = selection?.focusNode;
+    const line =
+      focusNode instanceof Element
+        ? focusNode.closest('.cm-line')
+        : focusNode?.parentElement?.closest('.cm-line');
+    if (!selection || !focusNode || !line) return undefined;
+    const range = document.createRange();
+    range.selectNodeContents(line);
+    range.setEnd(focusNode, selection.focusOffset);
+    const renderedLines = [...element.querySelectorAll('.cm-line')];
+    return {
+      focused: document.activeElement === element,
+      collapsed: selection.isCollapsed,
+      line: renderedLines.indexOf(line) + 1,
+      column: [...range.toString()].length + 1,
+    };
+  });
+  expect(caret).toEqual({ focused: true, collapsed: true, line: 7, column: 5 });
+  expect(await copyEditorSource(page, editor)).toBe(malformed);
+  expect(await author.getByTestId('author-customer-id').locator('input:not(.cloned-input)').inputValue()).toBe('1');
+  expect(workersStarted).toBe(1);
+  expect(await queryExecutionMessages()).toBe(1);
+
+  if (isMobile) await page.locator('#workspace-results-tab').click();
+  else if (originalViewport) await page.setViewportSize(originalViewport);
+  await expect(receipt).toContainText(`Worker execution ID ${executionId}`);
+  await expect(receipt).toContainText('7 rows');
+  await expect(rows).toHaveCount(8);
+  expect(await rows.allTextContents()).toEqual(retainedRows);
+  expect(workersStarted).toBe(1);
+  if (isMobile) await page.locator('#workspace-editor-tab').click();
+
+  const edited = malformed.replace('limit 100', 'limit 99');
+  await pasteCode(page, editor, edited);
+  await expect(author.getByTestId('author-format-status')).toHaveCount(0);
+  await expect(author.getByRole('button', { name: /Go to line/u })).toHaveCount(0);
+  await expect(receipt).toContainText('7 rows');
+  expect(workersStarted).toBe(1);
+  expect(await queryExecutionMessages()).toBe(1);
+  if (isMobile && originalViewport) await page.setViewportSize(originalViewport);
+});
+
 test('Invoice Customer join makes missing ON reviewable and opens an explicit typed lookup', async ({
   page,
 }) => {
