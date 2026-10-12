@@ -637,6 +637,75 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     '',
   ].join('\n');
 
+  it('keeps Current row bound to the exact related recordset snapshot across context-tab changes', async () => {
+    component = await createTugQLAuthor(authorSource);
+    const mainRow = [
+      { type: 'integer', value: '1' },
+    ] as const;
+    const relatedRow = [
+      { type: 'string', value: 'related-value' },
+    ] as const;
+    const result = {
+      ...historyResultFor(queryDef),
+      recordset: {
+        columns: [{ name: 'InvoiceId', type: 'integer' }],
+        rows: [mainRow],
+      },
+      relatedRecordsets: [
+        {
+          id: 'locations',
+          label: 'Related locations',
+          parentSet: 'affiliations',
+          parentField: 'InvoiceId',
+          totalRows: 1,
+          recordset: {
+            columns: [{ name: 'Location', type: 'string' }],
+            rows: [relatedRow],
+          },
+        },
+      ],
+    } as FederatedQueryResult;
+    component.runResult.set(result);
+    await component.changeRelatedResultSet('locations');
+    const relatedSnapshotKey = component.authorResultSnapshotKey();
+
+    expect(component.resultGridColumnDefs().map((column) => column.headerName)).toEqual([
+      'Location',
+    ]);
+    const gridRow = component.resultGridRows()[0];
+    expect(gridRow).toEqual({ result_0: 'related-value' });
+    component.authorResultSelectionChanged({
+      selectedNodes: [{ data: gridRow, isSelected: () => true }],
+    } as never);
+    expect(component.authorResultSnapshotKey()).toBe(relatedSnapshotKey);
+    expect(component.currentAuthorResultRow()?.recordset).toBe(
+      component.displayedRecordset(),
+    );
+    expect(component.currentAuthorResultRow()?.row).toBe(relatedRow);
+
+    component.authorContextTab.set('related');
+    expect(component.currentAuthorResultRow()?.row).toBe(relatedRow);
+    expect(component.authorResultSnapshotKey()).toBe(relatedSnapshotKey);
+
+    const replacement = {
+      ...result,
+      relatedRecordsets: [
+        {
+          ...result.relatedRecordsets?.[0],
+          recordset: {
+            columns: [{ name: 'Location', type: 'string' }],
+            rows: [[{ type: 'string', value: 'replacement' }]],
+          },
+        },
+      ],
+    } as FederatedQueryResult;
+    component.runResult.set(replacement);
+    expect(component.authorResultSnapshotKey()).not.toBe(relatedSnapshotKey);
+    expect(component.currentAuthorResultRow()).toBeUndefined();
+    await runFixture.whenStable();
+    expect(component.selectedAuthorResultRow()).toBeUndefined();
+  });
+
   function comparisonPreview(
     draftRevision: number,
     overrides: Partial<PublicSqliteQueryPreview> = {},
@@ -728,16 +797,19 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
   it('shows the Customer ID panel for its declaration and keeps it during an incomplete edit', async () => {
     component = await createTugQLAuthor(authorSource);
     expect(component.authorHasCustomerIdParameter()).toBe(true);
+    expect(component.authorParameterDeclarationCount()).toBe(1);
 
     const incompleteDraft = `${authorSource}and`;
     expect(parseTugQL(incompleteDraft).diagnostics.length).toBeGreaterThan(0);
     component.authorCodeChanged(incompleteDraft);
     expect(component.authorHasCustomerIdParameter()).toBe(true);
+    expect(component.authorParameterDeclarationCount()).toBe(1);
 
     component.authorCodeChanged(
       'from Invoice as i\nlimit 10\nselect i.InvoiceId\n',
     );
     expect(component.authorHasCustomerIdParameter()).toBe(false);
+    expect(component.authorParameterDeclarationCount()).toBe(0);
   });
 
   it('requires applying freshly proposed relationship completion before either comparison worker starts', async () => {
@@ -1306,7 +1378,8 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
   it('applies the reviewed source and binding atomically while retaining the prior manual-binding result', async () => {
     component = await createTugQLAuthor(authorSource);
     const sqlite = TestBed.inject(PublicSqliteQueryService);
-    const discovery = vi.spyOn(sqlite, 'discoverInvoiceCustomerSources')
+    const discovery = vi
+      .spyOn(sqlite, 'discoverInvoiceCustomerSources')
       .mockResolvedValue(sourceDiscovery);
     const execute = vi.spyOn(sqlite, 'runTugQL');
     const prepare = vi.spyOn(sqlite, 'prepareTugQL');
@@ -1325,10 +1398,14 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       },
     };
     component.runResult.set(priorResult as never);
+    expect(component.authorRelatedSourceCount()).toBeUndefined();
     component.authorSourcesToggled(true);
     await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(1));
     await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
+    expect(component.authorRelatedSourceCount()).toBe(2);
     component.reviewAuthorRelationship();
+    expect(component.authorSourceSelectedFields()).toEqual([]);
+    component.authorSourceFieldSelectionChanged('FirstName', true);
     const reviewed = component.authorSourceReview();
     expect(reviewed?.after).toContain('join Customer as c');
     expect(reviewed?.after).toContain('c.FirstName');
@@ -1349,6 +1426,46 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       originEvidence: 'client-reported',
     });
     expect(component.authorSourceReview()).toBeUndefined();
+    expect(execute).not.toHaveBeenCalled();
+    expect(prepare).not.toHaveBeenCalled();
+  });
+
+  it('applies the singleton admitted join immediately without outputs and undoes its source and binding together', async () => {
+    component = await createTugQLAuthor(authorSource);
+    const sqlite = TestBed.inject(PublicSqliteQueryService);
+    vi.spyOn(sqlite, 'discoverInvoiceCustomerSources').mockResolvedValue(
+      sourceDiscovery,
+    );
+    const execute = vi.spyOn(sqlite, 'runTugQL');
+    const prepare = vi.spyOn(sqlite, 'prepareTugQL');
+    const editor = TestBed.inject(QueryEditorStateService);
+    const update = vi.spyOn(editor, 'updateQueryState');
+    const priorResult = historyResultFor(queryDef);
+    component.runResult.set(priorResult);
+    component.authorSourcesToggled(true);
+    await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
+
+    expect(component.authorCanJoinRelationship()).toBe(true);
+    await component.joinAuthorRelationship();
+
+    expect(component.queryBodyText()).toContain('join Customer as c');
+    expect(component.queryBodyText()).not.toContain('c.FirstName');
+    expect(component.queryDef()?.relationshipBindings).toEqual([
+      sourceDiscovery.relationship,
+    ]);
+    expect(component.authorSourceReview()).toBeUndefined();
+    expect(component.runResult()).toBe(priorResult);
+    expect(component.canUndoAuthorFormat()).toBe(true);
+    expect(execute).not.toHaveBeenCalled();
+    expect(prepare).not.toHaveBeenCalled();
+
+    component.undoAuthorTugQLFormat();
+
+    expect(component.queryBodyText()).toBe(authorSource);
+    expect(component.queryDef()?.relationshipBindings).toBeUndefined();
+    expect(component.runResult()).toBe(priorResult);
+    expect(component.canUndoAuthorFormat()).toBe(false);
+    expect(update).toHaveBeenCalledTimes(2);
     expect(execute).not.toHaveBeenCalled();
     expect(prepare).not.toHaveBeenCalled();
   });

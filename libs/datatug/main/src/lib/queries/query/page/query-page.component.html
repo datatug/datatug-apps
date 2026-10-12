@@ -538,7 +538,6 @@
             <sneat-author-code-editor
               #authorCodeEditor
               class="author-code-editor"
-              [class.author-no-parameters]="!authorHasCustomerIdParameter()"
               data-testid="query-body-text"
               label="TugQL Query"
               [text]="queryBodyText() ?? ''"
@@ -599,34 +598,67 @@
                   >Preview SQL</ion-button
                 >
               </ion-buttons>
-              <div author-editor-tools class="author-workbench-tools">
-                <sneat-author-relationship-sources
-                  [sources]="authorSourceMetadata()"
-                  [currentLimit]="authorCurrentLimit()"
-                  [loading]="authorSourceLoading()"
-                  [review]="authorSourceReview()"
-                  [choices]="authorCustomerOutputChoices"
-                  [selectedFields]="authorSourceSelectedFields()"
-                  [disabled]="
-                    authorSourceLoading() ||
-                    running() ||
-                    queryState.isSaving === true
-                  "
-                  [statusMessage]="authorSourceMessage()"
-                  (disclosureChanged)="authorSourcesToggled($event)"
-                  (customerFieldChanged)="
-                    authorSourceFieldSelectionChanged(
-                      $event.field,
-                      $event.checked
-                    )
-                  "
-                  (reviewRequested)="reviewAuthorRelationship()"
-                  (applyRequested)="applyAuthorRelationshipReview()"
-                />
-              </div>
               <div author-editor-sidebar>
+                <ion-segment
+                  data-testid="author-context-tabs"
+                  aria-label="Query context"
+                  mode="md"
+                  [value]="activeAuthorContextTab()"
+                  (ionChange)="authorContextTabChanged($event.detail.value)"
+                >
+                  <ion-segment-button value="parameters">
+                    <ion-label>Parameters</ion-label>
+                    @if (authorParameterDeclarationCount() !== undefined) {
+                      <ion-chip aria-label="Parameter declarations">
+                        {{ authorParameterDeclarationCount() }}
+                      </ion-chip>
+                    }
+                  </ion-segment-button>
+                  <ion-segment-button value="related">
+                    <ion-label>Related</ion-label>
+                    @if (authorRelatedSourceCount() !== undefined) {
+                      <ion-chip aria-label="Admitted related sources">
+                        {{ authorRelatedSourceCount() }}
+                      </ion-chip>
+                    }
+                  </ion-segment-button>
+                </ion-segment>
+                @if (
+                  activeAuthorContextTab() === 'related' &&
+                  authorHasCustomerIdParameter()
+                ) {
+                  <ion-item
+                    lines="none"
+                    data-testid="author-related-parameter-status"
+                  >
+                    <ion-label class="ion-text-wrap">
+                      <p>
+                        Customer ID ·
+                        @if (authorCustomerIdMissing()) {
+                          Required · unset
+                        } @else if (!authorCustomerIdValid()) {
+                          Invalid · enter a whole number
+                        } @else {
+                          {{ authorCustomerId() }} set · Preview remains explicit
+                        }
+                      </p>
+                    </ion-label>
+                    <ion-buttons slot="end">
+                      <ion-button
+                        data-testid="author-related-parameters-link"
+                        fill="clear"
+                        (click)="authorContextTabChanged('parameters')"
+                        >Parameters</ion-button
+                      >
+                    </ion-buttons>
+                  </ion-item>
+                }
+                <section
+                  aria-label="Parameters"
+                  [hidden]="activeAuthorContextTab() !== 'parameters'"
+                  data-testid="author-parameters-panel"
+                >
                 @if (authorHasCustomerIdParameter()) {
-                <section aria-label="Parameters">
                 <ion-item lines="none">
                   <ion-label>Parameters</ion-label>
                 </ion-item>
@@ -704,8 +736,47 @@
                   }
                   </ion-label>
                 </ion-item>
-                </section>
                 }
+                @else {
+                  <ion-item lines="none">
+                    <ion-label class="ion-text-wrap">
+                      <p>No supported query parameters are available for this draft.</p>
+                    </ion-label>
+                  </ion-item>
+                }
+                </section>
+                <section
+                  aria-label="Related sources"
+                  [hidden]="activeAuthorContextTab() !== 'related'"
+                  data-testid="author-related-panel"
+                >
+                  <sneat-author-relationship-sources
+                    [active]="activeAuthorContextTab() === 'related'"
+                    [sources]="authorSourceMetadata()"
+                    [currentLimit]="authorCurrentLimit()"
+                    [loading]="authorSourceLoading()"
+                    [review]="authorSourceReview()"
+                    [choices]="authorCustomerOutputChoices"
+                    [selectedFields]="authorSourceSelectedFields()"
+                    [disabled]="
+                      authorSourceLoading() ||
+                      running() ||
+                      queryState.isSaving === true
+                    "
+                    [canJoin]="authorCanJoinRelationship()"
+                    [statusMessage]="authorSourceMessage()"
+                    (activated)="authorSourcesToggled(true)"
+                    (customerFieldChanged)="
+                      authorSourceFieldSelectionChanged(
+                        $event.field,
+                        $event.checked
+                      )
+                    "
+                    (reviewRequested)="reviewAuthorRelationship()"
+                    (joinRequested)="joinAuthorRelationship()"
+                    (applyRequested)="applyAuthorRelationshipReview()"
+                  />
+                </section>
                 @if (authorError()) {
                   <div class="author-actions" data-testid="author-error">
                     <ion-text
@@ -1481,6 +1552,10 @@
           >
         </div>
       }
+      <div
+        class="result-author-data"
+        [class.result-author-data-enabled]="isTugqlAuthorJourney()"
+      >
       <div class="result-grid-viewport" [class.author-result-grid-viewport]="isTugqlAuthorJourney()">
         <ag-grid-angular
           class="ag-theme-quartz"
@@ -1488,9 +1563,22 @@
           [columnDefs]="resultGridColumnDefs()"
           [rowData]="resultGridRows()"
           [defaultColDef]="resultGridDefaultColDef"
+          [rowSelection]="isTugqlAuthorJourney() ? authorResultRowSelection : undefined"
           [loading]="resultPageLoading()"
           [overlayNoRowsTemplate]="resultGridNoRowsTemplate"
+          (selectionChanged)="authorResultSelectionChanged($event)"
+          (cellFocused)="authorResultCellFocused($event)"
         />
+      </div>
+      @if (isTugqlAuthorJourney() && displayedRecordset(); as currentRecordset) {
+        <sneat-author-current-row
+          [columns]="currentRecordset.columns"
+          [row]="currentAuthorResultRow()?.row"
+          [position]="currentAuthorResultRow()?.position"
+          [totalRows]="resultTotalRows()"
+          [snapshotKey]="authorResultSnapshotKey()"
+        />
+      }
       </div>
     </div>
     <div class="ion-padding-horizontal">

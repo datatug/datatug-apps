@@ -1,0 +1,32 @@
+<section class="author-current-row" aria-label="Current row" data-testid="author-current-row">
+  <ion-item lines="none">
+    <ion-label>
+      <h3>Current row</h3>
+      @if (position(); as rowPosition) {
+        <p>Position {{ rowPosition }} of {{ totalRows() }}</p>
+      } @else {
+        <p>Select a row in Results</p>
+      }
+    </ion-label>
+  </ion-item>
+  @if (row(); as selectedRow) {
+    <ion-list>
+      @for (column of columns(); track $index) {
+        <ion-item lines="inset" data-testid="author-current-row-field">
+          <ion-label class="ion-text-wrap">
+            <h4>
+              {{ column.name }}
+              @if (duplicateColumnName($index)) {
+                <ion-note>· column {{ $index + 1 }}</ion-note>
+              }
+            </h4>
+            <p class="author-current-row-value">{{ valueText($index) }}</p>
+            <ion-note>{{ valueType($index) }}</ion-note>
+          </ion-label>
+        </ion-item>
+      }
+    </ion-list>
+  } @else if (totalRows() === 0) {
+    <ion-item lines="none"><ion-label>No rows in this result.</ion-label></ion-item>
+  }
+</section>

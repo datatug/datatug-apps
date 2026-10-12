@@ -55,7 +55,7 @@ const openEditorActions = async (
 const clickEditorAction = async (
   page: Page,
   author: Locator,
-  action: 'Format TugQL' | 'Undo format',
+  action: 'Format TugQL' | 'Undo',
 ): Promise<void> => {
   if ((page.viewportSize()?.width ?? 1280) <= 700) {
     const menu = await openEditorActions(page, author);
@@ -661,9 +661,8 @@ test('TugQL and SQL coloring preserves editable source, keyboard undo, and reada
   expect(selectedBeforeLayout).toBe('x');
 
   const sourceDiscovery = author.getByTestId('author-source-discovery');
-  await sourceDiscovery.locator('summary').click();
-  await expect(sourceDiscovery.locator('summary')).toBeVisible();
-  await sourceDiscovery.locator('summary').click();
+  await author.getByRole('tab', { name: 'Related' }).click();
+  await expect(sourceDiscovery).toContainText('Invoice', { timeout: 20_000 });
   await author.getByTestId('author-preview-tab').click();
   await expect(
     author.getByTestId('query-body-text').locator('.cm-editor'),
@@ -1737,7 +1736,7 @@ test('Code formats TugQL reversibly before explicit Preview and worker Run', asy
   await expect(author.getByTestId('author-sql-preview')).toHaveCount(0);
   await expect(page.getByTestId('author-execution-receipt')).toHaveCount(0);
 
-  await clickEditorAction(page, author, 'Undo format');
+  await clickEditorAction(page, author, 'Undo');
   await expectEditorSource(page, editor, mixed);
   await expect(author.getByTestId('author-sql-preview')).toHaveCount(0);
 
@@ -1885,7 +1884,7 @@ test('mobile editor actions format, undo, and open completion without executing'
       'TugQL formatted.',
     );
     expect(await copyEditorSource(page, editor)).not.toBe(mixed);
-    await clickEditorAction(page, author, 'Undo format');
+    await clickEditorAction(page, author, 'Undo');
     await expectEditorSource(page, editor, mixed);
 
     const completion = page.locator('.cm-tooltip-autocomplete');
@@ -2562,7 +2561,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
 
   await author.getByTestId('author-code-tab').click();
   const sourceDiscovery = author.getByTestId('author-source-discovery');
-  await sourceDiscovery.locator('summary').click();
+  await author.getByRole('tab', { name: 'Related' }).click();
   await expect(sourceDiscovery).toContainText('Invoice.InvoiceDate', {
     timeout: 20_000,
   });
@@ -2571,11 +2570,37 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expect(sourceDiscovery).toContainText(
     'many invoices to one customer · declared',
   );
+  await sourceDiscovery.getByTestId('author-related-invoice').click();
+  await expect(
+    sourceDiscovery.getByTestId('author-related-invoice-details'),
+  ).toContainText('InvoiceId');
+  await expect(
+    sourceDiscovery.getByTestId('author-related-invoice-details'),
+  ).toContainText('INTEGER');
+  await sourceDiscovery.getByTestId('author-related-customer').click();
+  const customerDetails = sourceDiscovery.getByTestId(
+    'author-related-customer-details',
+  );
+  await expect(customerDetails).toContainText('main.Invoice.CustomerId');
+  await expect(customerDetails).toContainText('main.Customer.CustomerId');
+  await expect(customerDetails).toContainText('chinook.refs.json');
+  const editor = author.getByTestId('query-body-text').locator('.cm-content');
+  const originalSource = savedQuerySource('chinook-invoice-author');
+  await sourceDiscovery.getByTestId('author-related-join').click();
+  await expect(editor).toContainText(/join Customer as c/u);
+  await expect(editor).not.toContainText(/c\.FirstName/u);
+  await expect(author.getByTestId('author-sql-preview')).toHaveCount(0);
+  await expectIonicButtonDisabled(author.getByTestId('author-run'), true);
+  expect(workersStarted).toBe(0);
+  await clickEditorAction(page, author, 'Undo');
+  await expectEditorSource(page, editor, originalSource);
   await sourceDiscovery.getByTestId('author-source-review').click();
   const review = sourceDiscovery.getByTestId('author-source-review-panel');
-  await expect(review.getByLabel('Customer.FirstName')).toBeChecked();
+  await expect(review).toBeVisible();
+  await expect(review.getByLabel('Customer.FirstName')).not.toBeChecked();
   await expect(review.getByLabel('Customer.LastName')).not.toBeChecked();
   await expect(review.getByLabel('Customer.Email')).not.toBeChecked();
+  await setIonicCheckbox(review.getByLabel('Customer.FirstName'), true);
   await expect(review).toContainText('InvoiceDate');
   await expect(review).toContainText('Current LIMIT');
   await expect(author.getByTestId('author-sql-preview')).toHaveCount(0);
@@ -2830,13 +2855,40 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expect(rows.nth(1)).toContainText('2022-03-11 00:00:00');
   await expect(rows.nth(1)).toContainText('Luís');
   await expect(rows.nth(7)).toContainText('382');
+  const workerCountBeforeInspection = workersStarted;
+  const currentRow = page.getByTestId('author-current-row');
+  await rows.nth(1).click();
+  await expect(currentRow).toContainText('Position 1 of 7');
+  await expect(currentRow).toContainText('98');
+  await expect(currentRow).toContainText('2022-03-11 00:00:00');
+  await expect(currentRow).toContainText('Luís');
+  await rows.nth(1).getByRole('gridcell').first().click();
+  await page.keyboard.press('ArrowDown');
+  await expect(currentRow).toContainText('Position 2 of 7');
+  if (isMobile) await page.locator('#workspace-back-to-editor').click();
+  await author.getByRole('tab', { name: 'Related' }).click();
+  const relatedSources = author.getByTestId('author-source-discovery');
+  await expect(relatedSources).toContainText('Invoice.InvoiceDate', {
+    timeout: 20_000,
+  });
+  await expect(relatedSources).toContainText(
+    'chinook.refs.json · Core v1 declared foreign key',
+  );
+  await expect(author.getByTestId('author-related-parameter-status')).toContainText(
+    'Customer ID · 1 set',
+  );
+  expect(workersStarted).toBe(workerCountBeforeInspection);
+  await author.getByTestId('author-related-parameters-link').click();
+  await expect(author.getByTestId('author-customer-id')).toBeVisible();
+  if (isMobile) {
+    await page.locator('#workspace-jump-to-results').click();
+    await expect(currentRow).toContainText('Position 2 of 7');
+  }
+  if (isMobile) await page.locator('#workspace-back-to-editor').click();
+  await author.getByRole('tab', { name: 'Parameters' }).click();
+  await expect(author.getByTestId('author-customer-id')).toBeVisible();
+  expect(workersStarted).toBe(workerCountBeforeInspection);
   if (!isMobile) {
-    const sources = author.getByTestId('author-source-discovery');
-    if (
-      await sources.evaluate((details) => (details as HTMLDetailsElement).open)
-    ) {
-      await sources.locator('summary').click();
-    }
     await author.getByTestId('author-code-tab').click();
     await executionDetails.click();
     await expect(
@@ -3058,11 +3110,11 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   const workersBeforeSecondEmailApply = workersStarted;
   expect(workersBeforeSecondEmailApply).toBe(2);
   const secondDiscovery = secondAuthor.getByTestId('author-source-discovery');
-  await secondDiscovery.locator('summary').click();
+  await secondAuthor.getByRole('tab', { name: 'Related' }).click();
   await expect(secondDiscovery).toContainText('Customer.Email', {
     timeout: 20_000,
   });
-  await secondDiscovery.getByTestId('author-source-review').click();
+  await secondDiscovery.getByTestId('author-related-join').click();
   const secondReview = secondDiscovery.getByTestId(
     'author-source-review-panel',
   );

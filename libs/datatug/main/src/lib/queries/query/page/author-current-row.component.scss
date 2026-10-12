@@ -1,0 +1,12 @@
+:host {
+  display: block;
+  min-width: 0;
+  height: 360px;
+  overflow: auto;
+}
+
+.author-current-row-value {
+  margin: 0.25rem 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}

@@ -12,7 +12,12 @@ import {
   signal,
 } from '@angular/core';
 import { addIcons } from 'ionicons';
-import { ellipsisHorizontal } from 'ionicons/icons';
+import {
+  arrowUndoOutline,
+  codeWorkingOutline,
+  ellipsisHorizontal,
+  listOutline,
+} from 'ionicons/icons';
 import { CodeEditor } from '@acrodata/code-editor';
 import { closeCompletion, startCompletion } from '@codemirror/autocomplete';
 import type { TugQLDiagnostic, TugQLSpan } from '@dalgo/core';
@@ -34,6 +39,7 @@ import { createTugqlCompletionExtension } from './tugql-completion';
 import {
   IonButton,
   IonButtons,
+  IonIcon,
   IonItem,
   IonLabel,
   IonList,
@@ -41,7 +47,7 @@ import {
   IonPopover,
 } from '@ionic/angular';
 
-addIcons({ ellipsisHorizontal });
+addIcons({ arrowUndoOutline, codeWorkingOutline, ellipsisHorizontal, listOutline });
 
 let authorCodeEditorId = 0;
 
@@ -61,6 +67,7 @@ interface EditorInstance {
     CodeEditor,
     IonButton,
     IonButtons,
+    IonIcon,
     IonItem,
     IonLabel,
     IonList,

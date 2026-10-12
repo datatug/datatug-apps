@@ -37,7 +37,9 @@ import {
   AllCommunityModule,
   ModuleRegistry,
   type ColDef,
+  type CellFocusedEvent,
   type ICellRendererParams,
+  type SelectionChangedEvent,
   type SuppressKeyboardEventParams,
 } from 'ag-grid-community';
 import {
@@ -62,6 +64,17 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 
 interface QueryResultGridRow {
   readonly [columnId: string]: string;
+}
+
+interface QueryResultGridRowSnapshot {
+  readonly result: FederatedQueryResult;
+  readonly recordset: FederatedQueryResult['recordset'];
+  readonly rows: FederatedQueryResult['recordset']['rows'];
+  readonly row: FederatedQueryResult['recordset']['rows'][number];
+  readonly resultSetId: string;
+  readonly resultPageIndex: number;
+  readonly resultGeneration: number;
+  readonly position: number;
 }
 
 const CUSTOMER_INVOICE_LOOKUP_QUERY_ID = 'chinook-invoice-author';
@@ -174,6 +187,14 @@ interface AuthorFormatUndo {
   readonly queryIdentity: symbol;
 }
 
+interface AuthorRelationshipUndo {
+  readonly originalSource: string;
+  readonly joinedSource: string;
+  readonly scopeKey: string;
+  readonly queryIdentity: symbol;
+  readonly originalRelationshipBindings?: IQueryDef['relationshipBindings'];
+}
+
 interface AuthorFormatDiagnosticSnapshot {
   readonly definition: IQueryDef;
   readonly source: string;
@@ -215,6 +236,7 @@ import {
   IonCardContent,
   IonCardHeader,
   IonCardTitle,
+  IonChip,
   IonContent,
   IonHeader,
   IonIcon,
@@ -226,6 +248,8 @@ import {
   IonMenuButton,
   IonSelect,
   IonSelectOption,
+  IonSegment,
+  IonSegmentButton,
   IonSpinner,
   IonText,
   IonTextarea,
@@ -339,6 +363,7 @@ import {
 } from './author-code-editor.component';
 import { AuthorComposeControlsComponent } from './author-compose-controls.component';
 import { AuthorRelationshipSourcesComponent } from './author-relationship-sources.component';
+import { AuthorCurrentRowComponent } from './author-current-row.component';
 import { readAuthorComposeProfile } from './author-compose-profile';
 import {
   customerIdLookupValue,
@@ -544,6 +569,7 @@ export function extractLinkedEntityNames(
     AuthorSqlPreviewComponent,
     AuthorCodeEditorComponent,
     AuthorRelationshipSourcesComponent,
+    AuthorCurrentRowComponent,
     PublicSqliteComparisonPanelComponent,
     QueryWorkspaceLayoutComponent,
     SqlEditorComponent,
@@ -589,11 +615,14 @@ export function extractLinkedEntityNames(
     IonCard,
     IonCardHeader,
     IonCardTitle,
+    IonChip,
     IonCardContent,
     IonItem,
     IonInput,
     IonSelect,
     IonSelectOption,
+    IonSegment,
+    IonSegmentButton,
     IonIcon,
     IonLabel,
     IonList,
@@ -676,6 +705,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private readonly authorFormatUndo = signal<AuthorFormatUndo | undefined>(
     undefined,
   );
+  private readonly authorRelationshipUndo = signal<AuthorRelationshipUndo | undefined>(undefined);
   private readonly authorFormatNavigationSnapshot = signal<
     AuthorFormatDiagnosticSnapshot | undefined
   >(undefined);
@@ -693,9 +723,20 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       : 0;
   }
   public readonly canUndoAuthorFormat = computed(() => {
+    const relationshipUndo = this.authorRelationshipUndo();
+    const current = this.currentAuthorFormatContext();
+    if (
+      relationshipUndo &&
+      current &&
+      this.authorMode() === 'code' &&
+      !this.running() &&
+      !this.queryState.isSaving &&
+      current.scopeKey === relationshipUndo.scopeKey &&
+      current.queryIdentity === relationshipUndo.queryIdentity &&
+      this.queryBodyText() === relationshipUndo.joinedSource
+    ) return true;
     const undo = this.authorFormatUndo();
     if (!undo) return false;
-    const current = this.currentAuthorFormatContext();
     return (
       !!current &&
       this.authorMode() === 'code' &&
@@ -814,6 +855,36 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       return /@CustomerId\b/iu.test(source);
     return false;
   });
+  public readonly authorParameterDeclarationCount = computed(() => {
+    const source = this.queryBodyText();
+    if (!source) return undefined;
+    const parsed = parseTugQL(source);
+    const tree = parsed.document.tree;
+    if (tree) return tree.parameters?.length ?? 0;
+    return /@CustomerId\b/iu.test(source) ? 1 : undefined;
+  });
+  public authorRelatedSourceCount(): number | undefined {
+    return this.authorSourceMetadata() ? 2 : undefined;
+  }
+  public readonly authorContextTab = signal<'parameters' | 'related' | undefined>(undefined);
+  public readonly activeAuthorContextTab = computed(
+    () => this.authorContextTab() ??
+      (this.authorHasCustomerIdParameter() ? 'parameters' : 'related'),
+  );
+  public readonly authorResultSnapshotKey = computed(() => {
+    const result = this.runResult();
+    const recordset = this.displayedRecordset();
+    const rows = this.visibleResultRows();
+    if (!result || !recordset) return undefined;
+    return Object.freeze([
+      result,
+      recordset,
+      rows,
+      this.relatedResultSet(),
+      this.resultPageIndex(),
+      this.displayedResultGeneration(),
+    ]);
+  });
   public readonly authorError = signal<string | undefined>(undefined);
 
   private setAuthorError(message: string | undefined): void {
@@ -825,6 +896,16 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly authorSourceMessage = signal('');
   public readonly authorSourceReview = signal<AuthorRelationshipSourceReview | undefined>(undefined);
   public readonly authorSourceSelectedFields = signal<readonly AuthorCustomerField[]>(['FirstName']);
+  public readonly authorCanJoinRelationship = computed(() => {
+    if (this.authorSourceLoading() || this.running() || this.queryState.isSaving === true) return false;
+    const context = this.currentAuthorSourceContext();
+    const discovery = this.authorSourceMetadata();
+    return !!context && !!discovery && reviewAuthorRelationshipSource(
+      context.source,
+      [],
+      discovery.relationship,
+    ).ok;
+  });
   public readonly authorCustomerOutputChoices: readonly AuthorCustomerField[] = Object.freeze([
     'FirstName', 'LastName', 'Email',
   ]);
@@ -1060,9 +1141,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   );
   public readonly visibleResultRows = computed(() => {
     const result = this.runResult();
+    const recordset = this.displayedRecordset();
+    if (!result || !recordset) return [];
     if (result?.totalRows !== undefined || result?.hasMore)
       return this.resultPageRows();
-    const rows = result?.recordset.rows ?? [];
+    const rows = recordset.rows;
     const start = this.resultPageIndex() * this.resultPageSize;
     return rows.slice(start, start + this.resultPageSize);
   });
@@ -1111,16 +1194,56 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       });
     },
   );
-  public readonly resultGridRows = computed<QueryResultGridRow[]>(() =>
-    this.visibleResultRows().map((row) =>
-      Object.fromEntries(
-        row.map((cell, index) => [
-          `result_${index}`,
+  private readonly resultGridRowSnapshots = new WeakMap<
+    QueryResultGridRow,
+    QueryResultGridRowSnapshot
+  >();
+  public readonly selectedAuthorResultRow = signal<
+    QueryResultGridRowSnapshot | undefined
+  >(undefined);
+  public readonly currentAuthorResultRow = computed(() => {
+    const selected = this.selectedAuthorResultRow();
+    if (!selected) return undefined;
+    return selected.result === this.runResult() &&
+      selected.recordset === this.displayedRecordset() &&
+      selected.resultSetId === this.relatedResultSet() &&
+      selected.resultPageIndex === this.resultPageIndex() &&
+      selected.resultGeneration === this.displayedResultGeneration() &&
+      selected.rows === this.visibleResultRows()
+      ? selected
+      : undefined;
+  });
+  public readonly authorResultRowSelection = {
+    mode: 'singleRow' as const,
+    enableClickSelection: true,
+    checkboxes: false,
+    headerCheckbox: false,
+  };
+  public readonly resultGridRows = computed<QueryResultGridRow[]>(() => {
+    const result = this.runResult();
+    const recordset = this.displayedRecordset();
+    const rows = this.visibleResultRows();
+    if (!result || !recordset) return [];
+    return rows.map((row, index) => {
+      const projected = Object.fromEntries(
+        row.map((cell, columnIndex) => [
+          `result_${columnIndex}`,
           displayQueryResultValue(cell),
         ]),
-      ),
-    ),
-  );
+      );
+      this.resultGridRowSnapshots.set(projected, {
+        result,
+        recordset,
+        rows,
+        row,
+        resultSetId: this.relatedResultSet(),
+        resultPageIndex: this.resultPageIndex(),
+        resultGeneration: this.displayedResultGeneration(),
+        position: this.resultPageIndex() * this.resultPageSize + index + 1,
+      });
+      return projected;
+    });
+  });
   public readonly resultGridDefaultColDef: ColDef<QueryResultGridRow> = {
     initialFlex: 1,
     resizable: true,
@@ -1711,6 +1834,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     if (isAuthorDraft) {
       this.clearPreviewDiagnosticNavigation();
       this.authorFormatUndo.set(undefined);
+      this.authorRelationshipUndo.set(undefined);
       this.authorFormatNavigationSnapshot.set(undefined);
       this.authorFormatStatus.set('');
       this.invalidateAuthorDefinitionRun();
@@ -1751,6 +1875,36 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     }
     this.authorModeExplicit = true;
     this.authorMode.set(mode);
+  }
+
+  public authorContextTabChanged(value: unknown): void {
+    if (value !== 'parameters' && value !== 'related') return;
+    const wasRelated = this.activeAuthorContextTab() === 'related';
+    this.authorContextTab.set(value);
+    const isRelated = value === 'related';
+    if (wasRelated && !isRelated) this.authorSourcesToggled(false);
+  }
+
+  public authorResultSelectionChanged(
+    event: SelectionChangedEvent<QueryResultGridRow>,
+  ): void {
+    if (!this.isTugqlAuthorJourney()) return;
+    const row = event.selectedNodes?.find((node) => node.isSelected())?.data;
+    this.setAuthorResultRow(row);
+  }
+
+  public authorResultCellFocused(
+    event: CellFocusedEvent<QueryResultGridRow>,
+  ): void {
+    if (!this.isTugqlAuthorJourney() || event.rowIndex === null) return;
+    const row = event.api.getDisplayedRowAtIndex(event.rowIndex)?.data;
+    this.setAuthorResultRow(row);
+  }
+
+  private setAuthorResultRow(row: QueryResultGridRow | undefined): void {
+    this.selectedAuthorResultRow.set(
+      row ? this.resultGridRowSnapshots.get(row) : undefined,
+    );
   }
 
   public authorSourcesToggled(open: boolean): void {
@@ -1868,8 +2022,38 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   public reviewAuthorRelationship(): void {
-    this.authorSourceSelectedFields.set(['FirstName']);
+    this.authorSourceSelectedFields.set([]);
     this.buildAuthorSourceReview();
+  }
+
+  public async joinAuthorRelationship(): Promise<void> {
+    if (this.authorSourceLoading() || !this.authorCanJoinRelationship()) return;
+    const originalSource = this.queryBodyText();
+    const originalDefinition = this.queryDef();
+    if (!originalSource || !originalDefinition) return;
+    const originalRelationshipBindings = originalDefinition.relationshipBindings;
+    this.authorSourceSelectedFields.set([]);
+    this.buildAuthorSourceReview();
+    const review = this.authorSourceReview();
+    if (!review || review.selectedFields.length !== 0) return;
+    await this.applyAuthorRelationshipReview();
+    const current = this.currentAuthorFormatContext();
+    if (
+      this.queryBodyText() === review.after &&
+      current &&
+      this.queryDef()?.relationshipBindings?.some(
+        (binding) => binding.id === review.relationship.id &&
+          binding.version === review.relationship.version,
+      )
+    ) {
+      this.authorRelationshipUndo.set({
+        originalSource,
+        joinedSource: review.after,
+        scopeKey: current.scopeKey,
+        queryIdentity: current.queryIdentity,
+        originalRelationshipBindings,
+      });
+    }
   }
 
   private buildAuthorSourceReview(): void {
@@ -1969,7 +2153,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.authorSourceReviewContext = undefined;
       this.authorModeExplicit = true;
       this.authorMode.set('code');
-      this.authorSourceMessage.set('Applied the reviewed join and binding. The prior result is retained; Preview SQL explicitly before Run.');
+      this.authorSourceMessage.set('Applied the admitted join with no added output columns. The prior result is retained; Preview SQL before Run.');
     } catch (error) {
       this.authorSourceMessage.set(error instanceof Error ? error.message : 'The reviewed source edit could not be applied.');
     } finally {
@@ -2216,6 +2400,47 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   public undoAuthorTugQLFormat(): void {
+    const relationshipUndo = this.authorRelationshipUndo();
+    if (
+      relationshipUndo &&
+      this.canUndoAuthorRelationship(relationshipUndo)
+    ) {
+      const definition = this.queryDef();
+      if (!definition || definition.request.queryType !== QueryType.DTQL) return;
+      const updatedDefinition: IQueryDef = {
+        ...definition,
+        request: {
+          ...definition.request,
+          text: relationshipUndo.originalSource,
+        } as ITextQueryRequest,
+        relationshipBindings: relationshipUndo.originalRelationshipBindings,
+      };
+      const nextState: IQueryState = {
+        ...this.queryState,
+        def: updatedDefinition,
+        request: updatedDefinition.request,
+      };
+      this.authorRelationshipUndo.set(undefined);
+      this.authorFormatUndo.set(undefined);
+      this.clearPreviewDiagnosticNavigation();
+      this.authorFormatNavigationSnapshot.set(undefined);
+      this.authorFormatStatus.set('Join undone.');
+      this.invalidateAuthorDefinitionRun();
+      ++this.authorLookupRequestRevision;
+      this.authorPlan.set(undefined);
+      this.setAuthorError(undefined);
+      this.authorDraftRevision.update((revision) => revision + 1);
+      this.queryState = nextState;
+      this.queryDef.set(updatedDefinition);
+      this.queryEditorStateService.updateQueryState(nextState);
+      this.authorSourceReview.set(undefined);
+      this.authorSourceReviewGeneration++;
+      this.authorSourceReviewContext = undefined;
+      this.authorSourceMessage.set(
+        'Undid the local join and restored the original relationship bindings. The prior result is retained.',
+      );
+      return;
+    }
     const undo = this.authorFormatUndo();
     if (!undo || !this.canFormatAuthorTugQL()) return;
     const current = this.currentAuthorFormatContext();
@@ -2239,6 +2464,19 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       false,
     );
     this.authorFormatStatus.set('Formatting undone.');
+  }
+
+  private canUndoAuthorRelationship(
+    undo: AuthorRelationshipUndo,
+  ): boolean {
+    const current = this.currentAuthorFormatContext();
+    return !!current &&
+      this.authorMode() === 'code' &&
+      !this.running() &&
+      !this.queryState.isSaving &&
+      current.scopeKey === undo.scopeKey &&
+      current.queryIdentity === undo.queryIdentity &&
+      this.queryBodyText() === undo.joinedSource;
   }
 
   private syncAuthorMode(definition?: IQueryDef, resolveDefault = false): void {
@@ -2962,6 +3200,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.investigationContext.promotionRevision();
       this.syncScopeAndBindings();
     });
+    effect(() => {
+      const selected = this.selectedAuthorResultRow();
+      if (selected && this.currentAuthorResultRow() !== selected)
+        this.selectedAuthorResultRow.set(undefined);
+    });
   }
 
   /** Switches (or opens) the Investigation Context basket for the CURRENT
@@ -3072,6 +3315,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       const previousDefinition = this.queryDef();
       const previousCustomerId = this.authorCustomerId();
       const scopeChanged = this.queryId !== queryState.id;
+      if (scopeChanged) {
+        this.authorContextTab.set(undefined);
+        this.authorSourcesToggled(false);
+        this.selectedAuthorResultRow.set(undefined);
+      }
       const effectiveDefinition = queryState.def
         ? {
             ...queryState.def,
@@ -3295,6 +3543,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         this.comparisonProjectAccess.set(currentProject.summary?.access);
         this.initializeCustomerInvoiceExample();
         if (!equalProjectRef(previousRef, currentProject.ref)) {
+          this.authorContextTab.set(undefined);
+          this.authorSourcesToggled(false);
+          this.selectedAuthorResultRow.set(undefined);
           this.sharedQuerySaveAllowed.set(false);
           if (isSharedProjectRef(currentProject.ref)) {
             this.queriesService.capabilities(currentProject.ref)
