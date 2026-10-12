@@ -2415,15 +2415,27 @@ test('Preview syntax errors navigate to the exact unchanged draft without runnin
   await author.getByTestId('author-code-tab').click();
 
   const editor = author.getByTestId('query-body-text').locator('.cm-content');
-  const customerId = author.getByTestId('author-customer-id').locator('input');
-  await customerId.fill('');
+  const customerId = author
+    .getByTestId('author-customer-id')
+    .locator('input:not(.cloned-input)');
   const compactSource = savedQuerySource('chinook-invoice-author');
   expect(compactSource).toMatch(/select i\.InvoiceId, i\.InvoiceDate\s*$/u);
+  await expectEditorSource(page, editor, compactSource);
+  await customerId.fill('');
+  await expect(customerId).toHaveValue('');
+  // Finish the input interaction before clicking an action: Ionic's mobile
+  // keyboard scroll assist can still move the button after fill() resolves.
+  await customerId.blur();
+  await expect(customerId).not.toBeFocused();
+  await expect(
+    author.getByTestId('author-customer-id').locator('.cloned-input'),
+  ).toHaveCount(0);
 
   await author.getByTestId('author-preview').click();
   await expect(author.getByTestId('author-sql-preview')).toContainText(
     'Preview · Not executed',
   );
+  expect(workersStarted).toBe(0);
   await customerId.fill('1');
   await author.getByTestId('author-preview').click();
   await author.getByTestId('author-run').click();
