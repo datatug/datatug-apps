@@ -1158,7 +1158,9 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expectEditorSource(page, editor, limitedWithDate);
   expect(workersStarted).toBe(0);
 
-  const customerId = author.getByTestId('author-customer-id').locator('input');
+  const customerId = author
+    .getByTestId('author-customer-id')
+    .locator('input:not(.cloned-input)');
   await customerId.fill('');
   await author.getByTestId('author-preview').click();
   const preview = author.getByTestId('author-sql-preview');
@@ -1178,6 +1180,120 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
     '',
   );
   expect(workersStarted).toBe(0);
+
+  // Prove the browser clipboard receives the current preview string itself,
+  // not highlighted DOM, bindings, or an executed request. The same checks
+  // run at narrow widths; mobile WebKit uses a real touch activation.
+  const previewSourceBeforeTools = await copyEditorSource(page, editor);
+  const bindingsBeforeTools = await preview
+    .locator('.author-binding-list')
+    .textContent();
+  const receiptCountBeforeTools = await page
+    .getByTestId('author-execution-receipt')
+    .count();
+  const copySqlButton = preview.getByRole('button', { name: 'Copy SQL' });
+  const wrapSqlButton = preview.getByRole('button', { name: 'Wrap SQL' });
+  for (const button of [copySqlButton, wrapSqlButton]) {
+    await expect
+      .poll(() => button.evaluate((element) => element.getBoundingClientRect().height))
+      .toBeGreaterThanOrEqual(44);
+  }
+  if (testInfo.project.use.browserName !== 'webkit') {
+    await page
+      .context()
+      .grantPermissions(['clipboard-read', 'clipboard-write']);
+  }
+  const expectedPreviewSql = previewSql ?? '';
+  const readClipboard = async (): Promise<string> =>
+    page.evaluate(() => navigator.clipboard.readText());
+  const assertCopyAndWrap = async (useTouch: boolean): Promise<void> => {
+    const useWrap = async (): Promise<void> => {
+      if (useTouch) {
+        await wrapSqlButton.tap();
+      } else {
+        await wrapSqlButton.focus();
+        await wrapSqlButton.press('Enter');
+      }
+    };
+    const copyFromPreview = async (): Promise<void> => {
+      if (!useTouch) {
+        await copySqlButton.focus();
+        await copySqlButton.press('Enter');
+      } else {
+        await copySqlButton.tap();
+      }
+      await expect(preview.getByTestId('author-copy-sql-status')).toContainText(
+        'Preview SQL copied',
+      );
+      if (testInfo.project.use.browserName !== 'webkit') {
+        await expect.poll(readClipboard).toBe(expectedPreviewSql);
+      }
+    };
+
+    await expect(wrapSqlButton).toHaveAttribute('aria-pressed', 'false');
+    await useWrap();
+    await expect(wrapSqlButton).toHaveAttribute('aria-pressed', 'true');
+    await expect(preview.locator('pre')).toHaveText(expectedPreviewSql);
+    await copyFromPreview();
+    const layout = await page.evaluate(() => {
+      const viewportWidth = document.documentElement.clientWidth;
+      const documentWidth = document.documentElement.scrollWidth;
+      const region = document.querySelector('.author-sql-scroll');
+      const pre = region?.querySelector('pre');
+      return {
+        viewportWidth,
+        documentWidth,
+        regionWidth: region?.getBoundingClientRect().width ?? 0,
+        regionClientWidth: region?.clientWidth ?? 0,
+        regionScrollWidth: region?.scrollWidth ?? 0,
+        preWidth: pre?.getBoundingClientRect().width ?? 0,
+      };
+    });
+    expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewportWidth);
+    expect(layout.regionWidth).toBeLessThanOrEqual(layout.viewportWidth);
+    expect(layout.preWidth).toBeLessThanOrEqual(layout.regionClientWidth + 1);
+    expect(layout.regionScrollWidth).toBeLessThanOrEqual(
+      layout.regionClientWidth + 1,
+    );
+
+    await useWrap();
+    await expect(wrapSqlButton).toHaveAttribute('aria-pressed', 'false');
+    await expect(preview.locator('pre')).toHaveText(expectedPreviewSql);
+    await copyFromPreview();
+    const unwrappedLayout = await page.evaluate(() => ({
+      viewportWidth: document.documentElement.clientWidth,
+      documentWidth: document.documentElement.scrollWidth,
+      regionWidth:
+        document.querySelector('.author-sql-scroll')?.getBoundingClientRect()
+          .width ?? 0,
+    }));
+    expect(unwrappedLayout.documentWidth).toBeLessThanOrEqual(
+      unwrappedLayout.viewportWidth,
+    );
+    expect(unwrappedLayout.regionWidth).toBeLessThanOrEqual(
+      unwrappedLayout.viewportWidth,
+    );
+  };
+
+  const initialViewport = page.viewportSize();
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    await assertCopyAndWrap(isMobile);
+  }
+  if (initialViewport) await page.setViewportSize(initialViewport);
+  expect(await copyEditorSource(page, editor)).toBe(previewSourceBeforeTools);
+  expect(await preview.locator('.author-binding-list').textContent()).toBe(
+    bindingsBeforeTools,
+  );
+  expect(await page.getByTestId('author-execution-receipt').count()).toBe(
+    receiptCountBeforeTools,
+  );
+  expect(workersStarted).toBe(0);
+  await expect(preview.locator('pre')).toHaveText(expectedPreviewSql);
+  await expect(author.getByTestId('author-run')).toHaveAttribute(
+    'disabled',
+    '',
+  );
 
   await customerId.fill('1.5');
   await expect(preview).toContainText('Invalid · enter a whole number');
@@ -1269,10 +1385,79 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
     await resultsView.click();
     await expect(resultsView).toHaveAttribute('aria-pressed', 'true');
     await expect(receipt).toBeVisible();
+    const retainedReceiptText = await receipt.textContent();
+    const retainedRows = await page
+      .getByRole('grid')
+      .getByRole('row')
+      .allTextContents();
     const editorView = page.locator('#workspace-editor-tab');
     await editorView.click();
     await expect(editorView).toHaveAttribute('aria-pressed', 'true');
     await expect(author).toBeVisible();
+    const currentPreview = author.getByTestId('author-sql-preview');
+    await expect(currentPreview).toBeVisible();
+    const currentPreviewSql = await currentPreview.locator('pre').textContent();
+    const retainedSource = await copyEditorSource(page, editor);
+    const retainedBindings = await currentPreview
+      .locator('.author-binding-list')
+      .textContent();
+    const currentWrapButton = currentPreview.getByRole('button', {
+      name: 'Wrap SQL',
+    });
+    const currentCopyButton = currentPreview.getByRole('button', {
+      name: 'Copy SQL',
+    });
+    for (const button of [currentWrapButton, currentCopyButton]) {
+      await expect
+        .poll(() =>
+          button.evaluate((element) => element.getBoundingClientRect().height),
+        )
+        .toBeGreaterThanOrEqual(44);
+    }
+    await currentWrapButton.click();
+    await expect(currentWrapButton).toHaveAttribute('aria-pressed', 'true');
+    await expect(currentPreview.locator('pre')).toHaveText(
+      currentPreviewSql ?? '',
+    );
+    await currentCopyButton.focus();
+    await currentCopyButton.press('Enter');
+    await expect(
+      currentPreview.getByTestId('author-copy-sql-status'),
+    ).toContainText('Preview SQL copied');
+    if (testInfo.project.use.browserName !== 'webkit') {
+      await expect.poll(readClipboard).toBe(currentPreviewSql ?? '');
+    }
+    const wrappedDocument = await page.evaluate(() => ({
+      viewportWidth: document.documentElement.clientWidth,
+      documentWidth: document.documentElement.scrollWidth,
+    }));
+    expect(wrappedDocument.documentWidth).toBeLessThanOrEqual(
+      wrappedDocument.viewportWidth,
+    );
+    await currentWrapButton.click();
+    await expect(currentWrapButton).toHaveAttribute('aria-pressed', 'false');
+    await expect(currentPreview.locator('pre')).toHaveText(
+      currentPreviewSql ?? '',
+    );
+    await currentCopyButton.focus();
+    await currentCopyButton.press('Enter');
+    await expect(
+      currentPreview.getByTestId('author-copy-sql-status'),
+    ).toContainText('Preview SQL copied');
+    if (testInfo.project.use.browserName !== 'webkit') {
+      await expect.poll(readClipboard).toBe(currentPreviewSql ?? '');
+    }
+    expect(await copyEditorSource(page, editor)).toBe(retainedSource);
+    expect(
+      await currentPreview.locator('.author-binding-list').textContent(),
+    ).toBe(retainedBindings);
+    expect(await receipt.textContent()).toBe(retainedReceiptText);
+    expect(workersStarted).toBe(2);
+    await resultsView.click();
+    await expect(receipt).toBeVisible();
+    expect(
+      await page.getByRole('grid').getByRole('row').allTextContents(),
+    ).toEqual(retainedRows);
     const header = await page.evaluate(() => {
       const bounds = (selector: string): DOMRect | undefined =>
         document.querySelector(selector)?.getBoundingClientRect();

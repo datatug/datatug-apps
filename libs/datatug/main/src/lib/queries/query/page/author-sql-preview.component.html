@@ -4,90 +4,50 @@
       <h3>SQL preview</h3>
       <p>Compiled for the pinned SQLite source</p>
     </div>
-    <span class="author-preview-state">Preview · Not executed</span>
+    <div class="preview-tools">
+      <span class="author-preview-state">Preview · Not executed</span>
+      <div class="preview-buttons">
+        <button
+          class="sql-action"
+          type="button"
+          data-testid="author-wrap-sql"
+          aria-label="Wrap SQL"
+          [attr.aria-pressed]="wrapSql()"
+          (click)="toggleWrapping()"
+        >
+          Wrap SQL
+        </button>
+        <button
+          class="sql-action"
+          type="button"
+          data-testid="author-copy-sql"
+          aria-label="Copy SQL"
+          [disabled]="copyPending()"
+          (click)="copyCurrentSql()"
+        >
+          Copy SQL
+        </button>
+      </div>
+    </div>
   </div>
-  <div class="author-sql-scroll" tabindex="0" aria-label="Compiled SQLite SQL">
+  <div
+    class="author-sql-scroll"
+    [class.author-sql-scroll--wrapped]="wrapSql()"
+    tabindex="0"
+    aria-label="Compiled SQLite SQL"
+  >
     <pre><code>@for (token of sqlTokens(); track $index) {<span [class]="token.kind ? 'tugql-token-' + token.kind : null">{{ token.text }}</span>}</code></pre>
   </div>
-  <details
-    class="author-source-inspector"
-    data-testid="author-source-inspector"
+  <p
+    class="copy-status"
+    role="status"
+    aria-live="polite"
+    aria-atomic="true"
+    data-testid="author-copy-sql-status"
   >
-    <summary>Sources and relationships</summary>
-    <div class="author-source-content" data-testid="author-source-metadata">
-      <dl class="author-source-facts">
-        <div>
-          <dt>Source</dt>
-          <dd>{{ plan().sourceId }}</dd>
-        </div>
-        <div>
-          <dt>Pinned SHA</dt>
-          <dd>
-            <code>{{ plan().fixtureSha256 }}</code>
-          </dd>
-        </div>
-      </dl>
-      @if (plan().relationship; as relationship) {
-        <section
-          class="author-source-section"
-          aria-label="Prepared relationship"
-        >
-          <h4>Declared relationship</h4>
-          <p>
-            {{ relationship.fromSource }} → {{ relationship.toSource }} ·
-            {{ relationship.joinType }} · {{ relationship.id }}
-          </p>
-          <ul>
-            @for (pair of relationship.pairs; track $index) {
-              <li>
-                <code>{{ relationship.fromSource }}.{{ pair.fromField }}</code>
-                → <code>{{ relationship.toSource }}.{{ pair.toField }}</code>
-              </li>
-            }
-          </ul>
-          <details class="author-source-fingerprint">
-            <summary>Relationship definition fingerprint</summary>
-            <code>{{ relationship.version }}</code>
-          </details>
-        </section>
-      }
-      @if (plan().outputColumns?.length) {
-        <section
-          class="author-source-section"
-          aria-label="Prepared output lineage"
-        >
-          <h4>Output columns · {{ plan().outputColumns?.length }}</h4>
-          <ol class="author-output-columns">
-            @for (column of plan().outputColumns ?? []; track $index) {
-              <li>
-                <code>{{ column.name }}</code>
-                <span>{{ column.type }}</span>
-                <span class="author-output-lineage">
-                  @for (
-                    item of column.lineage;
-                    track $index;
-                    let last = $last
-                  ) {
-                    <code>{{ item.source }}.{{ item.field }}</code>
-                    @if (!last) {
-                      <span>, </span>
-                    }
-                  }
-                </span>
-              </li>
-            }
-          </ol>
-        </section>
-      } @else {
-        <p class="author-source-unavailable">
-          Column lineage is unavailable for this preview.
-        </p>
-      }
-      <p class="author-source-note">
-        Prepared metadata · not worker-verified or executed.
-      </p>
-    </div>
-  </details>
+    {{ copyStatus() }}
+  </p>
+  <sneat-author-source-inspector [plan]="plan()" />
   <div class="author-binding-list" aria-label="SQL bindings">
     @for (
       binding of bindings;
