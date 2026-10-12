@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 import { IonAccordion, IonAccordionGroup, IonButton, IonButtons, IonCheckbox, IonIcon, IonItem, IonLabel, IonList, IonListHeader, IonNote } from '@ionic/angular';
 import { addIcons } from 'ionicons';
-import { gitMergeOutline, refreshOutline } from 'ionicons/icons';
+import { gitMergeOutline, optionsOutline, refreshOutline } from 'ionicons/icons';
 import type { PublicSqliteSourceDiscovery } from '../../public-sqlite-query.service';
 import type { AuthorCustomerField, AuthorRelationshipSourceReview } from './author-relationship-source-edit';
 
@@ -22,7 +22,7 @@ import type { AuthorCustomerField, AuthorRelationshipSourceReview } from './auth
 })
 export class AuthorRelationshipSourcesComponent implements OnChanges {
   public constructor() {
-    addIcons({ gitMergeOutline, refreshOutline });
+    addIcons({ gitMergeOutline, optionsOutline, refreshOutline });
   }
 
   public readonly active = input(false);

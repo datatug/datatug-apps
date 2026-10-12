@@ -38,6 +38,11 @@ describe('AuthorRelationshipSourcesComponent', () => {
     fixture.componentRef.setInput('canJoin', true);
     fixture.componentRef.setInput('statusMessage', '');
     fixture.detectChanges();
+    expect(
+      fixture.nativeElement.querySelector(
+        '[data-testid="author-source-review"]',
+      )?.getAttribute('aria-label'),
+    ).toBe('Review join and outputs');
 
     const outputReview: AuthorRelationshipSourceReview = {
       before: 'from Invoice as i',

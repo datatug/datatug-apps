@@ -44,11 +44,14 @@
         <ion-buttons slot="end">
           <ion-button
             data-testid="author-source-review"
+            aria-label="Review join and outputs"
+            title="Review join and outputs"
             fill="clear"
             [disabled]="disabled() || !canJoin()"
             (click)="requestOutputReview($event)"
-            >Review join + outputs</ion-button
           >
+            <ion-icon slot="icon-only" name="options-outline" />
+          </ion-button>
           <ion-button
             data-testid="author-related-join"
             aria-label="Join Customer using the declared Invoice to Customer relationship"

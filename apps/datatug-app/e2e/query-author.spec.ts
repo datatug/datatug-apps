@@ -2607,10 +2607,22 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expectContextCount('related', 1, '1 available related source');
   await expect(sourceDiscovery).toContainText('FirstName');
   await expect(sourceDiscovery).toContainText('Email');
-  await sourceDiscovery
-    .getByTestId('author-related-customer')
-    .locator('ion-label h4')
-    .click();
+  const customerItem = sourceDiscovery.getByTestId('author-related-customer');
+  if (!isMobile && page.viewportSize()?.width === 1280) {
+    const customerGeometry = await customerItem.evaluate((item) => {
+      const row = item.getBoundingClientRect();
+      const label = item.querySelector('ion-label')?.getBoundingClientRect();
+      return {
+        rowHeight: row.height,
+        labelWidth: label?.width ?? 0,
+        labelHeight: label?.height ?? 0,
+      };
+    });
+    expect(customerGeometry.labelWidth).toBeGreaterThanOrEqual(100);
+    expect(customerGeometry.labelHeight).toBeLessThan(120);
+    expect(customerGeometry.rowHeight).toBeLessThan(160);
+  }
+  await customerItem.locator('ion-label h4').click();
   const customerDetails = sourceDiscovery.getByTestId(
     'author-related-customer-details',
   );
