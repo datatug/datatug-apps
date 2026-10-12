@@ -1122,6 +1122,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     ),
   );
   public readonly resultGridDefaultColDef: ColDef<QueryResultGridRow> = {
+    initialFlex: 1,
     resizable: true,
   };
   public readonly resultGridNoRowsTemplate =

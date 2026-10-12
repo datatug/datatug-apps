@@ -1099,7 +1099,13 @@ test('native SQL editor highlights the saved query and runs it against Chinook',
   if (!isNarrow) await expect(rows.first()).toContainText('AlbumCount');
   const cells: string[][] = [];
   for (let index = 1; index < 11; index++) {
-    cells.push(await rows.nth(index).getByRole('gridcell').allTextContents());
+    const renderedCells = await rows
+      .nth(index)
+      .getByRole('gridcell')
+      .allTextContents();
+    // AG Grid may buffer the fourth column at narrower flex widths; its value
+    // is checked separately after scrolling horizontally below.
+    cells.push(isNarrow ? renderedCells.slice(0, 3) : renderedCells);
   }
   expect(cells).toEqual(
     expectedRows.map((row) => row.slice(0, isNarrow ? 3 : 4)),
@@ -2852,7 +2858,8 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
     });
     expect(firstRowBounds.top).toBeGreaterThanOrEqual(0);
     expect(firstRowBounds.bottom).toBeLessThanOrEqual(698);
-    await expect(rows.nth(1)).toBeInViewport({ ratio: 1 });
+    // Flex column widths can overlap the grid border by a fractional pixel.
+    await expect(rows.nth(1)).toBeInViewport({ ratio: 0.999 });
     if (originalViewport) await page.setViewportSize(originalViewport);
   }
   expect(errors).toEqual([]);
