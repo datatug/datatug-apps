@@ -57,6 +57,18 @@
   width: fit-content;
   margin: 0;
 }
+.author-context-tabs {
+  max-width: 100%;
+}
+.author-context-sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--ion-background-color);
+}
+.author-context-tabs ion-label {
+  white-space: nowrap;
+}
 .author-actions {
   display: flex;
   flex-wrap: wrap;

@@ -661,7 +661,9 @@ test('TugQL and SQL coloring preserves editable source, keyboard undo, and reada
   expect(selectedBeforeLayout).toBe('x');
 
   const sourceDiscovery = author.getByTestId('author-source-discovery');
-  await author.getByRole('tab', { name: 'Related' }).click();
+  await author.getByTestId('author-context-tabs')
+    .locator('ion-segment-button[value="related"]')
+    .click();
   await expect(sourceDiscovery).toContainText('Invoice', { timeout: 20_000 });
   await author.getByTestId('author-preview-tab').click();
   await expect(
@@ -1082,9 +1084,15 @@ test('native SQL editor highlights the saved query and runs it against Chinook',
   const genericGridViewport = page.locator('.result-grid-viewport');
   await expect(genericGridViewport).toHaveCount(1);
   await expect(genericGridViewport).toHaveCSS('height', '420px');
-  await expect(genericGridViewport.locator('xpath=..')).toHaveClass(
-    /ion-padding-horizontal/u,
+  const genericGridPadding = genericGridViewport.locator(
+    'xpath=ancestor::div[contains(@class, "ion-padding-horizontal")][1]',
   );
+  await expect(genericGridPadding).toHaveCount(1);
+  expect(
+    await genericGridPadding.evaluate((element) =>
+      Number.parseFloat(getComputedStyle(element).paddingLeft),
+    ),
+  ).toBeGreaterThan(0);
   await expect(rows.first()).toContainText('Playlist');
   await expect(rows.first()).toContainText('TrackCount');
   await expect(page.getByTestId('result-provenance')).toContainText('snapshot');
@@ -1966,6 +1974,9 @@ test('Format diagnostics navigate the unchanged draft without another run', asyn
   const preview = author.getByTestId('author-sql-preview');
   await expect(preview).toContainText('Preview · Not executed');
   expect(await queryExecutionMessages()).toBe(0);
+  await author.getByTestId('author-context-tabs')
+    .locator('ion-segment-button[value="parameters"]')
+    .click();
   const customerId = author
     .getByTestId('author-customer-id')
     .locator('input:not(.cloned-input)');
@@ -2474,10 +2485,26 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   expect(workersStarted).toBe(0);
 
   const author = page.getByTestId('tugql-author');
+  const expectContextCount = async (
+    value: 'parameters' | 'sources' | 'related',
+    count: number,
+    accessibleName: string,
+  ): Promise<void> => {
+    const tab = author.getByTestId('author-context-tabs')
+      .locator(`ion-segment-button[value="${value}"]`);
+    await expect(tab.locator('ion-chip')).toHaveCount(1);
+    await expect(tab.locator('ion-chip')).toHaveText(String(count));
+    await expect(tab.locator('ion-chip')).toHaveAttribute('aria-label', accessibleName);
+  };
   await expect(author).toBeVisible({ timeout: 20_000 });
   await expect(author.getByTestId('author-compose-tab')).toBeVisible();
   await expect(author.getByTestId('author-code-tab')).toBeVisible();
   await expect(author.getByTestId('author-preview-tab')).toBeVisible();
+  await expectContextCount('parameters', 1, '1 parameter');
+  await expect(author.getByTestId('author-parameters-panel')).not.toContainText(
+    'Parameter declarations are unavailable until TugQL diagnostics are corrected.',
+  );
+  await expectContextCount('sources', 1, '1 participating source');
   const runButton = author.getByTestId('author-run');
   await expect(runButton).toBeVisible();
   const runHeaderGeometry = await author.evaluate((element) => {
@@ -2561,53 +2588,103 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
 
   await author.getByTestId('author-code-tab').click();
   const sourceDiscovery = author.getByTestId('author-source-discovery');
-  await author.getByRole('tab', { name: 'Related' }).click();
-  await expect(sourceDiscovery).toContainText('Invoice.InvoiceDate', {
-    timeout: 20_000,
-  });
-  await expect(sourceDiscovery).toContainText('Customer.FirstName');
-  await expect(sourceDiscovery).toContainText('Customer.Email');
-  await expect(sourceDiscovery).toContainText(
-    'many invoices to one customer · declared',
-  );
-  await sourceDiscovery.getByTestId('author-related-invoice').click();
-  await expect(
-    sourceDiscovery.getByTestId('author-related-invoice-details'),
-  ).toContainText('InvoiceId');
-  await expect(
-    sourceDiscovery.getByTestId('author-related-invoice-details'),
-  ).toContainText('INTEGER');
-  await sourceDiscovery.getByTestId('author-related-customer').click();
+  await author.getByTestId('author-context-tabs')
+    .locator('ion-segment-button[value="sources"]')
+    .click();
+  const sourceInventory = author.getByTestId('author-participating-sources');
+  await expect(sourceInventory).toContainText('Invoice');
+  await expect(sourceInventory).toContainText('Invoice as i');
+  await expect(sourceInventory).toContainText('Main FROM source');
+  await sourceInventory.getByTestId('author-participating-source').nth(0).click();
+  await expect(sourceInventory.getByTestId('author-participating-source-details'))
+    .toContainText('InvoiceId');
+  await expect(sourceInventory.getByTestId('author-participating-source-details'))
+    .toContainText(/integer/iu);
+  await author.getByTestId('author-context-tabs')
+    .locator('ion-segment-button[value="related"]')
+    .click();
+  await expect(sourceDiscovery).toContainText('Available related sources', { timeout: 20_000 });
+  await expectContextCount('related', 1, '1 available related source');
+  await expect(sourceDiscovery).toContainText('FirstName');
+  await expect(sourceDiscovery).toContainText('Email');
+  await sourceDiscovery
+    .getByTestId('author-related-customer')
+    .locator('ion-label h4')
+    .click();
   const customerDetails = sourceDiscovery.getByTestId(
     'author-related-customer-details',
   );
   await expect(customerDetails).toContainText('main.Invoice.CustomerId');
   await expect(customerDetails).toContainText('main.Customer.CustomerId');
   await expect(customerDetails).toContainText('chinook.refs.json');
-  const editor = author.getByTestId('query-body-text').locator('.cm-content');
+  await expect(customerDetails).toContainText(/FirstName · string/iu);
+  await expect(customerDetails).toContainText(/Email · string/iu);
+  await expect(customerDetails).toContainText(
+    'many invoices to one customer · declared',
+  );
   const originalSource = savedQuerySource('chinook-invoice-author');
   await sourceDiscovery.getByTestId('author-related-join').click();
   await expect(editor).toContainText(/join Customer as c/u);
+  await expectContextCount('sources', 2, '2 participating sources');
+  await expectContextCount('related', 0, '0 available related sources');
+  await expect(sourceDiscovery.getByTestId('author-related-empty')).toBeVisible();
   await expect(editor).not.toContainText(/c\.FirstName/u);
   await expect(author.getByTestId('author-sql-preview')).toHaveCount(0);
   await expectIonicButtonDisabled(author.getByTestId('author-run'), true);
   expect(workersStarted).toBe(0);
+  await author.getByTestId('author-context-tabs')
+    .locator('ion-segment-button[value="sources"]')
+    .click();
+  const joinedInvoiceSource = sourceInventory
+    .getByTestId('author-participating-source')
+    .filter({ hasText: 'Invoice as i' });
+  if (await joinedInvoiceSource.getAttribute('aria-expanded') !== 'true') {
+    await joinedInvoiceSource.click();
+  }
+  await expect(sourceInventory.getByTestId('author-participating-source-details'))
+    .toContainText('InvoiceId');
+  await author.getByTestId('author-context-tabs')
+    .locator('ion-segment-button[value="related"]')
+    .click();
   await clickEditorAction(page, author, 'Undo');
   await expectEditorSource(page, editor, originalSource);
+  await expectContextCount('sources', 1, '1 participating source');
+  await expectContextCount('related', 1, '1 available related source');
+  const contextHeaderVisibleAfterScroll = await author.evaluate((element) => {
+    const sidebar = element.querySelector('.author-code-sidebar-row') as HTMLElement | null;
+    const stickyHeader = element.querySelector(
+      '[data-testid="author-context-sticky-header"]',
+    ) as HTMLElement | null;
+    if (!sidebar || !stickyHeader) return false;
+    sidebar.scrollTop = sidebar.scrollHeight;
+    const viewport = sidebar.getBoundingClientRect();
+    const header = stickyHeader.getBoundingClientRect();
+    return header.top >= viewport.top && header.bottom <= viewport.bottom;
+  });
+  expect(contextHeaderVisibleAfterScroll).toBe(true);
   await sourceDiscovery.getByTestId('author-source-review').click();
   const review = sourceDiscovery.getByTestId('author-source-review-panel');
   await expect(review).toBeVisible();
-  await expect(review.getByLabel('Customer.FirstName')).not.toBeChecked();
-  await expect(review.getByLabel('Customer.LastName')).not.toBeChecked();
-  await expect(review.getByLabel('Customer.Email')).not.toBeChecked();
-  await setIonicCheckbox(review.getByLabel('Customer.FirstName'), true);
+  const firstNameOutput = review.locator(
+    'ion-checkbox[aria-label="Customer.FirstName"]',
+  );
+  const lastNameOutput = review.locator(
+    'ion-checkbox[aria-label="Customer.LastName"]',
+  );
+  const emailOutput = review.locator(
+    'ion-checkbox[aria-label="Customer.Email"]',
+  );
+  await expect.poll(() => ionicCheckboxIsChecked(firstNameOutput)).toBe(true);
+  await expect.poll(() => ionicCheckboxIsChecked(lastNameOutput)).toBe(false);
+  await expect.poll(() => ionicCheckboxIsChecked(emailOutput)).toBe(false);
   await expect(review).toContainText('InvoiceDate');
   await expect(review).toContainText('Current LIMIT');
   await expect(author.getByTestId('author-sql-preview')).toHaveCount(0);
   await sourceDiscovery.getByTestId('author-source-apply').click();
-  await expect(
-    sourceDiscovery.getByTestId('author-source-status'),
-  ).toContainText('Applied the reviewed join and binding', { timeout: 20_000 });
+  await expect(author.getByTestId('author-format-status'))
+    .toContainText('Applied the admitted join with FirstName outputs', { timeout: 20_000 });
+  await expectContextCount('sources', 2, '2 participating sources');
+  await expectContextCount('related', 0, '0 available related sources');
   await author.getByTestId('author-code-tab').click();
   await expect(editor).toContainText(/join Customer as c/u);
   await expect(editor).toContainText(/@CustomerId integer required/u);
@@ -2654,6 +2731,9 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expectEditorSource(page, editor, limitedWithDate);
   expect(workersStarted).toBe(0);
 
+  await author.getByTestId('author-context-tabs')
+    .locator('ion-segment-button[value="parameters"]')
+    .click();
   const customerId = author
     .getByTestId('author-customer-id')
     .locator('input:not(.cloned-input)');
@@ -2866,14 +2946,28 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await page.keyboard.press('ArrowDown');
   await expect(currentRow).toContainText('Position 2 of 7');
   if (isMobile) await page.locator('#workspace-back-to-editor').click();
-  await author.getByRole('tab', { name: 'Related' }).click();
-  const relatedSources = author.getByTestId('author-source-discovery');
-  await expect(relatedSources).toContainText('Invoice.InvoiceDate', {
-    timeout: 20_000,
-  });
-  await expect(relatedSources).toContainText(
-    'chinook.refs.json · Core v1 declared foreign key',
+  await author.getByTestId('author-context-tabs')
+    .locator('ion-segment-button[value="sources"]')
+    .click();
+  const participatingSources = author.getByTestId('author-participating-sources');
+  const joinedCustomer = participatingSources
+    .getByTestId('author-participating-source')
+    .filter({ hasText: 'Customer as c' });
+  await expect(joinedCustomer).toBeVisible({ timeout: 20_000 });
+  await joinedCustomer
+    .locator('ion-label h3')
+    .click();
+  const joinedCustomerDetails = participatingSources.getByTestId(
+    'author-participating-source-details',
   );
+  await expect(joinedCustomerDetails).toContainText(/FirstName · string/iu);
+  await expect(joinedCustomerDetails).toContainText('Database: default · Schema: main');
+  await author.getByTestId('author-context-tabs')
+    .locator('ion-segment-button[value="related"]')
+    .click();
+  const relatedSources = author.getByTestId('author-source-discovery');
+  await expect(relatedSources.getByTestId('author-related-empty')).toBeVisible();
+  await expectContextCount('related', 0, '0 available related sources');
   await expect(author.getByTestId('author-related-parameter-status')).toContainText(
     'Customer ID · 1 set',
   );
@@ -2885,7 +2979,9 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
     await expect(currentRow).toContainText('Position 2 of 7');
   }
   if (isMobile) await page.locator('#workspace-back-to-editor').click();
-  await author.getByRole('tab', { name: 'Parameters' }).click();
+  await author.getByTestId('author-context-tabs')
+    .locator('ion-segment-button[value="parameters"]')
+    .click();
   await expect(author.getByTestId('author-customer-id')).toBeVisible();
   expect(workersStarted).toBe(workerCountBeforeInspection);
   if (!isMobile) {
@@ -3110,20 +3206,27 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   const workersBeforeSecondEmailApply = workersStarted;
   expect(workersBeforeSecondEmailApply).toBe(2);
   const secondDiscovery = secondAuthor.getByTestId('author-source-discovery');
-  await secondAuthor.getByRole('tab', { name: 'Related' }).click();
-  await expect(secondDiscovery).toContainText('Customer.Email', {
+  await secondAuthor.getByTestId('author-context-tabs')
+    .locator('ion-segment-button[value="related"]')
+    .click();
+  await expect(secondDiscovery).toContainText('Email', {
     timeout: 20_000,
   });
-  await secondDiscovery.getByTestId('author-related-join').click();
+  await secondDiscovery.getByTestId('author-source-review').click();
   const secondReview = secondDiscovery.getByTestId(
     'author-source-review-panel',
   );
-  await secondReview.getByLabel('Customer.FirstName').uncheck();
-  await secondReview.getByLabel('Customer.Email').check();
+  await setIonicCheckbox(
+    secondReview.locator('ion-checkbox[aria-label="Customer.FirstName"]'),
+    false,
+  );
+  await setIonicCheckbox(
+    secondReview.locator('ion-checkbox[aria-label="Customer.Email"]'),
+    true,
+  );
   await secondDiscovery.getByTestId('author-source-apply').click();
-  await expect(
-    secondDiscovery.getByTestId('author-source-status'),
-  ).toContainText('Applied the reviewed join and binding', { timeout: 20_000 });
+  await expect(secondAuthor.getByTestId('author-format-status'))
+    .toContainText('Applied the admitted join with Email outputs', { timeout: 20_000 });
   expect(workersStarted).toBe(workersBeforeSecondEmailApply);
   await generateAuthorPreview(secondAuthor);
   const secondPreview = secondAuthor.getByTestId('author-sql-preview');
@@ -3131,6 +3234,9 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   const secondPreviewSql = await secondPreview.locator('pre').textContent();
   expect(secondPreviewSql).toContain('"c"."Email"');
   expect(workersStarted).toBe(workersBeforeSecondEmailApply);
+  await secondAuthor.getByTestId('author-context-tabs')
+    .locator('ion-segment-button[value="parameters"]')
+    .click();
   await secondAuthor
     .getByTestId('author-customer-id')
     .locator('input')
@@ -3152,6 +3258,42 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expect(secondRows).toHaveCount(8);
   await expect(secondRows.nth(1)).toContainText('2022-03-11 00:00:00');
   await expect(secondRows.nth(1)).toContainText('luisg@embraer.com.br');
+  const secondReceipt = page.getByTestId('author-execution-receipt');
+  const secondRowsBeforeRemoval = await secondRows.allTextContents();
+  const secondEditor = secondAuthor.getByTestId('query-body-text').locator('.cm-content');
+  const emailSource = await copyEditorSource(page, secondEditor);
+  await secondAuthor.getByTestId('author-code-tab').click();
+  await secondAuthor.getByTestId('author-context-tabs')
+    .locator('ion-segment-button[value="sources"]')
+    .click();
+  const sources = secondAuthor.getByTestId('author-participating-sources');
+  await expect(sources).toContainText('Customer', { timeout: 20_000 });
+  const removeJoin = sources.getByTestId('author-source-remove-join');
+  await expect(removeJoin).toBeEnabled();
+  const removalConfirmation = page.getByTestId(
+    'author-remove-customer-confirmation',
+  );
+  await removeJoin.click();
+  await expect(removalConfirmation).toBeVisible();
+  await removalConfirmation.getByRole('button', { name: 'Cancel' }).click();
+  await expect(removalConfirmation).toBeHidden();
+  await expectEditorSource(page, secondEditor, emailSource);
+  await removeJoin.click();
+  await expect(removalConfirmation).toBeVisible();
+  await removalConfirmation.getByRole('button', { name: 'Remove source' }).click();
+  const unjoinedEmailSource = emailSource
+    .replace(/join Customer as c\n\s+on i\.CustomerId = c\.CustomerId\n/u, '')
+    .replace(', c.Email', '');
+  await expectEditorSource(page, secondEditor, unjoinedEmailSource);
+  expect(unjoinedEmailSource).not.toContain('join Customer as c');
+  expect(unjoinedEmailSource).not.toContain('c.Email');
+  expect(unjoinedEmailSource).toContain('@CustomerId integer required');
+  await expect(secondReceipt).toContainText('7 rows');
+  expect(await secondRows.allTextContents()).toEqual(secondRowsBeforeRemoval);
+  expect(workersStarted).toBe(3);
+  await clickEditorAction(page, secondAuthor, 'Undo');
+  await expectEditorSource(page, secondEditor, emailSource);
+  await expect(secondReceipt).toContainText('7 rows');
   expect(workersStarted).toBe(3);
   expect(errors).toEqual([]);
 });

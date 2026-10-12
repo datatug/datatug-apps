@@ -599,60 +599,74 @@
                 >
               </ion-buttons>
               <div author-editor-sidebar>
-                <ion-segment
-                  data-testid="author-context-tabs"
-                  aria-label="Query context"
-                  mode="md"
-                  [value]="activeAuthorContextTab()"
-                  (ionChange)="authorContextTabChanged($event.detail.value)"
+                <div
+                  class="author-context-sticky-header"
+                  data-testid="author-context-sticky-header"
                 >
-                  <ion-segment-button value="parameters">
-                    <ion-label>Parameters</ion-label>
-                    @if (authorParameterDeclarationCount() !== undefined) {
-                      <ion-chip aria-label="Parameter declarations">
-                        {{ authorParameterDeclarationCount() }}
-                      </ion-chip>
-                    }
-                  </ion-segment-button>
-                  <ion-segment-button value="related">
-                    <ion-label>Related</ion-label>
-                    @if (authorRelatedSourceCount() !== undefined) {
-                      <ion-chip aria-label="Admitted related sources">
-                        {{ authorRelatedSourceCount() }}
-                      </ion-chip>
-                    }
-                  </ion-segment-button>
-                </ion-segment>
-                @if (
-                  activeAuthorContextTab() === 'related' &&
-                  authorHasCustomerIdParameter()
-                ) {
-                  <ion-item
-                    lines="none"
-                    data-testid="author-related-parameter-status"
+                  <ion-segment
+                    data-testid="author-context-tabs"
+                    aria-label="Query context"
+                    mode="md"
+                    scrollable
+                    [value]="activeAuthorContextTab()"
+                    (ionChange)="authorContextTabChanged($event.detail.value)"
                   >
-                    <ion-label class="ion-text-wrap">
-                      <p>
-                        Customer ID ·
-                        @if (authorCustomerIdMissing()) {
-                          Required · unset
-                        } @else if (!authorCustomerIdValid()) {
-                          Invalid · enter a whole number
-                        } @else {
-                          {{ authorCustomerId() }} set · Preview remains explicit
-                        }
-                      </p>
-                    </ion-label>
-                    <ion-buttons slot="end">
-                      <ion-button
-                        data-testid="author-related-parameters-link"
-                        fill="clear"
-                        (click)="authorContextTabChanged('parameters')"
-                        >Parameters</ion-button
-                      >
-                    </ion-buttons>
-                  </ion-item>
-                }
+                    <ion-segment-button value="parameters">
+                      <ion-label>
+                        Parameters
+                        <ion-chip [attr.aria-label]="authorParameterCountLabel()">
+                          {{ authorParameterDeclarationCount() ?? '…' }}
+                        </ion-chip>
+                      </ion-label>
+                    </ion-segment-button>
+                    <ion-segment-button value="sources">
+                      <ion-label>
+                        Sources
+                        <ion-chip [attr.aria-label]="authorSourceCountLabel()">
+                          {{ authorSourceOccurrenceCount() ?? '…' }}
+                        </ion-chip>
+                      </ion-label>
+                    </ion-segment-button>
+                    <ion-segment-button value="related">
+                      <ion-label>
+                        Related
+                        <ion-chip [attr.aria-label]="authorRelatedSourceCountLabel()">
+                          {{ authorRelatedSourceCount() ?? '…' }}
+                        </ion-chip>
+                      </ion-label>
+                    </ion-segment-button>
+                  </ion-segment>
+                  @if (
+                    activeAuthorContextTab() === 'related' &&
+                    authorHasCustomerIdParameter()
+                  ) {
+                    <ion-item
+                      lines="none"
+                      data-testid="author-related-parameter-status"
+                    >
+                      <ion-label class="ion-text-wrap">
+                        <p>
+                          Customer ID ·
+                          @if (authorCustomerIdMissing()) {
+                            Required · unset
+                          } @else if (!authorCustomerIdValid()) {
+                            Invalid · enter a whole number
+                          } @else {
+                            {{ authorCustomerId() }} set · Preview remains explicit
+                          }
+                        </p>
+                      </ion-label>
+                      <ion-buttons slot="end">
+                        <ion-button
+                          data-testid="author-related-parameters-link"
+                          fill="clear"
+                          (click)="authorContextTabChanged('parameters')"
+                          >Parameters</ion-button
+                        >
+                      </ion-buttons>
+                    </ion-item>
+                  }
+                </div>
                 <section
                   aria-label="Parameters"
                   [hidden]="activeAuthorContextTab() !== 'parameters'"
@@ -737,13 +751,49 @@
                   </ion-label>
                 </ion-item>
                 }
-                @else {
+                @if (authorUnsupportedParameterNames().length) {
                   <ion-item lines="none">
                     <ion-label class="ion-text-wrap">
-                      <p>No supported query parameters are available for this draft.</p>
+                      <p>This draft declares parameters that this author form cannot bind:</p>
+                      @for (name of authorUnsupportedParameterNames(); track name) {
+                        <p>{{ name }} · declaration visible; binding is unavailable here.</p>
+                      }
+                    </ion-label>
+                  </ion-item>
+                } @else if (authorParameterDeclarationCount() === 0) {
+                  <ion-item lines="none">
+                    <ion-label class="ion-text-wrap">
+                      <p>No query parameters are declared in this draft.</p>
+                    </ion-label>
+                  </ion-item>
+                } @else if (authorParameterDeclarationCount() === undefined) {
+                  <ion-item lines="none" role="status">
+                    <ion-label class="ion-text-wrap">
+                      <p>Parameter declarations are unavailable until TugQL diagnostics are corrected.</p>
                     </ion-label>
                   </ion-item>
                 }
+                </section>
+                <section
+                  aria-label="Participating sources"
+                  [hidden]="activeAuthorContextTab() !== 'sources'"
+                  data-testid="author-sources-panel"
+                >
+                  <sneat-author-participating-sources
+                    [active]="activeAuthorContextTab() === 'sources'"
+                    [inventory]="authorParticipatingSourceInventory()"
+                    [metadata]="authorSourceMetadata()"
+                    [statusMessage]="authorSourceMessage()"
+                    [disabled]="authorSourceLoading() || running() || queryState.isSaving === true"
+                    [canRemoveJoin]="authorCanRemoveCustomerJoin()"
+                    [removeJoinReason]="authorCustomerJoinRemovalReason()"
+                    [removalOutputs]="authorCustomerRemovalOutputs()"
+                    [removalConfirmOpen]="authorCustomerRemovalOpen()"
+                    (removeRequested)="requestAuthorCustomerJoinRemoval()"
+                    (removalConfirmed)="confirmAuthorCustomerJoinRemoval($event)"
+                    (activated)="authorSourcesToggled(true)"
+                    (refreshRequested)="authorSourcesToggled(true)"
+                  />
                 </section>
                 <section
                   aria-label="Related sources"
@@ -764,8 +814,10 @@
                       queryState.isSaving === true
                     "
                     [canJoin]="authorCanJoinRelationship()"
+                    [customerAlreadyJoined]="authorParticipatingSourceInventory().customerJoined"
                     [statusMessage]="authorSourceMessage()"
                     (activated)="authorSourcesToggled(true)"
+                    (refreshRequested)="authorSourcesToggled(true)"
                     (customerFieldChanged)="
                       authorSourceFieldSelectionChanged(
                         $event.field,
@@ -1576,6 +1628,7 @@
           [row]="currentAuthorResultRow()?.row"
           [position]="currentAuthorResultRow()?.position"
           [totalRows]="resultTotalRows()"
+          [totalKnown]="resultTotalRowsKnown()"
           [snapshotKey]="authorResultSnapshotKey()"
         />
       }

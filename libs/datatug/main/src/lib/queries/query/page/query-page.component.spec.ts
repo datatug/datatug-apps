@@ -637,6 +637,139 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     '',
   ].join('\n');
 
+  it('keeps unsupported declarations visible alongside the supported Customer ID control', async () => {
+    component = await createTugQLAuthor(`parameters (
+  @CustomerId integer required
+  @Other string required
+)
+from Invoice as i
+where i.CustomerId = @CustomerId
+limit 100
+select i.InvoiceId
+`);
+    expect(component.authorHasCustomerIdParameter()).toBe(true);
+    expect(component.authorUnsupportedParameterNames()).toEqual(['Other']);
+    const template = readFileSync(
+      resolve('libs/datatug/main/src/lib/queries/query/page/query-page.component.html'),
+      'utf8',
+    );
+    const panelStart = template.indexOf('data-testid="author-parameters-panel"');
+    const supportedControls = template.indexOf('@if (authorHasCustomerIdParameter())', panelStart);
+    const unsupportedDeclarations = template.indexOf('@if (authorUnsupportedParameterNames().length)', supportedControls);
+    expect(unsupportedDeclarations).toBeGreaterThan(supportedControls);
+    expect(template.slice(unsupportedDeclarations - 24, unsupportedDeclarations).trimEnd()).toMatch(/\}\s*$/u);
+  });
+
+  it('does not report zero parameters while an invalid draft hides its declarations', async () => {
+    component = await createTugQLAuthor(`parameters (
+  @Other string required
+)
+from Invoice as i
+select (
+`);
+    component.authorContextTab.set('parameters');
+    await settleQueryPage();
+
+    expect(component.authorParameterDeclarationCount()).toBeUndefined();
+    expect(component.authorParameterCountLabel()).toBe('Parameter count unavailable');
+    const template = readFileSync(
+      resolve('libs/datatug/main/src/lib/queries/query/page/query-page.component.html'),
+      'utf8',
+    );
+    expect(template).toContain(
+      'Parameter declarations are unavailable until TugQL diagnostics are corrected.',
+    );
+    const zeroParameterBranch = template.indexOf(
+      '@else if (authorParameterDeclarationCount() === 0)',
+    );
+    expect(zeroParameterBranch).toBeGreaterThan(-1);
+    expect(template).toContain(
+      '@else if (authorParameterDeclarationCount() === undefined)',
+    );
+    expect(
+      template.indexOf('No query parameters are declared in this draft.', zeroParameterBranch),
+    ).toBeGreaterThan(zeroParameterBranch);
+  });
+
+  it('requires explicit source metadata refresh after editing a valid draft in Sources', async () => {
+    component = await createTugQLAuthor(authorSource);
+    const discovery = vi.spyOn(
+      TestBed.inject(PublicSqliteQueryService),
+      'discoverInvoiceCustomerSources',
+    ).mockResolvedValue(sourceDiscovery);
+    const execute = vi.spyOn(TestBed.inject(PublicSqliteQueryService), 'runTugQL');
+    const prepare = vi.spyOn(TestBed.inject(PublicSqliteQueryService), 'prepareTugQL');
+    component.authorContextTab.set('sources');
+    component.authorSourcesToggled(true);
+    await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
+    expect(discovery).toHaveBeenCalledTimes(1);
+
+    component.queryTextChanged(new CustomEvent('ionInput', {
+      detail: { value: authorSource.replace('limit 100', 'limit 99') },
+    }), false);
+    expect(component.authorSourceMetadata()).toBeUndefined();
+    expect(component.authorSourceMessage()).toContain('metadata is stale. Refresh');
+    expect(discovery).toHaveBeenCalledTimes(1);
+    await settleQueryPage();
+
+    const pageTemplate = readFileSync(
+      resolve('libs/datatug/main/src/lib/queries/query/page/query-page.component.html'),
+      'utf8',
+    );
+    const sourceComponentTemplate = readFileSync(
+      resolve('libs/datatug/main/src/lib/queries/query/page/author-participating-sources.component.html'),
+      'utf8',
+    );
+    expect(pageTemplate).toContain('(refreshRequested)="authorSourcesToggled(true)"');
+    expect(sourceComponentTemplate).toContain('data-testid="author-sources-refresh"');
+    expect(sourceComponentTemplate).toContain('[disabled]="disabled()"');
+    component.authorSourcesToggled(true);
+    await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
+    expect(execute).not.toHaveBeenCalled();
+    expect(prepare).not.toHaveBeenCalled();
+  });
+
+  it('does not request or expose the Chinook catalog for a schema-qualified Invoice source', async () => {
+    component = await createTugQLAuthor(`from other.Invoice as i
+join Customer as c
+  on i.CustomerId = c.CustomerId
+select i.InvoiceId
+`);
+    const discovery = vi.spyOn(
+      TestBed.inject(PublicSqliteQueryService),
+      'discoverInvoiceCustomerSources',
+    );
+    expect(component.authorSourceMetadata()).toBeUndefined();
+    expect(component.authorRelatedSourceCount()).toBeUndefined();
+
+    component.authorSourcesToggled(true);
+
+    await runFixture.whenStable();
+    expect(discovery).not.toHaveBeenCalled();
+    expect(component.authorSourceMetadata()).toBeUndefined();
+  });
+
+  it('does not claim catalog admission for an unsupported qualified Customer join', async () => {
+    component = await createTugQLAuthor(`from Invoice as i
+join other.Customer as c
+  on i.CustomerId = c.CustomerId
+select i.InvoiceId
+`);
+    const discovery = vi.spyOn(
+      TestBed.inject(PublicSqliteQueryService),
+      'discoverInvoiceCustomerSources',
+    );
+    component.authorContextTab.set('sources');
+
+    component.authorSourcesToggled(true);
+
+    await runFixture.whenStable();
+    expect(discovery).not.toHaveBeenCalled();
+    expect(component.authorSourceMetadata()).toBeUndefined();
+    expect(component.authorSourceMessage()).toContain('only main.Invoice and the declared Invoice–Customer relationship');
+  });
+
   it('keeps Current row bound to the exact related recordset snapshot across context-tab changes', async () => {
     component = await createTugQLAuthor(authorSource);
     const mainRow = [
@@ -701,6 +834,170 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     } as FederatedQueryResult;
     component.runResult.set(replacement);
     expect(component.authorResultSnapshotKey()).not.toBe(relatedSnapshotKey);
+    expect(component.currentAuthorResultRow()).toBeUndefined();
+    await runFixture.whenStable();
+    expect(component.selectedAuthorResultRow()).toBeUndefined();
+  });
+
+  it('uses the latest grid interaction and fetched-page raw row for Current row', async () => {
+    component = await createTugQLAuthor(authorSource);
+    const firstRaw = [{ type: 'integer', value: '1' }] as const;
+    const secondRaw = [{ type: 'integer', value: '2' }] as const;
+    const pageRaw = [{ type: 'integer', value: '101' }] as const;
+    component.runResult.set({
+      ...historyResultFor(queryDef),
+      recordset: {
+        columns: [{ name: 'InvoiceId', type: 'integer' }],
+        rows: [firstRaw, secondRaw],
+      },
+      totalRows: 200,
+      hasMore: true,
+    } as FederatedQueryResult);
+    await component.changeRelatedResultSet('affiliations');
+    expect(component.resultTotalRowsKnown()).toBe(true);
+
+    const rows = component.resultGridRows();
+    component.authorResultSelectionChanged({
+      selectedNodes: [{ data: rows[0], isSelected: () => true }],
+    } as never);
+    expect(component.currentAuthorResultRow()?.row).toBe(firstRaw);
+
+    component.authorResultCellFocused({
+      rowIndex: 1,
+      api: { getDisplayedRowAtIndex: () => ({ data: rows[1] }) },
+    } as never);
+    expect(component.currentAuthorResultRow()?.row).toBe(secondRaw);
+
+    component.authorResultSelectionChanged({
+      selectedNodes: [{ data: rows[0], isSelected: () => true }],
+    } as never);
+    expect(component.currentAuthorResultRow()?.row).toBe(firstRaw);
+
+    federatedGetPageMock.mockResolvedValue([pageRaw as never]);
+    await component.changeResultPage(1);
+    expect(component.currentAuthorResultRow()).toBeUndefined();
+    expect(component.resultPageLoading()).toBe(false);
+    const pageRow = component.resultGridRows()[0];
+    component.authorResultCellFocused({
+      rowIndex: 0,
+      api: { getDisplayedRowAtIndex: () => ({ data: pageRow }) },
+    } as never);
+    expect(component.currentAuthorResultRow()?.row).toBe(pageRaw);
+    expect(component.currentAuthorResultRow()?.position).toBe(101);
+
+    component.runResult.update((current) => ({
+      ...current,
+      totalRows: undefined,
+      hasMore: true,
+    }) as FederatedQueryResult);
+    expect(component.resultTotalRowsKnown()).toBe(false);
+  });
+
+  it('clears the accepted page request after empty or short final pages update the result snapshot', async () => {
+    component = await createTugQLAuthor(authorSource);
+    const originalRow = [{ type: 'integer', value: '1' }] as const;
+    component.runResult.set({
+      ...historyResultFor(queryDef),
+      recordset: { columns: [{ name: 'InvoiceId', type: 'integer' }], rows: [originalRow] },
+      totalRows: undefined,
+      hasMore: true,
+    } as FederatedQueryResult);
+    federatedGetPageMock.mockResolvedValueOnce([]);
+
+    await component.changeResultPage(1);
+
+    expect(component.resultPageLoading()).toBe(false);
+    expect(component.resultPageIndex()).toBe(0);
+    expect(component.visibleResultRows()).toEqual([originalRow]);
+    expect(component.resultTotalRows()).toBe(100);
+
+    const currentResult = component.runResult();
+    if (!currentResult) throw new Error('Expected the retained first-page result');
+    component.runResult.set({
+      ...currentResult,
+      totalRows: 200,
+      hasMore: true,
+    });
+    federatedGetPageMock.mockResolvedValueOnce([originalRow] as never);
+    await component.changeResultPage(1);
+    expect(component.resultPageIndex()).toBe(1);
+    expect(component.resultPageLoading()).toBe(false);
+    expect(component.resultTotalRows()).toBe(101);
+  });
+
+  it.each(['new result', 'query scope invalidation'])(
+    'retires an in-flight page request when the %s replaces its result',
+    async (replacement) => {
+      component = await createTugQLAuthor(authorSource);
+      const firstResult = {
+        ...historyResultFor(queryDef),
+        totalRows: 200,
+        hasMore: true,
+      } as FederatedQueryResult;
+      component.runResult.set(firstResult);
+      let rejectPage!: (error: Error) => void;
+      federatedGetPageMock.mockImplementationOnce(
+        () => new Promise((_resolve, reject) => { rejectPage = reject; }),
+      );
+
+      const pending = component.changeResultPage(1);
+      expect(component.resultPageLoading()).toBe(true);
+
+      let replacementResult: FederatedQueryResult | undefined;
+      if (replacement === 'new result') {
+        replacementResult = historyResultFor(queryDef);
+        (component as unknown as {
+          showAttemptResult(result: FederatedQueryResult): void;
+        }).showAttemptResult(replacementResult);
+      } else {
+        (component as unknown as { invalidateHistoryScope(): void })
+          .invalidateHistoryScope();
+      }
+
+      expect(component.resultPageLoading()).toBe(false);
+      rejectPage(new Error('late page failure'));
+      await pending;
+      expect(component.resultPageLoading()).toBe(false);
+      expect(component.runError()).toBeUndefined();
+      if (replacementResult) expect(component.runResult()).toBe(replacementResult);
+      else expect(component.runResult()).toBeUndefined();
+    },
+  );
+
+  it('clears Current row when the same historical result id is reopened at a new generation', async () => {
+    component = await createTugQLAuthor(authorSource);
+    const service = TestBed.inject(FederatedQueryService);
+    const firstRow = [{ type: 'integer', value: '1' }] as const;
+    const replacementRow = [{ type: 'integer', value: '2' }] as const;
+    const firstResult = {
+      ...historyResultFor(queryDef),
+      localResult: { id: 'same-result', generation: 1 },
+      recordset: { columns: [{ name: 'InvoiceId', type: 'integer' }], rows: [firstRow] },
+    } as FederatedQueryResult;
+    const replacement = {
+      ...firstResult,
+      localResult: { id: 'same-result', generation: 2 },
+      recordset: { ...firstResult.recordset, rows: [replacementRow] },
+    } as FederatedQueryResult;
+    vi.mocked(service.openLocalResult).mockResolvedValueOnce({
+      result: firstResult,
+      executedDefinition: queryDef,
+      descriptor: {} as LocalResultDescriptor,
+    } as Awaited<ReturnType<typeof service.openLocalResult>>);
+    await component.openHistoricalResult('same-result');
+    const firstGridRow = component.resultGridRows()[0];
+    component.authorResultSelectionChanged({
+      selectedNodes: [{ data: firstGridRow, isSelected: () => true }],
+    } as never);
+    expect(component.currentAuthorResultRow()?.row).toBe(firstRow);
+
+    vi.mocked(service.openLocalResult).mockResolvedValueOnce({
+      result: replacement,
+      executedDefinition: queryDef,
+      descriptor: {} as LocalResultDescriptor,
+    } as Awaited<ReturnType<typeof service.openLocalResult>>);
+    await component.openHistoricalResult('same-result');
+    expect(component.selectedHistoricalResult()).toEqual(replacement.localResult);
     expect(component.currentAuthorResultRow()).toBeUndefined();
     await runFixture.whenStable();
     expect(component.selectedAuthorResultRow()).toBeUndefined();
@@ -1399,18 +1696,21 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     };
     component.runResult.set(priorResult as never);
     expect(component.authorRelatedSourceCount()).toBeUndefined();
+    component.authorContextTab.set('sources');
     component.authorSourcesToggled(true);
     await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(1));
     await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
-    expect(component.authorRelatedSourceCount()).toBe(2);
+    expect(component.authorRelatedSourceCount()).toBe(1);
     component.reviewAuthorRelationship();
-    expect(component.authorSourceSelectedFields()).toEqual([]);
+    expect(component.authorSourceSelectedFields()).toEqual(['FirstName']);
     component.authorSourceFieldSelectionChanged('FirstName', true);
     const reviewed = component.authorSourceReview();
     expect(reviewed?.after).toContain('join Customer as c');
     expect(reviewed?.after).toContain('c.FirstName');
 
     await component.applyAuthorRelationshipReview();
+    await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(3));
+    await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
 
     const definition = component.queryDef();
     expect((definition?.request as ITextQueryRequest | undefined)?.text).toBe(reviewed?.after);
@@ -1426,6 +1726,12 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       originEvidence: 'client-reported',
     });
     expect(component.authorSourceReview()).toBeUndefined();
+    expect(component.authorFormatStatus()).toContain(
+      'Applied the admitted join with FirstName outputs',
+    );
+    expect(component.authorSourceMessage()).toContain(
+      'Current project metadata admitted the Invoice-to-Customer relationship',
+    );
     expect(execute).not.toHaveBeenCalled();
     expect(prepare).not.toHaveBeenCalled();
   });
@@ -1442,11 +1748,14 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     const update = vi.spyOn(editor, 'updateQueryState');
     const priorResult = historyResultFor(queryDef);
     component.runResult.set(priorResult);
+    component.authorContextTab.set('sources');
     component.authorSourcesToggled(true);
     await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
 
     expect(component.authorCanJoinRelationship()).toBe(true);
     await component.joinAuthorRelationship();
+    await vi.waitFor(() => expect(sqlite.discoverInvoiceCustomerSources).toHaveBeenCalledTimes(3));
+    await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
 
     expect(component.queryBodyText()).toContain('join Customer as c');
     expect(component.queryBodyText()).not.toContain('c.FirstName');
@@ -1460,12 +1769,68 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     expect(prepare).not.toHaveBeenCalled();
 
     component.undoAuthorTugQLFormat();
+    await vi.waitFor(() => expect(sqlite.discoverInvoiceCustomerSources).toHaveBeenCalledTimes(4));
+    await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
 
     expect(component.queryBodyText()).toBe(authorSource);
     expect(component.queryDef()?.relationshipBindings).toBeUndefined();
     expect(component.runResult()).toBe(priorResult);
     expect(component.canUndoAuthorFormat()).toBe(false);
     expect(update).toHaveBeenCalledTimes(2);
+    expect(execute).not.toHaveBeenCalled();
+    expect(prepare).not.toHaveBeenCalled();
+  });
+
+  it('removes a reviewed Customer join and dependent outputs locally, then undoes source and binding together', async () => {
+    component = await createTugQLAuthor(authorSource);
+    const sqlite = TestBed.inject(PublicSqliteQueryService);
+    const discovery = vi.spyOn(sqlite, 'discoverInvoiceCustomerSources')
+      .mockResolvedValue(sourceDiscovery);
+    const execute = vi.spyOn(sqlite, 'runTugQL');
+    const prepare = vi.spyOn(sqlite, 'prepareTugQL');
+    const update = vi.spyOn(TestBed.inject(QueryEditorStateService), 'updateQueryState');
+    const priorResult = historyResultFor(queryDef);
+    component.runResult.set(priorResult);
+
+    component.authorContextTab.set('sources');
+    component.authorSourcesToggled(true);
+    await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
+    component.reviewAuthorRelationship();
+    await component.applyAuthorRelationshipReview();
+    expect(component.queryBodyText()).toContain('c.FirstName');
+    expect(component.queryDef()?.relationshipBindings).toEqual([sourceDiscovery.relationship]);
+
+    component.authorSourcesToggled(true);
+    await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(4));
+    await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
+    expect(component.authorCanRemoveCustomerJoin()).toBe(true);
+    const joinedText = component.queryBodyText();
+    component.requestAuthorCustomerJoinRemoval();
+    expect(component.authorCustomerRemovalOpen()).toBe(true);
+    expect(component.authorCustomerRemovalOutputs()).toEqual(['FirstName']);
+    expect(component.queryBodyText()).toBe(joinedText);
+    expect(execute).not.toHaveBeenCalled();
+    expect(prepare).not.toHaveBeenCalled();
+
+    component.confirmAuthorCustomerJoinRemoval(true);
+    await vi.waitFor(() => expect(component.queryBodyText()).not.toContain('join Customer'));
+    await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(6));
+    await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
+    expect(component.queryBodyText()).not.toContain('c.FirstName');
+    expect(component.queryDef()?.relationshipBindings).toEqual([]);
+    expect(component.runResult()).toBe(priorResult);
+    expect(update).toHaveBeenCalledTimes(2);
+    expect(execute).not.toHaveBeenCalled();
+    expect(prepare).not.toHaveBeenCalled();
+    expect(component.canUndoAuthorFormat()).toBe(true);
+
+    component.undoAuthorTugQLFormat();
+    await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(7));
+    await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
+    expect(component.queryBodyText()).toBe(joinedText);
+    expect(component.queryDef()?.relationshipBindings).toEqual([sourceDiscovery.relationship]);
+    expect(component.runResult()).toBe(priorResult);
+    expect(component.canUndoAuthorFormat()).toBe(false);
     expect(execute).not.toHaveBeenCalled();
     expect(prepare).not.toHaveBeenCalled();
   });
@@ -4735,7 +5100,7 @@ select (
       localResult: { id: 'new', generation: 1 },
       recordset: {
         columns: [],
-        rows: [[{ type: 'string', value: 'new-row' }]],
+        rows: [[{ type: 'string' as const, value: 'new-row' }]],
       },
     };
     vi.mocked(service.openLocalResult).mockResolvedValue({
@@ -4748,6 +5113,25 @@ select (
     await pending;
     expect(component.visibleResultRows()).toEqual(next.recordset.rows);
     expect(component.resultPageIndex()).toBe(0);
+
+    let rejectPage!: (error: Error) => void;
+    federatedGetPageMock.mockImplementationOnce(
+      () => new Promise((_resolve, reject) => { rejectPage = reject; }),
+    );
+    component.runError.set(undefined);
+    const rejectedPage = component.changeResultPage(1);
+    const sameIdReplacement = {
+      ...next,
+      recordset: {
+        columns: [],
+        rows: [[{ type: 'string' as const, value: 'replacement-generation-row' }]],
+      },
+    };
+    component.runResult.set(sameIdReplacement);
+    rejectPage(new Error('late page rejection'));
+    await rejectedPage;
+    expect(component.runError()).toBeUndefined();
+    expect(component.runResult()).toBe(sameIdReplacement);
   });
 
   const historyDefinition = (): IQueryDef => ({

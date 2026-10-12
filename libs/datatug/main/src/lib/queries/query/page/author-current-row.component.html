@@ -3,7 +3,11 @@
     <ion-label>
       <h3>Current row</h3>
       @if (position(); as rowPosition) {
-        <p>Position {{ rowPosition }} of {{ totalRows() }}</p>
+        @if (totalKnown()) {
+          <p>Position {{ rowPosition }} of {{ totalRows() }}</p>
+        } @else {
+          <p>Position {{ rowPosition }} · more rows available · total unknown</p>
+        }
       } @else {
         <p>Select a row in Results</p>
       }

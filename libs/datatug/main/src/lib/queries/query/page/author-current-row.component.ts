@@ -27,6 +27,7 @@ export class AuthorCurrentRowComponent {
   public readonly row = input<readonly TypedValue[] | undefined>();
   public readonly position = input<number | undefined>();
   public readonly totalRows = input(0);
+  public readonly totalKnown = input(true);
   public readonly snapshotKey = input<unknown>();
 
   public constructor() {

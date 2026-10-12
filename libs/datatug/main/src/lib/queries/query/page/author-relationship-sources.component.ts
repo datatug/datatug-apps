@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 import { IonAccordion, IonAccordionGroup, IonButton, IonButtons, IonCheckbox, IonIcon, IonItem, IonLabel, IonList, IonListHeader, IonNote } from '@ionic/angular';
 import { addIcons } from 'ionicons';
-import { gitMergeOutline } from 'ionicons/icons';
+import { gitMergeOutline, refreshOutline } from 'ionicons/icons';
 import type { PublicSqliteSourceDiscovery } from '../../public-sqlite-query.service';
 import type { AuthorCustomerField, AuthorRelationshipSourceReview } from './author-relationship-source-edit';
 
@@ -22,7 +22,7 @@ import type { AuthorCustomerField, AuthorRelationshipSourceReview } from './auth
 })
 export class AuthorRelationshipSourcesComponent implements OnChanges {
   public constructor() {
-    addIcons({ gitMergeOutline });
+    addIcons({ gitMergeOutline, refreshOutline });
   }
 
   public readonly active = input(false);
@@ -34,10 +34,12 @@ export class AuthorRelationshipSourcesComponent implements OnChanges {
   public readonly selectedFields = input.required<readonly AuthorCustomerField[]>();
   public readonly disabled = input.required<boolean>();
   public readonly canJoin = input(false);
+  public readonly customerAlreadyJoined = input(false);
   public readonly statusMessage = input.required<string>();
   public readonly expandedTable = signal<'Invoice' | 'Customer' | undefined>(undefined);
 
   public readonly activated = output<void>();
+  public readonly refreshRequested = output<void>();
   public readonly customerFieldChanged = output<{
     readonly field: AuthorCustomerField;
     readonly checked: boolean;
@@ -51,6 +53,10 @@ export class AuthorRelationshipSourcesComponent implements OnChanges {
       this.expandedTable.set(undefined);
     }
     if (changes['active']?.currentValue === true) this.activated.emit();
+  }
+
+  public eligibleCustomerSource(): boolean {
+    return !!this.sources() && !this.customerAlreadyJoined();
   }
 
   public toggleTable(table: 'Invoice' | 'Customer'): void {

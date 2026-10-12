@@ -3,6 +3,26 @@ import type { TypedValue } from '@sneat/datatug-semantic';
 import { AuthorCurrentRowComponent } from './author-current-row.component';
 
 describe('AuthorCurrentRowComponent', () => {
+  it('does not invent a total for a partial result page', async () => {
+    await TestBed.configureTestingModule({
+      imports: [AuthorCurrentRowComponent],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(AuthorCurrentRowComponent);
+    fixture.componentRef.setInput('row', [
+      { type: 'integer', value: '101' },
+    ] satisfies readonly TypedValue[]);
+    fixture.componentRef.setInput('position', 101);
+    fixture.componentRef.setInput('totalRows', 100);
+    fixture.componentRef.setInput('totalKnown', false);
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.innerHTML as string;
+    expect(text).toContain('Position 101');
+    expect(text).toContain('total unknown');
+    expect(text).not.toContain('Position 101 of 100');
+  });
+
   it('keeps duplicate columns and typed null, missing, empty, false, and zero distinct', async () => {
     await TestBed.configureTestingModule({
       imports: [AuthorCurrentRowComponent],

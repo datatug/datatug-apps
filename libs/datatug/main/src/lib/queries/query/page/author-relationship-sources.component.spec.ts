@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import type { PublicSqliteSourceDiscovery } from '../../public-sqlite-query.service';
+import type { AuthorRelationshipSourceReview } from './author-relationship-source-edit';
 import { AuthorRelationshipSourcesComponent } from './author-relationship-sources.component';
 
 describe('AuthorRelationshipSourcesComponent', () => {
@@ -38,14 +39,34 @@ describe('AuthorRelationshipSourcesComponent', () => {
     fixture.componentRef.setInput('statusMessage', '');
     fixture.detectChanges();
 
-    fixture.componentInstance.toggleTable('Invoice');
+    const outputReview: AuthorRelationshipSourceReview = {
+      before: 'from Invoice as i',
+      after: 'from Invoice as i join Customer as c',
+      relationship: admitted.relationship,
+      selectedFields: ['FirstName'],
+      customerAlias: 'c',
+      limit: 100,
+      outputLineage: [{ output: 'FirstName', source: 'c', field: 'FirstName' }],
+    };
+    fixture.componentRef.setInput('review', outputReview);
+    fixture.componentRef.setInput('choices', ['FirstName', 'Email']);
+    fixture.componentRef.setInput('selectedFields', ['FirstName']);
     fixture.detectChanges();
-    const invoiceDetails = fixture.nativeElement.querySelector(
-      '[data-testid="author-related-invoice-details"]',
+    const firstNameCheckbox = fixture.nativeElement.querySelector(
+      'ion-checkbox[aria-label="Customer.FirstName"]',
     ) as HTMLElement | null;
-    const invoiceText = invoiceDetails?.innerHTML ?? '';
-    expect(invoiceText).toContain('InvoiceId');
-    expect(invoiceText).toContain('INTEGER');
+    const emailCheckbox = fixture.nativeElement.querySelector(
+      'ion-checkbox[aria-label="Customer.Email"]',
+    ) as HTMLElement | null;
+    expect(firstNameCheckbox).not.toBeNull();
+    expect(emailCheckbox).not.toBeNull();
+    expect(firstNameCheckbox?.nextElementSibling?.tagName).toBe('ION-LABEL');
+    expect(emailCheckbox?.nextElementSibling?.tagName).toBe('ION-LABEL');
+
+    fixture.componentRef.setInput('review', undefined);
+    fixture.componentRef.setInput('choices', []);
+    fixture.componentRef.setInput('selectedFields', []);
+    fixture.detectChanges();
 
     fixture.componentInstance.toggleTable('Customer');
     fixture.detectChanges();
@@ -56,6 +77,7 @@ describe('AuthorRelationshipSourcesComponent', () => {
     expect(customerText).toContain('main.Invoice.CustomerId');
     expect(customerText).toContain('main.Customer.CustomerId');
     expect(customerText).toContain('chinook.refs.json');
+    expect(fixture.nativeElement.querySelector('[data-testid="author-related-invoice"]')).toBeNull();
 
     let reviewCount = 0;
     let joinCount = 0;
@@ -84,5 +106,27 @@ describe('AuthorRelationshipSourcesComponent', () => {
     fixture.componentRef.setInput('active', false);
     fixture.detectChanges();
     expect(fixture.componentInstance.expandedTable()).toBeUndefined();
+  });
+
+  it('does not list an already participating Customer as an available addition', async () => {
+    await TestBed.configureTestingModule({
+      imports: [AuthorRelationshipSourcesComponent],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(AuthorRelationshipSourcesComponent);
+    fixture.componentRef.setInput('active', true);
+    fixture.componentRef.setInput('sources', admitted);
+    fixture.componentRef.setInput('currentLimit', '100');
+    fixture.componentRef.setInput('loading', false);
+    fixture.componentRef.setInput('review', undefined);
+    fixture.componentRef.setInput('choices', []);
+    fixture.componentRef.setInput('selectedFields', []);
+    fixture.componentRef.setInput('disabled', false);
+    fixture.componentRef.setInput('canJoin', false);
+    fixture.componentRef.setInput('customerAlreadyJoined', true);
+    fixture.componentRef.setInput('statusMessage', '');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="author-related-customer"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="author-related-empty"]')?.innerHTML)
+      .toContain('No other admitted related sources');
   });
 });
