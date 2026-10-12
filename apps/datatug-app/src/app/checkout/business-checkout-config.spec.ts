@@ -25,10 +25,10 @@ import {
 
 afterEach(() => TestBed.resetTestingModule());
 
-it('configures TEST only in production and leaves LIVE origin and activation closed', () => {
+it('enables production LIVE checkout and preserves isolated TEST and closed fixture gates', () => {
   expect(productionOrigin).toBe(TEST_CHECKOUT_ORIGIN);
-  expect(productionLiveOrigin).toBeNull();
-  expect(productionLiveEnabled).toBe(false);
+  expect(productionLiveOrigin).toBe('https://api.sneat.cloud');
+  expect(productionLiveEnabled).toBe(true);
   expect(developmentOrigin).toBeNull();
   expect(developmentLiveOrigin).toBeNull();
   expect(developmentLiveEnabled).toBe(false);
