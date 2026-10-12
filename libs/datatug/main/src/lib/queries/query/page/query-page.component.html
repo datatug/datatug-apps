@@ -589,9 +589,35 @@
           }
         </div>
         @if (authorError()) {
-          <ion-text color="danger" data-testid="author-error">{{
-            authorError()
-          }}</ion-text>
+          <div
+            class="author-actions"
+            data-testid="author-error"
+          >
+            <ion-text
+              id="author-preview-error-message"
+              color="danger"
+              role="alert"
+              aria-live="assertive"
+            >{{ authorError() }}</ion-text>
+            @if (authorPreviewSyntaxDiagnostic(); as diagnostic) {
+              <ion-button
+                data-testid="author-preview-go-to-error"
+                fill="outline"
+                [disabled]="!canNavigateToAuthorPreviewSyntaxDiagnostic()"
+                [attr.aria-label]="
+                  'Go to line ' +
+                  diagnostic.span.start.line +
+                  ', column ' +
+                  diagnostic.span.start.column
+                "
+                aria-describedby="author-preview-error-message"
+                (click)="navigateToAuthorPreviewSyntaxDiagnostic()"
+              >
+                Go to line {{ diagnostic.span.start.line }}, column
+                {{ diagnostic.span.start.column }}
+              </ion-button>
+            }
+          </div>
         }
         @if (authorMode() === 'compose') {
           <sneat-author-compose-controls

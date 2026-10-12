@@ -1910,6 +1910,219 @@ select (
     );
   });
 
+  it('preflights Preview against the exact draft and exposes only a positioned parser error', async () => {
+    const source = 'from Invoice as i\nselect\n  i.InvoiceId\n  i.InvoiceDate';
+    component = await createTugQLAuthor(source);
+    component.setAuthorMode('compose');
+    const retainedResult = { recordset: { rows: [['prior']] } } as never;
+    component.runResult.set(retainedResult);
+    component.authorPlan.set({ sql: 'previous preview' } as never);
+    const prepare = vi.spyOn(
+      TestBed.inject(PublicSqliteQueryService),
+      'prepareTugQL',
+    );
+    const run = vi.spyOn(TestBed.inject(PublicSqliteQueryService), 'runTugQL');
+
+    await component.previewTugql();
+
+    const exactDiagnostic = parseTugQL(source).diagnostics.find(
+      (diagnostic) => diagnostic.span.start.line > 1,
+    );
+    expect(exactDiagnostic).toBeDefined();
+    expect(component.queryBodyText()).toBe(source);
+    expect(component.authorError()).toContain(exactDiagnostic?.message ?? '');
+    expect(component.authorPreviewSyntaxDiagnostic()).toEqual(exactDiagnostic);
+    expect(component.authorPlan()).toBeUndefined();
+    expect(component.runResult()).toBe(retainedResult);
+    expect(prepare).not.toHaveBeenCalled();
+    expect(run).not.toHaveBeenCalled();
+
+    const definition = component.queryDef();
+    if (!definition) throw new Error('Expected the current saved definition');
+    component.queryDef.set({ ...definition });
+    expect(component.authorPreviewSyntaxDiagnostic()).toBeUndefined();
+  });
+
+  it('does not expose a location for a parser sentinel and discards an obsolete async Preview error', async () => {
+    component = await createTugQLAuthor('select x');
+    await component.previewTugql();
+    expect(component.authorError()).toBeTruthy();
+    expect(component.authorPreviewSyntaxDiagnostic()).toBeUndefined();
+
+    const validSource = 'from Invoice as i\nlimit 10\nselect i.InvoiceId';
+    component.authorCodeChanged(validSource);
+    const definition = component.queryDef();
+    if (!definition) throw new Error('Expected the current saved definition');
+    let rejectPreview!: (error: Error) => void;
+    vi.spyOn(
+      TestBed.inject(PublicSqliteQueryService),
+      'prepareTugQL',
+    ).mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          rejectPreview = reject;
+        }),
+    );
+
+    const pending = component.previewTugql();
+    component.queryDef.set({ ...definition });
+    rejectPreview(new Error('obsolete preview failure'));
+    await pending;
+
+    expect(component.authorError()).toBeUndefined();
+    expect(component.authorPreviewSyntaxDiagnostic()).toBeUndefined();
+    expect(component.queryBodyText()).toBe(validSource);
+  });
+
+  it.each([
+    { transition: 'Ionic leave', settlement: 'resolve' },
+    { transition: 'Ionic leave', settlement: 'reject' },
+    { transition: 'destroy', settlement: 'resolve' },
+    { transition: 'destroy', settlement: 'reject' },
+  ] as const)(
+    'discards a deferred Preview $settlement after $transition',
+    async ({ transition, settlement }) => {
+      component = await createTugQLAuthor(
+        'from Invoice as i\nlimit 10\nselect i.InvoiceId',
+      );
+      let resolvePreview!: (
+        plan: Awaited<ReturnType<PublicSqliteQueryService['prepareTugQL']>>,
+      ) => void;
+      let rejectPreview!: (error: Error) => void;
+      vi.spyOn(
+        TestBed.inject(PublicSqliteQueryService),
+        'prepareTugQL',
+      ).mockImplementation(
+        () =>
+          new Promise((resolve, reject) => {
+            resolvePreview = resolve;
+            rejectPreview = reject;
+          }),
+      );
+
+      const pending = component.previewTugql();
+      if (transition === 'Ionic leave') component.ionViewWillLeave();
+      else runFixture.destroy();
+
+      if (settlement === 'resolve') {
+        resolvePreview({
+          sql: 'SELECT "InvoiceId" FROM "Invoice" LIMIT 10',
+          fixedBindings: Object.freeze([]),
+          bindingNames: Object.freeze([]),
+          sourceId: 'chinook-sqlite',
+          fixtureSha256: 'fixture',
+          schemaVersion: 'schema',
+          draftRevision: 1,
+          authorProof: testAuthorProof(),
+        });
+      } else {
+        rejectPreview(new Error('stale Preview failure'));
+      }
+      await pending;
+
+      expect(component.authorPlan()).toBeUndefined();
+      expect(component.authorError()).toBeUndefined();
+      expect(component.authorPreviewSyntaxDiagnostic()).toBeUndefined();
+    },
+  );
+
+  it('does not attach a preview location to a later unrelated author error', async () => {
+    component = await createTugQLAuthor(
+      'from Invoice as i\nselect\n  i.InvoiceId\n  i.InvoiceDate',
+    );
+    await component.previewTugql();
+    expect(component.authorPreviewSyntaxDiagnostic()).toBeDefined();
+
+    const internals = component as unknown as {
+      setAuthorError(message: string | undefined): void;
+    };
+    internals.setAuthorError('A later comparison failed.');
+
+    expect(component.authorError()).toBe('A later comparison failed.');
+    expect(component.authorPreviewSyntaxDiagnostic()).toBeUndefined();
+  });
+
+  it.each([
+    'edit then revert',
+    'same-content definition replacement',
+    'query replacement',
+    'project change',
+    'environment change',
+    'principal change',
+    'leave Author',
+    'leave route',
+  ] as const)(
+    'invalidates the Preview location after %s',
+    async (change) => {
+      const source =
+        'from Invoice as i\nselect\n  i.InvoiceId\n  i.InvoiceDate';
+      component = await createTugQLAuthor(source);
+      await component.previewTugql();
+      expect(component.authorPreviewSyntaxDiagnostic()).toBeDefined();
+      const definition = component.queryDef();
+      if (!definition) throw new Error('Expected the current definition');
+
+      switch (change) {
+        case 'edit then revert':
+          component.authorCodeChanged(`${source}\n-- temporary edit`);
+          component.authorCodeChanged(source);
+          break;
+        case 'same-content definition replacement':
+          component.queryDef.set({ ...definition });
+          break;
+        case 'query replacement':
+          component.queryState = { ...component.queryState, id: 'another-query' };
+          break;
+        case 'project change':
+          component.project = {
+            ref: { storeId: 'github.com', projectId: 'different-project' },
+          };
+          break;
+        case 'environment change':
+          component.envId = 'staging';
+          break;
+        case 'principal change':
+          agentContext.securityContextId.set('different-principal');
+          break;
+        case 'leave Author':
+          component.setQueryView('compare');
+          break;
+        case 'leave route':
+          component.ionViewWillLeave();
+          break;
+      }
+
+      expect(component.authorPreviewSyntaxDiagnostic()).toBeUndefined();
+      expect(component.canNavigateToAuthorPreviewSyntaxDiagnostic()).toBe(false);
+    },
+  );
+
+  it('drops a pending Compose-to-Code location if the draft changes before the editor mounts', async () => {
+    const source = 'from Invoice as i\nselect\n  i.InvoiceId\n  i.InvoiceDate';
+    component = await createTugQLAuthor(source);
+    component.setAuthorMode('compose');
+    await component.previewTugql();
+    expect(component.authorPreviewSyntaxDiagnostic()).toBeDefined();
+    const navigate = vi.fn(() => true);
+    Object.defineProperty(component, 'authorCodeEditor', {
+      value: {
+        isFormatDiagnosticNavigable: vi.fn(() => true),
+        navigateToFormatDiagnostic: navigate,
+      },
+      configurable: true,
+      writable: true,
+    });
+
+    component.navigateToAuthorPreviewSyntaxDiagnostic();
+    expect(component.authorMode()).toBe('code');
+    component.authorCodeChanged(`${source}\n-- changed before mount`);
+    runFixture.detectChanges();
+    await runFixture.whenStable();
+
+    expect(component.authorPreviewSyntaxDiagnostic()).toBeUndefined();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
   it('uses exact displayed-source spans and retains the prior plan after a Format failure', async () => {
     const source = 'from Invoice as i\nselect i.InvoiceId\n    limit 4';
     component = await createTugQLAuthor(source);

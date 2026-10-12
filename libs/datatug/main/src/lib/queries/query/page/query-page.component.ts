@@ -183,6 +183,19 @@ interface AuthorFormatDiagnosticSnapshot {
   readonly remainingCount: number;
 }
 
+interface AuthorPreviewDiagnosticSnapshot {
+  readonly definition: IQueryDef;
+  readonly source: string;
+  readonly draftRevision: number;
+  readonly scopeKey: string;
+  readonly queryIdentity: symbol;
+  readonly queryId?: string;
+  readonly historyScope: string;
+  readonly lifetime: number;
+  readonly errorRevision: number;
+  readonly diagnostic: TugQLDiagnostic;
+}
+
 const isNoTargetFormatDiagnostic = (diagnostic: TugQLDiagnostic): boolean =>
   (diagnostic.code === 'input_too_large' || diagnostic.code === 'expected_from') &&
   diagnostic.span.start.line === 1 &&
@@ -321,6 +334,7 @@ import { AuthorSqlPreviewComponent } from './author-sql-preview.component';
 import {
   AuthorCodeEditorComponent,
   createSourceSpanValidator,
+  sourceSpanIsValid,
 } from './author-code-editor.component';
 import { AuthorComposeControlsComponent } from './author-compose-controls.component';
 import { AuthorRelationshipSourcesComponent } from './author-relationship-sources.component';
@@ -644,6 +658,15 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public project?: IProjectContext;
   private navigationDraft?: { ref: IProjectRef; query: IQueryDef };
   private authorPreviewLifetime = 0;
+  private previewDiagnosticNavigationSnapshot = signal<
+    AuthorPreviewDiagnosticSnapshot | undefined
+  >(undefined);
+  private pendingPreviewDiagnosticNavigation?: {
+    readonly generation: number;
+    readonly snapshot: AuthorPreviewDiagnosticSnapshot;
+  };
+  private previewDiagnosticNavigationGeneration = 0;
+  private authorErrorRevision = 0;
   private lastGitHubQueryEditReport?: { key: string; at: number };
 
   public showQueryBuilder?: boolean;
@@ -731,6 +754,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     () => this.authorCustomerId().trim().length === 0,
   );
   public readonly authorError = signal<string | undefined>(undefined);
+
+  private setAuthorError(message: string | undefined): void {
+    this.authorErrorRevision++;
+    this.authorError.set(message);
+  }
   public readonly authorSourceDiscovery = signal<PublicSqliteSourceDiscovery | undefined>(undefined);
   public readonly authorSourceLoading = signal(false);
   public readonly authorSourceMessage = signal('');
@@ -1221,7 +1249,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   public setQueryView(view: 'author' | 'compare'): void {
-    if (view !== 'author') this.authorFormatNavigationSnapshot.set(undefined);
+    if (view !== 'author') {
+      this.authorFormatNavigationSnapshot.set(undefined);
+      this.clearPreviewDiagnosticNavigation();
+    }
     this.queryView.set(view);
   }
 
@@ -1252,7 +1283,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   /** Ionic caches routed pages, so comparison memory must expire on leave as well as destroy. */
   public ionViewWillLeave(): void {
+    ++this.authorPreviewLifetime;
     this.authorFormatNavigationSnapshot.set(undefined);
+    this.clearPreviewDiagnosticNavigation();
     this.expireComparisonSession('The comparison session ended when this page was left.');
     this.changeDetector.detectChanges();
   }
@@ -1387,7 +1420,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     } catch (error) {
       if (operation === this.comparisonGeneration) {
         this.comparisonMessage.set(error instanceof Error ? error.message : 'The comparison pair could not start.');
-        this.authorError.set(error instanceof Error ? error.message : 'The comparison pair could not start.');
+        this.setAuthorError(error instanceof Error ? error.message : 'The comparison pair could not start.');
       }
     } finally {
       if (operation === this.comparisonGeneration) this.comparisonBusy.set(false);
@@ -1513,7 +1546,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     }
     if (!snapshot.sides.every((side) => side.status === 'complete' && side.observation)) return;
     if (!this.comparisonWasmPin) {
-      this.authorError.set('The verified Core comparison asset is not configured for this build.');
+      this.setAuthorError('The verified Core comparison asset is not configured for this build.');
       return;
     }
     const inputKey = this.comparisonInputKey();
@@ -1522,7 +1555,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.comparisonAbort = controller;
     this.comparisonBusy.set(true);
     this.comparisonMessage.set('Checking current project metadata and the verified Core comparison module.');
-    this.authorError.set(undefined);
+    this.setAuthorError(undefined);
     try {
       // Explicit Compare re-reads the current catalog and schemas before Core sees either result.
       const livePreview = await this.publicSqliteQuery.prepareTugQL(
@@ -1558,7 +1591,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     } catch (error) {
       if (operation === this.comparisonGeneration) {
         this.comparisonMessage.set(error instanceof Error ? error.message : 'Core could not compare these complete results.');
-        this.authorError.set(error instanceof Error ? error.message : 'Core could not compare these complete results.');
+        this.setAuthorError(error instanceof Error ? error.message : 'Core could not compare these complete results.');
       }
     } finally {
       if (this.comparisonAbort === controller) this.comparisonAbort = undefined;
@@ -1614,6 +1647,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       request: { ...this.queryState.request, text } as ITextQueryRequest,
     };
     if (isAuthorDraft) {
+      this.clearPreviewDiagnosticNavigation();
       this.authorFormatUndo.set(undefined);
       this.authorFormatNavigationSnapshot.set(undefined);
       this.authorFormatStatus.set('');
@@ -1629,7 +1663,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       );
       this.authorDraftRevision.update((revision) => revision + 1);
       this.authorPlan.set(undefined);
-      this.authorError.set(undefined);
+      this.setAuthorError(undefined);
       this.invalidateComparison('The query draft changed; run both fixtures again.');
     }
     this.queryEditorStateService.updateQueryState(this.queryState);
@@ -1648,7 +1682,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   public setAuthorMode(mode: 'compose' | 'code'): void {
-    if (mode !== 'code') this.authorFormatNavigationSnapshot.set(undefined);
+    if (mode !== 'code') {
+      this.authorFormatNavigationSnapshot.set(undefined);
+      this.clearPreviewDiagnosticNavigation();
+    }
     this.authorModeExplicit = true;
     this.authorMode.set(mode);
   }
@@ -1859,7 +1896,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       ++this.authorLookupRequestRevision;
       this.authorFormatUndo.set(undefined);
       this.authorPlan.set(undefined);
-      this.authorError.set(undefined);
+      this.setAuthorError(undefined);
       this.authorDraftRevision.update((revision) => revision + 1);
       this.queryState = nextState;
       this.queryDef.set(updatedDefinition);
@@ -1941,9 +1978,113 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.authorCodeEditor?.navigateToFormatDiagnostic(snapshot.source, diagnostic);
   }
 
+  public authorPreviewSyntaxDiagnostic(): TugQLDiagnostic | undefined {
+    const snapshot = this.previewDiagnosticNavigationSnapshot();
+    return this.isCurrentAuthorPreviewDiagnosticSnapshot(snapshot)
+      ? snapshot.diagnostic
+      : undefined;
+  }
+
+  public canNavigateToAuthorPreviewSyntaxDiagnostic(): boolean {
+    const snapshot = this.previewDiagnosticNavigationSnapshot();
+    if (!this.isCurrentAuthorPreviewDiagnosticSnapshot(snapshot)) return false;
+    if (this.authorMode() === 'compose') return true;
+    return !!this.authorCodeEditor?.isFormatDiagnosticNavigable(
+      snapshot.source,
+      snapshot.diagnostic.span,
+    );
+  }
+
+  public navigateToAuthorPreviewSyntaxDiagnostic(): void {
+    const snapshot = this.previewDiagnosticNavigationSnapshot();
+    if (
+      !this.isCurrentAuthorPreviewDiagnosticSnapshot(snapshot) ||
+      !this.canNavigateToAuthorPreviewSyntaxDiagnostic()
+    )
+      return;
+
+    if (this.authorMode() === 'compose') {
+      const generation = ++this.previewDiagnosticNavigationGeneration;
+      this.pendingPreviewDiagnosticNavigation = { generation, snapshot };
+      this.authorModeExplicit = true;
+      this.authorMode.set('code');
+      this.changeDetector.markForCheck();
+      afterNextRender(
+        () => this.consumePendingPreviewDiagnosticNavigation(generation),
+        { injector: this.injector },
+      );
+      return;
+    }
+
+    const navigated = this.authorCodeEditor?.navigateToFormatDiagnostic(
+      snapshot.source,
+      snapshot.diagnostic,
+    );
+    if (navigated) this.clearPreviewDiagnosticNavigation();
+  }
+
+  private consumePendingPreviewDiagnosticNavigation(generation: number): void {
+    const pending = this.pendingPreviewDiagnosticNavigation;
+    if (!pending || pending.generation !== generation) return;
+    this.pendingPreviewDiagnosticNavigation = undefined;
+
+    const editor = this.authorCodeEditor;
+    if (
+      !this.isCurrentAuthorPreviewDiagnosticSnapshot(pending.snapshot) ||
+      this.authorMode() !== 'code' ||
+      !editor?.isFormatDiagnosticNavigable(
+        pending.snapshot.source,
+        pending.snapshot.diagnostic.span,
+      )
+    ) {
+      this.clearPreviewDiagnosticNavigation();
+      return;
+    }
+
+    editor.navigateToFormatDiagnostic(
+      pending.snapshot.source,
+      pending.snapshot.diagnostic,
+    );
+    this.clearPreviewDiagnosticNavigation();
+  }
+
+  private clearPreviewDiagnosticNavigation(): void {
+    this.previewDiagnosticNavigationGeneration++;
+    this.pendingPreviewDiagnosticNavigation = undefined;
+    this.previewDiagnosticNavigationSnapshot.set(undefined);
+  }
+
+  private isCurrentAuthorPreviewDiagnosticSnapshot(
+    snapshot: AuthorPreviewDiagnosticSnapshot | undefined,
+  ): snapshot is AuthorPreviewDiagnosticSnapshot {
+    if (
+      !snapshot ||
+      this.queryView() !== 'author' ||
+      !this.isTugqlAuthorJourney() ||
+      this.authorErrorRevision !== snapshot.errorRevision ||
+      this.authorError() === undefined ||
+      this.running() ||
+      this.queryState.isSaving ||
+      this.queryId !== snapshot.queryId ||
+      this.historyScope() !== snapshot.historyScope ||
+      this.authorPreviewLifetime !== snapshot.lifetime ||
+      this.queryBodyText() !== snapshot.source ||
+      this.authorDraftRevision() !== snapshot.draftRevision ||
+      this.queryDef() !== snapshot.definition ||
+      !sourceSpanIsValid(snapshot.source, snapshot.diagnostic.span) ||
+      isNoTargetFormatDiagnostic(snapshot.diagnostic)
+    )
+      return false;
+    const current = this.currentAuthorFormatContext();
+    return !!current &&
+      current.scopeKey === snapshot.scopeKey &&
+      current.queryIdentity === snapshot.queryIdentity;
+  }
+
   public formatAuthorTugQL(): void {
     if (!this.canFormatAuthorTugQL()) return;
     this.authorFormatNavigationSnapshot.set(undefined);
+    this.clearPreviewDiagnosticNavigation();
     const source = this.queryBodyText();
     if (source === undefined) return;
     const options: TugQLFormatOptions = {
@@ -2096,6 +2237,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   private invalidateAuthorDefinitionRun(): void {
+    this.clearPreviewDiagnosticNavigation();
     ++this.semanticRunLifetime;
     this.invalidateFederatedRun();
     this.invalidateHistoryRequests();
@@ -2118,7 +2260,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.invalidateComparison('The CustomerId binding changed; run both fixtures again.');
     }
     this.authorCustomerId.set(value);
-    this.authorError.set(undefined);
+    this.setAuthorError(undefined);
     const next: IQueryState = {
       ...this.queryState,
       authorBindings: {
@@ -2233,7 +2375,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       // A cloud 401/403 is also delivered through QueriesService's authority
       // invalidation stream. Never restore cached private data in that case.
       if (requestIsCurrent()) {
-        this.authorError.set(
+        this.setAuthorError(
           'The invoice lookup could not be opened. Your current results are still available.',
         );
       }
@@ -2275,7 +2417,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         activeEnvironment,
       );
       if (requestIsCurrent())
-        this.authorError.set(
+        this.setAuthorError(
           'The invoice lookup could not be opened. Your current results are still available.',
         );
       return;
@@ -2290,7 +2432,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         activeEnvironment,
       );
       if (requestIsCurrent())
-        this.authorError.set(
+        this.setAuthorError(
           'The invoice lookup could not be opened. Your current results are still available.',
         );
       return;
@@ -2313,7 +2455,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
     this.authorMode.set('compose');
     this.authorPlan.set(undefined);
-    this.authorError.set(undefined);
+    this.setAuthorError(undefined);
     let lookup: IQueryState;
     try {
       lookup = this.queryEditorStateService.openAuthorizedQuery(
@@ -2334,7 +2476,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         );
       }
       if (requestIsCurrent())
-        this.authorError.set(
+        this.setAuthorError(
           'The invoice lookup could not be opened. Your current results are still available.',
         );
       return;
@@ -2516,19 +2658,63 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const queryIdSnapshot = this.queryId;
     const projectSnapshot = JSON.stringify(project);
     const securityContextIdSnapshot = this.agentContext.securityContextId();
+    const authorContextSnapshot = this.currentAuthorFormatContext();
     const lifetime = ++this.authorPreviewLifetime;
+    this.clearPreviewDiagnosticNavigation();
+    this.authorFormatNavigationSnapshot.set(undefined);
     const isCurrent = (): boolean =>
       lifetime === this.authorPreviewLifetime &&
       this.isTugqlAuthorJourney() &&
       this.authorDraftRevision() === revision &&
       this.historyScope() === scopeSnapshot &&
       this.queryId === queryIdSnapshot &&
+      this.queryDef() === definition &&
       JSON.stringify(this.queryDef()) === definitionSnapshot &&
       JSON.stringify(this.project?.ref) === projectSnapshot &&
-      this.agentContext.securityContextId() === securityContextIdSnapshot;
+      this.agentContext.securityContextId() === securityContextIdSnapshot &&
+      !!authorContextSnapshot &&
+      this.currentAuthorFormatContext()?.scopeKey ===
+        authorContextSnapshot.scopeKey &&
+      this.currentAuthorFormatContext()?.queryIdentity ===
+        authorContextSnapshot.queryIdentity;
     this.authorPlan.set(undefined);
-    this.authorError.set(undefined);
+    this.setAuthorError(undefined);
     try {
+      const source = (definition.request as ITextQueryRequest).text;
+      if (
+        definition.request.queryType === QueryType.DTQL &&
+        definition.connectionId === 'chinook-sqlite' &&
+        !definition.federation
+      ) {
+        const parsed = parseTugQL(source);
+        if (parsed.diagnostics.length) {
+          if (!isCurrent()) return;
+          this.setAuthorError(
+            parsed.diagnostics.map((diagnostic) => diagnostic.message).join(' '),
+          );
+          const diagnostic = parsed.diagnostics.find(
+            (candidate) =>
+              !isNoTargetFormatDiagnostic(candidate) &&
+              sourceSpanIsValid(source, candidate.span),
+          );
+          const context = authorContextSnapshot;
+          if (diagnostic && context) {
+            this.previewDiagnosticNavigationSnapshot.set({
+              definition,
+              source,
+              draftRevision: revision,
+              scopeKey: context.scopeKey,
+              queryIdentity: context.queryIdentity,
+              queryId: queryIdSnapshot,
+              historyScope: scopeSnapshot,
+              lifetime,
+              errorRevision: this.authorErrorRevision,
+              diagnostic,
+            });
+          }
+          return;
+        }
+      }
       const plan = await this.publicSqliteQuery.prepareTugQL(
         project,
         definition,
@@ -2540,7 +2726,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
             plan.expandedSource ===
             (definition.request as ITextQueryRequest).text
           ) {
-            this.authorError.set(
+            this.setAuthorError(
               'The relationship completion did not change the draft. Review the JOIN in Code.',
             );
             return;
@@ -2556,7 +2742,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
             (this.queryDef()?.request as ITextQueryRequest | undefined)
               ?.text !== plan.expandedSource
           ) {
-            this.authorError.set(
+            this.setAuthorError(
               'The relationship completion could not be applied to this draft. Review the JOIN in Code.',
             );
             return;
@@ -2571,7 +2757,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       }
     } catch (error: unknown) {
       if (isCurrent())
-        this.authorError.set(
+        this.setAuthorError(
           error instanceof Error ? error.message : 'The TugQL preview failed.',
         );
     }
@@ -2924,6 +3110,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   };
 
   ngOnDestroy(): void {
+    ++this.authorPreviewLifetime;
     this.authorFormatNavigationSnapshot.set(undefined);
     this.expireComparisonSession('This page session ended.');
     ++this.authorLookupFocusRevision;
@@ -4642,8 +4829,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private invalidateHistoryScope(): void {
     ++this.authorLookupFocusRevision;
     ++this.authorPreviewLifetime;
+    this.clearPreviewDiagnosticNavigation();
     this.authorPlan.set(undefined);
-    this.authorError.set(undefined);
+    this.setAuthorError(undefined);
     ++this.semanticRunLifetime;
     this.invalidateFederatedRun();
     this.stopFederatedRun();
