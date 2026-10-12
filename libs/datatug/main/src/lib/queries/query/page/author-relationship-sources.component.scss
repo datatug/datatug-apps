@@ -2,16 +2,15 @@
 
 .author-source-discovery {
   min-width: 0;
-  margin: 0.65rem 0 1rem;
-  padding: 0.85rem 1rem;
-  border: 1px solid var(--ion-color-step-150, #e5e7eb);
-  border-radius: 0.8rem;
-  background: var(--ion-color-step-50, #f8fafc);
+  margin: 0;
+  padding: 0.1rem 0.25rem;
   color: var(--ion-color-medium-shade);
   line-height: 1.55;
 }
 
-.author-source-discovery > summary { color: var(--ion-color-dark); cursor: pointer; font-weight: 600; }
+.author-source-discovery > summary { display: flex; min-height: 2.75rem; align-items: center; color: var(--ion-color-dark); cursor: pointer; font-weight: 600; list-style: none; }
+.author-source-discovery > summary::before { width: 1rem; content: '▸'; color: var(--ion-color-medium-shade); }
+.author-source-discovery[open] > summary::before { content: '▾'; }
 
 .author-source-fields,
 .author-source-diff { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; margin-top: 1rem; }

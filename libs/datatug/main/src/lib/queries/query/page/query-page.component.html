@@ -36,6 +36,34 @@
 </ion-header>
 
 <ion-content color="light">
+  @if (isTugqlAuthorJourney()) {
+    <sneat-query-workspace-layout [showResultsJump]="queryView() === 'author'">
+      <div query-workspace-navigation>
+        <ion-buttons class="query-view-switch" role="group" aria-label="Query workspace view">
+          <ion-button data-testid="query-view-author"
+            [class.is-active]="queryView() === 'author'"
+            [attr.aria-pressed]="queryView() === 'author'"
+            fill="clear"
+            [color]="queryView() === 'author' ? 'primary' : 'medium'"
+            (click)="setQueryView('author')">Author</ion-button>
+          <ion-button data-testid="query-view-compare"
+            [class.is-active]="queryView() === 'compare'"
+            [attr.aria-pressed]="queryView() === 'compare'"
+            fill="clear"
+            [color]="queryView() === 'compare' ? 'primary' : 'medium'"
+            (click)="setQueryView('compare')">Compare</ion-button>
+        </ion-buttons>
+      </div>
+      <div query-workspace-editor>
+        <ng-container *ngTemplateOutlet="queryEditor" />
+      </div>
+      @if (queryView() === 'author') {
+        <div query-workspace-results>
+          <ng-container *ngTemplateOutlet="queryResults" />
+        </div>
+      }
+    </sneat-query-workspace-layout>
+  }
   <ng-template #queryEditor>
   @if (project?.ref?.projectApi && !isTugqlAuthorJourney()) {
     <ion-item
@@ -433,16 +461,6 @@
   @if (queryState.queryType === 'HTTP') {
     <sneat-datatug-http-query-editor />
   } @else if (isTugqlAuthorJourney()) {
-    <ion-buttons class="query-view-switch" role="group" aria-label="Query workspace view">
-      <ion-button data-testid="query-view-author"
-        [attr.aria-pressed]="queryView() === 'author'"
-        [fill]="queryView() === 'author' ? 'solid' : 'clear'"
-        (click)="setQueryView('author')">Author</ion-button>
-      <ion-button data-testid="query-view-compare"
-        [attr.aria-pressed]="queryView() === 'compare'"
-        [fill]="queryView() === 'compare' ? 'solid' : 'clear'"
-        (click)="setQueryView('compare')">Compare</ion-button>
-    </ion-buttons>
     @if (queryView() === 'compare') {
       <sneat-public-sqlite-comparison-panel
         [snapshot]="comparisonSnapshot()"
@@ -462,50 +480,64 @@
       <ion-card-header>
         <div class="author-card-heading">
           <div>
-            <p class="author-eyebrow">QUERY AUTHOR</p>
             <ion-card-title
               #authorLookupHeading
               tabindex="-1"
               role="heading"
               aria-level="2"
+              data-workspace-heading
               >{{
-              queryState.title || 'Chinook Invoice query'
+              queryPageTitle()
             }}</ion-card-title>
           </div>
         </div>
-        <span class="author-source-badge">Chinook · SQLite</span>
+        <span class="author-source-badge">Chinook · pinned SQLite</span>
       </ion-card-header>
       <ion-card-content>
-        <ion-buttons class="author-mode-switch">
-          <ion-button
-            data-testid="author-compose-tab"
-            [attr.aria-pressed]="authorMode() === 'compose'"
-            [fill]="authorMode() === 'compose' ? 'solid' : 'clear'"
-            (click)="setAuthorMode('compose')"
-            >Compose</ion-button
-          >
-          <ion-button
-            data-testid="author-code-tab"
-            [attr.aria-pressed]="authorMode() === 'code'"
-            [fill]="authorMode() === 'code' ? 'solid' : 'clear'"
-            (click)="setAuthorMode('code')"
-            >Code</ion-button
-          >
-        </ion-buttons>
-        <sneat-author-relationship-sources
-          [sources]="authorSourceMetadata()"
-          [currentLimit]="authorCurrentLimit()"
-          [loading]="authorSourceLoading()"
-          [review]="authorSourceReview()"
-          [choices]="authorCustomerOutputChoices"
-          [selectedFields]="authorSourceSelectedFields()"
-          [disabled]="authorSourceLoading() || running() || queryState.isSaving === true"
-          [statusMessage]="authorSourceMessage()"
-          (disclosureChanged)="authorSourcesToggled($event)"
-          (customerFieldChanged)="authorSourceFieldSelectionChanged($event.field, $event.checked)"
-          (reviewRequested)="reviewAuthorRelationship()"
-          (applyRequested)="applyAuthorRelationshipReview()"
-        />
+        <div class="author-workbench-tools">
+          <ion-buttons class="author-mode-switch" aria-label="Author mode">
+            <ion-button
+              data-testid="author-compose-tab"
+              class="author-mode-option"
+              [class.is-active]="authorMode() === 'compose'"
+              [attr.aria-pressed]="authorMode() === 'compose'"
+              fill="clear"
+              [color]="authorMode() === 'compose' ? 'primary' : 'medium'"
+              (click)="setAuthorMode('compose')">Compose</ion-button>
+            <ion-button
+              data-testid="author-code-tab"
+              class="author-mode-option"
+              [class.is-active]="authorMode() === 'code'"
+              [attr.aria-pressed]="authorMode() === 'code'"
+              fill="clear"
+              [color]="authorMode() === 'code' ? 'primary' : 'medium'"
+              (click)="setAuthorMode('code')">Code</ion-button>
+          </ion-buttons>
+          <sneat-author-relationship-sources
+            [sources]="authorSourceMetadata()"
+            [currentLimit]="authorCurrentLimit()"
+            [loading]="authorSourceLoading()"
+            [review]="authorSourceReview()"
+            [choices]="authorCustomerOutputChoices"
+            [selectedFields]="authorSourceSelectedFields()"
+            [disabled]="authorSourceLoading() || running() || queryState.isSaving === true"
+            [statusMessage]="authorSourceMessage()"
+            (disclosureChanged)="authorSourcesToggled($event)"
+            (customerFieldChanged)="authorSourceFieldSelectionChanged($event.field, $event.checked)"
+            (reviewRequested)="reviewAuthorRelationship()"
+            (applyRequested)="applyAuthorRelationshipReview()"
+          />
+          @if (authorMode() === 'code') {
+            <div class="author-actions author-format-actions">
+              <ion-button data-testid="author-format-tugql" fill="clear"
+                [disabled]="running() || queryState.isSaving"
+                (click)="formatAuthorTugQL()">Format TugQL</ion-button>
+              <ion-button data-testid="author-undo-format" fill="clear"
+                [disabled]="!canUndoAuthorFormat()"
+                (click)="undoAuthorTugQLFormat()">Undo format</ion-button>
+            </div>
+          }
+        </div>
         @if (customerInvoiceExample()) {
           <p data-testid="customer-invoice-example-guidance" role="status">
             Try Customer ID 1: Preview SQL, then Run. Inspect the invoice rows below;
@@ -513,6 +545,7 @@
             then preview and run again.
           </p>
         }
+        <div class="author-run-strip">
         <ion-input
           class="author-customer-input"
           data-testid="author-customer-id"
@@ -521,7 +554,6 @@
           fill="outline"
           label="Customer ID"
           labelPlacement="start"
-          helperText="Required · integer"
           [class.ion-invalid]="
             !authorCustomerIdMissing() && !authorCustomerIdValid()
           "
@@ -543,25 +575,37 @@
           [disabled]="queryState.isSaving || running()"
           (ionInput)="authorCustomerIdChanged($event)"
         />
-        @if (authorCustomerIdOrigin(); as customerIdOrigin) {
-          <p class="author-binding-origin" data-testid="author-binding-origin">
+        <div class="author-binding-context">
+          @if (authorCustomerIdOrigin(); as customerIdOrigin) {
+            <p class="author-binding-origin" data-testid="author-binding-origin">
             @if (customerIdOrigin.origin === 'selection') {
               Customer ID {{ authorCustomerId() }} · selection ·
-              client-reported from {{ customerIdOrigin.sourceQueryId }}.{{
+              {{ customerIdOrigin.sourceQueryId }}.{{
                 customerIdOrigin.sourceColumn
-              }} → target {{ queryDef()?.title || queryId }} on
-              {{ queryDef()?.connectionId || 'Chinook SQLite' }}.
-              Preview SQL, then Run to execute.
+              }} → {{ queryDef()?.title || queryId }} · client-reported.
             } @else {
               Customer ID {{ authorCustomerId() || '—' }} · manual ·
-              client-reported. Preview SQL, then Run to execute.
+              client-reported.
             }
-          </p>
-        }
+            </p>
+          }
+          @if (!authorCustomerIdValid()) {
+            <p class="author-run-guidance" role="status">
+            @if (authorCustomerIdMissing()) {
+              Enter a Customer ID to enable Run.
+            } @else {
+              Enter a whole-number Customer ID to enable Run.
+            }
+            </p>
+          } @else if (!authorPlan()) {
+            <p class="author-run-guidance" role="status">Preview the current TugQL draft before Run.</p>
+          }
+        </div>
         <div class="author-actions">
-          <ion-button
+              <ion-button
             data-testid="author-preview"
             class="author-preview-button"
+            fill="outline"
             [disabled]="running() || queryState.isSaving"
             (click)="previewTugql()"
             >Preview SQL</ion-button
@@ -626,6 +670,7 @@
             }
           </div>
         }
+        </div>
         @if (authorMode() === 'compose') {
           <sneat-author-compose-controls
             [source]="queryBodyText() ?? ''"
@@ -633,22 +678,6 @@
             (editInCode)="setAuthorMode('code')"
           />
         } @else {
-          <div class="author-actions">
-            <ion-button
-              data-testid="author-format-tugql"
-              fill="outline"
-              [disabled]="running() || queryState.isSaving"
-              (click)="formatAuthorTugQL()"
-              >Format TugQL</ion-button
-            >
-            <ion-button
-              data-testid="author-undo-format"
-              fill="clear"
-              [disabled]="!canUndoAuthorFormat()"
-              (click)="undoAuthorTugQLFormat()"
-              >Undo format</ion-button
-            >
-          </div>
           <sneat-author-code-editor
             class="author-code-editor"
             data-testid="query-body-text"
@@ -675,12 +704,15 @@
           }
         }
         @if (authorPlan(); as plan) {
-          <sneat-author-sql-preview
-            [plan]="plan"
-            [customerId]="authorCustomerId()"
-            [customerIdValid]="authorCustomerIdValid()"
-            [customerIdMissing]="authorCustomerIdMissing()"
-          />
+          <details class="author-sql-disclosure" open>
+            <summary>Preview SQL · Not executed</summary>
+            <sneat-author-sql-preview
+              [plan]="plan"
+              [customerId]="authorCustomerId()"
+              [customerIdValid]="authorCustomerIdValid()"
+              [customerIdMissing]="authorCustomerIdMissing()"
+            />
+          </details>
         }
       </ion-card-content>
     </ion-card>
@@ -941,11 +973,14 @@
   </ng-template>
 
   <ng-template #queryResults>
+  <section class="author-results" [attr.aria-labelledby]="isTugqlAuthorJourney() ? 'author-results-heading' : null">
+  @if (isTugqlAuthorJourney()) {
+    <h2 id="author-results-heading" tabindex="-1" data-workspace-heading>Results</h2>
+  }
   @if (isTugqlAuthorJourney() && !runResult() && !running()) {
     <section class="author-results-empty" role="status" data-testid="author-results-empty">
-      <p class="author-results-eyebrow">RESULTS</p>
-      <h2>Not executed</h2>
-      <p>SQL preview checks the query shape only. Choose a Customer ID and run the query to load rows and an execution receipt.</p>
+      <strong>Not executed</strong>
+      <p>SQL preview checks the query shape only. Choose a Customer ID, preview the current draft, then Run to load rows and an execution receipt.</p>
     </section>
   }
   @if ((running() || resultPageLoading()) && federatedProgress(); as progress) {
@@ -1042,10 +1077,9 @@
     </ion-card>
   }
   @if (previousCommittedRun(); as previous) {
+    <details class="previous-run-disclosure" [open]="!isTugqlAuthorJourney()">
+      <summary>Previous successful run · observed {{ previous.provenance.observedAt }}</summary>
     <ion-card data-testid="previous-committed-result">
-      <ion-card-header>
-        <ion-card-title>Previous successful run</ion-card-title>
-      </ion-card-header>
       <ion-card-content>
         <p>
           Query {{ previous.scope.queryId }} · target
@@ -1120,6 +1154,7 @@
         </details>
       </ion-card-content>
     </ion-card>
+    </details>
   }
   @if (runResult(); as result) {
     @if (result.publicSqliteReceipt; as receipt) {
@@ -1323,7 +1358,7 @@
       </ion-list>
     }
 
-    <div>
+    <div [class.ion-padding-horizontal]="!isTugqlAuthorJourney()">
       @if (
         resultTotalRows() > resultPageSize ||
         resultHasMore() ||
@@ -1354,15 +1389,17 @@
           >
         </div>
       }
-      <ag-grid-angular
-        class="ag-theme-quartz"
-        style="height: 420px; width: 100%"
-        [columnDefs]="resultGridColumnDefs()"
-        [rowData]="resultGridRows()"
-        [defaultColDef]="resultGridDefaultColDef"
-        [loading]="resultPageLoading()"
-        [overlayNoRowsTemplate]="resultGridNoRowsTemplate"
-      />
+      <div class="result-grid-viewport" [class.author-result-grid-viewport]="isTugqlAuthorJourney()">
+        <ag-grid-angular
+          class="ag-theme-quartz"
+          style="height: 100%; width: 100%"
+          [columnDefs]="resultGridColumnDefs()"
+          [rowData]="resultGridRows()"
+          [defaultColDef]="resultGridDefaultColDef"
+          [loading]="resultPageLoading()"
+          [overlayNoRowsTemplate]="resultGridNoRowsTemplate"
+        />
+      </div>
     </div>
     <div class="ion-padding-horizontal">
       <sneat-datatug-source-rights-notice
@@ -1371,20 +1408,10 @@
       />
     </div>
   }
+  </section>
   </ng-template>
 
-  @if (isTugqlAuthorJourney() && queryView() === 'compare') {
-    <ng-container *ngTemplateOutlet="queryEditor" />
-  } @else if (isTugqlAuthorJourney()) {
-    <sneat-query-workspace-layout>
-      <div query-workspace-editor>
-        <ng-container *ngTemplateOutlet="queryEditor" />
-      </div>
-      <div query-workspace-results>
-        <ng-container *ngTemplateOutlet="queryResults" />
-      </div>
-    </sneat-query-workspace-layout>
-  } @else {
+  @if (!isTugqlAuthorJourney()) {
     <ng-container *ngTemplateOutlet="queryEditor" />
     <ng-container *ngTemplateOutlet="queryResults" />
   }

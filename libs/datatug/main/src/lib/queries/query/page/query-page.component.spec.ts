@@ -2789,10 +2789,12 @@ select (
     expect(editor.openAuthorizedQuery).not.toHaveBeenCalled();
   });
 
-  it('selects the mobile Editor pane before focusing a successfully opened lookup', async () => {
+  it('keeps both regions mounted and returns to the editor before focusing a lookup', async () => {
     const scenario = await createJoinedLookupScenario(
       '<sneat-query-workspace-layout><div query-workspace-editor><h2 #authorLookupHeading tabindex="-1">Invoice lookup</h2></div><div query-workspace-results>Results</div></sneat-query-workspace-layout>',
     );
+    runFixture.detectChanges();
+    await runFixture.whenStable();
     const layout = runFixture.debugElement.query(
       By.directive(QueryWorkspaceLayoutComponent),
     ).componentInstance as QueryWorkspaceLayoutComponent;
@@ -2800,7 +2802,26 @@ select (
       component as unknown as { focusAuthorLookupAfterRender(): void },
       'focusAuthorLookupAfterRender',
     );
-    layout.mobilePane.set('results');
+    const editorRegion = runFixture.nativeElement.querySelector(
+      '#workspace-editor-pane',
+    ) as HTMLElement;
+    const resultsRegion = runFixture.nativeElement.querySelector(
+      '#workspace-results-pane',
+    ) as HTMLElement;
+    const editorScroll = vi.fn();
+    const resultsScroll = vi.fn();
+    Object.defineProperty(editorRegion, 'scrollIntoView', {
+      configurable: true,
+      value: editorScroll,
+    });
+    Object.defineProperty(resultsRegion, 'scrollIntoView', {
+      configurable: true,
+      value: resultsScroll,
+    });
+    layout.showResults();
+    expect(editorRegion.isConnected).toBe(true);
+    expect(resultsRegion.isConnected).toBe(true);
+    expect(resultsScroll).toHaveBeenCalledOnce();
     const targetState: IQueryState = {
       id: scenario.lookupDefinition.id,
       queryType: QueryType.DTQL,
@@ -2850,7 +2871,9 @@ select (
 
     expect(scenario.router.navigate).toHaveBeenCalledOnce();
     expect(scenario.editor.openAuthorizedQuery).toHaveBeenCalledOnce();
-    expect(layout.mobilePane()).toBe('editor');
+    expect(editorScroll).toHaveBeenCalledOnce();
+    expect(editorRegion.isConnected).toBe(true);
+    expect(resultsRegion.isConnected).toBe(true);
     expect(focusAuthorLookupAfterRender).toHaveBeenCalledOnce();
     expect(headingFocus).toHaveBeenCalledOnce();
     expect(updateQueryState).toHaveBeenCalledWith(
@@ -4612,16 +4635,22 @@ select (
         executionProfile: 'protected',
       },
     });
-  const historyResultTemplate = (): string =>
-    readFileSync(
+  const historyResultTemplate = (): string => {
+    const queryTemplate = readFileSync(
       resolve(
         'libs/datatug/main/src/lib/queries/query/page/query-page.component.html',
       ),
       'utf8',
-    )
-      .split('  @if (runResult(); as result) {')[1]
-      .split('  </ng-template>')[0]
-      .replace(/^/, '@if (runResult(); as result) {');
+    );
+    const resultTemplate = queryTemplate.split(
+      '  @if (runResult(); as result) {',
+    )[1];
+    const resultSectionBoundary = '\n  </section>\n  </ng-template>';
+    if (!resultTemplate?.includes(resultSectionBoundary)) {
+      throw new Error('Could not locate the full query results template.');
+    }
+    return `${'  @if (runResult(); as result) {'}${resultTemplate.split(resultSectionBoundary)[0]}`;
+  };
 
   it('retains a frozen successful receipt across a failed and partial rerun, then clears it on scope change', async () => {
     const definition = historyDefinition();

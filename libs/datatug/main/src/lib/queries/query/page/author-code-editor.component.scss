@@ -20,11 +20,11 @@
 
 .author-code-header {
   display: flex;
-  min-height: 3.5rem;
+  min-height: 2.75rem;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  padding: 0.25rem 0.5rem 0.25rem 0.75rem;
+  padding: 0 0.5rem 0 0.75rem;
 }
 
 .author-code-suggestions {
@@ -76,6 +76,21 @@
   margin: 0.35rem 0;
   color: var(--ion-color-medium, #64748b);
   font-size: 0.85rem;
+}
+
+:host ::ng-deep .author-code-editor-view .cm-editor {
+  height: 10rem;
+  min-height: 0;
+}
+
+:host ::ng-deep .author-code-editor-view .cm-scroller {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+:host ::ng-deep .author-code-editor-view .cm-content {
+  min-height: 0;
 }
 
 .author-format-diagnostics ul {
@@ -136,6 +151,10 @@
   .author-code-suggestions span {
     display: none;
   }
+}
+
+@media (max-height: 760px) {
+  :host ::ng-deep .author-code-editor-view .cm-editor { height: 10rem; }
 }
 
 @media (forced-colors: active) {
