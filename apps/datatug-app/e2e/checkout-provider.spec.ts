@@ -116,7 +116,8 @@ test('an existing paid TEST return reconciles without creating another session o
     !process.env.DATATUG_CHECKOUT_TEST_STORAGE_STATE || !sessionId,
     'Requires designated buyer auth state and an existing paid TEST session; this test never creates a payment.',
   );
-  expect(/^cs_test_[A-Za-z0-9]+$/.test(sessionId ?? '')).toBe(true);
+  if (!sessionId) throw new Error('Missing existing paid TEST session');
+  expect(/^cs_test_[A-Za-z0-9]+$/.test(sessionId)).toBe(true);
   const writes: string[] = [];
   await page.route('**/v0/checkout/**', async (route) => {
     const request = route.request();
@@ -136,7 +137,7 @@ test('an existing paid TEST return reconciles without creating another session o
       response.request().method() === 'GET',
   );
   await page.goto(
-    `/pricing/return?mode=test&session_id=${encodeURIComponent(sessionId!)}`,
+    `/pricing/return?mode=test&session_id=${encodeURIComponent(sessionId)}`,
   );
   const response = await statusResponse;
   expect(response.status()).toBe(200);
