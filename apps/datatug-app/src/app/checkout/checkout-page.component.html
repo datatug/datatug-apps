@@ -1,13 +1,17 @@
 <ion-header
   ><ion-toolbar
-    ><ion-title><a routerLink="/">DataTug</a> · Pro</ion-title></ion-toolbar
+    ><ion-title
+      ><a routerLink="/">DataTug</a> ·
+      {{ business() ? 'Business' : 'Pro' }}</ion-title
+    ></ion-toolbar
   ></ion-header
 >
 <ion-content>
   <main class="checkout-shell">
     @if (!returning) {
       <p class="plan-kicker">
-        DataTug Pro <span aria-hidden="true">·</span>
+        DataTug {{ business() ? 'Business' : 'Pro' }}
+        <span aria-hidden="true">·</span>
         {{ period() === 'yearly' ? 'Yearly plan' : 'Monthly plan' }}
       </p>
     }
@@ -38,8 +42,9 @@
     }
     @if (!returning && enabled()) {
       <datatug-checkout-price-summary
-        planName="DataTug Pro"
-        [monthlyMinor]="1900"
+        [planName]="business() ? 'DataTug Business' : 'DataTug Pro'"
+        [business]="business()"
+        [monthlyMinor]="business() ? 9900 : 1900"
         [yearly]="period() === 'yearly'"
         [quote]="state().quote"
         [allowPeriodChange]="canChangePeriod()"
@@ -80,7 +85,7 @@
           }
         }
         @case ('loading') {
-          Checking your Pro price…
+          Checking your subscription price…
         }
         @case ('quote') {
           Review your quote and early-access terms.
@@ -117,8 +122,9 @@
           <section class="early-access" aria-labelledby="early-access-heading">
             <h3 id="early-access-heading">Early access</h3>
             <p class="early-access-copy">
-              DataTug Pro is in early access. Your subscription starts now, and
-              some paid features are still being completed.
+              DataTug {{ business() ? 'Business' : 'Pro' }} is in early access.
+              Your subscription starts now, and some paid features are still
+              being completed.
             </p>
           </section>
           <label class="consent">
@@ -161,7 +167,7 @@
       @if (existingPurchase(); as purchase) {
         <a
           [routerLink]="purchase.split('?')[0]"
-          [queryParams]="{ mode: 'test', session_id: state().existingSession }"
+          [queryParams]="{ mode: mode(), session_id: state().existingSession }"
           >Check existing purchase</a
         >
       }
@@ -170,6 +176,103 @@
       }
       @if (state().supportReference) {
         <p>Test checkout reference: {{ state().supportReference }}</p>
+      }
+    }
+    @if (state().stage === 'setup') {
+      <section aria-labelledby="space-setup-heading">
+        <h2 id="space-setup-heading">
+          Your Business subscription is paid. Choose its space.
+        </h2>
+        <p>
+          You can finish this later from this purchase link. Projects can be
+          added after setup.
+        </p>
+        <label for="business-destination">Business space</label>
+        <select
+          id="business-destination"
+          [value]="destination()"
+          (change)="destination.set($any($event.target).value)"
+          [disabled]="setupBusy()"
+        >
+          <option value="">Create a new business space</option>
+          @if (missingHint()) {
+            <option [value]="destination()">
+              Referenced space — permissions checked on activation
+            </option>
+          }
+          @for (space of spaces(); track space.id) {
+            <option [value]="space.id">{{ space.title }}</option>
+          }
+        </select>
+        @if (!destination()) {
+          <label for="business-name">Business name</label>
+          <input
+            id="business-name"
+            maxlength="120"
+            autocomplete="organization"
+            [value]="spaceName()"
+            (input)="spaceName.set($any($event.target).value)"
+            [disabled]="setupBusy()"
+          />
+        }
+        <p>
+          <button type="button" (click)="linkSpace()" [disabled]="setupBusy()">
+            {{
+              setupBusy() ? 'Setting up…' : 'Activate Business for this space'
+            }}
+          </button>
+        </p>
+        @if (setupError()) {
+          <p role="alert">{{ setupError() }}</p>
+        }
+      </section>
+    }
+    @if (state().stage === 'business-active') {
+      <section aria-label="Business purchase confirmed">
+        <h2>Your Business space is ready</h2>
+        <p>
+          Your subscription is linked. Open the space to use an existing project
+          or add your first project.
+        </p>
+        <button type="button" (click)="openSpace()">Open business space</button>
+      </section>
+    }
+    @if (state().purchase?.paid) {
+      @if (options()?.canCancelPersonal) {
+        <section aria-label="Optional Pro renewal choice">
+          <h2>Keep or cancel your Pro renewal</h2>
+          <p>
+            Business does not cancel Pro. Your paid Pro access continues through
+            {{ options()?.personalPaidThroughUTC | date: 'mediumDate' }}.
+          </p>
+          <label
+            ><input
+              type="checkbox"
+              [checked]="cancelPro()"
+              (change)="cancelPro.set($any($event.target).checked)"
+              [disabled]="optionsBusy()"
+            />
+            Cancel Pro renewal at the end of its paid period</label
+          >
+          <p>
+            <button
+              type="button"
+              (click)="cancelPersonalRenewal()"
+              [disabled]="!cancelPro() || optionsBusy()"
+            >
+              Confirm Pro renewal cancellation
+            </button>
+          </p>
+        </section>
+      }
+      @if (options()?.cancellationScheduled) {
+        <p role="status">
+          Pro renewal cancellation is scheduled. Paid Pro access continues
+          through {{ options()?.personalPaidThroughUTC | date: 'mediumDate' }}.
+        </p>
+      }
+      @if (optionError()) {
+        <p role="alert">{{ optionError() }}</p>
       }
     }
     @if (state().stage === 'test' || state().stage === 'pro') {

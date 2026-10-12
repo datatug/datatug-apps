@@ -1,3 +1,4 @@
+import { DatePipe } from '@angular/common';
 import { CheckoutPriceSummaryComponent } from './checkout-price-summary.component';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
@@ -60,6 +61,7 @@ async function render(
   returning = false,
   initial: ISneatAuthState = authenticated,
   recordUID = 'buyer',
+  spaces = {},
 ) {
   states = new BehaviorSubject(initial);
   queries = new BehaviorSubject(convertToParamMap(query));
@@ -88,7 +90,7 @@ async function render(
           userState: of({
             status: 'authenticated',
             user: { ...authenticated.user, uid: recordUID },
-            record: { title: 'Buyer' },
+            record: { title: 'Buyer', spaces },
             userRecordStatus: 'ready',
           }),
         },
@@ -107,7 +109,7 @@ async function render(
   })
     .overrideComponent(CheckoutPageComponent, {
       set: {
-        imports: [RouterLink, CheckoutPriceSummaryComponent],
+        imports: [RouterLink, CheckoutPriceSummaryComponent, DatePipe],
         schemas: [CUSTOM_ELEMENTS_SCHEMA],
       },
     })
@@ -444,4 +446,145 @@ it('uses emitted query context when the cached route snapshot still has the prev
   expect(fixture.componentInstance['authReturnTo']()).toBe(
     '/subscribe?plan=pro&period=yearly&checkout=test',
   );
+});
+
+const businessPlan = 'datatug-business-usage-monthly';
+const startingSituations = [
+  [
+    'project and company',
+    { company_a: { title: 'Acme', type: 'company', roles: ['owner'] } },
+  ],
+  [
+    'company without project',
+    { company_a: { title: 'Acme', type: 'company', roles: ['owner'] } },
+  ],
+  [
+    'project without company',
+    { personal_a: { title: 'Personal', type: 'personal', roles: ['owner'] } },
+  ],
+  ['neither project nor company', {}],
+] as const;
+
+it.each(startingSituations)(
+  'Business pays before space selection: %s',
+  async (_name, spaces) => {
+    fetcher.mockImplementation(async (url: URL) => ({
+      ok: true,
+      headers: new Headers(),
+      json: async () =>
+        url.pathname.endsWith('/config')
+          ? {
+              site: 'datatug',
+              mode: 'test',
+              publishableKey: 'pk_test_fixture',
+              plans: [
+                {
+                  id: businessPlan,
+                  accountRequired: true,
+                  accountKind: 'organisation',
+                  taxIncluded: true,
+                },
+              ],
+            }
+          : {
+              ...quote(),
+              accountKind: 'organisation',
+              accountId: 'billing-a',
+              amount: {
+                currency: 'eur',
+                list: 9900,
+                due: 6930,
+                taxIncluded: true,
+              },
+            },
+    }));
+    const html = await render(
+      { planID: businessPlan, checkout: 'test', purchaseId: 'purchase-a' },
+      false,
+      authenticated,
+      'buyer',
+      spaces,
+    );
+    expect(html.textContent).toContain('€99.00');
+    expect(html.textContent).toContain('€69.30');
+    expect(html.textContent).toContain('2 months free');
+    expect(html.querySelector('select')).toBeNull();
+    const session = fetcher.mock.calls.find(([url]) =>
+      url.pathname.endsWith('/session'),
+    );
+    expect(JSON.parse(String(session?.[1]?.body))).toMatchObject({
+      plan: businessPlan,
+      purchaseId: 'purchase-a',
+      mode: 'test',
+    });
+  },
+);
+
+it('paid Business return creates a space once, then keeps Pro unless explicitly chosen', async () => {
+  let linked = false,
+    commands = 0;
+  const purchase = { accountId: 'billing-a', setupRequired: true, paid: true };
+  fetcher.mockImplementation(async (url: URL, options?: RequestInit) => ({
+    ok: true,
+    headers: new Headers(),
+    json: async () => {
+      if (url.pathname.endsWith('/session-status'))
+        return {
+          mode: 'test',
+          plan: businessPlan,
+          status: 'complete',
+          ready: true,
+          purchase,
+        };
+      if (url.pathname.endsWith('/purchase-options')) {
+        if (options?.method === 'POST') commands++;
+        return {
+          canCancelPersonal: commands === 0,
+          cancellationScheduled: commands > 0,
+          personalPaidThroughUTC: '2027-10-12T00:00:00Z',
+        };
+      }
+      if (url.pathname.endsWith('/purchase-setup')) {
+        linked = true;
+        return { ...purchase, spaceID: 'new-company', setupRequired: false };
+      }
+      throw new Error('unexpected request');
+    },
+  }));
+  const html = await render({ mode: 'test', session_id: 'cs_test_paid' }, true);
+  await fixture.whenStable();
+  expect(html.textContent).toContain('Your Business subscription is paid');
+  expect(commands).toBe(0);
+  const name = html.querySelector('#business-name') as HTMLInputElement;
+  name.value = 'New Business';
+  name.dispatchEvent(new Event('input'));
+  const activate = [...html.querySelectorAll('button')].find((x) =>
+    x.textContent?.includes('Activate Business'),
+  );
+  if (!activate) throw new Error('missing activation action');
+  activate.click();
+  activate.click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await fixture.whenStable();
+  expect(linked).toBe(true);
+  expect(
+    fetcher.mock.calls.filter(([url]) =>
+      url.pathname.endsWith('/purchase-setup'),
+    ),
+  ).toHaveLength(1);
+  expect(html.textContent).toContain('Your Business space is ready');
+  expect(commands).toBe(0);
+  const choice = html.querySelector('input[type=checkbox]') as HTMLInputElement;
+  expect(choice.checked).toBe(false);
+  choice.click();
+  await fixture.whenStable();
+  const confirm = [...html.querySelectorAll('button')].find((x) =>
+    x.textContent?.includes('Confirm Pro renewal cancellation'),
+  );
+  if (!confirm) throw new Error('missing cancellation action');
+  confirm.click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await fixture.whenStable();
+  expect(commands).toBe(1);
+  expect(html.textContent).toContain('Pro renewal cancellation is scheduled');
 });

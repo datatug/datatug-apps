@@ -173,3 +173,13 @@ section[hidden] {
     padding: 1.25rem;
   }
 }
+
+select,
+input:not([type='checkbox']) {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-height: 44px;
+  margin-block: 0.5rem 1rem;
+  font: inherit;
+}

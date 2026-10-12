@@ -31,7 +31,7 @@ afterEach(() => vi.restoreAllMocks());
 it.each([
   ['/subscribe?plan=pro&period=monthly', 'pro_checkout_page_import_failed'],
   ['/pricing/return?mode=live&session_id=cs_live_example', 'pro_checkout_page_import_failed'],
-  ['/business/checkout?planID=datatug-business-usage-monthly', 'business_checkout_page_import_failed'],
+  ['/business/checkout?planID=datatug-business-usage-monthly', 'pro_checkout_page_import_failed'],
   ['/business/checkout/return?spaceID=space_1&session_id=cs_test_example', 'business_checkout_page_import_failed'],
 ])('keeps %s and offers only an explicit reload when its checkout chunk rejects', async (url, diagnostic) => {
   const reload = vi.fn();

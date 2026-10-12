@@ -21,7 +21,11 @@ export function checkoutApi(
   auth: CheckoutAuth,
   fetcher?: typeof fetch,
 ): CheckoutApi & SpaceServiceCheckoutApi;
-export function validQuote(quote: unknown, mode: string): boolean;
+export function validQuote(
+  quote: unknown,
+  mode: string,
+  accountKind?: string,
+): boolean;
 export function discountDescription(quote: unknown): string;
 export function validSpaceServiceQuote(
   quote: unknown,

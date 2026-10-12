@@ -30,24 +30,24 @@ Suppress the application panel across checkout and auth continuations without re
 
 ### Task 2: Durable Business purchase before space attachment
 
-**Status:** planning
+**Status:** complete
 **Verifies:** checkout-journey#ac:business-after-payment, checkout-journey#ac:durable-attachment
 
-Add an owned Paymentus pending billing-account purchase contract with buyer authorization, server-mode isolation and stable idempotency. Keep optional space reference separate from billing ownership. Do not weaken existing space-service authorization or invent a dummy usable space. Persist confirmed paid-unlinked purchases independently of browser return. Reuse native request-ID-based provisioning after payment; atomically fence target base ownership and replay attachment safely.
+Implemented and published in Paymentus backend v0.52.0 (PR #110), with host binding PR #1249. Add an owned Paymentus pending billing-account purchase contract with buyer authorization, server-mode isolation and stable idempotency. Keep optional space reference separate from billing ownership. Do not weaken existing space-service authorization or invent a dummy usable space. Persist confirmed paid-unlinked purchases independently of browser return. Reuse native request-ID-based provisioning after payment; atomically fence target base ownership and replay attachment safely.
 
 ### Task 3: Independent subscriptions and launch places
 
 **Status:** in_progress
 **Verifies:** checkout-journey#ac:multiple-space-ownership, checkout-journey#ac:independent-subscriptions, checkout-journey#ac:optional-pro-cancellation, checkout-journey#ac:introductory-usage
 
-Verify existing per-space purchase and per-subscription discount fences for one buyer with Pro and multiple Business spaces. Preserve the paying identity and space recipient separately. Check same-space duplicate/retry, effective end, full refund and live/test isolation. Retain Pro unless the customer explicitly schedules end-of-term cancellation through a supported owned operation.
+Paymentus ownership/refund/ledger tests and local shared checkout cancellation tests pass; real provider operations remain unverified. Verify existing per-space purchase and per-subscription discount fences for one buyer with Pro and multiple Business spaces. Preserve the paying identity and space recipient separately. Check same-space duplicate/retry, effective end, full refund and live/test isolation. Retain Pro unless the customer explicitly schedules end-of-term cancellation through a supported owned operation.
 
 ### Task 4: Local scenarios, recovery and publication
 
 **Status:** in_progress
 **Verifies:** checkout-journey#ac:scenario-coverage, checkout-journey#ac:recovery, checkout-journey#ac:rail-isolation, checkout-journey#ac:safari-proof
 
-Exercise all ten starting situations using local fixtures and isolated provider test rails where configured; record what is fixture-only, browser-observed or unverified. Test auth return, delays, retries, refresh, browser Back and mobile layout. Run repository checks, self-review (Alex requested no additional agents), publish the resulting changes through WB, and record exact-head verification. Physical Safari and real test-provider evidence must not be inferred from fixtures.
+Local matrix: 20 Chromium/mobile WebKit cases and 2 recovery cases passed with real emulator auth and fake payment HTTP. Exercise all ten starting situations using local fixtures and isolated provider test rails where configured; record what is fixture-only, browser-observed or unverified. Test auth return, delays, retries, refresh, browser Back and mobile layout. Run repository checks, self-review (Alex requested no additional agents), publish the resulting changes through WB, and record exact-head verification. Physical Safari and real test-provider evidence must not be inferred from fixtures.
 
 ### Task 5: Coordinate management/transfer follow-up
 

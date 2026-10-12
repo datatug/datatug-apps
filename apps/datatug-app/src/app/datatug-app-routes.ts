@@ -204,7 +204,7 @@ export const routes: Routes = [
     path,
     canMatch: [checkoutOrRoot],
     data: { businessCheckoutReturn: path === 'business/checkout/return' },
-    loadComponent: loadBusinessCheckoutPage,
+    loadComponent: path.endsWith('/return') ? loadBusinessCheckoutPage : loadProCheckoutPage,
   })),
   ...['subscribe', 'pricing/return'].map((path) => ({
     path,

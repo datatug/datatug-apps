@@ -1,3 +1,4 @@
+import { checkoutSelection, returnSelection } from './checkout-config.mjs';
 import type { Router } from '@angular/router';
 import {
   isSneatAccountReady,
@@ -17,13 +18,40 @@ export function appCheckoutAuth(
   returnPath: string,
   continuationLabel = 'DataTug Pro',
 ): CheckoutAuth {
-  const proPath =
-    /^\/(?:subscribe\?plan=pro&period=(?:monthly|yearly)(?:&checkout=test)?|pricing\/return\?mode=(?:test|live)&session_id=cs_(?:test_|live_)?[A-Za-z0-9_]+)$/;
-  const businessPath =
-    /^\/(?:business\/checkout\?planID=datatug-business-usage-(?:monthly|annual)(?:&checkout=test)?(?:&spaceID=[A-Za-z0-9_-]{1,128})?|business\/checkout\/return\?spaceID=[A-Za-z0-9_-]{1,128}&mode=(?:test&session_id=cs_test_[A-Za-z0-9_]+|live&session_id=cs_live_[A-Za-z0-9_]+))$/;
-  if (!proPath.test(returnPath) && !businessPath.test(returnPath)) {
+  let continuation: URL;
+  try {
+    continuation = new URL(returnPath, 'https://datatug.app');
+  } catch {
     throw new Error('Invalid checkout continuation');
   }
+  const safeKeys = [...continuation.searchParams.keys()].every((key) =>
+    [
+      'plan',
+      'period',
+      'planID',
+      'spaceID',
+      'purchaseId',
+      'checkout',
+      'mode',
+      'session_id',
+    ].includes(key),
+  );
+  const allowed =
+    safeKeys &&
+    continuation.origin === 'https://datatug.app' &&
+    !continuation.hash &&
+    ((((continuation.pathname === '/subscribe' &&
+      continuation.searchParams.get('plan') === 'pro') ||
+      (continuation.pathname === '/business/checkout' &&
+        continuation.searchParams.has('planID'))) &&
+      checkoutSelection(continuation.search)) ||
+      (continuation.pathname === '/pricing/return' &&
+        returnSelection(continuation.search)) ||
+      /^\/business\/checkout\/return\?spaceID=[A-Za-z0-9_-]{1,128}&mode=(?:test&session_id=cs_test_[A-Za-z0-9_]+|live&session_id=cs_live_[A-Za-z0-9_]+)$/.test(
+        returnPath,
+      ));
+  if (!returnPath.startsWith('/') || !allowed)
+    throw new Error('Invalid checkout continuation');
   let latestAuthState: ISneatAuthState | undefined;
   let latestUserState: ISneatUserState | undefined;
   return {

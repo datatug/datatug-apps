@@ -146,13 +146,20 @@ export function createCheckoutFlow({
           mode === 'test' ? 'pk_test_' : 'pk_live_',
         ) ||
         plan?.accountRequired !== true ||
-        plan.accountKind !== 'personal' ||
+        plan.accountKind !==
+          (selection.kind === 'business' ? 'organisation' : 'personal') ||
         plan.taxIncluded !== true
       )
         throw new Error('invalid_checkout_config');
-      const nextQuote = await api.session(selection.plan);
+      const nextQuote = await api.session(selection.plan, selection);
       if (!lifecycle.fresh(n)) return;
-      if (!validQuote(nextQuote, mode))
+      if (
+        !validQuote(
+          nextQuote,
+          mode,
+          selection.kind === 'business' ? 'organisation' : 'personal',
+        )
+      )
         throw new Error('invalid_checkout_quote');
       config = nextConfig;
       quote = nextQuote;
@@ -441,6 +448,7 @@ export function createReturnFlow({
     const user = lifecycle.user();
     try {
       render({ stage: 'checking', user });
+      let businessCompleted = false;
       for (let attempt = 0; attempt < 5 && lifecycle.fresh(n); attempt++) {
         const status = serviceScope
           ? await api.serviceStatus(serviceScope.spaceID, sessionId)
@@ -499,6 +507,34 @@ export function createReturnFlow({
             return;
           }
           if (
+            [
+              'datatug-business-usage-monthly',
+              'datatug-business-usage-annual',
+            ].includes(status.plan)
+          ) {
+            businessCompleted = status.status === 'complete';
+            const purchase = status.purchase;
+            if (
+              status.status === 'complete' &&
+              status.ready === true &&
+              purchase?.paid === true &&
+              /^[A-Za-z0-9_-]{1,128}$/.test(purchase.accountId ?? '') &&
+              (purchase.setupRequired === true ||
+                (purchase.setupRequired === false &&
+                  /^[A-Za-z0-9_-]{1,128}$/.test(purchase.spaceID ?? '')))
+            ) {
+              render({
+                stage: purchase.setupRequired ? 'setup' : 'business-active',
+                user,
+                purchase,
+                spaceID: purchase.spaceID,
+              });
+              return;
+            }
+            if (attempt < 4) await wait(2000);
+            continue;
+          }
+          if (
             status.plan !== 'datatug-pro-monthly' &&
             status.plan !== 'datatug-pro-annual'
           )
@@ -522,7 +558,9 @@ export function createReturnFlow({
             ? (serviceScope.mode ?? 'test') === 'test'
               ? 'Test checkout is still processing. Business access is pending reconciliation.'
               : 'We’re confirming your Business subscription. Check again shortly.'
-            : 'Payment is being processed. Your plan is not confirmed yet; check again shortly.',
+            : businessCompleted
+              ? 'Checkout completed. We’re confirming your Business payment and access. Check again shortly; do not pay again.'
+              : 'Payment is being processed. Your plan is not confirmed yet; check again shortly.',
         });
     } catch (error) {
       if (lifecycle.fresh(n))
