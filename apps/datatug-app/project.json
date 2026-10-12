@@ -177,6 +177,17 @@
         "command": "playwright test -c apps/datatug-app/playwright.config.ts"
       }
     },
+    "e2e-query-mobile": {
+      "executor": "nx:run-commands",
+      "outputs": [
+        "{workspaceRoot}/coverage/apps/datatug-query-mobile/report",
+        "{workspaceRoot}/coverage/apps/datatug-query-mobile/results"
+      ],
+      "cache": false,
+      "options": {
+        "command": "playwright test -c apps/datatug-app/playwright.query-mobile.config.ts --forbid-only"
+      }
+    },
     "e2e-sso": {
       "executor": "nx:run-commands",
       "outputs": ["{workspaceRoot}/coverage/apps/datatug-app-sso-e2e"],

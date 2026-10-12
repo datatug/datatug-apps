@@ -148,13 +148,40 @@ jobs:
       - name: Derive appropriate SHAs for base and head for nx affected commands
         uses: nrwl/nx-set-shas@v5
 
+      - name: Find affected datatug-app project
+        id: affected-app
+        run: |
+          projects="$(pnpm exec nx show projects --affected --json)"
+          app_affected="$(PROJECTS_JSON="$projects" node -e 'process.stdout.write(JSON.parse(process.env.PROJECTS_JSON).includes("datatug-app") ? "true" : "false")')"
+          echo "datatug_app=$app_affected" >> "$GITHUB_OUTPUT"
+
       - name: Install Playwright browsers
-        run: pnpm exec playwright install --with-deps chromium
+        run: |
+          browsers=(chromium)
+          if [[ "${{ steps.affected-app.outputs.datatug_app }}" == "true" ]]; then
+            browsers+=(webkit)
+          fi
+          pnpm exec playwright install --with-deps "${browsers[@]}"
 
       - name: nx e2e affected
         env:
           DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
         run: pnpm nx affected --target=e2e --parallel=1 --base=${{ env.NX_BASE }}
+
+      - name: nx query mobile WebKit e2e affected
+        env:
+          DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
+        run: pnpm nx affected --target=e2e-query-mobile --parallel=1 --base=${{ env.NX_BASE }}
+
+      - name: Upload query mobile WebKit Playwright report and traces
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: query-mobile-webkit-e2e-results
+          path: |
+            coverage/apps/datatug-query-mobile/report
+            coverage/apps/datatug-query-mobile/results
+          if-no-files-found: ignore
 
       # G-0 hand-off suite (apps/datatug-app/e2e/demo-handoff.spec.ts): the holding page for /demo and the
       # project chat, and proof that the visitor's question reaches no analytics or error report. It needs the
