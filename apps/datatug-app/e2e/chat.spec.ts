@@ -114,7 +114,7 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
   expect(Math.abs((bubble.y + bubble.height / 2) - (you.y + you.height / 2))).toBeLessThan(12);
   await expect(page.locator('.turn').first().getByText('Rows 100', { exact: true })).toBeVisible();
   await expect(page.locator('.turn').first().locator('.dtql')).toHaveCount(0);
-  await page.locator('.turn').first().getByText('DTQL', { exact: true }).click();
+  await page.locator('.turn').first().getByText('TugQL', { exact: true }).click();
   await expect(page.locator('.turn').first().locator('.dtql')).toBeVisible();
   await expect(page.locator('.turn').first().locator('.dtql')).toContainText('from:\n  schema: "main"\n  name: "Invoice"');
   await expect(page.locator('.turn').first().locator('.dtql')).toContainText('limit: 100');
