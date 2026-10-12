@@ -2796,7 +2796,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         return;
       }
       const currentTitle = queryState.title ?? queryState.def?.title;
-      this.queryPageTitle.set(currentTitle?.trim() || 'Query');
+      this.queryPageTitle.set(
+        typeof currentTitle === 'string'
+          ? currentTitle.trim() || 'Query'
+          : 'Query',
+      );
       if (
         this.navigationDraft?.query.id === queryState.id &&
         !queryState.isNew &&
