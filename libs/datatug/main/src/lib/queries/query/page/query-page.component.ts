@@ -2498,7 +2498,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         },
       },
     });
-    this.authorWorkspaceLayout?.mobilePane.set('editor');
+    this.authorWorkspaceLayout?.scrollToEditor();
     this.focusAuthorLookupAfterRender();
   }
 
