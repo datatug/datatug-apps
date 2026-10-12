@@ -54,7 +54,7 @@ export function createStaticOvdbFetch(source: StaticOvdbSource, realFetch: typeo
 
   return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-    const match = new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/v1/databases/([^/]+)/dtql$`).exec(url);
+    const match = new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/v1/databases/([^/]+)/(?:dtql|tugql)$`).exec(url);
     if (!match || init?.method !== 'POST') return json({ error: 'not found' }, 404);
     const headers = new Headers(init.headers);
     if (headers.get('OVDB-Page-Close') === 'true') return new Response(null, { status: 204 });

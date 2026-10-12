@@ -1278,7 +1278,7 @@ export class GithubProjectReaderService {
       return defFileName.slice(0, -'.json'.length);
     }
     const stem = defFileName.slice(0, -'.json'.length);
-    const ext = type === 'HTTP' ? 'http' : type === 'DTQL' ? 'dtql' : 'sql';
+    const ext = type === 'HTTP' ? 'http' : type === 'TugQL' ? 'tugql' : type === 'DTQL' ? 'dtql' : 'sql';
     return `${stem}.${ext}`;
   }
 
