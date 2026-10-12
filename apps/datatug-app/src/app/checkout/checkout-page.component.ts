@@ -1,3 +1,4 @@
+import { CheckoutTitle } from './checkout-title';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -12,6 +13,16 @@ import {
 import { DatePipe } from '@angular/common';
 import { Title } from '@angular/platform-browser';
 import { ActivatedRoute, ParamMap, Router, RouterLink } from '@angular/router';
+import { IonButton } from '@ionic/angular/ion-button';
+import { IonCard } from '@ionic/angular/ion-card';
+import { IonCardHeader } from '@ionic/angular/ion-card-header';
+import { IonCardTitle } from '@ionic/angular/ion-card-title';
+import { IonCardContent } from '@ionic/angular/ion-card-content';
+import { IonItem } from '@ionic/angular/ion-item';
+import { IonInput } from '@ionic/angular/ion-input';
+import { IonSelect } from '@ionic/angular/ion-select';
+import { IonSelectOption } from '@ionic/angular/ion-select-option';
+import { IonCheckbox } from '@ionic/angular/ion-checkbox';
 import { IonChip } from '@ionic/angular/ion-chip';
 import { IonContent } from '@ionic/angular/ion-content';
 import { IonHeader } from '@ionic/angular/ion-header';
@@ -47,6 +58,16 @@ import type {
 @Component({
   selector: 'datatug-checkout-page',
   imports: [
+    IonButton,
+    IonCard,
+    IonCardHeader,
+    IonCardTitle,
+    IonCardContent,
+    IonItem,
+    IonInput,
+    IonSelect,
+    IonSelectOption,
+    IonCheckbox,
     RouterLink,
     DatePipe,
     IonHeader,
@@ -63,6 +84,13 @@ import type {
 })
 export class CheckoutPageComponent implements OnDestroy {
   private readonly documentTitle = inject(Title);
+  private readonly priorTitle = this.documentTitle
+    .getTitle()
+    .startsWith('Complete your DataTug')
+    ? 'DataTug.app'
+    : this.documentTitle.getTitle();
+  private readonly titleActive = signal(true);
+  private readonly checkoutTitle = inject(CheckoutTitle);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly auth = inject(SneatAuthStateService);
@@ -125,11 +153,13 @@ export class CheckoutPageComponent implements OnDestroy {
   private readonly subscription: Subscription;
 
   constructor() {
-    effect(() =>
-      this.documentTitle.setTitle(
-        `Complete your ${this.subscriptionLabel()} subscription`,
-      ),
-    );
+    effect(() => {
+      if (this.titleActive())
+        this.checkoutTitle.claim(
+          this,
+          `Complete your ${this.subscriptionLabel()} subscription`,
+        );
+    });
     this.subscription = this.route.queryParamMap.subscribe((params) =>
       this.start(params),
     );
@@ -527,7 +557,17 @@ export class CheckoutPageComponent implements OnDestroy {
       void this.flow.acknowledge(this.embedded.nativeElement);
   }
 
+  private releaseTitle(): void {
+    this.titleActive.set(false);
+    this.checkoutTitle.release(
+      this,
+      `Complete your ${this.subscriptionLabel()} subscription`,
+      this.priorTitle,
+    );
+  }
+
   ionViewWillLeave(): void {
+    this.releaseTitle();
     this.generation++;
     this.leftPage = true;
     this.flow?.dispose();
@@ -536,6 +576,7 @@ export class CheckoutPageComponent implements OnDestroy {
   }
 
   ionViewWillEnter(): void {
+    this.titleActive.set(true);
     if (this.leftPage) {
       this.leftPage = false;
       this.start();
@@ -543,6 +584,7 @@ export class CheckoutPageComponent implements OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.releaseTitle();
     this.generation++;
     this.subscription.unsubscribe();
     this.flow?.dispose();

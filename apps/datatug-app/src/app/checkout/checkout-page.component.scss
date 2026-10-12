@@ -174,3 +174,17 @@ input:not([type='checkbox']) {
     font-size: 1.45rem;
   }
 }
+
+ion-card {
+  margin-inline: 0;
+  --background: #fff;
+}
+ion-card-content p {
+  line-height: 1.5;
+}
+ion-card-content ion-button {
+  margin-top: 1rem;
+}
+ion-card-content ion-checkbox {
+  margin-top: 1rem;
+}

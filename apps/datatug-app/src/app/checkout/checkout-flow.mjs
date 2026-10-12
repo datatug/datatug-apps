@@ -15,8 +15,27 @@ export function money(cents) {
   }).format(cents / 100);
 }
 
+export function renewalTerms(quote) {
+  const d = quote.appliedDiscount;
+  const laterPercent =
+    d.kind === 'invitation'
+      ? quote.offer?.reserved
+        ? quote.offer.percentOff
+        : 0
+      : d.percentOff;
+  return {
+    renewal: money(
+      d.kind === 'invitation'
+        ? Math.round((quote.amount.list * (100 - laterPercent)) / 100)
+        : quote.amount.due,
+    ),
+    invitationMonths: d.kind === 'invitation' ? d.durationMonths : undefined,
+  };
+}
+
 function priceSummary(quote) {
   return {
+    ...renewalTerms(quote),
     list: money(quote.amount.list),
     due: money(quote.amount.due),
     discountAmount: money(quote.amount.list - quote.amount.due),
@@ -170,6 +189,7 @@ export function createCheckoutFlow({
         user,
         selection,
         quote: {
+          ...renewalTerms(quote),
           list: money(quote.amount.list),
           due: money(quote.amount.due),
           discountAmount: money(quote.amount.list - quote.amount.due),
@@ -303,6 +323,7 @@ export function createSpaceServiceCheckoutFlow({
         user,
         selection,
         quote: {
+          ...renewalTerms(quote),
           list: money(quote.amount.list),
           due: money(quote.amount.due),
           discountAmount: money(quote.amount.list - quote.amount.due),
@@ -339,6 +360,7 @@ export function createSpaceServiceCheckoutFlow({
       user,
       selection,
       quote: {
+        ...renewalTerms(quote),
         list: money(quote.amount.list),
         due: money(quote.amount.due),
         discountAmount: money(quote.amount.list - quote.amount.due),
@@ -393,6 +415,7 @@ export function createSpaceServiceCheckoutFlow({
           ...(quote
             ? {
                 quote: {
+                  ...renewalTerms(quote),
                   list: money(quote.amount.list),
                   due: money(quote.amount.due),
                   discountAmount: money(quote.amount.list - quote.amount.due),

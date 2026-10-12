@@ -38,6 +38,7 @@ disables traces/video/screenshots and never enters cards or clicks Pay.
 
 ```sh
 DATATUG_CHECKOUT_PROVIDER_TEST=1 \
+DATATUG_CHECKOUT_TEST_BUYER_UID=designated-test-uid \
 DATATUG_CHECKOUT_TEST_STORAGE_STATE=/private/path/test-buyer-state.json \
   pnpm nx run datatug-app:e2e-checkout-provider
 ```
@@ -50,7 +51,7 @@ reconciliation and physical Mobile Safari still require separate evidence.
 To inspect an already paid TEST return without creating a session or changing
 its destination, also set `DATATUG_CHECKOUT_TEST_RETURN_SESSION` to that existing
 `cs_test_…` identifier. This case allows GET checkout requests only. It is skipped
-when the identifier or designated buyer state is absent; it never creates the
+when the identifier is absent; authentication requires dedicated credentials or designated buyer state plus expected UID. it never creates the
 paid fixture it needs. Provider-form and return checks are manual opt-in gates,
 not part of the simulated CI suite.
 
@@ -244,3 +245,31 @@ this app's directory-naming convention for pages under a store. Do not
 gate the `store/:storeId/**` routes behind sign-in, and do not reach for
 the emulator sign-in recipe, to "fix" a journey failure — neither
 addresses any failure mode this suite has actually had.
+
+
+### Unattended isolated TEST authentication
+
+The provider suite can sign in normally with a dedicated TEST account using
+private environment variables `DATATUG_CHECKOUT_TEST_EMAIL`,
+`DATATUG_CHECKOUT_TEST_PASSWORD` and `DATATUG_CHECKOUT_TEST_BUYER_UID`.
+It validates the expected UID and Firebase project `sneat-eur3-1` before
+forwarding checkout traffic. This is ordinary password authentication, with no
+admin custom tokens, impersonation or account/permission creation. Existing
+private storage state is optional but must pass the same identity check.
+Missing credentials fail authenticated cases explicitly; they do not prompt or
+silently skip. Catalog-only checks still run without authentication.
+
+Use `DATATUG_CHECKOUT_PROVIDER_TEST=1` and, after building production,
+`DATATUG_CHECKOUT_PROVIDER_SERVE=1` to let Playwright own an ephemeral static
+server on the already approved origin `http://datatug.localhost:4328`.
+It refuses an occupied port, closes on test teardown, and never changes origin
+allowlists or replaces a preview. Traces, screenshots, video and authentication
+state output are off. The separate manual GitHub Actions workflow consumes
+repository secrets; it never runs automatically for a pull request.
+
+This suite creates only unpaid TEST forms. It never enters cards or submits a
+payment; provider intent confirmation requests are blocked. Any future actual
+TEST payment suite must use a separate explicit opt-in. An existing paid return
+may be checked read-only by supplying `DATATUG_CHECKOUT_TEST_RETURN_SESSION`.
+No configured credentials or executed authenticated provider result are implied
+by adding this fixture/workflow.

@@ -38,7 +38,7 @@ it.each([
       discount: '30% launch discount',
     });
     await fixture.whenStable();
-    expect(root.textContent).toContain('Final price');
+    expect(root.textContent).toContain('Due today');
     expect(root.textContent).toContain('€5.70');
     expect(root.textContent).toContain('€13.30');
     fixture.componentRef.setInput('yearly', true);
@@ -67,4 +67,24 @@ it('discloses base and first-month terms without implying automatic Pro cancella
   expect(fixture.nativeElement.textContent).toContain('You can keep Pro');
   expect(fixture.nativeElement.textContent).toContain('several spaces');
   expect(fixture.nativeElement.querySelector('.yearly-link')).toBeNull();
+});
+
+it('discloses invitation expiry separately from due today and preserves yearly units', async () => {
+  const fixture = TestBed.createComponent(CheckoutPriceSummaryComponent);
+  fixture.componentRef.setInput('planName', 'DataTug Business');
+  fixture.componentRef.setInput('monthlyMinor', 9900);
+  fixture.componentRef.setInput('business', true);
+  fixture.componentRef.setInput('yearly', true);
+  fixture.componentRef.setInput('quote', {
+    list: '€990.00',
+    due: '€495.00',
+    renewal: '€693.00',
+    invitationMonths: 12,
+  });
+  await fixture.whenStable();
+  const text = fixture.nativeElement.textContent.replace(/\s+/g, ' ');
+  expect(text).toContain('Due today');
+  expect(text).toContain('discount lasts 12 months');
+  expect(text).toContain('€693.00 per year');
+  expect(text).toContain('does not postpone billing');
 });

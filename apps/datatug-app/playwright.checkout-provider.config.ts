@@ -8,6 +8,15 @@ if (process.env.DATATUG_CHECKOUT_PROVIDER_TEST !== '1')
   );
 
 export default defineConfig({
+  webServer:
+    process.env.DATATUG_CHECKOUT_PROVIDER_SERVE === '1'
+      ? {
+          command: 'node tools/serve-checkout-provider.mjs',
+          url: 'http://datatug.localhost:4328',
+          reuseExistingServer: false,
+          gracefulShutdown: { signal: 'SIGTERM', timeout: 5000 },
+        }
+      : undefined,
   testDir: './e2e',
   testMatch: 'checkout-provider.spec.ts',
   workers: 1,
