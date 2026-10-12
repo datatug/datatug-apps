@@ -278,7 +278,38 @@ const syntaxTheme = EditorView.theme({
     outlineOffset: '-2px',
   },
   '@media (forced-colors: active)': {
-    '.tugql-token-keyword': { color: 'LinkText', textDecoration: 'underline' },
+    '&': { color: 'CanvasText', backgroundColor: 'Canvas' },
+    '.cm-scroller, .cm-content': {
+      color: 'CanvasText',
+      backgroundColor: 'Canvas',
+      caretColor: 'CanvasText',
+    },
+    '.cm-gutters, .cm-gutterElement': {
+      color: 'CanvasText',
+      backgroundColor: 'Canvas',
+    },
+    '.cm-gutters': { borderRightColor: 'CanvasText' },
+    '.cm-activeLine, .cm-activeLineGutter': {
+      color: 'CanvasText',
+      backgroundColor: 'Canvas',
+    },
+    '.cm-tooltip.cm-tooltip-autocomplete': {
+      border: '1px solid CanvasText',
+      color: 'CanvasText',
+      backgroundColor: 'Canvas',
+      boxShadow: 'none',
+    },
+    '.cm-tooltip.cm-tooltip-autocomplete ul li[aria-selected]': {
+      color: 'CanvasText',
+      backgroundColor: 'Canvas',
+      outline: '2px solid CanvasText',
+      outlineOffset: '-2px',
+      fontWeight: '600',
+    },
+    '.tugql-token-keyword': {
+      color: 'CanvasText',
+      textDecoration: 'underline',
+    },
     '.tugql-token-parameter': {
       color: 'CanvasText',
       textDecoration: 'underline dashed',
@@ -288,7 +319,11 @@ const syntaxTheme = EditorView.theme({
       textDecoration: 'underline dotted',
     },
     '.tugql-token-number': { color: 'CanvasText', fontWeight: '700' },
-    '.tugql-token-comment': { color: 'GrayText' },
+    '.tugql-token-comment': { color: 'CanvasText', fontStyle: 'italic' },
+    '.tugql-token-identifier, .tugql-token-operator, .tugql-token-punctuation':
+      {
+        color: 'CanvasText',
+      },
     '&.cm-focused': { outlineColor: 'Highlight' },
   },
 });

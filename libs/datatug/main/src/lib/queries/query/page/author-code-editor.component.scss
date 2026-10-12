@@ -139,25 +139,28 @@
 }
 
 @media (forced-colors: active) {
+  .author-code-header,
+  .author-format-diagnostics {
+    background: Canvas;
+    color: CanvasText;
+  }
+  .author-code-label,
+  .author-format-diagnostic-context,
+  .author-format-diagnostic-more {
+    color: CanvasText;
+  }
   .author-code-suggestions,
   .author-format-diagnostic {
     border-color: ButtonText;
+    background: ButtonFace;
+    color: ButtonText;
+  }
+  .author-code-suggestions span,
+  .author-format-diagnostic-location {
     color: ButtonText;
   }
   .author-code-suggestions:focus-visible,
   .author-format-diagnostic:focus-visible {
     outline-color: Highlight;
-  }
-
-  :host ::ng-deep .cm-tooltip.cm-tooltip-autocomplete {
-    border: 1px solid CanvasText;
-    background: Canvas;
-    color: CanvasText;
-    box-shadow: none;
-  }
-
-  :host ::ng-deep .cm-tooltip.cm-tooltip-autocomplete ul li[aria-selected] {
-    background: Highlight;
-    color: HighlightText;
   }
 }
