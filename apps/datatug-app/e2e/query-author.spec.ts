@@ -18,9 +18,22 @@ const CTE_GRAPH_AUTHOR_URL =
 // until the option has been visible for this interaction window.
 const COMPLETION_INTERACTION_DELAY_MS = 75;
 
+// Playwright resolves ControlOrMeta from the host OS, but CodeMirror treats
+// iPhone/iPad/iPod UAs as Mac and binds Mod to Meta.
+const codeMirrorMod = async (page: Page): Promise<'Meta' | 'ControlOrMeta'> =>
+  /iPhone|iPad|iPod/u.test(await page.evaluate(() => navigator.userAgent))
+    ? 'Meta'
+    : 'ControlOrMeta';
+
 const savedQuerySource = (queryId: string, repository = DEMO_REPO): string =>
   readFileSync(
-    join(repository ?? '', 'demo-project-1', 'queries', 'demodb', `${queryId}.query.dtql`),
+    join(
+      repository ?? '',
+      'demo-project-1',
+      'queries',
+      'demodb',
+      `${queryId}.query.dtql`,
+    ),
     'utf8',
   );
 
@@ -30,20 +43,25 @@ const pasteCode = async (
   source: string,
 ): Promise<void> => {
   await editor.click();
-  await editor.press('ControlOrMeta+A');
+  await editor.press(`${await codeMirrorMod(page)}+A`);
   if (page.context().browser()?.browserType().name() === 'webkit') {
     // WebKit does not support Playwright's Chromium clipboard permission
     // grant. insertText still follows the focused editor's native input path.
     await page.keyboard.insertText(source);
   } else {
-    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page
+      .context()
+      .grantPermissions(['clipboard-read', 'clipboard-write']);
     await page.evaluate((text) => navigator.clipboard.writeText(text), source);
     await editor.press('ControlOrMeta+V');
   }
   await expectEditorSource(page, editor, source);
 };
 
-const copyEditorSource = async (_page: Page, editor: Locator): Promise<string> =>
+const copyEditorSource = async (
+  _page: Page,
+  editor: Locator,
+): Promise<string> =>
   (await editor.locator('.cm-line').allTextContents()).join('\n');
 
 const expectEditorSource = async (
@@ -66,73 +84,175 @@ const tokenColor = (token: Locator): Promise<string> =>
   token.evaluate((element) => getComputedStyle(element).color);
 
 const contrastRatio = async (token: Locator): Promise<number> =>
-  token.evaluate((element) => {
-    const channel = (value: string): number[] =>
-      [...value.matchAll(/[\d.]+/gu)].map((match) => Number(match[0]));
-    const luminance = (color: string): number => {
-      const rgb = channel(color)
-        .slice(0, 3)
-        .map((value) => {
-          const normalized = value / 255;
-          return normalized <= 0.04045
-            ? normalized / 12.92
-            : ((normalized + 0.055) / 1.055) ** 2.4;
-        });
-      return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
-    };
-    let canvas: Element | null = element.closest('.cm-editor') ?? element.closest('.author-sql-scroll');
-    if (!canvas) throw new Error('Token is not inside a syntax editor canvas');
-    const foregroundColor = getComputedStyle(element).color;
-    let backgroundColor = getComputedStyle(canvas).backgroundColor;
-    while (backgroundColor === 'rgba(0, 0, 0, 0)' && canvas.parentElement) {
-      canvas = canvas.parentElement;
-      backgroundColor = getComputedStyle(canvas).backgroundColor;
-    }
-    const foreground = luminance(foregroundColor);
-    const background = luminance(backgroundColor);
-    return {
-      foregroundColor,
-      backgroundColor,
-      tokenClass: (element as HTMLElement).className,
-      inlineColor: (element as HTMLElement).style.color,
-      keywordVariable: getComputedStyle(element.closest('.cm-editor') ?? element).getPropertyValue('--tugql-keyword'),
-      ratio:
-        (Math.max(foreground, background) + 0.05) /
-        (Math.min(foreground, background) + 0.05),
-    };
-  }).then(({ ratio }) => ratio);
+  token
+    .evaluate((element) => {
+      const channel = (value: string): number[] =>
+        [...value.matchAll(/[\d.]+/gu)].map((match) => Number(match[0]));
+      const luminance = (color: string): number => {
+        const rgb = channel(color)
+          .slice(0, 3)
+          .map((value) => {
+            const normalized = value / 255;
+            return normalized <= 0.04045
+              ? normalized / 12.92
+              : ((normalized + 0.055) / 1.055) ** 2.4;
+          });
+        return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
+      };
+      let canvas: Element | null =
+        element.closest('.cm-editor') ?? element.closest('.author-sql-scroll');
+      if (!canvas)
+        throw new Error('Token is not inside a syntax editor canvas');
+      const foregroundColor = getComputedStyle(element).color;
+      let backgroundColor = getComputedStyle(canvas).backgroundColor;
+      while (backgroundColor === 'rgba(0, 0, 0, 0)' && canvas.parentElement) {
+        canvas = canvas.parentElement;
+        backgroundColor = getComputedStyle(canvas).backgroundColor;
+      }
+      const foreground = luminance(foregroundColor);
+      const background = luminance(backgroundColor);
+      return {
+        foregroundColor,
+        backgroundColor,
+        tokenClass: (element as HTMLElement).className,
+        inlineColor: (element as HTMLElement).style.color,
+        keywordVariable: getComputedStyle(
+          element.closest('.cm-editor') ?? element,
+        ).getPropertyValue('--tugql-keyword'),
+        ratio:
+          (Math.max(foreground, background) + 0.05) /
+          (Math.min(foreground, background) + 0.05),
+      };
+    })
+    .then(({ ratio }) => ratio);
 
-const completionContrastRatio = async (token: Locator): Promise<number> =>
-  token.evaluate((element) => {
-    const channel = (value: string): number[] =>
-      [...value.matchAll(/[\d.]+/gu)].map((match) => Number(match[0]));
-    const luminance = (color: string): number => {
-      const rgb = channel(color)
-        .slice(0, 3)
-        .map((value) => {
-          const normalized = value / 255;
-          return normalized <= 0.04045
-            ? normalized / 12.92
-            : ((normalized + 0.055) / 1.055) ** 2.4;
-        });
-      return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
-    };
-    const foreground = luminance(getComputedStyle(element).color);
-    let surface: Element | null = element;
-    let backgroundColor = getComputedStyle(surface).backgroundColor;
-    while (backgroundColor === 'rgba(0, 0, 0, 0)' && surface.parentElement) {
-      surface = surface.parentElement;
-      backgroundColor = getComputedStyle(surface).backgroundColor;
+type RgbaColor = { red: number; green: number; blue: number; alpha: number };
+
+const parseCssColor = (value: string): RgbaColor => {
+  const match = /^rgba?\((.*)\)$/iu.exec(value.trim());
+  if (!match)
+    throw new Error(`Cannot calculate contrast for CSS color ${value}`);
+  const [channels, alphaValue] = match[1].split(/\s*\/\s*/u);
+  const parts = channels.includes(',')
+    ? channels.split(/\s*,\s*/u)
+    : channels.trim().split(/\s+/u);
+  const alphaPart = alphaValue ?? parts[3];
+  if (parts.length < 3 || parts.length > 4) {
+    throw new Error(`Cannot calculate contrast for CSS color ${value}`);
+  }
+  const channel = (part: string): number => {
+    const percentage = part.endsWith('%');
+    const number = Number.parseFloat(part);
+    if (!Number.isFinite(number)) {
+      throw new Error(`Cannot calculate contrast for CSS color ${value}`);
     }
-    if (backgroundColor === 'rgba(0, 0, 0, 0)') {
-      throw new Error('Completion popup has no resolved background color');
+    const result = percentage ? (number * 255) / 100 : number;
+    if (result < 0 || result > 255) {
+      throw new Error(`CSS color channel is out of range: ${value}`);
     }
-    const background = luminance(backgroundColor);
-    return (
-      (Math.max(foreground, background) + 0.05) /
-      (Math.min(foreground, background) + 0.05)
+    return result;
+  };
+  const alpha =
+    alphaPart === undefined
+      ? 1
+      : alphaPart.endsWith('%')
+        ? Number.parseFloat(alphaPart) / 100
+        : Number.parseFloat(alphaPart);
+  if (!Number.isFinite(alpha) || alpha < 0 || alpha > 1) {
+    throw new Error(`CSS color alpha is out of range: ${value}`);
+  }
+  return {
+    red: channel(parts[0]),
+    green: channel(parts[1]),
+    blue: channel(parts[2]),
+    alpha,
+  };
+};
+
+const composite = (foreground: RgbaColor, background: RgbaColor): RgbaColor => {
+  const alpha = foreground.alpha + background.alpha * (1 - foreground.alpha);
+  if (alpha === 0) return { red: 0, green: 0, blue: 0, alpha: 0 };
+  const channel = (front: number, back: number): number =>
+    (front * foreground.alpha +
+      back * background.alpha * (1 - foreground.alpha)) /
+    alpha;
+  return {
+    red: channel(foreground.red, background.red),
+    green: channel(foreground.green, background.green),
+    blue: channel(foreground.blue, background.blue),
+    alpha,
+  };
+};
+
+const contrastBetweenColors = (
+  foregroundColor: string,
+  backgroundColors: string | readonly string[],
+): { ratio: number; resolvedBackgroundColor: string } => {
+  const backgrounds = Array.isArray(backgroundColors)
+    ? [...backgroundColors].reverse()
+    : [backgroundColors as string];
+  let background: RgbaColor = { red: 0, green: 0, blue: 0, alpha: 0 };
+  for (const color of backgrounds) {
+    background = composite(parseCssColor(color), background);
+  }
+  if (background.alpha < 0.999999) {
+    throw new Error(
+      `Cannot calculate contrast over an unresolved background (${background.alpha} alpha)`,
     );
+  }
+  const resolvedBackgroundColor = `rgb(${background.red}, ${background.green}, ${background.blue})`;
+  const foreground = composite(parseCssColor(foregroundColor), background);
+  const luminance = (color: RgbaColor): number => {
+    const linear = (value: number): number => {
+      const normalized = value / 255;
+      return normalized <= 0.04045
+        ? normalized / 12.92
+        : ((normalized + 0.055) / 1.055) ** 2.4;
+    };
+    return (
+      linear(color.red) * 0.2126 +
+      linear(color.green) * 0.7152 +
+      linear(color.blue) * 0.0722
+    );
+  };
+  const foregroundLuminance = luminance(foreground);
+  const backgroundLuminance = luminance(background);
+  return {
+    ratio:
+      (Math.max(foregroundLuminance, backgroundLuminance) + 0.05) /
+      (Math.min(foregroundLuminance, backgroundLuminance) + 0.05),
+    resolvedBackgroundColor,
+  };
+};
+
+const completionContrast = async (
+  token: Locator,
+): Promise<{
+  foregroundColor: string;
+  backgroundColor: string;
+  backgroundLayers: string[];
+  resolvedBackgroundColor: string;
+  ratio: number;
+}> => {
+  const colors = await token.evaluate((element) => {
+    const backgroundLayers: string[] = [];
+    let surface: Element | null = element;
+    while (surface) {
+      backgroundLayers.push(getComputedStyle(surface).backgroundColor);
+      surface = surface.parentElement;
+    }
+    return {
+      foregroundColor: getComputedStyle(element).color,
+      backgroundColor: getComputedStyle(element).backgroundColor,
+      backgroundLayers,
+    };
   });
+  const contrast = contrastBetweenColors(
+    colors.foregroundColor,
+    colors.backgroundLayers,
+  );
+  return { ...colors, ...contrast };
+};
 
 test.skip(
   !DEMO_REPO,
@@ -211,16 +331,20 @@ test('TugQL and SQL coloring preserves editable source, keyboard undo, and reada
   await page
     .locator('ion-app')
     .evaluate((app) => app.classList.remove('ion-palette-dark'));
-  await expect(author.getByTestId('author-run')).toHaveAttribute('disabled', '');
+  await expect(author.getByTestId('author-run')).toHaveAttribute(
+    'disabled',
+    '',
+  );
   await expect(page.getByTestId('author-execution-receipt')).toHaveCount(0);
   await author.getByTestId('author-code-tab').click();
 
   await editor.click();
   await editor.focus();
   await expect(editor).toBeFocused();
-  await editor.press('ControlOrMeta+End');
+  const mod = await codeMirrorMod(page);
+  await editor.press(`${mod}+End`);
   await editor.press('Enter');
-  await editor.press('ControlOrMeta+End');
+  await editor.press(`${mod}+End`);
   await editor.type('s', { delay: 20 });
   await expectEditorSource(page, editor, `${original}\ns`);
   await editor.type('e', { delay: 20 });
@@ -228,9 +352,15 @@ test('TugQL and SQL coloring preserves editable source, keyboard undo, and reada
   await editor.type("lect 'draft', 42 -- temporary edit", { delay: 20 });
   const editedSource = `${original}\nselect 'draft', 42 -- temporary edit`;
   await expectEditorSource(page, editor, editedSource);
-  const stringToken = editor.locator('.tugql-token-string').filter({ hasText: "'draft'" });
-  const numberToken = editor.locator('.tugql-token-number').filter({ hasText: '42' });
-  const commentToken = editor.locator('.tugql-token-comment').filter({ hasText: '-- temporary edit' });
+  const stringToken = editor
+    .locator('.tugql-token-string')
+    .filter({ hasText: "'draft'" });
+  const numberToken = editor
+    .locator('.tugql-token-number')
+    .filter({ hasText: '42' });
+  const commentToken = editor
+    .locator('.tugql-token-comment')
+    .filter({ hasText: '-- temporary edit' });
   await expect(stringToken).toContainText("'draft'");
   await expect(numberToken).toContainText('42');
   await expect(editor.locator('.tugql-token-comment')).toContainText(
@@ -251,15 +381,40 @@ test('TugQL and SQL coloring preserves editable source, keyboard undo, and reada
   await page
     .locator('ion-app')
     .evaluate((app) => app.classList.add('ion-palette-dark'));
-  for (const token of [keyword, parameter, stringToken, numberToken, commentToken]) {
+  for (const token of [
+    keyword,
+    parameter,
+    stringToken,
+    numberToken,
+    commentToken,
+  ]) {
     expect(await contrastRatio(token)).toBeGreaterThanOrEqual(4.5);
   }
+  await page.emulateMedia({ forcedColors: 'active' });
+  const forcedSyntaxTokens = [
+    ['keyword', keyword],
+    ['parameter', parameter],
+    ['string', stringToken],
+    ['number', numberToken],
+    ['comment', commentToken],
+  ] as const;
+  const forcedSyntaxEvidence = [];
+  for (const [name, token] of forcedSyntaxTokens) {
+    const colors = await completionContrast(token);
+    expect(colors.ratio).toBeGreaterThanOrEqual(4.5);
+    forcedSyntaxEvidence.push({ name, ...colors });
+  }
+  console.info(
+    '[forced-colors-syntax-token-contrast]',
+    JSON.stringify(forcedSyntaxEvidence),
+  );
+  await page.emulateMedia({ forcedColors: 'none' });
   await page
     .locator('ion-app')
     .evaluate((app) => app.classList.remove('ion-palette-dark'));
-  await editor.press('ControlOrMeta+Z');
+  await editor.press(`${mod}+Z`);
   await expectEditorSource(page, editor, `${original}\n`);
-  await editor.press('ControlOrMeta+Z');
+  await editor.press(`${mod}+Z`);
   await expectEditorSource(page, editor, original);
 
   await editor.locator('.cm-line').last().click();
@@ -268,30 +423,39 @@ test('TugQL and SQL coloring preserves editable source, keyboard undo, and reada
   const parentEcho = `${original}-- echoed through parent`;
   await author.getByTestId('author-compose-tab').click();
   await author.getByTestId('author-code-tab').click();
-  const remountedEditor = author.getByTestId('query-body-text').locator('.cm-content');
+  const remountedEditor = author
+    .getByTestId('query-body-text')
+    .locator('.cm-content');
   await expectEditorSource(page, remountedEditor, parentEcho);
   await remountedEditor.locator('.cm-line').last().click();
   await remountedEditor.press('Tab');
   await expect(remountedEditor).not.toBeFocused();
 
   await page.setViewportSize({ width: 320, height: 780 });
-  const editorScroller = author.getByTestId('query-body-text').locator('.cm-scroller');
+  const editorScroller = author
+    .getByTestId('query-body-text')
+    .locator('.cm-scroller');
   await expect
     .poll(() =>
-      editorScroller.evaluate((element) => element.scrollWidth - element.clientWidth),
+      editorScroller.evaluate(
+        (element) => element.scrollWidth - element.clientWidth,
+      ),
     )
     .toBeLessThanOrEqual(1);
-
 });
 
 test('TugQL suggestions are explicit, source-safe, and touch reachable', async ({
   page,
 }, testInfo) => {
   test.setTimeout(90_000);
+  expect(
+    contrastBetweenColors('rgba(0, 0, 0, 0.847)', 'rgb(192, 192, 192)').ratio,
+  ).toBeCloseTo(9.227, 3);
   const isMobile = testInfo.project.use.isMobile === true;
   let workersStarted = 0;
   page.on('worker', () => workersStarted++);
   await page.goto(AUTHOR_URL);
+  const mod = await codeMirrorMod(page);
   const author = page.getByTestId('tugql-author');
   const runButton = author.getByTestId('author-run').locator('button');
   await expect(author).toBeVisible({ timeout: 20_000 });
@@ -325,7 +489,7 @@ test('TugQL suggestions are explicit, source-safe, and touch reachable', async (
     'parameters (',
     '  @CustomerId integer required',
     ')',
-    'from Invoice as i',
+    'from Invoice as i -- forced-colors comment',
     'where i.CustomerId = @C',
   ].join('\n');
   await pasteCode(page, editor, incompleteDraft);
@@ -335,37 +499,141 @@ test('TugQL suggestions are explicit, source-safe, and touch reachable', async (
   if (!isMobile) await page.setViewportSize({ width: 320, height: 780 });
 
   if (isMobile) {
-    await author.getByRole('button', { name: 'Suggestions (Ctrl+Space)' }).tap();
+    await author
+      .getByRole('button', { name: 'Suggestions (Ctrl+Space)' })
+      .tap();
   } else {
     await editor.press('Control+Space');
   }
   await expect(popup).toBeVisible();
+  const selectedOption = popup.locator('li[aria-selected="true"]');
+  await expect(selectedOption).toBeVisible();
   const lightPopupBackground = await popup.evaluate(
     (element) => getComputedStyle(element).backgroundColor,
   );
   expect(lightPopupBackground).not.toBe('rgba(0, 0, 0, 0)');
-  expect(await completionContrastRatio(popup.locator('li').first())).toBeGreaterThanOrEqual(4.5);
+  const lightContrast = await completionContrast(selectedOption);
+  expect(lightContrast.ratio).toBeGreaterThanOrEqual(4.5);
   const popupBounds = await popup.boundingBox();
   const viewport = page.viewportSize();
   if (!popupBounds || !viewport) {
-    throw new Error('The completion popup or viewport has no measurable bounds');
+    throw new Error(
+      'The completion popup or viewport has no measurable bounds',
+    );
   }
   expect(popupBounds.x).toBeGreaterThanOrEqual(0);
   expect(popupBounds.x + popupBounds.width).toBeLessThanOrEqual(
     viewport.width + 1,
   );
-  const option = popup.locator('.cm-completionLabel', { hasText: /^CustomerId$/u });
+  const option = popup.locator('.cm-completionLabel', {
+    hasText: /^CustomerId$/u,
+  });
   await expect(option).toBeVisible();
-  await page.locator('ion-app').evaluate((app) => app.classList.add('ion-palette-dark'));
+  await page
+    .locator('ion-app')
+    .evaluate((app) => app.classList.add('ion-palette-dark'));
   const darkPopupBackground = await popup.evaluate(
     (element) => getComputedStyle(element).backgroundColor,
   );
   expect(darkPopupBackground).not.toBe(lightPopupBackground);
-  expect(await completionContrastRatio(popup.locator('li').first())).toBeGreaterThanOrEqual(4.5);
+  const darkContrast = await completionContrast(selectedOption);
+  expect(darkContrast.ratio).toBeGreaterThanOrEqual(4.5);
   await page.emulateMedia({ forcedColors: 'active' });
-  expect(await completionContrastRatio(popup.locator('li').first())).toBeGreaterThanOrEqual(4.5);
+  const forcedColorsContrast = await completionContrast(selectedOption);
+  const popupColors = await completionContrast(popup);
+  const forcedColorsStyle = await selectedOption.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      outlineColor: style.outlineColor,
+      backgroundColor: style.backgroundColor,
+      outlineStyle: style.outlineStyle,
+      outlineWidth: style.outlineWidth,
+      fontWeight: style.fontWeight,
+    };
+  });
+  const sourceContrastChecks = [
+    ['keyword', editor.locator('.tugql-token-keyword').first()],
+    ['parameter', editor.locator('.tugql-token-parameter').first()],
+    ['identifier', editor.locator('.tugql-token-identifier').first()],
+    ['operator', editor.locator('.tugql-token-operator').first()],
+    ['punctuation', editor.locator('.tugql-token-punctuation').first()],
+    ['comment', editor.locator('.tugql-token-comment').first()],
+  ] as const;
+  const sourceContrastEvidence = [];
+  for (const [name, token] of sourceContrastChecks) {
+    await expect(token).toBeVisible();
+    const colors = await completionContrast(token);
+    expect(colors.ratio).toBeGreaterThanOrEqual(4.5);
+    sourceContrastEvidence.push({ name, ...colors });
+  }
+  const headerContrast = await completionContrast(
+    author.locator('.author-code-label'),
+  );
+  const buttonContrast = await completionContrast(
+    author.getByRole('button', { name: 'Suggestions (Ctrl+Space)' }),
+  );
+  const buttonHintContrast = await completionContrast(
+    author
+      .getByRole('button', { name: 'Suggestions (Ctrl+Space)' })
+      .locator('span'),
+  );
+  for (const colors of [headerContrast, buttonContrast, buttonHintContrast]) {
+    expect(colors.ratio).toBeGreaterThanOrEqual(4.5);
+  }
+  const outlineContrast = contrastBetweenColors(
+    forcedColorsStyle.outlineColor,
+    forcedColorsStyle.backgroundColor,
+  );
+  console.info(
+    '[forced-colors-completion-contrast]',
+    JSON.stringify({
+      selected: forcedColorsContrast,
+      selectedStyle: forcedColorsStyle,
+      outlineContrast,
+      sourceTokens: sourceContrastEvidence,
+      header: headerContrast,
+      button: buttonContrast,
+      buttonHint: buttonHintContrast,
+    }),
+  );
+  await testInfo.attach('forced-colors-completion-style.json', {
+    body: Buffer.from(
+      JSON.stringify(
+        {
+          selected: forcedColorsContrast,
+          popup: popupColors,
+          selectedStyle: forcedColorsStyle,
+          outlineContrast,
+          sourceTokens: sourceContrastEvidence,
+          header: headerContrast,
+          button: buttonContrast,
+          buttonHint: buttonHintContrast,
+        },
+        null,
+        2,
+      ),
+    ),
+    contentType: 'application/json',
+  });
+  await testInfo.attach('forced-colors-completion.png', {
+    body: await page.screenshot(),
+    contentType: 'image/png',
+  });
+  expect(forcedColorsContrast.foregroundColor).toBe(
+    popupColors.foregroundColor,
+  );
+  expect(forcedColorsContrast.backgroundColor).toBe(
+    popupColors.backgroundColor,
+  );
+  expect(forcedColorsContrast.ratio).toBeGreaterThanOrEqual(4.5);
+  expect(forcedColorsStyle.outlineStyle).toBe('solid');
+  expect(forcedColorsStyle.outlineWidth).toBe('2px');
+  expect(forcedColorsStyle.fontWeight).toBe('600');
+  expect(outlineContrast.ratio).toBeGreaterThanOrEqual(3);
   await page.emulateMedia({ forcedColors: 'none' });
-  await page.locator('ion-app').evaluate((app) => app.classList.remove('ion-palette-dark'));
+  await page
+    .locator('ion-app')
+    .evaluate((app) => app.classList.remove('ion-palette-dark'));
   await editor.press('Escape');
   await expect(popup).toHaveCount(0);
   await expectEditorSource(page, editor, incompleteDraft);
@@ -373,11 +641,13 @@ test('TugQL suggestions are explicit, source-safe, and touch reachable', async (
   // Enter remains an ordinary newline when no completion list is open.
   await editor.press('Enter');
   await expectEditorSource(page, editor, `${incompleteDraft}\n`);
-  await editor.press('ControlOrMeta+z');
+  await editor.press(`${mod}+z`);
   await expectEditorSource(page, editor, incompleteDraft);
 
   if (isMobile) {
-    await author.getByRole('button', { name: 'Suggestions (Ctrl+Space)' }).tap();
+    await author
+      .getByRole('button', { name: 'Suggestions (Ctrl+Space)' })
+      .tap();
   } else {
     await editor.press('Control+Space');
   }
@@ -397,10 +667,10 @@ test('TugQL suggestions are explicit, source-safe, and touch reachable', async (
   await expect(editor).toBeFocused();
   await expect(author.getByTestId('author-sql-preview')).toHaveCount(0);
   await expect(runButton).toBeDisabled();
-  await editor.press('ControlOrMeta+z');
+  await editor.press(`${mod}+z`);
   await expectEditorSource(page, editor, incompleteDraft);
   // Use the physical key so Shift remains part of CodeMirror's redo chord.
-  await editor.press('ControlOrMeta+Shift+KeyZ');
+  await editor.press(`${mod}+Shift+KeyZ`);
   await expectEditorSource(page, editor, acceptedDraft);
 
   const resultsTab = page.locator('#workspace-results-tab');
@@ -514,7 +784,9 @@ test('Customer count CTE previews without values and runs against the pinned fix
   await author.getByTestId('author-code-tab').click();
   const editor = author.getByTestId('query-body-text').locator('.cm-content');
   const original = savedQuerySource('chinook-customer-count-cte');
-  await pasteCode(page, editor,
+  await pasteCode(
+    page,
+    editor,
     original.replace('having count(*) >= 7', 'having count(*) >= 8'),
   );
   await expect(author.getByTestId('author-run')).toHaveAttribute(
@@ -542,7 +814,10 @@ test('bounded CTE graph previews, runs, preserves results while stale, and runs 
   await expect(author).toBeVisible({ timeout: 20_000 });
   await author.getByTestId('author-code-tab').click();
   const editor = author.getByTestId('query-body-text').locator('.cm-content');
-  const original = savedQuerySource('chinook-customer-count-graph', GRAPH_DEMO_REPO);
+  const original = savedQuerySource(
+    'chinook-customer-count-graph',
+    GRAPH_DEMO_REPO,
+  );
   await expect(editor).toContainText(/with CustomerCounts as \(/u);
   await expect(editor).toContainText(/with EligibleCounts as \(/u);
   await expect(editor).toContainText(/with CustomerFields as \(/u);
@@ -591,7 +866,9 @@ test('bounded CTE graph previews, runs, preserves results while stale, and runs 
     /Worker execution ID ([0-9a-f-]+)/u,
   )?.[1];
   expect(retainedExecutionId).toBeTruthy();
-  await pasteCode(page, editor,
+  await pasteCode(
+    page,
+    editor,
     original.replace(
       'where counts.InvoiceCount >= 7',
       'where counts.InvoiceCount >= 8',
@@ -779,9 +1056,11 @@ test('Format diagnostics navigate the unchanged draft without another run', asyn
   const queryExecutionMessages = () =>
     page.evaluate(
       () =>
-        (window as Window & {
-          __datatugQueryExecutionMessages?: number;
-        }).__datatugQueryExecutionMessages ?? 0,
+        (
+          window as Window & {
+            __datatugQueryExecutionMessages?: number;
+          }
+        ).__datatugQueryExecutionMessages ?? 0,
     );
   await page.goto(AUTHOR_URL);
   const author = page.getByTestId('tugql-author');
@@ -842,7 +1121,9 @@ test('Format diagnostics navigate the unchanged draft without another run', asyn
   for (const width of [390, 320]) {
     await page.setViewportSize({ width, height: 844 });
     await expect
-      .poll(() => diagnostic.evaluate((button) => button.getBoundingClientRect().height))
+      .poll(() =>
+        diagnostic.evaluate((button) => button.getBoundingClientRect().height),
+      )
       .toBeGreaterThanOrEqual(44);
     const bounds = await page.evaluate(() => ({
       viewport: document.documentElement.clientWidth,
@@ -878,7 +1159,12 @@ test('Format diagnostics navigate the unchanged draft without another run', asyn
   });
   expect(caret).toEqual({ focused: true, collapsed: true, line: 7, column: 5 });
   expect(await copyEditorSource(page, editor)).toBe(malformed);
-  expect(await author.getByTestId('author-customer-id').locator('input:not(.cloned-input)').inputValue()).toBe('1');
+  expect(
+    await author
+      .getByTestId('author-customer-id')
+      .locator('input:not(.cloned-input)')
+      .inputValue(),
+  ).toBe('1');
   expect(workersStarted).toBe(1);
   expect(await queryExecutionMessages()).toBe(1);
 
@@ -894,11 +1180,14 @@ test('Format diagnostics navigate the unchanged draft without another run', asyn
   const edited = malformed.replace('limit 100', 'limit 99');
   await pasteCode(page, editor, edited);
   await expect(author.getByTestId('author-format-status')).toHaveCount(0);
-  await expect(author.getByRole('button', { name: /Go to line/u })).toHaveCount(0);
+  await expect(author.getByRole('button', { name: /Go to line/u })).toHaveCount(
+    0,
+  );
   await expect(receipt).toContainText('7 rows');
   expect(workersStarted).toBe(1);
   expect(await queryExecutionMessages()).toBe(1);
-  if (isMobile && originalViewport) await page.setViewportSize(originalViewport);
+  if (isMobile && originalViewport)
+    await page.setViewportSize(originalViewport);
 });
 
 test('Invoice Customer join makes missing ON reviewable and opens an explicit typed lookup', async ({
@@ -918,13 +1207,14 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
     'fill',
     'clear',
   );
-  await expect(
-    author.locator('sneat-author-compose-controls'),
-  ).toBeVisible();
+  await expect(author.locator('sneat-author-compose-controls')).toBeVisible();
   await expect(author.getByTestId('query-body-text')).toHaveCount(0);
   await author.getByTestId('author-code-tab').click();
   const editor = author.getByTestId('query-body-text').locator('.cm-content');
-  const original = savedQuerySource('chinook-customer-invoice-join', JOIN_DEMO_REPO);
+  const original = savedQuerySource(
+    'chinook-customer-invoice-join',
+    JOIN_DEMO_REPO,
+  );
   const missingOn = original.replace(
     /join Customer as c\r?\n\s*on i\.CustomerId = c\.CustomerId\r?\n/u,
     'join Customer as c -- preserve this relationship note\n',
@@ -1003,7 +1293,19 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
       .nth(1)
       .getByRole('button', { name: 'Look up invoices for Customer ID 2' }),
   ).toBeVisible();
-  await firstRunAction?.evaluate((button) => button.click());
+  if (firstRunAction === null) {
+    throw new Error(
+      'The original Customer ID 1 lookup action was not captured',
+    );
+  }
+  await firstRunAction.evaluate((button) => {
+    if (!(button instanceof HTMLElement)) {
+      throw new Error(
+        'The original invoice lookup action was not an HTML element',
+      );
+    }
+    button.click();
+  });
   await expect(page).toHaveURL(/id=chinook-customer-invoice-join/u);
   await author.getByTestId('author-customer-id').locator('input').fill('1');
   await joinReceipt.getByText('Execution details', { exact: true }).click();
@@ -1181,7 +1483,10 @@ test('cold saved CustomerId count supports parameterized HAVING thresholds in th
   await receipt.getByText('Execution details').click();
   await expect(receipt).toContainText('HAVING threshold (literal)');
 
-  const aboveSeven = savedQuerySource('chinook-customer-count-cte').replace('>= 7', '> 7');
+  const aboveSeven = savedQuerySource('chinook-customer-count-cte').replace(
+    '>= 7',
+    '> 7',
+  );
   await pasteCode(page, editor, aboveSeven);
   await expect(receipt).toContainText('Previous run');
   await expect(receipt).toContainText('1 row');
@@ -1304,7 +1609,10 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await joinedInvoiceDate.uncheck();
   await author.getByTestId('author-code-tab').click();
   const withoutInvoiceDate = joinedSource.replace(', i.InvoiceDate', '');
-  const limitedWithoutDate = withoutInvoiceDate.replace('limit 100', 'limit 75');
+  const limitedWithoutDate = withoutInvoiceDate.replace(
+    'limit 100',
+    'limit 75',
+  );
   await expectEditorSource(page, editor, limitedWithoutDate);
   await author.getByTestId('author-compose-tab').click();
   await compose.getByLabel('InvoiceDate', { exact: true }).check();
@@ -1350,7 +1658,9 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   const wrapSqlButton = preview.getByRole('button', { name: 'Wrap SQL' });
   for (const button of [copySqlButton, wrapSqlButton]) {
     await expect
-      .poll(() => button.evaluate((element) => element.getBoundingClientRect().height))
+      .poll(() =>
+        button.evaluate((element) => element.getBoundingClientRect().height),
+      )
       .toBeGreaterThanOrEqual(44);
   }
   if (testInfo.project.use.browserName !== 'webkit') {
@@ -1509,7 +1819,10 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expect(receipt).toBeVisible();
   await expect(receipt).toContainText('7 rows');
   if (isMobile) await page.locator('#workspace-editor-tab').click();
-  await expect(author.getByTestId('author-run')).toHaveAttribute('disabled', '');
+  await expect(author.getByTestId('author-run')).toHaveAttribute(
+    'disabled',
+    '',
+  );
   expect(workersStarted).toBe(1);
 
   await author.getByTestId('author-preview').click();

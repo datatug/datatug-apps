@@ -2,7 +2,8 @@
 
 ## Query authoring in mobile WebKit
 
-The optional query-only WebKit profile covers coloring, explicit TugQL
+The query-only WebKit profile is a required CI check whenever Nx marks
+`datatug-app` affected. It covers coloring, explicit TugQL
 suggestions and native editing,
 the saved Invoice → Customer Compose/Code/Preview/Run journey, and the maintained
 two-fixture comparison. It uses the iPhone 13 browser profile and also checks
@@ -12,14 +13,19 @@ Safari testing is a separate check. The default CI projects remain unchanged.
 ```sh
 # Use a clean checkout of the maintained demo project and an unused local port.
 DATATUG_E2E_GITHUB_FAKE=/path/to/datatug-demo-project DATATUG_E2E_PORT=4200 \
-  pnpm nx run datatug-app:e2e -- \
-  --config=apps/datatug-app/playwright.query-mobile.config.ts
+  pnpm nx run datatug-app:e2e-query-mobile
 ```
 
-Install Playwright's WebKit browser before running this optional profile.
+Install Playwright's WebKit browser before running the profile locally.
 The GitHub reader is served from the local demo checkout; query execution and
 comparison use the real pinned SQLite workers and Core bridge. Reports are
 written under `coverage/apps/datatug-query-mobile/`.
+
+The existing `e2e` job always installs Chromium and adds WebKit to that same
+install command when `datatug-app` is affected. It runs this target as a
+required step after the default affected Chromium suite. The hand-off check
+stays in the `e2e` job; the existing real-agent journey remains in its separate
+job with its current gate.
 
 Two kinds of e2e live here.
 
@@ -64,13 +70,13 @@ them from environment variables, and **skips the whole project with a clear
 reason** when they are not available — it never fails CI silently and never
 fails CI hard just because the binary wasn't provisioned for that job.
 
-| Variable | Meaning | Default |
-|---|---|---|
-| `DATATUG_BIN` | Path to a built `datatug` binary. | — |
-| `DATATUG_CLI_DIR` | Path to a `datatug-cli` checkout; used to `go build` a binary on demand when `DATATUG_BIN` is not set. | — |
-| `DATATUG_DEMO_DIR` | Path to `datatug-demo-project/demo-project-1`. | `../datatug-demo-project/demo-project-1` relative to this repo (tried at 1–3 directory levels up, to cover both a plain sibling checkout and a nested `.worktrees/<task>` checkout) |
-| `DATATUG_E2E_GITHUB_FAKE` | Used by `github-store.spec.ts` only: a checkout of `datatug/datatug-demo-project`, served in place of `api.github.com`, `raw.githubusercontent.com` and `cdn.jsdelivr.net` (`helpers/fake-github.ts`): no network, none of the 60 anonymous API requests an hour. Unset, that spec reads the real GitHub. | Unset |
-| `DATATUG_LARGE_E2E` | Set to `1` to run the cross-source join journey with 120,000 rows instead of the CI default of 205 rows and 25-row source pages. | Unset |
+| Variable                  | Meaning                                                                                                                                                                                                                                                                                                                                                             | Default                                                                                                                                                                             |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATATUG_BIN`             | Path to a built `datatug` binary.                                                                                                                                                                                                                                                                                                                                   | —                                                                                                                                                                                   |
+| `DATATUG_CLI_DIR`         | Path to a `datatug-cli` checkout; used to `go build` a binary on demand when `DATATUG_BIN` is not set.                                                                                                                                                                                                                                                              | —                                                                                                                                                                                   |
+| `DATATUG_DEMO_DIR`        | Path to `datatug-demo-project/demo-project-1`.                                                                                                                                                                                                                                                                                                                      | `../datatug-demo-project/demo-project-1` relative to this repo (tried at 1–3 directory levels up, to cover both a plain sibling checkout and a nested `.worktrees/<task>` checkout) |
+| `DATATUG_E2E_GITHUB_FAKE` | A checkout of `datatug/datatug-demo-project`, served in place of `api.github.com`, `raw.githubusercontent.com` and `cdn.jsdelivr.net` (`helpers/fake-github.ts`): no network, none of the 60 anonymous API requests an hour. Used by `github-store.spec.ts`, `query-author.spec.ts`, and `query-compare.spec.ts`. Unset, tests using the fake read the real GitHub. | Unset                                                                                                                                                                               |
+| `DATATUG_LARGE_E2E`       | Set to `1` to run the cross-source join journey with 120,000 rows instead of the CI default of 205 rows and 25-row source pages.                                                                                                                                                                                                                                    | Unset                                                                                                                                                                               |
 
 If neither `DATATUG_BIN` nor `DATATUG_CLI_DIR` is set, or the demo project
 can't be found, every journey test is skipped with a message naming exactly
@@ -99,7 +105,7 @@ runs this suite in CI. It:
 3. Fetches the Chinook SQLite fixture directly, keylessly, to
    `~/datatug/dbs/chinook-local.sqlite` — the exact path
    `environments/local/catalogs/chinook-local/chinook-local.db.json`
-   declares in `datatug-demo-project`. This is *not* `datatug demo`: that
+   declares in `datatug-demo-project`. This is _not_ `datatug demo`: that
    CLI command (`apps/datatugapp/commands/cmd_demo.go` in `datatug-cli`)
    does the same keyless download but then blocks forever serving the demo
    project (it hands off to `serve`), so it can't run as a CI step; the CI
@@ -109,7 +115,7 @@ runs this suite in CI. It:
    own git clone.
 4. Installs Playwright's `chromium` browser, builds `datatug-app`
    (production config — a fail-fast check; `playwright.config.ts`'s own
-   `webServer` starts the *dev* server for the actual test run, so this
+   `webServer` starts the _dev_ server for the actual test run, so this
    is not a second server), then runs
    `playwright test -c apps/datatug-app/playwright.config.ts --project=journey --workers=1`.
 5. On failure, uploads the Playwright HTML report (`journey-e2e-playwright-report`,
