@@ -8,7 +8,16 @@ const project = 'sneat-eur3-1';
  * Failure messages deliberately contain neither identity nor response bodies. */
 export const test = base.extend<{ signedInTestBuyer: void }>({
   signedInTestBuyer: [
-    async ({ page, context }, use) => {
+    async ({ page, context }, use, testInfo) => {
+      if (
+        process.env.DATATUG_CHECKOUT_PROVIDER_TEST !== '1' ||
+        testInfo.project.use.trace !== 'off' ||
+        testInfo.project.use.video !== 'off' ||
+        testInfo.project.use.screenshot !== 'off'
+      )
+        throw new Error(
+          'Dedicated TEST authentication requires explicit opt-in and disabled traces, video and screenshots.',
+        );
       const expectedUID = process.env.DATATUG_CHECKOUT_TEST_BUYER_UID;
       const email = process.env.DATATUG_CHECKOUT_TEST_EMAIL;
       const password = process.env.DATATUG_CHECKOUT_TEST_PASSWORD;

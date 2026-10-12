@@ -3,6 +3,11 @@ import { TEST_CHECKOUT_ORIGIN } from '../src/app/checkout/checkout-config.mjs';
 
 const origin = 'http://datatug.localhost:4328';
 
+test.skip(
+  process.env.DATATUG_CHECKOUT_PROVIDER_TEST !== '1',
+  'Deployed-provider checks require the explicit isolated TEST opt-in.',
+);
+
 test('deployed TEST catalog and shared purchase preflights accept the approved local origin', async ({
   request,
 }) => {
