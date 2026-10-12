@@ -493,20 +493,143 @@ test('TugQL and SQL coloring preserves editable source, keyboard undo, and reada
   await expectEditorSource(page, editor, original);
 
   await editor.locator('.cm-line').last().click();
+  await editor.press(`${mod}+End`);
+  const wrappedComment = `-- echoed through parent ${'x'.repeat(280)}`;
+  await editor.type(wrappedComment);
+  const parentEcho = `${original}${wrappedComment}`;
+  await author.getByTestId('author-preview').click();
+  const sqlDisclosure = author.locator('.author-sql-disclosure');
+  await expect(sqlDisclosure).toBeVisible();
+  const editorRoot = author.getByTestId('query-body-text').locator('.cm-editor');
+  await editorRoot.evaluate((element) => {
+    (window as unknown as { __queryWorkbenchEditor?: Element }).__queryWorkbenchEditor = element;
+  });
+  await editor.focus();
   await editor.press('End');
-  await editor.type('-- echoed through parent');
-  const parentEcho = `${original}-- echoed through parent`;
+  await editor.press('Shift+ArrowLeft');
+  const selectedBeforeLayout = await editor.evaluate(
+    () => window.getSelection()?.toString() ?? '',
+  );
+  expect(selectedBeforeLayout).toBe('x');
+
+  const sourceDiscovery = author.getByTestId('author-source-discovery');
+  await sourceDiscovery.locator('summary').click();
+  await expect(sourceDiscovery.locator('summary')).toBeVisible();
+  await sourceDiscovery.locator('summary').click();
+  await sqlDisclosure.locator(':scope > summary').click();
+  await expect(sqlDisclosure.locator('sneat-author-sql-preview')).toBeHidden();
+  await sqlDisclosure.locator(':scope > summary').click();
+  await expect(sqlDisclosure.locator('sneat-author-sql-preview')).toBeVisible();
+
+  const originalViewport = page.viewportSize();
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.getByTestId('workspace-jump-to-results').click();
+    await expect(page.locator('#author-results-heading')).toBeFocused();
+    await page.getByTestId('workspace-back-to-editor').click();
+    await expect(author.locator('[data-workspace-heading]')).toBeFocused();
+    expect(
+      await page.evaluate(
+        () =>
+          (window as unknown as { __queryWorkbenchEditor?: Element })
+            .__queryWorkbenchEditor ===
+          document.querySelector('[data-testid="query-body-text"] .cm-editor'),
+      ),
+    ).toBe(true);
+    await editor.focus();
+    await expectEditorSource(page, editor, parentEcho);
+    await expect
+      .poll(() => editor.evaluate(() => window.getSelection()?.toString() ?? ''))
+      .toBe(selectedBeforeLayout);
+    const editorGeometry = await editor.evaluate((content) => {
+      const editorRoot = content.closest('.cm-editor');
+      const gutter = editorRoot?.querySelector('.cm-gutters');
+      const contentBox = editorRoot?.querySelector('.cm-content');
+      const editorBounds = editorRoot?.getBoundingClientRect();
+      const gutterBounds = gutter?.getBoundingClientRect();
+      const contentBounds = contentBox?.getBoundingClientRect();
+      return {
+        viewportWidth: document.documentElement.clientWidth,
+        documentWidth: document.documentElement.scrollWidth,
+        source: content.textContent ?? '',
+        editorLeft: editorBounds?.left ?? -1,
+        editorRight: editorBounds?.right ?? -1,
+        gutterLeft: gutterBounds?.left ?? -1,
+        gutterRight: gutterBounds?.right ?? -1,
+        contentLeft: contentBounds?.left ?? -1,
+      };
+    });
+    expect(editorGeometry.source).toContain('x'.repeat(100));
+    expect(editorGeometry.documentWidth).toBeLessThanOrEqual(
+      editorGeometry.viewportWidth,
+    );
+    expect(editorGeometry.gutterLeft).toBeGreaterThanOrEqual(
+      editorGeometry.editorLeft,
+    );
+    expect(editorGeometry.gutterRight).toBeLessThanOrEqual(
+      editorGeometry.editorRight,
+    );
+    expect(editorGeometry.contentLeft).toBeGreaterThanOrEqual(
+      editorGeometry.gutterRight - 1,
+    );
+  }
+  await editor.press(`${mod}+Z`);
+  await expectEditorSource(page, editor, original);
+  await editor.press(`${mod}+Shift+KeyZ`);
+  await expectEditorSource(page, editor, parentEcho);
+  if (originalViewport) await page.setViewportSize(originalViewport);
+  await editor.press('ArrowRight');
+  await editor.type('!');
+  await expectEditorSource(page, editor, `${parentEcho}!`);
+  await editor.press(`${mod}+Z`);
+  await expectEditorSource(page, editor, parentEcho);
+  await editor.press(`${mod}+Shift+KeyZ`);
+  await expectEditorSource(page, editor, `${parentEcho}!`);
+  await editor.press(`${mod}+Z`);
+  await expectEditorSource(page, editor, parentEcho);
+
   await author.getByTestId('author-compose-tab').click();
   await author.getByTestId('author-code-tab').click();
   const remountedEditor = author
     .getByTestId('query-body-text')
     .locator('.cm-content');
   await expectEditorSource(page, remountedEditor, parentEcho);
+  await page.setViewportSize({ width: 320, height: 780 });
+  const numberedLines = `${parentEcho}\n${Array.from(
+    { length: 105 },
+    (_, index) => `-- numbered ${index + 1} ${'x'.repeat(160)}`,
+  ).join('\n')}`;
+  await remountedEditor.fill(numberedLines);
+  await remountedEditor.press(`${mod}+End`);
+  const threeDigitGutter = await remountedEditor.evaluate((content) => {
+    const editorRoot = content.closest('.cm-editor');
+    const gutter = editorRoot?.querySelector('.cm-lineNumbers');
+    const lastLineNumber = gutter?.querySelector(
+      '.cm-gutterElement:last-child',
+    );
+    const text = editorRoot?.querySelector('.cm-content');
+    return {
+      lineNumber: Number(lastLineNumber?.textContent ?? 0),
+      gutterRight: gutter?.getBoundingClientRect().right ?? -1,
+      contentLeft: text?.getBoundingClientRect().left ?? -1,
+      editor: editorRoot?.getBoundingClientRect(),
+      scrollTop: editorRoot?.querySelector('.cm-scroller')?.scrollTop ?? 0,
+    };
+  });
+  expect(threeDigitGutter.lineNumber).toBeGreaterThanOrEqual(100);
+  expect(threeDigitGutter.scrollTop).toBeGreaterThan(0);
+  expect(threeDigitGutter.contentLeft).toBeGreaterThanOrEqual(
+    threeDigitGutter.gutterRight - 1,
+  );
+  expect(threeDigitGutter.gutterRight).toBeLessThanOrEqual(
+    threeDigitGutter.editor?.right ?? -1,
+  );
+  await remountedEditor.press(`${mod}+Z`);
+  await expectEditorSource(page, remountedEditor, parentEcho);
   await remountedEditor.locator('.cm-line').last().click();
   await remountedEditor.press('Tab');
   await expect(remountedEditor).not.toBeFocused();
 
-  await page.setViewportSize({ width: 320, height: 780 });
   const editorScroller = author
     .getByTestId('query-body-text')
     .locator('.cm-scroller');
@@ -707,6 +830,12 @@ test('native SQL editor highlights the saved query and runs it against Chinook',
   await expect.poll(() => workersStarted).toBe(1);
   const rows = page.getByRole('grid').getByRole('row');
   await expect(rows).toHaveCount(11, { timeout: 45_000 });
+  const genericGridViewport = page.locator('.result-grid-viewport');
+  await expect(genericGridViewport).toHaveCount(1);
+  await expect(genericGridViewport).toHaveCSS('height', '420px');
+  await expect(genericGridViewport.locator('xpath=..')).toHaveClass(
+    /ion-padding-horizontal/u,
+  );
   await expect(rows.first()).toContainText('Playlist');
   await expect(rows.first()).toContainText('TrackCount');
   await expect(page.getByTestId('result-provenance')).toContainText('snapshot');
@@ -779,9 +908,9 @@ test('TugQL suggestions are explicit, source-safe, and touch reachable', async (
   await expect(author).toBeVisible({ timeout: 20_000 });
 
   if (isMobile) {
-    await page.locator('#workspace-results-tab').click();
+    await page.locator('#workspace-jump-to-results').click();
     await expect(page.getByTestId('author-results-empty')).toBeVisible();
-    await page.locator('#workspace-editor-tab').click();
+    await page.locator('#workspace-back-to-editor').click();
   }
 
   const customerId = author.getByTestId('author-customer-id').locator('input');
@@ -789,7 +918,7 @@ test('TugQL suggestions are explicit, source-safe, and touch reachable', async (
   await author.getByTestId('author-preview').click();
   await expect(runButton).toBeEnabled();
   await author.getByTestId('author-run').click();
-  if (isMobile) await page.locator('#workspace-results-tab').click();
+  if (isMobile) await page.locator('#workspace-jump-to-results').click();
   const receipt = page.getByTestId('author-execution-receipt');
   await expect(receipt).toContainText('Executed');
   await expect(receipt).toContainText('7 rows');
@@ -800,7 +929,7 @@ test('TugQL suggestions are explicit, source-safe, and touch reachable', async (
   expect(executionId).toBeTruthy();
   const boundCustomerId = await customerId.inputValue();
 
-  if (isMobile) await page.locator('#workspace-editor-tab').click();
+  if (isMobile) await page.locator('#workspace-back-to-editor').click();
   await author.getByTestId('author-code-tab').click();
   const editor = author.getByTestId('query-body-text').locator('.cm-content');
   const incompleteDraft = [
@@ -991,7 +1120,7 @@ test('TugQL suggestions are explicit, source-safe, and touch reachable', async (
   await editor.press(`${mod}+Shift+KeyZ`);
   await expectEditorSource(page, editor, acceptedDraft);
 
-  const resultsTab = page.locator('#workspace-results-tab');
+  const resultsTab = page.locator('#workspace-jump-to-results');
   if (await resultsTab.isVisible()) await resultsTab.click();
   await expect(receipt).toContainText('Previous run');
   await expect(receipt).toContainText('7 rows');
@@ -1402,7 +1531,7 @@ test('Format diagnostics navigate the unchanged draft without another run', asyn
   );
   expect(await queryExecutionMessages()).toBe(0);
   await author.getByTestId('author-run').click();
-  if (isMobile) await page.locator('#workspace-results-tab').click();
+  if (isMobile) await page.locator('#workspace-jump-to-results').click();
   const receipt = page.getByTestId('author-execution-receipt');
   await expect(receipt).toContainText('Executed');
   await expect(receipt).toContainText('7 rows');
@@ -1415,7 +1544,7 @@ test('Format diagnostics navigate the unchanged draft without another run', asyn
   const rows = page.getByRole('grid').getByRole('row');
   await expect(rows).toHaveCount(8);
   const retainedRows = await rows.allTextContents();
-  if (isMobile) await page.locator('#workspace-editor-tab').click();
+  if (isMobile) await page.locator('#workspace-back-to-editor').click();
 
   const malformed = valid.replace(
     'limit 100\nselect i.InvoiceId, i.InvoiceDate',
@@ -1486,14 +1615,14 @@ test('Format diagnostics navigate the unchanged draft without another run', asyn
   expect(workersStarted).toBe(1);
   expect(await queryExecutionMessages()).toBe(1);
 
-  if (isMobile) await page.locator('#workspace-results-tab').click();
+  if (isMobile) await page.locator('#workspace-jump-to-results').click();
   else if (originalViewport) await page.setViewportSize(originalViewport);
   await expect(receipt).toContainText(`Worker execution ID ${executionId}`);
   await expect(receipt).toContainText('7 rows');
   await expect(rows).toHaveCount(8);
   expect(await rows.allTextContents()).toEqual(retainedRows);
   expect(workersStarted).toBe(1);
-  if (isMobile) await page.locator('#workspace-editor-tab').click();
+  if (isMobile) await page.locator('#workspace-back-to-editor').click();
 
   const edited = malformed.replace('limit 100', 'limit 99');
   await pasteCode(page, editor, edited);
@@ -1517,10 +1646,9 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
   );
   const author = page.getByTestId('tugql-author');
   await expect(author).toBeVisible({ timeout: 20_000 });
-  await expect(author.getByTestId('author-compose-tab')).toHaveAttribute(
-    'fill',
-    'solid',
-  );
+  await expect(author.getByTestId('author-compose-tab')).toHaveClass(/is-active/u);
+  await expect(author.getByRole('button', { name: 'Compose', exact: true }))
+    .toHaveAttribute('aria-pressed', 'true');
   await expect(author.getByTestId('author-code-tab')).toHaveAttribute(
     'fill',
     'clear',
@@ -1652,7 +1780,7 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
   const customerIdCell = firstResultRow.getByRole('gridcell').nth(1);
   const firstNameCell = firstResultRow.getByRole('gridcell').nth(2);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.locator('#workspace-results-tab').click();
+  await page.locator('#workspace-jump-to-results').click();
   await expect(page.locator('#workspace-results-pane')).toBeVisible();
   await expect(firstLookupAction).toBeVisible();
   await invoiceIdCell.click();
@@ -1674,9 +1802,7 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
   await expect(page).toHaveURL(/id=chinook-invoice-author/u);
   const lookupAuthor = page.getByTestId('tugql-author');
   await expect(lookupAuthor).toBeVisible();
-  await expect(
-    page.getByRole('button', { name: 'Editor', exact: true }),
-  ).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#workspace-results-pane')).toBeVisible();
   await expect(page.locator('#workspace-editor-pane')).toBeVisible();
   await expect(lookupAuthor.locator('ion-card-title')).toBeFocused();
   await expect(
@@ -1684,7 +1810,7 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
   ).toHaveValue('1');
   await expect(page.getByTestId('author-results-empty')).toHaveCount(1);
   await expect(lookupAuthor.getByTestId('author-binding-origin')).toContainText(
-    'selection · client-reported',
+    /selection · .* · client-reported/u,
   );
   await expect(lookupAuthor.getByTestId('author-binding-origin')).toContainText(
     'chinook-customer-invoice-join.CustomerId',
@@ -1702,7 +1828,7 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
   await expect(lookupAuthor.getByTestId('author-run')).toBeEnabled();
   await expect(page.getByTestId('author-execution-receipt')).toHaveCount(0);
   await lookupAuthor.getByTestId('author-run').click();
-  await page.locator('#workspace-results-tab').click();
+  await page.locator('#workspace-jump-to-results').click();
   await expect(page.locator('#workspace-results-pane')).toBeVisible();
   const lookupReceipt = page.getByTestId('author-execution-receipt');
   await expect(lookupReceipt).toContainText('Executed');
@@ -1779,12 +1905,16 @@ test('cold saved CustomerId count supports parameterized HAVING thresholds in th
   const codeTab = author.getByTestId('author-code-tab');
   await composeTab.click();
   await expect(editor).toHaveCount(0);
-  await expect(composeTab).toHaveAttribute('fill', 'solid');
+  await expect(composeTab).toHaveAttribute('fill', 'clear');
   await expect(codeTab).toHaveAttribute('fill', 'clear');
-  await expect(composeTab).toHaveClass(/button-solid/u);
+  await expect(composeTab).toHaveClass(/is-active/u);
+  await expect(codeTab).not.toHaveClass(/is-active/u);
+  await expect(composeTab).toHaveCSS('border-bottom-width', '2px');
   await expect(codeTab).toHaveClass(/button-clear/u);
-  await expect(composeTab).toHaveAttribute('aria-pressed', 'true');
-  await expect(codeTab).toHaveAttribute('aria-pressed', 'false');
+  await expect(author.getByRole('button', { name: 'Compose', exact: true }))
+    .toHaveAttribute('aria-pressed', 'true');
+  await expect(author.getByRole('button', { name: 'Code', exact: true }))
+    .toHaveAttribute('aria-pressed', 'false');
   await page.evaluate(
     () =>
       new Promise<void>((resolve) =>
@@ -1892,15 +2022,24 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expect(author).toBeVisible({ timeout: 20_000 });
   await expect(author.getByTestId('author-compose-tab')).toBeVisible();
   await expect(author.getByTestId('author-code-tab')).toBeVisible();
+  await author.getByTestId('author-code-tab').click();
+  await expect(author.getByTestId('author-code-tab')).toHaveClass(/is-active/u);
+  await expect(author.getByTestId('author-code-tab')).toHaveCSS(
+    'border-bottom-width',
+    '2px',
+  );
+  await expect(page.getByTestId('query-view-author')).toHaveClass(/is-active/u);
+  await author.getByTestId('author-compose-tab').click();
   const editorPane = page.locator('#workspace-editor-pane');
   const resultsPane = page.locator('#workspace-results-pane');
   if (isMobile) {
-    await page.locator('#workspace-results-tab').click();
+    await page.locator('#workspace-jump-to-results').click();
     await expect(page.getByTestId('author-results-empty')).toBeVisible();
     await expect(resultsPane).toBeVisible();
-    await expect(editorPane).not.toBeVisible();
-    await page.locator('#workspace-editor-tab').click();
     await expect(editorPane).toBeVisible();
+    await page.locator('#workspace-back-to-editor').click();
+    await expect(editorPane).toBeVisible();
+    await expect(resultsPane).toBeVisible();
   } else {
     await expect(page.getByTestId('author-results-empty')).toBeVisible();
     await expect(editorPane).toBeVisible();
@@ -2133,7 +2272,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await customerId.fill('1.5');
   await expect(preview).toContainText('Invalid · enter a whole number');
   await expect(
-    author.getByText('Enter a whole-number Customer ID'),
+    author.getByText('Enter a whole-number Customer ID', { exact: true }),
   ).toBeVisible();
   await expect(customerId).toHaveAttribute('aria-invalid', 'true');
   await expect(author.getByTestId('author-run')).toHaveAttribute(
@@ -2145,7 +2284,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expect(preview.locator('pre')).toHaveText(previewSql ?? '');
   await expect(author.getByTestId('author-run')).toBeEnabled();
   await author.getByTestId('author-run').click();
-  if (isMobile) await page.locator('#workspace-results-tab').click();
+  if (isMobile) await page.locator('#workspace-jump-to-results').click();
   const receipt = page.getByTestId('author-execution-receipt');
   await expect(receipt).toBeVisible({ timeout: 20_000 });
   await expect(receipt).toContainText('Executed');
@@ -2175,9 +2314,46 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expect(rows.nth(1)).toContainText('2022-03-11 00:00:00');
   await expect(rows.nth(1)).toContainText('Luís');
   await expect(rows.nth(7)).toContainText('382');
+  if (!isMobile) {
+    const sources = author.getByTestId('author-source-discovery');
+    if (await sources.evaluate((details) => (details as HTMLDetailsElement).open)) {
+      await sources.locator('summary').click();
+    }
+    const sqlDisclosure = author.locator('.author-sql-disclosure');
+    if (await sqlDisclosure.evaluate((details) => (details as HTMLDetailsElement).open)) {
+      await sqlDisclosure.locator(':scope > summary').click();
+    }
+    await executionDetails.click();
+    await expect(receipt.locator('.author-receipt-details')).not.toHaveAttribute(
+      'open',
+    );
+    const originalViewport = page.viewportSize();
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await activePage(page).evaluate((active) => {
+      const scrollElement = active
+        .querySelector('ion-content')
+        ?.shadowRoot?.querySelector('.inner-scroll') as HTMLElement | null;
+      if (scrollElement) scrollElement.scrollTop = 0;
+    });
+    await expect(author.getByTestId('author-run')).toHaveCount(1);
+    await expect(author.getByTestId('author-preview')).toHaveCount(1);
+    await expect(author.getByTestId('author-customer-id').locator('input')).toHaveCount(1);
+    await expect(author.getByTestId('author-compose-tab')).toHaveCount(1);
+    await expect(author.getByTestId('author-code-tab')).toHaveCount(1);
+    await expect(author.locator('.cm-editor')).toHaveCount(1);
+    await expect(page.locator('#author-results-heading')).toHaveCount(1);
+    const firstRowBounds = await rows.nth(1).evaluate((row) => {
+      const bounds = row.getBoundingClientRect();
+      return { top: bounds.top, bottom: bounds.bottom };
+    });
+    expect(firstRowBounds.top).toBeGreaterThanOrEqual(0);
+    expect(firstRowBounds.bottom).toBeLessThanOrEqual(698);
+    await expect(rows.nth(1)).toBeInViewport({ ratio: 1 });
+    if (originalViewport) await page.setViewportSize(originalViewport);
+  }
   expect(errors).toEqual([]);
 
-  if (isMobile) await page.locator('#workspace-editor-tab').click();
+  if (isMobile) await page.locator('#workspace-back-to-editor').click();
   await author.getByTestId('author-compose-tab').click();
   await expect(joinedLimit).toHaveValue('75');
   await joinedLimit.fill('3');
@@ -2185,10 +2361,10 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await author.getByTestId('author-code-tab').click();
   const reducedSource = limitedWithDate.replace('limit 75', 'limit 3');
   await expectEditorSource(page, editor, reducedSource);
-  if (isMobile) await page.locator('#workspace-results-tab').click();
+  if (isMobile) await page.locator('#workspace-jump-to-results').click();
   await expect(receipt).toBeVisible();
   await expect(receipt).toContainText('7 rows');
-  if (isMobile) await page.locator('#workspace-editor-tab').click();
+  if (isMobile) await page.locator('#workspace-back-to-editor').click();
   await expect(author.getByTestId('author-run')).toHaveAttribute(
     'disabled',
     '',
@@ -2205,7 +2381,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   expect(reducedPreviewSql).toContain('"c"."FirstName"');
   expect(workersStarted).toBe(1);
   await author.getByTestId('author-run').click();
-  if (isMobile) await page.locator('#workspace-results-tab').click();
+  if (isMobile) await page.locator('#workspace-jump-to-results').click();
   await expect(receipt).toContainText('Executed', { timeout: 20_000 });
   await expect(receipt).toContainText('3 rows');
   await expect.poll(() => workersStarted).toBe(2);
@@ -2219,18 +2395,21 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
 
   for (const width of [390, 320]) {
     await page.setViewportSize({ width, height: 844 });
-    const resultsView = page.locator('#workspace-results-tab');
+    const resultsView = page.locator('#workspace-jump-to-results');
     await resultsView.click();
-    await expect(resultsView).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#author-results-heading')).toBeFocused();
+    await expect(page.locator('#workspace-results-pane')).toBeVisible();
+    await expect(page.locator('#workspace-editor-pane')).toBeVisible();
     await expect(receipt).toBeVisible();
     const retainedReceiptText = await receipt.textContent();
     const retainedRows = await page
       .getByRole('grid')
       .getByRole('row')
       .allTextContents();
-    const editorView = page.locator('#workspace-editor-tab');
+    const editorView = page.locator('#workspace-back-to-editor');
     await editorView.click();
-    await expect(editorView).toHaveAttribute('aria-pressed', 'true');
+    await expect(author.locator('[data-workspace-heading]')).toBeFocused();
+    await expect(page.locator('#workspace-results-pane')).toBeVisible();
     await expect(author).toBeVisible();
     const currentPreview = author.getByTestId('author-sql-preview');
     await expect(currentPreview).toBeVisible();
@@ -2439,7 +2618,7 @@ test('Preview syntax errors navigate to the exact unchanged draft without runnin
   await customerId.fill('1');
   await author.getByTestId('author-preview').click();
   await author.getByTestId('author-run').click();
-  if (isMobile) await page.locator('#workspace-results-tab').click();
+  if (isMobile) await page.locator('#workspace-jump-to-results').click();
   const retainedReceipt = page.getByTestId('author-execution-receipt');
   await expect(retainedReceipt).toContainText('Executed');
   await expect(retainedReceipt).toContainText('7 rows');
@@ -2461,7 +2640,7 @@ test('Preview syntax errors navigate to the exact unchanged draft without runnin
     .getByRole('row')
     .allTextContents();
   expect(retainedRows).toHaveLength(8);
-  if (isMobile) await page.locator('#workspace-editor-tab').click();
+  if (isMobile) await page.locator('#workspace-back-to-editor').click();
 
   const bareMultilineSource = compactSource.replace(
     /select i\.InvoiceId, i\.InvoiceDate\s*$/u,
@@ -2571,7 +2750,7 @@ test('Preview syntax errors navigate to the exact unchanged draft without runnin
   expect(workersStarted).toBe(1);
   if (originalViewport && !isMobile)
     await page.setViewportSize(originalViewport);
-  if (isMobile) await page.locator('#workspace-results-tab').click();
+  if (isMobile) await page.locator('#workspace-jump-to-results').click();
   await expect(retainedReceipt).toContainText('Previous run');
   await expect(immutableReceiptDetails).toHaveCount(4);
   expect(await immutableReceiptDetails.allTextContents()).toEqual(
@@ -2584,7 +2763,7 @@ test('Preview syntax errors navigate to the exact unchanged draft without runnin
   expect(
     await page.getByRole('grid').getByRole('row').allTextContents(),
   ).toEqual(retainedRows);
-  if (isMobile) await page.locator('#workspace-editor-tab').click();
+  if (isMobile) await page.locator('#workspace-back-to-editor').click();
   await customerId.fill('');
 
   const blockSource = compactSource.replace(

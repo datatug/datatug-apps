@@ -1,38 +1,41 @@
-<nav class="workspace-mobile-navigation" aria-label="Query workspace views">
-  <ion-buttons>
-    <ion-button
-      id="workspace-editor-tab"
-      [attr.aria-pressed]="mobilePane() === 'editor'"
-      [fill]="mobilePane() === 'editor' ? 'solid' : 'clear'"
-      (click)="mobilePane.set('editor')"
-    >
-      Editor
-    </ion-button>
-    <ion-button
-      id="workspace-results-tab"
-      [attr.aria-pressed]="mobilePane() === 'results'"
-      [fill]="mobilePane() === 'results' ? 'solid' : 'clear'"
-      (click)="mobilePane.set('results')"
-    >
-      Results
-    </ion-button>
-  </ion-buttons>
-</nav>
-<div
+<div class="workspace-navigation">
+  <ng-content select="[query-workspace-navigation]" />
+</div>
+<section
   class="workspace-pane workspace-editor-pane"
   id="workspace-editor-pane"
-  role="region"
   aria-label="Query editor"
-  [class.mobile-inactive]="mobilePane() !== 'editor'"
+  tabindex="-1"
+  #editorRegion
 >
+  @if (showResultsJump()) {
+    <nav class="workspace-mobile-navigation" aria-label="Editor navigation">
+      <ion-buttons>
+        <ion-button id="workspace-jump-to-results" data-testid="workspace-jump-to-results" (click)="showResults()">
+          Jump to results
+        </ion-button>
+      </ion-buttons>
+    </nav>
+  }
   <ng-content select="[query-workspace-editor]" />
-</div>
-<div
+</section>
+<section
   class="workspace-pane workspace-results-pane"
+  [class.workspace-results-pane-empty]="!showResultsJump()"
+  [hidden]="!showResultsJump()"
   id="workspace-results-pane"
-  role="region"
   aria-label="Query results"
-  [class.mobile-inactive]="mobilePane() !== 'results'"
+  tabindex="-1"
+  #resultsRegion
 >
+  @if (showResultsJump()) {
+    <nav class="workspace-mobile-navigation" aria-label="Results navigation">
+      <ion-buttons>
+        <ion-button id="workspace-back-to-editor" data-testid="workspace-back-to-editor" (click)="showEditor()">
+          Back to editor
+        </ion-button>
+      </ion-buttons>
+    </nav>
+  }
   <ng-content select="[query-workspace-results]" />
-</div>
+</section>
