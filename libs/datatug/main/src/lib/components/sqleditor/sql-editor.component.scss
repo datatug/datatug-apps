@@ -1,1 +1,58 @@
-@import 'codemirror';
+:host {
+  display: block;
+  min-width: 0;
+  --sql-surface: #ffffff;
+  --sql-foreground: #1f2937;
+  --sql-gutter-surface: #f3f4f6;
+  --sql-gutter-foreground: #374151;
+  --sql-active-line: #eef2ff;
+  --sql-selection: #dbeafe;
+  --sql-keyword: #174f91;
+  --sql-string: #17623a;
+  --sql-number: #854d0e;
+  --sql-comment: #57534e;
+}
+
+:host-context(.ion-palette-dark) {
+  --sql-surface: #111827;
+  --sql-foreground: #f9fafb;
+  --sql-gutter-surface: #1f2937;
+  --sql-gutter-foreground: #e5e7eb;
+  --sql-active-line: #1e293b;
+  --sql-selection: #374151;
+  --sql-keyword: #93c5fd;
+  --sql-string: #86efac;
+  --sql-number: #fcd34d;
+  --sql-comment: #cbd5e1;
+}
+
+@media (prefers-color-scheme: dark) {
+  :host {
+    --sql-surface: #111827;
+    --sql-foreground: #f9fafb;
+    --sql-gutter-surface: #1f2937;
+    --sql-gutter-foreground: #e5e7eb;
+    --sql-active-line: #1e293b;
+    --sql-selection: #374151;
+    --sql-keyword: #93c5fd;
+    --sql-string: #86efac;
+    --sql-number: #fcd34d;
+    --sql-comment: #cbd5e1;
+  }
+}
+
+@media (forced-colors: active) {
+  :host {
+    --sql-surface: Canvas;
+    --sql-foreground: CanvasText;
+    --sql-gutter-surface: Canvas;
+    --sql-gutter-foreground: CanvasText;
+    --sql-active-line: Canvas;
+    --sql-selection: Canvas;
+    --sql-selection-outline: 2px solid CanvasText;
+    --sql-keyword: CanvasText;
+    --sql-string: CanvasText;
+    --sql-number: CanvasText;
+    --sql-comment: CanvasText;
+  }
+}

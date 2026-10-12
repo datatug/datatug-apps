@@ -330,6 +330,7 @@ import {
   hasVerifiedCustomerIdLineage,
 } from './author-customer-lookup';
 import { QueryWorkspaceLayoutComponent } from './query-workspace-layout.component';
+import { SqlEditorComponent } from '../../../components/sqleditor/sql-editor.component';
 import type {
   PublicSqliteExecutionReceipt,
   PublicSqliteQueryPreview,
@@ -530,6 +531,7 @@ export function extractLinkedEntityNames(
     AuthorRelationshipSourcesComponent,
     PublicSqliteComparisonPanelComponent,
     QueryWorkspaceLayoutComponent,
+    SqlEditorComponent,
     DatePipe,
     NgTemplateOutlet,
     // DatatugNavContextService and EnvironmentService are now
@@ -590,6 +592,8 @@ export function extractLinkedEntityNames(
   ],
 })
 export class QueryPageComponent implements OnDestroy, ViewDidEnter {
+  public readonly sqlQueryType = QueryType.SQL;
+
   private readonly injector = inject(Injector);
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly randomIdService = inject(RandomIdService);
@@ -1627,6 +1631,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.invalidateComparison('The query draft changed; run both fixtures again.');
     }
     this.queryEditorStateService.updateQueryState(this.queryState);
+  }
+
+  public sqlTextChanged(text: string): void {
+    this.queryTextChanged(
+      new CustomEvent('ionInput', { detail: { value: text } }),
+    );
   }
 
   public authorCodeChanged(text: string): void {

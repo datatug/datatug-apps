@@ -26,12 +26,7 @@
 
 <ion-content>
   <ion-item class="sql-editor ion-margin ion-no-padding" style="min-height: 0">
-    <code-editor
-      style="height: auto"
-      [(ngModel)]="sql"
-      [readonly]="true"
-      [language]="'sql'"
-    />
+    <sneat-datatug-sql [sql]="sql" [readonly]="true" />
     <ion-buttons slot="end" class="ion-no-margin">
       <ion-button color="medium">Columns</ion-button>
       <ion-button color="medium">Group</ion-button>

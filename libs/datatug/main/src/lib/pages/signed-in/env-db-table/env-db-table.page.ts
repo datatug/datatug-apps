@@ -10,7 +10,6 @@ import { toObservable } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { filter, first } from 'rxjs/operators';
-import { CodeEditor } from '@acrodata/code-editor';
 import {
   IonBackButton,
   IonBadge,
@@ -82,6 +81,7 @@ import { DatatugServicesStoreModule } from '../../../services/repo/datatug-servi
 import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
 import { ForeignKeyCardComponent } from './foreign-key-card/foreign-key-card.component';
 import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
+import { SqlEditorComponent } from '../../../components/sqleditor/sql-editor.component';
 
 // Registers the same two icon names SemanticMarkerComponent uses
 // (libs/datatug/semantic/.../semantic-marker.component.ts) so they resolve when this
@@ -129,7 +129,7 @@ addIcons({ pricetag, helpCircleOutline });
     ForeignKeyCardComponent,
     ContextPanelComponent,
     LimitationHeaderComponent,
-    CodeEditor,
+    SqlEditorComponent,
     DataGridComponent,
     SneatDatatugPageTitleComponent,
     IonHeader,

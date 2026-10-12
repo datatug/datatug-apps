@@ -1,9 +1,13 @@
-<div style="min-height: 0">
+@for (editor of [instance()]; track editor.generation) {
   <code-editor
-    style="height: auto"
-    [ngModel]="sql()"
-    (ngModelChange)="onSqlChanged($event)"
+    class="sql-editor-view"
+    [root]="editorRoot"
+    [value]="editor.value"
+    [language]="'SQL'"
+    [languages]="languages"
+    [extensions]="editor.extensions"
     [readonly]="readonly()"
-    [language]="'sql'"
+    [disabled]="disabled()"
+    [lineWrapping]="true"
   />
-</div>
+}

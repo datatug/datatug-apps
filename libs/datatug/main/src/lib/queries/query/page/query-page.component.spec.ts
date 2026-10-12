@@ -17,7 +17,10 @@ import { NgTemplateOutlet } from '@angular/common';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import {
   ChangeDetectorRef,
+  Component,
   CUSTOM_ELEMENTS_SCHEMA,
+  input,
+  output,
   signal,
 } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
@@ -99,6 +102,16 @@ const repositoryRoot = resolvePath(
   '../../../../../../../../',
 );
 const resolve = (path: string): string => resolvePath(repositoryRoot, path);
+
+@Component({ selector: 'sneat-datatug-sql', standalone: true, template: '' })
+class SqlEditorHostStub {
+  readonly sql = input('');
+  readonly readonly = input(false);
+  readonly disabled = input(false);
+  readonly lineNumbers = input(true);
+  readonly autoCloseBrackets = input(true);
+  readonly sqlChanged = output<string>();
+}
 
 function agentContextStub(securityContextId: string | undefined = 'sctx-1') {
   return {
@@ -7051,6 +7064,7 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
   async function createComponent(
     def: IQueryDef,
     template = '',
+    editorImports: Array<typeof SqlEditorHostStub> = [],
   ): Promise<QueryPageComponent> {
     Object.defineProperty(window, 'history', {
       value: { ...window.history, state: {} },
@@ -7143,7 +7157,7 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
     })
       .overrideComponent(QueryPageComponent, {
         set: {
-          imports: [],
+          imports: editorImports,
           template,
           schemas: [CUSTOM_ELEMENTS_SCHEMA],
           providers: [],
@@ -7155,10 +7169,90 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
     return fixture.componentInstance;
   }
 
+  function queryTextEditorTemplate(): string {
+    const template = readFileSync(
+      resolve(
+        'libs/datatug/main/src/lib/queries/query/page/query-page.component.html',
+      ),
+      'utf8',
+    );
+    const section = template.indexOf('<!-- Saved query text is editable');
+    const start = template.indexOf('<ion-card-content>', section);
+    const end = template.indexOf('</ion-card-content>', start);
+    if (section < 0 || start < 0 || end < 0) {
+      throw new Error(
+        'Could not locate the maintained query text editor fragment.',
+      );
+    }
+    return template.slice(start, end + '</ion-card-content>'.length);
+  }
   beforeEach(() => {
     sessionStorage.clear();
   });
 
+  it('uses the shared CodeMirror editor for native SQL and keeps textareas for other queries', () => {
+    const template = readFileSync(
+      resolve(
+        'libs/datatug/main/src/lib/queries/query/page/query-page.component.html',
+      ),
+      'utf8',
+    );
+    const sqlBranch = template.indexOf(
+      '@if (queryDef()?.request.queryType === sqlQueryType)',
+    );
+    const sqlEditor = template.indexOf('<sneat-datatug-sql', sqlBranch);
+    const fallbackTextarea = template.indexOf('<ion-textarea', sqlEditor);
+
+    expect(sqlBranch).toBeGreaterThanOrEqual(0);
+    expect(sqlEditor).toBeGreaterThan(sqlBranch);
+    expect(
+      template.indexOf('(sqlChanged)="sqlTextChanged($event)"', sqlEditor),
+    ).toBeGreaterThan(sqlEditor);
+    expect(fallbackTextarea).toBeGreaterThan(sqlEditor);
+    expect(
+      template.indexOf('(ionInput)="queryTextChanged($event)"', fallbackTextarea),
+    ).toBeGreaterThan(fallbackTextarea);
+  });
+
+  it('mounts SQL editor bindings and preserves the editable non-SQL textarea branch', async () => {
+    component = await createComponent(legacySqlDef, queryTextEditorTemplate(), [
+      SqlEditorHostStub,
+    ]);
+    fixture.detectChanges();
+
+    const sqlEditor = fixture.debugElement.query(By.directive(SqlEditorHostStub));
+    expect(sqlEditor).not.toBeNull();
+    expect(sqlEditor.componentInstance.sql()).toBe(legacySqlText);
+    expect(sqlEditor.componentInstance.disabled()).toBe(false);
+    expect(sqlEditor.componentInstance.readonly()).toBe(false);
+    expect(sqlEditor.componentInstance.lineNumbers()).toBe(false);
+    expect(sqlEditor.componentInstance.autoCloseBrackets()).toBe(false);
+    sqlEditor.componentInstance.sqlChanged.emit('SELECT 2;');
+    fixture.detectChanges();
+    expect(component.queryBodyText()).toBe('SELECT 2;');
+  });
+
+  it('keeps the non-SQL query textarea editable and connected to queryTextChanged', async () => {
+    component = await createComponent(dtqlDef, queryTextEditorTemplate(), [
+      SqlEditorHostStub,
+    ]);
+    fixture.detectChanges();
+    expect(
+      fixture.debugElement.query(By.directive(SqlEditorHostStub)),
+    ).toBeNull();
+    const textarea = fixture.nativeElement.querySelector(
+      '[data-testid="query-body-text"]',
+    ) as HTMLElement;
+    expect(textarea.tagName.toLowerCase()).toBe('ion-textarea');
+    textarea.dispatchEvent(
+      new CustomEvent('ionInput', {
+        detail: { value: 'from:\n  name: Artist\n' },
+        bubbles: true,
+      }),
+    );
+    fixture.detectChanges();
+    expect(component.queryBodyText()).toBe('from:\n  name: Artist\n');
+  });
   it('a direct-URL-loaded legacy SQL query (no parameters/recordsets metadata) exposes its own text and, from a FROM/JOIN scan, the tables it references', async () => {
     component = await createComponent(legacySqlDef);
 
@@ -7194,38 +7288,31 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
       title: 'New query',
       request: { queryType: QueryType.SQL, text: '' } as ISqlQueryRequest,
     };
-    component = await createComponent(
-      blankSql,
-      '@if (queryBodyText() !== undefined) {<ion-textarea data-testid="query-body-text" [value]="queryBodyText()" (ionInput)="queryTextChanged($event)"></ion-textarea>}',
-    );
+    component = await createComponent(blankSql, queryTextEditorTemplate(), [
+      SqlEditorHostStub,
+    ]);
     fixture.detectChanges();
     const getEditor = () =>
-      fixture.nativeElement.querySelector(
-        '[data-testid="query-body-text"]',
-      ) as HTMLElement | null;
+      fixture.debugElement.query(By.directive(SqlEditorHostStub));
     expect(getEditor()).not.toBeNull();
+    expect(getEditor().componentInstance.sql()).toBe('');
 
     const edit = async (value: string) => {
       const editor = getEditor();
       expect(editor).not.toBeNull();
-      editor?.dispatchEvent(
-        new CustomEvent('ionInput', {
-          detail: { value },
-          bubbles: true,
-        }),
-      );
+      editor.componentInstance.sqlChanged.emit(value);
       await fixture.whenStable();
       fixture.detectChanges();
     };
     await edit('select 1');
     expect(component.queryBodyText()).toBe('select 1');
-    expect(getEditor()).not.toBeNull();
+    expect(getEditor().componentInstance.sql()).toBe('select 1');
     await edit('');
     expect(component.queryBodyText()).toBe('');
-    expect(getEditor()).not.toBeNull();
+    expect(getEditor().componentInstance.sql()).toBe('');
     await edit('select 2');
     expect(component.queryBodyText()).toBe('select 2');
-    expect(getEditor()).not.toBeNull();
+    expect(getEditor().componentInstance.sql()).toBe('select 2');
   });
 });
 
