@@ -26,7 +26,7 @@ function priceSummary(quote) {
   };
 }
 
-export function errorMessage(error) {
+export function errorMessage(error, kind) {
   const code = error instanceof CheckoutError ? error.code : '';
   if (error instanceof CheckoutError && error.status === 401)
     return 'Please sign in again to continue.';
@@ -35,8 +35,10 @@ export function errorMessage(error) {
   if (code === 'offer_busy')
     return 'Launch offer places are being checked. Please wait, then retry.';
   if (code === 'already_subscribed')
-    return 'You already have Pro for your personal space. Manage that subscription, or choose Business for another space.';
-  if (code === 'space_admin_required')
+    return kind === 'business'
+      ? 'This business space already has a DataTug subscription or a checkout in progress. Check the existing purchase or return to pricing to buy for another space.'
+      : 'You already have Pro for your personal space. Manage that subscription, or choose Business for another space.';
+  if (code === 'space_admin_required' || code === 'not_account_admin')
     return 'You need an owner or admin role for this Space to continue.';
   if (code === 'test_buyer_not_eligible')
     return 'This TEST checkout is not available for this account.';
@@ -182,7 +184,7 @@ export function createCheckoutFlow({
           stage: 'error',
           user,
           selection,
-          message: errorMessage(error),
+          message: errorMessage(error, selection.kind),
           code: error instanceof CheckoutError ? error.code : '',
           status: error instanceof CheckoutError ? error.status : 0,
           retryAfter: error instanceof CheckoutError ? error.retryAfter : null,

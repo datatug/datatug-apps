@@ -11,11 +11,12 @@ and iPhone-profile WebKit. Java 21 is required by the Firestore emulator only.
 pnpm nx run datatug-app:e2e-checkout
 ```
 
-The 30 cases cover five starting situations for each plan on both browsers,
+The 34 cases cover five starting situations for each plan on both browsers,
 including separate auth URLs, quote/annual switching, Back/Forward, refresh,
 Pro TEST confirmation, Business paid-space setup and optional Pro cancellation.
 Additional cases cover delayed reconciliation, permission retry, payment-loader
-failure/retry, expired return and mixed TEST/LIVE return rejection. These tests
+failure/retry, expired return, mixed TEST/LIVE return rejection, an existing
+Business subscription and a referenced-space permission denial. These tests
 never submit a provider payment. Test reports are in
 `coverage/apps/datatug-checkout/results/`.
 

@@ -155,6 +155,7 @@ async function paymentFake(page: Page) {
     setupFailure = false,
     selectedPlan = 'datatug-business-usage-monthly';
   let statusOverride: Record<string, unknown> = {};
+  let sessionFailure: { code: string; status: number } | undefined;
   await page.route('**/v0/**', async (route) => {
     const request = route.request(),
       url = new URL(request.url());
@@ -165,6 +166,14 @@ async function paymentFake(page: Page) {
       /* GET */
     }
     seen.push({ path: url.pathname, body, origin: url.origin });
+    if (url.pathname.endsWith('/session') && sessionFailure) {
+      await route.fulfill({
+        status: sessionFailure.status,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: sessionFailure.code }),
+      });
+      return;
+    }
     const plan =
       typeof body.plan === 'string'
         ? body.plan
@@ -282,6 +291,9 @@ async function paymentFake(page: Page) {
     },
     status: (value: Record<string, unknown>) => {
       statusOverride = value;
+    },
+    rejectSession: (code: string, status: number) => {
+      sessionFailure = { code, status };
     },
   };
 }
@@ -636,4 +648,61 @@ test('a mismatched TEST session and LIVE return is rejected before authenticatio
   ).toBeVisible();
   await expect(page.locator('sneat-auth-panel')).toHaveCount(0);
   expect(fake.seen.some((x) => x.path.includes('/checkout/'))).toBe(false);
+});
+
+test('Business existing subscription explains the destination conflict and cannot mount another payment', async ({
+  page,
+}) => {
+  const fake = await paymentFake(page);
+  fake.rejectSession('already_subscribed', 409);
+  const email = await seed(page, true);
+  await page.goto(
+    '/business/checkout?planID=datatug-business-usage-monthly&checkout=test&spaceID=existing_company',
+  );
+  await signIn(page, email);
+  await expect(
+    page.getByText(
+      'This business space already has a DataTug subscription or a checkout in progress.',
+      { exact: false },
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText('You already have Pro', { exact: false }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: 'Continue to payment', exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: 'Retry this selection', exact: true }),
+  ).toHaveCount(0);
+  expect(new URL(page.url()).searchParams.get('spaceID')).toBe(
+    'existing_company',
+  );
+  expect(fake.seen.filter((x) => x.path.endsWith('/session'))).toHaveLength(1);
+});
+
+test('Business permission denial explains the required role and retains the optional destination', async ({
+  page,
+}) => {
+  const fake = await paymentFake(page);
+  fake.rejectSession('not_account_admin', 403);
+  const email = await seed(page, true);
+  await page.goto(
+    '/business/checkout?planID=datatug-business-usage-monthly&checkout=test&spaceID=referenced_company',
+  );
+  await signIn(page, email);
+  await expect(
+    page.getByText(
+      'You need an owner or admin role for this Space to continue.',
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Continue to payment', exact: true }),
+  ).toHaveCount(0);
+  expect(new URL(page.url()).searchParams.get('spaceID')).toBe(
+    'referenced_company',
+  );
+  await expect(page.locator('ion-menu')).toBeHidden();
+  expect(fake.seen.some((x) => x.path.endsWith('/purchase-setup'))).toBe(false);
 });

@@ -52,6 +52,32 @@ function fakeAuth() {
   return { observe(fn) { callback = fn; return () => { callback = null; }; }, emit(user) { callback?.(user); }, token: async () => 'test-token', signIn: async () => {}, signOut: async () => {} };
 }
 
+test('shared checkout distinguishes an existing Business space subscription from personal Pro and explains denied administration', async () => {
+  for (const [kind, code, expected] of [
+    ['business', 'already_subscribed', /This business space already has a DataTug subscription/],
+    ['business', 'not_account_admin', /owner or admin role/],
+    [undefined, 'already_subscribed', /already have Pro for your personal space/],
+  ]) {
+    const auth = fakeAuth(), states = [];
+    const plan = kind === 'business' ? 'datatug-business-usage-monthly' : 'datatug-pro-monthly';
+    const flow = createCheckoutFlow({
+      auth, mode: 'test', selection: { plan, period: 'monthly', kind },
+      api: {
+        config: async () => ({ ...serverConfig, plans: [{ id: plan, accountRequired: true, accountKind: kind === 'business' ? 'organisation' : 'personal', taxIncluded: true }] }),
+        session: async () => { throw new CheckoutError(code, code === 'not_account_admin' ? 403 : 409); },
+      },
+      provider: { mount() { assert.fail('a denied purchase must never mount payment'); } },
+      render: (state) => states.push(state),
+    });
+    flow.start();
+    auth.emit({ id: 'buyer' });
+    await flush();
+    assert.match(states.at(-1).message, expected);
+    assert.equal(states.at(-1).stage, 'error');
+    flow.dispose();
+  }
+});
+
 test('quote display faithfully describes invitation continuation and rejects malformed money', () => {
   assert.equal(validQuote(quote(), 'test'), true);
   assert.match(discountDescription(quote()), /50% invitation discount for 12 months; then 30% launch discount/);

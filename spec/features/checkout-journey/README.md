@@ -515,9 +515,13 @@ The normal LIVE host’s `GET /v0/checkout/config?site=datatug&mode=live` return
 
 The Playwright suite now takes Pro through TEST confirmation as well as its quote,
 and adds payment-loader failure/retry, expired-payment status retry and rejection
-of a TEST session paired with a LIVE return URL. The complete matrix is 30 cases
-across Chromium/mobile WebKit, with real emulator authentication and simulated
-payment HTTP. The opt-in provider suite and commands are documented in the
+of a TEST session paired with a LIVE return URL. All 30 cases in that revision
+passed. Four additional Chromium/mobile WebKit cases cover an existing Business
+subscription and a referenced-space permission denial, bringing coverage to 34
+cases with real emulator authentication and simulated payment HTTP. A regression
+also corrected the shared flow: Business `already_subscribed` no longer displays
+the personal Pro message, and `not_account_admin` explains the required role.
+The opt-in provider suite and commands are documented in the
 [e2e guide](../../../apps/datatug-app/e2e/README.md#subscription-checkout).
 
 A read-only Playwright check of the deployed TEST catalog/preflights reproduced
