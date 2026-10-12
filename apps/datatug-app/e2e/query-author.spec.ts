@@ -2348,7 +2348,8 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
     });
     expect(firstRowBounds.top).toBeGreaterThanOrEqual(0);
     expect(firstRowBounds.bottom).toBeLessThanOrEqual(698);
-    await expect(rows.nth(1)).toBeInViewport({ ratio: 1 });
+    // Flex column widths can overlap the grid border by a fractional pixel.
+    await expect(rows.nth(1)).toBeInViewport({ ratio: 0.999 });
     if (originalViewport) await page.setViewportSize(originalViewport);
   }
   expect(errors).toEqual([]);
