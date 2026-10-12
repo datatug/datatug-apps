@@ -122,6 +122,9 @@ async function signUp(page: Page) {
   await page.locator('ion-input[name="email"] input').fill(email);
   await page.locator('ion-input[name="first_name"] input').fill('New');
   await page.locator('ion-input[name="last_name"] input').fill('Customer');
+  await expect(
+    page.locator('ion-button').filter({ hasText: /^Sign up$/ }),
+  ).toHaveJSProperty('disabled', false);
   await page.getByRole('button', { name: 'Sign up', exact: true }).click();
   await expect(
     page.getByText(`Signed in as ${email}`, { exact: true }),
@@ -131,6 +134,10 @@ async function signIn(page: Page, email: string) {
   await page.locator('ion-segment-button[value="in"]').click();
   await page.locator('ion-input[name="email"] input').fill(email);
   await page.locator('ion-input[type="password"] input').fill(password);
+  // Wait for Ionic's host property as well as Playwright's native actionability.
+  await expect(
+    page.locator('ion-button').filter({ hasText: /Sign in.*with password/s }),
+  ).toHaveJSProperty('disabled', false);
   await page.getByRole('button', { name: /Sign in.*with password/ }).click();
   await expect(
     page.getByText(`Signed in as ${email}`, { exact: true }),
@@ -286,9 +293,69 @@ for (const plan of ['pro', 'business'])
       );
       await expect(page.locator('sneat-auth-panel')).toBeVisible();
       await expect(page.locator('ion-menu')).toBeHidden();
+      await expect(page).toHaveURL(/\/checkout\/sign-in\?/);
+      await expect(page).toHaveTitle(
+        `Complete your DataTug ${plan === 'pro' ? 'Pro' : 'Business'} subscription`,
+      );
       await expect(
-        page.getByText('2 months free', { exact: false }),
+        page
+          .locator('[data-checkout-page=authentication]')
+          .getByRole('heading', {
+            name: `Complete your DataTug ${plan === 'pro' ? 'Pro' : 'Business'} subscription`,
+            exact: true,
+          }),
       ).toBeVisible();
+      await expect(page.locator('datatug-checkout-price-summary')).toHaveCount(
+        0,
+      );
+      await expect(
+        page.getByRole('tab', { name: 'Monthly', exact: true }),
+      ).toHaveCount(0);
+      await expect(page.locator('.checkout-art')).toHaveCount(0);
+      // Measure the incoming page in one frame: Ionic animates both pages on
+      // mobile, so separate boundingBox calls can observe different offsets.
+      await expect
+        .poll(() =>
+          page
+            .locator('[data-checkout-page=authentication]')
+            .evaluate((root) => {
+              const card = root
+                .querySelector('.checkout-auth ion-card')
+                ?.getBoundingClientRect();
+              if (!card?.width) return Infinity;
+              return Math.max(
+                ...Array.from(
+                  root.querySelectorAll(
+                    '.checkout-auth ion-card, #checkout-auth-heading, .checkout-footer',
+                  ),
+                  (element) => {
+                    const box = element.getBoundingClientRect();
+                    return Math.max(
+                      Math.abs(box.x - card.x),
+                      Math.abs(box.width - card.width),
+                    );
+                  },
+                ),
+              );
+            }),
+        )
+        .toBeLessThanOrEqual(1);
+      if (unsigned) {
+        await page.reload();
+        await expect(page.locator('sneat-auth-panel')).toBeVisible();
+        await expect(
+          page.getByLabel(
+            'Test mode — no live payment or live plan activation',
+          ),
+        ).toBeVisible();
+        await expect(
+          page.locator('datatug-checkout-page.ion-page:not(.ion-page-hidden)'),
+        ).toHaveCount(1);
+        await page.screenshot({
+          path: testInfo.outputPath('checkout-sign-in.png'),
+          fullPage: true,
+        });
+      }
       const purchaseId = new URL(page.url()).searchParams.get('purchaseId');
       if (plan === 'business') expect(purchaseId).toBeTruthy();
       if (unsigned) {
@@ -300,8 +367,27 @@ for (const plan of ['pro', 'business'])
       await expect(
         page.getByText(plan === 'pro' ? '€13.30' : '€69.30', { exact: false }),
       ).toBeVisible();
+      expect(new URL(page.url()).pathname).toBe(
+        plan === 'pro' ? '/subscribe' : '/business/checkout',
+      );
+      await expect(page).toHaveTitle(
+        `Complete your DataTug ${plan === 'pro' ? 'Pro' : 'Business'} subscription`,
+      );
+      await expect(page.locator('sneat-auth-panel')).toBeHidden();
+      await expect(
+        page
+          .locator('datatug-checkout-price-summary ion-card')
+          .getByRole('button', { name: 'Continue to payment' }),
+      ).toBeVisible();
+      for (const art of await page.locator('.checkout-art img').all()) {
+        await expect
+          .poll(() => art.evaluate((img: HTMLImageElement) => img.naturalWidth))
+          .toBeGreaterThan(0);
+      }
       await expect(page.locator('#business-destination')).toHaveCount(0);
-      await page.getByRole('button', { name: 'Yearly', exact: true }).click();
+      if (unsigned)
+        await page.getByRole('button', { name: /Switch to yearly/ }).click();
+      else await page.getByRole('tab', { name: /Yearly/ }).click();
       await expect(
         page.getByText(plan === 'pro' ? '€133.00' : '€693.00', {
           exact: false,
@@ -367,6 +453,10 @@ for (const plan of ['pro', 'business'])
           fake.seen.filter((x) => x.path.endsWith('/purchase-setup')),
         ).toHaveLength(1);
       }
+      await expect(page.locator('sneat-auth-panel')).toBeHidden();
+      await expect(
+        page.locator('datatug-checkout-page.ion-page:not(.ion-page-hidden)'),
+      ).toHaveCount(1);
       await page.screenshot({
         path: testInfo.outputPath('checkout-completion.png'),
         fullPage: true,

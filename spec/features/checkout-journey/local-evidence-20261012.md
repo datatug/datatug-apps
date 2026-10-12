@@ -1,6 +1,6 @@
 # Local checkout matrix screenshots
 
-2026-10-12. Firebase emulators; checkout HTTP is simulated. Pro images show the annual quote after authentication, period switch, browser Back/Forward and refresh. Business images show linked confirmation after simulated payment and attachment. These are not real provider or physical Safari receipts.
+2026-10-12, separate authentication-page revision. All 22 local cases passed. The unsigned page has a type-specific title and one Sneat.co prompt above the existing form, with no subscription details. The signed-in page has a standard white Ionic card, in-card billing tabs and a 30-day base-payment guarantee. Both browser tab titles include the subscription type. Firebase emulators; checkout HTTP is simulated. Pro images show the annual quote after authentication, period switch, browser Back/Forward and refresh. Business images show linked confirmation after simulated payment and attachment. These are not real provider or physical Safari receipts.
 
 - [checkout-journey-business-business-space-without-project-chromium](checkout-journey-business-business-space-without-project-chromium.png)
 - [checkout-journey-business-business-space-without-project-mobile-webkit](checkout-journey-business-business-space-without-project-mobile-webkit.png)
@@ -22,3 +22,10 @@
 - [checkout-journey-pro-project-and-business-space-mobile-webkit](checkout-journey-pro-project-and-business-space-mobile-webkit.png)
 - [checkout-journey-pro-project-without-business-space-chromium](checkout-journey-pro-project-without-business-space-chromium.png)
 - [checkout-journey-pro-project-without-business-space-mobile-webkit](checkout-journey-pro-project-without-business-space-mobile-webkit.png)
+
+Separate unsigned-page captures:
+
+- [checkout-journey-business-new-unsigned-user-chromium-sign-in](checkout-journey-business-new-unsigned-user-chromium-sign-in.png)
+- [checkout-journey-business-new-unsigned-user-mobile-webkit-sign-in](checkout-journey-business-new-unsigned-user-mobile-webkit-sign-in.png)
+- [checkout-journey-pro-new-unsigned-user-chromium-sign-in](checkout-journey-pro-new-unsigned-user-chromium-sign-in.png)
+- [checkout-journey-pro-new-unsigned-user-mobile-webkit-sign-in](checkout-journey-pro-new-unsigned-user-mobile-webkit-sign-in.png)

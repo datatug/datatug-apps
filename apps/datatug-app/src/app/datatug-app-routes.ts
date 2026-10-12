@@ -200,6 +200,12 @@ const loadProCheckoutPage = () =>
   );
 
 export const routes: Routes = [
+  {
+    path: 'checkout/sign-in',
+    canMatch: [checkoutOrRoot],
+    data: { checkoutAuth: true },
+    loadComponent: loadProCheckoutPage,
+  },
   ...['business/checkout/return', 'business/checkout'].map((path) => ({
     path,
     canMatch: [checkoutOrRoot],

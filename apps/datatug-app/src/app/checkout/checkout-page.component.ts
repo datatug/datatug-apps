@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
   ElementRef,
   OnDestroy,
   ViewChild,
@@ -9,7 +10,9 @@ import {
   signal,
 } from '@angular/core';
 import { DatePipe } from '@angular/common';
+import { Title } from '@angular/platform-browser';
 import { ActivatedRoute, ParamMap, Router, RouterLink } from '@angular/router';
+import { IonChip } from '@ionic/angular/ion-chip';
 import { IonContent } from '@ionic/angular/ion-content';
 import { IonHeader } from '@ionic/angular/ion-header';
 import { IonTitle } from '@ionic/angular/ion-title';
@@ -50,6 +53,7 @@ import type {
     IonToolbar,
     IonTitle,
     IonContent,
+    IonChip,
     AuthPanelComponent,
     CheckoutPriceSummaryComponent,
   ],
@@ -58,6 +62,7 @@ import type {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CheckoutPageComponent implements OnDestroy {
+  private readonly documentTitle = inject(Title);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly auth = inject(SneatAuthStateService);
@@ -96,8 +101,10 @@ export class CheckoutPageComponent implements OnDestroy {
   protected readonly accepted = signal(false);
   protected readonly authReturnTo = signal<string | undefined>(undefined);
   protected readonly retryBlocked = signal(false);
-  protected readonly returning =
-    this.route.snapshot.data['checkoutReturn'] === true;
+  protected readonly authOnly =
+    this.route.snapshot.data['checkoutAuth'] === true;
+  protected readonly returning = signal(false);
+  private stopAuthPage?: () => void;
   protected readonly period = signal('monthly');
   protected readonly enabled = signal(false);
   protected readonly existingPurchase = signal<string | null>(null);
@@ -112,14 +119,24 @@ export class CheckoutPageComponent implements OnDestroy {
   private readonly subscription: Subscription;
 
   constructor() {
+    effect(() =>
+      this.documentTitle.setTitle(
+        `Complete your DataTug ${this.business() ? 'Business' : 'Pro'} subscription`,
+      ),
+    );
     this.subscription = this.route.queryParamMap.subscribe((params) =>
       this.start(params),
     );
   }
 
   private start(params: ParamMap = this.route.snapshot.queryParamMap): void {
+    this.returning.set(
+      this.route.snapshot.data['checkoutReturn'] === true ||
+        (this.authOnly && params.has('session_id')),
+    );
     this.generation++;
     this.flow?.dispose();
+    this.stopAuthPage?.();
     this.api = undefined;
     this.setupBusy.set(false);
     this.setupError.set('');
@@ -138,11 +155,11 @@ export class CheckoutPageComponent implements OnDestroy {
     }
     const rail = checkoutRail(
       search.toString(),
-      this.returning,
+      this.returning(),
       this.normalApiBaseUrl,
     );
     const chosen = rail?.chosen;
-    const selected = !this.returning
+    const selected = !this.returning()
       ? (chosen as CheckoutSelection | undefined)
       : undefined;
     this.business.set(selected?.kind === 'business');
@@ -157,7 +174,7 @@ export class CheckoutPageComponent implements OnDestroy {
       return;
     }
     const test =
-      checkoutChoice(search.toString(), this.returning)?.test === true;
+      checkoutChoice(search.toString(), this.returning())?.test === true;
     this.enabled.set(Boolean(rail));
     this.mode.set(rail?.mode ?? 'test');
     this.back.set(
@@ -178,7 +195,7 @@ export class CheckoutPageComponent implements OnDestroy {
       return;
     }
     const intentParams = new URLSearchParams();
-    if (!this.returning && selected) {
+    if (!this.returning() && selected) {
       if (selected.kind === 'business')
         intentParams.set('planID', selected.plan);
       else {
@@ -190,7 +207,7 @@ export class CheckoutPageComponent implements OnDestroy {
       if (selected.purchaseId)
         intentParams.set('purchaseId', selected.purchaseId);
     }
-    const returnPath = this.returning
+    const returnPath = this.returning()
       ? `/pricing/return?mode=${rail.mode}&session_id=${encodeURIComponent((chosen as { sessionId: string }).sessionId)}`
       : `${selected?.kind === 'business' ? '/business/checkout' : '/subscribe'}?${intentParams}`;
     this.authReturnTo.set(returnPath);
@@ -201,6 +218,17 @@ export class CheckoutPageComponent implements OnDestroy {
       returnPath,
       this.business() ? 'DataTug Business' : 'DataTug Pro',
     );
+    if (this.authOnly) {
+      this.state.set({ stage: 'loading' });
+      const authGeneration = this.generation;
+      this.stopAuthPage = auth.observe((user) => {
+        if (authGeneration !== this.generation) return;
+        if (user) {
+          void this.router.navigateByUrl(returnPath, { replaceUrl: true });
+        } else this.state.set({ stage: 'sign-in' });
+      });
+      return;
+    }
     const api = checkoutApi(
       { apiOrigin: rail.apiOrigin, mode: rail.mode },
       auth,
@@ -208,6 +236,31 @@ export class CheckoutPageComponent implements OnDestroy {
     this.api = api;
     const generation = this.generation;
     const render = (state: CheckoutState) => {
+      if (state.stage === 'sign-in' || state.status === 401) {
+        this.state.set({ stage: 'loading' });
+        const navigateToAuth = () =>
+          generation === this.generation
+            ? this.router.navigate(['/checkout/sign-in'], {
+                queryParams: Object.fromEntries(
+                  new URL(returnPath, 'https://datatug.app').searchParams,
+                ),
+                replaceUrl: true,
+              })
+            : Promise.resolve(false);
+        if (state.status === 401)
+          void this.auth
+            .signOut()
+            .then(navigateToAuth)
+            .catch(() => {
+              if (generation === this.generation)
+                this.state.set({
+                  stage: 'error',
+                  message: 'Unable to refresh your sign-in. Please retry.',
+                });
+            });
+        else void navigateToAuth();
+        return;
+      }
       if (this.lastIdentity !== state.user?.id) {
         this.lastIdentity = state.user?.id;
         this.identityGeneration++;
@@ -267,7 +320,7 @@ export class CheckoutPageComponent implements OnDestroy {
           state.retryAfter ?? 5000,
         );
     };
-    if (this.returning) {
+    if (this.returning()) {
       this.flow = createReturnFlow({
         auth,
         api,
@@ -298,7 +351,7 @@ export class CheckoutPageComponent implements OnDestroy {
 
   protected canChangePeriod(): boolean {
     return (
-      !this.returning &&
+      !this.returning() &&
       ![
         'mounting',
         'payment',
@@ -467,6 +520,7 @@ export class CheckoutPageComponent implements OnDestroy {
     this.generation++;
     this.leftPage = true;
     this.flow?.dispose();
+    this.stopAuthPage?.();
     clearTimeout(this.retryTimer);
   }
 
@@ -481,6 +535,7 @@ export class CheckoutPageComponent implements OnDestroy {
     this.generation++;
     this.subscription.unsubscribe();
     this.flow?.dispose();
+    this.stopAuthPage?.();
     clearTimeout(this.retryTimer);
   }
 }

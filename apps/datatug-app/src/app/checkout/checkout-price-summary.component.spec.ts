@@ -2,11 +2,11 @@ import { TestBed } from '@angular/core/testing';
 import { CheckoutPriceSummaryComponent } from './checkout-price-summary.component';
 
 it.each([
-  ['DataTug Pro', 1900, '€19.00', '€190.00'],
-  ['DataTug Business', 9900, '€99.00', '€990.00'],
+  ['DataTug Pro', 1900, '€19.00', '€13.30'],
+  ['DataTug Business', 9900, '€99.00', '€69.30'],
 ])(
-  'shows regular price and conditional discount before authentication for %s',
-  async (name, monthly, regular, annual) => {
+  'shows regular price and conditional discount while the quote is pending for %s',
+  async (name, monthly, regular, estimate) => {
     const fixture = TestBed.createComponent(CheckoutPriceSummaryComponent);
     fixture.componentRef.setInput('planName', name);
     fixture.componentRef.setInput('monthlyMinor', monthly);
@@ -14,12 +14,21 @@ it.each([
     await fixture.whenStable();
     const root: HTMLElement = fixture.nativeElement;
     expect(root.textContent).toContain(regular);
-    expect(root.textContent).toContain(annual);
+    expect(root.textContent).toContain(estimate);
     expect(root.textContent).toContain('2 months free');
-    expect(root.textContent).toContain('Confirmed after sign-in');
+    expect(root.textContent).toContain('30-day money-back guarantee');
+    expect(root.textContent?.replace(/\s+/g, ' ')).toContain(
+      'Separate usage and add-ons are excluded.',
+    );
+    expect(root.querySelector('.guarantee a')?.getAttribute('href')).toBe(
+      'https://datatug.app/en/terms/',
+    );
+    expect(root.textContent).toContain(
+      'subject to availability and eligibility',
+    );
     const yearly = vi.fn();
-    fixture.componentInstance.yearlySelected.subscribe(yearly);
-    root.querySelector('button')?.click();
+    fixture.componentInstance.periodSelected.subscribe(yearly);
+    root.querySelector<HTMLButtonElement>('.yearly-link')?.click();
     expect(yearly).toHaveBeenCalledOnce();
     // Async quote and period changes must repaint without a manual detectChanges.
     fixture.componentRef.setInput('quote', {
@@ -35,7 +44,9 @@ it.each([
     fixture.componentRef.setInput('yearly', true);
     await fixture.whenStable();
     expect(root.textContent).not.toContain('2 months free');
-    expect(root.textContent).toContain('Billed yearly');
+    expect(
+      root.querySelector('[role=tabpanel]')?.getAttribute('aria-label'),
+    ).toBe('Billed yearly');
   },
 );
 
@@ -55,5 +66,5 @@ it('discloses base and first-month terms without implying automatic Pro cancella
   );
   expect(fixture.nativeElement.textContent).toContain('You can keep Pro');
   expect(fixture.nativeElement.textContent).toContain('several spaces');
-  expect(fixture.nativeElement.querySelector('button')).toBeNull();
+  expect(fixture.nativeElement.querySelector('.yearly-link')).toBeNull();
 });

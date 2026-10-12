@@ -7,6 +7,7 @@ import { DatatugAppComponent } from '../datatug-app.component';
 import { isCheckoutShellAddress } from './checkout-privacy-state';
 
 it.each([
+  '/checkout/sign-in?plan=pro&period=yearly&checkout=test',
   '/subscribe?plan=pro&period=monthly',
   '/business/checkout?checkout=test',
   '/pricing/return?mode=test',

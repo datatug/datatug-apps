@@ -17,7 +17,7 @@ Deliver the approved common Pro/Business purchase journey with independent payer
 
 ## Approach
 
-Journey: pricing/deep link → common summary and inline Sneat authentication → authoritative quote/payment → durable confirmation → personal completion or post-payment Business attachment → existing project/space home or optional project setup. Reuse the current Stripe adapter, auth panel, native idempotent Spaceus provisioning and Paymentus ownership/reconciliation; domain logic belongs in the owning extension, with host wiring only. Buyer identity is separate from the base-service destination fence. Preserve stable subscription/discount lineage through attachment and future transfer. No live payments or deployment-setting changes. The existing launch task owns shared management/transfer follow-up; this task supplies the checkout contract and reusable foundations.
+Journey: pricing/deep link → separate sign-in page for unsigned users → signed-in subscription card and authoritative quote/payment → durable confirmation → personal completion or post-payment Business attachment → existing project/space home or optional project setup. Reuse the current Stripe adapter, auth panel, native idempotent Spaceus provisioning and Paymentus ownership/reconciliation; domain logic belongs in the owning extension, with host wiring only. Buyer identity is separate from the base-service destination fence. Preserve stable subscription/discount lineage through attachment and future transfer. No live payments or deployment-setting changes. The existing launch task owns shared management/transfer follow-up; this task supplies the checkout contract and reusable foundations.
 
 ## Tasks
 
@@ -62,3 +62,8 @@ None at this time.
 
 ---
 *This document follows the https://specscore.md/plan-specification*
+
+
+### Latest presentation direction, 12 October 2026
+
+Unsigned users go to `/checkout/sign-in` with preserved validated checkout context and see only “Complete your DataTug {Pro|Business} subscription”, one Sneat.co sign-in sentence, and the reused AuthPanel. Subscription details appear only after account readiness at `/subscribe` or `/business/checkout`. Place the payment button and early-access acknowledgement in the same standard white Ionic subscription card. Keep the sidebar hidden across both URLs and callbacks. This supersedes the earlier combined summary/auth screen, including the earlier pre-auth price display. Guarantee wording covers both plans’ first base payment within 30 days; separate usage/prepaid/add-ons are excluded.

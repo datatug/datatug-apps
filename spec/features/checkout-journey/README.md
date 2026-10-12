@@ -49,7 +49,7 @@ An earlier narrow-screen observation could be mistaken for sidebar suppression: 
 - **Pro** is limited to one per user and belongs to that user’s personal space. It can coexist with any number of Business subscriptions.
 - **Pro** is a personal-space subscription. The server resolves or provisions the verified user's personal space. No space picker and no project prerequisite.
 - **Business** is a business-space subscription. Buy first; select/link an eligible existing space or provision a new business space **after confirmed payment**. An optional `spaceID` reference can nominate an existing destination before purchase without introducing a prerequisite selection screen.
-- Authentication establishes the buyer; it is not a request to create a project. Reuse the existing Sneat sign-in/sign-up panel inside checkout, with no “Sign in to continue” intermediary page.
+- Authentication establishes the buyer; it is not a request to create a project. Reuse the existing Sneat sign-in/sign-up panel directly on `/checkout/sign-in`, with no intermediary button-only screen. This page contains only the type-specific title, one sign-in sentence, and the login form, with branding and useful exits. Subscription details appear only after sign-in at `/subscribe` or `/business/checkout`. This later user direction supersedes the earlier combined summary/auth design.
 - A project is an optional subsequent task. An existing project may be personal or in another space; owning it does not authorize billing a business space or move it into one.
 - “Paid”, “reconciled” and “linked to a space” are distinct states. Do not invite a second payment to recover any paid or uncertain state.
 - Keep DataTug branding and explicit exit navigation. Hide the application side panel throughout checkout, authentication continuations, payment return, pending confirmation and completion.
@@ -65,7 +65,7 @@ All ten rows can begin at pricing or a valid direct checkout link. A signed-in b
 | 2. Signed in, no project | Same Pro path; project not required | Same Pro path → R5 “Create a project” or explore demo | Same Business path if eligible space exists; otherwise B1 create first; ends new-project form | Same purchase path; R4 link existing/new → R5 → optional R7 project setup |
 | 3. Signed in, no company/business space | Same Pro path; business space irrelevant | Same Pro path; no business setup | B1 may still offer manageable ordinary shared spaces (e.g. group); if none eligible, enter name/create group before quote | Buy unchanged; R4 offers existing company business spaces or “New business”; server creates and links once after payment |
 | 4. Signed in, neither project nor business space | Same Pro path; personal bootstrap may run | Same Pro path → R5 → optional R7; no business creation | Same qualification as row 3; B1 create if necessary → quote/payment → new-project form | Same purchase → R4 new/existing → R5 → optional R7 |
-| 5. New unsigned user, no project or space | C0 → A inline sign-up/sign-in → account readiness/personal bootstrap → P1/P2/P3 → `/` | R1 shows summary and inline auth → personal bootstrap → R2/R3/R5 → optional R7 | C0 → B1 space instructions + A inline auth → account ready → B1 create space → B2/B3/B4 → new-project form | R1 summary + inline auth → pending business billing ownership → R2/R3 → R4 new business provision+link → R5 → optional R7 |
+| 5. New unsigned user, no project or space | C0 → A inline sign-up/sign-in → account readiness/personal bootstrap → P1/P2/P3 → `/` | A0 sign-in/sign-up → account readiness → R1 summary → personal bootstrap → R2/R3/R5 → optional R7 | C0 → B1 space instructions + A inline auth → account ready → B1 create space → B2/B3/B4 → new-project form | A0 sign-in/sign-up → account readiness → R1 summary → pending business billing ownership → R2/R3 → R4 new business provision+link → R5 → optional R7 |
 
 Rows 1–4 are distinct starting conditions but deliberately converge: project presence does not alter purchase eligibility. In rows 3–4, absence of a company-labelled space is not proof of no eligible ordinary shared space. Current code filters personal/private/system/spot/unknown types and owner/admin roles rather than requiring a `company` type. The new post-payment binding uses the native `company` type with current owner/admin authority. The old reviewed picker also admitted groups; legacy subscriptions retain their existing access reader. Conversion or transfer of an ordinary group into the new company-only binding is not implicit.
 
@@ -134,15 +134,15 @@ Back to pricing | Cancel      Back to pricing | Cancel
 
 ### Recommended screen-flow diagram
 
-The shared sequence is **summary/auth → payment → confirmation → completion**. Business adds destination attachment inside completion, after payment. No plan requires a separate project or space prerequisite screen.
+The shared sequence is **authentication when needed → subscription/payment card → confirmation → completion**. Authentication and the subscription card use distinct URLs. Business adds destination attachment inside completion, after payment. No plan requires a separate project or space prerequisite screen.
 
 ```mermaid
 flowchart TD
-  E[Pricing or direct checkout; optional spaceID] --> R1[Shared checkout: summary, period, optional destination reference]
-  R1 --> A{Account ready?}
-  A -->|No| AU[Existing Sneat auth directly in same checkout shell]
-  AU --> A
-  A -->|Yes| Q[Server eligibility + quote; personal account or pending business purchase]
+  E[Pricing or direct checkout; optional spaceID] --> A{Account ready?}
+  A -->|No| AU[A0: /checkout/sign-in; title and existing Sneat auth only]
+  AU -->|Authenticated; replace URL, preserve context| R1[R1: /subscribe or /business/checkout; subscription card]
+  A -->|Yes| R1
+  R1 --> Q[Server eligibility + quote; personal account or pending business purchase]
   Q --> R2[Shared embedded payment]
   R2 -->|Failure or additional authentication| R2
   R2 --> R3[Shared confirming: payment / reconciliation / attachment status]
@@ -170,32 +170,45 @@ These screens/states are shared components, not necessarily separate URLs. All u
 
 | ID | Visible information / required input | Primary action | Back | Cancel / exit |
 | --- | --- | --- | --- | --- |
-| R1 summary/auth | Plan; Monthly/Yearly control; regular price, discount, final due, VAT, renewal terms. Monthly offers annual saving. Signed-in identity + Change account. Pro “For your personal space”. Business without hint “Choose your business space after payment”; valid hint shows destination name. Existing auth panel inline when unsigned; no extra form | Auth action when needed, then “Continue to payment”; early-access acknowledgement once where applicable | Pricing with same plan, period and test context | “Cancel checkout” → validated original in-app source, otherwise `/home` for signed-in or public `/` for unsigned. Unpaid draft remains resumable/expirable; no purchased-subscription cancellation |
+| A0 authentication | `/checkout/sign-in` with validated plan/period/optional spaceID/purchaseId/test context. “Complete your DataTug Pro/Business subscription”; one linked Sneat.co sign-in sentence; existing sign-up/sign-in/SSO forms. No price, discount, billing tabs or illustration | Existing authentication action; redirect only after the same user’s account record is ready; no checkout API request on this page | Pricing with selected period and test mode | Public `/`; no space/project creation or charge |
+| R1 subscription/payment card | Plan; Monthly/Yearly control; regular price, discount, final due, VAT, renewal terms. Monthly offers annual saving. Signed-in identity + Change account. Pro “For your personal space”. Business without hint “Choose your business space after payment”; valid hint shows destination name. Unsigned users are redirected to A0; existing signed-in users skip A0. Payment button is inside the same standard white Ionic subscription card | “Continue to payment”; early-access acknowledgement once where applicable | Pricing with same plan, period and test context | “Cancel checkout” → validated original in-app source, otherwise `/home` for signed-in or public `/` for unsigned. Unpaid draft remains resumable/expirable; no purchased-subscription cancellation |
 | R2 payment | Persistent exact quote summary; provider payment details only; no space/project questions. Billing identity/address/tax fields only as required by provider/merchant | Explicit “Pay €X [per month/per year]” provider confirmation | R1; if quote/session already committed, retrieve/reconcile before allowing changed period; never blindly create a replacement | Same safe exit; payment in flight becomes “Leave checkout” with recoverable status, not an instruction to re-pay |
 | R3 confirming | “Checking your payment” then “Payment received; finishing setup” where supported; reference and safe status, no card details | Automatic bounded retry with backoff; “Check status” if delayed; support link/reference | Read-only order summary, no payment form if paid/uncertain | “Finish later” → account purchase record; unsigned/session-expired must reauthenticate to same purchase context |
-| R4 Business attachment (completion) | “Business purchased. Choose where to use it.” Eligible existing spaces with role/eligibility, or “New business”; editable business name for new (required only after payment). No project input. Paid/ref status visible. Invalid hint explains why and offers alternatives | “Use this space” or “Create business and finish”; idempotent backend operation | Paid order summary R3; does not undo charge | “Finish later” → `/my` purchase setup item; retain subscription, never silently cancel/refund. If auth expired, same inline auth and return |
+| R4 Business attachment (completion) | “Business purchased. Choose where to use it.” Eligible existing spaces with role/eligibility, or “New business”; editable business name for new (required only after payment). No project input. Paid/ref status visible. Invalid hint explains why and offers alternatives | “Use this space” or “Create business and finish”; idempotent backend operation | Paid order summary R3; does not undo charge | “Finish later” → `/my` purchase setup item; retain subscription, never silently cancel/refund. If auth expired, A0 and return to the same paid purchase |
 | R5 success | Pro active for personal space, or Business active for named linked space; amount/period, launch saving and renewal date; receipt/account link. Test says test-only clearly | Existing authorized project in destination space when available; otherwise “Open DataTug”/space home. Secondary Create project / Explore demo | Read-only receipt/purchase summary | “Done” → validated source or `/home`; paid setup can be resumed from account |
 | R6 optional Pro renewal action | Shown only after Business linked/active and an eligible active Pro exists: unchecked “Turn off Pro renewal on DATE; keep Pro until DATE”. Explain both subscriptions otherwise remain active | Separate explicit “Schedule Pro cancellation” action, idempotent; record success/failure independently | Business success R5 | “Keep Pro” or skip → destination; failure does not invalidate Business or auto-retry financial mutation |
 | R7 optional project setup | Reuse existing new-project form with destination preselected; project/GitHub/template fields | Existing Create project workflow | Destination space home / prior success | Space home or `/home`; paid access remains active |
 
-R1 and R2 can be progressive states of one page. Do not force another intermediary “review” click if the amount, consent and authentication are already clear. Show the selected plan's public price breakdown before authentication, then replace/confirm it with the authoritative quote; label discount availability pending until the server confirms it. Never display a reserved discount as guaranteed from the marketing page alone.
+R1 and R2 can be progressive states of one page. Do not force another intermediary “review” click if the amount, consent and authentication are already clear. Show subscription details only to signed-in users. A0 never requests a quote or displays price/discount details. R1 shows the selected period and authoritative quote before payment; only a temporary pending quote may be labelled conditional. Never display a reserved discount as guaranteed from the marketing page alone.
 
 Recommended rough wireframes:
 
 ```text
-DataTug                         Back to pricing   Cancel checkout
-Subscribe to Pro / Business
-[Monthly] [Yearly — 2 months free]
-Regular subscription                         €19.00 / month
-Launch discount (30%, if eligible)             −€5.70
-Final price                                  €13.30 / month
-EUR · VAT included · billed monthly · renewal terms
-Switch to yearly — 2 months free
-€190 regular/year → €133/year with launch discount · billed annually
-For your personal space / Choose business space after payment
-[existing Sneat SIGN UP | SIGN IN panel, only if needed]
-[early-access acknowledgement, if required]
-[Continue to payment → exact provider fields → Pay amount]
+/checkout/sign-in?{validated selected checkout context}
+DataTug                                      [Test mode, when selected]
+Complete your DataTug Business subscription
+Sign in with your Sneat.co account to review your price and continue to payment.
+[Existing SIGN UP | SIGN IN form and provider options]
+Back to pricing                         Cancel and return to DataTug
+```
+
+```text
+/business/checkout?planID=...&checkout=test&purchaseId=...
+DataTug                                      [Test mode, when selected]
+Complete your DataTug Business subscription
+[Standard white Ionic card]
+DataTug Business
+[Monthly] [Yearly]                                       VAT included
+Regular price                                                  €99.00
+Launch discount (30%)                                          −€29.70
+Final price                                           €69.30 / month
+                         Switch to yearly — 2 months free [dashed underline]
+30-day money-back guarantee [Terms]
+First-month unlimited users; base payable. Space linking after payment.
+[Early-access acknowledgement]
+[Continue to payment]
+[/Card]
+Back to pricing                         Cancel and return to DataTug
 ```
 
 ```text
@@ -214,7 +227,7 @@ After linking: Business active for Example Ltd
 
 ### Price, period, launch offer and renewal copy
 
-Both checkouts must show **regular subscription price → discount amount/percentage → final price**, before auth and alongside payment. Discount is a separate line, not just a struck-through amount. If unavailable, explicitly show €0 discount and why when safe; do not imply the launch price applies to every buyer.
+Both checkouts must show **regular subscription price → discount amount/percentage → final price**, only after authentication and alongside payment. Discount is a separate line, not just a struck-through amount. If unavailable, explicitly show €0 discount and why when safe; do not imply the launch price applies to every buyer.
 
 | Plan / period | Regular base | Eligible 30% launch reduction | Final base due |
 | --- | ---: | ---: | ---: |
@@ -435,9 +448,9 @@ Paymentus regression proof uses in-memory DAL transactions and fake provider por
 
 ### Shared Business cutover evidence — 2026-10-12
 
-New `/subscribe` and `/business/checkout` entries now share `CheckoutPageComponent`, price summary, inline Sneat AuthPanel, provider lifecycle and `/pricing/return`. The old space-first component is retained only for already-issued `/business/checkout/return` links. It is no longer the new-purchase entry. Optional `spaceID` survives authentication and selects the referenced destination after payment; activation still performs a fresh server permission/uniqueness check. Company spaces are eligible in the new binding; personal spaces are excluded.
+New `/subscribe` and `/business/checkout` entries share `CheckoutPageComponent`, price summary, provider lifecycle and `/pricing/return`. Unsigned users go to the distinct `/checkout/sign-in` page with the reused Sneat AuthPanel; account readiness redirects them to the selected checkout. Subscription details never appear on the auth page. The old space-first component is retained only for already-issued `/business/checkout/return` links. It is no longer the new-purchase entry. Optional `spaceID` survives authentication and selects the referenced destination after payment; activation still performs a fresh server permission/uniqueness check. Company spaces are eligible in the new binding; personal spaces are excluded.
 
-Paymentus [PR #110](https://github.com/sneat-co/paymentus/pull/110), merged at `a8cc16c8a6ca129feb9467c664c31d5770e64f99`, published backend **v0.52.0**. Host [PR #1249](https://github.com/sneat-co/sneat-go/pull/1249) binds its generic ports to native Core authority; its remote landing/CI status must be read from GitHub/WB, not inferred from this spec. This app change is the frontend cutover and local proof. Review/acceptance remains **Implementing** until real provider and physical Safari evidence is obtained.
+Paymentus [PR #110](https://github.com/sneat-co/paymentus/pull/110), merged at `a8cc16c8a6ca129feb9467c664c31d5770e64f99`, published backend **v0.52.0**. Host [PR #1249](https://github.com/sneat-co/sneat-go/pull/1249) binds its generic ports to native Core authority; merged at `d9766463b79e506f692fb4a646db114ded64721f`; exact-head post-merge CI and the automatic normal-host Cloud Run deployment passed. This does not prove the separate fixed TEST host has that revision. This app change is the frontend cutover and local proof. Review/acceptance remains **Implementing** until real provider and physical Safari evidence is obtained.
 
 | Area | Implemented contract / evidence | Remaining limit |
 | --- | --- | --- |
@@ -453,10 +466,10 @@ Local evidence uses **real Firebase Auth/Firestore emulators and the existing Sn
 
 - **20 matrix cases passed:** five situations × Pro/Business × desktop Chromium/mobile WebKit. Monthly/yearly prices, TEST origin, stable purchase identity, sign-in/sign-up readiness, browser Back/Forward, refresh, hidden panel, project independence, postpay existing/new destination, and refresh without another attachment. Pro cases end at authoritative quote; Business completion is simulated paid status and setup HTTP, not a real charge.
 - **2 additional recovery cases passed:** reconciliation delay → bounded pending → Check again → permission denial → alternative new destination, without any new payment session; optional explicit Pro renewal cancellation submits once. Component tests separately double-click setup and provider mount.
-- **154 checkout component/auth/config tests**, **23 Node lifecycle/contract tests**, app lint, zoneless checks, Angular compilation and SpecScore lint passed locally. Focused test coverage is not whole-app coverage acceptance; CI owns the full affected checks. Logs are retained under `/private/tmp/business-checkout-*` for this run; CI now runs `e2e-checkout` with Java 21 and both browser engines.
-- [All 20 local screenshots](local-evidence-20261012.md), including [new Pro user/mobile WebKit](checkout-journey-pro-new-unsigned-user-mobile-webkit.png) and [Business linked/desktop](checkout-journey-business-project-and-business-space-chromium.png). Ionic scroll content means a full-page capture can show only the current inner viewport; interaction assertions cover controls below it. Screenshots visibly identify emulator/TEST mode.
+- **160 checkout component/auth/config tests**, **23 Node lifecycle/contract tests**, app lint, zoneless checks, Angular compilation and SpecScore lint passed locally. Focused test coverage is not whole-app coverage acceptance; CI owns the full affected checks. Logs are retained under `/private/tmp/business-checkout-*` for this run; CI now runs `e2e-checkout` with Java 21 and both browser engines.
+- [All 20 completion screenshots and four authentication screenshots](local-evidence-20261012.md), including [new Pro user/mobile WebKit](checkout-journey-pro-new-unsigned-user-mobile-webkit.png) and [Business linked/desktop](checkout-journey-business-project-and-business-space-chromium.png). Ionic scroll content means a full-page capture can show only the current inner viewport; interaction assertions cover controls below it. Screenshots visibly identify emulator/TEST mode.
 
-**Still unverified:** real provider TEST charge/decline/3DS, real OAuth/email-link/SSO callback completion, live webhook/return race, deployed revision/runtime binding and physical Mobile Safari keyboard/redirect behavior. Mobile WebKit automation is useful layout/return evidence, not a physical iPhone receipt. Local logs expose an existing shared Telegram-widget destroy callback warning during fast auth transitions; it did not block these journeys and remains an auth-library follow-up. No live payment, live subscription cancellation, customer permission mutation or deployment-setting change was performed.
+**Still unverified:** real provider TEST charge/decline/3DS, real OAuth/email-link/SSO callback completion, live webhook/return race, fixed TEST-host revision/runtime binding and physical Mobile Safari keyboard/redirect behavior. Mobile WebKit automation is useful layout/return evidence, not a physical iPhone receipt. Local logs expose an existing shared Telegram-widget destroy callback warning during fast auth transitions; it did not block these journeys and remains an auth-library follow-up. No live payment, live subscription cancellation, customer permission mutation or deployment-setting change was performed.
 
 ## Open Questions
 
@@ -481,3 +494,19 @@ Self-review checked the ten rows, fields/actions/exits, timing, ownership and ra
 
 ---
 *This document follows the https://specscore.md/feature-specification*
+
+
+## Checkout presentation refinements, 12 October 2026
+
+- Use a standard white Ionic subscription card. Monthly and Yearly tabs sit directly above price rows; the monthly view puts “Switch to yearly — **2 months free**” immediately beneath the rows, aligned with the amounts and with a dashed underline.
+- Show regular price, launch discount and final price only on the signed-in checkout page. The separate authentication page has no subscription details. The server confirms eligibility and final price before payment. Do not add a separate annual billed-total sentence to the monthly view.
+- Align the subscription card, inline authentication cards and prompt, and Back/Cancel navigation to the same left edge and width. Put the Test mode chip in the page toolbar. Keep only the small homepage tug illustration; omit the lighthouse.
+- Use the type-specific title “Complete your DataTug Pro/Business subscription” on both pages and one prompt above the reused AuthPanel: “Sign in with your Sneat.co account to review your price and continue to payment.” Link Sneat.co. Purchase returns instead remind users to use the same account.
+- **Confirmed product decision:** Pro and Business both offer a full refund of each subscription’s first base payment when requested within 30 days, monthly or yearly. Exclude usage, prepaid capacity and separate add-ons. Display the guarantee beside the subscription price and link the shared terms. Requests remain support-managed; a full base refund immediately ends affected access and releases its launch place.
+
+The local emulator matrix uses fake payment-provider responses; it does not submit a provider payment. Real TEST payment/authentication returns, delayed real webhook reconciliation and physical Mobile Safari remain unverified acceptance items.
+
+
+### Read-only runtime catalog check, 12 October 2026
+
+The normal LIVE host’s `GET /v0/checkout/config?site=datatug&mode=live` returned HTTP 200 and lists both Pro periods as personal-account plans and both Business periods as organisation-account plans. The established fixed TEST host `https://datatug-checkout-test-354fvnqbaa-ey.a.run.app` also returns HTTP 200, `site=datatug`, `mode=test` and the same four plan IDs when the request includes the browser’s `Origin: https://datatug.app` header. An earlier read without Origin returned HTTP 404/non-JSON; this was an invalid probe, not evidence of a broken browser endpoint. This catalog read establishes availability only, not a successful provider payment. The frontend retains the fixed TEST origin and must never route TEST traffic to LIVE. No configuration, subscription or payment mutation was made.

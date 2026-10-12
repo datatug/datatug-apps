@@ -4,6 +4,7 @@ import {
   ActivatedRoute,
   convertToParamMap,
   provideRouter,
+  Router,
 } from '@angular/router';
 import { ToastController } from '@ionic/angular/toast-controller';
 import { SneatApiBaseUrl, SneatApiService } from '@sneat/api';
@@ -116,6 +117,7 @@ async function render(
   kind: CheckoutKind,
   authState: ISneatAuthState,
   userState: ISneatUserState,
+  authOnly = false,
 ): Promise<HTMLElement> {
   authStates = new BehaviorSubject(authState);
   userStates = new BehaviorSubject(userState);
@@ -156,7 +158,11 @@ async function render(
         useValue: {
           queryParamMap: of(convertToParamMap(query(kind))),
           snapshot: {
-            data: { checkoutReturn: false, businessCheckoutReturn: false },
+            data: {
+              checkoutReturn: false,
+              businessCheckoutReturn: false,
+              checkoutAuth: authOnly,
+            },
             queryParamMap: convertToParamMap(query(kind)),
           },
         },
@@ -205,6 +211,8 @@ async function render(
     ],
   }).compileComponents();
 
+  vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+  vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
   if (kind === 'pro') {
     const proFixture = TestBed.createComponent(CheckoutPageComponent);
     fixture = proFixture;
@@ -323,6 +331,7 @@ it.each(['pro', 'business'] as const)(
       kind,
       { status: 'notAuthenticated' },
       { status: 'notAuthenticated' },
+      kind === 'pro',
     );
     const renderedFixture = fixture;
     if (!renderedFixture) {
@@ -383,7 +392,12 @@ it('keeps a Business deep link unquoted while its selected Space record is loadi
 it.each(['pro', 'business'] as const)(
   'offers setup retry and resumes a quote only after the persisted record is ready for %s',
   async (kind) => {
-    const root = await render(kind, readyAuth(), readyUser('buyer', 'failed'));
+    const root = await render(
+      kind,
+      readyAuth(),
+      readyUser('buyer', 'failed'),
+      kind === 'pro',
+    );
     expect(root.textContent).toContain('Retry account setup');
     expect(checkoutRequests()).toHaveLength(0);
     root.querySelector('ion-button')?.click();
@@ -391,14 +405,22 @@ it.each(['pro', 'business'] as const)(
 
     userStates.next(readyUser());
     await flush();
-    expect(checkoutRequests().length).toBeGreaterThan(0);
-    expect(root.textContent).toContain(
-      kind === 'pro' ? '€133.00' : 'Your Business TEST quote',
-    );
+    if (kind === 'pro') {
+      expect(TestBed.inject(Router).navigateByUrl).toHaveBeenCalledWith(
+        proPath(),
+        { replaceUrl: true },
+      );
+      expect(checkoutRequests()).toHaveLength(0);
+    } else {
+      expect(checkoutRequests().length).toBeGreaterThan(0);
+      expect(root.textContent).toContain('Your Business TEST quote');
+    }
     expect(root.textContent).not.toContain('Retry account setup');
-    expect(
-      root.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked,
-    ).toBe(false);
+    if (kind === 'business')
+      expect(
+        root.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked,
+      ).toBe(false);
+    else expect(root.querySelector('input[type="checkbox"]')).toBeNull();
     expect(mountProvider).not.toHaveBeenCalled();
   },
 );
@@ -410,19 +432,28 @@ it.each(['pro', 'business'] as const)(
       kind,
       { ...readyAuth(), loadingPhase: 'failed', token: 'old-token' },
       readyUser(),
+      kind === 'pro',
     );
     expect(root.querySelector('sneat-email-login-form')).not.toBeNull();
     expect(checkoutRequests()).toHaveLength(0);
 
     authStates.next(readyAuth());
     await flush();
-    expect(checkoutRequests().length).toBeGreaterThan(0);
-    expect(root.textContent).toContain(
-      kind === 'pro' ? '€133.00' : 'Your Business TEST quote',
-    );
-    expect(
-      root.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked,
-    ).toBe(false);
+    if (kind === 'pro') {
+      expect(TestBed.inject(Router).navigateByUrl).toHaveBeenCalledWith(
+        proPath(),
+        { replaceUrl: true },
+      );
+      expect(checkoutRequests()).toHaveLength(0);
+    } else {
+      expect(checkoutRequests().length).toBeGreaterThan(0);
+      expect(root.textContent).toContain('Your Business TEST quote');
+    }
+    if (kind === 'business')
+      expect(
+        root.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked,
+      ).toBe(false);
+    else expect(root.querySelector('input[type="checkbox"]')).toBeNull();
     expect(mountProvider).not.toHaveBeenCalled();
   },
 );
@@ -471,9 +502,20 @@ it.each(['pro', 'business'] as const)(
           url.pathname.endsWith('/session') ? proQuote : businessQuote,
       };
     });
-    const root = await render(kind, readyAuth(), readyUser());
-    expect(root.querySelector('sneat-email-login-form')).not.toBeNull();
-    expect(root.querySelector('ion-input[name="email"]')).not.toBeNull();
+    let root = await render(kind, readyAuth(), readyUser());
+    if (kind === 'pro') {
+      expect(root.querySelector('sneat-email-login-form')).toBeNull();
+      expect(TestBed.inject(Router).navigate).toHaveBeenCalledWith(
+        ['/checkout/sign-in'],
+        { queryParams: query(kind), replaceUrl: true },
+      );
+      fixture?.destroy();
+      TestBed.resetTestingModule();
+      root = await render(kind, readyAuth(), readyUser());
+    } else {
+      expect(root.querySelector('sneat-email-login-form')).not.toBeNull();
+      expect(root.querySelector('ion-input[name="email"]')).not.toBeNull();
+    }
 
     authStates.next({ status: 'notAuthenticated' });
     userStates.next({ status: 'notAuthenticated' });

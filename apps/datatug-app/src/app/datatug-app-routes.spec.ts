@@ -78,6 +78,7 @@ describe('DataTug app routes', () => {
 
   it('uses the established DataTug-only guard on Pro and Business checkout routes', () => {
     for (const path of [
+      'checkout/sign-in',
       'subscribe',
       'pricing/return',
       'business/checkout',
@@ -131,6 +132,7 @@ describe('DataTug app routes', () => {
 
   it('adds canonical checkout before the unchanged project and hand-off routes', () => {
     expect(routes.map((r) => r.path)).toEqual([
+      'checkout/sign-in',
       'business/checkout/return',
       'business/checkout',
       'subscribe',

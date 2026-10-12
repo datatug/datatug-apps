@@ -28,6 +28,7 @@ export function isCheckoutAddress(url: string): boolean {
           : '';
     return [path, continuation].some(
       (value) =>
+        value === 'checkout/sign-in' ||
         value === 'subscribe' ||
         value === 'pricing/return' ||
         value === 'business/checkout' ||

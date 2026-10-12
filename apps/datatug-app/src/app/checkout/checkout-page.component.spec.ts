@@ -6,6 +6,7 @@ import {
   ActivatedRoute,
   ParamMap,
   RouterLink,
+  Router,
   convertToParamMap,
   provideRouter,
 } from '@angular/router';
@@ -62,6 +63,7 @@ async function render(
   initial: ISneatAuthState = authenticated,
   recordUID = 'buyer',
   spaces = {},
+  authOnly = false,
 ) {
   states = new BehaviorSubject(initial);
   queries = new BehaviorSubject(convertToParamMap(query));
@@ -100,7 +102,7 @@ async function render(
         useValue: {
           queryParamMap: queries,
           snapshot: {
-            data: { checkoutReturn: returning },
+            data: { checkoutReturn: returning, checkoutAuth: authOnly },
             queryParamMap: convertToParamMap(query),
           },
         },
@@ -114,6 +116,8 @@ async function render(
       },
     })
     .compileComponents();
+  vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+  vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
   fixture = TestBed.createComponent(CheckoutPageComponent);
   fixture.detectChanges();
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -156,21 +160,35 @@ it.each([
   {
     query: { plan: 'pro', period: 'monthly' },
     returning: false,
-    copy: 'Sign in to review your price and continue to payment.',
+    copy: 'Sign in with your Sneat.co account to review your price and continue to payment.',
   },
   {
     query: { mode: 'test', session_id: 'cs_test_waiting' },
     returning: true,
-    copy: 'Sign in with the same DataTug account used for your purchase.',
+    copy: 'Sign in with the same Sneat.co account used for your purchase.',
   },
 ])(
   'shows the right sign-in context before any quote is requested',
   async ({ query, returning, copy }) => {
-    const root = await render(query, returning, { status: 'notAuthenticated' });
+    const root = await render(
+      query,
+      returning,
+      { status: 'notAuthenticated' },
+      'buyer',
+      {},
+      true,
+    );
 
-    expect(root.textContent).toContain(copy);
+    expect(root.textContent?.replace(/\s+/g, ' ')).toContain(copy);
     expect(root.querySelector('sneat-auth-panel')).toBeTruthy();
-    expect(root.textContent).toContain('Continue with your DataTug account');
+    expect(root.textContent).not.toContain(
+      'Continue with your DataTug account',
+    );
+    expect(
+      root.querySelector('#checkout-auth-heading a')?.getAttribute('href'),
+    ).toBe('https://sneat.co');
+    expect(root.querySelector('datatug-checkout-price-summary')).toBeNull();
+    expect(root.querySelector('.checkout-art')).toBeNull();
     expect(fetcher).not.toHaveBeenCalled();
   },
 );
@@ -230,7 +248,12 @@ it.each([
       auth,
       recordUID,
     );
-    expect(root.querySelector('sneat-auth-panel')).toBeTruthy();
+    expect(root.querySelector('sneat-auth-panel')).toBeNull();
+    expect(root.querySelector('datatug-checkout-price-summary')).toBeNull();
+    expect(TestBed.inject(Router).navigate).toHaveBeenCalledWith(
+      ['/checkout/sign-in'],
+      { queryParams: { plan: 'pro', period: 'monthly' }, replaceUrl: true },
+    );
     expect(fetcher).not.toHaveBeenCalled();
     expect(mount).not.toHaveBeenCalled();
   },
@@ -436,7 +459,9 @@ it('uses emitted query context when the cached route snapshot still has the prev
   );
   await fixture.whenStable();
   expect(root.textContent).toContain('€133.00');
-  expect(root.textContent).toContain('Yearly plan');
+  expect(
+    root.querySelector('[role=tab][aria-selected=true]')?.textContent,
+  ).toContain('Yearly');
   expect(root.textContent).not.toContain('2 months free');
   expect(
     root.querySelector(
@@ -587,4 +612,67 @@ it('paid Business return creates a space once, then keeps Pro unless explicitly 
   await fixture.whenStable();
   expect(commands).toBe(1);
   expect(html.textContent).toContain('Pro renewal cancellation is scheduled');
+});
+
+it.each([
+  {
+    query: { plan: 'pro', period: 'yearly', checkout: 'test' },
+    destination: '/subscribe?plan=pro&period=yearly&checkout=test',
+  },
+  {
+    query: {
+      planID: 'datatug-business-usage-annual',
+      spaceID: 'company_1',
+      purchaseId: 'purchase_1',
+      checkout: 'test',
+    },
+    destination:
+      '/business/checkout?planID=datatug-business-usage-annual&checkout=test&spaceID=company_1&purchaseId=purchase_1',
+  },
+])(
+  'auth page resumes the exact selected checkout without requesting a quote',
+  async ({ query, destination }) => {
+    const root = await render(
+      query,
+      false,
+      { status: 'notAuthenticated' },
+      'buyer',
+      {},
+      true,
+    );
+    expect(root.textContent).toContain('Complete your DataTug');
+    expect(root.querySelector('datatug-checkout-price-summary')).toBeNull();
+    states.next(authenticated);
+    await fixture.whenStable();
+    expect(TestBed.inject(Router).navigateByUrl).toHaveBeenCalledWith(
+      destination,
+      { replaceUrl: true },
+    );
+    expect(fetcher).not.toHaveBeenCalled();
+  },
+);
+
+it('reused auth page switches from a selection to a purchase return', async () => {
+  const root = await render(
+    { plan: 'pro', period: 'monthly', checkout: 'test' },
+    false,
+    { status: 'notAuthenticated' },
+    'buyer',
+    {},
+    true,
+  );
+  queries.next(
+    convertToParamMap({ mode: 'test', session_id: 'cs_test_waiting' }),
+  );
+  await fixture.whenStable();
+  expect(root.textContent?.replace(/\s+/g, ' ')).toContain(
+    'Sign in with the same Sneat.co account used for your purchase.',
+  );
+  states.next(authenticated);
+  await fixture.whenStable();
+  expect(TestBed.inject(Router).navigateByUrl).toHaveBeenCalledWith(
+    '/pricing/return?mode=test&session_id=cs_test_waiting',
+    { replaceUrl: true },
+  );
+  expect(fetcher).not.toHaveBeenCalled();
 });
