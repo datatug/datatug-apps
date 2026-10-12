@@ -10,7 +10,7 @@ export interface ProjectQueryWire {
   readonly folderPath: string;
   readonly id: string;
   readonly title?: string;
-  readonly type: QueryType.SQL | QueryType.DTQL;
+  readonly type: QueryType.SQL | QueryType.TugQL | QueryType.DTQL;
   readonly text: string;
   readonly draft?: boolean;
   readonly connectionId?: string;
@@ -78,7 +78,7 @@ export function toProjectQueryWire(
     'federation',
   ]);
   assertFields(query['request'], ['queryType', 'text']);
-  if (![QueryType.SQL, QueryType.DTQL].includes(query['request'].queryType))
+  if (![QueryType.SQL, QueryType.TugQL, QueryType.DTQL].includes(query['request'].queryType))
     throw new UnsupportedQueryContractError();
   const text = (query['request'] as ITextQueryRequest).text;
   if (typeof text !== 'string') throw new UnsupportedQueryContractError();
