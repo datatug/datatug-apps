@@ -11,8 +11,8 @@ function yamlScalar(value: unknown): string {
   return typeof value === 'string' ? JSON.stringify(value) : String(value);
 }
 
-/** Display the validated query as a canonical, editable DTQL YAML action. */
-export function chatDtqlYaml(query: ParsedChinookQuery): string {
+/** Display the validated query as a canonical, editable TugQL YAML action. */
+export function chatTugqlYaml(query: ParsedChinookQuery): string {
   if (isJoinedDTQLQuery(query)) return stringifyJoinedDTQL(query);
   const [schema, name] = query.source.name.split('.');
   const lines = ['from:', `  schema: ${yamlScalar(schema)}`, `  name: ${yamlScalar(name)}`];
@@ -38,6 +38,9 @@ export function chatDtqlYaml(query: ParsedChinookQuery): string {
   lines.push(`limit: ${query.limit}`);
   return lines.join('\n');
 }
+
+/** Deprecated compatibility alias for chatTugqlYaml. */
+export const chatDtqlYaml = chatTugqlYaml;
 
 function identifier(value: string): string {
   return `"${value.replaceAll('"', '""')}"`;
