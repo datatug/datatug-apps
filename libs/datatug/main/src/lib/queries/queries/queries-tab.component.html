@@ -155,7 +155,7 @@
         </ion-label>
 
         <ion-badge slot="end" color="secondary">{{
-          query.request.queryType
+          query.request.queryType === 'DTQL' ? 'TugQL' : query.request.queryType
         }}</ion-badge>
 
         <ion-buttons slot="end" class="ion-no-margin">

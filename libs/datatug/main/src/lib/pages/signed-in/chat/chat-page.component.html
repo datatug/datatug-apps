@@ -58,7 +58,7 @@
             <ion-card-content>
               <ion-segment [value]="turnTab(turn)" (ionChange)="selectTurnTab(turn.id, $event.detail.value)">
                 <ion-segment-button value="rows">Rows {{ turn.rows?.length || 0 }}</ion-segment-button>
-                <ion-segment-button value="dtql">DTQL</ion-segment-button>
+                <ion-segment-button value="dtql">TugQL</ion-segment-button>
                 <ion-segment-button value="sql">SQL</ion-segment-button>
                 <ion-segment-button value="metrics">Metrics</ion-segment-button>
               </ion-segment>
