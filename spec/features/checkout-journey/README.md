@@ -556,3 +556,24 @@ this task neither stops it nor silently replaces its content. Real unpaid form
 mounting additionally needs designated TEST buyer auth state outside source Git.
 The opt-in suite never enters card details or submits payment, and skips those
 authenticated cases explicitly when auth state is unavailable.
+
+### Mobile interaction readiness and opaque returns
+
+CI run `38291504610` passed 33 cases and failed one existing-space Business
+activation case. Its trace records no setup request: Ionic still disabled
+interaction on the outgoing purchase page while an authentication page covered
+it. The shared Playwright helpers now wait for one active checkout page of the
+expected kind and `pointer-events: auto` before interacting. Business activation
+also finishes field focus/scrolling and centers the ordinary click. There are no
+forced clicks, activation retries, arbitrary sleeps or weakened success checks.
+Five repeats of the affected mobile case and the complete 34-case matrix pass.
+
+An opaque payment-return link contains mode/session identity, so its subscription
+type can be unknown before authenticated status reconciliation. It now uses
+“Complete your DataTug subscription” and neutral header branding rather than
+guessing Pro. A validated purchase selection retains its type-specific title;
+verified Pro or Business completion restores that type. A failing-then-passing
+component regression and Chromium/mobile WebKit recovery checks cover this.
+All 161 focused checkout/auth/config tests, app lint and zoneless checks pass.
+See the [local evidence](local-evidence-20261012.md) for separate receipts; real
+provider operations and physical Safari remain unverified.

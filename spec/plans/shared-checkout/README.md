@@ -67,3 +67,5 @@ None at this time.
 ### Latest presentation direction, 12 October 2026
 
 Unsigned users go to `/checkout/sign-in` with preserved validated checkout context and see only “Complete your DataTug {Pro|Business} subscription”, one Sneat.co sign-in sentence, and the reused AuthPanel. Subscription details appear only after account readiness at `/subscribe` or `/business/checkout`. Place the payment button and early-access acknowledgement in the same standard white Ionic subscription card. Keep the sidebar hidden across both URLs and callbacks. This supersedes the earlier combined summary/auth screen, including the earlier pre-auth price display. Guarantee wording covers both plans’ first base payment within 30 days; separate usage/prepaid/add-ons are excluded.
+
+For an opaque payment return whose type is not yet known, use neutral “Complete your DataTug subscription” branding until authenticated status identifies Pro or Business. Do not guess Pro from missing selection parameters. This does not change a selected plan, price, payment rail or ownership.

@@ -104,6 +104,12 @@ export class CheckoutPageComponent implements OnDestroy {
   protected readonly authOnly =
     this.route.snapshot.data['checkoutAuth'] === true;
   protected readonly returning = signal(false);
+  protected readonly subscriptionType = signal<'Pro' | 'Business' | ''>('');
+  protected readonly subscriptionLabel = computed(
+    () =>
+      'DataTug' +
+      (this.subscriptionType() ? ` ${this.subscriptionType()}` : ''),
+  );
   private stopAuthPage?: () => void;
   protected readonly period = signal('monthly');
   protected readonly enabled = signal(false);
@@ -121,7 +127,7 @@ export class CheckoutPageComponent implements OnDestroy {
   constructor() {
     effect(() =>
       this.documentTitle.setTitle(
-        `Complete your DataTug ${this.business() ? 'Business' : 'Pro'} subscription`,
+        `Complete your ${this.subscriptionLabel()} subscription`,
       ),
     );
     this.subscription = this.route.queryParamMap.subscribe((params) =>
@@ -162,6 +168,9 @@ export class CheckoutPageComponent implements OnDestroy {
     const selected = !this.returning()
       ? (chosen as CheckoutSelection | undefined)
       : undefined;
+    this.subscriptionType.set(
+      selected ? (selected.kind === 'business' ? 'Business' : 'Pro') : '',
+    );
     this.business.set(selected?.kind === 'business');
     if (selected?.kind === 'business' && !selected.purchaseId) {
       const purchaseId = crypto.randomUUID();
@@ -216,7 +225,7 @@ export class CheckoutPageComponent implements OnDestroy {
       this.userService,
       this.router,
       returnPath,
-      this.business() ? 'DataTug Business' : 'DataTug Pro',
+      this.subscriptionLabel(),
     );
     if (this.authOnly) {
       this.state.set({ stage: 'loading' });
@@ -277,9 +286,11 @@ export class CheckoutPageComponent implements OnDestroy {
       }
       if (state.purchase) {
         this.business.set(true);
+        this.subscriptionType.set('Business');
         if (!this.destination())
           this.destination.set(state.purchase.spaceHint ?? '');
-      }
+      } else if (this.returning() && ['pro', 'test'].includes(state.stage))
+        this.subscriptionType.set('Pro');
       this.options.set(null);
       this.cancelPro.set(false);
       this.optionError.set('');

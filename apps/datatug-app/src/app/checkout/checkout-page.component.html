@@ -1,8 +1,10 @@
 <ion-header
   ><ion-toolbar
     ><ion-title
-      ><a routerLink="/">DataTug</a> ·
-      {{ business() ? 'Business' : 'Pro' }}</ion-title
+      ><a routerLink="/">DataTug</a>
+      @if (subscriptionType()) {
+        · {{ subscriptionType() }}
+      }</ion-title
     >
     @if (enabled() && mode() === 'test') {
       <ion-chip
@@ -25,9 +27,7 @@
           {{
             returning() && !authOnly
               ? 'Check your purchase'
-              : 'Complete your DataTug ' +
-                (business() ? 'Business' : 'Pro') +
-                ' subscription'
+              : 'Complete your ' + subscriptionLabel() + ' subscription'
           }}
         </h1>
       </div>

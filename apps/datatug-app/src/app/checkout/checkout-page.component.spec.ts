@@ -57,6 +57,36 @@ let queries: BehaviorSubject<ParamMap>;
 let fixture: ComponentFixture<CheckoutPageComponent>;
 let fetcher: ReturnType<typeof vi.fn>;
 
+it('does not label an opaque payment return as Pro before its plan is known', async () => {
+  const root = await render(
+    { mode: 'test', session_id: 'cs_test_unknown_plan' },
+    false,
+    { status: 'notAuthenticated' },
+    'buyer',
+    {},
+    true,
+  );
+  expect(root.querySelector('h1')?.textContent?.trim()).toBe(
+    'Complete your DataTug subscription',
+  );
+  expect(document.title).toBe('Complete your DataTug subscription');
+  expect(root.querySelector('ion-title')?.textContent).not.toContain('Pro');
+  expect(fetcher).not.toHaveBeenCalled();
+
+  queries.next(
+    convertToParamMap({
+      planID: 'datatug-business-usage-annual',
+      purchaseId: 'purchase_1',
+      checkout: 'test',
+    }),
+  );
+  await fixture.whenStable();
+  expect(root.querySelector('h1')?.textContent?.trim()).toBe(
+    'Complete your DataTug Business subscription',
+  );
+  expect(document.title).toBe('Complete your DataTug Business subscription');
+});
+
 async function render(
   query: Record<string, string>,
   returning = false,
@@ -333,6 +363,7 @@ it.each(['test', 'live'])(
     expect(options.method).toBeUndefined();
     expect(options.headers.Authorization).toBe('Bearer token-only-header');
     expect(root.textContent).toContain('Continue to DataTug');
+    expect(document.title).toBe('Complete your DataTug Pro subscription');
     expect(mount).not.toHaveBeenCalled();
   },
 );
@@ -579,6 +610,7 @@ it('paid Business return creates a space once, then keeps Pro unless explicitly 
   const html = await render({ mode: 'test', session_id: 'cs_test_paid' }, true);
   await fixture.whenStable();
   expect(html.textContent).toContain('Your Business subscription is paid');
+  expect(document.title).toBe('Complete your DataTug Business subscription');
   expect(commands).toBe(0);
   const name = html.querySelector('#business-name') as HTMLInputElement;
   name.value = 'New Business';

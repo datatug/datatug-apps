@@ -16,6 +16,20 @@ const situations = [
   { name: 'new unsigned user', company: false, project: false },
 ];
 
+async function readyCheckout(
+  page: Page,
+  kind: 'authentication' | 'purchase',
+) {
+  const checkout = page.locator(
+    `datatug-checkout-page.ion-page:not(.ion-page-hidden):not(.ion-page-invisible):has([data-checkout-page="${kind}"])`,
+  );
+  await expect(checkout).toHaveCount(1);
+  // Ionic disables interaction while its incoming/outgoing pages animate.
+  // Visibility alone can expose controls on the still-outgoing page.
+  await expect(checkout).toHaveCSS('pointer-events', 'auto');
+  return checkout;
+}
+
 async function seed(page: Page, company: boolean, hasProject = false) {
   const email = `checkout-${crypto.randomUUID()}@example.test`;
   const response = await page.request.post(
@@ -118,6 +132,7 @@ async function seedRecord(
   );
 }
 async function signUp(page: Page) {
+  await readyCheckout(page, 'authentication');
   const email = `checkout-new-${crypto.randomUUID()}@example.test`;
   await page.locator('ion-input[name="email"] input').fill(email);
   await page.locator('ion-input[name="first_name"] input').fill('New');
@@ -129,8 +144,10 @@ async function signUp(page: Page) {
   await expect(
     page.getByText(`Signed in as ${email}`, { exact: true }),
   ).toBeVisible({ timeout: 20000 });
+  await readyCheckout(page, 'purchase');
 }
 async function signIn(page: Page, email: string) {
+  await readyCheckout(page, 'authentication');
   await page.locator('ion-segment-button[value="in"]').click();
   await page.locator('ion-input[name="email"] input').fill(email);
   await page.locator('ion-input[type="password"] input').fill(password);
@@ -142,16 +159,23 @@ async function signIn(page: Page, email: string) {
   await expect(
     page.getByText(`Signed in as ${email}`, { exact: true }),
   ).toBeVisible({ timeout: 20000 });
+  await readyCheckout(page, 'purchase');
 }
-async function nameBusiness(page: Page, title: string) {
-  const input = page.getByLabel('Business name', { exact: true });
-  await input.fill(title);
-  // Finish mobile focus scrolling before tapping the next control. In WebKit,
-  // Firebase's fixed emulator banner can otherwise intercept the first tap.
-  await input.blur();
-  await page
-    .getByRole('button', { name: 'Activate Business for this space' })
-    .evaluate((button) => button.scrollIntoView({ block: 'center' }));
+async function activateBusiness(page: Page) {
+  const checkout = await readyCheckout(page, 'purchase');
+  const button = checkout.getByRole('button', {
+    name: 'Activate Business for this space',
+  });
+  // Finish input/select focus scrolling and keep the emulator banner clear.
+  await page.evaluate(() => {
+    if (document.activeElement instanceof HTMLElement)
+      document.activeElement.blur();
+  });
+  await button.evaluate((element) =>
+    element.scrollIntoView({ block: 'center' }),
+  );
+  await expect(checkout).toHaveCSS('pointer-events', 'auto');
+  await button.click();
 }
 
 async function paymentFake(page: Page) {
@@ -448,6 +472,7 @@ for (const plan of ['pro', 'business'])
       fake.confirm();
       await page.goto('/pricing/return?mode=test&session_id=cs_test_fixture');
       if (plan === 'business') {
+        await readyCheckout(page, 'purchase');
         await expect(
           page.getByRole('heading', {
             name: 'Your Business subscription is paid. Choose its space.',
@@ -465,10 +490,11 @@ for (const plan of ['pro', 'business'])
           await page
             .locator('#business-destination')
             .selectOption({ label: 'Existing Business' });
-        else await nameBusiness(page, 'New Business');
-        await page
-          .getByRole('button', { name: 'Activate Business for this space' })
-          .click();
+        else
+          await page
+            .getByLabel('Business name', { exact: true })
+            .fill('New Business');
+        await activateBusiness(page);
         await expect(
           page.getByRole('heading', { name: 'Your Business space is ready' }),
         ).toBeVisible();
@@ -480,12 +506,7 @@ for (const plan of ['pro', 'business'])
           fake.seen.filter((x) => x.path.endsWith('/purchase-setup')),
         ).toHaveLength(1);
       } else {
-        // Ionic retains the outgoing route during its mobile animation. Wait
-        // for one active page instead of matching a cached confirmation too.
-        const checkout = page.locator(
-          'datatug-checkout-page.ion-page:not(.ion-page-hidden):not(.ion-page-invisible)',
-        );
-        await expect(checkout).toHaveCount(1);
+        const checkout = await readyCheckout(page, 'purchase');
         await expect(
           checkout.getByText('Test checkout complete.', { exact: false }),
         ).toBeVisible();
@@ -496,7 +517,7 @@ for (const plan of ['pro', 'business'])
           }),
         ).toBeVisible();
         await page.reload();
-        await expect(checkout).toHaveCount(1);
+        await readyCheckout(page, 'purchase');
         await expect(
           checkout.getByText('Test checkout complete.', { exact: false }),
         ).toBeVisible();
@@ -526,6 +547,14 @@ test('Business recovery: delayed reconciliation and permission retry never repay
   const fake = await paymentFake(page),
     email = await seed(page, true);
   await page.goto('/pricing/return?mode=test&session_id=cs_test_fixture');
+  await expect(page).toHaveURL(/\/checkout\/sign-in\?/);
+  await expect(page).toHaveTitle('Complete your DataTug subscription');
+  await expect(
+    page.getByRole('heading', {
+      name: 'Complete your DataTug subscription',
+      exact: true,
+    }),
+  ).toBeVisible();
   await signIn(page, email);
   await expect(
     page.getByText('Checkout completed.', { exact: false }),
@@ -535,19 +564,20 @@ test('Business recovery: delayed reconciliation and permission retry never repay
   fake.confirm();
   await page.getByRole('button', { name: 'Check again', exact: true }).click();
   await expect(page.locator('#business-destination')).toBeVisible();
+  await expect(page).toHaveTitle(
+    'Complete your DataTug Business subscription',
+  );
   await page
     .locator('#business-destination')
     .selectOption({ label: 'Existing Business' });
   fake.rejectSetupOnce();
-  await page
-    .getByRole('button', { name: 'Activate Business for this space' })
-    .click();
+  await activateBusiness(page);
   await expect(page.getByRole('alert')).toBeVisible();
   await page.locator('#business-destination').selectOption('');
-  await nameBusiness(page, 'Alternative business');
   await page
-    .getByRole('button', { name: 'Activate Business for this space' })
-    .click();
+    .getByLabel('Business name', { exact: true })
+    .fill('Alternative business');
+  await activateBusiness(page);
   await expect(
     page.getByRole('heading', { name: 'Your Business space is ready' }),
   ).toBeVisible();
