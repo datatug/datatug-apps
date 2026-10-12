@@ -3635,11 +3635,231 @@ select (
     expect(focusAuthorLookupAfterRender).not.toHaveBeenCalled();
   });
 
+  it.each(['project-first', 'editor-first'])(
+    'prefills only the admitted example after delayed %s rendering and preserves cleared state',
+    async (order) => {
+      const projects = new Subject<IProjectContext | undefined>();
+      const editors = new Subject<IQueryEditorState>();
+      const definition: IQueryDef = {
+        ...queryDef,
+        id: 'demodb/chinook-customer-invoice-join',
+        connectionId: 'chinook-sqlite',
+        request: {
+          queryType: QueryType.DTQL,
+          text: authorSource,
+        } as ITextQueryRequest,
+      };
+      const created = await createComponent(
+        {},
+        definition,
+        '<p>{{ customerInvoiceExample() }}:{{ authorCustomerId() }}</p>',
+        { project: projects, editor: editors },
+      );
+      const route = TestBed.inject(ActivatedRoute);
+      Object.defineProperty(route, 'snapshot', {
+        configurable: true,
+        value: {
+          ...route.snapshot,
+          queryParamMap: convertToParamMap({
+            example: 'customer-invoices',
+            id: definition.id,
+          }),
+        },
+      });
+      runFixture.detectChanges();
+      const project = {
+        ref: {
+          storeId: 'github.com',
+          projectId: 'datatug-demo-project@datatug@demo-project-1',
+        },
+        summary: {
+          id: 'demo-project-1',
+          title: 'Demo',
+          access: 'public' as const,
+        },
+      };
+      const state = {
+        currentQueryId: definition.id,
+        activeQueries: [
+          {
+            id: definition.id,
+            queryType: QueryType.DTQL,
+            request: definition.request,
+            def: definition,
+          },
+        ],
+      } as IQueryEditorState;
+      if (order === 'project-first') {
+        projects.next(project);
+        editors.next(state);
+      } else {
+        editors.next(state);
+        projects.next(project);
+      }
+      await runFixture.whenStable();
+      expect(runFixture.nativeElement.textContent).toContain('true:1');
+      expect(created.queryState.authorBindings?.['CustomerId']).toBe('1');
+      expect(runQueryMock).not.toHaveBeenCalled();
+      created.authorCustomerIdChanged(
+        new CustomEvent('ionInput', { detail: { value: '' } }),
+      );
+      editors.next({
+        ...state,
+        activeQueries: [
+          { ...state.activeQueries[0], authorBindings: { CustomerId: '' } },
+        ],
+      });
+      projects.next(project);
+      await runFixture.whenStable();
+      expect(created.authorCustomerId()).toBe('');
+    },
+  );
+
+  it.each([
+    [
+      'wrong-token',
+      'customer-invoices-2',
+      'datatug-demo-project@datatug@demo-project-1',
+      'public',
+      undefined,
+    ],
+    [
+      'private',
+      'customer-invoices',
+      'datatug-demo-project@datatug@demo-project-1',
+      'private',
+      undefined,
+    ],
+    [
+      'other-ref',
+      'customer-invoices',
+      'datatug-demo-project@datatug@demo-project-1@main',
+      'public',
+      undefined,
+    ],
+    [
+      'other-folder',
+      'customer-invoices',
+      'datatug-demo-project@datatug@demo-project-2',
+      'public',
+      undefined,
+    ],
+    [
+      'existing-binding',
+      'customer-invoices',
+      'datatug-demo-project@datatug@demo-project-1',
+      'public',
+      '4',
+    ],
+    [
+      'cleared-binding',
+      'customer-invoices',
+      'datatug-demo-project@datatug@demo-project-1',
+      'public',
+      '',
+    ],
+  ])(
+    'keeps example binding bounded: %s',
+    async (_name, token, projectId, access, binding) => {
+      const created = await createTugQLAuthor(authorSource);
+      const route = TestBed.inject(ActivatedRoute);
+      Object.defineProperty(route, 'snapshot', {
+        configurable: true,
+        value: {
+          ...route.snapshot,
+          queryParamMap: convertToParamMap({
+            example: token,
+            id: 'demodb/chinook-customer-invoice-join',
+          }),
+        },
+      });
+      created.project = {
+        ref: { storeId: 'github.com', projectId: projectId as string },
+      };
+      (
+        created as unknown as { comparisonAccessProjectRef?: IProjectRef }
+      ).comparisonAccessProjectRef = created.project.ref;
+      created.comparisonProjectAccess.set(access as 'public' | 'private');
+      created.queryState = {
+        ...created.queryState,
+        id: 'demodb/chinook-customer-invoice-join',
+        ...(binding === undefined
+          ? {}
+          : { authorBindings: { CustomerId: binding } }),
+      };
+      const update = TestBed.inject(QueryEditorStateService).updateQueryState;
+      vi.mocked(update).mockClear();
+      (
+        created as unknown as { initializeCustomerInvoiceExample(): void }
+      ).initializeCustomerInvoiceExample();
+      expect(update).not.toHaveBeenCalled();
+    },
+  );
+
+  it('handles marker-only route changes without prefilling the old query on navigation away or mismatched IDs', async () => {
+    const params = new Subject<ReturnType<typeof convertToParamMap>>();
+    const definition: IQueryDef = {
+      ...queryDef,
+      id: 'demodb/chinook-customer-invoice-join',
+      connectionId: 'chinook-sqlite',
+      request: {
+        queryType: QueryType.DTQL,
+        text: authorSource,
+      } as ITextQueryRequest,
+    };
+    const created = await createComponent(
+      {},
+      definition,
+      '<p>{{ customerInvoiceExample() }}</p>',
+      { project: of(undefined), queryParams: params },
+    );
+    created.project = {
+      ref: {
+        storeId: 'github.com',
+        projectId: 'datatug-demo-project@datatug@demo-project-1',
+      },
+    };
+    (
+      created as unknown as { comparisonAccessProjectRef?: IProjectRef }
+    ).comparisonAccessProjectRef = created.project.ref;
+    created.comparisonProjectAccess.set('public');
+    const route = TestBed.inject(ActivatedRoute);
+    const navigate = (id: string, marker?: string, routedId?: string) => {
+      const queryParamMap = convertToParamMap({
+        id,
+        ...(marker ? { example: marker } : {}),
+      });
+      Object.defineProperty(route, 'snapshot', {
+        configurable: true,
+        value: {
+          ...route.snapshot,
+          queryParamMap,
+          paramMap: convertToParamMap(routedId ? { queryId: routedId } : {}),
+        },
+      });
+      params.next(queryParamMap);
+    };
+    navigate('other-query', 'customer-invoices');
+    expect(created.authorCustomerId()).toBe('');
+    navigate(definition.id, 'customer-invoices', 'other-query');
+    expect(created.authorCustomerId()).toBe('');
+    expect(created.customerInvoiceExample()).toBe(false);
+    navigate(definition.id, 'customer-invoices');
+    await runFixture.whenStable();
+    expect(created.authorCustomerId()).toBe('1');
+    expect(created.customerInvoiceExample()).toBe(true);
+    navigate(definition.id);
+    await runFixture.whenStable();
+    expect(created.customerInvoiceExample()).toBe(false);
+    expect(created.authorCustomerId()).toBe('1');
+  });
+
   async function createComponent(
     historyState: Record<string, unknown> = {},
     definition: IQueryDef = queryDef,
     template = '<ul aria-label="Access blockers">@for (blocker of accessBlockers(); track $index) {<li>{{ blocker }}</li>}</ul>',
     navigation?: {
+      queryParams?: Observable<ReturnType<typeof convertToParamMap>>;
       editor?: Observable<IQueryEditorState>;
       project: Observable<IProjectContext | undefined>;
       realEditor?: boolean;
@@ -3688,7 +3908,7 @@ select (
         {
           provide: ActivatedRoute,
           useValue: {
-            queryParamMap: of(
+            queryParamMap: navigation?.queryParams ?? of(
               convertToParamMap(
                 navigation?.realEditor && !navigation.routeId
                   ? { id: 'q', projectApi: 'cloud', branch: 'work' }
