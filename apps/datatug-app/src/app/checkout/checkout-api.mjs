@@ -65,13 +65,19 @@ export function checkoutApi(
   }
   return {
     config: () => request(`/v0/checkout/config?site=datatug&mode=${mode}`),
-    session: (plan) =>
+    session: (plan, purchase = {}) =>
       request(
         '/v0/checkout/session',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ site: 'datatug', plan, mode }),
+          body: JSON.stringify({
+            site: 'datatug',
+            plan,
+            mode,
+            ...(purchase.purchaseId ? { purchaseId: purchase.purchaseId } : {}),
+            ...(purchase.spaceID ? { spaceId: purchase.spaceID } : {}),
+          }),
         },
         true,
       ),
@@ -79,6 +85,34 @@ export function checkoutApi(
       request(
         `/v0/checkout/session-status?site=datatug&mode=${mode}&session_id=${encodeURIComponent(sessionId)}`,
         {},
+        true,
+      ),
+    setup: (accountId, destination) =>
+      request(
+        '/v0/checkout/purchase-setup',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode, accountId, ...destination }),
+        },
+        true,
+      ),
+    options: (accountId, cancel = false) =>
+      request(
+        cancel
+          ? '/v0/checkout/purchase-options'
+          : `/v0/checkout/purchase-options?mode=${mode}&account_id=${encodeURIComponent(accountId)}`,
+        cancel
+          ? {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                mode,
+                accountId,
+                cancelPersonalAtPeriodEnd: true,
+              }),
+            }
+          : {},
         true,
       ),
     plan: () => request('/v0/datatug/plan', {}, true, planApiOrigin),
@@ -223,7 +257,7 @@ export function validSpaceServiceStatus(status, selection) {
   );
 }
 
-export function validQuote(quote, mode) {
+export function validQuote(quote, mode, accountKind = 'personal') {
   const money = quote?.amount;
   const discount = quote?.appliedDiscount;
   if (
@@ -231,7 +265,7 @@ export function validQuote(quote, mode) {
     typeof quote?.clientSecret !== 'string' ||
     !quote.clientSecret ||
     quote.mode !== mode ||
-    quote.accountKind !== 'personal' ||
+    quote.accountKind !== accountKind ||
     typeof quote.accountId !== 'string' ||
     !quote.accountId
   )

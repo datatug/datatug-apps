@@ -1,25 +1,49 @@
 <ion-header
   ><ion-toolbar
-    ><ion-title><a routerLink="/">DataTug</a> · Pro</ion-title></ion-toolbar
-  ></ion-header
+    ><ion-title
+      ><a routerLink="/">DataTug</a>
+      @if (subscriptionType()) {
+        · {{ subscriptionType() }}
+      }</ion-title
+    >
+    @if (enabled() && mode() === 'test') {
+      <ion-chip
+        slot="end"
+        color="warning"
+        aria-label="Test mode — no live payment or live plan activation"
+        >Test mode</ion-chip
+      >
+    }
+  </ion-toolbar></ion-header
 >
 <ion-content>
-  <main class="checkout-shell">
-    @if (!returning) {
-      <p class="plan-kicker">
-        DataTug Pro <span aria-hidden="true">·</span>
-        {{ period() === 'yearly' ? 'Yearly plan' : 'Monthly plan' }}
-      </p>
-    }
-    <header class="checkout-intro">
-      <h1>
-        {{ returning ? 'Check your purchase' : 'Complete your subscription' }}
-      </h1>
+  <main
+    class="checkout-shell"
+    [attr.data-checkout-page]="authOnly ? 'authentication' : 'purchase'"
+  >
+    <header class="checkout-intro" [class.auth-intro]="authOnly">
+      <div>
+        <h1>
+          {{
+            returning() && !authOnly
+              ? 'Check your purchase'
+              : 'Complete your ' + subscriptionLabel() + ' subscription'
+          }}
+        </h1>
+      </div>
+      @if (!authOnly && state().user) {
+        <div class="checkout-art" aria-hidden="true">
+          <img
+            class="tug"
+            src="/assets/checkout/tug.webp"
+            alt=""
+            width="300"
+            height="200"
+          />
+        </div>
+      }
     </header>
-    @if (enabled() && mode() === 'test') {
-      <p class="test">Test mode — no live payment or live plan activation.</p>
-    }
-    @if (enabled() && mode() === 'live') {
+    @if (!authOnly && state().user && enabled() && mode() === 'live') {
       <p class="legal-note" role="note">
         <a
           href="https://datatug.app/en/terms/"
@@ -36,33 +60,56 @@
         >. Please review these policies before continuing to payment.
       </p>
     }
-    @if (!returning && enabled()) {
+    @if (!authOnly && state().user && !returning() && enabled()) {
       <datatug-checkout-price-summary
-        planName="DataTug Pro"
-        [monthlyMinor]="1900"
+        [planName]="business() ? 'DataTug Business' : 'DataTug Pro'"
+        [business]="business()"
+        [monthlyMinor]="business() ? 9900 : 1900"
         [yearly]="period() === 'yearly'"
         [quote]="state().quote"
         [allowPeriodChange]="canChangePeriod()"
-        (yearlySelected)="choosePeriod('yearly')"
-      />
-      <div role="group" aria-label="Billing period">
-        <button
-          type="button"
-          [disabled]="!canChangePeriod()"
-          [attr.aria-pressed]="period() === 'monthly'"
-          (click)="choosePeriod('monthly')"
-        >
-          Monthly
-        </button>
-        <button
-          type="button"
-          [disabled]="!canChangePeriod()"
-          [attr.aria-pressed]="period() === 'yearly'"
-          (click)="choosePeriod('yearly')"
-        >
-          Yearly
-        </button>
-      </div>
+        (periodSelected)="choosePeriod($event)"
+      >
+        @if (state().stage === 'quote') {
+          @if (state().quote; as quote) {
+            <section
+              class="purchase-actions"
+              aria-label="Purchase subscription"
+            >
+              <section
+                class="early-access"
+                aria-labelledby="early-access-heading"
+              >
+                <h3 id="early-access-heading">Early access</h3>
+                <p class="early-access-copy">
+                  DataTug {{ business() ? 'Business' : 'Pro' }} is in early
+                  access. Your subscription starts now, and some paid features
+                  are still being completed.
+                </p>
+              </section>
+              <label class="consent">
+                <input
+                  type="checkbox"
+                  [checked]="accepted()"
+                  (change)="accepted.set($any($event.target).checked)"
+                />
+                I understand this is early access and my subscription starts
+                now.
+              </label>
+              <p>
+                <button
+                  class="primary-action"
+                  type="button"
+                  [disabled]="!accepted()"
+                  (click)="pay()"
+                >
+                  Continue to payment
+                </button>
+              </p>
+            </section>
+          }
+        }
+      </datatug-checkout-price-summary>
     }
     @if (state().user; as user) {
       <p class="account-status">
@@ -70,77 +117,58 @@
       </p>
       <button type="button" (click)="signOut()">Use another account</button>
     }
-    <p class="checkout-status" role="status" aria-live="polite">
-      @switch (state().stage) {
-        @case ('sign-in') {
-          @if (returning) {
-            Sign in with the same DataTug account used for your purchase.
-          } @else {
-            Sign in to review your price and continue to payment.
+    @if (
+      (!authOnly && state().stage !== 'quote') ||
+      state().stage === 'unavailable'
+    ) {
+      <p class="checkout-status" role="status" aria-live="polite">
+        @switch (state().stage) {
+          @case ('loading') {
+            Checking your subscription price…
+          }
+          @case ('quote') {
+            Review your quote and early-access terms.
+          }
+          @case ('mounting') {
+            Loading the secure payment form…
+          }
+          @case ('payment') {
+            Enter payment details in the secure form.
+          }
+          @case ('checking') {
+            Checking payment and plan status…
+          }
+          @case ('test') {
+            Test checkout complete. This does not activate a live Pro plan.
+          }
+          @case ('pro') {
+            Your personal Pro plan is active.
+          }
+          @default {
+            {{ state().message }}
           }
         }
-        @case ('loading') {
-          Checking your Pro price…
-        }
-        @case ('quote') {
-          Review your quote and early-access terms.
-        }
-        @case ('mounting') {
-          Loading the secure payment form…
-        }
-        @case ('payment') {
-          Enter payment details in the secure form.
-        }
-        @case ('checking') {
-          Checking payment and plan status…
-        }
-        @case ('test') {
-          Test checkout complete. This does not activate a live Pro plan.
-        }
-        @case ('pro') {
-          Your personal Pro plan is active.
-        }
-        @default {
-          {{ state().message }}
-        }
-      }
-    </p>
-    @if (state().stage === 'sign-in' || state().status === 401) {
+      </p>
+    }
+    @if (authOnly && state().stage === 'sign-in') {
       <section class="checkout-auth" aria-labelledby="checkout-auth-heading">
-        <h2 id="checkout-auth-heading">Continue with your DataTug account</h2>
+        <p id="checkout-auth-heading">
+          @if (returning()) {
+            Sign in with the same
+            <a href="https://sneat.co" target="_blank" rel="noopener noreferrer"
+              >Sneat.co</a
+            >
+            account used for your purchase.
+          } @else {
+            Sign in with your
+            <a href="https://sneat.co" target="_blank" rel="noopener noreferrer"
+              >Sneat.co</a
+            >
+            account to review your price and continue to payment.
+          }
+        </p>
         <sneat-auth-panel [returnTo]="authReturnTo()" [showIntro]="false" />
       </section>
-    }
-    @if (state().stage === 'quote') {
-      @if (state().quote; as quote) {
-        <section class="quote-card" aria-labelledby="quote-heading">
-          <section class="early-access" aria-labelledby="early-access-heading">
-            <h3 id="early-access-heading">Early access</h3>
-            <p class="early-access-copy">
-              DataTug Pro is in early access. Your subscription starts now, and
-              some paid features are still being completed.
-            </p>
-          </section>
-          <label class="consent">
-            <input
-              type="checkbox"
-              [checked]="accepted()"
-              (change)="accepted.set($any($event.target).checked)"
-            />
-            I understand this is early access and my subscription starts now.
-          </label>
-          <p>
-            <button
-              class="primary-action"
-              type="button"
-              [disabled]="!accepted()"
-              (click)="pay()"
-            >
-              Continue to payment
-            </button>
-          </p>
-        </section>
-      }
     }
     <section
       [hidden]="state().stage !== 'payment' && state().stage !== 'mounting'"
@@ -155,13 +183,13 @@
     ) {
       @if (state().code !== 'already_subscribed') {
         <button type="button" (click)="retry()" [disabled]="retryBlocked()">
-          {{ returning ? 'Check again' : 'Retry this selection' }}
+          {{ returning() ? 'Check again' : 'Retry this selection' }}
         </button>
       }
       @if (existingPurchase(); as purchase) {
         <a
           [routerLink]="purchase.split('?')[0]"
-          [queryParams]="{ mode: 'test', session_id: state().existingSession }"
+          [queryParams]="{ mode: mode(), session_id: state().existingSession }"
           >Check existing purchase</a
         >
       }
@@ -170,6 +198,103 @@
       }
       @if (state().supportReference) {
         <p>Test checkout reference: {{ state().supportReference }}</p>
+      }
+    }
+    @if (state().stage === 'setup') {
+      <section aria-labelledby="space-setup-heading">
+        <h2 id="space-setup-heading">
+          Your Business subscription is paid. Choose its space.
+        </h2>
+        <p>
+          You can finish this later from this purchase link. Projects can be
+          added after setup.
+        </p>
+        <label for="business-destination">Business space</label>
+        <select
+          id="business-destination"
+          [value]="destination()"
+          (change)="destination.set($any($event.target).value)"
+          [disabled]="setupBusy()"
+        >
+          <option value="">Create a new business space</option>
+          @if (missingHint()) {
+            <option [value]="destination()">
+              Referenced space — permissions checked on activation
+            </option>
+          }
+          @for (space of spaces(); track space.id) {
+            <option [value]="space.id">{{ space.title }}</option>
+          }
+        </select>
+        @if (!destination()) {
+          <label for="business-name">Business name</label>
+          <input
+            id="business-name"
+            maxlength="120"
+            autocomplete="organization"
+            [value]="spaceName()"
+            (input)="spaceName.set($any($event.target).value)"
+            [disabled]="setupBusy()"
+          />
+        }
+        <p>
+          <button type="button" (click)="linkSpace()" [disabled]="setupBusy()">
+            {{
+              setupBusy() ? 'Setting up…' : 'Activate Business for this space'
+            }}
+          </button>
+        </p>
+        @if (setupError()) {
+          <p role="alert">{{ setupError() }}</p>
+        }
+      </section>
+    }
+    @if (state().stage === 'business-active') {
+      <section aria-label="Business purchase confirmed">
+        <h2>Your Business space is ready</h2>
+        <p>
+          Your subscription is linked. Open the space to use an existing project
+          or add your first project.
+        </p>
+        <button type="button" (click)="openSpace()">Open business space</button>
+      </section>
+    }
+    @if (state().purchase?.paid) {
+      @if (options()?.canCancelPersonal) {
+        <section aria-label="Optional Pro renewal choice">
+          <h2>Keep or cancel your Pro renewal</h2>
+          <p>
+            Business does not cancel Pro. Your paid Pro access continues through
+            {{ options()?.personalPaidThroughUTC | date: 'mediumDate' }}.
+          </p>
+          <label
+            ><input
+              type="checkbox"
+              [checked]="cancelPro()"
+              (change)="cancelPro.set($any($event.target).checked)"
+              [disabled]="optionsBusy()"
+            />
+            Cancel Pro renewal at the end of its paid period</label
+          >
+          <p>
+            <button
+              type="button"
+              (click)="cancelPersonalRenewal()"
+              [disabled]="!cancelPro() || optionsBusy()"
+            >
+              Confirm Pro renewal cancellation
+            </button>
+          </p>
+        </section>
+      }
+      @if (options()?.cancellationScheduled) {
+        <p role="status">
+          Pro renewal cancellation is scheduled. Paid Pro access continues
+          through {{ options()?.personalPaidThroughUTC | date: 'mediumDate' }}.
+        </p>
+      }
+      @if (optionError()) {
+        <p role="alert">{{ optionError() }}</p>
       }
     }
     @if (state().stage === 'test' || state().stage === 'pro') {

@@ -200,11 +200,17 @@ const loadProCheckoutPage = () =>
   );
 
 export const routes: Routes = [
+  {
+    path: 'checkout/sign-in',
+    canMatch: [checkoutOrRoot],
+    data: { checkoutAuth: true },
+    loadComponent: loadProCheckoutPage,
+  },
   ...['business/checkout/return', 'business/checkout'].map((path) => ({
     path,
     canMatch: [checkoutOrRoot],
     data: { businessCheckoutReturn: path === 'business/checkout/return' },
-    loadComponent: loadBusinessCheckoutPage,
+    loadComponent: path.endsWith('/return') ? loadBusinessCheckoutPage : loadProCheckoutPage,
   })),
   ...['subscribe', 'pricing/return'].map((path) => ({
     path,

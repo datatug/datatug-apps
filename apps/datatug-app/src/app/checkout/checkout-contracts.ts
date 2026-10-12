@@ -11,10 +11,18 @@ export interface CheckoutAuth {
 export interface CheckoutSelection {
   period: 'monthly' | 'yearly';
   plan: string;
+  kind?: 'business';
+  purchaseId?: string;
+  spaceID?: string;
 }
 export interface CheckoutApi {
   config(): Promise<unknown>;
-  session(plan: string): Promise<unknown>;
+  session(plan: string, purchase?: CheckoutSelection): Promise<unknown>;
+  setup(
+    accountId: string,
+    destination: { spaceID?: string; title?: string },
+  ): Promise<PurchaseSetup>;
+  options(accountId: string, cancel?: boolean): Promise<PurchaseOptions>;
   status(sessionId: string): Promise<unknown>;
   plan(): Promise<unknown>;
 }
@@ -35,7 +43,20 @@ export interface CheckoutProvider {
     element: HTMLElement;
   }): Promise<{ destroy(): void }>;
 }
+export interface PurchaseSetup {
+  accountId: string;
+  spaceID?: string;
+  spaceHint?: string;
+  setupRequired: boolean;
+  paid: boolean;
+}
+export interface PurchaseOptions {
+  canCancelPersonal: boolean;
+  cancellationScheduled: boolean;
+  personalPaidThroughUTC?: string;
+}
 export interface CheckoutState {
+  purchase?: PurchaseSetup;
   stage: string;
   spaceID?: string;
   user?: CheckoutUser | null;

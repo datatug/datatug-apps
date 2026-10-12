@@ -12,6 +12,7 @@ interface Common {
   mode: 'test' | 'live';
   render(state: CheckoutState): void;
 }
+export function errorMessage(error: unknown, kind?: 'business'): string;
 type CheckoutCommon = Common & { api: CheckoutApi };
 type SpaceServiceCommon = Common & {
   api: CheckoutApi & SpaceServiceCheckoutApi;

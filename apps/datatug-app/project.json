@@ -208,6 +208,22 @@
       "options": {
         "command": "pnpm e2e:error-dialog"
       }
+    },
+    "e2e-checkout-provider": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-checkout-provider"],
+      "options": {
+        "command": "playwright test -c apps/datatug-app/playwright.checkout-provider.config.ts --forbid-only"
+      }
+    },
+    "e2e-checkout": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-checkout"],
+      "options": {
+        "command": "playwright test -c apps/datatug-app/playwright.checkout.config.ts --forbid-only"
+      }
     }
   }
 }

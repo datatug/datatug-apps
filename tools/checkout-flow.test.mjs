@@ -52,6 +52,32 @@ function fakeAuth() {
   return { observe(fn) { callback = fn; return () => { callback = null; }; }, emit(user) { callback?.(user); }, token: async () => 'test-token', signIn: async () => {}, signOut: async () => {} };
 }
 
+test('shared checkout distinguishes an existing Business space subscription from personal Pro and explains denied administration', async () => {
+  for (const [kind, code, expected] of [
+    ['business', 'already_subscribed', /This business space already has a DataTug subscription/],
+    ['business', 'not_account_admin', /owner or admin role/],
+    [undefined, 'already_subscribed', /already have Pro for your personal space/],
+  ]) {
+    const auth = fakeAuth(), states = [];
+    const plan = kind === 'business' ? 'datatug-business-usage-monthly' : 'datatug-pro-monthly';
+    const flow = createCheckoutFlow({
+      auth, mode: 'test', selection: { plan, period: 'monthly', kind },
+      api: {
+        config: async () => ({ ...serverConfig, plans: [{ id: plan, accountRequired: true, accountKind: kind === 'business' ? 'organisation' : 'personal', taxIncluded: true }] }),
+        session: async () => { throw new CheckoutError(code, code === 'not_account_admin' ? 403 : 409); },
+      },
+      provider: { mount() { assert.fail('a denied purchase must never mount payment'); } },
+      render: (state) => states.push(state),
+    });
+    flow.start();
+    auth.emit({ id: 'buyer' });
+    await flush();
+    assert.match(states.at(-1).message, expected);
+    assert.equal(states.at(-1).stage, 'error');
+    flow.dispose();
+  }
+});
+
 test('quote display faithfully describes invitation continuation and rejects malformed money', () => {
   assert.equal(validQuote(quote(), 'test'), true);
   assert.match(discountDescription(quote()), /50% invitation discount for 12 months; then 30% launch discount/);
@@ -479,4 +505,38 @@ test('unknown, foreign and pending return cannot claim Pro, with bounded polling
   assert.equal(states.at(-1), 'error');
   assert.equal(states.includes('pro'), false);
   foreign.dispose();
+});
+
+
+test('shared Business flow sends the stable purchase identity without requiring a project or space', async () => {
+  const auth = fakeAuth(), states = [], requests = [];
+  const selection = {kind:'business',period:'monthly',plan:'datatug-business-usage-monthly',purchaseId:'request-a',spaceID:'optional-company'};
+  const flow = createCheckoutFlow({auth,api:{config:async () => ({...serverConfig,plans:[{id:selection.plan,accountRequired:true,accountKind:'organisation',taxIncluded:true}]}),session:async (...args) => {requests.push(args);return quote({accountKind:'organisation',accountId:'billing-a'});}},provider:{mount:async () => ({destroy(){}})},selection,mode:'test',render:state=>states.push(state)});
+  flow.start(); auth.emit({id:'buyer'}); await flush();
+  assert.equal(states.at(-1).stage,'quote');
+  assert.deepEqual(requests,[[selection.plan,selection]]);
+  flow.dispose();
+});
+
+test('Business return waits for reconciliation, then offers resumable post-payment setup', async () => {
+  const auth = fakeAuth(), states = []; let calls = 0;
+  const purchase = {accountId:'billing-a',paid:true,setupRequired:true};
+  const flow = createReturnFlow({auth,api:{status:async () => ({mode:'test',plan:'datatug-business-usage-annual',status:'complete',ready:++calls > 1,purchase: calls > 1 ? purchase : undefined})},mode:'test',sessionId:'cs_test_paid',wait:async()=>{},render:state=>states.push(state)});
+  flow.start();auth.emit({id:'buyer'});await flush();
+  assert.equal(calls,2); assert.equal(states.at(-1).stage,'setup'); assert.deepEqual(states.at(-1).purchase,purchase);
+  flow.dispose();
+});
+
+test('expired Business payment returns a recovery message without provisioning or another session', async () => {
+  const auth = fakeAuth(), states = [];
+  let reads = 0;
+  const flow = createReturnFlow({ auth, api: { status: async () => {
+    reads++;
+    return { mode: 'test', plan: 'datatug-business-usage-monthly', status: 'expired', ready: false };
+  } }, mode: 'test', sessionId: 'cs_test_expired', wait: async () => {}, render: state => states.push(state) });
+  flow.start(); auth.emit({ id: 'buyer' }); await flush();
+  assert.equal(reads, 1);
+  assert.equal(states.at(-1).stage, 'pending');
+  assert.match(states.at(-1).message, /session expired/);
+  flow.dispose();
 });

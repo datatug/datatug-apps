@@ -1,3 +1,4 @@
+import { DatePipe } from '@angular/common';
 import { CheckoutPriceSummaryComponent } from './checkout-price-summary.component';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
@@ -5,6 +6,7 @@ import {
   ActivatedRoute,
   ParamMap,
   RouterLink,
+  Router,
   convertToParamMap,
   provideRouter,
 } from '@angular/router';
@@ -55,11 +57,43 @@ let queries: BehaviorSubject<ParamMap>;
 let fixture: ComponentFixture<CheckoutPageComponent>;
 let fetcher: ReturnType<typeof vi.fn>;
 
+it('does not label an opaque payment return as Pro before its plan is known', async () => {
+  const root = await render(
+    { mode: 'test', session_id: 'cs_test_unknown_plan' },
+    false,
+    { status: 'notAuthenticated' },
+    'buyer',
+    {},
+    true,
+  );
+  expect(root.querySelector('h1')?.textContent?.trim()).toBe(
+    'Complete your DataTug subscription',
+  );
+  expect(document.title).toBe('Complete your DataTug subscription');
+  expect(root.querySelector('ion-title')?.textContent).not.toContain('Pro');
+  expect(fetcher).not.toHaveBeenCalled();
+
+  queries.next(
+    convertToParamMap({
+      planID: 'datatug-business-usage-annual',
+      purchaseId: 'purchase_1',
+      checkout: 'test',
+    }),
+  );
+  await fixture.whenStable();
+  expect(root.querySelector('h1')?.textContent?.trim()).toBe(
+    'Complete your DataTug Business subscription',
+  );
+  expect(document.title).toBe('Complete your DataTug Business subscription');
+});
+
 async function render(
   query: Record<string, string>,
   returning = false,
   initial: ISneatAuthState = authenticated,
   recordUID = 'buyer',
+  spaces = {},
+  authOnly = false,
 ) {
   states = new BehaviorSubject(initial);
   queries = new BehaviorSubject(convertToParamMap(query));
@@ -88,7 +122,7 @@ async function render(
           userState: of({
             status: 'authenticated',
             user: { ...authenticated.user, uid: recordUID },
-            record: { title: 'Buyer' },
+            record: { title: 'Buyer', spaces },
             userRecordStatus: 'ready',
           }),
         },
@@ -98,7 +132,7 @@ async function render(
         useValue: {
           queryParamMap: queries,
           snapshot: {
-            data: { checkoutReturn: returning },
+            data: { checkoutReturn: returning, checkoutAuth: authOnly },
             queryParamMap: convertToParamMap(query),
           },
         },
@@ -107,11 +141,13 @@ async function render(
   })
     .overrideComponent(CheckoutPageComponent, {
       set: {
-        imports: [RouterLink, CheckoutPriceSummaryComponent],
+        imports: [RouterLink, CheckoutPriceSummaryComponent, DatePipe],
         schemas: [CUSTOM_ELEMENTS_SCHEMA],
       },
     })
     .compileComponents();
+  vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+  vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
   fixture = TestBed.createComponent(CheckoutPageComponent);
   fixture.detectChanges();
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -154,21 +190,35 @@ it.each([
   {
     query: { plan: 'pro', period: 'monthly' },
     returning: false,
-    copy: 'Sign in to review your price and continue to payment.',
+    copy: 'Sign in with your Sneat.co account to review your price and continue to payment.',
   },
   {
     query: { mode: 'test', session_id: 'cs_test_waiting' },
     returning: true,
-    copy: 'Sign in with the same DataTug account used for your purchase.',
+    copy: 'Sign in with the same Sneat.co account used for your purchase.',
   },
 ])(
   'shows the right sign-in context before any quote is requested',
   async ({ query, returning, copy }) => {
-    const root = await render(query, returning, { status: 'notAuthenticated' });
+    const root = await render(
+      query,
+      returning,
+      { status: 'notAuthenticated' },
+      'buyer',
+      {},
+      true,
+    );
 
-    expect(root.textContent).toContain(copy);
+    expect(root.textContent?.replace(/\s+/g, ' ')).toContain(copy);
     expect(root.querySelector('sneat-auth-panel')).toBeTruthy();
-    expect(root.textContent).toContain('Continue with your DataTug account');
+    expect(root.textContent).not.toContain(
+      'Continue with your DataTug account',
+    );
+    expect(
+      root.querySelector('#checkout-auth-heading a')?.getAttribute('href'),
+    ).toBe('https://sneat.co');
+    expect(root.querySelector('datatug-checkout-price-summary')).toBeNull();
+    expect(root.querySelector('.checkout-art')).toBeNull();
     expect(fetcher).not.toHaveBeenCalled();
   },
 );
@@ -228,7 +278,12 @@ it.each([
       auth,
       recordUID,
     );
-    expect(root.querySelector('sneat-auth-panel')).toBeTruthy();
+    expect(root.querySelector('sneat-auth-panel')).toBeNull();
+    expect(root.querySelector('datatug-checkout-price-summary')).toBeNull();
+    expect(TestBed.inject(Router).navigate).toHaveBeenCalledWith(
+      ['/checkout/sign-in'],
+      { queryParams: { plan: 'pro', period: 'monthly' }, replaceUrl: true },
+    );
     expect(fetcher).not.toHaveBeenCalled();
     expect(mount).not.toHaveBeenCalled();
   },
@@ -308,6 +363,7 @@ it.each(['test', 'live'])(
     expect(options.method).toBeUndefined();
     expect(options.headers.Authorization).toBe('Bearer token-only-header');
     expect(root.textContent).toContain('Continue to DataTug');
+    expect(document.title).toBe('Complete your DataTug Pro subscription');
     expect(mount).not.toHaveBeenCalled();
   },
 );
@@ -434,7 +490,9 @@ it('uses emitted query context when the cached route snapshot still has the prev
   );
   await fixture.whenStable();
   expect(root.textContent).toContain('€133.00');
-  expect(root.textContent).toContain('Yearly plan');
+  expect(
+    root.querySelector('[role=tab][aria-selected=true]')?.textContent,
+  ).toContain('Yearly');
   expect(root.textContent).not.toContain('2 months free');
   expect(
     root.querySelector(
@@ -444,4 +502,209 @@ it('uses emitted query context when the cached route snapshot still has the prev
   expect(fixture.componentInstance['authReturnTo']()).toBe(
     '/subscribe?plan=pro&period=yearly&checkout=test',
   );
+});
+
+const businessPlan = 'datatug-business-usage-monthly';
+const startingSituations = [
+  [
+    'project and company',
+    { company_a: { title: 'Acme', type: 'company', roles: ['owner'] } },
+  ],
+  [
+    'company without project',
+    { company_a: { title: 'Acme', type: 'company', roles: ['owner'] } },
+  ],
+  [
+    'project without company',
+    { personal_a: { title: 'Personal', type: 'personal', roles: ['owner'] } },
+  ],
+  ['neither project nor company', {}],
+] as const;
+
+it.each(startingSituations)(
+  'Business pays before space selection: %s',
+  async (_name, spaces) => {
+    fetcher.mockImplementation(async (url: URL) => ({
+      ok: true,
+      headers: new Headers(),
+      json: async () =>
+        url.pathname.endsWith('/config')
+          ? {
+              site: 'datatug',
+              mode: 'test',
+              publishableKey: 'pk_test_fixture',
+              plans: [
+                {
+                  id: businessPlan,
+                  accountRequired: true,
+                  accountKind: 'organisation',
+                  taxIncluded: true,
+                },
+              ],
+            }
+          : {
+              ...quote(),
+              accountKind: 'organisation',
+              accountId: 'billing-a',
+              amount: {
+                currency: 'eur',
+                list: 9900,
+                due: 6930,
+                taxIncluded: true,
+              },
+            },
+    }));
+    const html = await render(
+      { planID: businessPlan, checkout: 'test', purchaseId: 'purchase-a' },
+      false,
+      authenticated,
+      'buyer',
+      spaces,
+    );
+    expect(html.textContent).toContain('€99.00');
+    expect(html.textContent).toContain('€69.30');
+    expect(html.textContent).toContain('2 months free');
+    expect(html.querySelector('select')).toBeNull();
+    const session = fetcher.mock.calls.find(([url]) =>
+      url.pathname.endsWith('/session'),
+    );
+    expect(JSON.parse(String(session?.[1]?.body))).toMatchObject({
+      plan: businessPlan,
+      purchaseId: 'purchase-a',
+      mode: 'test',
+    });
+  },
+);
+
+it('paid Business return creates a space once, then keeps Pro unless explicitly chosen', async () => {
+  let linked = false,
+    commands = 0;
+  const purchase = { accountId: 'billing-a', setupRequired: true, paid: true };
+  fetcher.mockImplementation(async (url: URL, options?: RequestInit) => ({
+    ok: true,
+    headers: new Headers(),
+    json: async () => {
+      if (url.pathname.endsWith('/session-status'))
+        return {
+          mode: 'test',
+          plan: businessPlan,
+          status: 'complete',
+          ready: true,
+          purchase,
+        };
+      if (url.pathname.endsWith('/purchase-options')) {
+        if (options?.method === 'POST') commands++;
+        return {
+          canCancelPersonal: commands === 0,
+          cancellationScheduled: commands > 0,
+          personalPaidThroughUTC: '2027-10-12T00:00:00Z',
+        };
+      }
+      if (url.pathname.endsWith('/purchase-setup')) {
+        linked = true;
+        return { ...purchase, spaceID: 'new-company', setupRequired: false };
+      }
+      throw new Error('unexpected request');
+    },
+  }));
+  const html = await render({ mode: 'test', session_id: 'cs_test_paid' }, true);
+  await fixture.whenStable();
+  expect(html.textContent).toContain('Your Business subscription is paid');
+  expect(document.title).toBe('Complete your DataTug Business subscription');
+  expect(commands).toBe(0);
+  const name = html.querySelector('#business-name') as HTMLInputElement;
+  name.value = 'New Business';
+  name.dispatchEvent(new Event('input'));
+  const activate = [...html.querySelectorAll('button')].find((x) =>
+    x.textContent?.includes('Activate Business'),
+  );
+  if (!activate) throw new Error('missing activation action');
+  activate.click();
+  activate.click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await fixture.whenStable();
+  expect(linked).toBe(true);
+  expect(
+    fetcher.mock.calls.filter(([url]) =>
+      url.pathname.endsWith('/purchase-setup'),
+    ),
+  ).toHaveLength(1);
+  expect(html.textContent).toContain('Your Business space is ready');
+  expect(commands).toBe(0);
+  const choice = html.querySelector('input[type=checkbox]') as HTMLInputElement;
+  expect(choice.checked).toBe(false);
+  choice.click();
+  await fixture.whenStable();
+  const confirm = [...html.querySelectorAll('button')].find((x) =>
+    x.textContent?.includes('Confirm Pro renewal cancellation'),
+  );
+  if (!confirm) throw new Error('missing cancellation action');
+  confirm.click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await fixture.whenStable();
+  expect(commands).toBe(1);
+  expect(html.textContent).toContain('Pro renewal cancellation is scheduled');
+});
+
+it.each([
+  {
+    query: { plan: 'pro', period: 'yearly', checkout: 'test' },
+    destination: '/subscribe?plan=pro&period=yearly&checkout=test',
+  },
+  {
+    query: {
+      planID: 'datatug-business-usage-annual',
+      spaceID: 'company_1',
+      purchaseId: 'purchase_1',
+      checkout: 'test',
+    },
+    destination:
+      '/business/checkout?planID=datatug-business-usage-annual&checkout=test&spaceID=company_1&purchaseId=purchase_1',
+  },
+])(
+  'auth page resumes the exact selected checkout without requesting a quote',
+  async ({ query, destination }) => {
+    const root = await render(
+      query,
+      false,
+      { status: 'notAuthenticated' },
+      'buyer',
+      {},
+      true,
+    );
+    expect(root.textContent).toContain('Complete your DataTug');
+    expect(root.querySelector('datatug-checkout-price-summary')).toBeNull();
+    states.next(authenticated);
+    await fixture.whenStable();
+    expect(TestBed.inject(Router).navigateByUrl).toHaveBeenCalledWith(
+      destination,
+      { replaceUrl: true },
+    );
+    expect(fetcher).not.toHaveBeenCalled();
+  },
+);
+
+it('reused auth page switches from a selection to a purchase return', async () => {
+  const root = await render(
+    { plan: 'pro', period: 'monthly', checkout: 'test' },
+    false,
+    { status: 'notAuthenticated' },
+    'buyer',
+    {},
+    true,
+  );
+  queries.next(
+    convertToParamMap({ mode: 'test', session_id: 'cs_test_waiting' }),
+  );
+  await fixture.whenStable();
+  expect(root.textContent?.replace(/\s+/g, ' ')).toContain(
+    'Sign in with the same Sneat.co account used for your purchase.',
+  );
+  states.next(authenticated);
+  await fixture.whenStable();
+  expect(TestBed.inject(Router).navigateByUrl).toHaveBeenCalledWith(
+    '/pricing/return?mode=test&session_id=cs_test_waiting',
+    { replaceUrl: true },
+  );
+  expect(fetcher).not.toHaveBeenCalled();
 });

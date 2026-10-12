@@ -1,5 +1,59 @@
 # datatug-app e2e
 
+## Subscription checkout
+
+`checkout-journey.spec.ts` runs the real Sneat sign-in/sign-up components against
+Firebase Auth and Firestore emulators. Payment and reconciliation HTTP are
+simulated. The required affected-app CI job runs this suite on desktop Chromium
+and iPhone-profile WebKit. Java 21 is required by the Firestore emulator only.
+
+```sh
+pnpm nx run datatug-app:e2e-checkout
+```
+
+The 34 cases cover five starting situations for each plan on both browsers,
+including separate auth URLs, quote/annual switching, Back/Forward, refresh,
+Pro TEST confirmation, Business paid-space setup and optional Pro cancellation.
+Additional cases cover delayed reconciliation, permission retry, payment-loader
+failure/retry, expired return, mixed TEST/LIVE return rejection, an existing
+Business subscription and a referenced-space permission denial. These tests
+never submit a provider payment. Test reports are in
+`coverage/apps/datatug-checkout/results/`.
+
+The opt-in `checkout-provider.spec.ts` checks the real isolated TEST service,
+without mocking checkout HTTP. The read-only catalog/preflight check does not
+need a running local app or an authenticated account:
+
+```sh
+DATATUG_CHECKOUT_PROVIDER_TEST=1 \
+  pnpm nx run datatug-app:e2e-checkout-provider --grep='deployed TEST catalog'
+```
+
+For unpaid provider-form mounting, serve the current app at the already allowed
+origin `http://datatug.localhost:4328`. Use the designated TEST buyer's Playwright
+storage state, including IndexedDB, saved outside the repository. The suite
+skips these two authenticated cases when that state is absent; skipped cases
+are not verification. It forwards checkout traffic only to the fixed TEST host,
+disables traces/video/screenshots and never enters cards or clicks Pay.
+
+```sh
+DATATUG_CHECKOUT_PROVIDER_TEST=1 \
+DATATUG_CHECKOUT_TEST_STORAGE_STATE=/private/path/test-buyer-state.json \
+  pnpm nx run datatug-app:e2e-checkout-provider
+```
+
+No suite starts or replaces another owner's server on port 4328. Use an owned
+preview with that exact allowed origin; the visual preview on 127.0.0.1:18787
+cannot call the deployed TEST service. Provider charge/decline/3DS, real webhook
+reconciliation and physical Mobile Safari still require separate evidence.
+
+To inspect an already paid TEST return without creating a session or changing
+its destination, also set `DATATUG_CHECKOUT_TEST_RETURN_SESSION` to that existing
+`cs_test_…` identifier. This case allows GET checkout requests only. It is skipped
+when the identifier or designated buyer state is absent; it never creates the
+paid fixture it needs. Provider-form and return checks are manual opt-in gates,
+not part of the simulated CI suite.
+
 ## Query authoring in mobile WebKit
 
 The query-only WebKit profile is a required CI check whenever Nx marks

@@ -1,4 +1,4 @@
-import { checkoutRail } from './checkout-config.mjs';
+import { checkoutRail, checkoutSelection } from './checkout-config.mjs';
 
 describe('checkout rails', () => {
   it('selects explicit TEST checkout with only the fixed isolated backend', () => {
@@ -18,11 +18,16 @@ describe('checkout rails', () => {
     'uses the normal HTTPS API for a default LIVE %s selection',
     (period) => {
       expect(
-        checkoutRail(`?plan=pro&period=${period}`, false, 'https://api.sneat.cloud/v0/'),
+        checkoutRail(
+          `?plan=pro&period=${period}`,
+          false,
+          'https://api.sneat.cloud/v0/',
+        ),
       ).toEqual({
         chosen: {
           period,
-          plan: period === 'yearly' ? 'datatug-pro-annual' : 'datatug-pro-monthly',
+          plan:
+            period === 'yearly' ? 'datatug-pro-annual' : 'datatug-pro-monthly',
         },
         mode: 'live',
         apiOrigin: 'https://api.sneat.cloud',
@@ -39,11 +44,35 @@ describe('checkout rails', () => {
       ),
     ).toBeNull();
     for (const selector of ['account=other', 'coupon=free']) {
-      expect(checkoutRail(`?plan=pro&period=monthly&${selector}`, false, 'https://api.sneat.cloud/v0/')).toBeNull();
+      expect(
+        checkoutRail(
+          `?plan=pro&period=monthly&${selector}`,
+          false,
+          'https://api.sneat.cloud/v0/',
+        ),
+      ).toBeNull();
     }
-    expect(checkoutRail('?plan=pro&period=monthly&origin=https%3A%2F%2Fevil.invalid&utm_source=launch', false, 'https://api.sneat.cloud/v0/')).toMatchObject({ mode: 'live', apiOrigin: 'https://api.sneat.cloud' });
-    expect(checkoutRail('?plan=pro&period=monthly', false, 'http://api.sneat.cloud/v0/')).toBeNull();
-    expect(checkoutRail('?plan=pro&period=monthly', false, 'https://buyer@api.sneat.cloud/v0/')).toBeNull();
+    expect(
+      checkoutRail(
+        '?plan=pro&period=monthly&origin=https%3A%2F%2Fevil.invalid&utm_source=launch',
+        false,
+        'https://api.sneat.cloud/v0/',
+      ),
+    ).toMatchObject({ mode: 'live', apiOrigin: 'https://api.sneat.cloud' });
+    expect(
+      checkoutRail(
+        '?plan=pro&period=monthly',
+        false,
+        'http://api.sneat.cloud/v0/',
+      ),
+    ).toBeNull();
+    expect(
+      checkoutRail(
+        '?plan=pro&period=monthly',
+        false,
+        'https://buyer@api.sneat.cloud/v0/',
+      ),
+    ).toBeNull();
   });
   it('binds existing TEST and LIVE return sessions to their respective backend and mode', () => {
     const normal = 'https://api.sneat.cloud/v0/';
@@ -72,8 +101,55 @@ describe('checkout rails', () => {
       ),
     ).toBeNull();
     for (const selector of ['account=other', 'coupon=free']) {
-      expect(checkoutRail(`?mode=live&session_id=cs_live_paid&${selector}`, true, normal)).toBeNull();
+      expect(
+        checkoutRail(
+          `?mode=live&session_id=cs_live_paid&${selector}`,
+          true,
+          normal,
+        ),
+      ).toBeNull();
     }
-    expect(checkoutRail('?mode=live&session_id=cs_live_paid&origin=https%3A%2F%2Fevil.invalid&utm_source=launch', true, normal)).toMatchObject({ mode: 'live', apiOrigin: 'https://api.sneat.cloud' });
+    expect(
+      checkoutRail(
+        '?mode=live&session_id=cs_live_paid&origin=https%3A%2F%2Fevil.invalid&utm_source=launch',
+        true,
+        normal,
+      ),
+    ).toMatchObject({ mode: 'live', apiOrigin: 'https://api.sneat.cloud' });
   });
+});
+
+it('preserves Business purchase identity, destination and mode independently of billing period', () => {
+  expect(
+    checkoutSelection(
+      '?planID=datatug-business-usage-annual&checkout=test&spaceID=acme&purchaseId=request-a',
+    ),
+  ).toEqual({
+    period: 'yearly',
+    plan: 'datatug-business-usage-annual',
+    kind: 'business',
+    spaceID: 'acme',
+    purchaseId: 'request-a',
+  });
+  expect(
+    checkoutRail(
+      '?planID=datatug-business-usage-monthly&checkout=test&purchaseId=request-a',
+      false,
+      'https://api.sneat.cloud',
+    ),
+  ).toMatchObject({
+    mode: 'test',
+    apiOrigin: 'https://datatug-checkout-test-354fvnqbaa-ey.a.run.app',
+  });
+  for (const suffix of [
+    '&spaceID=bad/space',
+    '&purchaseId=bad/id',
+    '&purchaseId=a&purchaseId=b',
+    '&period=monthly',
+    '&plan=pro',
+    '&checkout=live',
+  ])
+    expect(
+      checkoutSelection('?planID=datatug-business-usage-annual' + suffix),
+    ).toBeNull();
 });

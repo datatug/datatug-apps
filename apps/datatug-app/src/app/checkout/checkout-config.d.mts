@@ -1,5 +1,7 @@
 import type { CheckoutSelection } from './checkout-contracts';
 export const PRO_PLANS: Readonly<Record<'monthly' | 'yearly', string>>;
+export const BUSINESS_PLANS: Readonly<Record<'monthly' | 'yearly', string>>;
+export function checkoutSelection(search: string): CheckoutSelection | null;
 export function selection(search: string): CheckoutSelection | null;
 export function returnSelection(
   search: string,

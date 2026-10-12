@@ -5,11 +5,48 @@ ion-content {
   box-sizing: border-box;
   width: min(100%, 48rem);
   margin: 0 auto;
-  padding: 1rem 0.75rem 2rem;
-  border: 1px solid var(--ion-color-step-150);
-  border-radius: 1rem;
-  background: var(--ion-background-color);
-  box-shadow: 0 0.75rem 2rem rgb(0 0 0 / 8%);
+  padding: 1.5rem 1rem 2rem;
+}
+.checkout-intro {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-height: 8rem;
+}
+.auth-intro {
+  min-height: 0;
+}
+.checkout-intro > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
+.checkout-art {
+  position: relative;
+  flex: 0 0 12rem;
+  height: 8rem;
+}
+.checkout-art img {
+  position: absolute;
+  object-fit: contain;
+}
+.tug {
+  left: 0;
+  bottom: 0;
+  width: 9rem;
+  height: 6rem;
+}
+:host ::ng-deep .checkout-auth ion-card {
+  margin-inline: 0;
+  --background: #fff;
+}
+.checkout-auth > p {
+  margin: 1.5rem 0 0.75rem;
+  line-height: 1.5;
+}
+ion-chip {
+  margin-inline-end: 1rem;
+  --background: #fff0c2;
+  --color: #805400;
 }
 .checkout-intro h1 {
   margin: 0.2rem 0 1rem;
@@ -23,21 +60,12 @@ ion-content {
   font-weight: 650;
 }
 .checkout-status,
-.test,
 .legal-note {
   margin: 0.85rem 0;
   line-height: 1.5;
 }
 .checkout-status {
-  padding: 0.75rem 0.85rem;
-  border-radius: 0.65rem;
-  background: var(--ion-color-step-50);
-}
-.test {
-  padding: 0.6rem 0.75rem;
-  border-inline-start: 4px solid var(--ion-color-warning);
-  background: var(--ion-color-warning-tint);
-  color: var(--ion-color-warning-contrast);
+  color: var(--ion-color-medium-shade);
 }
 .legal-note {
   font-size: 0.9rem;
@@ -74,57 +102,6 @@ button:disabled {
   background: var(--ion-color-primary);
   color: var(--ion-color-primary-contrast);
   font-size: 1rem;
-}
-.quote-card {
-  margin-top: 1.25rem;
-  padding: 1rem;
-  border: 1px solid var(--ion-color-step-150);
-  border-radius: 0.8rem;
-  background: var(--ion-color-step-50);
-}
-.quote-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-}
-.quote-heading h2 {
-  margin: 0.15rem 0 0;
-  font-size: 1.25rem;
-}
-.billing-period {
-  padding: 0.35rem 0.65rem;
-  border-radius: 99px;
-  background: var(--ion-color-primary);
-  color: var(--ion-color-primary-contrast);
-  font-size: 0.78rem;
-  font-weight: 650;
-}
-.billing-caption {
-  margin: 0.35rem 0 0.8rem;
-  color: var(--ion-color-medium-shade);
-}
-.price-summary {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 0.55rem 1rem;
-  margin: 0;
-  padding-block: 0.8rem;
-  border-block: 1px solid var(--ion-color-step-150);
-}
-.price-summary dd {
-  margin: 0;
-  font-variant-numeric: tabular-nums;
-  text-align: end;
-}
-.price-due {
-  font-size: 1.15rem;
-  font-weight: 700;
-}
-.discount-note,
-.tax-note {
-  color: var(--ion-color-medium-shade);
-  font-size: 0.9rem;
 }
 .early-access {
   margin-top: 1rem;
@@ -167,9 +144,33 @@ section[hidden] {
 }
 @media (min-width: 40rem) {
   .checkout-shell {
-    padding: 2rem 1rem 3rem;
+    padding: 2rem 1.5rem 3rem;
   }
   .quote-card {
     padding: 1.25rem;
+  }
+}
+
+select,
+input:not([type='checkbox']) {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-height: 44px;
+  margin-block: 0.5rem 1rem;
+  font: inherit;
+}
+
+@media (max-width: 30rem) {
+  .checkout-art {
+    flex-basis: 6.5rem;
+    height: 6rem;
+  }
+  .tug {
+    width: 6rem;
+    height: 4rem;
+  }
+  .checkout-intro h1 {
+    font-size: 1.45rem;
   }
 }

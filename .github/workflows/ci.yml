@@ -163,6 +163,24 @@ jobs:
           fi
           pnpm exec playwright install --with-deps "${browsers[@]}"
 
+      - name: Set up Java for checkout Firestore emulator
+        if: steps.affected-app.outputs.datatug_app == 'true'
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: nx checkout journey e2e affected
+        run: pnpm nx affected --target=e2e-checkout --parallel=1 --base=${{ env.NX_BASE }}
+
+      - name: Upload checkout journey traces
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: checkout-journey-e2e-results
+          path: coverage/apps/datatug-checkout/results
+          if-no-files-found: ignore
+
       - name: nx e2e affected
         env:
           DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
