@@ -1,8 +1,12 @@
 <ion-app>
-  <header class="auth-brand" [hidden]="!checkoutAuth()">
-    <a routerLink="/home">{{ profile.brandName }}</a>
-    <a routerLink="/home">Return to {{ profile.brandName }}</a>
-  </header>
+  @if (checkoutAuth()) {
+    <header class="auth-brand">
+      <a routerLink="/home" [attr.aria-label]="profile.brandName + ' home'">{{
+        profile.brandName
+      }}</a>
+      <a routerLink="/home">Return to {{ profile.brandName }}</a>
+    </header>
+  }
   <ion-split-pane
     [class.authentication]="checkoutAuth()"
     contentId="main-content"
