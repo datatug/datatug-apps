@@ -108,6 +108,21 @@
     grid-row: 3;
   }
 
+  :host(:not(.author-no-parameters)) .author-code-sidebar-row {
+    align-self: stretch;
+    border-inline-start: 1px solid
+      var(
+        --ion-item-border-color,
+        var(
+          --ion-border-color,
+          var(
+            --ion-color-step-150,
+            var(--ion-background-color-step-150, #dedede)
+          )
+        )
+      );
+  }
+
   :host(.author-no-parameters) {
     grid-template-columns: minmax(0, 1fr);
   }
