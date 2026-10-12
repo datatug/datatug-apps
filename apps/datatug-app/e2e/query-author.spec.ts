@@ -2,6 +2,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { installFakeGithub } from './helpers/fake-github';
+import { activePage } from './journey/helpers/active-page';
 
 const DEMO_REPO = process.env['DATATUG_E2E_GITHUB_FAKE'];
 const JOIN_DEMO_REPO = process.env['DATATUG_E2E_GITHUB_JOIN'] ?? DEMO_REPO;
@@ -16,6 +17,10 @@ const CTE_GRAPH_AUTHOR_URL =
   '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-customer-count-graph?id=chinook-customer-count-graph&editor=text&env=local';
 const PLAYLIST_SQL_URL =
   '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-playlist-composition?id=chinook-playlist-composition&editor=text&env=local';
+const LONG_HEADER_QUERY_TITLE =
+  '請求書・顧客向けの長いタイトル — Invoice Author 🚀 東京';
+const LONG_HEADER_PROJECT_TITLE =
+  'データベース・デモ用プロジェクト — DemoDB datasets 🌍';
 
 // @codemirror/autocomplete's installed default; Enter is intentionally ignored
 // until the option has been visible for this interaction window.
@@ -51,6 +56,58 @@ const savedSqlSource = (queryId: string, repository = DEMO_REPO): string =>
     ),
     'utf8',
   );
+
+const installLongHeaderMetadataVariant = async (page: Page): Promise<void> => {
+  if (!DEMO_REPO) throw new Error('The canonical DemoDB fixture is required');
+
+  const variants = [
+    {
+      relativePath: 'demo-project-1/datatug-project.json',
+      originalTitle: 'DataTug Demo: DemoDB datasets',
+      title: LONG_HEADER_PROJECT_TITLE,
+    },
+    {
+      relativePath:
+        'demo-project-1/queries/demodb/chinook-invoice-author.query.json',
+      originalTitle: 'Chinook Invoice Author',
+      title: LONG_HEADER_QUERY_TITLE,
+    },
+  ];
+
+  for (const variant of variants) {
+    const source = readFileSync(join(DEMO_REPO, variant.relativePath), 'utf8');
+    const original = JSON.stringify(variant.originalTitle);
+    const occurrences = source.split(original).length - 1;
+    if (occurrences !== 1) {
+      throw new Error(
+        `Expected one title in ${variant.relativePath}, found ${occurrences}`,
+      );
+    }
+    const body = source.replace(original, JSON.stringify(variant.title));
+    const relativePath = variant.relativePath;
+    await page.route(
+      (url) =>
+        url.hostname === 'raw.githubusercontent.com' &&
+        url.pathname.endsWith(`/${relativePath}`),
+      async (route) => {
+        if (route.request().method() !== 'GET') {
+          await route.fallback();
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: 'text/plain; charset=utf-8',
+          headers: {
+            'access-control-allow-origin': '*',
+            'access-control-allow-headers': '*',
+            'access-control-allow-methods': 'GET, OPTIONS',
+          },
+          body,
+        });
+      },
+    );
+  }
+};
 
 const pasteCode = async (
   page: Page,
@@ -1775,7 +1832,59 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
     if (message.type() === 'error') errors.push(message.text());
   });
 
-  await page.goto(AUTHOR_URL);
+  // This scoped fake-GitHub fixture changes only the displayed query and
+  // project title strings. The real saved source, permissions, bindings,
+  // database, and worker journey remain unchanged.
+  await installLongHeaderMetadataVariant(page);
+
+  // Start from another saved read-only query, then follow its existing Back
+  // → Queries path to the Invoice Author query. Header navigation must not
+  // execute either query; the later Preview/Run actions remain explicit.
+  await page.goto(PLAYLIST_SQL_URL);
+  await expect(
+    activePage(page).locator('sneat-datatug-page-title'),
+  ).toContainText('Playlist Composition', {
+    timeout: 20_000,
+  });
+  await expect(
+    activePage(page).locator('sneat-datatug-page-title'),
+  ).toContainText(LONG_HEADER_PROJECT_TITLE);
+  await expect(page.getByRole('grid')).toHaveCount(0);
+  await activePage(page).locator('ion-back-button').click();
+  // Ionic keeps the outgoing page mounted during its transition. Identify the
+  // destination by its route component, then wait until only that page is
+  // active before using the shared activePage locator again.
+  const queriesPage = page.locator(
+    'ion-router-outlet > sneat-datatug-sql-queries.ion-page:not(.ion-page-hidden)',
+  );
+  await expect(queriesPage).toHaveCount(1, { timeout: 20_000 });
+  await expect(queriesPage.locator('ion-title')).toContainText('Queries');
+  await expect(activePage(page)).toHaveCount(1);
+  await queriesPage.locator('ion-item', { hasText: 'demodb' }).click();
+  const invoiceQuery = queriesPage
+    .locator('ion-item', { hasText: LONG_HEADER_QUERY_TITLE })
+    .getByTitle('Edit');
+  await invoiceQuery.click();
+  const invoiceAuthorPage = page.locator(
+    'ion-router-outlet > sneat-datatug-sql-editor.ion-page:not(.ion-page-hidden)',
+  );
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get('id'))
+    .toBe('demodb/chinook-invoice-author');
+  await expect(invoiceAuthorPage).toHaveCount(1, { timeout: 20_000 });
+  await expect(activePage(page)).toHaveCount(1);
+  const initialHeader = invoiceAuthorPage.locator(
+    'sneat-datatug-page-title ion-title',
+  );
+  await expect(initialHeader).toContainText(LONG_HEADER_QUERY_TITLE, {
+    timeout: 20_000,
+  });
+  await expect(initialHeader).toContainText(LONG_HEADER_PROJECT_TITLE);
+  const initialHeaderAccessibility = await initialHeader.ariaSnapshot();
+  expect(initialHeaderAccessibility).toContain(LONG_HEADER_QUERY_TITLE);
+  expect(initialHeaderAccessibility).toContain(LONG_HEADER_PROJECT_TITLE);
+  expect(workersStarted).toBe(0);
+
   const author = page.getByTestId('tugql-author');
   await expect(author).toBeVisible({ timeout: 20_000 });
   await expect(author.getByTestId('author-compose-tab')).toBeVisible();
@@ -2184,9 +2293,9 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
     expect(
       await page.getByRole('grid').getByRole('row').allTextContents(),
     ).toEqual(retainedRows);
-    const header = await page.evaluate(() => {
+    const header = await activePage(page).evaluate((active) => {
       const bounds = (selector: string): DOMRect | undefined =>
-        document.querySelector(selector)?.getBoundingClientRect();
+        active.querySelector(selector)?.getBoundingClientRect();
       const start = bounds('ion-toolbar ion-buttons[slot="start"]');
       const title = bounds('.query-page-title');
       const end = bounds('ion-toolbar ion-buttons[slot="end"]');
@@ -2208,12 +2317,20 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   // navigation to exercise the iOS header layout explicitly.
   await page.goto(`${AUTHOR_URL}&ionic:mode=ios`);
   const queryToolbar = page.locator('ion-toolbar.toolbar-label');
+  const authorPageTitle = activePage(page).locator('sneat-datatug-page-title');
   await expect(queryToolbar).toHaveClass(/\bios\b/u);
   for (const width of [390, 320]) {
     await page.setViewportSize({ width, height: 844 });
-    const header = await page.evaluate(() => {
+    await expect(authorPageTitle).toContainText(LONG_HEADER_QUERY_TITLE);
+    await expect(authorPageTitle).toContainText(LONG_HEADER_PROJECT_TITLE);
+    const titleAccessibility = await authorPageTitle
+      .locator('ion-title')
+      .ariaSnapshot();
+    expect(titleAccessibility).toContain(LONG_HEADER_QUERY_TITLE);
+    expect(titleAccessibility).toContain(LONG_HEADER_PROJECT_TITLE);
+    const header = await activePage(page).evaluate((active) => {
       const bounds = (selector: string): DOMRect | undefined =>
-        document.querySelector(selector)?.getBoundingClientRect();
+        active.querySelector(selector)?.getBoundingClientRect();
       const start = bounds('ion-toolbar ion-buttons[slot="start"]');
       const title = bounds('.query-page-title');
       const end = bounds('ion-toolbar ion-buttons[slot="end"]');
