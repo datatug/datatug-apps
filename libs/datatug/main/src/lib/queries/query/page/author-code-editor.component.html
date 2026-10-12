@@ -9,17 +9,19 @@
         fill="clear"
         [disabled]="disabled()"
         (click)="formatRequested.emit()"
-        >Format</ion-button
       >
+        <ion-icon name="code-working-outline" slot="icon-only" aria-hidden="true" />
+      </ion-button>
       <ion-button
         data-testid="author-undo-format"
-        aria-label="Undo format"
-        title="Undo format"
+        aria-label="Undo"
+        title="Undo"
         fill="clear"
         [disabled]="!canUndoFormat()"
         (click)="undoFormatRequested.emit()"
-        >Undo</ion-button
       >
+        <ion-icon name="arrow-undo-outline" slot="icon-only" aria-hidden="true" />
+      </ion-button>
     </ion-buttons>
   }
   @if (visible() && language() === 'TugQL') {
@@ -30,7 +32,8 @@
         title="Show TugQL suggestions · Ctrl+Space"
         [disabled]="readOnly() || disabled()"
         (click)="requestSuggestions()"
-      >Suggestions · Ctrl+Space
+      >
+        <ion-icon name="list-outline" slot="icon-only" aria-hidden="true" />
       </ion-button>
     </ion-buttons>
   }
@@ -53,16 +56,18 @@
             [disabled]="disabled()"
             (click)="selectMenuAction('format')"
           >
+            <ion-icon name="code-working-outline" slot="start" aria-hidden="true" />
             <ion-label>Format TugQL</ion-label>
           </ion-item>
           <ion-item
             button
             detail="false"
-            aria-label="Undo format"
+            aria-label="Undo"
             [disabled]="!canUndoFormat() || disabled()"
             (click)="selectMenuAction('undo')"
           >
-            <ion-label>Undo format</ion-label>
+            <ion-icon name="arrow-undo-outline" slot="start" aria-hidden="true" />
+            <ion-label>Undo</ion-label>
           </ion-item>
         }
         <ion-item
@@ -72,6 +77,7 @@
           [disabled]="readOnly() || disabled()"
           (click)="selectMenuAction('suggestions')"
         >
+          <ion-icon name="list-outline" slot="start" aria-hidden="true" />
           <ion-label>Suggestions <span>(Ctrl+Space)</span></ion-label>
         </ion-item>
       </ion-list>
