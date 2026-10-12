@@ -143,6 +143,17 @@ async function signIn(page: Page, email: string) {
     page.getByText(`Signed in as ${email}`, { exact: true }),
   ).toBeVisible({ timeout: 20000 });
 }
+async function nameBusiness(page: Page, title: string) {
+  const input = page.getByLabel('Business name', { exact: true });
+  await input.fill(title);
+  // Finish mobile focus scrolling before tapping the next control. In WebKit,
+  // Firebase's fixed emulator banner can otherwise intercept the first tap.
+  await input.blur();
+  await page
+    .getByRole('button', { name: 'Activate Business for this space' })
+    .evaluate((button) => button.scrollIntoView({ block: 'center' }));
+}
+
 async function paymentFake(page: Page) {
   const seen: {
     path: string;
@@ -454,10 +465,7 @@ for (const plan of ['pro', 'business'])
           await page
             .locator('#business-destination')
             .selectOption({ label: 'Existing Business' });
-        else
-          await page
-            .getByLabel('Business name', { exact: true })
-            .fill('New Business');
+        else await nameBusiness(page, 'New Business');
         await page
           .getByRole('button', { name: 'Activate Business for this space' })
           .click();
@@ -526,9 +534,7 @@ test('Business recovery: delayed reconciliation and permission retry never repay
     .click();
   await expect(page.getByRole('alert')).toBeVisible();
   await page.locator('#business-destination').selectOption('');
-  await page
-    .getByLabel('Business name', { exact: true })
-    .fill('Alternative business');
+  await nameBusiness(page, 'Alternative business');
   await page
     .getByRole('button', { name: 'Activate Business for this space' })
     .click();

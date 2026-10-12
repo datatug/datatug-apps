@@ -36,3 +36,12 @@ the [e2e guide](../../../apps/datatug-app/e2e/README.md#subscription-checkout).
 - [checkout-journey-business-new-unsigned-user-mobile-webkit-sign-in](checkout-journey-business-new-unsigned-user-mobile-webkit-sign-in.png)
 - [checkout-journey-pro-new-unsigned-user-chromium-sign-in](checkout-journey-pro-new-unsigned-user-chromium-sign-in.png)
 - [checkout-journey-pro-new-unsigned-user-mobile-webkit-sign-in](checkout-journey-pro-new-unsigned-user-mobile-webkit-sign-in.png)
+
+
+## Final integration and mobile CI repair
+
+WB synchronized the checkout branch with target `1a97b3d883a596919604ddb0069c48c34969ec45`, producing integration head `0c5af37fd10b04545bc8a31aa0f118c0cd78c03a`. The complete 34-case checkout suite passed locally on that head. Linux CI run `38285980296` then passed 33 cases and failed the mobile Business scenario without a project or business space: its trace shows Firebase's fixed emulator warning intercepting the activation tap during focus/scroll layout changes, with no purchase-setup request issued. This CI result was not waived or reported as a pass.
+
+The test now finishes input focus and centers the activation control before its ordinary Playwright click. It does not force clicks, retry activation, change production UI, or relax successful setup/refresh/one-request assertions. The affected mobile case passed five consecutive repeats; the complete 34-case Chromium/mobile WebKit suite then passed together in 2m51s. Focused ESLint and diff whitespace checks passed. Logs: `/private/tmp/business-checkout-mobile-focus-repeat.log`, `/private/tmp/business-checkout-mobile-focus-full.log`, and `/private/tmp/business-checkout-mobile-focus-lint.log`.
+
+Alex explicitly approved host-first delivery after the automatic approval review held that sequence. Host PR #1250 landed through WB at `5139a2b58f7ce1a884960584a261d496e68af571`, with canonical synchronization and host worktree/branch cleanup. Normal deployment run `38288580962` succeeded for that exact source; the read-only TEST image preflight passed. Runtime adoption and authenticated real-provider checks require their own receipts and are not implied by the emulated suite. No payment, customer subscription change or access-permission change was made during these tests.
