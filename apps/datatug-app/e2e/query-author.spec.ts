@@ -821,7 +821,7 @@ test('TugQL and SQL coloring preserves editable source, keyboard undo, and reada
   await editor.press(`${mod}+Shift+KeyZ`);
   await expectEditorSource(page, editor, parentEcho);
   if (originalViewport) await page.setViewportSize(originalViewport);
-  await editor.press('ArrowRight');
+  await editor.press(`${mod}+End`);
   await editor.type('!');
   await expectEditorSource(page, editor, `${parentEcho}!`);
   await editor.press(`${mod}+Z`);
@@ -1285,7 +1285,13 @@ test('TugQL suggestions are explicit, source-safe, and touch reachable', async (
   for (const colors of [headerContrast, buttonContrast, buttonHintContrast]) {
     expect(colors.ratio).toBeGreaterThanOrEqual(4.5);
   }
-  if (compactViewport) await page.keyboard.press('Escape');
+  if (compactViewport && editorActionsMenu) {
+    await page.keyboard.press('Escape');
+    await expect(editorActionsMenu).toBeHidden();
+    await expect(
+      author.getByRole('button', { name: 'More editor actions' }),
+    ).toBeFocused();
+  }
   const outlineContrast = contrastBetweenColors(
     forcedColorsStyle.outlineColor,
     forcedColorsStyle.backgroundColor,
@@ -1343,18 +1349,30 @@ test('TugQL suggestions are explicit, source-safe, and touch reachable', async (
   await editor.press('Escape');
   await expect(popup).toHaveCount(0);
   await expectEditorSource(page, editor, incompleteDraft);
+  await editor.focus();
+  await expect(editor).toBeFocused();
 
   // Enter remains an ordinary newline away from a parameter completion
   // context, even while the draft still contains an incomplete @C reference.
-  await editor.press(`${mod}+A`);
-  await editor.press('ArrowLeft');
+  await editor.press(`${mod}+Home`);
+  await expect
+    .poll(() => editor.evaluate((element) => {
+      const selection = window.getSelection();
+      if (!selection?.focusNode || !element.contains(selection.focusNode)) return -1;
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      range.setEnd(selection.focusNode, selection.focusOffset);
+      return range.toString().length;
+    }))
+    .toBe(0);
+  await editor.press('Escape');
+  await expect(popup).toHaveCount(0);
   await editor.press('Enter');
   const newlineDraft = `\n${incompleteDraft}`;
   await expectEditorSource(page, editor, newlineDraft);
   await editor.press(`${mod}+z`);
   await expectEditorSource(page, editor, incompleteDraft);
-  await editor.press(`${mod}+A`);
-  await editor.press('ArrowRight');
+  await editor.press(`${mod}+End`);
   await expect(popup).toHaveCount(0);
 
   if (isMobile) {
