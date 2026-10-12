@@ -49,6 +49,7 @@ export interface CheckoutState {
     list: string;
     due: string;
     discount?: string;
+    discountAmount?: string;
     mode?: string;
     interval?: 'month' | 'year';
     claimed?: boolean;

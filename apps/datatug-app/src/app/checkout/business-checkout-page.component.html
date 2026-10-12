@@ -1,6 +1,6 @@
 <ion-header>
   <ion-toolbar>
-    <ion-title>DataTug Business {{ mode().toUpperCase() }} checkout</ion-title>
+    <ion-title><a routerLink="/">DataTug</a> · Business</ion-title>
   </ion-toolbar>
 </ion-header>
 <ion-content>
@@ -11,27 +11,15 @@
       }}
     </h1>
     @if (!returning) {
-      <section aria-labelledby="rail-heading">
-        <h2 id="rail-heading">Payment rail</h2>
-        <div class="choices" role="group" aria-label="Payment rail">
-          <button
-            type="button"
-            [disabled]="liveRailDisabled() || selectionLocked()"
-            [attr.aria-pressed]="mode() === 'live'"
-            (click)="chooseMode('live')"
-          >
-            LIVE{{ liveRailDisabled() ? ' (closed)' : '' }}
-          </button>
-          <button
-            type="button"
-            [disabled]="selectionLocked()"
-            [attr.aria-pressed]="mode() === 'test'"
-            (click)="chooseMode('test')"
-          >
-            TEST
-          </button>
-        </div>
-      </section>
+      <datatug-checkout-price-summary
+        planName="DataTug Business"
+        [monthlyMinor]="9900"
+        [business]="true"
+        [yearly]="period() === 'annual'"
+        [quote]="state().quote"
+        [allowPeriodChange]="apiAvailable() && !selectionLocked()"
+        (yearlySelected)="choosePeriod('annual')"
+      />
     }
     @if (mode() === 'test') {
       <p class="test-mode" role="note">
@@ -68,7 +56,7 @@
             [attr.aria-pressed]="period() === 'annual'"
             (click)="choosePeriod('annual')"
           >
-            Annual
+            Yearly
           </button>
         </div>
       </section>
@@ -257,21 +245,6 @@
             For <strong>{{ selectedSpace()?.title }}</strong>
           </p>
         }
-        <p>Billed {{ quote.interval === 'year' ? 'annually' : 'monthly' }}</p>
-        <dl>
-          <dt>List price including tax</dt>
-          <dd>{{ quote.list }}</dd>
-          @if (quote.discount) {
-            <dt>Launch discount</dt>
-            <dd>{{ quote.discount }}</dd>
-          }
-          <dt>Due, tax included</dt>
-          <dd>{{ quote.due }}</dd>
-        </dl>
-        <p>
-          Tax is included in the quoted price. Any provider-reported total may
-          be unavailable while checkout is pending.
-        </p>
         <h3>Early access</h3>
         <p>
           DataTug Business is in early access. Your subscription will be

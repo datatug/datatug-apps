@@ -7,7 +7,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, ParamMap, Router, RouterLink } from '@angular/router';
 import { IonContent } from '@ionic/angular/ion-content';
 import { IonHeader } from '@ionic/angular/ion-header';
 import { IonTitle } from '@ionic/angular/ion-title';
@@ -16,6 +16,7 @@ import { SneatApiBaseUrl } from '@sneat/api';
 import { SneatAuthStateService, SneatUserService } from '@sneat/auth-core';
 import { AuthPanelComponent } from '@sneat/auth-ui';
 import { Subscription } from 'rxjs';
+import { CheckoutPriceSummaryComponent } from './checkout-price-summary.component';
 import { appCheckoutAuth } from './checkout-auth';
 import { checkoutApi } from './checkout-api.mjs';
 import { checkoutChoice, checkoutRail } from './checkout-config.mjs';
@@ -35,6 +36,7 @@ import type { CheckoutState } from './checkout-contracts';
     IonTitle,
     IonContent,
     AuthPanelComponent,
+    CheckoutPriceSummaryComponent,
   ],
   templateUrl: './checkout-page.component.html',
   styleUrl: './checkout-page.component.scss',
@@ -53,7 +55,7 @@ export class CheckoutPageComponent implements OnDestroy {
   protected readonly retryBlocked = signal(false);
   protected readonly returning =
     this.route.snapshot.data['checkoutReturn'] === true;
-  protected readonly period = signal('');
+  protected readonly period = signal('monthly');
   protected readonly enabled = signal(false);
   protected readonly existingPurchase = signal<string | null>(null);
   protected readonly back = signal('https://datatug.app/en/pricing/');
@@ -67,10 +69,12 @@ export class CheckoutPageComponent implements OnDestroy {
   private readonly subscription: Subscription;
 
   constructor() {
-    this.subscription = this.route.queryParamMap.subscribe(() => this.start());
+    this.subscription = this.route.queryParamMap.subscribe((params) =>
+      this.start(params),
+    );
   }
 
-  private start(): void {
+  private start(params: ParamMap = this.route.snapshot.queryParamMap): void {
     this.flow?.dispose();
     clearTimeout(this.retryTimer);
     this.accepted.set(false);
@@ -78,9 +82,8 @@ export class CheckoutPageComponent implements OnDestroy {
     this.retryBlocked.set(false);
     this.existingPurchase.set(null);
     const search = new URLSearchParams();
-    for (const key of this.route.snapshot.queryParamMap.keys) {
-      for (const value of this.route.snapshot.queryParamMap.getAll(key))
-        search.append(key, value);
+    for (const key of params.keys) {
+      for (const value of params.getAll(key)) search.append(key, value);
     }
     const rail = checkoutRail(
       search.toString(),
@@ -93,7 +96,11 @@ export class CheckoutPageComponent implements OnDestroy {
     this.enabled.set(Boolean(rail));
     this.mode.set(rail?.mode ?? 'test');
     this.back.set(
-      'https://datatug.app/en/pricing/' + (test ? '?checkout=test' : ''),
+      'https://datatug.app/en/pricing/?' +
+        new URLSearchParams({
+          period: search.get('period') === 'yearly' ? 'yearly' : 'monthly',
+          ...(test ? { checkout: 'test' } : {}),
+        }),
     );
     if (!rail || !chosen) {
       this.state.set({
@@ -162,6 +169,27 @@ export class CheckoutPageComponent implements OnDestroy {
       });
     }
     this.flow.start();
+  }
+
+  protected canChangePeriod(): boolean {
+    return (
+      !this.returning &&
+      !['mounting', 'payment', 'checking', 'pro', 'test'].includes(
+        this.state().stage,
+      ) &&
+      this.state().code !== 'already_subscribed'
+    );
+  }
+
+  protected choosePeriod(period: 'monthly' | 'yearly'): void {
+    if (!this.canChangePeriod() || period === this.period()) return;
+    void this.router.navigate(['/subscribe'], {
+      queryParams: {
+        plan: 'pro',
+        period,
+        ...(this.mode() === 'test' ? { checkout: 'test' } : {}),
+      },
+    });
   }
 
   protected async signOut(): Promise<void> {

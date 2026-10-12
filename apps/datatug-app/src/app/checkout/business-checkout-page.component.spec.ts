@@ -1,3 +1,4 @@
+import { CheckoutPriceSummaryComponent } from './checkout-price-summary.component';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import {
@@ -173,7 +174,10 @@ async function render(
     ],
   })
     .overrideComponent(BusinessCheckoutPageComponent, {
-      set: { imports: [RouterLink], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+      set: {
+        imports: [RouterLink, CheckoutPriceSummaryComponent],
+        schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      },
     })
     .compileComponents();
   fixture = TestBed.createComponent(BusinessCheckoutPageComponent);
@@ -225,25 +229,13 @@ it('defaults to the closed LIVE rail and requires an explicit TEST selection', a
   expect(root.textContent).toContain(
     'LIVE Business checkout is not enabled yet.',
   );
+  expect(root.textContent).not.toContain('Payment rail');
   expect(
-    root.querySelector('button[aria-pressed="true"]')?.textContent,
-  ).toContain('LIVE');
+    Array.from(root.querySelectorAll('button')).some((button) =>
+      ['LIVE', 'TEST'].includes(button.textContent?.trim() ?? ''),
+    ),
+  ).toBe(false);
   expect(fetcher).not.toHaveBeenCalled();
-  const navigate = vi.spyOn(TestBed.inject(Router), 'navigate');
-  const testRail = Array.from(root.querySelectorAll('button')).find(
-    (button) => button.textContent?.trim() === 'TEST',
-  );
-  testRail?.click();
-  expect(navigate).toHaveBeenCalledWith(
-    [],
-    expect.objectContaining({
-      queryParams: {
-        planID: 'datatug-business-usage-monthly',
-        checkout: 'test',
-        spaceID: 'group_1',
-      },
-    }),
-  );
 });
 
 it.each<Record<string, string | string[]>>([
@@ -313,7 +305,10 @@ it('shows the unavailable state on a real cold route before query normalization 
     ],
   })
     .overrideComponent(BusinessCheckoutPageComponent, {
-      set: { imports: [RouterLink], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+      set: {
+        imports: [RouterLink, CheckoutPriceSummaryComponent],
+        schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      },
     })
     .compileComponents();
 
@@ -369,7 +364,10 @@ it('continues a real cold configured route after canonicalizing its default plan
     ],
   })
     .overrideComponent(BusinessCheckoutPageComponent, {
-      set: { imports: [RouterLink], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+      set: {
+        imports: [RouterLink, CheckoutPriceSummaryComponent],
+        schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      },
     })
     .compileComponents();
 
@@ -703,12 +701,12 @@ it.each([
       checkout: 'test',
     },
     true,
-    'https://datatug.app/en/pricing/?checkout=test',
+    'https://datatug.app/en/pricing/?period=monthly&checkout=test',
   ],
   [
     { planID: 'datatug-business-usage-monthly', spaceID: 'group_1' },
     false,
-    'https://datatug.app/en/pricing/',
+    'https://datatug.app/en/pricing/?period=monthly',
   ],
 ])(
   'links back to pricing at %s for query %j',

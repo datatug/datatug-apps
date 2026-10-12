@@ -152,7 +152,10 @@
             return decodeURIComponent(part).split(';')[0].toLowerCase();
           }).join('/'); }
           var path = normalize(location.pathname);
-          var continuation = path === 'login' && (location.hash || '').slice(0, 2) === '#/' ? normalize(location.hash.slice(1)) : '';
+          var authPage = ['login', 'sso', 'sign-in-from-email-link'].indexOf(path) >= 0;
+          var returnTo = new URLSearchParams(location.search || '').get('returnTo');
+          var continuation = authPage && (location.hash || '').slice(0, 2) === '#/' ? normalize(location.hash.slice(1)) :
+            authPage && returnTo && returnTo.slice(0, 1) === '/' && returnTo.slice(0, 2) !== '//' ? normalize(returnTo) : '';
           if ([path, continuation].some(function (value) { return value === 'subscribe' || value === 'pricing/return' || value === 'business/checkout' || value === 'business/checkout/return'; })) {
             window.__datatugCheckoutPrivacy = true;
             ['G-SNF2R7PDY7', 'G-TYBDTV738R', 'G-PROVIDE_IF_NEEDED'].forEach(function (id) { window['ga-disable-' + id] = true; });

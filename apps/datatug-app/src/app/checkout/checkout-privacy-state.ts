@@ -16,8 +16,16 @@ export function isCheckoutAddress(url: string): boolean {
         .join('/');
     const path = normalize(url);
     const fragment = url.split('#')[1];
+    const returnTo = new URLSearchParams(url.split('?')[1]?.split('#')[0]).get(
+      'returnTo',
+    );
+    const authPage = ['login', 'sso', 'sign-in-from-email-link'].includes(path);
     const continuation =
-      path === 'login' && fragment?.startsWith('/') ? normalize(fragment) : '';
+      authPage && fragment?.startsWith('/')
+        ? normalize(fragment)
+        : authPage && returnTo?.startsWith('/') && !returnTo.startsWith('//')
+          ? normalize(returnTo)
+          : '';
     return [path, continuation].some(
       (value) =>
         value === 'subscribe' ||
@@ -45,4 +53,12 @@ export function disableCheckoutAnalytics(
   if (!isCheckoutAddress(url)) return;
   target[CHECKOUT_PRIVACY_FLAG] = true;
   for (const id of CHECKOUT_GA_IDS) target['ga-disable-' + id] = true;
+}
+
+/** Auth callbacks can carry return context outside the URL; suppress their menu too. */
+export function isCheckoutShellAddress(url: string): boolean {
+  if (isCheckoutAddress(url)) return true;
+  return /^\/(?:login|sso(?:\/callback)?|sign-in-from-email-link)\/?(?:[?#]|$)/.test(
+    url,
+  );
 }

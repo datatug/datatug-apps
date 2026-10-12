@@ -15,6 +15,17 @@ export function money(cents) {
   }).format(cents / 100);
 }
 
+function priceSummary(quote) {
+  return {
+    list: money(quote.amount.list),
+    due: money(quote.amount.due),
+    discountAmount: money(quote.amount.list - quote.amount.due),
+    discount: discountDescription(quote),
+    interval: quote.period?.interval,
+    claimed: quote.claimed,
+  };
+}
+
 export function errorMessage(error) {
   const code = error instanceof CheckoutError ? error.code : '';
   if (error instanceof CheckoutError && error.status === 401)
@@ -24,7 +35,7 @@ export function errorMessage(error) {
   if (code === 'offer_busy')
     return 'Launch offer places are being checked. Please wait, then retry.';
   if (code === 'already_subscribed')
-    return 'You already have a paid plan. Check your plan before starting another purchase.';
+    return 'You already have Pro for your personal space. Manage that subscription, or choose Business for another space.';
   if (code === 'space_admin_required')
     return 'You need an owner or admin role for this Space to continue.';
   if (code === 'test_buyer_not_eligible')
@@ -152,6 +163,7 @@ export function createCheckoutFlow({
         quote: {
           list: money(quote.amount.list),
           due: money(quote.amount.due),
+          discountAmount: money(quote.amount.list - quote.amount.due),
           taxIncluded: quote.amount.taxIncluded,
           discount: discountDescription(quote),
           mode,
@@ -180,7 +192,7 @@ export function createCheckoutFlow({
     const n = lifecycle.begin();
     if (n === null) return;
     const user = lifecycle.user();
-    render({ stage: 'mounting', user, selection });
+    render({ stage: 'mounting', user, selection, quote: priceSummary(quote) });
     try {
       const candidate = await provider.mount({
         publishableKey: config.publishableKey,
@@ -192,7 +204,13 @@ export function createCheckoutFlow({
         return;
       }
       embedded = candidate;
-      render({ stage: 'payment', user, selection, mode });
+      render({
+        stage: 'payment',
+        user,
+        selection,
+        mode,
+        quote: priceSummary(quote),
+      });
     } catch (error) {
       if (lifecycle.fresh(n)) {
         const supportReference =
@@ -209,6 +227,7 @@ export function createCheckoutFlow({
           selection,
           message:
             'The payment form could not load. Retry this same selection.',
+          quote: priceSummary(quote),
           retryAfter: null,
           supportReference,
         });
@@ -277,6 +296,7 @@ export function createSpaceServiceCheckoutFlow({
         quote: {
           list: money(quote.amount.list),
           due: money(quote.amount.due),
+          discountAmount: money(quote.amount.list - quote.amount.due),
           interval: quote.period.interval,
           claimed: quote.claimed,
           discount:
@@ -312,6 +332,7 @@ export function createSpaceServiceCheckoutFlow({
       quote: {
         list: money(quote.amount.list),
         due: money(quote.amount.due),
+        discountAmount: money(quote.amount.list - quote.amount.due),
         interval: quote.period.interval,
         claimed: quote.claimed,
         discount:
@@ -349,6 +370,7 @@ export function createSpaceServiceCheckoutFlow({
         user,
         selection,
         providerAmountTotal: session.providerAmountTotal,
+        quote: priceSummary(quote),
       });
     } catch (error) {
       if (lifecycle.fresh(n)) {
@@ -364,6 +386,7 @@ export function createSpaceServiceCheckoutFlow({
                 quote: {
                   list: money(quote.amount.list),
                   due: money(quote.amount.due),
+                  discountAmount: money(quote.amount.list - quote.amount.due),
                   interval: quote.period.interval,
                   claimed: quote.claimed,
                   discount:

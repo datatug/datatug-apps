@@ -1,5 +1,21 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { RouterLink, RouterOutlet } from '@angular/router';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+} from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { filter, map } from 'rxjs';
+import { isCheckoutShellAddress } from './checkout/checkout-privacy-state';
+import {
+  NavigationCancel,
+  NavigationEnd,
+  NavigationError,
+  NavigationStart,
+  Router,
+  RouterLink,
+  RouterOutlet,
+} from '@angular/router';
 import { IonApp } from '@ionic/angular/ion-app';
 import { IonContent } from '@ionic/angular/ion-content';
 import { IonHeader } from '@ionic/angular/ion-header';
@@ -33,6 +49,47 @@ import { PRODUCT_PROFILE } from '@datatug/product-profiles';
   ],
 })
 export class DatatugAppComponent {
+  private readonly router = inject(Router);
+  protected readonly checkout = toSignal(
+    this.router.events.pipe(
+      filter(
+        (
+          event,
+        ): event is
+          | NavigationStart
+          | NavigationEnd
+          | NavigationCancel
+          | NavigationError =>
+          event instanceof NavigationStart ||
+          event instanceof NavigationEnd ||
+          event instanceof NavigationCancel ||
+          event instanceof NavigationError,
+      ),
+      map((event) =>
+        event instanceof NavigationStart
+          ? isCheckoutShellAddress(this.router.url) ||
+            isCheckoutShellAddress(event.url)
+          : isCheckoutShellAddress(
+              event instanceof NavigationEnd
+                ? event.urlAfterRedirects
+                : this.router.url,
+            ),
+      ),
+    ),
+    { initialValue: isCheckoutShellAddress(this.router.url) },
+  );
+  private readonly currentUrl = toSignal(
+    this.router.events.pipe(
+      filter((event): event is NavigationEnd => event instanceof NavigationEnd),
+      map((event) => event.urlAfterRedirects),
+    ),
+    { initialValue: this.router.url },
+  );
+  protected readonly checkoutAuth = computed(() =>
+    /^\/(?:login|sso(?:\/callback)?|sign-in-from-email-link)\/?(?:[?#]|$)/.test(
+      this.currentUrl(),
+    ),
+  );
   private readonly menuController = inject(MenuController);
   private readonly errorLogger = inject(ErrorLogger);
 

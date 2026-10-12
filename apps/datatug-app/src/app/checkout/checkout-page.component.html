@@ -1,5 +1,7 @@
 <ion-header
-  ><ion-toolbar><ion-title>DataTug Pro</ion-title></ion-toolbar></ion-header
+  ><ion-toolbar
+    ><ion-title><a routerLink="/">DataTug</a> · Pro</ion-title></ion-toolbar
+  ></ion-header
 >
 <ion-content>
   <main class="checkout-shell">
@@ -33,6 +35,34 @@
           >Privacy</a
         >. Please review these policies before continuing to payment.
       </p>
+    }
+    @if (!returning && enabled()) {
+      <datatug-checkout-price-summary
+        planName="DataTug Pro"
+        [monthlyMinor]="1900"
+        [yearly]="period() === 'yearly'"
+        [quote]="state().quote"
+        [allowPeriodChange]="canChangePeriod()"
+        (yearlySelected)="choosePeriod('yearly')"
+      />
+      <div role="group" aria-label="Billing period">
+        <button
+          type="button"
+          [disabled]="!canChangePeriod()"
+          [attr.aria-pressed]="period() === 'monthly'"
+          (click)="choosePeriod('monthly')"
+        >
+          Monthly
+        </button>
+        <button
+          type="button"
+          [disabled]="!canChangePeriod()"
+          [attr.aria-pressed]="period() === 'yearly'"
+          (click)="choosePeriod('yearly')"
+        >
+          Yearly
+        </button>
+      </div>
     }
     @if (state().user; as user) {
       <p class="account-status">
@@ -84,26 +114,6 @@
     @if (state().stage === 'quote') {
       @if (state().quote; as quote) {
         <section class="quote-card" aria-labelledby="quote-heading">
-          <div class="quote-heading">
-            <h2 id="quote-heading">Your Pro quote</h2>
-            <span class="billing-period">
-              {{ period() === 'yearly' ? 'Yearly' : 'Monthly' }}
-            </span>
-          </div>
-          <p class="billing-caption">
-            {{ period() === 'yearly' ? 'Billed yearly' : 'Billed monthly' }}
-          </p>
-          <dl class="price-summary">
-            <dt>List price</dt>
-            <dd>{{ quote.list }}</dd>
-            <dt>Price due</dt>
-            <dd class="price-due">{{ quote.due }}</dd>
-          </dl>
-          <p class="discount-note">{{ quote.discount }}</p>
-          <p class="tax-note">
-            Tax is included in this quoted price. The payment form confirms the
-            final charge.
-          </p>
           <section class="early-access" aria-labelledby="early-access-heading">
             <h3 id="early-access-heading">Early access</h3>
             <p class="early-access-copy">
@@ -163,7 +173,7 @@
       }
     }
     @if (state().stage === 'test' || state().stage === 'pro') {
-      <p><a routerLink="/">Continue to DataTug</a></p>
+      <p><a routerLink="/home">Continue to DataTug</a></p>
     }
     <p class="checkout-footer">
       <a [href]="back()">Back to pricing</a>
