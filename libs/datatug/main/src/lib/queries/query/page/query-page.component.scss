@@ -81,7 +81,7 @@
   border-bottom: 1px solid var(--ion-color-step-150, #e5e7eb);
 }
 .author-customer-input {
-  display: block;
+  min-height: 2.75rem;
   width: min(13rem, 100%);
   margin: 0;
   --padding-top: 0;
