@@ -124,7 +124,7 @@ interface CliSession {
           <div><strong>Saved project queries</strong>
             <label>Search <input type="search" [value]="querySearch()" (input)="querySearch.set($any($event.target).value)" /></label>
             @for (query of matchingQueries(); track query.ID) {
-              <div class="saved-query"><span>{{ query.Title || query.ID }} · {{ query.Type === 'DTQL' ? 'TugQL' : query.Type }}</span>@if (query.Type === 'DTQL' || query.Type === 'HTTP') { <button type="button" (click)="runSavedQuery(query)">Run</button> }</div>
+              <div class="saved-query"><span>{{ query.Title || query.ID }} · {{ query.Type === 'DTQL' ? 'TugQL' : query.Type }}</span>@if (query.Type === 'DTQL' || query.Type === 'TugQL' || query.Type === 'HTTP') { <button type="button" (click)="runSavedQuery(query)">Run</button> }</div>
             } @empty { <p>No saved queries available.</p> }
           </div>
         </section>
@@ -365,7 +365,7 @@ export class CliChatPageComponent implements OnInit, OnDestroy {
   });
   readonly savedQueries = signal<CliSavedQuery[]>([]);
   readonly querySearch = signal('');
-  readonly matchingQueries = computed(() => this.savedQueries().filter((query) => `${query.Title} ${query.ID} ${query.Type} ${(query.Tags || []).join(' ')}`.toLowerCase().includes(this.querySearch().toLowerCase())));
+  readonly matchingQueries = computed(() => this.savedQueries().filter((query) => `${query.Title} ${query.ID} ${query.Type === 'DTQL' ? 'TugQL' : query.Type} ${(query.Tags || []).join(' ')}`.toLowerCase().includes(this.querySearch().toLowerCase())));
   readonly toolsOpen = signal(false);
   readonly cellDetail = signal<CliCellDetail | undefined>(undefined);
   readonly projectGroups = computed(() => {

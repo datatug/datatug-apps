@@ -507,13 +507,13 @@
           (applyRequested)="applyAuthorRelationshipReview()"
         />
         @if (customerInvoiceExample()) {
-              <p data-testid="customer-invoice-example-guidance" role="status">
-                Try Customer ID 1: Preview SQL, then Run. Inspect the invoice
-                rows below; customer 1 has 7 invoices. Change the customer ID to
-                explore another customer, then preview and run again.
-              </p>
-            }
-            <ion-input
+          <p data-testid="customer-invoice-example-guidance" role="status">
+            Try Customer ID 1: Preview SQL, then Run. Inspect the invoice rows below;
+            customer 1 has 7 invoices. Change the customer ID to explore another customer,
+            then preview and run again.
+          </p>
+        }
+        <ion-input
           class="author-customer-input"
           data-testid="author-customer-id"
           type="number"
