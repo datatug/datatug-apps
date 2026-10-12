@@ -26,3 +26,36 @@
     [lineWrapping]="true"
   />
 }
+@if (formatDiagnostics().length) {
+  <section class="author-format-diagnostics" aria-label="Format diagnostics">
+    <p class="author-format-diagnostic-context">
+      Locations refer to the unchanged draft.
+    </p>
+    <ul>
+      @for (diagnostic of formatDiagnostics(); track $index) {
+        <li>
+          <button
+            class="author-format-diagnostic"
+            type="button"
+            [disabled]="!isFormatDiagnosticNavigable(text(), diagnostic.span)"
+            [attr.aria-label]="
+              'Go to line ' + diagnostic.span.start.line + ', column ' +
+              diagnostic.span.start.column + ': ' + diagnostic.message
+            "
+            (click)="formatDiagnosticRequested.emit(diagnostic)"
+          >
+            <span class="author-format-diagnostic-location">
+              {{ diagnostic.span.start.line }}:{{ diagnostic.span.start.column }}
+            </span>
+            <span>{{ diagnostic.message }}</span>
+          </button>
+        </li>
+      }
+    </ul>
+    @if (remainingFormatDiagnosticCount() > 0) {
+      <p class="author-format-diagnostic-more" role="status">
+        And {{ remainingFormatDiagnosticCount() }} more diagnostics.
+      </p>
+    }
+  </section>
+}

@@ -1895,6 +1895,252 @@ select (
     );
   });
 
+  it('uses exact displayed-source spans and retains the prior plan after a Format failure', async () => {
+    const source = 'from Invoice as i\nselect i.InvoiceId\n    limit 4';
+    component = await createTugQLAuthor(source);
+    const retainedPlan = { sql: 'previous preview' } as never;
+    component.authorPlan.set(retainedPlan);
+    const prepare = vi.spyOn(
+      TestBed.inject(PublicSqliteQueryService),
+      'prepareTugQL',
+    );
+    const execute = vi.spyOn(
+      TestBed.inject(PublicSqliteQueryService),
+      'runTugQL',
+    );
+    const navigate = vi.fn(() => true);
+    Object.defineProperty(component, 'authorCodeEditor', {
+      value: { navigateToFormatDiagnostic: navigate },
+      configurable: true,
+      writable: true,
+    });
+
+    component.formatAuthorTugQL();
+
+    const clauseOrder = component
+      .authorFormatDiagnosticItems()
+      .find((diagnostic) => diagnostic.code === 'clause_order');
+    expect(clauseOrder?.span.start).toEqual({ line: 3, column: 5 });
+    expect(component.queryBodyText()).toBe(source);
+    expect(component.authorPlan()).toBe(retainedPlan);
+    expect(component.authorFormatStatus()).toContain('was not changed');
+    expect(prepare).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+
+    if (!clauseOrder) throw new Error('Expected source-positioned clause diagnostic');
+    component.navigateToAuthorFormatDiagnostic(clauseOrder);
+    expect(navigate).toHaveBeenCalledWith(source, clauseOrder);
+    expect(component.queryBodyText()).toBe(source);
+    expect(component.authorPlan()).toBe(retainedPlan);
+    expect(prepare).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('suppresses zero-width source sentinels, keeps real first-token spans, and caps navigation', async () => {
+    component = await createTugQLAuthor('select x');
+    component.formatAuthorTugQL();
+    expect(component.authorFormatDiagnosticItems()).toEqual([]);
+
+    component.authorCodeChanged('first bad statement');
+    component.formatAuthorTugQL();
+    expect(
+      component.authorFormatDiagnosticItems().some(
+        (diagnostic) => diagnostic.code === 'unsupported_statement',
+      ),
+    ).toBe(true);
+
+    const manyErrors = Array.from({ length: 8 }, (_, index) => `bad${index}`).join('\n');
+    component.authorCodeChanged(manyErrors);
+    component.formatAuthorTugQL();
+    expect(component.authorFormatDiagnosticItems()).toHaveLength(5);
+    expect(component.authorFormatDiagnosticRemainder()).toBeGreaterThan(0);
+    expect(component.authorFormatDiagnosticRemainder()).toBe(
+      parseTugQL(manyErrors).diagnostics.filter(
+        (diagnostic) => diagnostic.code !== 'expected_from',
+      ).length - 5,
+    );
+  });
+
+  it('invalidates format navigation on edits and equal-content definition replacement', async () => {
+    const source = 'from Invoice as i\nselect i.InvoiceId\n    limit 4';
+    component = await createTugQLAuthor(source);
+    const navigate = vi.fn();
+    Object.defineProperty(component, 'authorCodeEditor', {
+      value: { navigateToFormatDiagnostic: navigate },
+      configurable: true,
+    });
+    component.formatAuthorTugQL();
+    const oldDiagnostic = component.authorFormatDiagnosticItems()[0];
+    expect(oldDiagnostic).toBeDefined();
+    expect(component.authorFormatDiagnosticItems().length).toBeGreaterThan(0);
+
+    const sameDefinition = component.queryDef();
+    if (!sameDefinition) throw new Error('Expected query definition');
+    component.queryDef.set({ ...sameDefinition });
+    expect(component.authorFormatDiagnosticItems()).toEqual([]);
+    component.navigateToAuthorFormatDiagnostic(oldDiagnostic);
+    expect(navigate).not.toHaveBeenCalled();
+
+    component.queryDef.set(sameDefinition);
+    component.formatAuthorTugQL();
+    expect(component.authorFormatDiagnosticItems().length).toBeGreaterThan(0);
+    component.authorCodeChanged(source);
+    expect(component.authorFormatDiagnosticItems()).toEqual([]);
+  });
+
+  it('invalidates format locations when leaving and returning to Author or leaving the route', async () => {
+    const source = 'from Invoice as i\nselect i.InvoiceId\n    limit 4';
+    component = await createTugQLAuthor(source);
+    const navigate = vi.fn();
+    Object.defineProperty(component, 'authorCodeEditor', {
+      value: { navigateToFormatDiagnostic: navigate },
+      configurable: true,
+      writable: true,
+    });
+
+    component.formatAuthorTugQL();
+    const compareStaleDiagnostic = component.authorFormatDiagnosticItems()[0];
+    expect(compareStaleDiagnostic).toBeDefined();
+
+    component.setQueryView('compare');
+    expect(component.authorFormatDiagnosticItems()).toEqual([]);
+    component.navigateToAuthorFormatDiagnostic(compareStaleDiagnostic);
+    expect(navigate).not.toHaveBeenCalled();
+
+    component.setQueryView('author');
+    expect(component.authorFormatDiagnosticItems()).toEqual([]);
+    component.formatAuthorTugQL();
+    const routeStaleDiagnostic = component.authorFormatDiagnosticItems()[0];
+    expect(routeStaleDiagnostic).toBeDefined();
+    component.ionViewWillLeave();
+    expect(component.authorFormatDiagnosticItems()).toEqual([]);
+    component.navigateToAuthorFormatDiagnostic(routeStaleDiagnostic);
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it.each(['project', 'environment', 'principal'] as const)(
+    'hides and rejects a format location after the live %s scope changes',
+    async (scope) => {
+      const source = 'from Invoice as i\nselect i.InvoiceId\n    limit 4';
+      component = await createTugQLAuthor(source);
+      const navigate = vi.fn();
+      Object.defineProperty(component, 'authorCodeEditor', {
+        value: { navigateToFormatDiagnostic: navigate },
+        configurable: true,
+      });
+      component.formatAuthorTugQL();
+      const oldDiagnostic = component.authorFormatDiagnosticItems()[0];
+      expect(oldDiagnostic).toBeDefined();
+
+      if (scope === 'project') {
+        component.project = {
+          ref: { storeId: 'github.com', projectId: 'different-project' },
+        };
+      } else if (scope === 'environment') {
+        component.envId = 'staging';
+      } else {
+        agentContext.securityContextId.set('different-principal');
+      }
+
+      expect(component.authorFormatDiagnosticItems()).toEqual([]);
+      component.navigateToAuthorFormatDiagnostic(oldDiagnostic);
+      expect(navigate).not.toHaveBeenCalled();
+    },
+  );
+
+  it('navigates only exact-source parse spans after formatting failure', async () => {
+    const source =
+      'from Invoice as i\nselect i.InvoiceId\n    limit 4';
+    component = await createTugQLAuthor(source);
+    const retainedPlan = { sql: 'previous preview' } as never;
+    component.authorPlan.set(retainedPlan);
+    const prepare = vi.spyOn(
+      TestBed.inject(PublicSqliteQueryService),
+      'prepareTugQL',
+    );
+    const execute = vi.spyOn(
+      TestBed.inject(PublicSqliteQueryService),
+      'runTugQL',
+    );
+    const navigate = vi.fn(() => true);
+    Object.defineProperty(component, 'authorCodeEditor', {
+      value: { navigateToFormatDiagnostic: navigate },
+      configurable: true,
+    });
+
+    component.formatAuthorTugQL();
+
+    const clauseOrder = component
+      .authorFormatDiagnosticItems()
+      .find((diagnostic) => diagnostic.code === 'clause_order');
+    expect(clauseOrder?.span.start).toEqual({ line: 3, column: 5 });
+    expect(component.queryBodyText()).toBe(source);
+    expect(component.authorPlan()).toBe(retainedPlan);
+    expect(component.authorFormatStatus()).toContain('was not changed');
+    expect(prepare).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+
+    if (!clauseOrder) throw new Error('Expected source-positioned clause diagnostic');
+    component.navigateToAuthorFormatDiagnostic(clauseOrder);
+    expect(navigate).toHaveBeenCalledWith(source, clauseOrder);
+    expect(component.queryBodyText()).toBe(source);
+    expect(component.authorPlan()).toBe(retainedPlan);
+    expect(prepare).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('suppresses only source-level zero-width navigation and caps the list at five', async () => {
+    component = await createTugQLAuthor('select x');
+    component.formatAuthorTugQL();
+    expect(component.authorFormatDiagnosticItems()).toEqual([]);
+
+    component.authorCodeChanged('first bad statement');
+    component.formatAuthorTugQL();
+    expect(
+      component.authorFormatDiagnosticItems().some(
+        (diagnostic) => diagnostic.code === 'unsupported_statement',
+      ),
+    ).toBe(true);
+
+    const manyErrors = Array.from({ length: 8 }, (_, index) => `bad${index}`).join('\n');
+    component.authorCodeChanged(manyErrors);
+    component.formatAuthorTugQL();
+    expect(component.authorFormatDiagnosticItems()).toHaveLength(5);
+    expect(component.authorFormatDiagnosticRemainder()).toBeGreaterThan(0);
+    expect(component.authorFormatDiagnosticRemainder()).toBe(
+      parseTugQL(manyErrors).diagnostics.filter(
+        (diagnostic) => diagnostic.code !== 'expected_from',
+      ).length - 5,
+    );
+  });
+
+  it('invalidates navigation on an edit or equal-content definition replacement', async () => {
+    const source = 'from Invoice as i\nselect i.InvoiceId\n    limit 4';
+    component = await createTugQLAuthor(source);
+    const navigate = vi.fn();
+    Object.defineProperty(component, 'authorCodeEditor', {
+      value: { navigateToFormatDiagnostic: navigate },
+      configurable: true,
+    });
+    component.formatAuthorTugQL();
+    const oldDiagnostic = component.authorFormatDiagnosticItems()[0];
+    expect(oldDiagnostic).toBeDefined();
+    expect(component.authorFormatDiagnosticItems().length).toBeGreaterThan(0);
+
+    const sameDefinition = component.queryDef();
+    if (!sameDefinition) throw new Error('Expected query definition');
+    component.queryDef.set({ ...sameDefinition });
+    expect(component.authorFormatDiagnosticItems()).toEqual([]);
+    component.navigateToAuthorFormatDiagnostic(oldDiagnostic);
+    expect(navigate).not.toHaveBeenCalled();
+
+    component.queryDef.set(sameDefinition);
+    component.formatAuthorTugQL();
+    expect(component.authorFormatDiagnosticItems().length).toBeGreaterThan(0);
+    component.authorCodeChanged(source);
+    expect(component.authorFormatDiagnosticItems()).toEqual([]);
+  });
+
   it.each([
     [
       'multiline string',

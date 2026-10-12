@@ -13,6 +13,7 @@ import {
 } from '@angular/core';
 import { CodeEditor } from '@acrodata/code-editor';
 import { closeCompletion, startCompletion } from '@codemirror/autocomplete';
+import type { TugQLDiagnostic, TugQLSpan } from '@dalgo/core';
 import {
   EditorState,
   Prec,
@@ -21,7 +22,7 @@ import {
   type ChangeSet,
   type Extension,
   type Text,
-  type Transaction,
+  Transaction,
 } from '@codemirror/state';
 import { invertedEffects, isolateHistory } from '@codemirror/commands';
 import { EditorView, type ViewUpdate } from '@codemirror/view';
@@ -52,7 +53,10 @@ export class AuthorCodeEditorComponent implements OnChanges, AfterViewInit {
   public readonly language = input<'TugQL' | 'SQL'>('TugQL');
   public readonly readOnly = input(false);
   public readonly disabled = input(false);
+  public readonly formatDiagnostics = input<readonly TugQLDiagnostic[]>([]);
+  public readonly remainingFormatDiagnosticCount = input(0);
   public readonly textChange = output<string>();
+  public readonly formatDiagnosticRequested = output<TugQLDiagnostic>();
 
   public readonly languages = TUGQL_LANGUAGE_DESCRIPTIONS;
   public readonly instance = signal<EditorInstance>({
@@ -100,6 +104,43 @@ export class AuthorCodeEditorComponent implements OnChanges, AfterViewInit {
     startCompletion(view);
   }
 
+  public isFormatDiagnosticNavigable(
+    source: string,
+    span: TugQLSpan,
+  ): boolean {
+    const view = this.editor?.view;
+    return (
+      this.language() === 'TugQL' &&
+      !this.readOnly() &&
+      !this.disabled() &&
+      !view?.state.facet(EditorState.readOnly) &&
+      view?.state.facet(EditorView.editable) !== false &&
+      !!view?.dom.isConnected &&
+      view.contentDOM.isConnected &&
+      getRawSource(view.state) === source &&
+      sourceSpanIsValid(source, span) &&
+      editorSpanOffsets(view.state, span) !== undefined
+    );
+  }
+
+  public navigateToFormatDiagnostic(
+    source: string,
+    diagnostic: TugQLDiagnostic,
+  ): boolean {
+    if (!this.isFormatDiagnosticNavigable(source, diagnostic.span)) return false;
+    const view = this.editor?.view;
+    const offsets = view && editorSpanOffsets(view.state, diagnostic.span);
+    if (!view || !offsets || !view.dom.isConnected || !view.contentDOM.isConnected)
+      return false;
+    view.focus();
+    view.dispatch({
+      selection: { anchor: offsets.from, head: offsets.from },
+      effects: EditorView.scrollIntoView(offsets.from, { y: 'center' }),
+      annotations: Transaction.addToHistory.of(false),
+    });
+    return true;
+  }
+
   private replaceInstance(value: string): void {
     const extensions = createTugqlEditorExtensions(this.label());
     if (this.language() === 'TugQL') {
@@ -128,6 +169,56 @@ export class AuthorCodeEditorComponent implements OnChanges, AfterViewInit {
     this.textChange.emit(getRawSource(update.state));
   }
 }
+
+/** Validate one-based Unicode-scalar source positions without normalizing bytes. */
+export const createSourceSpanValidator = (
+  source: string,
+): ((span: TugQLSpan) => boolean) => {
+  const scalarLengths = source
+    .split(/\r\n|\r|\n/u)
+    .map((line) => [...line].length);
+  const positionIsValid = (position: TugQLSpan['start']): boolean =>
+    Number.isInteger(position.line) &&
+    Number.isInteger(position.column) &&
+    position.line >= 1 &&
+    position.column >= 1 &&
+    position.line <= scalarLengths.length &&
+    position.column <= scalarLengths[position.line - 1] + 1;
+  return (span) =>
+    positionIsValid(span.start) &&
+    positionIsValid(span.end) &&
+    (span.end.line > span.start.line ||
+      (span.end.line === span.start.line && span.end.column >= span.start.column));
+};
+
+export const sourceSpanIsValid = (source: string, span: TugQLSpan): boolean =>
+  createSourceSpanValidator(source)(span);
+
+const editorSpanOffsets = (
+  state: EditorState,
+  span: TugQLSpan,
+): { readonly from: number; readonly to: number } | undefined => {
+  const from = editorPositionOffset(state, span.start);
+  const to = editorPositionOffset(state, span.end);
+  return from === undefined || to === undefined || to < from
+    ? undefined
+    : { from, to };
+};
+
+const editorPositionOffset = (
+  state: EditorState,
+  position: TugQLSpan['start'],
+): number | undefined => {
+  if (!Number.isInteger(position.line) || !Number.isInteger(position.column))
+    return undefined;
+  if (position.line < 1 || position.line > state.doc.lines || position.column < 1)
+    return undefined;
+  const line = state.doc.line(position.line);
+  const scalars = [...line.text];
+  if (position.column > scalars.length + 1) return undefined;
+  const utf16Offset = scalars.slice(0, position.column - 1).join('').length;
+  return line.from + utf16Offset;
+};
 
 interface SeparatorPatch {
   /** Model offset in the transaction's document before the patch is applied. */

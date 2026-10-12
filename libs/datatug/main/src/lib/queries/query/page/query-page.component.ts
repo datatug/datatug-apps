@@ -1,5 +1,10 @@
 import { SourceRightsNoticeComponent } from '@sneat/datatug-semantic';
-import { formatTugQL, parseTugQL, type TugQLFormatOptions } from '@dalgo/core';
+import {
+  formatTugQL,
+  parseTugQL,
+  type TugQLDiagnostic,
+  type TugQLFormatOptions,
+} from '@dalgo/core';
 import { DatePipe, NgTemplateOutlet } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { PublicDataService } from '../../public-data/public-data.service';
@@ -167,6 +172,23 @@ interface AuthorFormatUndo {
   readonly scopeKey: string;
   readonly queryIdentity: symbol;
 }
+
+interface AuthorFormatDiagnosticSnapshot {
+  readonly definition: IQueryDef;
+  readonly source: string;
+  readonly draftRevision: number;
+  readonly scopeKey: string;
+  readonly queryIdentity: symbol;
+  readonly diagnostics: readonly TugQLDiagnostic[];
+  readonly remainingCount: number;
+}
+
+const isNoTargetFormatDiagnostic = (diagnostic: TugQLDiagnostic): boolean =>
+  (diagnostic.code === 'input_too_large' || diagnostic.code === 'expected_from') &&
+  diagnostic.span.start.line === 1 &&
+  diagnostic.span.start.column === 1 &&
+  diagnostic.span.end.line === 1 &&
+  diagnostic.span.end.column === 1;
 import { RandomIdService } from '@sneat/random';
 import { distinctUntilChanged, takeUntil } from 'rxjs/operators';
 import { firstValueFrom, Subject } from 'rxjs';
@@ -296,7 +318,10 @@ import {
   type AuthorRelationshipSourceReview,
 } from './author-relationship-source-edit';
 import { AuthorSqlPreviewComponent } from './author-sql-preview.component';
-import { AuthorCodeEditorComponent } from './author-code-editor.component';
+import {
+  AuthorCodeEditorComponent,
+  createSourceSpanValidator,
+} from './author-code-editor.component';
 import { AuthorComposeControlsComponent } from './author-compose-controls.component';
 import { AuthorRelationshipSourcesComponent } from './author-relationship-sources.component';
 import { readAuthorComposeProfile } from './author-compose-profile';
@@ -609,6 +634,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   @ViewChild(QueryWorkspaceLayoutComponent)
   private authorWorkspaceLayout?: QueryWorkspaceLayoutComponent;
 
+  @ViewChild(AuthorCodeEditorComponent)
+  private authorCodeEditor?: AuthorCodeEditorComponent;
+
   public project?: IProjectContext;
   private navigationDraft?: { ref: IProjectRef; query: IQueryDef };
   private authorPreviewLifetime = 0;
@@ -620,7 +648,22 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private readonly authorFormatUndo = signal<AuthorFormatUndo | undefined>(
     undefined,
   );
+  private readonly authorFormatNavigationSnapshot = signal<
+    AuthorFormatDiagnosticSnapshot | undefined
+  >(undefined);
   public readonly authorFormatStatus = signal('');
+  public authorFormatDiagnosticItems(): readonly TugQLDiagnostic[] {
+    const snapshot = this.authorFormatNavigationSnapshot();
+    return this.isCurrentAuthorFormatDiagnosticSnapshot(snapshot)
+      ? snapshot.diagnostics
+      : [];
+  }
+  public authorFormatDiagnosticRemainder(): number {
+    const snapshot = this.authorFormatNavigationSnapshot();
+    return this.isCurrentAuthorFormatDiagnosticSnapshot(snapshot)
+      ? snapshot.remainingCount
+      : 0;
+  }
   public readonly canUndoAuthorFormat = computed(() => {
     const undo = this.authorFormatUndo();
     if (!undo) return false;
@@ -1172,6 +1215,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   public setQueryView(view: 'author' | 'compare'): void {
+    if (view !== 'author') this.authorFormatNavigationSnapshot.set(undefined);
     this.queryView.set(view);
   }
 
@@ -1202,6 +1246,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   /** Ionic caches routed pages, so comparison memory must expire on leave as well as destroy. */
   public ionViewWillLeave(): void {
+    this.authorFormatNavigationSnapshot.set(undefined);
     this.expireComparisonSession('The comparison session ended when this page was left.');
     this.changeDetector.detectChanges();
   }
@@ -1564,6 +1609,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     };
     if (isAuthorDraft) {
       this.authorFormatUndo.set(undefined);
+      this.authorFormatNavigationSnapshot.set(undefined);
       this.authorFormatStatus.set('');
       this.invalidateAuthorDefinitionRun();
       ++this.authorLookupRequestRevision;
@@ -1590,6 +1636,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   public setAuthorMode(mode: 'compose' | 'code'): void {
+    if (mode !== 'code') this.authorFormatNavigationSnapshot.set(undefined);
     this.authorModeExplicit = true;
     this.authorMode.set(mode);
   }
@@ -1851,8 +1898,40 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     );
   }
 
+  private isCurrentAuthorFormatDiagnosticSnapshot(
+    snapshot: AuthorFormatDiagnosticSnapshot | undefined,
+  ): snapshot is AuthorFormatDiagnosticSnapshot {
+    if (
+      !snapshot ||
+      this.queryView() !== 'author' ||
+      this.authorMode() !== 'code' ||
+      !this.isTugqlAuthorJourney() ||
+      this.running() ||
+      this.queryState.isSaving ||
+      this.queryBodyText() !== snapshot.source ||
+      this.authorDraftRevision() !== snapshot.draftRevision ||
+      this.queryDef() !== snapshot.definition
+    )
+      return false;
+    const current = this.currentAuthorFormatContext();
+    return !!current &&
+      current.scopeKey === snapshot.scopeKey &&
+      current.queryIdentity === snapshot.queryIdentity;
+  }
+
+  public navigateToAuthorFormatDiagnostic(diagnostic: TugQLDiagnostic): void {
+    const snapshot = this.authorFormatNavigationSnapshot();
+    if (
+      !this.isCurrentAuthorFormatDiagnosticSnapshot(snapshot) ||
+      !snapshot.diagnostics.includes(diagnostic)
+    )
+      return;
+    this.authorCodeEditor?.navigateToFormatDiagnostic(snapshot.source, diagnostic);
+  }
+
   public formatAuthorTugQL(): void {
     if (!this.canFormatAuthorTugQL()) return;
+    this.authorFormatNavigationSnapshot.set(undefined);
     const source = this.queryBodyText();
     if (source === undefined) return;
     const options: TugQLFormatOptions = {
@@ -1871,6 +1950,33 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           )
           .join(' ')}`,
       );
+      const parsed = parseTugQL(source);
+      const isSourceSpanValid = createSourceSpanValidator(source);
+      const positioned: TugQLDiagnostic[] = [];
+      let remainingCount = 0;
+      for (const diagnostic of parsed.diagnostics) {
+        if (
+          isNoTargetFormatDiagnostic(diagnostic) ||
+          !isSourceSpanValid(diagnostic.span)
+        )
+          continue;
+        if (positioned.length < 5) positioned.push(diagnostic);
+        else remainingCount++;
+      }
+      const current = this.currentAuthorFormatContext();
+      const definition = this.queryDef();
+      if (current && definition && positioned.length) {
+        const diagnostics = cloneAndFreeze(positioned);
+        this.authorFormatNavigationSnapshot.set({
+          definition,
+          source,
+          draftRevision: this.authorDraftRevision(),
+          scopeKey: current.scopeKey,
+          queryIdentity: current.queryIdentity,
+          diagnostics,
+          remainingCount,
+        });
+      }
       return;
     }
     if (formatted.source === source) {
@@ -1937,6 +2043,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     }
     if (nextScopeKey !== this.authorModeScopeKey) {
       this.authorFormatUndo.set(undefined);
+      this.authorFormatNavigationSnapshot.set(undefined);
       this.authorFormatStatus.set('');
       ++this.authorLookupFocusRevision;
       this.authorModeScopeKey = nextScopeKey;
@@ -2750,6 +2857,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         }
         this.stopFederatedRun();
       }
+      if (effectiveDefinition !== previousDefinition || queryState.isSaving)
+        this.authorFormatNavigationSnapshot.set(undefined);
       this.queryState = queryState;
       this.authorCustomerId.set(
         queryState.authorBindings?.['CustomerId'] ?? '',
@@ -2793,6 +2902,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   };
 
   ngOnDestroy(): void {
+    this.authorFormatNavigationSnapshot.set(undefined);
     this.expireComparisonSession('This page session ended.');
     ++this.authorLookupFocusRevision;
     ++this.authorLookupRequestRevision;
@@ -3990,6 +4100,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
    * bindingOrigins for the submitted parameter keys — display provenance only, never
    * authorization. */
   public runQuery(): void {
+    this.authorFormatNavigationSnapshot.set(undefined);
     const runRequestedAt = monotonicTime();
     const projectRef = this.project?.ref;
     const projectId = projectRef?.projectId;

@@ -7,13 +7,19 @@ import {
 } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { EditorState, type Extension, type Transaction } from '@codemirror/state';
+import {
+  EditorState,
+  StateEffect,
+  type Extension,
+  type Transaction,
+} from '@codemirror/state';
 import { history, redo, undo, undoDepth } from '@codemirror/commands';
 import { EditorView, type ViewUpdate } from '@codemirror/view';
 import {
   AuthorCodeEditorComponent,
   createRawSourceExtensions,
   getRawSource,
+  sourceSpanIsValid,
 } from './author-code-editor.component';
 
 interface EditorDispatch {
@@ -45,7 +51,9 @@ class CodeEditorStubComponent implements OnChanges {
   @Output() public readonly change = new EventEmitter<string>();
   public view = {
     state: EditorState.create({ doc: '' }),
+    dom: { isConnected: true },
     contentDOM: {
+      isConnected: true,
       getAttribute: (name: string) =>
         name === 'aria-label' ? this.label : null,
     },
@@ -147,6 +155,51 @@ describe('AuthorCodeEditorComponent', () => {
     ).toBeNull();
   });
 
+  it('renders accessible source-location actions and a remainder count', () => {
+    const source = 'from Invoice\nselect InvoiceId';
+    const diagnostics = Array.from({ length: 7 }, (_, index) => ({
+      code: `error_${index}`,
+      message: `problem ${index}`,
+      span: {
+        start: { line: 2, column: 1 },
+        end: { line: 2, column: 7 },
+      },
+    }));
+    fixture.componentRef.setInput('text', source);
+    fixture.detectChanges();
+    const editorComponent = fixture.componentInstance;
+    const host = document.createElement('div');
+    fixture.nativeElement.append(host);
+    const view = new EditorView({
+      state: EditorState.create({
+        doc: source,
+        extensions: [history(), ...editorComponent.instance().extensions],
+      }),
+      parent: host,
+    });
+    Object.defineProperty(editorComponent, 'editor', {
+      value: { view },
+      configurable: true,
+    });
+    fixture.componentRef.setInput('formatDiagnostics', diagnostics.slice(0, 5));
+    fixture.componentRef.setInput('remainingFormatDiagnosticCount', 2);
+    fixture.detectChanges();
+
+    const buttons = fixture.nativeElement.querySelectorAll(
+      '.author-format-diagnostic',
+    ) as NodeListOf<HTMLButtonElement>;
+    expect(buttons).toHaveLength(5);
+    expect(buttons[0].disabled).toBe(false);
+    expect(buttons[0].getAttribute('aria-label')).toBe(
+      'Go to line 2, column 1: problem 0',
+    );
+    expect(
+      fixture.nativeElement.querySelector('.author-format-diagnostic-more')
+        .textContent,
+    ).toContain('2 more diagnostics');
+    view.destroy();
+  });
+
   it('keeps CRLF bytes and the caret when a user edit is echoed back through the text input', () => {
     const source = 'select InvoiceId\r\nfrom Invoice';
     fixture.componentRef.setInput('text', source);
@@ -180,6 +233,173 @@ describe('AuthorCodeEditorComponent', () => {
       cursor + insertedDocumentLength,
     );
     expect(fixture.componentInstance.instance().generation).toBe(1);
+  });
+
+  it('navigates a mounted CodeMirror editor by Unicode-scalar positions without changing source or history', () => {
+    const source = 'a😀e\u0301\t\r\ncrlf\rlone\nlast';
+    fixture.componentRef.setInput('text', source);
+    fixture.detectChanges();
+    const editorComponent = fixture.componentInstance;
+    const host = document.createElement('div');
+    fixture.nativeElement.append(host);
+    const view = new EditorView({
+      state: EditorState.create({
+        doc: source,
+        extensions: [history(), ...editorComponent.instance().extensions],
+      }),
+      parent: host,
+    });
+    Object.defineProperty(editorComponent, 'editor', {
+      value: { view },
+      configurable: true,
+    });
+    const emitted = vi.fn();
+    editorComponent.textChange.subscribe(emitted);
+    const sourceBefore = getRawSource(view.state);
+    const historyBefore = undoDepth(view.state);
+    const diagnostic = {
+      code: 'test_position',
+      message: 'test location',
+      span: {
+        start: { line: 1, column: 3 },
+        end: { line: 1, column: 5 },
+      },
+    } as const;
+
+    expect(editorComponent.navigateToFormatDiagnostic(source, diagnostic)).toBe(true);
+    expect(document.activeElement).toBe(view.contentDOM);
+    expect(view.state.selection.main.anchor).toBe(3);
+    expect(view.state.selection.main.head).toBe(3);
+    expect(view.state.doc.line(1).from).toBe(0);
+    expect(view.state.doc.line(2).text).toBe('crlf');
+    expect(view.state.doc.line(3).text).toBe('lone');
+    expect(view.state.doc.line(4).text).toBe('last');
+    for (const [line, column, offset] of [
+      [1, 5, 5],
+      [1, 6, 6],
+      [2, 5, 11],
+      [3, 5, 16],
+      [4, 5, 21],
+    ] as const) {
+      const location = {
+        code: 'test_position',
+        message: 'test location',
+        span: {
+          start: { line, column },
+          end: { line, column },
+        },
+      } as const;
+      expect(
+        editorComponent.navigateToFormatDiagnostic(source, location),
+      ).toBe(true);
+      expect(view.state.selection.main.anchor).toBe(offset);
+      expect(view.state.selection.main.head).toBe(offset);
+    }
+    expect(getRawSource(view.state)).toBe(sourceBefore);
+    expect(undoDepth(view.state)).toBe(historyBefore);
+    expect(emitted).not.toHaveBeenCalled();
+    view.destroy();
+  });
+
+  it('rejects invalid spans and stale, disabled, read-only, or disconnected editor navigation', () => {
+    const source = 'one\r\ntwo\rthree';
+    fixture.componentRef.setInput('text', source);
+    fixture.detectChanges();
+    const editorComponent = fixture.componentInstance;
+    const host = document.createElement('div');
+    fixture.nativeElement.append(host);
+    const view = new EditorView({
+      state: EditorState.create({
+        doc: source,
+        extensions: [history(), ...editorComponent.instance().extensions],
+      }),
+      parent: host,
+    });
+    Object.defineProperty(editorComponent, 'editor', {
+      value: { view },
+      configurable: true,
+    });
+    const valid = {
+      code: 'valid',
+      message: 'valid',
+      span: {
+        start: { line: 2, column: 2 },
+        end: { line: 2, column: 3 },
+      },
+    } as const;
+    const invalidEnd = {
+      ...valid,
+      span: { ...valid.span, end: { line: 4, column: 1 } },
+    } as const;
+    const invalidColumn = {
+      ...valid,
+      span: { ...valid.span, start: { line: 2, column: 99 } },
+    } as const;
+
+    expect(sourceSpanIsValid(source, valid.span)).toBe(true);
+    expect(sourceSpanIsValid(source, invalidEnd.span)).toBe(false);
+    expect(sourceSpanIsValid(source, invalidColumn.span)).toBe(false);
+    expect(editorComponent.navigateToFormatDiagnostic(source, invalidEnd)).toBe(false);
+    expect(editorComponent.navigateToFormatDiagnostic(`${source} `, valid)).toBe(false);
+
+    fixture.componentRef.setInput('disabled', true);
+    fixture.detectChanges();
+    expect(editorComponent.navigateToFormatDiagnostic(source, valid)).toBe(false);
+    fixture.componentRef.setInput('disabled', false);
+    fixture.componentRef.setInput('readOnly', true);
+    fixture.detectChanges();
+    expect(editorComponent.navigateToFormatDiagnostic(source, valid)).toBe(false);
+    fixture.componentRef.setInput('readOnly', false);
+    fixture.detectChanges();
+    view.dispatch({
+      effects: StateEffect.appendConfig.of(EditorState.readOnly.of(true)),
+    });
+    expect(editorComponent.navigateToFormatDiagnostic(source, valid)).toBe(false);
+    host.remove();
+    expect(editorComponent.navigateToFormatDiagnostic(source, valid)).toBe(false);
+    view.destroy();
+
+    const lockedHost = document.createElement('div');
+    fixture.nativeElement.append(lockedHost);
+    const lockedView = new EditorView({
+      state: EditorState.create({
+        doc: source,
+        extensions: [
+          history(),
+          ...editorComponent.instance().extensions,
+          EditorView.editable.of(false),
+        ],
+      }),
+      parent: lockedHost,
+    });
+    Object.defineProperty(editorComponent, 'editor', {
+      value: { view: lockedView },
+      configurable: true,
+    });
+    expect(editorComponent.navigateToFormatDiagnostic(source, valid)).toBe(false);
+    lockedView.destroy();
+  });
+
+  it('validates both endpoints without clamping and accepts a real nonzero first-token span', () => {
+    const source = 'select x';
+    expect(
+      sourceSpanIsValid(source, {
+        start: { line: 1, column: 1 },
+        end: { line: 1, column: 7 },
+      }),
+    ).toBe(true);
+    expect(
+      sourceSpanIsValid(source, {
+        start: { line: 1, column: 1 },
+        end: { line: 1, column: 10 },
+      }),
+    ).toBe(false);
+    expect(
+      sourceSpanIsValid(source, {
+        start: { line: 2, column: 1 },
+        end: { line: 2, column: 1 },
+      }),
+    ).toBe(false);
   });
 
   it('retains mixed separators through edits and native undo/redo, including a prior character edit', () => {
