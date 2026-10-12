@@ -18,6 +18,13 @@ const CTE_GRAPH_AUTHOR_URL =
 // until the option has been visible for this interaction window.
 const COMPLETION_INTERACTION_DELAY_MS = 75;
 
+// Playwright resolves ControlOrMeta from the host OS, but CodeMirror treats
+// iPhone/iPad/iPod UAs as Mac and binds Mod to Meta.
+const codeMirrorMod = async (page: Page): Promise<'Meta' | 'ControlOrMeta'> =>
+  /iPhone|iPad|iPod/u.test(await page.evaluate(() => navigator.userAgent))
+    ? 'Meta'
+    : 'ControlOrMeta';
+
 const savedQuerySource = (queryId: string, repository = DEMO_REPO): string =>
   readFileSync(
     join(repository ?? '', 'demo-project-1', 'queries', 'demodb', `${queryId}.query.dtql`),
@@ -30,7 +37,7 @@ const pasteCode = async (
   source: string,
 ): Promise<void> => {
   await editor.click();
-  await editor.press('ControlOrMeta+A');
+  await editor.press(`${await codeMirrorMod(page)}+A`);
   if (page.context().browser()?.browserType().name() === 'webkit') {
     // WebKit does not support Playwright's Chromium clipboard permission
     // grant. insertText still follows the focused editor's native input path.
@@ -218,9 +225,10 @@ test('TugQL and SQL coloring preserves editable source, keyboard undo, and reada
   await editor.click();
   await editor.focus();
   await expect(editor).toBeFocused();
-  await editor.press('ControlOrMeta+End');
+  const mod = await codeMirrorMod(page);
+  await editor.press(`${mod}+End`);
   await editor.press('Enter');
-  await editor.press('ControlOrMeta+End');
+  await editor.press(`${mod}+End`);
   await editor.type('s', { delay: 20 });
   await expectEditorSource(page, editor, `${original}\ns`);
   await editor.type('e', { delay: 20 });
@@ -257,9 +265,9 @@ test('TugQL and SQL coloring preserves editable source, keyboard undo, and reada
   await page
     .locator('ion-app')
     .evaluate((app) => app.classList.remove('ion-palette-dark'));
-  await editor.press('ControlOrMeta+Z');
+  await editor.press(`${mod}+Z`);
   await expectEditorSource(page, editor, `${original}\n`);
-  await editor.press('ControlOrMeta+Z');
+  await editor.press(`${mod}+Z`);
   await expectEditorSource(page, editor, original);
 
   await editor.locator('.cm-line').last().click();
@@ -292,6 +300,7 @@ test('TugQL suggestions are explicit, source-safe, and touch reachable', async (
   let workersStarted = 0;
   page.on('worker', () => workersStarted++);
   await page.goto(AUTHOR_URL);
+  const mod = await codeMirrorMod(page);
   const author = page.getByTestId('tugql-author');
   const runButton = author.getByTestId('author-run').locator('button');
   await expect(author).toBeVisible({ timeout: 20_000 });
@@ -373,7 +382,7 @@ test('TugQL suggestions are explicit, source-safe, and touch reachable', async (
   // Enter remains an ordinary newline when no completion list is open.
   await editor.press('Enter');
   await expectEditorSource(page, editor, `${incompleteDraft}\n`);
-  await editor.press('ControlOrMeta+z');
+  await editor.press(`${mod}+z`);
   await expectEditorSource(page, editor, incompleteDraft);
 
   if (isMobile) {
@@ -397,10 +406,10 @@ test('TugQL suggestions are explicit, source-safe, and touch reachable', async (
   await expect(editor).toBeFocused();
   await expect(author.getByTestId('author-sql-preview')).toHaveCount(0);
   await expect(runButton).toBeDisabled();
-  await editor.press('ControlOrMeta+z');
+  await editor.press(`${mod}+z`);
   await expectEditorSource(page, editor, incompleteDraft);
   // Use the physical key so Shift remains part of CodeMirror's redo chord.
-  await editor.press('ControlOrMeta+Shift+KeyZ');
+  await editor.press(`${mod}+Shift+KeyZ`);
   await expectEditorSource(page, editor, acceptedDraft);
 
   const resultsTab = page.locator('#workspace-results-tab');
@@ -1003,7 +1012,15 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
       .nth(1)
       .getByRole('button', { name: 'Look up invoices for Customer ID 2' }),
   ).toBeVisible();
-  await firstRunAction?.evaluate((button) => button.click());
+  if (firstRunAction === null) {
+    throw new Error('The original Customer ID 1 lookup action was not captured');
+  }
+  await firstRunAction.evaluate((button) => {
+    if (!(button instanceof HTMLElement)) {
+      throw new Error('The original invoice lookup action was not an HTML element');
+    }
+    button.click();
+  });
   await expect(page).toHaveURL(/id=chinook-customer-invoice-join/u);
   await author.getByTestId('author-customer-id').locator('input').fill('1');
   await joinReceipt.getByText('Execution details', { exact: true }).click();
