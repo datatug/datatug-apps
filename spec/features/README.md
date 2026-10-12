@@ -17,6 +17,7 @@ Feature specifications for this project.
 | [Browser Chat Phase 1](browser-chat-phase-1/README.md) | Draft | Browser Chat translates questions to validated DTQL and queries a versioned local 11-table Chinook IndexedDB dataset through DALgo, rendering structured rows in AG Grid. |
 | [Browser Chat Phase 4 Bookmarks](browser-chat-phase-4-bookmarks/README.md) | Approved | Project-scoped durable bookmarks for browser Chat RecordSets, Views and selections. |
 | [Browser Chat Phase 5 FK JOIN exploration](browser-chat-phase-5/README.md) | Approved | Discover and apply deterministic FK JOIN candidates from browser Chat result grids. |
+| [Checkout Journey](checkout-journey/README.md) | Draft | Review of deployed Pro and Business checkout and a shared purchase flow with post-payment Business space linking. |
 
 ## Open Questions
 
