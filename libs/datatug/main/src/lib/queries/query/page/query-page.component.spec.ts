@@ -7370,6 +7370,68 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
     await fixture.whenStable();
     expect(header()).toBe('Definition title');
 
+    const logError = vi.spyOn(TestBed.inject(ErrorLogger), 'logError');
+    const loadedQuery: IQueryDef = {
+      ...definition,
+      request: {
+        queryType: QueryType.SQL,
+        text: 'select 88',
+      } as ISqlQueryRequest,
+    };
+    const invalidStateTitle = 17 as unknown as string;
+    editor.next({
+      currentQueryId: queryId,
+      activeQueries: [
+        {
+          ...loading,
+          def: loadedQuery,
+          request: loadedQuery.request,
+          title: invalidStateTitle,
+        },
+      ],
+    });
+    await fixture.whenStable();
+    expect(header()).toBe('Query');
+    expect(component.queryState.id).toBe(queryId);
+    expect(component.queryState.title).toBe(invalidStateTitle);
+    expect(component.queryBodyText()).toBe('select 88');
+    expect(logError).not.toHaveBeenCalled();
+
+    const invalidDefinitionTitle = {
+      unexpected: 'object title',
+    } as unknown as string;
+    const invalidTitleDefinition: IQueryDef = {
+      ...loadedQuery,
+      request: {
+        queryType: QueryType.SQL,
+        text: 'select 89',
+      } as ISqlQueryRequest,
+      title: invalidDefinitionTitle,
+    };
+    editor.next({
+      currentQueryId: queryId,
+      activeQueries: [
+        {
+          ...loading,
+          def: invalidTitleDefinition,
+          request: invalidTitleDefinition.request,
+        },
+      ],
+    });
+    await fixture.whenStable();
+    expect(header()).toBe('Query');
+    expect(component.queryState.id).toBe(queryId);
+    expect(component.queryState.def?.title).toBe(invalidDefinitionTitle);
+    expect(component.queryBodyText()).toBe('select 89');
+    expect(logError).not.toHaveBeenCalled();
+
+    editor.next({
+      currentQueryId: queryId,
+      activeQueries: [{ ...loading, def: definition, title: undefined }],
+    });
+    await fixture.whenStable();
+    expect(header()).toBe('Definition title');
+
     // A title-only draft is authoritative even with no definition. Explicit
     // blank is retained in state but rendered as the fallback.
     editor.next({
