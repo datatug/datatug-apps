@@ -1346,16 +1346,16 @@ test('TugQL suggestions are explicit, source-safe, and touch reachable', async (
 
   // Enter remains an ordinary newline away from a parameter completion
   // context, even while the draft still contains an incomplete @C reference.
-  await editor.locator('.cm-line').nth(3).click();
-  await editor.press('End');
+  await editor.press(`${mod}+A`);
+  await editor.press('ArrowLeft');
   await editor.press('Enter');
-  const newlineDraft = incompleteDraft.replace(
-    ' -- forced-colors comment\nwhere',
-    ' -- forced-colors comment\n\nwhere',
-  );
+  const newlineDraft = `\n${incompleteDraft}`;
   await expectEditorSource(page, editor, newlineDraft);
   await editor.press(`${mod}+z`);
   await expectEditorSource(page, editor, incompleteDraft);
+  await editor.press(`${mod}+A`);
+  await editor.press('ArrowRight');
+  await expect(popup).toHaveCount(0);
 
   if (isMobile) {
     await clickSuggestions(page, author);
@@ -3194,9 +3194,17 @@ test('Preview syntax errors navigate to the exact unchanged draft without runnin
     });
     await expect(nativeAction).toBeVisible();
     const colors = await completionContrast(nativeAction);
-    expect(colors.ratio).toBeGreaterThanOrEqual(4.5);
     console.log(
       `[preview-action-contrast] ${JSON.stringify({ theme, ...colors })}`,
+    );
+    await expect
+      .poll(() => completionContrast(nativeAction).then(({ ratio }) => ratio))
+      .toBeGreaterThanOrEqual(4.5);
+    console.log(
+      `[preview-action-settled-contrast] ${JSON.stringify({
+        theme,
+        ...(await completionContrast(nativeAction)),
+      })}`,
     );
   }
   await page.emulateMedia({ forcedColors: 'none' });

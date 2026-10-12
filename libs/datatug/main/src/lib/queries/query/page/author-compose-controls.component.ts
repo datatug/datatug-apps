@@ -94,6 +94,9 @@ export class AuthorComposeControlsComponent {
     if (!input) return;
     const raw = String(event.detail.value ?? '');
     const current = this.profile()[property];
+    // Ionic can emit another commit on blur after an invalid value is restored.
+    // Keep the validation message until the user makes a valid input edit.
+    if (commit && this.controlError() && raw === String(current)) return;
     const minimum = property === 'limit' ? 1 : 0;
     const maximum = property === 'limit' ? 100 : Number.MAX_SAFE_INTEGER;
     if (!/^-?\d+$/u.test(raw)) {
