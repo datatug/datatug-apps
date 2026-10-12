@@ -59,7 +59,7 @@ describe('QueriesUiService', () => {
     await TestBed.inject(QueriesUiService).openNewQuery(projectRef);
 
     const option = sheetOptions.buttons.find((button) =>
-      button.text === 'Hosted DemoDB table (DTQL)');
+      button.text === 'Hosted DemoDB table (TugQL)');
     expect(option).toBeDefined();
     option?.handler?.();
 

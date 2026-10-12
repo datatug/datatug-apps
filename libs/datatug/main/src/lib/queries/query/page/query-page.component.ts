@@ -1,3 +1,4 @@
+import { readGithubProjectId } from '@datatug/project-address';
 import { SourceRightsNoticeComponent } from '@sneat/datatug-semantic';
 import {
   formatTugQL,
@@ -706,6 +707,54 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     );
   });
   public readonly authorCustomerId = signal('');
+  public readonly customerInvoiceExample = signal(false);
+  private readonly initializedCustomerInvoiceExamples = new Set<string>();
+
+  private initializeCustomerInvoiceExample(): void {
+    const ref = this.project?.ref;
+    const address = ref && readGithubProjectId(ref.projectId);
+    const routeId = this.route.snapshot.paramMap.get('queryId');
+    const parameterId = this.route.snapshot.queryParamMap?.get('id');
+    const routeProjectId = this.route.snapshot.paramMap.get('projectId');
+    const routeStoreId = this.route.snapshot.paramMap.get('storeId');
+    const admitted =
+      (!routeId || !parameterId || routeId === parameterId) &&
+      (routeId || parameterId) === this.queryState.id &&
+      (!routeProjectId || routeProjectId === ref?.projectId) &&
+      (!routeStoreId || routeStoreId === ref?.storeId) &&
+      equalProjectRef(this.comparisonAccessProjectRef, ref) &&
+      this.route.snapshot.queryParamMap?.get('example') ===
+        'customer-invoices' &&
+      ref?.storeId === 'github.com' &&
+      ref.spaceID === undefined &&
+      ref.projectApi === undefined &&
+      ref.branch === undefined &&
+      address?.ok === true &&
+      address.id.org === 'datatug' &&
+      address.id.repo === 'datatug-demo-project' &&
+      address.id.folder === 'demo-project-1' &&
+      address.id.ref === undefined &&
+      this.comparisonProjectAccess() === 'public' &&
+      this.queryState.id === 'demodb/chinook-customer-invoice-join' &&
+      this.queryState.def?.connectionId === 'chinook-sqlite' &&
+      this.queryState.def?.request.queryType === QueryType.DTQL;
+    this.customerInvoiceExample.set(!!admitted);
+    if (!admitted || !ref) return;
+    const key = JSON.stringify(ref) + ':' + this.queryState.id;
+    if (this.initializedCustomerInvoiceExamples.has(key)) return;
+    this.initializedCustomerInvoiceExamples.add(key);
+    if (
+      Object.prototype.hasOwnProperty.call(
+        this.queryState.authorBindings ?? {},
+        'CustomerId',
+      )
+    )
+      return;
+    this.authorCustomerIdChanged(
+      new CustomEvent('ionInput', { detail: { value: '1' } }),
+    );
+  }
+
   public readonly authorBindingRevision = signal(0);
   public readonly authorDraftRevision = signal(0);
   public readonly authorPlan = signal<PublicSqliteQueryPreview | undefined>(
@@ -2957,6 +3006,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.editorState = editorState;
       if (!editorState?.currentQueryId) {
         this.queryPageTitle.set('Query');
+        this.customerInvoiceExample.set(false);
         if (this.queryId) {
           this.invalidateComparison('The selected query was closed.');
           this.invalidateHistoryScope();
@@ -3071,6 +3121,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.authorCustomerId.set(
         queryState.authorBindings?.['CustomerId'] ?? '',
       );
+      this.initializeCustomerInvoiceExample();
       if (previousCustomerId !== this.authorCustomerId())
         this.invalidateComparison('The CustomerId binding changed.');
       // Signal write (zoneless-safe, unlike the plain-field write just
@@ -3228,6 +3279,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         this.project = currentProject;
         this.comparisonAccessProjectRef = currentProject.ref;
         this.comparisonProjectAccess.set(currentProject.summary?.access);
+        this.initializeCustomerInvoiceExample();
         if (!equalProjectRef(previousRef, currentProject.ref)) {
           this.sharedQuerySaveAllowed.set(false);
           if (isSharedProjectRef(currentProject.ref)) {
@@ -3412,6 +3464,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         const routeId = this.route.snapshot.paramMap.get('queryId');
         const parameterId = queryParams.get('id');
         if (routeId && parameterId && routeId !== parameterId) {
+          this.customerInvoiceExample.set(false);
           this.runError.set('Query URL and query ID disagree.');
           return;
         }
@@ -3421,6 +3474,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           queryId = this.randomIdService.newRandomId();
         }
         this.setQueryId(queryId, isNew);
+        this.initializeCustomerInvoiceExample();
 
         const envId = queryParams.get('env');
         if (envId) {

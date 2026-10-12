@@ -60,7 +60,7 @@ export class QueriesUiService {
           handler: createNewQuery(QueryType.SQL),
         },
         ...(!isSharedProjectRef(projectRef) ? [{
-          text: 'Hosted DemoDB table (DTQL)',
+          text: 'Hosted DemoDB table (TugQL)',
           role: 'selected',
           handler: createNewQuery(QueryType.DTQL),
         }, {
