@@ -1,35 +1,44 @@
 <section class="author-sql-preview" data-testid="author-sql-preview">
-  <div class="author-preview-heading">
-    <div>
+  <ion-item class="author-preview-heading" lines="none">
+    <ion-label>
       <h3>SQL preview</h3>
-      <p>Compiled for the pinned SQLite source</p>
-    </div>
-    <div class="preview-tools">
-      <span class="author-preview-state">Preview · Not executed</span>
-      <div class="preview-buttons">
-        <button
-          class="sql-action"
-          type="button"
-          data-testid="author-wrap-sql"
-          aria-label="Wrap SQL"
-          [attr.aria-pressed]="wrapSql()"
-          (click)="toggleWrapping()"
-        >
-          Wrap SQL
-        </button>
-        <button
-          class="sql-action"
-          type="button"
-          data-testid="author-copy-sql"
-          aria-label="Copy SQL"
-          [disabled]="copyPending()"
-          (click)="copyCurrentSql()"
-        >
-          Copy SQL
-        </button>
-      </div>
-    </div>
-  </div>
+      <p>Compiled for the pinned SQLite source · Preview · Not executed</p>
+    </ion-label>
+  </ion-item>
+  <ion-item class="author-preview-actions" lines="none">
+    <ion-buttons slot="start" class="preview-buttons">
+      <ion-button
+        class="sql-action"
+        data-testid="author-preview"
+        fill="outline"
+        color="primary"
+        [disabled]="refreshDisabled()"
+        (click)="requestRefresh()"
+      >Refresh SQL preview</ion-button>
+      <ion-button
+        class="sql-action"
+        data-testid="author-wrap-sql"
+        aria-label="Wrap SQL"
+        fill="clear"
+        [color]="wrapSql() ? 'primary' : 'medium'"
+        [attr.aria-pressed]="wrapSql()"
+        (click)="toggleWrapping()"
+      >
+        Wrap SQL
+      </ion-button>
+      <ion-button
+        class="sql-action"
+        data-testid="author-copy-sql"
+        aria-label="Copy SQL"
+        fill="clear"
+        color="medium"
+        [disabled]="copyPending()"
+        (click)="copyCurrentSql()"
+      >
+        Copy SQL
+      </ion-button>
+    </ion-buttons>
+  </ion-item>
   <div
     class="author-sql-scroll"
     [class.author-sql-scroll--wrapped]="wrapSql()"
