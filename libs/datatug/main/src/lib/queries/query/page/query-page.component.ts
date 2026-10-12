@@ -760,6 +760,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public parameters?: IParameter[];
 
   public editorState?: IQueryEditorState = undefined;
+  /** Current selected query's header label; normalized only for presentation. */
+  public readonly queryPageTitle = signal('Query');
   public queryState: IQueryState = {
     id: '',
     queryType: QueryType.SQL,
@@ -2768,6 +2770,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     try {
       this.editorState = editorState;
       if (!editorState?.currentQueryId) {
+        this.queryPageTitle.set('Query');
         if (this.queryId) {
           this.invalidateComparison('The selected query was closed.');
           this.invalidateHistoryScope();
@@ -2787,8 +2790,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         (qs) => qs.id === editorState.currentQueryId,
       );
       if (!queryState) {
+        // A closed or unresolved selection must never inherit the previous
+        // query's name while the editor state catches up.
+        this.queryPageTitle.set('Query');
         return;
       }
+      const currentTitle = queryState.title ?? queryState.def?.title;
+      this.queryPageTitle.set(currentTitle?.trim() || 'Query');
       if (
         this.navigationDraft?.query.id === queryState.id &&
         !queryState.isNew &&

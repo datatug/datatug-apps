@@ -8,7 +8,10 @@
         aria-label="Back to queries"
       />
     </ion-buttons>
-    <sneat-datatug-page-title class="query-page-title" pageTitle="Query" />
+    <sneat-datatug-page-title
+      class="query-page-title"
+      [pageTitle]="queryPageTitle()"
+    />
     <ion-buttons slot="end">
       <ion-button
         class="query-save-button"
