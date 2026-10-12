@@ -16,6 +16,7 @@ export interface CheckoutSelection {
   spaceID?: string;
 }
 export interface CheckoutApi {
+  purchases(after?: string): Promise<unknown>;
   config(): Promise<unknown>;
   session(plan: string, purchase?: CheckoutSelection): Promise<unknown>;
   setup(
@@ -67,6 +68,8 @@ export interface CheckoutState {
   existingSession?: string | null;
   supportReference?: string | null;
   quote?: {
+    renewal?: string;
+    invitationMonths?: number;
     list: string;
     due: string;
     discount?: string;

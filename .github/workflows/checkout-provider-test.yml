@@ -1,0 +1,32 @@
+name: Isolated checkout provider smoke
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+  attestations: read
+jobs:
+  unpaid-provider:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/pnpm
+      - name: Require dedicated TEST credentials
+        env:
+          TEST_EMAIL: ${{ secrets.DATATUG_CHECKOUT_TEST_EMAIL }}
+          TEST_PASSWORD: ${{ secrets.DATATUG_CHECKOUT_TEST_PASSWORD }}
+          TEST_UID: ${{ secrets.DATATUG_CHECKOUT_TEST_BUYER_UID }}
+        run: |
+          test -n "$TEST_EMAIL" && test -n "$TEST_PASSWORD" && test -n "$TEST_UID"
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm nx run datatug-app:build:production
+      - name: Authenticate and mount unpaid TEST checkout forms
+        env:
+          DATATUG_CHECKOUT_PROVIDER_TEST: '1'
+          DATATUG_CHECKOUT_PROVIDER_SERVE: '1'
+          DATATUG_CHECKOUT_TEST_EMAIL: ${{ secrets.DATATUG_CHECKOUT_TEST_EMAIL }}
+          DATATUG_CHECKOUT_TEST_PASSWORD: ${{ secrets.DATATUG_CHECKOUT_TEST_PASSWORD }}
+          DATATUG_CHECKOUT_TEST_BUYER_UID: ${{ secrets.DATATUG_CHECKOUT_TEST_BUYER_UID }}
+        run: pnpm nx run datatug-app:e2e-checkout-provider -- --grep='catalog|real TEST quote'

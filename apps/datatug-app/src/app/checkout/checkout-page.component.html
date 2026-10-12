@@ -4,8 +4,8 @@
       ><a routerLink="/">DataTug</a>
       @if (subscriptionType()) {
         · {{ subscriptionType() }}
-      }</ion-title
-    >
+      }
+    </ion-title>
     @if (enabled() && mode() === 'test') {
       <ion-chip
         slot="end"
@@ -201,91 +201,126 @@
       }
     }
     @if (state().stage === 'setup') {
-      <section aria-labelledby="space-setup-heading">
-        <h2 id="space-setup-heading">
-          Your Business subscription is paid. Choose its space.
-        </h2>
-        <p>
-          You can finish this later from this purchase link. Projects can be
-          added after setup.
-        </p>
-        <label for="business-destination">Business space</label>
-        <select
-          id="business-destination"
-          [value]="destination()"
-          (change)="destination.set($any($event.target).value)"
-          [disabled]="setupBusy()"
+      <ion-card aria-labelledby="space-setup-heading">
+        <ion-card-header
+          ><ion-card-title id="space-setup-heading"
+            >Your Business subscription is paid. Choose its
+            space.</ion-card-title
+          ></ion-card-header
         >
-          <option value="">Create a new business space</option>
-          @if (missingHint()) {
-            <option [value]="destination()">
-              Referenced space — permissions checked on activation
-            </option>
+        <ion-card-content>
+          <p>
+            Your paid term has started. Choose a space now or finish from your
+            account later. Projects can be added after setup.
+          </p>
+          <ion-item>
+            <ion-select
+              id="business-destination"
+              label="Business space"
+              label-placement="stacked"
+              interface="popover"
+              [value]="destination()"
+              (ionChange)="destination.set($event.detail.value)"
+              [disabled]="setupBusy()"
+            >
+              <ion-select-option value=""
+                >Create a new business space</ion-select-option
+              >
+              @if (missingHint()) {
+                <ion-select-option [value]="destination()"
+                  >Referenced space — permissions checked on
+                  activation</ion-select-option
+                >
+              }
+              @for (space of spaces(); track space.id) {
+                <ion-select-option [value]="space.id">{{
+                  space.title
+                }}</ion-select-option>
+              }
+            </ion-select>
+          </ion-item>
+          @if (!destination()) {
+            <ion-item
+              ><ion-input
+                id="business-name"
+                label="Business name"
+                label-placement="stacked"
+                maxlength="120"
+                autocomplete="organization"
+                [value]="spaceName()"
+                (ionInput)="spaceName.set($event.detail.value ?? '')"
+                [disabled]="setupBusy()"
+            /></ion-item>
           }
-          @for (space of spaces(); track space.id) {
-            <option [value]="space.id">{{ space.title }}</option>
+          @if (setupError()) {
+            <p role="alert">{{ setupError() }}</p>
           }
-        </select>
-        @if (!destination()) {
-          <label for="business-name">Business name</label>
-          <input
-            id="business-name"
-            maxlength="120"
-            autocomplete="organization"
-            [value]="spaceName()"
-            (input)="spaceName.set($any($event.target).value)"
+          <ion-button
+            expand="block"
+            (click)="linkSpace()"
             [disabled]="setupBusy()"
-          />
-        }
-        <p>
-          <button type="button" (click)="linkSpace()" [disabled]="setupBusy()">
-            {{
+            >{{
               setupBusy() ? 'Setting up…' : 'Activate Business for this space'
-            }}
-          </button>
-        </p>
-        @if (setupError()) {
-          <p role="alert">{{ setupError() }}</p>
-        }
-      </section>
+            }}</ion-button
+          >
+          <ion-button
+            fill="clear"
+            [disabled]="setupBusy()"
+            routerLink="/my"
+            [queryParams]="mode() === 'test' ? { checkout: 'test' } : {}"
+            >Finish later from my account</ion-button
+          >
+        </ion-card-content>
+      </ion-card>
     }
     @if (state().stage === 'business-active') {
-      <section aria-label="Business purchase confirmed">
-        <h2>Your Business space is ready</h2>
-        <p>
-          Your subscription is linked. Open the space to use an existing project
-          or add your first project.
-        </p>
-        <button type="button" (click)="openSpace()">Open business space</button>
-      </section>
+      <ion-card aria-label="Business purchase confirmed">
+        <ion-card-header
+          ><ion-card-title
+            >Your Business space is ready</ion-card-title
+          ></ion-card-header
+        >
+        <ion-card-content
+          ><p>
+            Your subscription is linked. Open the space to use an existing
+            project or add your first project.
+          </p>
+          <ion-button expand="block" (click)="openSpace()"
+            >Open business space</ion-button
+          >
+        </ion-card-content>
+      </ion-card>
     }
     @if (state().purchase?.paid) {
       @if (options()?.canCancelPersonal) {
-        <section aria-label="Optional Pro renewal choice">
-          <h2>Keep or cancel your Pro renewal</h2>
-          <p>
-            Business does not cancel Pro. Your paid Pro access continues through
-            {{ options()?.personalPaidThroughUTC | date: 'mediumDate' }}.
-          </p>
-          <label
-            ><input
-              type="checkbox"
-              [checked]="cancelPro()"
-              (change)="cancelPro.set($any($event.target).checked)"
-              [disabled]="optionsBusy()"
-            />
-            Cancel Pro renewal at the end of its paid period</label
+        <ion-card aria-label="Optional Pro renewal choice">
+          <ion-card-header
+            ><ion-card-title
+              >Your Pro subscription</ion-card-title
+            ></ion-card-header
           >
-          <p>
-            <button
-              type="button"
+          <ion-card-content>
+            <p>
+              Keep Pro alongside Business, or stop its renewal. Your paid Pro
+              access continues through
+              {{ options()?.personalPaidThroughUTC | date: 'mediumDate' }}.
+            </p>
+            <ion-checkbox
+              [checked]="cancelPro()"
+              (ionChange)="cancelPro.set($event.detail.checked)"
+              [disabled]="optionsBusy()"
+              class="ion-text-wrap"
+              >Cancel Pro renewal at the end of its paid period</ion-checkbox
+            >
+            <ion-button
+              expand="block"
+              fill="outline"
               (click)="cancelPersonalRenewal()"
               [disabled]="!cancelPro() || optionsBusy()"
+              >Confirm Pro renewal cancellation</ion-button
             >
-              Confirm Pro renewal cancellation
-            </button>
-          </p>
-        </section>
+          </ion-card-content>
+        </ion-card>
       }
       @if (options()?.cancellationScheduled) {
         <p role="status">

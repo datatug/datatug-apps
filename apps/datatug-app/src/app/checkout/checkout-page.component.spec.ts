@@ -614,10 +614,12 @@ it('paid Business return creates a space once, then keeps Pro unless explicitly 
   expect(commands).toBe(0);
   const name = html.querySelector('#business-name') as HTMLInputElement;
   name.value = 'New Business';
-  name.dispatchEvent(new Event('input'));
-  const activate = [...html.querySelectorAll('button')].find((x) =>
-    x.textContent?.includes('Activate Business'),
+  name.dispatchEvent(
+    new CustomEvent('ionInput', { detail: { value: 'New Business' } }),
   );
+  const activate = [
+    ...html.querySelectorAll<HTMLElement>('button, ion-button'),
+  ].find((x) => x.textContent?.includes('Activate Business'));
   if (!activate) throw new Error('missing activation action');
   activate.click();
   activate.click();
@@ -631,13 +633,15 @@ it('paid Business return creates a space once, then keeps Pro unless explicitly 
   ).toHaveLength(1);
   expect(html.textContent).toContain('Your Business space is ready');
   expect(commands).toBe(0);
-  const choice = html.querySelector('input[type=checkbox]') as HTMLInputElement;
+  const choice = html.querySelector('ion-checkbox') as HTMLInputElement;
   expect(choice.checked).toBe(false);
-  choice.click();
-  await fixture.whenStable();
-  const confirm = [...html.querySelectorAll('button')].find((x) =>
-    x.textContent?.includes('Confirm Pro renewal cancellation'),
+  choice.dispatchEvent(
+    new CustomEvent('ionChange', { detail: { checked: true } }),
   );
+  await fixture.whenStable();
+  const confirm = [
+    ...html.querySelectorAll<HTMLElement>('button, ion-button'),
+  ].find((x) => x.textContent?.includes('Confirm Pro renewal cancellation'));
   if (!confirm) throw new Error('missing cancellation action');
   confirm.click();
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -707,4 +711,18 @@ it('reused auth page switches from a selection to a purchase return', async () =
     { replaceUrl: true },
   );
   expect(fetcher).not.toHaveBeenCalled();
+});
+
+it('restores the prior tab title on checkout exit and titles a cached re-entry again', async () => {
+  document.title = 'DataTug.app';
+  await render({ plan: 'pro', period: 'monthly', checkout: 'test' });
+  expect(document.title).toBe('Complete your DataTug Pro subscription');
+  fixture.componentInstance.ionViewWillLeave();
+  await fixture.whenStable();
+  expect(document.title).toBe('DataTug.app');
+  fixture.componentInstance.ionViewWillEnter();
+  await fixture.whenStable();
+  expect(document.title).toBe('Complete your DataTug Pro subscription');
+  fixture.destroy();
+  expect(document.title).toBe('DataTug.app');
 });

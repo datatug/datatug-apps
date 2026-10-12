@@ -540,3 +540,12 @@ test('expired Business payment returns a recovery message without provisioning o
   assert.match(states.at(-1).message, /session expired/);
   flow.dispose();
 });
+
+
+test('renewal terms distinguish permanent and temporary discounts', async () => {
+  const { renewalTerms } = await import('../apps/datatug-app/src/app/checkout/checkout-flow.mjs');
+  const amount = { list: 9900, due: 6930 };
+  assert.deepEqual(renewalTerms({ amount, appliedDiscount: { kind: 'launch', percentOff: 30 } }), { renewal: '€69.30', invitationMonths: undefined });
+  assert.deepEqual(renewalTerms({ amount, appliedDiscount: { kind: 'invitation', percentOff: 30, durationMonths: 3 } }), { renewal: '€99.00', invitationMonths: 3 });
+  assert.deepEqual(renewalTerms({ amount, appliedDiscount: { kind: 'invitation', percentOff: 30, durationMonths: 3 }, offer: { reserved: true, percentOff: 30 } }), { renewal: '€69.30', invitationMonths: 3 });
+});

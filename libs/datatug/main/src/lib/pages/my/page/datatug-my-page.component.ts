@@ -1,4 +1,5 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, ViewChild, inject, signal } from '@angular/core';
+import { SubscriptionRecoveryComponent } from '@sneat/components';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import {
@@ -23,6 +24,7 @@ import { DatatugServicesStoreModule } from '../../../services/repo/datatug-servi
   templateUrl: './datatug-my-page.component.html',
   imports: [
     FormsModule,
+    SubscriptionRecoveryComponent,
     DatatugServicesStoreModule,
     IonHeader,
     IonToolbar,
@@ -41,6 +43,11 @@ import { DatatugServicesStoreModule } from '../../../services/repo/datatug-servi
 })
 export class DatatugMyPageComponent {
   private readonly router = inject(Router);
+  @ViewChild(SubscriptionRecoveryComponent)
+  private recovery?: SubscriptionRecoveryComponent;
+  ionViewWillEnter(): void {
+    this.recovery?.refresh();
+  }
 
   // First-slice entry point for the read-only "explore my raw data" viewer
   // (see space-explorer-page.component.ts). A "my spaces" list isn't wired
