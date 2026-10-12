@@ -1646,10 +1646,9 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
   );
   const author = page.getByTestId('tugql-author');
   await expect(author).toBeVisible({ timeout: 20_000 });
-  await expect(author.getByTestId('author-compose-tab')).toHaveAttribute(
-    'fill',
-    'solid',
-  );
+  await expect(author.getByTestId('author-compose-tab')).toHaveClass(/is-active/u);
+  await expect(author.getByRole('button', { name: 'Compose', exact: true }))
+    .toHaveAttribute('aria-pressed', 'true');
   await expect(author.getByTestId('author-code-tab')).toHaveAttribute(
     'fill',
     'clear',
@@ -1811,7 +1810,7 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
   ).toHaveValue('1');
   await expect(page.getByTestId('author-results-empty')).toHaveCount(1);
   await expect(lookupAuthor.getByTestId('author-binding-origin')).toContainText(
-    'selection · client-reported',
+    /selection · .* · client-reported/u,
   );
   await expect(lookupAuthor.getByTestId('author-binding-origin')).toContainText(
     'chinook-customer-invoice-join.CustomerId',
@@ -1906,12 +1905,16 @@ test('cold saved CustomerId count supports parameterized HAVING thresholds in th
   const codeTab = author.getByTestId('author-code-tab');
   await composeTab.click();
   await expect(editor).toHaveCount(0);
-  await expect(composeTab).toHaveAttribute('fill', 'solid');
+  await expect(composeTab).toHaveAttribute('fill', 'clear');
   await expect(codeTab).toHaveAttribute('fill', 'clear');
-  await expect(composeTab).toHaveClass(/button-solid/u);
+  await expect(composeTab).toHaveClass(/is-active/u);
+  await expect(codeTab).not.toHaveClass(/is-active/u);
+  await expect(composeTab).toHaveCSS('border-bottom-width', '2px');
   await expect(codeTab).toHaveClass(/button-clear/u);
-  await expect(composeTab).toHaveAttribute('aria-pressed', 'true');
-  await expect(codeTab).toHaveAttribute('aria-pressed', 'false');
+  await expect(author.getByRole('button', { name: 'Compose', exact: true }))
+    .toHaveAttribute('aria-pressed', 'true');
+  await expect(author.getByRole('button', { name: 'Code', exact: true }))
+    .toHaveAttribute('aria-pressed', 'false');
   await page.evaluate(
     () =>
       new Promise<void>((resolve) =>
