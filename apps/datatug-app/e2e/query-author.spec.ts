@@ -14,6 +14,9 @@ const CTE_AUTHOR_URL =
   '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-customer-count-cte?id=chinook-customer-count-cte&editor=text&env=local';
 const CTE_GRAPH_AUTHOR_URL =
   '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-customer-count-graph?id=chinook-customer-count-graph&editor=text&env=local';
+const PLAYLIST_SQL_URL =
+  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-playlist-composition?id=chinook-playlist-composition&editor=text&env=local';
+
 // @codemirror/autocomplete's installed default; Enter is intentionally ignored
 // until the option has been visible for this interaction window.
 const COMPLETION_INTERACTION_DELAY_MS = 75;
@@ -33,6 +36,18 @@ const savedQuerySource = (queryId: string, repository = DEMO_REPO): string =>
       'queries',
       'demodb',
       `${queryId}.query.dtql`,
+    ),
+    'utf8',
+  );
+
+const savedSqlSource = (queryId: string, repository = DEMO_REPO): string =>
+  readFileSync(
+    join(
+      repository ?? '',
+      'demo-project-1',
+      'queries',
+      'demodb',
+      `${queryId}.query.sql`,
     ),
     'utf8',
   );
@@ -444,6 +459,249 @@ test('TugQL and SQL coloring preserves editable source, keyboard undo, and reada
     .toBeLessThanOrEqual(1);
 });
 
+test('native SQL editor highlights the saved query and runs it against Chinook', async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  const errors: string[] = [];
+  const pageErrors: string[] = [];
+  let workersStarted = 0;
+  page.on('worker', () => workersStarted++);
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text());
+  });
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.goto(PLAYLIST_SQL_URL);
+  const source = savedSqlSource('chinook-playlist-composition');
+  const editorHost = page.getByTestId('query-body-text');
+  const editor = editorHost.locator('.cm-content');
+  await expect(editor).toBeVisible({ timeout: 20_000 });
+  await expect(editor).toHaveAttribute('aria-label', 'SQL query');
+  await expectEditorSource(page, editor, source);
+  await expect(editorHost.locator('.cm-gutters')).toBeHidden();
+  await expect(editorHost.locator('.cm-lineNumbers')).toHaveCount(1);
+  const mod = await codeMirrorMod(page);
+  await editor.focus();
+  await editor.press(`${mod}+A`);
+  await editor.press('ArrowRight');
+  await editor.type('(');
+  await expectEditorSource(page, editor, `${source}(`);
+  await editor.press(`${mod}+Z`);
+  await expectEditorSource(page, editor, source);
+
+  const keyword = editor.locator('.sql-token-keyword').first();
+  const identifier = editor.locator('.sql-token-identifier').first();
+  const number = editor.locator('.sql-token-number').filter({ hasText: '10' });
+  const logTokenContrast = async (theme: string): Promise<void> => {
+    const samples = [
+      ['keyword', keyword],
+      ['identifier', identifier],
+      ['number', number],
+      ['string', editor.locator('.sql-token-string').first()],
+      ['comment', editor.locator('.sql-token-comment').first()],
+    ] as const;
+    const measured = [];
+    for (const [kind, token] of samples) {
+      await expect(token).toBeVisible();
+      const colors = await completionContrast(token);
+      expect(colors.ratio).toBeGreaterThanOrEqual(4.5);
+      measured.push({ kind, ...colors });
+    }
+    console.info(
+      `[native-sql-token-contrast] ${JSON.stringify({ theme, tokens: measured })}`,
+    );
+  };
+  const logSelectionContrast = async (theme: string): Promise<void> => {
+    const mod = await codeMirrorMod(page);
+    await editor.focus();
+    await editor.press(`${mod}+A`);
+    const selection = editorHost.locator('.cm-selectionBackground').first();
+    await expect(selection).toBeVisible();
+    const measure = async (focus: 'focused' | 'unfocused'): Promise<void> => {
+      const pair = await selection.evaluate((element) => {
+        const token = element
+          .closest('.cm-editor')
+          ?.querySelector('.sql-token-identifier');
+        if (!token) throw new Error('SQL editor identifier token is missing.');
+        const backgroundLayers: string[] = [];
+        let surface: Element | null = element;
+        while (surface) {
+          backgroundLayers.push(getComputedStyle(surface).backgroundColor);
+          if (surface.classList.contains('cm-editor')) break;
+          surface = surface.parentElement;
+        }
+        const styles = getComputedStyle(element);
+        return {
+          foregroundColor: getComputedStyle(token).color,
+          selectionBackgroundColor: getComputedStyle(element).backgroundColor,
+          backgroundLayers,
+          selectionOutline: styles.outline,
+          selectionOutlineColor: styles.outlineColor,
+          selectionOutlineStyle: styles.outlineStyle,
+          selectionOutlineWidth: styles.outlineWidth,
+        };
+      });
+      console.info(
+        `[native-sql-selection-colors] ${JSON.stringify({ theme, focus, ...pair })}`,
+      );
+      const contrast = contrastBetweenColors(
+        pair.foregroundColor,
+        pair.backgroundLayers,
+      );
+      expect(contrast.ratio).toBeGreaterThanOrEqual(4.5);
+      let outlineContrast: ReturnType<typeof contrastBetweenColors> | undefined;
+      if (theme === 'forced-colors') {
+        expect(pair.selectionOutlineStyle).toBe('solid');
+        expect(pair.selectionOutlineWidth).toBe('2px');
+        outlineContrast = contrastBetweenColors(
+          pair.selectionOutlineColor,
+          pair.backgroundLayers,
+        );
+        expect(outlineContrast.ratio).toBeGreaterThanOrEqual(3);
+      }
+      console.info(
+        `[native-sql-selection-contrast] ${JSON.stringify({ theme, focus, ...pair, ...contrast, outlineContrast })}`,
+      );
+    };
+    await measure('focused');
+    await editor.evaluate((element) => (element as HTMLElement).blur());
+    await expect
+      .poll(() =>
+        editorHost
+          .locator('.cm-editor')
+          .evaluate((element) => element.classList.contains('cm-focused')),
+      )
+      .toBe(false);
+    await measure('unfocused');
+    await editor.focus();
+    await editor.press('ArrowRight');
+  };
+  await expect(keyword).toBeVisible();
+  await expect(identifier).toBeVisible();
+  await expect(number).toBeVisible();
+  const darkSurface = await keyword.evaluate((element) => {
+    const editorElement = element.closest('.cm-editor');
+    if (!editorElement) throw new Error('SQL editor surface is missing.');
+    return getComputedStyle(editorElement).backgroundColor;
+  });
+  expect(darkSurface).toBe('rgb(17, 24, 39)');
+  const contrastSample = `${source}\n-- contrast sample\nSELECT 'sample', 42;`;
+  await pasteCode(page, editor, contrastSample);
+  await logTokenContrast('system-dark');
+  await logSelectionContrast('system-dark');
+  await editor.press(`${mod}+Z`);
+  await expectEditorSource(page, editor, source);
+
+  await page.emulateMedia({ colorScheme: 'light' });
+  const lightSurface = await keyword.evaluate((element) => {
+    const editorElement = element.closest('.cm-editor');
+    if (!editorElement) throw new Error('SQL editor surface is missing.');
+    return getComputedStyle(editorElement).backgroundColor;
+  });
+  expect(lightSurface).toBe('rgb(255, 255, 255)');
+  await pasteCode(page, editor, contrastSample);
+  await logTokenContrast('system-light');
+  await logSelectionContrast('system-light');
+  await editor.press(`${mod}+Z`);
+  await expectEditorSource(page, editor, source);
+
+  await page
+    .locator('ion-app')
+    .evaluate((app) => app.classList.add('ion-palette-dark'));
+  const classDarkSurface = await keyword.evaluate((element) => {
+    const editorElement = element.closest('.cm-editor');
+    if (!editorElement) throw new Error('SQL editor surface is missing.');
+    return getComputedStyle(editorElement).backgroundColor;
+  });
+  expect(classDarkSurface).toBe('rgb(17, 24, 39)');
+  await pasteCode(page, editor, contrastSample);
+  await logTokenContrast('class-dark');
+  await logSelectionContrast('class-dark');
+  await editor.press(`${mod}+Z`);
+  await expectEditorSource(page, editor, source);
+  await page
+    .locator('ion-app')
+    .evaluate((app) => app.classList.remove('ion-palette-dark'));
+  await page.emulateMedia({ forcedColors: 'active' });
+  await pasteCode(
+    page,
+    editor,
+    `${source}\n-- contrast sample\nSELECT 'sample', 42;`,
+  );
+  await logTokenContrast('forced-colors');
+  await logSelectionContrast('forced-colors');
+  await editor.press(`${mod}+Z`);
+  await expectEditorSource(page, editor, source);
+  await page.emulateMedia({ forcedColors: 'none' });
+  await page.emulateMedia({ colorScheme: 'dark' });
+
+  await editor.focus();
+  await editor.press('Control+Space');
+  await expect(page.locator('.cm-tooltip-autocomplete')).toHaveCount(0);
+  expect(workersStarted).toBe(0);
+  await expect(page.getByRole('grid')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Run query', exact: true }).click();
+  await expect.poll(() => workersStarted).toBe(1);
+  const rows = page.getByRole('grid').getByRole('row');
+  await expect(rows).toHaveCount(11, { timeout: 45_000 });
+  await expect(rows.first()).toContainText('Playlist');
+  await expect(rows.first()).toContainText('TrackCount');
+  await expect(page.getByTestId('result-provenance')).toContainText('snapshot');
+  await expect(page.getByTestId('query-run-timings')).toBeVisible();
+  const expectedRows = [
+    ['1', 'Music', '3290', '335'],
+    ['8', 'Music', '3290', '335'],
+    ['5', '90’s Music', '1477', '151'],
+    ['3', 'TV Shows', '213', '12'],
+    ['10', 'TV Shows', '213', '12'],
+    ['12', 'Classical', '75', '73'],
+    ['11', 'Brazilian Music', '39', '14'],
+    ['17', 'Heavy Metal Classic', '26', '19'],
+    ['13', 'Classical 101 - Deep Cuts', '25', '25'],
+    ['14', 'Classical 101 - Next Steps', '25', '25'],
+  ];
+  const isNarrow = (page.viewportSize()?.width ?? 1280) <= 600;
+  if (!isNarrow) await expect(rows.first()).toContainText('AlbumCount');
+  const cells: string[][] = [];
+  for (let index = 1; index < 11; index++) {
+    cells.push(await rows.nth(index).getByRole('gridcell').allTextContents());
+  }
+  expect(cells).toEqual(
+    expectedRows.map((row) => row.slice(0, isNarrow ? 3 : 4)),
+  );
+  if (isNarrow) {
+    const horizontalScroll = page.locator(
+      '.ag-body-horizontal-scroll-viewport',
+    );
+    await expect
+      .poll(() =>
+        horizontalScroll.evaluate(
+          (element) => element.scrollWidth - element.clientWidth,
+        ),
+      )
+      .toBeGreaterThan(0);
+    await horizontalScroll.evaluate(
+      (element) => (element.scrollLeft = element.scrollWidth),
+    );
+    await expect(
+      page.getByRole('columnheader', { name: 'AlbumCount' }),
+    ).toBeVisible();
+    for (let index = 1; index < 11; index++) {
+      const visibleCells = await rows
+        .nth(index)
+        .getByRole('gridcell')
+        .allTextContents();
+      expect(visibleCells[visibleCells.length - 1]).toBe(
+        expectedRows[index - 1][3],
+      );
+    }
+  }
+  expect(errors).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});
 test('TugQL suggestions are explicit, source-safe, and touch reachable', async ({
   page,
 }, testInfo) => {

@@ -513,14 +513,9 @@ test.describe('GitHub-store project — every side-menu page loads without error
 
     // Query text — `artists_with_albums.sql`'s real body (no store menu
     // click involved, this is a cold navigation straight to the query).
-    const bodyText = page.getByTestId('query-body-text');
+    const bodyText = page.getByRole('textbox', { name: 'SQL query' });
     await expect(bodyText).toBeVisible({ timeout: 20_000 });
-    await expect
-      .poll(
-        () => bodyText.evaluate((el: unknown) => (el as { value?: string }).value),
-        { timeout: 20_000 },
-      )
-      .toContain('FROM Artist');
+    await expect(bodyText).toContainText('FROM Artist');
 
     // Linked entities — `artists_with_albums.sql.json` carries no
     // parameters/recordsets metadata at all (confirmed against the real
@@ -583,14 +578,9 @@ test.describe('GitHub-store project — every side-menu page loads without error
     await expect(pageTitle).toContainText('Query', { timeout: 20_000 });
     await expect(pageTitle).toContainText('DataTug Demo: DemoDB datasets');
 
-    const bodyText = page.getByTestId('query-body-text');
+    const bodyText = page.getByRole('textbox', { name: 'SQL query' });
     await expect(bodyText).toBeVisible({ timeout: 20_000 });
-    await expect
-      .poll(
-        () => bodyText.evaluate((el: unknown) => (el as { value?: string }).value),
-        { timeout: 20_000 },
-      )
-      .toContain('FROM Artist');
+    await expect(bodyText).toContainText('FROM Artist');
 
     expect(errors).toEqual([]);
     // NG04002 surfaces as Angular's own internal `console.error`, not
