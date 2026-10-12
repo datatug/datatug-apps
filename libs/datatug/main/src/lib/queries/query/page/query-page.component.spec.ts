@@ -19,6 +19,7 @@ import {
   ChangeDetectorRef,
   Component,
   CUSTOM_ELEMENTS_SCHEMA,
+  type Type,
   input,
   output,
   signal,
@@ -67,6 +68,7 @@ import { Coordinator } from '../../../executor/coordinator';
 import { ProjectService } from '../../../services/project/project.service';
 import { QueryEditorStateService } from '../../query-editor-state-service';
 import { QueryWorkspaceLayoutComponent } from './query-workspace-layout.component';
+import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
 import {
   FederatedQueryService,
@@ -7064,7 +7066,9 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
   async function createComponent(
     def: IQueryDef,
     template = '',
-    editorImports: Array<typeof SqlEditorHostStub> = [],
+    editorImports: Array<Type<unknown>> = [],
+    editorState$?: BehaviorSubject<IQueryEditorState>,
+    projectContext: IProjectContext = project,
   ): Promise<QueryPageComponent> {
     Object.defineProperty(window, 'history', {
       value: { ...window.history, state: {} },
@@ -7082,7 +7086,7 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
         },
       ],
     } as unknown as IQueryEditorState;
-    const editor = new BehaviorSubject(editorState);
+    const editor = editorState$ ?? new BehaviorSubject(editorState);
 
     await TestBed.configureTestingModule({
       imports: [QueryPageComponent],
@@ -7106,7 +7110,7 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
         {
           provide: DatatugNavContextService,
           useValue: {
-            currentProject: of(project),
+            currentProject: of(projectContext),
             currentEnv: of(undefined),
             setCurrentEnvironment: vi.fn(),
           },
@@ -7313,6 +7317,176 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
     await edit('select 2');
     expect(component.queryBodyText()).toBe('select 2');
     expect(getEditor().componentInstance.sql()).toBe('select 2');
+  });
+
+  it('updates the mounted header from the selected query state and never reuses a stale title', async () => {
+    const queryId = 'query-header-a';
+    const definition: IQueryDef = {
+      ...legacySqlDef,
+      id: queryId,
+      title: 'Definition title',
+    };
+    const loading: IQueryState = {
+      id: queryId,
+      queryType: QueryType.SQL,
+      request: definition.request,
+      isLoading: true,
+    };
+    const editor = new BehaviorSubject<IQueryEditorState>({
+      currentQueryId: queryId,
+      activeQueries: [loading],
+    });
+    const longProjectTitle =
+      'データベース・デモ用プロジェクト — DemoDB datasets 🌍';
+    const template = `
+      <sneat-datatug-page-title [pageTitle]="queryPageTitle()" />
+      <ion-input data-testid="query-title" (ionChange)="queryTitleChanged($event)" />
+    `;
+    component = await createComponent(
+      definition,
+      template,
+      [SneatDatatugPageTitleComponent],
+      editor,
+      { ...project, brief: { title: longProjectTitle } },
+    );
+    fixture.detectChanges();
+
+    const header = () =>
+      fixture.nativeElement
+        .querySelector('sneat-datatug-page-title strong')
+        ?.textContent?.trim();
+    const completeHeader = () =>
+      fixture.nativeElement
+        .querySelector('sneat-datatug-page-title ion-title')
+        ?.textContent?.replace(/\s+/gu, ' ')
+        .trim();
+    expect(header()).toBe('Query');
+
+    // The title arrives after the first render, with no explicit detectChanges.
+    editor.next({
+      currentQueryId: queryId,
+      activeQueries: [{ ...loading, def: definition, title: undefined }],
+    });
+    await fixture.whenStable();
+    expect(header()).toBe('Definition title');
+
+    // A title-only draft is authoritative even with no definition. Explicit
+    // blank is retained in state but rendered as the fallback.
+    editor.next({
+      currentQueryId: queryId,
+      activeQueries: [{ ...loading, title: '  Draft Ω  ' }],
+    });
+    await fixture.whenStable();
+    expect(header()).toBe('Draft Ω');
+    editor.next({
+      currentQueryId: queryId,
+      activeQueries: [{ ...loading, def: definition, title: '' }],
+    });
+    await fixture.whenStable();
+    expect(header()).toBe('Query');
+    expect(component.queryState.title).toBe('');
+    editor.next({
+      currentQueryId: queryId,
+      activeQueries: [{ ...loading, title: 'Next title only' }],
+    });
+    await fixture.whenStable();
+    expect(header()).toBe('Next title only');
+
+    // The real mounted title input handler stores the emitted bytes unchanged;
+    // only the header trims for display.
+    const titleInput = fixture.nativeElement.querySelector(
+      '[data-testid="query-title"]',
+    ) as HTMLElement;
+    titleInput.dispatchEvent(
+      new CustomEvent('ionChange', {
+        detail: {
+          value: '  Edited Unicode — 東京 — Ångström account summary  ',
+        },
+        bubbles: true,
+      }),
+    );
+    await fixture.whenStable();
+    expect(component.queryState.title).toBe(
+      '  Edited Unicode — 東京 — Ångström account summary  ',
+    );
+    expect(header()).toBe('Edited Unicode — 東京 — Ångström account summary');
+    expect(completeHeader()).toContain(
+      `Edited Unicode — 東京 — Ångström account summary @ ${longProjectTitle}`,
+    );
+    titleInput.dispatchEvent(
+      new CustomEvent('ionChange', {
+        detail: { value: '   ' },
+        bubbles: true,
+      }),
+    );
+    await fixture.whenStable();
+    expect(component.queryState.title).toBe('   ');
+    expect(header()).toBe('Query');
+
+    editor.next({
+      currentQueryId: queryId,
+      activeQueries: [
+        {
+          ...loading,
+          def: definition,
+          title: 'Known while loading',
+          isLoading: true,
+        },
+      ],
+    });
+    await fixture.whenStable();
+    expect(header()).toBe('Known while loading');
+    editor.next({
+      currentQueryId: queryId,
+      activeQueries: [
+        {
+          ...loading,
+          def: definition,
+          title: 'Known after error',
+          activeEnv: { id: 'local', error: new Error('offline') },
+        },
+      ],
+    });
+    await fixture.whenStable();
+    expect(header()).toBe('Known after error');
+
+    const nextId = 'query-header-b';
+    editor.next({
+      currentQueryId: queryId,
+      activeQueries: [{ ...loading, def: definition, title: 'Previous query' }],
+    });
+    await fixture.whenStable();
+    expect(header()).toBe('Previous query');
+    editor.next({
+      currentQueryId: nextId,
+      activeQueries: [
+        { id: nextId, queryType: QueryType.SQL, request: definition.request },
+      ],
+    });
+    await fixture.whenStable();
+    expect(header()).toBe('Query');
+    editor.next({
+      currentQueryId: nextId,
+      activeQueries: [
+        { id: nextId, queryType: QueryType.SQL, title: 'Next query' },
+      ],
+    });
+    await fixture.whenStable();
+    expect(header()).toBe('Next query');
+    editor.next({ currentQueryId: nextId, activeQueries: [] });
+    await fixture.whenStable();
+    expect(header()).toBe('Query');
+    editor.next({
+      currentQueryId: nextId,
+      activeQueries: [
+        { id: nextId, queryType: QueryType.SQL, title: 'Title before close' },
+      ],
+    });
+    await fixture.whenStable();
+    expect(header()).toBe('Title before close');
+    editor.next({ activeQueries: [] });
+    await fixture.whenStable();
+    expect(header()).toBe('Query');
   });
 });
 

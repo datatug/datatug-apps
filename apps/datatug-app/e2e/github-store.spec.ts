@@ -400,10 +400,8 @@ test.describe('GitHub-store project — every side-menu page loads without error
       .getByTitle('Edit')
       .click();
 
-    // `query-page.component.html`'s own `ion-title` is a hardcoded literal
-    // "Query" — the real title lives in an `ion-input [value]="queryState.title"`
-    // (an editable title field, not text content Playwright's text locators
-    // can see) just below it. Pre-existing, not GitHub-specific.
+    // The live header follows the selected query title while preserving the
+    // surrounding project context.
     await expect
       .poll(
         () =>
@@ -575,7 +573,9 @@ test.describe('GitHub-store project — every side-menu page loads without error
     // actually activated QueryPageComponent inside the real project
     // context, not just that *something* rendered.
     const pageTitle = page.locator('sneat-datatug-page-title');
-    await expect(pageTitle).toContainText('Query', { timeout: 20_000 });
+    await expect(pageTitle).toContainText('Artists with albums', {
+      timeout: 20_000,
+    });
     await expect(pageTitle).toContainText('DataTug Demo: DemoDB datasets');
 
     const bodyText = page.getByRole('textbox', { name: 'SQL query' });
