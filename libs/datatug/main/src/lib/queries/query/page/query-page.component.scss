@@ -72,9 +72,21 @@
   --border-radius: 0.6rem;
 }
 
+.author-customer-parameter {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 9rem);
+  align-items: start;
+  gap: 0.65rem;
+}
+
+.author-customer-parameter > label {
+  padding-block-start: 0.7rem;
+}
+
 .author-customer-input {
   display: block;
-  max-width: 24rem;
+  min-height: 2.75rem;
+  width: 100%;
   margin-bottom: 0.15rem;
 }
 
