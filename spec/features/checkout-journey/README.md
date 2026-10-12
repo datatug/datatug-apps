@@ -533,8 +533,20 @@ host correction admits them only with the existing Business TEST arm and exact
 app/approved-local origins, preserves the request body and keeps LIVE, unknown
 fields, duplicate mode, unrelated origins and unarmed Business paths closed.
 Paymentus still owns buyer verification, permissions and financial mutations.
-The fix is locally verified and must reach the dedicated TEST host before the
-real-provider smoke can pass; ordinary normal-host deployment is insufficient.
+Host [PR #1250](https://github.com/sneat-co/sneat-go/pull/1250) is now landed at
+`5139a2b58f7ce1a884960584a261d496e68af571`. Its exact-source normal deployment
+(run `38288580962`) passed. Following Alex’s explicit host-first approval, the
+dedicated TEST service adopted the same immutable image digest
+`sha256:bf5b2d7f3d1a7e563db85fb77de427f0c48c8982a4a6327e50e789d5874fe920`,
+with 100% traffic on `datatug-checkout-test-money5139a2b5`. The guard initially
+stopped at gcloud removing the client-generated Knative nonce; inspection
+confirmed that sole bookkeeping difference. Named-revision promotion then
+verified unchanged functional configuration, other metadata and approved IAM.
+The deployed Playwright catalog and all three shared POST preflights now pass.
+This proves the TEST request boundary and image adoption, not authenticated
+provider checkout, payment or reconciliation. Receipts are
+`/private/tmp/business-checkout-test-image-adoption.json` and
+`/private/tmp/business-checkout-provider-post-adoption.log`.
 
 The already approved local origin is `http://datatug.localhost:4328`, whose TEST
 catalog returned HTTP 200. `http://127.0.0.1:18787` is a visual/auth preview and

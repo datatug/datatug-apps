@@ -480,15 +480,25 @@ for (const plan of ['pro', 'business'])
           fake.seen.filter((x) => x.path.endsWith('/purchase-setup')),
         ).toHaveLength(1);
       } else {
+        // Ionic retains the outgoing route during its mobile animation. Wait
+        // for one active page instead of matching a cached confirmation too.
+        const checkout = page.locator(
+          'datatug-checkout-page.ion-page:not(.ion-page-hidden):not(.ion-page-invisible)',
+        );
+        await expect(checkout).toHaveCount(1);
         await expect(
-          page.getByText('Test checkout complete.', { exact: false }),
+          checkout.getByText('Test checkout complete.', { exact: false }),
         ).toBeVisible();
         await expect(
-          page.getByRole('link', { name: 'Continue to DataTug', exact: true }),
+          checkout.getByRole('link', {
+            name: 'Continue to DataTug',
+            exact: true,
+          }),
         ).toBeVisible();
         await page.reload();
+        await expect(checkout).toHaveCount(1);
         await expect(
-          page.getByText('Test checkout complete.', { exact: false }),
+          checkout.getByText('Test checkout complete.', { exact: false }),
         ).toBeVisible();
         expect(fake.seen.some((x) => x.path.endsWith('/purchase-setup'))).toBe(
           false,
