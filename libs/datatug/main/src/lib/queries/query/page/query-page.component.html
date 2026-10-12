@@ -513,43 +513,36 @@
             then preview and run again.
           </p>
         }
-        <div class="author-customer-parameter">
-          <label
-            id="author-customer-id-label"
-            (click)="customerIdInput.setFocus()"
-            >Customer ID</label
-          >
-          <ion-input
-            #customerIdInput
-            class="author-customer-input"
-            data-testid="author-customer-id"
-            type="number"
-            inputmode="numeric"
-            fill="outline"
-            aria-labelledby="author-customer-id-label"
-            helperText="Required · integer"
-            [class.ion-invalid]="
-              !authorCustomerIdMissing() && !authorCustomerIdValid()
-            "
-            [class.ion-touched]="
-              !authorCustomerIdMissing() && !authorCustomerIdValid()
-            "
-            [class.ng-invalid]="
-              !authorCustomerIdMissing() && !authorCustomerIdValid()
-            "
-            [class.ng-touched]="
-              !authorCustomerIdMissing() && !authorCustomerIdValid()
-            "
-            [errorText]="
-              !authorCustomerIdMissing() && !authorCustomerIdValid()
-                ? 'Enter a whole-number Customer ID'
-                : undefined
-            "
-            [value]="authorCustomerId()"
-            [disabled]="queryState.isSaving || running()"
-            (ionInput)="authorCustomerIdChanged($event)"
-          />
-        </div>
+        <ion-input
+          class="author-customer-input"
+          data-testid="author-customer-id"
+          type="number"
+          inputmode="numeric"
+          fill="outline"
+          label="Customer ID"
+          labelPlacement="start"
+          helperText="Required · integer"
+          [class.ion-invalid]="
+            !authorCustomerIdMissing() && !authorCustomerIdValid()
+          "
+          [class.ion-touched]="
+            !authorCustomerIdMissing() && !authorCustomerIdValid()
+          "
+          [class.ng-invalid]="
+            !authorCustomerIdMissing() && !authorCustomerIdValid()
+          "
+          [class.ng-touched]="
+            !authorCustomerIdMissing() && !authorCustomerIdValid()
+          "
+          [errorText]="
+            !authorCustomerIdMissing() && !authorCustomerIdValid()
+              ? 'Enter a whole-number Customer ID'
+              : undefined
+          "
+          [value]="authorCustomerId()"
+          [disabled]="queryState.isSaving || running()"
+          (ionInput)="authorCustomerIdChanged($event)"
+        />
         @if (authorCustomerIdOrigin(); as customerIdOrigin) {
           <p class="author-binding-origin" data-testid="author-binding-origin">
             @if (customerIdOrigin.origin === 'selection') {
