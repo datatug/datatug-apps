@@ -1,12 +1,15 @@
 import {
   Component,
   EventEmitter,
+  forwardRef,
   Input,
   OnChanges,
   Output,
 } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { afterEach } from 'vitest';
 import { By } from '@angular/platform-browser';
+import { CodeEditor } from '@acrodata/code-editor';
 import {
   EditorState,
   StateEffect,
@@ -33,6 +36,12 @@ interface EditorDispatch {
   // eslint-disable-next-line @angular-eslint/component-selector
   selector: 'code-editor',
   template: '<div class="cm-content"></div>',
+  providers: [
+    {
+      provide: CodeEditor,
+      useExisting: forwardRef(() => CodeEditorStubComponent),
+    },
+  ],
 })
 class CodeEditorStubComponent implements OnChanges {
   @Input() public value = '';
@@ -51,6 +60,7 @@ class CodeEditorStubComponent implements OnChanges {
   @Output() public readonly change = new EventEmitter<string>();
   public view = {
     state: EditorState.create({ doc: '' }),
+    requestMeasure: vi.fn(),
     dom: { isConnected: true },
     contentDOM: {
       isConnected: true,
@@ -97,15 +107,18 @@ describe('AuthorCodeEditorComponent', () => {
     fixture = TestBed.createComponent(AuthorCodeEditorComponent);
   });
 
+  afterEach(() => {
+    document.querySelectorAll('ion-popover').forEach((popover) => {
+      popover.remove();
+    });
+    (document.activeElement as HTMLElement | null)?.blur?.();
+  });
+
   const editor = (): CodeEditorStubComponent => {
     const debugElement = fixture.debugElement.query(
       By.directive(CodeEditorStubComponent),
     );
     const instance = debugElement.componentInstance as CodeEditorStubComponent;
-    Object.defineProperty(fixture.componentInstance, 'editor', {
-      value: instance,
-      configurable: true,
-    });
     return instance;
   };
 
@@ -121,29 +134,36 @@ describe('AuthorCodeEditorComponent', () => {
     expect(editor().view.state.sliceDoc()).toBe(
       "SeLeCt @CustomerId, 'unfinished\n-- untouched",
     );
+    expect(fixture.componentInstance.label()).toBe('TugQL Query');
     expect(
-      fixture.nativeElement
-        .querySelector('.author-code-label')
-        .textContent.trim(),
-    ).toBe('TugQL · Query');
+      fixture.nativeElement.querySelector('.author-code-label'),
+    ).toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('.author-code-header')?.tagName,
+    ).toBe('ION-ITEM');
     expect(changed).not.toHaveBeenCalled();
   });
 
   it('shows a touch suggestions control only for editable TugQL', () => {
+    fixture.componentRef.setInput('visible', true);
     fixture.detectChanges();
-    let suggestions = fixture.nativeElement.querySelector(
+    const suggestionGroup = fixture.nativeElement.querySelector(
       '.author-code-suggestions',
+    );
+    expect(suggestionGroup).not.toBeNull();
+    let suggestions = suggestionGroup.querySelector(
+      'ion-button',
     ) as HTMLButtonElement;
-    expect(suggestions).not.toBeNull();
     expect(suggestions.getAttribute('aria-label')).toBe(
       'Suggestions (Ctrl+Space)',
     );
+    expect(suggestionGroup.tagName).toBe('ION-BUTTONS');
     expect(suggestions.disabled).toBe(false);
 
     fixture.componentRef.setInput('readOnly', true);
     fixture.detectChanges();
     suggestions = fixture.nativeElement.querySelector(
-      '.author-code-suggestions',
+      '.author-code-suggestions ion-button',
     ) as HTMLButtonElement;
     expect(suggestions.disabled).toBe(true);
 
@@ -153,9 +173,78 @@ describe('AuthorCodeEditorComponent', () => {
     expect(
       fixture.nativeElement.querySelector('.author-code-suggestions'),
     ).toBeNull();
+    fixture.componentRef.setInput('visible', false);
+    fixture.detectChanges();
+  });
+
+  it('uses a unique actions trigger and discards stale hidden-menu actions', () => {
+    fixture.componentRef.setInput('visible', false);
+    fixture.detectChanges();
+    const secondFixture = TestBed.createComponent(AuthorCodeEditorComponent);
+    secondFixture.componentRef.setInput('visible', false);
+    secondFixture.detectChanges();
+    expect(fixture.componentInstance.toolsTriggerId).not.toBe(
+      secondFixture.componentInstance.toolsTriggerId,
+    );
+
+    const format = vi.fn();
+    const requestSuggestions = vi.spyOn(
+      fixture.componentInstance,
+      'requestSuggestions',
+    );
+    fixture.componentInstance.formatRequested.subscribe(format);
+    fixture.componentRef.setInput('canFormat', true);
+    fixture.componentRef.setInput('disabled', true);
+    fixture.detectChanges();
+    fixture.componentInstance.selectMenuAction('format');
+    fixture.componentInstance.menuDidDismiss();
+    expect(format).not.toHaveBeenCalled();
+
+    fixture.componentInstance.selectMenuAction('suggestions');
+    fixture.componentRef.setInput('visible', false);
+    fixture.detectChanges();
+    fixture.componentInstance.menuDidDismiss();
+    expect(requestSuggestions).not.toHaveBeenCalled();
+    expect(
+      fixture.nativeElement.querySelector(
+        '[data-testid="author-code-tools-popover"]',
+      ),
+    ).toBeNull();
+    secondFixture.destroy();
+  });
+
+  it('keeps the same CodeMirror instance mounted and remeasures after returning to Code', async () => {
+    fixture.componentRef.setInput('visible', true);
+    fixture.componentRef.setInput(
+      'text',
+      'from Invoice as i\nselect i.InvoiceId',
+    );
+    fixture.detectChanges();
+    const originalEditor = editor();
+    const originalState = originalEditor.view.state;
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+    originalEditor.view.requestMeasure.mockClear();
+
+    fixture.componentRef.setInput('visible', false);
+    fixture.detectChanges();
+    expect(editor()).toBe(originalEditor);
+    expect(originalEditor.view.state).toBe(originalState);
+    expect(
+      fixture.nativeElement.querySelector('.author-code-surface-hidden'),
+    ).not.toBeNull();
+
+    fixture.componentRef.setInput('visible', true);
+    fixture.detectChanges();
+    editor();
+    await fixture.whenStable();
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+    expect(editor()).toBe(originalEditor);
+    expect(originalEditor.view.state).toBe(originalState);
+    expect(originalEditor.view.requestMeasure).toHaveBeenCalledTimes(1);
   });
 
   it('renders accessible source-location actions and a remainder count', () => {
+    fixture.componentRef.setInput('visible', true);
     const source = 'from Invoice\nselect InvoiceId';
     const diagnostics = Array.from({ length: 7 }, (_, index) => ({
       code: `error_${index}`,
@@ -177,24 +266,25 @@ describe('AuthorCodeEditorComponent', () => {
       }),
       parent: host,
     });
-    Object.defineProperty(editorComponent, 'editor', {
-      value: { view },
-      configurable: true,
-    });
+    const stub = editor();
+    stub.view = view as unknown as typeof stub.view;
     fixture.componentRef.setInput('formatDiagnostics', diagnostics.slice(0, 5));
     fixture.componentRef.setInput('remainingFormatDiagnosticCount', 2);
     fixture.detectChanges();
 
     const buttons = fixture.nativeElement.querySelectorAll(
       '.author-format-diagnostic',
-    ) as NodeListOf<HTMLButtonElement>;
+    ) as NodeListOf<HTMLElement & { disabled: boolean }>;
     expect(buttons).toHaveLength(5);
+    expect(buttons[0].tagName).toBe('ION-ITEM');
     expect(buttons[0].disabled).toBe(false);
     expect(buttons[0].getAttribute('aria-label')).toBe(
       'Go to line 2, column 1: problem 0',
     );
     expect(
-      fixture.nativeElement.querySelector('.author-format-diagnostic-more')
+      fixture.nativeElement.querySelector(
+        '.author-format-diagnostics [role="status"]',
+      )
         .textContent,
     ).toContain('2 more diagnostics');
     view.destroy();
@@ -236,9 +326,13 @@ describe('AuthorCodeEditorComponent', () => {
   });
 
   it('navigates a mounted CodeMirror editor by Unicode-scalar positions without changing source or history', () => {
+    fixture.componentRef.setInput('visible', true);
     const source = 'a😀e\u0301\t\r\ncrlf\rlone\nlast';
     fixture.componentRef.setInput('text', source);
     fixture.detectChanges();
+    fixture.nativeElement
+      .querySelector('[data-testid="author-code-tools-popover"]')
+      ?.remove();
     const editorComponent = fixture.componentInstance;
     const host = document.createElement('div');
     fixture.nativeElement.append(host);
@@ -249,10 +343,8 @@ describe('AuthorCodeEditorComponent', () => {
       }),
       parent: host,
     });
-    Object.defineProperty(editorComponent, 'editor', {
-      value: { view },
-      configurable: true,
-    });
+    const stub = editor();
+    stub.view = view as unknown as typeof stub.view;
     const emitted = vi.fn();
     editorComponent.textChange.subscribe(emitted);
     const sourceBefore = getRawSource(view.state);
@@ -266,7 +358,9 @@ describe('AuthorCodeEditorComponent', () => {
       },
     } as const;
 
-    expect(editorComponent.navigateToFormatDiagnostic(source, diagnostic)).toBe(true);
+    expect(editorComponent.navigateToFormatDiagnostic(source, diagnostic)).toBe(
+      true,
+    );
     expect(document.activeElement).toBe(view.contentDOM);
     expect(view.state.selection.main.anchor).toBe(3);
     expect(view.state.selection.main.head).toBe(3);
@@ -289,9 +383,9 @@ describe('AuthorCodeEditorComponent', () => {
           end: { line, column },
         },
       } as const;
-      expect(
-        editorComponent.navigateToFormatDiagnostic(source, location),
-      ).toBe(true);
+      expect(editorComponent.navigateToFormatDiagnostic(source, location)).toBe(
+        true,
+      );
       expect(view.state.selection.main.anchor).toBe(offset);
       expect(view.state.selection.main.head).toBe(offset);
     }
@@ -339,24 +433,36 @@ describe('AuthorCodeEditorComponent', () => {
     expect(sourceSpanIsValid(source, valid.span)).toBe(true);
     expect(sourceSpanIsValid(source, invalidEnd.span)).toBe(false);
     expect(sourceSpanIsValid(source, invalidColumn.span)).toBe(false);
-    expect(editorComponent.navigateToFormatDiagnostic(source, invalidEnd)).toBe(false);
-    expect(editorComponent.navigateToFormatDiagnostic(`${source} `, valid)).toBe(false);
+    expect(editorComponent.navigateToFormatDiagnostic(source, invalidEnd)).toBe(
+      false,
+    );
+    expect(
+      editorComponent.navigateToFormatDiagnostic(`${source} `, valid),
+    ).toBe(false);
 
     fixture.componentRef.setInput('disabled', true);
     fixture.detectChanges();
-    expect(editorComponent.navigateToFormatDiagnostic(source, valid)).toBe(false);
+    expect(editorComponent.navigateToFormatDiagnostic(source, valid)).toBe(
+      false,
+    );
     fixture.componentRef.setInput('disabled', false);
     fixture.componentRef.setInput('readOnly', true);
     fixture.detectChanges();
-    expect(editorComponent.navigateToFormatDiagnostic(source, valid)).toBe(false);
+    expect(editorComponent.navigateToFormatDiagnostic(source, valid)).toBe(
+      false,
+    );
     fixture.componentRef.setInput('readOnly', false);
     fixture.detectChanges();
     view.dispatch({
       effects: StateEffect.appendConfig.of(EditorState.readOnly.of(true)),
     });
-    expect(editorComponent.navigateToFormatDiagnostic(source, valid)).toBe(false);
+    expect(editorComponent.navigateToFormatDiagnostic(source, valid)).toBe(
+      false,
+    );
     host.remove();
-    expect(editorComponent.navigateToFormatDiagnostic(source, valid)).toBe(false);
+    expect(editorComponent.navigateToFormatDiagnostic(source, valid)).toBe(
+      false,
+    );
     view.destroy();
 
     const lockedHost = document.createElement('div');
@@ -376,7 +482,9 @@ describe('AuthorCodeEditorComponent', () => {
       value: { view: lockedView },
       configurable: true,
     });
-    expect(editorComponent.navigateToFormatDiagnostic(source, valid)).toBe(false);
+    expect(editorComponent.navigateToFormatDiagnostic(source, valid)).toBe(
+      false,
+    );
     lockedView.destroy();
   });
 
@@ -408,7 +516,10 @@ describe('AuthorCodeEditorComponent', () => {
       doc: source,
       extensions: [history(), createRawSourceExtensions(source)],
     });
-    const target: { state: EditorState; dispatch(transaction: Transaction): void } = {
+    const target: {
+      state: EditorState;
+      dispatch(transaction: Transaction): void;
+    } = {
       state,
       dispatch: (transaction) => (target.state = transaction.state),
     };
@@ -418,7 +529,9 @@ describe('AuthorCodeEditorComponent', () => {
     target.dispatch(characterEdit);
     expect(getRawSource(target.state)).toBe('a\r\nB\nc\r');
 
-    const separatorDeletion = target.state.update({ changes: { from: 1, to: 2 } });
+    const separatorDeletion = target.state.update({
+      changes: { from: 1, to: 2 },
+    });
     target.dispatch(separatorDeletion);
     expect(getRawSource(target.state)).toBe('aB\nc\r');
 
@@ -438,7 +551,10 @@ describe('AuthorCodeEditorComponent', () => {
       doc: source,
       extensions: [history(), createRawSourceExtensions(source)],
     });
-    const target: { state: EditorState; dispatch(transaction: Transaction): void } = {
+    const target: {
+      state: EditorState;
+      dispatch(transaction: Transaction): void;
+    } = {
       state,
       dispatch: (transaction) => (target.state = transaction.state),
     };
@@ -465,14 +581,19 @@ describe('AuthorCodeEditorComponent', () => {
       doc: source,
       extensions: [history({ minDepth: 3 }), createRawSourceExtensions(source)],
     });
-    const target: { state: EditorState; dispatch(transaction: Transaction): void } = {
+    const target: {
+      state: EditorState;
+      dispatch(transaction: Transaction): void;
+    } = {
       state,
       dispatch: (transaction) => (target.state = transaction.state),
     };
     for (let index = 0; index < 24; index++) {
       const firstBreak = target.state.doc.toString().indexOf('\n');
       target.dispatch(
-        target.state.update({ changes: { from: firstBreak, to: firstBreak + 1 } }),
+        target.state.update({
+          changes: { from: firstBreak, to: firstBreak + 1 },
+        }),
       );
       expect(getRawSource(target.state).length).toBeGreaterThan(0);
     }
@@ -484,7 +605,8 @@ describe('AuthorCodeEditorComponent', () => {
         .slice(cutoff + 1)
         .map((row, index) => separators[cutoff + index] + row)
         .join('');
-    for (let index = 0; index < retainedEvents; index++) expect(undo(target)).toBe(true);
+    for (let index = 0; index < retainedEvents; index++)
+      expect(undo(target)).toBe(true);
     expect(getRawSource(target.state)).toBe(expected);
   });
 
@@ -502,10 +624,6 @@ describe('AuthorCodeEditorComponent', () => {
     expect(codeEditor.language).toBe('SQL');
     expect(codeEditor.readonly).toBe(true);
     expect(codeEditor.languages).toEqual(fixture.componentInstance.languages);
-    expect(
-      fixture.nativeElement
-        .querySelector('.author-code-label')
-        .textContent.trim(),
-    ).toBe('Compiled SQLite SQL');
+    expect(fixture.componentInstance.label()).toBe('Compiled SQLite SQL');
   });
 });

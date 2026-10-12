@@ -706,11 +706,38 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     expect(component.comparisonSnapshot()).toBeUndefined();
     component.setQueryView('compare');
     component.setQueryView('author');
+    const retainedPlan = comparisonPreview(component.authorDraftRevision());
+    component.authorPlan.set(retainedPlan);
+    component.authorCustomerId.set('7');
+    component.setAuthorMode('preview');
+
+    expect(component.authorMode()).toBe('preview');
+    expect(component.authorPlan()).toBe(retainedPlan);
+    expect(component.authorCustomerId()).toBe('7');
+    expect(preview).not.toHaveBeenCalled();
+    expect(authorRun).not.toHaveBeenCalled();
+
+    component.authorPlan.set(undefined);
     await component.previewTugql();
 
     expect(preview).toHaveBeenCalledTimes(1);
     expect(compareSide).not.toHaveBeenCalled();
     expect(authorRun).not.toHaveBeenCalled();
+  });
+
+  it('shows the Customer ID panel for its declaration and keeps it during an incomplete edit', async () => {
+    component = await createTugQLAuthor(authorSource);
+    expect(component.authorHasCustomerIdParameter()).toBe(true);
+
+    const incompleteDraft = `${authorSource}and`;
+    expect(parseTugQL(incompleteDraft).diagnostics.length).toBeGreaterThan(0);
+    component.authorCodeChanged(incompleteDraft);
+    expect(component.authorHasCustomerIdParameter()).toBe(true);
+
+    component.authorCodeChanged(
+      'from Invoice as i\nlimit 10\nselect i.InvoiceId\n',
+    );
+    expect(component.authorHasCustomerIdParameter()).toBe(false);
   });
 
   it('requires applying freshly proposed relationship completion before either comparison worker starts', async () => {
@@ -2121,6 +2148,26 @@ select (
 
     expect(component.authorPreviewSyntaxDiagnostic()).toBeUndefined();
     expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('reveals Code before navigating to an invalid-draft preview diagnostic', async () => {
+    const source = 'from Invoice as i\nselect\n  i.InvoiceId\n  i.InvoiceDate';
+    component = await createTugQLAuthor(source);
+    component.setAuthorMode('preview');
+    const execute = vi.spyOn(
+      TestBed.inject(PublicSqliteQueryService),
+      'runTugQL',
+    );
+    await component.previewTugql();
+    expect(component.authorPreviewSyntaxDiagnostic()).toBeDefined();
+
+    expect(component.canNavigateToAuthorPreviewSyntaxDiagnostic()).toBe(true);
+    component.navigateToAuthorPreviewSyntaxDiagnostic();
+    expect(component.authorMode()).toBe('code');
+    runFixture.detectChanges();
+    await runFixture.whenStable();
+
+    expect(execute).not.toHaveBeenCalled();
   });
 
   it('uses exact displayed-source spans and retains the prior plan after a Format failure', async () => {

@@ -10,11 +10,14 @@
 >
   @if (showResultsJump()) {
     <nav class="workspace-mobile-navigation" aria-label="Editor navigation">
-      <ion-buttons>
-        <ion-button id="workspace-jump-to-results" data-testid="workspace-jump-to-results" (click)="showResults()">
-          Jump to results
-        </ion-button>
-      </ion-buttons>
+      <ion-item lines="none">
+        <ion-label>Editor</ion-label>
+        <ion-buttons slot="end">
+          <ion-button id="workspace-jump-to-results" data-testid="workspace-jump-to-results" (click)="showResults()">
+            Jump to results
+          </ion-button>
+        </ion-buttons>
+      </ion-item>
     </nav>
   }
   <ng-content select="[query-workspace-editor]" />
@@ -30,11 +33,14 @@
 >
   @if (showResultsJump()) {
     <nav class="workspace-mobile-navigation" aria-label="Results navigation">
-      <ion-buttons>
-        <ion-button id="workspace-back-to-editor" data-testid="workspace-back-to-editor" (click)="showEditor()">
-          Back to editor
-        </ion-button>
-      </ion-buttons>
+      <ion-item lines="none">
+        <ion-label>Results</ion-label>
+        <ion-buttons slot="end">
+          <ion-button id="workspace-back-to-editor" data-testid="workspace-back-to-editor" (click)="showEditor()">
+            Back to editor
+          </ion-button>
+        </ion-buttons>
+      </ion-item>
     </nav>
   }
   <ng-content select="[query-workspace-results]" />

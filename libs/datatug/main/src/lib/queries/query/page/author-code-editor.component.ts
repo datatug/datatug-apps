@@ -11,6 +11,8 @@ import {
   output,
   signal,
 } from '@angular/core';
+import { addIcons } from 'ionicons';
+import { ellipsisHorizontal } from 'ionicons/icons';
 import { CodeEditor } from '@acrodata/code-editor';
 import { closeCompletion, startCompletion } from '@codemirror/autocomplete';
 import type { TugQLDiagnostic, TugQLSpan } from '@dalgo/core';
@@ -29,6 +31,19 @@ import {
   TUGQL_LANGUAGE_DESCRIPTIONS,
 } from './tugql-syntax';
 import { createTugqlCompletionExtension } from './tugql-completion';
+import {
+  IonButton,
+  IonButtons,
+  IonItem,
+  IonLabel,
+  IonList,
+  IonNote,
+  IonPopover,
+} from '@ionic/angular';
+
+addIcons({ ellipsisHorizontal });
+
+let authorCodeEditorId = 0;
 
 interface EditorInstance {
   readonly generation: number;
@@ -42,19 +57,34 @@ interface EditorInstance {
   templateUrl: './author-code-editor.component.html',
   styleUrl: './author-code-editor.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CodeEditor],
+  imports: [
+    CodeEditor,
+    IonButton,
+    IonButtons,
+    IonItem,
+    IonLabel,
+    IonList,
+    IonNote,
+    IonPopover,
+  ],
 })
 export class AuthorCodeEditorComponent implements OnChanges, AfterViewInit {
+  public readonly toolsTriggerId = `author-code-tools-trigger-${++authorCodeEditorId}`;
   public readonly editorRoot = inject(DOCUMENT);
   public readonly text = input('');
-  public readonly label = input('TugQL · Query');
+  public readonly label = input('TugQL Query');
   public readonly language = input<'TugQL' | 'SQL'>('TugQL');
   public readonly readOnly = input(false);
   public readonly disabled = input(false);
+  public readonly visible = input(true);
   public readonly formatDiagnostics = input<readonly TugQLDiagnostic[]>([]);
   public readonly remainingFormatDiagnosticCount = input(0);
+  public readonly canFormat = input(false);
+  public readonly canUndoFormat = input(false);
   public readonly textChange = output<string>();
   public readonly formatDiagnosticRequested = output<TugQLDiagnostic>();
+  public readonly formatRequested = output<void>();
+  public readonly undoFormatRequested = output<void>();
 
   public readonly languages = TUGQL_LANGUAGE_DESCRIPTIONS;
   public readonly instance = signal<EditorInstance>({
@@ -65,9 +95,40 @@ export class AuthorCodeEditorComponent implements OnChanges, AfterViewInit {
   });
 
   @ViewChild(CodeEditor) private editor?: CodeEditor;
+  @ViewChild(IonPopover) private toolsPopover?: IonPopover;
 
   private viewReady = false;
+  private pendingMenuAction?: 'format' | 'undo' | 'suggestions';
+
+  public selectMenuAction(action: 'format' | 'undo' | 'suggestions'): void {
+    this.pendingMenuAction = action;
+  }
+
+  public menuDidDismiss(): void {
+    const action = this.pendingMenuAction;
+    this.pendingMenuAction = undefined;
+    if (!action || !this.visible() || this.language() !== 'TugQL') return;
+    if (action === 'format' && this.canFormat() && !this.disabled())
+      this.formatRequested.emit();
+    if (action === 'undo' && this.canUndoFormat() && !this.disabled())
+      this.undoFormatRequested.emit();
+    if (action === 'suggestions') {
+      queueMicrotask(() => this.requestSuggestions());
+    }
+  }
   public ngOnChanges(changes: SimpleChanges): void {
+    if (
+      changes['visible']?.currentValue === false ||
+      (changes['language'] && this.language() !== 'TugQL')
+    ) {
+      this.pendingMenuAction = undefined;
+      if (this.toolsPopover?.isOpen) void this.toolsPopover.dismiss();
+    }
+    if (changes['visible']?.currentValue === true) {
+      // CodeMirror measures its layout while mounted. Ask it to remeasure after
+      // the hidden pane has become visible without replacing its editor state.
+      queueMicrotask(() => this.editor?.view.requestMeasure());
+    }
     if (!this.viewReady) {
       this.replaceInstance(this.text());
       return;
@@ -95,7 +156,12 @@ export class AuthorCodeEditorComponent implements OnChanges, AfterViewInit {
   }
 
   public requestSuggestions(): void {
-    if (this.language() !== 'TugQL' || this.readOnly() || this.disabled())
+    if (
+      !this.visible() ||
+      this.language() !== 'TugQL' ||
+      this.readOnly() ||
+      this.disabled()
+    )
       return;
     const view = this.editor?.view;
     if (!view) return;

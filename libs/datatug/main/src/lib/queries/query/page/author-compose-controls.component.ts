@@ -7,6 +7,17 @@ import {
   signal,
 } from '@angular/core';
 import {
+  IonButton,
+  IonCheckbox,
+  IonInput,
+  IonItem,
+  IonLabel,
+  IonList,
+  IonListHeader,
+  IonSelect,
+  IonSelectOption,
+} from '@ionic/angular';
+import {
   type AuthorHavingOperator,
   readAuthorComposeProfile,
   updateAuthorComposeSource,
@@ -17,6 +28,17 @@ import {
   templateUrl: './author-compose-controls.component.html',
   styleUrl: './author-compose-controls.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [
+    IonButton,
+    IonCheckbox,
+    IonInput,
+    IonItem,
+    IonLabel,
+    IonList,
+    IonListHeader,
+    IonSelect,
+    IonSelectOption,
+  ],
 })
 export class AuthorComposeControlsComponent {
   public readonly source = input.required<string>();
@@ -64,21 +86,22 @@ export class AuthorComposeControlsComponent {
   }
 
   public numberChanged(
-    event: Event,
+    event: CustomEvent<{ readonly value?: string | number | null }>,
     property: 'limit' | 'threshold',
+    commit = false,
   ): void {
-    const input = event.target as HTMLInputElement | null;
+    const input = event.target as HTMLIonInputElement | null;
     if (!input) return;
-    const raw = input.value;
+    const raw = String(event.detail.value ?? '');
     const current = this.profile()[property];
-    const minimum = property === 'limit' ? 1 : Number.MIN_SAFE_INTEGER;
+    const minimum = property === 'limit' ? 1 : 0;
     const maximum = property === 'limit' ? 100 : Number.MAX_SAFE_INTEGER;
     if (!/^-?\d+$/u.test(raw)) {
-      input.value = String(current ?? (property === 'limit' ? 100 : 7));
+      if (commit) input.value = String(current ?? (property === 'limit' ? 100 : 7));
       this.controlError.set(
         property === 'limit'
           ? 'Enter a whole-number row limit from 1 to 100. The draft was not changed.'
-          : 'Enter a whole-number HAVING threshold. The draft was not changed.',
+          : 'Enter a whole-number HAVING threshold of 0 or greater. The draft was not changed.',
       );
       return;
     }
@@ -89,19 +112,28 @@ export class AuthorComposeControlsComponent {
       value > maximum ||
       !this.update({ [property]: value })
     ) {
-      input.value = String(current ?? (property === 'limit' ? 100 : 7));
+      if (commit) input.value = String(current ?? (property === 'limit' ? 100 : 7));
       this.controlError.set(
         property === 'limit'
           ? 'Enter a whole-number row limit from 1 to 100. The draft was not changed.'
-          : 'Enter a whole-number HAVING threshold. The draft was not changed.',
+          : 'Enter a whole-number HAVING threshold of 0 or greater. The draft was not changed.',
       );
     }
   }
 
-  public operatorChanged(event: Event): void {
-    const value = (event.target as HTMLSelectElement | null)?.value;
+  public operatorChanged(event: CustomEvent<{ readonly value?: string }>): void {
+    const value = event.detail.value;
     if (['=', '!=', '<', '<=', '>', '>='].includes(value ?? '')) {
       this.update({ havingOperator: value as AuthorHavingOperator });
     }
+  }
+
+  public countExpressionChanged(
+    event: CustomEvent<{ readonly value?: string }>,
+  ): void {
+    this.update({
+      countExpression:
+        event.detail.value === 'InvoiceId' ? 'InvoiceId' : 'star',
+    });
   }
 }

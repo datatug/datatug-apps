@@ -1,109 +1,130 @@
-<section class="compose-controls" aria-label="Compose supported Invoice query">
+<ion-list class="compose-controls" aria-label="Compose supported Invoice query">
   @if (profile().supported && profile().writable) {
-    <p class="compose-caption">Result shape</p>
-    <div class="compose-control-row">
-      @if (profile().joined) {
-        <p class="compose-grouping-note" role="note">
+    <ion-list-header>
+      <ion-label>Result shape</ion-label>
+    </ion-list-header>
+    @if (profile().joined) {
+      <ion-item lines="none">
+        <ion-label class="ion-text-wrap" color="medium" role="note">
           Grouping is unavailable for Invoice–Customer joins. Use Code to edit grouped queries.
-        </p>
-      } @else {
-        <label class="compose-check compose-group-toggle">
-          <input
-            type="checkbox"
-            [checked]="profile().grouped"
-            (change)="update({ grouped: $any($event.target).checked })"
-          />
-          Group by CustomerId and count invoices
-        </label>
-      }
-      <label class="compose-field compose-limit">
-        <span>Row limit</span>
-        <input
-          type="number"
-          min="1"
-          max="100"
-          step="1"
-          aria-label="Row limit"
-          [value]="profile().limit"
-          (change)="numberChanged($event, 'limit')"
-        />
-      </label>
-    </div>
-    @if (profile().grouped) {
-      <fieldset>
-        <legend>Grouping and count</legend>
-        <label class="compose-field">
-          <span>Group and count</span>
-          <select
-            aria-label="Count expression"
-            [value]="profile().countExpression"
-            (change)="
-              update({
-                countExpression: $any($event.target).value === 'InvoiceId' ? 'InvoiceId' : 'star'
-              })
-            "
-          >
-            <option value="star">COUNT(*)</option>
-            <option value="InvoiceId">COUNT(InvoiceId)</option>
-          </select>
-        </label>
-        <label class="compose-field">
-          <span>HAVING count</span>
-          <span class="compose-inline-field">
-            <select
-              aria-label="HAVING comparison"
-              [value]="profile().havingOperator"
-              (change)="operatorChanged($event)"
-            >
-              <option value="=">=</option>
-              <option value="!=">!=</option>
-              <option value="&lt;">&lt;</option>
-              <option value="&lt;=">&lt;=</option>
-              <option value="&gt;">&gt;</option>
-              <option value="&gt;=">&gt;=</option>
-            </select>
-            <input
-              type="number"
-              step="1"
-              aria-label="HAVING threshold"
-              [value]="profile().threshold"
-              (change)="numberChanged($event, 'threshold')"
-            />
-          </span>
-        </label>
-      </fieldset>
+        </ion-label>
+      </ion-item>
     } @else {
-      <fieldset>
-        <legend>Invoice columns</legend>
-        <label class="compose-check">
-          <input type="checkbox" checked disabled />
+      <ion-item>
+        <ion-checkbox
+          data-testid="author-compose-grouped"
+          labelPlacement="end"
+          [checked]="profile().grouped"
+          (ionChange)="update({ grouped: $event.detail.checked })"
+        >
+          Group by CustomerId and count invoices
+        </ion-checkbox>
+      </ion-item>
+    }
+    <ion-item>
+      <ion-input
+        data-testid="author-compose-row-limit"
+        label="Row limit"
+        labelPlacement="start"
+        type="number"
+        min="1"
+        max="100"
+        step="1"
+        aria-label="Row limit"
+        [value]="profile().limit"
+        (ionInput)="numberChanged($event, 'limit')"
+        (ionChange)="numberChanged($event, 'limit', true)"
+      />
+    </ion-item>
+    @if (profile().grouped) {
+      <ion-list-header>
+        <ion-label>Grouping and count</ion-label>
+      </ion-list-header>
+      <ion-item>
+        <ion-select
+          label="Count expression"
+          labelPlacement="start"
+          aria-label="Count expression"
+          [value]="profile().countExpression"
+          (ionChange)="countExpressionChanged($event)"
+        >
+          <ion-select-option value="star">COUNT(*)</ion-select-option>
+          <ion-select-option value="InvoiceId">COUNT(InvoiceId)</ion-select-option>
+        </ion-select>
+      </ion-item>
+      <ion-item>
+        <ion-select
+          label="HAVING comparison"
+          labelPlacement="start"
+          aria-label="HAVING comparison"
+          [value]="profile().havingOperator"
+          (ionChange)="operatorChanged($event)"
+        >
+          <ion-select-option value="=">=</ion-select-option>
+          <ion-select-option value="!=">!=</ion-select-option>
+          <ion-select-option value="<">&lt;</ion-select-option>
+          <ion-select-option value="<=">&lt;=</ion-select-option>
+          <ion-select-option value=">">&gt;</ion-select-option>
+          <ion-select-option value=">=">&gt;=</ion-select-option>
+        </ion-select>
+      </ion-item>
+      <ion-item>
+        <ion-input
+          data-testid="author-compose-having-threshold"
+          label="HAVING threshold"
+          labelPlacement="start"
+          type="number"
+          min="0"
+          step="1"
+          aria-label="HAVING threshold"
+          [value]="profile().threshold"
+          (ionInput)="numberChanged($event, 'threshold')"
+          (ionChange)="numberChanged($event, 'threshold', true)"
+        />
+      </ion-item>
+    } @else {
+      <ion-list-header>
+        <ion-label>Invoice columns</ion-label>
+      </ion-list-header>
+      <ion-item>
+        <ion-checkbox labelPlacement="end" checked disabled>
           InvoiceId · required first column
-        </label>
-        <label class="compose-check">
-          <input
-            type="checkbox"
-            [checked]="profile().includeInvoiceDate"
-            [disabled]="profile().joined && !profile().invoiceDateToggleSupported"
-            (change)="update({ includeInvoiceDate: $any($event.target).checked })"
-          />
+        </ion-checkbox>
+      </ion-item>
+      <ion-item>
+        <ion-checkbox
+          data-testid="author-compose-invoice-date"
+          labelPlacement="end"
+          [checked]="profile().includeInvoiceDate"
+          [disabled]="profile().joined && !profile().invoiceDateToggleSupported"
+          (ionChange)="update({ includeInvoiceDate: $event.detail.checked })"
+        >
           InvoiceDate
-        </label>
-        @if (profile().joined && !profile().invoiceDateToggleSupported) {
-          <p class="compose-projection-note" role="note">
+        </ion-checkbox>
+      </ion-item>
+      @if (profile().joined && !profile().invoiceDateToggleSupported) {
+        <ion-item lines="none">
+          <ion-label class="ion-text-wrap" color="medium" role="note">
             {{ profile().invoiceDateToggleReason }}
-          </p>
-        }
-      </fieldset>
+          </ion-label>
+        </ion-item>
+      }
     }
     @if (controlError(); as error) {
-      <p class="compose-error" role="alert">{{ error }}</p>
+      <ion-item lines="none" color="danger">
+        <ion-label class="ion-text-wrap" role="alert">{{ error }}</ion-label>
+      </ion-item>
     }
   } @else {
-    <div class="compose-unavailable" role="status">
-      <strong>Compose is unavailable for this source.</strong>
-      <span>{{ profile().reason }}</span>
-      <span>Your TugQL source has not been changed. Edit it in Code.</span>
-      <button type="button" (click)="editInCode.emit()">Open Code</button>
-    </div>
+    <ion-item lines="none">
+      <ion-label class="ion-text-wrap">
+        <h2>Compose is unavailable for this source.</h2>
+        <p>{{ profile().reason }}</p>
+        <p>Your TugQL source has not been changed. Edit it in Code.</p>
+      </ion-label>
+      <ion-button slot="end" fill="clear" (click)="editInCode.emit()">
+        Open Code
+      </ion-button>
+    </ion-item>
   }
-</section>
+</ion-list>
