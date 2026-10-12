@@ -1,3 +1,4 @@
+import { provideCheckoutPurchaseRecovery } from './app/checkout/checkout-purchase-recovery';
 import { bootstrapApplication } from '@angular/platform-browser';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
@@ -62,6 +63,7 @@ bootstrapApplication(DatatugAppComponent, {
   providers: [
     provideZonelessChangeDetection(),
     provideCheckoutAnalyticsPrivacy(),
+    provideCheckoutPurchaseRecovery(),
     provideDatatugBusinessCheckoutApiOrigin(
       datatugBusinessCheckoutApiOrigin,
     ),

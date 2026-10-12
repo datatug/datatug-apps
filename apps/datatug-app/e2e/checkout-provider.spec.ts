@@ -1,7 +1,12 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures/checkout-test-buyer';
 import { TEST_CHECKOUT_ORIGIN } from '../src/app/checkout/checkout-config.mjs';
 
 const origin = 'http://datatug.localhost:4328';
+
+test.skip(
+  process.env.DATATUG_CHECKOUT_PROVIDER_TEST !== '1',
+  'Deployed-provider checks require the explicit isolated TEST opt-in.',
+);
 
 test('deployed TEST catalog and shared purchase preflights accept the approved local origin', async ({
   request,
@@ -48,11 +53,9 @@ test('deployed TEST catalog and shared purchase preflights accept the approved l
 for (const kind of ['pro', 'business'])
   test(`${kind}: real TEST quote mounts the provider form without submitting payment`, async ({
     page,
+    signedInTestBuyer,
   }) => {
-    test.skip(
-      !process.env.DATATUG_CHECKOUT_TEST_STORAGE_STATE,
-      'Requires the designated TEST buyer auth state, stored outside the repository.',
-    );
+    void signedInTestBuyer;
     const checkoutRequests: string[] = [];
     await page.route('**/v0/checkout/**', async (route) => {
       const url = new URL(route.request().url());
@@ -110,10 +113,12 @@ for (const kind of ['pro', 'business'])
 
 test('an existing paid TEST return reconciles without creating another session or changing its space', async ({
   page,
+  signedInTestBuyer,
 }) => {
+  void signedInTestBuyer;
   const sessionId = process.env.DATATUG_CHECKOUT_TEST_RETURN_SESSION;
   test.skip(
-    !process.env.DATATUG_CHECKOUT_TEST_STORAGE_STATE || !sessionId,
+    !sessionId,
     'Requires designated buyer auth state and an existing paid TEST session; this test never creates a payment.',
   );
   if (!sessionId) throw new Error('Missing existing paid TEST session');

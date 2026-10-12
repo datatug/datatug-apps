@@ -16,10 +16,7 @@ const situations = [
   { name: 'new unsigned user', company: false, project: false },
 ];
 
-async function readyCheckout(
-  page: Page,
-  kind: 'authentication' | 'purchase',
-) {
+async function readyCheckout(page: Page, kind: 'authentication' | 'purchase') {
   const checkout = page.locator(
     `datatug-checkout-page.ion-page:not(.ion-page-hidden):not(.ion-page-invisible):has([data-checkout-page="${kind}"])`,
   );
@@ -161,6 +158,20 @@ async function signIn(page: Page, email: string) {
   ).toBeVisible({ timeout: 20000 });
   await readyCheckout(page, 'purchase');
 }
+async function expectDue(page: Page, amount: string) {
+  const checkout = await readyCheckout(page, 'purchase');
+  await expect(
+    checkout.locator('datatug-checkout-price-summary .final'),
+  ).toContainText(amount);
+}
+
+async function chooseBusinessSpace(page: Page, label: string) {
+  await readyCheckout(page, 'purchase');
+  await page.locator('#business-destination').click();
+  await page.getByRole('radio', { name: label, exact: true }).click();
+  await expect(page.locator('ion-popover')).toBeHidden();
+}
+
 async function activateBusiness(page: Page) {
   const checkout = await readyCheckout(page, 'purchase');
   const button = checkout.getByRole('button', {
@@ -268,6 +279,20 @@ async function paymentFake(page: Page) {
           duration: 'forever',
           percentOff: 30,
         },
+      };
+    else if (url.pathname.endsWith('/purchases'))
+      data = {
+        items:
+          ready && !spaceID
+            ? [
+                {
+                  accountId: 'billing_fixture',
+                  sessionId: 'cs_test_fixture',
+                  planId: selectedPlan,
+                  state: 'setup_required',
+                },
+              ]
+            : [],
       };
     else if (url.pathname.endsWith('/session-status'))
       data = {
@@ -418,9 +443,7 @@ for (const plan of ['pro', 'business'])
         ).toHaveLength(0);
         await signUp(page);
       } else await signIn(page, email);
-      await expect(
-        page.getByText(plan === 'pro' ? '€13.30' : '€69.30', { exact: false }),
-      ).toBeVisible();
+      await expectDue(page, plan === 'pro' ? '€13.30' : '€69.30');
       expect(new URL(page.url()).pathname).toBe(
         plan === 'pro' ? '/subscribe' : '/business/checkout',
       );
@@ -442,27 +465,17 @@ for (const plan of ['pro', 'business'])
       if (unsigned)
         await page.getByRole('button', { name: /Switch to yearly/ }).click();
       else await page.getByRole('tab', { name: /Yearly/ }).click();
-      await expect(
-        page.getByText(plan === 'pro' ? '€133.00' : '€693.00', {
-          exact: false,
-        }),
-      ).toBeVisible();
+      await expectDue(page, plan === 'pro' ? '€133.00' : '€693.00');
       expect(new URL(page.url()).searchParams.get('checkout')).toBe('test');
       if (plan === 'business')
         expect(new URL(page.url()).searchParams.get('purchaseId')).toBe(
           purchaseId,
         );
       await page.goBack();
-      await expect(
-        page.getByText(plan === 'pro' ? '€13.30' : '€69.30', { exact: false }),
-      ).toBeVisible();
+      await expectDue(page, plan === 'pro' ? '€13.30' : '€69.30');
       await page.goForward();
       await page.reload();
-      await expect(
-        page.getByText(plan === 'pro' ? '€133.00' : '€693.00', {
-          exact: false,
-        }),
-      ).toBeVisible();
+      await expectDue(page, plan === 'pro' ? '€133.00' : '€693.00');
       expect(
         fake.seen
           .filter((x) => x.path.includes('/checkout/'))
@@ -487,9 +500,7 @@ for (const plan of ['pro', 'business'])
           ),
         ).toBe(false);
         if (situation.company)
-          await page
-            .locator('#business-destination')
-            .selectOption({ label: 'Existing Business' });
+          await chooseBusinessSpace(page, 'Existing Business');
         else
           await page
             .getByLabel('Business name', { exact: true })
@@ -564,16 +575,12 @@ test('Business recovery: delayed reconciliation and permission retry never repay
   fake.confirm();
   await page.getByRole('button', { name: 'Check again', exact: true }).click();
   await expect(page.locator('#business-destination')).toBeVisible();
-  await expect(page).toHaveTitle(
-    'Complete your DataTug Business subscription',
-  );
-  await page
-    .locator('#business-destination')
-    .selectOption({ label: 'Existing Business' });
+  await expect(page).toHaveTitle('Complete your DataTug Business subscription');
+  await chooseBusinessSpace(page, 'Existing Business');
   fake.rejectSetupOnce();
   await activateBusiness(page);
   await expect(page.getByRole('alert')).toBeVisible();
-  await page.locator('#business-destination').selectOption('');
+  await chooseBusinessSpace(page, 'Create a new business space');
   await page
     .getByLabel('Business name', { exact: true })
     .fill('Alternative business');
@@ -581,12 +588,14 @@ test('Business recovery: delayed reconciliation and permission retry never repay
   await expect(
     page.getByRole('heading', { name: 'Your Business space is ready' }),
   ).toBeVisible();
-  const cancellation = page.getByLabel(
-    'Cancel Pro renewal at the end of its paid period',
-  );
+  const cancellation = page.getByRole('checkbox', {
+    name: 'Cancel Pro renewal at the end of its paid period',
+    exact: true,
+  });
   await expect(cancellation).not.toBeChecked();
   expect(fake.seen.some((x) => x.body.cancelPersonalAtPeriodEnd)).toBe(false);
-  await cancellation.check();
+  await cancellation.click();
+  await expect(cancellation).toBeChecked();
   await page
     .getByRole('button', { name: 'Confirm Pro renewal cancellation' })
     .click();
@@ -751,4 +760,51 @@ test('Business permission denial explains the required role and retains the opti
   );
   await expect(page.locator('ion-menu')).toBeHidden();
   expect(fake.seen.some((x) => x.path.endsWith('/purchase-setup'))).toBe(false);
+});
+
+test('paid Business setup is recoverable from the account after leaving and refreshing, without another checkout', async ({
+  page,
+}) => {
+  const fake = await paymentFake(page);
+  const email = await seed(page, false);
+  await page.goto(
+    '/business/checkout?planID=datatug-business-usage-monthly&checkout=test',
+  );
+  await signIn(page, email);
+  fake.confirm();
+  await page.goto('/pricing/return?mode=test&session_id=cs_test_fixture');
+  await readyCheckout(page, 'purchase');
+  await page
+    .getByRole('link', { name: 'Finish later from my account' })
+    .click();
+  await expect(page).toHaveURL(/\/my\?checkout=test$/);
+  await expect(page).not.toHaveTitle(/Complete your DataTug/);
+  await page.reload();
+  const recovery = page.locator('sneat-subscription-recovery');
+  await expect(
+    recovery.getByText('DataTug Business · Monthly', { exact: true }),
+  ).toBeVisible();
+  const sessionsBefore = fake.seen.filter((x) =>
+    x.path.endsWith('/session'),
+  ).length;
+  await recovery.getByRole('link').click();
+  await readyCheckout(page, 'purchase');
+  await expect(page).toHaveURL(/mode=test&session_id=cs_test_fixture/);
+  await page
+    .getByLabel('Business name', { exact: true })
+    .fill('Recovered Business');
+  await activateBusiness(page);
+  await expect(
+    page.getByRole('heading', { name: 'Your Business space is ready' }),
+  ).toBeVisible();
+  expect(fake.seen.filter((x) => x.path.endsWith('/session')).length).toBe(
+    sessionsBefore,
+  );
+  expect(
+    fake.seen.filter((x) => x.path.endsWith('/purchase-setup')),
+  ).toHaveLength(1);
+  await page.goto('/my?checkout=test');
+  await expect(
+    recovery.getByText('No subscriptions waiting for setup.'),
+  ).toBeVisible();
 });

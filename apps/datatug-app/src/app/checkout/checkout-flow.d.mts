@@ -57,3 +57,8 @@ export function createSpaceServiceCheckoutFlow(options: {
   load(): Promise<void>;
   acknowledge(element: HTMLElement): Promise<void>;
 };
+
+export function renewalTerms(quote: unknown): {
+  renewal: string;
+  invitationMonths?: number;
+};

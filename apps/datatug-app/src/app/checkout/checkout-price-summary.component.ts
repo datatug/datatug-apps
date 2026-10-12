@@ -66,11 +66,13 @@ import type { CheckoutState } from './checkout-contracts';
             }}
           </dd>
           <dt>
-            {{ quote() ? 'Final price' : 'Price with launch offer' }}
+            {{ quote() ? 'Due today' : 'Price with launch offer' }}
           </dt>
           <dd class="final">
-            {{ quote()?.due ?? launchDue() }} /
-            {{ yearly() ? 'year' : 'month' }}
+            {{ quote()?.due ?? launchDue() }}
+            @if (!quote()) {
+              / {{ yearly() ? 'year' : 'month' }}
+            }
           </dd>
         </dl>
         @if (!yearly()) {
@@ -98,6 +100,26 @@ import type { CheckoutState } from './checkout-contracts';
             price is confirmed before payment.
           </p>
         }
+        @if (quote()) {
+          <p class="renewal-terms">
+            @if (quote()?.invitationMonths; as months) {
+              Your invitation discount lasts {{ months }} months. After that,
+              the base price is {{ quote()?.renewal }} per
+              {{ yearly() ? 'year' : 'month' }}. Renewal uses the discount
+              applicable on its billing date.
+            } @else {
+              Your base subscription renews at
+              {{ quote()?.renewal ?? quote()?.due }} every
+              {{ yearly() ? 'year' : 'month' }} until cancelled.
+            }
+          </p>
+        }
+        <p class="billing-start">
+          Your paid subscription starts when payment is confirmed.
+          @if (business()) {
+            Choosing a business space later does not postpone billing.
+          }
+        </p>
         <p class="guarantee">
           <a
             href="https://datatug.app/en/terms/"

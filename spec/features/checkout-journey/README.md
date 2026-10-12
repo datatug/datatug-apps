@@ -577,3 +577,13 @@ component regression and Chromium/mobile WebKit recovery checks cover this.
 All 161 focused checkout/auth/config tests, app lint and zoneless checks pass.
 See the [local evidence](local-evidence-20261012.md) for separate receipts; real
 provider operations and physical Safari remain unverified.
+
+### Approved account recovery and checkout polish follow-up
+
+The [shared checkout plan](../../plans/shared-checkout/README.md#approved-checkout-recovery-and-polish-follow-up-2026-10-12) records the five approved improvements and their verification. This supersedes the earlier account-resume-list and Telegram-teardown follow-up limits above.
+
+My account now uses Sneat's generic subscription-recovery component to list the signed-in buyer's paid, unlinked Business purchases for the selected rail. Finish later returns there; Finish Business setup opens the original paid session, reconciles its current status and attaches once. Pagination, identity changes, stale evidence, refunds, expiry and live/test partitioning remain server-authorized. This read cannot provision a billing home, create a checkout, or grant access. A buyer without an existing billing home sees an empty list.
+
+The signed-in quote shows Due today, the base renewal amount and period, temporary invitation duration/later rate, and payment-confirmed billing start. Business attachment does not postpone that start. Setup, completion and optional Pro cancellation use standard Ionic cards and controls. Pro cancellation is initially unchecked and requires its own explicit confirmation; projects remain separate from purchase and paid-access transfer remains later work.
+
+The title lifecycle now handles overlapping cached Ionic views, and the published Sneat auth library ignores late Telegram callbacks after teardown. Local evidence covers 972 app unit tests, 25 checkout-flow tests and all 36 browser cases across Chromium/mobile WebKit, using emulator authentication and simulated payment HTTP. Browser checks include account departure/refresh/recovery without a new checkout, delayed reconciliation, permission retry and explicit optional cancellation. A real provider smoke workflow uses normal dedicated TEST-account authentication, verifies Firebase project/UID and mounts unpaid forms only. Its private credentials are not configured here, so real-account/provider execution and physical Mobile Safari remain unverified. No provider payment or customer permission/subscription mutation was performed.

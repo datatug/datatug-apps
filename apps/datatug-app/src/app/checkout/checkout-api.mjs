@@ -64,6 +64,12 @@ export function checkoutApi(
     return body;
   }
   return {
+    purchases: (after = '') =>
+      request(
+        `/v0/checkout/purchases?mode=${mode}${after ? '&after=' + encodeURIComponent(after) : ''}`,
+        {},
+        true,
+      ),
     config: () => request(`/v0/checkout/config?site=datatug&mode=${mode}`),
     session: (plan, purchase = {}) =>
       request(
