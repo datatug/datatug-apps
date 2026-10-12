@@ -23,6 +23,7 @@ import {
 import { AuthPanelComponent } from '@sneat/auth-ui';
 import { SpaceService, SpaceServiceModule } from '@sneat/space-services';
 import { combineLatest, filter, Subscription, take, timeout } from 'rxjs';
+import { CheckoutPriceSummaryComponent } from './checkout-price-summary.component';
 import type { CheckoutState } from './checkout-contracts';
 import { appCheckoutAuth } from './checkout-auth';
 import { checkoutApi } from './checkout-api.mjs';
@@ -72,6 +73,7 @@ const modeForSessionID = (value: string | null): CheckoutMode | undefined =>
     IonTitle,
     IonContent,
     AuthPanelComponent,
+    CheckoutPriceSummaryComponent,
     SpaceServiceModule,
   ],
   templateUrl: './business-checkout-page.component.html',
@@ -543,20 +545,6 @@ export class BusinessCheckoutPageComponent {
     });
   }
 
-  protected chooseMode(mode: CheckoutMode): void {
-    if (this.returning || this.selectionLocked()) return;
-    if (mode === 'live' && !this.liveEnabled) return;
-    this.navigateSelection({
-      planID: planIDForPeriod(this.period()),
-      ...(mode === 'test' ? { checkout: 'test' } : {}),
-      ...(this.selectedSpaceID() ? { spaceID: this.selectedSpaceID() } : {}),
-    });
-  }
-
-  protected liveRailDisabled(): boolean {
-    return !this.liveEnabled;
-  }
-
   private apiOriginFor(mode: CheckoutMode): string | null {
     if (mode === 'test')
       return isTrustedBusinessCheckoutOrigin(this.configuredApiOrigin, mode)
@@ -623,8 +611,11 @@ export class BusinessCheckoutPageComponent {
   }
   protected backToPricing(): string {
     return (
-      'https://datatug.app/en/pricing/' +
-      (this.mode() === 'test' ? '?checkout=test' : '')
+      'https://datatug.app/en/pricing/?' +
+      new URLSearchParams({
+        period: this.period() === 'annual' ? 'yearly' : 'monthly',
+        ...(this.mode() === 'test' ? { checkout: 'test' } : {}),
+      })
     );
   }
 

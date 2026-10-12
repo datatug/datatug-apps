@@ -12,6 +12,8 @@ import {
 import { ApplicationInitStatus } from '@angular/core';
 
 it.each([
+  '/sso?returnTo=%2Fsubscribe%3Fplan%3Dpro%26period%3Dyearly%26checkout%3Dtest',
+  '/sign-in-from-email-link?returnTo=%2Fbusiness%2Fcheckout%3Fcheckout%3Dtest',
   '/subscribe',
   '/subscribe/?plan=pro&checkout=test',
   '/pricing/return?mode=test&session_id=cs_test_paid',

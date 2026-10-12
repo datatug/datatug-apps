@@ -1,12 +1,12 @@
 ---
 format: https://specscore.md/feature-specification
-status: Draft
+status: Implementing
 ---
 
 # Feature: Checkout Journey
 
 > [SpecScore.**Studio**](https://specscore.studio): | [Explore](https://specscore.studio/app/github.com/datatug/datatug-apps/spec/features/checkout-journey?op=explore) | [Edit](https://specscore.studio/app/github.com/datatug/datatug-apps/spec/features/checkout-journey?op=edit) | [Ask question](https://specscore.studio/app/github.com/datatug/datatug-apps/spec/features/checkout-journey?op=ask) | [Request change](https://specscore.studio/app/github.com/datatug/datatug-apps/spec/features/checkout-journey?op=request-change) |
-**Status:** Draft
+**Status:** Implementing
 **Source Ideas:** —
 
 ## Summary
@@ -17,7 +17,7 @@ Review of deployed Pro and Business checkout and a shared purchase flow with pos
 
 Business asks customers to choose or create a space before payment, while Pro resolves a personal destination automatically. Both flows retain the application side panel on desktop. Their purchase summaries, recovery states and successful destinations differ. A customer should buy either plan through the same short journey, without first creating a project or business space.
 
-This is a review and proposed specification, dated **2026-10-12**. No application code, deployment configuration, subscriptions, access permissions or payments were changed. The specification remains Draft; recommendations are not claims of delivered behavior.
+The original review was recorded on **2026-10-12**, approved by Alex and merged in app PR #277 (`4b807dda8c5f03bdee123cf9546afaa142662829`). Implementation is in progress. The historical evidence below describes the reviewed state, not a claim that the proposed flow has shipped. No live payments are permitted in this implementation.
 
 ## Review evidence and limits
 
@@ -45,6 +45,8 @@ An earlier narrow-screen observation could be mistaken for sidebar suppression: 
 ### Product direction and common vocabulary
 
 - Use one checkout shell and state sequence for Pro and Business. The differences are the plan summary and destination handling.
+- A paying user can purchase and manage subscriptions for several spaces. Buyer/billing authority and beneficiary-space access are separate concepts. Enforce **one active DataTug base subscription per space**, not one subscription per buyer.
+- **Pro** is limited to one per user and belongs to that user’s personal space. It can coexist with any number of Business subscriptions.
 - **Pro** is a personal-space subscription. The server resolves or provisions the verified user's personal space. No space picker and no project prerequisite.
 - **Business** is a business-space subscription. Buy first; select/link an eligible existing space or provision a new business space **after confirmed payment**. An optional `spaceID` reference can nominate an existing destination before purchase without introducing a prerequisite selection screen.
 - Authentication establishes the buyer; it is not a request to create a project. Reuse the existing Sneat sign-in/sign-up panel inside checkout, with no “Sign in to continue” intermediary page.
@@ -225,11 +227,64 @@ These reviewed EUR/VAT-included public values are examples for copy; use the ser
 
 Switching period updates the single canonical selection and summary; preserve buyer, optional destination and rail. If a provider session may already exist, resolve it before replacing the quote/session. Pricing Back must restore selected period rather than silently defaulting to monthly. The marketing `yearly` value and existing Business `annual` plan suffix need one explicit mapping, not two independent period states.
 
-Each **eligible subscription** occupies its own launch-discount place. Pro plus Business are separate subscriptions/places; another Business subscription gets its own eligible place. Eligibility is authoritative and currently uses an active-place threshold of 30. No blanket one-discount-per-user rule. A paid Business awaiting attachment must already retain its place, and linking must not consume another. Keep live and test availability/reservations separate. Ongoing discount conditions must be repeated accurately from the authoritative offer, not invented by the checkout UI.
+Each **eligible subscription** occupies its own launch-discount place. Pro plus Business are separate subscriptions/places; another Business subscription gets its own eligible place. Eligibility is authoritative and currently uses an active-place threshold of 30. Two Business subscriptions for different spaces use two of the 30 places even when the same person pays. No blanket one-discount-per-user rule. Places reopen at effective paid-access end, not when end-of-term cancellation is scheduled. A verified full refund immediately ends paid access and releases that subscription’s place; a partial refund does neither automatically. A paid Business awaiting attachment must already retain its place, and linking must not consume another. Keep live and test availability/reservations separate. Ongoing discount conditions must be repeated accurately from the authoritative offer, not invented by the checkout UI.
 
 Business includes **unlimited active users without extra usage charges during its first subscription month**. The base amount above is payable immediately. For annual purchases this is the first subscription month, not a year of unlimited users and not a free subscription month. Show the applicable date range after confirmation. Further usage terms need clear copy; completing metered billing remains separate work.
 
 Existing pricing FAQ describes an annual cancellation/refund behavior; the requested optional Pro action must explicitly mean **end-of-paid-period renewal cancellation**, including annual Pro, with no immediate revocation or automatic refund. Align the wording and supported backend operation before shipping this option.
+
+### Subscription ownership and shared settings
+
+The commerce record must distinguish `payingUserID`, stable `billingAccountID` / `purchaseID`, `subscriptionID` and optional `beneficiarySpaceID`. A provider customer may be shared by several subscriptions; it is never the uniqueness key for DataTug paid access. The initial Business purchase has billing ownership before a beneficiary exists. Destination binding is a separate, permission-checked operation; binding does not make the paying user a member of the destination or grant project access.
+
+Pro resolves the verified buyer’s personal space, with one Pro base subscription per user. Business requires an eligible ordinary business/shared space at attachment, with one active DataTug base subscription per destination. A user with Pro can buy Business for space A and space B and retain all three. An existing active Business in A blocks a second base subscription for A, including a different payer or billing period; it does not block B. Separate SSO and capacity add-ons do not occupy the base-subscription slot.
+
+Shared Sneat subscription settings should list subscriptions the user has billing authority to manage, with product, beneficiary space (or “Finish setup”), rail, regular/discount/final renewal price, billing period, paid-through/renewal date, cancellation state and next action. Keep subscription management permission separate from ordinary membership and paid feature access. A buyer losing space membership must not silently gain project access through billing settings; administrative billing reassignment needs its own audited authority. Product configuration selects personal/business eligibility, base-service uniqueness and available actions; do not build a parallel DataTug-only billing centre.
+
+Entry: account menu → shared subscription settings; checkout “already subscribed” → the relevant subscription; paid-unlinked confirmation/Finish later → that purchase’s setup item. Open subscription → receipt, renewal/cancellation and eligible configured actions. Back → settings list; Cancel on an unsubmitted management form → subscription details. No settings action silently initiates a checkout or moves projects.
+
+The launch task owns the broader follow-up in [DataTug pricing and billing](https://github.com/datatug/datatug/blob/main/spec/features/pricing-and-billing/README.md), WB task `space-subscription-management`. Shared settings and transfer UI/API are **follow-up work, not checkout launch gates**. The launch checkout must retain sufficient buyer, financial lineage and beneficiary identities for this work.
+
+### Business transfer contract — follow-up only
+
+Transfer changes **paid access only**. Projects, saved queries, data, memberships, identities, audit history and separate add-ons remain in their original spaces. The existing paid-access expiry policy applies to source-space projects immediately after transfer; do not delete or migrate them. Target-space projects gain the remaining base entitlement only after an atomic, authoritative binding change. Project ownership never follows the subscription.
+
+| Concern | Proposed follow-up implementation contract |
+| --- | --- |
+| Permissions / uniqueness | Verify billing management authority and current destination-management permissions through existing Sneat authority. Recheck both spaces and the current binding in the commit transaction. Source must match the subscription’s current beneficiary; target must be active, eligible and have no active or pending conflicting DataTug base claim. Ordinary membership alone is insufficient. Never grant membership as a side effect. |
+| Billing dates / payment | Keep the same provider subscription, customer, currency, period, renewal anchor, paid-through date, cancellation schedule and financial owner. Transfer itself neither charges nor refunds nor restarts a term. Expired, fully refunded or unresolved financial ownership cannot transfer paid access. Scheduled cancellation transfers only the remaining paid term. |
+| Launch discount / place | Retain original discount grant, stable place identity, eligibility history and remaining conditions. Transfer consumes no additional place, releases none while subscription remains paid and does not re-evaluate the buyer as a new launch customer. Source-keyed legacy place IDs need an explicit stable-lineage mapping; never recompute the place from the target ID. |
+| Introductory first month | Keep its original start/end and already-consumed benefit. A transfer on day 20 has only the remaining introductory period; a later transfer has none. A full refund ends entitlement immediately. |
+| Usage already incurred | Retain immutable usage events, original space attribution, payer, pricing version, billing month and invoice lineage. Transfer must not erase, rebill, duplicate or reclassify prior usage as free. Persist an effective cutover timestamp and binding revision. Subsequent target usage uses the same subscription’s remaining billing period; late source events are evaluated against their event-time binding. Metered billing completion remains separate work. |
+| Prepaid capacity | Base-bundled capacity, if configured, follows the base subscription with its original period and consumed balance; no reset or duplicate allocation. **Separately purchased** capacity add-ons stay in the source space with their own expiry/billing; do not silently move them. Show this distinction and resulting target capacity before confirming. Independently managed add-on transfer requires separate authorization/work. |
+| SSO | Separate SSO subscriptions, verified domains, IdP configuration, login enforcement and identities stay in the original space. Do not move secrets or confer source-domain access on the target. Target keeps its own SSO policy. If a future product bundles SSO in the base, only licence entitlement can follow; target activation still requires its normal domain/IdP verification, with no automatic configuration copy. Preview any resulting source enforcement change. |
+| Atomicity / retries | One durable idempotent transfer operation and expected binding revision fence source release and target claim together. Same-operation replay returns the same result. A changed source, occupied target or permission loss returns a conflict with no partial entitlement. Record actor, before/after space IDs and effective time. Provider state is retained, not rewritten to pretend a new purchase. |
+
+Rough follow-up screens:
+
+```text
+Account > Subscriptions
+Pro · Personal space              €13.30/month · renews DATE [Manage]
+Business · Acme                   €69.30/month · renews DATE [Manage]
+Business · Northwind              €693/year · renews DATE   [Manage]
+Business · Finish setup           Payment received          [Finish setup]
+
+Business > Transfer paid access
+Current space: Acme        Paid through: DATE
+Target: [eligible existing space / create new through native setup]
+Projects stay in Acme. Source access follows normal expiry rules.
+Billing, discount and remaining introductory period stay the same.
+Separate capacity and SSO add-ons stay in Acme.
+[Review transfer] [Cancel → subscription details]
+
+Review transfer
+Acme → Northwind · effective on confirmation
+Remaining term/benefit, retained usage, source/target access and add-ons
+[Transfer paid access] [Back → target selection] [Cancel → details]
+Success → subscription details with target + useful target-space link
+```
+
+Paid-access-only transfer, unchanged projects, existing permissions and normal access-expiry behavior are confirmed requirements. The financial allocation, base-bundled capacity and SSO handling above are proposed defaults to review before enabling transfer; they do not claim additional approved commercial policy. No transfer endpoint or settings screen is implemented by this checkout change. This follow-up is not a prerequisite for the launch checkout.
 
 ### Business purchase ownership without pre-purchase space creation
 
@@ -307,18 +362,46 @@ Relevant implementation map (relative links are inside this repository unless ab
 
 These are future implementation gates; passing current unit tests does not satisfy new behavior.
 
-1. All ten matrix rows have local fixture-driven screenshots and isolated test checkout receipts; project presence never gates purchase. Pro has no business-space picker; personal bootstrap is server-owned.
-2. Shared checkout/auth/return/completion hides the app side panel at desktop and mobile widths, retains branding, and gives the specified Back/Cancel/Finish later destination.
-3. Both summaries show regular price, discount and final amount; monthly promotes yearly “2 months free” with annual due and annual billing terms. Period changes cannot reuse an incorrect-price session. Discount availability is server-confirmed.
-4. New Business buyer reaches payment without creating/selecting a business space or project. Optional `spaceID` is preserved/validated, then linked after verified payment. Without a hint, eligible existing/new choice occurs in paid completion.
-5. Paid-but-unlinked ownership survives missing return, refresh and auth expiry. Provision/link is idempotent under timeout, two tabs, webhook replay and stale membership readmodel. A permission/subscription conflict after payment does not cause another charge.
-6. Existing Pro/Business subscriptions route to manage/resume rather than duplicate payment. Another eligible Business scope remains purchasable. Each eligible subscription consumes exactly one launch place; attachment consumes none extra.
-7. Only `checkout=test` selects entry test mode; no rail selector. Test/live API, keys, IDs, quotes, ledger, destination entitlement and return handling cannot cross. Test provider redirect returns to its original allowed test environment, including local test callback where configured.
-8. Authentication (email/signup, OAuth redirect/popup, SSO, email link), browser Back and deep-link entry preserve canonical selection and safe return. No credential/client-secret leakage to URL, persisted draft or analytics. Extend continuation privacy checks as needed.
-9. Decline/cancel/3DS/expired/unknown/paid-pending states have distinct safe recovery, with no duplicate space, subscription, discount place or charge. Confirmed paid status never leads back to an unguarded Pay action.
-10. Business first-month copy says unlimited active users/no extra usage charges and base payable, with dates. Annual is not advertised as twelve free usage months. Metered billing completion is excluded.
-11. Business success offers optional unchecked Pro cancellation at its paid-through date; preserving Pro is default. Separate action success/failure is visible; no automatic cancellation or immediate annual access loss/refund.
-12. Real Mobile Safari test proves layout, keyboard, provider authentication and login return. Narrow desktop/IAB capture alone is not accepted as that evidence.
+### AC: scenario-coverage
+
+All ten matrix rows have local fixture-driven screenshots and isolated test checkout receipts; project presence never gates purchase. Pro has no business-space picker; personal bootstrap is server-owned.
+### AC: checkout-shell
+
+Shared checkout/auth/return/completion hides the app side panel at desktop and mobile widths, retains branding, and gives the specified Back/Cancel/Finish later destination.
+### AC: price-summary
+
+Both summaries show regular price, discount and final amount; monthly promotes yearly “2 months free” with annual due and annual billing terms. Period changes cannot reuse an incorrect-price session. Discount availability is server-confirmed.
+### AC: business-after-payment
+
+New Business buyer reaches payment without creating/selecting a business space or project. Optional `spaceID` is preserved/validated, then linked after verified payment. Without a hint, eligible existing/new choice occurs in paid completion.
+### AC: durable-attachment
+
+Paid-but-unlinked ownership survives missing return, refresh and auth expiry. Provision/link is idempotent under timeout, two tabs, webhook replay and stale membership readmodel. A permission/subscription conflict after payment does not cause another charge.
+### AC: independent-subscriptions
+
+Existing Pro/Business subscriptions route to manage/resume rather than duplicate payment. Another eligible Business scope remains purchasable. Each eligible subscription consumes exactly one launch place; attachment consumes none extra.
+### AC: rail-isolation
+
+Only `checkout=test` selects entry test mode; no rail selector. Test/live API, keys, IDs, quotes, ledger, destination entitlement and return handling cannot cross. Test provider redirect returns to its original allowed test environment, including local test callback where configured.
+### AC: auth-return
+
+Authentication (email/signup, OAuth redirect/popup, SSO, email link), browser Back and deep-link entry preserve canonical selection and safe return. No credential/client-secret leakage to URL, persisted draft or analytics. Extend continuation privacy checks as needed.
+### AC: recovery
+
+Decline/cancel/3DS/expired/unknown/paid-pending states have distinct safe recovery, with no duplicate space, subscription, discount place or charge. Confirmed paid status never leads back to an unguarded Pay action.
+### AC: introductory-usage
+
+Business first-month copy says unlimited active users/no extra usage charges and base payable, with dates. Annual is not advertised as twelve free usage months. Metered billing completion is excluded.
+### AC: optional-pro-cancellation
+
+Business success offers optional unchecked Pro cancellation at its paid-through date; preserving Pro is default. Separate action success/failure is visible; no automatic cancellation or immediate annual access loss/refund.
+### AC: safari-proof
+
+Real Mobile Safari test proves layout, keyboard, provider authentication and login return. Narrow desktop/IAB capture alone is not accepted as that evidence.
+
+### AC: multiple-space-ownership
+
+One user with Pro purchases Business for two different eligible spaces: three independent subscriptions and eligible discount places, with Pro retained. Duplicate base purchase for either space is rejected, including by a second payer. Effective end or a verified full refund releases only that subscription’s place/access. Transfer and settings delivery remain separately tracked follow-up work.
 
 Local review commands, run against the app revision above:
 
@@ -328,7 +411,26 @@ NX_DAEMON=false NX_ISOLATE_PLUGINS=false pnpm nx run datatug-app:test --testFile
 node --test tools/checkout-flow.test.mjs
 ```
 
-The test target still printed configured coverage despite the requested CLI override; its authoritative result was 10 files/129 passing tests, not full-app coverage readiness. Logs retained for this local run at `/private/tmp/datatug-checkout-vitest-20261012.log` and `/private/tmp/datatug-checkout-node-tests-20261012.log`. No implementation changed, so there is no changed-build purchase journey to test yet. The development server's Business configuration limitation prevents a full local provider journey without separate configured test-environment work.
+The original review run still printed configured coverage despite the requested CLI override; its authoritative result was 10 files/129 passing tests, not full-app coverage readiness. Logs retained for that historical run at `/private/tmp/datatug-checkout-vitest-20261012.log` and `/private/tmp/datatug-checkout-node-tests-20261012.log`. No implementation was changed during that review phase. Subsequent implementation evidence is recorded below. The development server's Business configuration limitation prevents a full local provider journey without separate configured test-environment work.
+
+### Implementation progress — 2026-10-12
+
+The approved implementation remains **Implementing**, tracked in [shared-checkout](../../plans/shared-checkout/README.md). The current slice shares the Pro/Business price presentation, removes the visible payment-rail selector, suppresses the application menu throughout checkout/auth/returns without replacing the router outlet, preserves pricing Back context, and distinguishes the original buyer from the beneficiary in Paymentus status/current-access contracts. It does not claim completion of post-payment Business attachment, optional Pro cancellation, subscription settings or transfer.
+
+Local changed-build observations at `localhost:18785`:
+
+- Pro monthly shows regular €19, conditional discount eligibility, €19/month before an authoritative quote, and the €190 yearly / two-month saving. Inline native Sneat sign-up/sign-in is present. No application panel is visible.
+- Selecting yearly updates the URL, price (€190/year), billing controls and authentication return context without reload. Selecting monthly reverses them correctly. This browser test exposed and fixed a stale route-snapshot bug; a regression test supplies a stale snapshot with a newer emitted query map.
+- Company SSO opens the existing component with the complete yearly/test return URL and a branded exit header, without an application panel. Authentication completion was not exercised.
+- At 390×844, both summaries fit the viewport horizontally and remain scrollable. Business discloses the first-month unlimited-user benefit, payable base and multiple-space ownership. Its local TEST API is unconfigured; no Business authentication/payment success is claimed. Responsive Chromium evidence is not Mobile Safari evidence.
+
+Screenshots: [Pro monthly](09-local-shared-pro-monthly.png), [Pro yearly](10-local-shared-pro-yearly.png), [SSO](11-local-checkout-sso.png), [Business mobile](12-local-business-mobile.png), [Pro mobile](13-local-pro-mobile.png), [inline authentication on mobile](14-local-pro-auth-mobile.png).
+
+Verification: 12 checkout Vitest files / 148 tests passed; the 20 Node checkout-flow tests passed; checkout TypeScript/JavaScript lint passed; zoneless-field and SpecScore validation passed. Final Angular development compilation passed (including the price templates and authentication header). The repository currently provides no HTML lint configuration; Angular compilation and rendered-component tests check templates. Focused coverage output is not whole-app coverage acceptance. Local logs: `/private/tmp/shared-checkout-tests.log`, `/private/tmp/shared-checkout-node-tests.log`, `/private/tmp/shared-checkout-lint-ts.log`, `/private/tmp/shared-checkout-build-final.log` and `/private/tmp/shared-checkout-paymentus-tests.log`.
+
+Paymentus regression proof uses in-memory DAL transactions and fake provider ports. One buyer claims two Business spaces with distinct customer/session idempotency and offer-place identities; another authorized administrator resumes each same-space claim rather than creating another. Two separate TEST places are protected and LIVE remains unchanged. Original initiating buyer identity survives resumption, and identity fields grant no membership. A separate ledger test holds personal Pro plus two Business places, retains a scheduled-cancellation place until effective end, releases only the affected terminal place, rejects stale resurrection and leaves LIVE untouched. Existing financial-normalization tests cover full-base-refund evidence; the ledger test consumes normalized facts rather than pretending to submit a refund. `go test ./subscriptions ./contract4paymentus` passed.
+
+**Remaining launch checkout work:** a durable buyer-owned Business billing intent, paid-unlinked reconciliation and post-payment native provisioning/attachment; the current Business endpoint and page still require an eligible space before payment. Preserve that authorization until a complete replacement is wired. Optional end-of-term Pro cancellation also needs a verified owned backend operation. Real provider test payment, authenticated return, delayed reconciliation and physical Mobile Safari proof remain unverified. No live payment, subscription or access-permission mutation was performed.
 
 ## Open Questions
 
@@ -349,7 +451,7 @@ The common checkout, post-payment selection, optional `spaceID`, price breakdown
 
 ### Review status
 
-Self-review checked the ten rows, fields/actions/exits, timing, ownership and rail separation against source and captured UI; corrected the narrow-screen sidebar inference and avoided treating radio synchronization as a fault. No independent agent review was run because Alex explicitly requested Sol without additional agents. This Draft is a reviewable specification, not implementation or launch approval.
+Self-review checked the ten rows, fields/actions/exits, timing, ownership and rail separation against source and captured UI; corrected the narrow-screen sidebar inference and avoided treating radio synchronization as a fault. No independent agent review was run because Alex explicitly requested Sol without additional agents. Alex approved implementation after the review. Implementing status does not imply launch acceptance or verification of the follow-up settings/transfer work.
 
 ---
 *This document follows the https://specscore.md/feature-specification*

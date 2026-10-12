@@ -1,7 +1,9 @@
+import { CheckoutPriceSummaryComponent } from './checkout-price-summary.component';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import {
   ActivatedRoute,
+  ParamMap,
   RouterLink,
   convertToParamMap,
   provideRouter,
@@ -49,6 +51,7 @@ const authenticated = {
   user: { uid: 'buyer', email: 'buyer@example.invalid', isAnonymous: false },
 } as ISneatAuthState;
 let states: BehaviorSubject<ISneatAuthState>;
+let queries: BehaviorSubject<ParamMap>;
 let fixture: ComponentFixture<CheckoutPageComponent>;
 let fetcher: ReturnType<typeof vi.fn>;
 
@@ -59,6 +62,7 @@ async function render(
   recordUID = 'buyer',
 ) {
   states = new BehaviorSubject(initial);
+  queries = new BehaviorSubject(convertToParamMap(query));
   await TestBed.configureTestingModule({
     imports: [CheckoutPageComponent],
     providers: [
@@ -92,7 +96,7 @@ async function render(
       {
         provide: ActivatedRoute,
         useValue: {
-          queryParamMap: of(convertToParamMap(query)),
+          queryParamMap: queries,
           snapshot: {
             data: { checkoutReturn: returning },
             queryParamMap: convertToParamMap(query),
@@ -102,7 +106,10 @@ async function render(
     ],
   })
     .overrideComponent(CheckoutPageComponent, {
-      set: { imports: [RouterLink], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+      set: {
+        imports: [RouterLink, CheckoutPriceSummaryComponent],
+        schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      },
     })
     .compileComponents();
   fixture = TestBed.createComponent(CheckoutPageComponent);
@@ -268,7 +275,9 @@ it('default LIVE checkout uses authenticated normal API config and session for t
     root.querySelector('a[href="https://datatug.app/en/privacy/"]'),
   ).not.toBeNull();
   expect(
-    root.querySelector('a[href="https://datatug.app/en/pricing/"]'),
+    root.querySelector(
+      'a[href="https://datatug.app/en/pricing/?period=yearly"]',
+    ),
   ).not.toBeNull();
   expect(root.textContent).toContain(
     'Please review these policies before continuing to payment.',
@@ -413,3 +422,26 @@ it.each([
     expect(mount).not.toHaveBeenCalled();
   },
 );
+
+it('uses emitted query context when the cached route snapshot still has the previous period', async () => {
+  const root = await render({
+    plan: 'pro',
+    period: 'monthly',
+    checkout: 'test',
+  });
+  queries.next(
+    convertToParamMap({ plan: 'pro', period: 'yearly', checkout: 'test' }),
+  );
+  await fixture.whenStable();
+  expect(root.textContent).toContain('€133.00');
+  expect(root.textContent).toContain('Yearly plan');
+  expect(root.textContent).not.toContain('2 months free');
+  expect(
+    root.querySelector(
+      'a[href="https://datatug.app/en/pricing/?period=yearly&checkout=test"]',
+    ),
+  ).not.toBeNull();
+  expect(fixture.componentInstance['authReturnTo']()).toBe(
+    '/subscribe?plan=pro&period=yearly&checkout=test',
+  );
+});
