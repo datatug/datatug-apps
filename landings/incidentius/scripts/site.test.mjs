@@ -159,6 +159,34 @@ test('both homepages are localized, indexable and honest about development', asy
   }
 });
 
+test('mobile home hero leads with the artwork and keeps navigation in an accessible disclosure', async () => {
+  const layout = await read('../src/layouts/BaseLayout.astro');
+  const css = await read('../src/styles/global.css');
+
+  assert.match(layout, /createElement\('details'\)/);
+  assert.match(layout, /aria-label/);
+  assert.match(layout, /event\.key === 'Escape'/);
+  assert.match(layout, /matchMedia\('\(max-width: 1199px\)'\)/);
+  assert.match(css, /\.site-header \.incidentius-mobile-nav\[open\] \.primary/);
+  assert.match(css, /\.hero-art img \{ width: 100%; border: 0; border-radius: 0;/);
+  assert.match(css, /:lang\(ru\) \.home-heading h1 \{ font-size: clamp\(/);
+  assert.match(css, /\.art-caption \.caption-mobile \{ display: block; \}/);
+
+  for (const [locale, path, menuLabel] of [
+    ['en', '../dist/index.html', 'Open site navigation'],
+    ['ru', '../dist/ru/index.html', 'Открыть меню сайта'],
+  ]) {
+    const html = await read(path);
+    const heading = html.indexOf('class="home-heading"');
+    const art = html.indexOf('<figure class="hero-art">');
+    const supportingCopy = html.indexOf('class="home-details"');
+    assert.ok(heading >= 0 && heading < art && art < supportingCopy, `${locale} places the image between heading and details`);
+    assert.ok(html.includes(`data-mobile-menu-label="${menuLabel}"`), `${locale} menu has a localized accessible label`);
+    assert.ok(html.includes('incidentius-harbor-800.webp'));
+    assert.match(html, /class="caption-mobile"/);
+  }
+});
+
 test('all eight interior routes localize navigation, metadata, and product copy', async () => {
   const pages = [
     ['investigations', 'en', 'Investigation method', 'Incidentius is in development'],
