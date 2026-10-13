@@ -3622,6 +3622,166 @@ test('query workspace clarity shows the cold Related Join action inside the desk
   expect(geometry?.button.bottom).toBeLessThanOrEqual(geometry?.windowHeight ?? 0);
 });
 
+// query-workspace#ac:inline-context-count-chips — native tabs retain full labels and compact raised counts.
+test('query context counts stay inline through two digits and unavailable drafts', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(60_000);
+  const executionCount = await installQueryExecutionMessageProbe(page);
+  await page.goto(AUTHOR_URL);
+  const author = page.getByTestId('tugql-author');
+  await expect(author).toBeVisible({ timeout: 20_000 });
+  await author.getByTestId('author-code-tab').click();
+  const editor = author.getByTestId('query-body-text').locator('.cm-content');
+  const source = savedQuerySource('chinook-invoice-author');
+  const twelveParameters = source.replace(
+    '  @CustomerId integer required',
+    [
+      '  @CustomerId integer required',
+      ...Array.from(
+        { length: 11 },
+        (_, index) => `  @Extra${index + 1} integer required`,
+      ),
+    ].join('\n'),
+  );
+  expect(twelveParameters).not.toBe(source);
+  await pasteCode(page, editor, twelveParameters);
+  const tabs = author.getByTestId('author-context-tabs');
+  const parameters = tabs.locator('ion-segment-button[value="parameters"]');
+  const parameterCount = parameters.locator('ion-chip');
+  await expect(parameterCount).toHaveText('12');
+  await expect(parameterCount).toHaveAttribute('aria-label', '12 parameters');
+  const tabsAreInline = () =>
+    tabs.evaluate((element) => {
+      const segment = element.getBoundingClientRect();
+      const buttons = Array.from(
+        element.querySelectorAll('ion-segment-button'),
+      );
+      return (
+        buttons.length === 3 &&
+        segment.height <= 56 &&
+        segment.right <= innerWidth + 1 &&
+        document.documentElement.scrollWidth <= innerWidth + 1 &&
+        buttons.every((button) => {
+          const label = button.querySelector('ion-label');
+          const chip = button.querySelector('ion-chip');
+          const text =
+            label &&
+            Array.from(label.childNodes).find(
+              (node) =>
+                node.nodeType === Node.TEXT_NODE && node.textContent?.trim(),
+            );
+          if (!text || !chip) return false;
+          const range = document.createRange();
+          range.selectNodeContents(text);
+          const words = range.getBoundingClientRect();
+          const count = chip.getBoundingClientRect();
+          const tab = button.getBoundingClientRect();
+          return (
+            range.getClientRects().length === 1 &&
+            tab.height >= 44 &&
+            words.left >= tab.left - 1 &&
+            count.right <= tab.right + 1 &&
+            count.top < words.top &&
+            count.bottom < words.bottom &&
+            count.bottom > words.top &&
+            count.top >= tab.top - 1 &&
+            count.bottom <= tab.bottom + 1 &&
+            tab.left >= segment.left - 1 &&
+            tab.right <= segment.right + 1
+          );
+        })
+      );
+    });
+
+  for (const { width, height } of [
+    { width: 320, height: 720 },
+    { width: 390, height: 844 },
+    { width: 1100, height: 720 },
+    { width: 1280, height: 720 },
+  ]) {
+    await page.setViewportSize({ width, height });
+    await expect
+      .poll(tabsAreInline, {
+        message: `12 parameters remain inline at ${width}px`,
+      })
+      .toBe(true);
+    await page.screenshot({
+      path: testInfo.outputPath(`context-inline-12-${width}.png`),
+    });
+    testInfo.annotations.push({
+      type: 'screenshot',
+      description: `context-inline-12-${width}.png: expected full Parameters, Sources and Related tabs with a raised two-digit count in one 48px row; observed the count and label overlap vertically inside the tab, with all three tabs inside the segment and no page overflow.`,
+    });
+  }
+
+  const related = tabs.locator('ion-segment-button[value="related"]');
+  const sources = tabs.locator('ion-segment-button[value="sources"]');
+  await related.getByRole('tab').focus();
+  await related.getByRole('tab').press('ArrowLeft');
+  await expect(sources.getByRole('tab')).toBeFocused();
+  await sources.getByRole('tab').press('Enter');
+  await expect
+    .poll(() =>
+      sources.evaluate((element) =>
+        element.classList.contains('segment-button-checked'),
+      ),
+    )
+    .toBe(true);
+  await related.click();
+  await expect
+    .poll(() =>
+      related.evaluate((element) =>
+        element.classList.contains('segment-button-checked'),
+      ),
+    )
+    .toBe(true);
+
+  const noParameters = source
+    .replace(
+      /parameters \(\r?\n {2}@CustomerId integer required\r?\n\)\r?\n/u,
+      '',
+    )
+    .replace(/where i\.CustomerId = @CustomerId\r?\n/u, '');
+  expect(noParameters).not.toBe(source);
+  await page.setViewportSize({ width: 320, height: 720 });
+  await pasteCode(page, editor, noParameters);
+  await expect(parameterCount).toHaveText('0');
+  await expect(parameterCount).toHaveAttribute('aria-label', '0 parameters');
+  await expect
+    .poll(tabsAreInline, { message: 'Zero parameters remain inline at 320px' })
+    .toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath('context-inline-0-320.png'),
+  });
+  testInfo.annotations.push({
+    type: 'screenshot',
+    description:
+      'context-inline-0-320.png: expected full context labels and zero count in one 48px row; observed all three tabs contained within the 320px viewport.',
+  });
+  await pasteCode(page, editor, '');
+  await expect(parameterCount).toHaveText('…');
+  await expect(parameterCount).toHaveAttribute(
+    'aria-label',
+    'Parameter count unavailable',
+  );
+  await expect
+    .poll(tabsAreInline, {
+      message: 'Unavailable parameter count remains inline at 320px',
+    })
+    .toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath('context-inline-unavailable-320.png'),
+  });
+  testInfo.annotations.push({
+    type: 'screenshot',
+    description:
+      'context-inline-unavailable-320.png: expected full context labels and unavailable count in one 48px row; observed all three tabs contained within the 320px viewport.',
+  });
+  expect(await executionCount()).toBe(0);
+  await expect(author.getByTestId('author-sql-preview')).toHaveCount(0);
+});
+
 // query-workspace#ac:author-workspace-clarity — real worker, native Ionic controls.
 test('query workspace clarity preserves active context, inspected row and explicit execution through reflow', async ({ page }, testInfo) => {
   test.setTimeout(90_000);
@@ -3693,7 +3853,10 @@ test('query workspace clarity preserves active context, inspected row and explic
           range.getClientRects().length === 1 &&
           count.left >= tab.left - 1 && count.right <= tab.right + 1 &&
           count.top >= tab.top - 1 && count.bottom <= tab.bottom + 1 &&
-          count.top >= segment.top - 1 && count.bottom <= segment.bottom + 1 && segment.right <= innerWidth + 1;
+          count.top >= segment.top - 1 && count.bottom <= segment.bottom + 1 &&
+          count.left >= textBounds.right && count.top < textBounds.bottom && count.bottom > textBounds.top &&
+          tab.height >= 44 && segment.height <= 56 && segment.right <= innerWidth + 1 &&
+          document.documentElement.scrollWidth <= innerWidth + 1;
         return { fits, text: textBounds.toJSON(), count: count.toJSON(), tab: tab.toJSON(), segment: segment.toJSON(), lines: range.getClientRects().length, font: getComputedStyle(label).font, padding: getComputedStyle(element.shadowRoot?.querySelector('button') ?? element).padding };
       });
       if (!fits.fits) console.log('context clipping', width, value, fits);
