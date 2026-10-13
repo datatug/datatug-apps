@@ -2236,8 +2236,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     )
       return;
     const previousText = (this.queryState.request as ITextQueryRequest).text;
-    if (isAuthorDraft && text !== previousText)
+    if (isAuthorDraft && text !== previousText) {
       this.authorRunParameterAttempt.set(undefined);
+      this.clearAuthorRowFilterStatus();
+    }
     const sourceContextVisible = isAuthorDraft && text !== previousText &&
       (this.activeAuthorContextTab() === 'sources' ||
         this.activeAuthorContextTab() === 'related');

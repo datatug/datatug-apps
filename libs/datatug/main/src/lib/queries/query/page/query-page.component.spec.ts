@@ -1121,9 +1121,14 @@ select i.InvoiceId
     component.undoAuthorTugQLFormat();
     expect(component.queryBodyText()).toBe(joinedSource);
     expect(component.runResult()).toBe(result);
+    expect(component.authorRowFilterStatus()).toBe('');
     component.useAuthorResultValueAsFilter(action);
     expect(component.queryBodyText()).toBe(joinedSource);
     expect(component.authorRowFilterStatus()).toContain('previous draft');
+    component.queryTextChanged(new CustomEvent('ionInput', {
+      detail: { value: joinedSource.replace('limit 100', 'limit 99') },
+    }), false);
+    expect(component.authorRowFilterStatus()).toBe('');
   });
 
   it('uses the latest grid interaction and fetched-page raw row for Current row', async () => {

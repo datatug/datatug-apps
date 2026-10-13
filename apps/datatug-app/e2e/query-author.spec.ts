@@ -4054,3 +4054,25 @@ test('query workspace six polish filters untouched plain Invoice results without
   await expect(author.getByTestId('query-body-text').locator('.cm-content')).not.toContainText(`InvoiceId = ${invoiceId}`);
   expect(await executionCount()).toBe(2);
 });
+
+test('Undo clears the Current row filter confirmation when it restores the draft', async ({ page }) => {
+  const executionCount = await installQueryExecutionMessageProbe(page);
+  await page.goto(AUTHOR_URL);
+  const author = page.getByTestId('tugql-author');
+  await expect(author).toBeVisible({ timeout: 20_000 });
+  await author.getByTestId('author-customer-id').locator('input:not(.cloned-input)').fill('1');
+  await generateAuthorPreview(author);
+  await author.getByTestId('author-run').click();
+  await expect(page.getByTestId('author-execution-receipt')).toContainText('7 rows', { timeout: 20_000 });
+  await page.getByRole('grid').locator('.ag-row[row-index="0"] [col-id="result_0"]').click();
+  const current = page.getByTestId('author-current-row').filter({ visible: true });
+  await current.getByRole('button', { name: 'Use InvoiceId as filter' }).click();
+  await expect(current).toContainText('added to TugQL Query. Undo available.');
+  await expect(page.locator('.query-save-state')).toContainText('Unsaved');
+  await author.getByTestId('author-code-tab').click();
+  await clickEditorAction(page, author, 'Undo');
+  await expect(current).not.toContainText('Undo available.');
+  await expect(page.locator('.query-save-state')).toContainText('Saved');
+  await expect(author.getByTestId('query-body-text').locator('.cm-content')).not.toContainText('i.InvoiceId =');
+  expect(await executionCount()).toBe(1);
+});
