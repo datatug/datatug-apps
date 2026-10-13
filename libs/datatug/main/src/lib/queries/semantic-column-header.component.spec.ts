@@ -8,11 +8,12 @@ describe('meaning header contextual actions', () => {
     const header = document.createElement('div'),
       openMeaning = vi.fn();
     const component = new SemanticColumnHeaderComponent();
+    // AG Grid owns the remaining callbacks; this fixture exercises header actions.
     component.agInit({
       displayName: 'InvoiceId',
       eGridHeader: header,
       openMeaning,
-    } as SemanticHeaderParams);
+    } as unknown as SemanticHeaderParams);
     const context = new MouseEvent('contextmenu', { cancelable: true });
     header.dispatchEvent(context);
     expect(context.defaultPrevented).toBe(true);
