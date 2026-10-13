@@ -130,8 +130,18 @@ describe('AuthorRelationshipSourcesComponent', () => {
     fixture.componentRef.setInput('customerAlreadyJoined', true);
     fixture.componentRef.setInput('statusMessage', '');
     fixture.detectChanges();
+    await fixture.whenStable();
     expect(fixture.nativeElement.querySelector('[data-testid="author-related-customer"]')).toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="author-related-empty"]')?.innerHTML)
-      .toContain('No other admitted related sources');
+      .toContain('Customer is already included');
+    let sourcesRequested = 0;
+    fixture.componentInstance.sourcesRequested.subscribe(() => sourcesRequested++);
+    fixture.nativeElement.querySelector('[data-testid="author-related-sources-link"]').click();
+    expect(sourcesRequested).toBe(1);
+    fixture.componentRef.setInput('sources', undefined);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('[data-testid="author-related-empty"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="author-source-unavailable"]')?.textContent)
+      .toContain('Related metadata is unavailable');
   });
 });

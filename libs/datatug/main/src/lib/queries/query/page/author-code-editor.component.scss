@@ -61,7 +61,7 @@
 }
 
 :host ::ng-deep .author-code-editor-view .cm-editor {
-  height: 10rem;
+  height: clamp(11rem, calc(100dvh - 29rem), 18rem);
   min-height: 0;
 }
 
@@ -106,7 +106,7 @@
   .author-code-sidebar-row {
     grid-column: 2;
     grid-row: 3;
-    max-height: min(24rem, 55vh);
+    max-height: clamp(11rem, calc(100dvh - 29rem), 18rem);
     overflow-y: auto;
   }
 
@@ -139,7 +139,7 @@
   }
 }
 
-@media (max-height: 760px) {
+@media (max-height: 560px) {
   :host ::ng-deep .author-code-editor-view .cm-editor {
     height: 10rem;
   }

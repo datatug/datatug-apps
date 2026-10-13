@@ -1690,8 +1690,9 @@ test('bounded CTE graph previews, runs, preserves results while stale, and runs 
     }),
   ).toBeVisible();
   await expect(
-    resultGrid.getByRole('gridcell', { name: '1', exact: true }),
+    resultGrid.getByRole('gridcell', { name: 'Current row, position 1 1', exact: true }),
   ).toBeVisible();
+  await expect(resultGrid.locator('[col-id="result_0"] .author-inspected-cell > span').last()).toHaveText('1');
 
   await generateAuthorPreview(author);
   await expect(
@@ -2603,7 +2604,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await author.getByTestId('author-context-tabs')
     .locator('ion-segment-button[value="related"]')
     .click();
-  await expect(sourceDiscovery).toContainText('Available related sources', { timeout: 20_000 });
+  await expect(sourceDiscovery.getByTestId('author-related-customer')).toBeVisible({ timeout: 20_000 });
   await expectContextCount('related', 1, '1 available related source');
   await expect(sourceDiscovery).toContainText('FirstName');
   await expect(sourceDiscovery).toContainText('Email');
@@ -2980,12 +2981,8 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   const relatedSources = author.getByTestId('author-source-discovery');
   await expect(relatedSources.getByTestId('author-related-empty')).toBeVisible();
   await expectContextCount('related', 0, '0 available related sources');
-  await expect(author.getByTestId('author-related-parameter-status')).toContainText(
-    'Customer ID · 1 set',
-  );
+  await expect(author.getByTestId('author-related-parameter-status')).toHaveCount(0);
   expect(workersStarted).toBe(workerCountBeforeInspection);
-  await author.getByTestId('author-related-parameters-link').click();
-  await expect(author.getByTestId('author-customer-id')).toBeVisible();
   if (isMobile) {
     await page.locator('#workspace-jump-to-results').click();
     await expect(currentRow).toContainText('Position 2 of 7');
@@ -3541,4 +3538,283 @@ test('Preview syntax errors navigate to the exact unchanged draft without runnin
     'disabled',
     '',
   );
+});
+
+// query-workspace#ac:author-workspace-clarity — preview text and SQL geometry.
+test('query workspace clarity keeps the Preview heading and SQL readable at desktop and phone widths', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto(AUTHOR_URL);
+  const author = page.getByTestId('tugql-author');
+  await expect(author).toBeVisible({ timeout: 20_000 });
+  await author.getByTestId('author-code-tab').click();
+  await generateAuthorPreview(author);
+  const preview = author.getByTestId('author-sql-preview');
+  await expect(preview).toContainText('Preview · Not executed');
+  const sql = preview.locator('pre');
+  await expect(sql).toContainText(/select/iu);
+  const originalSql = await sql.innerText();
+  for (const { width, height } of [
+    { width: 1280, height: 720 },
+    { width: 390, height: 844 },
+    { width: 320, height: 720 },
+  ]) {
+    await page.setViewportSize({ width, height });
+    await activePage(page).evaluate(active => {
+      const scroller = active.querySelector('ion-content')?.shadowRoot?.querySelector('.inner-scroll');
+      if (scroller) scroller.scrollTop = 0;
+    });
+    const geometry = await preview.evaluate(root => {
+      const heading = root.querySelector('.author-preview-heading');
+      const title = heading?.querySelector('h3');
+      const actions = root.querySelector('.author-preview-actions');
+      const sqlScroll = root.querySelector('.author-sql-scroll');
+      const controls = ['author-preview', 'author-wrap-sql', 'author-copy-sql']
+        .map(id => root.querySelector(`[data-testid="${id}"]`)?.getBoundingClientRect().toJSON());
+      if (!heading || !title || !actions || !sqlScroll || controls.some(bounds => !bounds)) return undefined;
+      const titleRange = document.createRange();
+      titleRange.selectNodeContents(title);
+      return {
+        preview: root.getBoundingClientRect().toJSON(),
+        heading: heading.getBoundingClientRect().toJSON(),
+        title: titleRange.getBoundingClientRect().toJSON(),
+        titleLines: titleRange.getClientRects().length,
+        actions: actions.getBoundingClientRect().toJSON(),
+        sql: sqlScroll.getBoundingClientRect().toJSON(),
+        controls,
+        viewportHeight: innerHeight,
+      };
+    });
+    expect(geometry, `Preview geometry at ${width}px`).toBeDefined();
+    expect(geometry?.heading.width).toBeGreaterThanOrEqual(width === 1280 ? 300 : 220);
+    expect(geometry?.titleLines).toBe(1);
+    expect(geometry?.title.left).toBeGreaterThanOrEqual((geometry?.heading.left ?? 0) - 1);
+    expect(geometry?.title.right).toBeLessThanOrEqual((geometry?.heading.right ?? 0) + 1);
+    expect(geometry?.actions.top).toBeGreaterThanOrEqual((geometry?.heading.bottom ?? 0) - 1);
+    expect(geometry?.sql.top).toBeGreaterThanOrEqual((geometry?.actions.bottom ?? 0) - 1);
+    expect(geometry?.sql.top).toBeLessThan((geometry?.viewportHeight ?? 0) - 32);
+    expect(geometry?.sql.right).toBeLessThanOrEqual((geometry?.preview.right ?? 0) + 1);
+    for (const control of geometry?.controls ?? []) {
+      expect(control?.height).toBeGreaterThanOrEqual(44);
+      expect(control?.right).toBeLessThanOrEqual((geometry?.preview.right ?? 0) + 1);
+    }
+    await page.screenshot({ path: testInfo.outputPath(`preview-readable-${width}.png`) });
+    await expect(sql).toHaveText(originalSql);
+  }
+  const wrap = preview.getByTestId('author-wrap-sql');
+  const copy = preview.getByRole('button', { name: 'Copy SQL' });
+  await wrap.click();
+  await expect(wrap).toHaveAttribute('aria-pressed', 'true');
+  await expect(sql).toHaveText(originalSql);
+  if (testInfo.project.use.browserName === 'webkit') {
+    await copy.tap();
+  } else {
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await copy.focus();
+    await copy.press('Enter');
+  }
+  await expect(preview.getByTestId('author-copy-sql-status')).toContainText('Preview SQL copied');
+});
+
+// query-workspace#ac:author-workspace-clarity — cold desktop action visibility.
+test('query workspace clarity shows the cold Related Join action inside the desktop sidebar', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto(AUTHOR_URL);
+  const author = page.getByTestId('tugql-author');
+  await expect(author).toBeVisible({ timeout: 20_000 });
+  await author.getByTestId('author-code-tab').click();
+  await author.getByTestId('author-context-tabs')
+    .locator('ion-segment-button[value="related"]')
+    .click();
+  const join = author.getByTestId('author-related-join');
+  await expect(join).toBeVisible({ timeout: 20_000 });
+  await expectIonicButtonDisabled(join, false);
+  const geometry = await join.evaluate(element => {
+    const sidebar = element.closest('.author-code-sidebar-row');
+    if (!sidebar) return undefined;
+    const button = element.getBoundingClientRect();
+    const viewport = sidebar.getBoundingClientRect();
+    return {
+      button: button.toJSON(), viewport: viewport.toJSON(),
+      scrollTop: sidebar.scrollTop, windowHeight: innerHeight,
+    };
+  });
+  expect(geometry).toBeDefined();
+  expect(geometry?.scrollTop).toBe(0);
+  expect(geometry?.button.top).toBeGreaterThanOrEqual((geometry?.viewport.top ?? 0) - 1);
+  expect(geometry?.button.bottom).toBeLessThanOrEqual((geometry?.viewport.bottom ?? 0) + 1);
+  expect(geometry?.button.bottom).toBeLessThanOrEqual(geometry?.windowHeight ?? 0);
+});
+
+// query-workspace#ac:author-workspace-clarity — real worker, native Ionic controls.
+test('query workspace clarity preserves active context, inspected row and explicit execution through reflow', async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  const executionCount = await installQueryExecutionMessageProbe(page);
+  await page.goto(AUTHOR_URL);
+  const author = page.getByTestId('tugql-author');
+  await expect(author).toBeVisible({ timeout: 20_000 });
+  await author.getByTestId('author-code-tab').click();
+  const tabs = author.getByTestId('author-context-tabs');
+  await tabs.locator('ion-segment-button[value="related"]').click();
+  await author.getByTestId('author-run-recovery').click();
+  await expect(author.getByTestId('author-customer-id').locator('input:not(.cloned-input)')).toBeFocused();
+  await author.getByTestId('author-customer-id').locator('input:not(.cloned-input)').fill('1');
+  await tabs.locator('ion-segment-button[value="related"]').click();
+  await author.getByTestId('author-related-join').click();
+  await expect(tabs.locator('ion-segment-button[value="sources"] ion-chip')).toHaveText('2');
+  await expect(author.getByTestId('author-related-empty')).toContainText('Customer is already included');
+  await author.getByTestId('author-related-metadata-details').getByText('Metadata coverage and cost').click();
+  await expect(author.getByTestId('author-related-metadata-details')).toContainText('Cross-source cost: unknown');
+  await author.getByTestId('author-related-metadata-details').getByText('Metadata coverage and cost').click();
+  await expect(author.getByTestId('author-run-readiness')).toContainText('Preview the current draft');
+  await author.getByTestId('author-run-recovery').click();
+  await expectIonicButtonDisabled(author.getByTestId('author-run'), false);
+  await expect(author.getByTestId('author-format-status')).toHaveCount(0);
+  expect(await executionCount()).toBe(0);
+  await author.getByTestId('author-run').click();
+  const receipt = page.getByTestId('author-execution-receipt');
+  await expect(receipt).toContainText('7 rows', { timeout: 20_000 });
+  await author.getByTestId('author-code-tab').click();
+  const cells = page.getByRole('grid').locator('.ag-row[row-index="0"] [col-id="result_0"]');
+  await cells.click();
+  await page.keyboard.press('ArrowDown');
+  const inlineRow = page.getByTestId('author-current-row');
+  await expect(inlineRow).toContainText('Position 2 of 7');
+  await expect(page.getByRole('grid').locator('.ag-row[row-index="1"]')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('grid').locator('.ag-row[row-index="0"]')).toHaveAttribute('aria-selected', 'false');
+  await page.locator('#author-results-heading').focus();
+  await expect(page.locator('.author-inspected-row-marker')).toHaveAttribute('aria-label', 'Current row, position 2');
+  const retainedSource = await author.locator('.cm-content').innerText();
+  const retainedReceipt = await receipt.locator('.author-receipt-summary').innerText();
+  const widths = [320, 1100, 1280, 390, 1440, 1024];
+  for (const width of widths) {
+    await page.setViewportSize({ width, height: width === 1024 ? 560 : 720 });
+    await expect.poll(() => tabs.locator('ion-segment-button[value="related"]').evaluate(element => element.classList.contains('segment-button-checked'))).toBe(true);
+    await tabs.scrollIntoViewIfNeeded();
+    for (const value of ['parameters', 'sources', 'related']) {
+      const tab = tabs.locator(`ion-segment-button[value="${value}"]`);
+      await expect(tab.locator('ion-chip')).toBeVisible();
+      const fits = await tab.evaluate((element) => {
+        const segmentElement = element.parentElement;
+        const label = element.querySelector('ion-label');
+        const chip = element.querySelector('ion-chip');
+        if (!segmentElement || !label || !chip) return { fits: false };
+        const segment = segmentElement.getBoundingClientRect();
+        const text = Array.from(label.childNodes).find(node => node.nodeType === Node.TEXT_NODE && node.textContent?.trim());
+        if (!text) return { fits: false };
+        const range = document.createRange();
+        range.selectNodeContents(text);
+        const textBounds = range.getBoundingClientRect();
+        const count = chip.getBoundingClientRect();
+        const tab = element.getBoundingClientRect();
+        const fits = textBounds.left >= segment.left - 1 && textBounds.right <= segment.right + 1 &&
+          textBounds.left >= tab.left - 1 && textBounds.right <= tab.right + 1 &&
+          textBounds.top >= tab.top - 1 && textBounds.bottom <= tab.bottom + 1 &&
+          textBounds.top >= segment.top - 1 && textBounds.bottom <= segment.bottom + 1 &&
+          range.getClientRects().length === 1 &&
+          count.left >= tab.left - 1 && count.right <= tab.right + 1 &&
+          count.top >= tab.top - 1 && count.bottom <= tab.bottom + 1 &&
+          count.top >= segment.top - 1 && count.bottom <= segment.bottom + 1 && segment.right <= innerWidth + 1;
+        return { fits, text: textBounds.toJSON(), count: count.toJSON(), tab: tab.toJSON(), segment: segment.toJSON(), lines: range.getClientRects().length, font: getComputedStyle(label).font, padding: getComputedStyle(element.shadowRoot?.querySelector('button') ?? element).padding };
+      });
+      if (!fits.fits) console.log('context clipping', width, value, fits);
+      expect(fits.fits, `${value} label and count fit at ${width}px`).toBe(true);
+    }
+    await expect(inlineRow).toContainText('Position 2 of 7');
+    expect(await author.locator('.cm-content').innerText()).toBe(retainedSource);
+    expect(await receipt.locator('.author-receipt-summary').innerText()).toBe(retainedReceipt);
+    expect(await executionCount()).toBe(1);
+    await page.screenshot({ path: testInfo.outputPath(`clarity-reflow-${width}.png`) });
+    testInfo.annotations.push({ type: 'screenshot', description: `clarity-reflow-${width}.png: expected Parameters, Sources and active Related labels/counts to fit; observed all three text/count bounds inside the segment and viewport, retained draft/receipt/row and one explicit execution.` });
+  }
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await activePage(page).evaluate(active => {
+    const scroller = active.querySelector('ion-content')?.shadowRoot?.querySelector('.inner-scroll');
+    if (scroller) scroller.scrollTop = 0;
+  });
+  const firstRow = page.getByRole('grid').locator('.ag-row[row-index="0"]');
+  const geometry = await firstRow.evaluate(row => {
+    const bounds = row.getBoundingClientRect();
+    return { top: bounds.top, bottom: bounds.bottom, left: bounds.left, right: bounds.right, height: innerHeight, width: innerWidth };
+  });
+  console.log('clarity first row geometry', geometry);
+  await page.screenshot({ path: testInfo.outputPath('clarity-desktop.png') });
+  testInfo.annotations.push({ type: 'screenshot', description: `clarity-desktop.png: expected all context labels/counts and first result row visible at1280x720; observed first row top${geometry.top}/bottom${geometry.bottom}, labels/counts fit in the preceding bounds assertions.` });
+  await expect(firstRow).toBeInViewport({ ratio: 0.999 });
+  expect(await author.locator('.cm-scroller').evaluate(element => element.clientHeight)).toBeGreaterThan(160);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('#workspace-jump-to-results').click();
+  const open = page.getByTestId('author-row-details-open');
+  const sheet = page.getByTestId('author-row-details-sheet');
+  const presented = sheet.evaluate(element => new Promise<void>(resolve => element.addEventListener('ionModalDidPresent', () => resolve(), { once: true })));
+  await open.click();
+  await presented;
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByTestId('author-current-row')).toContainText('Position 2 of 7');
+  await expect(sheet.getByTestId('author-current-row')).toContainText('121');
+  await page.getByTestId('author-row-details-close').click({ trial: true });
+  const sheetFields = sheet.getByTestId('author-current-row-field');
+  await expect(sheetFields.filter({ hasText: 'InvoiceId' }).locator('.author-current-row-value')).toBeInViewport({ ratio: 0.999 });
+  await expect(sheetFields.filter({ hasText: 'InvoiceDate' }).locator('.author-current-row-value')).toBeInViewport({ ratio: 0.999 });
+  await page.screenshot({ path: testInfo.outputPath('clarity-phone-row-sheet.png') });
+  testInfo.annotations.push({ type: 'screenshot', description: 'clarity-phone-row-sheet.png: expected presented80% native sheet to show the same raw row as inline Current row; observed native didPresent, position2 of7, InvoiceId121 and rawInvoiceDate both fully inside viewport, with native Close action.' });
+  await page.getByTestId('author-row-details-close').click();
+  await expect(sheet).toBeHidden();
+  await expect(sheet).not.toHaveClass(/show-modal/u);
+  await expect(open.locator('button')).toBeFocused();
+  await open.click();
+  // Wait for the native presentation animation before sending a keyboard cancel.
+  await page.getByTestId('author-row-details-close').click({ trial: true });
+  await page.keyboard.press('Escape');
+  await expect(sheet).toBeHidden();
+  await expect(sheet).not.toHaveClass(/show-modal/u);
+  await expect(open.locator('button')).toBeFocused();
+  await open.click();
+  await page.getByTestId('author-row-details-close').click({ trial: true });
+  await sheet.locator('ion-backdrop').click({ position: { x: 10, y: 10 } });
+  await expect(sheet).toBeHidden();
+  await expect(sheet).not.toHaveClass(/show-modal/u);
+  await expect(open.locator('button')).toBeFocused();
+  expect(await executionCount()).toBe(1);
+  // Exact timestamps remain in the collapsed receipt and retained history details.
+  await receipt.getByText('Execution details').click();
+  await expect(receipt).toContainText(/Observed at \d{4}-/u);
+});
+
+// The admitted CTE projects enough real fields to exercise horizontal virtualization.
+test('query workspace clarity keeps inspected row visible through horizontal pan and outside focus', async ({ page }) => {
+  const executionCount = await installQueryExecutionMessageProbe(page);
+  await page.goto(CTE_AUTHOR_URL);
+  const author = page.getByTestId('tugql-author');
+  await expect(author).toBeVisible({ timeout: 20_000 });
+  await author.getByTestId('author-customer-id').locator('input:not(.cloned-input)').fill('1');
+  await author.getByTestId('author-customer-id').locator('input:not(.cloned-input)').press('Tab');
+  await generateAuthorPreview(author);
+  await expect(author.getByTestId('author-sql-preview')).toContainText('Preview · Not executed');
+  await expectIonicButtonDisabled(author.getByTestId('author-run'), false);
+  await author.getByTestId('author-run').click();
+  await expect(page.getByTestId('author-execution-receipt')).toContainText('1 row', { timeout: 20_000 });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('#workspace-jump-to-results').click();
+  const grid = page.getByRole('grid');
+  await grid.locator('.ag-row[row-index="0"] [col-id="result_0"]').click();
+  const current = page.getByTestId('author-current-row');
+  await expect(current).toContainText('Position 1 of 1');
+  const raw = await current.innerText();
+  const horizontal = page.locator('.author-result-grid-viewport .ag-body-horizontal-scroll-viewport');
+  await horizontal.evaluate(element => { element.scrollLeft = element.scrollWidth; });
+  await expect.poll(() => horizontal.evaluate(element => element.scrollLeft)).toBeGreaterThan(0);
+  await expect.poll(() => grid.evaluate(element => {
+    const marker = element.querySelector('.author-inspected-row-marker');
+    if (!marker) return true;
+    const bounds = marker.getBoundingClientRect();
+    return bounds.right <= element.getBoundingClientRect().left;
+  })).toBe(true);
+  await page.locator('#author-results-heading').focus();
+  const row = grid.locator('.ag-row[row-index="0"]');
+  await expect(row).toHaveClass(/author-inspected-row/u);
+  const style = await row.evaluate(element => ({ weight: getComputedStyle(element).fontWeight, cue: getComputedStyle(element).boxShadow }));
+  expect(Number(style.weight)).toBeGreaterThanOrEqual(600);
+  expect(style.cue).not.toBe('none');
+  expect(await current.innerText()).toBe(raw);
+  expect(await executionCount()).toBe(1);
 });

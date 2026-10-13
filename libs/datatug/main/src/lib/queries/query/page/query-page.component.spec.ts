@@ -637,6 +637,170 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     '',
   ].join('\n');
 
+  // query-workspace#ac:author-workspace-clarity: explain the actual model gates.
+  it('explains each Run gate and only previews after the explicit recovery action', async () => {
+    component = await createTugQLAuthor(authorSource);
+    const sqlite = TestBed.inject(PublicSqliteQueryService);
+    const prepare = vi.spyOn(sqlite, 'prepareTugQL').mockResolvedValue(
+      comparisonPreview(component.authorDraftRevision()),
+    );
+    const run = vi.spyOn(sqlite, 'runTugQL');
+    expect(component.authorRunReadiness()).toMatchObject({ blocked: true, action: 'parameters', message: 'Customer ID is required to Run.' });
+    component.authorCustomerId.set('1.5');
+    expect(component.authorRunReadiness().message).toContain('whole number');
+    component.authorCustomerId.set('1');
+    expect(component.authorRunReadiness()).toMatchObject({ blocked: true, action: 'preview' });
+    component.setAuthorMode('preview');
+    component.authorContextTabChanged('related');
+    expect(prepare).not.toHaveBeenCalled();
+    component.recoverAuthorRun();
+    expect(component.authorRunReadiness().message).toBe('Preparing SQL preview…');
+    await runFixture.whenStable();
+    expect(prepare).toHaveBeenCalledOnce();
+    expect(component.authorRunReadiness().blocked).toBe(false);
+    expect(run).not.toHaveBeenCalled();
+    component.authorDraftRevision.update((value) => value + 1);
+    expect(component.authorRunReadiness().action).toBe('preview');
+    component.authorError.set('Unsupported source');
+    expect(component.authorRunReadiness()).toMatchObject({ blocked: true, action: 'code' });
+    component.queryState = { ...component.queryState, isSaving: true };
+    expect(component.authorRunReadiness().message).toBe('Saving query…');
+    component.running.set(true);
+    expect(component.authorRunReadiness().message).toBe('Running query…');
+  });
+
+  it('releases preview loading after an asynchronous failure', async () => {
+    component = await createTugQLAuthor(authorSource);
+    component.authorCustomerId.set('1');
+    let rejectPreview!: (error: Error) => void;
+    vi.spyOn(TestBed.inject(PublicSqliteQueryService), 'prepareTugQL').mockImplementation(() => new Promise((_resolve, reject) => { rejectPreview = reject; }));
+    const pending = component.previewTugql();
+    expect(component.authorPreviewLoading()).toBe(true);
+    rejectPreview(new Error('Unsupported execution profile'));
+    await pending;
+    expect(component.authorPreviewLoading()).toBe(false);
+    expect(component.authorRunReadiness()).toMatchObject({ blocked: true, action: 'code' });
+    expect(component.authorError()).toBe('Unsupported execution profile');
+  });
+
+  it('offers a useful runner limitation for a parameter-free draft without an input', async () => {
+    component = await createTugQLAuthor('from Invoice as i\nlimit 100\nselect i.InvoiceId\n');
+    expect(component.authorHasCustomerIdParameter()).toBe(false);
+    expect(component.authorRunReadiness()).toMatchObject({ blocked: true, action: 'code' });
+    expect(component.authorRunReadiness().message).toContain('parameter-free draft');
+    component.authorCodeChanged(authorSource);
+    component.authorCustomerId.set('1');
+    expect(component.authorHasCustomerIdParameter()).toBe(true);
+    component.authorCodeChanged('from Invoice as i\nlimit 100\nselect i.InvoiceId\n');
+    expect(component.authorHasCustomerIdParameter()).toBe(false);
+    expect(component.authorCustomerIdValid()).toBe(true);
+    component.authorPlan.set(comparisonPreview(component.authorDraftRevision()));
+    expect(component.authorRunReadiness()).toMatchObject({ blocked: true, action: 'code' });
+    component.authorContextTab.set('related');
+    component.recoverAuthorRun();
+    expect(component.authorMode()).toBe('code');
+    expect(component.activeAuthorContextTab()).toBe('related');
+  });
+
+  it('allows a fresh explicit preview after editing a pending draft and fences the old finally', async () => {
+    component = await createTugQLAuthor(authorSource);
+    component.authorCustomerId.set('1');
+    let resolveOld!: (plan: PublicSqliteQueryPreview) => void;
+    let resolveNew!: (plan: PublicSqliteQueryPreview) => void;
+    vi.spyOn(TestBed.inject(PublicSqliteQueryService), 'prepareTugQL')
+      .mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve; }))
+      .mockImplementationOnce(() => new Promise(resolve => { resolveNew = resolve; }));
+    const pendingOld = component.previewTugql();
+    const oldRevision = component.authorDraftRevision();
+    expect(component.authorPreviewLoading()).toBe(true);
+    component.authorCodeChanged(authorSource + '\n');
+    expect(component.authorPreviewLoading()).toBe(false);
+    expect(component.authorRunReadiness().action).toBe('preview');
+    const pendingNew = component.previewTugql();
+    expect(component.authorPreviewLoading()).toBe(true);
+    resolveOld(comparisonPreview(oldRevision));
+    await pendingOld;
+    expect(component.authorPreviewLoading()).toBe(true);
+    expect(component.authorPlan()).toBeUndefined();
+    const currentPlan = comparisonPreview(component.authorDraftRevision());
+    resolveNew(currentPlan);
+    await pendingNew;
+    expect(component.authorPreviewLoading()).toBe(false);
+    expect(component.authorPlan()).toBe(currentPlan);
+  });
+
+  it('keeps the inspected marker and sheet on the latest raw row, closes on replacement and restores caller focus', async () => {
+    component = await createTugQLAuthor(authorSource);
+    const rawRows = [[{ type: 'integer', value: '121' }], [{ type: 'integer', value: '143' }]] as const;
+    const result = { ...historyResultFor(queryDef), recordset: { columns: [{ name: 'InvoiceId', type: 'integer' }], rows: rawRows } } as FederatedQueryResult;
+    component.runResult.set(result);
+    await component.changeRelatedResultSet('affiliations');
+    const rows = component.resultGridRows();
+    const refreshCells = vi.fn();
+    const rule = component.authorResultRowClassRules['author-inspected-row'];
+    if (typeof rule !== 'function') throw new Error('Expected an identity-based row rule');
+    const appliedRules: [number, boolean][] = [];
+    const nodes = rows.map((data, index) => ({ data, setData: vi.fn(() => appliedRules.push([index, rule({ data } as never)])) }));
+    const api = { getDisplayedRowAtIndex: () => ({ data: rows[1] }), refreshCells,
+      forEachNode: (visit: (node: typeof nodes[number]) => void) => nodes.forEach(visit) };
+    component.authorResultSelectionChanged({ api, selectedNodes: [{ data: rows[0], isSelected: () => true }] } as never);
+    component.authorResultCellFocused({ rowIndex: 1, api } as never);
+    component.authorResultCellFocused({ rowIndex: null, api } as never);
+    expect(component.currentAuthorResultRow()?.row).toBe(rawRows[1]);
+    expect(appliedRules.slice(-2)).toEqual([[0, false], [1, true]]);
+    expect(nodes[0].setData).toHaveBeenCalledWith(rows[0]);
+    expect(nodes[1].setData).toHaveBeenCalledWith(rows[1]);
+    const renderer = component.resultGridColumnDefs()[0].cellRenderer;
+    const cell = renderer({ data: rows[1], value: '143', node: { rowIndex: 1 } });
+    expect(cell.querySelector('[aria-label="Current row, position 2"]')?.textContent).toBe('▶');
+    expect(renderer({ data: rows[0], value: '121', node: { rowIndex: 0 } }).textContent).toBe('121');
+    expect(refreshCells).toHaveBeenCalledWith({ columns: ['result_0'], force: true });
+    const caller = document.createElement('button');
+    document.body.append(caller);
+    component.openAuthorRowDetails({ currentTarget: caller } as unknown as Event);
+    expect(component.authorRowDetailsOpen()).toBe(true);
+    component.authorResultRowClicked({ data: rows[0], api } as never);
+    expect(component.currentAuthorResultRow()?.row).toBe(rawRows[0]);
+    component.authorRowDetailsDismissed();
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+    expect(document.activeElement).toBe(caller);
+    component.openAuthorRowDetails({ currentTarget: caller } as unknown as Event);
+    component.resultPageLoading.set(true);
+    await runFixture.whenStable();
+    expect(component.authorRowDetailsOpen()).toBe(false);
+    component.resultPageLoading.set(false);
+    component.openAuthorRowDetails({ currentTarget: caller } as unknown as Event);
+    component.runResult.set({ ...result });
+    expect(component.currentAuthorResultRow()).toBeUndefined();
+    expect(rule({ data: rows[0] } as never)).toBe(false);
+    expect(rule({ data: rows[1] } as never)).toBe(false);
+    expect(rule({ data: {} } as never)).toBe(false);
+    await runFixture.whenStable();
+    expect(component.authorRowDetailsOpen()).toBe(false);
+    component.authorResultRowClicked({ data: rows[1], api } as never);
+    expect(component.currentAuthorResultRow()).toBeUndefined();
+    caller.remove();
+  });
+
+  it('does not restore sheet focus into a connected cached page after leaving its route', async () => {
+    component = await createTugQLAuthor(authorSource);
+    component.runResult.set({ ...historyResultFor(queryDef), recordset: {
+      columns: [{ name: 'InvoiceId', type: 'integer' }], rows: [[{ type: 'integer', value: '1' }]],
+    } } as FederatedQueryResult);
+    await component.changeRelatedResultSet('affiliations');
+    component.authorResultRowClicked({ data: component.resultGridRows()[0] } as never);
+    const caller = document.createElement('button');
+    const destination = document.createElement('button');
+    document.body.append(caller, destination);
+    component.openAuthorRowDetails({ currentTarget: caller } as unknown as Event);
+    component.ionViewWillLeave();
+    destination.focus();
+    component.authorRowDetailsDismissed();
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+    expect(document.activeElement).toBe(destination);
+    caller.remove(); destination.remove();
+  });
+
   it('keeps unsupported declarations visible alongside the supported Customer ID control', async () => {
     component = await createTugQLAuthor(`parameters (
   @CustomerId integer required
@@ -1730,7 +1894,7 @@ select i.InvoiceId
       'Applied the admitted join with FirstName outputs',
     );
     expect(component.authorSourceMessage()).toContain(
-      'Current project metadata admitted the Invoice-to-Customer relationship',
+      'Related metadata ready.',
     );
     expect(execute).not.toHaveBeenCalled();
     expect(prepare).not.toHaveBeenCalled();

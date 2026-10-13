@@ -2,7 +2,7 @@
   <ion-item lines="none">
     <ion-label>
       <h3>Related sources</h3>
-      <p>Inspect pinned Chinook SQLite source metadata.</p>
+      <p>Pinned Chinook relationships</p>
     </ion-label>
     <ion-buttons slot="end">
       <ion-button
@@ -25,7 +25,6 @@
   @if (sources(); as admitted) {
     @if (eligibleCustomerSource()) {
     <ion-list>
-      <ion-list-header><ion-label>Available related sources</ion-label></ion-list-header>
       <ion-item
         button
         detail
@@ -92,22 +91,31 @@
           </ion-accordion-group>
         </ion-list>
       }
-      <ion-item lines="none">
-        <ion-label class="ion-text-wrap">
-          <p>Views are not included in this admitted schema snapshot.</p>
-          <p>Current LIMIT: {{ currentLimit() }} · Cross-source cost: {{ admitted.crossSourceCost }}</p>
-          <p>Joined InvoiceDate values keep the pinned SQLite DATETIME as raw text.</p>
-        </ion-label>
-      </ion-item>
     </ion-list>
     } @else {
       <ion-item lines="none" data-testid="author-related-empty">
         <ion-label class="ion-text-wrap">
-          <p>No other admitted related sources are available for the sources currently in this query.</p>
-          <p>The public catalog snapshot is limited to the pinned Invoice–Customer relationship.</p>
+          <p>Customer is already included. No other known relation is available in this snapshot.</p>
         </ion-label>
+        <ion-buttons slot="end"><ion-button fill="clear" data-testid="author-related-sources-link" (click)="sourcesRequested.emit()">Sources</ion-button></ion-buttons>
       </ion-item>
     }
+    <ion-accordion-group data-testid="author-related-metadata-details">
+      <ion-accordion value="coverage">
+        <ion-item slot="header"><ion-label class="ion-text-wrap">Metadata coverage and cost</ion-label></ion-item>
+        <ion-list slot="content">
+          <ion-item lines="none"><ion-label class="ion-text-wrap">
+            <p>This public catalog snapshot covers only the declared Invoice–Customer relationship. Views are not included.</p>
+            <p>{{ admitted.relationshipProvenance }} · {{ admitted.cardinality }}</p>
+            <p>Current LIMIT: {{ currentLimit() }} · Cross-source cost: {{ admitted.crossSourceCost }}</p>
+            <p>Joined InvoiceDate values keep the pinned SQLite DATETIME as raw text.</p>
+            <p>Schema version: {{ admitted.schemaVersion }} · Relationship version: {{ admitted.relationship.version }}</p>
+            <p>Fixture SHA-256: {{ admitted.fixtureSha256 }}</p>
+            <p>Refresh reads metadata only; it never executes this query.</p>
+          </ion-label></ion-item>
+        </ion-list>
+      </ion-accordion>
+    </ion-accordion-group>
     @if (review(); as proposed) {
       <section class="author-source-review" data-testid="author-source-review-panel" aria-label="Review proposed relationship draft">
         <ion-item lines="none"><ion-label><h3>Review the proposed draft</h3></ion-label></ion-item>
@@ -181,7 +189,7 @@
   } @else if (!loading()) {
     <ion-item lines="none" data-testid="author-source-unavailable">
       <ion-label class="ion-text-wrap">
-        <p>{{ statusMessage() || 'Admitted source metadata is unavailable for this project.' }}</p>
+        <p>Related metadata is unavailable. Refresh to check again.</p>
       </ion-label>
     </ion-item>
   }
