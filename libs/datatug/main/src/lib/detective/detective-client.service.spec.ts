@@ -250,4 +250,66 @@ describe('DetectiveClientService', () => {
       api.post.mock.calls[1][1].operationId,
     );
   });
+
+  it('uses authenticated hosted Incident and private knowledge routes without client actor fields', () => {
+    const cloud = {
+      kind: 'cloud' as const,
+      storage: 'firestore' as const,
+      spaceID: 'S1',
+      project: 'P1',
+    };
+    api.get.mockReturnValue(of({ caseId: 'case-1', incidents: [] }));
+    api.post.mockReturnValue(of({ receipt: 'accepted' }));
+    client.linkedIncidents(cloud, 'case-1').subscribe();
+    expect(api.get.mock.calls[0][0]).toBe('datatug/detective/incidents');
+    expect(api.get.mock.calls[0][1].get('caseId')).toBe('case-1');
+    client
+      .incidentAction(cloud, {
+        type: 'create',
+        caseId: 'case-1',
+        title: 'Invoice mismatch',
+        environment: 'demo',
+        ifMatch: 3,
+      })
+      .subscribe();
+    expect(api.post.mock.calls[0][0]).toBe('datatug/detective/incident_action');
+    expect(api.post.mock.calls[0][1]).toEqual({
+      storage: 'firestore',
+      spaceID: 'S1',
+      project: 'P1',
+      type: 'create',
+      caseId: 'case-1',
+      title: 'Invoice mismatch',
+      environment: 'demo',
+      ifMatch: 3,
+      operationId: expect.any(String),
+    });
+    client.knowledgeProposals(cloud).subscribe();
+    expect(api.get.mock.calls[1][0]).toBe(
+      'datatug/detective/knowledge_proposals',
+    );
+    client
+      .knowledgeAction(cloud, {
+        type: 'review',
+        proposalId: 'p1',
+        reviewNote: 'Verified source receipts',
+        ifMatch: 2,
+      })
+      .subscribe();
+    expect(api.post.mock.calls[1][0]).toBe(
+      'datatug/detective/knowledge_proposal_action',
+    );
+    expect(api.post.mock.calls[1][1]).toEqual({
+      storage: 'firestore',
+      spaceID: 'S1',
+      project: 'P1',
+      type: 'review',
+      proposalId: 'p1',
+      reviewNote: 'Verified source receipts',
+      ifMatch: 2,
+      operationId: expect.any(String),
+    });
+    expect(api.post.mock.calls[1][1]).not.toHaveProperty('actor');
+    expect(api.post.mock.calls[1][1]).not.toHaveProperty('securityContextId');
+  });
 });

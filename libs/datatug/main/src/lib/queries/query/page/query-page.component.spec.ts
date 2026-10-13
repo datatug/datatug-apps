@@ -85,6 +85,7 @@ import type { ComparisonWorkerObservation } from '../../public-sqlite-comparison
 import { testAuthorProof } from './author-query-proof.spec-helper';
 import { GitHubProjectActivityService } from '../../../services/project/github-project-activity.service';
 import { DetectiveClientService } from '../../../detective/detective-client.service';
+import type { DetectiveState } from '../../../detective/models';
 import { graphFixturePlan } from '../../public-data/native-graph.spec-helper';
 import { graphStableIdentity } from '../../public-data/native-graph-executor';
 import {
@@ -107,10 +108,26 @@ const repositoryRoot = resolvePath(
 const resolve = (path: string): string => resolvePath(repositoryRoot, path);
 
 const detectiveClientStub = () => ({
-  state: vi.fn(() => of({ checks: [], validators: [], queryValidators: [],
-    cases: [], runs: [], scenarios: [], runsHasMore: false, environments: [],
-    capabilities: { localOnly: false, canRead: true, canWrite: false,
-      canRun: false, maxRows: 0, maxFanout: 0 } })),
+  state: vi.fn(() =>
+    of({
+      checks: [],
+      validators: [],
+      queryValidators: [],
+      cases: [],
+      runs: [],
+      scenarios: [],
+      runsHasMore: false,
+      environments: [],
+      capabilities: {
+        localOnly: false,
+        canRead: true,
+        canWrite: false,
+        canRun: false,
+        maxRows: 0,
+        maxFanout: 0,
+      },
+    }),
+  ),
   runHostedQuery: vi.fn(),
   action: vi.fn(),
 });
@@ -155,9 +172,8 @@ function setRouterNavigation(
   const currentNavigation = router.currentNavigation as unknown as ReturnType<
     typeof vi.fn
   >;
-  const lastSuccessfulNavigation = router.lastSuccessfulNavigation as unknown as ReturnType<
-    typeof vi.fn
-  >;
+  const lastSuccessfulNavigation =
+    router.lastSuccessfulNavigation as unknown as ReturnType<typeof vi.fn>;
   currentNavigation.mockReturnValue({ id, extras: { info } });
   if (successful) {
     lastSuccessfulNavigation.mockReturnValue({ id, extras: { info } });
@@ -597,10 +613,15 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     };
     created.project = {
       ref: { storeId: 'github.com', projectId: 'demo@buyer@project' },
-      summary: { id: 'demo@buyer@project', title: 'Demo project', access: 'public' },
+      summary: {
+        id: 'demo@buyer@project',
+        title: 'Demo project',
+        access: 'public',
+      },
     };
-    (created as unknown as { comparisonAccessProjectRef?: IProjectRef }).comparisonAccessProjectRef =
-      created.project.ref;
+    (
+      created as unknown as { comparisonAccessProjectRef?: IProjectRef }
+    ).comparisonAccessProjectRef = created.project.ref;
     created.comparisonProjectAccess.set('public');
     created.queryDef.set(definition);
     created.setAuthorMode('code');
@@ -662,14 +683,28 @@ select i.InvoiceId
     expect(component.authorHasCustomerIdParameter()).toBe(true);
     expect(component.authorUnsupportedParameterNames()).toEqual(['Other']);
     const template = readFileSync(
-      resolve('libs/datatug/main/src/lib/queries/query/page/query-page.component.html'),
+      resolve(
+        'libs/datatug/main/src/lib/queries/query/page/query-page.component.html',
+      ),
       'utf8',
     );
-    const panelStart = template.indexOf('data-testid="author-parameters-panel"');
-    const supportedControls = template.indexOf('@if (authorHasCustomerIdParameter())', panelStart);
-    const unsupportedDeclarations = template.indexOf('@if (authorUnsupportedParameterNames().length)', supportedControls);
+    const panelStart = template.indexOf(
+      'data-testid="author-parameters-panel"',
+    );
+    const supportedControls = template.indexOf(
+      '@if (authorHasCustomerIdParameter())',
+      panelStart,
+    );
+    const unsupportedDeclarations = template.indexOf(
+      '@if (authorUnsupportedParameterNames().length)',
+      supportedControls,
+    );
     expect(unsupportedDeclarations).toBeGreaterThan(supportedControls);
-    expect(template.slice(unsupportedDeclarations - 24, unsupportedDeclarations).trimEnd()).toMatch(/\}\s*$/u);
+    expect(
+      template
+        .slice(unsupportedDeclarations - 24, unsupportedDeclarations)
+        .trimEnd(),
+    ).toMatch(/\}\s*$/u);
   });
 
   it('does not report zero parameters while an invalid draft hides its declarations', async () => {
@@ -683,9 +718,13 @@ select (
     await settleQueryPage();
 
     expect(component.authorParameterDeclarationCount()).toBeUndefined();
-    expect(component.authorParameterCountLabel()).toBe('Parameter count unavailable');
+    expect(component.authorParameterCountLabel()).toBe(
+      'Parameter count unavailable',
+    );
     const template = readFileSync(
-      resolve('libs/datatug/main/src/lib/queries/query/page/query-page.component.html'),
+      resolve(
+        'libs/datatug/main/src/lib/queries/query/page/query-page.component.html',
+      ),
       'utf8',
     );
     expect(template).toContain(
@@ -699,45 +738,73 @@ select (
       '@else if (authorParameterDeclarationCount() === undefined)',
     );
     expect(
-      template.indexOf('No query parameters are declared in this draft.', zeroParameterBranch),
+      template.indexOf(
+        'No query parameters are declared in this draft.',
+        zeroParameterBranch,
+      ),
     ).toBeGreaterThan(zeroParameterBranch);
   });
 
   it('requires explicit source metadata refresh after editing a valid draft in Sources', async () => {
     component = await createTugQLAuthor(authorSource);
-    const discovery = vi.spyOn(
+    const discovery = vi
+      .spyOn(
+        TestBed.inject(PublicSqliteQueryService),
+        'discoverInvoiceCustomerSources',
+      )
+      .mockResolvedValue(sourceDiscovery);
+    const execute = vi.spyOn(
       TestBed.inject(PublicSqliteQueryService),
-      'discoverInvoiceCustomerSources',
-    ).mockResolvedValue(sourceDiscovery);
-    const execute = vi.spyOn(TestBed.inject(PublicSqliteQueryService), 'runTugQL');
-    const prepare = vi.spyOn(TestBed.inject(PublicSqliteQueryService), 'prepareTugQL');
+      'runTugQL',
+    );
+    const prepare = vi.spyOn(
+      TestBed.inject(PublicSqliteQueryService),
+      'prepareTugQL',
+    );
     component.authorContextTab.set('sources');
     component.authorSourcesToggled(true);
-    await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
+    await vi.waitFor(() =>
+      expect(component.authorSourceMetadata()).toBe(sourceDiscovery),
+    );
     expect(discovery).toHaveBeenCalledTimes(1);
 
-    component.queryTextChanged(new CustomEvent('ionInput', {
-      detail: { value: authorSource.replace('limit 100', 'limit 99') },
-    }), false);
+    component.queryTextChanged(
+      new CustomEvent('ionInput', {
+        detail: { value: authorSource.replace('limit 100', 'limit 99') },
+      }),
+      false,
+    );
     expect(component.authorSourceMetadata()).toBeUndefined();
-    expect(component.authorSourceMessage()).toContain('metadata is stale. Refresh');
+    expect(component.authorSourceMessage()).toContain(
+      'metadata is stale. Refresh',
+    );
     expect(discovery).toHaveBeenCalledTimes(1);
     await settleQueryPage();
 
     const pageTemplate = readFileSync(
-      resolve('libs/datatug/main/src/lib/queries/query/page/query-page.component.html'),
+      resolve(
+        'libs/datatug/main/src/lib/queries/query/page/query-page.component.html',
+      ),
       'utf8',
     );
     const sourceComponentTemplate = readFileSync(
-      resolve('libs/datatug/main/src/lib/queries/query/page/author-participating-sources.component.html'),
+      resolve(
+        'libs/datatug/main/src/lib/queries/query/page/author-participating-sources.component.html',
+      ),
       'utf8',
     );
-    expect(pageTemplate).toContain('(refreshRequested)="authorSourcesToggled(true)"');
-    expect(sourceComponentTemplate).toContain('data-testid="author-sources-refresh"');
+    expect(pageTemplate).toContain(
+      '(refreshRequested)="authorSourcesToggled(true)"',
+    );
+    expect(sourceComponentTemplate).toContain(
+      'data-testid="author-sources-refresh"',
+    );
     expect(sourceComponentTemplate).toContain('[disabled]="disabled()"');
     component.authorSourcesToggled(true);
     await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(2));
-    await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
+    await vi.waitFor(() =>
+      expect(component.authorSourceMetadata()).toBe(sourceDiscovery),
+    );
     expect(execute).not.toHaveBeenCalled();
     expect(prepare).not.toHaveBeenCalled();
   });
@@ -779,17 +846,15 @@ select i.InvoiceId
     await runFixture.whenStable();
     expect(discovery).not.toHaveBeenCalled();
     expect(component.authorSourceMetadata()).toBeUndefined();
-    expect(component.authorSourceMessage()).toContain('only main.Invoice and the declared Invoice–Customer relationship');
+    expect(component.authorSourceMessage()).toContain(
+      'only main.Invoice and the declared Invoice–Customer relationship',
+    );
   });
 
   it('keeps Current row bound to the exact related recordset snapshot across context-tab changes', async () => {
     component = await createTugQLAuthor(authorSource);
-    const mainRow = [
-      { type: 'integer', value: '1' },
-    ] as const;
-    const relatedRow = [
-      { type: 'string', value: 'related-value' },
-    ] as const;
+    const mainRow = [{ type: 'integer', value: '1' }] as const;
+    const relatedRow = [{ type: 'string', value: 'related-value' }] as const;
     const result = {
       ...historyResultFor(queryDef),
       recordset: {
@@ -814,9 +879,9 @@ select i.InvoiceId
     await component.changeRelatedResultSet('locations');
     const relatedSnapshotKey = component.authorResultSnapshotKey();
 
-    expect(component.resultGridColumnDefs().map((column) => column.headerName)).toEqual([
-      'Location',
-    ]);
+    expect(
+      component.resultGridColumnDefs().map((column) => column.headerName),
+    ).toEqual(['Location']);
     const gridRow = component.resultGridRows()[0];
     expect(gridRow).toEqual({ result_0: 'related-value' });
     component.authorResultSelectionChanged({
@@ -897,11 +962,14 @@ select i.InvoiceId
     expect(component.currentAuthorResultRow()?.row).toBe(pageRaw);
     expect(component.currentAuthorResultRow()?.position).toBe(101);
 
-    component.runResult.update((current) => ({
-      ...current,
-      totalRows: undefined,
-      hasMore: true,
-    }) as FederatedQueryResult);
+    component.runResult.update(
+      (current) =>
+        ({
+          ...current,
+          totalRows: undefined,
+          hasMore: true,
+        }) as FederatedQueryResult,
+    );
     expect(component.resultTotalRowsKnown()).toBe(false);
   });
 
@@ -910,7 +978,10 @@ select i.InvoiceId
     const originalRow = [{ type: 'integer', value: '1' }] as const;
     component.runResult.set({
       ...historyResultFor(queryDef),
-      recordset: { columns: [{ name: 'InvoiceId', type: 'integer' }], rows: [originalRow] },
+      recordset: {
+        columns: [{ name: 'InvoiceId', type: 'integer' }],
+        rows: [originalRow],
+      },
       totalRows: undefined,
       hasMore: true,
     } as FederatedQueryResult);
@@ -924,7 +995,8 @@ select i.InvoiceId
     expect(component.resultTotalRows()).toBe(100);
 
     const currentResult = component.runResult();
-    if (!currentResult) throw new Error('Expected the retained first-page result');
+    if (!currentResult)
+      throw new Error('Expected the retained first-page result');
     component.runResult.set({
       ...currentResult,
       totalRows: 200,
@@ -949,7 +1021,10 @@ select i.InvoiceId
       component.runResult.set(firstResult);
       let rejectPage!: (error: Error) => void;
       federatedGetPageMock.mockImplementationOnce(
-        () => new Promise((_resolve, reject) => { rejectPage = reject; }),
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectPage = reject;
+          }),
       );
 
       const pending = component.changeResultPage(1);
@@ -958,12 +1033,15 @@ select i.InvoiceId
       let replacementResult: FederatedQueryResult | undefined;
       if (replacement === 'new result') {
         replacementResult = historyResultFor(queryDef);
-        (component as unknown as {
-          showAttemptResult(result: FederatedQueryResult): void;
-        }).showAttemptResult(replacementResult);
+        (
+          component as unknown as {
+            showAttemptResult(result: FederatedQueryResult): void;
+          }
+        ).showAttemptResult(replacementResult);
       } else {
-        (component as unknown as { invalidateHistoryScope(): void })
-          .invalidateHistoryScope();
+        (
+          component as unknown as { invalidateHistoryScope(): void }
+        ).invalidateHistoryScope();
       }
 
       expect(component.resultPageLoading()).toBe(false);
@@ -971,7 +1049,8 @@ select i.InvoiceId
       await pending;
       expect(component.resultPageLoading()).toBe(false);
       expect(component.runError()).toBeUndefined();
-      if (replacementResult) expect(component.runResult()).toBe(replacementResult);
+      if (replacementResult)
+        expect(component.runResult()).toBe(replacementResult);
       else expect(component.runResult()).toBeUndefined();
     },
   );
@@ -984,7 +1063,10 @@ select i.InvoiceId
     const firstResult = {
       ...historyResultFor(queryDef),
       localResult: { id: 'same-result', generation: 1 },
-      recordset: { columns: [{ name: 'InvoiceId', type: 'integer' }], rows: [firstRow] },
+      recordset: {
+        columns: [{ name: 'InvoiceId', type: 'integer' }],
+        rows: [firstRow],
+      },
     } as FederatedQueryResult;
     const replacement = {
       ...firstResult,
@@ -1009,7 +1091,9 @@ select i.InvoiceId
       descriptor: {} as LocalResultDescriptor,
     } as Awaited<ReturnType<typeof service.openLocalResult>>);
     await component.openHistoricalResult('same-result');
-    expect(component.selectedHistoricalResult()).toEqual(replacement.localResult);
+    expect(component.selectedHistoricalResult()).toEqual(
+      replacement.localResult,
+    );
     expect(component.currentAuthorResultRow()).toBeUndefined();
     await runFixture.whenStable();
     expect(component.selectedAuthorResultRow()).toBeUndefined();
@@ -1029,8 +1113,16 @@ select i.InvoiceId
       draftRevision,
       authorProof: { profile: 'invoice-query', resolvedQuery: { limit: 100 } },
       outputColumns: [
-        { name: 'InvoiceId', type: 'integer', lineage: [{ source: 'i', field: 'InvoiceId' }] },
-        { name: 'InvoiceDate', type: 'string', lineage: [{ source: 'i', field: 'InvoiceDate' }] },
+        {
+          name: 'InvoiceId',
+          type: 'integer',
+          lineage: [{ source: 'i', field: 'InvoiceId' }],
+        },
+        {
+          name: 'InvoiceDate',
+          type: 'string',
+          lineage: [{ source: 'i', field: 'InvoiceDate' }],
+        },
       ],
       relationship: {
         id: 'invoice-customer',
@@ -1044,7 +1136,9 @@ select i.InvoiceId
     } as PublicSqliteQueryPreview;
   }
 
-  function comparisonObservation(targetIndex: number): ComparisonWorkerObservation {
+  function comparisonObservation(
+    targetIndex: number,
+  ): ComparisonWorkerObservation {
     const target = PUBLIC_CHINOOK_COMPARISON_TARGETS[targetIndex];
     if (!target) throw new Error('Expected a pinned comparison target.');
     return {
@@ -1069,13 +1163,23 @@ select i.InvoiceId
     component = await createTugQLAuthor(authorSource);
     const sqlite = TestBed.inject(PublicSqliteQueryService);
     const preview = vi.spyOn(sqlite, 'prepareTugQL').mockResolvedValue({
-      fixedBindings: [], bindingNames: ['CustomerId'], sourceId: 'chinook-sqlite',
-      fixtureSha256: 'fixture-sha256', schemaVersion: 'schema-v1',
-      draftRevision: component.authorDraftRevision(), authorProof: {
-        profile: 'invoice-query', resolvedQuery: { limit: 100 },
-      }, relationship: {
-        id: 'invoice-customer', version: 'schema-v1', fromSource: 'i', toSource: 'c',
-        joinType: 'inner', pairs: [{ fromField: 'CustomerId', toField: 'CustomerId' }],
+      fixedBindings: [],
+      bindingNames: ['CustomerId'],
+      sourceId: 'chinook-sqlite',
+      fixtureSha256: 'fixture-sha256',
+      schemaVersion: 'schema-v1',
+      draftRevision: component.authorDraftRevision(),
+      authorProof: {
+        profile: 'invoice-query',
+        resolvedQuery: { limit: 100 },
+      },
+      relationship: {
+        id: 'invoice-customer',
+        version: 'schema-v1',
+        fromSource: 'i',
+        toSource: 'c',
+        joinType: 'inner',
+        pairs: [{ fromField: 'CustomerId', toField: 'CustomerId' }],
       },
     } as unknown as PublicSqliteQueryPreview);
     const compareSide = vi.spyOn(sqlite, 'runComparisonSide');
@@ -1125,7 +1229,9 @@ select i.InvoiceId
     component = await createTugQLAuthor(authorSource);
     await settleQueryPage();
     component.authorCustomerId.set('1');
-    component.authorPlan.set(comparisonPreview(component.authorDraftRevision()));
+    component.authorPlan.set(
+      comparisonPreview(component.authorDraftRevision()),
+    );
     const sqlite = TestBed.inject(PublicSqliteQueryService);
     vi.spyOn(sqlite, 'prepareTugQL').mockResolvedValue(
       comparisonPreview(component.authorDraftRevision(), {
@@ -1135,33 +1241,57 @@ select i.InvoiceId
     const compareSide = vi.spyOn(sqlite, 'runComparisonSide');
 
     expect(component.comparisonBlocker()).toContain('Ready');
-    component.authorPlan.set(comparisonPreview(component.authorDraftRevision(), {
-      expandedSource: `${authorSource}\njoin Customer as c on i.CustomerId = c.CustomerId`,
-    }));
-    expect(component.comparisonBlocker()).toContain('Review and apply the displayed relationship completion');
-    component.authorPlan.set(comparisonPreview(component.authorDraftRevision()));
+    component.authorPlan.set(
+      comparisonPreview(component.authorDraftRevision(), {
+        expandedSource: `${authorSource}\njoin Customer as c on i.CustomerId = c.CustomerId`,
+      }),
+    );
+    expect(component.comparisonBlocker()).toContain(
+      'Review and apply the displayed relationship completion',
+    );
+    component.authorPlan.set(
+      comparisonPreview(component.authorDraftRevision()),
+    );
     await component.runComparisonBoth();
 
     expect(compareSide).not.toHaveBeenCalled();
     expect(component.comparisonSnapshot()).toBeUndefined();
-    expect(component.comparisonMessage()).toContain('Review and apply the displayed relationship completion');
+    expect(component.comparisonMessage()).toContain(
+      'Review and apply the displayed relationship completion',
+    );
   });
 
   it('blocks the maintained integer-heavy projection before comparison workers start', async () => {
     component = await createTugQLAuthor(authorSource);
     await settleQueryPage();
     component.authorCustomerId.set('1');
-    component.authorPlan.set(comparisonPreview(component.authorDraftRevision(), {
-      outputColumns: [
-        { name: 'InvoiceId', type: 'integer', lineage: [{ source: 'i', field: 'InvoiceId' }] },
-        { name: 'CustomerId', type: 'integer', lineage: [{ source: 'i', field: 'CustomerId' }] },
-        { name: 'FirstName', type: 'string', lineage: [{ source: 'c', field: 'FirstName' }] },
-      ],
-    }));
+    component.authorPlan.set(
+      comparisonPreview(component.authorDraftRevision(), {
+        outputColumns: [
+          {
+            name: 'InvoiceId',
+            type: 'integer',
+            lineage: [{ source: 'i', field: 'InvoiceId' }],
+          },
+          {
+            name: 'CustomerId',
+            type: 'integer',
+            lineage: [{ source: 'i', field: 'CustomerId' }],
+          },
+          {
+            name: 'FirstName',
+            type: 'string',
+            lineage: [{ source: 'c', field: 'FirstName' }],
+          },
+        ],
+      }),
+    );
     const sqlite = TestBed.inject(PublicSqliteQueryService);
     const runSide = vi.spyOn(sqlite, 'runComparisonSide');
 
-    expect(component.comparisonBlocker()).toContain('Select InvoiceId plus supported text fields');
+    expect(component.comparisonBlocker()).toContain(
+      'Select InvoiceId plus supported text fields',
+    );
     await component.runComparisonBoth();
 
     expect(runSide).not.toHaveBeenCalled();
@@ -1173,15 +1303,18 @@ select i.InvoiceId
     agentContext.securityContextId.set(undefined);
     await settleQueryPage();
     component.authorCustomerId.set('1');
-    component.authorPlan.set(comparisonPreview(component.authorDraftRevision()));
+    component.authorPlan.set(
+      comparisonPreview(component.authorDraftRevision()),
+    );
     const sqlite = TestBed.inject(PublicSqliteQueryService);
     vi.spyOn(sqlite, 'prepareTugQL').mockResolvedValue(
       comparisonPreview(component.authorDraftRevision()),
     );
-    const runSide = vi.spyOn(sqlite, 'runComparisonSide').mockImplementation(
-      async (_project, _definition, _plan, target) =>
+    const runSide = vi
+      .spyOn(sqlite, 'runComparisonSide')
+      .mockImplementation(async (_project, _definition, _plan, target) =>
         comparisonObservation(target === 'chinook-baseline' ? 0 : 1),
-    );
+      );
 
     expect(component.comparisonBlocker()).toContain('Ready');
     await component.runComparisonBoth();
@@ -1191,11 +1324,12 @@ select i.InvoiceId
       accessClassification: 'public',
       pageMemoryScope: `public-github:${JSON.stringify(component.project?.ref)}`,
     });
-    expect(component.comparisonSnapshot()?.context).not.toHaveProperty('agentSecurityContextId');
-    expect(component.comparisonSnapshot()?.sides.map((side) => side.status)).toEqual([
-      'complete',
-      'complete',
-    ]);
+    expect(component.comparisonSnapshot()?.context).not.toHaveProperty(
+      'agentSecurityContextId',
+    );
+    expect(
+      component.comparisonSnapshot()?.sides.map((side) => side.status),
+    ).toEqual(['complete', 'complete']);
   });
 
   it.each(['private', 'protected', undefined] as const)(
@@ -1211,16 +1345,23 @@ select i.InvoiceId
           ? { id: 'demo@buyer@project', title: 'Demo project', access }
           : undefined,
       };
-      (component as unknown as { comparisonAccessProjectRef?: IProjectRef }).comparisonAccessProjectRef =
-        project.ref;
+      (
+        component as unknown as { comparisonAccessProjectRef?: IProjectRef }
+      ).comparisonAccessProjectRef = project.ref;
       component.comparisonProjectAccess.set(access);
-      (component as unknown as { syncScopeAndBindings(): void }).syncScopeAndBindings();
+      (
+        component as unknown as { syncScopeAndBindings(): void }
+      ).syncScopeAndBindings();
       component.authorCustomerId.set('1');
-      component.authorPlan.set(comparisonPreview(component.authorDraftRevision()));
+      component.authorPlan.set(
+        comparisonPreview(component.authorDraftRevision()),
+      );
       const sqlite = TestBed.inject(PublicSqliteQueryService);
       const runSide = vi.spyOn(sqlite, 'runComparisonSide');
 
-      expect(component.comparisonBlocker()).toContain('Public project access is required');
+      expect(component.comparisonBlocker()).toContain(
+        'Public project access is required',
+      );
       await component.runComparisonBoth();
       await component.retryComparisonSide('chinook-baseline');
       await component.compareCompletedResults();
@@ -1234,17 +1375,27 @@ select i.InvoiceId
     component = await createTugQLAuthor(authorSource);
     await settleQueryPage();
     component.authorCustomerId.set('1');
-    component.authorPlan.set(comparisonPreview(component.authorDraftRevision()));
-    const sqlite = TestBed.inject(PublicSqliteQueryService);
-    const prepare = vi.spyOn(sqlite, 'prepareTugQL').mockResolvedValue(
+    component.authorPlan.set(
       comparisonPreview(component.authorDraftRevision()),
     );
-    const pending: { signal?: AbortSignal; resolve: (value: ComparisonWorkerObservation) => void }[] = [];
-    const runSide = vi.spyOn(sqlite, 'runComparisonSide').mockImplementation(
-      (_project, _definition, _plan, _target, signal) =>
-        new Promise((resolve) => pending.push({ signal, resolve })),
-    );
-    const oldResult = { kind: 'session-comparison', diff: { summary: { changed: 1 } } } as never;
+    const sqlite = TestBed.inject(PublicSqliteQueryService);
+    const prepare = vi
+      .spyOn(sqlite, 'prepareTugQL')
+      .mockResolvedValue(comparisonPreview(component.authorDraftRevision()));
+    const pending: {
+      signal?: AbortSignal;
+      resolve: (value: ComparisonWorkerObservation) => void;
+    }[] = [];
+    const runSide = vi
+      .spyOn(sqlite, 'runComparisonSide')
+      .mockImplementation(
+        (_project, _definition, _plan, _target, signal) =>
+          new Promise((resolve) => pending.push({ signal, resolve })),
+      );
+    const oldResult = {
+      kind: 'session-comparison',
+      diff: { summary: { changed: 1 } },
+    } as never;
 
     const running = component.runComparisonBoth();
     await vi.waitFor(() => expect(pending).toHaveLength(2));
@@ -1253,25 +1404,40 @@ select i.InvoiceId
     if (!project) throw new Error('Test project should be available');
     component.project = {
       ...project,
-      summary: { id: 'demo@buyer@project', title: 'Demo project', access: 'private' },
+      summary: {
+        id: 'demo@buyer@project',
+        title: 'Demo project',
+        access: 'private',
+      },
     };
-    (component as unknown as { comparisonAccessProjectRef?: IProjectRef }).comparisonAccessProjectRef =
-      project.ref;
+    (
+      component as unknown as { comparisonAccessProjectRef?: IProjectRef }
+    ).comparisonAccessProjectRef = project.ref;
     component.comparisonProjectAccess.set('private');
-    (component as unknown as { syncScopeAndBindings(): void }).syncScopeAndBindings();
+    (
+      component as unknown as { syncScopeAndBindings(): void }
+    ).syncScopeAndBindings();
 
     expect(pending.every((entry) => entry.signal?.aborted)).toBe(true);
     expect(component.comparisonSnapshot()?.invalidated).toBe(true);
-    expect(component.comparisonBlocker()).toContain('Public project access is required');
+    expect(component.comparisonBlocker()).toContain(
+      'Public project access is required',
+    );
     await component.retryComparisonSide('chinook-baseline');
     await component.compareCompletedResults();
     expect(prepare).toHaveBeenCalledTimes(1);
     expect(runSide).toHaveBeenCalledTimes(2);
     expect(component.comparisonResult()).toBe(oldResult);
 
-    pending.forEach((entry, index) => entry.resolve(comparisonObservation(index)));
+    pending.forEach((entry, index) =>
+      entry.resolve(comparisonObservation(index)),
+    );
     await running;
-    expect(component.comparisonSnapshot()?.sides.some((side) => side.status === 'complete')).toBe(false);
+    expect(
+      component
+        .comparisonSnapshot()
+        ?.sides.some((side) => side.status === 'complete'),
+    ).toBe(false);
     expect(component.comparisonResult()).toBe(oldResult);
   });
 
@@ -1280,17 +1446,27 @@ select i.InvoiceId
     component = await createTugQLAuthor(authorSource, projectEvents);
     await settleQueryPage();
     component.authorCustomerId.set('1');
-    component.authorPlan.set(comparisonPreview(component.authorDraftRevision()));
-    const sqlite = TestBed.inject(PublicSqliteQueryService);
-    const prepare = vi.spyOn(sqlite, 'prepareTugQL').mockResolvedValue(
+    component.authorPlan.set(
       comparisonPreview(component.authorDraftRevision()),
     );
-    const pending: { signal?: AbortSignal; resolve: (value: ComparisonWorkerObservation) => void }[] = [];
-    const runSide = vi.spyOn(sqlite, 'runComparisonSide').mockImplementation(
-      (_project, _definition, _plan, _target, signal) =>
-        new Promise((resolve) => pending.push({ signal, resolve })),
-    );
-    const previousResult = { kind: 'session-comparison', diff: { summary: { changed: 1 } } } as never;
+    const sqlite = TestBed.inject(PublicSqliteQueryService);
+    const prepare = vi
+      .spyOn(sqlite, 'prepareTugQL')
+      .mockResolvedValue(comparisonPreview(component.authorDraftRevision()));
+    const pending: {
+      signal?: AbortSignal;
+      resolve: (value: ComparisonWorkerObservation) => void;
+    }[] = [];
+    const runSide = vi
+      .spyOn(sqlite, 'runComparisonSide')
+      .mockImplementation(
+        (_project, _definition, _plan, _target, signal) =>
+          new Promise((resolve) => pending.push({ signal, resolve })),
+      );
+    const previousResult = {
+      kind: 'session-comparison',
+      diff: { summary: { changed: 1 } },
+    } as never;
     const sourceBeforeClear = component.queryBodyText();
 
     const running = component.runComparisonBoth();
@@ -1299,12 +1475,16 @@ select i.InvoiceId
     projectEvents.next(undefined);
     // Environment/query updates can sync bindings after navigation clears the
     // nav project. A retained page summary must not restore public admission.
-    (component as unknown as { syncScopeAndBindings(): void }).syncScopeAndBindings();
+    (
+      component as unknown as { syncScopeAndBindings(): void }
+    ).syncScopeAndBindings();
 
     expect(component.comparisonProjectAccess()).toBeUndefined();
     expect(component.comparisonSnapshot()?.invalidated).toBe(true);
     expect(pending.every((entry) => entry.signal?.aborted)).toBe(true);
-    expect(component.comparisonBlocker()).toContain('Public project access is required');
+    expect(component.comparisonBlocker()).toContain(
+      'Public project access is required',
+    );
     await component.retryComparisonSide('chinook-baseline');
     await component.compareCompletedResults();
     expect(prepare).toHaveBeenCalledTimes(1);
@@ -1312,9 +1492,15 @@ select i.InvoiceId
     expect(component.queryBodyText()).toBe(sourceBeforeClear);
     expect(component.comparisonResult()).toBe(previousResult);
 
-    pending.forEach((entry, index) => entry.resolve(comparisonObservation(index)));
+    pending.forEach((entry, index) =>
+      entry.resolve(comparisonObservation(index)),
+    );
     await running;
-    expect(component.comparisonSnapshot()?.sides.some((side) => side.status === 'complete')).toBe(false);
+    expect(
+      component
+        .comparisonSnapshot()
+        ?.sides.some((side) => side.status === 'complete'),
+    ).toBe(false);
     expect(component.comparisonResult()).toBe(previousResult);
   });
 
@@ -1323,37 +1509,63 @@ select i.InvoiceId
     component = await createTugQLAuthor(authorSource, projectEvents);
     await settleQueryPage();
     component.authorCustomerId.set('1');
-    component.authorPlan.set(comparisonPreview(component.authorDraftRevision()));
+    component.authorPlan.set(
+      comparisonPreview(component.authorDraftRevision()),
+    );
     const sqlite = TestBed.inject(PublicSqliteQueryService);
     const runSide = vi.spyOn(sqlite, 'runComparisonSide');
     const currentRef = component.project?.ref;
     if (!currentRef) throw new Error('Expected the maintained public project.');
-    (component as unknown as { onProjRefChanged(ref: typeof currentRef): void }).onProjRefChanged(currentRef);
+    (
+      component as unknown as { onProjRefChanged(ref: typeof currentRef): void }
+    ).onProjRefChanged(currentRef);
 
     expect(component.comparisonProjectAccess()).toBe('public');
     expect(component.comparisonBlocker()).toContain('Ready');
 
-    (component as unknown as { onProjRefChanged(ref: { storeId: string; projectId: string; branch: string }): void }).onProjRefChanged({
+    (
+      component as unknown as {
+        onProjRefChanged(ref: {
+          storeId: string;
+          projectId: string;
+          branch: string;
+        }): void;
+      }
+    ).onProjRefChanged({
       storeId: 'github.com',
       projectId: 'another/public/project',
       branch: 'main',
     });
 
     expect(component.comparisonProjectAccess()).toBeUndefined();
-    expect(component.comparisonBlocker()).toContain('Public project access is required');
+    expect(component.comparisonBlocker()).toContain(
+      'Public project access is required',
+    );
     await component.runComparisonBoth();
     expect(runSide).not.toHaveBeenCalled();
 
     projectEvents.next({
       ref: currentRef,
-      summary: { id: 'demo@buyer@project', title: 'Old project', access: 'public' },
+      summary: {
+        id: 'demo@buyer@project',
+        title: 'Old project',
+        access: 'public',
+      },
     });
     expect(component.project?.ref.projectId).toBe('another/public/project');
     expect(component.comparisonProjectAccess()).toBeUndefined();
 
     projectEvents.next({
-      ref: { storeId: 'github.com', projectId: 'another/public/project', branch: 'main' },
-      summary: { id: 'another/public/project', title: 'New project', access: 'public' },
+      ref: {
+        storeId: 'github.com',
+        projectId: 'another/public/project',
+        branch: 'main',
+      },
+      summary: {
+        id: 'another/public/project',
+        title: 'New project',
+        access: 'public',
+      },
     });
     expect(component.comparisonProjectAccess()).toBe('public');
   });
@@ -1362,26 +1574,36 @@ select i.InvoiceId
     ['schema metadata', { schemaVersion: 'schema-v2' }],
     ['compiled SQL', { sql: 'SELECT i.InvoiceId FROM Invoice as i LIMIT 99' }],
   ] as const)(
-    'refuses fresh %s changes at the same draft revision and preserves the prior diff', async (_label, changed) => {
+    'refuses fresh %s changes at the same draft revision and preserves the prior diff',
+    async (_label, changed) => {
       component = await createTugQLAuthor(authorSource);
       await settleQueryPage();
       component.authorCustomerId.set('1');
       const reviewed = comparisonPreview(component.authorDraftRevision());
       component.authorPlan.set(reviewed);
       const sqlite = TestBed.inject(PublicSqliteQueryService);
-      const prepare = vi.spyOn(sqlite, 'prepareTugQL')
+      const prepare = vi
+        .spyOn(sqlite, 'prepareTugQL')
         .mockResolvedValueOnce(reviewed)
-        .mockResolvedValueOnce(comparisonPreview(component.authorDraftRevision(), changed));
-      const runSide = vi.spyOn(sqlite, 'runComparisonSide').mockImplementation(
-        async (_project, _definition, _plan, target) =>
+        .mockResolvedValueOnce(
+          comparisonPreview(component.authorDraftRevision(), changed),
+        );
+      const runSide = vi
+        .spyOn(sqlite, 'runComparisonSide')
+        .mockImplementation(async (_project, _definition, _plan, target) =>
           comparisonObservation(target === 'chinook-baseline' ? 0 : 1),
-      );
+        );
 
       await component.runComparisonBoth();
       const previousSnapshot = component.comparisonSnapshot();
-      const previousResult = { kind: 'session-comparison', diff: { summary: { changed: 0 } } } as never;
+      const previousResult = {
+        kind: 'session-comparison',
+        diff: { summary: { changed: 0 } },
+      } as never;
       component.comparisonResult.set(previousResult);
-      expect(previousSnapshot?.sides.every((side) => side.status === 'complete')).toBe(true);
+      expect(
+        previousSnapshot?.sides.every((side) => side.status === 'complete'),
+      ).toBe(true);
       const startsBeforeRecheck = runSide.mock.calls.length;
 
       await component.runComparisonBoth();
@@ -1398,27 +1620,35 @@ select i.InvoiceId
     component = await createTugQLAuthor(authorSource);
     await settleQueryPage();
     component.authorCustomerId.set('1');
-    component.authorPlan.set(comparisonPreview(component.authorDraftRevision()));
+    component.authorPlan.set(
+      comparisonPreview(component.authorDraftRevision()),
+    );
     const sqlite = TestBed.inject(PublicSqliteQueryService);
     vi.spyOn(sqlite, 'prepareTugQL').mockResolvedValue(
       comparisonPreview(component.authorDraftRevision()),
     );
     const calls: { target: string; bindings: readonly unknown[] }[] = [];
     let baselineAttempts = 0;
-    vi.spyOn(sqlite, 'runComparisonSide').mockImplementation(async (_project, _definition, plan, target) => {
-      calls.push({ target, bindings: plan.bindings });
-      if (target === 'chinook-baseline' && baselineAttempts++ === 0)
-        throw new Error('fixture network failure');
-      return comparisonObservation(target === 'chinook-baseline' ? 0 : 1);
-    });
+    vi.spyOn(sqlite, 'runComparisonSide').mockImplementation(
+      async (_project, _definition, plan, target) => {
+        calls.push({ target, bindings: plan.bindings });
+        if (target === 'chinook-baseline' && baselineAttempts++ === 0)
+          throw new Error('fixture network failure');
+        return comparisonObservation(target === 'chinook-baseline' ? 0 : 1);
+      },
+    );
 
     await component.runComparisonBoth();
-    expect(component.comparisonSnapshot(), component.comparisonMessage()).toBeDefined();
-    expect(component.comparisonSnapshot()?.sides.map((side) => side.status)).toEqual([
-      'failed',
-      'complete',
-    ]);
-    expect(component.comparisonMessage()).toContain('Baseline fixture query failed');
+    expect(
+      component.comparisonSnapshot(),
+      component.comparisonMessage(),
+    ).toBeDefined();
+    expect(
+      component.comparisonSnapshot()?.sides.map((side) => side.status),
+    ).toEqual(['failed', 'complete']);
+    expect(component.comparisonMessage()).toContain(
+      'Baseline fixture query failed',
+    );
     await component.retryComparisonSide('chinook-baseline');
 
     expect(calls.map((call) => call.target)).toEqual([
@@ -1427,58 +1657,83 @@ select i.InvoiceId
       'chinook-baseline',
     ]);
     expect(calls.map((call) => call.bindings)).toEqual([[1], [1], [1]]);
-    expect(component.comparisonSnapshot()?.sides.map((side) => side.status)).toEqual([
-      'complete',
-      'complete',
-    ]);
-    expect(component.comparisonMessage()).toBe('Both fixture queries completed with complete bounded results.');
+    expect(
+      component.comparisonSnapshot()?.sides.map((side) => side.status),
+    ).toEqual(['complete', 'complete']);
+    expect(component.comparisonMessage()).toBe(
+      'Both fixture queries completed with complete bounded results.',
+    );
   });
 
   it('reports a cancelled side after the other fixture query completes', async () => {
     component = await createTugQLAuthor(authorSource);
     await settleQueryPage();
     component.authorCustomerId.set('1');
-    component.authorPlan.set(comparisonPreview(component.authorDraftRevision()));
+    component.authorPlan.set(
+      comparisonPreview(component.authorDraftRevision()),
+    );
     const sqlite = TestBed.inject(PublicSqliteQueryService);
     vi.spyOn(sqlite, 'prepareTugQL').mockResolvedValue(
       comparisonPreview(component.authorDraftRevision()),
     );
-    const pending: { target: string; signal?: AbortSignal; resolve: (value: ComparisonWorkerObservation) => void }[] = [];
+    const pending: {
+      target: string;
+      signal?: AbortSignal;
+      resolve: (value: ComparisonWorkerObservation) => void;
+    }[] = [];
     vi.spyOn(sqlite, 'runComparisonSide').mockImplementation(
       (_project, _definition, _plan, target, signal) =>
-        new Promise((resolve) => pending.push({
-          target,
-          signal,
-          resolve: (observation) => resolve(observation),
-        })),
+        new Promise((resolve) =>
+          pending.push({
+            target,
+            signal,
+            resolve: (observation) => resolve(observation),
+          }),
+        ),
     );
 
     const running = component.runComparisonBoth();
     await vi.waitFor(() => expect(pending).toHaveLength(2));
     component.cancelComparisonSide('chinook-baseline');
-    expect(component.comparisonMessage()).toContain('Baseline fixture query was cancelled');
-    expect(component.comparisonMessage()).toContain('Candidate fixture query is still running');
-    const baseline = pending.find((entry) => entry.target === 'chinook-baseline');
-    const candidate = pending.find((entry) => entry.target === 'chinook-candidate');
-    if (!baseline || !candidate) throw new Error('Expected both fixture queries to be running');
+    expect(component.comparisonMessage()).toContain(
+      'Baseline fixture query was cancelled',
+    );
+    expect(component.comparisonMessage()).toContain(
+      'Candidate fixture query is still running',
+    );
+    const baseline = pending.find(
+      (entry) => entry.target === 'chinook-baseline',
+    );
+    const candidate = pending.find(
+      (entry) => entry.target === 'chinook-candidate',
+    );
+    if (!baseline || !candidate)
+      throw new Error('Expected both fixture queries to be running');
     baseline.resolve(comparisonObservation(0));
     candidate.resolve(comparisonObservation(1));
     await running;
 
-    expect(pending.find((entry) => entry.target === 'chinook-baseline')?.signal?.aborted).toBe(true);
-    expect(component.comparisonSnapshot()?.sides.map((side) => side.status)).toEqual([
-      'cancelled',
-      'complete',
-    ]);
-    expect(component.comparisonMessage()).toContain('Baseline fixture query was cancelled');
+    expect(
+      pending.find((entry) => entry.target === 'chinook-baseline')?.signal
+        ?.aborted,
+    ).toBe(true);
+    expect(
+      component.comparisonSnapshot()?.sides.map((side) => side.status),
+    ).toEqual(['cancelled', 'complete']);
+    expect(component.comparisonMessage()).toContain(
+      'Baseline fixture query was cancelled',
+    );
   });
 
   it.each(['principal change', 'draft edit and byte-for-byte revert'] as const)(
-    'fences a late fixture response after a %s', async (change) => {
+    'fences a late fixture response after a %s',
+    async (change) => {
       component = await createTugQLAuthor(authorSource);
       await settleQueryPage();
       component.authorCustomerId.set('1');
-      component.authorPlan.set(comparisonPreview(component.authorDraftRevision()));
+      component.authorPlan.set(
+        comparisonPreview(component.authorDraftRevision()),
+      );
       const sqlite = TestBed.inject(PublicSqliteQueryService);
       vi.spyOn(sqlite, 'prepareTugQL').mockResolvedValue(
         comparisonPreview(component.authorDraftRevision()),
@@ -1489,33 +1744,49 @@ select i.InvoiceId
       }[] = [];
       vi.spyOn(sqlite, 'runComparisonSide').mockImplementation(
         (_project, _definition, _plan, target, signal) =>
-          new Promise((resolve) => pending.push({
-            signal,
-            resolve: (observation) => resolve(observation),
-          })),
+          new Promise((resolve) =>
+            pending.push({
+              signal,
+              resolve: (observation) => resolve(observation),
+            }),
+          ),
       );
 
       const running = component.runComparisonBoth();
       await vi.waitFor(() => expect(pending).toHaveLength(2));
       if (change === 'principal change') {
         agentContext.securityContextId.set('sctx-next');
-        await vi.waitFor(() => expect(component.comparisonSnapshot()?.invalidated).toBe(true));
+        await vi.waitFor(() =>
+          expect(component.comparisonSnapshot()?.invalidated).toBe(true),
+        );
       } else {
-        component.queryTextChanged(new CustomEvent('ionInput', {
-          detail: { value: authorSource.replace('limit 100', 'limit 99') },
-        }), false);
-        component.queryTextChanged(new CustomEvent('ionInput', {
-          detail: { value: authorSource },
-        }), false);
+        component.queryTextChanged(
+          new CustomEvent('ionInput', {
+            detail: { value: authorSource.replace('limit 100', 'limit 99') },
+          }),
+          false,
+        );
+        component.queryTextChanged(
+          new CustomEvent('ionInput', {
+            detail: { value: authorSource },
+          }),
+          false,
+        );
         expect(component.queryBodyText()).toBe(authorSource);
       }
       expect(pending.every((entry) => entry.signal?.aborted)).toBe(true);
       expect(component.comparisonSnapshot()?.invalidated).toBe(true);
       const invalidationMessage = component.comparisonMessage();
-      pending.forEach((entry, index) => entry.resolve(comparisonObservation(index)));
+      pending.forEach((entry, index) =>
+        entry.resolve(comparisonObservation(index)),
+      );
       await running;
 
-      expect(component.comparisonSnapshot()?.sides.some((side) => side.status === 'complete')).toBe(false);
+      expect(
+        component
+          .comparisonSnapshot()
+          ?.sides.some((side) => side.status === 'complete'),
+      ).toBe(false);
       expect(component.comparisonResult()).toBeUndefined();
       expect(component.comparisonMessage()).toBe(invalidationMessage);
     },
@@ -1525,7 +1796,9 @@ select i.InvoiceId
     component = await createTugQLAuthor(authorSource);
     await settleQueryPage();
     component.authorCustomerId.set('1');
-    component.authorPlan.set(comparisonPreview(component.authorDraftRevision()));
+    component.authorPlan.set(
+      comparisonPreview(component.authorDraftRevision()),
+    );
     const sqlite = TestBed.inject(PublicSqliteQueryService);
     vi.spyOn(sqlite, 'prepareTugQL').mockResolvedValue(
       comparisonPreview(component.authorDraftRevision()),
@@ -1536,17 +1809,21 @@ select i.InvoiceId
     }[] = [];
     vi.spyOn(sqlite, 'runComparisonSide').mockImplementation(
       (_project, _definition, _plan, _target, signal) =>
-        new Promise((resolve) => pending.push({
-          signal,
-          resolve: (observation) => resolve(observation),
-        })),
+        new Promise((resolve) =>
+          pending.push({
+            signal,
+            resolve: (observation) => resolve(observation),
+          }),
+        ),
     );
 
     const running = component.runComparisonBoth();
     await vi.waitFor(() => expect(pending).toHaveLength(2));
     component.ngOnDestroy();
     expect(pending.every((entry) => entry.signal?.aborted)).toBe(true);
-    pending.forEach((entry, index) => entry.resolve(comparisonObservation(index)));
+    pending.forEach((entry, index) =>
+      entry.resolve(comparisonObservation(index)),
+    );
     await running;
     expect(component.comparisonSnapshot()).toBeUndefined();
     expect(component.comparisonResult()).toBeUndefined();
@@ -1556,17 +1833,24 @@ select i.InvoiceId
     component = await createTugQLAuthor(authorSource);
     await settleQueryPage();
     component.authorCustomerId.set('1');
-    component.authorPlan.set(comparisonPreview(component.authorDraftRevision()));
+    component.authorPlan.set(
+      comparisonPreview(component.authorDraftRevision()),
+    );
     const sqlite = TestBed.inject(PublicSqliteQueryService);
     vi.spyOn(sqlite, 'prepareTugQL').mockResolvedValue(
       comparisonPreview(component.authorDraftRevision()),
     );
-    const runSide = vi.spyOn(sqlite, 'runComparisonSide').mockImplementation(
-      async (_project, _definition, _plan, target) =>
+    const runSide = vi
+      .spyOn(sqlite, 'runComparisonSide')
+      .mockImplementation(async (_project, _definition, _plan, target) =>
         comparisonObservation(target === 'chinook-baseline' ? 0 : 1),
-    );
+      );
     await component.runComparisonBoth();
-    expect(component.comparisonSnapshot()?.sides.every((side) => side.status === 'complete')).toBe(true);
+    expect(
+      component
+        .comparisonSnapshot()
+        ?.sides.every((side) => side.status === 'complete'),
+    ).toBe(true);
     component.comparisonResult.set({ kind: 'session-comparison' } as never);
 
     component.ionViewWillLeave();
@@ -1574,7 +1858,9 @@ select i.InvoiceId
 
     expect(component.comparisonSnapshot()).toBeUndefined();
     expect(component.comparisonResult()).toBeUndefined();
-    expect(component.comparisonCustomerBinding()).toBe('No comparison pair has been run.');
+    expect(component.comparisonCustomerBinding()).toBe(
+      'No comparison pair has been run.',
+    );
     expect(runSide).toHaveBeenCalledTimes(2);
   });
 
@@ -1582,12 +1868,17 @@ select i.InvoiceId
     component = await createTugQLAuthor(authorSource);
     await settleQueryPage();
     component.authorCustomerId.set('1');
-    component.authorPlan.set(comparisonPreview(component.authorDraftRevision()));
+    component.authorPlan.set(
+      comparisonPreview(component.authorDraftRevision()),
+    );
     const sqlite = TestBed.inject(PublicSqliteQueryService);
     vi.spyOn(sqlite, 'prepareTugQL').mockResolvedValue(
       comparisonPreview(component.authorDraftRevision()),
     );
-    const pending: { signal?: AbortSignal; resolve: (value: ComparisonWorkerObservation) => void }[] = [];
+    const pending: {
+      signal?: AbortSignal;
+      resolve: (value: ComparisonWorkerObservation) => void;
+    }[] = [];
     vi.spyOn(sqlite, 'runComparisonSide').mockImplementation(
       (_project, _definition, _plan, _target, signal) =>
         new Promise((resolve) => pending.push({ signal, resolve })),
@@ -1600,7 +1891,9 @@ select i.InvoiceId
     expect(pending.every((entry) => entry.signal?.aborted)).toBe(true);
     expect(component.comparisonSnapshot()).toBeUndefined();
     expect(component.comparisonResult()).toBeUndefined();
-    pending.forEach((entry, index) => entry.resolve(comparisonObservation(index)));
+    pending.forEach((entry, index) =>
+      entry.resolve(comparisonObservation(index)),
+    );
     await running;
     expect(component.comparisonSnapshot()).toBeUndefined();
     expect(component.comparisonResult()).toBeUndefined();
@@ -1608,31 +1901,48 @@ select i.InvoiceId
 
   it.each([
     ['principal', () => agentContext.securityContextId.set('sctx-changed')],
-    ['environment', (target: QueryPageComponent) => {
-      target.queryState = { ...target.queryState, activeEnv: { id: 'staging' } as never };
-    }],
-    ['review choices', (target: QueryPageComponent) => {
-      target.authorSourceFieldChanged('FirstName', {
-        currentTarget: { checked: false },
-      } as unknown as Event);
-    }],
+    [
+      'environment',
+      (target: QueryPageComponent) => {
+        target.queryState = {
+          ...target.queryState,
+          activeEnv: { id: 'staging' } as never,
+        };
+      },
+    ],
+    [
+      'review choices',
+      (target: QueryPageComponent) => {
+        target.authorSourceFieldChanged('FirstName', {
+          currentTarget: { checked: false },
+        } as unknown as Event);
+      },
+    ],
   ] as const)(
     'refuses an Apply whose %s changes while fresh source metadata is loading',
     async (_change, changeContext) => {
       component = await createTugQLAuthor(authorSource);
       let resolveApply!: (value: PublicSqliteSourceDiscovery) => void;
-      const discovery = vi.spyOn(
-        TestBed.inject(PublicSqliteQueryService),
-        'discoverInvoiceCustomerSources',
-      ).mockResolvedValueOnce(sourceDiscovery).mockImplementationOnce(
-        () => new Promise((resolve) => { resolveApply = resolve; }),
-      );
+      const discovery = vi
+        .spyOn(
+          TestBed.inject(PublicSqliteQueryService),
+          'discoverInvoiceCustomerSources',
+        )
+        .mockResolvedValueOnce(sourceDiscovery)
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              resolveApply = resolve;
+            }),
+        );
       const editor = TestBed.inject(QueryEditorStateService);
       const update = vi.spyOn(editor, 'updateQueryState');
 
       component.authorSourcesToggled(true);
       await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(1));
-      await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
+      await vi.waitFor(() =>
+        expect(component.authorSourceMetadata()).toBe(sourceDiscovery),
+      );
       component.reviewAuthorRelationship();
       expect(component.authorSourceReview()).toBeDefined();
 
@@ -1652,26 +1962,36 @@ select i.InvoiceId
 
   it('refuses a reviewed Apply after the draft is edited and restored byte-for-byte', async () => {
     component = await createTugQLAuthor(authorSource);
-    const discovery = vi.spyOn(
-      TestBed.inject(PublicSqliteQueryService),
-      'discoverInvoiceCustomerSources',
-    ).mockResolvedValue(sourceDiscovery);
+    const discovery = vi
+      .spyOn(
+        TestBed.inject(PublicSqliteQueryService),
+        'discoverInvoiceCustomerSources',
+      )
+      .mockResolvedValue(sourceDiscovery);
     const update = vi.spyOn(
       TestBed.inject(QueryEditorStateService),
       'updateQueryState',
     );
     component.authorSourcesToggled(true);
     await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(1));
-    await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
+    await vi.waitFor(() =>
+      expect(component.authorSourceMetadata()).toBe(sourceDiscovery),
+    );
     component.reviewAuthorRelationship();
     const reviewedRevision = component.authorDraftRevision();
 
-    component.queryTextChanged(new CustomEvent('ionInput', {
-      detail: { value: authorSource.replace('limit 100', 'limit 99') },
-    }), false);
-    component.queryTextChanged(new CustomEvent('ionInput', {
-      detail: { value: authorSource },
-    }), false);
+    component.queryTextChanged(
+      new CustomEvent('ionInput', {
+        detail: { value: authorSource.replace('limit 100', 'limit 99') },
+      }),
+      false,
+    );
+    component.queryTextChanged(
+      new CustomEvent('ionInput', {
+        detail: { value: authorSource },
+      }),
+      false,
+    );
     expect(component.queryBodyText()).toBe(authorSource);
     expect(component.authorDraftRevision()).toBe(reviewedRevision + 2);
 
@@ -1695,12 +2015,14 @@ select i.InvoiceId
     const editor = TestBed.inject(QueryEditorStateService);
     const update = vi.spyOn(editor, 'updateQueryState');
     const priorResult = {
-      bindingsApplied: [{
-        parameterId: 'CustomerId',
-        value: { type: 'integer', value: '1' },
-        origin: 'manual',
-        originEvidence: 'client-reported',
-      }],
+      bindingsApplied: [
+        {
+          parameterId: 'CustomerId',
+          value: { type: 'integer', value: '1' },
+          origin: 'manual',
+          originEvidence: 'client-reported',
+        },
+      ],
       publicSqliteReceipt: {
         draftRevision: component.authorDraftRevision(),
         clientReportedBinding: { origin: 'manual', sourceColumn: 'CustomerId' },
@@ -1711,7 +2033,9 @@ select i.InvoiceId
     component.authorContextTab.set('sources');
     component.authorSourcesToggled(true);
     await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(1));
-    await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
+    await vi.waitFor(() =>
+      expect(component.authorSourceMetadata()).toBe(sourceDiscovery),
+    );
     expect(component.authorRelatedSourceCount()).toBe(1);
     component.reviewAuthorRelationship();
     expect(component.authorSourceSelectedFields()).toEqual(['FirstName']);
@@ -1722,11 +2046,17 @@ select i.InvoiceId
 
     await component.applyAuthorRelationshipReview();
     await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(3));
-    await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
+    await vi.waitFor(() =>
+      expect(component.authorSourceMetadata()).toBe(sourceDiscovery),
+    );
 
     const definition = component.queryDef();
-    expect((definition?.request as ITextQueryRequest | undefined)?.text).toBe(reviewed?.after);
-    expect(definition?.relationshipBindings).toEqual([sourceDiscovery.relationship]);
+    expect((definition?.request as ITextQueryRequest | undefined)?.text).toBe(
+      reviewed?.after,
+    );
+    expect(definition?.relationshipBindings).toEqual([
+      sourceDiscovery.relationship,
+    ]);
     expect(component.queryState.def).toBe(definition);
     expect(component.queryState.request).toBe(definition?.request);
     expect(update).toHaveBeenCalledOnce();
@@ -1762,12 +2092,18 @@ select i.InvoiceId
     component.runResult.set(priorResult);
     component.authorContextTab.set('sources');
     component.authorSourcesToggled(true);
-    await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
+    await vi.waitFor(() =>
+      expect(component.authorSourceMetadata()).toBe(sourceDiscovery),
+    );
 
     expect(component.authorCanJoinRelationship()).toBe(true);
     await component.joinAuthorRelationship();
-    await vi.waitFor(() => expect(sqlite.discoverInvoiceCustomerSources).toHaveBeenCalledTimes(3));
-    await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
+    await vi.waitFor(() =>
+      expect(sqlite.discoverInvoiceCustomerSources).toHaveBeenCalledTimes(3),
+    );
+    await vi.waitFor(() =>
+      expect(component.authorSourceMetadata()).toBe(sourceDiscovery),
+    );
 
     expect(component.queryBodyText()).toContain('join Customer as c');
     expect(component.queryBodyText()).not.toContain('c.FirstName');
@@ -1781,8 +2117,12 @@ select i.InvoiceId
     expect(prepare).not.toHaveBeenCalled();
 
     component.undoAuthorTugQLFormat();
-    await vi.waitFor(() => expect(sqlite.discoverInvoiceCustomerSources).toHaveBeenCalledTimes(4));
-    await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
+    await vi.waitFor(() =>
+      expect(sqlite.discoverInvoiceCustomerSources).toHaveBeenCalledTimes(4),
+    );
+    await vi.waitFor(() =>
+      expect(component.authorSourceMetadata()).toBe(sourceDiscovery),
+    );
 
     expect(component.queryBodyText()).toBe(authorSource);
     expect(component.queryDef()?.relationshipBindings).toBeUndefined();
@@ -1796,25 +2136,35 @@ select i.InvoiceId
   it('removes a reviewed Customer join and dependent outputs locally, then undoes source and binding together', async () => {
     component = await createTugQLAuthor(authorSource);
     const sqlite = TestBed.inject(PublicSqliteQueryService);
-    const discovery = vi.spyOn(sqlite, 'discoverInvoiceCustomerSources')
+    const discovery = vi
+      .spyOn(sqlite, 'discoverInvoiceCustomerSources')
       .mockResolvedValue(sourceDiscovery);
     const execute = vi.spyOn(sqlite, 'runTugQL');
     const prepare = vi.spyOn(sqlite, 'prepareTugQL');
-    const update = vi.spyOn(TestBed.inject(QueryEditorStateService), 'updateQueryState');
+    const update = vi.spyOn(
+      TestBed.inject(QueryEditorStateService),
+      'updateQueryState',
+    );
     const priorResult = historyResultFor(queryDef);
     component.runResult.set(priorResult);
 
     component.authorContextTab.set('sources');
     component.authorSourcesToggled(true);
-    await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
+    await vi.waitFor(() =>
+      expect(component.authorSourceMetadata()).toBe(sourceDiscovery),
+    );
     component.reviewAuthorRelationship();
     await component.applyAuthorRelationshipReview();
     expect(component.queryBodyText()).toContain('c.FirstName');
-    expect(component.queryDef()?.relationshipBindings).toEqual([sourceDiscovery.relationship]);
+    expect(component.queryDef()?.relationshipBindings).toEqual([
+      sourceDiscovery.relationship,
+    ]);
 
     component.authorSourcesToggled(true);
     await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(4));
-    await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
+    await vi.waitFor(() =>
+      expect(component.authorSourceMetadata()).toBe(sourceDiscovery),
+    );
     expect(component.authorCanRemoveCustomerJoin()).toBe(true);
     const joinedText = component.queryBodyText();
     component.requestAuthorCustomerJoinRemoval();
@@ -1825,9 +2175,13 @@ select i.InvoiceId
     expect(prepare).not.toHaveBeenCalled();
 
     component.confirmAuthorCustomerJoinRemoval(true);
-    await vi.waitFor(() => expect(component.queryBodyText()).not.toContain('join Customer'));
+    await vi.waitFor(() =>
+      expect(component.queryBodyText()).not.toContain('join Customer'),
+    );
     await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(6));
-    await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
+    await vi.waitFor(() =>
+      expect(component.authorSourceMetadata()).toBe(sourceDiscovery),
+    );
     expect(component.queryBodyText()).not.toContain('c.FirstName');
     expect(component.queryDef()?.relationshipBindings).toEqual([]);
     expect(component.runResult()).toBe(priorResult);
@@ -1838,9 +2192,13 @@ select i.InvoiceId
 
     component.undoAuthorTugQLFormat();
     await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(7));
-    await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
+    await vi.waitFor(() =>
+      expect(component.authorSourceMetadata()).toBe(sourceDiscovery),
+    );
     expect(component.queryBodyText()).toBe(joinedText);
-    expect(component.queryDef()?.relationshipBindings).toEqual([sourceDiscovery.relationship]);
+    expect(component.queryDef()?.relationshipBindings).toEqual([
+      sourceDiscovery.relationship,
+    ]);
     expect(component.runResult()).toBe(priorResult);
     expect(component.canUndoAuthorFormat()).toBe(false);
     expect(execute).not.toHaveBeenCalled();
@@ -1878,45 +2236,91 @@ select (
     };
     component.queryDef.set({
       ...queryDef,
-      request: { queryType: QueryType.SQL, text: 'SELECT 1' } as ISqlQueryRequest,
+      request: {
+        queryType: QueryType.SQL,
+        text: 'SELECT 1',
+      } as ISqlQueryRequest,
     });
     expect(component.canChoosePublicSqliteSource()).toBe(true);
   });
 
   it('keeps a Space query draft editable but refuses to execute unsaved SQL in the browser', async () => {
     component = await createComponent();
-    component.project = { ref: { storeId: 'firestore', spaceID: 'space_1', projectId: 'project_1' } };
+    component.project = {
+      ref: { storeId: 'firestore', spaceID: 'space_1', projectId: 'project_1' },
+    };
     component.queryState = { ...component.queryState, saveSupported: false };
-    component.queryDef.set({ ...queryDef, connectionId: 'chinook-sqlite',
-      request: { queryType: QueryType.SQL, text: 'SELECT 1' } as ISqlQueryRequest });
-    const activity = TestBed.inject(GitHubProjectActivityService) as unknown as ReturnType<typeof githubProjectActivityStub>;
-    const run = vi.spyOn(TestBed.inject(PublicSqliteQueryService), 'run').mockImplementation(async (_ref, _definition, onDispatched) => {
-      onDispatched?.();
-      return {
-      recordset: { columns: [{ name: 'n', type: 'integer' }], rows: [[{ type: 'integer', value: '1' }]] },
-      limitations: [], bindingsApplied: [], truncated: false,
-      provenance: { source: 'fixture', queryId: queryDef.id, mode: 'snapshot', observedAt: '2026-10-09T00:00:00Z', executionProfile: 'protected' },
-    }; });
+    component.queryDef.set({
+      ...queryDef,
+      connectionId: 'chinook-sqlite',
+      request: {
+        queryType: QueryType.SQL,
+        text: 'SELECT 1',
+      } as ISqlQueryRequest,
+    });
+    const activity = TestBed.inject(
+      GitHubProjectActivityService,
+    ) as unknown as ReturnType<typeof githubProjectActivityStub>;
+    const run = vi
+      .spyOn(TestBed.inject(PublicSqliteQueryService), 'run')
+      .mockImplementation(async (_ref, _definition, onDispatched) => {
+        onDispatched?.();
+        return {
+          recordset: {
+            columns: [{ name: 'n', type: 'integer' }],
+            rows: [[{ type: 'integer', value: '1' }]],
+          },
+          limitations: [],
+          bindingsApplied: [],
+          truncated: false,
+          provenance: {
+            source: 'fixture',
+            queryId: queryDef.id,
+            mode: 'snapshot',
+            observedAt: '2026-10-09T00:00:00Z',
+            executionProfile: 'protected',
+          },
+        };
+      });
     expect(component.canChoosePublicSqliteSource()).toBe(true);
-    component.queryTextChanged(new CustomEvent('ionInput', { detail: { value: 'SELECT 2' } }));
-    expect(activity.reportForCurrentProject).toHaveBeenCalledWith(component.project.ref, 'test-id', 'query_edit');
+    component.queryTextChanged(
+      new CustomEvent('ionInput', { detail: { value: 'SELECT 2' } }),
+    );
+    expect(activity.reportForCurrentProject).toHaveBeenCalledWith(
+      component.project.ref,
+      'test-id',
+      'query_edit',
+    );
     activity.reportForCurrentProject.mockClear();
     component.runQuery();
     expect(run).not.toHaveBeenCalled();
     expect(component.runError()).toContain('Save this query');
-    expect(activity.reportForCurrentProject).not.toHaveBeenCalledWith(component.project.ref, 'test-id', 'query_execution_dispatched');
+    expect(activity.reportForCurrentProject).not.toHaveBeenCalledWith(
+      component.project.ref,
+      'test-id',
+      'query_execution_dispatched',
+    );
   });
 
   it('loads admitted hosted environments on a cold Space query route', async () => {
-    const ref: IProjectRef = { storeId: 'firestore', spaceID: 'space_1', projectId: 'project_1' };
+    const ref: IProjectRef = {
+      storeId: 'firestore',
+      spaceID: 'space_1',
+      projectId: 'project_1',
+    };
     const routeRef = { ...ref, spaceId: ref.spaceID };
     component = await createComponent({}, queryDef, '<p></p>', {
-      project: of({ ref }), routeRef, routeId: queryDef.id,
+      project: of({ ref }),
+      routeRef,
+      routeId: queryDef.id,
       queries: { capabilities: vi.fn(() => of({ querySave: true })) },
     });
     const detective = TestBed.inject(DetectiveClientService);
     expect(detective.state).toHaveBeenCalledWith({
-      kind: 'cloud', storage: 'firestore', spaceID: 'space_1', project: 'project_1',
+      kind: 'cloud',
+      storage: 'firestore',
+      spaceID: 'space_1',
+      project: 'project_1',
     });
     expect(component.hostedDetectiveState()?.capabilities.canRead).toBe(true);
     expect(component.hostedEnvironment()).toBe('');
@@ -1924,58 +2328,196 @@ select (
 
   it('correlates hosted Validator status only to the exact retained query execution', async () => {
     component = await createComponent();
-    component.project = { ref: { storeId: 'firestore', spaceID: 'space_1', projectId: 'project_1' } };
+    component.project = {
+      ref: { storeId: 'firestore', spaceID: 'space_1', projectId: 'project_1' },
+    };
     const savedDefinition = { ...queryDef, parameters: [] };
     component.queryDef.set(savedDefinition);
-    component.queryState = { ...component.queryState, def: savedDefinition,
-      title: savedDefinition.title, request: savedDefinition.request, isNew: false };
+    component.queryState = {
+      ...component.queryState,
+      def: savedDefinition,
+      title: savedDefinition.title,
+      request: savedDefinition.request,
+      isNew: false,
+    };
     component.hostedDetectiveState.set({
-      checks: [], validators: [], queryValidators: [], cases: [], runs: [], scenarios: [],
-      runsHasMore: false, environments: ['demo'],
-      capabilities: { localOnly: false, canRead: true, canWrite: true,
-        canRun: true, maxRows: 1000, maxFanout: 100 },
+      checks: [],
+      validators: [],
+      queryValidators: [],
+      cases: [],
+      runs: [],
+      scenarios: [],
+      runsHasMore: false,
+      environments: ['demo'],
+      capabilities: {
+        localOnly: false,
+        canRead: true,
+        canWrite: true,
+        canRun: true,
+        maxRows: 1000,
+        maxFanout: 100,
+      },
     });
     component.hostedEnvironment.set('demo');
     const detective = TestBed.inject(DetectiveClientService);
-    const execution = { storeId: 'firestore', projectId: 'project_1', executionId: 'e1' };
+    const execution = {
+      storeId: 'firestore',
+      projectId: 'project_1',
+      executionId: 'e1',
+    };
     const result = {
-      recordset: { columns: [{ name: 'InvoiceId', type: 'integer' }],
-        rows: [[{ type: 'integer', value: '7' }], [{ type: 'integer', value: '9' }]] },
-      limitations: [], bindingsApplied: [], truncated: false,
-      provenance: { source: 'hosted', queryId: queryDef.id, mode: 'snapshot',
-        observedAt: '2026-10-13T00:00:00Z', executionProfile: 'protected' },
+      recordset: {
+        columns: [{ name: 'InvoiceId', type: 'integer' }],
+        rows: [
+          [{ type: 'integer', value: '7' }],
+          [{ type: 'integer', value: '9' }],
+        ],
+      },
+      limitations: [],
+      bindingsApplied: [],
+      truncated: false,
+      provenance: {
+        source: 'hosted',
+        queryId: queryDef.id,
+        mode: 'snapshot',
+        observedAt: '2026-10-13T00:00:00Z',
+        executionProfile: 'protected',
+      },
       execution,
     };
-    const hosted = vi.spyOn(detective, 'runHostedQuery').mockReturnValue(of({
-      result: result as never, queryRevision: 'rev-1', resultFingerprint: 'sha256-1',
-    }));
-    const validate = vi.spyOn(detective, 'action').mockReturnValue(of({ run: {
-      id: 'run-1', kind: 'query-validators', queryId: queryDef.id,
-      executionStatus: 'completed', outcome: 'fail', environment: 'demo',
-      steps: [{ stepId: 'query', kind: 'query', queryId: queryDef.id,
-        execution, executionStatus: 'completed', outcome: 'fail', validators: [
-          { validatorId: 'invoice-check', executionStatus: 'completed', outcome: 'fail',
-            severity: 'error', rowIndex: 1, message: 'Invoice 9 failed' },
-        ] }],
-    } as never }));
+    const hosted = vi.spyOn(detective, 'runHostedQuery').mockReturnValue(
+      of({
+        result: result as never,
+        queryRevision: 'rev-1',
+        resultFingerprint: 'sha256-1',
+      }),
+    );
+    const validate = vi.spyOn(detective, 'action').mockReturnValue(
+      of({
+        run: {
+          id: 'run-1',
+          kind: 'query-validators',
+          queryId: queryDef.id,
+          executionStatus: 'completed',
+          outcome: 'fail',
+          environment: 'demo',
+          steps: [
+            {
+              stepId: 'query',
+              kind: 'query',
+              queryId: queryDef.id,
+              execution,
+              executionStatus: 'completed',
+              outcome: 'fail',
+              validators: [
+                {
+                  validatorId: 'invoice-check',
+                  executionStatus: 'completed',
+                  outcome: 'fail',
+                  severity: 'error',
+                  rowIndex: 1,
+                  message: 'Invoice 9 failed',
+                },
+              ],
+            },
+          ],
+        } as never,
+      }),
+    );
     expect(component.isChanged).toBe(false);
     component.runQuery();
     expect(hosted).toHaveBeenCalledOnce();
-    expect(validate).toHaveBeenCalledWith(expect.objectContaining({ project: 'project_1' }),
-      { type: 'run-query-validators', queryId: queryDef.id,
-        environment: 'demo', execution });
+    expect(validate).toHaveBeenCalledWith(
+      expect.objectContaining({ project: 'project_1' }),
+      {
+        type: 'run-query-validators',
+        queryId: queryDef.id,
+        environment: 'demo',
+        execution,
+      },
+    );
     expect(component.runResult()).toBe(result);
-    expect(component.resultGridRows().map((row) => row['validation_status']))
-      .toEqual(['unknown', 'fail']);
+    expect(
+      component.resultGridRows().map((row) => row['validation_status']),
+    ).toEqual(['unknown', 'fail']);
     component.hostedStatusFilter.set('fail');
-    expect(component.resultGridRows().map((row) => row['result_0'])).toEqual(['9']);
+    expect(component.resultGridRows().map((row) => row['result_0'])).toEqual([
+      '9',
+    ]);
     component.selectHostedValidationRow(1);
     expect(component.hostedSelectedRowCells()?.[0].value).toBe('9');
+    const caseItem = {
+      id: 'case-1',
+      title: 'Invoice mismatch',
+      status: 'active',
+      version: 2,
+      context: {},
+      incidentRefs: [],
+      scenarioRefs: [],
+      runRefs: [],
+      evidence: [],
+      findings: [],
+      timeline: [],
+      scenarioApplications: [
+        {
+          id: 'application-1',
+          scenarioId: 'scenario-1',
+          scenarioVersion: 1,
+          appliedAt: '2026-10-13T00:00:00Z',
+          appliedBy: 'user',
+          snapshot: {
+            id: 'scenario-1',
+            title: 'Reconcile',
+            version: 1,
+            inputs: [],
+            steps: [{ id: 'step-1', kind: 'query', ref: queryDef.id }],
+          },
+          steps: [{ stepId: 'step-1', status: 'pending' }],
+        },
+      ],
+    };
+    const priorState = component.hostedDetectiveState();
+    if (!priorState)
+      throw new Error('Hosted state was not seeded in this test.');
+    const latest = { ...priorState, cases: [caseItem] };
+    component.hostedDetectiveState.set(latest as never);
+    const route = TestBed.inject(ActivatedRoute);
+    Object.defineProperty(route.snapshot, 'queryParamMap', {
+      value: convertToParamMap({
+        caseId: 'case-1',
+        applicationId: 'application-1',
+        scenarioStepId: 'step-1',
+      }),
+      configurable: true,
+    });
+    vi.spyOn(detective, 'state').mockReturnValue(
+      of(latest as unknown as DetectiveState),
+    );
+    validate.mockReturnValueOnce(
+      of({ case: { ...caseItem, version: 3 } as never }),
+    );
+    await component.completeHostedScenarioStep();
+    expect(validate).toHaveBeenLastCalledWith(
+      expect.objectContaining({ project: 'project_1' }),
+      {
+        type: 'record-scenario-step',
+        caseId: 'case-1',
+        applicationId: 'application-1',
+        stepId: 'step-1',
+        stepStatus: 'completed',
+        execution,
+      },
+      2,
+    );
+    expect(component.hostedScenarioMessage()).toContain('recorded');
     component.hostedEnvironment.set('other');
     expect(component.activeHostedExecution()).toBeUndefined();
-    expect(component.resultGridRows().map((row) => row['validation_status']))
-      .toEqual([undefined, undefined]);
-    expect(vi.spyOn(TestBed.inject(PublicSqliteQueryService), 'run')).not.toHaveBeenCalled();
+    expect(
+      component.resultGridRows().map((row) => row['validation_status']),
+    ).toEqual([undefined, undefined]);
+    expect(
+      vi.spyOn(TestBed.inject(PublicSqliteQueryService), 'run'),
+    ).not.toHaveBeenCalled();
   });
 
   it.each(['source rejected', 'dispatched', 'worker failed'])(
@@ -2038,17 +2580,23 @@ select (
     const first = new Subject<{ querySave: boolean }>();
     const second = new Subject<{ querySave: boolean }>();
     const capabilities = vi.fn((ref: IProjectRef) =>
-      ref.projectId === 'project_1' ? first.asObservable() : second.asObservable(),
+      ref.projectId === 'project_1'
+        ? first.asObservable()
+        : second.asObservable(),
     );
     component = await createComponent({}, queryDef, '<p></p>', {
       project: projects,
       queries: { capabilities },
     });
     const firstRef: IProjectRef = {
-      storeId: 'firestore', spaceID: 'space_1', projectId: 'project_1',
+      storeId: 'firestore',
+      spaceID: 'space_1',
+      projectId: 'project_1',
     };
     const secondRef: IProjectRef = {
-      storeId: 'firestore', spaceID: 'space_1', projectId: 'project_2',
+      storeId: 'firestore',
+      spaceID: 'space_1',
+      projectId: 'project_2',
     };
     projects.next({ ref: firstRef });
     expect(component.canSaveQuery()).toBe(false);
@@ -2064,25 +2612,38 @@ select (
 
   it('cold-loads a folder-qualified shared query from the route without a redundant ID parameter', async () => {
     const ref: IProjectRef = {
-      storeId: 'firestore', spaceID: 'space_1', projectId: 'project_1',
+      storeId: 'firestore',
+      spaceID: 'space_1',
+      projectId: 'project_1',
     };
     const id = 'folder/genre-mix';
-    const saved = toProjectQueryWire({
-      id: 'genre-mix',
-      title: 'Genre mix',
-      connectionId: 'chinook-sqlite',
-      request: { queryType: QueryType.SQL, text: 'SELECT COUNT(*) FROM Track' } as ISqlQueryRequest,
-    }, id);
-    const getRevision = vi.fn(() => of({
-      query: saved, revision: 'revision-1', saveSupported: true,
-    }));
+    const saved = toProjectQueryWire(
+      {
+        id: 'genre-mix',
+        title: 'Genre mix',
+        connectionId: 'chinook-sqlite',
+        request: {
+          queryType: QueryType.SQL,
+          text: 'SELECT COUNT(*) FROM Track',
+        } as ISqlQueryRequest,
+      },
+      id,
+    );
+    const getRevision = vi.fn(() =>
+      of({
+        query: saved,
+        revision: 'revision-1',
+        saveSupported: true,
+      }),
+    );
     component = await createComponent({}, queryDef, '<p></p>', {
       realEditor: true,
       project: of({ ref }),
       routeRef: ref,
       routeId: id,
       queries: {
-        authentication: () => of({ status: 'authenticated', user: { uid: 'actor_1' } }),
+        authentication: () =>
+          of({ status: 'authenticated', user: { uid: 'actor_1' } }),
         authorityDenied: () => of(undefined),
         capabilities: () => of({ querySave: true }),
         getRevision,
@@ -2096,7 +2657,9 @@ select (
 
   it('does not read a shared query when path and explicit ID disagree', async () => {
     const ref: IProjectRef = {
-      storeId: 'firestore', spaceID: 'space_1', projectId: 'project_1',
+      storeId: 'firestore',
+      spaceID: 'space_1',
+      projectId: 'project_1',
     };
     const getRevision = vi.fn();
     component = await createComponent({}, queryDef, '<p></p>', {
@@ -2106,7 +2669,8 @@ select (
       routeId: 'genre-mix',
       urlQueryId: 'other-query',
       queries: {
-        authentication: () => of({ status: 'authenticated', user: { uid: 'actor_1' } }),
+        authentication: () =>
+          of({ status: 'authenticated', user: { uid: 'actor_1' } }),
         authorityDenied: () => of(undefined),
         capabilities: () => of({ querySave: true }),
         getRevision,
@@ -2172,12 +2736,18 @@ select (
     component.queryDef.set({
       ...queryDef,
       connectionId: 'chinook-sqlite',
-      request: { queryType: QueryType.SQL, text: 'SELECT 1' } as ISqlQueryRequest,
+      request: {
+        queryType: QueryType.SQL,
+        text: 'SELECT 1',
+      } as ISqlQueryRequest,
     });
     const rows = Array.from({ length: 150 }, (_, index) => [
       { type: 'integer' as const, value: String(index) },
     ]);
-    vi.spyOn(TestBed.inject(PublicSqliteQueryService), 'run').mockImplementation(async (_ref, _definition, onDispatched) => {
+    vi.spyOn(
+      TestBed.inject(PublicSqliteQueryService),
+      'run',
+    ).mockImplementation(async (_ref, _definition, onDispatched) => {
       onDispatched?.();
       return {
         recordset: { columns: [{ name: 'n', type: 'integer' }], rows },
@@ -2222,7 +2792,10 @@ select (
       const definition = {
         ...queryDef,
         connectionId: 'chinook-sqlite',
-        request: { queryType: QueryType.SQL, text: 'SELECT 1' } as ISqlQueryRequest,
+        request: {
+          queryType: QueryType.SQL,
+          text: 'SELECT 1',
+        } as ISqlQueryRequest,
       };
       component.queryDef.set(definition);
       let resolveRun!: (
@@ -2243,7 +2816,10 @@ select (
       expect(component.running()).toBe(true);
       component.queryDef.set({
         ...definition,
-        request: { queryType: QueryType.SQL, text: 'SELECT 2' } as ISqlQueryRequest,
+        request: {
+          queryType: QueryType.SQL,
+          text: 'SELECT 2',
+        } as ISqlQueryRequest,
       });
       if (outcome === 'resolve')
         resolveRun({
@@ -2643,51 +3219,47 @@ select (
     'principal change',
     'leave Author',
     'leave route',
-  ] as const)(
-    'invalidates the Preview location after %s',
-    async (change) => {
-      const source =
-        'from Invoice as i\nselect\n  i.InvoiceId\n  i.InvoiceDate';
-      component = await createTugQLAuthor(source);
-      await component.previewTugql();
-      expect(component.authorPreviewSyntaxDiagnostic()).toBeDefined();
-      const definition = component.queryDef();
-      if (!definition) throw new Error('Expected the current definition');
+  ] as const)('invalidates the Preview location after %s', async (change) => {
+    const source = 'from Invoice as i\nselect\n  i.InvoiceId\n  i.InvoiceDate';
+    component = await createTugQLAuthor(source);
+    await component.previewTugql();
+    expect(component.authorPreviewSyntaxDiagnostic()).toBeDefined();
+    const definition = component.queryDef();
+    if (!definition) throw new Error('Expected the current definition');
 
-      switch (change) {
-        case 'edit then revert':
-          component.authorCodeChanged(`${source}\n-- temporary edit`);
-          component.authorCodeChanged(source);
-          break;
-        case 'same-content definition replacement':
-          component.queryDef.set({ ...definition });
-          break;
-        case 'query replacement':
-          component.queryState = { ...component.queryState, id: 'another-query' };
-          break;
-        case 'project change':
-          component.project = {
-            ref: { storeId: 'github.com', projectId: 'different-project' },
-          };
-          break;
-        case 'environment change':
-          component.envId = 'staging';
-          break;
-        case 'principal change':
-          agentContext.securityContextId.set('different-principal');
-          break;
-        case 'leave Author':
-          component.setQueryView('compare');
-          break;
-        case 'leave route':
-          component.ionViewWillLeave();
-          break;
-      }
+    switch (change) {
+      case 'edit then revert':
+        component.authorCodeChanged(`${source}\n-- temporary edit`);
+        component.authorCodeChanged(source);
+        break;
+      case 'same-content definition replacement':
+        component.queryDef.set({ ...definition });
+        break;
+      case 'query replacement':
+        component.queryState = { ...component.queryState, id: 'another-query' };
+        break;
+      case 'project change':
+        component.project = {
+          ref: { storeId: 'github.com', projectId: 'different-project' },
+        };
+        break;
+      case 'environment change':
+        component.envId = 'staging';
+        break;
+      case 'principal change':
+        agentContext.securityContextId.set('different-principal');
+        break;
+      case 'leave Author':
+        component.setQueryView('compare');
+        break;
+      case 'leave route':
+        component.ionViewWillLeave();
+        break;
+    }
 
-      expect(component.authorPreviewSyntaxDiagnostic()).toBeUndefined();
-      expect(component.canNavigateToAuthorPreviewSyntaxDiagnostic()).toBe(false);
-    },
-  );
+    expect(component.authorPreviewSyntaxDiagnostic()).toBeUndefined();
+    expect(component.canNavigateToAuthorPreviewSyntaxDiagnostic()).toBe(false);
+  });
 
   it('drops a pending Compose-to-Code location if the draft changes before the editor mounts', async () => {
     const source = 'from Invoice as i\nselect\n  i.InvoiceId\n  i.InvoiceDate';
@@ -2767,7 +3339,8 @@ select (
     expect(prepare).not.toHaveBeenCalled();
     expect(execute).not.toHaveBeenCalled();
 
-    if (!clauseOrder) throw new Error('Expected source-positioned clause diagnostic');
+    if (!clauseOrder)
+      throw new Error('Expected source-positioned clause diagnostic');
     component.navigateToAuthorFormatDiagnostic(clauseOrder);
     expect(navigate).toHaveBeenCalledWith(source, clauseOrder);
     expect(component.queryBodyText()).toBe(source);
@@ -2784,12 +3357,15 @@ select (
     component.authorCodeChanged('first bad statement');
     component.formatAuthorTugQL();
     expect(
-      component.authorFormatDiagnosticItems().some(
-        (diagnostic) => diagnostic.code === 'unsupported_statement',
-      ),
+      component
+        .authorFormatDiagnosticItems()
+        .some((diagnostic) => diagnostic.code === 'unsupported_statement'),
     ).toBe(true);
 
-    const manyErrors = Array.from({ length: 8 }, (_, index) => `bad${index}`).join('\n');
+    const manyErrors = Array.from(
+      { length: 8 },
+      (_, index) => `bad${index}`,
+    ).join('\n');
     component.authorCodeChanged(manyErrors);
     component.formatAuthorTugQL();
     expect(component.authorFormatDiagnosticItems()).toHaveLength(5);
@@ -2889,8 +3465,7 @@ select (
   );
 
   it('navigates only exact-source parse spans after formatting failure', async () => {
-    const source =
-      'from Invoice as i\nselect i.InvoiceId\n    limit 4';
+    const source = 'from Invoice as i\nselect i.InvoiceId\n    limit 4';
     component = await createTugQLAuthor(source);
     const retainedPlan = { sql: 'previous preview' } as never;
     component.authorPlan.set(retainedPlan);
@@ -2920,7 +3495,8 @@ select (
     expect(prepare).not.toHaveBeenCalled();
     expect(execute).not.toHaveBeenCalled();
 
-    if (!clauseOrder) throw new Error('Expected source-positioned clause diagnostic');
+    if (!clauseOrder)
+      throw new Error('Expected source-positioned clause diagnostic');
     component.navigateToAuthorFormatDiagnostic(clauseOrder);
     expect(navigate).toHaveBeenCalledWith(source, clauseOrder);
     expect(component.queryBodyText()).toBe(source);
@@ -2937,12 +3513,15 @@ select (
     component.authorCodeChanged('first bad statement');
     component.formatAuthorTugQL();
     expect(
-      component.authorFormatDiagnosticItems().some(
-        (diagnostic) => diagnostic.code === 'unsupported_statement',
-      ),
+      component
+        .authorFormatDiagnosticItems()
+        .some((diagnostic) => diagnostic.code === 'unsupported_statement'),
     ).toBe(true);
 
-    const manyErrors = Array.from({ length: 8 }, (_, index) => `bad${index}`).join('\n');
+    const manyErrors = Array.from(
+      { length: 8 },
+      (_, index) => `bad${index}`,
+    ).join('\n');
     component.authorCodeChanged(manyErrors);
     component.formatAuthorTugQL();
     expect(component.authorFormatDiagnosticItems()).toHaveLength(5);
@@ -3340,7 +3919,10 @@ select (
     const lookupDefinition: IQueryDef = {
       ...definition,
       id: 'chinook-invoice-author',
-      request: { queryType: QueryType.DTQL, text: 'from Invoice as i' } as ITextQueryRequest,
+      request: {
+        queryType: QueryType.DTQL,
+        text: 'from Invoice as i',
+      } as ITextQueryRequest,
     };
     const queries = TestBed.inject(QueriesService);
     Object.assign(queries, { getQuery: vi.fn(() => of(lookupDefinition)) });
@@ -3447,15 +4029,17 @@ select (
       return targetState;
     });
     const updateQueryState = vi.mocked(scenario.editor.updateQueryState);
-    vi.mocked(scenario.router.navigate).mockImplementation(async (_commands, extras) => {
-      const navigationInfo = extras?.info;
-      setRouterNavigation(scenario.router, navigationInfo, 41);
-      setRouteId(scenario.lookupDefinition.id);
-      scenario.internals.setQueryId(scenario.lookupDefinition.id);
-      runFixture.detectChanges();
-      setRouterNavigation(scenario.router, navigationInfo, 41, true);
-      return true;
-    });
+    vi.mocked(scenario.router.navigate).mockImplementation(
+      async (_commands, extras) => {
+        const navigationInfo = extras?.info;
+        setRouterNavigation(scenario.router, navigationInfo, 41);
+        setRouteId(scenario.lookupDefinition.id);
+        scenario.internals.setQueryId(scenario.lookupDefinition.id);
+        runFixture.detectChanges();
+        setRouterNavigation(scenario.router, navigationInfo, 41, true);
+        return true;
+      },
+    );
 
     runFixture.detectChanges();
     await runFixture.whenStable();
@@ -3593,12 +4177,7 @@ select (
           const complete = resolve;
           resolveNavigation = (navigated) => {
             if (navigated)
-              setRouterNavigation(
-                scenario.router,
-                extras?.info,
-                42,
-                true,
-              );
+              setRouterNavigation(scenario.router, extras?.info, 42, true);
             complete(navigated);
           };
         }),
@@ -3665,9 +4244,9 @@ select (
     await pending;
 
     expect(scenario.router.navigate).toHaveBeenCalledTimes(2);
-    expect(TestBed.inject(ActivatedRoute).snapshot.queryParamMap.get('id')).toBe(
-      scenario.definition.id,
-    );
+    expect(
+      TestBed.inject(ActivatedRoute).snapshot.queryParamMap.get('id'),
+    ).toBe(scenario.definition.id);
     expect(component.queryId).toBe(scenario.definition.id);
     expect(scenario.editor.openQuery).not.toHaveBeenCalledWith(
       scenario.lookupDefinition.id,
@@ -3716,17 +4295,17 @@ select (
     expect(vi.mocked(scenario.router.navigate).mock.calls[1][1]).toEqual(
       expect.objectContaining({ replaceUrl: true }),
     );
-    expect(TestBed.inject(ActivatedRoute).snapshot.queryParamMap.get('id')).toBe(
-      scenario.lookupDefinition.id,
-    );
+    expect(
+      TestBed.inject(ActivatedRoute).snapshot.queryParamMap.get('id'),
+    ).toBe(scenario.lookupDefinition.id);
     expect(scenario.editor.openQuery).toHaveBeenCalledWith(
       scenario.lookupDefinition.id,
     );
     expect(scenario.editor.openAuthorizedQuery).not.toHaveBeenCalled();
     expect(scenario.editor.updateQueryState).not.toHaveBeenCalled();
-    expect(component.queryState.authorBindingProvenance?.['CustomerId']?.origin).toBe(
-      'manual',
-    );
+    expect(
+      component.queryState.authorBindingProvenance?.['CustomerId']?.origin,
+    ).toBe('manual');
   });
 
   it('does not roll back over a newer navigation to the same lookup target', async () => {
@@ -3770,9 +4349,9 @@ select (
     );
     expect(scenario.editor.openAuthorizedQuery).not.toHaveBeenCalled();
     expect(scenario.editor.updateQueryState).not.toHaveBeenCalled();
-    expect(component.queryState.authorBindingProvenance?.['CustomerId']?.origin).toBe(
-      'manual',
-    );
+    expect(
+      component.queryState.authorBindingProvenance?.['CustomerId']?.origin,
+    ).toBe('manual');
   });
 
   it('keeps an edit made before the owned route emission and never applies the stale selection', async () => {
@@ -3813,9 +4392,7 @@ select (
       '1',
       scenario.internals.currentQueryIdentity(),
     );
-    await vi.waitFor(() =>
-      expect(emitLookupRoute).toBeTypeOf('function'),
-    );
+    await vi.waitFor(() => expect(emitLookupRoute).toBeTypeOf('function'));
     component.authorCustomerIdChanged(
       new CustomEvent('ionChange', { detail: { value: '2' } }),
     );
@@ -3824,9 +4401,9 @@ select (
     await pending;
 
     expect(scenario.router.navigate).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(scenario.router.navigate).mock.calls[1][1]?.queryParams).toEqual(
-      expect.objectContaining({ id: scenario.definition.id }),
-    );
+    expect(
+      vi.mocked(scenario.router.navigate).mock.calls[1][1]?.queryParams,
+    ).toEqual(expect.objectContaining({ id: scenario.definition.id }));
     expect(vi.mocked(scenario.router.navigate).mock.calls[1][1]).toEqual(
       expect.objectContaining({ replaceUrl: true }),
     );
@@ -3855,12 +4432,7 @@ select (
           return new Promise<boolean>((resolve) => {
             resolveNavigation = (navigated) => {
               if (navigated)
-                setRouterNavigation(
-                  scenario.router,
-                  extras?.info,
-                  43,
-                  true,
-                );
+                setRouterNavigation(scenario.router, extras?.info, 43, true);
               resolve(navigated);
             };
           });
@@ -3883,22 +4455,24 @@ select (
     );
     await vi.waitFor(() => expect(resolveNavigation).toBeTypeOf('function'));
     component.queryTextChanged(
-      new CustomEvent('ionChange', { detail: { value: 'from Invoice as i -- keep local draft' } }),
+      new CustomEvent('ionChange', {
+        detail: { value: 'from Invoice as i -- keep local draft' },
+      }),
     );
     resolveNavigation(true);
     await pending;
 
     expect(scenario.router.navigate).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(scenario.router.navigate).mock.calls[1][1]?.queryParams).toEqual(
-      expect.objectContaining({ id: scenario.definition.id }),
-    );
+    expect(
+      vi.mocked(scenario.router.navigate).mock.calls[1][1]?.queryParams,
+    ).toEqual(expect.objectContaining({ id: scenario.definition.id }));
     expect(scenario.editor.openAuthorizedQuery).not.toHaveBeenCalled();
     expect((component.queryState.request as ITextQueryRequest).text).toContain(
       'keep local draft',
     );
-    expect(component.queryState.authorBindingProvenance?.['CustomerId']?.origin).toBe(
-      'manual',
-    );
+    expect(
+      component.queryState.authorBindingProvenance?.['CustomerId']?.origin,
+    ).toBe('manual');
   });
 
   it('does not show an old navigation failure after the CustomerId changes', async () => {
@@ -3951,8 +4525,9 @@ select (
     component.queryDef.set(definition);
     component.running.set(true);
     const abortController = new AbortController();
-    (component as unknown as { authorRunAbort?: AbortController }).authorRunAbort =
-      abortController;
+    (
+      component as unknown as { authorRunAbort?: AbortController }
+    ).authorRunAbort = abortController;
 
     component.queryTextChanged(
       new CustomEvent('ionInput', {
@@ -3980,7 +4555,10 @@ select (
     const target: IQueryDef = {
       id: 'chinook-invoice-author',
       connectionId: 'chinook-sqlite',
-      request: { queryType: QueryType.DTQL, text: 'from Invoice as i' } as ITextQueryRequest,
+      request: {
+        queryType: QueryType.DTQL,
+        text: 'from Invoice as i',
+      } as ITextQueryRequest,
     };
     const privateProject = {
       ref: {
@@ -4004,12 +4582,11 @@ select (
       authorityDenied: () => new Subject<typeof privateProject.ref>(),
       getRevision,
     };
-    component = await createComponent(
-      {},
-      source,
-      '<p></p>',
-      { realEditor: true, queries, project: of(privateProject) },
-    );
+    component = await createComponent({}, source, '<p></p>', {
+      realEditor: true,
+      queries,
+      project: of(privateProject),
+    });
     component.project = privateProject;
     runFixture.detectChanges();
     await runFixture.whenStable();
@@ -4083,10 +4660,7 @@ select (
       internals.currentQueryIdentity(),
     );
 
-    expect(getRevision).toHaveBeenCalledWith(
-      privateProject.ref,
-      target.id,
-    );
+    expect(getRevision).toHaveBeenCalledWith(privateProject.ref, target.id);
     const state = await firstValueFrom(editor.queryEditorState);
     expect(router.navigate).toHaveBeenCalledOnce();
     expect(openAuthorizedQuery).not.toHaveBeenCalled();
@@ -4543,28 +5117,38 @@ select (
         {
           provide: ActivatedRoute,
           useValue: {
-            queryParamMap: navigation?.queryParams ?? of(
-              convertToParamMap(
-                navigation?.realEditor && !navigation.routeId
-                  ? { id: 'q', projectApi: 'cloud', branch: 'work' }
-                  : navigation?.urlQueryId ? { id: navigation.urlQueryId } : {},
+            queryParamMap:
+              navigation?.queryParams ??
+              of(
+                convertToParamMap(
+                  navigation?.realEditor && !navigation.routeId
+                    ? { id: 'q', projectApi: 'cloud', branch: 'work' }
+                    : navigation?.urlQueryId
+                      ? { id: navigation.urlQueryId }
+                      : {},
+                ),
               ),
-            ),
             paramMap: of(
               convertToParamMap(
                 navigation?.realEditor && !navigation.routeId
                   ? { storeId: 'github.com', projectId: 'repo@owner@folder' }
-                  : navigation?.routeId ? { ...navigation.routeRef, queryId: navigation.routeId } : {},
+                  : navigation?.routeId
+                    ? { ...navigation.routeRef, queryId: navigation.routeId }
+                    : {},
               ),
             ),
             snapshot: {
               paramMap: convertToParamMap(
-                navigation?.routeId ? { ...navigation.routeRef, queryId: navigation.routeId } : {},
+                navigation?.routeId
+                  ? { ...navigation.routeRef, queryId: navigation.routeId }
+                  : {},
               ),
               queryParamMap: convertToParamMap(
                 navigation?.realEditor && !navigation.routeId
                   ? { id: 'q', projectApi: 'cloud', branch: 'work' }
-                  : navigation?.urlQueryId ? { id: navigation.urlQueryId } : {},
+                  : navigation?.urlQueryId
+                    ? { id: navigation.urlQueryId }
+                    : {},
               ),
               params: {},
             },
@@ -4680,9 +5264,7 @@ select (
     factId: 'selection-customer-5',
   };
 
-  async function createJoinedLookupScenario(
-    template = '<p></p>',
-  ): Promise<{
+  async function createJoinedLookupScenario(template = '<p></p>'): Promise<{
     definition: IQueryDef;
     lookupDefinition: IQueryDef;
     editor: QueryEditorStateService;
@@ -4772,7 +5354,10 @@ select (
     const lookupDefinition: IQueryDef = {
       ...definition,
       id: 'chinook-invoice-author',
-      request: { queryType: QueryType.DTQL, text: 'from Invoice as i' } as ITextQueryRequest,
+      request: {
+        queryType: QueryType.DTQL,
+        text: 'from Invoice as i',
+      } as ITextQueryRequest,
     };
     Object.assign(TestBed.inject(QueriesService), {
       getQuery: vi.fn(() => of(lookupDefinition)),
@@ -5200,7 +5785,10 @@ select (
 
     let rejectPage!: (error: Error) => void;
     federatedGetPageMock.mockImplementationOnce(
-      () => new Promise((_resolve, reject) => { rejectPage = reject; }),
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectPage = reject;
+        }),
     );
     component.runError.set(undefined);
     const rejectedPage = component.changeResultPage(1);
@@ -5208,7 +5796,9 @@ select (
       ...next,
       recordset: {
         columns: [],
-        rows: [[{ type: 'string' as const, value: 'replacement-generation-row' }]],
+        rows: [
+          [{ type: 'string' as const, value: 'replacement-generation-row' }],
+        ],
       },
     };
     component.runResult.set(sameIdReplacement);
@@ -5241,32 +5831,36 @@ select (
   const historyResultFor = (
     definition: IQueryDef,
     id = 'datatug-output-100000-abc',
-  ): FederatedQueryResult =>
-    ({
-      localResult: { id, generation: 1 },
-      nativeGraph: {
-        planIdentity: graphStableIdentity(definition.federation?.nativeGraph),
-        stageActions: [],
-        coverage: {},
-        edges: {},
-        ledger: { intermediate: 0, candidates: 0, outputRows: 0, networkBytes: 0 },
+  ): FederatedQueryResult => ({
+    localResult: { id, generation: 1 },
+    nativeGraph: {
+      planIdentity: graphStableIdentity(definition.federation?.nativeGraph),
+      stageActions: [],
+      coverage: {},
+      edges: {},
+      ledger: {
+        intermediate: 0,
+        candidates: 0,
+        outputRows: 0,
+        networkBytes: 0,
       },
-      recordset: {
-        columns: [{ name: 'Affiliation', type: 'string' }],
-        rows: [[{ type: 'string', value: 'original-row' }]],
-      },
-      totalRows: 150,
-      limitations: [],
-      bindingsApplied: [],
-      truncated: false,
-      provenance: {
-        observedAt: '2026-10-01T09:30:00Z',
-        queryId: definition.id,
-        source: 'synthetic',
-        mode: 'live',
-        executionProfile: 'protected',
-      },
-    });
+    },
+    recordset: {
+      columns: [{ name: 'Affiliation', type: 'string' }],
+      rows: [[{ type: 'string', value: 'original-row' }]],
+    },
+    totalRows: 150,
+    limitations: [],
+    bindingsApplied: [],
+    truncated: false,
+    provenance: {
+      observedAt: '2026-10-01T09:30:00Z',
+      queryId: definition.id,
+      source: 'synthetic',
+      mode: 'live',
+      executionProfile: 'protected',
+    },
+  });
   const historyResultTemplate = (): string => {
     const queryTemplate = readFileSync(
       resolve(
@@ -6686,7 +7280,10 @@ select (
     const definition: IQueryDef = {
       ...queryDef,
       id: 'sales',
-      request: { queryType: QueryType.DTQL, text: 'from: Invoice' } as ITextQueryRequest,
+      request: {
+        queryType: QueryType.DTQL,
+        text: 'from: Invoice',
+      } as ITextQueryRequest,
       federation: { ovdbBaseUrl: 'http://127.0.0.1:50501', tables: [] },
       parameters: [],
     };
@@ -6797,7 +7394,10 @@ select (
     const definition: IQueryDef = {
       ...queryDef,
       id: 'many-sales',
-      request: { queryType: QueryType.DTQL, text: 'from: Invoice' } as ITextQueryRequest,
+      request: {
+        queryType: QueryType.DTQL,
+        text: 'from: Invoice',
+      } as ITextQueryRequest,
       federation: { ovdbBaseUrl: 'http://127.0.0.1:50501', tables: [] },
       parameters: [],
     };
@@ -6838,7 +7438,10 @@ select (
     const definition: IQueryDef = {
       ...queryDef,
       id: 'paged-sales',
-      request: { queryType: QueryType.DTQL, text: 'from: Invoice' } as ITextQueryRequest,
+      request: {
+        queryType: QueryType.DTQL,
+        text: 'from: Invoice',
+      } as ITextQueryRequest,
       federation: { ovdbBaseUrl: 'http://127.0.0.1:50501', tables: [] },
       parameters: [],
     };
@@ -8310,7 +8913,10 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
     ).toBeGreaterThan(sqlEditor);
     expect(fallbackTextarea).toBeGreaterThan(sqlEditor);
     expect(
-      template.indexOf('(ionInput)="queryTextChanged($event)"', fallbackTextarea),
+      template.indexOf(
+        '(ionInput)="queryTextChanged($event)"',
+        fallbackTextarea,
+      ),
     ).toBeGreaterThan(fallbackTextarea);
   });
 
@@ -8320,7 +8926,9 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
     ]);
     fixture.detectChanges();
 
-    const sqlEditor = fixture.debugElement.query(By.directive(SqlEditorHostStub));
+    const sqlEditor = fixture.debugElement.query(
+      By.directive(SqlEditorHostStub),
+    );
     expect(sqlEditor).not.toBeNull();
     expect(sqlEditor.componentInstance.sql()).toBe(legacySqlText);
     expect(sqlEditor.componentInstance.disabled()).toBe(false);

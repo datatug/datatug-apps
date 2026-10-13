@@ -1674,6 +1674,16 @@
         </ion-card-header>
         <ion-card-content>
           <p>Saved query revision {{ hosted.queryRevision }} · result fingerprint {{ hosted.resultFingerprint }} · execution {{ hosted.execution.executionId }}.</p>
+          @if (hostedScenarioTarget()) {
+            <ion-button [disabled]="hostedScenarioBusy()" (click)="completeHostedScenarioStep()">Record Scenario query step from this execution</ion-button>
+            <p>Completing the manual step records this authorized query receipt. It does not assert that its rows passed validation.</p>
+          }
+          @if (hostedScenarioMessage()) {
+            <p role="status">{{ hostedScenarioMessage() }}</p>
+          }
+          @if (hostedScenarioError()) {
+            <p role="alert">{{ hostedScenarioError() }}</p>
+          }
           @if (hosted.validationPending) {
             <p role="status">Validation is still running for this execution. Row status will appear when its receipt is ready.</p>
           }

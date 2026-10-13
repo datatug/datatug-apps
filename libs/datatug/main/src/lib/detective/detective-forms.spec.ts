@@ -1,4 +1,5 @@
 import {
+  compatibleCaseInput,
   displayInputValue,
   identifierProposals,
   parseInputValue,
@@ -7,6 +8,38 @@ import {
 } from './detective-forms';
 
 describe('Detective form values', () => {
+  it('binds a confirmed seven-ID Case set only to a compatible set Check input', () => {
+    const caseValue = {
+      type: 'set' as const,
+      values: Array.from({ length: 7 }, (_, index) => ({
+        type: 'string' as const,
+        value: String(index + 1),
+      })),
+    };
+    expect(
+      compatibleCaseInput(
+        {
+          name: 'invoice_id',
+          type: 'string',
+          cardinality: 'set',
+          required: true,
+        },
+        caseValue,
+      ),
+    ).toBe(true);
+    expect(
+      compatibleCaseInput(
+        {
+          name: 'invoice_id',
+          type: 'string',
+          cardinality: 'scalar',
+          required: true,
+        },
+        caseValue,
+      ),
+    ).toBe(false);
+    expect(displayInputValue(caseValue)).toBe('1, 2, 3, 4, 5, 6, 7');
+  });
   it('offers separate sets from a pasted ticket without treating text as confirmed context', () => {
     const proposals = identifierProposals(
       'Order IDs: ORD-1, ORD-2 and ORD-3; Invoice IDs: INV-7, INV-9 and INV-10.',

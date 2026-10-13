@@ -147,6 +147,9 @@ export interface ScenarioStepReceipt {
   stepId: string;
   status: 'pending' | 'completed' | 'skipped';
   runId?: string;
+  execution?: DetectiveExecutionRef;
+  environment?: string;
+  evidenceOutcome?: 'pass' | 'fail' | 'unknown';
   at?: string;
   actor?: string;
 }

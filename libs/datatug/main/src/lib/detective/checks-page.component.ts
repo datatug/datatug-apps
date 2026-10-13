@@ -43,6 +43,7 @@ import {
 } from './detective-client.service';
 import {
   detectiveSlug,
+  compatibleCaseInput,
   displayInputValue,
   parseInputValue,
   parseScalar,
@@ -124,7 +125,7 @@ export class ChecksPageComponent {
   protected readonly publicDemo = computed(
     () =>
       this.scope.ref()?.storeId === 'github.com' &&
-    this.scope.ref()?.projectId === DEMO_PROJECT_REF.projectId,
+      this.scope.ref()?.projectId === DEMO_PROJECT_REF.projectId,
   );
   private readonly params = toSignal(this.route.paramMap, {
     initialValue: this.route.snapshot.paramMap,
@@ -186,6 +187,16 @@ export class ChecksPageComponent {
   protected readonly caseContext = computed(() =>
     this.state()?.cases.find((item) => item.id === this.caseId()),
   );
+  private prefilledCaseCheck = '';
+  private readonly prefillCaseInputs = effect(() => {
+    const check = this.current();
+    const investigation = this.caseContext();
+    if (!check || !investigation || !this.caseId()) return;
+    const key = `${investigation.id}/${check.id}`;
+    if (this.prefilledCaseCheck === key) return;
+    this.prefilledCaseCheck = key;
+    this.useCaseContext(true);
+  });
   protected readonly history = computed(() =>
     (this.state()?.runs || []).filter((run) => run.checkId === this.checkId()),
   );
@@ -868,7 +879,7 @@ export class ChecksPageComponent {
       },
     }));
   }
-  protected useCaseContext(): void {
+  protected useCaseContext(automatic = false): void {
     const check = this.current();
     const investigation = this.caseContext();
     if (!check || !investigation) return;
@@ -876,28 +887,28 @@ export class ChecksPageComponent {
     let added = 0;
     for (const input of check.inputs) {
       const value = investigation.context[input.name];
-      if (!value) continue;
+      if (!compatibleCaseInput(input, value)) continue;
+      if (automatic && next[input.name]?.value.trim()) continue;
       if (input.cardinality === 'range') {
-        if (value.type !== 'range' || value.start.type !== input.type) continue;
+        if (value?.type !== 'range') continue;
         next[input.name] = {
           value: displayInputValue(value.start),
           end: displayInputValue(value.end),
         };
       } else if (input.cardinality === 'set') {
-        if (
-          value.type !== 'set' ||
-          value.values.some((member) => member.type !== input.type)
-        )
-          continue;
+        if (value?.type !== 'set') continue;
         next[input.name] = { value: displayInputValue(value), end: '' };
       } else {
-        if (value.type !== input.type) continue;
+        if (!value || value.type === 'set' || value.type === 'range') continue;
         next[input.name] = { value: displayInputValue(value), end: '' };
       }
       added++;
     }
     this.runInputText.set(next);
-    this.message.set(`${added} matching Case inputs copied for review.`);
+    if (added)
+      this.message.set(
+        `${added} matching Case inputs copied for review. Run uses the values shown below.`,
+      );
   }
   protected async run(): Promise<void> {
     const context = this.scope.context();

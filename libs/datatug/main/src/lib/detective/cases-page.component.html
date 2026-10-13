@@ -77,6 +77,34 @@
                   "
               /></ion-item>
             </div>
+            @if (
+              !item.version &&
+              scope.context()?.kind === 'cloud' &&
+              incidentRef()
+            ) {
+              <ion-note
+                >Incident {{ incidentRef() }} will be linked in the same Case
+                creation action. Review the Case context before
+                saving.</ion-note
+              >
+              <ion-item>
+                <ion-label position="stacked">Incident environment</ion-label>
+                <ion-select
+                  aria-label="Incident environment"
+                  [value]="hostedEnvironment()"
+                  (ionChange)="hostedEnvironment.set($event.detail.value || '')"
+                >
+                  @for (
+                    environment of state()?.environments || [];
+                    track environment
+                  ) {
+                    <ion-select-option [value]="environment">{{
+                      environment
+                    }}</ion-select-option>
+                  }
+                </ion-select>
+              </ion-item>
+            }
             <div class="editor-block">
               <h2>Paste a ticket or message</h2>
               <p>
@@ -384,6 +412,15 @@
                         @if (application.steps[i]?.runId) {
                           <p>Run {{ application.steps[i].runId }}</p>
                         }
+                        @if (application.steps[i]?.execution; as execution) {
+                          <p>
+                            Saved query execution {{ execution.executionId }} ·
+                            {{ application.steps[i].environment }} · evidence
+                            {{
+                              application.steps[i].evidenceOutcome || 'unknown'
+                            }}
+                          </p>
+                        }
                       </ion-label>
                       @if (step.kind === 'check') {
                         <ion-button
@@ -394,6 +431,19 @@
                           >Open Check</ion-button
                         >
                       } @else {
+                        <ion-button
+                          slot="end"
+                          fill="clear"
+                          [routerLink]="
+                            scenarioQueryUrl(
+                              step.ref,
+                              item.id,
+                              application.id,
+                              step.id
+                            )
+                          "
+                          >Run Query</ion-button
+                        >
                         <ion-button
                           slot="end"
                           fill="clear"
@@ -611,7 +661,17 @@
               <ion-list>
                 @for (ref of item.incidentRefs; track ref) {
                   <ion-item
-                    ><ion-label>{{ ref }}</ion-label>
+                    ><ion-label
+                      ><strong>{{ incidentView(ref)?.title || ref }}</strong>
+                      @if (incidentView(ref); as incident) {
+                        <p>
+                          {{ ref }} · {{ incident.status }}
+                          @if (incident.outcome) {
+                            · {{ incident.outcome }}
+                          }
+                        </p>
+                      }
+                    </ion-label>
                     @if (incidentUrl(ref); as url) {
                       <ion-button slot="end" fill="clear" [routerLink]="url"
                         >Open Incident</ion-button
@@ -624,7 +684,36 @@
                   >
                 }
               </ion-list>
+              @if (incidentLoadError()) {
+                <ion-note color="danger" role="alert"
+                  >Incident details unavailable:
+                  {{ incidentLoadError() }}</ion-note
+                >
+              }
               @if (item.status !== 'archived') {
+                @if (scope.context()?.kind === 'cloud') {
+                  <ion-item>
+                    <ion-label position="stacked"
+                      >Incident environment</ion-label
+                    >
+                    <ion-select
+                      aria-label="Incident environment"
+                      [value]="hostedEnvironment()"
+                      (ionChange)="
+                        hostedEnvironment.set($event.detail.value || '')
+                      "
+                    >
+                      @for (
+                        environment of state()?.environments || [];
+                        track environment
+                      ) {
+                        <ion-select-option [value]="environment">{{
+                          environment
+                        }}</ion-select-option>
+                      }
+                    </ion-select>
+                  </ion-item>
+                }
                 <div class="edit-row">
                   <ion-item
                     ><ion-label position="stacked">Incident store/ID</ion-label
@@ -641,17 +730,237 @@
                     >Link Incident</ion-button
                   >
                 </div>
+                @if (scope.context()?.kind === 'cloud') {
+                  <div class="form-grid">
+                    <ion-item
+                      ><ion-label position="stacked"
+                        >New Incident title</ion-label
+                      >
+                      <ion-input
+                        aria-label="New Incident title"
+                        [value]="incidentTitle()"
+                        (ionInput)="
+                          incidentTitle.set($event.detail.value || '')
+                        "
+                    /></ion-item>
+                    <ion-item
+                      ><ion-label position="stacked">Description</ion-label>
+                      <ion-textarea
+                        aria-label="Incident description"
+                        [value]="incidentDescription()"
+                        (ionInput)="
+                          incidentDescription.set($event.detail.value || '')
+                        "
+                    /></ion-item>
+                  </div>
+                  <ion-button
+                    fill="outline"
+                    size="small"
+                    [disabled]="
+                      busy() ||
+                      !state()?.capabilities?.canWrite ||
+                      !selectedHostedEnvironment()
+                    "
+                    (click)="createIncident()"
+                    >Create and link Incident</ion-button
+                  >
+                }
               }
               @if (scope.context()?.kind === 'agent') {
                 <a routerLink="/incidents/new">Open a new Incident</a>
-              } @else {
-                <ion-note
-                  >Hosted Incident creation is not available yet. Existing
-                  Incident references can still be linked.</ion-note
-                >
               }
             </ion-card-content></ion-card
           >
+
+          @if (scope.context()?.kind === 'cloud') {
+            <ion-card
+              ><ion-card-content>
+                <h2>Private knowledge proposals</h2>
+                <p>
+                  Draft possible field meanings, relationships, invariants,
+                  queries or Scenarios from this Case. Review is explicit;
+                  export stays private and does not publish to a registry.
+                </p>
+                @if (knowledgeLoadError()) {
+                  <ion-note color="danger" role="alert"
+                    >Knowledge proposals unavailable:
+                    {{ knowledgeLoadError() }}</ion-note
+                  >
+                }
+                <ion-list>
+                  @for (proposal of caseKnowledge(); track proposal.id) {
+                    <ion-item
+                      ><ion-label>
+                        <h3>{{ proposal.title }} · {{ proposal.status }}</h3>
+                        <p>{{ proposal.kind }} · {{ proposal.statement }}</p>
+                        <p>
+                          Evidence IDs: {{ proposal.evidenceRefs.join(', ') }}
+                        </p>
+                        @if (proposal.reviewNote) {
+                          <p>Review: {{ proposal.reviewNote }}</p>
+                        }
+                        @if (proposal.status === 'draft') {
+                          <ion-button
+                            size="small"
+                            fill="outline"
+                            [disabled]="
+                              knowledgeBusy() ||
+                              !state()?.capabilities?.canWrite
+                            "
+                            (click)="reviewKnowledge(proposal, 'review')"
+                            >Mark reviewed</ion-button
+                          >
+                          <ion-button
+                            size="small"
+                            fill="outline"
+                            color="medium"
+                            [disabled]="
+                              knowledgeBusy() ||
+                              !state()?.capabilities?.canWrite
+                            "
+                            (click)="reviewKnowledge(proposal, 'reject')"
+                            >Reject</ion-button
+                          >
+                        }
+                        @if (proposal.status === 'reviewed') {
+                          <ion-button
+                            size="small"
+                            fill="outline"
+                            [disabled]="knowledgeBusy()"
+                            (click)="reviewKnowledge(proposal, 'export')"
+                            >Prepare private export</ion-button
+                          >
+                        }
+                      </ion-label></ion-item
+                    >
+                  } @empty {
+                    <ion-item
+                      ><ion-label
+                        >No knowledge proposals for this Case.</ion-label
+                      ></ion-item
+                    >
+                  }
+                </ion-list>
+                @if (knowledgeHasMore()) {
+                  <ion-button
+                    fill="clear"
+                    [disabled]="knowledgeBusy()"
+                    (click)="loadMoreKnowledge()"
+                    >Load more proposals</ion-button
+                  >
+                }
+                @if (exportedKnowledge(); as export) {
+                  <ion-note role="status"
+                    >Private reviewed export: {{ export.title }} —
+                    {{ export.statement }}</ion-note
+                  >
+                  <ion-item>
+                    <ion-label position="stacked"
+                      >Private proposal JSON</ion-label
+                    >
+                    <ion-textarea
+                      aria-label="Private proposal JSON"
+                      [readonly]="true"
+                      [autoGrow]="true"
+                      [value]="exportedKnowledgeJson()"
+                    />
+                  </ion-item>
+                }
+                @if (item.status !== 'archived') {
+                  <ion-item
+                    ><ion-label position="stacked">Proposal kind</ion-label>
+                    <ion-select
+                      aria-label="Proposal kind"
+                      [value]="knowledgeKind()"
+                      (ionChange)="
+                        knowledgeKind.set($event.detail.value || 'invariant')
+                      "
+                    >
+                      <ion-select-option value="field-meaning"
+                        >Field meaning</ion-select-option
+                      >
+                      <ion-select-option value="relationship"
+                        >Relationship</ion-select-option
+                      >
+                      <ion-select-option value="invariant"
+                        >Invariant</ion-select-option
+                      >
+                      <ion-select-option value="query">Query</ion-select-option>
+                      <ion-select-option value="scenario"
+                        >Scenario</ion-select-option
+                      >
+                    </ion-select></ion-item
+                  >
+                  <ion-item
+                    ><ion-label position="stacked">Proposal title</ion-label>
+                    <ion-input
+                      aria-label="Proposal title"
+                      [value]="knowledgeTitle()"
+                      (ionInput)="
+                        knowledgeTitle.set($event.detail.value || '')
+                      "
+                  /></ion-item>
+                  <ion-item
+                    ><ion-label position="stacked">Statement</ion-label>
+                    <ion-textarea
+                      aria-label="Proposal statement"
+                      [value]="knowledgeStatement()"
+                      (ionInput)="
+                        knowledgeStatement.set($event.detail.value || '')
+                      "
+                  /></ion-item>
+                  <p>Select supporting Case evidence IDs:</p>
+                  <ion-list>
+                    @for (evidence of item.evidence; track evidence.id) {
+                      <ion-item
+                        ><ion-checkbox
+                          slot="start"
+                          [checked]="knowledgeEvidence().includes(evidence.id)"
+                          (ionChange)="
+                            selectKnowledgeEvidence(
+                              evidence.id,
+                              $event.detail.checked
+                            )
+                          "
+                          [ariaLabel]="'Use evidence ' + evidence.id"
+                        />
+                        <ion-label
+                          >{{ evidence.id }} · {{ evidence.kind }} ·
+                          {{ evidence.ref }}</ion-label
+                        ></ion-item
+                      >
+                    } @empty {
+                      <ion-item
+                        ><ion-label
+                          >Add an evidence reference above before drafting
+                          knowledge.</ion-label
+                        ></ion-item
+                      >
+                    }
+                  </ion-list>
+                  <ion-button
+                    fill="outline"
+                    size="small"
+                    [disabled]="
+                      knowledgeBusy() ||
+                      !state()?.capabilities?.canWrite ||
+                      !item.evidence.length
+                    "
+                    (click)="saveKnowledgeDraft()"
+                    >Save private draft</ion-button
+                  >
+                  <ion-item
+                    ><ion-label position="stacked">Review note</ion-label>
+                    <ion-input
+                      aria-label="Knowledge review note"
+                      [value]="knowledgeReviewNote()"
+                      (ionInput)="
+                        knowledgeReviewNote.set($event.detail.value || '')
+                      "
+                  /></ion-item>
+                }</ion-card-content
+            ></ion-card>
+          }
 
           <ion-card
             ><ion-card-content>
@@ -719,8 +1028,8 @@
                 <p>Follow the evidence. Keep the investigation resumable.</p>
                 @if (queryParams().get('incident'); as incident) {
                   <p>
-                    Start a Case for Incident {{ incident }}. The link is added
-                    to the draft for review.
+                    Start a Case for Incident {{ incident }}. Review its context;
+                    the link is saved with the Case.
                   </p>
                 }
               </div>

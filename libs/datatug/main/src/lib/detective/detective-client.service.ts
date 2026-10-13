@@ -15,6 +15,14 @@ import {
   DetectiveExecutionRef,
   DetectiveState,
 } from './models';
+import {
+  HostedIncidentAction,
+  HostedIncidentLinks,
+  HostedIncidentResponse,
+  HostedKnowledgeAction,
+  HostedKnowledgePage,
+  HostedKnowledgeResponse,
+} from './hosted-linkage.models';
 
 export type DetectiveRequestContext =
   | {
@@ -206,6 +214,70 @@ export class DetectiveClientService {
       ...(spaceID ? { spaceID } : {}),
       operationId,
     });
+  }
+
+  linkedIncidents(
+    context: Extract<DetectiveRequestContext, { kind: 'cloud' }>,
+    caseId: string,
+  ): Observable<HostedIncidentLinks> {
+    return this.api.get<HostedIncidentLinks>(
+      'datatug/detective/incidents',
+      this.cloudParams(context).set('caseId', caseId),
+    );
+  }
+
+  incidentAction(
+    context: Extract<DetectiveRequestContext, { kind: 'cloud' }>,
+    action: HostedIncidentAction,
+  ): Observable<HostedIncidentResponse> {
+    const payload = {
+      storage: context.storage,
+      spaceID: context.spaceID,
+      project: context.project,
+      ...action,
+    };
+    const key = JSON.stringify(['incident_action', payload]);
+    const operationId = this.pendingOperations.get(key) ?? crypto.randomUUID();
+    this.pendingOperations.set(key, operationId);
+    return this.api
+      .post<HostedIncidentResponse>('datatug/detective/incident_action', {
+        ...payload,
+        operationId,
+      })
+      .pipe(tap({ next: () => this.pendingOperations.delete(key) }));
+  }
+
+  knowledgeProposals(
+    context: Extract<DetectiveRequestContext, { kind: 'cloud' }>,
+    after?: string,
+  ): Observable<HostedKnowledgePage> {
+    return this.api.get<HostedKnowledgePage>(
+      'datatug/detective/knowledge_proposals',
+      after
+        ? this.cloudParams(context).set('after', after)
+        : this.cloudParams(context),
+    );
+  }
+
+  knowledgeAction(
+    context: Extract<DetectiveRequestContext, { kind: 'cloud' }>,
+    action: HostedKnowledgeAction,
+  ): Observable<HostedKnowledgeResponse> {
+    const payload = {
+      storage: context.storage,
+      spaceID: context.spaceID,
+      project: context.project,
+      ...action,
+    };
+    const key = JSON.stringify(['knowledge_proposal_action', payload]);
+    const operationId = this.pendingOperations.get(key) ?? crypto.randomUUID();
+    this.pendingOperations.set(key, operationId);
+    return this.api
+      .post<HostedKnowledgeResponse>(
+        'datatug/detective/knowledge_proposal_action',
+        { ...payload, operationId },
+      )
+      .pipe(tap({ next: () => this.pendingOperations.delete(key) }));
   }
 
   runHostedQuery(

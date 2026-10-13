@@ -40,16 +40,23 @@ import { projectPageHref } from '../nav/project-page-href';
 import { agentBaseUrl } from '../services/repo/agent-url';
 import {
   DetectiveClientService,
+  DetectiveRequestContext,
   detectiveErrorMessage,
 } from './detective-client.service';
 import {
   detectiveSlug,
+  compatibleCaseInput,
   displayInputValue,
   identifierProposals,
   parseInputValue,
 } from './detective-forms';
 import { useDetectivePageContext } from './detective-page-context';
 import { DetectiveDemoStarterComponent } from './detective-demo-starter.component';
+import {
+  HostedIncidentView,
+  HostedKnowledgeKind,
+  HostedKnowledgeProposal,
+} from './hosted-linkage.models';
 import {
   CaseEvent,
   CaseFinding,
@@ -127,7 +134,7 @@ export class CasesPageComponent {
   protected readonly publicDemo = computed(
     () =>
       this.scope.ref()?.storeId === 'github.com' &&
-    this.scope.ref()?.projectId === DEMO_PROJECT_REF.projectId,
+      this.scope.ref()?.projectId === DEMO_PROJECT_REF.projectId,
   );
   private readonly params = toSignal(this.route.paramMap, {
     initialValue: this.route.snapshot.paramMap,
@@ -173,6 +180,29 @@ export class CasesPageComponent {
   protected readonly evidenceRef = signal('');
   protected readonly evidenceNote = signal('');
   protected readonly incidentRef = signal('');
+  protected readonly incidentTitle = signal('');
+  protected readonly incidentDescription = signal('');
+  protected readonly hostedEnvironment = signal('');
+  protected readonly linkedIncidents = signal<HostedIncidentView[]>([]);
+  protected readonly incidentLoadError = signal('');
+  protected readonly knowledgeProposals = signal<HostedKnowledgeProposal[]>([]);
+  protected readonly knowledgeCursor = signal<string | undefined>(undefined);
+  protected readonly knowledgeHasMore = signal(false);
+  protected readonly knowledgeLoadError = signal('');
+  protected readonly knowledgeBusy = signal(false);
+  protected readonly knowledgeKind = signal<HostedKnowledgeKind>('invariant');
+  protected readonly knowledgeTitle = signal('');
+  protected readonly knowledgeStatement = signal('');
+  protected readonly knowledgeEvidence = signal<string[]>([]);
+  protected readonly knowledgeReviewNote = signal('');
+  protected readonly exportedKnowledge = signal<
+    HostedKnowledgeProposal | undefined
+  >(undefined);
+  protected readonly exportedKnowledgeJson = computed(() =>
+    this.exportedKnowledge()
+      ? JSON.stringify(this.exportedKnowledge(), null, 2)
+      : '',
+  );
   protected readonly closureReason = signal('');
 
   protected readonly cases = computed(() => {
@@ -189,6 +219,17 @@ export class CasesPageComponent {
   protected readonly current = computed(() =>
     this.state()?.cases.find((item) => item.id === this.caseId()),
   );
+  protected readonly caseKnowledge = computed(() =>
+    this.knowledgeProposals().filter(
+      (proposal) => proposal.caseId === this.caseId(),
+    ),
+  );
+  protected readonly selectedHostedEnvironment = computed(() => {
+    const selected = this.hostedEnvironment();
+    return this.state()?.environments?.includes(selected)
+      ? selected
+      : undefined;
+  });
   protected readonly timelineEvents = computed(() => {
     const seen = new Set<string>();
     return [...this.olderEvents(), ...(this.current()?.timeline || [])].filter(
@@ -221,7 +262,7 @@ export class CasesPageComponent {
     return (this.state()?.checks || []).filter((check) =>
       check.inputs
         .filter((input) => input.required)
-        .every((input) => context[input.name] !== undefined),
+        .every((input) => compatibleCaseInput(input, context[input.name])),
     );
   });
   protected readonly relevantScenarios = computed(() => {
@@ -229,7 +270,7 @@ export class CasesPageComponent {
     return (this.state()?.scenarios || []).filter((scenario) =>
       scenario.inputs
         ?.filter((input) => input.required)
-        .every((input) => context[input.name] !== undefined),
+        .every((input) => compatibleCaseInput(input, context[input.name])),
     );
   });
   protected readonly contextEntries = computed(() =>
@@ -270,6 +311,40 @@ export class CasesPageComponent {
     onCleanup(() => subscription.unsubscribe());
   });
 
+  private readonly loadHostedLinks = effect((onCleanup) => {
+    const context = this.scope.context();
+    const caseId = this.caseId();
+    this.linkedIncidents.set([]);
+    this.incidentLoadError.set('');
+    this.knowledgeProposals.set([]);
+    this.knowledgeCursor.set(undefined);
+    this.knowledgeHasMore.set(false);
+    this.knowledgeLoadError.set('');
+    this.exportedKnowledge.set(undefined);
+    this.knowledgeEvidence.set([]);
+    if (context?.kind !== 'cloud' || !caseId) return;
+    const incidents = this.client.linkedIncidents(context, caseId).subscribe({
+      next: (page) => {
+        if (page.caseId === caseId) this.linkedIncidents.set(page.incidents);
+      },
+      error: (error: unknown) =>
+        this.incidentLoadError.set(detectiveErrorMessage(error, true)),
+    });
+    const proposals = this.client.knowledgeProposals(context).subscribe({
+      next: (page) => {
+        this.knowledgeProposals.set(page.proposals);
+        this.knowledgeCursor.set(page.nextCursor);
+        this.knowledgeHasMore.set(page.hasMore);
+      },
+      error: (error: unknown) =>
+        this.knowledgeLoadError.set(detectiveErrorMessage(error, true)),
+    });
+    onCleanup(() => {
+      incidents.unsubscribe();
+      proposals.unsubscribe();
+    });
+  });
+
   protected casesUrl(): string {
     return projectPageHref(this.scope.ref(), 'detective');
   }
@@ -286,6 +361,15 @@ export class CasesPageComponent {
   protected queryUrl(id: string): string {
     const url = projectPageHref(this.scope.ref(), ['query', id]);
     return `${url}${url.includes('?') ? '&' : '?'}id=${encodeURIComponent(id)}`;
+  }
+  protected scenarioQueryUrl(
+    queryId: string,
+    caseId: string,
+    applicationId: string,
+    stepId: string,
+  ): string {
+    const url = this.queryUrl(queryId);
+    return `${url}&caseId=${encodeURIComponent(caseId)}&applicationId=${encodeURIComponent(applicationId)}&scenarioStepId=${encodeURIComponent(stepId)}`;
   }
   protected incidentUrl(ref: string): string | undefined {
     const [store, id] = ref.split('/');
@@ -306,10 +390,17 @@ export class CasesPageComponent {
 
   protected startNew(): void {
     const incident = this.queryParams().get('incident');
+    this.incidentRef.set(
+      incident && /^[^/]+\/[^/]+$/u.test(incident) ? incident : '',
+    );
     this.draft.set({
       ...NEW_CASE(),
       incidentRefs:
-        incident && /^[^/]+\/[^/]+$/u.test(incident) ? [incident] : [],
+        this.scope.context()?.kind === 'agent' &&
+        incident &&
+        /^[^/]+\/[^/]+$/u.test(incident)
+          ? [incident]
+          : [],
     });
     this.error.set('');
   }
@@ -529,19 +620,39 @@ export class CasesPageComponent {
       return;
     }
     const created = item.version === 0;
+    const startIncident =
+      context.kind === 'cloud' && created ? this.incidentRef().trim() : '';
+    const hostedEnvironment = this.selectedHostedEnvironment();
+    if (
+      startIncident &&
+      (!/^[^/]+\/[^/]+$/u.test(startIncident) || !hostedEnvironment)
+    ) {
+      this.error.set(
+        'Choose a project environment and use incident-store/incident-id to start this Case.',
+      );
+      return;
+    }
     this.busy.set(true);
     this.error.set('');
     try {
-      const response = await firstValueFrom(
-        this.client.action(
-          context,
-          {
-            type: created ? 'create-case' : 'update-case',
-            case: item,
-          },
-          item.version,
-        ),
-      );
+      const response =
+        startIncident && context.kind === 'cloud'
+          ? await firstValueFrom(
+              this.client.incidentAction(context, {
+                type: 'start-case',
+                incidentRef: startIncident,
+                environment: hostedEnvironment || '',
+                case: { ...item, incidentRefs: [] },
+                ifMatch: 0,
+              }),
+            )
+          : await firstValueFrom(
+              this.client.action(
+                context,
+                { type: created ? 'create-case' : 'update-case', case: item },
+                item.version,
+              ),
+            );
       if (!response.case)
         throw new Error('The project store did not return the saved Case.');
       await this.refresh();
@@ -610,18 +721,235 @@ export class CasesPageComponent {
   protected archiveCase(): Promise<boolean> {
     return this.updateCase({ status: 'archived' }, 'Case archived.');
   }
-  protected linkIncident(): Promise<boolean> {
+  protected async linkIncident(): Promise<boolean> {
     const item = this.current();
+    const context = this.scope.context();
     const ref = this.incidentRef().trim();
-    if (!item) return Promise.resolve(false);
+    if (!item || !context) return false;
     if (!/^[^/]+\/[^/]+$/u.test(ref)) {
       this.error.set('Use incident-store/incident-id.');
-      return Promise.resolve(false);
+      return false;
     }
-    return this.updateCase(
-      { incidentRefs: [...new Set([...(item.incidentRefs || []), ref])] },
-      'Incident linked.',
+    if (context.kind === 'agent')
+      return this.updateCase(
+        { incidentRefs: [...new Set([...(item.incidentRefs || []), ref])] },
+        'Incident linked.',
+      );
+    const environment = this.selectedHostedEnvironment();
+    if (!environment) {
+      this.error.set(
+        'Choose a project environment before linking an Incident.',
+      );
+      return false;
+    }
+    this.busy.set(true);
+    this.error.set('');
+    try {
+      const response = await firstValueFrom(
+        this.client.incidentAction(context, {
+          type: 'link',
+          caseId: item.id,
+          incidentRef: ref,
+          environment,
+          ifMatch: item.version,
+        }),
+      );
+      if (!response.case)
+        throw new Error(
+          'The Incident service did not return the updated Case.',
+        );
+      await this.refresh();
+      await this.refreshHostedIncidents(context, item.id);
+      this.incidentRef.set('');
+      this.message.set('Incident linked.');
+      return true;
+    } catch (error) {
+      this.error.set(detectiveErrorMessage(error, true));
+      return false;
+    } finally {
+      this.busy.set(false);
+    }
+  }
+  protected async createIncident(): Promise<void> {
+    const context = this.scope.context();
+    const item = this.current();
+    const environment = this.selectedHostedEnvironment();
+    const title = this.incidentTitle().trim();
+    if (context?.kind !== 'cloud' || !item) return;
+    if (!environment || !title) {
+      this.error.set(
+        'Choose a project environment and give the Incident a title.',
+      );
+      return;
+    }
+    this.busy.set(true);
+    this.error.set('');
+    try {
+      const response = await firstValueFrom(
+        this.client.incidentAction(context, {
+          type: 'create',
+          caseId: item.id,
+          title,
+          description: this.incidentDescription().trim(),
+          environment,
+          ifMatch: item.version,
+        }),
+      );
+      if (!response.case)
+        throw new Error(
+          'The Incident service did not return the updated Case.',
+        );
+      await this.refresh();
+      await this.refreshHostedIncidents(context, item.id);
+      this.incidentTitle.set('');
+      this.incidentDescription.set('');
+      this.message.set('Incident created and linked to this Case.');
+    } catch (error) {
+      this.error.set(detectiveErrorMessage(error, true));
+    } finally {
+      this.busy.set(false);
+    }
+  }
+  private async refreshHostedIncidents(
+    context: Extract<DetectiveRequestContext, { kind: 'cloud' }>,
+    caseId: string,
+  ): Promise<void> {
+    const page = await firstValueFrom(
+      this.client.linkedIncidents(context, caseId),
     );
+    if (page.caseId !== caseId)
+      throw new Error('The Incident service returned a different Case.');
+    this.linkedIncidents.set(page.incidents);
+  }
+  protected incidentView(ref: string): HostedIncidentView | undefined {
+    return this.linkedIncidents().find(
+      (incident) =>
+        `${incident.ref.storeId}/${incident.ref.incidentId}` === ref,
+    );
+  }
+  protected selectKnowledgeEvidence(id: string, checked: boolean): void {
+    this.knowledgeEvidence.update((all) =>
+      checked ? [...new Set([...all, id])] : all.filter((ref) => ref !== id),
+    );
+  }
+  protected async loadMoreKnowledge(): Promise<void> {
+    const context = this.scope.context();
+    const after = this.knowledgeCursor();
+    if (context?.kind !== 'cloud' || !after || !this.knowledgeHasMore()) return;
+    this.knowledgeBusy.set(true);
+    this.knowledgeLoadError.set('');
+    try {
+      const page = await firstValueFrom(
+        this.client.knowledgeProposals(context, after),
+      );
+      const seen = new Set(
+        this.knowledgeProposals().map((proposal) => proposal.id),
+      );
+      this.knowledgeProposals.update((all) => [
+        ...all,
+        ...page.proposals.filter((proposal) => !seen.has(proposal.id)),
+      ]);
+      this.knowledgeCursor.set(page.nextCursor);
+      this.knowledgeHasMore.set(page.hasMore);
+    } catch (error) {
+      this.knowledgeLoadError.set(detectiveErrorMessage(error, true));
+    } finally {
+      this.knowledgeBusy.set(false);
+    }
+  }
+  protected async saveKnowledgeDraft(): Promise<void> {
+    const context = this.scope.context();
+    const item = this.current();
+    const title = this.knowledgeTitle().trim();
+    const statement = this.knowledgeStatement().trim();
+    const evidenceRefs = this.knowledgeEvidence();
+    if (context?.kind !== 'cloud' || !item) return;
+    if (!title || !statement || !evidenceRefs.length) {
+      this.error.set(
+        'A knowledge draft needs a title, statement, and at least one Case evidence ID.',
+      );
+      return;
+    }
+    this.knowledgeBusy.set(true);
+    this.error.set('');
+    try {
+      const response = await firstValueFrom(
+        this.client.knowledgeAction(context, {
+          type: 'save-draft',
+          proposal: {
+            id: `proposal-${crypto.randomUUID()}`,
+            caseId: item.id,
+            kind: this.knowledgeKind(),
+            title,
+            statement,
+            evidenceRefs,
+          },
+          ifMatch: 0,
+        }),
+      );
+      const savedProposal = response.proposal;
+      if (!savedProposal)
+        throw new Error(
+          'The project store did not return the knowledge draft.',
+        );
+      this.knowledgeProposals.update((all) => [savedProposal, ...all]);
+      this.knowledgeTitle.set('');
+      this.knowledgeStatement.set('');
+      this.knowledgeEvidence.set([]);
+      this.message.set('Private knowledge draft saved for review.');
+    } catch (error) {
+      this.error.set(detectiveErrorMessage(error, true));
+    } finally {
+      this.knowledgeBusy.set(false);
+    }
+  }
+  protected async reviewKnowledge(
+    proposal: HostedKnowledgeProposal,
+    type: 'review' | 'reject' | 'export',
+  ): Promise<void> {
+    const context = this.scope.context();
+    if (context?.kind !== 'cloud') return;
+    this.knowledgeBusy.set(true);
+    this.error.set('');
+    try {
+      const response = await firstValueFrom(
+        this.client.knowledgeAction(context, {
+          type,
+          proposalId: proposal.id,
+          ifMatch: proposal.version,
+          ...(type === 'export'
+            ? {}
+            : { reviewNote: this.knowledgeReviewNote().trim() }),
+        }),
+      );
+      if (type === 'export') {
+        if (!response.export)
+          throw new Error(
+            'The project store did not return the private export.',
+          );
+        this.exportedKnowledge.set(response.export);
+        this.message.set('Private reviewed proposal export is ready below.');
+      } else {
+        const reviewedProposal = response.proposal;
+        if (!reviewedProposal)
+          throw new Error(
+            'The project store did not return the reviewed proposal.',
+          );
+        this.knowledgeProposals.update((all) =>
+          all.map((entry) =>
+            entry.id === proposal.id ? reviewedProposal : entry,
+          ),
+        );
+        this.knowledgeReviewNote.set('');
+        this.message.set(
+          `Knowledge proposal ${type === 'review' ? 'reviewed' : 'rejected'}.`,
+        );
+      }
+    } catch (error) {
+      this.error.set(detectiveErrorMessage(error, true));
+    } finally {
+      this.knowledgeBusy.set(false);
+    }
   }
   protected attachScenario(scenario: InvestigationScenario): Promise<boolean> {
     const context = this.scope.context();
@@ -657,10 +985,12 @@ export class CasesPageComponent {
   }
 
   protected matchingRun(step: ScenarioStep): CheckRun | undefined {
-    return this.caseRuns().find((run) =>
-      step.kind === 'check'
-        ? run.kind === 'check' && run.checkId === step.ref
-        : run.kind === 'query-validators' && run.queryId === step.ref,
+    return this.caseRuns().find(
+      (run) =>
+        run.executionStatus === 'completed' &&
+        (step.kind === 'check'
+          ? run.kind === 'check' && run.checkId === step.ref
+          : run.kind === 'query-validators' && run.queryId === step.ref),
     );
   }
 

@@ -1,11 +1,32 @@
 import {
   CheckStepResult,
+  CheckInput,
   DetectiveInputValue,
   DetectiveValue,
   ValidationResult,
 } from './models';
 
 export const detectiveSlug = /^[a-z][a-z0-9-]{0,127}$/u;
+
+export function compatibleCaseInput(
+  input: CheckInput,
+  value: DetectiveInputValue | undefined,
+): boolean {
+  if (!value) return false;
+  if (input.cardinality === 'set')
+    return (
+      value.type === 'set' &&
+      value.values.length > 0 &&
+      value.values.every((member) => member.type === input.type)
+    );
+  if (input.cardinality === 'range')
+    return (
+      value.type === 'range' &&
+      value.start.type === input.type &&
+      value.end.type === input.type
+    );
+  return value.type === input.type;
+}
 
 export interface IdentifierProposal {
   readonly key: 'order_id' | 'invoice_id';
