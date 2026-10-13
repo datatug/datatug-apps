@@ -6,6 +6,7 @@ import {
   type HostedQueryResponse,
 } from '../../../detective/detective-client.service';
 import { ValidationRunResultsComponent } from '../../../detective/validation-run-results.component';
+import type { ValidationRowSelection } from '../../../detective/detective-forms';
 import type {
   CheckRun,
   DetectiveExecutionRef,
@@ -2052,14 +2053,19 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly resultGridNoRowsTemplate =
     '<span class="ag-overlay-no-rows-center">No rows.</span>';
 
-  public selectHostedValidationRow(rowIndex: number): void {
+  public selectHostedValidationRow(selection: ValidationRowSelection): void {
     const execution = this.activeHostedExecution();
     if (
       !execution?.run ||
-      rowIndex < 0 ||
-      rowIndex >= execution.result.recordset.rows.length
+      selection.queryId !== execution.queryId ||
+      !sameExecution(selection.execution, execution.execution) ||
+      !/^root\/0\/validator\/\d+$/u.test(selection.nodePath) ||
+      selection.rowIndex === undefined ||
+      selection.rowIndex < 0 ||
+      selection.rowIndex >= execution.result.recordset.rows.length
     )
       return;
+    const rowIndex = selection.rowIndex;
     this.hostedStatusFilter.set('all');
     this.resultPageIndex.set(Math.floor(rowIndex / this.resultPageSize));
     this.hostedSelectedRow.set(rowIndex);
@@ -6399,6 +6405,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
             applicationId: target.applicationId,
             stepId: target.stepId,
             stepStatus: 'completed',
+            queryId: execution.queryId,
+            environment: execution.environment,
             execution: execution.execution,
           },
           item.version,

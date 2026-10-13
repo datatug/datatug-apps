@@ -1,6 +1,7 @@
 import { computed, inject } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { AgentContextService } from '@sneat/datatug-semantic';
+import { SneatAuthStateService } from '@sneat/auth-core';
 import { IProjectRef } from '../core/project-context';
 import { isSharedProjectRef } from '../core/project-context';
 import { IProjectContext } from '../nav/nav-models';
@@ -12,6 +13,8 @@ import { DetectiveRequestContext } from './detective-client.service';
 export function useDetectivePageContext() {
   const navigation = inject(DatatugNavContextService);
   const agent = inject(AgentContextService);
+  const auth = inject(SneatAuthStateService);
+  const authState = toSignal(auth.authState, { initialValue: undefined });
   const project = toSignal(navigation.currentProject, {
     initialValue: undefined,
   });
@@ -39,6 +42,8 @@ export function useDetectivePageContext() {
         storage: 'firestore',
         spaceID: projectRef.spaceID,
         project: projectRef.projectId,
+        branch: projectRef.branch,
+        principal: authState()?.user?.uid,
       };
     const agentStoreId = projectRef.storeId;
     const securityContextId = agent
@@ -50,8 +55,24 @@ export function useDetectivePageContext() {
           agentStoreId,
           project: projectRef.projectId,
           securityContextId,
+          branch: projectRef.branch,
+          principal: authState()?.user?.uid,
         }
       : undefined;
+  });
+  /** Client-side fence only; the server remains the authority for access. */
+  const identity = computed(() => {
+    const request = context();
+    const projectRef = ref();
+    if (!request || !projectRef) return undefined;
+    return JSON.stringify([
+      projectRef.storeId,
+      projectRef.spaceID || '',
+      projectRef.projectId,
+      projectRef.branch || '',
+      authState()?.user?.uid || '',
+      request.kind === 'agent' ? request.securityContextId : '',
+    ]);
   });
   return {
     project: project as () => IProjectContext | undefined,
@@ -59,5 +80,6 @@ export function useDetectivePageContext() {
     currentEnvironment,
     unsupported,
     context,
+    identity,
   };
 }

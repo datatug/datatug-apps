@@ -19,8 +19,9 @@ import {
   resultLines,
   validatorGridRows,
   ValidatorGridRow,
+  ValidationRowSelection,
 } from './detective-forms';
-import { CheckRun } from './models';
+import { CheckRun, DetectiveExecutionRef } from './models';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -33,7 +34,9 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 })
 export class ValidationRunResultsComponent {
   readonly run = input.required<CheckRun>();
-  readonly rowSelected = output<number>();
+  readonly rootExecution = input<DetectiveExecutionRef | undefined>();
+  readonly rootQueryId = input<string | undefined>();
+  readonly rowSelected = output<ValidationRowSelection>();
   protected readonly lines = computed(() => resultLines(this.run().steps));
   protected readonly rows = computed(() => validatorGridRows(this.run().steps));
   private readonly expandedRunId = signal('');
@@ -88,7 +91,30 @@ export class ValidationRunResultsComponent {
   };
 
   protected onGridRowClicked(event: RowClickedEvent<ValidatorGridRow>): void {
-    if (event.data?.rowIndex !== undefined)
-      this.rowSelected.emit(event.data.rowIndex);
+    const row = event.data;
+    if (row?.rowIndex !== undefined && this.canSelect(row))
+      this.rowSelected.emit({
+        rowIndex: row.rowIndex,
+        queryId: row.queryId,
+        execution: row.execution,
+        nodePath: row.nodePath,
+      });
+  }
+  protected canSelect(
+    row: Omit<ValidationRowSelection, 'rowIndex'> & { rowIndex?: number },
+  ): boolean {
+    const root = this.rootExecution();
+    return (
+      row.rowIndex !== undefined &&
+      !!root &&
+      row.queryId === this.rootQueryId() &&
+      /^root\/0\/validator\/\d+$/u.test(row.nodePath) &&
+      row.execution?.storeId === root.storeId &&
+      row.execution?.projectId === root.projectId &&
+      row.execution?.executionId === root.executionId
+    );
+  }
+  protected selectLine(line: ValidationRowSelection): void {
+    if (this.canSelect(line)) this.rowSelected.emit(line);
   }
 }

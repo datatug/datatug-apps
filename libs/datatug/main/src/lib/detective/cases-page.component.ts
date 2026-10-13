@@ -53,6 +53,7 @@ import {
 import { useDetectivePageContext } from './detective-page-context';
 import { DetectiveDemoStarterComponent } from './detective-demo-starter.component';
 import { DetectiveAiPanelComponent } from './detective-ai-panel.component';
+import { knowledgeSaveAttempt } from './knowledge-save-attempt';
 import {
   HostedIncidentView,
   HostedKnowledgeHandoff,
@@ -149,6 +150,11 @@ export class CasesPageComponent {
   protected readonly caseId = computed(
     () => this.params().get('caseId') || undefined,
   );
+
+  protected readonly pageIdentity = computed(() => {
+    const scope = this.scope.identity();
+    return scope ? JSON.stringify([scope, this.caseId()]) : undefined;
+  });
   protected readonly state = signal<DetectiveState | undefined>(undefined);
   protected readonly loading = signal(false);
   protected readonly busy = signal(false);
@@ -218,6 +224,67 @@ export class CasesPageComponent {
       : '',
   );
   protected readonly closureReason = signal('');
+  private activeScopeIdentity = '';
+  private draftScopeIdentity = '';
+  private scenarioDraftScopeIdentity = '';
+  private knowledgeSaveAttempt?: { key: string; proposalId: string };
+  private readonly resetScope = effect(() => {
+    const identity = this.pageIdentity() || '';
+    if (identity === this.activeScopeIdentity) return;
+    this.activeScopeIdentity = identity;
+    this.draftScopeIdentity = '';
+    this.scenarioDraftScopeIdentity = '';
+    this.knowledgeSaveAttempt = undefined;
+    this.state.set(undefined);
+    this.draft.set(undefined);
+    this.scenarioDraft.set(undefined);
+    this.proposals.set([]);
+    this.pastedText.set('');
+    this.olderEvents.set([]);
+    this.olderEventsBefore.set(undefined);
+    this.olderEventsHasMore.set(undefined);
+    this.olderEventsBusy.set(false);
+    this.olderRunsBusy.set(false);
+    this.contextName.set('');
+    this.contextType.set('string');
+    this.contextCardinality.set('scalar');
+    this.contextText.set('');
+    this.contextEnd.set('');
+    this.noteText.set('');
+    this.findingText.set('');
+    this.findingEvidence.set('');
+    this.findingStatus.set('hypothesis');
+    this.evidenceRef.set('');
+    this.evidenceNote.set('');
+    this.evidenceKind.set('external');
+    this.closureReason.set('');
+    this.linkedIncidents.set([]);
+    this.knowledgeProposals.set([]);
+    this.knowledgeEvidence.set([]);
+    this.knowledgeFindings.set([]);
+    this.knowledgeTitle.set('');
+    this.knowledgeStatement.set('');
+    this.knowledgeKind.set('invariant');
+    this.knowledgeClaimStatus.set('hypothesis');
+    this.knowledgeReviewNote.set('');
+    this.handoffProposalId.set('');
+    this.handoffRepository.set('');
+    this.handoffResourceId.set('');
+    this.handoffExpectedRevision.set('');
+    this.incidentRef.set('');
+    this.incidentTitle.set('');
+    this.incidentDescription.set('');
+    this.hostedEnvironment.set('');
+    this.exportedKnowledge.set(undefined);
+    this.loading.set(false);
+    this.busy.set(false);
+    this.knowledgeBusy.set(false);
+    this.error.set('');
+    this.message.set('');
+  });
+  private isCurrentScope(identity: string | undefined): boolean {
+    return !!identity && identity === this.pageIdentity();
+  }
 
   protected readonly cases = computed(() => {
     const search = this.search().trim().toLowerCase();
@@ -306,16 +373,19 @@ export class CasesPageComponent {
 
   private readonly loadState = effect((onCleanup) => {
     const context = this.scope.context();
+    const identity = this.pageIdentity();
     this.state.set(undefined);
     this.error.set('');
-    if (!context) return;
+    if (!context || !identity) return;
     this.loading.set(true);
     const subscription = this.client.state(context).subscribe({
       next: (state) => {
+        if (!this.isCurrentScope(identity)) return;
         this.state.set(state);
         this.loading.set(false);
       },
       error: (error: unknown) => {
+        if (!this.isCurrentScope(identity)) return;
         this.error.set(
           detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
         );
@@ -327,6 +397,7 @@ export class CasesPageComponent {
 
   private readonly loadHostedLinks = effect((onCleanup) => {
     const context = this.scope.context();
+    const identity = this.pageIdentity();
     const caseId = this.caseId();
     this.linkedIncidents.set([]);
     this.incidentLoadError.set('');
@@ -338,26 +409,36 @@ export class CasesPageComponent {
     this.knowledgeEvidence.set([]);
     this.knowledgeFindings.set([]);
     this.handoffProposalId.set('');
-    if (!context || !caseId) return;
+    if (!context || !caseId || !identity) return;
     const incidents = this.client.linkedIncidents(context, caseId).subscribe({
       next: (page) => {
-        if (page.caseId === caseId) this.linkedIncidents.set(page.incidents);
+        if (
+          this.isCurrentScope(identity) &&
+          this.caseId() === caseId &&
+          page.caseId === caseId
+        )
+          this.linkedIncidents.set(page.incidents);
       },
-      error: (error: unknown) =>
-        this.incidentLoadError.set(
-          detectiveErrorMessage(error, context.kind === 'cloud'),
-        ),
+      error: (error: unknown) => {
+        if (this.isCurrentScope(identity) && this.caseId() === caseId)
+          this.incidentLoadError.set(
+            detectiveErrorMessage(error, context.kind === 'cloud'),
+          );
+      },
     });
     const proposals = this.client.knowledgeProposals(context).subscribe({
       next: (page) => {
+        if (!this.isCurrentScope(identity) || this.caseId() !== caseId) return;
         this.knowledgeProposals.set(page.proposals);
         this.knowledgeCursor.set(page.nextCursor);
         this.knowledgeHasMore.set(page.hasMore);
       },
-      error: (error: unknown) =>
-        this.knowledgeLoadError.set(
-          detectiveErrorMessage(error, context.kind === 'cloud'),
-        ),
+      error: (error: unknown) => {
+        if (this.isCurrentScope(identity) && this.caseId() === caseId)
+          this.knowledgeLoadError.set(
+            detectiveErrorMessage(error, context.kind === 'cloud'),
+          );
+      },
     });
     onCleanup(() => {
       incidents.unsubscribe();
@@ -418,6 +499,7 @@ export class CasesPageComponent {
   }
 
   protected startNew(): void {
+    this.draftScopeIdentity = this.pageIdentity() || '';
     const incident = this.queryParams().get('incident');
     this.incidentRef.set(
       incident && /^[^/]+\/[^/]+$/u.test(incident) ? incident : '',
@@ -434,6 +516,7 @@ export class CasesPageComponent {
     this.error.set('');
   }
   protected startScenario(): void {
+    this.scenarioDraftScopeIdentity = this.pageIdentity() || '';
     this.scenarioDraft.set({
       id: '',
       title: '',
@@ -444,6 +527,7 @@ export class CasesPageComponent {
     });
   }
   protected editScenario(item: InvestigationScenario): void {
+    this.scenarioDraftScopeIdentity = this.pageIdentity() || '';
     this.scenarioDraft.set(structuredClone(item));
   }
   protected updateScenario(patch: Partial<InvestigationScenario>): void {
@@ -507,8 +591,10 @@ export class CasesPageComponent {
   }
   protected async saveScenario(): Promise<void> {
     const context = this.scope.context();
+    const identity = this.pageIdentity();
     const item = this.scenarioDraft();
-    if (!context || !item) return;
+    if (!context || !item || identity !== this.scenarioDraftScopeIdentity)
+      return;
     if (
       !detectiveSlug.test(item.id) ||
       !item.title.trim() ||
@@ -526,22 +612,35 @@ export class CasesPageComponent {
       const response = await firstValueFrom(
         this.client.action(context, { type: 'save-scenario', scenario: item }),
       );
+      if (!this.isCurrentScope(identity)) return;
       if (!response.scenario)
         throw new Error('The project store did not return the saved Scenario.');
       await this.refresh();
+      if (!this.isCurrentScope(identity)) return;
+      if (this.scenarioDraft() !== item) {
+        this.message.set(
+          'The earlier Scenario draft was saved; your newer edits remain open.',
+        );
+        return;
+      }
       this.scenarioDraft.set(undefined);
       this.message.set(`Saved Scenario ${response.scenario.id}.`);
     } catch (error) {
+      if (!this.isCurrentScope(identity) || this.scenarioDraft() !== item)
+        return;
       this.error.set(
         detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
       );
     } finally {
-      this.busy.set(false);
+      if (this.isCurrentScope(identity)) this.busy.set(false);
     }
   }
   protected startEdit(): void {
     const item = this.current();
-    if (item) this.draft.set(structuredClone(item));
+    if (item) {
+      this.draftScopeIdentity = this.pageIdentity() || '';
+      this.draft.set(structuredClone(item));
+    }
   }
   protected cancelEdit(): void {
     this.draft.set(undefined);
@@ -642,8 +741,9 @@ export class CasesPageComponent {
 
   protected async save(): Promise<void> {
     const context = this.scope.context();
+    const identity = this.pageIdentity();
     const item = this.draft();
-    if (!context || !item) return;
+    if (!context || !item || identity !== this.draftScopeIdentity) return;
     if (!detectiveSlug.test(item.id) || !item.title.trim()) {
       this.error.set('Use a slug ID and title.');
       return;
@@ -680,20 +780,29 @@ export class CasesPageComponent {
               item.version,
             ),
           );
+      if (!this.isCurrentScope(identity)) return;
       if (!response.case)
         throw new Error('The project store did not return the saved Case.');
       await this.refresh();
+      if (!this.isCurrentScope(identity)) return;
+      if (this.draft() !== item) {
+        this.message.set(
+          'The earlier Case draft was saved; your newer edits remain open.',
+        );
+        return;
+      }
       this.draft.set(undefined);
       await this.router.navigateByUrl(this.caseUrl(response.case.id), {
         replaceUrl: created,
       });
       this.message.set(`Saved Case ${response.case.id}.`);
     } catch (error) {
+      if (!this.isCurrentScope(identity) || this.draft() !== item) return;
       this.error.set(
         detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
       );
     } finally {
-      this.busy.set(false);
+      if (this.isCurrentScope(identity)) this.busy.set(false);
     }
   }
 
@@ -702,6 +811,7 @@ export class CasesPageComponent {
     success: string,
   ): Promise<boolean> {
     const context = this.scope.context();
+    const identity = this.pageIdentity();
     const item = this.current();
     if (!context || !item) return false;
     this.busy.set(true);
@@ -717,18 +827,25 @@ export class CasesPageComponent {
           item.version,
         ),
       );
+      if (!this.isCurrentScope(identity) || this.caseId() !== item.id)
+        return false;
       if (!response.case)
         throw new Error('The project store did not return the updated Case.');
       await this.refresh();
+      if (!this.isCurrentScope(identity) || this.caseId() !== item.id)
+        return false;
       this.message.set(success);
       return true;
     } catch (error) {
+      if (!this.isCurrentScope(identity) || this.caseId() !== item.id)
+        return false;
       this.error.set(
         detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
       );
       return false;
     } finally {
-      this.busy.set(false);
+      if (this.isCurrentScope(identity) && this.caseId() === item.id)
+        this.busy.set(false);
     }
   }
   protected closeCase(): Promise<boolean> {
@@ -751,6 +868,7 @@ export class CasesPageComponent {
   protected async linkIncident(): Promise<boolean> {
     const item = this.current();
     const context = this.scope.context();
+    const identity = this.pageIdentity();
     const ref = this.incidentRef().trim();
     if (!item || !context) return false;
     if (!/^[^/]+\/[^/]+$/u.test(ref)) {
@@ -776,24 +894,34 @@ export class CasesPageComponent {
           ifMatch: item.version,
         }),
       );
+      if (!this.isCurrentScope(identity) || this.caseId() !== item.id)
+        return false;
       if (!response.case)
         throw new Error(
           'The Incident service did not return the updated Case.',
         );
       await this.refresh();
+      if (!this.isCurrentScope(identity) || this.caseId() !== item.id)
+        return false;
       await this.refreshHostedIncidents(context, item.id);
+      if (!this.isCurrentScope(identity) || this.caseId() !== item.id)
+        return false;
       this.incidentRef.set('');
       this.message.set('Incident linked.');
       return true;
     } catch (error) {
+      if (!this.isCurrentScope(identity) || this.caseId() !== item.id)
+        return false;
       this.error.set(detectiveErrorMessage(error, context.kind === 'cloud'));
       return false;
     } finally {
-      this.busy.set(false);
+      if (this.isCurrentScope(identity) && this.caseId() === item.id)
+        this.busy.set(false);
     }
   }
   protected async createIncident(): Promise<void> {
     const context = this.scope.context();
+    const identity = this.pageIdentity();
     const item = this.current();
     const environment = this.selectedHostedEnvironment();
     const title = this.incidentTitle().trim();
@@ -817,28 +945,35 @@ export class CasesPageComponent {
           ifMatch: item.version,
         }),
       );
+      if (!this.isCurrentScope(identity) || this.caseId() !== item.id) return;
       if (!response.case)
         throw new Error(
           'The Incident service did not return the updated Case.',
         );
       await this.refresh();
+      if (!this.isCurrentScope(identity) || this.caseId() !== item.id) return;
       await this.refreshHostedIncidents(context, item.id);
+      if (!this.isCurrentScope(identity) || this.caseId() !== item.id) return;
       this.incidentTitle.set('');
       this.incidentDescription.set('');
       this.message.set('Incident created and linked to this Case.');
     } catch (error) {
+      if (!this.isCurrentScope(identity) || this.caseId() !== item.id) return;
       this.error.set(detectiveErrorMessage(error, context.kind === 'cloud'));
     } finally {
-      this.busy.set(false);
+      if (this.isCurrentScope(identity) && this.caseId() === item.id)
+        this.busy.set(false);
     }
   }
   private async refreshHostedIncidents(
     context: DetectiveRequestContext,
     caseId: string,
   ): Promise<void> {
+    const identity = this.pageIdentity();
     const page = await firstValueFrom(
       this.client.linkedIncidents(context, caseId),
     );
+    if (!this.isCurrentScope(identity) || this.caseId() !== caseId) return;
     if (page.caseId !== caseId)
       throw new Error('The Incident service returned a different Case.');
     this.linkedIncidents.set(page.incidents);
@@ -869,6 +1004,8 @@ export class CasesPageComponent {
   }
   protected async loadMoreKnowledge(): Promise<void> {
     const context = this.scope.context();
+    const identity = this.pageIdentity();
+    const caseId = this.caseId();
     const after = this.knowledgeCursor();
     if (!context || !after || !this.knowledgeHasMore()) return;
     this.knowledgeBusy.set(true);
@@ -877,6 +1014,7 @@ export class CasesPageComponent {
       const page = await firstValueFrom(
         this.client.knowledgeProposals(context, after),
       );
+      if (!this.isCurrentScope(identity) || this.caseId() !== caseId) return;
       const seen = new Set(
         this.knowledgeProposals().map((proposal) => proposal.id),
       );
@@ -887,15 +1025,18 @@ export class CasesPageComponent {
       this.knowledgeCursor.set(page.nextCursor);
       this.knowledgeHasMore.set(page.hasMore);
     } catch (error) {
+      if (!this.isCurrentScope(identity) || this.caseId() !== caseId) return;
       this.knowledgeLoadError.set(
         detectiveErrorMessage(error, context.kind === 'cloud'),
       );
     } finally {
-      this.knowledgeBusy.set(false);
+      if (this.isCurrentScope(identity) && this.caseId() === caseId)
+        this.knowledgeBusy.set(false);
     }
   }
   protected async saveKnowledgeDraft(): Promise<void> {
     const context = this.scope.context();
+    const identity = this.pageIdentity();
     const item = this.current();
     const title = this.knowledgeTitle().trim();
     const statement = this.knowledgeStatement().trim();
@@ -929,12 +1070,28 @@ export class CasesPageComponent {
     }
     this.knowledgeBusy.set(true);
     this.error.set('');
+    const attemptKey = JSON.stringify([
+      identity,
+      item.id,
+      item.version,
+      this.knowledgeKind(),
+      title,
+      statement,
+      evidenceRefs,
+      findingRefs,
+      claimStatus,
+    ]);
+    this.knowledgeSaveAttempt = knowledgeSaveAttempt(
+      this.knowledgeSaveAttempt,
+      attemptKey,
+    );
+    const proposalId = this.knowledgeSaveAttempt.proposalId;
     try {
       const response = await firstValueFrom(
         this.client.knowledgeAction(context, {
           type: 'save-draft',
           proposal: {
-            id: `proposal-${crypto.randomUUID()}`,
+            id: proposalId,
             caseId: item.id,
             kind: this.knowledgeKind(),
             title,
@@ -946,12 +1103,31 @@ export class CasesPageComponent {
           ifMatch: 0,
         }),
       );
+      if (!this.isCurrentScope(identity) || this.caseId() !== item.id) return;
       const savedProposal = response.proposal;
       if (!savedProposal)
         throw new Error(
           'The project store did not return the knowledge draft.',
         );
       this.knowledgeProposals.update((all) => [savedProposal, ...all]);
+      this.knowledgeSaveAttempt = undefined;
+      const currentDraftKey = JSON.stringify([
+        this.pageIdentity(),
+        item.id,
+        item.version,
+        this.knowledgeKind(),
+        this.knowledgeTitle().trim(),
+        this.knowledgeStatement().trim(),
+        this.knowledgeEvidence(),
+        this.knowledgeFindings(),
+        this.knowledgeClaimStatus(),
+      ]);
+      if (currentDraftKey !== attemptKey) {
+        this.message.set(
+          'The earlier knowledge draft was saved; your newer edits remain open.',
+        );
+        return;
+      }
       this.knowledgeTitle.set('');
       this.knowledgeStatement.set('');
       this.knowledgeEvidence.set([]);
@@ -959,9 +1135,12 @@ export class CasesPageComponent {
       this.knowledgeClaimStatus.set('hypothesis');
       this.message.set('Private knowledge draft saved for review.');
     } catch (error) {
+      if (!this.isCurrentScope(identity) || this.caseId() !== item.id) return;
+      if (this.knowledgeSaveAttempt?.key !== attemptKey) return;
       this.error.set(detectiveErrorMessage(error, context.kind === 'cloud'));
     } finally {
-      this.knowledgeBusy.set(false);
+      if (this.isCurrentScope(identity) && this.caseId() === item.id)
+        this.knowledgeBusy.set(false);
     }
   }
   protected async reviewKnowledge(
@@ -969,6 +1148,8 @@ export class CasesPageComponent {
     type: 'review' | 'reject',
   ): Promise<void> {
     const context = this.scope.context();
+    const identity = this.pageIdentity();
+    const caseId = this.caseId();
     if (!context) return;
     this.knowledgeBusy.set(true);
     this.error.set('');
@@ -981,6 +1162,7 @@ export class CasesPageComponent {
           reviewNote: this.knowledgeReviewNote().trim(),
         }),
       );
+      if (!this.isCurrentScope(identity) || this.caseId() !== caseId) return;
       const reviewedProposal = response.proposal;
       if (!reviewedProposal)
         throw new Error(
@@ -996,13 +1178,17 @@ export class CasesPageComponent {
         `Knowledge proposal ${type === 'review' ? 'reviewed' : 'rejected'}.`,
       );
     } catch (error) {
+      if (!this.isCurrentScope(identity) || this.caseId() !== caseId) return;
       this.error.set(detectiveErrorMessage(error, context.kind === 'cloud'));
     } finally {
-      this.knowledgeBusy.set(false);
+      if (this.isCurrentScope(identity) && this.caseId() === caseId)
+        this.knowledgeBusy.set(false);
     }
   }
   protected async prepareKnowledgeHandoff(): Promise<void> {
     const context = this.scope.context();
+    const identity = this.pageIdentity();
+    const caseId = this.caseId();
     const proposal = this.caseKnowledge().find(
       (item) => item.id === this.handoffProposalId(),
     );
@@ -1034,6 +1220,7 @@ export class CasesPageComponent {
           target,
         }),
       );
+      if (!this.isCurrentScope(identity) || this.caseId() !== caseId) return;
       const updatedProposal = response.proposal;
       if (!response.export || !updatedProposal)
         throw new Error(
@@ -1048,13 +1235,16 @@ export class CasesPageComponent {
         'Private target-bound handoff is ready for external review. No registry change was made.',
       );
     } catch (error) {
+      if (!this.isCurrentScope(identity) || this.caseId() !== caseId) return;
       this.error.set(detectiveErrorMessage(error, context.kind === 'cloud'));
     } finally {
-      this.knowledgeBusy.set(false);
+      if (this.isCurrentScope(identity) && this.caseId() === caseId)
+        this.knowledgeBusy.set(false);
     }
   }
   protected attachScenario(scenario: InvestigationScenario): Promise<boolean> {
     const context = this.scope.context();
+    const identity = this.pageIdentity();
     const item = this.current();
     if (!context || !item) return Promise.resolve(false);
     this.busy.set(true);
@@ -1071,19 +1261,28 @@ export class CasesPageComponent {
       ),
     )
       .then(async (response) => {
+        if (!this.isCurrentScope(identity) || this.caseId() !== item.id)
+          return false;
         if (!response.case)
           throw new Error('The project store did not return the Case.');
         await this.refresh();
+        if (!this.isCurrentScope(identity) || this.caseId() !== item.id)
+          return false;
         this.message.set(
           'Scenario applied. Run each step manually and record its result.',
         );
         return true;
       })
       .catch((error: unknown) => {
+        if (!this.isCurrentScope(identity) || this.caseId() !== item.id)
+          return false;
         this.error.set(detectiveErrorMessage(error, context.kind === 'cloud'));
         return false;
       })
-      .finally(() => this.busy.set(false));
+      .finally(() => {
+        if (this.isCurrentScope(identity) && this.caseId() === item.id)
+          this.busy.set(false);
+      });
   }
 
   protected matchingRun(step: ScenarioStep): CheckRun | undefined {
@@ -1102,6 +1301,7 @@ export class CasesPageComponent {
     status: 'completed' | 'skipped',
   ): Promise<void> {
     const context = this.scope.context();
+    const identity = this.pageIdentity();
     const item = this.current();
     if (!context || !item) return;
     const runId =
@@ -1127,19 +1327,24 @@ export class CasesPageComponent {
           item.version,
         ),
       );
+      if (!this.isCurrentScope(identity) || this.caseId() !== item.id) return;
       if (!response.case)
         throw new Error('The project store did not return the Case.');
       await this.refresh();
+      if (!this.isCurrentScope(identity) || this.caseId() !== item.id) return;
       this.message.set(`Scenario step ${step.id} ${status}.`);
     } catch (error) {
+      if (!this.isCurrentScope(identity) || this.caseId() !== item.id) return;
       this.error.set(detectiveErrorMessage(error, context.kind === 'cloud'));
     } finally {
-      this.busy.set(false);
+      if (this.isCurrentScope(identity) && this.caseId() === item.id)
+        this.busy.set(false);
     }
   }
 
   protected async loadOlderEvents(): Promise<void> {
     const context = this.scope.context();
+    const identity = this.pageIdentity();
     const item = this.current();
     const before = this.olderEventsBefore() ?? item?.timelineOffset;
     if (!context || !item || !before || this.olderEventsBusy()) return;
@@ -1149,6 +1354,7 @@ export class CasesPageComponent {
       const page = await firstValueFrom(
         this.client.caseEvents(context, item.id, before),
       );
+      if (!this.isCurrentScope(identity) || this.caseId() !== item.id) return;
       if (page.caseId !== item.id)
         throw new Error('The project store returned events for another Case.');
       const seen = new Set(this.timelineEvents().map((event) => event.id));
@@ -1159,9 +1365,11 @@ export class CasesPageComponent {
       this.olderEventsBefore.set(page.nextBefore);
       this.olderEventsHasMore.set(page.hasMore);
     } catch (error) {
+      if (!this.isCurrentScope(identity) || this.caseId() !== item.id) return;
       this.error.set(detectiveErrorMessage(error, context.kind === 'cloud'));
     } finally {
-      this.olderEventsBusy.set(false);
+      if (this.isCurrentScope(identity) && this.caseId() === item.id)
+        this.olderEventsBusy.set(false);
     }
   }
   protected addFinding(): Promise<void> {
@@ -1222,6 +1430,7 @@ export class CasesPageComponent {
   }
   protected async addNote(): Promise<void> {
     const context = this.scope.context();
+    const identity = this.pageIdentity();
     const item = this.current();
     const message = this.noteText().trim();
     if (!context || !item || !message) return;
@@ -1244,15 +1453,19 @@ export class CasesPageComponent {
           item.version,
         ),
       );
+      if (!this.isCurrentScope(identity) || this.caseId() !== item.id) return;
       await this.refresh();
+      if (!this.isCurrentScope(identity) || this.caseId() !== item.id) return;
       this.noteText.set('');
       this.message.set('Note added to the timeline.');
     } catch (error) {
+      if (!this.isCurrentScope(identity) || this.caseId() !== item.id) return;
       this.error.set(
         detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
       );
     } finally {
-      this.busy.set(false);
+      if (this.isCurrentScope(identity) && this.caseId() === item.id)
+        this.busy.set(false);
     }
   }
   protected runOf(id: string): CheckRun | undefined {
@@ -1260,6 +1473,7 @@ export class CasesPageComponent {
   }
   protected async loadOlderRuns(): Promise<void> {
     const context = this.scope.context();
+    const identity = this.pageIdentity();
     const state = this.state();
     if (!context || !state?.runsHasMore || !state.runsNextCursor) return;
     this.olderRunsBusy.set(true);
@@ -1268,23 +1482,28 @@ export class CasesPageComponent {
       const older = await firstValueFrom(
         this.client.state(context, state.runsNextCursor),
       );
+      if (!this.isCurrentScope(identity)) return;
       const seen = new Set(state.runs.map((run) => run.id));
       this.state.set({
         ...older,
         runs: [...state.runs, ...older.runs.filter((run) => !seen.has(run.id))],
       });
     } catch (error) {
+      if (!this.isCurrentScope(identity)) return;
       this.error.set(
         detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
       );
     } finally {
-      this.olderRunsBusy.set(false);
+      if (this.isCurrentScope(identity)) this.olderRunsBusy.set(false);
     }
   }
 
   protected async refresh(): Promise<void> {
     const context = this.scope.context();
-    if (context)
-      this.state.set(await firstValueFrom(this.client.state(context)));
+    const identity = this.pageIdentity();
+    if (context) {
+      const state = await firstValueFrom(this.client.state(context));
+      if (this.isCurrentScope(identity)) this.state.set(state);
+    }
   }
 }

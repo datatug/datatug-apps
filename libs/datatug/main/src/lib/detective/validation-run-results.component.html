@@ -25,6 +25,11 @@
     Filter by outcome, configured severity, Validator, or row in this run. Row
     numbers refer to this execution.
   </p>
+  <p>
+    Nested query row numbers are child-local evidence. Drilldown is available
+    only for the exact root query receipt; an authorized child snapshot is not
+    available here.
+  </p>
   @if (visibleRows().length) {
     <ag-grid-angular
       class="ag-theme-quartz"
@@ -40,14 +45,41 @@
   @for (line of visibleLines(); track line.key) {
     <ion-item
       [style.--padding-start.px]="16 + line.depth * 20"
-      [button]="line.rowIndex !== undefined"
-      (click)="line.rowIndex !== undefined && rowSelected.emit(line.rowIndex)"
+      [button]="
+        line.rowIndex !== undefined &&
+        canSelect({
+          rowIndex: line.rowIndex,
+          queryId: line.queryId,
+          execution: line.execution,
+          nodePath: line.nodePath || '',
+        })
+      "
+      (click)="
+        line.rowIndex !== undefined &&
+          selectLine({
+            rowIndex: line.rowIndex,
+            queryId: line.queryId,
+            execution: line.execution,
+            nodePath: line.nodePath || '',
+          })
+      "
     >
       <ion-label
         ><h3>
           {{ line.label }}
           @if (line.rowIndex !== undefined) {
             · row {{ line.rowIndex + 1 }}
+            @if (
+              !canSelect({
+                rowIndex: line.rowIndex,
+                queryId: line.queryId,
+                execution: line.execution,
+                nodePath: line.nodePath || '',
+              })
+            ) {
+              · {{ line.queryId || 'child query' }} child-local row; snapshot
+              drilldown unavailable
+            }
           }
         </h3>
         <p>

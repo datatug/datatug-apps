@@ -8,6 +8,7 @@ import {
   input,
   output,
   signal,
+  untracked,
 } from '@angular/core';
 import {
   IonBadge,
@@ -35,14 +36,20 @@ import {
   DetectiveRequestContext,
   detectiveErrorMessage,
 } from './detective-client.service';
-import { displayInputValue, parseInputValue } from './detective-forms';
+import {
+  displayInputValue,
+  parseInputValue,
+  parseScalar,
+} from './detective-forms';
 import {
   CheckInput,
+  CheckBinding,
   CheckStep,
   DetectiveInputValue,
   DetectiveState,
   DetectiveValue,
   ScenarioStep,
+  ValidatorDefinition,
 } from './models';
 
 type InputEdit = {
@@ -100,6 +107,7 @@ function editFromValue(value: DetectiveInputValue): InputEdit {
 export class DetectiveAiPanelComponent {
   private readonly client = inject(DetectiveClientService);
   readonly context = input<DetectiveRequestContext | undefined>();
+  readonly identity = input<string | undefined>();
   readonly state = input<DetectiveState | undefined>();
   readonly caseId = input<string | undefined>();
   readonly confirmed = output<AiConfirmReceipt>();
@@ -116,8 +124,13 @@ export class DetectiveAiPanelComponent {
   >([]);
   protected readonly assistantText = signal('');
   protected readonly selected = signal<AiProposal | undefined>(undefined);
+  private readonly selectedScopeKey = signal('');
   protected readonly draft = signal<AiDraft | undefined>(undefined);
   protected readonly inputEdits = signal<Record<string, InputEdit>>({});
+  protected readonly expectedTypeEdits = signal<
+    Record<string, DetectiveValue['type']>
+  >({});
+  private readonly expectedTypeEdited = signal(false);
   protected readonly reviewCaseId = signal('');
   protected readonly busy = signal(false);
   protected readonly error = signal('');
@@ -141,35 +154,145 @@ export class DetectiveAiPanelComponent {
   protected readonly reviewable = computed(() => {
     const proposal = this.selected();
     const draft = this.draft();
-    return !!proposal && !!draft && draft.kind !== 'explain-failure';
+    return (
+      !!proposal &&
+      !!draft &&
+      this.selectedScopeKey() === this.scopeKey() &&
+      draft.kind !== 'explain-failure'
+    );
   });
   protected readonly confirmable = computed(() => {
     const proposal = this.selected();
-    return (
-      !!proposal?.parentProposalId &&
-      proposal.draft.kind !== 'explain-failure' &&
-      proposal.draft.kind !== 'extract-context'
-    );
+    if (!proposal) return false;
+    try {
+      return (
+        !!proposal?.parentProposalId &&
+        this.selectedScopeKey() === this.scopeKey() &&
+        proposal.draft.kind !== 'explain-failure' &&
+        proposal.draft.kind !== 'extract-context' &&
+        !this.expectedTypeEdited() &&
+        JSON.stringify(this.materializedDraft()) ===
+          JSON.stringify(proposal.draft)
+      );
+    } catch {
+      return false;
+    }
   });
+
+  private readonly scopeKey = computed(
+    () => this.identity() ?? JSON.stringify(this.context() || null),
+  );
+  private lastScopeKey = '';
+  private scopeEpoch = 0;
+  private readonly resetScope = effect(() => {
+    const key = this.scopeKey();
+    if (key === this.lastScopeKey) return;
+    this.lastScopeKey = key;
+    this.scopeEpoch++;
+    this.text.set('');
+    this.expectedCounts.set({});
+    this.countName.set('');
+    this.countValue.set('');
+    this.proposals.set([]);
+    this.cursor.set(undefined);
+    this.hasMore.set(false);
+    this.matches.set([]);
+    this.assistantText.set('');
+    this.selected.set(undefined);
+    this.selectedScopeKey.set('');
+    this.draft.set(undefined);
+    this.inputEdits.set({});
+    this.expectedTypeEdits.set({});
+    this.expectedTypeEdited.set(false);
+    this.reviewCaseId.set('');
+    this.receipt.set(undefined);
+    this.error.set('');
+    this.message.set('');
+    this.busy.set(false);
+  });
+  private currentRequest(key: string, epoch: number, edit: string): boolean {
+    return (
+      this.scopeKey() === key &&
+      this.scopeEpoch === epoch &&
+      this.editFingerprint() === edit
+    );
+  }
+  private lastEditValue = '';
+  private editRevision = 0;
+  private readonly trackEditGeneration = effect(() => {
+    this.editFingerprint();
+  });
+  private editFingerprint(): string {
+    const value = JSON.stringify([
+      this.selected()?.id,
+      this.selected()?.digest,
+      this.draft(),
+      this.inputEdits(),
+      this.expectedTypeEdits(),
+      this.reviewCaseId(),
+      this.selectedCase()?.version,
+      this.text(),
+      this.expectedCounts(),
+    ]);
+    if (value !== this.lastEditValue) {
+      this.lastEditValue = value;
+      this.editRevision++;
+    }
+    return `${this.editRevision}:${value}`;
+  }
+  private parsedInputs(): Record<string, DetectiveInputValue> {
+    const values: Record<string, DetectiveInputValue> = {};
+    for (const [name, edit] of Object.entries(this.inputEdits())) {
+      if (!/^[a-z][a-z0-9_]*$/u.test(name))
+        throw new Error(`Invalid input name: ${name}`);
+      values[name] = parseInputValue(
+        edit.text,
+        edit.type,
+        edit.cardinality,
+        edit.end,
+      );
+    }
+    return values;
+  }
+  private materializedDraft(): AiDraft | undefined {
+    const draft = this.draft();
+    if (!draft) return undefined;
+    const values = this.parsedInputs();
+    if (draft.case)
+      return {
+        ...draft,
+        case: {
+          ...draft.case,
+          context:
+            Object.keys(values).length || draft.case.context
+              ? values
+              : undefined,
+        },
+      };
+    if (draft.run) return { ...draft, run: { ...draft.run, inputs: values } };
+    return draft;
+  }
 
   private readonly load = effect((onCleanup) => {
     const context = this.context();
     const open = this.open();
-    this.proposals.set([]);
-    this.selected.set(undefined);
-    this.draft.set(undefined);
-    this.error.set('');
+    const key = this.scopeKey();
     if (!context || !open) return;
+    const epoch = this.scopeEpoch;
+    const edit = untracked(() => this.editFingerprint());
     const subscription = this.client.aiProposals(context).subscribe({
       next: (page) => {
+        if (!this.currentRequest(key, epoch, edit)) return;
         this.proposals.set(page.proposals);
         this.cursor.set(page.nextCursor);
         this.hasMore.set(page.hasMore);
       },
-      error: (error) =>
-        this.error.set(
-          `AI proposals are unavailable: ${detectiveErrorMessage(error, context.kind === 'cloud')}`,
-        ),
+      error: (error) => {
+        if (this.currentRequest(key, epoch, edit))
+          this.error.set(
+            `AI proposals are unavailable: ${detectiveErrorMessage(error, context.kind === 'cloud')}`,
+          );
+      },
     });
     onCleanup(() => subscription.unsubscribe());
   });
@@ -207,6 +330,9 @@ export class DetectiveAiPanelComponent {
       this.error.set('Enter source text before requesting AI proposals.');
       return;
     }
+    const key = this.scopeKey();
+    const epoch = this.scopeEpoch;
+    const edit = this.editFingerprint();
     this.busy.set(true);
     this.error.set('');
     this.message.set('');
@@ -219,6 +345,7 @@ export class DetectiveAiPanelComponent {
           this.expectedCounts(),
         ),
       );
+      if (!this.currentRequest(key, epoch, edit)) return;
       this.matches.set(response.matches || []);
       this.assistantText.set(response.text || '');
       this.proposals.update((all) => [
@@ -232,21 +359,27 @@ export class DetectiveAiPanelComponent {
         `${response.proposals.length} private proposal${response.proposals.length === 1 ? '' : 's'} ready for review. No project change was made.`,
       );
     } catch (error) {
-      this.error.set(detectiveErrorMessage(error, context.kind === 'cloud'));
+      if (this.currentRequest(key, epoch, edit))
+        this.error.set(detectiveErrorMessage(error, context.kind === 'cloud'));
     } finally {
-      this.busy.set(false);
+      if (this.scopeKey() === key && this.scopeEpoch === epoch)
+        this.busy.set(false);
     }
   }
   protected async loadMore(): Promise<void> {
     const context = this.context();
     const after = this.cursor();
     if (!context || !after || !this.hasMore()) return;
+    const key = this.scopeKey();
+    const epoch = this.scopeEpoch;
+    const edit = this.editFingerprint();
     this.busy.set(true);
     this.error.set('');
     try {
       const page = await firstValueFrom(
         this.client.aiProposals(context, after),
       );
+      if (!this.currentRequest(key, epoch, edit)) return;
       this.proposals.update((all) => [
         ...all,
         ...page.proposals.filter(
@@ -256,12 +389,15 @@ export class DetectiveAiPanelComponent {
       this.cursor.set(page.nextCursor);
       this.hasMore.set(page.hasMore);
     } catch (error) {
-      this.error.set(detectiveErrorMessage(error, context.kind === 'cloud'));
+      if (this.currentRequest(key, epoch, edit))
+        this.error.set(detectiveErrorMessage(error, context.kind === 'cloud'));
     } finally {
-      this.busy.set(false);
+      if (this.scopeKey() === key && this.scopeEpoch === epoch)
+        this.busy.set(false);
     }
   }
   protected selectProposal(proposal: AiProposal): void {
+    this.selectedScopeKey.set(this.scopeKey());
     this.selected.set(proposal);
     this.draft.set(structuredClone(proposal.draft));
     this.reviewCaseId.set(this.caseId() || proposal.draft.case?.caseId || '');
@@ -281,6 +417,8 @@ export class DetectiveAiPanelComponent {
         ]),
       ),
     );
+    this.expectedTypeEdits.set({});
+    this.expectedTypeEdited.set(false);
     this.receipt.set(undefined);
     this.error.set('');
     this.message.set('');
@@ -456,6 +594,33 @@ export class DetectiveAiPanelComponent {
     if (check)
       this.updateCheck({ steps: check.steps.filter((_, i) => i !== index) });
   }
+  protected addCheckStepBinding(stepIndex: number): void {
+    const step = this.draft()?.check?.steps[stepIndex];
+    if (step)
+      this.updateCheckStep(stepIndex, {
+        bindings: [...(step.bindings || []), { input: '' }],
+      });
+  }
+  protected updateCheckStepBinding(
+    stepIndex: number,
+    index: number,
+    patch: Partial<CheckBinding>,
+  ): void {
+    const step = this.draft()?.check?.steps[stepIndex];
+    if (step)
+      this.updateCheckStep(stepIndex, {
+        bindings: (step.bindings || []).map((binding, i) =>
+          i === index ? { ...binding, ...patch } : binding,
+        ),
+      });
+  }
+  protected removeCheckStepBinding(stepIndex: number, index: number): void {
+    const step = this.draft()?.check?.steps[stepIndex];
+    if (step)
+      this.updateCheckStep(stepIndex, {
+        bindings: (step.bindings || []).filter((_, i) => i !== index),
+      });
+  }
   protected updateCheckStepValidator(
     stepIndex: number,
     validatorIndex: number,
@@ -468,6 +633,184 @@ export class DetectiveAiPanelComponent {
         index === validatorIndex ? { ...item, ...patch } : item,
       ),
     });
+  }
+  protected useCatalogValidator(
+    stepIndex: number,
+    validatorIndex: number,
+    validatorId: string,
+  ): void {
+    this.updateCheckStepValidator(stepIndex, validatorIndex, {
+      validatorId: validatorId || undefined,
+      kind: validatorId ? '' : 'non-null',
+    });
+  }
+  protected addCheckStepValidator(stepIndex: number): void {
+    const step = this.draft()?.check?.steps[stepIndex];
+    if (step)
+      this.updateCheckStep(stepIndex, {
+        validators: [
+          ...(step.validators || []),
+          { id: '', scope: 'row', kind: 'non-null', severity: 'error' },
+        ],
+      });
+  }
+  protected removeCheckStepValidator(stepIndex: number, index: number): void {
+    const step = this.draft()?.check?.steps[stepIndex];
+    if (step)
+      this.updateCheckStep(stepIndex, {
+        validators: (step.validators || []).filter((_, i) => i !== index),
+      });
+  }
+  protected addValidatorBinding(
+    validator: ValidatorDefinition,
+    update: (patch: Partial<ValidatorDefinition>) => void,
+  ): void {
+    update({ bindings: [...(validator.bindings || []), { input: '' }] });
+  }
+  protected updateValidatorBinding(
+    validator: ValidatorDefinition,
+    index: number,
+    patch: Partial<CheckBinding>,
+    update: (patch: Partial<ValidatorDefinition>) => void,
+  ): void {
+    update({
+      bindings: (validator.bindings || []).map((binding, i) =>
+        i === index ? { ...binding, ...patch } : binding,
+      ),
+    });
+  }
+  protected removeValidatorBinding(
+    validator: ValidatorDefinition,
+    index: number,
+    update: (patch: Partial<ValidatorDefinition>) => void,
+  ): void {
+    update({
+      bindings: (validator.bindings || []).filter((_, i) => i !== index),
+    });
+  }
+  protected setExpected(
+    raw: string,
+    type: DetectiveValue['type'],
+    update: (patch: Partial<ValidatorDefinition>) => void,
+  ): void {
+    try {
+      update({
+        expected:
+          raw.trim() || type === 'null' ? parseScalar(raw, type) : undefined,
+      });
+      this.error.set('');
+    } catch (error) {
+      this.error.set(
+        detectiveErrorMessage(error, this.context()?.kind === 'cloud'),
+      );
+    }
+  }
+  protected setStepExpected(
+    stepIndex: number,
+    index: number,
+    raw: string,
+    type: DetectiveValue['type'],
+  ): void {
+    this.setExpected(raw, type, (patch) =>
+      this.updateCheckStepValidator(stepIndex, index, patch),
+    );
+  }
+  protected expectedType(
+    key: string,
+    current?: DetectiveValue['type'],
+  ): DetectiveValue['type'] {
+    return this.expectedTypeEdits()[key] || current || 'number';
+  }
+  protected setStepExpectedType(
+    stepIndex: number,
+    index: number,
+    type: DetectiveValue['type'],
+  ): void {
+    this.expectedTypeEdits.update((all) => ({
+      ...all,
+      [`step-${stepIndex}-${index}`]: type,
+    }));
+    this.expectedTypeEdited.set(true);
+    const expected =
+      this.draft()?.check?.steps[stepIndex]?.validators?.[index]?.expected;
+    if (expected)
+      this.setStepExpected(
+        stepIndex,
+        index,
+        String(expected.value ?? ''),
+        type,
+      );
+  }
+  protected setPublishedExpectedType(type: DetectiveValue['type']): void {
+    this.expectedTypeEdits.update((all) => ({ ...all, published: type }));
+    this.expectedTypeEdited.set(true);
+    const expected = this.draft()?.validator?.validator.expected;
+    if (expected) this.setPublishedExpected(String(expected.value ?? ''), type);
+  }
+  protected setPublishedExpected(
+    raw: string,
+    type: DetectiveValue['type'],
+  ): void {
+    this.setExpected(raw, type, (patch) =>
+      this.updateValidatorDefinition(patch),
+    );
+  }
+  protected addStepValidatorBinding(stepIndex: number, index: number): void {
+    const validator =
+      this.draft()?.check?.steps[stepIndex]?.validators?.[index];
+    if (validator)
+      this.addValidatorBinding(validator, (patch) =>
+        this.updateCheckStepValidator(stepIndex, index, patch),
+      );
+  }
+  protected updateStepValidatorBinding(
+    stepIndex: number,
+    validatorIndex: number,
+    index: number,
+    patch: Partial<CheckBinding>,
+  ): void {
+    const validator =
+      this.draft()?.check?.steps[stepIndex]?.validators?.[validatorIndex];
+    if (validator)
+      this.updateValidatorBinding(validator, index, patch, (next) =>
+        this.updateCheckStepValidator(stepIndex, validatorIndex, next),
+      );
+  }
+  protected removeStepValidatorBinding(
+    stepIndex: number,
+    validatorIndex: number,
+    index: number,
+  ): void {
+    const validator =
+      this.draft()?.check?.steps[stepIndex]?.validators?.[validatorIndex];
+    if (validator)
+      this.removeValidatorBinding(validator, index, (next) =>
+        this.updateCheckStepValidator(stepIndex, validatorIndex, next),
+      );
+  }
+  protected addPublishedBinding(): void {
+    const validator = this.draft()?.validator?.validator;
+    if (validator)
+      this.addValidatorBinding(validator, (patch) =>
+        this.updateValidatorDefinition(patch),
+      );
+  }
+  protected updatePublishedBinding(
+    index: number,
+    patch: Partial<CheckBinding>,
+  ): void {
+    const validator = this.draft()?.validator?.validator;
+    if (validator)
+      this.updateValidatorBinding(validator, index, patch, (next) =>
+        this.updateValidatorDefinition(next),
+      );
+  }
+  protected removePublishedBinding(index: number): void {
+    const validator = this.draft()?.validator?.validator;
+    if (validator)
+      this.removeValidatorBinding(validator, index, (next) =>
+        this.updateValidatorDefinition(next),
+      );
   }
   protected updateScenarioStep(
     index: number,
@@ -503,21 +846,14 @@ export class DetectiveAiPanelComponent {
     const proposal = this.selected();
     const draft = this.draft();
     if (!context || !proposal || !draft || !this.reviewable()) return;
+    const key = this.scopeKey();
+    const epoch = this.scopeEpoch;
+    const edit = this.editFingerprint();
     this.busy.set(true);
     this.error.set('');
     this.message.set('');
     try {
-      const values: Record<string, DetectiveInputValue> = {};
-      for (const [name, edit] of Object.entries(this.inputEdits())) {
-        if (!/^[a-z][a-z0-9_]*$/u.test(name))
-          throw new Error(`Invalid input name: ${name}`);
-        values[name] = parseInputValue(
-          edit.text,
-          edit.type,
-          edit.cardinality,
-          edit.end,
-        );
-      }
+      const values = this.parsedInputs();
       const request =
         draft.kind === 'extract-context'
           ? (() => {
@@ -540,16 +876,13 @@ export class DetectiveAiPanelComponent {
               review: {
                 proposalId: proposal.id,
                 digest: proposal.digest,
-                draft: draft.case
-                  ? { ...draft, case: { ...draft.case, context: values } }
-                  : draft.run
-                    ? { ...draft, run: { ...draft.run, inputs: values } }
-                    : draft,
+                draft: this.materializedDraft() || draft,
               },
             };
       const derived = await firstValueFrom(
         this.client.aiReview(context, request),
       );
+      if (!this.currentRequest(key, epoch, edit)) return;
       this.proposals.update((all) => [
         derived,
         ...all.filter((item) => item.id !== derived.id),
@@ -559,15 +892,20 @@ export class DetectiveAiPanelComponent {
         'Edited derivative saved privately. Review it again before Confirm.',
       );
     } catch (error) {
-      this.error.set(detectiveErrorMessage(error, context.kind === 'cloud'));
+      if (this.currentRequest(key, epoch, edit))
+        this.error.set(detectiveErrorMessage(error, context.kind === 'cloud'));
     } finally {
-      this.busy.set(false);
+      if (this.scopeKey() === key && this.scopeEpoch === epoch)
+        this.busy.set(false);
     }
   }
   protected async confirm(): Promise<void> {
     const context = this.context();
     const proposal = this.selected();
     if (!context || !proposal || !this.confirmable()) return;
+    const key = this.scopeKey();
+    const epoch = this.scopeEpoch;
+    const edit = this.editFingerprint();
     this.busy.set(true);
     this.error.set('');
     this.message.set('');
@@ -578,6 +916,7 @@ export class DetectiveAiPanelComponent {
           digest: proposal.digest,
         }),
       );
+      if (!this.currentRequest(key, epoch, edit)) return;
       this.receipt.set({
         resourceId: receipt.resourceId,
         operationId: receipt.operationId,
@@ -587,9 +926,11 @@ export class DetectiveAiPanelComponent {
         `Confirmed through the project service: ${receipt.resourceId}.`,
       );
     } catch (error) {
-      this.error.set(detectiveErrorMessage(error, context.kind === 'cloud'));
+      if (this.currentRequest(key, epoch, edit))
+        this.error.set(detectiveErrorMessage(error, context.kind === 'cloud'));
     } finally {
-      this.busy.set(false);
+      if (this.scopeKey() === key && this.scopeEpoch === epoch)
+        this.busy.set(false);
     }
   }
 }

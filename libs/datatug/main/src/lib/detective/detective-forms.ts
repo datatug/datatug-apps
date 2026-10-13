@@ -1,6 +1,7 @@
 import {
   CheckStepResult,
   CheckInput,
+  DetectiveExecutionRef,
   DetectiveInputValue,
   DetectiveValue,
   ValidationResult,
@@ -159,6 +160,9 @@ export interface ResultLine {
   readonly severity: string;
   readonly message: string;
   readonly rowIndex?: number;
+  readonly queryId?: string;
+  readonly execution?: DetectiveExecutionRef;
+  readonly nodePath?: string;
   readonly source?: string;
   readonly observedAt?: string;
   readonly executionProfile?: string;
@@ -171,10 +175,20 @@ export interface ValidatorGridRow {
   readonly query: string;
   readonly row: string;
   readonly rowIndex?: number;
+  readonly queryId?: string;
+  readonly execution?: DetectiveExecutionRef;
+  readonly nodePath: string;
   readonly validator: string;
   readonly outcome: string;
   readonly severity: string;
   readonly message: string;
+}
+
+export interface ValidationRowSelection {
+  readonly rowIndex: number;
+  readonly queryId?: string;
+  readonly execution?: DetectiveExecutionRef;
+  readonly nodePath: string;
 }
 
 /** Status-only rows from the exact persisted run; no query row values are retained. */
@@ -182,9 +196,16 @@ export function validatorGridRows(
   steps: readonly CheckStepResult[],
 ): ValidatorGridRow[] {
   const rows: ValidatorGridRow[] = [];
-  const walk = (items: readonly CheckStepResult[], parentQuery = ''): void => {
-    for (const step of items) {
+  const walk = (
+    items: readonly CheckStepResult[],
+    parentQuery = '',
+    parentExecution?: DetectiveExecutionRef,
+    prefix = 'root',
+  ): void => {
+    for (const [stepIndex, step] of items.entries()) {
+      const nodePath = `${prefix}/${stepIndex}`;
       const query = step.queryId || parentQuery;
+      const execution = step.execution || parentExecution;
       for (const [index, result] of (step.validators || []).entries()) {
         rows.push({
           id: `${step.stepId}/${index}/${rows.length}`,
@@ -192,14 +213,22 @@ export function validatorGridRows(
           row:
             result.rowIndex === undefined ? 'Set' : String(result.rowIndex + 1),
           rowIndex: result.rowIndex,
+          queryId: query,
+          execution,
+          nodePath: `${nodePath}/validator/${index}`,
           validator: result.validatorId,
           outcome: result.outcome,
           severity: result.severity,
           message: result.message || '',
         });
-        walk(result.children || [], query);
+        walk(
+          result.children || [],
+          query,
+          execution,
+          `${nodePath}/validator/${index}`,
+        );
       }
-      walk(step.children || [], query);
+      walk(step.children || [], query, execution, nodePath);
     }
   };
   walk(steps);
@@ -213,9 +242,13 @@ export function resultLines(steps: readonly CheckStepResult[]): ResultLine[] {
     items: readonly CheckStepResult[],
     depth: number,
     prefix: string,
+    parentQuery = '',
+    parentExecution?: DetectiveExecutionRef,
   ) => {
     items.forEach((step, index) => {
       const key = `${prefix}/${index}`;
+      const queryId = step.queryId || parentQuery;
+      const execution = step.execution || parentExecution;
       lines.push({
         key,
         depth,
@@ -241,15 +274,20 @@ export function resultLines(steps: readonly CheckStepResult[]): ResultLine[] {
             severity: validator.severity,
             message: validator.message || '',
             rowIndex: validator.rowIndex,
+            queryId,
+            execution,
+            nodePath: `${key}/validator/${validatorIndex}`,
           });
           walk(
             validator.children || [],
             depth + 2,
             `${key}/validator/${validatorIndex}`,
+            queryId,
+            execution,
           );
         },
       );
-      walk(step.children || [], depth + 1, key);
+      walk(step.children || [], depth + 1, key, queryId, execution);
     });
   };
   walk(steps, 0, 'root');

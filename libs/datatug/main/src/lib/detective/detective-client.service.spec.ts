@@ -72,10 +72,48 @@ describe('DetectiveClientService', () => {
       queryValidators: { queryId: 'invoices', version: 0, validators: [] },
       project: 'billing',
       securityContextId: 'session-7',
+      operationId: expect.stringMatching(/^operation-[a-z0-9-]+$/u),
     });
     request.flush({
       queryValidators: { queryId: 'invoices', version: 1, validators: [] },
     });
+  });
+
+  it('keeps a slug-safe local action identity across an uncertain retry', () => {
+    const random = vi
+      .spyOn(crypto, 'randomUUID')
+      .mockReturnValue('9abc0000-0000-4000-8000-000000000000');
+    const action = {
+      type: 'create-case' as const,
+      case: {
+        id: 'case-1',
+        title: 'Case',
+        version: 0,
+        status: 'active' as const,
+        context: {},
+        incidentRefs: [],
+        scenarioRefs: [],
+        runRefs: [],
+        evidence: [],
+        findings: [],
+        timeline: [],
+      },
+    };
+    client.action(context, action).subscribe({ error: vi.fn() });
+    const first = http.expectOne(
+      (item) => item.url === '//localhost:8989/datatug/detective/action',
+    );
+    expect(first.request.body.operationId).toBe(
+      'operation-9abc0000-0000-4000-8000-000000000000',
+    );
+    first.flush({}, { status: 0, statusText: 'Network error' });
+    client.action(context, action).subscribe();
+    const retry = http.expectOne(
+      (item) => item.url === '//localhost:8989/datatug/detective/action',
+    );
+    expect(retry.request.body.operationId).toBe(first.request.body.operationId);
+    retry.flush({ case: { id: 'case-1' } });
+    random.mockRestore();
   });
 
   it('distinguishes missing agent support and edit conflicts', () => {

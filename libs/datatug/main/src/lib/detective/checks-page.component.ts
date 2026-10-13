@@ -181,6 +181,47 @@ export class ChecksPageComponent {
   protected readonly queryId = computed(
     () => this.queryParams().get('query') || undefined,
   );
+
+  protected readonly pageIdentity = computed(() => {
+    const scope = this.scope.identity();
+    return scope
+      ? JSON.stringify([scope, this.checkId(), this.queryId(), this.caseId()])
+      : undefined;
+  });
+  private activeScopeIdentity = '';
+  private draftScopeIdentity = '';
+  private validatorDraftScopeIdentity = '';
+  private queryValidatorDraftScopeIdentity = '';
+  private prefilledCaseCheck = '';
+  private readonly resetScope = effect(() => {
+    const identity = this.pageIdentity() || '';
+    if (identity === this.activeScopeIdentity) return;
+    this.activeScopeIdentity = identity;
+    this.draftScopeIdentity = '';
+    this.validatorDraftScopeIdentity = '';
+    this.queryValidatorDraftScopeIdentity = '';
+    this.state.set(undefined);
+    this.draft.set(undefined);
+    this.validatorDraft.set(undefined);
+    this.queryValidatorDraft.set(undefined);
+    this.queryInputRows.set([]);
+    this.runInputText.set({});
+    this.selectedRun.set(undefined);
+    this.queryDetails.set({});
+    this.environment.set('');
+    this.availableEnvironments.set([]);
+    this.prefilledCaseCheck = '';
+    this.olderRunsBusy.set(false);
+    this.environmentsLoading.set(false);
+    this.environmentsError.set('');
+    this.loading.set(false);
+    this.busy.set(false);
+    this.error.set('');
+    this.message.set('');
+  });
+  private isCurrentScope(identity: string | undefined): boolean {
+    return !!identity && identity === this.pageIdentity();
+  }
   protected readonly currentQueryValidators = computed(() =>
     this.state()?.queryValidators?.find(
       (item) => item.queryId === this.queryId(),
@@ -202,7 +243,6 @@ export class ChecksPageComponent {
   protected readonly caseContext = computed(() =>
     this.state()?.cases.find((item) => item.id === this.caseId()),
   );
-  private prefilledCaseCheck = '';
   private readonly prefillCaseInputs = effect(() => {
     const check = this.current();
     const investigation = this.caseContext();
@@ -250,6 +290,7 @@ export class ChecksPageComponent {
   });
   private readonly loadQueryDetails = effect((onCleanup) => {
     const ref = this.scope.ref();
+    const identity = this.pageIdentity();
     const ids = this.inspection()?.queryIds || [];
     this.queryDetails.set({});
     this.queryDetailsLoading.set(false);
@@ -263,6 +304,7 @@ export class ChecksPageComponent {
         ),
       ),
     ).subscribe((queries) => {
+      if (!this.isCurrentScope(identity)) return;
       this.queryDetails.set(Object.fromEntries(queries));
       this.queryDetailsLoading.set(false);
     });
@@ -272,6 +314,7 @@ export class ChecksPageComponent {
   // project_full source until both transports expose the same state field.
   private readonly loadEnvironments = effect((onCleanup) => {
     const ref = this.scope.ref();
+    const identity = this.pageIdentity();
     this.availableEnvironments.set([]);
     this.environment.set('');
     this.environmentsError.set('');
@@ -285,10 +328,12 @@ export class ChecksPageComponent {
     this.environmentsLoading.set(true);
     const subscription = this.projectService.getFull(ref).subscribe({
       next: (project) => {
+        if (!this.isCurrentScope(identity)) return;
         this.availableEnvironments.set(project.environments || []);
         this.environmentsLoading.set(false);
       },
       error: () => {
+        if (!this.isCurrentScope(identity)) return;
         this.environmentsError.set(
           'Could not load project environments from the agent.',
         );
@@ -300,12 +345,14 @@ export class ChecksPageComponent {
 
   private readonly loadState = effect((onCleanup) => {
     const context = this.scope.context();
+    const identity = this.pageIdentity();
     this.state.set(undefined);
     this.error.set('');
     if (!context) return;
     this.loading.set(true);
     const subscription = this.client.state(context).subscribe({
       next: (state) => {
+        if (!this.isCurrentScope(identity)) return;
         this.state.set(state);
         if (context.kind === 'cloud') {
           this.availableEnvironments.set(
@@ -316,6 +363,7 @@ export class ChecksPageComponent {
         this.loading.set(false);
       },
       error: (error: unknown) => {
+        if (!this.isCurrentScope(identity)) return;
         this.error.set(
           detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
         );
@@ -383,6 +431,7 @@ export class ChecksPageComponent {
   protected editQueryValidators(): void {
     const queryId = this.queryId();
     if (!queryId) return;
+    this.queryValidatorDraftScopeIdentity = this.pageIdentity() || '';
     this.queryValidatorDraft.set(
       structuredClone(
         this.currentQueryValidators() || {
@@ -489,8 +538,14 @@ export class ChecksPageComponent {
   }
   protected async saveQueryValidators(): Promise<void> {
     const context = this.scope.context();
+    const identity = this.pageIdentity();
     const draft = this.queryValidatorDraft();
-    if (!context || !draft) return;
+    if (
+      !context ||
+      !draft ||
+      identity !== this.queryValidatorDraftScopeIdentity
+    )
+      return;
     if (
       !draft.queryId ||
       draft.validators.some((validator) => !detectiveSlug.test(validator.id))
@@ -507,19 +562,32 @@ export class ChecksPageComponent {
           queryValidators: draft,
         }),
       );
+      if (!this.isCurrentScope(identity)) return;
       if (!response.queryValidators)
         throw new Error(
           'The project store did not return the query Validators.',
         );
       await this.refresh();
+      if (!this.isCurrentScope(identity)) return;
+      if (this.queryValidatorDraft() !== draft) {
+        this.notify(
+          'The earlier Validators were saved; your newer edits remain open.',
+        );
+        return;
+      }
       this.queryValidatorDraft.set(undefined);
       this.notify(`Saved local Validators for ${draft.queryId}.`);
     } catch (error) {
+      if (
+        !this.isCurrentScope(identity) ||
+        this.queryValidatorDraft() !== draft
+      )
+        return;
       this.error.set(
         detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
       );
     } finally {
-      this.busy.set(false);
+      if (this.isCurrentScope(identity)) this.busy.set(false);
     }
   }
   protected addQueryInput(): void {
@@ -547,6 +615,7 @@ export class ChecksPageComponent {
   }
   protected async runQueryValidators(): Promise<void> {
     const context = this.scope.context();
+    const identity = this.pageIdentity();
     const queryId = this.queryId();
     if (!context || !queryId) return;
     const environment = this.environment().trim();
@@ -585,9 +654,11 @@ export class ChecksPageComponent {
           caseId: this.caseId(),
         }),
       );
+      if (!this.isCurrentScope(identity)) return;
       if (!response.run)
         throw new Error('The project store did not return a Validator run.');
       await this.refresh();
+      if (!this.isCurrentScope(identity)) return;
       this.selectedRun.set(response.run);
       this.notify(
         `Validator run ${response.run.id}: ${response.run.outcome}.`,
@@ -595,15 +666,17 @@ export class ChecksPageComponent {
       );
       this.focusRunResult();
     } catch (error) {
+      if (!this.isCurrentScope(identity)) return;
       this.error.set(
         detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
       );
     } finally {
-      this.busy.set(false);
+      if (this.isCurrentScope(identity)) this.busy.set(false);
     }
   }
   protected async loadOlderRuns(): Promise<void> {
     const context = this.scope.context();
+    const identity = this.pageIdentity();
     const state = this.state();
     if (!context || !state?.runsHasMore || !state.runsNextCursor) return;
     this.olderRunsBusy.set(true);
@@ -612,27 +685,33 @@ export class ChecksPageComponent {
       const older = await firstValueFrom(
         this.client.state(context, state.runsNextCursor),
       );
+      if (!this.isCurrentScope(identity)) return;
       const seen = new Set(state.runs.map((run) => run.id));
       this.state.set({
         ...older,
         runs: [...state.runs, ...older.runs.filter((run) => !seen.has(run.id))],
       });
     } catch (error) {
+      if (!this.isCurrentScope(identity)) return;
       this.error.set(
         detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
       );
     } finally {
-      this.olderRunsBusy.set(false);
+      if (this.isCurrentScope(identity)) this.olderRunsBusy.set(false);
     }
   }
 
   protected startNew(): void {
+    this.draftScopeIdentity = this.pageIdentity() || '';
     this.draft.set(NEW_CHECK());
     this.error.set('');
   }
   protected startEdit(): void {
     const check = this.current();
-    if (check) this.draft.set(structuredClone(check));
+    if (check) {
+      this.draftScopeIdentity = this.pageIdentity() || '';
+      this.draft.set(structuredClone(check));
+    }
   }
   protected cancelEdit(): void {
     this.draft.set(undefined);
@@ -813,8 +892,9 @@ export class ChecksPageComponent {
 
   protected async save(): Promise<void> {
     const context = this.scope.context();
+    const identity = this.pageIdentity();
     const draft = this.draft();
-    if (!context || !draft) return;
+    if (!context || !draft || identity !== this.draftScopeIdentity) return;
     if (
       !detectiveSlug.test(draft.id) ||
       !draft.title.trim() ||
@@ -829,9 +909,17 @@ export class ChecksPageComponent {
       const response = await firstValueFrom(
         this.client.action(context, { type: 'save-check', check: draft }),
       );
+      if (!this.isCurrentScope(identity)) return;
       if (!response.check)
         throw new Error('The project store did not return the saved Check.');
       await this.refresh();
+      if (!this.isCurrentScope(identity)) return;
+      if (this.draft() !== draft) {
+        this.notify(
+          'The earlier Check was saved; your newer edits remain open.',
+        );
+        return;
+      }
       this.draft.set(undefined);
       await this.router.navigateByUrl(this.checkUrl(response.check.id), {
         replaceUrl: draft.version === 0,
@@ -840,16 +928,18 @@ export class ChecksPageComponent {
         `Saved Check ${response.check.id} · version ${response.check.version}.`,
       );
     } catch (error) {
+      if (!this.isCurrentScope(identity) || this.draft() !== draft) return;
       this.error.set(
         detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
       );
     } finally {
-      this.busy.set(false);
+      if (this.isCurrentScope(identity)) this.busy.set(false);
     }
   }
 
   protected beginPromote(validator: ValidatorDefinition): void {
     if (validator.validatorId) return;
+    this.validatorDraftScopeIdentity = this.pageIdentity() || '';
     this.validatorDraft.set({
       id: '',
       title: '',
@@ -858,6 +948,7 @@ export class ChecksPageComponent {
     });
   }
   protected editPublished(validator: PublishedValidator): void {
+    this.validatorDraftScopeIdentity = this.pageIdentity() || '';
     this.validatorDraft.set(structuredClone(validator));
   }
   protected updatePublished(patch: Partial<PublishedValidator>): void {
@@ -912,8 +1003,10 @@ export class ChecksPageComponent {
   }
   protected async savePublished(): Promise<void> {
     const context = this.scope.context();
+    const identity = this.pageIdentity();
     const validator = this.validatorDraft();
-    if (!context || !validator) return;
+    if (!context || !validator || identity !== this.validatorDraftScopeIdentity)
+      return;
     if (!detectiveSlug.test(validator.id) || !validator.title.trim()) {
       this.error.set('Published Validator needs a slug ID and title.');
       return;
@@ -924,17 +1017,27 @@ export class ChecksPageComponent {
       const response = await firstValueFrom(
         this.client.action(context, { type: 'save-validator', validator }),
       );
+      if (!this.isCurrentScope(identity)) return;
       if (!response.validator)
         throw new Error('The project store did not return the Validator.');
       await this.refresh();
+      if (!this.isCurrentScope(identity)) return;
+      if (this.validatorDraft() !== validator) {
+        this.notify(
+          'The earlier Validator was saved; your newer edits remain open.',
+        );
+        return;
+      }
       this.validatorDraft.set(undefined);
       this.notify(`Published Validator ${response.validator.id}.`);
     } catch (error) {
+      if (!this.isCurrentScope(identity) || this.validatorDraft() !== validator)
+        return;
       this.error.set(
         detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
       );
     } finally {
-      this.busy.set(false);
+      if (this.isCurrentScope(identity)) this.busy.set(false);
     }
   }
 
@@ -985,6 +1088,7 @@ export class ChecksPageComponent {
   }
   protected async run(): Promise<void> {
     const context = this.scope.context();
+    const identity = this.pageIdentity();
     const check = this.current();
     if (!context || !check) return;
     const environment = this.environment().trim();
@@ -1023,9 +1127,11 @@ export class ChecksPageComponent {
           inputs,
         }),
       );
+      if (!this.isCurrentScope(identity)) return;
       if (!response.run)
         throw new Error('The project store did not return a run.');
       await this.refresh();
+      if (!this.isCurrentScope(identity)) return;
       this.selectedRun.set(response.run);
       this.notify(
         `Run ${response.run.id}: ${response.run.outcome}.`,
@@ -1033,11 +1139,12 @@ export class ChecksPageComponent {
       );
       this.focusRunResult();
     } catch (error) {
+      if (!this.isCurrentScope(identity)) return;
       this.error.set(
         detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
       );
     } finally {
-      this.busy.set(false);
+      if (this.isCurrentScope(identity)) this.busy.set(false);
     }
   }
   protected viewRun(run: CheckRun): void {
@@ -1046,7 +1153,10 @@ export class ChecksPageComponent {
 
   protected async refresh(): Promise<void> {
     const context = this.scope.context();
-    if (context)
-      this.state.set(await firstValueFrom(this.client.state(context)));
+    const identity = this.pageIdentity();
+    if (context) {
+      const state = await firstValueFrom(this.client.state(context));
+      if (this.isCurrentScope(identity)) this.state.set(state);
+    }
   }
 }

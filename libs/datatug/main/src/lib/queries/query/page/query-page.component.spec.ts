@@ -2925,8 +2925,21 @@ select (
     expect(component.resultGridRows().map((row) => row['result_0'])).toEqual([
       '9',
     ]);
-    component.selectHostedValidationRow(1);
+    component.selectHostedValidationRow({
+      rowIndex: 1,
+      queryId: queryDef.id,
+      execution,
+      nodePath: 'root/0/validator/0',
+    });
     expect(component.hostedSelectedRowCells()?.[0].value).toBe('9');
+    component.hostedSelectedRow.set(undefined);
+    component.selectHostedValidationRow({
+      rowIndex: 1,
+      queryId: 'nested-child-query',
+      execution: { ...execution, executionId: 'nested-receipt' },
+      nodePath: 'root/0/validator/0/0/validator/0',
+    });
+    expect(component.hostedSelectedRowCells()).toBeUndefined();
     const caseItem = {
       id: 'case-1',
       title: 'Invoice mismatch',
@@ -2986,6 +2999,8 @@ select (
         applicationId: 'application-1',
         stepId: 'step-1',
         stepStatus: 'completed',
+        queryId: queryDef.id,
+        environment: 'demo',
         execution,
       },
       2,

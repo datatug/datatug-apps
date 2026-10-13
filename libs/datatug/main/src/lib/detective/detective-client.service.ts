@@ -38,12 +38,16 @@ export type DetectiveRequestContext =
       readonly agentStoreId: string;
       readonly project: string;
       readonly securityContextId: string;
+      readonly branch?: string;
+      readonly principal?: string;
     }
   | {
       readonly kind: 'cloud';
       readonly storage: 'firestore';
       readonly spaceID: string;
       readonly project: string;
+      readonly branch?: string;
+      readonly principal?: string;
     };
 
 export function detectiveErrorMessage(error: unknown, cloud = false): string {
@@ -95,6 +99,9 @@ export interface HostedQueryResponse {
   receipt?: unknown;
 }
 
+export const detectiveOperationId = (): string =>
+  `operation-${crypto.randomUUID()}`;
+
 /** Mutations use the selected server boundary; the browser never writes project records directly. */
 @Injectable({ providedIn: 'root' })
 export class DetectiveClientService {
@@ -139,6 +146,10 @@ export class DetectiveClientService {
     action: Omit<DetectiveActionRequest, 'project' | 'securityContextId'>,
     ifMatch?: number,
   ): Observable<DetectiveActionResponse> {
+    const key = JSON.stringify(['action', context, action, ifMatch]);
+    const operationId =
+      this.pendingOperations.get(key) ?? detectiveOperationId();
+    this.pendingOperations.set(key, operationId);
     if (context.kind === 'cloud') {
       const resourceVersion =
         action.check?.version ??
@@ -154,10 +165,6 @@ export class DetectiveClientService {
         ...action,
         ...(expectedVersion === undefined ? {} : { ifMatch: expectedVersion }),
       };
-      const key = JSON.stringify(payload);
-      const operationId =
-        this.pendingOperations.get(key) ?? crypto.randomUUID();
-      this.pendingOperations.set(key, operationId);
       return this.api
         .post<DetectiveActionResponse>('datatug/detective/action', {
           ...payload,
@@ -172,15 +179,25 @@ export class DetectiveClientService {
           }),
         );
     }
-    return this.http.post<DetectiveActionResponse>(
-      buildAgentUrl(context.agentStoreId, '/detective/action'),
-      {
-        ...action,
-        project: context.project,
-        securityContextId: context.securityContextId,
-      },
-      { params: new HttpParams().set('project', context.project) },
-    );
+    return this.http
+      .post<DetectiveActionResponse>(
+        buildAgentUrl(context.agentStoreId, '/detective/action'),
+        {
+          ...action,
+          project: context.project,
+          securityContextId: context.securityContextId,
+          operationId,
+        },
+        { params: new HttpParams().set('project', context.project) },
+      )
+      .pipe(
+        tap({
+          next: (response) => {
+            if (response.run?.executionStatus !== 'pending')
+              this.pendingOperations.delete(key);
+          },
+        }),
+      );
   }
 
   caseEvents(
@@ -262,7 +279,8 @@ export class DetectiveClientService {
             ...action,
           };
     const key = JSON.stringify(['incident_action', payload]);
-    const operationId = this.pendingOperations.get(key) ?? crypto.randomUUID();
+    const operationId =
+      this.pendingOperations.get(key) ?? detectiveOperationId();
     this.pendingOperations.set(key, operationId);
     const request =
       context.kind === 'cloud'
@@ -315,7 +333,8 @@ export class DetectiveClientService {
           }
         : { storage: 'local' as const, project: context.project, ...action };
     const key = JSON.stringify(['knowledge_proposal_action', payload]);
-    const operationId = this.pendingOperations.get(key) ?? crypto.randomUUID();
+    const operationId =
+      this.pendingOperations.get(key) ?? detectiveOperationId();
     this.pendingOperations.set(key, operationId);
     const request =
       context.kind === 'cloud'
@@ -376,7 +395,8 @@ export class DetectiveClientService {
         : {}),
     };
     const key = JSON.stringify(['ai-generate', context, request]);
-    const operationId = this.pendingOperations.get(key) ?? crypto.randomUUID();
+    const operationId =
+      this.pendingOperations.get(key) ?? detectiveOperationId();
     this.pendingOperations.set(key, operationId);
     const result =
       context.kind === 'cloud'
@@ -430,7 +450,8 @@ export class DetectiveClientService {
     proposal: Pick<AiProposal, 'id' | 'digest'>,
   ): Observable<AiConfirmReceipt> {
     const key = JSON.stringify(['ai-confirm', context, proposal]);
-    const operationId = this.pendingOperations.get(key) ?? crypto.randomUUID();
+    const operationId =
+      this.pendingOperations.get(key) ?? detectiveOperationId();
     this.pendingOperations.set(key, operationId);
     const body = {
       proposalId: proposal.id,
@@ -472,7 +493,8 @@ export class DetectiveClientService {
       inputs,
     };
     const key = JSON.stringify(payload);
-    const operationId = this.pendingOperations.get(key) ?? crypto.randomUUID();
+    const operationId =
+      this.pendingOperations.get(key) ?? detectiveOperationId();
     this.pendingOperations.set(key, operationId);
     return this.api
       .post<HostedQueryResponse>('datatug/queries/run_query', {

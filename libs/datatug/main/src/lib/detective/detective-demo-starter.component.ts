@@ -14,6 +14,7 @@ import { isSharedProjectRef } from '../core/project-context';
 import { projectPageHref } from '../nav/project-page-href';
 import {
   DetectiveClientService,
+  detectiveOperationId,
   detectiveErrorMessage,
 } from './detective-client.service';
 
@@ -55,7 +56,7 @@ export class DetectiveDemoStarterComponent {
     if (this.busy()) return;
     this.busy.set(true);
     this.error.set('');
-    this.operationId ??= crypto.randomUUID();
+    this.operationId ??= detectiveOperationId();
     try {
       if (!this.signedIn()) {
         await this.auth.signInWith('google.com');

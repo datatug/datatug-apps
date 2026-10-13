@@ -1731,6 +1731,8 @@
             }
             <sneat-validation-run-results
               [run]="run"
+              [rootExecution]="hosted.execution"
+              [rootQueryId]="hosted.queryId"
               (rowSelected)="selectHostedValidationRow($event)"
             />
             @if (hostedSelectedRowCells(); as cells) {

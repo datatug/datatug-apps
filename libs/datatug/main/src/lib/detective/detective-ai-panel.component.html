@@ -324,6 +324,79 @@
                 >Remove step</ion-button
               >
             </div>
+            <h5>Step input bindings</h5>
+            @for (
+              binding of step.bindings || [];
+              track $index;
+              let b = $index
+            ) {
+              <div class="form-grid">
+                <ion-item
+                  ><ion-input
+                    label="Child/query input"
+                    label-placement="stacked"
+                    [value]="binding.input"
+                    (ionInput)="
+                      updateCheckStepBinding(i, b, {
+                        input: $event.detail.value || '',
+                      })
+                    "
+                /></ion-item>
+                <ion-item
+                  ><ion-input
+                    label="From parent input"
+                    label-placement="stacked"
+                    [value]="binding.fromInput || ''"
+                    (ionInput)="
+                      updateCheckStepBinding(i, b, {
+                        fromInput: $event.detail.value || '',
+                        fromColumn: '',
+                      })
+                    "
+                /></ion-item>
+                <ion-item
+                  ><ion-input
+                    label="Or result column"
+                    label-placement="stacked"
+                    [value]="binding.fromColumn || ''"
+                    (ionInput)="
+                      updateCheckStepBinding(i, b, {
+                        fromColumn: $event.detail.value || '',
+                        fromInput: '',
+                      })
+                    "
+                /></ion-item>
+                <ion-item
+                  ><ion-select
+                    label="Range part"
+                    label-placement="stacked"
+                    [value]="binding.part || ''"
+                    (ionChange)="
+                      updateCheckStepBinding(i, b, {
+                        part: $event.detail.value || undefined,
+                      })
+                    "
+                    ><ion-select-option value="">Whole value</ion-select-option
+                    ><ion-select-option value="start">Start</ion-select-option
+                    ><ion-select-option value="end"
+                      >End</ion-select-option
+                    ></ion-select
+                  ></ion-item
+                >
+                <ion-button
+                  fill="clear"
+                  color="medium"
+                  (click)="removeCheckStepBinding(i, b)"
+                  >Remove binding</ion-button
+                >
+              </div>
+            }
+            <ion-button
+              fill="outline"
+              size="small"
+              (click)="addCheckStepBinding(i)"
+              >Add step binding</ion-button
+            >
             @for (
               validator of step.validators || [];
               track $index;
@@ -379,6 +452,27 @@
                   ></ion-input
                 ></ion-item>
                 <ion-item
+                  ><ion-select
+                    label="Published Validator"
+                    label-placement="stacked"
+                    [value]="validator.validatorId || ''"
+                    (ionChange)="
+                      useCatalogValidator(i, v, $event.detail.value || '')
+                    "
+                    ><ion-select-option value=""
+                      >Local definition</ion-select-option
+                    >
+                    @for (
+                      catalog of state()?.validators || [];
+                      track catalog.id
+                    ) {
+                      <ion-select-option [value]="catalog.id">{{
+                        catalog.title || catalog.id
+                      }}</ion-select-option>
+                    }
+                  </ion-select></ion-item
+                >
+                <ion-item
                   ><ion-label position="stacked">Severity</ion-label
                   ><ion-select
                     [attr.aria-label]="
@@ -400,8 +494,175 @@
                     ></ion-select
                   ></ion-item
                 >
+                <ion-item
+                  ><ion-select
+                    label="Scope"
+                    label-placement="stacked"
+                    [value]="validator.scope"
+                    (ionChange)="
+                      updateCheckStepValidator(i, v, {
+                        scope: $event.detail.value,
+                      })
+                    "
+                    ><ion-select-option value="row">Row</ion-select-option
+                    ><ion-select-option value="set"
+                      >Set</ion-select-option
+                    ></ion-select
+                  ></ion-item
+                >
+                <ion-item
+                  ><ion-input
+                    label="Related field"
+                    label-placement="stacked"
+                    [value]="validator.otherField || ''"
+                    (ionInput)="
+                      updateCheckStepValidator(i, v, {
+                        otherField: $event.detail.value || '',
+                      })
+                    "
+                /></ion-item>
+                <ion-item
+                  ><ion-input
+                    label="Nested Check ID"
+                    label-placement="stacked"
+                    [value]="validator.checkId || ''"
+                    (ionInput)="
+                      updateCheckStepValidator(i, v, {
+                        checkId: $event.detail.value || '',
+                      })
+                    "
+                /></ion-item>
+                <ion-item
+                  ><ion-select
+                    label="If source unavailable"
+                    label-placement="stacked"
+                    [value]="validator.onUnavailable || 'block'"
+                    (ionChange)="
+                      updateCheckStepValidator(i, v, {
+                        onUnavailable: $event.detail.value,
+                      })
+                    "
+                    ><ion-select-option value="block">Block</ion-select-option
+                    ><ion-select-option value="fail">Fail</ion-select-option
+                    ><ion-select-option value="warn">Warn</ion-select-option
+                    ><ion-select-option value="skip"
+                      >Skip</ion-select-option
+                    ></ion-select
+                  ></ion-item
+                >
+                <ion-item
+                  ><ion-select
+                    label="Expected value type"
+                    label-placement="stacked"
+                    [value]="
+                      expectedType(
+                        'step-' + i + '-' + v,
+                        validator.expected?.type
+                      )
+                    "
+                    (ionChange)="setStepExpectedType(i, v, $event.detail.value)"
+                    ><ion-select-option value="number">Number</ion-select-option
+                    ><ion-select-option value="integer"
+                      >Integer</ion-select-option
+                    ><ion-select-option value="decimal"
+                      >Decimal</ion-select-option
+                    ><ion-select-option value="string">String</ion-select-option
+                    ><ion-select-option value="boolean"
+                      >Boolean</ion-select-option
+                    ><ion-select-option value="date">Date</ion-select-option
+                    ><ion-select-option value="datetime"
+                      >Date and time</ion-select-option
+                    ><ion-select-option value="null"
+                      >Null</ion-select-option
+                    ></ion-select
+                  ></ion-item
+                >
+                <ion-item
+                  ><ion-input
+                    label="Expected value"
+                    label-placement="stacked"
+                    [value]="validator.expected?.value ?? ''"
+                    (ionInput)="
+                      setStepExpected(
+                        i,
+                        v,
+                        $event.detail.value || '',
+                        expectedType(
+                          'step-' + i + '-' + v,
+                          validator.expected?.type
+                        )
+                      )
+                    "
+                /></ion-item>
               </div>
+              @for (
+                binding of validator.bindings || [];
+                track $index;
+                let b = $index
+              ) {
+                <div class="form-grid">
+                  <ion-item
+                    ><ion-input
+                      label="Nested Check input"
+                      label-placement="stacked"
+                      [value]="binding.input"
+                      (ionInput)="
+                        updateStepValidatorBinding(i, v, b, {
+                          input: $event.detail.value || '',
+                        })
+                      "
+                  /></ion-item>
+                  <ion-item
+                    ><ion-input
+                      label="From result column"
+                      label-placement="stacked"
+                      [value]="binding.fromColumn || ''"
+                      (ionInput)="
+                        updateStepValidatorBinding(i, v, b, {
+                          fromColumn: $event.detail.value || '',
+                          fromInput: '',
+                        })
+                      "
+                  /></ion-item>
+                  <ion-item
+                    ><ion-input
+                      label="Or parent input"
+                      label-placement="stacked"
+                      [value]="binding.fromInput || ''"
+                      (ionInput)="
+                        updateStepValidatorBinding(i, v, b, {
+                          fromInput: $event.detail.value || '',
+                          fromColumn: '',
+                        })
+                      "
+                  /></ion-item>
+                  <ion-button
+                    fill="clear"
+                    color="medium"
+                    (click)="removeStepValidatorBinding(i, v, b)"
+                    >Remove binding</ion-button
+                  >
+                </div>
+              }
+              <ion-button
+                fill="outline"
+                size="small"
+                (click)="addStepValidatorBinding(i, v)"
+                >Add Validator binding</ion-button
+              >
+              <ion-button
+                fill="clear"
+                color="medium"
+                (click)="removeCheckStepValidator(i, v)"
+                >Remove Validator</ion-button
+              >
             }
+            <ion-button
+              fill="outline"
+              size="small"
+              (click)="addCheckStepValidator(i)"
+              >Add Validator</ion-button
+            >
           }
           <ion-button fill="outline" size="small" (click)="addCheckStep()"
             >Add step</ion-button
@@ -525,7 +786,98 @@
                 "
               ></ion-input
             ></ion-item>
+            <ion-item
+              ><ion-select
+                label="Expected value type"
+                label-placement="stacked"
+                [value]="
+                  expectedType('published', published.validator.expected?.type)
+                "
+                (ionChange)="setPublishedExpectedType($event.detail.value)"
+                ><ion-select-option value="number">Number</ion-select-option
+                ><ion-select-option value="integer">Integer</ion-select-option
+                ><ion-select-option value="decimal">Decimal</ion-select-option
+                ><ion-select-option value="string">String</ion-select-option
+                ><ion-select-option value="boolean">Boolean</ion-select-option
+                ><ion-select-option value="date">Date</ion-select-option
+                ><ion-select-option value="datetime"
+                  >Date and time</ion-select-option
+                ><ion-select-option value="null"
+                  >Null</ion-select-option
+                ></ion-select
+              ></ion-item
+            >
+            <ion-item
+              ><ion-input
+                label="Expected value"
+                label-placement="stacked"
+                [value]="published.validator.expected?.value ?? ''"
+                (ionInput)="
+                  setPublishedExpected(
+                    $event.detail.value || '',
+                    expectedType(
+                      'published',
+                      published.validator.expected?.type
+                    )
+                  )
+                "
+            /></ion-item>
           </div>
+          @for (
+            binding of published.validator.bindings || [];
+            track $index;
+            let b = $index
+          ) {
+            <div class="form-grid">
+              <ion-item
+                ><ion-input
+                  label="Nested Check input"
+                  label-placement="stacked"
+                  [value]="binding.input"
+                  (ionInput)="
+                    updatePublishedBinding(b, {
+                      input: $event.detail.value || '',
+                    })
+                  "
+              /></ion-item>
+              <ion-item
+                ><ion-input
+                  label="From result column"
+                  label-placement="stacked"
+                  [value]="binding.fromColumn || ''"
+                  (ionInput)="
+                    updatePublishedBinding(b, {
+                      fromColumn: $event.detail.value || '',
+                      fromInput: '',
+                    })
+                  "
+              /></ion-item>
+              <ion-item
+                ><ion-input
+                  label="Or parent input"
+                  label-placement="stacked"
+                  [value]="binding.fromInput || ''"
+                  (ionInput)="
+                    updatePublishedBinding(b, {
+                      fromInput: $event.detail.value || '',
+                      fromColumn: '',
+                    })
+                  "
+              /></ion-item>
+              <ion-button
+                fill="clear"
+                color="medium"
+                (click)="removePublishedBinding(b)"
+                >Remove binding</ion-button
+              >
+            </div>
+          }
+          <ion-button
+            fill="outline"
+            size="small"
+            (click)="addPublishedBinding()"
+            >Add nested Check binding</ion-button
+          >
         }
         @if (item.scenario; as scenario) {
           <h3>Scenario draft</h3>

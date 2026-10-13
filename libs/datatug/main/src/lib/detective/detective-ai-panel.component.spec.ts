@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { of } from 'rxjs';
+import { of, Subject } from 'rxjs';
 import { AiProposal } from './detective-ai.models';
 import { DetectiveAiPanelComponent } from './detective-ai-panel.component';
 import { DetectiveClientService } from './detective-client.service';
@@ -235,5 +235,242 @@ describe('DetectiveAiPanelComponent', () => {
     });
     expect(client.aiConfirm).not.toHaveBeenCalled();
     expect(panel.confirmable()).toBe(true);
+  });
+
+  it('invalidates confirmation when a reviewed derivative is edited', () => {
+    const fixture = TestBed.createComponent(DetectiveAiPanelComponent);
+    fixture.componentRef.setInput('context', {
+      kind: 'cloud',
+      storage: 'firestore',
+      spaceID: 'S1',
+      project: 'P1',
+    });
+    fixture.componentRef.setInput('identity', 'S1/P1/actor-a');
+    fixture.detectChanges();
+    const panel = fixture.componentInstance as unknown as {
+      selectProposal(item: AiProposal): void;
+      updateCase(patch: { title: string }): void;
+      confirmable(): boolean;
+      confirm(): Promise<void>;
+    };
+    panel.selectProposal(derived);
+    expect(panel.confirmable()).toBe(true);
+    panel.updateCase({ title: 'A different Case title' });
+    expect(panel.confirmable()).toBe(false);
+    void panel.confirm();
+    expect(client.aiConfirm).not.toHaveBeenCalled();
+  });
+
+  it('discards late AI generation after a principal and project switch', async () => {
+    const fixture = TestBed.createComponent(DetectiveAiPanelComponent);
+    fixture.componentRef.setInput('context', {
+      kind: 'cloud',
+      storage: 'firestore',
+      spaceID: 'S1',
+      project: 'P1',
+    });
+    fixture.componentRef.setInput('identity', 'S1/P1/actor-a');
+    fixture.detectChanges();
+    const panel = fixture.componentInstance as unknown as {
+      text: { set(value: string): void };
+      generate(): Promise<void>;
+      proposals(): AiProposal[];
+      draft(): unknown;
+      message(): string;
+    };
+    panel.text.set('Old project text');
+    const pending = new Subject<{ proposals: AiProposal[]; matches: [] }>();
+    client.aiGenerate.mockReturnValue(pending.asObservable());
+    const generating = panel.generate();
+    fixture.componentRef.setInput('context', {
+      kind: 'cloud',
+      storage: 'firestore',
+      spaceID: 'S2',
+      project: 'P2',
+    });
+    fixture.componentRef.setInput('identity', 'S2/P2/actor-b');
+    fixture.detectChanges();
+    pending.next({ proposals: [extracted], matches: [] });
+    pending.complete();
+    await generating;
+    expect(panel.proposals()).toEqual([]);
+    expect(panel.draft()).toBeUndefined();
+    expect(panel.message()).toBe('');
+  });
+
+  it('sends edited Check bindings and typed expected values for server review', async () => {
+    const fixture = TestBed.createComponent(DetectiveAiPanelComponent);
+    fixture.componentRef.setInput('context', {
+      kind: 'cloud',
+      storage: 'firestore',
+      spaceID: 'S1',
+      project: 'P1',
+    });
+    fixture.detectChanges();
+    const proposal: AiProposal = {
+      ...extracted,
+      id: 'check-binding',
+      digest: 'binding-digest',
+      draft: {
+        kind: 'draft-check',
+        title: 'Invoice count',
+        sources: [],
+        check: {
+          id: 'invoice-check',
+          title: 'Invoice count',
+          version: 0,
+          inputs: [],
+          steps: [
+            {
+              id: 'invoices',
+              kind: 'query',
+              queryId: 'invoice-list',
+              validators: [
+                {
+                  id: 'rows',
+                  scope: 'set',
+                  kind: 'row-count',
+                  severity: 'error',
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const panel = fixture.componentInstance as unknown as {
+      selectProposal(item: AiProposal): void;
+      addCheckStepBinding(step: number): void;
+      updateCheckStepBinding(
+        step: number,
+        binding: number,
+        patch: { input?: string; fromInput?: string },
+      ): void;
+      setStepExpected(
+        step: number,
+        validator: number,
+        raw: string,
+        type: 'integer',
+      ): void;
+      review(): Promise<void>;
+    };
+    panel.selectProposal(proposal);
+    panel.addCheckStepBinding(0);
+    panel.updateCheckStepBinding(0, 0, {
+      input: 'customer_id',
+      fromInput: 'customer_id',
+    });
+    panel.setStepExpected(0, 0, '7', 'integer');
+    client.aiReview.mockReturnValue(
+      of({
+        ...proposal,
+        id: 'reviewed-binding',
+        parentProposalId: proposal.id,
+      }),
+    );
+    await panel.review();
+    expect(client.aiReview).toHaveBeenCalledWith(expect.any(Object), {
+      review: {
+        proposalId: proposal.id,
+        digest: proposal.digest,
+        draft: expect.objectContaining({
+          check: expect.objectContaining({
+            steps: [
+              expect.objectContaining({
+                bindings: [{ input: 'customer_id', fromInput: 'customer_id' }],
+                validators: [
+                  expect.objectContaining({
+                    expected: { type: 'integer', value: '7' },
+                  }),
+                ],
+              }),
+            ],
+          }),
+        }),
+      },
+    });
+  });
+
+  it('drops late review and confirmation after a principal switch', async () => {
+    const fixture = TestBed.createComponent(DetectiveAiPanelComponent);
+    const context = {
+      kind: 'cloud',
+      storage: 'firestore',
+      spaceID: 'S1',
+      project: 'P1',
+    };
+    fixture.componentRef.setInput('context', context);
+    fixture.componentRef.setInput('identity', 'S1/P1/actor-a');
+    fixture.componentRef.setInput('state', state);
+    fixture.detectChanges();
+    const panel = fixture.componentInstance as unknown as {
+      selectProposal(item: AiProposal): void;
+      review(): Promise<void>;
+      confirm(): Promise<void>;
+      selected(): AiProposal | undefined;
+      receipt(): unknown;
+    };
+    panel.selectProposal(extracted);
+    const reviewReply = new Subject<AiProposal>();
+    client.aiReview.mockReturnValue(reviewReply.asObservable());
+    const reviewing = panel.review();
+    fixture.componentRef.setInput('identity', 'S1/P1/actor-b');
+    fixture.detectChanges();
+    reviewReply.next(derived);
+    reviewReply.complete();
+    await reviewing;
+    expect(panel.selected()).toBeUndefined();
+
+    panel.selectProposal(derived);
+    const confirmReply = new Subject<{
+      operationId: string;
+      resourceId: string;
+    }>();
+    client.aiConfirm.mockReturnValue(confirmReply.asObservable());
+    const confirming = panel.confirm();
+    fixture.componentRef.setInput('identity', 'S1/P1/actor-c');
+    fixture.detectChanges();
+    confirmReply.next({ operationId: 'operation-old', resourceId: 'case-old' });
+    confirmReply.complete();
+    await confirming;
+    expect(panel.receipt()).toBeUndefined();
+  });
+
+  it('drops a late proposal page after project scope changes', async () => {
+    const fixture = TestBed.createComponent(DetectiveAiPanelComponent);
+    fixture.componentRef.setInput('context', {
+      kind: 'cloud',
+      storage: 'firestore',
+      spaceID: 'S1',
+      project: 'P1',
+    });
+    fixture.componentRef.setInput('identity', 'S1/P1/actor-a');
+    fixture.detectChanges();
+    const panel = fixture.componentInstance as unknown as {
+      cursor: { set(value: string): void };
+      hasMore: { set(value: boolean): void };
+      loadMore(): Promise<void>;
+      proposals(): AiProposal[];
+    };
+    panel.cursor.set('cursor-1');
+    panel.hasMore.set(true);
+    const pageReply = new Subject<{
+      proposals: AiProposal[];
+      hasMore: boolean;
+    }>();
+    client.aiProposals.mockReturnValue(pageReply.asObservable());
+    const loading = panel.loadMore();
+    fixture.componentRef.setInput('context', {
+      kind: 'cloud',
+      storage: 'firestore',
+      spaceID: 'S2',
+      project: 'P2',
+    });
+    fixture.componentRef.setInput('identity', 'S2/P2/actor-a');
+    fixture.detectChanges();
+    pageReply.next({ proposals: [extracted], hasMore: false });
+    pageReply.complete();
+    await loading;
+    expect(panel.proposals()).toEqual([]);
   });
 });
