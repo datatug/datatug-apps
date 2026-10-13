@@ -71,8 +71,14 @@ test('column meaning saves a complete personal copy, stays visible and survives 
     activePage(page).getByTestId('author-customer-id').locator('input'),
   ).toHaveValue('1');
   await page
-    .getByRole('button', { name: 'Edit meaning of InvoiceId', exact: true })
-    .click();
+    .getByRole('columnheader')
+    .filter({
+      has: page.getByRole('button', {
+        name: 'Edit meaning of InvoiceId',
+        exact: true,
+      }),
+    })
+    .click({ button: 'right' });
   await page
     .locator('ion-modal')
     .filter({ visible: true })
@@ -252,19 +258,39 @@ test('column meaning saves a complete personal copy, stays visible and survives 
   const firstPersonalURL = page.url();
   await page.goto(queryURL);
   const independent = activePage(page);
-  await independent.getByTestId('author-customer-id').locator('input').fill('1');
+  await independent
+    .getByTestId('author-customer-id')
+    .locator('input')
+    .fill('1');
   await independent.getByTestId('author-preview-tab').click();
   await independent.getByTestId('author-preview').click();
   await independent.getByTestId('author-run').click();
-  await page.getByRole('button', { name: 'Map meaning of InvoiceId', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Map meaning of InvoiceId', exact: true })
+    .click();
   editor = page.locator('ion-modal').filter({ visible: true });
   await editor.getByText('Reuse and export meanings', { exact: true }).click();
-  await editor.locator('input[type=file]').setInputFiles({ name: 'query.meaning.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(exported)) });
+  await editor
+    .locator('input[type=file]')
+    .setInputFiles({
+      name: 'query.meaning.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify(exported)),
+    });
   await expect(editor.getByRole('alert')).toHaveCount(0);
   await editor.locator('ion-select').first().click();
-  await page.getByRole('radio', { name: 'Invoice · Shared reference', exact: true }).click();
-  await editor.getByRole('button', { name: 'Save personal copy', exact: true }).click();
+  await page
+    .getByRole('radio', { name: 'Invoice · Shared reference', exact: true })
+    .click();
+  await editor
+    .getByRole('button', { name: 'Save personal copy', exact: true })
+    .click();
   await expect(page).toHaveURL(/device-personal-/);
   expect(page.url()).not.toBe(firstPersonalURL);
-  await expect(page.getByRole('button', { name: 'Edit meaning of InvoiceId', exact: true })).toContainText('Invoice · Shared reference');
+  await expect(
+    page.getByRole('button', {
+      name: 'Edit meaning of InvoiceId',
+      exact: true,
+    }),
+  ).toContainText('Invoice · Shared reference');
 });
