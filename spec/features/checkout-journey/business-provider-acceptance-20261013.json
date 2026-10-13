@@ -1,0 +1,358 @@
+{
+  "recordedOn": "2026-10-13",
+  "scope": "Dedicated DataTug TEST buyer; no LIVE payments or other customers",
+  "delivery": "Draft PRs; no intermediate merges",
+  "applicationSource": "52c6e94e05813c4bb0d33c676c838197fe3ca124",
+  "notificationFixes": {
+    "paymentusPR": "https://github.com/sneat-co/paymentus/pull/115",
+    "paymentusSource": "51b7cf64e2ec887b29e076357f350321a89ddabc",
+    "botsPR": "https://github.com/sneat-co/sneat-bots/pull/181",
+    "botsSource": "853b95771b939252377046eba721f2902bc87208",
+    "hostPR": "https://github.com/sneat-co/sneat-go/pull/1254",
+    "testedHostSource": "1e40c71a48480b0dfae47737b023dab19abd2808",
+    "testImage": "europe-west3-docker.pkg.dev/sneat-eur3-1/cloud-run/datatug-checkout-test@sha256:a8c36df89f781e01998e55aff4dc1caff85da2be0f27718b42497ec7c1d994f2",
+    "hostSource": "91e104133b9908ce8c2432289713356f39d398e9"
+  },
+  "purchasePricesMinorEUR": {
+    "monthly": {
+      "regular": 9900,
+      "discount": 2970,
+      "paid": 6930
+    },
+    "yearly": {
+      "regular": 99000,
+      "discount": 29700,
+      "paid": 69300
+    }
+  },
+  "purchaseSetup": {
+    "newBusinessSpaces": 2,
+    "existingBusinessSpaces": 1,
+    "distinctBillingAccounts": 3,
+    "distinctLaunchPlaces": 3,
+    "sameBuyer": true,
+    "manualProjectPrerequisite": false,
+    "existingReferenceRetained": true,
+    "newCustomerProvisioning": "after_payment",
+    "manualCompanyPrerequisiteForNewCustomer": false,
+    "concurrentPaidBusinessSubscriptionsVerified": 2
+  },
+  "recovery": {
+    "monthlyColdReturnRefreshes": 3,
+    "yearlyColdReturnRefreshes": 3,
+    "existingSpaceRefreshes": 3,
+    "newCheckoutWritesOnReturn": 0,
+    "modePreserved": "test"
+  },
+  "destinationGuards": {
+    "occupied": {
+      "testOnly": true,
+      "createdCheckouts": 0,
+      "replies": [
+        {
+          "status": 409,
+          "code": "already_subscribed"
+        },
+        {
+          "status": 409,
+          "code": "already_subscribed"
+        }
+      ],
+      "refreshRetainsIntent": true
+    },
+    "personal": {
+      "testOnly": true,
+      "createdCheckouts": 0,
+      "replies": [
+        {
+          "status": 403,
+          "code": "not_account_admin"
+        }
+      ],
+      "refreshRetainsIntent": false
+    },
+    "not-owned": {
+      "testOnly": true,
+      "createdCheckouts": 0,
+      "replies": [
+        {
+          "status": 403,
+          "code": "not_account_admin"
+        }
+      ],
+      "refreshRetainsIntent": false
+    }
+  },
+  "checks": {
+    "paymentusFullTests": true,
+    "paymentusCoveragePercent": 90.04265,
+    "paymentusFullLint": true,
+    "botsPaymentusTests": true,
+    "botsFocusedLint": true,
+    "hostCheckoutTests": true,
+    "hostCompositionTests": true,
+    "hostFocusedLint": true,
+    "independentAgentReview": false,
+    "reviewMethod": "Self-review; Alex requested Sol only and no additional agents"
+  },
+  "providerEvidence": {
+    "business-mobile-proof": {
+      "browser": "WebKit",
+      "deviceProfile": "iPhone 13",
+      "physicalDevice": false,
+      "paidBusinessReturn": true,
+      "normalPasswordAuthentication": true,
+      "refreshes": 3,
+      "checkoutWrites": [],
+      "returnMode": "test",
+      "ready": true,
+      "spaceLinked": true
+    },
+    "business-existing-sca-proof": {
+      "testOnly": true,
+      "ownBuyerAndAccountVerified": true,
+      "paid": true,
+      "amountMinor": 6930,
+      "currency": "eur",
+      "scaResult": "authenticated",
+      "scaFlow": "challenge",
+      "scaVersion": "2.1.0",
+      "sameSessionRetried": true,
+      "successfulChargesForPayment": 1,
+      "realDeclineResponseObserved": true
+    },
+    "business-refund-before-cancellation": {
+      "sneatProfileHasName": false,
+      "subscriptions": [
+        {
+          "period": "monthly",
+          "testOnly": true,
+          "ownBuyerAndAccountVerified": true,
+          "providerActive": true,
+          "paidService": false,
+          "terminalFullRefund": true,
+          "planPending": false,
+          "offerPending": false,
+          "paidSubscriptionsOnPlace": 0,
+          "placeReservationPresent": false,
+          "discountedAmountMinor": 6930,
+          "companySpaceLinked": true,
+          "moduleActive": true,
+          "paymentAlertDelivered": true,
+          "alertAttempts": 0
+        },
+        {
+          "period": "yearly",
+          "testOnly": true,
+          "ownBuyerAndAccountVerified": true,
+          "providerActive": true,
+          "paidService": true,
+          "terminalFullRefund": false,
+          "planPending": false,
+          "offerPending": false,
+          "paidSubscriptionsOnPlace": 1,
+          "placeReservationPresent": false,
+          "discountedAmountMinor": 69300,
+          "companySpaceLinked": true,
+          "moduleActive": true,
+          "paymentAlertDelivered": true,
+          "alertAttempts": 0
+        }
+      ],
+      "distinctPaidAccounts": 2,
+      "distinctSpaces": 2,
+      "distinctLaunchPlaces": 2
+    },
+    "business-cleanup": {
+      "testOnly": true,
+      "dedicatedBuyerVerified": true,
+      "businessSubscriptionsCancelled": 3,
+      "businessFullRefunds": 3,
+      "totalBusinessRefundedMinor": 83160,
+      "currency": "eur",
+      "invoiceNow": false,
+      "prorate": false,
+      "otherCustomersOrProTouched": false
+    },
+    "own-provider-inventory": {
+      "testOnly": true,
+      "ownBuyerVerified": true,
+      "payerCustomers": 1,
+      "sessions": 8,
+      "paidSessions": 4,
+      "openSessions": 0,
+      "expiredSessions": 4,
+      "subscriptions": [
+        {
+          "plan": "datatug-business-usage-monthly",
+          "status": "canceled",
+          "cancelAtPeriodEnd": false
+        },
+        {
+          "plan": "datatug-business-usage-annual",
+          "status": "canceled",
+          "cancelAtPeriodEnd": false
+        },
+        {
+          "plan": "datatug-business-usage-monthly",
+          "status": "canceled",
+          "cancelAtPeriodEnd": false
+        },
+        {
+          "plan": "datatug-pro-monthly",
+          "status": "canceled",
+          "cancelAtPeriodEnd": false
+        }
+      ],
+      "successfulCharges": 4,
+      "totalPaidMinor": 84490,
+      "totalRefundedMinor": 84490,
+      "distinctBusinessAccounts": 3
+    },
+    "notification-lifecycle-receipts": {
+      "testOnly": true,
+      "lifecycleReceipts": [
+        {
+          "fixture": "business-monthly-notify",
+          "kind": "refund",
+          "delivered": true,
+          "destinationVerified": true,
+          "messageReceiptPresent": true,
+          "privatePayloadRetired": true
+        },
+        {
+          "fixture": "business-monthly-notify",
+          "kind": "cancellation",
+          "delivered": true,
+          "destinationVerified": true,
+          "messageReceiptPresent": true,
+          "privatePayloadRetired": true
+        },
+        {
+          "fixture": "business-yearly-notify",
+          "kind": "refund",
+          "delivered": true,
+          "destinationVerified": true,
+          "messageReceiptPresent": true,
+          "privatePayloadRetired": true
+        },
+        {
+          "fixture": "business-yearly-notify",
+          "kind": "cancellation",
+          "delivered": true,
+          "destinationVerified": true,
+          "messageReceiptPresent": true,
+          "privatePayloadRetired": true
+        },
+        {
+          "fixture": "business-existing-sca",
+          "kind": "refund",
+          "delivered": true,
+          "destinationVerified": true,
+          "messageReceiptPresent": true,
+          "privatePayloadRetired": true
+        },
+        {
+          "fixture": "business-existing-sca",
+          "kind": "cancellation",
+          "delivered": true,
+          "destinationVerified": true,
+          "messageReceiptPresent": true,
+          "privatePayloadRetired": true
+        }
+      ],
+      "allDelivered": true
+    },
+    "notification-replay-dedup": {
+      "genuineStripeReplay": true,
+      "sameOriginalEvent": true,
+      "deliveryReceiptsUnchanged": true,
+      "duplicateNotificationSent": false,
+      "liveChanged": false
+    },
+    "notification-log-proof": {
+      "isolatedTestRevision": true,
+      "identityLookupFailureLogs": 0,
+      "complete": true,
+      "boundedPages": 1
+    },
+    "all-business-ledger-proof": {
+      "sneatProfileHasName": false,
+      "subscriptions": [
+        {
+          "period": "monthly",
+          "testOnly": true,
+          "ownBuyerAndAccountVerified": true,
+          "providerActive": false,
+          "paidService": false,
+          "terminalFullRefund": true,
+          "planPending": false,
+          "offerPending": false,
+          "paidSubscriptionsOnPlace": 0,
+          "placeReservationPresent": false,
+          "discountedAmountMinor": 6930,
+          "companySpaceLinked": true,
+          "moduleActive": true,
+          "paymentAlertDelivered": true,
+          "alertAttempts": 0
+        },
+        {
+          "period": "yearly",
+          "testOnly": true,
+          "ownBuyerAndAccountVerified": true,
+          "providerActive": false,
+          "paidService": false,
+          "terminalFullRefund": true,
+          "planPending": false,
+          "offerPending": false,
+          "paidSubscriptionsOnPlace": 0,
+          "placeReservationPresent": false,
+          "discountedAmountMinor": 69300,
+          "companySpaceLinked": true,
+          "moduleActive": true,
+          "paymentAlertDelivered": true,
+          "alertAttempts": 0
+        },
+        {
+          "period": "existing",
+          "testOnly": true,
+          "ownBuyerAndAccountVerified": true,
+          "providerActive": false,
+          "paidService": false,
+          "terminalFullRefund": true,
+          "planPending": false,
+          "offerPending": false,
+          "paidSubscriptionsOnPlace": 0,
+          "placeReservationPresent": false,
+          "discountedAmountMinor": 6930,
+          "companySpaceLinked": true,
+          "moduleActive": true,
+          "paymentAlertDelivered": true,
+          "alertAttempts": 0
+        }
+      ],
+      "distinctPaidAccounts": 3,
+      "distinctSpaces": 3,
+      "distinctLaunchPlaces": 3
+    }
+  },
+  "limitations": [
+    "Physical iPhone Safari not available; iPhone-profile WebKit is separate evidence.",
+    "OAuth/email-link/SSO returns were not exercised against real identity providers.",
+    "Active Pro plus Business optional cancellation remains covered by simulated browser/backend tests; the real Pro fixture was cancelled before these Business purchases.",
+    "Cancellation via subscription settings and transfer were not re-accepted against the real provider; stale management evidence remains separate follow-up work.",
+    "Telegram transport receipts and exact-code renderer regressions were checked; channel message text was not read visually.",
+    "Production dependency release/deployment remains separate from this isolated TEST proof."
+  ],
+  "runtimeRestoration": {
+    "originalTemplateRestored": true,
+    "originalTrafficRestored": true,
+    "temporaryTagRemoved": true,
+    "iamBindingsUnchanged": true,
+    "liveChanged": false,
+    "originalRevision": "datatug-checkout-test-manage848775e1",
+    "ownedTemporaryRevisionsDeleted": 2,
+    "ownedFailedBuildArchiveDeleted": true,
+    "testImagesRetention": "Two immutable task-only images retained as acceptance evidence; no active revision or traffic. Owner: checkout-provider-verification."
+  }
+}

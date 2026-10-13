@@ -113,3 +113,8 @@ Verification: backend tests exercise atomic binding changes, stable replay, fore
 
 
 The [2026-10-13 verification record](../../features/checkout-journey/subscription-management-evidence-20261013.md) separates local simulated journeys, published dependencies and outstanding real-provider/device acceptance. Historical space-bound Business billing records need an explicit financial-ownership migration before they can join the independent buyer-home settings index; no silent migration or assumed payer authority is introduced here.
+
+
+### Business TEST acceptance and notification fixes (2026-10-13)
+
+The [completed Business provider checks](../../features/checkout-journey/subscription-management-evidence-20261013.md#business-provider-acceptance-and-notification-regressions) supersede the earlier unpaid-payment blocker. Monthly/yearly base payments, post-payment new/existing-space linking, multiple independently discounted Business purchases, decline/3DS recovery, independent full-refund expiry and actual lifecycle delivery receipts now have dedicated TEST evidence. Automated mobile WebKit returns also pass. No LIVE payment or intermediate merge was performed. Keep physical Safari, real alternative authentication providers, active Pro's optional cancellation and settings/transfer acceptance explicitly open. The notification fixes are published drafts pending their final coordinated dependency delivery, not deployed-production proof.
