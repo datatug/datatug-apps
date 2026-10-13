@@ -41,7 +41,7 @@ export const test = base.extend<{ signedInTestBuyer: void }>({
       });
       await page.route('**/api.stripe.com/**', async (route) => {
         if (
-          /\/(?:payment_intents|setup_intents)\/[^/]+\/confirm(?:\?|$)/.test(
+          /\/(?:payment_intents|setup_intents|payment_pages)\/[^/]+\/confirm(?:\?|$)/.test(
             route.request().url(),
           )
         )
@@ -147,7 +147,14 @@ export const test = base.extend<{ signedInTestBuyer: void }>({
           .toBe(true);
       } catch {
         // Playwright fill failures may include the supplied value in their
-        // call log. Never propagate that error or attach its cause.
+        // call log. Its automatic error-context snapshot can also retain form
+        // values even with screenshots disabled. Destroy the auth view first.
+        try {
+          await page.goto('about:blank', { timeout: 5000 });
+        } catch {
+          await page.close().catch(() => undefined);
+        }
+        // Never propagate the original error or attach its cause.
         throw new Error(
           'Dedicated TEST authentication failed. Check the private fixture credentials and expected UID.',
         );
