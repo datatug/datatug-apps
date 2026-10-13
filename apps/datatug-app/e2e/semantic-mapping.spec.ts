@@ -37,6 +37,22 @@ test('column meaning saves a complete personal copy, stays visible and survives 
     .getByLabel('Property name', { exact: true })
     .fill('Invoice number');
   await modal.getByLabel('Entity name', { exact: true }).fill('Invoice');
+  await modal.locator('summary').filter({ hasText: 'Context role (optional)' }).click();
+  await modal
+    .getByLabel('Context role (optional)', { exact: true })
+    .fill('Billing');
+  await modal
+    .locator('summary')
+    .filter({ hasText: 'Context role (optional)' })
+    .click();
+  expect(
+    await modal
+      .getByRole('button', { name: 'Save personal copy', exact: true })
+      .evaluate(
+        (element) =>
+          element.getBoundingClientRect().bottom <= window.innerHeight,
+      ),
+  ).toBe(true);
   expect(
     await modal.evaluate(
       (element) => element.getBoundingClientRect().width <= window.innerWidth,
@@ -270,13 +286,11 @@ test('column meaning saves a complete personal copy, stays visible and survives 
     .click();
   editor = page.locator('ion-modal').filter({ visible: true });
   await editor.getByText('Reuse and export meanings', { exact: true }).click();
-  await editor
-    .locator('input[type=file]')
-    .setInputFiles({
-      name: 'query.meaning.json',
-      mimeType: 'application/json',
-      buffer: Buffer.from(JSON.stringify(exported)),
-    });
+  await editor.locator('input[type=file]').setInputFiles({
+    name: 'query.meaning.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(exported)),
+  });
   await expect(editor.getByRole('alert')).toHaveCount(0);
   await editor.locator('ion-select').first().click();
   await page

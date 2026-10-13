@@ -66,6 +66,7 @@ describe('meaning dialog review and shared definitions', () => {
     const component = fixture.componentInstance,
       emit = vi.spyOn(component.save, 'emit');
     component.propertyName.set('Reference');
+    component.role.set('Billing');
     component.submit();
     const saved = emit.mock.calls[0][0];
     expect(saved.bindings.map((binding) => binding.concept)).toEqual([
@@ -76,6 +77,9 @@ describe('meaning dialog review and shared definitions', () => {
       saved.meaning.concepts.find((concept) => concept.id === 'number')?.labels
         .en,
     ).toBe('Reference');
+    expect(
+      saved.bindings.find((binding) => binding.columnIndex === 0)?.role,
+    ).toBe('Billing');
     validateSemanticModel(saved);
   });
 });

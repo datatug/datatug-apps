@@ -166,17 +166,20 @@ import {
               (ngModelChange)="entityDescription.set($event)"
             />
           </details>
-          <ion-input
-            label="Context role (optional)"
-            labelPlacement="stacked"
-            placeholder="e.g. Billing"
-            [ngModel]="role()"
-            (ngModelChange)="role.set($event)"
-          />
-          <ion-note
-            >The role labels this mapping. It does not assert a key or
-            relationship.</ion-note
-          >
+          <details>
+            <summary>Context role (optional)</summary>
+            <ion-input
+              label="Context role (optional)"
+              labelPlacement="stacked"
+              placeholder="e.g. Billing"
+              [ngModel]="role()"
+              (ngModelChange)="role.set($event)"
+            />
+            <ion-note
+              >The role labels this mapping. It does not assert a key or
+              relationship.</ion-note
+            >
+          </details>
           @if (error()) {
             <p class="error" role="alert">{{ error() }}</p>
           }
