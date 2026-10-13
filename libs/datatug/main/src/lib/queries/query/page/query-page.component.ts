@@ -745,6 +745,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly hostedStatusFilter = signal<'all' | HostedRowStatus>('all');
   public readonly hostedSelectedRow = signal<number | undefined>(undefined);
   public readonly hostedScenarioBusy = signal(false);
+  private hostedScenarioCompletionToken = 0;
   public readonly hostedScenarioMessage = signal('');
   public readonly hostedScenarioError = signal('');
   private readonly agentContext = inject(AgentContextService);
@@ -6377,6 +6378,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     )
       return;
     const queryId = this.queryId;
+    const completionToken = ++this.hostedScenarioCompletionToken;
     const isCurrent = (): boolean =>
       equalProjectRef(this.project?.ref, ref) &&
       this.queryId === queryId &&
@@ -6451,7 +6453,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       if (isCurrent())
         this.hostedScenarioError.set(detectiveErrorMessage(error, true));
     } finally {
-      if (isCurrent()) this.hostedScenarioBusy.set(false);
+      if (completionToken === this.hostedScenarioCompletionToken)
+        this.hostedScenarioBusy.set(false);
     }
   }
 

@@ -24,6 +24,28 @@ export function validParameterBindings(
   );
 }
 
+export function validScenarioBindings(
+  bindings: readonly CheckBinding[] | undefined,
+): boolean {
+  const seen = new Set<string>();
+  return (bindings || []).every((binding) => {
+    const hasInput = !!binding.fromInput;
+    const hasColumn = !!binding.fromColumn;
+    const valid =
+      detectiveParameterName.test(binding.input) &&
+      !seen.has(binding.input) &&
+      hasInput !== hasColumn &&
+      (!hasInput || detectiveParameterName.test(binding.fromInput || '')) &&
+      (!hasColumn ||
+        ((binding.fromColumn || '').length <= 128 &&
+          !/[\\/\u0000-\u001f]/u.test(binding.fromColumn || ''))) &&
+      (binding.part === undefined ||
+        (hasInput && (binding.part === 'start' || binding.part === 'end')));
+    if (valid) seen.add(binding.input);
+    return valid;
+  });
+}
+
 export function validValidatorBindings(
   validators: readonly ValidatorDefinition[] | undefined,
 ): boolean {

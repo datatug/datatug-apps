@@ -52,6 +52,7 @@ import {
   displayInputValue,
   identifierProposals,
   parseInputValue,
+  validScenarioBindings,
 } from './detective-forms';
 import { useDetectivePageContext } from './detective-page-context';
 import { DetectiveDemoStarterComponent } from './detective-demo-starter.component';
@@ -608,10 +609,12 @@ export class CasesPageComponent {
       !detectiveSlug.test(item.id) ||
       !item.title.trim() ||
       !item.steps.length ||
-      item.steps.some((step) => !step.ref.trim())
+      item.steps.some(
+        (step) => !step.ref.trim() || !validScenarioBindings(step.bindings),
+      )
     ) {
       this.error.set(
-        'Scenario needs a slug ID, title, and at least one step with a reference.',
+        'Scenario needs a slug ID, title, and steps with references and valid input bindings.',
       );
       return;
     }

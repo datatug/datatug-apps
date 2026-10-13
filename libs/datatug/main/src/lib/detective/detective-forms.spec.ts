@@ -11,6 +11,7 @@ import {
   resultLines,
   validatorGridRows,
   validParameterBindings,
+  validScenarioBindings,
 } from './detective-forms';
 
 describe('Detective form values', () => {
@@ -224,6 +225,26 @@ describe('Detective form values', () => {
     expect(
       validParameterBindings([
         { input: 'Invoice-ID', fromInput: 'A'.repeat(129) },
+      ]),
+    ).toBe(false);
+  });
+
+  it('validates Scenario query bindings and range endpoints', () => {
+    expect(
+      validScenarioBindings([
+        { input: 'from', fromInput: 'window', part: 'start' },
+        { input: 'through', fromInput: 'window', part: 'end' },
+        { input: 'invoice_id', fromColumn: 'InvoiceId' },
+      ]),
+    ).toBe(true);
+    expect(
+      validScenarioBindings([
+        { input: 'date', fromInput: 'window', part: 'middle' as never },
+      ]),
+    ).toBe(false);
+    expect(
+      validScenarioBindings([
+        { input: 'date', fromInput: 'window', fromColumn: 'created_at' },
       ]),
     ).toBe(false);
   });

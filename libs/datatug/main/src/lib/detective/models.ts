@@ -132,6 +132,7 @@ export interface ScenarioStep {
   id: string;
   kind: 'query' | 'check';
   ref: string;
+  bindings?: CheckBinding[];
 }
 
 export interface InvestigationScenario {

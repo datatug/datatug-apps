@@ -3006,6 +3006,37 @@ select (
       2,
     );
     expect(component.hostedScenarioMessage()).toContain('recorded');
+    const callsBeforePendingState = validate.mock.calls.length;
+    const pendingState = new Subject<DetectiveState>();
+    vi.spyOn(detective, 'state').mockReturnValue(pendingState);
+    component.hostedDetectiveState.set({
+      ...latest,
+      cases: [caseItem],
+    } as never);
+    const originalQueryState = component.queryState;
+    const statePending = component.completeHostedScenarioStep();
+    component.queryState = { ...originalQueryState, id: 'another-query' };
+    pendingState.next(latest as unknown as DetectiveState);
+    await statePending;
+    expect(validate).toHaveBeenCalledTimes(callsBeforePendingState);
+
+    component.queryState = originalQueryState;
+    component.hostedDetectiveState.set({
+      ...latest,
+      cases: [caseItem],
+    } as never);
+    const actionPending = new Subject<{ case: typeof caseItem }>();
+    vi.spyOn(detective, 'state').mockReturnValue(
+      of(latest as unknown as DetectiveState),
+    );
+    validate.mockReturnValueOnce(actionPending as never);
+    const stateBeforeLateAction = component.hostedDetectiveState();
+    const actionPendingCompletion = component.completeHostedScenarioStep();
+    component.queryState = { ...originalQueryState, id: 'another-query' };
+    actionPending.next({ case: { ...caseItem, version: 4 } });
+    await actionPendingCompletion;
+    expect(component.hostedDetectiveState()).toBe(stateBeforeLateAction);
+    component.queryState = originalQueryState;
     component.hostedEnvironment.set('other');
     expect(component.activeHostedExecution()).toBeUndefined();
     expect(

@@ -42,6 +42,7 @@ import {
   parseInputValue,
   parseScalar,
   validParameterBindings,
+  validScenarioBindings,
   validValidatorBindings,
 } from './detective-forms';
 import {
@@ -887,6 +888,9 @@ export class DetectiveAiPanelComponent {
         (step) =>
           validParameterBindings(step.bindings) &&
           validValidatorBindings(step.validators),
+      ) &&
+      (draft.scenario?.steps || []).every((step) =>
+        validScenarioBindings(step.bindings),
       ) &&
       validParameterBindings(draft.validator?.validator.bindings)
     );
