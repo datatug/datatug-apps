@@ -137,6 +137,19 @@ export function sameSemanticBasis(
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+/** Missing asynchronous fingerprints are pending, not evidence of a changed result. */
+export function semanticValidationState(
+  saved: SemanticModel | undefined,
+  basis: SemanticModel['basis'] | undefined,
+  currentHash: string,
+  previousRun: boolean,
+): 'unmapped' | 'checking' | 'review' | 'confirmed' {
+  if (!saved) return 'unmapped';
+  if (!basis || !currentHash) return 'checking';
+  return previousRun || currentHash !== basis.queryHash || !sameSemanticBasis(saved.basis, basis)
+    ? 'review' : 'confirmed';
+}
+
 /** Fail closed at every persistence/import boundary; no permissive metadata casts. */
 export function validateSemanticModel(
   value: unknown,
