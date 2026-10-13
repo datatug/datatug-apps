@@ -3739,6 +3739,32 @@ test('query context counts stay inline through two digits and unavailable drafts
       };
     });
 
+  const expectContextTabGeometry = async (message: string) => {
+    try {
+      await expect
+        .poll(contextTabGeometry, { message })
+        .toMatchObject({ fits: true });
+    } catch (error) {
+      const geometry = await contextTabGeometry();
+      throw new Error(
+        `${message}\nFull context tab geometry: ${JSON.stringify(geometry)}\nOriginal assertion: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    const geometry = await contextTabGeometry();
+    console.info(
+      `Context tabs ${message}: ${JSON.stringify({
+        viewportWidth: geometry.viewportWidth,
+        segment: geometry.segment,
+        tabs: geometry.tabs.map(({ value, label, chip, tab }) => ({
+          value,
+          label,
+          chip,
+          tab,
+        })),
+      })}`,
+    );
+  };
+
   for (const { width, height } of [
     { width: 320, height: 720 },
     { width: 390, height: 844 },
@@ -3746,11 +3772,7 @@ test('query context counts stay inline through two digits and unavailable drafts
     { width: 1280, height: 720 },
   ]) {
     await page.setViewportSize({ width, height });
-    await expect
-      .poll(contextTabGeometry, {
-        message: `12 parameters remain inline at ${width}px`,
-      })
-      .toMatchObject({ fits: true });
+    await expectContextTabGeometry(`12 parameters remain inline at ${width}px`);
     await page.screenshot({
       path: testInfo.outputPath(`context-inline-12-${width}.png`),
     });
@@ -3793,11 +3815,7 @@ test('query context counts stay inline through two digits and unavailable drafts
   await pasteCode(page, editor, noParameters);
   await expect(parameterCount).toHaveText('0');
   await expect(parameterCount).toHaveAttribute('aria-label', '0 parameters');
-  await expect
-    .poll(contextTabGeometry, {
-      message: 'Zero parameters remain inline at 320px',
-    })
-    .toMatchObject({ fits: true });
+  await expectContextTabGeometry('Zero parameters remain inline at 320px');
   await page.screenshot({
     path: testInfo.outputPath('context-inline-0-320.png'),
   });
@@ -3812,11 +3830,9 @@ test('query context counts stay inline through two digits and unavailable drafts
     'aria-label',
     'Parameter count unavailable',
   );
-  await expect
-    .poll(contextTabGeometry, {
-      message: 'Unavailable parameter count remains inline at 320px',
-    })
-    .toMatchObject({ fits: true });
+  await expectContextTabGeometry(
+    'Unavailable parameter count remains inline at 320px',
+  );
   await page.screenshot({
     path: testInfo.outputPath('context-inline-unavailable-320.png'),
   });
