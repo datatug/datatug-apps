@@ -42,6 +42,7 @@ export const copy = {
         brandHome: 'Incidentius home',
         primaryNav: 'Primary navigation',
         languageMenu: 'Change language',
+        mobileMenu: 'Open site navigation',
       },
     },
     home: {
@@ -57,6 +58,7 @@ export const copy = {
       imageAlt: 'Illustration of a lighthouse, open logbook and evidence map at a safe harbor',
       artLabel: 'Illustration · the Incidentius point of view',
       artNote: 'Concept art, not a product screenshot',
+      mobileArtNote: 'Concept illustration · not a product screenshot',
       statusLead: 'In development.',
       statusText: 'Incidentius is a future product direction, with its foundation taking shape in DataTug.',
       introEyebrow: 'The idea',
@@ -286,6 +288,7 @@ export const copy = {
         brandHome: 'Главная Incidentius',
         primaryNav: 'Основная навигация',
         languageMenu: 'Выбрать язык',
+        mobileMenu: 'Открыть меню сайта',
       },
     },
     home: {
@@ -301,6 +304,7 @@ export const copy = {
       imageAlt: 'Маяк, раскрытый журнал и карта доказательств в безопасной гавани',
       artLabel: 'Иллюстрация · взгляд Incidentius на расследование',
       artNote: 'Концепт-арт, не скриншот продукта',
+      mobileArtNote: 'Концепт-иллюстрация · не скриншот продукта',
       statusLead: 'В разработке.',
       statusText: 'Incidentius — будущее направление продукта, фундамент которого создаётся в DataTug.',
       introEyebrow: 'Идея',

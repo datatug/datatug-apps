@@ -9,20 +9,29 @@ const dataTugHome = locale === 'ru' ? 'https://datatug.app/ru/' : 'https://datat
 <BaseLayout locale={locale} title={t.title} description={t.description}>
   <section class="home-hero">
     <div class="container home-grid">
-      <div class="home-copy">
-        <span class="kicker"><i aria-hidden="true"></i> {t.kicker}</span>
-        <p class="eyebrow" style="color:#f3a18a; margin-top:1.5rem">{t.eyebrow}</p>
-        <h1>{t.heading}<br /><span>{t.headingAccent}</span></h1>
+      <div class="home-heading">
+        <div class="hero-meta">
+          <span class="kicker"><i aria-hidden="true"></i> {t.kicker}</span>
+          <p class="eyebrow">{t.eyebrow}</p>
+        </div>
+        <h1>{t.heading}<span>{t.headingAccent}</span></h1>
+      </div>
+
+      <figure class="hero-art">
+        <img src="/illustrations/incidentius-harbor-800.webp" srcset="/illustrations/incidentius-harbor-800.webp 800w, /illustrations/incidentius-harbor.webp 1672w" sizes="(max-width: 640px) 100vw, (max-width: 900px) 100vw, 55vw" width="1672" height="941" alt={t.imageAlt} fetchpriority="high" />
+        <figcaption class="art-caption">
+          <span class="caption-desktop">{t.artLabel}</span><span class="caption-desktop">{t.artNote}</span>
+          <span class="caption-mobile">{t.mobileArtNote}</span>
+        </figcaption>
+      </figure>
+
+      <div class="home-details">
         <p class="lede">{t.lede}</p>
         <div class="actions">
           <a class="button primary" href={pageUrl(locale, 'investigations')}>{t.exploreMethod} <span aria-hidden="true">↗</span></a>
           <a class="button secondary" href={pageUrl(locale, 'platform')}>{t.foundation}</a>
         </div>
       </div>
-      <figure class="hero-art">
-        <img src="/illustrations/incidentius-harbor-800.webp" srcset="/illustrations/incidentius-harbor-800.webp 800w, /illustrations/incidentius-harbor.webp 1672w" sizes="(max-width: 900px) 100vw, 55vw" width="1672" height="941" alt={t.imageAlt} fetchpriority="high" />
-        <figcaption class="art-caption"><span>{t.artLabel}</span><span>{t.artNote}</span></figcaption>
-      </figure>
     </div>
   </section>
 
