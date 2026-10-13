@@ -1,7 +1,8 @@
-import { Component, ViewChild, inject, signal } from '@angular/core';
+import { Component, ViewChild, computed, inject, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { SubscriptionRecoveryComponent } from '@sneat/components';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink, ActivatedRoute } from '@angular/router';
 import {
   IonBackButton,
   IonButton,
@@ -24,6 +25,7 @@ import { DatatugServicesStoreModule } from '../../../services/repo/datatug-servi
   templateUrl: './datatug-my-page.component.html',
   imports: [
     FormsModule,
+    RouterLink,
     SubscriptionRecoveryComponent,
     DatatugServicesStoreModule,
     IonHeader,
@@ -43,6 +45,10 @@ import { DatatugServicesStoreModule } from '../../../services/repo/datatug-servi
 })
 export class DatatugMyPageComponent {
   private readonly router = inject(Router);
+  private readonly query = toSignal(inject(ActivatedRoute).queryParamMap);
+  protected readonly subscriptionQuery = computed(() =>
+    this.query()?.get('checkout') === 'test' ? { checkout: 'test' } : {},
+  );
   @ViewChild(SubscriptionRecoveryComponent)
   private recovery?: SubscriptionRecoveryComponent;
   ionViewWillEnter(): void {
