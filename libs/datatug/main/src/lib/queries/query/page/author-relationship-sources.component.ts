@@ -40,6 +40,7 @@ export class AuthorRelationshipSourcesComponent implements OnChanges {
 
   public readonly activated = output<void>();
   public readonly refreshRequested = output<void>();
+  public readonly sourcesRequested = output<void>();
   public readonly customerFieldChanged = output<{
     readonly field: AuthorCustomerField;
     readonly checked: boolean;
