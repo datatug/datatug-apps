@@ -3805,22 +3805,22 @@ test('expanding source metadata grows the author card without scrolling the cont
         viewportWidth: innerWidth,
       };
     });
-    expect(geometry).toBeDefined();
-    expect(geometry!.cardHeight).toBeGreaterThan(collapsedHeight + 24);
+    if (!geometry) throw new Error('Expected expanded source geometry.');
+    expect(geometry.cardHeight).toBeGreaterThan(collapsedHeight + 24);
     if (width === 1280) {
-      expect(geometry!.editorHeight).toBeGreaterThan(collapsedEditorHeight + 24);
-      expect(Math.abs(geometry!.editorHeight - geometry!.paneHeight)).toBeLessThanOrEqual(2);
+      expect(geometry.editorHeight).toBeGreaterThan(collapsedEditorHeight + 24);
+      expect(Math.abs(geometry.editorHeight - geometry.paneHeight)).toBeLessThanOrEqual(2);
     }
-    expect(geometry!.fieldsBottom).toBeLessThanOrEqual(geometry!.cardBottom + 1);
-    expect(geometry!.fieldsBottom).toBeLessThanOrEqual(geometry!.paneBottom + 1);
-    expect(geometry!.paneScrollHeight).toBeLessThanOrEqual(geometry!.paneClientHeight + 1);
-    expect(geometry!.pageScrollWidth).toBeLessThanOrEqual(geometry!.viewportWidth + 1);
+    expect(geometry.fieldsBottom).toBeLessThanOrEqual(geometry.cardBottom + 1);
+    expect(geometry.fieldsBottom).toBeLessThanOrEqual(geometry.paneBottom + 1);
+    expect(geometry.paneScrollHeight).toBeLessThanOrEqual(geometry.paneClientHeight + 1);
+    expect(geometry.pageScrollWidth).toBeLessThanOrEqual(geometry.viewportWidth + 1);
     expect(await editor.innerText()).toBe(originalSource);
     expect(await page.locator('.query-save-state').innerText()).toBe(saveState);
     await expect(author.getByTestId('author-sql-preview')).toHaveCount(0);
     expect(await executionCount()).toBe(0);
     await page.screenshot({ path: testInfo.outputPath(`expanded-source-${viewport.label}.png`), fullPage: true });
-    testInfo.annotations.push({ type: 'screenshot', description: `expanded-source-${viewport.label}.png: expected Invoice metadata inside the naturally taller author card, desktop editor stretched beside it, no sidebar clipping or page horizontal overflow; observed card height ${geometry!.cardHeight}, editor height ${geometry!.editorHeight}, field bottom ${geometry!.fieldsBottom} within card bottom ${geometry!.cardBottom}.` });
+    testInfo.annotations.push({ type: 'screenshot', description: `expanded-source-${viewport.label}.png: expected Invoice metadata inside the naturally taller author card, desktop editor stretched beside it, no sidebar clipping or page horizontal overflow; observed card height ${geometry.cardHeight}, editor height ${geometry.editorHeight}, field bottom ${geometry.fieldsBottom} within card bottom ${geometry.cardBottom}.` });
     await details.locator('ion-item').last().scrollIntoViewIfNeeded();
     await expect(details.locator('ion-item').last()).toBeInViewport({ ratio: 0.98 });
     await page.screenshot({ path: testInfo.outputPath(`expanded-source-fields-${viewport.label}.png`) });
@@ -3831,7 +3831,7 @@ test('expanding source metadata grows the author card without scrolling the cont
     await expect(details).toHaveCount(0);
     const restoredHeight = await author.evaluate(element => element.getBoundingClientRect().height);
     const restoredEditorHeight = await author.locator('.cm-editor').evaluate(element => element.getBoundingClientRect().height);
-    expect(restoredHeight).toBeLessThan(geometry!.cardHeight - 24);
+    expect(restoredHeight).toBeLessThan(geometry.cardHeight - 24);
     expect(Math.abs(restoredHeight - collapsedHeight)).toBeLessThanOrEqual(2);
     expect(Math.abs(restoredEditorHeight - collapsedEditorHeight)).toBeLessThanOrEqual(2);
     expect(await editor.innerText()).toBe(originalSource);
