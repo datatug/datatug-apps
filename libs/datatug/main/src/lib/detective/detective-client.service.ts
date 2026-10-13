@@ -7,7 +7,7 @@ import { Injectable, inject } from '@angular/core';
 import { SneatApiService } from '@sneat/api';
 import type { RunQueryResponse } from '@sneat/datatug-semantic';
 import { Observable, throwError } from 'rxjs';
-import { tap } from 'rxjs/operators';
+import { map, tap } from 'rxjs/operators';
 import { buildAgentUrl } from '../services/repo/agent-url';
 import {
   DetectiveActionRequest,
@@ -99,6 +99,84 @@ export interface HostedQueryResponse {
   receipt?: unknown;
 }
 
+export function normalizeDetectiveState(
+  state: DetectiveState | null | undefined,
+): DetectiveState {
+  const raw = (state || {}) as Partial<DetectiveState>;
+  const checks = raw.checks || [];
+  const scenarios = raw.scenarios || [];
+  const normalizeScenario = (scenario: DetectiveState['scenarios'][number]) => ({
+    ...scenario,
+    inputs: scenario.inputs || [],
+    steps: (scenario.steps || []).map((step) => ({
+      ...step,
+      bindings: step.bindings || [],
+    })),
+  });
+  return {
+    checks: checks.map((check) => ({
+      ...check,
+      inputs: check.inputs || [],
+      steps: (check.steps || []).map((step) => ({
+        ...step,
+        bindings: step.bindings || [],
+        validators: (step.validators || []).map((validator) => ({
+          ...validator,
+          bindings: validator.bindings || [],
+        })),
+      })),
+    })),
+    validators: (raw.validators || []).map((validator) => ({
+      ...validator,
+      validator: validator.validator
+        ? {
+            ...validator.validator,
+            bindings: validator.validator.bindings || [],
+          }
+        : validator.validator,
+    })),
+    queryValidators: (raw.queryValidators || []).map((queryValidators) => ({
+      ...queryValidators,
+      validators: (queryValidators.validators || []).map((validator) => ({
+        ...validator,
+        bindings: validator.bindings || [],
+      })),
+    })),
+    cases: (raw.cases || []).map((item) => ({
+      ...item,
+      context: item.context || {},
+      incidentRefs: item.incidentRefs || [],
+      scenarioRefs: item.scenarioRefs || [],
+      scenarioApplications: (item.scenarioApplications || []).map(
+        (application) => ({
+          ...application,
+          snapshot: application.snapshot
+            ? normalizeScenario(application.snapshot)
+            : application.snapshot,
+          steps: application.steps || [],
+        }),
+      ),
+      runRefs: item.runRefs || [],
+      evidence: item.evidence || [],
+      findings: item.findings || [],
+      timeline: item.timeline || [],
+    })),
+    runs: raw.runs || [],
+    runsHasMore: raw.runsHasMore === true,
+    ...(raw.runsNextCursor ? { runsNextCursor: raw.runsNextCursor } : {}),
+    scenarios: scenarios.map(normalizeScenario),
+    ...(raw.environments ? { environments: raw.environments } : {}),
+    capabilities: raw.capabilities || {
+      localOnly: true,
+      canRead: false,
+      canWrite: false,
+      canRun: false,
+      maxRows: 0,
+      maxFanout: 0,
+    },
+  };
+}
+
 export const detectiveOperationId = (): string =>
   `operation-${crypto.randomUUID()}`;
 
@@ -123,22 +201,26 @@ export class DetectiveClientService {
     runsBefore?: string,
   ): Observable<DetectiveState> {
     if (context.kind === 'cloud') {
-      return this.api.get<DetectiveState>(
-        'datatug/detective/state',
-        runsBefore
-          ? this.cloudParams(context).set('runsBefore', runsBefore)
-          : this.cloudParams(context),
-      );
+      return this.api
+        .get<DetectiveState>(
+          'datatug/detective/state',
+          runsBefore
+            ? this.cloudParams(context).set('runsBefore', runsBefore)
+            : this.cloudParams(context),
+        )
+        .pipe(map(normalizeDetectiveState));
     }
-    return this.http.get<DetectiveState>(
-      buildAgentUrl(context.agentStoreId, '/detective/state'),
-      {
-        params: new HttpParams()
-          .set('project', context.project)
-          .set('securityContextId', context.securityContextId)
-          .set('runsBefore', runsBefore || ''),
-      },
-    );
+    return this.http
+      .get<DetectiveState>(
+        buildAgentUrl(context.agentStoreId, '/detective/state'),
+        {
+          params: new HttpParams()
+            .set('project', context.project)
+            .set('securityContextId', context.securityContextId)
+            .set('runsBefore', runsBefore || ''),
+        },
+      )
+      .pipe(map(normalizeDetectiveState));
   }
 
   action(

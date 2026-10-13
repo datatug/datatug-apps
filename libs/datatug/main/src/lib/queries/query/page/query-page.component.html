@@ -1750,6 +1750,24 @@
         </ion-card-content>
       </ion-card>
     }
+    @if (activeLocalScenarioExecution(); as local) {
+      <ion-card>
+        <ion-card-header>
+          <ion-card-title>Local Scenario execution receipt</ion-card-title>
+        </ion-card-header>
+        <ion-card-content>
+          <p>Execution {{ local.execution.executionId }} was persisted by the project agent for this saved query and logical environment.</p>
+          <ion-button [disabled]="hostedScenarioBusy()" (click)="completeHostedScenarioStep()">Record Scenario query step from this execution</ion-button>
+          <p>This records execution evidence. It does not assert that the query rows passed validation.</p>
+          @if (hostedScenarioMessage()) {
+            <p role="status">{{ hostedScenarioMessage() }}</p>
+          }
+          @if (hostedScenarioError()) {
+            <p role="alert">{{ hostedScenarioError() }}</p>
+          }
+        </ion-card-content>
+      </ion-card>
+    }
   }
   </section>
   </ng-template>

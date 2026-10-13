@@ -231,22 +231,43 @@ describe('Detective form values', () => {
 
   it('validates Scenario query bindings and range endpoints', () => {
     expect(
-      validScenarioBindings([
-        { input: 'from', fromInput: 'window', part: 'start' },
-        { input: 'through', fromInput: 'window', part: 'end' },
-        { input: 'invoice_id', fromColumn: 'InvoiceId' },
-      ]),
+      validScenarioBindings(
+        [
+          { input: 'from', fromInput: 'window', part: 'start' },
+          { input: 'through', fromInput: 'window', part: 'end' },
+        ],
+        [{ name: 'window', type: 'date', cardinality: 'range' }],
+        'query',
+      ),
     ).toBe(true);
     expect(
-      validScenarioBindings([
-        { input: 'date', fromInput: 'window', part: 'middle' as never },
-      ]),
+      validScenarioBindings(
+        [{ input: 'from', fromInput: 'window', part: 'start' }],
+        [{ name: 'window', type: 'date', cardinality: 'range' }],
+        'query',
+      ),
     ).toBe(false);
     expect(
-      validScenarioBindings([
-        { input: 'date', fromInput: 'window', fromColumn: 'created_at' },
-      ]),
+      validScenarioBindings(
+        [{ input: 'id', fromColumn: 'InvoiceId' }],
+        [{ name: 'id', type: 'integer', cardinality: 'scalar' }],
+        'query',
+      ),
     ).toBe(false);
+    expect(
+      validScenarioBindings(
+        [{ input: 'id', fromInput: 'id' }],
+        [{ name: 'id', type: 'integer', cardinality: 'scalar' }],
+        'check',
+      ),
+    ).toBe(false);
+    expect(
+      validScenarioBindings(
+        [],
+        [{ name: 'id', type: 'integer', cardinality: 'scalar' }],
+        'check',
+      ),
+    ).toBe(true);
   });
 
   it('does not describe a completed but unlinked Run as Case evidence', () => {

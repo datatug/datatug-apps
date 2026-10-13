@@ -26,24 +26,43 @@ export function validParameterBindings(
 
 export function validScenarioBindings(
   bindings: readonly CheckBinding[] | undefined,
+  inputs: readonly CheckInput[],
+  kind: 'query' | 'check',
 ): boolean {
+  if (kind === 'check') return !bindings?.length;
   const seen = new Set<string>();
-  return (bindings || []).every((binding) => {
-    const hasInput = !!binding.fromInput;
-    const hasColumn = !!binding.fromColumn;
-    const valid =
-      detectiveParameterName.test(binding.input) &&
-      !seen.has(binding.input) &&
-      hasInput !== hasColumn &&
-      (!hasInput || detectiveParameterName.test(binding.fromInput || '')) &&
-      (!hasColumn ||
-        ((binding.fromColumn || '').length <= 128 &&
-          !/[\\/\u0000-\u001f]/u.test(binding.fromColumn || ''))) &&
-      (binding.part === undefined ||
-        (hasInput && (binding.part === 'start' || binding.part === 'end')));
-    if (valid) seen.add(binding.input);
-    return valid;
-  });
+  const rangeParts = new Map<string, Set<'start' | 'end'>>();
+  return (
+    (bindings || []).every((binding) => {
+      const hasInput = !!binding.fromInput;
+      const input = inputs.find(
+        (candidate) => candidate.name === binding.fromInput,
+      );
+      const valid =
+        detectiveParameterName.test(binding.input) &&
+        !seen.has(binding.input) &&
+        hasInput &&
+        !binding.fromColumn &&
+        detectiveParameterName.test(binding.fromInput || '') &&
+        !!input &&
+        (input.cardinality === 'range'
+          ? binding.part === 'start' || binding.part === 'end'
+          : binding.part === undefined);
+      if (valid) seen.add(binding.input);
+      if (!valid) return false;
+      if (input.cardinality === 'range') {
+        const part = binding.part as 'start' | 'end';
+        const parts = rangeParts.get(input.name) ?? new Set<'start' | 'end'>();
+        if (parts.has(part)) return false;
+        parts.add(part);
+        rangeParts.set(input.name, parts);
+      }
+      return true;
+    }) &&
+    [...rangeParts.values()].every(
+      (parts) => parts.has('start') && parts.has('end'),
+    )
+  );
 }
 
 export function validValidatorBindings(

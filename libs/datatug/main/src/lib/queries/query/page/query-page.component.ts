@@ -3,6 +3,7 @@ import { SourceRightsNoticeComponent } from '@sneat/datatug-semantic';
 import {
   DetectiveClientService,
   detectiveErrorMessage,
+  type DetectiveRequestContext,
   type HostedQueryResponse,
 } from '../../../detective/detective-client.service';
 import { ValidationRunResultsComponent } from '../../../detective/validation-run-results.component';
@@ -26,6 +27,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { PublicDataService } from '../../public-data/public-data.service';
 import { IEnvironmentFull } from '../../../models/definition/environments';
 import { ProjectService } from '../../../services/project/project.service';
+import { agentBaseUrl } from '../../../services/repo/agent-url';
 import { ConfiguredPublicDataSourcesService } from '../../public-data/configured-public-data-sources.service';
 import { SavedPlanReview } from '../../public-data/saved-plan-review';
 import { INITIAL_CANONICAL_PINS } from '../../public-data/canonical-metadata';
@@ -104,6 +106,13 @@ interface HostedQueryExecution {
   readonly validationPending?: boolean;
   readonly validationError?: string;
   readonly caseLinkNotice?: string;
+}
+
+interface LocalScenarioExecution {
+  readonly projectKey: string;
+  readonly queryId: string;
+  readonly environment: string;
+  readonly execution: DetectiveExecutionRef;
 }
 
 const sameExecution = (
@@ -742,6 +751,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private readonly hostedExecution = signal<HostedQueryExecution | undefined>(
     undefined,
   );
+  private readonly localScenarioExecution = signal<
+    LocalScenarioExecution | undefined
+  >(undefined);
   public readonly hostedStatusFilter = signal<'all' | HostedRowStatus>('all');
   public readonly hostedSelectedRow = signal<number | undefined>(undefined);
   public readonly hostedScenarioBusy = signal(false);
@@ -1381,6 +1393,53 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       step.ref === this.queryId &&
       receipt?.status === 'pending'
       ? { caseId, applicationId, stepId }
+      : undefined;
+  }
+
+  public activeLocalScenarioExecution(): LocalScenarioExecution | undefined {
+    const ref = this.project?.ref;
+    const receipt = this.localScenarioExecution();
+    const target = this.hostedScenarioTarget();
+    return ref &&
+      target &&
+      !isSharedProjectRef(ref) &&
+      receipt?.projectKey === JSON.stringify(ref) &&
+      receipt.queryId === this.queryId &&
+      receipt.environment === (this.queryState.activeEnv?.id ?? this.envId)
+      ? receipt
+      : undefined;
+  }
+
+  private detectiveContext(
+    ref: IProjectRef,
+  ): DetectiveRequestContext | undefined {
+    if (isSharedProjectRef(ref)) {
+      return ref.spaceID
+        ? {
+            kind: 'cloud',
+            storage: 'firestore',
+            spaceID: ref.spaceID,
+            project: ref.projectId,
+          }
+        : undefined;
+    }
+    if (
+      isBrowserSqlProject(ref) ||
+      ref.storeId === 'firestore' ||
+      ref.projectApi === 'cloud'
+    )
+      return undefined;
+    const securityContextId = this.agentContext
+      .contextFor(agentBaseUrl(ref.storeId))
+      .securityContextId();
+    return securityContextId
+      ? {
+          kind: 'agent',
+          agentStoreId: ref.storeId,
+          project: ref.projectId,
+          securityContextId,
+          branch: ref.branch,
+        }
       : undefined;
   }
 
@@ -5231,16 +5290,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.hostedDetectiveError.set(undefined);
     this.hostedEnvironment.set('');
     this.hostedExecution.set(undefined);
+    this.localScenarioExecution.set(undefined);
     this.hostedSelectedRow.set(undefined);
     this.hostedStatusFilter.set('all');
-    if (!isSharedProjectRef(ref) || !ref.spaceID) return;
+    const context = this.detectiveContext(ref);
+    if (!context) return;
     this.detectiveClient
-      .state({
-        kind: 'cloud',
-        storage: 'firestore',
-        spaceID: ref.spaceID,
-        project: ref.projectId,
-      })
+      .state(context)
       .pipe(takeUntil(this.destroyed))
       .subscribe({
         next: (state) => {
@@ -5249,7 +5305,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         },
         error: (error: unknown) => {
           if (equalProjectRef(this.project?.ref, ref))
-            this.hostedDetectiveError.set(detectiveErrorMessage(error, true));
+            this.hostedDetectiveError.set(
+              detectiveErrorMessage(error, context.kind === 'cloud'),
+            );
         },
       });
   }
@@ -6367,17 +6425,25 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public async completeHostedScenarioStep(): Promise<void> {
     const ref = this.project?.ref;
     const target = this.hostedScenarioTarget();
-    const execution = this.activeHostedExecution();
+    const hostedExecution = this.activeHostedExecution();
+    const localExecution = this.activeLocalScenarioExecution();
+    const executionRef =
+      hostedExecution?.execution ?? localExecution?.execution;
+    const queryId = hostedExecution?.queryId ?? localExecution?.queryId;
+    const environment =
+      hostedExecution?.environment ?? localExecution?.environment;
+    const context = ref ? this.detectiveContext(ref) : undefined;
     if (
       !ref ||
-      !isSharedProjectRef(ref) ||
-      !ref.spaceID ||
       !target ||
-      !execution ||
+      !executionRef ||
+      !queryId ||
+      queryId !== this.queryId ||
+      !environment ||
+      !context ||
       this.hostedScenarioBusy()
     )
       return;
-    const queryId = this.queryId;
     const completionToken = ++this.hostedScenarioCompletionToken;
     const isCurrent = (): boolean =>
       equalProjectRef(this.project?.ref, ref) &&
@@ -6385,17 +6451,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.hostedScenarioTarget()?.caseId === target.caseId &&
       this.hostedScenarioTarget()?.applicationId === target.applicationId &&
       this.hostedScenarioTarget()?.stepId === target.stepId &&
-      this.activeHostedExecution() === execution;
+      (hostedExecution
+        ? this.activeHostedExecution() === hostedExecution
+        : this.activeLocalScenarioExecution() === localExecution);
     this.hostedScenarioBusy.set(true);
     this.hostedScenarioError.set('');
     this.hostedScenarioMessage.set('');
     try {
-      const context = {
-        kind: 'cloud' as const,
-        storage: 'firestore' as const,
-        spaceID: ref.spaceID,
-        project: ref.projectId,
-      };
       const latest = await firstValueFrom(this.detectiveClient.state(context));
       if (!isCurrent()) return;
       const item = latest.cases.find(
@@ -6414,7 +6476,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         !item ||
         item.status !== 'active' ||
         step?.kind !== 'query' ||
-        step.ref !== execution.queryId ||
+        step.ref !== queryId ||
         receipt?.status !== 'pending'
       )
         throw new Error(
@@ -6429,9 +6491,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
             applicationId: target.applicationId,
             stepId: target.stepId,
             stepStatus: 'completed',
-            queryId: execution.queryId,
-            environment: execution.environment,
-            execution: execution.execution,
+            queryId,
+            environment,
+            execution: executionRef,
           },
           item.version,
         ),
@@ -6447,11 +6509,15 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         ),
       });
       this.hostedScenarioMessage.set(
-        'Scenario query step recorded from this saved execution. Its evidence outcome is unknown until a Validator asserts it.',
+        hostedExecution
+          ? 'Scenario query step recorded from this saved execution. Its evidence outcome is unknown until a Validator asserts it.'
+          : 'Scenario query step recorded from the persisted local query execution. The receipt proves execution, not a validation outcome.',
       );
     } catch (error) {
       if (isCurrent())
-        this.hostedScenarioError.set(detectiveErrorMessage(error, true));
+        this.hostedScenarioError.set(
+          detectiveErrorMessage(error, context.kind === 'cloud'),
+        );
     } finally {
       if (completionToken === this.hostedScenarioCompletionToken)
         this.hostedScenarioBusy.set(false);
@@ -6852,6 +6918,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         environment,
         securityContextId,
         queryId,
+        ...(this.hostedScenarioTarget() ? { record: true } : {}),
         source: this.selectedSource(),
         parameters,
         bindingOrigins,
@@ -7208,12 +7275,16 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   ): void {
     this.lastRequest = request;
     this.lastRequestScope = requestScope;
+    this.localScenarioExecution.set(undefined);
     const definition = this.queryDef();
     if (!definition) return;
     this.reportGitHubQueryDispatch(this.project?.ref);
     const executedDefinition = structuredClone(definition);
     const queryIdentity = this.currentQueryIdentity();
     const targetIdentity = this.currentResultTargetIdentity();
+    const scenarioTarget = request.record
+      ? this.hostedScenarioTarget()
+      : undefined;
     const runStartedAt = monotonicTime();
     const lifetime = ++this.semanticRunLifetime;
     const current = (): boolean =>
@@ -7227,6 +7298,24 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         // (project/environment/principal switch mid-flight): api-contract.md "late
         // responses from another scope are discarded".
         if (!current()) return;
+        this.localScenarioExecution.set(
+          request.record &&
+            scenarioTarget &&
+            this.hostedScenarioTarget()?.caseId === scenarioTarget.caseId &&
+            this.hostedScenarioTarget()?.applicationId ===
+              scenarioTarget.applicationId &&
+            this.hostedScenarioTarget()?.stepId === scenarioTarget.stepId &&
+            response.execution &&
+            !response.truncated &&
+            response.provenance.queryId === request.queryId
+            ? {
+                projectKey: JSON.stringify(this.project?.ref),
+                queryId: request.queryId || '',
+                environment: requestScope.environment,
+                execution: response.execution,
+              }
+            : undefined,
+        );
         const timing: QueryRunTiming = {
           allResultsLoadedMs: Math.max(0, monotonicTime() - runStartedAt),
           noRecords: response.recordset.rows.length === 0,

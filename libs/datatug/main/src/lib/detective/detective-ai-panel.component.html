@@ -961,76 +961,70 @@
                   "
                 ></ion-input
               ></ion-item>
-              @for (
-                binding of step.bindings || [];
-                track $index;
-                let j = $index
-              ) {
-                <div class="form-grid">
-                  <ion-item
-                    ><ion-label position="stacked">Query parameter</ion-label
-                    ><ion-input
-                      [attr.aria-label]="
-                        'Scenario step ' + (i + 1) + ' query parameter'
-                      "
-                      [value]="binding.input"
-                      (ionInput)="updateScenarioStep(i, { bindings: (step.bindings || []).map((item, n) => n === j ? { ...item, input: $event.detail.value || '' } : item) })"
-                  /></ion-item>
-                  <ion-item
-                    ><ion-label position="stacked">Case input</ion-label
-                    ><ion-input
-                      [attr.aria-label]="
-                        'Scenario step ' + (i + 1) + ' case input'
-                      "
-                      [value]="binding.fromInput || ''"
-                      (ionInput)="updateScenarioStep(i, { bindings: (step.bindings || []).map((item, n) => n === j ? { ...item, fromInput: $event.detail.value || undefined, fromColumn: undefined } : item) })"
-                  /></ion-item>
-                  <ion-item
-                    ><ion-label position="stacked">Range endpoint</ion-label
-                    ><ion-select
-                      [attr.aria-label]="
-                        'Scenario step ' + (i + 1) + ' range endpoint'
-                      "
-                      [value]="binding.part || ''"
-                      (ionChange)="updateScenarioStep(i, { bindings: (step.bindings || []).map((item, n) => n === j ? { ...item, part: $event.detail.value || undefined } : item) })"
-                      ><ion-select-option value=""
-                        >Whole value</ion-select-option
-                      ><ion-select-option value="start">Start</ion-select-option
-                      ><ion-select-option value="end"
-                        >End</ion-select-option
-                      ></ion-select
-                    ></ion-item
-                  >
-                  <ion-item
-                    ><ion-label position="stacked">Result column</ion-label
-                    ><ion-input
-                      [attr.aria-label]="
-                        'Scenario step ' + (i + 1) + ' result column'
-                      "
-                      [value]="binding.fromColumn || ''"
-                      (ionInput)="updateScenarioStep(i, { bindings: (step.bindings || []).map((item, n) => n === j ? { ...item, fromColumn: $event.detail.value || undefined, fromInput: undefined, part: undefined } : item) })"
-                  /></ion-item>
-                  <ion-button
-                    fill="clear"
-                    color="medium"
-                    (click)="updateScenarioStep(i, { bindings: (step.bindings || []).filter((_, n) => n !== j) })"
-                    >Remove binding</ion-button
-                  >
-                </div>
+              @if (step.kind === 'query') {
+                @for (
+                  binding of step.bindings || [];
+                  track $index;
+                  let j = $index
+                ) {
+                  <div class="form-grid">
+                    <ion-item
+                      ><ion-label position="stacked">Query parameter</ion-label
+                      ><ion-input
+                        [attr.aria-label]="
+                          'Scenario step ' + (i + 1) + ' query parameter'
+                        "
+                        [value]="binding.input"
+                        (ionInput)="updateScenarioStep(i, { bindings: (step.bindings || []).map((item, n) => n === j ? { ...item, input: $event.detail.value || '' } : item) })"
+                    /></ion-item>
+                    <ion-item
+                      ><ion-label position="stacked">Case input</ion-label
+                      ><ion-input
+                        [attr.aria-label]="
+                          'Scenario step ' + (i + 1) + ' case input'
+                        "
+                        [value]="binding.fromInput || ''"
+                        (ionInput)="updateScenarioStep(i, { bindings: (step.bindings || []).map((item, n) => n === j ? { ...item, fromInput: $event.detail.value || undefined, fromColumn: undefined } : item) })"
+                    /></ion-item>
+                    <ion-item
+                      ><ion-label position="stacked">Range endpoint</ion-label
+                      ><ion-select
+                        [attr.aria-label]="
+                          'Scenario step ' + (i + 1) + ' range endpoint'
+                        "
+                        [value]="binding.part || ''"
+                        (ionChange)="updateScenarioStep(i, { bindings: (step.bindings || []).map((item, n) => n === j ? { ...item, part: $event.detail.value || undefined } : item) })"
+                        ><ion-select-option value=""
+                          >Whole value</ion-select-option
+                        ><ion-select-option value="start"
+                          >Start</ion-select-option
+                        ><ion-select-option value="end"
+                          >End</ion-select-option
+                        ></ion-select
+                      ></ion-item
+                    >
+                    <ion-button
+                      fill="clear"
+                      color="medium"
+                      (click)="updateScenarioStep(i, { bindings: (step.bindings || []).filter((_, n) => n !== j) })"
+                      >Remove binding</ion-button
+                    >
+                  </div>
+                }
+                <ion-button
+                  size="small"
+                  fill="clear"
+                  (click)="
+                    updateScenarioStep(i, {
+                      bindings: [
+                        ...(step.bindings || []),
+                        { input: '', fromInput: '' },
+                      ],
+                    })
+                  "
+                  >Add binding</ion-button
+                >
               }
-              <ion-button
-                size="small"
-                fill="clear"
-                (click)="
-                  updateScenarioStep(i, {
-                    bindings: [
-                      ...(step.bindings || []),
-                      { input: '', fromInput: '' },
-                    ],
-                  })
-                "
-                >Add binding</ion-button
-              >
               <ion-button
                 fill="clear"
                 color="medium"

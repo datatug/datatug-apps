@@ -590,7 +590,13 @@ export class CasesPageComponent {
     if (item)
       this.updateScenario({
         steps: item.steps.map((step, i) =>
-          i === index ? { ...step, ...patch } : step,
+          i === index
+            ? {
+                ...step,
+                ...patch,
+                ...(patch.kind === 'check' ? { bindings: [] } : {}),
+              }
+            : step,
         ),
       });
   }
@@ -610,7 +616,9 @@ export class CasesPageComponent {
       !item.title.trim() ||
       !item.steps.length ||
       item.steps.some(
-        (step) => !step.ref.trim() || !validScenarioBindings(step.bindings),
+        (step) =>
+          !step.ref.trim() ||
+          !validScenarioBindings(step.bindings, item.inputs, step.kind),
       )
     ) {
       this.error.set(

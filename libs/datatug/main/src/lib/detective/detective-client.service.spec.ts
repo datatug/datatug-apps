@@ -55,6 +55,97 @@ describe('DetectiveClientService', () => {
     });
   });
 
+  it.each(['agent', 'cloud'] as const)(
+    'normalizes legacy null Detective arrays from %s state',
+    (kind) => {
+      const legacy = {
+        checks: [
+          {
+            id: 'check-1',
+            inputs: null,
+            steps: [
+              {
+                id: 'check-step-1',
+                bindings: null,
+                validators: [{ id: 'validator-1', bindings: null }],
+              },
+            ],
+          },
+          { id: 'empty-check', inputs: null, steps: null },
+        ],
+        validators: [],
+        queryValidators: [],
+        cases: [
+          {
+            id: 'case-legacy',
+            context: null,
+            incidentRefs: null,
+            scenarioRefs: null,
+            runRefs: null,
+            evidence: null,
+            findings: null,
+            timeline: null,
+            scenarioApplications: [
+              {
+                snapshot: { inputs: null, steps: null },
+                steps: null,
+              },
+            ],
+          },
+        ],
+        runs: [],
+        scenarios: [
+          {
+            id: 'scenario-1',
+            inputs: null,
+            steps: [{ id: 'scenario-step-1', bindings: null }],
+          },
+        ],
+      };
+      let state: import('./models').DetectiveState | undefined;
+      if (kind === 'agent') {
+        client.state(context).subscribe((value) => (state = value));
+        http
+          .expectOne((request) => request.url.endsWith('/detective/state'))
+          .flush(legacy);
+      } else {
+        api.get.mockReturnValueOnce(of(legacy));
+        client
+          .state({
+            kind: 'cloud',
+            storage: 'firestore',
+            spaceID: 'S1',
+            project: 'P1',
+          })
+          .subscribe((value) => (state = value));
+      }
+      expect(state?.checks[0]).toMatchObject({
+        inputs: [],
+        steps: [{ bindings: [], validators: [{ bindings: [] }] }],
+      });
+      expect(state?.checks[1]).toMatchObject({ inputs: [], steps: [] });
+      expect(state?.scenarios[0]).toMatchObject({
+        inputs: [],
+        steps: [{ bindings: [] }],
+      });
+      expect(state?.cases[0]).toMatchObject({
+        context: {},
+        incidentRefs: [],
+        scenarioRefs: [],
+        runRefs: [],
+        evidence: [],
+        findings: [],
+        timeline: [],
+        scenarioApplications: [
+          {
+            snapshot: { inputs: [], steps: [] },
+            steps: [],
+          },
+        ],
+      });
+    },
+  );
+
   it('sends a versioned query-local Validator action to the same project agent', () => {
     client
       .action(context, {

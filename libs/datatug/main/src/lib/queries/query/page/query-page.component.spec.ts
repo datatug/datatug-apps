@@ -144,8 +144,10 @@ class SqlEditorHostStub {
 }
 
 function agentContextStub(securityContextId: string | undefined = 'sctx-1') {
+  const scopedSecurityContextId = signal<string | undefined>(securityContextId);
   return {
-    securityContextId: signal<string | undefined>(securityContextId),
+    securityContextId: scopedSecurityContextId,
+    contextFor: vi.fn(() => ({ securityContextId: scopedSecurityContextId })),
     refresh: vi.fn(() => of(undefined)),
   };
 }
@@ -8485,6 +8487,152 @@ select (
     ).toBe('affected');
     expect(component.running()).toBe(false);
     expect(component.runError()).toBeUndefined();
+  });
+
+  it('records a persisted local execution as the pending Scenario query step and fences a late route response', async () => {
+    component = await createComponent({});
+    component.project = project;
+    component.queryDef.set(queryDef);
+    component.queryState = {
+      ...component.queryState,
+      id: queryDef.id,
+      def: queryDef,
+      title: queryDef.title,
+      request: queryDef.request,
+      isNew: false,
+      activeEnv: { id: 'production' } as never,
+    };
+    component.envId = 'production';
+    const caseItem = {
+      id: 'case-local',
+      title: 'Local investigation',
+      status: 'active',
+      version: 2,
+      context: {},
+      incidentRefs: [],
+      scenarioRefs: [],
+      runRefs: [],
+      evidence: [],
+      findings: [],
+      timeline: [],
+      scenarioApplications: [
+        {
+          id: 'application-local',
+          scenarioId: 'scenario-local',
+          scenarioVersion: 1,
+          appliedAt: '2026-10-13T00:00:00Z',
+          appliedBy: 'user',
+          snapshot: {
+            id: 'scenario-local',
+            title: 'Reconcile locally',
+            version: 1,
+            inputs: [],
+            steps: [{ id: 'step-local', kind: 'query', ref: queryDef.id }],
+          },
+          steps: [{ stepId: 'step-local', status: 'pending' }],
+        },
+      ],
+    };
+    const latest = {
+      checks: [],
+      validators: [],
+      queryValidators: [],
+      cases: [caseItem],
+      runs: [],
+      scenarios: [],
+      runsHasMore: false,
+      capabilities: {
+        localOnly: true,
+        canRead: true,
+        canWrite: true,
+        canRun: true,
+        maxRows: 100,
+        maxFanout: 10,
+      },
+    } as unknown as DetectiveState;
+    component.hostedDetectiveState.set(latest);
+    const route = TestBed.inject(ActivatedRoute);
+    Object.defineProperty(route.snapshot, 'queryParamMap', {
+      value: convertToParamMap({
+        caseId: caseItem.id,
+        applicationId: 'application-local',
+        scenarioStepId: 'step-local',
+      }),
+      configurable: true,
+    });
+    const execution = {
+      storeId: 'sqlite',
+      projectId: 'demo-project',
+      executionId: 'local-execution-1',
+    };
+    runQueryMock.mockReturnValue(
+      of({
+        recordset: { columns: [], rows: [] },
+        limitations: [],
+        bindingsApplied: [],
+        provenance: {
+          source: 'sqlite',
+          queryId: queryDef.id,
+          mode: 'live',
+          observedAt: '2026-10-13T00:00:00Z',
+          executionProfile: 'protected',
+        },
+        truncated: false,
+        execution,
+      }),
+    );
+    component.runQuery();
+    expect(runQueryMock).toHaveBeenCalledWith(
+      expect.objectContaining({ queryId: queryDef.id, record: true }),
+    );
+    expect(component.activeLocalScenarioExecution()?.execution).toEqual(
+      execution,
+    );
+
+    const detective = TestBed.inject(DetectiveClientService);
+    vi.spyOn(detective, 'state').mockReturnValue(of(latest));
+    const action = vi
+      .spyOn(detective, 'action')
+      .mockReturnValue(of({ case: { ...caseItem, version: 3 } as never }));
+    await component.completeHostedScenarioStep();
+    expect(action).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'agent', project: 'demo-project' }),
+      {
+        type: 'record-scenario-step',
+        caseId: caseItem.id,
+        applicationId: 'application-local',
+        stepId: 'step-local',
+        stepStatus: 'completed',
+        queryId: queryDef.id,
+        environment: 'production',
+        execution,
+      },
+      2,
+    );
+    expect(component.hostedScenarioMessage()).toContain(
+      'persisted local query execution',
+    );
+
+    component.hostedDetectiveState.set(latest);
+    action.mockReturnValueOnce(
+      throwError(() => new Error('execution receipt was rejected')),
+    );
+    const beforeRejectedReceipt = component.hostedDetectiveState();
+    await component.completeHostedScenarioStep();
+    expect(component.hostedDetectiveState()).toBe(beforeRejectedReceipt);
+    expect(component.hostedScenarioError()).toContain(
+      'execution receipt was rejected',
+    );
+
+    component.hostedDetectiveState.set(latest);
+    const pending = new Subject<DetectiveState>();
+    vi.mocked(detective.state).mockReturnValueOnce(pending);
+    const callsBeforeLateState = action.mock.calls.length;
+    const completion = component.completeHostedScenarioStep();
+    component.queryState = { ...component.queryState, id: 'another-query' };
+    pending.next(latest);
+    await completion;
+    expect(action).toHaveBeenCalledTimes(callsBeforeLateState);
   });
 
   it('ignores an older semantic response after a newer run of the same query', async () => {

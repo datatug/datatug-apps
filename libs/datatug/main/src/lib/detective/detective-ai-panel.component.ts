@@ -855,7 +855,13 @@ export class DetectiveAiPanelComponent {
     if (scenario)
       this.updateScenario({
         steps: scenario.steps.map((step, i) =>
-          i === index ? { ...step, ...patch } : step,
+          i === index
+            ? {
+                ...step,
+                ...patch,
+                ...(patch.kind === 'check' ? { bindings: [] } : {}),
+              }
+            : step,
         ),
       });
   }
@@ -890,7 +896,11 @@ export class DetectiveAiPanelComponent {
           validValidatorBindings(step.validators),
       ) &&
       (draft.scenario?.steps || []).every((step) =>
-        validScenarioBindings(step.bindings),
+        validScenarioBindings(
+          step.bindings,
+          draft.scenario?.inputs || [],
+          step.kind,
+        ),
       ) &&
       validParameterBindings(draft.validator?.validator.bindings)
     );
@@ -963,6 +973,12 @@ export class DetectiveAiPanelComponent {
     const context = this.context();
     const proposal = this.selected();
     if (!context || !proposal || !this.confirmable()) return;
+    if (!this.validDraftParameterNames(proposal.draft)) {
+      this.error.set(
+        'Scenario query bindings must map valid Scenario inputs, and Check steps cannot have bindings.',
+      );
+      return;
+    }
     const key = this.scopeKey();
     const epoch = this.scopeEpoch;
     const edit = this.editFingerprint();
