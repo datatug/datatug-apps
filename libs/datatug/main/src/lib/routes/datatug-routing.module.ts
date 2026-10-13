@@ -146,17 +146,25 @@ export const datatugRoutes: Routes = [
           projectId: segments[5]?.path,
         }) &&
         (segments.length === 6 ||
-          (segments.length === 7 && ['overview', 'queries'].includes(segments[6].path)) ||
-          (segments.length === 8 && segments[6].path === 'query' &&
+          (segments.length === 7 &&
+            ['overview', 'queries', 'checks', 'detective'].includes(
+              segments[6].path,
+            )) ||
+          (segments.length === 8 &&
+            ['checks', 'detective'].includes(segments[6].path) &&
+            /^[A-Za-z0-9_-]+$/.test(segments[7].path)) ||
+          (segments.length === 8 &&
+            segments[6].path === 'query' &&
             /^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(segments[7].path))),
     ],
-    children: [...['', 'overview'].map((path) => ({
-      path,
-      loadComponent: () =>
-        import('../pages/signed-in/project/project-page.component').then(
-          (m) => m.ProjectPageComponent,
-        ),
-    })),
+    children: [
+      ...['', 'overview'].map((path) => ({
+        path,
+        loadComponent: () =>
+          import('../pages/signed-in/project/project-page.component').then(
+            (m) => m.ProjectPageComponent,
+          ),
+      })),
       {
         path: 'queries',
         loadComponent: () =>
@@ -165,14 +173,54 @@ export const datatugRoutes: Routes = [
           ),
       },
       {
+        path: 'checks',
+        children: [
+          {
+            path: '',
+            loadComponent: () =>
+              import('../detective/checks-page.component').then(
+                (m) => m.ChecksPageComponent,
+              ),
+          },
+          {
+            path: ':checkId',
+            loadComponent: () =>
+              import('../detective/checks-page.component').then(
+                (m) => m.ChecksPageComponent,
+              ),
+          },
+        ],
+      },
+      {
+        path: 'detective',
+        children: [
+          {
+            path: '',
+            loadComponent: () =>
+              import('../detective/cases-page.component').then(
+                (m) => m.CasesPageComponent,
+              ),
+          },
+          {
+            path: ':caseId',
+            loadComponent: () =>
+              import('../detective/cases-page.component').then(
+                (m) => m.CasesPageComponent,
+              ),
+          },
+        ],
+      },
+      {
         path: 'query',
-        children: [{
-          path: ':queryId',
-          loadComponent: () =>
-            import('../queries/query/page/query-page.component').then(
-              (m) => m.QueryPageComponent,
-            ),
-        }],
+        children: [
+          {
+            path: ':queryId',
+            loadComponent: () =>
+              import('../queries/query/page/query-page.component').then(
+                (m) => m.QueryPageComponent,
+              ),
+          },
+        ],
       },
     ],
   },

@@ -12,16 +12,19 @@
     @if (scope.unsupported()) {
       <ion-card
         ><ion-card-content role="status"
-          >This project has no agent-backed Detective store. Cases currently
-          remain with a local DataTug agent; open this project through that
-          agent to investigate and resume a Case.</ion-card-content
-        ></ion-card
-      >
+          >Detective is unavailable for this project reference.
+          @if (publicDemo()) {
+            <p>
+              Start a private demo in your Personal Space to investigate and
+              resume a Case.
+            </p>
+            <sneat-datatug-detective-demo-starter destination="detective" />
+          }</ion-card-content
+      ></ion-card>
     } @else if (!scope.context()) {
       <ion-card
         ><ion-card-content role="status"
-          >Connecting to the project agent and its security
-          context…</ion-card-content
+          >Connecting to the project store…</ion-card-content
         ></ion-card
       >
     } @else {
@@ -346,7 +349,7 @@
                       size="small"
                       [disabled]="busy() || item.status === 'archived'"
                       (click)="attachScenario(scenario)"
-                      >Use</ion-button
+                      >Apply</ion-button
                     ></ion-item
                   >
                 } @empty {
@@ -355,29 +358,76 @@
                   >
                 }
               </ion-list>
-              @for (scenario of state()?.scenarios || []; track scenario.id) {
-                @if (item.scenarioRefs.includes(scenario.id)) {
-                  <section class="editor-block">
-                    <h3>{{ scenario.title }} · guided steps</h3>
-                    @for (step of scenario.steps; track step.id) {
-                      <p>
-                        {{ step.id }} · {{ step.kind }} {{ step.ref }}
-                        @if (step.kind === 'check') {
-                          <a
-                            [routerLink]="checkUrl(step.ref)"
-                            [queryParams]="{ caseId: item.id }"
-                            >Open Check</a
-                          >
-                        } @else {
-                          <a [routerLink]="queryUrl(step.ref)">Open query</a> ·
-                          <a [routerLink]="validatorUrl(step.ref, item.id)"
-                            >Run Validators</a
-                          >
+              @for (
+                application of item.scenarioApplications || [];
+                track application.id
+              ) {
+                <section class="editor-block">
+                  <h3>
+                    {{ application.snapshot.title }} · v{{
+                      application.scenarioVersion
+                    }}
+                    · applied {{ application.appliedAt | date: 'medium' }}
+                  </h3>
+                  @for (
+                    step of application.snapshot.steps;
+                    track step.id;
+                    let i = $index
+                  ) {
+                    <ion-item>
+                      <ion-label>
+                        <h4>
+                          {{ step.id }} ·
+                          {{ application.steps[i]?.status || 'pending' }}
+                        </h4>
+                        <p>{{ step.kind }} {{ step.ref }}</p>
+                        @if (application.steps[i]?.runId) {
+                          <p>Run {{ application.steps[i].runId }}</p>
                         }
-                      </p>
-                    }
-                  </section>
-                }
+                      </ion-label>
+                      @if (step.kind === 'check') {
+                        <ion-button
+                          slot="end"
+                          fill="clear"
+                          [routerLink]="checkUrl(step.ref)"
+                          [queryParams]="{ caseId: item.id }"
+                          >Open Check</ion-button
+                        >
+                      } @else {
+                        <ion-button
+                          slot="end"
+                          fill="clear"
+                          [routerLink]="validatorUrl(step.ref, item.id)"
+                          >Run Validators</ion-button
+                        >
+                      }
+                      @if (application.steps[i]?.status === 'pending') {
+                        <ion-button
+                          slot="end"
+                          fill="clear"
+                          [disabled]="busy() || !matchingRun(step)"
+                          (click)="
+                            recordScenarioStep(
+                              application.id,
+                              step,
+                              'completed'
+                            )
+                          "
+                          >Complete from run</ion-button
+                        >
+                        <ion-button
+                          slot="end"
+                          fill="clear"
+                          [disabled]="busy()"
+                          (click)="
+                            recordScenarioStep(application.id, step, 'skipped')
+                          "
+                          >Skip</ion-button
+                        >
+                      }
+                    </ion-item>
+                  }
+                </section>
               }
             </ion-card-content></ion-card
           >
@@ -592,7 +642,14 @@
                   >
                 </div>
               }
-              <a routerLink="/incidents/new">Open a new Incident</a>
+              @if (scope.context()?.kind === 'agent') {
+                <a routerLink="/incidents/new">Open a new Incident</a>
+              } @else {
+                <ion-note
+                  >Hosted Incident creation is not available yet. Existing
+                  Incident references can still be linked.</ion-note
+                >
+              }
             </ion-card-content></ion-card
           >
 
@@ -600,7 +657,7 @@
             ><ion-card-content>
               <h2>Activity timeline</h2>
               <ion-list>
-                @for (event of item.timeline; track event.id) {
+                @for (event of timelineEvents(); track event.id) {
                   <ion-item
                     ><ion-label
                       ><h3>
@@ -619,6 +676,14 @@
                   <ion-item><ion-label>No activity yet.</ion-label></ion-item>
                 }
               </ion-list>
+              @if (hasOlderEvents()) {
+                <ion-button
+                  fill="clear"
+                  [disabled]="olderEventsBusy()"
+                  (click)="loadOlderEvents()"
+                  >Load older activity</ion-button
+                >
+              }
               @if (item.status !== 'archived') {
                 <ion-item
                   ><ion-label position="stacked">Investigation note</ion-label

@@ -224,7 +224,8 @@ export class ProjectMenuTopComponent implements OnDestroy {
     event.stopPropagation();
     if (
       (this.cliBridgeChat && page !== 'chat') ||
-      (this.metadataOnly() && page !== 'overview')
+      (this.metadataOnly() &&
+        !['overview', 'queries', 'checks', 'detective'].includes(page))
     )
       return false;
     const project = this.project;

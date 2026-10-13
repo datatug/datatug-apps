@@ -176,7 +176,7 @@ describe('the routes as registered', () => {
     expect(old?.redirectTo).toBeUndefined();
   });
 
-  it('guards the shared project route and exposes only overview and saved-query children', () => {
+  it('guards the shared project route and exposes query, Check and Detective children', () => {
     const shared = datatugRoutes.find(
       (r) => r.path === 'space/:spaceId/store/:storeId/project/:projectId',
     );
@@ -185,12 +185,14 @@ describe('the routes as registered', () => {
       '',
       'overview',
       'queries',
+      'checks',
+      'detective',
       'query',
     ]);
     expect(
       shared?.children?.slice(0, 3).every((r) => typeof r.loadComponent === 'function'),
     ).toBe(true);
-    expect(shared?.children?.[3].children?.map((r) => r.path)).toEqual([
+    expect(shared?.children?.[5].children?.map((r) => r.path)).toEqual([
       ':queryId',
     ]);
     expect(shared?.loadChildren).toBeUndefined();

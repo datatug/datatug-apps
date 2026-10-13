@@ -1,4 +1,5 @@
 import { CommonModule } from '@angular/common';
+import { DEMO_PROJECT_REF } from '@datatug/project-address';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -60,6 +61,7 @@ import {
   ValidatorDefinition,
 } from './models';
 import { ValidationRunResultsComponent } from './validation-run-results.component';
+import { DetectiveDemoStarterComponent } from './detective-demo-starter.component';
 
 const NEW_CHECK = (): CheckDefinition => ({
   id: '',
@@ -110,6 +112,7 @@ interface QueryInputRow extends CheckInput {
     IonTitle,
     IonToolbar,
     ValidationRunResultsComponent,
+    DetectiveDemoStarterComponent,
   ],
 })
 export class ChecksPageComponent {
@@ -118,6 +121,11 @@ export class ChecksPageComponent {
   private readonly client = inject(DetectiveClientService);
   private readonly projectService = inject(ProjectService);
   protected readonly scope = useDetectivePageContext();
+  protected readonly publicDemo = computed(
+    () =>
+      this.scope.ref()?.storeId === 'github.com' &&
+    this.scope.ref()?.projectId === DEMO_PROJECT_REF.projectId,
+  );
   private readonly params = toSignal(this.route.paramMap, {
     initialValue: this.route.snapshot.paramMap,
   });
@@ -204,15 +212,20 @@ export class ChecksPageComponent {
       ),
     ),
   );
-  // ProjectSummary does not carry environments. Use the agent's project_full,
-  // the same source as the existing Environments page.
+  // Hosted environments are admitted by the server; local agents retain their
+  // project_full source until both transports expose the same state field.
   private readonly loadEnvironments = effect((onCleanup) => {
     const ref = this.scope.ref();
     this.availableEnvironments.set([]);
     this.environment.set('');
     this.environmentsError.set('');
     this.environmentsLoading.set(false);
-    if (!ref || this.scope.unsupported()) return;
+    if (
+      !ref ||
+      this.scope.unsupported() ||
+      this.scope.context()?.kind === 'cloud'
+    )
+      return;
     this.environmentsLoading.set(true);
     const subscription = this.projectService.getFull(ref).subscribe({
       next: (project) => {
@@ -238,10 +251,18 @@ export class ChecksPageComponent {
     const subscription = this.client.state(context).subscribe({
       next: (state) => {
         this.state.set(state);
+        if (context.kind === 'cloud') {
+          this.availableEnvironments.set(
+            (state.environments || []).map((id) => ({ id, title: id })),
+          );
+          this.environmentsLoading.set(false);
+        }
         this.loading.set(false);
       },
       error: (error: unknown) => {
-        this.error.set(detectiveErrorMessage(error));
+        this.error.set(
+          detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
+        );
         this.loading.set(false);
       },
     });
@@ -379,7 +400,9 @@ export class ChecksPageComponent {
       });
       this.error.set('');
     } catch (error) {
-      this.error.set(detectiveErrorMessage(error));
+      this.error.set(
+        detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
+      );
     }
   }
   protected async saveQueryValidators(): Promise<void> {
@@ -403,12 +426,16 @@ export class ChecksPageComponent {
         }),
       );
       if (!response.queryValidators)
-        throw new Error('The agent did not return the query Validators.');
+        throw new Error(
+          'The project store did not return the query Validators.',
+        );
       await this.refresh();
       this.queryValidatorDraft.set(undefined);
       this.message.set(`Saved local Validators for ${draft.queryId}.`);
     } catch (error) {
-      this.error.set(detectiveErrorMessage(error));
+      this.error.set(
+        detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
+      );
     } finally {
       this.busy.set(false);
     }
@@ -459,7 +486,9 @@ export class ChecksPageComponent {
         );
       }
     } catch (error) {
-      this.error.set(detectiveErrorMessage(error));
+      this.error.set(
+        detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
+      );
       return;
     }
     this.busy.set(true);
@@ -475,14 +504,16 @@ export class ChecksPageComponent {
         }),
       );
       if (!response.run)
-        throw new Error('The agent did not return a Validator run.');
+        throw new Error('The project store did not return a Validator run.');
       await this.refresh();
       this.selectedRun.set(response.run);
       this.message.set(
         `Validator run ${response.run.id}: ${response.run.outcome}.`,
       );
     } catch (error) {
-      this.error.set(detectiveErrorMessage(error));
+      this.error.set(
+        detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
+      );
     } finally {
       this.busy.set(false);
     }
@@ -503,7 +534,9 @@ export class ChecksPageComponent {
         runs: [...state.runs, ...older.runs.filter((run) => !seen.has(run.id))],
       });
     } catch (error) {
-      this.error.set(detectiveErrorMessage(error));
+      this.error.set(
+        detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
+      );
     } finally {
       this.olderRunsBusy.set(false);
     }
@@ -688,7 +721,9 @@ export class ChecksPageComponent {
       });
       this.error.set('');
     } catch (error) {
-      this.error.set(detectiveErrorMessage(error));
+      this.error.set(
+        detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
+      );
     }
   }
 
@@ -711,7 +746,7 @@ export class ChecksPageComponent {
         this.client.action(context, { type: 'save-check', check: draft }),
       );
       if (!response.check)
-        throw new Error('The agent did not return the saved Check.');
+        throw new Error('The project store did not return the saved Check.');
       await this.refresh();
       this.draft.set(undefined);
       await this.router.navigateByUrl(this.checkUrl(response.check.id), {
@@ -721,7 +756,9 @@ export class ChecksPageComponent {
         `Saved Check ${response.check.id} · version ${response.check.version}.`,
       );
     } catch (error) {
-      this.error.set(detectiveErrorMessage(error));
+      this.error.set(
+        detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
+      );
     } finally {
       this.busy.set(false);
     }
@@ -784,7 +821,9 @@ export class ChecksPageComponent {
       });
       this.error.set('');
     } catch (error) {
-      this.error.set(detectiveErrorMessage(error));
+      this.error.set(
+        detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
+      );
     }
   }
   protected async savePublished(): Promise<void> {
@@ -802,12 +841,14 @@ export class ChecksPageComponent {
         this.client.action(context, { type: 'save-validator', validator }),
       );
       if (!response.validator)
-        throw new Error('The agent did not return the Validator.');
+        throw new Error('The project store did not return the Validator.');
       await this.refresh();
       this.validatorDraft.set(undefined);
       this.message.set(`Published Validator ${response.validator.id}.`);
     } catch (error) {
-      this.error.set(detectiveErrorMessage(error));
+      this.error.set(
+        detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
+      );
     } finally {
       this.busy.set(false);
     }
@@ -881,7 +922,9 @@ export class ChecksPageComponent {
         );
       }
     } catch (error) {
-      this.error.set(detectiveErrorMessage(error));
+      this.error.set(
+        detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
+      );
       return;
     }
     this.busy.set(true);
@@ -896,12 +939,15 @@ export class ChecksPageComponent {
           inputs,
         }),
       );
-      if (!response.run) throw new Error('The agent did not return a run.');
+      if (!response.run)
+        throw new Error('The project store did not return a run.');
       await this.refresh();
       this.selectedRun.set(response.run);
       this.message.set(`Run ${response.run.id}: ${response.run.outcome}.`);
     } catch (error) {
-      this.error.set(detectiveErrorMessage(error));
+      this.error.set(
+        detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
+      );
     } finally {
       this.busy.set(false);
     }

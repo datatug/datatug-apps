@@ -117,10 +117,12 @@ export interface DetectiveCase {
   context: Record<string, DetectiveInputValue>;
   incidentRefs: string[];
   scenarioRefs: string[];
+  scenarioApplications?: ScenarioApplication[];
   runRefs: string[];
   evidence: EvidenceRef[];
   findings: CaseFinding[];
   timeline: CaseEvent[];
+  timelineOffset?: number;
   closureReason?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -141,10 +143,31 @@ export interface InvestigationScenario {
   steps: ScenarioStep[];
 }
 
+export interface ScenarioStepReceipt {
+  stepId: string;
+  status: 'pending' | 'completed' | 'skipped';
+  runId?: string;
+  at?: string;
+  actor?: string;
+}
+
+export interface ScenarioApplication {
+  id: string;
+  scenarioId: string;
+  scenarioVersion: number;
+  snapshot: InvestigationScenario;
+  appliedAt: string;
+  appliedBy: string;
+  steps: ScenarioStepReceipt[];
+}
+
 export interface ValidationResult {
   validatorId: string;
   executionStatus: string;
   outcome: 'pass' | 'fail' | 'unknown';
+  evidenceOutcome?: string;
+  onUnavailable?: string;
+  disposition?: string;
   severity: string;
   rowIndex?: number;
   message?: string;
@@ -166,6 +189,14 @@ export interface CheckStepResult {
   checkId?: string;
   executionStatus: string;
   outcome: 'pass' | 'fail' | 'unknown';
+  evidenceOutcome?: string;
+  onUnavailable?: string;
+  disposition?: string;
+  limitations?: {
+    policy: string;
+    rowsFiltered: boolean;
+    hiddenColumns: string[];
+  }[];
   severity?: string;
   rowCount?: number;
   message?: string;
@@ -205,6 +236,7 @@ export interface DetectiveState {
   runsHasMore: boolean;
   runsNextCursor?: string;
   scenarios: InvestigationScenario[];
+  environments?: string[];
   capabilities: {
     localOnly: boolean;
     canRead: boolean;
@@ -225,7 +257,9 @@ export interface DetectiveActionRequest {
     | 'update-case'
     | 'append-event'
     | 'run-check'
-    | 'save-scenario';
+    | 'save-scenario'
+    | 'apply-scenario'
+    | 'record-scenario-step';
   project: string;
   securityContextId: string;
   check?: CheckDefinition;
@@ -237,6 +271,11 @@ export interface DetectiveActionRequest {
   checkId?: string;
   queryId?: string;
   caseId?: string;
+  scenarioId?: string;
+  applicationId?: string;
+  stepId?: string;
+  stepStatus?: 'pending' | 'completed' | 'skipped';
+  runId?: string;
   environment?: string;
   inputs?: Record<string, DetectiveInputValue>;
 }

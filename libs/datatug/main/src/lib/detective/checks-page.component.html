@@ -12,16 +12,19 @@
     @if (scope.unsupported()) {
       <ion-card
         ><ion-card-content role="status">
-          This project has no agent-backed Detective store. Checks and run
-          history currently stay with a local DataTug agent; open the project
-          through that agent to use them.
-        </ion-card-content></ion-card
-      >
+          Checks are unavailable for this project reference.
+          @if (publicDemo()) {
+            <p>
+              Start a private demo in your Personal Space to author and run
+              Checks.
+            </p>
+            <sneat-datatug-detective-demo-starter destination="checks" />
+          }</ion-card-content
+      ></ion-card>
     } @else if (!scope.context()) {
       <ion-card
         ><ion-card-content role="status"
-          >Connecting to the project agent and its security
-          context…</ion-card-content
+          >Connecting to the project store…</ion-card-content
         ></ion-card
       >
     } @else {

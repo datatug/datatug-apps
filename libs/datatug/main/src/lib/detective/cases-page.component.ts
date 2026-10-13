@@ -1,4 +1,5 @@
 import { CommonModule } from '@angular/common';
+import { DEMO_PROJECT_REF } from '@datatug/project-address';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -48,6 +49,7 @@ import {
   parseInputValue,
 } from './detective-forms';
 import { useDetectivePageContext } from './detective-page-context';
+import { DetectiveDemoStarterComponent } from './detective-demo-starter.component';
 import {
   CaseEvent,
   CaseFinding,
@@ -113,6 +115,7 @@ const NEW_CASE = (): DetectiveCase => ({
     IonTextarea,
     IonTitle,
     IonToolbar,
+    DetectiveDemoStarterComponent,
   ],
 })
 export class CasesPageComponent {
@@ -121,6 +124,11 @@ export class CasesPageComponent {
   private readonly client = inject(DetectiveClientService);
   private readonly basket = inject(InvestigationContextService);
   protected readonly scope = useDetectivePageContext();
+  protected readonly publicDemo = computed(
+    () =>
+      this.scope.ref()?.storeId === 'github.com' &&
+    this.scope.ref()?.projectId === DEMO_PROJECT_REF.projectId,
+  );
   private readonly params = toSignal(this.route.paramMap, {
     initialValue: this.route.snapshot.paramMap,
   });
@@ -134,6 +142,12 @@ export class CasesPageComponent {
   protected readonly loading = signal(false);
   protected readonly busy = signal(false);
   protected readonly olderRunsBusy = signal(false);
+  protected readonly olderEventsBusy = signal(false);
+  protected readonly olderEvents = signal<CaseEvent[]>([]);
+  protected readonly olderEventsBefore = signal<number | undefined>(undefined);
+  protected readonly olderEventsHasMore = signal<boolean | undefined>(
+    undefined,
+  );
   protected readonly error = signal('');
   protected readonly message = signal('');
   protected readonly search = signal('');
@@ -175,6 +189,26 @@ export class CasesPageComponent {
   protected readonly current = computed(() =>
     this.state()?.cases.find((item) => item.id === this.caseId()),
   );
+  protected readonly timelineEvents = computed(() => {
+    const seen = new Set<string>();
+    return [...this.olderEvents(), ...(this.current()?.timeline || [])].filter(
+      (event) => {
+        if (seen.has(event.id)) return false;
+        seen.add(event.id);
+        return true;
+      },
+    );
+  });
+  protected readonly hasOlderEvents = computed(
+    () =>
+      this.olderEventsHasMore() ?? (this.current()?.timelineOffset || 0) > 0,
+  );
+  private readonly resetOlderEvents = effect(() => {
+    this.caseId();
+    this.olderEvents.set([]);
+    this.olderEventsBefore.set(undefined);
+    this.olderEventsHasMore.set(undefined);
+  });
   protected readonly caseRuns = computed(() =>
     (this.state()?.runs || []).filter(
       (run) =>
@@ -207,7 +241,7 @@ export class CasesPageComponent {
     const context = this.scope.context();
     return (
       !!scope &&
-      !!context &&
+      context?.kind === 'agent' &&
       scope.agentUrl === agentBaseUrl(context.agentStoreId) &&
       scope.project === context.project &&
       scope.securityContextId === context.securityContextId &&
@@ -227,7 +261,9 @@ export class CasesPageComponent {
         this.loading.set(false);
       },
       error: (error: unknown) => {
-        this.error.set(detectiveErrorMessage(error));
+        this.error.set(
+          detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
+        );
         this.loading.set(false);
       },
     });
@@ -255,7 +291,8 @@ export class CasesPageComponent {
     const [store, id] = ref.split('/');
     const context = this.scope.context();
     const environment = this.scope.currentEnvironment()?.id;
-    if (!store || !id || !context || !environment) return undefined;
+    if (!store || !id || context?.kind !== 'agent' || !environment)
+      return undefined;
     return this.router.serializeUrl(
       this.router.createUrlTree(['/incidents', store, id], {
         queryParams: {
@@ -370,12 +407,14 @@ export class CasesPageComponent {
         this.client.action(context, { type: 'save-scenario', scenario: item }),
       );
       if (!response.scenario)
-        throw new Error('The agent did not return the saved Scenario.');
+        throw new Error('The project store did not return the saved Scenario.');
       await this.refresh();
       this.scenarioDraft.set(undefined);
       this.message.set(`Saved Scenario ${response.scenario.id}.`);
     } catch (error) {
-      this.error.set(detectiveErrorMessage(error));
+      this.error.set(
+        detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
+      );
     } finally {
       this.busy.set(false);
     }
@@ -415,7 +454,9 @@ export class CasesPageComponent {
       this.contextEnd.set('');
       this.error.set('');
     } catch (error) {
-      this.error.set(detectiveErrorMessage(error));
+      this.error.set(
+        detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
+      );
     }
   }
   protected removeContext(name: string): void {
@@ -492,13 +533,17 @@ export class CasesPageComponent {
     this.error.set('');
     try {
       const response = await firstValueFrom(
-        this.client.action(context, {
-          type: created ? 'create-case' : 'update-case',
-          case: item,
-        }),
+        this.client.action(
+          context,
+          {
+            type: created ? 'create-case' : 'update-case',
+            case: item,
+          },
+          item.version,
+        ),
       );
       if (!response.case)
-        throw new Error('The agent did not return the saved Case.');
+        throw new Error('The project store did not return the saved Case.');
       await this.refresh();
       this.draft.set(undefined);
       await this.router.navigateByUrl(this.caseUrl(response.case.id), {
@@ -506,7 +551,9 @@ export class CasesPageComponent {
       });
       this.message.set(`Saved Case ${response.case.id}.`);
     } catch (error) {
-      this.error.set(detectiveErrorMessage(error));
+      this.error.set(
+        detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
+      );
     } finally {
       this.busy.set(false);
     }
@@ -523,18 +570,24 @@ export class CasesPageComponent {
     this.error.set('');
     try {
       const response = await firstValueFrom(
-        this.client.action(context, {
-          type: 'update-case',
-          case: { ...item, ...patch },
-        }),
+        this.client.action(
+          context,
+          {
+            type: 'update-case',
+            case: { ...item, ...patch },
+          },
+          item.version,
+        ),
       );
       if (!response.case)
-        throw new Error('The agent did not return the updated Case.');
+        throw new Error('The project store did not return the updated Case.');
       await this.refresh();
       this.message.set(success);
       return true;
     } catch (error) {
-      this.error.set(detectiveErrorMessage(error));
+      this.error.set(
+        detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
+      );
       return false;
     } finally {
       this.busy.set(false);
@@ -571,14 +624,113 @@ export class CasesPageComponent {
     );
   }
   protected attachScenario(scenario: InvestigationScenario): Promise<boolean> {
+    const context = this.scope.context();
     const item = this.current();
-    if (!item) return Promise.resolve(false);
-    return this.updateCase(
-      {
-        scenarioRefs: [...new Set([...(item.scenarioRefs || []), scenario.id])],
-      },
-      'Scenario added to Case. Choose a step to run manually.',
+    if (!context || !item) return Promise.resolve(false);
+    this.busy.set(true);
+    this.error.set('');
+    return firstValueFrom(
+      this.client.action(
+        context,
+        {
+          type: 'apply-scenario',
+          caseId: item.id,
+          scenarioId: scenario.id,
+        },
+        item.version,
+      ),
+    )
+      .then(async (response) => {
+        if (!response.case)
+          throw new Error('The project store did not return the Case.');
+        await this.refresh();
+        this.message.set(
+          'Scenario applied. Run each step manually and record its result.',
+        );
+        return true;
+      })
+      .catch((error: unknown) => {
+        this.error.set(detectiveErrorMessage(error, context.kind === 'cloud'));
+        return false;
+      })
+      .finally(() => this.busy.set(false));
+  }
+
+  protected matchingRun(step: ScenarioStep): CheckRun | undefined {
+    return this.caseRuns().find((run) =>
+      step.kind === 'check'
+        ? run.kind === 'check' && run.checkId === step.ref
+        : run.kind === 'query-validators' && run.queryId === step.ref,
     );
+  }
+
+  protected async recordScenarioStep(
+    applicationId: string,
+    step: ScenarioStep,
+    status: 'completed' | 'skipped',
+  ): Promise<void> {
+    const context = this.scope.context();
+    const item = this.current();
+    if (!context || !item) return;
+    const runId =
+      status === 'completed' ? this.matchingRun(step)?.id : undefined;
+    if (status === 'completed' && !runId) {
+      this.error.set('Run this step in the Case before marking it complete.');
+      return;
+    }
+    this.busy.set(true);
+    this.error.set('');
+    try {
+      const response = await firstValueFrom(
+        this.client.action(
+          context,
+          {
+            type: 'record-scenario-step',
+            caseId: item.id,
+            applicationId,
+            stepId: step.id,
+            stepStatus: status,
+            ...(runId ? { runId } : {}),
+          },
+          item.version,
+        ),
+      );
+      if (!response.case)
+        throw new Error('The project store did not return the Case.');
+      await this.refresh();
+      this.message.set(`Scenario step ${step.id} ${status}.`);
+    } catch (error) {
+      this.error.set(detectiveErrorMessage(error, context.kind === 'cloud'));
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  protected async loadOlderEvents(): Promise<void> {
+    const context = this.scope.context();
+    const item = this.current();
+    const before = this.olderEventsBefore() ?? item?.timelineOffset;
+    if (!context || !item || !before || this.olderEventsBusy()) return;
+    this.olderEventsBusy.set(true);
+    this.error.set('');
+    try {
+      const page = await firstValueFrom(
+        this.client.caseEvents(context, item.id, before),
+      );
+      if (page.caseId !== item.id)
+        throw new Error('The project store returned events for another Case.');
+      const seen = new Set(this.timelineEvents().map((event) => event.id));
+      this.olderEvents.update((all) => [
+        ...page.events.filter((event) => !seen.has(event.id)),
+        ...all,
+      ]);
+      this.olderEventsBefore.set(page.nextBefore);
+      this.olderEventsHasMore.set(page.hasMore);
+    } catch (error) {
+      this.error.set(detectiveErrorMessage(error, context.kind === 'cloud'));
+    } finally {
+      this.olderEventsBusy.set(false);
+    }
   }
   protected addFinding(): Promise<void> {
     const item = this.current();
@@ -588,11 +740,19 @@ export class CasesPageComponent {
       .split(',')
       .map((ref) => ref.trim())
       .filter(Boolean);
-    if (this.findingStatus() === 'confirmed' &&
-        (!evidenceRefs.length || evidenceRefs.some((ref) =>
-          !item.evidence.some((evidence) => evidence.id === ref || evidence.ref === ref) &&
-          !item.runRefs.includes(ref)))) {
-      this.error.set('A confirmed finding must link at least one existing evidence or run reference.');
+    if (
+      this.findingStatus() === 'confirmed' &&
+      (!evidenceRefs.length ||
+        evidenceRefs.some(
+          (ref) =>
+            !item.evidence.some(
+              (evidence) => evidence.id === ref || evidence.ref === ref,
+            ) && !item.runRefs.includes(ref),
+        ))
+    ) {
+      this.error.set(
+        'A confirmed finding must link at least one existing evidence or run reference.',
+      );
       return Promise.resolve();
     }
     const finding: CaseFinding = {
@@ -642,17 +802,23 @@ export class CasesPageComponent {
     this.error.set('');
     try {
       await firstValueFrom(
-        this.client.action(context, {
-          type: 'append-event',
-          caseId: item.id,
-          event,
-        }),
+        this.client.action(
+          context,
+          {
+            type: 'append-event',
+            caseId: item.id,
+            event,
+          },
+          item.version,
+        ),
       );
       await this.refresh();
       this.noteText.set('');
       this.message.set('Note added to the timeline.');
     } catch (error) {
-      this.error.set(detectiveErrorMessage(error));
+      this.error.set(
+        detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
+      );
     } finally {
       this.busy.set(false);
     }
@@ -676,7 +842,9 @@ export class CasesPageComponent {
         runs: [...state.runs, ...older.runs.filter((run) => !seen.has(run.id))],
       });
     } catch (error) {
-      this.error.set(detectiveErrorMessage(error));
+      this.error.set(
+        detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
+      );
     } finally {
       this.olderRunsBusy.set(false);
     }
