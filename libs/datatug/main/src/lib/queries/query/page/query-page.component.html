@@ -645,7 +645,7 @@
                     <ion-segment-button value="parameters">
                       <ion-label>
                         Parameters
-                        <ion-chip [attr.aria-label]="authorParameterCountLabel()">
+                        <ion-chip class="ion-no-margin" [attr.aria-label]="authorParameterCountLabel()">
                           {{ authorParameterDeclarationCount() ?? '…' }}
                         </ion-chip>
                       </ion-label>
@@ -653,7 +653,7 @@
                     <ion-segment-button value="sources">
                       <ion-label>
                         Sources
-                        <ion-chip [attr.aria-label]="authorSourceCountLabel()">
+                        <ion-chip class="ion-no-margin" [attr.aria-label]="authorSourceCountLabel()">
                           {{ authorSourceOccurrenceCount() ?? '…' }}
                         </ion-chip>
                       </ion-label>
@@ -661,7 +661,7 @@
                     <ion-segment-button value="related">
                       <ion-label>
                         Related
-                        <ion-chip [attr.aria-label]="authorRelatedSourceCountLabel()">
+                        <ion-chip class="ion-no-margin" [attr.aria-label]="authorRelatedSourceCountLabel()">
                           {{ authorRelatedSourceCount() ?? '…' }}
                         </ion-chip>
                       </ion-label>
