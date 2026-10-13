@@ -6,7 +6,10 @@ import {
   type HostedQueryResponse,
 } from '../../../detective/detective-client.service';
 import { ValidationRunResultsComponent } from '../../../detective/validation-run-results.component';
-import type { ValidationRowSelection } from '../../../detective/detective-forms';
+import {
+  caseRunLinkMessage,
+  type ValidationRowSelection,
+} from '../../../detective/detective-forms';
 import type {
   CheckRun,
   DetectiveExecutionRef,
@@ -100,6 +103,7 @@ interface HostedQueryExecution {
   readonly run?: CheckRun;
   readonly validationPending?: boolean;
   readonly validationError?: string;
+  readonly caseLinkNotice?: string;
 }
 
 const sameExecution = (
@@ -6313,7 +6317,16 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
                         'Validation did not return a run linked to these exact query rows.',
                     });
                   } else {
-                    this.hostedExecution.set({ ...executed, run });
+                    this.hostedExecution.set({
+                      ...executed,
+                      run,
+                      caseLinkNotice: caseRunLinkMessage(
+                        this.hostedScenarioTarget()?.caseId,
+                        run.id,
+                        validated.caseLinkStatus,
+                        run.executionStatus,
+                      ),
+                    });
                   }
                   this.running.set(false);
                 },

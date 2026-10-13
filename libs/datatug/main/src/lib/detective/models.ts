@@ -297,4 +297,12 @@ export interface DetectiveActionResponse {
   case?: DetectiveCase;
   run?: CheckRun;
   scenario?: InvestigationScenario;
+  /** The completed Run and its Case evidence link have separate outcomes. */
+  caseLinkStatus?:
+    | 'linked'
+    | 'already-linked'
+    | 'case-unavailable'
+    | 'case-archived'
+    | 'case-changed'
+    | 'link-unavailable';
 }

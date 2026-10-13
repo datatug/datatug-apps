@@ -37,9 +37,12 @@ import {
   detectiveErrorMessage,
 } from './detective-client.service';
 import {
+  detectiveParameterName,
   displayInputValue,
   parseInputValue,
   parseScalar,
+  validParameterBindings,
+  validValidatorBindings,
 } from './detective-forms';
 import {
   CheckInput,
@@ -130,6 +133,12 @@ export class DetectiveAiPanelComponent {
   protected readonly expectedTypeEdits = signal<
     Record<string, DetectiveValue['type']>
   >({});
+  protected readonly expectedValueEdits = signal<
+    Partial<Record<string, string>>
+  >({});
+  protected readonly expectedValueErrors = signal<
+    Partial<Record<string, string>>
+  >({});
   private readonly expectedTypeEdited = signal(false);
   protected readonly reviewCaseId = signal('');
   protected readonly busy = signal(false);
@@ -158,6 +167,7 @@ export class DetectiveAiPanelComponent {
       !!proposal &&
       !!draft &&
       this.selectedScopeKey() === this.scopeKey() &&
+      !Object.keys(this.expectedValueErrors()).length &&
       draft.kind !== 'explain-failure'
     );
   });
@@ -171,6 +181,7 @@ export class DetectiveAiPanelComponent {
         proposal.draft.kind !== 'explain-failure' &&
         proposal.draft.kind !== 'extract-context' &&
         !this.expectedTypeEdited() &&
+        !Object.keys(this.expectedValueErrors()).length &&
         JSON.stringify(this.materializedDraft()) ===
           JSON.stringify(proposal.draft)
       );
@@ -203,6 +214,8 @@ export class DetectiveAiPanelComponent {
     this.draft.set(undefined);
     this.inputEdits.set({});
     this.expectedTypeEdits.set({});
+    this.expectedValueEdits.set({});
+    this.expectedValueErrors.set({});
     this.expectedTypeEdited.set(false);
     this.reviewCaseId.set('');
     this.receipt.set(undefined);
@@ -229,6 +242,8 @@ export class DetectiveAiPanelComponent {
       this.draft(),
       this.inputEdits(),
       this.expectedTypeEdits(),
+      this.expectedValueEdits(),
+      this.expectedValueErrors(),
       this.reviewCaseId(),
       this.selectedCase()?.version,
       this.text(),
@@ -243,7 +258,7 @@ export class DetectiveAiPanelComponent {
   private parsedInputs(): Record<string, DetectiveInputValue> {
     const values: Record<string, DetectiveInputValue> = {};
     for (const [name, edit] of Object.entries(this.inputEdits())) {
-      if (!/^[a-z][a-z0-9_]*$/u.test(name))
+      if (!detectiveParameterName.test(name))
         throw new Error(`Invalid input name: ${name}`);
       values[name] = parseInputValue(
         edit.text,
@@ -418,6 +433,8 @@ export class DetectiveAiPanelComponent {
       ),
     );
     this.expectedTypeEdits.set({});
+    this.expectedValueEdits.set({});
+    this.expectedValueErrors.set({});
     this.expectedTypeEdited.set(false);
     this.receipt.set(undefined);
     this.error.set('');
@@ -689,20 +706,29 @@ export class DetectiveAiPanelComponent {
     });
   }
   protected setExpected(
+    key: string,
     raw: string,
     type: DetectiveValue['type'],
     update: (patch: Partial<ValidatorDefinition>) => void,
   ): void {
+    this.expectedValueEdits.update((all) => ({ ...all, [key]: raw }));
     try {
-      update({
-        expected:
-          raw.trim() || type === 'null' ? parseScalar(raw, type) : undefined,
+      const expected =
+        raw.trim() || type === 'null' ? parseScalar(raw, type) : undefined;
+      update({ expected });
+      this.expectedValueErrors.update((all) => {
+        const next = { ...all };
+        delete next[key];
+        return next;
       });
       this.error.set('');
     } catch (error) {
-      this.error.set(
-        detectiveErrorMessage(error, this.context()?.kind === 'cloud'),
+      const message = detectiveErrorMessage(
+        error,
+        this.context()?.kind === 'cloud',
       );
+      this.expectedValueErrors.update((all) => ({ ...all, [key]: message }));
+      this.error.set(message);
     }
   }
   protected setStepExpected(
@@ -711,7 +737,7 @@ export class DetectiveAiPanelComponent {
     raw: string,
     type: DetectiveValue['type'],
   ): void {
-    this.setExpected(raw, type, (patch) =>
+    this.setExpected(`step-${stepIndex}-${index}`, raw, type, (patch) =>
       this.updateCheckStepValidator(stepIndex, index, patch),
     );
   }
@@ -733,11 +759,15 @@ export class DetectiveAiPanelComponent {
     this.expectedTypeEdited.set(true);
     const expected =
       this.draft()?.check?.steps[stepIndex]?.validators?.[index]?.expected;
-    if (expected)
+    if (
+      expected ||
+      this.expectedValueEdits()[`step-${stepIndex}-${index}`] !== undefined
+    )
       this.setStepExpected(
         stepIndex,
         index,
-        String(expected.value ?? ''),
+        this.expectedValueEdits()[`step-${stepIndex}-${index}`] ??
+          String(expected?.value ?? ''),
         type,
       );
   }
@@ -745,13 +775,17 @@ export class DetectiveAiPanelComponent {
     this.expectedTypeEdits.update((all) => ({ ...all, published: type }));
     this.expectedTypeEdited.set(true);
     const expected = this.draft()?.validator?.validator.expected;
-    if (expected) this.setPublishedExpected(String(expected.value ?? ''), type);
+    if (expected || this.expectedValueEdits()['published'] !== undefined)
+      this.setPublishedExpected(
+        this.expectedValueEdits()['published'] ?? String(expected?.value ?? ''),
+        type,
+      );
   }
   protected setPublishedExpected(
     raw: string,
     type: DetectiveValue['type'],
   ): void {
-    this.setExpected(raw, type, (patch) =>
+    this.setExpected('published', raw, type, (patch) =>
       this.updateValidatorDefinition(patch),
     );
   }
@@ -841,11 +875,33 @@ export class DetectiveAiPanelComponent {
   protected sourceTrail(): AiProvenance[] {
     return this.draft()?.sources || [];
   }
+  private validDraftParameterNames(draft: AiDraft): boolean {
+    const inputs = [
+      ...(draft.query?.inputs || []),
+      ...(draft.check?.inputs || []),
+      ...(draft.scenario?.inputs || []),
+    ];
+    return (
+      inputs.every((input) => detectiveParameterName.test(input.name)) &&
+      (draft.check?.steps || []).every(
+        (step) =>
+          validParameterBindings(step.bindings) &&
+          validValidatorBindings(step.validators),
+      ) &&
+      validParameterBindings(draft.validator?.validator.bindings)
+    );
+  }
   protected async review(): Promise<void> {
     const context = this.context();
     const proposal = this.selected();
     const draft = this.draft();
     if (!context || !proposal || !draft || !this.reviewable()) return;
+    if (!this.validDraftParameterNames(draft)) {
+      this.error.set(
+        'Input and binding names must start with a letter and use letters, digits, underscores or hyphens (up to 128 characters).',
+      );
+      return;
+    }
     const key = this.scopeKey();
     const epoch = this.scopeEpoch;
     const edit = this.editFingerprint();

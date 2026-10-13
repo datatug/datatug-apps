@@ -44,8 +44,11 @@ import {
   detectiveErrorMessage,
 } from './detective-client.service';
 import {
+  canonicalInputValue,
+  canonicalSet,
+  detectiveParameterName,
   detectiveSlug,
-  compatibleCaseInput,
+  compatibleCaseInputs,
   displayInputValue,
   identifierProposals,
   parseInputValue,
@@ -194,6 +197,9 @@ export class CasesPageComponent {
   protected readonly incidentDescription = signal('');
   protected readonly hostedEnvironment = signal('');
   protected readonly linkedIncidents = signal<HostedIncidentView[]>([]);
+  protected readonly pendingIncident = signal<
+    { ref: string; reason?: string } | undefined
+  >(undefined);
   protected readonly incidentLoadError = signal('');
   protected readonly knowledgeProposals = signal<HostedKnowledgeProposal[]>([]);
   protected readonly knowledgeCursor = signal<string | undefined>(undefined);
@@ -272,6 +278,7 @@ export class CasesPageComponent {
     this.handoffResourceId.set('');
     this.handoffExpectedRevision.set('');
     this.incidentRef.set('');
+    this.pendingIncident.set(undefined);
     this.incidentTitle.set('');
     this.incidentDescription.set('');
     this.hostedEnvironment.set('');
@@ -332,26 +339,28 @@ export class CasesPageComponent {
     this.olderEventsHasMore.set(undefined);
   });
   protected readonly caseRuns = computed(() =>
+    (this.state()?.runs || []).filter((run) =>
+      this.current()?.runRefs?.includes(run.id),
+    ),
+  );
+  protected readonly unlinkedRuns = computed(() =>
     (this.state()?.runs || []).filter(
       (run) =>
-        run.caseId === this.caseId() ||
-        this.current()?.runRefs?.includes(run.id),
+        run.executionStatus === 'completed' &&
+        run.caseId === this.caseId() &&
+        !this.current()?.runRefs?.includes(run.id),
     ),
   );
   protected readonly relevantChecks = computed(() => {
-    const context = this.current()?.context || this.draft()?.context || {};
+    const context = this.draft()?.context || this.current()?.context || {};
     return (this.state()?.checks || []).filter((check) =>
-      check.inputs
-        .filter((input) => input.required)
-        .every((input) => compatibleCaseInput(input, context[input.name])),
+      compatibleCaseInputs(check.inputs, context),
     );
   });
   protected readonly relevantScenarios = computed(() => {
-    const context = this.current()?.context || this.draft()?.context || {};
+    const context = this.draft()?.context || this.current()?.context || {};
     return (this.state()?.scenarios || []).filter((scenario) =>
-      scenario.inputs
-        ?.filter((input) => input.required)
-        .every((input) => compatibleCaseInput(input, context[input.name])),
+      compatibleCaseInputs(scenario.inputs || [], context),
     );
   });
   protected readonly contextEntries = computed(() =>
@@ -654,9 +663,9 @@ export class CasesPageComponent {
     const item = this.draft();
     const name = this.contextName().trim();
     if (!item) return;
-    if (!/^[a-z][a-z0-9_]*$/u.test(name)) {
+    if (!detectiveParameterName.test(name)) {
       this.error.set(
-        'Context name must start with a letter and use lower-case letters, digits or underscores.',
+        'Context name must start with a letter and use letters, digits, underscores or hyphens (up to 128 characters).',
       );
       return;
     }
@@ -710,9 +719,7 @@ export class CasesPageComponent {
       const key = item.field.toLowerCase().replace(/[^a-z0-9_]/gu, '_');
       if (!/^[a-z][a-z0-9_]*$/u.test(key)) continue;
       const value: DetectiveInputValue =
-        item.condition === 'in'
-          ? { type: 'set', values: [...item.values] }
-          : item.value;
+        item.condition === 'in' ? canonicalSet(item.values) : item.value;
       proposals.push({
         key,
         value,
@@ -731,7 +738,10 @@ export class CasesPageComponent {
     const item = this.draft();
     if (!item || !proposal) return;
     this.updateDraft({
-      context: { ...item.context, [proposal.key]: proposal.value },
+      context: {
+        ...item.context,
+        [proposal.key]: canonicalInputValue(proposal.value),
+      },
     });
     this.proposals.update((all) => all.filter((_, i) => i !== index));
   }
@@ -763,20 +773,32 @@ export class CasesPageComponent {
     this.busy.set(true);
     this.error.set('');
     try {
+      const savedItem: DetectiveCase = {
+        ...item,
+        context: Object.fromEntries(
+          Object.entries(item.context).map(([name, value]) => [
+            name,
+            canonicalInputValue(value),
+          ]),
+        ),
+      };
       const response = startIncident
         ? await firstValueFrom(
             this.client.incidentAction(context, {
               type: 'start-case',
               incidentRef: startIncident,
               environment: hostedEnvironment || '',
-              case: { ...item, incidentRefs: [] },
+              case: { ...savedItem, incidentRefs: [] },
               ifMatch: 0,
             }),
           )
         : await firstValueFrom(
             this.client.action(
               context,
-              { type: created ? 'create-case' : 'update-case', case: item },
+              {
+                type: created ? 'create-case' : 'update-case',
+                case: savedItem,
+              },
               item.version,
             ),
           );
@@ -865,11 +887,11 @@ export class CasesPageComponent {
   protected archiveCase(): Promise<boolean> {
     return this.updateCase({ status: 'archived' }, 'Case archived.');
   }
-  protected async linkIncident(): Promise<boolean> {
+  protected async linkIncident(refOverride?: string): Promise<boolean> {
     const item = this.current();
     const context = this.scope.context();
     const identity = this.pageIdentity();
-    const ref = this.incidentRef().trim();
+    const ref = refOverride || this.incidentRef().trim();
     if (!item || !context) return false;
     if (!/^[^/]+\/[^/]+$/u.test(ref)) {
       this.error.set('Use incident-store/incident-id.');
@@ -907,6 +929,8 @@ export class CasesPageComponent {
       if (!this.isCurrentScope(identity) || this.caseId() !== item.id)
         return false;
       this.incidentRef.set('');
+      if (this.pendingIncident()?.ref === ref)
+        this.pendingIncident.set(undefined);
       this.message.set('Incident linked.');
       return true;
     } catch (error) {
@@ -919,6 +943,11 @@ export class CasesPageComponent {
         this.busy.set(false);
     }
   }
+  protected retryPendingIncidentLink(): Promise<boolean> {
+    const ref = this.pendingIncident()?.ref;
+    if (!ref) return Promise.resolve(false);
+    return this.linkIncident(ref);
+  }
   protected async createIncident(): Promise<void> {
     const context = this.scope.context();
     const identity = this.pageIdentity();
@@ -926,6 +955,12 @@ export class CasesPageComponent {
     const environment = this.selectedHostedEnvironment();
     const title = this.incidentTitle().trim();
     if (!context || !item) return;
+    if (this.pendingIncident()) {
+      this.error.set(
+        'Link the already created Incident before creating another.',
+      );
+      return;
+    }
     if (!environment || !title) {
       this.error.set(
         'Choose a project environment and give the Incident a title.',
@@ -946,17 +981,32 @@ export class CasesPageComponent {
         }),
       );
       if (!this.isCurrentScope(identity) || this.caseId() !== item.id) return;
-      if (!response.case)
-        throw new Error(
-          'The Incident service did not return the updated Case.',
+      const createdRef = `${response.incident.ref.storeId}/${response.incident.ref.incidentId}`;
+      if (response.caseLinkStatus === 'link-pending' || !response.case) {
+        this.pendingIncident.set({
+          ref: createdRef,
+          reason: response.linkPendingReason,
+        });
+        this.incidentRef.set(createdRef);
+        this.incidentTitle.set('');
+        this.incidentDescription.set('');
+        await this.refresh();
+        if (!this.isCurrentScope(identity) || this.caseId() !== item.id) return;
+        this.message.set(
+          `Incident ${createdRef} was created, but its Case link is pending${response.linkPendingReason ? ` (${response.linkPendingReason})` : ''}. Use Link created Incident after checking the latest Case.`,
         );
+        return;
+      }
       await this.refresh();
       if (!this.isCurrentScope(identity) || this.caseId() !== item.id) return;
       await this.refreshHostedIncidents(context, item.id);
       if (!this.isCurrentScope(identity) || this.caseId() !== item.id) return;
       this.incidentTitle.set('');
       this.incidentDescription.set('');
-      this.message.set('Incident created and linked to this Case.');
+      this.pendingIncident.set(undefined);
+      this.message.set(
+        `Incident ${createdRef} created and linked to this Case.`,
+      );
     } catch (error) {
       if (!this.isCurrentScope(identity) || this.caseId() !== item.id) return;
       this.error.set(detectiveErrorMessage(error, context.kind === 'cloud'));
@@ -1073,7 +1123,6 @@ export class CasesPageComponent {
     const attemptKey = JSON.stringify([
       identity,
       item.id,
-      item.version,
       this.knowledgeKind(),
       title,
       statement,
@@ -1114,7 +1163,6 @@ export class CasesPageComponent {
       const currentDraftKey = JSON.stringify([
         this.pageIdentity(),
         item.id,
-        item.version,
         this.knowledgeKind(),
         this.knowledgeTitle().trim(),
         this.knowledgeStatement().trim(),

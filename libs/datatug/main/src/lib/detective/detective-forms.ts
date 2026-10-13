@@ -1,13 +1,62 @@
 import {
   CheckStepResult,
+  CheckRun,
   CheckInput,
+  CheckBinding,
   DetectiveExecutionRef,
   DetectiveInputValue,
+  DetectiveActionResponse,
   DetectiveValue,
   ValidationResult,
+  ValidatorDefinition,
 } from './models';
 
 export const detectiveSlug = /^[a-z][a-z0-9-]{0,127}$/u;
+export const detectiveParameterName = /^[A-Za-z][A-Za-z0-9_-]{0,127}$/u;
+
+export function validParameterBindings(
+  bindings: readonly CheckBinding[] | undefined,
+): boolean {
+  return (bindings || []).every(
+    (binding) =>
+      detectiveParameterName.test(binding.input) &&
+      (!binding.fromInput || detectiveParameterName.test(binding.fromInput)),
+  );
+}
+
+export function validValidatorBindings(
+  validators: readonly ValidatorDefinition[] | undefined,
+): boolean {
+  return (validators || []).every((validator) =>
+    validParameterBindings(validator.bindings),
+  );
+}
+
+export function caseRunLinkMessage(
+  caseId: string | undefined,
+  runId: string,
+  status: DetectiveActionResponse['caseLinkStatus'],
+  executionStatus: CheckRun['executionStatus'] = 'completed',
+): string | undefined {
+  if (!caseId) return undefined;
+  if (executionStatus !== 'completed')
+    return `Run ${runId} is ${executionStatus}; Case ${caseId} evidence linkage is not confirmed.`;
+  switch (status) {
+    case 'linked':
+    case 'already-linked':
+      return `Run ${runId} is linked to Case ${caseId}.`;
+    case 'case-archived':
+      return `Run ${runId} completed, but Case ${caseId} is archived and was not linked.`;
+    case 'case-changed':
+      return `Run ${runId} completed, but Case ${caseId} changed before its evidence could be linked.`;
+    case 'case-unavailable':
+      return `Run ${runId} completed, but Case ${caseId} was unavailable for evidence linking.`;
+    case 'link-unavailable':
+      return `Run ${runId} completed, but its Case evidence link could not be saved.`;
+    default:
+      return `Run ${runId} completed; Case ${caseId} linkage was not reported. Check the Case evidence before treating it as linked.`;
+  }
+}
 
 export function compatibleCaseInput(
   input: CheckInput,
@@ -29,10 +78,77 @@ export function compatibleCaseInput(
   return value.type === input.type;
 }
 
+/** Core Case binding requires every confirmed cohort or range to be declared. */
+export function compatibleCaseInputs(
+  inputs: readonly CheckInput[],
+  context: Readonly<Record<string, DetectiveInputValue>>,
+): boolean {
+  const declared = new Map(inputs.map((input) => [input.name, input]));
+  if (
+    inputs.some(
+      (input) =>
+        context[input.name] && !compatibleCaseInput(input, context[input.name]),
+    )
+  )
+    return false;
+  return Object.entries(context).every(([name, value]) => {
+    if (value.type !== 'set' && value.type !== 'range') return true;
+    const input = declared.get(name);
+    return !!input && compatibleCaseInput(input, value);
+  });
+}
+
 export interface IdentifierProposal {
   readonly key: 'order_id' | 'invoice_id';
   readonly value: DetectiveInputValue;
   readonly evidence: string;
+}
+
+/** Match Core TypedValueSet's unique, UTF-8 JSON-byte ordering. */
+export function canonicalSet(
+  values: readonly DetectiveValue[],
+): Extract<DetectiveInputValue, { type: 'set' }> {
+  if (
+    !values.length ||
+    values.length > 500 ||
+    values.some((value) => value.type === 'null')
+  )
+    throw new Error('A set needs 1 to 500 non-null values.');
+  const type = values[0].type;
+  if (values.some((value) => value.type !== type))
+    throw new Error('All set values must have the same type.');
+  const encoder = new TextEncoder();
+  const entries = values.map((value) => {
+    // Go encoding/json escapes HTML and the two JavaScript line separators.
+    const json = JSON.stringify({ type: value.type, value: value.value })
+      .replace(/</gu, '\\u003c')
+      .replace(/>/gu, '\\u003e')
+      .replace(/&/gu, '\\u0026')
+      .replace(/\u2028/gu, '\\u2028')
+      .replace(/\u2029/gu, '\\u2029');
+    return { value, json, bytes: encoder.encode(json) };
+  });
+  const compare = (a: Uint8Array, b: Uint8Array): number => {
+    for (let i = 0; i < Math.min(a.length, b.length); i++) {
+      if (a[i] !== b[i]) return a[i] - b[i];
+    }
+    return a.length - b.length;
+  };
+  entries.sort((a, b) => compare(a.bytes, b.bytes));
+  return {
+    type: 'set',
+    values: entries
+      .filter(
+        (entry, index) => index === 0 || entry.json !== entries[index - 1].json,
+      )
+      .map((entry) => entry.value),
+  };
+}
+
+export function canonicalInputValue(
+  value: DetectiveInputValue,
+): DetectiveInputValue {
+  return value.type === 'set' ? canonicalSet(value.values) : value;
 }
 
 /** Conservative local ticket parser. Every proposal still needs user confirmation. */
@@ -65,10 +181,9 @@ export function identifierProposals(text: string): IdentifierProposal[] {
       value:
         item.values.length === 1
           ? { type: 'string', value: item.values[0] }
-          : {
-              type: 'set',
-              values: item.values.map((value) => ({ type: 'string', value })),
-            },
+          : canonicalSet(
+              item.values.map((value) => ({ type: 'string', value })),
+            ),
       evidence: item.evidence.join('; '),
     }));
 }
@@ -137,10 +252,7 @@ export function parseInputValue(
     .map((part) => part.trim())
     .filter(Boolean);
   if (!tokens.length) throw new Error('Enter at least one value.');
-  return {
-    type: 'set',
-    values: tokens.map((token) => parseScalar(token, type)),
-  };
+  return canonicalSet(tokens.map((token) => parseScalar(token, type)));
 }
 
 export function displayInputValue(value: DetectiveInputValue): string {

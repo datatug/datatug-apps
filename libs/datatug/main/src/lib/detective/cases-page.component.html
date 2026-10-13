@@ -77,11 +77,7 @@
                   "
               /></ion-item>
             </div>
-            @if (
-              !item.version &&
-              scope.context() &&
-              incidentRef()
-            ) {
+            @if (!item.version && scope.context() && incidentRef()) {
               <ion-note
                 >Incident {{ incidentRef() }} will be linked in the same Case
                 creation action. Review the Case context before
@@ -336,8 +332,9 @@
                 }
               </ion-list>
               <p>
-                Matching is based on required input names. Review each action
-                and environment before running.
+                Matching requires a Check to declare every confirmed Case set
+                and range with the same type. Review each action and environment
+                before running.
               </p>
               <h3>Relevant Checks</h3>
               <ion-list>
@@ -356,7 +353,9 @@
                 } @empty {
                   <ion-item
                     ><ion-label
-                      >No Checks match the current context.</ion-label
+                      >No Check accepts the full confirmed Case cohort and
+                      range. Author a compatible Check before running Case
+                      evidence.</ion-label
                     ></ion-item
                   >
                 }
@@ -598,6 +597,20 @@
                     ></ion-item
                   >
                 }
+                @for (run of unlinkedRuns(); track run.id) {
+                  <ion-item>
+                    <ion-label>
+                      <h3>
+                        Completed run {{ run.id }} · not linked to this Case
+                      </h3>
+                      <p>
+                        {{ run.queryId || run.checkId }} ·
+                        {{ run.environment }} · {{ run.outcome }}. Its result
+                        remains in run history, but it is not Case evidence.
+                      </p>
+                    </ion-label>
+                  </ion-item>
+                }
               </ion-list>
               @if (state()?.runsHasMore) {
                 <ion-button
@@ -690,6 +703,27 @@
                   {{ incidentLoadError() }}</ion-note
                 >
               }
+              @if (pendingIncident(); as pending) {
+                <p role="status">
+                  Incident {{ pending.ref }} was created, but its Case link is
+                  pending{{
+                    pending.reason ? ' (' + pending.reason + ')' : ''
+                  }}. Creating another Incident would duplicate it.
+                </p>
+                @if (item.status !== 'archived') {
+                  <ion-button
+                    fill="outline"
+                    [disabled]="busy() || !selectedHostedEnvironment()"
+                    (click)="retryPendingIncidentLink()"
+                    >Link created Incident to latest Case</ion-button
+                  >
+                } @else {
+                  <p>
+                    The Case is archived. Reopen it before trying to link this
+                    Incident.
+                  </p>
+                }
+              }
               @if (item.status !== 'archived') {
                 @if (scope.context()) {
                   <ion-item>
@@ -759,6 +793,7 @@
                     [disabled]="
                       busy() ||
                       !state()?.capabilities?.canWrite ||
+                      !!pendingIncident() ||
                       !selectedHostedEnvironment()
                     "
                     (click)="createIncident()"

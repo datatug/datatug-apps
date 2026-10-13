@@ -44,11 +44,16 @@ import {
   detectiveErrorMessage,
 } from './detective-client.service';
 import {
+  caseRunLinkMessage,
+  detectiveParameterName,
   detectiveSlug,
   compatibleCaseInput,
+  compatibleCaseInputs,
   displayInputValue,
   parseInputValue,
   parseScalar,
+  validParameterBindings,
+  validValidatorBindings,
 } from './detective-forms';
 import { useDetectivePageContext } from './detective-page-context';
 import {
@@ -168,6 +173,9 @@ export class ChecksPageComponent {
     Record<string, { value: string; end: string }>
   >({});
   protected readonly selectedRun = signal<CheckRun | undefined>(undefined);
+  protected readonly runLinkNotice = signal<
+    { runId: string; text: string } | undefined
+  >(undefined);
   protected readonly queryDetails = signal<Record<string, IQueryDef | null>>(
     {},
   );
@@ -207,6 +215,7 @@ export class ChecksPageComponent {
     this.queryInputRows.set([]);
     this.runInputText.set({});
     this.selectedRun.set(undefined);
+    this.runLinkNotice.set(undefined);
     this.queryDetails.set({});
     this.environment.set('');
     this.availableEnvironments.set([]);
@@ -243,6 +252,16 @@ export class ChecksPageComponent {
   protected readonly caseContext = computed(() =>
     this.state()?.cases.find((item) => item.id === this.caseId()),
   );
+  protected readonly caseCheckCompatible = computed(() => {
+    const check = this.current();
+    const investigation = this.caseContext();
+    if (!this.caseId()) return true;
+    return (
+      !!check &&
+      !!investigation &&
+      compatibleCaseInputs(check.inputs, investigation.context)
+    );
+  });
   private readonly prefillCaseInputs = effect(() => {
     const check = this.current();
     const investigation = this.caseContext();
@@ -553,6 +572,12 @@ export class ChecksPageComponent {
       this.error.set('Each Validator needs a slug ID.');
       return;
     }
+    if (!validValidatorBindings(draft.validators)) {
+      this.error.set(
+        'Binding input names must use the Check parameter name format (up to 128 characters).',
+      );
+      return;
+    }
     this.busy.set(true);
     this.error.set('');
     try {
@@ -627,7 +652,11 @@ export class ChecksPageComponent {
     try {
       for (const row of this.queryInputRows()) {
         const name = row.name.trim();
-        if (!name || !row.value.trim() || inputs[name])
+        if (
+          !detectiveParameterName.test(name) ||
+          !row.value.trim() ||
+          inputs[name]
+        )
           throw new Error('Each query input needs a unique name and value.');
         inputs[name] = parseInputValue(
           row.value,
@@ -660,8 +689,17 @@ export class ChecksPageComponent {
       await this.refresh();
       if (!this.isCurrentScope(identity)) return;
       this.selectedRun.set(response.run);
+      const linkText = caseRunLinkMessage(
+        this.caseId(),
+        response.run.id,
+        response.caseLinkStatus,
+        response.run.executionStatus,
+      );
+      this.runLinkNotice.set(
+        linkText ? { runId: response.run.id, text: linkText } : undefined,
+      );
       this.notify(
-        `Validator run ${response.run.id}: ${response.run.outcome}.`,
+        `Validator run ${response.run.id}: ${response.run.outcome}.${linkText ? ` ${linkText}` : ''}`,
         response.run.outcome,
       );
       this.focusRunResult();
@@ -903,6 +941,26 @@ export class ChecksPageComponent {
       this.error.set('Use a slug ID, a title, and at least one step.');
       return;
     }
+    if (
+      draft.inputs.some((input) => !detectiveParameterName.test(input.name))
+    ) {
+      this.error.set(
+        'Check input names must start with a letter and use letters, digits, underscores or hyphens (up to 128 characters).',
+      );
+      return;
+    }
+    if (
+      draft.steps.some(
+        (step) =>
+          !validParameterBindings(step.bindings) ||
+          !validValidatorBindings(step.validators),
+      )
+    ) {
+      this.error.set(
+        'Binding input names must start with a letter and use letters, digits, underscores or hyphens (up to 128 characters).',
+      );
+      return;
+    }
     this.busy.set(true);
     this.error.set('');
     try {
@@ -1011,6 +1069,12 @@ export class ChecksPageComponent {
       this.error.set('Published Validator needs a slug ID and title.');
       return;
     }
+    if (!validParameterBindings(validator.validator.bindings)) {
+      this.error.set(
+        'Binding input names must use the Check parameter name format (up to 128 characters).',
+      );
+      return;
+    }
     this.busy.set(true);
     this.error.set('');
     try {
@@ -1059,6 +1123,12 @@ export class ChecksPageComponent {
     const check = this.current();
     const investigation = this.caseContext();
     if (!check || !investigation) return;
+    if (!this.caseCheckCompatible()) {
+      this.error.set(
+        'This Check does not declare every confirmed Case set or range with a matching type. Choose a compatible Check before running Case evidence.',
+      );
+      return;
+    }
     const next = { ...this.runInputText() };
     let added = 0;
     for (const input of check.inputs) {
@@ -1091,6 +1161,12 @@ export class ChecksPageComponent {
     const identity = this.pageIdentity();
     const check = this.current();
     if (!context || !check) return;
+    if (this.caseId() && !this.caseCheckCompatible()) {
+      this.error.set(
+        'This Check cannot run as evidence for this Case because its confirmed set or range inputs do not match the Check schema.',
+      );
+      return;
+    }
     const environment = this.environment().trim();
     if (!environment) {
       this.error.set('Select a logical environment before running.');
@@ -1133,8 +1209,17 @@ export class ChecksPageComponent {
       await this.refresh();
       if (!this.isCurrentScope(identity)) return;
       this.selectedRun.set(response.run);
+      const linkText = caseRunLinkMessage(
+        this.caseId(),
+        response.run.id,
+        response.caseLinkStatus,
+        response.run.executionStatus,
+      );
+      this.runLinkNotice.set(
+        linkText ? { runId: response.run.id, text: linkText } : undefined,
+      );
       this.notify(
-        `Run ${response.run.id}: ${response.run.outcome}.`,
+        `Run ${response.run.id}: ${response.run.outcome}.${linkText ? ` ${linkText}` : ''}`,
         response.run.outcome,
       );
       this.focusRunResult();
@@ -1149,6 +1234,8 @@ export class ChecksPageComponent {
   }
   protected viewRun(run: CheckRun): void {
     this.selectedRun.set(run);
+    if (this.runLinkNotice()?.runId !== run.id)
+      this.runLinkNotice.set(undefined);
   }
 
   protected async refresh(): Promise<void> {

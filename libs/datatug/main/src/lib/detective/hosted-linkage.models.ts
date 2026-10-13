@@ -44,6 +44,8 @@ export interface HostedIncidentResponse {
   incident: HostedIncidentView;
   case?: DetectiveCase;
   receipt: string;
+  caseLinkStatus?: 'linked' | 'already-linked' | 'link-pending';
+  linkPendingReason?: 'case-changed' | 'case-archived' | 'case-unavailable';
 }
 
 export type HostedKnowledgeKind =

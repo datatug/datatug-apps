@@ -261,6 +261,148 @@ describe('DetectiveAiPanelComponent', () => {
     expect(client.aiConfirm).not.toHaveBeenCalled();
   });
 
+  it.each(['published', 'step'] as const)(
+    'keeps a raw invalid %s expected edit visible and prevents review or confirmation',
+    async (location) => {
+      const fixture = TestBed.createComponent(DetectiveAiPanelComponent);
+      fixture.componentRef.setInput('context', {
+        kind: 'cloud',
+        storage: 'firestore',
+        spaceID: 'S1',
+        project: 'P1',
+      });
+      fixture.componentRef.setInput('identity', 'S1/P1/actor-a');
+      fixture.detectChanges();
+      const validator = {
+        id: 'count',
+        kind: 'row-count' as const,
+        scope: 'set' as const,
+        severity: 'error' as const,
+        expected: { type: 'integer' as const, value: '7' },
+      };
+      const proposal: AiProposal = {
+        ...derived,
+        id: `derived-${location}`,
+        draft:
+          location === 'published'
+            ? {
+                kind: 'draft-validator',
+                title: 'Count',
+                sources: [],
+                validator: {
+                  id: 'published',
+                  title: 'Count',
+                  version: 0,
+                  validator,
+                },
+              }
+            : {
+                kind: 'draft-check',
+                title: 'Count',
+                sources: [],
+                check: {
+                  id: 'count-check',
+                  title: 'Count',
+                  version: 0,
+                  inputs: [],
+                  steps: [
+                    {
+                      id: 'query',
+                      kind: 'query',
+                      queryId: 'invoice-list',
+                      validators: [validator],
+                    },
+                  ],
+                },
+              },
+      };
+      const panel = fixture.componentInstance as unknown as {
+        selectProposal(item: AiProposal): void;
+        setPublishedExpected(raw: string, type: 'integer'): void;
+        setStepExpected(
+          step: number,
+          index: number,
+          raw: string,
+          type: 'integer',
+        ): void;
+        expectedValueEdits(): Record<string, string>;
+        reviewable(): boolean;
+        confirmable(): boolean;
+        review(): Promise<void>;
+        confirm(): Promise<void>;
+      };
+      panel.selectProposal(proposal);
+      expect(panel.confirmable()).toBe(true);
+      if (location === 'published')
+        panel.setPublishedExpected('not-an-integer', 'integer');
+      else panel.setStepExpected(0, 0, 'not-an-integer', 'integer');
+      expect(
+        panel.expectedValueEdits()[
+          location === 'published' ? 'published' : 'step-0-0'
+        ],
+      ).toBe('not-an-integer');
+      expect(panel.reviewable()).toBe(false);
+      expect(panel.confirmable()).toBe(false);
+      await panel.review();
+      await panel.confirm();
+      expect(client.aiReview).not.toHaveBeenCalled();
+      expect(client.aiConfirm).not.toHaveBeenCalled();
+      if (location === 'published') panel.setPublishedExpected('8', 'integer');
+      else panel.setStepExpected(0, 0, '8', 'integer');
+      expect(panel.reviewable()).toBe(true);
+      expect(panel.confirmable()).toBe(false);
+    },
+  );
+
+  it('reviews a Case draft using a Core-valid PascalCase hyphenated context name', async () => {
+    const fixture = TestBed.createComponent(DetectiveAiPanelComponent);
+    fixture.componentRef.setInput('context', {
+      kind: 'cloud',
+      storage: 'firestore',
+      spaceID: 'S1',
+      project: 'P1',
+    });
+    fixture.componentRef.setInput('state', state);
+    fixture.componentRef.setInput('caseId', 'case-1');
+    fixture.detectChanges();
+    const proposal: AiProposal = {
+      ...extracted,
+      id: 'case-name',
+      draft: {
+        kind: 'edit-case',
+        title: 'Invoice Case',
+        sources: [],
+        case: {
+          caseId: 'case-1',
+          expectedVersion: 3,
+          context: { 'Invoice-ID': { type: 'integer', value: '7' } },
+        },
+      },
+    };
+    const panel = fixture.componentInstance as unknown as {
+      selectProposal(item: AiProposal): void;
+      review(): Promise<void>;
+    };
+    panel.selectProposal(proposal);
+    client.aiReview.mockReturnValue(
+      of({
+        ...proposal,
+        id: 'case-name-reviewed',
+        parentProposalId: proposal.id,
+      }),
+    );
+    await panel.review();
+    expect(client.aiReview).toHaveBeenCalledWith(expect.any(Object), {
+      review: expect.objectContaining({
+        draft: expect.objectContaining({
+          case: expect.objectContaining({
+            context: { 'Invoice-ID': { type: 'integer', value: '7' } },
+          }),
+        }),
+      }),
+    });
+  });
+
   it('discards late AI generation after a principal and project switch', async () => {
     const fixture = TestBed.createComponent(DetectiveAiPanelComponent);
     fixture.componentRef.setInput('context', {

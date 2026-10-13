@@ -581,7 +581,11 @@
                   ><ion-input
                     label="Expected value"
                     label-placement="stacked"
-                    [value]="validator.expected?.value ?? ''"
+                    [value]="
+                      expectedValueEdits()['step-' + i + '-' + v] ??
+                      validator.expected?.value ??
+                      ''
+                    "
                     (ionInput)="
                       setStepExpected(
                         i,
@@ -594,6 +598,9 @@
                       )
                     "
                 /></ion-item>
+                @if (expectedValueErrors()['step-' + i + '-' + v]; as error) {
+                  <ion-note color="danger" role="alert">{{ error }}</ion-note>
+                }
               </div>
               @for (
                 binding of validator.bindings || [];
@@ -811,7 +818,11 @@
               ><ion-input
                 label="Expected value"
                 label-placement="stacked"
-                [value]="published.validator.expected?.value ?? ''"
+                [value]="
+                  expectedValueEdits()['published'] ??
+                  published.validator.expected?.value ??
+                  ''
+                "
                 (ionInput)="
                   setPublishedExpected(
                     $event.detail.value || '',
@@ -822,6 +833,9 @@
                   )
                 "
             /></ion-item>
+            @if (expectedValueErrors()['published']; as error) {
+              <ion-note color="danger" role="alert">{{ error }}</ion-note>
+            }
           </div>
           @for (
             binding of published.validator.bindings || [];

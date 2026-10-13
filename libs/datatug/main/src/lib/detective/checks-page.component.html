@@ -503,6 +503,9 @@
             </ion-list>
             @if (displayedQueryRun(); as run) {
               <div id="detective-check-run-result" tabindex="-1">
+                @if (runLinkNotice()?.runId === run.id) {
+                  <p role="status">{{ runLinkNotice()?.text }}</p>
+                }
                 <sneat-validation-run-results [run]="run" />
               </div>
             }
@@ -1322,14 +1325,22 @@
               </p>
               @if (caseId()) {
                 <p>
-                  Run will be linked to Case
+                  Run requested for Case
                   <a [routerLink]="caseUrl()">{{ caseId() }}</a
                   >.
                 </p>
                 @if (caseContext()) {
+                  @if (!caseCheckCompatible()) {
+                    <p role="alert">
+                      This Check does not declare every confirmed Case set or
+                      range with a matching type. Choose a compatible Check
+                      before running Case evidence.
+                    </p>
+                  }
                   <ion-button
                     fill="outline"
                     size="small"
+                    [disabled]="!caseCheckCompatible()"
                     (click)="useCaseContext()"
                     >Copy matching Case inputs</ion-button
                   >
@@ -1407,7 +1418,11 @@
                 }
               </div>
               <ion-button
-                [disabled]="busy() || !state()?.capabilities?.canRun"
+                [disabled]="
+                  busy() ||
+                  !state()?.capabilities?.canRun ||
+                  !caseCheckCompatible()
+                "
                 (click)="run()"
                 >{{ busy() ? 'Running…' : 'Run Check' }}</ion-button
               >
@@ -1440,6 +1455,9 @@
               }
               @if (displayedRun(); as run) {
                 <div id="detective-check-run-result" tabindex="-1">
+                  @if (runLinkNotice()?.runId === run.id) {
+                    <p role="status">{{ runLinkNotice()?.text }}</p>
+                  }
                   <sneat-validation-run-results [run]="run" />
                 </div>
               }
