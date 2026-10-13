@@ -2118,14 +2118,15 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
   expect(missingOn).not.toBe(original);
   await pasteCode(page, editor, missingOn);
   await generateAuthorPreview(author);
-  await expectAuthorMode(author, 'preview');
-
-  const preview = author.getByTestId('author-sql-preview');
-  await expect(preview).toContainText('Preview · Not executed');
   await expect(editor).toContainText(/on i\.CustomerId = c\.CustomerId/u);
   await expect(editor).toContainText(/-- preserve this relationship note/u);
+  await expectAuthorMode(author, 'code');
+  await expect(editor).toBeVisible();
+
+  const preview = author.getByTestId('author-sql-preview');
   await author.getByTestId('author-preview-tab').click();
   await expectAuthorMode(author, 'preview');
+  await expect(preview).toContainText('Preview · Not executed');
   const sourceInspector = preview.getByTestId('author-source-inspector');
   await expect(sourceInspector.locator(':scope > summary')).toHaveText(
     'Sources and relationships',
