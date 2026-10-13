@@ -1,0 +1,917 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start"
+      ><ion-menu-button /><ion-back-button [defaultHref]="casesUrl()"
+    /></ion-buttons>
+    <ion-title>Detective</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content color="light">
+  <div class="detective-page">
+    @if (scope.unsupported()) {
+      <ion-card
+        ><ion-card-content role="status"
+          >This project has no agent-backed Detective store. Cases currently
+          remain with a local DataTug agent; open this project through that
+          agent to investigate and resume a Case.</ion-card-content
+        ></ion-card
+      >
+    } @else if (!scope.context()) {
+      <ion-card
+        ><ion-card-content role="status"
+          >Connecting to the project agent and its security
+          context…</ion-card-content
+        ></ion-card
+      >
+    } @else {
+      @if (state()?.capabilities?.localOnly) {
+        <ion-note class="scope-note"
+          >Local project store · Use the same agent and project in terminal or
+          web to resume this Case. Other devices need access to that
+          agent.</ion-note
+        >
+      }
+      @if (loading()) {
+        <div class="busy-line"><ion-spinner name="dots" /> Loading Cases…</div>
+      }
+      @if (error()) {
+        <p class="feedback error" role="alert">{{ error() }}</p>
+      }
+      @if (message()) {
+        <p class="feedback" role="status">{{ message() }}</p>
+      }
+
+      @if (draft(); as item) {
+        <ion-card
+          ><ion-card-content>
+            <div class="section-heading">
+              <div>
+                <h1>{{ item.version ? 'Edit Case' : 'New Case' }}</h1>
+                <p>A Case preserves context and evidence across sessions.</p>
+              </div>
+              <ion-button fill="clear" (click)="cancelEdit()"
+                >Cancel</ion-button
+              >
+            </div>
+            <div class="form-grid">
+              <ion-item
+                ><ion-label position="stacked">Case ID</ion-label
+                ><ion-input
+                  aria-label="Case ID"
+                  [value]="item.id"
+                  [disabled]="item.version > 0"
+                  (ionInput)="updateDraft({ id: $event.detail.value || '' })"
+                  placeholder="invoice-reconciliation"
+              /></ion-item>
+              <ion-item
+                ><ion-label position="stacked">Title</ion-label
+                ><ion-input
+                  aria-label="Title"
+                  [value]="item.title"
+                  (ionInput)="
+                    updateDraft({ title: $event.detail.value || '' })
+                  "
+              /></ion-item>
+            </div>
+            <div class="editor-block">
+              <h2>Paste a ticket or message</h2>
+              <p>
+                Source text stays in this browser. Identifier patterns are
+                suggestions only; review and confirm each one. No text is saved
+                or sent to AI by this action.
+              </p>
+              <ion-item
+                ><ion-label position="stacked">Pasted text</ion-label
+                ><ion-textarea
+                  aria-label="Pasted text"
+                  [value]="pastedText()"
+                  (ionInput)="pastedText.set($event.detail.value || '')"
+                  placeholder="Five order IDs and seven invoice IDs…"
+                ></ion-textarea
+              ></ion-item>
+              <ion-button
+                fill="outline"
+                size="small"
+                (click)="proposeFromPaste()"
+                >Propose identifiers</ion-button
+              >
+              @if (canImportBasket()) {
+                <ion-button
+                  fill="outline"
+                  size="small"
+                  (click)="proposeFromBasket()"
+                  >Review Investigation Context values</ion-button
+                >
+              }
+              @for (
+                proposal of proposals();
+                track $index;
+                let proposalIndex = $index
+              ) {
+                <div class="editor-block">
+                  <strong
+                    >{{ proposal.key }} =
+                    {{ displayValue(proposal.value) }}</strong
+                  >
+                  <p>
+                    {{ proposal.explanation }} Evidence: {{ proposal.evidence }}
+                  </p>
+                  <ion-button
+                    size="small"
+                    (click)="confirmProposal(proposalIndex)"
+                    >Confirm</ion-button
+                  ><ion-button
+                    fill="clear"
+                    size="small"
+                    (click)="dismissProposal(proposalIndex)"
+                    >Dismiss</ion-button
+                  >
+                </div>
+              }
+            </div>
+            <h2>Investigation Context</h2>
+            @for (entry of contextEntries(); track entry[0]) {
+              <div class="edit-row">
+                <span
+                  ><strong>{{ entry[0] }}</strong> ·
+                  {{ displayValue(entry[1]) }}</span
+                ><ion-button
+                  size="small"
+                  color="medium"
+                  fill="clear"
+                  (click)="removeContext(entry[0])"
+                  >Remove</ion-button
+                >
+              </div>
+            } @empty {
+              <p>
+                No context yet. Start with a partial identifier or add more as
+                the investigation develops.
+              </p>
+            }
+            <div class="form-grid">
+              <ion-item
+                ><ion-label position="stacked">Name</ion-label
+                ><ion-input
+                  aria-label="Name"
+                  [value]="contextName()"
+                  (ionInput)="contextName.set($event.detail.value || '')"
+                  placeholder="invoice_id"
+              /></ion-item>
+              <ion-item
+                ><ion-label position="stacked">Type</ion-label
+                ><ion-select
+                  aria-label="Type"
+                  [value]="contextType()"
+                  (ionChange)="contextType.set($event.detail.value || '')"
+                >
+                  <ion-select-option>string</ion-select-option>
+                  <ion-select-option>integer</ion-select-option>
+                  <ion-select-option>decimal</ion-select-option>
+                  <ion-select-option>number</ion-select-option>
+                  <ion-select-option>boolean</ion-select-option>
+                  <ion-select-option>date</ion-select-option>
+                  <ion-select-option>datetime</ion-select-option>
+                </ion-select></ion-item
+              >
+              <ion-item
+                ><ion-label position="stacked">Cardinality</ion-label
+                ><ion-select
+                  aria-label="Cardinality"
+                  [value]="contextCardinality()"
+                  (ionChange)="
+                    contextCardinality.set($event.detail.value || '')
+                  "
+                >
+                  <ion-select-option>scalar</ion-select-option>
+                  <ion-select-option>set</ion-select-option>
+                  <ion-select-option>range</ion-select-option>
+                </ion-select></ion-item
+              >
+              <ion-item
+                ><ion-label position="stacked">Value</ion-label
+                ><ion-textarea
+                  aria-label="Value"
+                  [value]="contextText()"
+                  (ionInput)="contextText.set($event.detail.value || '')"
+                  [placeholder]="
+                    contextCardinality() === 'set'
+                      ? 'Comma or newline separated values'
+                      : 'Value'
+                  "
+                ></ion-textarea
+              ></ion-item>
+              @if (contextCardinality() === 'range') {
+                <ion-item
+                  ><ion-label position="stacked">End value</ion-label
+                  ><ion-input
+                    aria-label="End value"
+                    [value]="contextEnd()"
+                    (ionInput)="contextEnd.set($event.detail.value || '')"
+                /></ion-item>
+              }
+            </div>
+            <ion-button fill="outline" size="small" (click)="addContext()"
+              >Add context</ion-button
+            >
+            <div class="actions">
+              <ion-button
+                [disabled]="busy() || !state()?.capabilities?.canWrite"
+                (click)="save()"
+                >Save Case</ion-button
+              >
+            </div>
+          </ion-card-content></ion-card
+        >
+      } @else if (caseId()) {
+        @if (current(); as item) {
+          <ion-card
+            ><ion-card-content>
+              <div class="section-heading">
+                <div>
+                  <ion-button fill="clear" [routerLink]="casesUrl()"
+                    >← All Cases</ion-button
+                  >
+                  <h1>{{ item.title }}</h1>
+                  <p class="muted">
+                    {{ item.id }} · v{{ item.version }} · updated
+                    {{ item.updatedAt | date: 'medium' }}
+                  </p>
+                </div>
+                <ion-badge
+                  [color]="item.status === 'active' ? 'primary' : 'medium'"
+                  >{{ item.status }}</ion-badge
+                >
+              </div>
+              <div class="actions">
+                <ion-button
+                  fill="outline"
+                  [disabled]="
+                    item.status === 'archived' ||
+                    !state()?.capabilities?.canWrite
+                  "
+                  (click)="startEdit()"
+                  >Edit Case</ion-button
+                >
+              </div>
+              @if (item.status === 'active') {
+                <div class="edit-row">
+                  <ion-item
+                    ><ion-label position="stacked">Closure reason</ion-label
+                    ><ion-input
+                      aria-label="Closure reason"
+                      [value]="closureReason()"
+                      (ionInput)="closureReason.set($event.detail.value || '')"
+                      placeholder="What was established?" /></ion-item
+                  ><ion-button
+                    color="success"
+                    [disabled]="busy() || !state()?.capabilities?.canWrite"
+                    (click)="closeCase()"
+                    >Close Case</ion-button
+                  >
+                </div>
+              } @else if (item.status === 'closed') {
+                <p>Closure: {{ item.closureReason || 'No reason recorded' }}</p>
+                <ion-button
+                  [disabled]="busy() || !state()?.capabilities?.canWrite"
+                  (click)="reopenCase()"
+                  >Reopen</ion-button
+                >
+                <ion-button
+                  fill="outline"
+                  color="medium"
+                  [disabled]="busy() || !state()?.capabilities?.canWrite"
+                  (click)="archiveCase()"
+                  >Archive</ion-button
+                >
+              }
+            </ion-card-content></ion-card
+          >
+
+          <ion-card
+            ><ion-card-content>
+              <h2>Investigation Context</h2>
+              <ion-list>
+                @for (entry of contextEntries(); track entry[0]) {
+                  <ion-item
+                    ><ion-label
+                      ><strong>{{ entry[0] }}</strong>
+                      <p>{{ displayValue(entry[1]) }}</p></ion-label
+                    ></ion-item
+                  >
+                } @empty {
+                  <ion-item><ion-label>No context yet.</ion-label></ion-item>
+                }
+              </ion-list>
+              <p>
+                Matching is based on required input names. Review each action
+                and environment before running.
+              </p>
+              <h3>Relevant Checks</h3>
+              <ion-list>
+                @for (check of relevantChecks(); track check.id) {
+                  <ion-item
+                    button
+                    [routerLink]="checkUrl(check.id)"
+                    [queryParams]="{ caseId: item.id }"
+                    ><ion-label
+                      ><h3>{{ check.title }}</h3>
+                      <p>
+                        {{ check.id }} · {{ check.inputs.length }} inputs
+                      </p></ion-label
+                    ></ion-item
+                  >
+                } @empty {
+                  <ion-item
+                    ><ion-label
+                      >No Checks match the current context.</ion-label
+                    ></ion-item
+                  >
+                }
+              </ion-list>
+              <h3>Relevant Scenarios</h3>
+              <ion-list>
+                @for (scenario of relevantScenarios(); track scenario.id) {
+                  <ion-item
+                    ><ion-label
+                      ><h3>{{ scenario.title }}</h3>
+                      <p>
+                        {{ scenario.description }} ·
+                        {{ scenario.steps.length }} manual steps
+                      </p></ion-label
+                    ><ion-button
+                      slot="end"
+                      fill="outline"
+                      size="small"
+                      [disabled]="busy() || item.status === 'archived'"
+                      (click)="attachScenario(scenario)"
+                      >Use</ion-button
+                    ></ion-item
+                  >
+                } @empty {
+                  <ion-item
+                    ><ion-label>No matching Scenarios.</ion-label></ion-item
+                  >
+                }
+              </ion-list>
+              @for (scenario of state()?.scenarios || []; track scenario.id) {
+                @if (item.scenarioRefs.includes(scenario.id)) {
+                  <section class="editor-block">
+                    <h3>{{ scenario.title }} · guided steps</h3>
+                    @for (step of scenario.steps; track step.id) {
+                      <p>
+                        {{ step.id }} · {{ step.kind }} {{ step.ref }}
+                        @if (step.kind === 'check') {
+                          <a
+                            [routerLink]="checkUrl(step.ref)"
+                            [queryParams]="{ caseId: item.id }"
+                            >Open Check</a
+                          >
+                        } @else {
+                          <a [routerLink]="queryUrl(step.ref)">Open query</a> ·
+                          <a [routerLink]="validatorUrl(step.ref, item.id)"
+                            >Run Validators</a
+                          >
+                        }
+                      </p>
+                    }
+                  </section>
+                }
+              }
+            </ion-card-content></ion-card
+          >
+
+          <ion-card
+            ><ion-card-content>
+              <h2>Findings</h2>
+              <ion-list>
+                @for (finding of item.findings; track finding.id) {
+                  <ion-item
+                    ><ion-label
+                      ><h3>
+                        {{
+                          finding.status === 'confirmed'
+                            ? 'Confirmed finding'
+                            : 'Hypothesis'
+                        }}
+                        · {{ finding.text }}
+                      </h3>
+                      <p>
+                        Evidence:
+                        {{ finding.evidenceRefs?.join(', ') || 'none linked' }}
+                      </p></ion-label
+                    ></ion-item
+                  >
+                } @empty {
+                  <ion-item
+                    ><ion-label>No findings recorded.</ion-label></ion-item
+                  >
+                }
+              </ion-list>
+              @if (item.status !== 'archived') {
+                <div class="form-grid">
+                  <ion-item
+                    ><ion-label position="stacked">Finding</ion-label
+                    ><ion-textarea
+                      aria-label="Finding"
+                      [value]="findingText()"
+                      (ionInput)="findingText.set($event.detail.value || '')"
+                    ></ion-textarea
+                  ></ion-item>
+                  <ion-item
+                    ><ion-label position="stacked">Knowledge status</ion-label
+                    ><ion-select
+                      aria-label="Knowledge status"
+                      [value]="findingStatus()"
+                      (ionChange)="findingStatus.set($event.detail.value || '')"
+                    >
+                      <ion-select-option>hypothesis</ion-select-option>
+                      <ion-select-option>confirmed</ion-select-option>
+                    </ion-select></ion-item
+                  >
+                  <ion-item
+                    ><ion-label position="stacked"
+                      >Evidence IDs, comma separated</ion-label
+                    ><ion-input
+                      aria-label="Evidence IDs, comma separated"
+                      [value]="findingEvidence()"
+                      (ionInput)="
+                        findingEvidence.set($event.detail.value || '')
+                      "
+                  /></ion-item>
+                </div>
+                <ion-button
+                  fill="outline"
+                  size="small"
+                  [disabled]="busy() || !state()?.capabilities?.canWrite"
+                  (click)="addFinding()"
+                  >Add finding</ion-button
+                >
+              }
+            </ion-card-content></ion-card
+          >
+
+          <ion-card
+            ><ion-card-content>
+              <h2>Evidence & Check runs</h2>
+              <ion-list>
+                @for (evidence of item.evidence; track evidence.id) {
+                  <ion-item
+                    ><ion-label
+                      ><h3>{{ evidence.kind }} · {{ evidence.ref }}</h3>
+                      <p>ID: {{ evidence.id }}</p>
+                      <p>{{ evidence.note }}</p></ion-label
+                    ></ion-item
+                  >
+                }
+                @for (run of caseRuns(); track run.id) {
+                  <ion-item
+                    ><ion-label
+                      ><h3>
+                        {{
+                          run.kind === 'query-validators'
+                            ? 'Query Validator run'
+                            : 'Check run'
+                        }}
+                        · {{ run.queryId || run.checkId }}
+                      </h3>
+                      <p>
+                        {{ run.startedAt | date: 'medium' }} ·
+                        {{ run.environment }} · {{ run.executionStatus }} ·
+                        {{ run.outcome }} · {{ run.severity }}
+                      </p></ion-label
+                    ><ion-button
+                      slot="end"
+                      fill="clear"
+                      [routerLink]="
+                        run.kind === 'query-validators'
+                          ? validatorUrl(run.queryId || '', item.id)
+                          : checkUrl(run.checkId)
+                      "
+                      [queryParams]="
+                        run.kind === 'query-validators'
+                          ? undefined
+                          : { caseId: item.id }
+                      "
+                      >Inspect</ion-button
+                    ></ion-item
+                  >
+                }
+              </ion-list>
+              @if (state()?.runsHasMore) {
+                <ion-button
+                  fill="clear"
+                  [disabled]="olderRunsBusy()"
+                  (click)="loadOlderRuns()"
+                  >Load older runs</ion-button
+                >
+              }
+              @if (item.status !== 'archived') {
+                <div class="form-grid">
+                  <ion-item
+                    ><ion-label position="stacked">Kind</ion-label
+                    ><ion-select
+                      aria-label="Kind"
+                      [value]="evidenceKind()"
+                      (ionChange)="evidenceKind.set($event.detail.value || '')"
+                    >
+                      <ion-select-option value="external"
+                        >External</ion-select-option
+                      >
+                      <ion-select-option value="query">Query</ion-select-option>
+                      <ion-select-option value="check-run"
+                        >Check run</ion-select-option
+                      >
+                    </ion-select></ion-item
+                  ><ion-item
+                    ><ion-label position="stacked">Reference</ion-label
+                    ><ion-input
+                      aria-label="Reference"
+                      [value]="evidenceRef()"
+                      (ionInput)="
+                        evidenceRef.set($event.detail.value || '')
+                      " /></ion-item
+                  ><ion-item
+                    ><ion-label position="stacked">Note</ion-label
+                    ><ion-input
+                      aria-label="Note"
+                      [value]="evidenceNote()"
+                      (ionInput)="evidenceNote.set($event.detail.value || '')"
+                  /></ion-item>
+                </div>
+                <ion-button
+                  fill="outline"
+                  size="small"
+                  [disabled]="busy() || !state()?.capabilities?.canWrite"
+                  (click)="addEvidence()"
+                  >Add evidence reference</ion-button
+                >
+              }
+            </ion-card-content></ion-card
+          >
+
+          <ion-card
+            ><ion-card-content>
+              <h2>Incidentius links</h2>
+              <p>
+                Cases and Incidents have independent lifecycles. One Incident
+                can link several Cases.
+              </p>
+              <ion-list>
+                @for (ref of item.incidentRefs; track ref) {
+                  <ion-item
+                    ><ion-label>{{ ref }}</ion-label>
+                    @if (incidentUrl(ref); as url) {
+                      <ion-button slot="end" fill="clear" [routerLink]="url"
+                        >Open Incident</ion-button
+                      >
+                    }
+                  </ion-item>
+                } @empty {
+                  <ion-item
+                    ><ion-label>No linked incidents.</ion-label></ion-item
+                  >
+                }
+              </ion-list>
+              @if (item.status !== 'archived') {
+                <div class="edit-row">
+                  <ion-item
+                    ><ion-label position="stacked">Incident store/ID</ion-label
+                    ><ion-input
+                      aria-label="Incident store/ID"
+                      [value]="incidentRef()"
+                      (ionInput)="incidentRef.set($event.detail.value || '')"
+                      placeholder="store/incident-id" /></ion-item
+                  ><ion-button
+                    fill="outline"
+                    size="small"
+                    [disabled]="busy() || !state()?.capabilities?.canWrite"
+                    (click)="linkIncident()"
+                    >Link Incident</ion-button
+                  >
+                </div>
+              }
+              <a routerLink="/incidents/new">Open a new Incident</a>
+            </ion-card-content></ion-card
+          >
+
+          <ion-card
+            ><ion-card-content>
+              <h2>Activity timeline</h2>
+              <ion-list>
+                @for (event of item.timeline; track event.id) {
+                  <ion-item
+                    ><ion-label
+                      ><h3>
+                        {{ event.type }} · {{ event.at | date: 'medium' }}
+                      </h3>
+                      <p>
+                        {{ event.message }}
+                        @if (event.ref) {
+                          · {{ event.ref }}
+                        }
+                        · {{ event.actor }}
+                      </p></ion-label
+                    ></ion-item
+                  >
+                } @empty {
+                  <ion-item><ion-label>No activity yet.</ion-label></ion-item>
+                }
+              </ion-list>
+              @if (item.status !== 'archived') {
+                <ion-item
+                  ><ion-label position="stacked">Investigation note</ion-label
+                  ><ion-textarea
+                    aria-label="Investigation note"
+                    [value]="noteText()"
+                    (ionInput)="noteText.set($event.detail.value || '')"
+                  ></ion-textarea></ion-item
+                ><ion-button
+                  size="small"
+                  fill="outline"
+                  [disabled]="busy() || !state()?.capabilities?.canWrite"
+                  (click)="addNote()"
+                  >Add note</ion-button
+                >
+              }
+            </ion-card-content></ion-card
+          >
+        } @else if (!loading()) {
+          <ion-card
+            ><ion-card-content role="alert"
+              >Case {{ caseId() }} was not found.
+              <a [routerLink]="casesUrl()">Back to Cases</a></ion-card-content
+            ></ion-card
+          >
+        }
+      } @else {
+        <ion-card
+          ><ion-card-content>
+            <div class="section-heading">
+              <div>
+                <h1>Detective Cases</h1>
+                <p>Follow the evidence. Keep the investigation resumable.</p>
+                @if (queryParams().get('incident'); as incident) {
+                  <p>
+                    Start a Case for Incident {{ incident }}. The link is added
+                    to the draft for review.
+                  </p>
+                }
+              </div>
+              <ion-button
+                [disabled]="!state()?.capabilities?.canWrite"
+                (click)="startNew()"
+                >{{
+                  queryParams().get('incident')
+                    ? 'Create Case for Incident'
+                    : 'New Case'
+                }}</ion-button
+              >
+            </div>
+            <ion-item
+              ><ion-label position="stacked">Search Cases</ion-label
+              ><ion-input
+                aria-label="Search Cases"
+                [value]="search()"
+                (ionInput)="search.set($event.detail.value || '')"
+                placeholder="Title, ID or status"
+            /></ion-item>
+            <ion-list>
+              @for (item of cases(); track item.id) {
+                <ion-item button [routerLink]="caseUrl(item.id)"
+                  ><ion-label
+                    ><h2>{{ item.title }}</h2>
+                    <p>
+                      {{ item.id }} · {{ item.status }} ·
+                      {{ item.updatedAt | date: 'medium' }}
+                    </p></ion-label
+                  ></ion-item
+                >
+              } @empty {
+                <ion-item><ion-label>No matching Cases.</ion-label></ion-item>
+              }
+            </ion-list>
+          </ion-card-content></ion-card
+        >
+      }
+      <ion-card
+        ><ion-card-content>
+          <div class="section-heading">
+            <div>
+              <h2>Investigation Scenarios</h2>
+              <p>Reusable manual paths through saved queries and Checks.</p>
+            </div>
+            <ion-button
+              fill="outline"
+              [disabled]="!state()?.capabilities?.canWrite"
+              (click)="startScenario()"
+              >New Scenario</ion-button
+            >
+          </div>
+          <ion-list>
+            @for (scenario of scenarios(); track scenario.id) {
+              <ion-item
+                ><ion-label
+                  ><h3>{{ scenario.title }}</h3>
+                  <p>
+                    {{ scenario.id }} · {{ scenario.steps.length }} steps · v{{
+                      scenario.version
+                    }}
+                  </p></ion-label
+                >
+                <ion-button
+                  slot="end"
+                  fill="clear"
+                  [disabled]="!state()?.capabilities?.canWrite"
+                  (click)="editScenario(scenario)"
+                  >Edit</ion-button
+                ></ion-item
+              >
+            } @empty {
+              <ion-item><ion-label>No saved Scenarios.</ion-label></ion-item>
+            }
+          </ion-list>
+          @if (scenarioDraft(); as scenario) {
+            <div class="editor-block">
+              <div class="section-heading">
+                <h3>
+                  {{ scenario.version ? 'Edit Scenario' : 'New Scenario' }}
+                </h3>
+                <ion-button fill="clear" (click)="scenarioDraft.set(undefined)"
+                  >Cancel</ion-button
+                >
+              </div>
+              <div class="form-grid">
+                <ion-item
+                  ><ion-label position="stacked">ID</ion-label
+                  ><ion-input
+                    aria-label="ID"
+                    [value]="scenario.id"
+                    [disabled]="scenario.version > 0"
+                    (ionInput)="
+                      updateScenario({ id: $event.detail.value || '' })
+                    "
+                /></ion-item>
+                <ion-item
+                  ><ion-label position="stacked">Title</ion-label
+                  ><ion-input
+                    aria-label="Title"
+                    [value]="scenario.title"
+                    (ionInput)="
+                      updateScenario({ title: $event.detail.value || '' })
+                    "
+                /></ion-item>
+                <ion-item class="wide"
+                  ><ion-label position="stacked">Description</ion-label
+                  ><ion-textarea
+                    aria-label="Description"
+                    [value]="scenario.description || ''"
+                    (ionInput)="
+                      updateScenario({ description: $event.detail.value || '' })
+                    "
+                  ></ion-textarea
+                ></ion-item>
+              </div>
+              <div class="section-heading">
+                <h4>Inputs</h4>
+                <ion-button
+                  size="small"
+                  fill="clear"
+                  (click)="addScenarioInput()"
+                  >Add input</ion-button
+                >
+              </div>
+              @for (input of scenario.inputs; track $index; let i = $index) {
+                <div class="edit-row">
+                  <ion-item
+                    ><ion-label position="stacked">Name</ion-label
+                    ><ion-input
+                      aria-label="Name"
+                      [value]="input.name"
+                      (ionInput)="
+                        updateScenarioInput(i, {
+                          name: $event.detail.value || '',
+                        })
+                      "
+                  /></ion-item>
+                  <ion-item
+                    ><ion-label position="stacked">Type</ion-label
+                    ><ion-select
+                      aria-label="Type"
+                      [value]="input.type"
+                      (ionChange)="
+                        updateScenarioInput(i, {
+                          type: $event.detail.value || '',
+                        })
+                      "
+                    >
+                      <ion-select-option>string</ion-select-option>
+                      <ion-select-option>integer</ion-select-option>
+                      <ion-select-option>decimal</ion-select-option>
+                      <ion-select-option>number</ion-select-option>
+                      <ion-select-option>boolean</ion-select-option>
+                      <ion-select-option>date</ion-select-option>
+                      <ion-select-option>datetime</ion-select-option>
+                    </ion-select></ion-item
+                  >
+                  <ion-item
+                    ><ion-label position="stacked">Cardinality</ion-label
+                    ><ion-select
+                      aria-label="Cardinality"
+                      [value]="input.cardinality"
+                      (ionChange)="
+                        updateScenarioInput(i, {
+                          cardinality: $event.detail.value || '',
+                        })
+                      "
+                    >
+                      <ion-select-option>scalar</ion-select-option>
+                      <ion-select-option>set</ion-select-option>
+                      <ion-select-option>range</ion-select-option>
+                    </ion-select></ion-item
+                  >
+                  <ion-item class="inline-check"
+                    ><ion-label position="stacked">Required</ion-label
+                    ><ion-checkbox
+                      aria-label="Required"
+                      type="checkbox"
+                      [checked]="!!input.required"
+                      (ionChange)="
+                        updateScenarioInput(i, {
+                          required: $event.detail.checked,
+                        })
+                      "
+                  /></ion-item>
+                  <ion-button
+                    size="small"
+                    fill="clear"
+                    color="medium"
+                    (click)="removeScenarioInput(i)"
+                    >Remove</ion-button
+                  >
+                </div>
+              }
+              <div class="section-heading">
+                <h4>Manual steps</h4>
+                <div>
+                  <ion-button
+                    size="small"
+                    fill="clear"
+                    (click)="addScenarioStep('query')"
+                    >Add query</ion-button
+                  ><ion-button
+                    size="small"
+                    fill="clear"
+                    (click)="addScenarioStep('check')"
+                    >Add Check</ion-button
+                  >
+                </div>
+              </div>
+              @for (step of scenario.steps; track $index; let i = $index) {
+                <div class="edit-row">
+                  <ion-item
+                    ><ion-label position="stacked">Step ID</ion-label
+                    ><ion-input
+                      aria-label="Step ID"
+                      [value]="step.id"
+                      (ionInput)="
+                        updateScenarioStep(i, { id: $event.detail.value || '' })
+                      "
+                  /></ion-item>
+                  <ion-item
+                    ><ion-label position="stacked"
+                      >{{
+                        step.kind === 'check' ? 'Check' : 'Query'
+                      }}
+                      ID</ion-label
+                    ><ion-input
+                      aria-label="Check input"
+                      [value]="step.ref"
+                      (ionInput)="
+                        updateScenarioStep(i, {
+                          ref: $event.detail.value || '',
+                        })
+                      "
+                  /></ion-item>
+                  <ion-button
+                    size="small"
+                    fill="clear"
+                    color="medium"
+                    (click)="removeScenarioStep(i)"
+                    >Remove</ion-button
+                  >
+                </div>
+              }
+              <ion-button
+                [disabled]="busy() || !state()?.capabilities?.canWrite"
+                (click)="saveScenario()"
+                >Save Scenario</ion-button
+              >
+            </div>
+          }
+        </ion-card-content></ion-card
+      >
+    }
+  </div>
+</ion-content>

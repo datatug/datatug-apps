@@ -1033,6 +1033,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     return this.queryState?.id;
   }
 
+  public get queryValidatorsHref(): string | undefined {
+    const queryId = this.queryId;
+    if (!queryId || this.queryState.isNew || !this.project?.ref) return undefined;
+    const href = projectPageHref(this.project.ref, 'checks');
+    return `${href}${href.includes('?') ? '&' : '?'}query=${encodeURIComponent(queryId)}`;
+  }
+
   public queryFolderPath = '';
 
   /** Where the back button goes with no history: the project's queries, in the folder of this query. */

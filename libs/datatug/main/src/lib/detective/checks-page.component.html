@@ -1,0 +1,1614 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start"
+      ><ion-menu-button /><ion-back-button [defaultHref]="checksUrl()"
+    /></ion-buttons>
+    <ion-title>Checks & Validators</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content color="light">
+  <div class="detective-page">
+    @if (scope.unsupported()) {
+      <ion-card
+        ><ion-card-content role="status">
+          This project has no agent-backed Detective store. Checks and run
+          history currently stay with a local DataTug agent; open the project
+          through that agent to use them.
+        </ion-card-content></ion-card
+      >
+    } @else if (!scope.context()) {
+      <ion-card
+        ><ion-card-content role="status"
+          >Connecting to the project agent and its security
+          context…</ion-card-content
+        ></ion-card
+      >
+    } @else {
+      @if (state()?.capabilities?.localOnly) {
+        <ion-note class="scope-note"
+          >Local project store · Cases and runs can be resumed from web and
+          terminal when both use this agent and project.</ion-note
+        >
+      }
+      @if (loading()) {
+        <div class="busy-line"><ion-spinner name="dots" /> Loading Checks…</div>
+      }
+      @if (error()) {
+        <p class="feedback error" role="alert">{{ error() }}</p>
+      }
+      @if (message()) {
+        <p class="feedback" role="status">{{ message() }}</p>
+      }
+
+      @if (queryId(); as query) {
+        <ion-card
+          ><ion-card-content>
+            <div class="section-heading">
+              <div>
+                <h1>Query Validators</h1>
+                <p>
+                  Local to saved query
+                  <a [routerLink]="queryUrl(query)">{{ query }}</a> until
+                  explicitly published.
+                </p>
+              </div>
+              <ion-button
+                fill="outline"
+                [disabled]="!state()?.capabilities?.canWrite"
+                (click)="editQueryValidators()"
+                >Edit Validators</ion-button
+              >
+            </div>
+            @if (currentQueryValidators(); as local) {
+              <p>
+                Version {{ local.version }} ·
+                {{ local.validators.length }} Validators
+              </p>
+              <ion-list>
+                @for (validator of local.validators; track validator.id) {
+                  <ion-item
+                    ><ion-label
+                      >{{ validator.id }} · {{ validator.kind }} ·
+                      {{ validator.severity }}</ion-label
+                    >
+                    <ion-button
+                      slot="end"
+                      fill="clear"
+                      [disabled]="!!validator.validatorId"
+                      (click)="beginPromote(validator)"
+                      >Publish</ion-button
+                    >
+                  </ion-item>
+                }
+              </ion-list>
+            } @else {
+              <p>No local Validators for this query yet.</p>
+            }
+            @if (queryValidatorDraft(); as localDraft) {
+              <div class="section-heading">
+                <h2>Edit local Validators</h2>
+                <ion-button
+                  fill="clear"
+                  (click)="queryValidatorDraft.set(undefined)"
+                  >Cancel</ion-button
+                >
+              </div>
+              @for (
+                validator of localDraft.validators;
+                track $index;
+                let i = $index
+              ) {
+                <div class="validator-editor">
+                  <div class="edit-row">
+                    <ion-item
+                      ><ion-label position="stacked">ID</ion-label
+                      ><ion-input
+                        aria-label="ID"
+                        [value]="validator.id"
+                        (ionInput)="
+                          updateQueryValidator(i, {
+                            id: $event.detail.value || '',
+                          })
+                        "
+                    /></ion-item>
+                    <ion-item
+                      ><ion-label position="stacked">Scope</ion-label
+                      ><ion-select
+                        aria-label="Scope"
+                        [value]="validator.scope"
+                        (ionChange)="
+                          updateQueryValidator(i, {
+                            scope: $event.detail.value || '',
+                          })
+                        "
+                      >
+                        <ion-select-option>row</ion-select-option>
+                        <ion-select-option>set</ion-select-option>
+                      </ion-select></ion-item
+                    >
+                    <ion-item
+                      ><ion-label position="stacked">Assertion</ion-label
+                      ><ion-select
+                        aria-label="Assertion"
+                        [value]="validator.kind"
+                        (ionChange)="
+                          updateQueryValidator(i, {
+                            kind: $event.detail.value || '',
+                            validatorId: '',
+                          })
+                        "
+                      >
+                        <ion-select-option value=""
+                          >Published definition</ion-select-option
+                        >
+                        <ion-select-option>non-null</ion-select-option>
+                        <ion-select-option>equals-fields</ion-select-option>
+                        <ion-select-option>row-count</ion-select-option>
+                        <ion-select-option>unique</ion-select-option>
+                        <ion-select-option>sum-equals</ion-select-option>
+                        <ion-select-option>check</ion-select-option>
+                      </ion-select></ion-item
+                    >
+                    <ion-item
+                      ><ion-label position="stacked">Severity</ion-label
+                      ><ion-select
+                        aria-label="Severity"
+                        [value]="validator.severity"
+                        (ionChange)="
+                          updateQueryValidator(i, {
+                            severity: $event.detail.value || '',
+                          })
+                        "
+                      >
+                        <ion-select-option>critical</ion-select-option>
+                        <ion-select-option>error</ion-select-option>
+                        <ion-select-option>warning</ion-select-option>
+                        <ion-select-option>info</ion-select-option>
+                      </ion-select></ion-item
+                    >
+                    <ion-item
+                      ><ion-label position="stacked">Field</ion-label
+                      ><ion-input
+                        aria-label="Field"
+                        [value]="validator.field || ''"
+                        (ionInput)="
+                          updateQueryValidator(i, {
+                            field: $event.detail.value || '',
+                          })
+                        "
+                    /></ion-item>
+                    <ion-item
+                      ><ion-label position="stacked">Other field</ion-label
+                      ><ion-input
+                        aria-label="Other field"
+                        [value]="validator.otherField || ''"
+                        (ionInput)="
+                          updateQueryValidator(i, {
+                            otherField: $event.detail.value || '',
+                          })
+                        "
+                    /></ion-item>
+                    <ion-item
+                      ><ion-label position="stacked">Expected number</ion-label
+                      ><ion-input
+                        aria-label="Expected number"
+                        type="number"
+                        [value]="validator.expected?.value ?? ''"
+                        (ionChange)="
+                          setQueryExpected(i, $event.detail.value || '')
+                        "
+                    /></ion-item>
+                    <ion-item
+                      ><ion-label position="stacked">Nested Check</ion-label
+                      ><ion-select
+                        aria-label="Nested Check"
+                        [value]="validator.checkId || ''"
+                        (ionChange)="
+                          updateQueryValidator(i, {
+                            checkId: $event.detail.value || '',
+                          })
+                        "
+                      >
+                        <ion-select-option value="">None</ion-select-option>
+                        @for (
+                          candidate of state()?.checks || [];
+                          track candidate.id
+                        ) {
+                          <ion-select-option [value]="candidate.id">
+                            {{ candidate.id }}
+                          </ion-select-option>
+                        }
+                      </ion-select></ion-item
+                    >
+                    <ion-item
+                      ><ion-label position="stacked"
+                        >Published definition</ion-label
+                      ><ion-select
+                        aria-label="Published definition"
+                        [value]="validator.validatorId || ''"
+                        (ionChange)="
+                          usePublishedQueryValidator(
+                            i,
+                            $event.detail.value || ''
+                          )
+                        "
+                      >
+                        <ion-select-option value=""
+                          >Local definition</ion-select-option
+                        >
+                        @for (
+                          published of state()?.validators || [];
+                          track published.id
+                        ) {
+                          <ion-select-option [value]="published.id">
+                            {{ published.id }}
+                          </ion-select-option>
+                        }
+                      </ion-select></ion-item
+                    >
+                    <ion-item
+                      ><ion-label position="stacked">Unavailable</ion-label
+                      ><ion-select
+                        aria-label="Unavailable"
+                        [value]="validator.onUnavailable || 'block'"
+                        (ionChange)="
+                          updateQueryValidator(i, {
+                            onUnavailable: $event.detail.value || '',
+                          })
+                        "
+                      >
+                        <ion-select-option>block</ion-select-option>
+                        <ion-select-option>fail</ion-select-option>
+                        <ion-select-option>warn</ion-select-option>
+                        <ion-select-option>skip</ion-select-option>
+                      </ion-select></ion-item
+                    >
+                  </div>
+                  @if (validator.kind === 'check') {
+                    <div class="section-heading">
+                      <h4>Nested Check bindings</h4>
+                      <ion-button
+                        size="small"
+                        fill="clear"
+                        (click)="addQueryValidatorBinding(i)"
+                        >Add binding</ion-button
+                      >
+                    </div>
+                    @for (
+                      binding of validator.bindings || [];
+                      track $index;
+                      let j = $index
+                    ) {
+                      <div class="edit-row">
+                        <ion-item
+                          ><ion-input
+                            label="Child input"
+                            label-placement="stacked"
+                            [value]="binding.input"
+                            (ionInput)="
+                              updateQueryValidatorBinding(i, j, {
+                                input: $event.detail.value || '',
+                              })
+                            "
+                        /></ion-item>
+                        <ion-item
+                          ><ion-input
+                            label="From query column"
+                            label-placement="stacked"
+                            [value]="binding.fromColumn || ''"
+                            (ionInput)="
+                              updateQueryValidatorBinding(i, j, {
+                                fromColumn: $event.detail.value || '',
+                                fromInput: '',
+                              })
+                            "
+                        /></ion-item>
+                        <ion-item
+                          ><ion-input
+                            label="Or parent input"
+                            label-placement="stacked"
+                            [value]="binding.fromInput || ''"
+                            (ionInput)="
+                              updateQueryValidatorBinding(i, j, {
+                                fromInput: $event.detail.value || '',
+                                fromColumn: '',
+                              })
+                            "
+                        /></ion-item>
+                        <ion-button
+                          size="small"
+                          fill="clear"
+                          color="medium"
+                          (click)="removeQueryValidatorBinding(i, j)"
+                          >Remove</ion-button
+                        >
+                      </div>
+                    }
+                  }
+                  <ion-button
+                    size="small"
+                    fill="clear"
+                    color="medium"
+                    (click)="removeQueryValidator(i)"
+                    >Remove Validator</ion-button
+                  >
+                </div>
+              }
+              <div class="actions">
+                <ion-button fill="outline" (click)="addQueryValidator()"
+                  >Add Validator</ion-button
+                ><ion-button
+                  [disabled]="busy() || !state()?.capabilities?.canWrite"
+                  (click)="saveQueryValidators()"
+                  >Save local Validators</ion-button
+                >
+              </div>
+            }
+            <h2>Validate saved query manually</h2>
+            <p>
+              The agent executes this saved query again. These row positions
+              belong to that Validator run, not to a previous result grid.
+            </p>
+            <div class="form-grid">
+              <ion-item
+                ><ion-label position="stacked">Environment</ion-label
+                ><ion-select
+                  aria-label="Environment"
+                  [disabled]="environmentsLoading() || !!environmentsError()"
+                  [value]="environment()"
+                  (ionChange)="environment.set($event.detail.value || '')"
+                >
+                  <ion-select-option value=""
+                    >Select environment</ion-select-option
+                  >
+                  @for (env of availableEnvironments(); track env.id) {
+                    <ion-select-option [value]="env.id">{{
+                      env.title || env.id
+                    }}</ion-select-option>
+                  }
+                </ion-select></ion-item
+              >
+            </div>
+            @if (environmentsLoading()) {
+              <p>Loading project environments…</p>
+            } @else if (environmentsError()) {
+              <ion-note color="danger">{{ environmentsError() }}</ion-note>
+            } @else if (!availableEnvironments().length) {
+              <ion-note
+                >No environments are configured for this project.</ion-note
+              >
+            }
+            <h3>Query inputs</h3>
+            @for (row of queryInputRows(); track $index; let i = $index) {
+              <div class="edit-row">
+                <ion-item
+                  ><ion-label position="stacked">Name</ion-label
+                  ><ion-input
+                    aria-label="Name"
+                    [value]="row.name"
+                    (ionInput)="
+                      updateQueryInput(i, { name: $event.detail.value || '' })
+                    "
+                /></ion-item>
+                <ion-item
+                  ><ion-label position="stacked">Type</ion-label
+                  ><ion-select
+                    aria-label="Type"
+                    [value]="row.type"
+                    (ionChange)="
+                      updateQueryInput(i, { type: $event.detail.value || '' })
+                    "
+                  >
+                    <ion-select-option>string</ion-select-option>
+                    <ion-select-option>integer</ion-select-option>
+                    <ion-select-option>decimal</ion-select-option>
+                    <ion-select-option>number</ion-select-option>
+                    <ion-select-option>boolean</ion-select-option>
+                    <ion-select-option>date</ion-select-option>
+                    <ion-select-option>datetime</ion-select-option>
+                  </ion-select></ion-item
+                >
+                <ion-item
+                  ><ion-label position="stacked">Cardinality</ion-label
+                  ><ion-select
+                    aria-label="Cardinality"
+                    [value]="row.cardinality"
+                    (ionChange)="
+                      updateQueryInput(i, {
+                        cardinality: $event.detail.value || '',
+                      })
+                    "
+                  >
+                    <ion-select-option>scalar</ion-select-option>
+                    <ion-select-option>set</ion-select-option>
+                    <ion-select-option>range</ion-select-option>
+                  </ion-select></ion-item
+                >
+                <ion-item
+                  ><ion-label position="stacked">Value</ion-label
+                  ><ion-input
+                    aria-label="Value"
+                    [value]="row.value"
+                    (ionInput)="
+                      updateQueryInput(i, { value: $event.detail.value || '' })
+                    "
+                /></ion-item>
+                @if (row.cardinality === 'range') {
+                  <ion-item
+                    ><ion-label position="stacked">End</ion-label
+                    ><ion-input
+                      aria-label="End"
+                      [value]="row.end"
+                      (ionInput)="
+                        updateQueryInput(i, { end: $event.detail.value || '' })
+                      "
+                  /></ion-item>
+                }
+                <ion-button
+                  size="small"
+                  fill="clear"
+                  color="medium"
+                  (click)="removeQueryInput(i)"
+                  >Remove</ion-button
+                >
+              </div>
+            }
+            <div class="actions">
+              <ion-button size="small" fill="outline" (click)="addQueryInput()"
+                >Add input</ion-button
+              >
+              <ion-button
+                [disabled]="
+                  busy() ||
+                  !state()?.capabilities?.canRun ||
+                  !currentQueryValidators()?.validators?.length
+                "
+                (click)="runQueryValidators()"
+                >Run query Validators</ion-button
+              >
+            </div>
+            @if (caseId()) {
+              <p>
+                This run will be linked to
+                <a [routerLink]="caseUrl()">Case {{ caseId() }}</a
+                >.
+              </p>
+            }
+            <h3>Validator run history</h3>
+            <ion-list>
+              @for (run of queryHistory(); track run.id) {
+                <ion-item button (click)="viewRun(run)"
+                  ><ion-label
+                    >{{ run.startedAt | date: 'medium' }} ·
+                    {{ run.environment }} · {{ run.outcome }} ·
+                    {{ run.severity || 'none' }}</ion-label
+                  ></ion-item
+                >
+              } @empty {
+                <ion-item
+                  ><ion-label>No query Validator runs yet.</ion-label></ion-item
+                >
+              }
+            </ion-list>
+            @if (displayedQueryRun(); as run) {
+              <sneat-validation-run-results [run]="run" />
+            }
+            @if (state()?.runsHasMore) {
+              <ion-button
+                fill="clear"
+                [disabled]="olderRunsBusy()"
+                (click)="loadOlderRuns()"
+                >Load older runs</ion-button
+              >
+            }
+          </ion-card-content></ion-card
+        >
+      }
+
+      @if (draft(); as check) {
+        <ion-card>
+          <ion-card-content>
+            <div class="section-heading">
+              <h1>{{ check.version ? 'Edit Check' : 'New Check' }}</h1>
+              <ion-button fill="clear" (click)="cancelEdit()"
+                >Cancel</ion-button
+              >
+            </div>
+            <p>
+              Checks are reusable project definitions. Child Checks refer to
+              entries in the same catalog.
+            </p>
+            <div class="form-grid">
+              <ion-item
+                ><ion-label position="stacked">ID</ion-label
+                ><ion-input
+                  aria-label="ID"
+                  [value]="check.id"
+                  [disabled]="check.version > 0"
+                  (ionInput)="updateDraft({ id: $event.detail.value || '' })"
+                  placeholder="validate-invoice"
+              /></ion-item>
+              <ion-item
+                ><ion-label position="stacked">Title</ion-label
+                ><ion-input
+                  aria-label="Title"
+                  [value]="check.title"
+                  (ionInput)="
+                    updateDraft({ title: $event.detail.value || '' })
+                  "
+              /></ion-item>
+              <ion-item class="wide"
+                ><ion-label position="stacked">Description</ion-label
+                ><ion-textarea
+                  aria-label="Description"
+                  [value]="check.description || ''"
+                  (ionInput)="
+                    updateDraft({ description: $event.detail.value || '' })
+                  "
+                ></ion-textarea
+              ></ion-item>
+            </div>
+            <div class="section-heading">
+              <h2>Inputs</h2>
+              <ion-button size="small" fill="outline" (click)="addInput()"
+                >Add input</ion-button
+              >
+            </div>
+            @for (
+              input of check.inputs;
+              track $index;
+              let inputIndex = $index
+            ) {
+              <div class="edit-row">
+                <ion-item
+                  ><ion-label position="stacked">Name</ion-label
+                  ><ion-input
+                    aria-label="Name"
+                    [value]="input.name"
+                    (ionInput)="
+                      updateInput(inputIndex, {
+                        name: $event.detail.value || '',
+                      })
+                    "
+                    placeholder="invoice_id"
+                /></ion-item>
+                <ion-item
+                  ><ion-label position="stacked">Type</ion-label
+                  ><ion-select
+                    aria-label="Type"
+                    [value]="input.type"
+                    (ionChange)="
+                      updateInput(inputIndex, {
+                        type: $event.detail.value || '',
+                      })
+                    "
+                  >
+                    <ion-select-option>string</ion-select-option>
+                    <ion-select-option>integer</ion-select-option>
+                    <ion-select-option>decimal</ion-select-option>
+                    <ion-select-option>number</ion-select-option>
+                    <ion-select-option>boolean</ion-select-option>
+                    <ion-select-option>date</ion-select-option>
+                    <ion-select-option>datetime</ion-select-option>
+                  </ion-select></ion-item
+                >
+                <ion-item
+                  ><ion-label position="stacked">Cardinality</ion-label
+                  ><ion-select
+                    aria-label="Cardinality"
+                    [value]="input.cardinality"
+                    (ionChange)="
+                      updateInput(inputIndex, {
+                        cardinality: $event.detail.value || '',
+                      })
+                    "
+                  >
+                    <ion-select-option>scalar</ion-select-option>
+                    <ion-select-option>set</ion-select-option>
+                    <ion-select-option>range</ion-select-option>
+                  </ion-select></ion-item
+                >
+                <ion-item class="inline-check"
+                  ><ion-label position="stacked">Required</ion-label
+                  ><ion-checkbox
+                    aria-label="Required"
+                    type="checkbox"
+                    [checked]="!!input.required"
+                    (ionChange)="
+                      updateInput(inputIndex, {
+                        required: $event.detail.checked,
+                      })
+                    "
+                /></ion-item>
+                <ion-button
+                  size="small"
+                  color="medium"
+                  fill="clear"
+                  (click)="removeInput(inputIndex)"
+                  >Remove</ion-button
+                >
+              </div>
+            }
+            <div class="section-heading">
+              <h2>Steps</h2>
+              <div>
+                <ion-button
+                  size="small"
+                  fill="outline"
+                  (click)="addStep('query')"
+                  >Add query</ion-button
+                ><ion-button
+                  size="small"
+                  fill="outline"
+                  (click)="addStep('check')"
+                  >Add Check reference</ion-button
+                >
+              </div>
+            </div>
+            @for (step of check.steps; track $index; let stepIndex = $index) {
+              <section
+                class="editor-block"
+                [attr.aria-label]="'Step ' + (stepIndex + 1)"
+              >
+                <div class="section-heading">
+                  <h3>
+                    {{ step.kind === 'query' ? 'Query step' : 'Nested Check' }}
+                  </h3>
+                  <ion-button
+                    size="small"
+                    color="medium"
+                    fill="clear"
+                    (click)="removeStep(stepIndex)"
+                    >Remove step</ion-button
+                  >
+                </div>
+                <div class="form-grid">
+                  <ion-item
+                    ><ion-label position="stacked">Step ID</ion-label
+                    ><ion-input
+                      aria-label="Step ID"
+                      [value]="step.id"
+                      (ionInput)="
+                        updateStep(stepIndex, { id: $event.detail.value || '' })
+                      "
+                  /></ion-item>
+                  @if (step.kind === 'query') {
+                    <ion-item
+                      ><ion-label position="stacked">Query ID</ion-label
+                      ><ion-input
+                        aria-label="Query ID"
+                        [value]="step.queryId || ''"
+                        (ionInput)="
+                          updateStep(stepIndex, {
+                            queryId: $event.detail.value || '',
+                          })
+                        "
+                        placeholder="invoice-summary"
+                    /></ion-item>
+                  } @else {
+                    <ion-item
+                      ><ion-label position="stacked">Reusable Check</ion-label
+                      ><ion-select
+                        aria-label="Reusable Check"
+                        [value]="step.checkId || ''"
+                        (ionChange)="
+                          updateStep(stepIndex, {
+                            checkId: $event.detail.value || '',
+                          })
+                        "
+                      >
+                        <ion-select-option value=""
+                          >Select Check</ion-select-option
+                        >
+                        @for (
+                          candidate of state()?.checks || [];
+                          track candidate.id
+                        ) {
+                          <ion-select-option [value]="candidate.id">
+                            {{ candidate.title }} ({{ candidate.id }})
+                          </ion-select-option>
+                        }
+                      </ion-select></ion-item
+                    >
+                  }
+                  <ion-item
+                    ><ion-label position="stacked"
+                      >Unavailable dependency</ion-label
+                    ><ion-select
+                      aria-label="Unavailable dependency"
+                      [value]="step.onUnavailable || 'block'"
+                      (ionChange)="
+                        updateStep(stepIndex, {
+                          onUnavailable: $event.detail.value || '',
+                        })
+                      "
+                    >
+                      <ion-select-option>block</ion-select-option>
+                      <ion-select-option>fail</ion-select-option>
+                      <ion-select-option>warn</ion-select-option>
+                      <ion-select-option>skip</ion-select-option>
+                    </ion-select></ion-item
+                  >
+                </div>
+                <div class="section-heading">
+                  <h4>Input bindings</h4>
+                  <ion-button
+                    size="small"
+                    fill="clear"
+                    (click)="addBinding(stepIndex)"
+                    >Add binding</ion-button
+                  >
+                </div>
+                @for (
+                  binding of step.bindings || [];
+                  track $index;
+                  let bindingIndex = $index
+                ) {
+                  <div class="edit-row">
+                    <ion-item
+                      ><ion-label position="stacked"
+                        >Child/query input</ion-label
+                      ><ion-input
+                        aria-label="Child/query input"
+                        [value]="binding.input"
+                        (ionInput)="
+                          updateBinding(stepIndex, bindingIndex, {
+                            input: $event.detail.value || '',
+                          })
+                        "
+                    /></ion-item>
+                    <ion-item
+                      ><ion-label position="stacked"
+                        >From parent input</ion-label
+                      ><ion-input
+                        aria-label="From parent input"
+                        [value]="binding.fromInput || ''"
+                        (ionInput)="
+                          updateBinding(stepIndex, bindingIndex, {
+                            fromInput: $event.detail.value || '',
+                            fromColumn: '',
+                          })
+                        "
+                    /></ion-item>
+                    <ion-item
+                      ><ion-label position="stacked">Or result column</ion-label
+                      ><ion-input
+                        aria-label="Or result column"
+                        [value]="binding.fromColumn || ''"
+                        (ionInput)="
+                          updateBinding(stepIndex, bindingIndex, {
+                            fromColumn: $event.detail.value || '',
+                            fromInput: '',
+                          })
+                        "
+                    /></ion-item>
+                    <ion-item
+                      ><ion-select
+                        label="Range part"
+                        label-placement="stacked"
+                        [value]="binding.part || ''"
+                        (ionChange)="
+                          updateBinding(stepIndex, bindingIndex, {
+                            part: $event.detail.value || undefined,
+                          })
+                        "
+                        ><ion-select-option value=""
+                          >Whole value</ion-select-option
+                        ><ion-select-option value="start"
+                          >Start</ion-select-option
+                        ><ion-select-option value="end"
+                          >End</ion-select-option
+                        ></ion-select
+                      ></ion-item
+                    >
+                    <ion-button
+                      size="small"
+                      fill="clear"
+                      color="medium"
+                      (click)="removeBinding(stepIndex, bindingIndex)"
+                      >Remove</ion-button
+                    >
+                  </div>
+                }
+                @if (step.kind === 'query') {
+                  <div class="section-heading">
+                    <h4>Local Validators</h4>
+                    <ion-button
+                      size="small"
+                      fill="clear"
+                      (click)="addValidator(stepIndex)"
+                      >Add Validator</ion-button
+                    >
+                  </div>
+                  @for (
+                    validator of step.validators || [];
+                    track $index;
+                    let validatorIndex = $index
+                  ) {
+                    <div class="validator-editor">
+                      <div class="edit-row">
+                        <ion-item
+                          ><ion-label position="stacked">ID</ion-label
+                          ><ion-input
+                            aria-label="ID"
+                            [value]="validator.id"
+                            (ionInput)="
+                              updateValidator(stepIndex, validatorIndex, {
+                                id: $event.detail.value || '',
+                              })
+                            "
+                        /></ion-item>
+                        <ion-item
+                          ><ion-label position="stacked">Scope</ion-label
+                          ><ion-select
+                            aria-label="Scope"
+                            [value]="validator.scope"
+                            (ionChange)="
+                              updateValidator(stepIndex, validatorIndex, {
+                                scope: $event.detail.value || '',
+                              })
+                            "
+                          >
+                            <ion-select-option>row</ion-select-option>
+                            <ion-select-option>set</ion-select-option>
+                          </ion-select></ion-item
+                        >
+                        <ion-item
+                          ><ion-label position="stacked">Assertion</ion-label
+                          ><ion-select
+                            aria-label="Assertion"
+                            [value]="validator.kind"
+                            (ionChange)="
+                              updateValidator(stepIndex, validatorIndex, {
+                                kind: $event.detail.value || '',
+                                validatorId: '',
+                              })
+                            "
+                          >
+                            <ion-select-option value=""
+                              >Published definition</ion-select-option
+                            >
+                            <ion-select-option>non-null</ion-select-option>
+                            <ion-select-option>equals-fields</ion-select-option>
+                            <ion-select-option>row-count</ion-select-option>
+                            <ion-select-option>unique</ion-select-option>
+                            <ion-select-option>sum-equals</ion-select-option>
+                            <ion-select-option>check</ion-select-option>
+                          </ion-select></ion-item
+                        >
+                        <ion-item
+                          ><ion-label position="stacked">Severity</ion-label
+                          ><ion-select
+                            aria-label="Severity"
+                            [value]="validator.severity"
+                            (ionChange)="
+                              updateValidator(stepIndex, validatorIndex, {
+                                severity: $event.detail.value || '',
+                              })
+                            "
+                          >
+                            <ion-select-option>critical</ion-select-option>
+                            <ion-select-option>error</ion-select-option>
+                            <ion-select-option>warning</ion-select-option>
+                            <ion-select-option>info</ion-select-option>
+                          </ion-select></ion-item
+                        >
+                      </div>
+                      <div class="edit-row">
+                        <ion-item
+                          ><ion-label position="stacked">Field</ion-label
+                          ><ion-input
+                            aria-label="Field"
+                            [value]="validator.field || ''"
+                            (ionInput)="
+                              updateValidator(stepIndex, validatorIndex, {
+                                field: $event.detail.value || '',
+                              })
+                            "
+                        /></ion-item>
+                        <ion-item
+                          ><ion-label position="stacked">Other field</ion-label
+                          ><ion-input
+                            aria-label="Other field"
+                            [value]="validator.otherField || ''"
+                            (ionInput)="
+                              updateValidator(stepIndex, validatorIndex, {
+                                otherField: $event.detail.value || '',
+                              })
+                            "
+                        /></ion-item>
+                        <ion-item
+                          ><ion-label position="stacked"
+                            >Expected number</ion-label
+                          ><ion-input
+                            aria-label="Expected number"
+                            type="number"
+                            [value]="validator.expected?.value ?? ''"
+                            (ionChange)="
+                              setExpected(
+                                stepIndex,
+                                validatorIndex,
+                                $event.detail.value || ''
+                              )
+                            "
+                        /></ion-item>
+                        <ion-item
+                          ><ion-label position="stacked">Nested Check</ion-label
+                          ><ion-select
+                            aria-label="Nested Check"
+                            [value]="validator.checkId || ''"
+                            (ionChange)="
+                              updateValidator(stepIndex, validatorIndex, {
+                                checkId: $event.detail.value || '',
+                              })
+                            "
+                          >
+                            <ion-select-option value="">None</ion-select-option>
+                            @for (
+                              candidate of state()?.checks || [];
+                              track candidate.id
+                            ) {
+                              <ion-select-option [value]="candidate.id">
+                                {{ candidate.id }}
+                              </ion-select-option>
+                            }
+                          </ion-select></ion-item
+                        >
+                        <ion-item
+                          ><ion-label position="stacked"
+                            >Published Validator</ion-label
+                          ><ion-select
+                            aria-label="Published Validator"
+                            [value]="validator.validatorId || ''"
+                            (ionChange)="
+                              usePublishedValidator(
+                                stepIndex,
+                                validatorIndex,
+                                $event.detail.value || ''
+                              )
+                            "
+                          >
+                            <ion-select-option value=""
+                              >Local only</ion-select-option
+                            >
+                            @for (
+                              published of state()?.validators || [];
+                              track published.id
+                            ) {
+                              <ion-select-option [value]="published.id">
+                                {{ published.id }}
+                              </ion-select-option>
+                            }
+                          </ion-select></ion-item
+                        >
+                        <ion-item
+                          ><ion-label position="stacked">Unavailable</ion-label
+                          ><ion-select
+                            aria-label="Unavailable"
+                            [value]="validator.onUnavailable || 'block'"
+                            (ionChange)="
+                              updateValidator(stepIndex, validatorIndex, {
+                                onUnavailable: $event.detail.value || '',
+                              })
+                            "
+                          >
+                            <ion-select-option>block</ion-select-option>
+                            <ion-select-option>fail</ion-select-option>
+                            <ion-select-option>warn</ion-select-option>
+                            <ion-select-option>skip</ion-select-option>
+                          </ion-select></ion-item
+                        >
+                      </div>
+                      @if (validator.kind === 'check') {
+                        <div class="section-heading">
+                          <h4>Nested Check bindings</h4>
+                          <ion-button
+                            size="small"
+                            fill="clear"
+                            (click)="
+                              addValidatorBinding(stepIndex, validatorIndex)
+                            "
+                            >Add binding</ion-button
+                          >
+                        </div>
+                        @for (
+                          binding of validator.bindings || [];
+                          track $index;
+                          let j = $index
+                        ) {
+                          <div class="edit-row">
+                            <ion-item
+                              ><ion-input
+                                label="Child input"
+                                label-placement="stacked"
+                                [value]="binding.input"
+                                (ionInput)="
+                                  updateValidatorBinding(
+                                    stepIndex,
+                                    validatorIndex,
+                                    j,
+                                    { input: $event.detail.value || '' }
+                                  )
+                                "
+                            /></ion-item>
+                            <ion-item
+                              ><ion-input
+                                label="From query column"
+                                label-placement="stacked"
+                                [value]="binding.fromColumn || ''"
+                                (ionInput)="
+                                  updateValidatorBinding(
+                                    stepIndex,
+                                    validatorIndex,
+                                    j,
+                                    {
+                                      fromColumn: $event.detail.value || '',
+                                      fromInput: '',
+                                    }
+                                  )
+                                "
+                            /></ion-item>
+                            <ion-item
+                              ><ion-input
+                                label="Or parent input"
+                                label-placement="stacked"
+                                [value]="binding.fromInput || ''"
+                                (ionInput)="
+                                  updateValidatorBinding(
+                                    stepIndex,
+                                    validatorIndex,
+                                    j,
+                                    {
+                                      fromInput: $event.detail.value || '',
+                                      fromColumn: '',
+                                    }
+                                  )
+                                "
+                            /></ion-item>
+                            <ion-button
+                              size="small"
+                              fill="clear"
+                              color="medium"
+                              (click)="
+                                removeValidatorBinding(
+                                  stepIndex,
+                                  validatorIndex,
+                                  j
+                                )
+                              "
+                              >Remove</ion-button
+                            >
+                          </div>
+                        }
+                      }
+                      <ion-button
+                        size="small"
+                        fill="clear"
+                        [disabled]="!!validator.validatorId"
+                        (click)="beginPromote(validator)"
+                        >Publish as reusable</ion-button
+                      >
+                      <ion-button
+                        size="small"
+                        color="medium"
+                        fill="clear"
+                        (click)="removeValidator(stepIndex, validatorIndex)"
+                        >Remove Validator</ion-button
+                      >
+                    </div>
+                  }
+                }
+              </section>
+            }
+            <div class="actions">
+              <ion-button
+                [disabled]="busy() || !state()?.capabilities?.canWrite"
+                (click)="save()"
+                >Save Check</ion-button
+              >
+            </div>
+          </ion-card-content>
+        </ion-card>
+      } @else if (checkId()) {
+        @if (current(); as check) {
+          <ion-card
+            ><ion-card-content>
+              <div class="section-heading">
+                <div>
+                  <ion-button fill="clear" [routerLink]="checksUrl()"
+                    >← All Checks</ion-button
+                  >
+                  <h1>{{ check.title }}</h1>
+                  <p class="muted">
+                    {{ check.id }} · version {{ check.version }} · updated
+                    {{ check.updatedAt | date: 'medium' }}
+                  </p>
+                </div>
+                <ion-button
+                  fill="outline"
+                  [disabled]="!state()?.capabilities?.canWrite"
+                  (click)="startEdit()"
+                  >Edit</ion-button
+                >
+              </div>
+              <p>{{ check.description }}</p>
+              <h2>Definition</h2>
+              <ion-list>
+                @for (step of check.steps; track step.id) {
+                  <ion-item
+                    ><ion-label
+                      ><h3>
+                        {{ step.kind === 'check' ? 'Nested Check' : 'Query' }} ·
+                        {{ step.checkId || step.queryId }}
+                      </h3>
+                      <p>
+                        {{ step.validators?.length || 0 }} Validators ·
+                        unavailable: {{ step.onUnavailable || 'block' }}
+                      </p></ion-label
+                    ></ion-item
+                  >
+                }
+              </ion-list>
+              @if (usedBy().length) {
+                <h2>Used by</h2>
+                <p>
+                  @for (parent of usedBy(); track parent.id) {
+                    <a [routerLink]="checkUrl(parent.id)">{{ parent.id }}</a>
+                  }
+                </p>
+              }
+            </ion-card-content></ion-card
+          >
+
+          <ion-card
+            ><ion-card-content>
+              <h2>Run manually</h2>
+              <p>
+                Choose the logical environment explicitly. A shared physical
+                source does not determine QA or UAT.
+              </p>
+              @if (caseId()) {
+                <p>
+                  Run will be linked to Case
+                  <a [routerLink]="caseUrl()">{{ caseId() }}</a
+                  >.
+                </p>
+                @if (caseContext()) {
+                  <ion-button
+                    fill="outline"
+                    size="small"
+                    (click)="useCaseContext()"
+                    >Copy matching Case inputs</ion-button
+                  >
+                }
+              }
+              <div class="form-grid">
+                <ion-item
+                  ><ion-label position="stacked">Environment</ion-label
+                  ><ion-select
+                    aria-label="Environment"
+                    [disabled]="environmentsLoading() || !!environmentsError()"
+                    [value]="environment()"
+                    (ionChange)="environment.set($event.detail.value || '')"
+                  >
+                    <ion-select-option value=""
+                      >Select environment</ion-select-option
+                    >
+                    @for (env of availableEnvironments(); track env.id) {
+                      <ion-select-option [value]="env.id">
+                        {{ env.title || env.id }}
+                      </ion-select-option>
+                    }
+                  </ion-select></ion-item
+                >
+                @if (environmentsLoading()) {
+                  <p>Loading project environments…</p>
+                } @else if (environmentsError()) {
+                  <ion-note color="danger">{{ environmentsError() }}</ion-note>
+                } @else if (!availableEnvironments().length) {
+                  <ion-note
+                    >No environments are configured for this project.</ion-note
+                  >
+                }
+                @for (input of check.inputs; track input.name) {
+                  <ion-item
+                    ><ion-label position="stacked"
+                      >{{ input.name }}
+                      <small
+                        >{{ input.type }} · {{ input.cardinality
+                        }}{{ input.required ? ' · required' : '' }}</small
+                      ></ion-label
+                    ><ion-textarea
+                      aria-label="Check input"
+                      [value]="runInputText()[input.name]?.value || ''"
+                      (ionInput)="
+                        setRunInput(
+                          input.name,
+                          'value',
+                          $event.detail.value || ''
+                        )
+                      "
+                      [placeholder]="
+                        input.cardinality === 'set'
+                          ? 'Comma or newline separated values'
+                          : 'Value'
+                      "
+                    ></ion-textarea
+                  ></ion-item>
+                  @if (input.cardinality === 'range') {
+                    <ion-item
+                      ><ion-label position="stacked"
+                        >{{ input.name }} end</ion-label
+                      ><ion-input
+                        aria-label="Check input"
+                        [value]="runInputText()[input.name]?.end || ''"
+                        (ionInput)="
+                          setRunInput(
+                            input.name,
+                            'end',
+                            $event.detail.value || ''
+                          )
+                        "
+                    /></ion-item>
+                  }
+                }
+              </div>
+              <ion-button
+                [disabled]="busy() || !state()?.capabilities?.canRun"
+                (click)="run()"
+                >{{ busy() ? 'Running…' : 'Run Check' }}</ion-button
+              >
+            </ion-card-content></ion-card
+          >
+
+          <ion-card
+            ><ion-card-content>
+              <h2>Run history</h2>
+              @if (history().length) {
+                <ion-list>
+                  @for (run of history(); track run.id) {
+                    <ion-item button (click)="viewRun(run)"
+                      ><ion-label
+                        ><h3>
+                          {{ run.startedAt | date: 'medium' }} ·
+                          {{ run.environment }}
+                        </h3>
+                        <p>
+                          {{ run.executionStatus }} · {{ run.outcome }} ·
+                          {{ run.severity || 'no severity' }} ·
+                          {{ run.durationMs }} ms
+                        </p></ion-label
+                      ></ion-item
+                    >
+                  }
+                </ion-list>
+              } @else {
+                <p>No manual runs yet.</p>
+              }
+              @if (displayedRun(); as run) {
+                <sneat-validation-run-results [run]="run" />
+              }
+              @if (state()?.runsHasMore) {
+                <ion-button
+                  fill="clear"
+                  [disabled]="olderRunsBusy()"
+                  (click)="loadOlderRuns()"
+                  >Load older runs</ion-button
+                >
+              }
+            </ion-card-content></ion-card
+          >
+        } @else if (!loading()) {
+          <ion-card
+            ><ion-card-content role="alert"
+              >Check {{ checkId() }} was not found.
+              <a [routerLink]="checksUrl()"
+                >Back to catalog</a
+              ></ion-card-content
+            ></ion-card
+          >
+        }
+      } @else {
+        <ion-card
+          ><ion-card-content>
+            <div class="section-heading">
+              <div>
+                <h1>Project Checks</h1>
+                <p>Reusable validations across queries and systems.</p>
+              </div>
+              <ion-button
+                [disabled]="!state()?.capabilities?.canWrite"
+                (click)="startNew()"
+                >New Check</ion-button
+              >
+            </div>
+            <ion-item
+              ><ion-label position="stacked">Search Checks</ion-label
+              ><ion-input
+                aria-label="Search Checks"
+                [value]="search()"
+                (ionInput)="search.set($event.detail.value || '')"
+                placeholder="Title, ID or description"
+            /></ion-item>
+            <ion-list>
+              @for (check of checks(); track check.id) {
+                <ion-item button [routerLink]="checkUrl(check.id)"
+                  ><ion-label
+                    ><h2>{{ check.title }}</h2>
+                    <p>
+                      {{ check.id }} · {{ check.steps.length }} steps · v{{
+                        check.version
+                      }}
+                    </p></ion-label
+                  ></ion-item
+                >
+              } @empty {
+                <ion-item><ion-label>No matching Checks.</ion-label></ion-item>
+              }
+            </ion-list>
+          </ion-card-content></ion-card
+        >
+      }
+
+      @if (validatorDraft(); as published) {
+        <ion-card
+          ><ion-card-content>
+            <div class="section-heading">
+              <h2>
+                {{
+                  published.version
+                    ? 'Edit published Validator'
+                    : 'Publish Validator'
+                }}
+              </h2>
+              <ion-button fill="clear" (click)="validatorDraft.set(undefined)"
+                >Cancel</ion-button
+              >
+            </div>
+            <p>
+              This creates a reusable catalog entry. Local Validators stay with
+              their query step until explicitly published.
+            </p>
+            <div class="form-grid">
+              <ion-item
+                ><ion-label position="stacked">ID</ion-label
+                ><ion-input
+                  aria-label="ID"
+                  [value]="published.id"
+                  [disabled]="published.version > 0"
+                  (ionInput)="
+                    updatePublished({ id: $event.detail.value || '' })
+                  "
+                  placeholder="invoice-total" /></ion-item
+              ><ion-item
+                ><ion-label position="stacked">Title</ion-label
+                ><ion-input
+                  aria-label="Title"
+                  [value]="published.title"
+                  (ionInput)="
+                    updatePublished({ title: $event.detail.value || '' })
+                  "
+              /></ion-item>
+            </div>
+            <div class="form-grid">
+              <ion-item
+                ><ion-label position="stacked">Scope</ion-label
+                ><ion-select
+                  aria-label="Scope"
+                  [value]="published.validator.scope"
+                  (ionChange)="
+                    updatePublishedDefinition({
+                      scope: $event.detail.value || '',
+                    })
+                  "
+                >
+                  <ion-select-option>row</ion-select-option>
+                  <ion-select-option>set</ion-select-option>
+                </ion-select></ion-item
+              >
+              <ion-item
+                ><ion-label position="stacked">Assertion</ion-label
+                ><ion-select
+                  aria-label="Assertion"
+                  [value]="published.validator.kind"
+                  (ionChange)="
+                    updatePublishedDefinition({
+                      kind: $event.detail.value || '',
+                    })
+                  "
+                >
+                  <ion-select-option>non-null</ion-select-option>
+                  <ion-select-option>equals-fields</ion-select-option>
+                  <ion-select-option>row-count</ion-select-option>
+                  <ion-select-option>unique</ion-select-option>
+                  <ion-select-option>sum-equals</ion-select-option>
+                  <ion-select-option>check</ion-select-option>
+                </ion-select></ion-item
+              >
+              <ion-item
+                ><ion-label position="stacked">Severity</ion-label
+                ><ion-select
+                  aria-label="Severity"
+                  [value]="published.validator.severity"
+                  (ionChange)="
+                    updatePublishedDefinition({
+                      severity: $event.detail.value || '',
+                    })
+                  "
+                >
+                  <ion-select-option>critical</ion-select-option>
+                  <ion-select-option>error</ion-select-option>
+                  <ion-select-option>warning</ion-select-option>
+                  <ion-select-option>info</ion-select-option>
+                </ion-select></ion-item
+              >
+              <ion-item
+                ><ion-label position="stacked">Field</ion-label
+                ><ion-input
+                  aria-label="Field"
+                  [value]="published.validator.field || ''"
+                  (ionInput)="
+                    updatePublishedDefinition({
+                      field: $event.detail.value || '',
+                    })
+                  "
+              /></ion-item>
+              <ion-item
+                ><ion-label position="stacked">Other field</ion-label
+                ><ion-input
+                  aria-label="Other field"
+                  [value]="published.validator.otherField || ''"
+                  (ionInput)="
+                    updatePublishedDefinition({
+                      otherField: $event.detail.value || '',
+                    })
+                  "
+              /></ion-item>
+              <ion-item
+                ><ion-label position="stacked">Nested Check</ion-label
+                ><ion-select
+                  aria-label="Nested Check"
+                  [value]="published.validator.checkId || ''"
+                  (ionChange)="
+                    updatePublishedDefinition({
+                      checkId: $event.detail.value || '',
+                    })
+                  "
+                >
+                  <ion-select-option value="">None</ion-select-option>
+                  @for (
+                    candidate of state()?.checks || [];
+                    track candidate.id
+                  ) {
+                    <ion-select-option [value]="candidate.id">{{
+                      candidate.id
+                    }}</ion-select-option>
+                  }
+                </ion-select></ion-item
+              >
+              <ion-item
+                ><ion-input
+                  label="Expected number"
+                  label-placement="stacked"
+                  type="number"
+                  [value]="published.validator.expected?.value ?? ''"
+                  (ionChange)="setPublishedExpected($event.detail.value || '')"
+              /></ion-item>
+              <ion-item
+                ><ion-select
+                  label="Unavailable"
+                  label-placement="stacked"
+                  [value]="published.validator.onUnavailable || 'block'"
+                  (ionChange)="
+                    updatePublishedDefinition({
+                      onUnavailable: $event.detail.value || '',
+                    })
+                  "
+                  ><ion-select-option>block</ion-select-option
+                  ><ion-select-option>fail</ion-select-option
+                  ><ion-select-option>warn</ion-select-option
+                  ><ion-select-option>skip</ion-select-option></ion-select
+                ></ion-item
+              >
+            </div>
+            @if (published.validator.kind === 'check') {
+              <div class="section-heading">
+                <h3>Nested Check bindings</h3>
+                <ion-button
+                  size="small"
+                  fill="clear"
+                  (click)="addPublishedBinding()"
+                  >Add binding</ion-button
+                >
+              </div>
+              @for (
+                binding of published.validator.bindings || [];
+                track $index;
+                let i = $index
+              ) {
+                <div class="edit-row">
+                  <ion-item
+                    ><ion-input
+                      label="Child input"
+                      label-placement="stacked"
+                      [value]="binding.input"
+                      (ionInput)="
+                        updatePublishedBinding(i, {
+                          input: $event.detail.value || '',
+                        })
+                      "
+                  /></ion-item>
+                  <ion-item
+                    ><ion-input
+                      label="From query column"
+                      label-placement="stacked"
+                      [value]="binding.fromColumn || ''"
+                      (ionInput)="
+                        updatePublishedBinding(i, {
+                          fromColumn: $event.detail.value || '',
+                          fromInput: '',
+                        })
+                      "
+                  /></ion-item>
+                  <ion-item
+                    ><ion-input
+                      label="Or parent input"
+                      label-placement="stacked"
+                      [value]="binding.fromInput || ''"
+                      (ionInput)="
+                        updatePublishedBinding(i, {
+                          fromInput: $event.detail.value || '',
+                          fromColumn: '',
+                        })
+                      "
+                  /></ion-item>
+                  <ion-button
+                    size="small"
+                    fill="clear"
+                    color="medium"
+                    (click)="removePublishedBinding(i)"
+                    >Remove</ion-button
+                  >
+                </div>
+              }
+            }
+            <ion-button
+              [disabled]="busy() || !state()?.capabilities?.canWrite"
+              (click)="savePublished()"
+              >Save published Validator</ion-button
+            >
+          </ion-card-content></ion-card
+        >
+      }
+      @if (state()?.validators?.length) {
+        <ion-card
+          ><ion-card-content
+            ><h2>Published Validators</h2>
+            <ion-list>
+              @for (
+                published of state()?.validators || [];
+                track published.id
+              ) {
+                <ion-item
+                  ><ion-label
+                    ><h3>{{ published.title }}</h3>
+                    <p>
+                      {{ published.id }} · v{{ published.version }} ·
+                      {{ published.validator.kind }}
+                    </p></ion-label
+                  ><ion-button
+                    slot="end"
+                    fill="clear"
+                    (click)="editPublished(published)"
+                    >Edit</ion-button
+                  ></ion-item
+                >
+              }
+            </ion-list></ion-card-content
+          ></ion-card
+        >
+      }
+    }
+  </div>
+</ion-content>

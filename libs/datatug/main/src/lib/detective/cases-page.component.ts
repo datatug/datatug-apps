@@ -1,0 +1,690 @@
+import { CommonModule } from '@angular/common';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  inject,
+  signal,
+} from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import {
+  IonBackButton,
+  IonBadge,
+  IonButton,
+  IonButtons,
+  IonCard,
+  IonCardContent,
+  IonContent,
+  IonHeader,
+  IonInput,
+  IonItem,
+  IonLabel,
+  IonList,
+  IonCheckbox,
+  IonMenuButton,
+  IonNote,
+  IonSelect,
+  IonSelectOption,
+  IonSpinner,
+  IonTextarea,
+  IonTitle,
+  IonToolbar,
+} from '@ionic/angular';
+import { firstValueFrom } from 'rxjs';
+import { InvestigationContextService } from '@sneat/datatug-semantic';
+import { projectPageHref } from '../nav/project-page-href';
+import { agentBaseUrl } from '../services/repo/agent-url';
+import {
+  DetectiveClientService,
+  detectiveErrorMessage,
+} from './detective-client.service';
+import {
+  detectiveSlug,
+  displayInputValue,
+  identifierProposals,
+  parseInputValue,
+} from './detective-forms';
+import { useDetectivePageContext } from './detective-page-context';
+import {
+  CaseEvent,
+  CaseFinding,
+  CheckInput,
+  CheckRun,
+  DetectiveCase,
+  DetectiveInputValue,
+  DetectiveState,
+  DetectiveValue,
+  EvidenceRef,
+  InvestigationScenario,
+  ScenarioStep,
+} from './models';
+
+interface ContextProposal {
+  readonly key: string;
+  readonly value: DetectiveInputValue;
+  readonly evidence: string;
+  readonly explanation: string;
+}
+
+const NEW_CASE = (): DetectiveCase => ({
+  id: '',
+  title: '',
+  status: 'active',
+  version: 0,
+  context: {},
+  incidentRefs: [],
+  scenarioRefs: [],
+  runRefs: [],
+  evidence: [],
+  findings: [],
+  timeline: [],
+});
+
+@Component({
+  selector: 'sneat-datatug-cases-page',
+  templateUrl: './cases-page.component.html',
+  styleUrl: './detective-pages.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [
+    CommonModule,
+    FormsModule,
+    RouterLink,
+    IonBackButton,
+    IonBadge,
+    IonButton,
+    IonButtons,
+    IonCard,
+    IonCardContent,
+    IonContent,
+    IonHeader,
+    IonInput,
+    IonItem,
+    IonLabel,
+    IonList,
+    IonCheckbox,
+    IonMenuButton,
+    IonNote,
+    IonSelect,
+    IonSelectOption,
+    IonSpinner,
+    IonTextarea,
+    IonTitle,
+    IonToolbar,
+  ],
+})
+export class CasesPageComponent {
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
+  private readonly client = inject(DetectiveClientService);
+  private readonly basket = inject(InvestigationContextService);
+  protected readonly scope = useDetectivePageContext();
+  private readonly params = toSignal(this.route.paramMap, {
+    initialValue: this.route.snapshot.paramMap,
+  });
+  protected readonly queryParams = toSignal(this.route.queryParamMap, {
+    initialValue: this.route.snapshot.queryParamMap,
+  });
+  protected readonly caseId = computed(
+    () => this.params().get('caseId') || undefined,
+  );
+  protected readonly state = signal<DetectiveState | undefined>(undefined);
+  protected readonly loading = signal(false);
+  protected readonly busy = signal(false);
+  protected readonly olderRunsBusy = signal(false);
+  protected readonly error = signal('');
+  protected readonly message = signal('');
+  protected readonly search = signal('');
+  protected readonly draft = signal<DetectiveCase | undefined>(undefined);
+  protected readonly scenarioDraft = signal<InvestigationScenario | undefined>(
+    undefined,
+  );
+  protected readonly contextName = signal('');
+  protected readonly contextType = signal<DetectiveValue['type']>('string');
+  protected readonly contextCardinality = signal<'scalar' | 'set' | 'range'>(
+    'scalar',
+  );
+  protected readonly contextText = signal('');
+  protected readonly contextEnd = signal('');
+  protected readonly pastedText = signal('');
+  protected readonly proposals = signal<ContextProposal[]>([]);
+  protected readonly noteText = signal('');
+  protected readonly findingText = signal('');
+  protected readonly findingStatus =
+    signal<CaseFinding['status']>('hypothesis');
+  protected readonly findingEvidence = signal('');
+  protected readonly evidenceKind = signal<EvidenceRef['kind']>('external');
+  protected readonly evidenceRef = signal('');
+  protected readonly evidenceNote = signal('');
+  protected readonly incidentRef = signal('');
+  protected readonly closureReason = signal('');
+
+  protected readonly cases = computed(() => {
+    const search = this.search().trim().toLowerCase();
+    return (this.state()?.cases || []).filter(
+      (item) =>
+        !search ||
+        `${item.id} ${item.title} ${item.status}`
+          .toLowerCase()
+          .includes(search),
+    );
+  });
+  protected readonly scenarios = computed(() => this.state()?.scenarios || []);
+  protected readonly current = computed(() =>
+    this.state()?.cases.find((item) => item.id === this.caseId()),
+  );
+  protected readonly caseRuns = computed(() =>
+    (this.state()?.runs || []).filter(
+      (run) =>
+        run.caseId === this.caseId() ||
+        this.current()?.runRefs?.includes(run.id),
+    ),
+  );
+  protected readonly relevantChecks = computed(() => {
+    const context = this.current()?.context || this.draft()?.context || {};
+    return (this.state()?.checks || []).filter((check) =>
+      check.inputs
+        .filter((input) => input.required)
+        .every((input) => context[input.name] !== undefined),
+    );
+  });
+  protected readonly relevantScenarios = computed(() => {
+    const context = this.current()?.context || this.draft()?.context || {};
+    return (this.state()?.scenarios || []).filter((scenario) =>
+      scenario.inputs
+        ?.filter((input) => input.required)
+        .every((input) => context[input.name] !== undefined),
+    );
+  });
+  protected readonly contextEntries = computed(() =>
+    Object.entries(this.draft()?.context || this.current()?.context || {}),
+  );
+  protected readonly displayValue = displayInputValue;
+  protected readonly canImportBasket = computed(() => {
+    const scope = this.basket.scope();
+    const context = this.scope.context();
+    return (
+      !!scope &&
+      !!context &&
+      scope.agentUrl === agentBaseUrl(context.agentStoreId) &&
+      scope.project === context.project &&
+      scope.securityContextId === context.securityContextId &&
+      scope.environment === this.scope.currentEnvironment()?.id
+    );
+  });
+
+  private readonly loadState = effect((onCleanup) => {
+    const context = this.scope.context();
+    this.state.set(undefined);
+    this.error.set('');
+    if (!context) return;
+    this.loading.set(true);
+    const subscription = this.client.state(context).subscribe({
+      next: (state) => {
+        this.state.set(state);
+        this.loading.set(false);
+      },
+      error: (error: unknown) => {
+        this.error.set(detectiveErrorMessage(error));
+        this.loading.set(false);
+      },
+    });
+    onCleanup(() => subscription.unsubscribe());
+  });
+
+  protected casesUrl(): string {
+    return projectPageHref(this.scope.ref(), 'detective');
+  }
+  protected caseUrl(id: string): string {
+    return projectPageHref(this.scope.ref(), ['detective', id]);
+  }
+  protected checkUrl(id: string): string {
+    return projectPageHref(this.scope.ref(), ['checks', id]);
+  }
+  protected validatorUrl(queryId: string, caseId: string): string {
+    const url = projectPageHref(this.scope.ref(), 'checks');
+    return `${url}${url.includes('?') ? '&' : '?'}query=${encodeURIComponent(queryId)}&caseId=${encodeURIComponent(caseId)}`;
+  }
+  protected queryUrl(id: string): string {
+    const url = projectPageHref(this.scope.ref(), ['query', id]);
+    return `${url}${url.includes('?') ? '&' : '?'}id=${encodeURIComponent(id)}`;
+  }
+  protected incidentUrl(ref: string): string | undefined {
+    const [store, id] = ref.split('/');
+    const context = this.scope.context();
+    const environment = this.scope.currentEnvironment()?.id;
+    if (!store || !id || !context || !environment) return undefined;
+    return this.router.serializeUrl(
+      this.router.createUrlTree(['/incidents', store, id], {
+        queryParams: {
+          agent: context.agentStoreId,
+          project: context.project,
+          environment,
+        },
+      }),
+    );
+  }
+
+  protected startNew(): void {
+    const incident = this.queryParams().get('incident');
+    this.draft.set({
+      ...NEW_CASE(),
+      incidentRefs:
+        incident && /^[^/]+\/[^/]+$/u.test(incident) ? [incident] : [],
+    });
+    this.error.set('');
+  }
+  protected startScenario(): void {
+    this.scenarioDraft.set({
+      id: '',
+      title: '',
+      description: '',
+      version: 0,
+      inputs: [],
+      steps: [],
+    });
+  }
+  protected editScenario(item: InvestigationScenario): void {
+    this.scenarioDraft.set(structuredClone(item));
+  }
+  protected updateScenario(patch: Partial<InvestigationScenario>): void {
+    this.scenarioDraft.update((item) => (item ? { ...item, ...patch } : item));
+  }
+  protected addScenarioInput(): void {
+    const item = this.scenarioDraft();
+    if (item)
+      this.updateScenario({
+        inputs: [
+          ...item.inputs,
+          { name: '', type: 'string', cardinality: 'scalar' },
+        ],
+      });
+  }
+  protected updateScenarioInput(
+    index: number,
+    patch: Partial<CheckInput>,
+  ): void {
+    const item = this.scenarioDraft();
+    if (item)
+      this.updateScenario({
+        inputs: item.inputs.map((input, i) =>
+          i === index ? { ...input, ...patch } : input,
+        ),
+      });
+  }
+  protected removeScenarioInput(index: number): void {
+    const item = this.scenarioDraft();
+    if (item)
+      this.updateScenario({
+        inputs: item.inputs.filter((_, i) => i !== index),
+      });
+  }
+  protected addScenarioStep(kind: ScenarioStep['kind']): void {
+    const item = this.scenarioDraft();
+    if (item)
+      this.updateScenario({
+        steps: [
+          ...item.steps,
+          { id: `step-${item.steps.length + 1}`, kind, ref: '' },
+        ],
+      });
+  }
+  protected updateScenarioStep(
+    index: number,
+    patch: Partial<ScenarioStep>,
+  ): void {
+    const item = this.scenarioDraft();
+    if (item)
+      this.updateScenario({
+        steps: item.steps.map((step, i) =>
+          i === index ? { ...step, ...patch } : step,
+        ),
+      });
+  }
+  protected removeScenarioStep(index: number): void {
+    const item = this.scenarioDraft();
+    if (item)
+      this.updateScenario({ steps: item.steps.filter((_, i) => i !== index) });
+  }
+  protected async saveScenario(): Promise<void> {
+    const context = this.scope.context();
+    const item = this.scenarioDraft();
+    if (!context || !item) return;
+    if (
+      !detectiveSlug.test(item.id) ||
+      !item.title.trim() ||
+      !item.steps.length ||
+      item.steps.some((step) => !step.ref.trim())
+    ) {
+      this.error.set(
+        'Scenario needs a slug ID, title, and at least one step with a reference.',
+      );
+      return;
+    }
+    this.busy.set(true);
+    this.error.set('');
+    try {
+      const response = await firstValueFrom(
+        this.client.action(context, { type: 'save-scenario', scenario: item }),
+      );
+      if (!response.scenario)
+        throw new Error('The agent did not return the saved Scenario.');
+      await this.refresh();
+      this.scenarioDraft.set(undefined);
+      this.message.set(`Saved Scenario ${response.scenario.id}.`);
+    } catch (error) {
+      this.error.set(detectiveErrorMessage(error));
+    } finally {
+      this.busy.set(false);
+    }
+  }
+  protected startEdit(): void {
+    const item = this.current();
+    if (item) this.draft.set(structuredClone(item));
+  }
+  protected cancelEdit(): void {
+    this.draft.set(undefined);
+    this.proposals.set([]);
+    this.error.set('');
+  }
+  protected updateDraft(patch: Partial<DetectiveCase>): void {
+    this.draft.update((item) => (item ? { ...item, ...patch } : item));
+  }
+  protected addContext(): void {
+    const item = this.draft();
+    const name = this.contextName().trim();
+    if (!item) return;
+    if (!/^[a-z][a-z0-9_]*$/u.test(name)) {
+      this.error.set(
+        'Context name must start with a letter and use lower-case letters, digits or underscores.',
+      );
+      return;
+    }
+    try {
+      const value = parseInputValue(
+        this.contextText(),
+        this.contextType(),
+        this.contextCardinality(),
+        this.contextEnd(),
+      );
+      this.updateDraft({ context: { ...item.context, [name]: value } });
+      this.contextName.set('');
+      this.contextText.set('');
+      this.contextEnd.set('');
+      this.error.set('');
+    } catch (error) {
+      this.error.set(detectiveErrorMessage(error));
+    }
+  }
+  protected removeContext(name: string): void {
+    const item = this.draft();
+    if (!item) return;
+    const context = { ...item.context };
+    delete context[name];
+    this.updateDraft({ context });
+  }
+
+  /** Local pattern suggestions only: source text stays in this browser until confirmed. */
+  protected proposeFromPaste(): void {
+    const found = identifierProposals(this.pastedText());
+    this.proposals.set(
+      found.map((proposal) => ({
+        ...proposal,
+        explanation:
+          'Local pattern match; verify every identifier before adding it.',
+      })),
+    );
+    if (!found.length)
+      this.message.set(
+        'No identifier patterns found. Add context manually below.',
+      );
+  }
+  protected proposeFromBasket(): void {
+    if (!this.canImportBasket()) return;
+    const proposals: ContextProposal[] = [];
+    for (const item of this.basket.items()) {
+      if (!item.enabled || (item.condition !== '==' && item.condition !== 'in'))
+        continue;
+      const key = item.field.toLowerCase().replace(/[^a-z0-9_]/gu, '_');
+      if (!/^[a-z][a-z0-9_]*$/u.test(key)) continue;
+      const value: DetectiveInputValue =
+        item.condition === 'in'
+          ? { type: 'set', values: [...item.values] }
+          : item.value;
+      proposals.push({
+        key,
+        value,
+        evidence: `${item.entity}.${item.field} (${item.source})`,
+        explanation: `${item.layer || 'canonical'} context basket value; review its meaning and scope before adding.`,
+      });
+    }
+    this.proposals.set(proposals);
+    if (!proposals.length)
+      this.message.set(
+        'No equality or set values in the current Investigation Context basket.',
+      );
+  }
+  protected confirmProposal(index: number): void {
+    const proposal = this.proposals()[index];
+    const item = this.draft();
+    if (!item || !proposal) return;
+    this.updateDraft({
+      context: { ...item.context, [proposal.key]: proposal.value },
+    });
+    this.proposals.update((all) => all.filter((_, i) => i !== index));
+  }
+  protected dismissProposal(index: number): void {
+    this.proposals.update((all) => all.filter((_, i) => i !== index));
+  }
+
+  protected async save(): Promise<void> {
+    const context = this.scope.context();
+    const item = this.draft();
+    if (!context || !item) return;
+    if (!detectiveSlug.test(item.id) || !item.title.trim()) {
+      this.error.set('Use a slug ID and title.');
+      return;
+    }
+    const created = item.version === 0;
+    this.busy.set(true);
+    this.error.set('');
+    try {
+      const response = await firstValueFrom(
+        this.client.action(context, {
+          type: created ? 'create-case' : 'update-case',
+          case: item,
+        }),
+      );
+      if (!response.case)
+        throw new Error('The agent did not return the saved Case.');
+      await this.refresh();
+      this.draft.set(undefined);
+      await this.router.navigateByUrl(this.caseUrl(response.case.id), {
+        replaceUrl: created,
+      });
+      this.message.set(`Saved Case ${response.case.id}.`);
+    } catch (error) {
+      this.error.set(detectiveErrorMessage(error));
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  private async updateCase(
+    patch: Partial<DetectiveCase>,
+    success: string,
+  ): Promise<boolean> {
+    const context = this.scope.context();
+    const item = this.current();
+    if (!context || !item) return false;
+    this.busy.set(true);
+    this.error.set('');
+    try {
+      const response = await firstValueFrom(
+        this.client.action(context, {
+          type: 'update-case',
+          case: { ...item, ...patch },
+        }),
+      );
+      if (!response.case)
+        throw new Error('The agent did not return the updated Case.');
+      await this.refresh();
+      this.message.set(success);
+      return true;
+    } catch (error) {
+      this.error.set(detectiveErrorMessage(error));
+      return false;
+    } finally {
+      this.busy.set(false);
+    }
+  }
+  protected closeCase(): Promise<boolean> {
+    const reason = this.closureReason().trim();
+    if (!reason) {
+      this.error.set('A closure reason is required.');
+      return Promise.resolve(false);
+    }
+    return this.updateCase(
+      { status: 'closed', closureReason: reason },
+      'Case closed.',
+    );
+  }
+  protected reopenCase(): Promise<boolean> {
+    return this.updateCase({ status: 'active' }, 'Case reopened.');
+  }
+  protected archiveCase(): Promise<boolean> {
+    return this.updateCase({ status: 'archived' }, 'Case archived.');
+  }
+  protected linkIncident(): Promise<boolean> {
+    const item = this.current();
+    const ref = this.incidentRef().trim();
+    if (!item) return Promise.resolve(false);
+    if (!/^[^/]+\/[^/]+$/u.test(ref)) {
+      this.error.set('Use incident-store/incident-id.');
+      return Promise.resolve(false);
+    }
+    return this.updateCase(
+      { incidentRefs: [...new Set([...(item.incidentRefs || []), ref])] },
+      'Incident linked.',
+    );
+  }
+  protected attachScenario(scenario: InvestigationScenario): Promise<boolean> {
+    const item = this.current();
+    if (!item) return Promise.resolve(false);
+    return this.updateCase(
+      {
+        scenarioRefs: [...new Set([...(item.scenarioRefs || []), scenario.id])],
+      },
+      'Scenario added to Case. Choose a step to run manually.',
+    );
+  }
+  protected addFinding(): Promise<void> {
+    const item = this.current();
+    const text = this.findingText().trim();
+    if (!item || !text) return Promise.resolve();
+    const evidenceRefs = this.findingEvidence()
+      .split(',')
+      .map((ref) => ref.trim())
+      .filter(Boolean);
+    if (this.findingStatus() === 'confirmed' &&
+        (!evidenceRefs.length || evidenceRefs.some((ref) =>
+          !item.evidence.some((evidence) => evidence.id === ref || evidence.ref === ref) &&
+          !item.runRefs.includes(ref)))) {
+      this.error.set('A confirmed finding must link at least one existing evidence or run reference.');
+      return Promise.resolve();
+    }
+    const finding: CaseFinding = {
+      id: `finding-${crypto.randomUUID()}`,
+      text,
+      status: this.findingStatus(),
+      evidenceRefs,
+    };
+    return this.updateCase(
+      { findings: [...(item.findings || []), finding] },
+      'Finding saved.',
+    ).then((saved) => {
+      if (saved) this.findingText.set('');
+    });
+  }
+  protected addEvidence(): Promise<void> {
+    const item = this.current();
+    const ref = this.evidenceRef().trim();
+    if (!item || !ref) return Promise.resolve();
+    const evidence: EvidenceRef = {
+      id: `evidence-${crypto.randomUUID()}`,
+      kind: this.evidenceKind(),
+      ref,
+      note: this.evidenceNote().trim(),
+    };
+    return this.updateCase(
+      { evidence: [...(item.evidence || []), evidence] },
+      'Evidence reference saved.',
+    ).then((saved) => {
+      if (saved) {
+        this.evidenceRef.set('');
+        this.evidenceNote.set('');
+      }
+    });
+  }
+  protected async addNote(): Promise<void> {
+    const context = this.scope.context();
+    const item = this.current();
+    const message = this.noteText().trim();
+    if (!context || !item || !message) return;
+    const event: CaseEvent = {
+      id: `note-${crypto.randomUUID()}`,
+      type: 'note',
+      message,
+    };
+    this.busy.set(true);
+    this.error.set('');
+    try {
+      await firstValueFrom(
+        this.client.action(context, {
+          type: 'append-event',
+          caseId: item.id,
+          event,
+        }),
+      );
+      await this.refresh();
+      this.noteText.set('');
+      this.message.set('Note added to the timeline.');
+    } catch (error) {
+      this.error.set(detectiveErrorMessage(error));
+    } finally {
+      this.busy.set(false);
+    }
+  }
+  protected runOf(id: string): CheckRun | undefined {
+    return this.caseRuns().find((run) => run.id === id);
+  }
+  protected async loadOlderRuns(): Promise<void> {
+    const context = this.scope.context();
+    const state = this.state();
+    if (!context || !state?.runsHasMore || !state.runsNextCursor) return;
+    this.olderRunsBusy.set(true);
+    this.error.set('');
+    try {
+      const older = await firstValueFrom(
+        this.client.state(context, state.runsNextCursor),
+      );
+      const seen = new Set(state.runs.map((run) => run.id));
+      this.state.set({
+        ...older,
+        runs: [...state.runs, ...older.runs.filter((run) => !seen.has(run.id))],
+      });
+    } catch (error) {
+      this.error.set(detectiveErrorMessage(error));
+    } finally {
+      this.olderRunsBusy.set(false);
+    }
+  }
+
+  private async refresh(): Promise<void> {
+    const context = this.scope.context();
+    if (context)
+      this.state.set(await firstValueFrom(this.client.state(context)));
+  }
+}

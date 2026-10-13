@@ -105,6 +105,16 @@ export class ProjectMenuTopComponent implements OnDestroy {
         icon: 'chatbubbles-outline',
       },
       {
+        path: 'checks',
+        title: 'Checks',
+        icon: 'checkmark-done-outline',
+      },
+      {
+        path: 'detective',
+        title: 'Detective',
+        icon: 'compass-outline',
+      },
+      {
         path: 'boards',
         title: 'Boards',
         icon: 'easel-outline',

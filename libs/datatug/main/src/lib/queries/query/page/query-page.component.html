@@ -13,6 +13,9 @@
       [pageTitle]="queryPageTitle()"
     />
     <ion-buttons slot="end">
+      @if (queryValidatorsHref; as href) {
+        <ion-button [href]="href" fill="clear" aria-label="Edit query Validators">Validators</ion-button>
+      }
       <ion-button
         class="query-save-button"
         slot="end"
