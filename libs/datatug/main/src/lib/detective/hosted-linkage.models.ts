@@ -53,6 +53,29 @@ export type HostedKnowledgeKind =
   | 'query'
   | 'scenario';
 
+export interface HostedKnowledgeTarget {
+  system: 'meaninggraph' | 'modelspec';
+  repository: string;
+  resourceId: string;
+  expectedRevision: string;
+}
+
+export interface HostedKnowledgeHandoff {
+  kind: 'knowledge-handoff';
+  status: 'ready-for-target-review';
+  target: HostedKnowledgeTarget;
+  proposalId: string;
+  proposalVersion: number;
+  caseId: string;
+  claimStatus: 'hypothesis' | 'confirmed';
+  statement: string;
+  evidenceRefs: string[];
+  findingRefs?: string[];
+  preparedAt: string;
+  preparedBy: string;
+  receipt: string;
+}
+
 export interface HostedKnowledgeProposal {
   id: string;
   caseId: string;
@@ -60,6 +83,8 @@ export interface HostedKnowledgeProposal {
   title: string;
   statement: string;
   evidenceRefs: string[];
+  findingRefs?: string[];
+  claimStatus: 'hypothesis' | 'confirmed';
   status: 'draft' | 'reviewed' | 'rejected';
   version: number;
   createdAt: string;
@@ -67,6 +92,7 @@ export interface HostedKnowledgeProposal {
   reviewedAt?: string;
   reviewedBy?: string;
   reviewNote?: string;
+  handoffs?: HostedKnowledgeHandoff[];
 }
 
 export interface HostedKnowledgePage {
@@ -80,19 +106,32 @@ export type HostedKnowledgeAction =
       type: 'save-draft';
       proposal: Pick<
         HostedKnowledgeProposal,
-        'id' | 'caseId' | 'kind' | 'title' | 'statement' | 'evidenceRefs'
+        | 'id'
+        | 'caseId'
+        | 'kind'
+        | 'title'
+        | 'statement'
+        | 'evidenceRefs'
+        | 'findingRefs'
+        | 'claimStatus'
       >;
       ifMatch?: number;
     }
   | {
-      type: 'review' | 'reject' | 'export';
+      type: 'review' | 'reject';
       proposalId: string;
       ifMatch: number;
       reviewNote?: string;
+    }
+  | {
+      type: 'export';
+      proposalId: string;
+      ifMatch: number;
+      target: HostedKnowledgeTarget;
     };
 
 export interface HostedKnowledgeResponse {
   proposal?: HostedKnowledgeProposal;
-  export?: HostedKnowledgeProposal;
+  export?: HostedKnowledgeHandoff;
   receipt: string;
 }

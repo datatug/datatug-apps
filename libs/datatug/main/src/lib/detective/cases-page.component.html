@@ -779,7 +779,7 @@
                 <p>
                   Draft possible field meanings, relationships, invariants,
                   queries or Scenarios from this Case. Review is explicit;
-                  export stays private and does not publish to a registry.
+                  handoff stays private and does not publish to a registry.
                 </p>
                 @if (knowledgeLoadError()) {
                   <ion-note color="danger" role="alert"
@@ -794,6 +794,12 @@
                         <h3>{{ proposal.title }} · {{ proposal.status }}</h3>
                         <p>{{ proposal.kind }} · {{ proposal.statement }}</p>
                         <p>
+                          Claim: {{ proposal.claimStatus }}
+                          @if (proposal.findingRefs?.length) {
+                            · Findings: {{ proposal.findingRefs.join(', ') }}
+                          }
+                        </p>
+                        <p>
                           Evidence IDs: {{ proposal.evidenceRefs.join(', ') }}
                         </p>
                         @if (proposal.reviewNote) {
@@ -805,7 +811,8 @@
                             fill="outline"
                             [disabled]="
                               knowledgeBusy() ||
-                              !state()?.capabilities?.canWrite
+                              !state()?.capabilities?.canWrite ||
+                              item.status === 'archived'
                             "
                             (click)="reviewKnowledge(proposal, 'review')"
                             >Mark reviewed</ion-button
@@ -816,7 +823,8 @@
                             color="medium"
                             [disabled]="
                               knowledgeBusy() ||
-                              !state()?.capabilities?.canWrite
+                              !state()?.capabilities?.canWrite ||
+                              item.status === 'archived'
                             "
                             (click)="reviewKnowledge(proposal, 'reject')"
                             >Reject</ion-button
@@ -826,9 +834,30 @@
                           <ion-button
                             size="small"
                             fill="outline"
-                            [disabled]="knowledgeBusy()"
-                            (click)="reviewKnowledge(proposal, 'export')"
-                            >Prepare private export</ion-button
+                            [disabled]="
+                              knowledgeBusy() ||
+                              !state()?.capabilities?.canWrite ||
+                              item.status === 'archived'
+                            "
+                            (click)="beginKnowledgeHandoff(proposal)"
+                            >Choose handoff target</ion-button
+                          >
+                        }
+                        @for (
+                          handoff of proposal.handoffs || [];
+                          track handoff.receipt
+                        ) {
+                          <p>
+                            Private handoff: {{ handoff.target.system }} ·
+                            {{ handoff.target.repository }} /
+                            {{ handoff.target.resourceId }} @
+                            {{ handoff.target.expectedRevision }}
+                          </p>
+                          <ion-button
+                            size="small"
+                            fill="clear"
+                            (click)="exportedKnowledge.set(handoff)"
+                            >View handoff</ion-button
                           >
                         }
                       </ion-label></ion-item
@@ -841,6 +870,79 @@
                     >
                   }
                 </ion-list>
+                @if (handoffProposalId()) {
+                  <h3>Prepare private handoff for {{ handoffProposalId() }}</h3>
+                  <p>
+                    Choose the exact MeaningGraph or ModelSpec resource and
+                    revision. A reviewer must apply this handoff in the target
+                    registry.
+                  </p>
+                  <ion-item
+                    ><ion-label position="stacked">Target registry</ion-label>
+                    <ion-select
+                      aria-label="Target registry"
+                      [value]="handoffSystem()"
+                      (ionChange)="
+                        handoffSystem.set($event.detail.value || 'meaninggraph')
+                      "
+                    >
+                      <ion-select-option value="meaninggraph"
+                        >MeaningGraph</ion-select-option
+                      >
+                      <ion-select-option value="modelspec"
+                        >ModelSpec</ion-select-option
+                      >
+                    </ion-select>
+                  </ion-item>
+                  <ion-item
+                    ><ion-label position="stacked"
+                      >Repository (owner/name)</ion-label
+                    >
+                    <ion-input
+                      aria-label="Target repository"
+                      [value]="handoffRepository()"
+                      (ionInput)="
+                        handoffRepository.set($event.detail.value || '')
+                      "
+                    />
+                  </ion-item>
+                  <ion-item
+                    ><ion-label position="stacked">Resource ID</ion-label>
+                    <ion-input
+                      aria-label="Target resource ID"
+                      [value]="handoffResourceId()"
+                      (ionInput)="
+                        handoffResourceId.set($event.detail.value || '')
+                      "
+                    />
+                  </ion-item>
+                  <ion-item
+                    ><ion-label position="stacked">Expected revision</ion-label>
+                    <ion-input
+                      aria-label="Target expected revision"
+                      [value]="handoffExpectedRevision()"
+                      (ionInput)="
+                        handoffExpectedRevision.set($event.detail.value || '')
+                      "
+                    />
+                  </ion-item>
+                  <ion-button
+                    size="small"
+                    [disabled]="
+                      knowledgeBusy() ||
+                      !state()?.capabilities?.canWrite ||
+                      item.status === 'archived'
+                    "
+                    (click)="prepareKnowledgeHandoff()"
+                    >Prepare private handoff</ion-button
+                  >
+                  <ion-button
+                    size="small"
+                    fill="clear"
+                    (click)="handoffProposalId.set('')"
+                    >Cancel</ion-button
+                  >
+                }
                 @if (knowledgeHasMore()) {
                   <ion-button
                     fill="clear"
@@ -851,15 +953,19 @@
                 }
                 @if (exportedKnowledge(); as export) {
                   <ion-note role="status"
-                    >Private reviewed export: {{ export.title }} —
-                    {{ export.statement }}</ion-note
+                    >Private handoff for {{ export.target.system }}:
+                    {{ export.target.repository }} /
+                    {{ export.target.resourceId }} at revision
+                    {{ export.target.expectedRevision }}. Claim:
+                    {{ export.claimStatus }}. Ready for target review; no
+                    registry change has been made.</ion-note
                   >
                   <ion-item>
                     <ion-label position="stacked"
-                      >Private proposal JSON</ion-label
+                      >Private handoff receipt JSON</ion-label
                     >
                     <ion-textarea
-                      aria-label="Private proposal JSON"
+                      aria-label="Private handoff receipt JSON"
                       [readonly]="true"
                       [autoGrow]="true"
                       [value]="exportedKnowledgeJson()"
@@ -909,6 +1015,63 @@
                         knowledgeStatement.set($event.detail.value || '')
                       "
                   /></ion-item>
+                  <ion-item
+                    ><ion-label position="stacked">Claim status</ion-label>
+                    <ion-select
+                      aria-label="Knowledge claim status"
+                      [value]="knowledgeClaimStatus()"
+                      (ionChange)="
+                        knowledgeClaimStatus.set(
+                          $event.detail.value || 'hypothesis'
+                        )
+                      "
+                    >
+                      <ion-select-option value="hypothesis"
+                        >Hypothesis</ion-select-option
+                      >
+                      <ion-select-option value="confirmed"
+                        >Confirmed by Case finding</ion-select-option
+                      >
+                    </ion-select>
+                  </ion-item>
+                  @if (knowledgeClaimStatus() === 'confirmed') {
+                    <p>
+                      Select confirmed Case findings that support every selected
+                      evidence ID:
+                    </p>
+                    <ion-list>
+                      @for (finding of item.findings; track finding.id) {
+                        @if (finding.status === 'confirmed') {
+                          <ion-item
+                            ><ion-checkbox
+                              slot="start"
+                              [checked]="
+                                knowledgeFindings().includes(finding.id)
+                              "
+                              (ionChange)="
+                                selectKnowledgeFinding(
+                                  finding.id,
+                                  $event.detail.checked
+                                )
+                              "
+                              [ariaLabel]="
+                                'Use confirmed finding ' + finding.id
+                              "
+                            />
+                            <ion-label
+                              >{{ finding.id }} · {{ finding.text }}</ion-label
+                            >
+                          </ion-item>
+                        }
+                      } @empty {
+                        <ion-item
+                          ><ion-label
+                            >No Case findings yet.</ion-label
+                          ></ion-item
+                        >
+                      }
+                    </ion-list>
+                  }
                   <p>Select supporting Case evidence IDs:</p>
                   <ion-list>
                     @for (evidence of item.evidence; track evidence.id) {
@@ -1028,8 +1191,8 @@
                 <p>Follow the evidence. Keep the investigation resumable.</p>
                 @if (queryParams().get('incident'); as incident) {
                   <p>
-                    Start a Case for Incident {{ incident }}. Review its context;
-                    the link is saved with the Case.
+                    Start a Case for Incident {{ incident }}. Review its
+                    context; the link is saved with the Case.
                   </p>
                 }
               </div>

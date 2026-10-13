@@ -54,8 +54,10 @@ import { useDetectivePageContext } from './detective-page-context';
 import { DetectiveDemoStarterComponent } from './detective-demo-starter.component';
 import {
   HostedIncidentView,
+  HostedKnowledgeHandoff,
   HostedKnowledgeKind,
   HostedKnowledgeProposal,
+  HostedKnowledgeTarget,
 } from './hosted-linkage.models';
 import {
   CaseEvent,
@@ -194,9 +196,19 @@ export class CasesPageComponent {
   protected readonly knowledgeTitle = signal('');
   protected readonly knowledgeStatement = signal('');
   protected readonly knowledgeEvidence = signal<string[]>([]);
+  protected readonly knowledgeClaimStatus = signal<'hypothesis' | 'confirmed'>(
+    'hypothesis',
+  );
+  protected readonly knowledgeFindings = signal<string[]>([]);
   protected readonly knowledgeReviewNote = signal('');
+  protected readonly handoffProposalId = signal('');
+  protected readonly handoffSystem =
+    signal<HostedKnowledgeTarget['system']>('meaninggraph');
+  protected readonly handoffRepository = signal('');
+  protected readonly handoffResourceId = signal('');
+  protected readonly handoffExpectedRevision = signal('');
   protected readonly exportedKnowledge = signal<
-    HostedKnowledgeProposal | undefined
+    HostedKnowledgeHandoff | undefined
   >(undefined);
   protected readonly exportedKnowledgeJson = computed(() =>
     this.exportedKnowledge()
@@ -322,6 +334,8 @@ export class CasesPageComponent {
     this.knowledgeLoadError.set('');
     this.exportedKnowledge.set(undefined);
     this.knowledgeEvidence.set([]);
+    this.knowledgeFindings.set([]);
+    this.handoffProposalId.set('');
     if (context?.kind !== 'cloud' || !caseId) return;
     const incidents = this.client.linkedIncidents(context, caseId).subscribe({
       next: (page) => {
@@ -832,6 +846,19 @@ export class CasesPageComponent {
       checked ? [...new Set([...all, id])] : all.filter((ref) => ref !== id),
     );
   }
+  protected selectKnowledgeFinding(id: string, checked: boolean): void {
+    this.knowledgeFindings.update((all) =>
+      checked ? [...new Set([...all, id])] : all.filter((ref) => ref !== id),
+    );
+  }
+  protected beginKnowledgeHandoff(proposal: HostedKnowledgeProposal): void {
+    const previous = proposal.handoffs?.at(-1)?.target;
+    this.handoffProposalId.set(proposal.id);
+    this.handoffSystem.set(previous?.system ?? 'meaninggraph');
+    this.handoffRepository.set(previous?.repository ?? '');
+    this.handoffResourceId.set(previous?.resourceId ?? '');
+    this.handoffExpectedRevision.set(previous?.expectedRevision ?? '');
+  }
   protected async loadMoreKnowledge(): Promise<void> {
     const context = this.scope.context();
     const after = this.knowledgeCursor();
@@ -863,12 +890,32 @@ export class CasesPageComponent {
     const title = this.knowledgeTitle().trim();
     const statement = this.knowledgeStatement().trim();
     const evidenceRefs = this.knowledgeEvidence();
+    const findingRefs = this.knowledgeFindings();
+    const claimStatus = this.knowledgeClaimStatus();
     if (context?.kind !== 'cloud' || !item) return;
     if (!title || !statement || !evidenceRefs.length) {
       this.error.set(
         'A knowledge draft needs a title, statement, and at least one Case evidence ID.',
       );
       return;
+    }
+    if (claimStatus === 'confirmed') {
+      const confirmed = (item.findings || []).filter(
+        (finding) =>
+          finding.status === 'confirmed' && findingRefs.includes(finding.id),
+      );
+      const supported = new Set(
+        confirmed.flatMap((finding) => finding.evidenceRefs || []),
+      );
+      if (
+        !confirmed.length ||
+        evidenceRefs.some((ref) => !supported.has(ref))
+      ) {
+        this.error.set(
+          'Confirmed knowledge needs a confirmed Case finding supporting every selected evidence ID.',
+        );
+        return;
+      }
     }
     this.knowledgeBusy.set(true);
     this.error.set('');
@@ -883,6 +930,8 @@ export class CasesPageComponent {
             title,
             statement,
             evidenceRefs,
+            findingRefs,
+            claimStatus,
           },
           ifMatch: 0,
         }),
@@ -896,6 +945,8 @@ export class CasesPageComponent {
       this.knowledgeTitle.set('');
       this.knowledgeStatement.set('');
       this.knowledgeEvidence.set([]);
+      this.knowledgeFindings.set([]);
+      this.knowledgeClaimStatus.set('hypothesis');
       this.message.set('Private knowledge draft saved for review.');
     } catch (error) {
       this.error.set(detectiveErrorMessage(error, true));
@@ -905,7 +956,7 @@ export class CasesPageComponent {
   }
   protected async reviewKnowledge(
     proposal: HostedKnowledgeProposal,
-    type: 'review' | 'reject' | 'export',
+    type: 'review' | 'reject',
   ): Promise<void> {
     const context = this.scope.context();
     if (context?.kind !== 'cloud') return;
@@ -917,34 +968,80 @@ export class CasesPageComponent {
           type,
           proposalId: proposal.id,
           ifMatch: proposal.version,
-          ...(type === 'export'
-            ? {}
-            : { reviewNote: this.knowledgeReviewNote().trim() }),
+          reviewNote: this.knowledgeReviewNote().trim(),
         }),
       );
-      if (type === 'export') {
-        if (!response.export)
-          throw new Error(
-            'The project store did not return the private export.',
-          );
-        this.exportedKnowledge.set(response.export);
-        this.message.set('Private reviewed proposal export is ready below.');
-      } else {
-        const reviewedProposal = response.proposal;
-        if (!reviewedProposal)
-          throw new Error(
-            'The project store did not return the reviewed proposal.',
-          );
-        this.knowledgeProposals.update((all) =>
-          all.map((entry) =>
-            entry.id === proposal.id ? reviewedProposal : entry,
-          ),
+      const reviewedProposal = response.proposal;
+      if (!reviewedProposal)
+        throw new Error(
+          'The project store did not return the reviewed proposal.',
         );
-        this.knowledgeReviewNote.set('');
-        this.message.set(
-          `Knowledge proposal ${type === 'review' ? 'reviewed' : 'rejected'}.`,
+      this.knowledgeProposals.update((all) =>
+        all.map((entry) =>
+          entry.id === proposal.id ? reviewedProposal : entry,
+        ),
+      );
+      this.knowledgeReviewNote.set('');
+      this.message.set(
+        `Knowledge proposal ${type === 'review' ? 'reviewed' : 'rejected'}.`,
+      );
+    } catch (error) {
+      this.error.set(detectiveErrorMessage(error, true));
+    } finally {
+      this.knowledgeBusy.set(false);
+    }
+  }
+  protected async prepareKnowledgeHandoff(): Promise<void> {
+    const context = this.scope.context();
+    const proposal = this.caseKnowledge().find(
+      (item) => item.id === this.handoffProposalId(),
+    );
+    if (
+      context?.kind !== 'cloud' ||
+      !proposal ||
+      proposal.status !== 'reviewed'
+    )
+      return;
+    const target: HostedKnowledgeTarget = {
+      system: this.handoffSystem(),
+      repository: this.handoffRepository().trim(),
+      resourceId: this.handoffResourceId().trim(),
+      expectedRevision: this.handoffExpectedRevision().trim(),
+    };
+    if (
+      !target.repository.includes('/') ||
+      !target.resourceId ||
+      !target.expectedRevision
+    ) {
+      this.error.set(
+        'Enter a repository-qualified target, resource ID, and exact expected revision.',
+      );
+      return;
+    }
+    this.knowledgeBusy.set(true);
+    this.error.set('');
+    try {
+      const response = await firstValueFrom(
+        this.client.knowledgeAction(context, {
+          type: 'export',
+          proposalId: proposal.id,
+          ifMatch: proposal.version,
+          target,
+        }),
+      );
+      const updatedProposal = response.proposal;
+      if (!response.export || !updatedProposal)
+        throw new Error(
+          'The project store did not return the private handoff receipt.',
         );
-      }
+      this.knowledgeProposals.update((all) =>
+        all.map((item) => (item.id === proposal.id ? updatedProposal : item)),
+      );
+      this.exportedKnowledge.set(response.export);
+      this.handoffProposalId.set('');
+      this.message.set(
+        'Private target-bound handoff is ready for external review. No registry change was made.',
+      );
     } catch (error) {
       this.error.set(detectiveErrorMessage(error, true));
     } finally {
