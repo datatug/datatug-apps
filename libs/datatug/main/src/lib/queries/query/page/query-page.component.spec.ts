@@ -717,10 +717,11 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     const run = vi.spyOn(sqlite, 'runTugQL');
     const sync = (): void => (component as unknown as { syncScopeAndBindings(): void }).syncScopeAndBindings();
     const originalProject = component.project;
+    if (!originalProject) throw new Error('Expected the Author project fixture.');
     const originalEnvironment = component.envId;
     const originalSecurityContext = agentContext.securityContextId();
     const changes = [
-      () => { component.project = { ...originalProject!, ref: { ...originalProject!.ref, projectId: 'other-project' } }; },
+      () => { component.project = { ...originalProject, ref: { ...originalProject.ref, projectId: 'other-project' } }; },
       () => { component.envId = 'other-environment'; },
       () => { agentContext.securityContextId.set('other-principal'); },
     ];
