@@ -4,7 +4,6 @@
     @for (session of workspace.openSessions(); track session.id) {
       <ion-tab-button [id]="'session-tab-' + session.id" [tab]="session.id" [href]="sessionHref(session.id)"
         [attr.tabindex]="focusTabId() === session.id ? 0 : -1"
-        [attr.aria-label]="session.title + ', ' + session.state + ' session'"
         (keydown)="tabKeydown($event, session.id)">
         <ion-label>{{ session.title }} <small>{{ session.state === 'active' ? 'Running' : session.state }}</small></ion-label>
       </ion-tab-button>

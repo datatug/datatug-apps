@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { SessionContextApiService } from './session-context-api.service';
 import { SessionWorkspaceService, SESSION_DEVICE_DRAFTS, SessionDeviceDraft, SessionPendingOperation } from './session-workspace.service';
-import { ContextCapabilities, ContextCommand, ContextSnapshot } from './session-context-contract';
+import { ContextCapabilities, ContextCommand, ContextReceipt, ContextSnapshot } from './session-context-contract';
 
 const project = { storeId: 'http-localhost:8989', projectId: 'shop' };
 const uat = { environmentId: 'uat', identityDomain: 'uat-orders' }, prod = { environmentId: 'prod', identityDomain: 'prod-orders' };
@@ -108,6 +108,74 @@ describe('SessionWorkspaceService authority and draft boundaries', () => {
     expect(commands).toHaveLength(1);
     expect(pending.size).toBe(1);
     expect(service.error()).toContain('operation is confirmed');
+  });
+
+  it('releases retry busy state when the operation lookup fails without a definitive receipt', async () => {
+    api.command.mockRejectedValueOnce({ status: 0 });
+    service.stageEnabled(false);
+    await service.apply();
+    expect(service.canRetry()).toBe(true);
+    api.operation.mockRejectedValueOnce({ status: 503, message: 'temporarily unavailable' });
+
+    await service.retry();
+
+    expect(service.canRetry()).toBe(true);
+    expect(service.busy()).toBe(false);
+    expect(pending.size).toBe(1);
+    expect(api.command).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not apply a delayed operation lookup after changing principal and project', async () => {
+    api.command.mockRejectedValueOnce({ status: 0 });
+    service.stageEnabled(false); await service.apply();
+    const original = [...pending.values()][0];
+    const operation = deferred<ContextReceipt>();
+    api.operation.mockImplementationOnce(() => operation.promise);
+    const readCount = api.read.mock.calls.length;
+    const retry = service.retry();
+    await Promise.resolve();
+    expect(api.operation).toHaveBeenCalledWith(project, capabilities, original.command.opId);
+
+    const projectB = { ...project, projectId: 'shop-b' };
+    const capabilitiesB = { ...capabilities, actorId: 'principal-b', databaseId: 'ops-b', projectId: 'shop-b' };
+    api.capabilities.mockResolvedValue(capabilitiesB);
+    api.list.mockResolvedValueOnce({ items: [snapshot('b1').session], hasMore: false });
+    service.setActor('principal-b');
+    await service.openProject(projectB);
+    operation.resolve({ opId: original.command.opId, actor: 'principal-a', payloadDigest: 'sha256:receipt', sessionId: 's1', sessionVersion: 4, action: original.command.action, at: '2026-10-13T00:00:00Z' });
+    await retry;
+
+    expect(api.read).toHaveBeenCalledTimes(readCount);
+    expect(service.sessions().map((session) => session.id)).toEqual(['b1']);
+    expect(service.snapshotFor('s1')).toBeUndefined();
+    expect(service.canRetry()).toBe(false);
+    expect(pending.size).toBe(1);
+  });
+
+  it('does not apply a delayed snapshot read after changing principal and project', async () => {
+    api.command.mockRejectedValueOnce({ status: 0 });
+    service.stageEnabled(false); await service.apply();
+    const original = [...pending.values()][0];
+    api.operation.mockResolvedValueOnce({ opId: original.command.opId, sessionId: 's1', action: original.command.action });
+    const delayedSnapshot = deferred<ContextSnapshot>();
+    api.read.mockImplementationOnce(() => delayedSnapshot.promise);
+    const retry = service.retry();
+    await Promise.resolve(); await Promise.resolve();
+    expect(api.read).toHaveBeenCalledWith(project, capabilities, 's1');
+
+    const projectB = { ...project, projectId: 'shop-b' };
+    const capabilitiesB = { ...capabilities, actorId: 'principal-b', databaseId: 'ops-b', projectId: 'shop-b' };
+    api.capabilities.mockResolvedValue(capabilitiesB);
+    api.list.mockResolvedValueOnce({ items: [snapshot('b1').session], hasMore: false });
+    service.setActor('principal-b');
+    await service.openProject(projectB);
+    delayedSnapshot.resolve(snapshot('s1'));
+    await retry;
+
+    expect(service.sessions().map((session) => session.id)).toEqual(['b1']);
+    expect(service.snapshotFor('s1')).toBeUndefined();
+    expect(service.canRetry()).toBe(false);
+    expect(pending.size).toBe(1);
   });
 
   it('reports Core-valid client outcome fields without claiming server artifacts', async () => {

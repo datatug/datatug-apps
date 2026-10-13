@@ -299,37 +299,53 @@ export class SessionWorkspaceService {
   async retry(): Promise<void> {
     const pending = this.pending();
     if (!pending || this.busy()) return;
+    const generation = this.generation;
+    const operationIsCurrent = (): boolean => generation === this.generation && this.pending() === pending &&
+      equalProjectRef(this.project, pending.project);
+    const contextIsCurrent = (): boolean => operationIsCurrent() && this.capabilities()?.actorId === pending.capabilities.actorId &&
+      this.capabilities()?.databaseId === pending.capabilities.databaseId && this.capabilities()?.projectId === pending.capabilities.projectId;
+    const isCurrent = contextIsCurrent;
     const capabilities = this.capabilities();
     if (!capabilities || pending.capabilities.actorId !== capabilities.actorId) {
+      if (!operationIsCurrent()) return;
       this.pending.set(undefined);
       this.error.set('The recovered operation belongs to a different local principal. It was not replayed.');
       return;
     }
+    this.busy.set(true);
     let receipt: ContextReceipt;
     try {
       receipt = await this.api.operation(pending.project, pending.capabilities, pending.command.opId);
+      if (!isCurrent()) return;
     } catch (error) {
+      if (!isCurrent()) return;
       if (errorStatus(error) !== 404) {
         this.error.set(errorMessage(error));
+        this.busy.set(false);
         return;
       }
       // Only a missing operation receipt permits retrying this exact command.
-      await this.execute(pending.command, true);
+      this.busy.set(false);
+      await this.execute(pending.command, true, { generation, pending, isCurrent });
       return;
     }
     const targetSessionId = pending.command.action === 'importLegacy' ? receipt.sessionId : pending.command.sessionId;
     try {
       const snapshot = await this.api.read(pending.project, pending.capabilities, targetSessionId);
+      if (!isCurrent()) return;
       await this.drafts.removePending(this.pendingKey(pending.project, pending.capabilities));
+      if (!isCurrent()) return;
       this.acceptSnapshot(snapshot);
       this.lastReceipt.set(receipt);
       this.pending.set(undefined);
       this.error.set('');
     } catch (error) {
+      if (!isCurrent()) return;
       // The operation is confirmed. A snapshot read failure must never turn it
       // into a second dispatch, even when that read also returns 404.
       this.error.set(`The operation is confirmed, but its saved session could not be refreshed: ${errorMessage(error)}`);
     }
+    finally { if (generation === this.generation) this.busy.set(false); }
   }
   async pinInput(sessionId: string, scope: SessionScope, kind: 'dashboard' | 'chat' | 'query', definitionId: string, definitionRevision: string, text?: string, resolvedParameters?: Readonly<Record<string, TypedValue>>, definitionDocument?: ContextDefinitionDocument): Promise<{ runId: string; run: ContextRun; input: ContextInputSnapshot; revisions: readonly ContextEntryRevision[] } | undefined> {
     const snapshot = this.snapshotFor(sessionId), project = this.project, capabilities = this.capabilities();
@@ -398,7 +414,10 @@ export class SessionWorkspaceService {
     if (receipt?.resourceId !== runId || !Number.isSafeInteger(receipt.resourceVersion)) throw new Error('The execution plan version was not confirmed. No source query was started.');
     return receipt.resourceVersion;
   }
-  deviceViewKey(sessionId: string, kind: string): string { return JSON.stringify(['datatug-session-view/1', this.capabilities()?.actorId, projectRefToString(this.project), this.capabilities()?.databaseId, sessionId, kind]); }
+  deviceViewKey(sessionId: string, kind: string, authority?: { actorId?: string; databaseId?: string; project?: IProjectRef }): string {
+    return JSON.stringify(['datatug-session-view/1', authority?.actorId ?? this.capabilities()?.actorId,
+      projectRefToString(authority?.project ?? this.project), authority?.databaseId ?? this.capabilities()?.databaseId, sessionId, kind]);
+  }
   history(sessionId: string, cursor?: string) {
     const project = this.project, capabilities = this.capabilities();
     if (!project || !capabilities) throw new Error('The session authority is unavailable.');
@@ -457,55 +476,71 @@ export class SessionWorkspaceService {
     return value.kind === 'scalar' ? String(value.scalar?.value ?? 'null') : value.kind === 'set' ? `${value.values?.length ?? value.keys?.length ?? 0} values` : 'Unsupported value';
   }
 
-  private async execute(command: ContextCommand, retry = false): Promise<boolean> {
-    const project = retry ? this.pending()?.project : this.project;
-    const capabilities = retry ? this.pending()?.capabilities : this.capabilities();
+  private async execute(command: ContextCommand, retry = false, retryGuard?: { generation: number; pending: SessionPendingOperation; isCurrent: () => boolean }): Promise<boolean> {
+    const retryPending = retryGuard?.pending ?? this.pending();
+    const project = retry ? retryPending?.project : this.project;
+    const capabilities = retry ? retryPending?.capabilities : this.capabilities();
     if (!project || !capabilities || this.busy() || (!retry && this.pending())) return false;
+    if (retryGuard && !retryGuard.isCurrent()) return false;
     if (retry && capabilities.actorId !== this.capabilities()?.actorId) {
+      if (retryGuard && !retryGuard.isCurrent()) return false;
       this.pending.set(undefined);
       this.error.set('The recovered operation belongs to a different local principal. It was not replayed.');
       return false;
     }
     if (!capabilities.actions.includes(command.action)) { this.error.set('This server does not support this session action.'); return false; }
     const terminalOutcome = command.action === 'reportClientRun' || command.action === 'reportDashboard';
+    const generation = retryGuard?.generation ?? this.generation;
+    const isContextCurrent = (): boolean => generation === this.generation && equalProjectRef(this.project, project) &&
+      this.capabilities()?.actorId === capabilities.actorId && this.capabilities()?.databaseId === capabilities.databaseId &&
+      this.capabilities()?.projectId === capabilities.projectId;
+    const isCurrent = (): boolean => isContextCurrent() && (!retryGuard || retryGuard.isCurrent());
     // An unrelated device-draft quota error cannot prevent the receipt for
     // source work that has already been accepted or executed.
     if (!terminalOutcome && !(await this.flushDraft())) return false;
-    const generation = this.generation;
-    const pending = { project, capabilities, command };
+    if (!isCurrent()) return false;
+    const pending = retry ? retryPending : { project, capabilities, command };
+    if (!pending) return false;
     const pendingKey = this.pendingKey(project, capabilities);
     let dispatched = false;
     let commandAccepted = false;
     this.pending.set(pending); this.busy.set(true); this.error.set('');
     try {
       await this.drafts.writePending(pendingKey, pending);
+      if (!isCurrent()) return false;
       dispatched = true;
       const receipt = await this.api.command(project, capabilities, command);
+      if (!isCurrent()) return false;
       commandAccepted = true;
       const targetSessionId = command.action === 'importLegacy' ? receipt.sessionId : command.sessionId;
       if (!contextOpaqueId(targetSessionId)) throw new Error('The server returned an invalid imported session ID.');
       const snapshot = await this.api.read(project, capabilities, targetSessionId);
+      if (!isCurrent()) return false;
       await this.drafts.removePending(pendingKey);
-      if (generation !== this.generation) return false;
+      if (!isCurrent()) return false;
       this.acceptSnapshot(snapshot);
       this.lastReceipt.set(receipt);
       this.pending.set(undefined);
       return true;
     } catch (error) {
-      if (generation !== this.generation) return false;
+      if (!isCurrent()) return false;
       const status = errorStatus(error);
       if (!dispatched || (!commandAccepted && [400, 401, 403, 404, 409, 422].includes(status as number))) {
         await this.drafts.removePending(pendingKey).catch(() => undefined);
+        if (!isCurrent()) return false;
         this.pending.set(undefined);
         if (status === 401 || status === 403) {
           this.snapshots.update((snapshots) => { const next = { ...snapshots }; delete next[command.sessionId]; return next; });
           this.sessions.update((sessions) => sessions.filter((session) => session.id !== command.sessionId));
         } else if (status === 409) {
-          try { this.acceptSnapshot(await this.api.read(project, capabilities, command.sessionId)); }
+          try {
+            const snapshot = await this.api.read(project, capabilities, command.sessionId);
+            if (isContextCurrent()) this.acceptSnapshot(snapshot);
+          }
           catch { /* Preserve the rejected draft; no source execution occurs on reread. */ }
         }
       }
-      this.error.set(!dispatched ? 'The pending operation could not be saved on this device. No command was sent. Retry saving before continuing.' : errorMessage(error));
+      if (isContextCurrent()) this.error.set(!dispatched ? 'The pending operation could not be saved on this device. No command was sent. Retry saving before continuing.' : errorMessage(error));
       return false;
     }
     finally { if (generation === this.generation) this.busy.set(false); }
