@@ -1,0 +1,36 @@
+name: Deploy Incidentius (Cloudflare)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - landings/incidentius/**
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - nx.json
+      - .github/workflows/deploy-incidentius.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-incidentius
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    uses: sneat-co/cicd/.github/workflows/cf-deploy.yml@85a40102079ee1fa00b7d3f127795b867b9d758b
+    with:
+      working-directory: .
+      # The test target depends on the checked production build. All checks
+      # must pass before the reusable workflow publishes this landing worker.
+      build-command: pnpm exec nx run incidentius-landing:test && pnpm exec nx run incidentius-landing:lint
+      wrangler-config: landings/incidentius/wrangler.jsonc
+      node-version: '24'
+      pnpm-version: '11.26.0'
+      cloudflare-account-id: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      smoke-command: node landings/incidentius/scripts/post-deploy-smoke.mjs
+    secrets:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
