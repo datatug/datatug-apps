@@ -44,3 +44,10 @@ Physical iPhone Safari is not available here. iPhone-profile WebKit is automated
 
 
 Settled simulated destination captures: [desktop](subscription-settings-chromium.png), [mobile WebKit](subscription-settings-mobile-webkit.png). These show the transferred beneficiary and unchanged scheduled cancellation, without a provider payment.
+
+
+### Broader library CI regression
+
+Initial app PR CI failed `datatug-main:test`. Reproduction with the full local library suite identified the existing My DataTug creation fixture missing the newly required `ActivatedRoute` provider. The fixture now uses the real Angular router, and a regression checks that the Subscriptions link follows TEST/live query changes. The full library suite passes: 3,159 tests, with three pre-existing skips (208 passing files, one skipped file). No runtime behavior or test gate was weakened. Logs: `/private/tmp/checkout-management-main-coverage-final.log` and `/private/tmp/checkout-management-account-link-tests.log`.
+
+Native host PR #1253 merged at `848775e1b63710a26ba18b4f9b4911b6fc47a6c9`; WB synchronized its clean canonical checkout and retired the source branch/worktree. The automatic exact-source Cloud Run deployment still requires its separate completion receipt.
