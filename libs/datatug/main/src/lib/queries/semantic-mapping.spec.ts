@@ -1,3 +1,4 @@
+import { semanticValidationState } from './semantic-mapping';
 import { describe, it, expect } from 'vitest';
 import {
   createSemanticModel,
@@ -74,5 +75,19 @@ describe('query semantic mapping', () => {
       rebuildMeaningBindings({ ...mapped, bindings: [] }).meaning.concepts,
     ).toEqual(bundle.meaning.concepts);
     expect(conceptId('Email', bundle.meaning.concepts)).toBe('email-item2');
+  });
+});
+
+
+describe('asynchronous meaning validation', () => {
+  it('keeps delayed fingerprints neutral and only marks resolved differences for review', () => {
+    const basis = { queryHash: 'a'.repeat(64), resultIndex: 0, columns: [{ name: 'ID', dataType: 'integer' }] };
+    const saved = createSemanticModel(basis);
+    expect(semanticValidationState(saved, undefined, '', false)).toBe('checking');
+    expect(semanticValidationState(saved, basis, '', false)).toBe('checking');
+    expect(semanticValidationState(saved, basis, basis.queryHash, false)).toBe('confirmed');
+    expect(semanticValidationState(saved, basis, 'b'.repeat(64), false)).toBe('review');
+    expect(semanticValidationState(saved, { ...basis, columns: [{ name: 'Changed', dataType: 'integer' }] }, basis.queryHash, false)).toBe('review');
+    expect(semanticValidationState(saved, basis, basis.queryHash, true)).toBe('review');
   });
 });

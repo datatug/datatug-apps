@@ -125,6 +125,8 @@ test('column meaning saves a complete personal copy, stays visible and survives 
     exact: true,
   });
   await expect(badge).toContainText('Invoice · Invoice number');
+  await expect(badge).not.toContainText('Needs review');
+  await expect(badge).not.toContainText('Checking meaning');
   await badge.click();
   await page
     .locator('ion-modal')

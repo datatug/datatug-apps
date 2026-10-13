@@ -1,7 +1,7 @@
 import { savedMeaningChoices, type SavedMeaningChoice } from '../../semantic-meaning-reuse';
 import { SemanticColumnHeaderComponent } from '../../semantic-column-header.component';
 import { SemanticMappingDialogComponent } from '../../semantic-mapping-dialog.component';
-import { validateSemanticModel, createSemanticModel, semanticQueryHash, sameSemanticBasis, type SemanticModel } from '../../semantic-mapping';
+import { validateSemanticModel, createSemanticModel, semanticQueryHash, semanticValidationState, type SemanticModel } from '../../semantic-mapping';
 import { isDevicePersonalQuery } from '../../device-personal-queries';
 import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
 import { readGithubProjectId } from '@datatug/project-address';
@@ -1424,10 +1424,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private readonly semanticNav = inject(DatatugNavService);
   private semanticBasisGeneration = 0;
   private semanticMappingLifetime = 0;
-  readonly semanticNeedsReview = computed(() => {
-    const saved = this.queryDef()?.semanticModel, basis = this.semanticBasis();
-    return !!saved && (!basis || this.displayedResultIsPreviousRun() || this.semanticCurrentHash() !== basis.queryHash || !sameSemanticBasis(saved.basis, basis));
-  });
+  readonly semanticValidation = computed(() => semanticValidationState(
+    this.queryDef()?.semanticModel, this.semanticBasis(), this.semanticCurrentHash(), this.displayedResultIsPreviousRun(),
+  ));
+  readonly semanticNeedsReview = computed(() => this.semanticValidation() === 'review');
   semanticColumnLabel(index: number): string {
     const bundle = this.semanticSaving() ? this.semanticBeforeSave() : this.queryDef()?.semanticModel;
     const binding = bundle?.bindings.find(item => item.columnIndex === index);
@@ -1436,7 +1436,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     return property ? [entity?.labels.en, property.labels.en, binding?.role].filter(Boolean).join(' · ') : '';
   }
   async openColumnMeaning(index: number): Promise<void> {
-    if (!this.semanticBasis() || !this.project) return;
+    if (!this.project) return;
+    if (!this.semanticBasis() || !this.semanticCurrentHash()) { this.semanticNotice.set('Checking the current query output. Try again in a moment.'); return; }
     const lifetime = ++this.semanticMappingLifetime, project = this.project, queryId = this.queryState.id ?? '', ref = project.ref;
     const active = () => lifetime === this.semanticMappingLifetime && this.project?.ref === ref && this.queryState.id === queryId;
     if (this.displayedResultIsPreviousRun() || this.semanticCurrentHash() !== this.semanticBasis()?.queryHash) { this.semanticNotice.set('Run the updated query before mapping its columns. Existing meanings need review.'); return; }
@@ -1543,6 +1544,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           headerComponent: SemanticColumnHeaderComponent,
           headerComponentParams: {
             meaningLabel: this.semanticColumnLabel(index),
+            checking: this.semanticValidation() === 'checking',
             needsReview: !!this.queryDef()?.semanticModel?.bindings.some(binding => binding.columnIndex === index) && this.semanticNeedsReview(),
             openMeaning: () => { void this.openColumnMeaning(index); },
           },
@@ -3922,6 +3924,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       const definition = this.queryDef(), recordset = this.displayedRecordset(), resultSet = this.relatedResultSet(), executed = this.semanticExecutedDefinition();
       const generation = ++this.semanticBasisGeneration;
       this.semanticBasis.set(undefined);
+      this.semanticCurrentHash.set('');
       if (!definition) return;
       const project = this.project;
       if (project) void this.queriesService.devicePersonal.list(project.ref).then(items => { if (generation === this.semanticBasisGeneration) this.semanticPersonalCopies.set(items.map(item => item.query)); }).catch(() => undefined);
