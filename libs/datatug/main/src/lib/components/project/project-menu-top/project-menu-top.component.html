@@ -19,7 +19,7 @@
     (!metadataOnly() ||
       ['overview', 'queries', 'checks', 'detective'].includes(page.path))
   ) {
-    <ion-menu-toggle autoHide="true">
+    <ion-menu-toggle autoHide="false">
       <ion-item
         button
         [routerLink]="projectPageUrl(page.path)"
