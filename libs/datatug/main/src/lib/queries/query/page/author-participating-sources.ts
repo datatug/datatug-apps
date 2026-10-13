@@ -8,6 +8,7 @@ export interface AuthorParticipatingSource {
   readonly schema?: string;
   readonly database?: string;
   readonly alias?: string;
+  readonly joinType?: string;
   readonly scope?: string;
   readonly description: string;
   readonly removable: boolean;
@@ -139,6 +140,7 @@ function visitQuery(
       addSource(sources, {
         kind: 'join',
         name: joinedName,
+        joinType: typeof join['type'] === 'string' ? join['type'] : 'JOIN',
         schema: sourceSchema(joined),
         database: sourceDatabase(joined),
         alias,

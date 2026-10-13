@@ -31,6 +31,7 @@ import {
 import {
   compilePublicSqliteTugQL,
   preparePublicSqliteCteStructuralDocument,
+  preparePublicSqliteInvoiceStructuralDocument,
   requireCustomerIdParameterSource,
   requireLiteralHavingThreshold,
   validatePublicSqliteCteSource,
@@ -754,16 +755,7 @@ export class PublicSqliteQueryService {
       requireCustomerIdParameterSource(tree);
       requireLiteralHavingThreshold(tree);
     }
-    const structural = structuralDocument ?? {
-      sourceMetadata: parsed.document.sourceMetadata,
-      tree: (() => {
-        const copy = { ...tree };
-        delete copy.parameters;
-        const query = { ...tree.query };
-        delete query['where'];
-        return { ...copy, query };
-      })(),
-    };
+    const structural = structuralDocument ?? preparePublicSqliteInvoiceStructuralDocument(parsed.document);
     const authorization = resolveTugQL(structural, {
       authorizedSchemas: [
         {
@@ -845,11 +837,11 @@ export class PublicSqliteQueryService {
       fixtureSha256: FIXTURE_SHA256,
       schemaVersion,
       draftRevision,
-      ...(cteProfile ? { authoredSource: request.text } : {}),
+      authoredSource: request.text,
       ...(relationship ? { relationship } : {}),
       ...(expandedSource ? { expandedSource } : {}),
     });
-    if (joined && !cteProfile) {
+    if (!cteProfile && preview.outputColumns) {
       const compilerColumns = preview.outputColumns ?? [];
       const resolverColumns = authorization.resolved.columns;
       const invoiceAlias = relationship?.fromSource ?? String(rawFrom['alias'] ?? 'Invoice');
@@ -865,14 +857,14 @@ export class PublicSqliteQueryService {
         compilerColumns.length !== resolverColumns.length ||
         (hasInvoiceDate && preview.authorProof.rawInvoiceDateTextRule !== 'chinook-invoice-datetime-text/v1')
       )
-        throw new Error('The joined Invoice projection differs from Core resolution or lacks the pinned raw InvoiceDate rule.');
+        throw new Error('The Invoice projection differs from Core resolution or lacks the pinned raw InvoiceDate rule.');
       for (let index = 0; index < resolverColumns.length; index++) {
         const resolvedColumn = resolverColumns[index];
         const compiledColumn = compilerColumns[index];
         if (!resolvedColumn || !compiledColumn ||
             resolvedColumn.name !== compiledColumn.name ||
             JSON.stringify(resolvedColumn.lineage ?? []) !== JSON.stringify(compiledColumn.lineage))
-          throw new Error('The joined compiler output names or lineage differ from Core resolution.');
+          throw new Error('The compiler output names or lineage differ from Core resolution.');
         const sourceQualifiedDate = dateIndexes.includes(index);
         const resolvedType = resolvedColumn.type.toLowerCase();
         if (sourceQualifiedDate) {
@@ -885,7 +877,7 @@ export class PublicSqliteQueryService {
               ? 'string'
               : 'unsupported';
           if (compiledColumn.type !== expectedType)
-            throw new Error('The joined compiler output type differs from Core resolution.');
+            throw new Error('The compiler output type differs from Core resolution.');
         }
       }
     }
