@@ -8,6 +8,11 @@ import {
   effect,
   untracked,
 } from '@angular/core';
+import {
+  copySavedMeaning,
+  importMeaningDefinitions,
+  type SavedMeaningChoice,
+} from './semantic-meaning-reuse';
 import { FormsModule } from '@angular/forms';
 import {
   IonModal,
@@ -26,7 +31,6 @@ import {
   IonCheckbox,
 } from '@ionic/angular';
 import {
-  validateSemanticModel,
   conceptId,
   rebuildMeaningBindings,
   type SemanticModel,
@@ -93,7 +97,29 @@ import {
                 propertyLabel(concept.id)
               }}</ion-select-option>
             }
+            @for (choice of savedChoices(); track choice.key) {
+              <ion-select-option [value]="choice.key"
+                >{{ choice.entity.labels.en }} ·
+                {{ choice.property.labels.en }} — {{ choice.sourceTitle }} (on
+                this device)</ion-select-option
+              >
+            }
           </ion-select>
+          @if (choicesLoading()) {
+            <ion-note role="status"
+              >Loading saved meanings… You can still create a
+              property.</ion-note
+            >
+          }
+          @if (choicesMessage()) {
+            <ion-note role="status">{{ choicesMessage() }}</ion-note>
+          }
+          @if (reusedSource()) {
+            <ion-note
+              >Copied from {{ reusedSource() }}. Edits here affect only this
+              query.</ion-note
+            >
+          }
           @if (property() === 'new') {
             <ion-input
               label="Property name"
@@ -263,6 +289,10 @@ export class SemanticMappingDialogComponent {
   readonly error = input('');
   readonly saveLabel = input('Save meaning');
   readonly storageLabel = input('');
+  readonly savedChoices = input<readonly SavedMeaningChoice[]>([]);
+  readonly choicesLoading = input(false);
+  readonly choicesMessage = input('');
+  readonly reusedSource = signal('');
   readonly save = output<SemanticModel>();
   readonly dismissed = output<void>();
   readonly draft = signal<SemanticModel | undefined>(undefined);
@@ -313,10 +343,31 @@ export class SemanticMappingDialogComponent {
         this.chooseProperty(this.existing()?.concept ?? 'new');
         this.reviewed.set(false);
         this.importError.set('');
+        this.reusedSource.set('');
       });
     });
   }
   chooseProperty(value: string): void {
+    if (value.startsWith('saved:')) {
+      const choice = this.savedChoices().find((item) => item.key === value),
+        draft = this.draft();
+      if (!choice || !draft) return;
+      try {
+        const copied = copySavedMeaning(draft, choice);
+        this.draft.set(copied.bundle);
+        this.chooseProperty(copied.propertyId);
+        this.reusedSource.set(choice.sourceTitle);
+        this.importError.set('');
+      } catch (error) {
+        this.importError.set(
+          error instanceof Error
+            ? error.message
+            : 'Saved meaning could not be copied.',
+        );
+      }
+      return;
+    }
+    this.reusedSource.set('');
     this.property.set(value);
     const concept = this.draft()?.meaning.concepts.find((c) => c.id === value);
     const entity = this.draft()?.meaning.concepts.find(
@@ -441,92 +492,8 @@ export class SemanticMappingDialogComponent {
     if (!file || !bundle) return;
     try {
       if (file.size > 100000) throw new Error('Meaning file is too large.');
-      const document = JSON.parse(await file.text());
-      if (
-        document.format !== 'meaning/draft-2' ||
-        !Array.isArray(document.concepts)
-      )
-        throw new Error('Choose a supported MeaningGraph JSON export.');
-      for (const concept of document.concepts) {
-        if (
-          concept.bindings !== undefined &&
-          (!Array.isArray(concept.bindings) ||
-            concept.bindings.some(
-              (binding: Record<string, unknown>) =>
-                !binding ||
-                Object.keys(binding).some(
-                  (key) => !['model', 'field', 'role'].includes(key),
-                ) ||
-                binding['model'] !== 'modelspec:///query.QueryResult' ||
-                binding['role'] !== 'value' ||
-                typeof binding['field'] !== 'string' ||
-                !/^column[1-9][0-9]*$/.test(binding['field']),
-            ))
-        )
-          throw new Error(
-            'This meaning file contains unsupported bindings. Export supported query meanings to reuse them.',
-          );
-      }
-      const imported = {
-        ...structuredClone(bundle),
-        meaning: document,
-        bindings: [],
-      };
-      imported.meaning.concepts = document.concepts.map(
-        (c: Record<string, unknown>) => ({
-          ...c,
-          ...(c['bindings'] ? { bindings: [] } : {}),
-        }),
-      );
-      validateSemanticModel(imported);
-      const concepts = document.concepts;
-      if (
-        concepts.some(
-          (c: {
-            id?: string;
-            kind?: string;
-            labels?: { en?: string };
-            description?: string;
-            of?: string;
-          }) =>
-            !c.id ||
-            !/^[a-z][a-z0-9]*(-[a-z][a-z0-9]*)*$/.test(c.id) ||
-            !['entity', 'property'].includes(c.kind ?? '') ||
-            !c.labels?.en ||
-            !c.description ||
-            (c.kind === 'property' &&
-              !concepts.some(
-                (e: { id: string; kind: string }) =>
-                  e.id === c.of && e.kind === 'entity',
-              )),
-        )
-      )
-        throw new Error(
-          'This import needs entity/property definitions with valid names and ownership.',
-        );
-      const merged = structuredClone(bundle);
-      for (const concept of concepts) {
-        const existing = merged.meaning.concepts.find(
-          (c) => c.id === concept.id,
-        );
-        const definition = {
-          id: concept.id,
-          kind: concept.kind,
-          labels: { en: concept.labels.en },
-          description: concept.description,
-          ...(concept.of ? { of: concept.of } : {}),
-        };
-        if (
-          existing &&
-          JSON.stringify({ ...existing, bindings: undefined }) !==
-            JSON.stringify(definition)
-        )
-          throw new Error(
-            `Meaning ${concept.id} already exists with a different definition.`,
-          );
-        if (!existing) merged.meaning.concepts.push(definition);
-      }
-      this.draft.set(merged);
+      const document: unknown = JSON.parse(await file.text());
+      this.draft.set(importMeaningDefinitions(bundle, document));
       this.importError.set('');
     } catch (error) {
       this.importError.set(

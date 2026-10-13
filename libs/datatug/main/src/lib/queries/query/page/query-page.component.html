@@ -1,4 +1,4 @@
-<sneat-datatug-semantic-mapping-dialog [bundle]="semanticDialog()" [needsReview]="semanticNeedsReview()" [columnIndex]="semanticColumn()" [columnName]="semanticBasis()?.columns?.[semanticColumn()]?.name || ''" [saving]="semanticSaving()" [error]="semanticError()" [storageLabel]="semanticStorage()" [saveLabel]="semanticSaveLabel()" (save)="saveColumnMeaning($event)" (dismissed)="semanticDialog.set(undefined)" />
+<sneat-datatug-semantic-mapping-dialog [bundle]="semanticDialog()" [needsReview]="semanticNeedsReview()" [columnIndex]="semanticColumn()" [columnName]="semanticBasis()?.columns?.[semanticColumn()]?.name || ''" [saving]="semanticSaving()" [error]="semanticError()" [storageLabel]="semanticStorage()" [saveLabel]="semanticSaveLabel()" [savedChoices]="semanticSavedChoices()" [choicesLoading]="semanticChoicesLoading()" [choicesMessage]="semanticChoicesMessage()" (save)="saveColumnMeaning($event)" (dismissed)="semanticDialog.set(undefined)" />
 <ion-header>
   <ion-toolbar color="light">
     <ion-buttons slot="start">

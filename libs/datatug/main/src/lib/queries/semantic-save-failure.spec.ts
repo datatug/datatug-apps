@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { describe, it, expect, vi } from 'vitest';
-import { throwError } from 'rxjs';
+import { Subject, throwError } from 'rxjs';
 import { QueryPageComponent } from './query/page/query-page.component';
 import {
   createSemanticModel,
@@ -10,7 +10,7 @@ import { QueryType } from '../models/definition/query-def';
 import type { IQueryState } from '../editor/models';
 
 describe('mapping failed-save boundary', () => {
-  it('retains saved definition and badge while preserving the mapping dialog draft', async () => {
+  it.each(['failure', 'late failure', 'late copy success', 'late copy after leave'])('preserves source and destination boundaries: %s', async (scenario) => {
     const semanticModel = createSemanticModel({
       queryHash: 'a'.repeat(64),
       resultIndex: 0,
@@ -42,7 +42,11 @@ describe('mapping failed-save boundary', () => {
     const draft = structuredClone(original.semanticModel);
     draft.meaning.concepts[1].labels.en = 'Rejected draft';
     const queryDef = signal(original);
+    const pending = new Subject<never>();
     const harness = {
+      semanticMappingLifetime: 0,
+      runResult: () => undefined,
+      selectedSource: () => undefined,
       project: {
         ref: { storeId: 'github.com', projectId: 'repo@owner@folder' },
       },
@@ -53,6 +57,7 @@ describe('mapping failed-save boundary', () => {
         def: original,
         request: original.request,
       } as IQueryState,
+      queriesService: { createQuery: vi.fn(() => pending) },
       semanticSaveToProject: signal(false),
       semanticSaving: signal(false),
       semanticBeforeSave: signal(original.semanticModel),
@@ -64,14 +69,35 @@ describe('mapping failed-save boundary', () => {
           if (state.def) queryDef.set(state.def as typeof original);
         }),
         saveQuery: vi.fn(() =>
-          throwError(() => new Error('Concurrent revision conflict.')),
+          scenario === 'failure' ? throwError(() => new Error('Concurrent revision conflict.')) : pending,
         ),
       },
     };
-    await QueryPageComponent.prototype.saveColumnMeaning.call(
+    if (scenario.startsWith('late copy')) {
+      harness.queryState = { ...harness.queryState, id: 'public-source', def: { ...original, id: 'public-source' } };
+      queryDef.set({ ...original, id: 'public-source' });
+    }
+    const saving = QueryPageComponent.prototype.saveColumnMeaning.call(
       harness as unknown as QueryPageComponent,
       draft,
     );
+    if (scenario !== 'failure') {
+      if (scenario === 'late copy after leave') {
+        (QueryPageComponent.prototype as unknown as { invalidateSemanticMapping: (this: typeof harness) => void }).invalidateSemanticMapping.call(harness);
+      }
+      const destination = { ...original, id: scenario === 'late copy after leave' ? 'public-source' : 'destination' };
+      harness.queryState = { ...harness.queryState, id: destination.id, def: destination };
+      queryDef.set(destination);
+      harness.queryEditorStateService.updateQueryState.mockClear();
+      if (scenario === 'late failure') pending.error(new Error('Late conflict'));
+      else pending.next(undefined as never);
+      await saving;
+      expect(harness.queryState.def).toBe(destination);
+      expect(harness.queryEditorStateService.updateQueryState).not.toHaveBeenCalled();
+      expect(harness.semanticError()).toBe('');
+      return;
+    }
+    await saving;
     expect(harness.queryState.def).toEqual(original);
     expect(
       QueryPageComponent.prototype.semanticColumnLabel.call(

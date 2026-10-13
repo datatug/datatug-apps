@@ -37,7 +37,10 @@ test('column meaning saves a complete personal copy, stays visible and survives 
     .getByLabel('Property name', { exact: true })
     .fill('Invoice number');
   await modal.getByLabel('Entity name', { exact: true }).fill('Invoice');
-  await modal.locator('summary').filter({ hasText: 'Context role (optional)' }).click();
+  await modal
+    .locator('summary')
+    .filter({ hasText: 'Context role (optional)' })
+    .click();
   await modal
     .getByLabel('Context role (optional)', { exact: true })
     .fill('Billing');
@@ -307,4 +310,64 @@ test('column meaning saves a complete personal copy, stays visible and survives 
       exact: true,
     }),
   ).toContainText('Invoice · Shared reference');
+  // Direct reuse from a saved query requires no files and remains independent.
+  const importedPersonalURL = page.url();
+  await page.goto(queryURL);
+  const direct = activePage(page);
+  await direct.getByTestId('author-customer-id').locator('input').fill('1');
+  await direct.getByTestId('author-preview-tab').click();
+  await direct.getByTestId('author-preview').click();
+  await direct.getByTestId('author-run').click();
+  await page
+    .getByRole('button', { name: 'Map meaning of InvoiceId', exact: true })
+    .click();
+  editor = page.locator('ion-modal').filter({ visible: true });
+  await expect(
+    editor.getByText(
+      'Loading saved meanings… You can still create a property.',
+      { exact: true },
+    ),
+  ).toHaveCount(0);
+  await editor.locator('ion-select').first().click();
+  const savedOption = page
+    .getByRole('radio', {
+      name: /Invoice · Shared reference — .*Personal \(on this device\)/,
+    })
+    .first();
+  await savedOption.click();
+  await expect(
+    editor.getByText(/Copied from .* Edits here affect only this query\./),
+  ).toBeVisible();
+  await editor
+    .getByLabel('Property name', { exact: true })
+    .fill('Independent reference');
+  await editor
+    .getByRole('button', { name: 'Save personal copy', exact: true })
+    .click();
+  await expect(page).toHaveURL(/device-personal-/);
+  expect(page.url()).not.toBe(firstPersonalURL);
+  expect(page.url()).not.toBe(importedPersonalURL);
+  await expect(
+    page.getByRole('button', {
+      name: 'Edit meaning of InvoiceId',
+      exact: true,
+    }),
+  ).toContainText('Invoice · Independent reference');
+  for (const sourceURL of [firstPersonalURL, importedPersonalURL]) {
+    await page.goto(sourceURL);
+    const unchangedSource = activePage(page);
+    await unchangedSource
+      .getByTestId('author-customer-id')
+      .locator('input')
+      .fill('1');
+    await unchangedSource.getByTestId('author-preview-tab').click();
+    await unchangedSource.getByTestId('author-preview').click();
+    await unchangedSource.getByTestId('author-run').click();
+    await expect(
+      page.getByRole('button', {
+        name: 'Edit meaning of InvoiceId',
+        exact: true,
+      }),
+    ).toContainText('Invoice · Shared reference');
+  }
 });

@@ -1555,7 +1555,7 @@ test('Customer count CTE previews without values and runs against the pinned fix
   await lastNameCell.press('ArrowRight');
   const resultGrid = page.getByRole('grid');
   await expect(
-    resultGrid.getByRole('columnheader', { name: 'Email', exact: true }),
+    resultGrid.getByRole('columnheader').filter({ has: page.getByRole('button', { name: 'Map meaning of Email', exact: true }) }).getByText('Email', { exact: true }),
   ).toBeVisible();
   await expect(
     resultGrid.getByRole('gridcell', {
@@ -1635,7 +1635,7 @@ test('bounded CTE graph previews, runs, preserves results while stale, and runs 
   await lastNameCell.press('ArrowRight');
   const resultGrid = page.getByRole('grid');
   await expect(
-    resultGrid.getByRole('columnheader', { name: 'Email', exact: true }),
+    resultGrid.getByRole('columnheader').filter({ has: page.getByRole('button', { name: 'Map meaning of Email', exact: true }) }).getByText('Email', { exact: true }),
   ).toBeVisible();
   await expect(
     resultGrid.getByRole('gridcell', {
@@ -1675,10 +1675,7 @@ test('bounded CTE graph previews, runs, preserves results while stale, and runs 
   await retainedCountCell.click();
   await retainedCountCell.press('ArrowLeft');
   await expect(
-    resultGrid.getByRole('columnheader', {
-      name: 'CustomerId',
-      exact: true,
-    }),
+    resultGrid.getByRole('columnheader').filter({ has: page.getByRole('button', { name: 'Map meaning of CustomerId', exact: true }) }).getByText('CustomerId', { exact: true }),
   ).toBeVisible();
   await expect(
     resultGrid.getByRole('gridcell', { name: 'Current row, position 1 1', exact: true }),

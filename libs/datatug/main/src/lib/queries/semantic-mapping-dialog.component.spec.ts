@@ -83,3 +83,38 @@ describe('meaning dialog review and shared definitions', () => {
     validateSemanticModel(saved);
   });
 });
+
+describe('saved property picker draft isolation', () => {
+  it('selects a saved property into the draft only; editing/cancel cannot mutate the input or source', () => {
+    TestBed.configureTestingModule({
+      imports: [SemanticMappingDialogComponent],
+    });
+    const fixture = TestBed.createComponent(SemanticMappingDialogComponent),
+      original = bundle();
+    const empty = createSemanticModel(original.basis);
+    const choice = {
+      key: 'saved:source:number',
+      sourceQueryId: 'source',
+      sourceTitle: 'Invoices',
+      entity: original.meaning.concepts[0],
+      property: original.meaning.concepts[1],
+    };
+    fixture.componentRef.setInput('bundle', empty);
+    fixture.componentRef.setInput('savedChoices', [choice]);
+    fixture.detectChanges();
+    const component = fixture.componentInstance;
+    component.chooseProperty(choice.key);
+    component.propertyName.set('Changed here');
+    const emit = vi.spyOn(component.save, 'emit');
+    component.submit();
+    expect(
+      emit.mock.calls[0][0].meaning.concepts.find((c) => c.id === 'number')
+        ?.labels.en,
+    ).toBe('Changed here');
+    expect(original.meaning.concepts[1].labels.en).toBe('Number');
+    expect(empty.meaning.concepts).toEqual([]);
+    fixture.componentRef.setInput('bundle', undefined);
+    fixture.detectChanges();
+    expect(component.draft()).toBeUndefined();
+  });
+});
