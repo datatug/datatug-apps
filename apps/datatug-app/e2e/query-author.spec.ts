@@ -3540,6 +3540,81 @@ test('Preview syntax errors navigate to the exact unchanged draft without runnin
   );
 });
 
+// query-workspace#ac:author-workspace-clarity — preview text and SQL geometry.
+test('query workspace clarity keeps the Preview heading and SQL readable at desktop and phone widths', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto(AUTHOR_URL);
+  const author = page.getByTestId('tugql-author');
+  await expect(author).toBeVisible({ timeout: 20_000 });
+  await author.getByTestId('author-code-tab').click();
+  await generateAuthorPreview(author);
+  const preview = author.getByTestId('author-sql-preview');
+  await expect(preview).toContainText('Preview · Not executed');
+  const sql = preview.locator('pre');
+  await expect(sql).toContainText(/select/iu);
+  const originalSql = await sql.innerText();
+  for (const { width, height } of [
+    { width: 1280, height: 720 },
+    { width: 390, height: 844 },
+    { width: 320, height: 720 },
+  ]) {
+    await page.setViewportSize({ width, height });
+    await activePage(page).evaluate(active => {
+      const scroller = active.querySelector('ion-content')?.shadowRoot?.querySelector('.inner-scroll');
+      if (scroller) scroller.scrollTop = 0;
+    });
+    const geometry = await preview.evaluate(root => {
+      const heading = root.querySelector('.author-preview-heading');
+      const title = heading?.querySelector('h3');
+      const actions = root.querySelector('.author-preview-actions');
+      const sqlScroll = root.querySelector('.author-sql-scroll');
+      const controls = ['author-preview', 'author-wrap-sql', 'author-copy-sql']
+        .map(id => root.querySelector(`[data-testid="${id}"]`)?.getBoundingClientRect().toJSON());
+      if (!heading || !title || !actions || !sqlScroll || controls.some(bounds => !bounds)) return undefined;
+      const titleRange = document.createRange();
+      titleRange.selectNodeContents(title);
+      return {
+        preview: root.getBoundingClientRect().toJSON(),
+        heading: heading.getBoundingClientRect().toJSON(),
+        title: titleRange.getBoundingClientRect().toJSON(),
+        titleLines: titleRange.getClientRects().length,
+        actions: actions.getBoundingClientRect().toJSON(),
+        sql: sqlScroll.getBoundingClientRect().toJSON(),
+        controls,
+        viewportHeight: innerHeight,
+      };
+    });
+    expect(geometry, `Preview geometry at ${width}px`).toBeDefined();
+    expect(geometry?.heading.width).toBeGreaterThanOrEqual(width === 1280 ? 300 : 220);
+    expect(geometry?.titleLines).toBe(1);
+    expect(geometry?.title.left).toBeGreaterThanOrEqual((geometry?.heading.left ?? 0) - 1);
+    expect(geometry?.title.right).toBeLessThanOrEqual((geometry?.heading.right ?? 0) + 1);
+    expect(geometry?.actions.top).toBeGreaterThanOrEqual((geometry?.heading.bottom ?? 0) - 1);
+    expect(geometry?.sql.top).toBeGreaterThanOrEqual((geometry?.actions.bottom ?? 0) - 1);
+    expect(geometry?.sql.top).toBeLessThan((geometry?.viewportHeight ?? 0) - 32);
+    expect(geometry?.sql.right).toBeLessThanOrEqual((geometry?.preview.right ?? 0) + 1);
+    for (const control of geometry?.controls ?? []) {
+      expect(control?.height).toBeGreaterThanOrEqual(44);
+      expect(control?.right).toBeLessThanOrEqual((geometry?.preview.right ?? 0) + 1);
+    }
+    await page.screenshot({ path: testInfo.outputPath(`preview-readable-${width}.png`) });
+    await expect(sql).toHaveText(originalSql);
+  }
+  const wrap = preview.getByTestId('author-wrap-sql');
+  const copy = preview.getByRole('button', { name: 'Copy SQL' });
+  await wrap.click();
+  await expect(wrap).toHaveAttribute('aria-pressed', 'true');
+  await expect(sql).toHaveText(originalSql);
+  if (testInfo.project.use.browserName === 'webkit') {
+    await copy.tap();
+  } else {
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await copy.focus();
+    await copy.press('Enter');
+  }
+  await expect(preview.getByTestId('author-copy-sql-status')).toContainText('Preview SQL copied');
+});
+
 // query-workspace#ac:author-workspace-clarity — cold desktop action visibility.
 test('query workspace clarity shows the cold Related Join action inside the desktop sidebar', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
