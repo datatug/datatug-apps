@@ -41,6 +41,8 @@ import {
 // competing store-id/agent-URL convention; this guards against either ever
 // being silently reintroduced.
 describe('DataTug app routes', () => {
+  // This integration assertion cold-loads the entire lazy Angular feature graph.
+  // Shared CI runners can exceed Vitest's five-second unit-test default.
   it('provides the verified compare WASM pin only in the lazy DataTug feature route', async () => {
     const featureRoute = routes.find((route) => route.path === '' && !route.outlet);
     if (!featureRoute?.loadChildren) {
@@ -68,7 +70,7 @@ describe('DataTug app routes', () => {
     }
     const feature = await wrapper.loadChildren();
     expect(feature).toHaveProperty('name', 'DatatugRoutingModule');
-  });
+  }, 20_000);
 
   it('does not register the layered-ACL branch competing agent-URL routes', () => {
     const paths = routes.map((route) => route.path);

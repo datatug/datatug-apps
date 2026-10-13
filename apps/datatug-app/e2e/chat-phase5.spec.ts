@@ -135,6 +135,20 @@ test('FK JOIN candidates execute against real Chinook, chain, persist, and accep
   await joinedBookmark.getByRole('button', { name: 'Attach' }).click();
   page.once('dialog', (dialog) => dialog.accept('joined'));
   await joinedBookmark.getByRole('button', { name: 'Tag' }).click();
+  // The dialog's click completes before the async bookmark write commits.
+  // Fence the tag's durable state before testing reload persistence below.
+  await expect.poll(async () => page.evaluate(async () => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('datatug-chat-sessions'); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+    });
+    try {
+      return await new Promise<boolean>((resolve, reject) => {
+        const request = database.transaction('ChatBookmarks', 'readonly').objectStore('ChatBookmarks').getAll();
+        request.onsuccess = () => resolve(request.result.some((bookmark: { data: { recordSet: { columns: string[] }; tags: string[] } }) => bookmark.data.recordSet.columns.includes('Employee.FirstName') && bookmark.data.tags.includes('joined')));
+        request.onerror = () => reject(request.error);
+      });
+    } finally { database.close(); }
+  })).toBe(true);
   joinedBookmarkId = await page.evaluate(async () => {
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open('datatug-chat-sessions'); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
