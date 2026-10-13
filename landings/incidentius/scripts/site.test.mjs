@@ -170,11 +170,11 @@ test('mobile home hero leads with the artwork and keeps navigation in an accessi
   assert.match(css, /\.site-header \.incidentius-mobile-nav\[open\] \.primary/);
   assert.match(css, /\.hero-art img \{ width: 100%; border: 0; border-radius: 0;/);
   assert.match(css, /:lang\(ru\) \.home-heading h1 \{ font-size: clamp\(/);
-  assert.match(css, /\.art-caption \.caption-mobile \{ display: block; \}/);
+  assert.doesNotMatch(css, /art-caption|caption-desktop|caption-mobile/);
 
-  for (const [locale, path, menuLabel] of [
-    ['en', '../dist/index.html', 'Open site navigation'],
-    ['ru', '../dist/ru/index.html', 'Открыть меню сайта'],
+  for (const [locale, path, menuLabel, imageAlt] of [
+    ['en', '../dist/index.html', 'Open site navigation', 'Illustration of a lighthouse, open logbook and evidence map at a safe harbor'],
+    ['ru', '../dist/ru/index.html', 'Открыть меню сайта', 'Маяк, раскрытый журнал и карта доказательств в безопасной гавани'],
   ]) {
     const html = await read(path);
     const heading = html.indexOf('class="home-heading"');
@@ -183,7 +183,8 @@ test('mobile home hero leads with the artwork and keeps navigation in an accessi
     assert.ok(heading >= 0 && heading < art && art < supportingCopy, `${locale} places the image between heading and details`);
     assert.ok(html.includes(`data-mobile-menu-label="${menuLabel}"`), `${locale} menu has a localized accessible label`);
     assert.ok(html.includes('incidentius-harbor-800.webp'));
-    assert.match(html, /class="caption-mobile"/);
+    assert.ok(html.includes(`alt="${imageAlt}"`), `${locale} retains descriptive image alternative text`);
+    assert.doesNotMatch(html, /art-caption|caption-desktop|caption-mobile|Concept art, not a product screenshot|Concept illustration · not a product screenshot|Концепт-арт, не скриншот продукта|Концепт-иллюстрация · не скриншот продукта/);
   }
 });
 
@@ -196,7 +197,6 @@ test('desktop home hero fills the viewport with the harbor behind localized copy
   assert.match(desktopRule, /\.home-grid \{ z-index: 2; width: 100%; max-width: none;/);
   assert.match(desktopRule, /\.hero-art \{ position: absolute; z-index: 0; inset: 0; grid-area: auto;/);
   assert.match(desktopRule, /\.hero-art::after \{ position: absolute; z-index: 1; inset: 0; background: linear-gradient\(/);
-  assert.match(desktopRule, /\.art-caption \{ position: absolute; z-index: 2;/);
   assert.match(desktopRule, /\.home-heading, \.home-details \{ position: relative; z-index: 2;/);
   assert.match(desktopRule, /object-fit: cover; object-position: center 52%/);
   assert.match(tabletRule, /grid-template-areas: 'heading' 'art' 'details'/);
