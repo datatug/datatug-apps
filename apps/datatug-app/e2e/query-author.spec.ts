@@ -3651,47 +3651,92 @@ test('query context counts stay inline through two digits and unavailable drafts
   const parameterCount = parameters.locator('ion-chip');
   await expect(parameterCount).toHaveText('12');
   await expect(parameterCount).toHaveAttribute('aria-label', '12 parameters');
-  const tabsAreInline = () =>
+  const contextTabGeometry = () =>
     tabs.evaluate((element) => {
       const segment = element.getBoundingClientRect();
       const buttons = Array.from(
         element.querySelectorAll('ion-segment-button'),
       );
-      return (
-        buttons.length === 3 &&
-        segment.height <= 56 &&
-        segment.right <= innerWidth + 1 &&
-        document.documentElement.scrollWidth <= innerWidth + 1 &&
-        buttons.every((button) => {
-          const label = button.querySelector('ion-label');
-          const chip = button.querySelector('ion-chip');
-          const text =
-            label &&
-            Array.from(label.childNodes).find(
-              (node) =>
-                node.nodeType === Node.TEXT_NODE && node.textContent?.trim(),
-            );
-          if (!text || !chip) return false;
-          const range = document.createRange();
-          range.selectNodeContents(text);
-          const words = range.getBoundingClientRect();
-          const count = chip.getBoundingClientRect();
-          const tab = button.getBoundingClientRect();
-          return (
-            range.getClientRects().length === 1 &&
-            tab.height >= 44 &&
-            words.left >= tab.left - 1 &&
-            count.right <= tab.right + 1 &&
-            count.top < words.top &&
-            count.bottom < words.bottom &&
-            count.bottom > words.top &&
-            count.top >= tab.top - 1 &&
-            count.bottom <= tab.bottom + 1 &&
-            tab.left >= segment.left - 1 &&
-            tab.right <= segment.right + 1
+      const tabGeometry = buttons.map((button) => {
+        const value = button.getAttribute('value');
+        const label = button.querySelector('ion-label');
+        const chip = button.querySelector('ion-chip');
+        const text =
+          label &&
+          Array.from(label.childNodes).find(
+            (node) =>
+              node.nodeType === Node.TEXT_NODE && node.textContent?.trim(),
           );
-        })
-      );
+        if (!label || !text || !chip) {
+          return { value, fits: false, missingContent: true };
+        }
+        const range = document.createRange();
+        range.selectNodeContents(text);
+        const row = label.getBoundingClientRect();
+        const words = range.getBoundingClientRect();
+        const count = chip.getBoundingClientRect();
+        const tab = button.getBoundingClientRect();
+        const checks = {
+          oneLine: range.getClientRects().length === 1,
+          touchTarget: Math.round(tab.height) >= 48,
+          horizontalAdjacency:
+            count.left >= words.right - 1 && count.left - words.right <= 4,
+          raisedWithOverlap:
+            (count.top + count.bottom) / 2 < (row.top + row.bottom) / 2 &&
+            count.top < words.bottom &&
+            count.bottom > words.top,
+          insideTab:
+            words.left >= tab.left - 1 &&
+            words.right <= tab.right + 1 &&
+            words.top >= tab.top - 1 &&
+            words.bottom <= tab.bottom + 1 &&
+            count.left >= tab.left - 1 &&
+            count.right <= tab.right + 1 &&
+            count.top >= tab.top - 1 &&
+            count.bottom <= tab.bottom + 1,
+          insideSegment:
+            tab.left >= segment.left - 1 && tab.right <= segment.right + 1,
+        };
+        return {
+          value,
+          fits: Object.values(checks).every(Boolean),
+          checks,
+          row: { top: row.top, bottom: row.bottom },
+          label: {
+            left: words.left,
+            right: words.right,
+            top: words.top,
+            bottom: words.bottom,
+          },
+          chip: {
+            left: count.left,
+            right: count.right,
+            top: count.top,
+            bottom: count.bottom,
+          },
+          tab: { left: tab.left, right: tab.right, height: tab.height },
+        };
+      });
+      const checks = {
+        threeTabs: buttons.length === 3,
+        oneRow: segment.height <= 56,
+        segmentInViewport: segment.right <= innerWidth + 1,
+        noPageOverflow: document.documentElement.scrollWidth <= innerWidth + 1,
+      };
+      return {
+        fits:
+          Object.values(checks).every(Boolean) &&
+          tabGeometry.every((tab) => tab.fits),
+        checks,
+        viewportWidth: innerWidth,
+        pageScrollWidth: document.documentElement.scrollWidth,
+        segment: {
+          left: segment.left,
+          right: segment.right,
+          height: segment.height,
+        },
+        tabs: tabGeometry,
+      };
     });
 
   for (const { width, height } of [
@@ -3702,10 +3747,10 @@ test('query context counts stay inline through two digits and unavailable drafts
   ]) {
     await page.setViewportSize({ width, height });
     await expect
-      .poll(tabsAreInline, {
+      .poll(contextTabGeometry, {
         message: `12 parameters remain inline at ${width}px`,
       })
-      .toBe(true);
+      .toMatchObject({ fits: true });
     await page.screenshot({
       path: testInfo.outputPath(`context-inline-12-${width}.png`),
     });
@@ -3749,8 +3794,10 @@ test('query context counts stay inline through two digits and unavailable drafts
   await expect(parameterCount).toHaveText('0');
   await expect(parameterCount).toHaveAttribute('aria-label', '0 parameters');
   await expect
-    .poll(tabsAreInline, { message: 'Zero parameters remain inline at 320px' })
-    .toBe(true);
+    .poll(contextTabGeometry, {
+      message: 'Zero parameters remain inline at 320px',
+    })
+    .toMatchObject({ fits: true });
   await page.screenshot({
     path: testInfo.outputPath('context-inline-0-320.png'),
   });
@@ -3766,10 +3813,10 @@ test('query context counts stay inline through two digits and unavailable drafts
     'Parameter count unavailable',
   );
   await expect
-    .poll(tabsAreInline, {
+    .poll(contextTabGeometry, {
       message: 'Unavailable parameter count remains inline at 320px',
     })
-    .toBe(true);
+    .toMatchObject({ fits: true });
   await page.screenshot({
     path: testInfo.outputPath('context-inline-unavailable-320.png'),
   });
