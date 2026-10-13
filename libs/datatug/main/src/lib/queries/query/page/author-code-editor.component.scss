@@ -24,7 +24,7 @@
   margin: 0;
 }
 
-.author-code-surface-hidden {
+.author-code-surface.author-code-surface-hidden {
   display: none;
 }
 
@@ -103,11 +103,25 @@
     grid-column: 1;
   }
 
+  .author-code-surface {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-self: stretch;
+    min-height: clamp(11rem, calc(100dvh - 29rem), 18rem);
+  }
+
+  .author-code-editor-view {
+    min-height: 0;
+    height: 100%;
+  }
+
+  :host ::ng-deep .author-code-editor-view .cm-editor {
+    height: 100%;
+  }
+
   .author-code-sidebar-row {
     grid-column: 2;
     grid-row: 3;
-    max-height: clamp(11rem, calc(100dvh - 29rem), 18rem);
-    overflow-y: auto;
   }
 
   :host(:not(.author-no-parameters)) .author-code-sidebar-row {
@@ -139,7 +153,7 @@
   }
 }
 
-@media (max-height: 560px) {
+@media (max-height: 560px) and (max-width: 1099px) {
   :host ::ng-deep .author-code-editor-view .cm-editor {
     height: 10rem;
   }

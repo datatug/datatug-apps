@@ -20,6 +20,8 @@ import {
 import { NgTemplateOutlet } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { PublicDataService } from '../../public-data/public-data.service';
+import { IEnvironmentFull } from '../../../models/definition/environments';
+import { ProjectService } from '../../../services/project/project.service';
 import { ConfiguredPublicDataSourcesService } from '../../public-data/configured-public-data-sources.service';
 import { SavedPlanReview } from '../../public-data/saved-plan-review';
 import { INITIAL_CANONICAL_PINS } from '../../public-data/canonical-metadata';
@@ -40,10 +42,13 @@ import {
   effect,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Params, Router } from '@angular/router';
 import { AgGridAngular } from 'ag-grid-angular';
+import { addIcons } from 'ionicons';
+import { copyOutline } from 'ionicons/icons';
 import {
   AllCommunityModule,
   ModuleRegistry,
@@ -226,6 +231,7 @@ interface CommittedQueryRun {
 }
 
 interface AuthorFormatUndo {
+  readonly action?: 'format' | 'filter';
   readonly originalSource: string;
   readonly formattedSource: string;
   readonly scopeKey: string;
@@ -275,6 +281,8 @@ import { RandomIdService } from '@sneat/random';
 import { distinctUntilChanged, takeUntil } from 'rxjs/operators';
 import { firstValueFrom, Subject } from 'rxjs';
 import {
+  IonAccordion,
+  IonAccordionGroup,
   IonBackButton,
   IonBadge,
   IonButton,
@@ -294,6 +302,7 @@ import {
   IonListHeader,
   IonMenuButton,
   IonModal,
+  IonNote,
   IonSelect,
   IonSelectOption,
   IonSegment,
@@ -301,6 +310,7 @@ import {
   IonSpinner,
   IonText,
   IonTextarea,
+  IonTitle,
   IonToolbar,
   ViewDidEnter,
 } from '@ionic/angular';
@@ -421,6 +431,7 @@ import { AuthorComposeControlsComponent } from './author-compose-controls.compon
 import { AuthorRelationshipSourcesComponent } from './author-relationship-sources.component';
 import { AuthorParticipatingSourcesComponent } from './author-participating-sources.component';
 import { AuthorCurrentRowComponent } from './author-current-row.component';
+import { useInvoiceIdAsAuthorFilter } from './author-row-filter-edit';
 import { readAuthorComposeProfile } from './author-compose-profile';
 import {
   customerIdLookupValue,
@@ -665,9 +676,12 @@ export function extractLinkedEntityNames(
     SneatDatatugPageTitleComponent,
     IonHeader,
     IonToolbar,
+    IonTitle,
     IonButtons,
     IonMenuButton,
     IonModal,
+    IonAccordion,
+    IonAccordionGroup,
     IonBackButton,
     IonButton,
     IonContent,
@@ -687,6 +701,7 @@ export function extractLinkedEntityNames(
     IonList,
     IonListHeader,
     IonBadge,
+    IonNote,
     IonSpinner,
     IonText,
     IonTextarea,
@@ -706,6 +721,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private readonly router = inject(Router);
   private readonly queryContextSqlService = inject(QueryContextSqlService);
   private readonly queriesService = inject(QueriesService);
+  public readonly agentRunEnvironments = signal<IEnvironmentFull[]>([]);
+  public readonly agentRunEnvironmentsLoading = signal(false);
+  public readonly agentRunEnvironmentsError = signal('');
+  public readonly agentSelectedEnvironment = signal('');
   private readonly federatedQuery = inject(FederatedQueryService);
   private readonly publicSqliteQuery = inject(PublicSqliteQueryService);
   private readonly semanticApi = inject(SemanticApiService);
@@ -880,6 +899,26 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     undefined,
   );
   public readonly authorPreviewLoading = signal(false);
+  private readonly authorRunParameterAttempt = signal<
+    | {
+        readonly scope: string;
+        readonly definition: IQueryDef | undefined;
+        readonly binding: string;
+        readonly draftRevision: number;
+      }
+    | undefined
+  >(undefined);
+  public readonly authorRunParameterWarning = computed(() => {
+    const attempt = this.authorRunParameterAttempt();
+    if (!attempt) return undefined;
+    return attempt.scope === this.authorRunParameterScope() &&
+      attempt.definition === this.queryDef() &&
+      attempt.binding === this.authorCustomerId() &&
+      attempt.draftRevision === this.authorDraftRevision() &&
+      this.authorRunReadiness().action === 'parameters'
+      ? this.authorRunReadiness().message
+      : undefined;
+  });
 
   /** The same gates drive the header explanation and Run's disabled state. */
   public authorRunReadiness(): {
@@ -888,27 +927,61 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     readonly action?: 'parameters' | 'preview' | 'error' | 'code';
   } {
     if (this.running()) return { blocked: true, message: 'Running query…' };
-    if (this.queryState.isSaving) return { blocked: true, message: 'Saving query…' };
-    if (this.authorPreviewLoading()) return { blocked: true, message: 'Preparing SQL preview…' };
+    if (this.queryState.isSaving)
+      return { blocked: true, message: 'Saving query…' };
+    if (this.authorPreviewLoading())
+      return { blocked: true, message: 'Preparing SQL preview…' };
     if (!this.queryId || !this.project || !this.queryDef())
-      return { blocked: true, message: 'Waiting for the query and project to load.' };
+      return {
+        blocked: true,
+        message: 'Waiting for the query and project to load.',
+      };
     if (this.authorUnsupportedParameterNames().length)
-      return { blocked: true, message: 'This draft has parameters that this form cannot bind.', action: 'code' };
+      return {
+        blocked: true,
+        message: 'This draft has parameters that this form cannot bind.',
+        action: 'code',
+      };
     if (!this.authorHasCustomerIdParameter())
-      return { blocked: true, message: 'This parameter-free draft is unavailable in the current runner. Review a supported parameterized draft.', action: 'code' };
-    if (!this.authorCustomerIdValid())
-      return { blocked: true, message: this.authorCustomerIdMissing()
-        ? 'Customer ID is required to Run.' : 'Customer ID must be a whole number.', action: 'parameters' };
+      return {
+        blocked: true,
+        message:
+          'This parameter-free draft is unavailable in the current runner. Review a supported parameterized draft.',
+        action: 'code',
+      };
     const plan = this.authorPlan();
+    if (
+      this.authorError() &&
+      (!plan || plan.draftRevision !== this.authorDraftRevision())
+    )
+      return {
+        blocked: true,
+        message: 'SQL preview needs attention. Review the draft error.',
+        action: this.canNavigateToAuthorPreviewSyntaxDiagnostic()
+          ? 'error'
+          : 'code',
+      };
+    if (!this.authorCustomerIdValid())
+      return {
+        blocked: true,
+        message: this.authorCustomerIdMissing()
+          ? 'Customer ID is required to Run.'
+          : 'Customer ID must be a whole number.',
+        action: 'parameters',
+      };
     if (!plan || plan.draftRevision !== this.authorDraftRevision()) {
-      if (this.authorError())
-        return { blocked: true, message: 'SQL preview needs attention. Review the draft error.',
-          action: this.canNavigateToAuthorPreviewSyntaxDiagnostic() ? 'error' : 'code' };
-      return { blocked: true, message: 'Preview the current draft to enable Run.', action: 'preview' };
+      return {
+        blocked: true,
+        message: 'Preview the current draft to enable Run.',
+        action: 'preview',
+      };
     }
-    return { blocked: false, message: this.authorHasCustomerIdParameter()
-      ? 'Ready to Run with Customer ID ' + this.authorCustomerId() + '.'
-      : 'Ready to Run the current preview.' };
+    return {
+      blocked: false,
+      message: this.authorHasCustomerIdParameter()
+        ? 'Ready to Run with Customer ID ' + this.authorCustomerId() + '.'
+        : 'Ready to Run the current preview.',
+    };
   }
 
   public recoverAuthorRun(): void {
@@ -921,8 +994,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         this.setAuthorMode('preview');
         void this.previewTugql();
         break;
-      case 'error': this.navigateToAuthorPreviewSyntaxDiagnostic(); break;
-      case 'code': this.setAuthorMode('code'); break;
+      case 'error':
+        this.navigateToAuthorPreviewSyntaxDiagnostic();
+        break;
+      case 'code':
+        this.setAuthorMode('code');
+        break;
     }
   }
 
@@ -933,14 +1010,21 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const revision = ++this.authorParameterFocusRevision;
     const definition = this.queryDef();
     const scope = this.historyScope();
-    const current = (): boolean => revision === this.authorParameterFocusRevision &&
-      this.queryDef() === definition && this.historyScope() === scope &&
-      this.queryView() === 'author' && this.activeAuthorContextTab() === 'parameters' &&
-      !this.running() && !this.queryState.isSaving;
+    const current = (): boolean =>
+      revision === this.authorParameterFocusRevision &&
+      this.queryDef() === definition &&
+      this.historyScope() === scope &&
+      this.queryView() === 'author' &&
+      this.activeAuthorContextTab() === 'parameters' &&
+      !this.running() &&
+      !this.queryState.isSaving;
     this.changeDetector.markForCheck();
-    afterNextRender(() => {
-      if (current()) void this.authorCustomerInput?.setFocus();
-    }, { injector: this.injector });
+    afterNextRender(
+      () => {
+        if (current()) void this.authorCustomerInput?.setFocus();
+      },
+      { injector: this.injector },
+    );
   }
   public readonly queryView = signal<'author' | 'compare'>('author');
   public readonly comparisonSnapshot = signal<
@@ -1224,6 +1308,29 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       text: '',
     } as ISqlQueryRequest,
   };
+  /** Structural Author edits update the executable definition. Retain the saved
+   * definition separately until a real save or reload replaces that local draft. */
+  private readonly authorSavedDefinition = signal<
+    | {
+        readonly queryId: string;
+        readonly saved: IQueryDef;
+        readonly local: IQueryDef;
+      }
+    | undefined
+  >(undefined);
+
+  private trackAuthorStructuralDraft(local: IQueryDef): void {
+    const previous = this.authorSavedDefinition();
+    const queryId = this.queryState.id;
+    if (!queryId) return;
+    if (previous?.queryId !== queryId) {
+      const saved = this.queryState.def;
+      if (!saved) return;
+      this.authorSavedDefinition.set({ queryId, saved, local });
+    } else if (previous) {
+      this.authorSavedDefinition.set({ ...previous, local });
+    }
+  }
 
   public get activeEnv(): IQueryEnvState | undefined {
     return this.queryState?.activeEnv;
@@ -1374,6 +1481,61 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly runResult = signal<FederatedQueryResult | undefined>(
     undefined,
   );
+  private readonly executionCopyFeedback = signal<
+    | {
+        readonly receipt: PublicSqliteExecutionReceipt;
+        readonly text: string;
+      }
+    | undefined
+  >(undefined);
+  private executionCopyGeneration = 0;
+  public readonly executionCopyStatus = computed(() => {
+    const feedback = this.executionCopyFeedback();
+    return feedback &&
+      feedback.receipt === this.runResult()?.publicSqliteReceipt
+      ? feedback.text
+      : '';
+  });
+
+  public async copyExecutionIdentifier(
+    receipt: PublicSqliteExecutionReceipt,
+    value: string,
+    label: string,
+  ): Promise<void> {
+    if (this.runResult()?.publicSqliteReceipt !== receipt) return;
+    const generation = ++this.executionCopyGeneration;
+    this.executionCopyFeedback.set(undefined);
+    let write: Promise<void>;
+    try {
+      const clipboard = globalThis.navigator?.clipboard;
+      if (!clipboard?.writeText) throw new Error('Clipboard unavailable');
+      write = clipboard.writeText(value);
+    } catch {
+      if (this.executionCopyGeneration === generation)
+        this.executionCopyFeedback.set({
+          receipt,
+          text: `Couldn't copy ${label}. Try again.`,
+        });
+      return;
+    }
+    try {
+      await write;
+      if (
+        this.executionCopyGeneration === generation &&
+        this.runResult()?.publicSqliteReceipt === receipt
+      )
+        this.executionCopyFeedback.set({ receipt, text: `${label} copied` });
+    } catch {
+      if (
+        this.executionCopyGeneration === generation &&
+        this.runResult()?.publicSqliteReceipt === receipt
+      )
+        this.executionCopyFeedback.set({
+          receipt,
+          text: `Couldn't copy ${label}. Try again.`,
+        });
+    }
+  }
   private readonly displayedResultGeneration = signal(0);
   public readonly queryRunTiming = signal<QueryRunTiming | undefined>(
     undefined,
@@ -1568,7 +1730,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
             headerName: column.name,
             sortable: false,
             minWidth: 120,
-            ...(canLookupCustomer || (index === 0 && this.isTugqlAuthorJourney())
+            ...(canLookupCustomer ||
+            (index === 0 && this.isTugqlAuthorJourney())
               ? {
                   cellRenderer: (
                     params: ICellRendererParams<QueryResultGridRow, string>,
@@ -1621,6 +1784,122 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       ? selected
       : undefined;
   });
+  private readonly authorRowFilterFeedback = signal<
+    | {
+        readonly row: readonly TypedValue[];
+        readonly snapshotKey: unknown;
+        readonly text: string;
+      }
+    | undefined
+  >(undefined);
+  public readonly authorRowFilterStatus = computed(() => {
+    const feedback = this.authorRowFilterFeedback();
+    return feedback &&
+      feedback.row === this.currentAuthorResultRow()?.row &&
+      feedback.snapshotKey === this.authorResultSnapshotKey()
+      ? feedback.text
+      : '';
+  });
+  public clearAuthorRowFilterStatus(): void {
+    this.authorRowFilterFeedback.set(undefined);
+  }
+
+  public useAuthorResultValueAsFilter(action: {
+    readonly index: number;
+    readonly row: readonly TypedValue[];
+    readonly snapshotKey: unknown;
+  }): void {
+    const selected = this.currentAuthorResultRow();
+    const status = (text: string): void => {
+      this.authorRowFilterFeedback.set({
+        row: action.row,
+        snapshotKey: action.snapshotKey,
+        text,
+      });
+    };
+    if (
+      !selected ||
+      selected.row !== action.row ||
+      action.snapshotKey !== this.authorResultSnapshotKey()
+    ) {
+      status('This row changed. Select a current result row and try again.');
+      return;
+    }
+    const receipt = selected.result.publicSqliteReceipt;
+    const output = receipt?.outputColumns?.[action.index];
+    const column = selected.recordset.columns[action.index];
+    const value = action.row[action.index];
+    if (
+      this.running() ||
+      this.queryState.isSaving ||
+      this.resultPageLoading() ||
+      this.selectedHistoricalResult() ||
+      this.displayedResultIsPreviousRun() ||
+      this.publicSqliteRunIsStale(selected.result) ||
+      this.authorPlan()?.draftRevision !== this.authorDraftRevision()
+    ) {
+      status(
+        'These results belong to a previous draft. Preview and run the current draft before filtering.',
+      );
+      return;
+    }
+    if (
+      !receipt ||
+      !column ||
+      !output ||
+      output.name !== column.name ||
+      output.type !== 'integer' ||
+      output.lineage.length !== 1 ||
+      (receipt.relationship &&
+        output.lineage[0]?.source !== receipt.relationship.fromSource) ||
+      output.lineage[0]?.field !== 'InvoiceId' ||
+      value?.type !== 'integer' ||
+      !/^[1-9]\d*$/u.test(value.value) ||
+      !Number.isSafeInteger(Number(value.value))
+    ) {
+      status(
+        'Filtering is available for a verified InvoiceId integer cell. Copy this value or edit other filters in TugQL Code.',
+      );
+      return;
+    }
+    const source = this.queryBodyText();
+    if (source === undefined) {
+      status(
+        'The current TugQL draft is unavailable. Reopen this query before filtering.',
+      );
+      return;
+    }
+    const edit = useInvoiceIdAsAuthorFilter(source, value.value);
+    if (!edit.ok) {
+      status(edit.reason);
+      return;
+    }
+    if (edit.after === source) {
+      status(`This draft already filters InvoiceId ${value.value}.`);
+      return;
+    }
+    this.queryTextChanged(
+      new CustomEvent('ionInput', { detail: { value: edit.after } }),
+      false,
+    );
+    const current = this.currentAuthorFormatContext();
+    if (current)
+      this.authorFormatUndo.set({
+        action: 'filter',
+        originalSource: source,
+        formattedSource: edit.after,
+        scopeKey: current.scopeKey,
+        queryIdentity: current.queryIdentity,
+      });
+    this.authorModeExplicit = true;
+    this.authorMode.set('code');
+    this.authorFormatStatus.set('InvoiceId filter added. Undo available.');
+    status(`InvoiceId ${value.value} added to TugQL Query. Undo available.`);
+    if (this.authorRowDetailsOpen()) {
+      this.authorRowDetailsShowEditorAfterDismiss = true;
+      this.authorRowDetailsOpen.set(false);
+    }
+  }
   public readonly authorResultRowSelection = {
     mode: 'singleRow' as const,
     enableClickSelection: true,
@@ -1628,6 +1907,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     headerCheckbox: false,
   };
   public readonly authorRowDetailsOpen = signal(false);
+  private authorRowDetailsShowEditorAfterDismiss = false;
   private authorRowDetailsFocusGeneration = 0;
   private authorViewActive = true;
   private authorRowDetailsSnapshot?: unknown;
@@ -1644,6 +1924,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   public authorRowDetailsDismissed(): void {
     this.authorRowDetailsOpen.set(false);
+    const showEditor = this.authorRowDetailsShowEditorAfterDismiss;
+    this.authorRowDetailsShowEditorAfterDismiss = false;
     const caller = this.authorRowDetailsCaller;
     const snapshot = this.authorRowDetailsSnapshot;
     const generation = this.authorRowDetailsFocusGeneration;
@@ -1651,24 +1933,47 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const scope = this.historyScope();
     this.authorRowDetailsCaller = undefined;
     this.authorRowDetailsSnapshot = undefined;
+    if (showEditor) {
+      requestAnimationFrame(() => {
+        if (
+          this.authorViewActive &&
+          this.queryView() === 'author' &&
+          query === this.currentQueryIdentity() &&
+          scope === this.historyScope()
+        )
+          this.authorWorkspaceLayout?.showEditor();
+      });
+      return;
+    }
     // Ionic emits didDismiss before completing overlay/focus-trap teardown.
     // Restore on the next frame, only while the originating view and row still own it.
     requestAnimationFrame(() => {
-      if (!caller?.isConnected || !this.authorViewActive || this.queryView() !== 'author' ||
-          generation !== this.authorRowDetailsFocusGeneration || this.authorRowDetailsOpen() ||
-          query !== this.currentQueryIdentity() || scope !== this.historyScope() ||
-          snapshot !== this.authorResultSnapshotKey() || !this.currentAuthorResultRow()) return;
-      const focusTarget = caller.shadowRoot?.querySelector<HTMLElement>('button, a') ?? caller;
+      if (
+        !caller?.isConnected ||
+        !this.authorViewActive ||
+        this.queryView() !== 'author' ||
+        generation !== this.authorRowDetailsFocusGeneration ||
+        this.authorRowDetailsOpen() ||
+        query !== this.currentQueryIdentity() ||
+        scope !== this.historyScope() ||
+        snapshot !== this.authorResultSnapshotKey() ||
+        !this.currentAuthorResultRow()
+      )
+        return;
+      const focusTarget =
+        caller.shadowRoot?.querySelector<HTMLElement>('button, a') ?? caller;
       focusTarget.focus({ preventScroll: true });
     });
   }
 
-  public readonly authorResultRowClassRules: RowClassRules<QueryResultGridRow> = {
-    'author-inspected-row': (params) => {
-      const snapshot = params.data && this.resultGridRowSnapshots.get(params.data);
-      return !!snapshot && snapshot === this.currentAuthorResultRow();
-    },
-  };
+  public readonly authorResultRowClassRules: RowClassRules<QueryResultGridRow> =
+    {
+      'author-inspected-row': (params) => {
+        const snapshot =
+          params.data && this.resultGridRowSnapshots.get(params.data);
+        return !!snapshot && snapshot === this.currentAuthorResultRow();
+      },
+    };
 
   private renderInspectedResultCell(
     params: ICellRendererParams<QueryResultGridRow, string>,
@@ -1677,16 +1982,30 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     columnIndex: number,
     columnName: string,
   ): HTMLElement {
-    const content = this.renderCustomerLookupCell(params, receipt, queryIdentity, columnIndex, columnName);
-    if (columnIndex !== 0 || !params.data ||
-        this.resultGridRowSnapshots.get(params.data) !== this.currentAuthorResultRow()) return content;
+    const content = this.renderCustomerLookupCell(
+      params,
+      receipt,
+      queryIdentity,
+      columnIndex,
+      columnName,
+    );
+    if (
+      columnIndex !== 0 ||
+      !params.data ||
+      this.resultGridRowSnapshots.get(params.data) !==
+        this.currentAuthorResultRow()
+    )
+      return content;
     const cell = document.createElement('span');
     cell.className = 'author-inspected-cell';
     const marker = document.createElement('span');
     marker.className = 'author-inspected-row-marker';
     marker.textContent = '▶';
     marker.setAttribute('role', 'img');
-    marker.setAttribute('aria-label', 'Current row, position ' + this.currentAuthorResultRow()?.position);
+    marker.setAttribute(
+      'aria-label',
+      'Current row, position ' + this.currentAuthorResultRow()?.position,
+    );
     marker.title = 'Current row';
     cell.append(marker, content);
     return cell;
@@ -1920,6 +2239,14 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       !isSharedProjectRef(this.project.ref) ||
       this.sharedQuerySaveAllowed()
     );
+  }
+
+  public querySaveState(): string {
+    if (!this.queryDef()) return 'Loading';
+    if (this.queryState.isSaving) return 'Saving';
+    if (this.queryState.saveSupported === false || !this.canSaveQuery())
+      return this.isChanged ? 'Unsaved · Read-only' : 'Read-only';
+    return this.isChanged ? 'Unsaved' : 'Saved';
   }
 
   public publicSqliteSourceChanged(event: Event): void {
@@ -2460,6 +2787,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     )
       return;
     const previousText = (this.queryState.request as ITextQueryRequest).text;
+    if (isAuthorDraft && text !== previousText) {
+      this.authorRunParameterAttempt.set(undefined);
+      this.clearAuthorRowFilterStatus();
+    }
     const sourceContextVisible =
       isAuthorDraft &&
       text !== previousText &&
@@ -2560,14 +2891,22 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const node = event.api.getDisplayedRowAtIndex(event.rowIndex);
     const row = node?.data;
     const snapshot = row && this.resultGridRowSnapshots.get(row);
-    if (snapshot && snapshot.result === this.runResult() && snapshot.rows === this.visibleResultRows() &&
-        snapshot.recordset === this.displayedRecordset() && snapshot.resultSetId === this.relatedResultSet() &&
-        snapshot.resultPageIndex === this.resultPageIndex() && snapshot.resultGeneration === this.displayedResultGeneration())
+    if (
+      snapshot &&
+      snapshot.result === this.runResult() &&
+      snapshot.rows === this.visibleResultRows() &&
+      snapshot.recordset === this.displayedRecordset() &&
+      snapshot.resultSetId === this.relatedResultSet() &&
+      snapshot.resultPageIndex === this.resultPageIndex() &&
+      snapshot.resultGeneration === this.displayedResultGeneration()
+    )
       node?.setSelected?.(true, true);
     this.setAuthorResultRow(row);
   }
 
-  public authorResultRowClicked(event: RowClickedEvent<QueryResultGridRow>): void {
+  public authorResultRowClicked(
+    event: RowClickedEvent<QueryResultGridRow>,
+  ): void {
     if (!this.isTugqlAuthorJourney()) return;
     this.authorResultGridApi = event.api;
     this.setAuthorResultRow(event.data);
@@ -2582,9 +2921,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     if (previous === inspected) return;
     this.authorResultGridApi?.forEachNode?.((node) => {
       const snapshot = node.data && this.resultGridRowSnapshots.get(node.data);
-      if (node.data && (snapshot === previous || snapshot === inspected)) node.setData(node.data);
+      if (node.data && (snapshot === previous || snapshot === inspected))
+        node.setData(node.data);
     });
-    this.authorResultGridApi?.refreshCells?.({ columns: ['result_0'], force: true });
+    this.authorResultGridApi?.refreshCells?.({
+      columns: ['result_0'],
+      force: true,
+    });
   }
 
   public authorSourcesToggled(open: boolean): void {
@@ -2763,7 +3106,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.authorSourceScopeKey = context.scopeKey;
       this.authorSourceMetadataSource = context.source;
       this.authorSourceMetadataIdentity = context.queryIdentity;
-      this.authorSourceMessage.set('Related metadata ready.');
+      this.authorSourceMessage.set('');
     } catch (error) {
       if (
         generation !== this.authorSourceRequestGeneration ||
@@ -2972,6 +3315,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         def: updatedDefinition,
         request: updatedDefinition.request,
       };
+      this.trackAuthorStructuralDraft(updatedDefinition);
       this.invalidateAuthorDefinitionRun();
       ++this.authorLookupRequestRevision;
       this.authorFormatUndo.set(undefined);
@@ -3129,6 +3473,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         def: updatedDefinition,
         request: updatedDefinition.request,
       };
+      this.trackAuthorStructuralDraft(updatedDefinition);
       this.invalidateAuthorDefinitionRun();
       ++this.authorLookupRequestRevision;
       this.authorFormatUndo.set(undefined);
@@ -3397,6 +3742,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const current = this.currentAuthorFormatContext();
     if (!current) return;
     this.authorFormatUndo.set({
+      action: 'format',
       originalSource: source,
       formattedSource: formatted.source,
       scopeKey: current.scopeKey,
@@ -3424,6 +3770,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         def: updatedDefinition,
         request: updatedDefinition.request,
       };
+      this.trackAuthorStructuralDraft(updatedDefinition);
       this.authorRelationshipUndo.set(undefined);
       this.authorFormatUndo.set(undefined);
       this.clearPreviewDiagnosticNavigation();
@@ -3474,7 +3821,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       }),
       false,
     );
-    this.authorFormatStatus.set('Formatting undone.');
+    this.authorFormatStatus.set(
+      undo.action === 'filter'
+        ? 'InvoiceId filter undone.'
+        : 'Formatting undone.',
+    );
   }
 
   private canUndoAuthorRelationship(undo: AuthorRelationshipUndo): boolean {
@@ -3568,6 +3919,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       previousOrigin.sourceQueryId !== undefined ||
       previousOrigin.sourceColumn !== undefined;
     if (value !== this.authorCustomerId() || originChanged) {
+      this.authorRunParameterAttempt.set(undefined);
       this.authorBindingRevision.update((revision) => revision + 1);
       ++this.authorLookupRequestRevision;
       this.invalidateComparison(
@@ -3575,7 +3927,6 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       );
     }
     this.authorCustomerId.set(value);
-    this.setAuthorError(undefined);
     const next: IQueryState = {
       ...this.queryState,
       authorBindings: {
@@ -4081,7 +4432,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           error instanceof Error ? error.message : 'The TugQL preview failed.',
         );
     } finally {
-      if (lifetime === this.authorPreviewLifetime) this.authorPreviewLoading.set(false);
+      if (lifetime === this.authorPreviewLifetime)
+        this.authorPreviewLoading.set(false);
     }
   }
 
@@ -4156,6 +4508,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   };
 
   constructor() {
+    addIcons({ copyOutline });
     this.observedSecurityContextId = this.agentContext.securityContextId();
     this.hasObservedSecurityContext = true;
     const navigationQuery = history.state.query as IQueryDef | undefined;
@@ -4225,9 +4578,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       const selected = this.selectedAuthorResultRow();
       if (selected && this.currentAuthorResultRow() !== selected)
         this.selectedAuthorResultRow.set(undefined);
-      if (this.authorRowDetailsOpen() &&
-          (!this.currentAuthorResultRow() || this.resultPageLoading() ||
-           this.authorRowDetailsSnapshot !== this.authorResultSnapshotKey()))
+      if (
+        this.authorRowDetailsOpen() &&
+        (!this.currentAuthorResultRow() ||
+          this.resultPageLoading() ||
+          this.authorRowDetailsSnapshot !== this.authorResultSnapshotKey())
+      )
         this.authorRowDetailsOpen.set(false);
     });
   }
@@ -4240,6 +4596,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const projectId = this.project?.ref.projectId;
     const environment = this.envId;
     const securityContextId = this.agentContext.securityContextId();
+    const parameterAttempt = untracked(this.authorRunParameterAttempt);
+    if (
+      parameterAttempt &&
+      parameterAttempt.scope !== this.authorRunParameterScope()
+    )
+      this.authorRunParameterAttempt.set(undefined);
     const accessClassification = equalProjectRef(
       this.comparisonAccessProjectRef,
       this.project?.ref,
@@ -4319,6 +4681,14 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         this.queryPageTitle.set('Query');
         return;
       }
+      const structuralDraft = this.authorSavedDefinition();
+      if (
+        structuralDraft &&
+        (structuralDraft.queryId !== queryState.id ||
+          (queryState.def !== structuralDraft.local &&
+            queryState.def !== structuralDraft.saved))
+      )
+        this.authorSavedDefinition.set(undefined);
       const currentTitle = queryState.title ?? queryState.def?.title;
       this.queryPageTitle.set(
         typeof currentTitle === 'string'
@@ -4347,6 +4717,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       const previousCustomerId = this.authorCustomerId();
       const scopeChanged = this.queryId !== queryState.id;
       if (scopeChanged) {
+        this.authorRunParameterAttempt.set(undefined);
         this.authorContextTab.set(undefined);
         this.authorSourcesToggled(false);
         this.selectedAuthorResultRow.set(undefined);
@@ -4508,6 +4879,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
             return;
           }
           this.envId = id;
+          this.agentSelectedEnvironment.set(id);
 
           let activeEnv = this.queryState.environments?.find(
             (env) => env.id === id,
@@ -4583,6 +4955,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         this.comparisonProjectAccess.set(currentProject.summary?.access);
         this.initializeCustomerInvoiceExample();
         if (!equalProjectRef(previousRef, currentProject.ref)) {
+          this.agentRunEnvironments.set([]);
+          this.agentRunEnvironmentsError.set('');
+          this.agentSelectedEnvironment.set('');
           this.authorContextTab.set(undefined);
           this.authorSourcesToggled(false);
           this.selectedAuthorResultRow.set(undefined);
@@ -4675,6 +5050,48 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     } catch (e) {
       this.errorLogger.logError(e, 'Failed to set active environment');
     }
+  }
+
+  public async loadAgentRunEnvironments(): Promise<void> {
+    const ref = this.project?.ref;
+    if (!ref || isBrowserSqlProject(ref) || this.agentRunEnvironmentsLoading())
+      return;
+    this.agentRunEnvironmentsLoading.set(true);
+    this.agentRunEnvironmentsError.set('');
+    try {
+      const project = await firstValueFrom(
+        this.injector.get(ProjectService).getFull(ref),
+      );
+      if (!equalProjectRef(this.project?.ref, ref)) return;
+      this.agentRunEnvironments.set(project.environments || []);
+      if (!project.environments?.length)
+        this.agentRunEnvironmentsError.set(
+          'No logical environments are configured for this project.',
+        );
+    } catch {
+      if (equalProjectRef(this.project?.ref, ref))
+        this.agentRunEnvironmentsError.set(
+          'Could not load project environments from the agent. Retry or reconnect.',
+        );
+    } finally {
+      this.agentRunEnvironmentsLoading.set(false);
+    }
+  }
+
+  public isAgentRunProject(): boolean {
+    return !!this.project && !isBrowserSqlProject(this.project.ref);
+  }
+
+  public selectAgentRunEnvironment(id: string): void {
+    if (
+      !this.agentRunEnvironments().some((environment) => environment.id === id)
+    )
+      return;
+    this.agentSelectedEnvironment.set(id);
+    this.envId = id;
+    this.datatugNavContextService.setCurrentEnvironment(id);
+    this.setActiveEnv(id);
+    this.runError.set(undefined);
   }
 
   private getEnvData(projRef: IProjectRef, envId: string): void {
@@ -4953,7 +5370,23 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   public get isChanged(): boolean {
-    return isQueryChanged(this.queryState);
+    if (isQueryChanged(this.queryState)) return true;
+    const draft = this.authorSavedDefinition();
+    if (!draft || draft.queryId !== this.queryState.id) return false;
+    return (
+      JSON.stringify({
+        request: this.queryState.request,
+        relationshipBindings: this.queryState.def?.relationshipBindings?.length
+          ? this.queryState.def.relationshipBindings
+          : undefined,
+      }) !==
+      JSON.stringify({
+        request: draft.saved.request,
+        relationshipBindings: draft.saved.relationshipBindings?.length
+          ? draft.saved.relationshipBindings
+          : undefined,
+      })
+    );
   }
 
   serverChanged(event: CustomEvent): void {
@@ -5992,6 +6425,19 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   public runQuery(): void {
     this.authorFormatNavigationSnapshot.set(undefined);
+    if (
+      this.isTugqlAuthorJourney() &&
+      this.authorRunReadiness().action === 'parameters'
+    ) {
+      this.authorRunParameterAttempt.set({
+        scope: this.authorRunParameterScope(),
+        definition: this.queryDef(),
+        binding: this.authorCustomerId(),
+        draftRevision: this.authorDraftRevision(),
+      });
+      return;
+    }
+    this.authorRunParameterAttempt.set(undefined);
     const runRequestedAt = monotonicTime();
     const projectRef = this.project?.ref;
     const projectId = projectRef?.projectId;
@@ -6033,7 +6479,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         return;
       }
       const previewPlan = this.authorPlan();
-      if (!previewPlan || previewPlan.draftRevision !== this.authorDraftRevision()) {
+      if (
+        !previewPlan ||
+        previewPlan.draftRevision !== this.authorDraftRevision()
+      ) {
         this.runError.set('Preview the current TugQL draft before Run.');
         return;
       }
@@ -6304,6 +6753,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const environment = this.envId;
     const securityContextId = this.agentContext.securityContextId();
     if (!environment || !securityContextId) {
+      this.runError.set(
+        !environment
+          ? 'Select a logical project environment below before running this query.'
+          : 'The agent security context is unavailable. Reconnect to the project agent and retry.',
+      );
+      if (!environment) void this.loadAgentRunEnvironments();
       return;
     }
     // REQ:no-hidden-filters, AC:typed-context-isolation "conflict blocks an
@@ -6491,6 +6946,16 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.project?.ref.projectId,
       this.queryId,
     ]);
+  }
+
+  private authorRunParameterScope(): string {
+    return JSON.stringify({
+      project: this.project?.ref,
+      history: this.historyScope(),
+      environment: this.envId,
+      securityContextId: this.agentContext.securityContextId(),
+      resultTarget: this.currentResultTargetIdentity(),
+    });
   }
 
   private invalidateHistoryRequests(): void {

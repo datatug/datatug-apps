@@ -3,6 +3,19 @@
   min-width: 0;
   max-width: min(54vw, 38rem);
 }
+.query-mobile-title {
+  display: none;
+}
+.query-save-state {
+  margin-inline: 0.5rem;
+  white-space: nowrap;
+}
+.author-receipt-details ion-note[slot='end'] {
+  max-width: 55%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: end;
+}
 .query-view-switch {
   width: fit-content;
   border-bottom: 1px solid var(--ion-color-step-150, #e5e7eb);
@@ -178,7 +191,11 @@
 }
 @media (max-width: 430px) {
   .query-page-title {
-    max-width: min(43vw, 10rem);
+    display: none;
+  }
+  .query-mobile-title {
+    display: block;
+    min-width: 0;
   }
   .query-save-button ion-icon {
     margin-inline: 0;
@@ -202,11 +219,6 @@
     min-width: 0;
     white-space: normal;
     overflow-wrap: normal;
-  }
-}
-@media (max-width: 350px) {
-  .query-page-title {
-    max-width: 32vw;
   }
 }
 @media (forced-colors: active) {

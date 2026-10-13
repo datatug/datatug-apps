@@ -1,24 +1,3 @@
-@if (!isLoginPage()) {
-  <ion-card>
-    <sneat-datatug-auth-menu-item />
-  </ion-card>
-}
-
-@if (profile.showIncidentsMenuItem) {
-  <ion-card>
-    <ion-item
-      routerLink="/incidents"
-      [queryParams]="incidentQueryParams()"
-      button
-      detail="false"
-      data-testid="incidents-menu-item"
-    >
-      <ion-icon slot="start" name="warning-outline" color="danger" />
-      <ion-label>Incidents</ion-label>
-    </ion-item>
-  </ion-card>
-}
-
 <ion-card>
   <sneat-datatug-menu-store-selector
     [datatugUser]="datatugUserState()?.record"
@@ -41,6 +20,27 @@
   <sneat-datatug-project-menu
     [metadataOnly]="currentProject()?.ref?.spaceID !== undefined"
   />
+}
+
+@if (!isLoginPage()) {
+  <ion-card>
+    <sneat-datatug-auth-menu-item />
+  </ion-card>
+}
+
+@if (profile.showIncidentsMenuItem) {
+  <ion-card>
+    <ion-item
+      routerLink="/incidents"
+      [queryParams]="incidentQueryParams()"
+      button
+      detail="false"
+      data-testid="incidents-menu-item"
+    >
+      <ion-icon slot="start" name="warning-outline" color="danger" />
+      <ion-label>Incidents</ion-label>
+    </ion-item>
+  </ion-card>
 }
 
 <ion-card>

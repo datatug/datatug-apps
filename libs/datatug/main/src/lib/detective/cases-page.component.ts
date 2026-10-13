@@ -385,8 +385,13 @@ export class CasesPageComponent {
     stepId: string,
   ) {
     const url = this.queryUrl(queryId);
+    const environment =
+      this.selectedHostedEnvironment() || this.scope.currentEnvironment()?.id;
+    const envQuery = environment
+      ? `&env=${encodeURIComponent(environment)}`
+      : '';
     return this.router.parseUrl(
-      `${url}&caseId=${encodeURIComponent(caseId)}&applicationId=${encodeURIComponent(applicationId)}&scenarioStepId=${encodeURIComponent(stepId)}`,
+      `${url}&caseId=${encodeURIComponent(caseId)}&applicationId=${encodeURIComponent(applicationId)}&scenarioStepId=${encodeURIComponent(stepId)}${envQuery}`,
     );
   }
   protected incidentUrl(ref: string): string | undefined {
