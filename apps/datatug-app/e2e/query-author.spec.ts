@@ -2182,7 +2182,7 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
   const joinReceipt = page.getByTestId('author-execution-receipt');
   await expect(joinReceipt).toContainText('Executed');
   await expect(joinReceipt).toContainText('7 rows');
-  await expect(joinReceipt).toContainText('Worker-verified relationship');
+  await expect(joinReceipt).toContainText('Worker verified');
   let rows = page.getByRole('grid').getByRole('row');
   await expect(rows).toHaveCount(8);
   await expect(rows.nth(1)).toContainText('98');
@@ -2223,7 +2223,8 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
   await expect(page).toHaveURL(/id=chinook-customer-invoice-join/u);
   await author.getByTestId('author-customer-id').locator('input').fill('1');
   await joinReceipt.getByText('Execution details', { exact: true }).click();
-  const executionId = joinReceipt.getByText(/^Worker execution ID /u);
+  await joinReceipt.getByText('Advanced receipt', { exact: true }).click();
+  const executionId = joinReceipt.getByTestId('author-receipt-worker-id');
   const previousExecutionId = await executionId.textContent();
   await author.getByTestId('author-run').click();
   // The previous CustomerId=2 run has the same row count, so waiting only for
@@ -2595,7 +2596,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   const sourceInventory = author.getByTestId('author-participating-sources');
   await expect(sourceInventory).toContainText('Invoice');
   await expect(sourceInventory).toContainText('Invoice as i');
-  await expect(sourceInventory).toContainText('Main FROM source');
+  await expect(sourceInventory).toContainText('Required source · cannot remove');
   await sourceInventory.getByTestId('author-participating-source').nth(0).click();
   await expect(sourceInventory.getByTestId('author-participating-source-details'))
     .toContainText('InvoiceId');
@@ -2997,8 +2998,8 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
     await author.getByTestId('author-code-tab').click();
     await executionDetails.click();
     await expect(
-      receipt.locator('.author-receipt-details'),
-    ).not.toHaveAttribute('open');
+      receipt.locator('ion-accordion[value="execution"]'),
+    ).not.toHaveClass(/accordion-expanded/u);
     const originalViewport = page.viewportSize();
     await page.setViewportSize({ width: 1280, height: 720 });
     await activePage(page).evaluate((active) => {
@@ -3156,19 +3157,25 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
       const bounds = (selector: string): DOMRect | undefined =>
         active.querySelector(selector)?.getBoundingClientRect();
       const start = bounds('ion-toolbar ion-buttons[slot="start"]');
-      const title = bounds('.query-page-title');
+      const mobileTitle = active.querySelector('.query-mobile-title');
+      const titleRange = document.createRange();
+      if (mobileTitle) titleRange.selectNodeContents(mobileTitle);
+      const title = mobileTitle ? titleRange.getBoundingClientRect() : undefined;
+      const state = bounds('.query-save-state');
       const end = bounds('ion-toolbar ion-buttons[slot="end"]');
       return {
         startRight: start?.right,
         titleLeft: title?.left,
         titleRight: title?.right,
+        stateLeft: state?.left,
         endLeft: end?.left,
         viewportWidth: document.documentElement.clientWidth,
         documentWidth: document.documentElement.scrollWidth,
       };
     });
     expect(header.startRight).toBeLessThanOrEqual(header.titleLeft ?? -1);
-    expect(header.titleRight).toBeLessThanOrEqual(header.endLeft ?? -1);
+    expect(header.titleRight).toBeLessThanOrEqual(header.stateLeft ?? -1);
+    expect(header.stateLeft).toBeLessThanOrEqual(header.endLeft ?? -1);
     expect(header.documentWidth).toBeLessThanOrEqual(header.viewportWidth);
   }
 
@@ -3182,28 +3189,32 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
     await page.setViewportSize({ width, height: 844 });
     await expect(authorPageTitle).toContainText(LONG_HEADER_QUERY_TITLE);
     await expect(authorPageTitle).toContainText(LONG_HEADER_PROJECT_TITLE);
-    const titleAccessibility = await authorPageTitle
-      .locator('ion-title')
-      .ariaSnapshot();
-    expect(titleAccessibility).toContain(LONG_HEADER_QUERY_TITLE);
-    expect(titleAccessibility).toContain(LONG_HEADER_PROJECT_TITLE);
+    await expect(activePage(page).locator('.query-mobile-title')).toBeVisible();
+    const titleAccessibility = await activePage(page).locator('.query-mobile-title').ariaSnapshot();
+    expect(titleAccessibility).toContain('Query');
     const header = await activePage(page).evaluate((active) => {
       const bounds = (selector: string): DOMRect | undefined =>
         active.querySelector(selector)?.getBoundingClientRect();
       const start = bounds('ion-toolbar ion-buttons[slot="start"]');
-      const title = bounds('.query-page-title');
+      const mobileTitle = active.querySelector('.query-mobile-title');
+      const titleRange = document.createRange();
+      if (mobileTitle) titleRange.selectNodeContents(mobileTitle);
+      const title = mobileTitle ? titleRange.getBoundingClientRect() : undefined;
+      const state = bounds('.query-save-state');
       const end = bounds('ion-toolbar ion-buttons[slot="end"]');
       return {
         startRight: start?.right,
         titleLeft: title?.left,
         titleRight: title?.right,
+        stateLeft: state?.left,
         endLeft: end?.left,
         viewportWidth: document.documentElement.clientWidth,
         documentWidth: document.documentElement.scrollWidth,
       };
     });
     expect(header.startRight).toBeLessThanOrEqual(header.titleLeft ?? -1);
-    expect(header.titleRight).toBeLessThanOrEqual(header.endLeft ?? -1);
+    expect(header.titleRight).toBeLessThanOrEqual(header.stateLeft ?? -1);
+    expect(header.stateLeft).toBeLessThanOrEqual(header.endLeft ?? -1);
     expect(header.documentWidth).toBeLessThanOrEqual(header.viewportWidth);
   }
 
@@ -3349,17 +3360,14 @@ test('Preview syntax errors navigate to the exact unchanged draft without runnin
   await expect(retainedReceipt).toContainText('Executed');
   await expect(retainedReceipt).toContainText('7 rows');
   await expect.poll(() => workersStarted).toBe(1);
-  const immutableReceiptDetails = retainedReceipt
-    .locator('.author-receipt-details > p')
-    .filter({
-      hasText:
-        /^\s*(Observed at|Worker execution ID|Draft revision|Worker verified bindings)/u,
-    });
+  const immutableReceiptDetails = retainedReceipt.locator(
+    '[data-testid="author-receipt-observed"], [data-testid="author-receipt-worker-id"], [data-testid="author-receipt-draft-revision"], [data-testid="author-receipt-bindings"]',
+  );
   const retainedReceiptDetails =
     await immutableReceiptDetails.allTextContents();
   expect(retainedReceiptDetails).toHaveLength(4);
   const retainedSql = await retainedReceipt
-    .locator('.author-receipt-details pre')
+    .getByTestId('author-receipt-sql').locator('pre')
     .textContent();
   const retainedRows = await page
     .getByRole('grid')
@@ -3495,7 +3503,7 @@ test('Preview syntax errors navigate to the exact unchanged draft without runnin
     retainedReceiptDetails,
   );
   await expect(
-    retainedReceipt.locator('.author-receipt-details pre'),
+    retainedReceipt.getByTestId('author-receipt-sql').locator('pre'),
   ).toHaveText(retainedSql ?? '');
   await expect(page.getByRole('grid').getByRole('row')).toHaveCount(8);
   expect(
@@ -3663,7 +3671,7 @@ test('query workspace clarity preserves active context, inspected row and explic
   await expect(tabs.locator('ion-segment-button[value="sources"] ion-chip')).toHaveText('2');
   await expect(author.getByTestId('author-related-empty')).toContainText('Customer is already included');
   await author.getByTestId('author-related-metadata-details').getByText('Metadata coverage and cost').click();
-  await expect(author.getByTestId('author-related-metadata-details')).toContainText('Cross-source cost: unknown');
+  await expect(author.getByTestId('author-related-metadata-details')).toContainText(/Cross-source cost\s*unknown/u);
   await author.getByTestId('author-related-metadata-details').getByText('Metadata coverage and cost').click();
   await expect(author.getByTestId('author-run-readiness')).toContainText('Preview the current draft');
   await author.getByTestId('author-run-recovery').click();
@@ -3756,7 +3764,7 @@ test('query workspace clarity preserves active context, inspected row and explic
   await expect(sheetFields.filter({ hasText: 'InvoiceId' }).locator('.author-current-row-value')).toBeInViewport({ ratio: 0.999 });
   await expect(sheetFields.filter({ hasText: 'InvoiceDate' }).locator('.author-current-row-value')).toBeInViewport({ ratio: 0.999 });
   await page.screenshot({ path: testInfo.outputPath('clarity-phone-row-sheet.png') });
-  testInfo.annotations.push({ type: 'screenshot', description: 'clarity-phone-row-sheet.png: expected presented80% native sheet to show the same raw row as inline Current row; observed native didPresent, position2 of7, InvoiceId121 and rawInvoiceDate both fully inside viewport, with native Close action.' });
+  testInfo.annotations.push({ type: 'screenshot', description: 'clarity-phone-row-sheet.png: expected native sheet to show the same raw row as inline Current row; observed native didPresent, position2 of7, InvoiceId121 and rawInvoiceDate both fully inside viewport, with native Close action.' });
   await page.getByTestId('author-row-details-close').click();
   await expect(sheet).toBeHidden();
   await expect(sheet).not.toHaveClass(/show-modal/u);
@@ -3777,7 +3785,7 @@ test('query workspace clarity preserves active context, inspected row and explic
   expect(await executionCount()).toBe(1);
   // Exact timestamps remain in the collapsed receipt and retained history details.
   await receipt.getByText('Execution details').click();
-  await expect(receipt).toContainText(/Observed at \d{4}-/u);
+  await expect(receipt.getByTestId('author-receipt-observed')).toContainText(/Observed\s*\d{4}-/u);
 });
 
 // The admitted CTE projects enough real fields to exercise horizontal virtualization.
@@ -3817,4 +3825,106 @@ test('query workspace clarity keeps inspected row visible through horizontal pan
   expect(style.cue).not.toBe('none');
   expect(await current.innerText()).toBe(raw);
   expect(await executionCount()).toBe(1);
+});
+
+test('query workspace six polish filters a verified InvoiceId through explicit Preview and Run', async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  const executionCount = await installQueryExecutionMessageProbe(page);
+  const mobile = testInfo.project.use.isMobile === true;
+  await page.goto(AUTHOR_URL);
+  const author = page.getByTestId('tugql-author');
+  await expect(author).toBeVisible({ timeout: 20_000 });
+  await author.getByTestId('author-customer-id').locator('input:not(.cloned-input)').fill('1');
+  await author.getByTestId('author-context-tabs').locator('ion-segment-button[value="related"]').click();
+  await author.getByTestId('author-related-join').click();
+  await expect(author.getByTestId('author-context-tabs').locator('ion-segment-button[value="sources"] ion-chip')).toHaveText('2');
+  await generateAuthorPreview(author);
+  await expectIonicButtonDisabled(author.getByTestId('author-run'), false);
+  expect(await executionCount()).toBe(0);
+  await author.getByTestId('author-run').click();
+  if (mobile) await page.locator('#workspace-jump-to-results').click();
+  const receipt = page.getByTestId('author-execution-receipt');
+  await expect(receipt).toContainText('7 rows', { timeout: 20_000 });
+  await page.getByRole('grid').locator('.ag-row[row-index="0"] [col-id="result_0"]').click();
+  const current = page.getByTestId('author-current-row').filter({ visible: true });
+  await expect(current).toContainText('Position 1 of 7');
+  await expect(current.getByTestId('author-current-row-field').first().locator('.author-current-row-value')).toHaveText('98');
+  await current.getByRole('button', { name: 'Use InvoiceId as filter' }).click();
+  await expect(current).toContainText('InvoiceId 98 added to the local draft');
+  await expect(receipt).toContainText('Previous run');
+  expect(await executionCount()).toBe(1);
+  if (mobile) await page.locator('#workspace-back-to-editor').click();
+  await expectAuthorMode(author, 'code');
+  await expect(author.getByTestId('query-body-text').locator('.cm-content')).toContainText('where i.CustomerId = @CustomerId and i.InvoiceId = 98');
+  await expectIonicButtonDisabled(author.getByTestId('author-run'), true);
+  await page.screenshot({ path: testInfo.outputPath('invoice-filter-draft.png') });
+  testInfo.annotations.push({ type: 'screenshot', description: 'invoice-filter-draft.png: expected explicit local InvoiceId 98 predicate, previous-run receipt, and disabled Run pending Preview; observed those states with one worker execution so far.' });
+
+  await generateAuthorPreview(author);
+  await expectIonicButtonDisabled(author.getByTestId('author-run'), false);
+  expect(await executionCount()).toBe(1);
+  await author.getByTestId('author-run').click();
+  if (mobile) await page.locator('#workspace-jump-to-results').click();
+  await expect(receipt).toContainText('1 row', { timeout: 20_000 });
+  await expect(page.getByRole('grid').getByRole('row')).toHaveCount(2);
+  await expect(page.getByRole('grid').getByRole('row').nth(1)).toContainText('98');
+  expect(await executionCount()).toBe(2);
+  if (mobile) await page.locator('#workspace-back-to-editor').click();
+  await author.getByTestId('author-code-tab').click();
+  await clickEditorAction(page, author, 'Undo');
+  await expect(author.getByTestId('query-body-text').locator('.cm-content')).not.toContainText('InvoiceId = 98');
+  await expect(receipt).toContainText('Previous run');
+  expect(await executionCount()).toBe(2);
+});
+
+test('query workspace six polish filters untouched plain Invoice results without a JOIN', async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  const executionCount = await installQueryExecutionMessageProbe(page);
+  const mobile = testInfo.project.use.isMobile === true;
+  await page.goto(AUTHOR_URL);
+  const author = page.getByTestId('tugql-author');
+  await expect(author).toBeVisible({ timeout: 20_000 });
+  await author.getByTestId('author-customer-id').locator('input:not(.cloned-input)').fill('1');
+  await generateAuthorPreview(author);
+  await expectIonicButtonDisabled(author.getByTestId('author-run'), false);
+  await author.getByTestId('author-run').click();
+  if (mobile) await page.locator('#workspace-jump-to-results').click();
+  const receipt = page.getByTestId('author-execution-receipt');
+  await expect(receipt).toContainText('7 rows', { timeout: 20_000 });
+  await page.getByRole('grid').locator('.ag-row[row-index="0"] [col-id="result_0"]').click();
+  const current = page.getByTestId('author-current-row').filter({ visible: true });
+  const invoiceId = (await current.getByTestId('author-current-row-field').first().locator('.author-current-row-value').innerText()).trim();
+  expect(invoiceId).toMatch(/^[1-9]\d*$/u);
+  if (mobile) {
+    await page.getByTestId('author-row-details-open').click();
+    const sheet = page.getByTestId('author-row-details-sheet');
+    await expect(sheet).toBeVisible();
+    await sheet.getByRole('button', { name: 'Use InvoiceId as filter' }).click();
+    await expect(sheet).toBeHidden();
+    await expect.poll(() => page.locator('#workspace-editor-pane').evaluate((pane) => pane.contains(document.activeElement))).toBe(true);
+  } else {
+    await current.getByRole('button', { name: 'Use InvoiceId as filter' }).click();
+    await expect(current).toContainText(`InvoiceId ${invoiceId} added to the local draft`);
+  }
+  await expect(receipt).toContainText('Previous run');
+  expect(await executionCount()).toBe(1);
+  if (mobile) await expect(page.locator('#workspace-editor-pane')).toBeInViewport();
+  await expect(author.getByTestId('query-body-text').locator('.cm-content'))
+    .toContainText(`where i.CustomerId = @CustomerId and i.InvoiceId = ${invoiceId}`);
+  await expectIonicButtonDisabled(author.getByTestId('author-run'), true);
+  await page.screenshot({ path: testInfo.outputPath('plain-invoice-filter-draft.png') });
+  testInfo.annotations.push({ type: 'screenshot', description: `plain-invoice-filter-draft.png: expected untouched plain Invoice run followed by an explicit local InvoiceId ${invoiceId} draft filter, no JOIN, previous-run receipt, and disabled Run; observed those states with one worker execution.` });
+  await generateAuthorPreview(author);
+  await expectIonicButtonDisabled(author.getByTestId('author-run'), false);
+  expect(await executionCount()).toBe(1);
+  await author.getByTestId('author-run').click();
+  if (mobile) await page.locator('#workspace-jump-to-results').click();
+  await expect(receipt).toContainText('1 row', { timeout: 20_000 });
+  await expect(page.getByRole('grid').getByRole('row')).toHaveCount(2);
+  expect(await executionCount()).toBe(2);
+  if (mobile) await page.locator('#workspace-back-to-editor').click();
+  await author.getByTestId('author-code-tab').click();
+  await clickEditorAction(page, author, 'Undo');
+  await expect(author.getByTestId('query-body-text').locator('.cm-content')).not.toContainText(`InvoiceId = ${invoiceId}`);
+  expect(await executionCount()).toBe(2);
 });

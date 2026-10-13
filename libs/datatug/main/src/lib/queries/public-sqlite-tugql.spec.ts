@@ -348,9 +348,7 @@ it('fails closed when the structural compiler receives any WHERE clause', () => 
       schemaVersion: 'invoice-schema-v1',
       draftRevision: 1,
     }),
-  ).toThrow(
-    'structurally resolved query with its guarded CustomerId predicate removed',
-  );
+  ).toThrow('The InvoiceId filter requires its exact authored TugQL source.');
 });
 
 it('rejects unbounded scans and projection expressions outside the adapter profile', () => {
@@ -661,7 +659,7 @@ it('does not infer parameter identity from a matching literal value', () => {
   const parsedTree = parsed.document.tree;
   if (!parsedTree) throw new Error('Expected parsed TugQL tree.');
   expect(() => requireCustomerIdParameterSource(parsedTree)).toThrow(
-    'Use the declared @CustomerId parameter',
+    'Use the declared @CustomerId equality',
   );
 });
 

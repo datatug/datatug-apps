@@ -961,7 +961,7 @@ select i.InvoiceId
           },
         },
       ],
-    } as FederatedQueryResult;
+    } as unknown as FederatedQueryResult;
     component.runResult.set(result);
     await component.changeRelatedResultSet('locations');
     const relatedSnapshotKey = component.authorResultSnapshotKey();
@@ -1001,6 +1001,54 @@ select i.InvoiceId
     expect(component.currentAuthorResultRow()).toBeUndefined();
     await runFixture.whenStable();
     expect(component.selectedAuthorResultRow()).toBeUndefined();
+  });
+
+  it('edits only a verified current InvoiceId into the draft, supports Undo, and refuses stale lineage', async () => {
+    const joinedSource = authorSource.replace(
+      'where i.CustomerId = @CustomerId',
+      'join Customer as c\n  on i.CustomerId = c.CustomerId\nwhere i.CustomerId = @CustomerId',
+    );
+    component = await createTugQLAuthor(joinedSource);
+    component.authorCustomerId.set('1');
+    component.authorPlan.set(comparisonPreview(component.authorDraftRevision()));
+    const row = [{ type: 'integer', value: '143' }] as const;
+    const result = {
+      ...historyResultFor(queryDef),
+      recordset: { columns: [{ name: 'InvoiceId', type: 'integer' }], rows: [row] },
+      bindingsApplied: [{ parameterId: 'CustomerId', value: { type: 'integer', value: '1' }, origin: 'manual', originEvidence: 'client-reported' }],
+      publicSqliteReceipt: {
+        draftRevision: component.authorDraftRevision(),
+        outputColumns: [{ name: 'InvoiceId', type: 'integer', lineage: [{ source: 'i', field: 'InvoiceId' }] }],
+        relationship: { fromSource: 'i' },
+      },
+    } as unknown as FederatedQueryResult;
+    component.runResult.set(result);
+    await component.changeRelatedResultSet('affiliations');
+    const gridRow = component.resultGridRows()[0];
+    component.authorResultSelectionChanged({
+      selectedNodes: [{ data: gridRow, isSelected: () => true }],
+    } as never);
+    const selection = component.currentAuthorResultRow();
+    expect(selection?.row).toBe(row);
+    const editor = TestBed.inject(QueryEditorStateService);
+    const save = vi.spyOn(editor, 'saveQuery');
+    const run = vi.spyOn(TestBed.inject(PublicSqliteQueryService), 'runTugQL');
+    const action = { index: 0, row, snapshotKey: component.authorResultSnapshotKey() };
+
+    component.useAuthorResultValueAsFilter(action);
+    expect(component.queryBodyText()).toContain('where i.CustomerId = @CustomerId and i.InvoiceId = 143');
+    expect(component.authorMode()).toBe('code');
+    expect(component.authorRowFilterStatus()).toContain('local draft');
+    expect(run).not.toHaveBeenCalled();
+    expect(save).not.toHaveBeenCalled();
+    expect(component.runResult()).toBe(result);
+
+    component.undoAuthorTugQLFormat();
+    expect(component.queryBodyText()).toBe(joinedSource);
+    expect(component.runResult()).toBe(result);
+    component.useAuthorResultValueAsFilter(action);
+    expect(component.queryBodyText()).toBe(joinedSource);
+    expect(component.authorRowFilterStatus()).toContain('previous draft');
   });
 
   it('uses the latest grid interaction and fetched-page raw row for Current row', async () => {
@@ -1902,6 +1950,8 @@ select i.InvoiceId
 
   it('applies the singleton admitted join immediately without outputs and undoes its source and binding together', async () => {
     component = await createTugQLAuthor(authorSource);
+    component.queryState = { ...component.queryState, title: component.queryDef()?.title };
+    expect(component.isChanged).toBe(false);
     const sqlite = TestBed.inject(PublicSqliteQueryService);
     vi.spyOn(sqlite, 'discoverInvoiceCustomerSources').mockResolvedValue(
       sourceDiscovery,
@@ -1926,6 +1976,8 @@ select i.InvoiceId
     expect(component.queryDef()?.relationshipBindings).toEqual([
       sourceDiscovery.relationship,
     ]);
+    expect(component.isChanged).toBe(true);
+    expect(component.querySaveState()).toContain('Unsaved');
     expect(component.authorSourceReview()).toBeUndefined();
     expect(component.runResult()).toBe(priorResult);
     expect(component.canUndoAuthorFormat()).toBe(true);
@@ -1938,6 +1990,7 @@ select i.InvoiceId
 
     expect(component.queryBodyText()).toBe(authorSource);
     expect(component.queryDef()?.relationshipBindings).toBeUndefined();
+    expect(component.isChanged).toBe(false);
     expect(component.runResult()).toBe(priorResult);
     expect(component.canUndoAuthorFormat()).toBe(false);
     expect(update).toHaveBeenCalledTimes(2);
@@ -1947,6 +2000,8 @@ select i.InvoiceId
 
   it('removes a reviewed Customer join and dependent outputs locally, then undoes source and binding together', async () => {
     component = await createTugQLAuthor(authorSource);
+    component.queryState = { ...component.queryState, title: component.queryDef()?.title };
+    expect(component.isChanged).toBe(false);
     const sqlite = TestBed.inject(PublicSqliteQueryService);
     const discovery = vi.spyOn(sqlite, 'discoverInvoiceCustomerSources')
       .mockResolvedValue(sourceDiscovery);
@@ -1963,6 +2018,7 @@ select i.InvoiceId
     await component.applyAuthorRelationshipReview();
     expect(component.queryBodyText()).toContain('c.FirstName');
     expect(component.queryDef()?.relationshipBindings).toEqual([sourceDiscovery.relationship]);
+    expect(component.isChanged).toBe(true);
 
     component.authorSourcesToggled(true);
     await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(4));
@@ -1981,7 +2037,9 @@ select i.InvoiceId
     await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(6));
     await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
     expect(component.queryBodyText()).not.toContain('c.FirstName');
+    expect(component.queryBodyText()).toContain('order by i.InvoiceId');
     expect(component.queryDef()?.relationshipBindings).toEqual([]);
+    expect(component.isChanged).toBe(true);
     expect(component.runResult()).toBe(priorResult);
     expect(update).toHaveBeenCalledTimes(2);
     expect(execute).not.toHaveBeenCalled();
@@ -1993,6 +2051,7 @@ select i.InvoiceId
     await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
     expect(component.queryBodyText()).toBe(joinedText);
     expect(component.queryDef()?.relationshipBindings).toEqual([sourceDiscovery.relationship]);
+    expect(component.isChanged).toBe(true);
     expect(component.runResult()).toBe(priorResult);
     expect(component.canUndoAuthorFormat()).toBe(false);
     expect(execute).not.toHaveBeenCalled();

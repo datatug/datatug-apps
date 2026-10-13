@@ -717,9 +717,99 @@ describe('Author TugQL structural preview and Run binding', () => {
     await expect(runFixture(await makeFixture("'2009-01-01 00:00:00'")))
       .resolves.toMatchObject({ rows: [[10, '2009-01-01 00:00:00', 'Ada']] });
     await expect(runFixture(await makeFixture('NULL')))
-      .rejects.toThrow('joined InvoiceDate result must remain non-null SQLite text');
+      .rejects.toThrow('InvoiceDate result must remain non-null SQLite text');
     await expect(runFixture(await makeFixture('123')))
-      .rejects.toThrow('joined InvoiceDate result must remain non-null SQLite text');
+      .rejects.toThrow('InvoiceDate result must remain non-null SQLite text');
+  });
+
+  it('admits a guarded InvoiceId filter only with its exact authored source and fixed binding', async () => {
+    const source = [
+      'parameters (',
+      '  @CustomerId integer required',
+      ')',
+      'from Invoice as i',
+      'join Customer as c',
+      '  on i.CustomerId = c.CustomerId',
+      'where i.CustomerId = @CustomerId and i.InvoiceId = 143',
+      'limit 10',
+      'select i.InvoiceId, i.InvoiceDate, c.FirstName',
+      '',
+    ].join('\n');
+    const preview = await TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+      project, joinedDefinition(source), 9,
+    );
+    expect(preview.sql).toContain('WHERE "i"."CustomerId" = ? AND "i"."InvoiceId" = ?');
+    expect(preview.fixedBindings).toEqual([143]);
+    expect(preview.bindingNames).toEqual(['CustomerId', 'InvoiceId (literal)']);
+    expect(preview.authorProof?.authoredSource).toBe(source);
+
+    const SQL = await initSqlJs();
+    const db = new SQL.Database();
+    db.run('CREATE TABLE Customer (CustomerId INTEGER PRIMARY KEY, FirstName NVARCHAR(40), LastName NVARCHAR(20), Email NVARCHAR(60))');
+    db.run('CREATE TABLE Invoice (InvoiceId INTEGER PRIMARY KEY, CustomerId INTEGER NOT NULL REFERENCES Customer(CustomerId), InvoiceDate DATETIME)');
+    db.run("INSERT INTO Customer VALUES (1, 'Ada', 'Lovelace', 'ada@example.test')");
+    db.run("INSERT INTO Invoice VALUES (143, 1, '2009-01-01 00:00:00')");
+    db.run("INSERT INTO Invoice VALUES (121, 1, '2009-01-02 00:00:00')");
+    const fixture = db.export();
+    db.close();
+    const run = (
+      bindings: readonly (string | number | null)[],
+      proof = preview.authorProof,
+      expectedColumns = preview.outputColumns,
+    ) => executePinnedSql(
+      preview.sql, fixture, bindings, true, true,
+      expectedColumns?.map((column) => column.name), proof,
+      preview.bindingNames, preview.schemaVersion, preview.draftRevision,
+      proof?.profile, preview.fixtureSha256, expectedColumns, preview.relationship,
+    );
+
+    await expect(run([1, 143])).resolves.toMatchObject({ rows: [[143, '2009-01-01 00:00:00', 'Ada']] });
+    await expect(run([1, 121])).rejects.toThrow('differs from its independently compiled profile');
+    await expect(run([1, 143], { ...preview.authorProof, authoredSource: source.replace('InvoiceId = 143', 'InvoiceId = 121') }))
+      .rejects.toThrow('differs from the Author proof');
+    await expect(run([1, 143], { ...preview.authorProof, authoredSource: undefined }))
+      .rejects.toThrow('require independently verified authored TugQL');
+    await expect(run([1, 143], preview.authorProof, preview.outputColumns?.map((column) => ({ ...column, lineage: [] }))))
+      .rejects.toThrow('differs from its independently compiled profile');
+  });
+
+  it('worker-verifies InvoiceId lineage for an untouched plain Invoice run before filtering', async () => {
+    const source = [
+      'parameters (',
+      '  @CustomerId integer required',
+      ')',
+      'from Invoice as i',
+      'where i.CustomerId = @CustomerId',
+      'limit 10',
+      'select i.InvoiceId, i.InvoiceDate',
+      '',
+    ].join('\n');
+    const preview = await TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+      project, definition(source), 10,
+    );
+    expect(preview.outputColumns).toEqual([
+      { name: 'InvoiceId', type: 'integer', lineage: [{ source: 'i', field: 'InvoiceId' }] },
+      { name: 'InvoiceDate', type: 'string', lineage: [{ source: 'i', field: 'InvoiceDate' }] },
+    ]);
+    expect(preview.authorProof.authoredSource).toBe(source);
+    expect(preview.authorProof.rawInvoiceDateTextRule).toBe('chinook-invoice-datetime-text/v1');
+    const SQL = await initSqlJs();
+    const db = new SQL.Database();
+    db.run('CREATE TABLE Invoice (InvoiceId INTEGER PRIMARY KEY, CustomerId INTEGER NOT NULL, InvoiceDate DATETIME)');
+    db.run("INSERT INTO Invoice VALUES (98, 1, '2009-01-01 00:00:00')");
+    const fixture = db.export();
+    db.close();
+    const run = (proof = preview.authorProof, columns = preview.outputColumns) => executePinnedSql(
+      preview.sql, fixture, [1], true, true,
+      columns?.map((column) => column.name), proof,
+      preview.bindingNames, preview.schemaVersion, preview.draftRevision,
+      proof.profile, preview.fixtureSha256, columns,
+    );
+    await expect(run()).resolves.toMatchObject({ rows: [[98, '2009-01-01 00:00:00']] });
+    await expect(run({ ...preview.authorProof, authoredSource: undefined }))
+      .rejects.toThrow('require independently verified authored TugQL');
+    await expect(run(preview.authorProof, preview.outputColumns?.map((column) => ({ ...column, lineage: [] }))))
+      .rejects.toThrow('differs from its independently compiled profile');
   });
 
   it.skipIf(!pinnedFixturePath)(

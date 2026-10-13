@@ -79,16 +79,6 @@
               <p>{{ admitted.relationshipProvenance }} · {{ admitted.cardinality }} · Cross-source cost: {{ admitted.crossSourceCost }}</p>
             </ion-label>
           </ion-item>
-          <ion-accordion-group>
-            <ion-accordion value="technical-receipt">
-              <ion-item slot="header"><ion-label>Technical metadata receipt</ion-label></ion-item>
-              <ion-list slot="content">
-                <ion-item lines="none"><ion-label class="ion-text-wrap">Admitted schema version: {{ admitted.schemaVersion }}</ion-label></ion-item>
-                <ion-item lines="none"><ion-label class="ion-text-wrap">Fixture SHA-256: {{ admitted.fixtureSha256 }}</ion-label></ion-item>
-                <ion-item lines="none"><ion-label class="ion-text-wrap">Relationship version: {{ admitted.relationship.version }}</ion-label></ion-item>
-              </ion-list>
-            </ion-accordion>
-          </ion-accordion-group>
         </ion-list>
       }
     </ion-list>
@@ -104,15 +94,31 @@
       <ion-accordion value="coverage">
         <ion-item slot="header"><ion-label class="ion-text-wrap">Metadata coverage and cost</ion-label></ion-item>
         <ion-list slot="content">
-          <ion-item lines="none"><ion-label class="ion-text-wrap">
-            <p>This public catalog snapshot covers only the declared Invoice–Customer relationship. Views are not included.</p>
-            <p>{{ admitted.relationshipProvenance }} · {{ admitted.cardinality }}</p>
-            <p>Current LIMIT: {{ currentLimit() }} · Cross-source cost: {{ admitted.crossSourceCost }}</p>
-            <p>Joined InvoiceDate values keep the pinned SQLite DATETIME as raw text.</p>
-            <p>Schema version: {{ admitted.schemaVersion }} · Relationship version: {{ admitted.relationship.version }}</p>
-            <p>Fixture SHA-256: {{ admitted.fixtureSha256 }}</p>
-            <p>Refresh reads metadata only; it never executes this query.</p>
-          </ion-label></ion-item>
+          <ion-item><ion-label>Source</ion-label><ion-note slot="end">Pinned Chinook SQLite</ion-note></ion-item>
+          <ion-item><ion-label>Relationship</ion-label><ion-note slot="end">Invoice → Customer</ion-note></ion-item>
+          <ion-item><ion-label>Cardinality</ion-label><ion-note slot="end">{{ admitted.cardinality }}</ion-note></ion-item>
+          <ion-item><ion-label>Cross-source cost</ion-label><ion-note slot="end">{{ admitted.crossSourceCost }}</ion-note></ion-item>
+          <ion-item><ion-label>Current limit</ion-label><ion-note slot="end">{{ currentLimit() }}</ion-note></ion-item>
+          <ion-item><ion-label>Fixture SHA-256</ion-label><ion-note slot="end">{{ admitted.fixtureSha256.slice(0, 12) }}…</ion-note>
+            <ion-buttons slot="end"><ion-button fill="clear" aria-label="Copy metadata fixture SHA-256" title="Copy metadata fixture SHA-256" (click)="copyMetadataIdentifier(admitted.fixtureSha256, 'Fixture SHA-256')"><ion-icon slot="icon-only" name="copy-outline" /></ion-button></ion-buttons>
+          </ion-item>
+          @if (copyStatus(); as status) { <ion-item lines="none"><ion-label role="status" aria-live="polite">{{ status }}</ion-label></ion-item> }
+          <ion-accordion-group>
+            <ion-accordion value="technical-receipt">
+              <ion-item slot="header"><ion-label>Advanced metadata</ion-label></ion-item>
+              <ion-list slot="content">
+                <ion-item><ion-label class="ion-text-wrap">{{ admitted.relationshipProvenance }} · {{ admitted.cardinality }}</ion-label></ion-item>
+                <ion-item><ion-label class="ion-text-wrap">This public catalog snapshot covers only the declared Invoice–Customer relationship. Views are not included.</ion-label></ion-item>
+                <ion-item><ion-label class="ion-text-wrap">Joined InvoiceDate values keep the pinned SQLite DATETIME as raw text.</ion-label></ion-item>
+                <ion-item><ion-label class="ion-text-wrap">Admitted schema version <code>{{ admitted.schemaVersion }}</code></ion-label>
+                  <ion-buttons slot="end"><ion-button fill="clear" aria-label="Copy admitted schema version" title="Copy admitted schema version" (click)="copyMetadataIdentifier(admitted.schemaVersion, 'Schema version')"><ion-icon slot="icon-only" name="copy-outline" /></ion-button></ion-buttons>
+                </ion-item>
+                <ion-item><ion-label class="ion-text-wrap">Fixture SHA-256 <code>{{ admitted.fixtureSha256 }}</code></ion-label></ion-item>
+                <ion-item><ion-label>Relationship version</ion-label><ion-note slot="end">{{ admitted.relationship.version }}</ion-note></ion-item>
+                <ion-item><ion-label class="ion-text-wrap">Refresh reads metadata only; it never executes this query.</ion-label></ion-item>
+              </ion-list>
+            </ion-accordion>
+          </ion-accordion-group>
         </ion-list>
       </ion-accordion>
     </ion-accordion-group>

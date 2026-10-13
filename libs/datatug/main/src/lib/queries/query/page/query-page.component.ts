@@ -33,6 +33,8 @@ import {
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Params, Router } from '@angular/router';
 import { AgGridAngular } from 'ag-grid-angular';
+import { addIcons } from 'ionicons';
+import { copyOutline } from 'ionicons/icons';
 import {
   AllCommunityModule,
   ModuleRegistry,
@@ -184,6 +186,7 @@ interface CommittedQueryRun {
 }
 
 interface AuthorFormatUndo {
+  readonly action?: 'format' | 'filter';
   readonly originalSource: string;
   readonly formattedSource: string;
   readonly scopeKey: string;
@@ -232,6 +235,8 @@ import { RandomIdService } from '@sneat/random';
 import { distinctUntilChanged, takeUntil } from 'rxjs/operators';
 import { firstValueFrom, Subject } from 'rxjs';
 import {
+  IonAccordion,
+  IonAccordionGroup,
   IonBackButton,
   IonBadge,
   IonButton,
@@ -251,6 +256,7 @@ import {
   IonListHeader,
   IonMenuButton,
   IonModal,
+  IonNote,
   IonSelect,
   IonSelectOption,
   IonSegment,
@@ -258,6 +264,7 @@ import {
   IonSpinner,
   IonText,
   IonTextarea,
+  IonTitle,
   IonToolbar,
   ViewDidEnter,
 } from '@ionic/angular';
@@ -374,6 +381,7 @@ import { AuthorComposeControlsComponent } from './author-compose-controls.compon
 import { AuthorRelationshipSourcesComponent } from './author-relationship-sources.component';
 import { AuthorParticipatingSourcesComponent } from './author-participating-sources.component';
 import { AuthorCurrentRowComponent } from './author-current-row.component';
+import { useInvoiceIdAsAuthorFilter } from './author-row-filter-edit';
 import { readAuthorComposeProfile } from './author-compose-profile';
 import {
   customerIdLookupValue,
@@ -617,9 +625,12 @@ export function extractLinkedEntityNames(
     SneatDatatugPageTitleComponent,
     IonHeader,
     IonToolbar,
+    IonTitle,
     IonButtons,
     IonMenuButton,
     IonModal,
+    IonAccordion,
+    IonAccordionGroup,
     IonBackButton,
     IonButton,
     IonContent,
@@ -639,6 +650,7 @@ export function extractLinkedEntityNames(
     IonList,
     IonListHeader,
     IonBadge,
+    IonNote,
     IonSpinner,
     IonText,
     IonTextarea,
@@ -1091,6 +1103,26 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       text: '',
     } as ISqlQueryRequest,
   };
+  /** Structural Author edits update the executable definition. Retain the saved
+   * definition separately until a real save or reload replaces that local draft. */
+  private readonly authorSavedDefinition = signal<{
+    readonly queryId: string;
+    readonly saved: IQueryDef;
+    readonly local: IQueryDef;
+  } | undefined>(undefined);
+
+  private trackAuthorStructuralDraft(local: IQueryDef): void {
+    const previous = this.authorSavedDefinition();
+    const queryId = this.queryState.id;
+    if (!queryId) return;
+    if (previous?.queryId !== queryId) {
+      const saved = this.queryState.def;
+      if (!saved) return;
+      this.authorSavedDefinition.set({ queryId, saved, local });
+    } else if (previous) {
+      this.authorSavedDefinition.set({ ...previous, local });
+    }
+  }
 
   public get activeEnv(): IQueryEnvState | undefined {
     return this.queryState?.activeEnv;
@@ -1195,6 +1227,43 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly runResult = signal<FederatedQueryResult | undefined>(
     undefined,
   );
+  private readonly executionCopyFeedback = signal<{
+    readonly receipt: PublicSqliteExecutionReceipt;
+    readonly text: string;
+  } | undefined>(undefined);
+  private executionCopyGeneration = 0;
+  public readonly executionCopyStatus = computed(() => {
+    const feedback = this.executionCopyFeedback();
+    return feedback && feedback.receipt === this.runResult()?.publicSqliteReceipt ? feedback.text : '';
+  });
+
+  public async copyExecutionIdentifier(
+    receipt: PublicSqliteExecutionReceipt,
+    value: string,
+    label: string,
+  ): Promise<void> {
+    if (this.runResult()?.publicSqliteReceipt !== receipt) return;
+    const generation = ++this.executionCopyGeneration;
+    this.executionCopyFeedback.set(undefined);
+    let write: Promise<void>;
+    try {
+      const clipboard = globalThis.navigator?.clipboard;
+      if (!clipboard?.writeText) throw new Error('Clipboard unavailable');
+      write = clipboard.writeText(value);
+    } catch {
+      if (this.executionCopyGeneration === generation)
+        this.executionCopyFeedback.set({ receipt, text: `Couldn't copy ${label}. Try again.` });
+      return;
+    }
+    try {
+      await write;
+      if (this.executionCopyGeneration === generation && this.runResult()?.publicSqliteReceipt === receipt)
+        this.executionCopyFeedback.set({ receipt, text: `${label} copied` });
+    } catch {
+      if (this.executionCopyGeneration === generation && this.runResult()?.publicSqliteReceipt === receipt)
+        this.executionCopyFeedback.set({ receipt, text: `Couldn't copy ${label}. Try again.` });
+    }
+  }
   private readonly displayedResultGeneration = signal(0);
   public readonly queryRunTiming = signal<QueryRunTiming | undefined>(
     undefined,
@@ -1374,6 +1443,82 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       ? selected
       : undefined;
   });
+  private readonly authorRowFilterFeedback = signal<{
+    readonly row: readonly TypedValue[];
+    readonly snapshotKey: unknown;
+    readonly text: string;
+  } | undefined>(undefined);
+  public readonly authorRowFilterStatus = computed(() => {
+    const feedback = this.authorRowFilterFeedback();
+    return feedback && feedback.row === this.currentAuthorResultRow()?.row &&
+      feedback.snapshotKey === this.authorResultSnapshotKey() ? feedback.text : '';
+  });
+  public clearAuthorRowFilterStatus(): void {
+    this.authorRowFilterFeedback.set(undefined);
+  }
+
+  public useAuthorResultValueAsFilter(action: {
+    readonly index: number;
+    readonly row: readonly TypedValue[];
+    readonly snapshotKey: unknown;
+  }): void {
+    const selected = this.currentAuthorResultRow();
+    const status = (text: string): void => {
+      this.authorRowFilterFeedback.set({ row: action.row, snapshotKey: action.snapshotKey, text });
+    };
+    if (!selected || selected.row !== action.row || action.snapshotKey !== this.authorResultSnapshotKey()) {
+      status('This row changed. Select a current result row and try again.');
+      return;
+    }
+    const receipt = selected.result.publicSqliteReceipt;
+    const output = receipt?.outputColumns?.[action.index];
+    const column = selected.recordset.columns[action.index];
+    const value = action.row[action.index];
+    if (this.running() || this.queryState.isSaving || this.resultPageLoading() ||
+        this.selectedHistoricalResult() || this.displayedResultIsPreviousRun() ||
+        this.publicSqliteRunIsStale(selected.result) ||
+        this.authorPlan()?.draftRevision !== this.authorDraftRevision()) {
+      status('These results belong to a previous draft. Preview and run the current draft before filtering.');
+      return;
+    }
+    if (!receipt || !column || !output || output.name !== column.name ||
+        output.type !== 'integer' || output.lineage.length !== 1 ||
+        (receipt.relationship && output.lineage[0]?.source !== receipt.relationship.fromSource) ||
+        output.lineage[0]?.field !== 'InvoiceId' ||
+        value?.type !== 'integer' || !/^[1-9]\d*$/u.test(value.value) ||
+        !Number.isSafeInteger(Number(value.value))) {
+      status('Filtering is available for a verified InvoiceId integer cell. Copy this value or edit other filters in TugQL Code.');
+      return;
+    }
+    const source = this.queryBodyText();
+    if (source === undefined) {
+      status('The current TugQL draft is unavailable. Reopen this query before filtering.');
+      return;
+    }
+    const edit = useInvoiceIdAsAuthorFilter(source, value.value);
+    if (!edit.ok) {
+      status(edit.reason);
+      return;
+    }
+    if (edit.after === source) {
+      status(`This draft already filters InvoiceId ${value.value}.`);
+      return;
+    }
+    this.queryTextChanged(new CustomEvent('ionInput', { detail: { value: edit.after } }), false);
+    const current = this.currentAuthorFormatContext();
+    if (current) this.authorFormatUndo.set({
+      action: 'filter', originalSource: source, formattedSource: edit.after,
+      scopeKey: current.scopeKey, queryIdentity: current.queryIdentity,
+    });
+    this.authorModeExplicit = true;
+    this.authorMode.set('code');
+    this.authorFormatStatus.set(`InvoiceId ${value.value} added to the local draft. Undo is available; Preview SQL and Run remain explicit.`);
+    status(`InvoiceId ${value.value} added to the local draft. Undo in TugQL Code.`);
+    if (this.authorRowDetailsOpen()) {
+      this.authorRowDetailsShowEditorAfterDismiss = true;
+      this.authorRowDetailsOpen.set(false);
+    }
+  }
   public readonly authorResultRowSelection = {
     mode: 'singleRow' as const,
     enableClickSelection: true,
@@ -1381,6 +1526,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     headerCheckbox: false,
   };
   public readonly authorRowDetailsOpen = signal(false);
+  private authorRowDetailsShowEditorAfterDismiss = false;
   private authorRowDetailsFocusGeneration = 0;
   private authorViewActive = true;
   private authorRowDetailsSnapshot?: unknown;
@@ -1397,6 +1543,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   public authorRowDetailsDismissed(): void {
     this.authorRowDetailsOpen.set(false);
+    const showEditor = this.authorRowDetailsShowEditorAfterDismiss;
+    this.authorRowDetailsShowEditorAfterDismiss = false;
     const caller = this.authorRowDetailsCaller;
     const snapshot = this.authorRowDetailsSnapshot;
     const generation = this.authorRowDetailsFocusGeneration;
@@ -1404,6 +1552,14 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const scope = this.historyScope();
     this.authorRowDetailsCaller = undefined;
     this.authorRowDetailsSnapshot = undefined;
+    if (showEditor) {
+      requestAnimationFrame(() => {
+        if (this.authorViewActive && this.queryView() === 'author' &&
+            query === this.currentQueryIdentity() && scope === this.historyScope())
+          this.authorWorkspaceLayout?.showEditor();
+      });
+      return;
+    }
     // Ionic emits didDismiss before completing overlay/focus-trap teardown.
     // Restore on the next frame, only while the originating view and row still own it.
     requestAnimationFrame(() => {
@@ -1646,6 +1802,14 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly sharedQuerySaveAllowed = signal(false);
   public canSaveQuery(): boolean {
     return !this.project || !isSharedProjectRef(this.project.ref) || this.sharedQuerySaveAllowed();
+  }
+
+  public querySaveState(): string {
+    if (!this.queryDef()) return 'Loading';
+    if (this.queryState.isSaving) return 'Saving';
+    if (this.queryState.saveSupported === false || !this.canSaveQuery())
+      return this.isChanged ? 'Unsaved · Read-only' : 'Read-only';
+    return this.isChanged ? 'Unsaved' : 'Saved';
   }
 
   public publicSqliteSourceChanged(event: Event): void {
@@ -2457,6 +2621,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         def: updatedDefinition,
         request: updatedDefinition.request,
       };
+      this.trackAuthorStructuralDraft(updatedDefinition);
       this.invalidateAuthorDefinitionRun();
       ++this.authorLookupRequestRevision;
       this.authorFormatUndo.set(undefined);
@@ -2576,6 +2741,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         def: updatedDefinition,
         request: updatedDefinition.request,
       };
+      this.trackAuthorStructuralDraft(updatedDefinition);
       this.invalidateAuthorDefinitionRun();
       ++this.authorLookupRequestRevision;
       this.authorFormatUndo.set(undefined);
@@ -2833,6 +2999,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const current = this.currentAuthorFormatContext();
     if (!current) return;
     this.authorFormatUndo.set({
+      action: 'format',
       originalSource: source,
       formattedSource: formatted.source,
       scopeKey: current.scopeKey,
@@ -2862,6 +3029,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         def: updatedDefinition,
         request: updatedDefinition.request,
       };
+      this.trackAuthorStructuralDraft(updatedDefinition);
       this.authorRelationshipUndo.set(undefined);
       this.authorFormatUndo.set(undefined);
       this.clearPreviewDiagnosticNavigation();
@@ -2906,7 +3074,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       }),
       false,
     );
-    this.authorFormatStatus.set('Formatting undone.');
+    this.authorFormatStatus.set(undo.action === 'filter' ? 'InvoiceId filter undone.' : 'Formatting undone.');
   }
 
   private canUndoAuthorRelationship(
@@ -3585,6 +3753,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   };
 
   constructor() {
+    addIcons({ copyOutline });
     this.observedSecurityContextId = this.agentContext.securityContextId();
     this.hasObservedSecurityContext = true;
     const navigationQuery = history.state.query as IQueryDef | undefined;
@@ -3743,6 +3912,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         this.queryPageTitle.set('Query');
         return;
       }
+      const structuralDraft = this.authorSavedDefinition();
+      if (structuralDraft &&
+          (structuralDraft.queryId !== queryState.id ||
+            (queryState.def !== structuralDraft.local && queryState.def !== structuralDraft.saved)))
+        this.authorSavedDefinition.set(undefined);
       const currentTitle = queryState.title ?? queryState.def?.title;
       this.queryPageTitle.set(
         typeof currentTitle === 'string'
@@ -4329,7 +4503,18 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   public get isChanged(): boolean {
-    return isQueryChanged(this.queryState);
+    if (isQueryChanged(this.queryState)) return true;
+    const draft = this.authorSavedDefinition();
+    if (!draft || draft.queryId !== this.queryState.id) return false;
+    return JSON.stringify({
+      request: this.queryState.request,
+      relationshipBindings: this.queryState.def?.relationshipBindings?.length
+        ? this.queryState.def.relationshipBindings : undefined,
+    }) !== JSON.stringify({
+      request: draft.saved.request,
+      relationshipBindings: draft.saved.relationshipBindings?.length
+        ? draft.saved.relationshipBindings : undefined,
+    });
   }
 
   serverChanged(event: CustomEvent): void {
