@@ -336,13 +336,15 @@ export class CasesPageComponent {
     this.knowledgeEvidence.set([]);
     this.knowledgeFindings.set([]);
     this.handoffProposalId.set('');
-    if (context?.kind !== 'cloud' || !caseId) return;
+    if (!context || !caseId) return;
     const incidents = this.client.linkedIncidents(context, caseId).subscribe({
       next: (page) => {
         if (page.caseId === caseId) this.linkedIncidents.set(page.incidents);
       },
       error: (error: unknown) =>
-        this.incidentLoadError.set(detectiveErrorMessage(error, true)),
+        this.incidentLoadError.set(
+          detectiveErrorMessage(error, context.kind === 'cloud'),
+        ),
     });
     const proposals = this.client.knowledgeProposals(context).subscribe({
       next: (page) => {
@@ -351,7 +353,9 @@ export class CasesPageComponent {
         this.knowledgeHasMore.set(page.hasMore);
       },
       error: (error: unknown) =>
-        this.knowledgeLoadError.set(detectiveErrorMessage(error, true)),
+        this.knowledgeLoadError.set(
+          detectiveErrorMessage(error, context.kind === 'cloud'),
+        ),
     });
     onCleanup(() => {
       incidents.unsubscribe();
@@ -643,8 +647,7 @@ export class CasesPageComponent {
       return;
     }
     const created = item.version === 0;
-    const startIncident =
-      context.kind === 'cloud' && created ? this.incidentRef().trim() : '';
+    const startIncident = created ? this.incidentRef().trim() : '';
     const hostedEnvironment = this.selectedHostedEnvironment();
     if (
       startIncident &&
@@ -658,24 +661,23 @@ export class CasesPageComponent {
     this.busy.set(true);
     this.error.set('');
     try {
-      const response =
-        startIncident && context.kind === 'cloud'
-          ? await firstValueFrom(
-              this.client.incidentAction(context, {
-                type: 'start-case',
-                incidentRef: startIncident,
-                environment: hostedEnvironment || '',
-                case: { ...item, incidentRefs: [] },
-                ifMatch: 0,
-              }),
-            )
-          : await firstValueFrom(
-              this.client.action(
-                context,
-                { type: created ? 'create-case' : 'update-case', case: item },
-                item.version,
-              ),
-            );
+      const response = startIncident
+        ? await firstValueFrom(
+            this.client.incidentAction(context, {
+              type: 'start-case',
+              incidentRef: startIncident,
+              environment: hostedEnvironment || '',
+              case: { ...item, incidentRefs: [] },
+              ifMatch: 0,
+            }),
+          )
+        : await firstValueFrom(
+            this.client.action(
+              context,
+              { type: created ? 'create-case' : 'update-case', case: item },
+              item.version,
+            ),
+          );
       if (!response.case)
         throw new Error('The project store did not return the saved Case.');
       await this.refresh();
@@ -753,11 +755,6 @@ export class CasesPageComponent {
       this.error.set('Use incident-store/incident-id.');
       return false;
     }
-    if (context.kind === 'agent')
-      return this.updateCase(
-        { incidentRefs: [...new Set([...(item.incidentRefs || []), ref])] },
-        'Incident linked.',
-      );
     const environment = this.selectedHostedEnvironment();
     if (!environment) {
       this.error.set(
@@ -787,7 +784,7 @@ export class CasesPageComponent {
       this.message.set('Incident linked.');
       return true;
     } catch (error) {
-      this.error.set(detectiveErrorMessage(error, true));
+      this.error.set(detectiveErrorMessage(error, context.kind === 'cloud'));
       return false;
     } finally {
       this.busy.set(false);
@@ -798,7 +795,7 @@ export class CasesPageComponent {
     const item = this.current();
     const environment = this.selectedHostedEnvironment();
     const title = this.incidentTitle().trim();
-    if (context?.kind !== 'cloud' || !item) return;
+    if (!context || !item) return;
     if (!environment || !title) {
       this.error.set(
         'Choose a project environment and give the Incident a title.',
@@ -828,13 +825,13 @@ export class CasesPageComponent {
       this.incidentDescription.set('');
       this.message.set('Incident created and linked to this Case.');
     } catch (error) {
-      this.error.set(detectiveErrorMessage(error, true));
+      this.error.set(detectiveErrorMessage(error, context.kind === 'cloud'));
     } finally {
       this.busy.set(false);
     }
   }
   private async refreshHostedIncidents(
-    context: Extract<DetectiveRequestContext, { kind: 'cloud' }>,
+    context: DetectiveRequestContext,
     caseId: string,
   ): Promise<void> {
     const page = await firstValueFrom(
@@ -871,7 +868,7 @@ export class CasesPageComponent {
   protected async loadMoreKnowledge(): Promise<void> {
     const context = this.scope.context();
     const after = this.knowledgeCursor();
-    if (context?.kind !== 'cloud' || !after || !this.knowledgeHasMore()) return;
+    if (!context || !after || !this.knowledgeHasMore()) return;
     this.knowledgeBusy.set(true);
     this.knowledgeLoadError.set('');
     try {
@@ -888,7 +885,9 @@ export class CasesPageComponent {
       this.knowledgeCursor.set(page.nextCursor);
       this.knowledgeHasMore.set(page.hasMore);
     } catch (error) {
-      this.knowledgeLoadError.set(detectiveErrorMessage(error, true));
+      this.knowledgeLoadError.set(
+        detectiveErrorMessage(error, context.kind === 'cloud'),
+      );
     } finally {
       this.knowledgeBusy.set(false);
     }
@@ -901,7 +900,7 @@ export class CasesPageComponent {
     const evidenceRefs = this.knowledgeEvidence();
     const findingRefs = this.knowledgeFindings();
     const claimStatus = this.knowledgeClaimStatus();
-    if (context?.kind !== 'cloud' || !item) return;
+    if (!context || !item) return;
     if (!title || !statement || !evidenceRefs.length) {
       this.error.set(
         'A knowledge draft needs a title, statement, and at least one Case evidence ID.',
@@ -958,7 +957,7 @@ export class CasesPageComponent {
       this.knowledgeClaimStatus.set('hypothesis');
       this.message.set('Private knowledge draft saved for review.');
     } catch (error) {
-      this.error.set(detectiveErrorMessage(error, true));
+      this.error.set(detectiveErrorMessage(error, context.kind === 'cloud'));
     } finally {
       this.knowledgeBusy.set(false);
     }
@@ -968,7 +967,7 @@ export class CasesPageComponent {
     type: 'review' | 'reject',
   ): Promise<void> {
     const context = this.scope.context();
-    if (context?.kind !== 'cloud') return;
+    if (!context) return;
     this.knowledgeBusy.set(true);
     this.error.set('');
     try {
@@ -995,7 +994,7 @@ export class CasesPageComponent {
         `Knowledge proposal ${type === 'review' ? 'reviewed' : 'rejected'}.`,
       );
     } catch (error) {
-      this.error.set(detectiveErrorMessage(error, true));
+      this.error.set(detectiveErrorMessage(error, context.kind === 'cloud'));
     } finally {
       this.knowledgeBusy.set(false);
     }
@@ -1005,12 +1004,7 @@ export class CasesPageComponent {
     const proposal = this.caseKnowledge().find(
       (item) => item.id === this.handoffProposalId(),
     );
-    if (
-      context?.kind !== 'cloud' ||
-      !proposal ||
-      proposal.status !== 'reviewed'
-    )
-      return;
+    if (!context || !proposal || proposal.status !== 'reviewed') return;
     const target: HostedKnowledgeTarget = {
       system: this.handoffSystem(),
       repository: this.handoffRepository().trim(),
@@ -1052,7 +1046,7 @@ export class CasesPageComponent {
         'Private target-bound handoff is ready for external review. No registry change was made.',
       );
     } catch (error) {
-      this.error.set(detectiveErrorMessage(error, true));
+      this.error.set(detectiveErrorMessage(error, context.kind === 'cloud'));
     } finally {
       this.knowledgeBusy.set(false);
     }

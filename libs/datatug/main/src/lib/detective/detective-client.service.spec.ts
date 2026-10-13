@@ -312,4 +312,76 @@ describe('DetectiveClientService', () => {
     expect(api.post.mock.calls[1][1]).not.toHaveProperty('actor');
     expect(api.post.mock.calls[1][1]).not.toHaveProperty('securityContextId');
   });
+
+  it('uses scoped agent Incident and knowledge routes with typed server mutations', () => {
+    client.linkedIncidents(context, 'case-1').subscribe();
+    const incidents = http.expectOne(
+      (request) =>
+        request.url === '//localhost:8989/datatug/detective/incidents',
+    );
+    expect(incidents.request.params.get('securityContextId')).toBe('session-7');
+    expect(incidents.request.params.get('caseId')).toBe('case-1');
+    incidents.flush({ caseId: 'case-1', incidents: [] });
+
+    client
+      .incidentAction(context, {
+        type: 'link',
+        caseId: 'case-1',
+        incidentRef: 'local/INC-1',
+        environment: 'local',
+        ifMatch: 2,
+      })
+      .subscribe();
+    const incidentAction = http.expectOne(
+      (request) =>
+        request.url === '//localhost:8989/datatug/detective/incident-action',
+    );
+    expect(incidentAction.request.body).toEqual({
+      project: 'billing',
+      securityContextId: 'session-7',
+      operationId: expect.any(String),
+      type: 'link',
+      caseId: 'case-1',
+      incidentRef: 'local/INC-1',
+      environment: 'local',
+      ifMatch: 2,
+    });
+    incidentAction.flush({ receipt: 'accepted' });
+
+    client.knowledgeProposals(context, 'cursor-1').subscribe();
+    const proposals = http.expectOne(
+      (request) =>
+        request.url ===
+        '//localhost:8989/datatug/detective/knowledge_proposals',
+    );
+    expect(proposals.request.params.get('project')).toBe('billing');
+    expect(proposals.request.params.get('securityContextId')).toBe('session-7');
+    expect(proposals.request.params.get('after')).toBe('cursor-1');
+    proposals.flush({ proposals: [], hasMore: false });
+
+    client
+      .knowledgeAction(context, {
+        type: 'review',
+        proposalId: 'p1',
+        ifMatch: 2,
+      })
+      .subscribe();
+    const knowledgeAction = http.expectOne(
+      (request) =>
+        request.url ===
+        '//localhost:8989/datatug/detective/knowledge_proposal_action',
+    );
+    expect(knowledgeAction.request.params.get('securityContextId')).toBe(
+      'session-7',
+    );
+    expect(knowledgeAction.request.body).toEqual({
+      storage: 'local',
+      project: 'billing',
+      operationId: expect.any(String),
+      type: 'review',
+      proposalId: 'p1',
+      ifMatch: 2,
+    });
+    knowledgeAction.flush({ receipt: 'accepted' });
+  });
 });

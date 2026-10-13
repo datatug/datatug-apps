@@ -217,9 +217,19 @@ export class DetectiveClientService {
   }
 
   linkedIncidents(
-    context: Extract<DetectiveRequestContext, { kind: 'cloud' }>,
+    context: DetectiveRequestContext,
     caseId: string,
   ): Observable<HostedIncidentLinks> {
+    if (context.kind === 'agent')
+      return this.http.get<HostedIncidentLinks>(
+        buildAgentUrl(context.agentStoreId, '/detective/incidents'),
+        {
+          params: new HttpParams()
+            .set('project', context.project)
+            .set('securityContextId', context.securityContextId)
+            .set('caseId', caseId),
+        },
+      );
     return this.api.get<HostedIncidentLinks>(
       'datatug/detective/incidents',
       this.cloudParams(context).set('caseId', caseId),
@@ -227,30 +237,54 @@ export class DetectiveClientService {
   }
 
   incidentAction(
-    context: Extract<DetectiveRequestContext, { kind: 'cloud' }>,
+    context: DetectiveRequestContext,
     action: HostedIncidentAction,
   ): Observable<HostedIncidentResponse> {
-    const payload = {
-      storage: context.storage,
-      spaceID: context.spaceID,
-      project: context.project,
-      ...action,
-    };
+    const payload =
+      context.kind === 'cloud'
+        ? {
+            storage: context.storage,
+            spaceID: context.spaceID,
+            project: context.project,
+            ...action,
+          }
+        : {
+            project: context.project,
+            securityContextId: context.securityContextId,
+            ...action,
+          };
     const key = JSON.stringify(['incident_action', payload]);
     const operationId = this.pendingOperations.get(key) ?? crypto.randomUUID();
     this.pendingOperations.set(key, operationId);
-    return this.api
-      .post<HostedIncidentResponse>('datatug/detective/incident_action', {
-        ...payload,
-        operationId,
-      })
-      .pipe(tap({ next: () => this.pendingOperations.delete(key) }));
+    const request =
+      context.kind === 'cloud'
+        ? this.api.post<HostedIncidentResponse>(
+            'datatug/detective/incident_action',
+            { ...payload, operationId },
+          )
+        : this.http.post<HostedIncidentResponse>(
+            buildAgentUrl(context.agentStoreId, '/detective/incident-action'),
+            { ...payload, operationId },
+          );
+    return request.pipe(
+      tap({ next: () => this.pendingOperations.delete(key) }),
+    );
   }
 
   knowledgeProposals(
-    context: Extract<DetectiveRequestContext, { kind: 'cloud' }>,
+    context: DetectiveRequestContext,
     after?: string,
   ): Observable<HostedKnowledgePage> {
+    if (context.kind === 'agent')
+      return this.http.get<HostedKnowledgePage>(
+        buildAgentUrl(context.agentStoreId, '/detective/knowledge_proposals'),
+        {
+          params: new HttpParams()
+            .set('project', context.project)
+            .set('securityContextId', context.securityContextId)
+            .set('after', after || ''),
+        },
+      );
     return this.api.get<HostedKnowledgePage>(
       'datatug/detective/knowledge_proposals',
       after
@@ -260,24 +294,42 @@ export class DetectiveClientService {
   }
 
   knowledgeAction(
-    context: Extract<DetectiveRequestContext, { kind: 'cloud' }>,
+    context: DetectiveRequestContext,
     action: HostedKnowledgeAction,
   ): Observable<HostedKnowledgeResponse> {
-    const payload = {
-      storage: context.storage,
-      spaceID: context.spaceID,
-      project: context.project,
-      ...action,
-    };
+    const payload =
+      context.kind === 'cloud'
+        ? {
+            storage: context.storage,
+            spaceID: context.spaceID,
+            project: context.project,
+            ...action,
+          }
+        : { storage: 'local' as const, project: context.project, ...action };
     const key = JSON.stringify(['knowledge_proposal_action', payload]);
     const operationId = this.pendingOperations.get(key) ?? crypto.randomUUID();
     this.pendingOperations.set(key, operationId);
-    return this.api
-      .post<HostedKnowledgeResponse>(
-        'datatug/detective/knowledge_proposal_action',
-        { ...payload, operationId },
-      )
-      .pipe(tap({ next: () => this.pendingOperations.delete(key) }));
+    const request =
+      context.kind === 'cloud'
+        ? this.api.post<HostedKnowledgeResponse>(
+            'datatug/detective/knowledge_proposal_action',
+            { ...payload, operationId },
+          )
+        : this.http.post<HostedKnowledgeResponse>(
+            buildAgentUrl(
+              context.agentStoreId,
+              '/detective/knowledge_proposal_action',
+            ),
+            { ...payload, operationId },
+            {
+              params: new HttpParams()
+                .set('project', context.project)
+                .set('securityContextId', context.securityContextId),
+            },
+          );
+    return request.pipe(
+      tap({ next: () => this.pendingOperations.delete(key) }),
+    );
   }
 
   runHostedQuery(

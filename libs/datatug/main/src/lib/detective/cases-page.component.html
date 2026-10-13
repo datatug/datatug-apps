@@ -79,7 +79,7 @@
             </div>
             @if (
               !item.version &&
-              scope.context()?.kind === 'cloud' &&
+              scope.context() &&
               incidentRef()
             ) {
               <ion-note
@@ -691,7 +691,7 @@
                 >
               }
               @if (item.status !== 'archived') {
-                @if (scope.context()?.kind === 'cloud') {
+                @if (scope.context()) {
                   <ion-item>
                     <ion-label position="stacked"
                       >Incident environment</ion-label
@@ -730,7 +730,7 @@
                     >Link Incident</ion-button
                   >
                 </div>
-                @if (scope.context()?.kind === 'cloud') {
+                @if (scope.context()) {
                   <div class="form-grid">
                     <ion-item
                       ><ion-label position="stacked"
@@ -766,13 +766,10 @@
                   >
                 }
               }
-              @if (scope.context()?.kind === 'agent') {
-                <a routerLink="/incidents/new">Open a new Incident</a>
-              }
             </ion-card-content></ion-card
           >
 
-          @if (scope.context()?.kind === 'cloud') {
+          @if (scope.context()) {
             <ion-card
               ><ion-card-content>
                 <h2>Private knowledge proposals</h2>
