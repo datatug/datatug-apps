@@ -8,7 +8,7 @@ const project = 'sneat-eur3-1';
  * Failure messages deliberately contain neither identity nor response bodies. */
 export const test = base.extend<{ signedInTestBuyer: void }>({
   signedInTestBuyer: [
-    async ({ page, context }, use, testInfo) => {
+    async ({ page }, use, testInfo) => {
       if (
         process.env.DATATUG_CHECKOUT_PROVIDER_TEST !== '1' ||
         testInfo.project.use.trace !== 'off' ||
@@ -41,7 +41,7 @@ export const test = base.extend<{ signedInTestBuyer: void }>({
       });
       await page.route('**/api.stripe.com/**', async (route) => {
         if (
-          /\/(?:payment_intents|setup_intents)\/[^/]+\/confirm(?:\?|$)/.test(
+          /\/(?:payment_intents|setup_intents|payment_pages)\/[^/]+\/confirm(?:\?|$)/.test(
             route.request().url(),
           )
         )
@@ -69,37 +69,74 @@ export const test = base.extend<{ signedInTestBuyer: void }>({
         await expect
           .poll(
             async () => {
-              const state = await context.storageState({ indexedDB: true });
-              return state.origins
-                .flatMap((o) =>
-                  (o.indexedDB ?? []).flatMap((db) =>
-                    db.stores.flatMap((store) =>
-                      store.records.map((record) => {
-                        const user = record.value?.value;
-                        try {
-                          const jwt = user?.stsTokenManager?.accessToken;
-                          const claims = JSON.parse(
-                            Buffer.from(
-                              jwt.split('.')[1],
-                              'base64url',
-                            ).toString(),
-                          );
-                          return (
-                            user.uid === expectedUID &&
-                            user.isAnonymous === false &&
-                            claims.sub === expectedUID &&
-                            claims.aud === project &&
-                            claims.iss ===
-                              `https://securetoken.google.com/${project}`
-                          );
-                        } catch {
-                          return false;
-                        }
-                      }),
-                    ),
-                  ),
-                )
-                .some(Boolean);
+              // Read the actual Firebase record: Playwright storage exports
+              // can use valueEncoded rather than plain record.value.
+              return page.evaluate(
+                async ({ expectedUID, project }) => {
+                  const database = await new Promise<IDBDatabase | null>(
+                    (resolve) => {
+                      const request = indexedDB.open('firebaseLocalStorageDb');
+                      request.onupgradeneeded = () =>
+                        request.transaction?.abort();
+                      request.onerror = () => resolve(null);
+                      request.onsuccess = () => resolve(request.result);
+                    },
+                  );
+                  if (!database) return false;
+                  try {
+                    if (
+                      !database.objectStoreNames.contains(
+                        'firebaseLocalStorage',
+                      )
+                    )
+                      return false;
+                    const records = await new Promise<
+                      Array<{
+                        value?: {
+                          uid?: string;
+                          isAnonymous?: boolean;
+                          stsTokenManager?: { accessToken?: string };
+                        };
+                      }>
+                    >((resolve, reject) => {
+                      const request = database
+                        .transaction('firebaseLocalStorage', 'readonly')
+                        .objectStore('firebaseLocalStorage')
+                        .getAll();
+                      request.onsuccess = () => resolve(request.result);
+                      request.onerror = () => reject(request.error);
+                    });
+                    return records.some((record) => {
+                      const user = record.value;
+                      try {
+                        const jwt = user?.stsTokenManager?.accessToken;
+                        if (!jwt) return false;
+                        const claims = JSON.parse(
+                          atob(
+                            jwt
+                              .split('.')[1]
+                              .replace(/-/g, '+')
+                              .replace(/_/g, '/'),
+                          ),
+                        );
+                        return (
+                          user.uid === expectedUID &&
+                          user.isAnonymous === false &&
+                          claims.sub === expectedUID &&
+                          claims.aud === project &&
+                          claims.iss ===
+                            `https://securetoken.google.com/${project}`
+                        );
+                      } catch {
+                        return false;
+                      }
+                    });
+                  } finally {
+                    database.close();
+                  }
+                },
+                { expectedUID, project },
+              );
             },
             {
               message:
@@ -110,7 +147,14 @@ export const test = base.extend<{ signedInTestBuyer: void }>({
           .toBe(true);
       } catch {
         // Playwright fill failures may include the supplied value in their
-        // call log. Never propagate that error or attach its cause.
+        // call log. Its automatic error-context snapshot can also retain form
+        // values even with screenshots disabled. Destroy the auth view first.
+        try {
+          await page.goto('about:blank', { timeout: 5000 });
+        } catch {
+          await page.close().catch(() => undefined);
+        }
+        // Never propagate the original error or attach its cause.
         throw new Error(
           'Dedicated TEST authentication failed. Check the private fixture credentials and expected UID.',
         );

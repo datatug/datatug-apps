@@ -104,6 +104,17 @@ for (const kind of ['pro', 'business'])
     await expect(
       page.locator('section[aria-label="Payment"] iframe'),
     ).toBeVisible();
+    const payment = page.frameLocator('section[aria-label="Payment"] iframe');
+    await expect(payment.getByText('Test Mode', { exact: true })).toBeVisible();
+    await expect(
+      payment.getByRole('heading', {
+        name: `Subscribe to DataTug ${kind === 'pro' ? 'Pro' : 'Business'}`,
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      payment.getByRole('button', { name: 'Pay and subscribe', exact: true }),
+    ).toBeVisible();
     expect(
       checkoutRequests.some((path) => path.endsWith('/purchase-setup')),
     ).toBe(false);
@@ -115,6 +126,7 @@ test('an existing paid TEST return reconciles without creating another session o
   page,
   signedInTestBuyer,
 }) => {
+  test.setTimeout(120000);
   void signedInTestBuyer;
   const sessionId = process.env.DATATUG_CHECKOUT_TEST_RETURN_SESSION;
   test.skip(
@@ -146,10 +158,39 @@ test('an existing paid TEST return reconciles without creating another session o
   );
   const response = await statusResponse;
   expect(response.status()).toBe(200);
-  const status = await response.json();
+  let status = await response.json();
   expect(status.mode).toBe('test');
   expect(status.status).toBe('complete');
-  expect(status.ready).toBe(true);
+  // A paid provider return can precede webhook projection. Exercise the
+  // user's read-only recovery action instead of freezing the first response.
+  await expect
+    .poll(
+      async () => {
+        if (status.ready) return true;
+        const retry = page.getByRole('button', {
+          name: 'Check again',
+          exact: true,
+        });
+        if (!(await retry.isVisible()) || !(await retry.isEnabled()))
+          return false;
+        const nextStatus = page.waitForResponse(
+          (response) =>
+            new URL(response.url()).origin === TEST_CHECKOUT_ORIGIN &&
+            new URL(response.url()).pathname ===
+              '/v0/checkout/session-status' &&
+            response.request().method() === 'GET',
+        );
+        await retry.click();
+        const response = await nextStatus;
+        expect(response.status()).toBe(200);
+        status = await response.json();
+        expect(status.mode).toBe('test');
+        expect(status.status).toBe('complete');
+        return status.ready;
+      },
+      { timeout: 90000, intervals: [1000, 2000, 5000] },
+    )
+    .toBe(true);
   if (status.plan?.includes('business')) {
     expect(status.purchase?.paid).toBe(true);
     await expect(
