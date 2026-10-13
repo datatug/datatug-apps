@@ -55,7 +55,6 @@ import {
   CheckStep,
   DetectiveInputValue,
   DetectiveState,
-  DetectiveValue,
   PublishedValidator,
   QueryValidators,
   ValidatorDefinition,
@@ -268,9 +267,10 @@ export class ChecksPageComponent {
     return projectPageHref(this.scope.ref(), ['checks', id]);
   }
   protected caseUrl(): string {
+    const caseId = this.caseId();
     return projectPageHref(
       this.scope.ref(),
-      this.caseId() ? ['detective', this.caseId()!] : 'detective',
+      caseId ? ['detective', caseId] : 'detective',
     );
   }
   protected queryUrl(id: string): string {
