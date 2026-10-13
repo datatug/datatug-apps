@@ -1446,6 +1446,12 @@
           }
         </ion-card-content></ion-card
       >
+      <sneat-datatug-detective-ai-panel
+        [context]="scope.context()"
+        [state]="state()"
+        [caseId]="caseId()"
+        (confirmed)="refresh()"
+      />
     }
   </div>
 </ion-content>

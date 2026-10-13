@@ -384,4 +384,125 @@ describe('DetectiveClientService', () => {
     });
     knowledgeAction.flush({ receipt: 'accepted' });
   });
+
+  it('keeps AI generation, reviewed derivative, and confirmation as distinct scoped agent actions', () => {
+    client.aiProposals(context).subscribe();
+    const list = http.expectOne(
+      (request) =>
+        request.url === '//localhost:8989/datatug/detective/ai_proposals' &&
+        request.method === 'GET',
+    );
+    expect(list.request.params.get('securityContextId')).toBe('session-7');
+    list.flush({ proposals: [], hasMore: false });
+
+    client
+      .aiGenerate(context, 'Seven invoice IDs', 'case-1', { invoices: 7 })
+      .subscribe();
+    const generate = http.expectOne(
+      (request) =>
+        request.url === '//localhost:8989/datatug/detective/ai_proposals' &&
+        request.method === 'POST',
+    );
+    expect(generate.request.body).toEqual({
+      project: 'billing',
+      securityContextId: 'session-7',
+      operationId: expect.any(String),
+      text: 'Seven invoice IDs',
+      caseId: 'case-1',
+      expectedCounts: { invoices: 7 },
+    });
+    expect(generate.request.body).not.toHaveProperty('scope');
+    expect(generate.request.body).not.toHaveProperty('snapshot');
+    generate.flush({ proposals: [], matches: [] });
+
+    client
+      .aiReview(context, {
+        contextReview: {
+          proposalId: 'proposal-1',
+          digest: 'digest-1',
+          caseId: 'case-1',
+          expectedVersion: 3,
+          context: {
+            invoice_id: {
+              type: 'set',
+              values: [{ type: 'string', value: 'INV-7' }],
+            },
+          },
+        },
+      })
+      .subscribe();
+    const review = http.expectOne(
+      (request) =>
+        request.url === '//localhost:8989/datatug/detective/ai_review',
+    );
+    expect(review.request.body).toEqual({
+      project: 'billing',
+      securityContextId: 'session-7',
+      type: 'context',
+      context: {
+        proposalId: 'proposal-1',
+        digest: 'digest-1',
+        caseId: 'case-1',
+        expectedVersion: 3,
+        context: {
+          invoice_id: {
+            type: 'set',
+            values: [{ type: 'string', value: 'INV-7' }],
+          },
+        },
+      },
+    });
+    review.flush({ id: 'derivative-1' });
+
+    client
+      .aiConfirm(context, { id: 'derivative-1', digest: 'digest-2' })
+      .subscribe();
+    const confirm = http.expectOne(
+      (request) =>
+        request.url === '//localhost:8989/datatug/detective/ai_confirm',
+    );
+    expect(confirm.request.body).toEqual({
+      project: 'billing',
+      securityContextId: 'session-7',
+      proposalId: 'derivative-1',
+      digest: 'digest-2',
+      operationId: expect.any(String),
+    });
+    confirm.flush({
+      operationId: confirm.request.body.operationId,
+      resourceId: 'case-1',
+    });
+  });
+
+  it('uses authenticated cloud AI review shape without client identity or catalog authority', () => {
+    const cloud = {
+      kind: 'cloud' as const,
+      storage: 'firestore' as const,
+      spaceID: 'S1',
+      project: 'P1',
+    };
+    api.post.mockReturnValue(of({ id: 'derived' }));
+    client
+      .aiReview(cloud, {
+        review: {
+          proposalId: 'p1',
+          digest: 'digest-1',
+          draft: { kind: 'draft-query', title: 'Query', sources: [] },
+        },
+      })
+      .subscribe();
+    expect(api.post).toHaveBeenCalledWith('datatug/detective/ai_review', {
+      storage: 'firestore',
+      spaceID: 'S1',
+      project: 'P1',
+      type: 'draft',
+      draft: {
+        proposalId: 'p1',
+        digest: 'digest-1',
+        draft: { kind: 'draft-query', title: 'Query', sources: [] },
+      },
+    });
+    expect(api.post.mock.calls[0][1]).not.toHaveProperty('securityContextId');
+    expect(api.post.mock.calls[0][1]).not.toHaveProperty('snapshot');
+  });
 });

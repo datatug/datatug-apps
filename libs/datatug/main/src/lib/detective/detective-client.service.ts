@@ -23,6 +23,14 @@ import {
   HostedKnowledgePage,
   HostedKnowledgeResponse,
 } from './hosted-linkage.models';
+import {
+  AiConfirmReceipt,
+  AiContextReview,
+  AiGenerateResponse,
+  AiProposal,
+  AiProposalsPage,
+  AiReviewedDraft,
+} from './detective-ai.models';
 
 export type DetectiveRequestContext =
   | {
@@ -330,6 +338,123 @@ export class DetectiveClientService {
     return request.pipe(
       tap({ next: () => this.pendingOperations.delete(key) }),
     );
+  }
+
+  aiProposals(
+    context: DetectiveRequestContext,
+    after?: string,
+  ): Observable<AiProposalsPage> {
+    if (context.kind === 'cloud')
+      return this.api.get<AiProposalsPage>(
+        'datatug/detective/ai_proposals',
+        after
+          ? this.cloudParams(context).set('after', after)
+          : this.cloudParams(context),
+      );
+    return this.http.get<AiProposalsPage>(
+      buildAgentUrl(context.agentStoreId, '/detective/ai_proposals'),
+      {
+        params: new HttpParams()
+          .set('project', context.project)
+          .set('securityContextId', context.securityContextId)
+          .set('after', after || ''),
+      },
+    );
+  }
+
+  aiGenerate(
+    context: DetectiveRequestContext,
+    text: string,
+    caseId?: string,
+    expectedCounts?: Record<string, number>,
+  ): Observable<AiGenerateResponse> {
+    const request = {
+      text,
+      ...(caseId ? { caseId } : {}),
+      ...(expectedCounts && Object.keys(expectedCounts).length
+        ? { expectedCounts }
+        : {}),
+    };
+    const key = JSON.stringify(['ai-generate', context, request]);
+    const operationId = this.pendingOperations.get(key) ?? crypto.randomUUID();
+    this.pendingOperations.set(key, operationId);
+    const result =
+      context.kind === 'cloud'
+        ? this.api.post<AiGenerateResponse>('datatug/detective/ai_proposals', {
+            storage: context.storage,
+            spaceID: context.spaceID,
+            project: context.project,
+            operationId,
+            ...request,
+          })
+        : this.http.post<AiGenerateResponse>(
+            buildAgentUrl(context.agentStoreId, '/detective/ai_proposals'),
+            {
+              project: context.project,
+              securityContextId: context.securityContextId,
+              operationId,
+              ...request,
+            },
+          );
+    return result.pipe(tap({ next: () => this.pendingOperations.delete(key) }));
+  }
+
+  aiReview(
+    context: DetectiveRequestContext,
+    request: { review: AiReviewedDraft } | { contextReview: AiContextReview },
+  ): Observable<AiProposal> {
+    if (context.kind === 'cloud')
+      return this.api.post<AiProposal>('datatug/detective/ai_review', {
+        storage: context.storage,
+        spaceID: context.spaceID,
+        project: context.project,
+        ...('review' in request
+          ? { type: 'draft', draft: request.review }
+          : { type: 'context', context: request.contextReview }),
+      });
+    return this.http.post<AiProposal>(
+      buildAgentUrl(context.agentStoreId, '/detective/ai_review'),
+      {
+        project: context.project,
+        securityContextId: context.securityContextId,
+        ...('review' in request
+          ? { type: 'draft', draft: request.review }
+          : { type: 'context', context: request.contextReview }),
+      },
+      { params: new HttpParams().set('project', context.project) },
+    );
+  }
+
+  aiConfirm(
+    context: DetectiveRequestContext,
+    proposal: Pick<AiProposal, 'id' | 'digest'>,
+  ): Observable<AiConfirmReceipt> {
+    const key = JSON.stringify(['ai-confirm', context, proposal]);
+    const operationId = this.pendingOperations.get(key) ?? crypto.randomUUID();
+    this.pendingOperations.set(key, operationId);
+    const body = {
+      proposalId: proposal.id,
+      digest: proposal.digest,
+      operationId,
+    };
+    const result =
+      context.kind === 'cloud'
+        ? this.api.post<AiConfirmReceipt>('datatug/detective/ai_confirm', {
+            storage: context.storage,
+            spaceID: context.spaceID,
+            project: context.project,
+            ...body,
+          })
+        : this.http.post<AiConfirmReceipt>(
+            buildAgentUrl(context.agentStoreId, '/detective/ai_confirm'),
+            {
+              project: context.project,
+              securityContextId: context.securityContextId,
+              ...body,
+            },
+            { params: new HttpParams().set('project', context.project) },
+          );
+    return result.pipe(tap({ next: () => this.pendingOperations.delete(key) }));
   }
 
   runHostedQuery(

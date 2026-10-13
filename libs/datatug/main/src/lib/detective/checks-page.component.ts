@@ -66,6 +66,7 @@ import {
 } from './models';
 import { ValidationRunResultsComponent } from './validation-run-results.component';
 import { DetectiveDemoStarterComponent } from './detective-demo-starter.component';
+import { DetectiveAiPanelComponent } from './detective-ai-panel.component';
 import { checkConsumers, inspectCheck } from './check-inspection';
 
 const NEW_CHECK = (): CheckDefinition => ({
@@ -118,6 +119,7 @@ interface QueryInputRow extends CheckInput {
     IonToolbar,
     ValidationRunResultsComponent,
     DetectiveDemoStarterComponent,
+    DetectiveAiPanelComponent,
   ],
 })
 export class ChecksPageComponent {
@@ -1042,7 +1044,7 @@ export class ChecksPageComponent {
     this.selectedRun.set(run);
   }
 
-  private async refresh(): Promise<void> {
+  protected async refresh(): Promise<void> {
     const context = this.scope.context();
     if (context)
       this.state.set(await firstValueFrom(this.client.state(context)));

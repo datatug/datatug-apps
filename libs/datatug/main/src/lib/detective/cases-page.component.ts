@@ -52,6 +52,7 @@ import {
 } from './detective-forms';
 import { useDetectivePageContext } from './detective-page-context';
 import { DetectiveDemoStarterComponent } from './detective-demo-starter.component';
+import { DetectiveAiPanelComponent } from './detective-ai-panel.component';
 import {
   HostedIncidentView,
   HostedKnowledgeHandoff,
@@ -125,6 +126,7 @@ const NEW_CASE = (): DetectiveCase => ({
     IonTitle,
     IonToolbar,
     DetectiveDemoStarterComponent,
+    DetectiveAiPanelComponent,
   ],
 })
 export class CasesPageComponent {
@@ -1280,7 +1282,7 @@ export class CasesPageComponent {
     }
   }
 
-  private async refresh(): Promise<void> {
+  protected async refresh(): Promise<void> {
     const context = this.scope.context();
     if (context)
       this.state.set(await firstValueFrom(this.client.state(context)));
