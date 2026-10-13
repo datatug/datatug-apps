@@ -290,6 +290,10 @@ async function paymentFake(page: Page) {
                   sessionId: 'cs_test_fixture',
                   planId: selectedPlan,
                   state: 'setup_required',
+                  purchasedAtUTC: '2026-10-13T09:00:00Z',
+                  currency: 'eur',
+                  amountPaidMinor: 6930,
+                  spaceReference: 'intended_business',
                 },
               ]
             : [],
@@ -804,7 +808,224 @@ test('paid Business setup is recoverable from the account after leaving and refr
     fake.seen.filter((x) => x.path.endsWith('/purchase-setup')),
   ).toHaveLength(1);
   await page.goto('/my?checkout=test');
+  await expect(recovery.locator('ion-card')).toHaveCount(0);
+});
+
+test('shared subscriptions preserve independent plans, confirm cancellation and transfer only paid access', async ({
+  page,
+}, testInfo) => {
+  const fake = await paymentFake(page);
+  const email = await seed(page, true, true);
+  const identity = await page.request.post(
+    'http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=e2e',
+    { data: { email, password, returnSecureToken: true } },
+  );
+  const { localId } = await identity.json();
+  const personal = `personal_${localId}`,
+    source = `business_${localId}`,
+    target = `target_${localId}`;
+  const userPath = `http://127.0.0.1:8180/v1/projects/${project}/databases/(default)/documents/users/${localId}`;
+  const user = await (await page.request.get(userPath)).json();
+  user.fields.spaces.mapValue.fields[target] = {
+    mapValue: {
+      fields: {
+        title: { stringValue: 'Northwind' },
+        type: { stringValue: 'company' },
+        roles: { arrayValue: { values: [{ stringValue: 'owner' }] } },
+      },
+    },
+  };
+  user.fields.spaceIDs.arrayValue.values.push({ stringValue: target });
+  expect(
+    (
+      await page.request.patch(userPath, { data: { fields: user.fields } })
+    ).ok(),
+  ).toBe(true);
+  const originalProjectPath = `http://127.0.0.1:8180/v1/projects/${project}/databases/(default)/documents/spaces/${personal}/ext/datatug/projects/fixture_project`;
+  const originalProject = await (
+    await page.request.get(originalProjectPath)
+  ).json();
+  const common = {
+    status: 'active',
+    paidThroughUTC: '2026-11-13T10:00:00Z',
+    scheduledEndUTC: '0001-01-01T00:00:00Z',
+    firstPaidUTC: '2026-10-13T10:00:00Z',
+    currency: 'eur',
+    regularMinor: 9900,
+    renewalMinor: 6930,
+    discountPercent: 30,
+    priceConfirmed: true,
+    launchDiscount: true,
+    bindingRevision: 1,
+    canCancel: true,
+    canTransfer: true,
+  };
+  const subscriptions = [
+    {
+      ...common,
+      accountId: personal,
+      planId: 'datatug-pro-monthly',
+      kind: 'personal',
+      spaceID: personal,
+      regularMinor: 1900,
+      renewalMinor: 1330,
+      canTransfer: false,
+    },
+    {
+      ...common,
+      accountId: 'business_one',
+      planId: 'datatug-business-usage-monthly',
+      kind: 'organisation',
+      spaceID: source,
+    },
+    {
+      ...common,
+      accountId: 'business_two',
+      planId: 'datatug-business-usage-annual',
+      kind: 'organisation',
+      spaceID: 'third_business',
+      regularMinor: 99000,
+      renewalMinor: 69300,
+    },
+  ];
+  const mutations: { path: string; body: Record<string, unknown> }[] = [];
+  await page.route('**/v0/checkout/subscription**', async (route) => {
+    const url = new URL(route.request().url());
+    expect(url.origin).toBe(
+      'https://datatug-checkout-test-354fvnqbaa-ey.a.run.app',
+    );
+    expect(!!route.request().headers()['authorization']).toBe(true);
+    let data: unknown;
+    if (route.request().method() === 'GET') {
+      expect(url.searchParams.get('mode')).toBe('test');
+      data = url.pathname.endsWith('/subscriptions')
+        ? { items: subscriptions }
+        : subscriptions.find(
+            (s) => s.accountId === url.searchParams.get('account_id'),
+          );
+    } else {
+      const body = route.request().postDataJSON();
+      expect(body.mode).toBe('test');
+      mutations.push({ path: url.pathname, body });
+      const selected = subscriptions.find(
+        (s) => s.accountId === body.accountId,
+      );
+      expect(selected).toBeTruthy();
+      if (!selected) throw new Error('Missing fixture subscription');
+      if (url.pathname.endsWith('/cancel')) {
+        expect(body.confirm).toBe(true);
+        selected.status = 'cancellation_scheduled';
+        selected.scheduledEndUTC = selected.paidThroughUTC;
+        selected.canCancel = false;
+        data = selected;
+      } else {
+        expect(body.fromSpaceID).toBe(source);
+        expect(body.spaceID).toBe(target);
+        expect(body.expectedRevision).toBe(1);
+        selected.spaceID = target;
+        selected.bindingRevision = 2;
+        data = {
+          accountId: selected.accountId,
+          fromSpaceID: source,
+          spaceID: target,
+          bindingRevision: 2,
+          effectiveAtUTC: '2026-10-13T10:05:00Z',
+        };
+      }
+    }
+    await route.fulfill({ json: data });
+  });
+  await page.goto('/subscriptions?checkout=test');
+  await expect(page.locator('sneat-auth-panel')).toBeVisible();
+  await page.locator('ion-segment-button[value="in"]').click();
+  await page.locator('ion-input[name="email"] input').fill(email);
+  await page.locator('ion-input[type="password"] input').fill(password);
+  await page.getByRole('button', { name: /Sign in.*with password/ }).click();
+  const settings = page.locator(
+    'datatug-subscription-settings-page.ion-page:not(.ion-page-hidden):not(.ion-page-invisible) sneat-subscription-settings',
+  );
+  await expect(settings.getByRole('link')).toHaveCount(3);
   await expect(
-    recovery.getByText('No subscriptions waiting for setup.'),
+    settings.getByText('DataTug Pro · Personal', { exact: true }),
   ).toBeVisible();
+  await settings
+    .getByText('DataTug Business · Existing Business', { exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/subscriptions\/business_one\?checkout=test$/);
+  await expect(
+    settings.getByText('Receiving space: Existing Business'),
+  ).toBeVisible();
+  await expect(
+    settings.getByText('Regular price: €99.00 / month', { exact: true }),
+  ).toBeVisible();
+  await settings
+    .getByRole('button', { name: 'Cancel renewal', exact: true })
+    .click();
+  await expect(
+    settings.getByText(/Your other subscriptions stay active/),
+  ).toBeVisible();
+  expect(mutations).toHaveLength(0);
+  await settings
+    .getByRole('button', { name: 'Keep subscription', exact: true })
+    .click();
+  await settings
+    .getByRole('button', { name: 'Cancel renewal', exact: true })
+    .click();
+  await settings
+    .getByRole('button', {
+      name: 'Confirm cancellation at period end',
+      exact: true,
+    })
+    .click();
+  await expect(settings.getByText(/Renewal cancelled/)).toBeVisible();
+  expect(subscriptions[0].status).toBe('active');
+  expect(subscriptions[2].status).toBe('active');
+  await settings
+    .getByRole('link', { name: 'Transfer paid access', exact: true })
+    .click();
+  await expect(page).toHaveURL(
+    /\/subscriptions\/business_one\/transfer\?checkout=test&requestId=/,
+  );
+  const transferURL = page.url();
+  await page.reload();
+  expect(page.url()).toBe(transferURL);
+  await expect(
+    settings.getByText(/Projects stay in Existing Business/),
+  ).toBeVisible();
+  // Ionic's accessible shadow button is covered by its visible select control.
+  await settings.locator('ion-select').click();
+  await page.getByRole('radio', { name: 'Northwind', exact: true }).click();
+  await settings
+    .getByRole('button', {
+      name: 'Confirm transfer of paid access',
+      exact: true,
+    })
+    .click();
+  await expect(page).toHaveURL(/\/subscriptions\/business_one\?checkout=test$/);
+  await expect(settings.getByText('Receiving space: Northwind')).toBeVisible();
+  await expect(settings).toHaveCount(1);
+  await expect(settings.locator('..')).toHaveCSS('pointer-events', 'auto');
+  await expect(settings.getByRole('status')).toHaveCount(0);
+  await expect(
+    settings.getByRole('heading', {
+      name: 'Transfer paid access',
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  expect(mutations).toHaveLength(2);
+  expect(subscriptions[1].renewalMinor).toBe(6930);
+  expect(subscriptions[1].paidThroughUTC).toBe(common.paidThroughUTC);
+  expect(
+    (await (await page.request.get(originalProjectPath)).json()).fields,
+  ).toEqual(originalProject.fields);
+  expect(fake.seen.filter((x) => x.path.endsWith('/session'))).toHaveLength(0);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath('subscription-settings.png'),
+    fullPage: true,
+  });
 });

@@ -20,7 +20,19 @@ export function checkoutApi(
   config: CheckoutConfig,
   auth: CheckoutAuth,
   fetcher?: typeof fetch,
-): CheckoutApi & SpaceServiceCheckoutApi;
+): CheckoutApi & SpaceServiceCheckoutApi & SubscriptionManagementApi;
+export interface SubscriptionManagementApi {
+  subscriptions(after?: string): Promise<{ items: unknown[]; next?: string }>;
+  subscription(id: string): Promise<unknown>;
+  cancelSubscription(id: string): Promise<unknown>;
+  transferSubscription(request: {
+    accountId: string;
+    fromSpaceID: string;
+    spaceID: string;
+    requestId: string;
+    expectedRevision: number;
+  }): Promise<{ accountId: string; spaceID: string; bindingRevision: number }>;
+}
 export function validQuote(
   quote: unknown,
   mode: string,

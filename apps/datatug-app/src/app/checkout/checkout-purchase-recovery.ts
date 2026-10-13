@@ -64,8 +64,36 @@ export function purchaseRecoveryPort(
           !['setup_required', 'check_status'].includes(item.state)
         )
           throw new Error('Invalid recovery item');
+        const hasDetails = item.purchasedAtUTC !== undefined;
+        if (
+          hasDetails &&
+          (typeof item.purchasedAtUTC !== 'string' ||
+            !Number.isFinite(Date.parse(item.purchasedAtUTC)) ||
+            typeof item.currency !== 'string' ||
+            !/^[a-zA-Z]{3}$/.test(item.currency) ||
+            !Number.isSafeInteger(item.amountPaidMinor) ||
+            item.amountPaidMinor < 0 ||
+            (item.spaceReference !== undefined &&
+              (typeof item.spaceReference !== 'string' ||
+                !/^[A-Za-z0-9_-]{1,128}$/.test(item.spaceReference))))
+        ) {
+          throw new Error('Invalid recovery details');
+        }
+        const description = hasDetails
+          ? [
+              new Intl.DateTimeFormat(undefined, {
+                dateStyle: 'medium',
+              }).format(new Date(item.purchasedAtUTC)),
+              `${new Intl.NumberFormat(undefined, { style: 'currency', currency: item.currency.toUpperCase() }).format(item.amountPaidMinor / 100)} paid`,
+              ...(item.spaceReference
+                ? [`Intended space: ${item.spaceReference}`]
+                : []),
+              `Reference ${item.accountId.slice(-8)}`,
+            ].join(' · ')
+          : `Purchase reference ${item.accountId}`;
         return {
           id: item.accountId,
+          description,
           label: `DataTug Business · ${item.planId.endsWith('annual') ? 'Yearly' : 'Monthly'}`,
           action:
             item.state === 'setup_required'

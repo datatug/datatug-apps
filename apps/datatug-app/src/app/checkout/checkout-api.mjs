@@ -64,6 +64,38 @@ export function checkoutApi(
     return body;
   }
   return {
+    subscriptions: (after = '') =>
+      request(
+        `/v0/checkout/subscriptions?mode=${mode}${after ? '&after=' + encodeURIComponent(after) : ''}`,
+        {},
+        true,
+      ),
+    subscription: (id) =>
+      request(
+        `/v0/checkout/subscription?mode=${mode}&account_id=${encodeURIComponent(id)}`,
+        {},
+        true,
+      ),
+    cancelSubscription: (id) =>
+      request(
+        '/v0/checkout/subscription/cancel',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode, accountId: id, confirm: true }),
+        },
+        true,
+      ),
+    transferSubscription: (requestBody) =>
+      request(
+        '/v0/checkout/subscription/transfer',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...requestBody, mode }),
+        },
+        true,
+      ),
     purchases: (after = '') =>
       request(
         `/v0/checkout/purchases?mode=${mode}${after ? '&after=' + encodeURIComponent(after) : ''}`,

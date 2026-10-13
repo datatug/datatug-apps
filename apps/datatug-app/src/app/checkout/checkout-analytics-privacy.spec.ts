@@ -54,6 +54,9 @@ it('sets initial-page disable before the GA snippet executes', () => {
   if (!snippet) throw new Error('Missing initial checkout privacy script');
   for (const pathname of [
     '/subscribe/',
+    '/subscriptions/',
+    '/subscriptions/billing_one/transfer',
+    '/login#/subscriptions/billing_one/transfer?checkout=test&requestId=transfer_one',
     '/pricing/return/',
     '/%73ubscribe',
     '/login#/pricing/return?mode=test&session_id=cs_test_paid',

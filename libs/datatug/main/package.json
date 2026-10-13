@@ -32,7 +32,7 @@
     "@sneat/auth-models": "0.27.6",
     "@sneat/auth-ui": "0.27.31",
     "@sneat/app-auth": "0.27.6",
-    "@sneat/components": "0.27.31",
+    "@sneat/components": "0.27.32",
     "@sneat/core": "0.27.23",
     "@sneat/data": "0.27.6",
     "@sneat/datagrid": "0.27.6",
