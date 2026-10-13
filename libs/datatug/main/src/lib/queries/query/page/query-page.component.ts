@@ -1,6 +1,13 @@
 import { readGithubProjectId } from '@datatug/project-address';
 import { SourceRightsNoticeComponent } from '@sneat/datatug-semantic';
 import {
+  DetectiveClientService,
+  detectiveErrorMessage,
+  type HostedQueryResponse,
+} from '../../../detective/detective-client.service';
+import { ValidationRunResultsComponent } from '../../../detective/validation-run-results.component';
+import type { CheckRun, DetectiveExecutionRef, DetectiveState } from '../../../detective/models';
+import {
   formatTugQL,
   parseTugQL,
   type TugQLDiagnostic,
@@ -65,6 +72,30 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 interface QueryResultGridRow {
   readonly [columnId: string]: string;
 }
+
+type HostedRowStatus = 'pass' | 'fail' | 'unknown';
+
+interface HostedQueryExecution {
+  readonly result: FederatedQueryResult;
+  readonly generation: number;
+  readonly projectKey: string;
+  readonly queryId: string;
+  readonly environment: string;
+  readonly execution: DetectiveExecutionRef;
+  readonly queryRevision: string;
+  readonly resultFingerprint: string;
+  readonly run?: CheckRun;
+  readonly validationPending?: boolean;
+  readonly validationError?: string;
+}
+
+const sameExecution = (
+  first: DetectiveExecutionRef | undefined,
+  second: DetectiveExecutionRef | undefined,
+): boolean => !!first && !!second &&
+  first.storeId === second.storeId &&
+  first.projectId === second.projectId &&
+  first.executionId === second.executionId;
 
 interface QueryResultGridRowSnapshot {
   readonly result: FederatedQueryResult;
@@ -610,6 +641,7 @@ export function extractLinkedEntityNames(
     DatatugExecutorModule,
     FormsModule,
     AgGridAngular,
+    ValidationRunResultsComponent,
     HttpQueryEditorComponent,
     SneatDatatugPageTitleComponent,
     IonHeader,
@@ -657,6 +689,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private readonly federatedQuery = inject(FederatedQueryService);
   private readonly publicSqliteQuery = inject(PublicSqliteQueryService);
   private readonly semanticApi = inject(SemanticApiService);
+  private readonly detectiveClient = inject(DetectiveClientService);
+  public readonly hostedDetectiveState = signal<DetectiveState | undefined>(undefined);
+  public readonly hostedDetectiveError = signal<string | undefined>(undefined);
+  public readonly hostedEnvironment = signal('');
+  private readonly hostedExecution = signal<HostedQueryExecution | undefined>(undefined);
+  public readonly hostedStatusFilter = signal<'all' | HostedRowStatus>('all');
+  public readonly hostedSelectedRow = signal<number | undefined>(undefined);
   private readonly agentContext = inject(AgentContextService);
   private readonly investigationContext = inject(InvestigationContextService);
   private readonly coordinator = inject(Coordinator);
@@ -1033,6 +1072,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     return this.queryState?.id;
   }
 
+  public get isHostedProject(): boolean {
+    return !!this.project && isSharedProjectRef(this.project.ref);
+  }
+
   public get queryValidatorsHref(): string | undefined {
     const queryId = this.queryId;
     if (!queryId || this.queryState.isNew || !this.project?.ref) return undefined;
@@ -1173,6 +1216,48 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly selectedHistoricalResult = signal<LocalResultRef | undefined>(
     undefined,
   );
+  public readonly activeHostedExecution = computed(() => {
+    const execution = this.hostedExecution();
+    return execution &&
+      execution.result === this.runResult() &&
+      execution.generation === this.displayedResultGeneration() &&
+      execution.projectKey === JSON.stringify(this.project?.ref) &&
+      execution.queryId === this.queryId &&
+      execution.environment === this.hostedEnvironment() &&
+      !this.selectedHistoricalResult() &&
+      !this.displayedResultIsPreviousRun() &&
+      this.relatedResultSet() === 'affiliations'
+      ? execution
+      : undefined;
+  });
+  public readonly hostedRowStatuses = computed(() => {
+    const execution = this.activeHostedExecution();
+    const statuses = new Map<number, HostedRowStatus>();
+    if (!execution?.run || execution.run.executionStatus !== 'completed' ||
+      !sameExecution(execution.execution, execution.run.steps[0]?.execution))
+      return statuses;
+    // Nested Check rows belong to their own query execution and must not be
+    // projected onto the root query's row indexes.
+    for (const row of execution.run.steps[0].validators || []) {
+      if (row.rowIndex === undefined) continue;
+      const outcome: HostedRowStatus = row.outcome === 'fail' ? 'fail' :
+        row.outcome === 'pass' ? 'pass' : 'unknown';
+      const old = statuses.get(row.rowIndex);
+      if (outcome === 'fail' || (outcome === 'unknown' && old !== 'fail') || !old)
+        statuses.set(row.rowIndex, outcome);
+    }
+    return statuses;
+  });
+  public readonly hostedSelectedRowCells = computed(() => {
+    const index = this.hostedSelectedRow();
+    const execution = this.activeHostedExecution();
+    if (index === undefined || !execution) return undefined;
+    const row = execution.result.recordset.rows[index];
+    return row?.map((value, column) => ({
+      name: execution.result.recordset.columns[column]?.name ?? `Column ${column + 1}`,
+      value: displayQueryResultValue(value),
+    }));
+  });
   public readonly historicalDefinition = signal<IQueryDef | undefined>(
     undefined,
   );
@@ -1260,7 +1345,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         !this.selectedHistoricalResult() &&
         !this.displayedResultIsPreviousRun() &&
         !this.publicSqliteRunIsStale(result);
-      return (this.displayedRecordset()?.columns ?? []).map((column, index) => {
+      const columns = (this.displayedRecordset()?.columns ?? []).map((column, index) => {
         const columnId = `result_${index}`;
         const canLookupCustomer =
           hasVerifiedCustomerIdLineage(receipt, index, column.name) &&
@@ -1293,6 +1378,15 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
             : {}),
         };
       });
+      if (this.activeHostedExecution()?.run?.executionStatus === 'completed')
+        columns.unshift({
+          colId: 'validation_status',
+          field: 'validation_status',
+          headerName: 'Validation',
+          sortable: true,
+          minWidth: 135,
+        });
+      return columns;
     },
   );
   private readonly resultGridRowSnapshots = new WeakMap<
@@ -1325,13 +1419,21 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const recordset = this.displayedRecordset();
     const rows = this.visibleResultRows();
     if (!result || !recordset) return [];
-    return rows.map((row, index) => {
+    const execution = this.activeHostedExecution();
+    const statuses = this.hostedRowStatuses();
+    const filter = this.hostedStatusFilter();
+    return rows.flatMap((row, index) => {
+      const rowIndex = this.resultPageIndex() * this.resultPageSize + index;
+      const status = execution?.run?.executionStatus === 'completed'
+        ? (statuses.get(rowIndex) ?? 'unknown') : undefined;
+      if (status && filter !== 'all' && filter !== status) return [];
       const projected = Object.fromEntries(
         row.map((cell, columnIndex) => [
           `result_${columnIndex}`,
           displayQueryResultValue(cell),
         ]),
       );
+      if (status) projected['validation_status'] = status;
       this.resultGridRowSnapshots.set(projected, {
         result,
         recordset,
@@ -1342,7 +1444,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         resultGeneration: this.displayedResultGeneration(),
         position: this.resultPageIndex() * this.resultPageSize + index + 1,
       });
-      return projected;
+      return [projected];
     });
   });
   public readonly resultGridDefaultColDef: ColDef<QueryResultGridRow> = {
@@ -1351,6 +1453,15 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   };
   public readonly resultGridNoRowsTemplate =
     '<span class="ag-overlay-no-rows-center">No rows.</span>';
+
+  public selectHostedValidationRow(rowIndex: number): void {
+    const execution = this.activeHostedExecution();
+    if (!execution?.run || rowIndex < 0 || rowIndex >= execution.result.recordset.rows.length)
+      return;
+    this.hostedStatusFilter.set('all');
+    this.resultPageIndex.set(Math.floor(rowIndex / this.resultPageSize));
+    this.hostedSelectedRow.set(rowIndex);
+  }
 
   private renderCustomerLookupCell(
     params: ICellRendererParams<QueryResultGridRow, string>,
@@ -3832,6 +3943,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           this.invalidateHistoryScope();
         const previousRef = this.project?.ref;
         this.project = currentProject;
+        this.refreshHostedProject(currentProject.ref, previousRef);
         this.comparisonAccessProjectRef = currentProject.ref;
         this.comparisonProjectAccess.set(currentProject.summary?.access);
         this.initializeCustomerInvoiceExample();
@@ -4042,6 +4154,28 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     });
   }
 
+  private refreshHostedProject(ref: IProjectRef, previousRef?: IProjectRef): void {
+    if (equalProjectRef(previousRef, ref)) return;
+    this.hostedDetectiveState.set(undefined);
+    this.hostedDetectiveError.set(undefined);
+    this.hostedEnvironment.set('');
+    this.hostedExecution.set(undefined);
+    this.hostedSelectedRow.set(undefined);
+    this.hostedStatusFilter.set('all');
+    if (!isSharedProjectRef(ref) || !ref.spaceID) return;
+    this.detectiveClient.state({
+      kind: 'cloud', storage: 'firestore', spaceID: ref.spaceID, project: ref.projectId,
+    }).pipe(takeUntil(this.destroyed)).subscribe({
+      next: (state) => {
+        if (equalProjectRef(this.project?.ref, ref)) this.hostedDetectiveState.set(state);
+      },
+      error: (error: unknown) => {
+        if (equalProjectRef(this.project?.ref, ref))
+          this.hostedDetectiveError.set(detectiveErrorMessage(error, true));
+      },
+    });
+  }
+
   private onProjRefChanged = (ref: IProjectRef) => {
     this.comparisonRouteProjectRef = ref;
     const prevProject = this.project;
@@ -4052,6 +4186,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.invalidateHistoryScope();
     const sameResolvedProject = equalProjectRef(prevProject?.ref, ref) && !!prevProject?.summary;
     this.project = sameResolvedProject ? prevProject : newProjectContextFromRef(ref);
+    this.refreshHostedProject(ref, prevProject?.ref);
     // A genuinely new route ref arrives before its summary and has no admission.
     // Preserve a summary only when it already belongs to this exact full ref.
     if (!sameResolvedProject) {
@@ -4922,6 +5057,136 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
    * project/environment/securityContextId Scope and, per api-contract.md, the exact
    * bindingOrigins for the submitted parameter keys — display provenance only, never
    * authorization. */
+  private runHostedSavedQuery(
+    ref: IProjectRef,
+    queryId: string,
+    definition: IQueryDef | undefined,
+    runRequestedAt: number,
+  ): void {
+    if (this.running()) return;
+    if (!ref.spaceID || !definition || this.queryState.isNew || this.queryState.isSaving || this.isChanged) {
+      this.runError.set('Save this query before running its hosted revision.');
+      return;
+    }
+    const state = this.hostedDetectiveState();
+    if (!state?.capabilities.canRun) {
+      this.runError.set(this.hostedDetectiveError() ??
+        'Hosted execution is unavailable for this project. Reload after its executor is connected.');
+      return;
+    }
+    const environment = this.hostedEnvironment();
+    if (!environment || !state.environments?.includes(environment)) {
+      this.runError.set('Select an available hosted environment before running.');
+      return;
+    }
+    if (this.hasBlockedBindings()) {
+      this.runError.set('Resolve every ambiguous, conflicting or required parameter before running.');
+      return;
+    }
+    const missingFact = this.effectiveBindings().find((binding) =>
+      (binding.origin === 'selection' || binding.origin === 'context') && !binding.factId);
+    if (missingFact) {
+      this.runError.set(`Cannot run ${missingFact.parameterId}: its bound value has no fact provenance.`);
+      return;
+    }
+    const inputs = Object.fromEntries(this.effectiveBindings().map((binding) => [
+      binding.parameterId, binding.value as TypedValue,
+    ]));
+    const context = {
+      kind: 'cloud' as const,
+      storage: 'firestore' as const,
+      spaceID: ref.spaceID,
+      project: ref.projectId,
+    };
+    const projectKey = JSON.stringify(ref);
+    const definitionKey = JSON.stringify(definition);
+    const lifetime = ++this.federatedRunLifetime;
+    const current = (): boolean =>
+      lifetime === this.federatedRunLifetime &&
+      JSON.stringify(this.project?.ref) === projectKey &&
+      this.queryId === queryId &&
+      this.hostedEnvironment() === environment &&
+      JSON.stringify(this.queryDef()) === definitionKey;
+    this.hostedExecution.set(undefined);
+    this.hostedSelectedRow.set(undefined);
+    this.hostedStatusFilter.set('all');
+    this.running.set(true);
+    this.runError.set(undefined);
+    this.detectiveClient.runHostedQuery(context, queryId, environment, inputs)
+      .pipe(takeUntil(this.destroyed)).subscribe({
+        next: (response: HostedQueryResponse) => {
+          if (!current()) return;
+          const execution = response.result.execution;
+          if (!execution || execution.storeId !== ref.storeId || execution.projectId !== ref.projectId) {
+            this.runError.set('The hosted query returned no matching retained execution receipt.');
+            this.running.set(false);
+            return;
+          }
+          const result: FederatedQueryResult = response.result;
+          this.showAttemptResult(result);
+          const timing: QueryRunTiming = {
+            allResultsLoadedMs: Math.max(0, monotonicTime() - runRequestedAt),
+            noRecords: result.recordset.rows.length === 0,
+          };
+          this.queryRunTiming.set(timing);
+          this.commitSuccessfulResult(result, definition, timing);
+          const executed: HostedQueryExecution = {
+            result, generation: this.displayedResultGeneration(), projectKey,
+            queryId, environment, execution,
+            queryRevision: response.queryRevision,
+            resultFingerprint: response.resultFingerprint,
+          };
+          this.hostedExecution.set(executed);
+          const validateReceipt = (attempt: number): void => {
+            if (!current()) return;
+            this.detectiveClient.action(context, {
+              type: 'run-query-validators', queryId, environment, execution,
+            }).pipe(takeUntil(this.destroyed)).subscribe({
+              next: (validated) => {
+                if (!current()) return;
+                const run = validated.run;
+                if (run?.executionStatus === 'pending') {
+                  this.hostedExecution.set({ ...executed, run, validationPending: true });
+                  this.running.set(false);
+                  if (attempt < 20)
+                    setTimeout(() => validateReceipt(attempt + 1), 1500);
+                  else
+                    this.hostedExecution.set({ ...executed, run,
+                      validationError: 'Validation is still pending. Refresh run history to inspect its final outcome.' });
+                  return;
+                }
+                if (!run || !sameExecution(execution, run.steps[0]?.execution)) {
+                  this.hostedExecution.set({ ...executed, validationError:
+                    'Validation did not return a run linked to these exact query rows.' });
+                } else {
+                  this.hostedExecution.set({ ...executed, run });
+                }
+                this.running.set(false);
+              },
+              error: (error: unknown) => {
+                if (!current()) return;
+                if (error instanceof HttpErrorResponse && error.status === 409 && attempt < 20) {
+                  this.hostedExecution.set({ ...executed, validationPending: true });
+                  this.running.set(false);
+                  setTimeout(() => validateReceipt(attempt + 1), 1500);
+                  return;
+                }
+                this.hostedExecution.set({ ...executed,
+                  validationError: detectiveErrorMessage(error, true) });
+                this.running.set(false);
+              },
+            });
+          };
+          validateReceipt(0);
+        },
+        error: (error: unknown) => {
+          if (!current()) return;
+          this.runError.set(detectiveErrorMessage(error, true));
+          this.running.set(false);
+        },
+      });
+  }
+
   public runQuery(): void {
     this.authorFormatNavigationSnapshot.set(undefined);
     const runRequestedAt = monotonicTime();
@@ -4948,6 +5213,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     }
     this.historySelection++;
     this.queryRunTiming.set(undefined);
+    if (projectRef && isSharedProjectRef(projectRef)) {
+      this.runHostedSavedQuery(projectRef, queryId, definition, runRequestedAt);
+      return;
+    }
     if (
       isGithubStoreId(this.project?.ref.storeId) &&
       definition?.connectionId === 'chinook-sqlite' &&

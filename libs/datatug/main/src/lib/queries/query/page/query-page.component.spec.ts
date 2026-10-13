@@ -84,6 +84,7 @@ import { PUBLIC_CHINOOK_COMPARISON_TARGETS } from '../../public-sqlite-compariso
 import type { ComparisonWorkerObservation } from '../../public-sqlite-comparison';
 import { testAuthorProof } from './author-query-proof.spec-helper';
 import { GitHubProjectActivityService } from '../../../services/project/github-project-activity.service';
+import { DetectiveClientService } from '../../../detective/detective-client.service';
 import { graphFixturePlan } from '../../public-data/native-graph.spec-helper';
 import { graphStableIdentity } from '../../public-data/native-graph-executor';
 import {
@@ -104,6 +105,15 @@ const repositoryRoot = resolvePath(
   '../../../../../../../../',
 );
 const resolve = (path: string): string => resolvePath(repositoryRoot, path);
+
+const detectiveClientStub = () => ({
+  state: vi.fn(() => of({ checks: [], validators: [], queryValidators: [],
+    cases: [], runs: [], scenarios: [], runsHasMore: false, environments: [],
+    capabilities: { localOnly: false, canRead: true, canWrite: false,
+      canRun: false, maxRows: 0, maxFanout: 0 } })),
+  runHostedQuery: vi.fn(),
+  action: vi.fn(),
+});
 
 @Component({ selector: 'sneat-datatug-sql', standalone: true, template: '' })
 class SqlEditorHostStub {
@@ -245,6 +255,7 @@ describe('SqlEditorPage', () => {
           provide: SemanticApiService,
           useValue: { runQuery: vi.fn() },
         },
+        { provide: DetectiveClientService, useValue: detectiveClientStub() },
         { provide: AgentContextService, useValue: agentContextStub() },
       ],
     })
@@ -444,6 +455,7 @@ describe('QueryPageComponent — new SQL draft navigation', () => {
           QueryEditorStateService,
           { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn() } },
           { provide: SemanticApiService, useValue: { runQuery: vi.fn() } },
+          { provide: DetectiveClientService, useValue: detectiveClientStub() },
           { provide: AgentContextService, useValue: agentContextStub() },
         ],
       })
@@ -1871,7 +1883,7 @@ select (
     expect(component.canChoosePublicSqliteSource()).toBe(true);
   });
 
-  it('lets a Space query-use viewer edit and dispatch saved public SQL, then reports actual dispatch', async () => {
+  it('keeps a Space query draft editable but refuses to execute unsaved SQL in the browser', async () => {
     component = await createComponent();
     component.project = { ref: { storeId: 'firestore', spaceID: 'space_1', projectId: 'project_1' } };
     component.queryState = { ...component.queryState, saveSupported: false };
@@ -1890,9 +1902,80 @@ select (
     expect(activity.reportForCurrentProject).toHaveBeenCalledWith(component.project.ref, 'test-id', 'query_edit');
     activity.reportForCurrentProject.mockClear();
     component.runQuery();
-    await vi.waitFor(() => expect(run).toHaveBeenCalledOnce());
-    expect(run.mock.calls[0][2]).toBeTypeOf('function');
-    expect(activity.reportForCurrentProject).toHaveBeenCalledWith(component.project.ref, 'test-id', 'query_execution_dispatched');
+    expect(run).not.toHaveBeenCalled();
+    expect(component.runError()).toContain('Save this query');
+    expect(activity.reportForCurrentProject).not.toHaveBeenCalledWith(component.project.ref, 'test-id', 'query_execution_dispatched');
+  });
+
+  it('loads admitted hosted environments on a cold Space query route', async () => {
+    const ref: IProjectRef = { storeId: 'firestore', spaceID: 'space_1', projectId: 'project_1' };
+    const routeRef = { ...ref, spaceId: ref.spaceID };
+    component = await createComponent({}, queryDef, '<p></p>', {
+      project: of({ ref }), routeRef, routeId: queryDef.id,
+      queries: { capabilities: vi.fn(() => of({ querySave: true })) },
+    });
+    const detective = TestBed.inject(DetectiveClientService);
+    expect(detective.state).toHaveBeenCalledWith({
+      kind: 'cloud', storage: 'firestore', spaceID: 'space_1', project: 'project_1',
+    });
+    expect(component.hostedDetectiveState()?.capabilities.canRead).toBe(true);
+    expect(component.hostedEnvironment()).toBe('');
+  });
+
+  it('correlates hosted Validator status only to the exact retained query execution', async () => {
+    component = await createComponent();
+    component.project = { ref: { storeId: 'firestore', spaceID: 'space_1', projectId: 'project_1' } };
+    const savedDefinition = { ...queryDef, parameters: [] };
+    component.queryDef.set(savedDefinition);
+    component.queryState = { ...component.queryState, def: savedDefinition,
+      title: savedDefinition.title, request: savedDefinition.request, isNew: false };
+    component.hostedDetectiveState.set({
+      checks: [], validators: [], queryValidators: [], cases: [], runs: [], scenarios: [],
+      runsHasMore: false, environments: ['demo'],
+      capabilities: { localOnly: false, canRead: true, canWrite: true,
+        canRun: true, maxRows: 1000, maxFanout: 100 },
+    });
+    component.hostedEnvironment.set('demo');
+    const detective = TestBed.inject(DetectiveClientService);
+    const execution = { storeId: 'firestore', projectId: 'project_1', executionId: 'e1' };
+    const result = {
+      recordset: { columns: [{ name: 'InvoiceId', type: 'integer' }],
+        rows: [[{ type: 'integer', value: '7' }], [{ type: 'integer', value: '9' }]] },
+      limitations: [], bindingsApplied: [], truncated: false,
+      provenance: { source: 'hosted', queryId: queryDef.id, mode: 'snapshot',
+        observedAt: '2026-10-13T00:00:00Z', executionProfile: 'protected' },
+      execution,
+    };
+    const hosted = vi.spyOn(detective, 'runHostedQuery').mockReturnValue(of({
+      result: result as never, queryRevision: 'rev-1', resultFingerprint: 'sha256-1',
+    }));
+    const validate = vi.spyOn(detective, 'action').mockReturnValue(of({ run: {
+      id: 'run-1', kind: 'query-validators', queryId: queryDef.id,
+      executionStatus: 'completed', outcome: 'fail', environment: 'demo',
+      steps: [{ stepId: 'query', kind: 'query', queryId: queryDef.id,
+        execution, executionStatus: 'completed', outcome: 'fail', validators: [
+          { validatorId: 'invoice-check', executionStatus: 'completed', outcome: 'fail',
+            severity: 'error', rowIndex: 1, message: 'Invoice 9 failed' },
+        ] }],
+    } as never }));
+    expect(component.isChanged).toBe(false);
+    component.runQuery();
+    expect(hosted).toHaveBeenCalledOnce();
+    expect(validate).toHaveBeenCalledWith(expect.objectContaining({ project: 'project_1' }),
+      { type: 'run-query-validators', queryId: queryDef.id,
+        environment: 'demo', execution });
+    expect(component.runResult()).toBe(result);
+    expect(component.resultGridRows().map((row) => row['validation_status']))
+      .toEqual(['unknown', 'fail']);
+    component.hostedStatusFilter.set('fail');
+    expect(component.resultGridRows().map((row) => row['result_0'])).toEqual(['9']);
+    component.selectHostedValidationRow(1);
+    expect(component.hostedSelectedRowCells()?.[0].value).toBe('9');
+    component.hostedEnvironment.set('other');
+    expect(component.activeHostedExecution()).toBeUndefined();
+    expect(component.resultGridRows().map((row) => row['validation_status']))
+      .toEqual([undefined, undefined]);
+    expect(vi.spyOn(TestBed.inject(PublicSqliteQueryService), 'run')).not.toHaveBeenCalled();
   });
 
   it.each(['source rejected', 'dispatched', 'worker failed'])(
@@ -4538,6 +4621,7 @@ select (
         },
         { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn() } },
         { provide: SemanticApiService, useValue: { runQuery: runQueryMock } },
+        { provide: DetectiveClientService, useValue: detectiveClientStub() },
         {
           provide: FederatedQueryService,
           useValue: {
@@ -7729,6 +7813,7 @@ describe('QueryPageComponent — clearing a required parameter blocks Run (S96)'
         },
         { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn() } },
         { provide: SemanticApiService, useValue: { runQuery: runQueryMock } },
+        { provide: DetectiveClientService, useValue: detectiveClientStub() },
         { provide: AgentContextService, useValue: agentContextStub() },
       ],
     })
@@ -8166,6 +8251,7 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
         },
         { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn() } },
         { provide: SemanticApiService, useValue: { runQuery: vi.fn() } },
+        { provide: DetectiveClientService, useValue: detectiveClientStub() },
         { provide: AgentContextService, useValue: agentContextStub() },
       ],
     })

@@ -174,6 +174,12 @@ export interface ValidationResult {
   children?: CheckStepResult[];
 }
 
+export interface DetectiveExecutionRef {
+  storeId: string;
+  projectId: string;
+  executionId: string;
+}
+
 export interface CheckStepResult {
   stepId: string;
   kind: string;
@@ -183,7 +189,7 @@ export interface CheckStepResult {
   source?: string;
   observedAt?: string;
   executionProfile?: string;
-  execution?: { storeId: string; projectId: string; executionId: string };
+  execution?: DetectiveExecutionRef;
   errorCode?: string;
   durationMs?: number;
   checkId?: string;
@@ -276,6 +282,7 @@ export interface DetectiveActionRequest {
   stepId?: string;
   stepStatus?: 'pending' | 'completed' | 'skipped';
   runId?: string;
+  execution?: DetectiveExecutionRef;
   environment?: string;
   inputs?: Record<string, DetectiveInputValue>;
 }

@@ -5,12 +5,14 @@ import {
 } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { SneatApiService } from '@sneat/api';
+import type { RunQueryResponse } from '@sneat/datatug-semantic';
 import { Observable, throwError } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { buildAgentUrl } from '../services/repo/agent-url';
 import {
   DetectiveActionRequest,
   DetectiveActionResponse,
+  DetectiveExecutionRef,
   DetectiveState,
 } from './models';
 
@@ -68,6 +70,13 @@ export interface CaseEventsPage {
   events: import('./models').CaseEvent[];
   nextBefore?: number;
   hasMore: boolean;
+}
+
+export interface HostedQueryResponse {
+  result: RunQueryResponse & { readonly execution?: DetectiveExecutionRef };
+  queryRevision: string;
+  resultFingerprint: string;
+  receipt?: unknown;
 }
 
 /** Mutations use the selected server boundary; the browser never writes project records directly. */
@@ -138,7 +147,14 @@ export class DetectiveClientService {
           ...payload,
           operationId,
         })
-        .pipe(tap({ next: () => this.pendingOperations.delete(key) }));
+        .pipe(
+          tap({
+            next: (response) => {
+              if (response.run?.executionStatus !== 'pending')
+                this.pendingOperations.delete(key);
+            },
+          }),
+        );
     }
     return this.http.post<DetectiveActionResponse>(
       buildAgentUrl(context.agentStoreId, '/detective/action'),
@@ -190,5 +206,30 @@ export class DetectiveClientService {
       ...(spaceID ? { spaceID } : {}),
       operationId,
     });
+  }
+
+  runHostedQuery(
+    context: Extract<DetectiveRequestContext, { kind: 'cloud' }>,
+    queryId: string,
+    environment: string,
+    inputs: Record<string, import('./models').DetectiveInputValue>,
+  ): Observable<HostedQueryResponse> {
+    const payload = {
+      storage: context.storage,
+      spaceID: context.spaceID,
+      project: context.project,
+      queryId,
+      environment,
+      inputs,
+    };
+    const key = JSON.stringify(payload);
+    const operationId = this.pendingOperations.get(key) ?? crypto.randomUUID();
+    this.pendingOperations.set(key, operationId);
+    return this.api
+      .post<HostedQueryResponse>('datatug/queries/run_query', {
+        ...payload,
+        operationId,
+      })
+      .pipe(tap({ next: () => this.pendingOperations.delete(key) }));
   }
 }

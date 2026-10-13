@@ -178,4 +178,76 @@ describe('DetectiveClientService', () => {
       operationId: 'operation-1',
     });
   });
+
+  it('runs a saved hosted query through the protected endpoint and replays an uncertain request', () => {
+    const cloud = {
+      kind: 'cloud' as const,
+      storage: 'firestore' as const,
+      spaceID: 'S1',
+      project: 'P1',
+    };
+    const inputs = { invoice_id: { type: 'integer' as const, value: '7' } };
+    api.post
+      .mockReturnValueOnce(
+        throwError(() => new HttpErrorResponse({ status: 0 })),
+      )
+      .mockReturnValue(
+        of({
+          result: {
+            execution: {
+              storeId: 'firestore',
+              projectId: 'P1',
+              executionId: 'e1',
+            },
+          },
+        }),
+      );
+    client
+      .runHostedQuery(cloud, 'invoice-query', 'demo', inputs)
+      .subscribe({ error: () => undefined });
+    client.runHostedQuery(cloud, 'invoice-query', 'demo', inputs).subscribe();
+    expect(api.post.mock.calls[0][0]).toBe('datatug/queries/run_query');
+    expect(api.post.mock.calls[0][1]).toEqual({
+      storage: 'firestore',
+      spaceID: 'S1',
+      project: 'P1',
+      queryId: 'invoice-query',
+      environment: 'demo',
+      inputs,
+      operationId: expect.any(String),
+    });
+    expect(api.post.mock.calls[1][1].operationId).toBe(
+      api.post.mock.calls[0][1].operationId,
+    );
+    expect(api.post.mock.calls[0][1]).not.toHaveProperty('securityContextId');
+    expect(api.post.mock.calls[0][1]).not.toHaveProperty('snapshot');
+    expect(api.post.mock.calls[0][1]).not.toHaveProperty('record');
+  });
+
+  it('keeps a pending hosted validation operation ID until its final receipt', () => {
+    const cloud = {
+      kind: 'cloud' as const,
+      storage: 'firestore' as const,
+      spaceID: 'S1',
+      project: 'P1',
+    };
+    const action = {
+      type: 'run-query-validators' as const,
+      queryId: 'invoices',
+      environment: 'demo',
+      execution: { storeId: 'firestore', projectId: 'P1', executionId: 'e1' },
+    };
+    api.post
+      .mockReturnValueOnce(of({ run: { executionStatus: 'pending' } }))
+      .mockReturnValue(of({ run: { executionStatus: 'completed' } }));
+    client.action(cloud, action).subscribe();
+    client.action(cloud, action).subscribe();
+    expect(api.post.mock.calls[1][1].operationId).toBe(
+      api.post.mock.calls[0][1].operationId,
+    );
+    client.action(cloud, action).subscribe();
+    expect(api.post.mock.calls[2][1].operationId).not.toBe(
+      api.post.mock.calls[1][1].operationId,
+    );
+  });
 });
