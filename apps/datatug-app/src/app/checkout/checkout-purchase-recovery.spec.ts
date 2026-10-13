@@ -42,6 +42,7 @@ it('lists authenticated purchases from the fixed TEST rail and returns only navi
     items: [
       {
         id: 'purchase-one',
+        description: 'Purchase reference purchase-one',
         label: 'DataTug Business · Monthly',
         action: 'Finish Business setup',
         path: '/pricing/return',
@@ -73,4 +74,35 @@ it('observes the normal identity without introducing sign-in or storing a token'
   expect(port().observeIdentity(receive)).toBe(stop);
   expect(receive).toHaveBeenCalledWith('buyer');
   expect(mocks.token).not.toHaveBeenCalled();
+});
+
+it('identifies same-plan purchases by date, amount, destination and stable reference', async () => {
+  mocks.purchases.mockResolvedValue({
+    items: [
+      {
+        ...item,
+        purchasedAtUTC: '2026-10-13T09:00:00Z',
+        currency: 'eur',
+        amountPaidMinor: 6930,
+        spaceReference: 'acme',
+      },
+    ],
+  });
+  const result = await port().load('test', '');
+  expect(result.items[0].description).toContain('69.30');
+  expect(result.items[0].description).toContain('Intended space: acme');
+  expect(result.items[0].description).toContain('Reference hase-one');
+  mocks.purchases.mockResolvedValue({
+    items: [
+      {
+        ...item,
+        purchasedAtUTC: 'invalid',
+        currency: 'eur',
+        amountPaidMinor: 6930,
+      },
+    ],
+  });
+  await expect(port().load('test', '')).rejects.toThrow(
+    'Invalid recovery details',
+  );
 });

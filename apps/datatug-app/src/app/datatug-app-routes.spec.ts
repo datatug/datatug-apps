@@ -132,6 +132,9 @@ describe('DataTug app routes', () => {
 
   it('adds canonical checkout before the unchanged project and hand-off routes', () => {
     expect(routes.map((r) => r.path)).toEqual([
+      'subscriptions/:accountId/transfer',
+      'subscriptions/:accountId',
+      'subscriptions',
       'checkout/sign-in',
       'business/checkout/return',
       'business/checkout',

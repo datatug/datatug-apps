@@ -8,6 +8,15 @@
 </ion-header>
 
 <ion-content>
+  <ion-list
+    ><ion-item
+      button
+      detail
+      routerLink="/subscriptions"
+      [queryParams]="subscriptionQuery()"
+      ><ion-label>Subscriptions</ion-label></ion-item
+    ></ion-list
+  >
   <sneat-subscription-recovery title="Finish DataTug Business setup" />
   <ion-list>
     <ion-list-header>
