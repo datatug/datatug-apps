@@ -6376,6 +6376,14 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.hostedScenarioBusy()
     )
       return;
+    const queryId = this.queryId;
+    const isCurrent = (): boolean =>
+      equalProjectRef(this.project?.ref, ref) &&
+      this.queryId === queryId &&
+      this.hostedScenarioTarget()?.caseId === target.caseId &&
+      this.hostedScenarioTarget()?.applicationId === target.applicationId &&
+      this.hostedScenarioTarget()?.stepId === target.stepId &&
+      this.activeHostedExecution() === execution;
     this.hostedScenarioBusy.set(true);
     this.hostedScenarioError.set('');
     this.hostedScenarioMessage.set('');
@@ -6387,6 +6395,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         project: ref.projectId,
       };
       const latest = await firstValueFrom(this.detectiveClient.state(context));
+      if (!isCurrent()) return;
       const item = latest.cases.find(
         (candidate) => candidate.id === target.caseId,
       );
@@ -6425,6 +6434,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           item.version,
         ),
       );
+      if (!isCurrent()) return;
       const updatedCase = response.case;
       if (!updatedCase)
         throw new Error('The project store did not return the updated Case.');
@@ -6438,9 +6448,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         'Scenario query step recorded from this saved execution. Its evidence outcome is unknown until a Validator asserts it.',
       );
     } catch (error) {
-      this.hostedScenarioError.set(detectiveErrorMessage(error, true));
+      if (isCurrent())
+        this.hostedScenarioError.set(detectiveErrorMessage(error, true));
     } finally {
-      this.hostedScenarioBusy.set(false);
+      if (isCurrent()) this.hostedScenarioBusy.set(false);
     }
   }
 
