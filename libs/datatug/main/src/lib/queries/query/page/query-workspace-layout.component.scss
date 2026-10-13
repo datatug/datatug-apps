@@ -21,6 +21,18 @@
 .workspace-results-pane-empty {
   display: none;
 }
+:host ::ng-deep .author-inspected-cell {
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+:host ::ng-deep .author-inspected-row-marker {
+  font-size: 0.75rem;
+}
+:host ::ng-deep .author-result-grid-viewport .ag-row.author-inspected-row {
+  box-shadow: inset 0 2px var(--ion-color-primary), inset 0 -2px var(--ion-color-primary);
+  font-weight: 650;
+}
 :host ::ng-deep .author-results {
   display: grid;
   grid-template-columns: minmax(5rem, max-content) minmax(0, 1fr);

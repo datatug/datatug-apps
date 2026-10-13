@@ -21,6 +21,7 @@
 }
 .author-card ion-card-header {
   padding: 0;
+  flex-direction: column;
 }
 .author-card ion-card-content {
   padding: 0;
@@ -44,21 +45,21 @@
 .author-card-title-row ion-buttons {
   margin-inline: 0;
 }
-.author-workbench-tools {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.2rem 0.65rem;
-  padding: 0;
-  border-block: 1px solid var(--ion-color-step-150, #e5e7eb);
-}
 .author-mode-switch {
   width: fit-content;
   margin: 0;
 }
 .author-context-tabs {
-  max-width: 100%;
+  width: 100%;
+  min-width: 0;
+  min-height: 5.25rem;
+  grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(0, 1fr));
+}
+.author-context-tabs ion-segment-button {
+  min-width: 0;
+  min-height: 5.25rem;
+  --padding-start: 0;
+  --padding-end: 0;
 }
 .author-context-sticky-header {
   position: sticky;
@@ -67,7 +68,24 @@
   background: var(--ion-background-color);
 }
 .author-context-tabs ion-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   white-space: nowrap;
+  margin-block: 0.4rem;
+}
+.author-context-tabs ion-chip {
+  margin: 0.2rem 0 0;
+}
+.author-run-readiness {
+  --min-height: 2.25rem;
+  --background: transparent;
+}
+.author-run-readiness ion-label {
+  margin-block: 0.25rem;
+}
+.author-row-details-shortcut {
+  display: none;
 }
 .author-actions {
   display: flex;
@@ -87,12 +105,6 @@
   outline: 2px solid var(--ion-color-primary);
   outline-offset: 2px;
 }
-.author-card details {
-  margin: 0;
-  color: var(--ion-color-medium-shade);
-  line-height: 1.4;
-}
-.author-card details summary,
 .previous-run-disclosure > summary {
   display: flex;
   min-height: 2.75rem;
@@ -101,13 +113,11 @@
   font-weight: 600;
   list-style: none;
 }
-.author-card details summary::before,
 .previous-run-disclosure > summary::before {
   width: 1rem;
   content: '▸';
   color: var(--ion-color-medium-shade);
 }
-.author-card details[open] > summary::before,
 .previous-run-disclosure[open] > summary::before {
   content: '▾';
 }
@@ -137,6 +147,11 @@
   align-items: stretch;
 }
 @media (max-width: 700px) {
+  .author-row-details-shortcut {
+    display: flex;
+    --padding-start: 0;
+    --inner-padding-end: 0;
+  }
   .result-author-data-enabled {
     grid-template-columns: minmax(0, 1fr);
   }

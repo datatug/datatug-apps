@@ -17,7 +17,7 @@ import {
   type TugQLDiagnostic,
   type TugQLFormatOptions,
 } from '@dalgo/core';
-import { DatePipe, NgTemplateOutlet } from '@angular/common';
+import { NgTemplateOutlet } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { PublicDataService } from '../../public-data/public-data.service';
 import { ConfiguredPublicDataSourcesService } from '../../public-data/configured-public-data-sources.service';
@@ -49,6 +49,9 @@ import {
   ModuleRegistry,
   type ColDef,
   type CellFocusedEvent,
+  type GridApi,
+  type RowClickedEvent,
+  type RowClassRules,
   type ICellRendererParams,
   type SelectionChangedEvent,
   type SuppressKeyboardEventParams,
@@ -290,6 +293,7 @@ import {
   IonList,
   IonListHeader,
   IonMenuButton,
+  IonModal,
   IonSelect,
   IonSelectOption,
   IonSegment,
@@ -627,7 +631,6 @@ export function extractLinkedEntityNames(
     PublicSqliteComparisonPanelComponent,
     QueryWorkspaceLayoutComponent,
     SqlEditorComponent,
-    DatePipe,
     NgTemplateOutlet,
     // DatatugNavContextService and EnvironmentService are now
     // providedIn: 'root' (nav-context-root-singletons); QueriesService,
@@ -664,6 +667,7 @@ export function extractLinkedEntityNames(
     IonToolbar,
     IonButtons,
     IonMenuButton,
+    IonModal,
     IonBackButton,
     IonButton,
     IonContent,
@@ -875,6 +879,69 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly authorPlan = signal<PublicSqliteQueryPreview | undefined>(
     undefined,
   );
+  public readonly authorPreviewLoading = signal(false);
+
+  /** The same gates drive the header explanation and Run's disabled state. */
+  public authorRunReadiness(): {
+    readonly blocked: boolean;
+    readonly message: string;
+    readonly action?: 'parameters' | 'preview' | 'error' | 'code';
+  } {
+    if (this.running()) return { blocked: true, message: 'Running query…' };
+    if (this.queryState.isSaving) return { blocked: true, message: 'Saving query…' };
+    if (this.authorPreviewLoading()) return { blocked: true, message: 'Preparing SQL preview…' };
+    if (!this.queryId || !this.project || !this.queryDef())
+      return { blocked: true, message: 'Waiting for the query and project to load.' };
+    if (this.authorUnsupportedParameterNames().length)
+      return { blocked: true, message: 'This draft has parameters that this form cannot bind.', action: 'code' };
+    if (!this.authorHasCustomerIdParameter())
+      return { blocked: true, message: 'This parameter-free draft is unavailable in the current runner. Review a supported parameterized draft.', action: 'code' };
+    if (!this.authorCustomerIdValid())
+      return { blocked: true, message: this.authorCustomerIdMissing()
+        ? 'Customer ID is required to Run.' : 'Customer ID must be a whole number.', action: 'parameters' };
+    const plan = this.authorPlan();
+    if (!plan || plan.draftRevision !== this.authorDraftRevision()) {
+      if (this.authorError())
+        return { blocked: true, message: 'SQL preview needs attention. Review the draft error.',
+          action: this.canNavigateToAuthorPreviewSyntaxDiagnostic() ? 'error' : 'code' };
+      return { blocked: true, message: 'Preview the current draft to enable Run.', action: 'preview' };
+    }
+    return { blocked: false, message: this.authorHasCustomerIdParameter()
+      ? 'Ready to Run with Customer ID ' + this.authorCustomerId() + '.'
+      : 'Ready to Run the current preview.' };
+  }
+
+  public recoverAuthorRun(): void {
+    switch (this.authorRunReadiness().action) {
+      case 'parameters':
+        this.authorContextTabChanged('parameters');
+        this.focusAuthorParameterAfterRender();
+        break;
+      case 'preview':
+        this.setAuthorMode('preview');
+        void this.previewTugql();
+        break;
+      case 'error': this.navigateToAuthorPreviewSyntaxDiagnostic(); break;
+      case 'code': this.setAuthorMode('code'); break;
+    }
+  }
+
+  @ViewChild('authorCustomerInput') private authorCustomerInput?: IonInput;
+  private authorParameterFocusRevision = 0;
+
+  private focusAuthorParameterAfterRender(): void {
+    const revision = ++this.authorParameterFocusRevision;
+    const definition = this.queryDef();
+    const scope = this.historyScope();
+    const current = (): boolean => revision === this.authorParameterFocusRevision &&
+      this.queryDef() === definition && this.historyScope() === scope &&
+      this.queryView() === 'author' && this.activeAuthorContextTab() === 'parameters' &&
+      !this.running() && !this.queryState.isSaving;
+    this.changeDetector.markForCheck();
+    afterNextRender(() => {
+      if (current()) void this.authorCustomerInput?.setFocus();
+    }, { injector: this.injector });
+  }
   public readonly queryView = signal<'author' | 'compare'>('author');
   public readonly comparisonSnapshot = signal<
     ComparisonSessionSnapshot | undefined
@@ -1501,14 +1568,14 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
             headerName: column.name,
             sortable: false,
             minWidth: 120,
-            ...(canLookupCustomer
+            ...(canLookupCustomer || (index === 0 && this.isTugqlAuthorJourney())
               ? {
                   cellRenderer: (
                     params: ICellRendererParams<QueryResultGridRow, string>,
                   ) =>
-                    this.renderCustomerLookupCell(
+                    this.renderInspectedResultCell(
                       params,
-                      receipt,
+                      canLookupCustomer ? receipt : undefined,
                       this.currentQueryIdentity(),
                       index,
                       column.name,
@@ -1560,6 +1627,70 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     checkboxes: false,
     headerCheckbox: false,
   };
+  public readonly authorRowDetailsOpen = signal(false);
+  private authorRowDetailsFocusGeneration = 0;
+  private authorViewActive = true;
+  private authorRowDetailsSnapshot?: unknown;
+  private authorRowDetailsCaller?: HTMLElement;
+  private authorResultGridApi?: GridApi<QueryResultGridRow>;
+
+  public openAuthorRowDetails(event: Event): void {
+    if (!this.currentAuthorResultRow() || this.resultPageLoading()) return;
+    ++this.authorRowDetailsFocusGeneration;
+    this.authorRowDetailsCaller = event.currentTarget as HTMLElement;
+    this.authorRowDetailsSnapshot = this.authorResultSnapshotKey();
+    this.authorRowDetailsOpen.set(true);
+  }
+
+  public authorRowDetailsDismissed(): void {
+    this.authorRowDetailsOpen.set(false);
+    const caller = this.authorRowDetailsCaller;
+    const snapshot = this.authorRowDetailsSnapshot;
+    const generation = this.authorRowDetailsFocusGeneration;
+    const query = this.currentQueryIdentity();
+    const scope = this.historyScope();
+    this.authorRowDetailsCaller = undefined;
+    this.authorRowDetailsSnapshot = undefined;
+    // Ionic emits didDismiss before completing overlay/focus-trap teardown.
+    // Restore on the next frame, only while the originating view and row still own it.
+    requestAnimationFrame(() => {
+      if (!caller?.isConnected || !this.authorViewActive || this.queryView() !== 'author' ||
+          generation !== this.authorRowDetailsFocusGeneration || this.authorRowDetailsOpen() ||
+          query !== this.currentQueryIdentity() || scope !== this.historyScope() ||
+          snapshot !== this.authorResultSnapshotKey() || !this.currentAuthorResultRow()) return;
+      const focusTarget = caller.shadowRoot?.querySelector<HTMLElement>('button, a') ?? caller;
+      focusTarget.focus({ preventScroll: true });
+    });
+  }
+
+  public readonly authorResultRowClassRules: RowClassRules<QueryResultGridRow> = {
+    'author-inspected-row': (params) => {
+      const snapshot = params.data && this.resultGridRowSnapshots.get(params.data);
+      return !!snapshot && snapshot === this.currentAuthorResultRow();
+    },
+  };
+
+  private renderInspectedResultCell(
+    params: ICellRendererParams<QueryResultGridRow, string>,
+    receipt: PublicSqliteExecutionReceipt | undefined,
+    queryIdentity: symbol,
+    columnIndex: number,
+    columnName: string,
+  ): HTMLElement {
+    const content = this.renderCustomerLookupCell(params, receipt, queryIdentity, columnIndex, columnName);
+    if (columnIndex !== 0 || !params.data ||
+        this.resultGridRowSnapshots.get(params.data) !== this.currentAuthorResultRow()) return content;
+    const cell = document.createElement('span');
+    cell.className = 'author-inspected-cell';
+    const marker = document.createElement('span');
+    marker.className = 'author-inspected-row-marker';
+    marker.textContent = '▶';
+    marker.setAttribute('role', 'img');
+    marker.setAttribute('aria-label', 'Current row, position ' + this.currentAuthorResultRow()?.position);
+    marker.title = 'Current row';
+    cell.append(marker, content);
+    return cell;
+  }
   public readonly resultGridRows = computed<QueryResultGridRow[]>(() => {
     const result = this.runResult();
     const recordset = this.displayedRecordset();
@@ -1841,7 +1972,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   /** Ionic caches routed pages, so comparison memory must expire on leave as well as destroy. */
   public ionViewWillLeave(): void {
+    this.authorViewActive = false;
+    ++this.authorRowDetailsFocusGeneration;
     ++this.authorPreviewLifetime;
+    this.authorPreviewLoading.set(false);
+    this.authorRowDetailsOpen.set(false);
     this.authorFormatNavigationSnapshot.set(undefined);
     this.clearPreviewDiagnosticNavigation();
     this.expireComparisonSession(
@@ -2412,6 +2547,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     event: SelectionChangedEvent<QueryResultGridRow>,
   ): void {
     if (!this.isTugqlAuthorJourney()) return;
+    this.authorResultGridApi = event.api;
     const row = event.selectedNodes?.find((node) => node.isSelected())?.data;
     this.setAuthorResultRow(row);
   }
@@ -2420,14 +2556,35 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     event: CellFocusedEvent<QueryResultGridRow>,
   ): void {
     if (!this.isTugqlAuthorJourney() || event.rowIndex === null) return;
-    const row = event.api.getDisplayedRowAtIndex(event.rowIndex)?.data;
+    this.authorResultGridApi = event.api;
+    const node = event.api.getDisplayedRowAtIndex(event.rowIndex);
+    const row = node?.data;
+    const snapshot = row && this.resultGridRowSnapshots.get(row);
+    if (snapshot && snapshot.result === this.runResult() && snapshot.rows === this.visibleResultRows() &&
+        snapshot.recordset === this.displayedRecordset() && snapshot.resultSetId === this.relatedResultSet() &&
+        snapshot.resultPageIndex === this.resultPageIndex() && snapshot.resultGeneration === this.displayedResultGeneration())
+      node?.setSelected?.(true, true);
     this.setAuthorResultRow(row);
   }
 
+  public authorResultRowClicked(event: RowClickedEvent<QueryResultGridRow>): void {
+    if (!this.isTugqlAuthorJourney()) return;
+    this.authorResultGridApi = event.api;
+    this.setAuthorResultRow(event.data);
+  }
+
   private setAuthorResultRow(row: QueryResultGridRow | undefined): void {
+    const previous = this.currentAuthorResultRow();
     this.selectedAuthorResultRow.set(
       row ? this.resultGridRowSnapshots.get(row) : undefined,
     );
+    const inspected = this.currentAuthorResultRow();
+    if (previous === inspected) return;
+    this.authorResultGridApi?.forEachNode?.((node) => {
+      const snapshot = node.data && this.resultGridRowSnapshots.get(node.data);
+      if (node.data && (snapshot === previous || snapshot === inspected)) node.setData(node.data);
+    });
+    this.authorResultGridApi?.refreshCells?.({ columns: ['result_0'], force: true });
   }
 
   public authorSourcesToggled(open: boolean): void {
@@ -2606,9 +2763,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.authorSourceScopeKey = context.scopeKey;
       this.authorSourceMetadataSource = context.source;
       this.authorSourceMetadataIdentity = context.queryIdentity;
-      this.authorSourceMessage.set(
-        'Current project metadata admitted the Invoice-to-Customer relationship. Cost is unknown.',
-      );
+      this.authorSourceMessage.set('Related metadata ready.');
     } catch (error) {
       if (
         generation !== this.authorSourceRequestGeneration ||
@@ -3393,6 +3548,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   private invalidateAuthorDefinitionRun(): void {
+    ++this.authorPreviewLifetime;
+    this.authorPreviewLoading.set(false);
     this.clearPreviewDiagnosticNavigation();
     ++this.semanticRunLifetime;
     this.invalidateFederatedRun();
@@ -3836,6 +3993,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.currentAuthorFormatContext()?.queryIdentity ===
         authorContextSnapshot.queryIdentity;
     this.authorPlan.set(undefined);
+    this.authorPreviewLoading.set(true);
     this.setAuthorError(undefined);
     try {
       const source = (definition.request as ITextQueryRequest).text;
@@ -3914,12 +4072,16 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           return;
         }
         this.authorPlan.set(plan);
+        if (this.authorFormatStatus().includes('Preview SQL before Run.'))
+          this.authorFormatStatus.set('');
       }
     } catch (error: unknown) {
       if (isCurrent())
         this.setAuthorError(
           error instanceof Error ? error.message : 'The TugQL preview failed.',
         );
+    } finally {
+      if (lifetime === this.authorPreviewLifetime) this.authorPreviewLoading.set(false);
     }
   }
 
@@ -4063,6 +4225,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       const selected = this.selectedAuthorResultRow();
       if (selected && this.currentAuthorResultRow() !== selected)
         this.selectedAuthorResultRow.set(undefined);
+      if (this.authorRowDetailsOpen() &&
+          (!this.currentAuthorResultRow() || this.resultPageLoading() ||
+           this.authorRowDetailsSnapshot !== this.authorResultSnapshotKey()))
+        this.authorRowDetailsOpen.set(false);
     });
   }
 
@@ -4113,6 +4279,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   ionViewDidEnter(): void {
+    this.authorViewActive = true;
     try {
       this.updateUrl(); // If called in constructor breaks back button
     } catch (e) {
@@ -4290,6 +4457,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   };
 
   ngOnDestroy(): void {
+    this.authorViewActive = false;
+    ++this.authorRowDetailsFocusGeneration;
     ++this.authorPreviewLifetime;
     this.authorFormatNavigationSnapshot.set(undefined);
     this.expireComparisonSession('This page session ended.');
@@ -5864,7 +6033,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         return;
       }
       const previewPlan = this.authorPlan();
-      if (!previewPlan) {
+      if (!previewPlan || previewPlan.draftRevision !== this.authorDraftRevision()) {
         this.runError.set('Preview the current TugQL draft before Run.');
         return;
       }
@@ -6357,6 +6526,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private invalidateHistoryScope(): void {
     ++this.authorLookupFocusRevision;
     ++this.authorPreviewLifetime;
+    this.authorPreviewLoading.set(false);
+    this.authorRowDetailsOpen.set(false);
     this.clearPreviewDiagnosticNavigation();
     this.authorPlan.set(undefined);
     this.setAuthorError(undefined);

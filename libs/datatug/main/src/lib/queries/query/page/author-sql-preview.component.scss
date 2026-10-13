@@ -4,7 +4,7 @@
 
 .author-sql-preview {
   display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   margin: 0;
   padding: 0.75rem;
   border: 0;
@@ -22,7 +22,7 @@
 }
 
 .author-preview-actions {
-  grid-column: 2;
+  grid-column: 1;
   min-width: 0;
   --min-height: 3rem;
   --padding-start: 0;
@@ -172,15 +172,6 @@ sneat-author-source-inspector,
 }
 
 @media (max-width: 700px) {
-  .author-sql-preview {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .author-preview-heading,
-  .author-preview-actions {
-    grid-column: 1;
-  }
-
   .author-preview-actions {
     --padding-start: 0;
   }

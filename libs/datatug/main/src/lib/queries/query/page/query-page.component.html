@@ -511,14 +511,8 @@
                       class="author-run-button"
                       color="primary"
                       fill="solid"
-                      [disabled]="
-                        running() ||
-                        queryState.isSaving ||
-                        !authorPlan() ||
-                        !authorCustomerIdValid() ||
-                        !queryId ||
-                        !project
-                      "
+                      [disabled]="authorRunReadiness().blocked"
+                      aria-describedby="author-run-readiness"
                       (click)="runQuery()"
                     >
                       @if (running()) {
@@ -536,6 +530,20 @@
                     }
                   </ion-buttons>
             </ion-item>
+            @if (authorRunReadiness(); as readiness) {
+              <ion-item class="author-run-readiness" lines="none">
+                <ion-label class="ion-text-wrap">
+                  <p id="author-run-readiness" data-testid="author-run-readiness" role="status">{{ readiness.message }}</p>
+                </ion-label>
+                @if (readiness.action; as action) {
+                  <ion-buttons slot="end">
+                    <ion-button fill="clear" data-testid="author-run-recovery" (click)="recoverAuthorRun()">
+                      {{ action === 'preview' ? 'Preview SQL' : action === 'parameters' ? 'Set parameter' : action === 'error' ? 'Go to error' : 'Review draft' }}
+                    </ion-button>
+                  </ion-buttons>
+                }
+              </ion-item>
+            }
           </ion-card-header>
           <ion-card-content>
             <sneat-author-code-editor
@@ -607,10 +615,10 @@
                   data-testid="author-context-sticky-header"
                 >
                   <ion-segment
+                    class="author-context-tabs"
                     data-testid="author-context-tabs"
                     aria-label="Query context"
                     mode="md"
-                    scrollable
                     [value]="activeAuthorContextTab()"
                     (ionChange)="authorContextTabChanged($event.detail.value)"
                   >
@@ -639,36 +647,6 @@
                       </ion-label>
                     </ion-segment-button>
                   </ion-segment>
-                  @if (
-                    activeAuthorContextTab() === 'related' &&
-                    authorHasCustomerIdParameter()
-                  ) {
-                    <ion-item
-                      lines="none"
-                      data-testid="author-related-parameter-status"
-                    >
-                      <ion-label class="ion-text-wrap">
-                        <p>
-                          Customer ID ·
-                          @if (authorCustomerIdMissing()) {
-                            Required · unset
-                          } @else if (!authorCustomerIdValid()) {
-                            Invalid · enter a whole number
-                          } @else {
-                            {{ authorCustomerId() }} set · Preview remains explicit
-                          }
-                        </p>
-                      </ion-label>
-                      <ion-buttons slot="end">
-                        <ion-button
-                          data-testid="author-related-parameters-link"
-                          fill="clear"
-                          (click)="authorContextTabChanged('parameters')"
-                          >Parameters</ion-button
-                        >
-                      </ion-buttons>
-                    </ion-item>
-                  }
                 </div>
                 <section
                   aria-label="Parameters"
@@ -693,6 +671,7 @@
                 <ion-item class="author-parameter-row">
                   <ion-input
                     class="author-customer-input"
+                    #authorCustomerInput
                     data-testid="author-customer-id"
                     type="number"
                     inputmode="numeric"
@@ -821,6 +800,7 @@
                     [statusMessage]="authorSourceMessage()"
                     (activated)="authorSourcesToggled(true)"
                     (refreshRequested)="authorSourcesToggled(true)"
+                    (sourcesRequested)="authorContextTabChanged('sources')"
                     (customerFieldChanged)="
                       authorSourceFieldSelectionChanged(
                         $event.field,
@@ -888,7 +868,7 @@
                         [customerIdValid]="authorCustomerIdValid()"
                         [customerIdMissing]="authorCustomerIdMissing()"
                         [refreshDisabled]="
-                          running() || queryState.isSaving === true
+                          running() || authorPreviewLoading() || queryState.isSaving === true
                         "
                         (refreshRequested)="previewTugql()"
                       />
@@ -907,7 +887,7 @@
                       <ion-button
                         data-testid="author-preview"
                         fill="outline"
-                        [disabled]="running() || queryState.isSaving"
+                        [disabled]="running() || authorPreviewLoading() || queryState.isSaving"
                         (click)="previewTugql()"
                         >Generate SQL preview</ion-button
                       >
@@ -1320,7 +1300,7 @@
   }
   @if (previousCommittedRun(); as previous) {
     <details class="previous-run-disclosure" [open]="!isTugqlAuthorJourney()">
-      <summary>Previous successful run · observed {{ previous.provenance.observedAt }}</summary>
+      <summary>Previous run history</summary>
     <ion-card data-testid="previous-committed-result">
       <ion-card-content>
         <p>
@@ -1420,25 +1400,15 @@
             {{ resultTotalRows() === 1 ? 'row' : 'rows' }}
             <span>Customer ID {{ publicSqliteCustomerIdLabel(result) }}</span>
           </p>
-          <p class="author-receipt-secondary">
-            Pinned Chinook snapshot ·
-            {{ result.provenance.observedAt | date: 'medium' }}
-            @if (!selectedHistoricalResult()) {
-              @if (publicSqliteRunIsStale(result)) {
-                @if (committedRun()?.timing; as timing) {
-                  · Loaded in
-                  {{ formatQueryDuration(timing.allResultsLoadedMs) }}
-                }
-              } @else if (queryRunTiming(); as timing) {
-                · Loaded in
-                {{ formatQueryDuration(timing.allResultsLoadedMs) }}
-              }
-            }
-          </p>
+
         </div>
         <details class="author-receipt-details">
           <summary>Execution details</summary>
+          <p>Pinned Chinook snapshot.</p>
           <p>Observed at {{ result.provenance.observedAt }}.</p>
+          @if (!selectedHistoricalResult() && (publicSqliteRunIsStale(result) ? committedRun()?.timing : queryRunTiming()); as timing) {
+            <p>Loaded in {{ formatQueryDuration(timing.allResultsLoadedMs) }}.</p>
+          }
           <p>Worker execution ID {{ receipt.executionId }}.</p>
           <p>
             Draft revision {{ receipt.draftRevision }} · fixture SHA-256
@@ -1601,6 +1571,20 @@
     }
 
     <div [class.ion-padding-horizontal]="!isTugqlAuthorJourney()">
+      @if (isTugqlAuthorJourney()) {
+        <ion-item class="author-row-details-shortcut" lines="none">
+          <ion-label class="ion-text-wrap">
+            @if (currentAuthorResultRow(); as inspected) {
+              <p>▶ Current row · position {{ inspected.position }}</p>
+            } @else {
+              <p>Select a row to inspect its raw values.</p>
+            }
+          </ion-label>
+          <ion-buttons slot="end">
+            <ion-button fill="clear" data-testid="author-row-details-open" [disabled]="!currentAuthorResultRow() || resultPageLoading()" (click)="openAuthorRowDetails($event)">Row details</ion-button>
+          </ion-buttons>
+        </ion-item>
+      }
       @if (
         resultTotalRows() > resultPageSize ||
         resultHasMore() ||
@@ -1643,10 +1627,12 @@
           [rowData]="resultGridRows()"
           [defaultColDef]="resultGridDefaultColDef"
           [rowSelection]="isTugqlAuthorJourney() ? authorResultRowSelection : undefined"
+          [rowClassRules]="isTugqlAuthorJourney() ? authorResultRowClassRules : undefined"
           [loading]="resultPageLoading()"
           [overlayNoRowsTemplate]="resultGridNoRowsTemplate"
           (selectionChanged)="authorResultSelectionChanged($event)"
           (cellFocused)="authorResultCellFocused($event)"
+          (rowClicked)="authorResultRowClicked($event)"
         />
       </div>
       @if (isTugqlAuthorJourney() && displayedRecordset(); as currentRecordset) {
@@ -1735,3 +1721,33 @@
     <ng-container *ngTemplateOutlet="queryResults" />
   }
 </ion-content>
+
+<ion-modal
+  data-testid="author-row-details-sheet"
+  [isOpen]="authorRowDetailsOpen()"
+  [initialBreakpoint]="0.8"
+  [breakpoints]="[0, 0.8, 1]"
+  aria-label="Current row details"
+  (didDismiss)="authorRowDetailsDismissed()"
+>
+  <ng-template>
+    <ion-header>
+      <ion-item lines="none">
+        <ion-label>Row details</ion-label>
+        <ion-buttons slot="end"><ion-button data-testid="author-row-details-close" (click)="authorRowDetailsOpen.set(false)">Close</ion-button></ion-buttons>
+      </ion-item>
+    </ion-header>
+    <ion-content>
+      @if (authorRowDetailsOpen() && !resultPageLoading() && currentAuthorResultRow(); as inspected) {
+        <sneat-author-current-row
+          [columns]="inspected.recordset.columns"
+          [row]="inspected.row"
+          [position]="inspected.position"
+          [totalRows]="resultTotalRows()"
+          [totalKnown]="resultTotalRowsKnown()"
+          [snapshotKey]="authorResultSnapshotKey()"
+        />
+      }
+    </ion-content>
+  </ng-template>
+</ion-modal>
