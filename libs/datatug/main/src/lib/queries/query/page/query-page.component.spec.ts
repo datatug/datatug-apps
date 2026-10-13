@@ -1960,9 +1960,7 @@ select i.InvoiceId
     expect(component.authorFormatStatus()).toContain(
       'Applied the admitted join with FirstName outputs',
     );
-    expect(component.authorSourceMessage()).toContain(
-      'Related metadata ready.',
-    );
+    expect(component.authorSourceMessage()).toBe('');
     expect(execute).not.toHaveBeenCalled();
     expect(prepare).not.toHaveBeenCalled();
   });
