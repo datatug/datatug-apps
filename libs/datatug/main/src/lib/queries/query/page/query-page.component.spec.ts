@@ -688,6 +688,61 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     expect(component.authorRunReadiness().message).toBe('Running query…');
   });
 
+  it('keeps an unsupported preview failure as a hard Run gate before an empty binding', async () => {
+    component = await createTugQLAuthor(authorSource);
+    const sqlite = TestBed.inject(PublicSqliteQueryService);
+    const prepare = vi.spyOn(sqlite, 'prepareTugQL').mockRejectedValue(new Error('Unsupported source'));
+    const run = vi.spyOn(sqlite, 'runTugQL');
+    await component.previewTugql();
+    expect(prepare).toHaveBeenCalledOnce();
+    expect(component.authorError()).toBe('Unsupported source');
+    expect(component.authorCustomerId()).toBe('');
+    expect(component.authorRunReadiness()).toMatchObject({ blocked: true, action: 'code' });
+    component.runQuery();
+    expect(component.authorRunParameterWarning()).toBeUndefined();
+    component.authorCustomerIdChanged(new CustomEvent('ionInput', { detail: { value: '1' } }));
+    component.authorCustomerIdChanged(new CustomEvent('ionInput', { detail: { value: '' } }));
+    expect(component.authorError()).toBe('Unsupported source');
+    expect(component.authorRunReadiness()).toMatchObject({ blocked: true, action: 'code' });
+    component.runQuery();
+    expect(component.authorRunParameterWarning()).toBeUndefined();
+    expect(prepare).toHaveBeenCalledOnce();
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('clears an attempted binding warning when project, environment, or security scope changes', async () => {
+    component = await createTugQLAuthor(authorSource);
+    const sqlite = TestBed.inject(PublicSqliteQueryService);
+    const prepare = vi.spyOn(sqlite, 'prepareTugQL');
+    const run = vi.spyOn(sqlite, 'runTugQL');
+    const sync = (): void => (component as unknown as { syncScopeAndBindings(): void }).syncScopeAndBindings();
+    const originalProject = component.project;
+    const originalEnvironment = component.envId;
+    const originalSecurityContext = agentContext.securityContextId();
+    const changes = [
+      () => { component.project = { ...originalProject!, ref: { ...originalProject!.ref, projectId: 'other-project' } }; },
+      () => { component.envId = 'other-environment'; },
+      () => { agentContext.securityContextId.set('other-principal'); },
+    ];
+    const restores = [
+      () => { component.project = originalProject; },
+      () => { component.envId = originalEnvironment; },
+      () => { agentContext.securityContextId.set(originalSecurityContext); },
+    ];
+    for (let index = 0; index < changes.length; index++) {
+      component.runQuery();
+      expect(component.authorRunParameterWarning()).toBe('Customer ID is required to Run.');
+      changes[index]();
+      sync();
+      expect(component.authorRunParameterWarning()).toBeUndefined();
+      restores[index]();
+      sync();
+      expect(component.authorRunParameterWarning()).toBeUndefined();
+    }
+    expect(prepare).not.toHaveBeenCalled();
+    expect(run).not.toHaveBeenCalled();
+  });
+
   it('releases preview loading after an asynchronous failure', async () => {
     component = await createTugQLAuthor(authorSource);
     component.authorCustomerId.set('1');

@@ -29,6 +29,7 @@ import {
   effect,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Params, Router } from '@angular/router';
@@ -826,7 +827,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   );
   public readonly authorPreviewLoading = signal(false);
   private readonly authorRunParameterAttempt = signal<{
-    readonly queryId: string | undefined;
+    readonly scope: string;
     readonly definition: IQueryDef | undefined;
     readonly binding: string;
     readonly draftRevision: number;
@@ -834,7 +835,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly authorRunParameterWarning = computed(() => {
     const attempt = this.authorRunParameterAttempt();
     if (!attempt) return undefined;
-    return attempt.queryId === this.queryId &&
+    return attempt.scope === this.authorRunParameterScope() &&
       attempt.definition === this.queryDef() &&
       attempt.binding === this.authorCustomerId() &&
       attempt.draftRevision === this.authorDraftRevision() &&
@@ -858,14 +859,14 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       return { blocked: true, message: 'This draft has parameters that this form cannot bind.', action: 'code' };
     if (!this.authorHasCustomerIdParameter())
       return { blocked: true, message: 'This parameter-free draft is unavailable in the current runner. Review a supported parameterized draft.', action: 'code' };
+    const plan = this.authorPlan();
+    if (this.authorError() && (!plan || plan.draftRevision !== this.authorDraftRevision()))
+      return { blocked: true, message: 'SQL preview needs attention. Review the draft error.',
+        action: this.canNavigateToAuthorPreviewSyntaxDiagnostic() ? 'error' : 'code' };
     if (!this.authorCustomerIdValid())
       return { blocked: true, message: this.authorCustomerIdMissing()
         ? 'Customer ID is required to Run.' : 'Customer ID must be a whole number.', action: 'parameters' };
-    const plan = this.authorPlan();
     if (!plan || plan.draftRevision !== this.authorDraftRevision()) {
-      if (this.authorError())
-        return { blocked: true, message: 'SQL preview needs attention. Review the draft error.',
-          action: this.canNavigateToAuthorPreviewSyntaxDiagnostic() ? 'error' : 'code' };
       return { blocked: true, message: 'Preview the current draft to enable Run.', action: 'preview' };
     }
     return { blocked: false, message: this.authorHasCustomerIdParameter()
@@ -3194,7 +3195,6 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.invalidateComparison('The CustomerId binding changed; run both fixtures again.');
     }
     this.authorCustomerId.set(value);
-    this.setAuthorError(undefined);
     const next: IQueryState = {
       ...this.queryState,
       authorBindings: {
@@ -3858,6 +3858,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const projectId = this.project?.ref.projectId;
     const environment = this.envId;
     const securityContextId = this.agentContext.securityContextId();
+    const parameterAttempt = untracked(this.authorRunParameterAttempt);
+    if (parameterAttempt && parameterAttempt.scope !== this.authorRunParameterScope())
+      this.authorRunParameterAttempt.set(undefined);
     const accessClassification = equalProjectRef(
       this.comparisonAccessProjectRef,
       this.project?.ref,
@@ -5296,7 +5299,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.authorFormatNavigationSnapshot.set(undefined);
     if (this.isTugqlAuthorJourney() && this.authorRunReadiness().action === 'parameters') {
       this.authorRunParameterAttempt.set({
-        queryId: this.queryId,
+        scope: this.authorRunParameterScope(),
         definition: this.queryDef(),
         binding: this.authorCustomerId(),
         draftRevision: this.authorDraftRevision(),
@@ -5794,6 +5797,16 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.project?.ref.projectId,
       this.queryId,
     ]);
+  }
+
+  private authorRunParameterScope(): string {
+    return JSON.stringify({
+      project: this.project?.ref,
+      history: this.historyScope(),
+      environment: this.envId,
+      securityContextId: this.agentContext.securityContextId(),
+      resultTarget: this.currentResultTargetIdentity(),
+    });
   }
 
   private invalidateHistoryRequests(): void {

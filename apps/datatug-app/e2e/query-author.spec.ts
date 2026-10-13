@@ -3758,8 +3758,13 @@ test('query workspace clarity preserves active context, inspected row and explic
 test('expanding source metadata grows the author card without scrolling the context pane or changing the draft', async ({ page }, testInfo) => {
   test.setTimeout(90_000);
   const executionCount = await installQueryExecutionMessageProbe(page);
-  for (const width of [1280, 390]) {
-    await page.setViewportSize({ width, height: width === 1280 ? 720 : 844 });
+  for (const viewport of [
+    { width: 1280, height: 720, label: '1280' },
+    { width: 1280, height: 560, label: '1280-short' },
+    { width: 390, height: 844, label: '390' },
+  ]) {
+    const { width } = viewport;
+    await page.setViewportSize({ width, height: viewport.height });
     await page.goto(AUTHOR_URL);
     const author = page.getByTestId('tugql-author');
     await expect(author).toBeVisible({ timeout: 20_000 });
@@ -3814,12 +3819,12 @@ test('expanding source metadata grows the author card without scrolling the cont
     expect(await page.locator('.query-save-state').innerText()).toBe(saveState);
     await expect(author.getByTestId('author-sql-preview')).toHaveCount(0);
     expect(await executionCount()).toBe(0);
-    await page.screenshot({ path: testInfo.outputPath(`expanded-source-${width}.png`), fullPage: true });
-    testInfo.annotations.push({ type: 'screenshot', description: `expanded-source-${width}.png: expected Invoice metadata inside the naturally taller author card, desktop editor stretched beside it, no sidebar clipping or page horizontal overflow; observed card height ${geometry!.cardHeight}, editor height ${geometry!.editorHeight}, field bottom ${geometry!.fieldsBottom} within card bottom ${geometry!.cardBottom}.` });
+    await page.screenshot({ path: testInfo.outputPath(`expanded-source-${viewport.label}.png`), fullPage: true });
+    testInfo.annotations.push({ type: 'screenshot', description: `expanded-source-${viewport.label}.png: expected Invoice metadata inside the naturally taller author card, desktop editor stretched beside it, no sidebar clipping or page horizontal overflow; observed card height ${geometry!.cardHeight}, editor height ${geometry!.editorHeight}, field bottom ${geometry!.fieldsBottom} within card bottom ${geometry!.cardBottom}.` });
     await details.locator('ion-item').last().scrollIntoViewIfNeeded();
     await expect(details.locator('ion-item').last()).toBeInViewport({ ratio: 0.98 });
-    await page.screenshot({ path: testInfo.outputPath(`expanded-source-fields-${width}.png`) });
-    testInfo.annotations.push({ type: 'screenshot', description: `expanded-source-fields-${width}.png: expected the final Invoice field to remain readable inside the expanded author card after page scrolling; observed that field fully in the viewport and the context pane has no internal vertical scroll.` });
+    await page.screenshot({ path: testInfo.outputPath(`expanded-source-fields-${viewport.label}.png`) });
+    testInfo.annotations.push({ type: 'screenshot', description: `expanded-source-fields-${viewport.label}.png: expected the final Invoice field to remain readable inside the expanded author card after page scrolling; observed that field fully in the viewport and the context pane has no internal vertical scroll.` });
 
     await source.click();
     await expect(source).toHaveAttribute('aria-expanded', 'false');
