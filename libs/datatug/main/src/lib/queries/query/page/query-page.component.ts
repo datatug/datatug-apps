@@ -1,3 +1,8 @@
+import { SemanticColumnHeaderComponent } from '../../semantic-column-header.component';
+import { SemanticMappingDialogComponent } from '../../semantic-mapping-dialog.component';
+import { validateSemanticModel, createSemanticModel, semanticQueryHash, sameSemanticBasis, type SemanticModel } from '../../semantic-mapping';
+import { isDevicePersonalQuery } from '../../device-personal-queries';
+import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
 import { readGithubProjectId } from '@datatug/project-address';
 import { SourceRightsNoticeComponent } from '@sneat/datatug-semantic';
 import {
@@ -32,7 +37,7 @@ import {
   untracked,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Params, Router } from '@angular/router';
+import { ActivatedRoute, Params, Router, NavigationEnd } from '@angular/router';
 import { AgGridAngular } from 'ag-grid-angular';
 import { addIcons } from 'ionicons';
 import { copyOutline } from 'ionicons/icons';
@@ -233,7 +238,7 @@ const isNoTargetFormatDiagnostic = (diagnostic: TugQLDiagnostic): boolean =>
   diagnostic.span.end.line === 1 &&
   diagnostic.span.end.column === 1;
 import { RandomIdService } from '@sneat/random';
-import { distinctUntilChanged, takeUntil } from 'rxjs/operators';
+import { distinctUntilChanged, takeUntil, filter, take } from 'rxjs/operators';
 import { firstValueFrom, Subject } from 'rxjs';
 import {
   IonAccordion,
@@ -584,6 +589,7 @@ export function extractLinkedEntityNames(
   templateUrl: './query-page.component.html',
   styleUrl: './query-page.component.scss',
   imports: [
+    SemanticMappingDialogComponent,
     AuthorComposeControlsComponent,
     AuthorSqlPreviewComponent,
     AuthorCodeEditorComponent,
@@ -1397,6 +1403,97 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const start = this.resultPageIndex() * this.resultPageSize;
     return rows.slice(start, start + this.resultPageSize);
   });
+  readonly semanticDialog = signal<SemanticModel | undefined>(undefined);
+  readonly semanticColumn = signal(0);
+  readonly semanticSaving = signal(false);
+  readonly semanticBeforeSave = signal<SemanticModel | undefined>(undefined);
+  readonly semanticError = signal('');
+  readonly semanticNotice = signal('');
+  readonly semanticStorage = signal('');
+  readonly semanticSaveToProject = signal(false);
+  readonly semanticSaveLabel = signal('Save meaning');
+  readonly semanticExecutedDefinition = signal<IQueryDef | undefined>(undefined);
+  readonly semanticCurrentHash = signal('');
+  private static pendingSemanticCopy?: { id: string; result: FederatedQueryResult; definition: IQueryDef; environment?: string; selectedSource?: string };
+  readonly semanticBasis = signal<SemanticModel['basis'] | undefined>(undefined);
+  readonly semanticPersonalCopies = signal<IQueryDef[]>([]);
+  private readonly semanticNav = inject(DatatugNavService);
+  private semanticBasisGeneration = 0;
+  readonly semanticNeedsReview = computed(() => {
+    const saved = this.queryDef()?.semanticModel, basis = this.semanticBasis();
+    return !!saved && (!basis || this.displayedResultIsPreviousRun() || this.semanticCurrentHash() !== basis.queryHash || !sameSemanticBasis(saved.basis, basis));
+  });
+  semanticColumnLabel(index: number): string {
+    const bundle = this.semanticSaving() ? this.semanticBeforeSave() : this.queryDef()?.semanticModel;
+    const binding = bundle?.bindings.find(item => item.columnIndex === index);
+    const property = bundle?.meaning.concepts.find(item => item.id === binding?.concept);
+    const entity = bundle?.meaning.concepts.find(item => item.id === property?.of);
+    return property ? [entity?.labels.en, property.labels.en, binding?.role].filter(Boolean).join(' · ') : '';
+  }
+  async openColumnMeaning(index: number): Promise<void> {
+    if (!this.semanticBasis() || !this.project) return;
+    if (this.displayedResultIsPreviousRun() || this.semanticCurrentHash() !== this.semanticBasis()?.queryHash) { this.semanticNotice.set('Run the updated query before mapping its columns. Existing meanings need review.'); return; }
+    this.semanticNotice.set('');
+    this.semanticError.set(''); this.semanticColumn.set(index);
+    const current = this.queryDef()?.semanticModel;
+    const fresh = createSemanticModel(this.semanticBasis()!);
+    if (current) {
+      fresh.meaning = structuredClone(current.meaning);
+      fresh.bindings = current.bindings.filter(binding => binding.columnIndex < fresh.basis.columns.length);
+    }
+    let supported = false;
+    if (!isDevicePersonalQuery(this.queryState.id ?? '') && (this.project.ref.projectApi || isSharedProjectRef(this.project.ref))) {
+      try { const capabilities = await firstValueFrom(this.queriesService.capabilities(this.project.ref)); supported = !!capabilities.querySave && !!capabilities.semanticModel && this.queryState.saveSupported !== false; } catch { supported = false; }
+    }
+    this.semanticSaveToProject.set(supported);
+    const personal = isDevicePersonalQuery(this.queryState.id ?? '');
+    this.semanticStorage.set(personal ? 'Saved on this device.' : supported ? 'Saves meanings in this project.' : 'Creates a personal copy saved on this device.');
+    this.semanticSaveLabel.set(personal || supported ? 'Save meaning' : 'Save personal copy');
+    this.semanticDialog.set(fresh);
+  }
+  async saveColumnMeaning(bundle: SemanticModel): Promise<void> {
+    const project = this.project, definition = this.queryDef();
+    if (!project || !definition || this.semanticSaving()) return;
+    const originalDefinition = this.queryState.def;
+    this.semanticBeforeSave.set(originalDefinition?.semanticModel);
+    this.semanticSaving.set(true); this.semanticError.set('');
+    try {
+      validateSemanticModel(bundle);
+      const current = { ...definition, request: this.queryState.request ?? definition.request, connectionId: this.queryState.connectionId ?? definition.connectionId, federation: this.queryState.federation ?? definition.federation, semanticModel: bundle };
+      const supported = this.semanticSaveToProject();
+      if (isDevicePersonalQuery(current.id) || supported) {
+        this.queryEditorStateService.updateQueryState({ ...this.queryState, def: current });
+        await firstValueFrom(this.queryEditorStateService.saveQuery({ ...this.queryState, def: current }, project.ref));
+      } else {
+        const copy = { ...current, id: `device-personal-${crypto.randomUUID()}`, title: `${current.title || 'Query'} · Personal` };
+        await firstValueFrom(this.queriesService.createQuery(project.ref, copy));
+        const result = this.runResult();
+        if (result) QueryPageComponent.pendingSemanticCopy = { id: copy.id, result, definition: copy, environment: this.envId, selectedSource: this.selectedSource() };
+        this.queryEditorStateService.newQuery({ ...this.queryState, id: copy.id, title: copy.title, def: copy, request: copy.request, isNew: false, isSaving: false });
+        this.semanticSaving.set(false);
+        this.semanticDialog.set(undefined);
+        this.router.events.pipe(filter(event => event instanceof NavigationEnd), take(1)).subscribe(() => {
+          if (result && this.queryState.id === copy.id) {
+            QueryPageComponent.pendingSemanticCopy = undefined;
+            this.setDisplayedResult(result);
+            this.commitSuccessfulResult(result, copy);
+          }
+        });
+        this.semanticNav.goQuery(project, copy, 'edit');
+      }
+      this.semanticSaving.set(false);
+      this.semanticDialog.set(undefined);
+      void this.queriesService.devicePersonal.list(project.ref).then(items => this.semanticPersonalCopies.set(items.map(item => item.query))).catch(() => undefined);
+    } catch (error) {
+      if (originalDefinition) this.queryEditorStateService.updateQueryState({ ...this.queryState, def: originalDefinition, isSaving: false });
+      this.semanticError.set(error instanceof Error ? error.message : 'Meaning could not be saved. Your draft is retained.');
+    }
+    finally { this.semanticSaving.set(false); }
+  }
+  openSemanticPersonalCopy(id: string): void {
+    const query = this.semanticPersonalCopies().find(item => item.id === id);
+    if (query && this.project) this.semanticNav.goQuery(this.project, query, 'edit');
+  }
   public readonly resultGridColumnDefs = computed<ColDef<QueryResultGridRow>[]>(
     () => {
       const result = this.runResult();
@@ -1416,6 +1513,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           colId: columnId,
           field: columnId,
           headerName: column.name,
+          headerComponent: SemanticColumnHeaderComponent,
+          headerComponentParams: {
+            meaningLabel: this.semanticColumnLabel(index),
+            needsReview: !!this.queryDef()?.semanticModel?.bindings.some(binding => binding.columnIndex === index) && this.semanticNeedsReview(),
+            openMeaning: () => { void this.openColumnMeaning(index); },
+          },
           sortable: false,
           minWidth: 120,
           ...(canLookupCustomer || (index === 0 && this.isTugqlAuthorJourney())
@@ -1784,7 +1887,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
    * state" section. */
   public readonly queryDef = signal<IQueryDef | undefined>(undefined);
   /** Semantic equality avoids marking an unchanged definition as an edit. */
-  private readonly identityDefinition = computed(() => this.queryDef(), {
+  private readonly identityDefinition = computed(() => {
+    const definition = this.queryDef();
+    if (!definition) return undefined;
+    const { semanticModel: _semanticModel, ...executionDefinition } = definition;
+    return executionDefinition;
+  }, {
     equal: (left, right) => JSON.stringify(left) === JSON.stringify(right),
   });
   /** Receipts identify a draft without copying request or credential bytes. */
@@ -1819,12 +1927,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   public readonly sharedQuerySaveAllowed = signal(false);
   public canSaveQuery(): boolean {
-    return !this.project || !isSharedProjectRef(this.project.ref) || this.sharedQuerySaveAllowed();
+    return isDevicePersonalQuery(this.queryState.id ?? '') || !this.project || !isSharedProjectRef(this.project.ref) || this.sharedQuerySaveAllowed();
   }
 
   public querySaveState(): string {
     if (!this.queryDef()) return 'Loading';
     if (this.queryState.isSaving) return 'Saving';
+    if (isDevicePersonalQuery(this.queryState.id ?? '')) return this.isChanged ? 'Unsaved · On this device' : 'Saved on this device';
     if (this.queryState.saveSupported === false || !this.canSaveQuery())
       return this.isChanged ? 'Unsaved · Read-only' : 'Read-only';
     return this.isChanged ? 'Unsaved' : 'Saved';
@@ -3617,7 +3726,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.authorPreviewLoading.set(true);
     this.setAuthorError(undefined);
     try {
-      const source = (definition.request as ITextQueryRequest).text;
+      const source = (definition.request as ISqlQueryRequest).text;
       if (
         definition.request.queryType === QueryType.DTQL &&
         definition.connectionId === 'chinook-sqlite' &&
@@ -3661,7 +3770,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         if (plan.expandedSource !== undefined) {
           if (
             plan.expandedSource ===
-            (definition.request as ITextQueryRequest).text
+            (definition.request as ISqlQueryRequest).text
           ) {
             this.setAuthorError(
               'The relationship completion did not change the draft. Review the JOIN in Code.',
@@ -3775,6 +3884,19 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   };
 
   constructor() {
+    effect(() => {
+      const definition = this.queryDef(), recordset = this.displayedRecordset(), resultSet = this.relatedResultSet(), executed = this.semanticExecutedDefinition();
+      const generation = ++this.semanticBasisGeneration;
+      this.semanticBasis.set(undefined);
+      if (!definition) return;
+      const project = this.project;
+      if (project) void this.queriesService.devicePersonal.list(project.ref).then(items => { if (generation === this.semanticBasisGeneration) this.semanticPersonalCopies.set(items.map(item => item.query)); }).catch(() => undefined);
+      void semanticQueryHash(definition.request.queryType, (definition.request as ISqlQueryRequest).text ?? '', definition.connectionId ?? '', definition.federation ?? null).then(hash => { if (generation === this.semanticBasisGeneration) this.semanticCurrentHash.set(hash); });
+      if (!recordset || !executed) return;
+      void semanticQueryHash(executed.request.queryType, (executed.request as ISqlQueryRequest).text ?? '', executed.connectionId ?? '', executed.federation ?? null).then(queryHash => {
+        if (generation === this.semanticBasisGeneration) this.semanticBasis.set({ queryHash, resultIndex: resultSet === 'affiliations' ? 0 : 1 + (this.runResult()?.relatedRecordsets?.findIndex(item => item.id === resultSet) ?? 0), columns: recordset.columns.map(column => ({ name: column.name, dataType: column.type ?? 'unknown' })) });
+      });
+    });
     addIcons({ copyOutline });
     this.observedSecurityContextId = this.agentContext.securityContextId();
     this.hasObservedSecurityContext = true;
@@ -3900,6 +4022,14 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.authorViewActive = true;
     try {
       this.updateUrl(); // If called in constructor breaks back button
+      const semanticCopy = QueryPageComponent.pendingSemanticCopy;
+      if (semanticCopy && semanticCopy.id === this.queryState.id) {
+        QueryPageComponent.pendingSemanticCopy = undefined;
+        this.envId = semanticCopy.environment;
+        this.selectedSource.set(semanticCopy.selectedSource);
+        this.setDisplayedResult(semanticCopy.result);
+        this.commitSuccessfulResult(semanticCopy.result, semanticCopy.definition);
+      }
     } catch (e) {
       this.errorLogger.logError(e, 'Failed to process ionViewDidEnter event');
     }
@@ -4069,6 +4199,14 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         this.datatugNavContextService.setCurrentEnvironment(this.envId);
       }
       this.syncScopeAndBindings();
+      const semanticCopy = QueryPageComponent.pendingSemanticCopy;
+      if (semanticCopy && semanticCopy.id === queryState.id && this.route.snapshot.queryParamMap.get('id') === semanticCopy.id) {
+        QueryPageComponent.pendingSemanticCopy = undefined;
+        this.envId = semanticCopy.environment;
+        this.selectedSource.set(semanticCopy.selectedSource);
+        this.setDisplayedResult(semanticCopy.result);
+        this.commitSuccessfulResult(semanticCopy.result, semanticCopy.definition);
+      }
     } catch (e) {
       this.errorLogger.logError(
         e,
@@ -4713,6 +4851,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   public saveChanges(): void {
+    if (this.semanticSaving()) return;
     if (!this.canSaveQuery()) return;
     if (!this.isChanged) {
       alert('Query does not require saving as is not changed yet');
@@ -5245,6 +5384,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     timing?: QueryRunTiming,
   ): void {
     if (!this.hasCompleteResult(result)) return;
+    this.semanticExecutedDefinition.set(definition);
     const frozenResult = snapshotCommittedResult(result);
     const request = definition.request as ITextQueryRequest & {
       readonly method?: string;

@@ -1,3 +1,4 @@
+<sneat-datatug-semantic-mapping-dialog [bundle]="semanticDialog()" [needsReview]="semanticNeedsReview()" [columnIndex]="semanticColumn()" [columnName]="semanticBasis()?.columns?.[semanticColumn()]?.name || ''" [saving]="semanticSaving()" [error]="semanticError()" [storageLabel]="semanticStorage()" [saveLabel]="semanticSaveLabel()" (save)="saveColumnMeaning($event)" (dismissed)="semanticDialog.set(undefined)" />
 <ion-header>
   <ion-toolbar color="light">
     <ion-buttons slot="start">
@@ -18,7 +19,7 @@
       <ion-button
         class="query-save-button"
         slot="end"
-        [disabled]="queryState.isSaving || queryState.saveSupported === false || !canSaveQuery()"
+        [disabled]="semanticSaving() || queryState.isSaving || queryState.saveSupported === false || !canSaveQuery()"
         [fill]="isChanged ? 'solid' : 'clear'"
         [color]="isChanged ? 'danger' : 'medium'"
         aria-label="Save changes"
@@ -38,6 +39,12 @@
 </ion-header>
 
 <ion-content color="light">
+      @if (semanticPersonalCopies().length) {
+        <ion-select label="Personal queries on this device" placeholder="Open a saved copy" interface="popover" (ionChange)="openSemanticPersonalCopy($event.detail.value)">
+          @for (copy of semanticPersonalCopies(); track copy.id) { <ion-select-option [value]="copy.id">{{ copy.title || copy.id }}</ion-select-option> }
+        </ion-select>
+      }
+
   @if (isTugqlAuthorJourney()) {
     <sneat-query-workspace-layout [showResultsJump]="queryView() === 'author'">
       <div query-workspace-navigation>
@@ -1551,6 +1558,9 @@
     }
 
     <div [class.ion-padding-horizontal]="!isTugqlAuthorJourney()">
+      @if (semanticNotice()) { <ion-note color="warning">{{ semanticNotice() }}</ion-note> }
+      @if (queryDef()?.semanticModel) { <ion-note>{{ semanticNeedsReview() ? 'Meanings need review: the query or result shape changed. Open each meaning to confirm it.' : 'Column meanings are saved for this query output.' }}</ion-note> }
+
       @if (isTugqlAuthorJourney()) {
         <ion-item class="author-row-details-shortcut" lines="none">
           <ion-label class="ion-text-wrap">
@@ -1604,6 +1614,7 @@
           class="ag-theme-quartz"
           style="height: 100%; width: 100%"
           [columnDefs]="resultGridColumnDefs()"
+          [headerHeight]="64"
           [rowData]="resultGridRows()"
           [defaultColDef]="resultGridDefaultColDef"
           [rowSelection]="isTugqlAuthorJourney() ? authorResultRowSelection : undefined"

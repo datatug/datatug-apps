@@ -1,3 +1,4 @@
+import { isDevicePersonalQuery } from './device-personal-queries';
 import { equalProjectRef, isSharedProjectRef } from '../core/project-context';
 import {
   fromProjectQueryWire,
@@ -452,7 +453,7 @@ export class QueryEditorStateService {
     };
     if (this.currentProject) {
       const currentProject = this.currentProject;
-      if (currentProject.ref.projectApi || isSharedProjectRef(currentProject.ref)) {
+      if (!isDevicePersonalQuery(id) && (currentProject.ref.projectApi || isSharedProjectRef(currentProject.ref))) {
         const readVersion = (this.readVersions.get(id) || 0) + 1;
         this.readVersions.set(id, readVersion);
         this.queriesService
@@ -556,8 +557,12 @@ export class QueryEditorStateService {
         // / AC:context-carries without depending on a server change (lane S92,
         // journey J2/J3) — confirmed live: this exact 500 blocked every query
         // this demo project has.
-        error: () =>
-          this.loadQueryFromProjectFull(currentProject, id, onCompleted),
+        error: (error) => {
+          if (isDevicePersonalQuery(id)) {
+            const state = this.getQueryState(id);
+            if (state) this.updateQueryState({ ...state, isLoading: false, saveError: error instanceof Error ? error.message : 'Personal query unavailable on this device.' });
+          } else this.loadQueryFromProjectFull(currentProject, id, onCompleted);
+        },
       });
     }
   }
@@ -724,6 +729,8 @@ export class QueryEditorStateService {
     queryState: IQueryState,
     projectRef: IProjectRef,
   ): Observable<void> {
+    if (queryState.def?.semanticModel && !isDevicePersonalQuery(queryState.id ?? '') && !projectRef.projectApi && !isSharedProjectRef(projectRef))
+      return throwError(() => new Error('This legacy project cannot save meanings safely. Use a personal copy on this device.'));
     if (!this.currentProject) {
       return throwError(() => 'no current project');
     }
@@ -733,7 +740,7 @@ export class QueryEditorStateService {
           'An attempt to save a query after current project have been changed',
       );
     }
-    if (projectRef.projectApi || isSharedProjectRef(projectRef))
+    if (!isDevicePersonalQuery(queryState.id ?? "") && (projectRef.projectApi || isSharedProjectRef(projectRef)))
       return this.saveCommonQuery(queryState, projectRef);
     const { id } = queryState;
     if (!id) {
@@ -888,6 +895,7 @@ export class QueryEditorStateService {
         switchMap((capabilities) => {
           if (generation !== this.generation)
             throw new Error('Project scope changed during save.');
+          if (query.semanticModel && !capabilities.semanticModel) throw new Error("This server does not support meanings yet. Save a personal copy on this device.");
           if (!capabilities.querySave)
             throw new Error(
               'This project does not currently allow saving queries.',

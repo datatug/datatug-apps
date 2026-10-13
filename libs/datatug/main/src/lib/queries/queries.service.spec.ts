@@ -1,3 +1,4 @@
+import { DevicePersonalQueries } from './device-personal-queries';
 import { TestBed } from '@angular/core/testing';
 import { lastValueFrom, of } from 'rxjs';
 import { SneatAuthStateService } from '@sneat/auth-core';
@@ -5,7 +6,6 @@ import { ProjectQueryApiService } from '../services/project/project-query-api.se
 
 import {
   AGENT_PERSONAL_QUERIES_UNSUPPORTED_MESSAGE,
-  GITHUB_PERSONAL_QUERIES_MESSAGE,
   QueriesService,
 } from './queries.service';
 import { QUERY_PROJ_ITEM_SERVICE } from './queries.service.token';
@@ -183,18 +183,13 @@ describe('QueriesService.getQueriesFolder — GitHub-store personal vs shared (S
     return TestBed.inject(QueriesService);
   }
 
-  it('rejects with GITHUB_PERSONAL_QUERIES_MESSAGE for rootFolder "personal" — never calls the reader', () => {
+  it('lists device personal copies without reading the shared repository tree', async () => {
     const getQueriesFolder = vi.fn(() => of(sharedFolder));
     const service = createService(getQueriesFolder);
 
-    const next = vi.fn();
-    const error = vi.fn();
-    service.getQueriesFolder(projRef, '~', 'personal').subscribe({ next, error });
-
-    expect(next).not.toHaveBeenCalled();
-    expect(error).toHaveBeenCalledWith(
-      expect.objectContaining({ message: GITHUB_PERSONAL_QUERIES_MESSAGE }),
-    );
+    vi.spyOn(TestBed.inject(DevicePersonalQueries), 'list').mockResolvedValue([]);
+    const folder = await lastValueFrom(service.getQueriesFolder(projRef, '~', 'personal'));
+    expect(folder).toEqual({ id: 'user:device', title: 'On this device', items: [], folders: [] });
     expect(getQueriesFolder).not.toHaveBeenCalled();
   });
 
