@@ -37,9 +37,6 @@ export const datatugAppEnvironmentConfig: IEnvironmentConfig = {
       person_profiles: 'identified_only',
     },
   },
-  googleAnalytics: {
-    measurementId: 'G-DESWRP39RY',
-  },
   // DataTug-specific Sentry project (sneat-eu org, EU/Germany region).
   sentry: {
     dsn: 'https://0ef31fd33eade94c7b5d66ed23e4228c@o4511531361370112.ingest.de.sentry.io/4511531364450384',

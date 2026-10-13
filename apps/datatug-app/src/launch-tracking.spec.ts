@@ -95,7 +95,6 @@ it('keeps identity, storage and diagnostics config while the actual analytics fa
   expect(config.posthog).toBeUndefined();
   expect(config.googleAnalytics).toBeUndefined();
   expect(production.firebaseConfig.measurementId).toBe('G-TYBDTV738R');
-  expect(production.googleAnalytics?.measurementId).toBe('G-DESWRP39RY');
   const firebase = vi.fn(() => {
     throw new Error('Firebase Analytics initialized');
   });
