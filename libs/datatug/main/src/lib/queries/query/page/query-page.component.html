@@ -510,8 +510,8 @@
                       class="author-run-button"
                       color="primary"
                       fill="solid"
-                      [disabled]="authorRunReadiness().blocked"
-                      aria-describedby="author-run-readiness"
+                      [disabled]="authorRunReadiness().blocked && authorRunReadiness().action !== 'parameters'"
+                      [attr.aria-describedby]="authorRunReadiness().action === 'parameters' && !authorRunParameterWarning() ? null : 'author-run-readiness'"
                       (click)="runQuery()"
                     >
                       @if (running()) {
@@ -530,7 +530,17 @@
                   </ion-buttons>
             </ion-item>
             @if (authorRunReadiness(); as readiness) {
-              @if (readiness.blocked) {
+              @if (authorRunParameterWarning(); as warning) {
+              <ion-item color="warning" lines="none" data-testid="author-run-parameter-warning">
+                <ion-icon name="warning-outline" slot="start" aria-hidden="true" />
+                <ion-label class="ion-text-wrap">
+                  <p id="author-run-readiness" data-testid="author-run-readiness" role="alert">{{ warning }}</p>
+                </ion-label>
+                <ion-buttons slot="end">
+                  <ion-button fill="clear" data-testid="author-run-recovery" (click)="recoverAuthorRun()">Set parameter</ion-button>
+                </ion-buttons>
+              </ion-item>
+              } @else if (readiness.blocked && readiness.action !== 'parameters') {
               <ion-item class="author-run-readiness" lines="none">
                 <ion-label class="ion-text-wrap">
                   <p id="author-run-readiness" data-testid="author-run-readiness" role="status">{{ readiness.message }}</p>
@@ -538,12 +548,12 @@
                 @if (readiness.action; as action) {
                   <ion-buttons slot="end">
                     <ion-button fill="clear" data-testid="author-run-recovery" (click)="recoverAuthorRun()">
-                      {{ action === 'preview' ? 'Preview SQL' : action === 'parameters' ? 'Set parameter' : action === 'error' ? 'Go to error' : 'Review draft' }}
+                      {{ action === 'preview' ? 'Preview SQL' : action === 'error' ? 'Go to error' : 'Review draft' }}
                     </ion-button>
                   </ion-buttons>
                 }
               </ion-item>
-              } @else {
+              } @else if (!readiness.blocked) {
                 <ion-note id="author-run-readiness" data-testid="author-run-readiness" role="status" class="ion-padding-start">Current draft ready</ion-note>
               }
             }
@@ -657,9 +667,6 @@
                   data-testid="author-parameters-panel"
                 >
                 @if (authorHasCustomerIdParameter()) {
-                <ion-item lines="none">
-                  <ion-label>Parameters</ion-label>
-                </ion-item>
                 @if (customerInvoiceExample()) {
                   <p
                     data-testid="customer-invoice-example-guidance"
@@ -680,6 +687,7 @@
                     inputmode="numeric"
                     label="Customer ID"
                     labelPlacement="start"
+                    helperText="Required · whole number"
                     [class.ion-invalid]="
                       !authorCustomerIdMissing() && !authorCustomerIdValid()
                     "
@@ -720,15 +728,7 @@
                       }
                     </p>
                   }
-                  @if (!authorCustomerIdValid()) {
-                    <p role="status">
-                      @if (authorCustomerIdMissing()) {
-                        Enter a Customer ID to enable Run.
-                      } @else {
-                        Enter a whole-number Customer ID to enable Run.
-                      }
-                    </p>
-                  } @else if (!authorPlan()) {
+                  @if (authorCustomerIdValid() && !authorPlan()) {
                     <p role="status">
                       Preview the current TugQL draft before Run.
                     </p>

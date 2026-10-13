@@ -825,6 +825,23 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     undefined,
   );
   public readonly authorPreviewLoading = signal(false);
+  private readonly authorRunParameterAttempt = signal<{
+    readonly queryId: string | undefined;
+    readonly definition: IQueryDef | undefined;
+    readonly binding: string;
+    readonly draftRevision: number;
+  } | undefined>(undefined);
+  public readonly authorRunParameterWarning = computed(() => {
+    const attempt = this.authorRunParameterAttempt();
+    if (!attempt) return undefined;
+    return attempt.queryId === this.queryId &&
+      attempt.definition === this.queryDef() &&
+      attempt.binding === this.authorCustomerId() &&
+      attempt.draftRevision === this.authorDraftRevision() &&
+      this.authorRunReadiness().action === 'parameters'
+      ? this.authorRunReadiness().message
+      : undefined;
+  });
 
   /** The same gates drive the header explanation and Run's disabled state. */
   public authorRunReadiness(): {
@@ -2218,6 +2235,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     )
       return;
     const previousText = (this.queryState.request as ITextQueryRequest).text;
+    if (isAuthorDraft && text !== previousText)
+      this.authorRunParameterAttempt.set(undefined);
     const sourceContextVisible = isAuthorDraft && text !== previousText &&
       (this.activeAuthorContextTab() === 'sources' ||
         this.activeAuthorContextTab() === 'related');
@@ -2467,7 +2486,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.authorSourceScopeKey = context.scopeKey;
       this.authorSourceMetadataSource = context.source;
       this.authorSourceMetadataIdentity = context.queryIdentity;
-      this.authorSourceMessage.set('Related metadata ready.');
+      this.authorSourceMessage.set('');
     } catch (error) {
       if (generation !== this.authorSourceRequestGeneration || !this.isCurrentAuthorSourceContext(context)) return;
       this.authorSourceDiscovery.set(undefined);
@@ -3169,6 +3188,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       previousOrigin.sourceQueryId !== undefined ||
       previousOrigin.sourceColumn !== undefined;
     if (value !== this.authorCustomerId() || originChanged) {
+      this.authorRunParameterAttempt.set(undefined);
       this.authorBindingRevision.update((revision) => revision + 1);
       ++this.authorLookupRequestRevision;
       this.invalidateComparison('The CustomerId binding changed; run both fixtures again.');
@@ -3945,6 +3965,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       const previousCustomerId = this.authorCustomerId();
       const scopeChanged = this.queryId !== queryState.id;
       if (scopeChanged) {
+        this.authorRunParameterAttempt.set(undefined);
         this.authorContextTab.set(undefined);
         this.authorSourcesToggled(false);
         this.selectedAuthorResultRow.set(undefined);
@@ -5273,6 +5294,16 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
    * authorization. */
   public runQuery(): void {
     this.authorFormatNavigationSnapshot.set(undefined);
+    if (this.isTugqlAuthorJourney() && this.authorRunReadiness().action === 'parameters') {
+      this.authorRunParameterAttempt.set({
+        queryId: this.queryId,
+        definition: this.queryDef(),
+        binding: this.authorCustomerId(),
+        draftRevision: this.authorDraftRevision(),
+      });
+      return;
+    }
+    this.authorRunParameterAttempt.set(undefined);
     const runRequestedAt = monotonicTime();
     const projectRef = this.project?.ref;
     const projectId = projectRef?.projectId;

@@ -17,9 +17,8 @@ ion-note[slot='end'] {
 
 .author-source-diff pre {
   max-width: 100%;
-  max-height: 18rem;
-  overflow: auto;
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 40rem) {
