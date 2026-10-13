@@ -1512,8 +1512,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     });
     this.authorModeExplicit = true;
     this.authorMode.set('code');
-    this.authorFormatStatus.set(`InvoiceId ${value.value} added to the local draft. Undo is available; Preview SQL and Run remain explicit.`);
-    status(`InvoiceId ${value.value} added to the local draft. Undo in TugQL Code.`);
+    this.authorFormatStatus.set('InvoiceId filter added. Undo available.');
+    status(`InvoiceId ${value.value} added to TugQL Query. Undo available.`);
     if (this.authorRowDetailsOpen()) {
       this.authorRowDetailsShowEditorAfterDismiss = true;
       this.authorRowDetailsOpen.set(false);

@@ -2481,9 +2481,15 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
     timeout: 20_000,
   });
   await expect(initialHeader).toContainText(LONG_HEADER_PROJECT_TITLE);
-  const initialHeaderAccessibility = await initialHeader.ariaSnapshot();
-  expect(initialHeaderAccessibility).toContain(LONG_HEADER_QUERY_TITLE);
-  expect(initialHeaderAccessibility).toContain(LONG_HEADER_PROJECT_TITLE);
+  if (testInfo.project.use.isMobile === true) {
+    const compactTitle = invoiceAuthorPage.locator('.query-mobile-title');
+    await expect(compactTitle).toBeVisible();
+    expect(await compactTitle.ariaSnapshot()).toContain('Query');
+  } else {
+    const initialHeaderAccessibility = await initialHeader.ariaSnapshot();
+    expect(initialHeaderAccessibility).toContain(LONG_HEADER_QUERY_TITLE);
+    expect(initialHeaderAccessibility).toContain(LONG_HEADER_PROJECT_TITLE);
+  }
   expect(workersStarted).toBe(0);
 
   const author = page.getByTestId('tugql-author');
@@ -3850,7 +3856,7 @@ test('query workspace six polish filters a verified InvoiceId through explicit P
   await expect(current).toContainText('Position 1 of 7');
   await expect(current.getByTestId('author-current-row-field').first().locator('.author-current-row-value')).toHaveText('98');
   await current.getByRole('button', { name: 'Use InvoiceId as filter' }).click();
-  await expect(current).toContainText('InvoiceId 98 added to the local draft');
+  await expect(current).toContainText('InvoiceId 98 added to TugQL Query');
   await expect(receipt).toContainText('Previous run');
   expect(await executionCount()).toBe(1);
   if (mobile) await page.locator('#workspace-back-to-editor').click();
@@ -3904,7 +3910,7 @@ test('query workspace six polish filters untouched plain Invoice results without
     await expect.poll(() => page.locator('#workspace-editor-pane').evaluate((pane) => pane.contains(document.activeElement))).toBe(true);
   } else {
     await current.getByRole('button', { name: 'Use InvoiceId as filter' }).click();
-    await expect(current).toContainText(`InvoiceId ${invoiceId} added to the local draft`);
+    await expect(current).toContainText(`InvoiceId ${invoiceId} added to TugQL Query`);
   }
   await expect(receipt).toContainText('Previous run');
   expect(await executionCount()).toBe(1);

@@ -900,14 +900,9 @@
               </div>
               <div author-editor-status>
                 @if (authorFormatStatus()) {
-                  <p
-                    class="author-format-status"
-                    data-testid="author-format-status"
-                    role="status"
-                    aria-live="polite"
-                  >
-                    {{ authorFormatStatus() }}
-                  </p>
+                  <ion-item lines="none" data-testid="author-format-status">
+                    <ion-label class="ion-text-wrap" role="status" aria-live="polite">{{ authorFormatStatus() }}</ion-label>
+                  </ion-item>
                 }
               </div>
             </sneat-author-code-editor>
