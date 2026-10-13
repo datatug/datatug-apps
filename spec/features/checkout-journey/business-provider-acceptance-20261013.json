@@ -1,7 +1,7 @@
 {
   "recordedOn": "2026-10-13",
   "scope": "Dedicated DataTug TEST buyer; no LIVE payments or other customers",
-  "delivery": "Draft PRs; no intermediate merges",
+  "delivery": "Acceptance completed before final coordinated delivery; linked PRs track current landing status",
   "applicationSource": "52c6e94e05813c4bb0d33c676c838197fe3ca124",
   "notificationFixes": {
     "paymentusPR": "https://github.com/sneat-co/paymentus/pull/115",
@@ -159,7 +159,7 @@
           "alertAttempts": 0
         }
       ],
-      "distinctPaidAccounts": 2,
+      "distinctBillingAccountsInspected": 2,
       "distinctSpaces": 2,
       "distinctLaunchPlaces": 2
     },
@@ -331,7 +331,7 @@
           "alertAttempts": 0
         }
       ],
-      "distinctPaidAccounts": 3,
+      "distinctBillingAccountsInspected": 3,
       "distinctSpaces": 3,
       "distinctLaunchPlaces": 3
     }
@@ -354,5 +354,26 @@
     "ownedTemporaryRevisionsDeleted": 2,
     "ownedFailedBuildArchiveDeleted": true,
     "testImagesRetention": "Two immutable task-only images retained as acceptance evidence; no active revision or traffic. Owner: checkout-provider-verification."
+  },
+  "finalDeliveryReferences": {
+    "paymentus": {
+      "tag": "backend/v0.54.2",
+      "merge": "1346d9cfe37934bc3b4028d77923af3e2c534071",
+      "mainCI": "https://github.com/sneat-co/paymentus/actions/runs/38440925162"
+    },
+    "bots": {
+      "tag": "v0.30.39",
+      "merge": "99a77011d16af05db00b55c1aeccee00e8894a4d",
+      "mainCI": "https://github.com/sneat-co/sneat-bots/actions/runs/38441215109",
+      "guardedRelease": "https://github.com/sneat-co/sneat-bots/actions/runs/38442515709"
+    },
+    "host": {
+      "pullRequest": "https://github.com/sneat-co/sneat-go/pull/1254",
+      "publishedDependenciesSource": "9044210f2c29f1c730bab480a0d655ab27ca7bd2",
+      "publishedModuleCheckoutTests": true,
+      "publishedModuleCompositionTests": true,
+      "localWorkspaceDisabled": true
+    },
+    "scope": "Provider releases and published-module local tests are verified here; use linked host/app PRs and exact deployment workflows for subsequent final delivery status."
   }
 }
