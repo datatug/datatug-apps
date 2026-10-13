@@ -4,9 +4,9 @@ import {
   type ResolveProductProfileInput,
 } from '@datatug/product-profiles';
 
-/** Launch prerequisite: optional analytics are off for DataTug, on every route.
+/** DataTug uses its dedicated GA4 and PostHog in production; the shared
+ * Sneat Firebase Analytics measurementId is stripped so events are not sent to Sneat.
  * Firebase identity, Firestore and Sentry diagnostics keep their existing config.
- * Re-enabling requires a reviewed privacy/consent decision, not a URL switch.
  */
 export function withoutDataTugTracking(
   config: IEnvironmentConfig,
@@ -15,8 +15,6 @@ export function withoutDataTugTracking(
   if (resolveProductProfileId(profile) !== 'datatug') return config;
   return {
     ...config,
-    posthog: undefined,
-    googleAnalytics: undefined,
     firebaseConfig: { ...config.firebaseConfig, measurementId: undefined },
   };
 }
