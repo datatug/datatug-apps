@@ -92,6 +92,19 @@ p { line-height: 1.7; }
 .site-header .nav-end .signin { background: var(--color-accent-strong); color: white; }
 .site-header .nav-end .signin:hover { background: #963d30; }
 .site-header .brand, .site-header .primary a, .site-header .signin { text-decoration: none; }
+.site-header .lang {
+  --color-soft: var(--color-bg-2);
+  --lang-fg: var(--color-text-muted);
+  --lang-fg-hover: var(--color-text);
+  --lang-trigger-bg: var(--color-surface);
+  --lang-trigger-bg-hover: var(--color-bg-2);
+  --lang-border: var(--color-border);
+  --lang-border-hover: var(--color-accent-strong);
+  --lang-globe: var(--color-text-faint);
+}
+.site-header .lang .lang-trigger:focus-visible, .site-header .lang .lang-menu .lang-item:focus-visible { outline-color: var(--color-accent-strong); }
+.site-header .lang .lang-menu .lang-item:hover { background: var(--color-bg-2); color: var(--color-text); }
+.site-header .lang .lang-menu .lang-item.is-active { background: var(--color-accent-soft); box-shadow: inset 3px 0 var(--color-accent-strong); color: var(--color-text); font-weight: 800; }
 .incidentius-mobile-nav { display: none; }
 .site-footer {
   --color-text: #f4f0e7;
