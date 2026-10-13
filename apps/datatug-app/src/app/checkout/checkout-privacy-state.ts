@@ -1,5 +1,6 @@
 export const CHECKOUT_PRIVACY_FLAG = '__datatugCheckoutPrivacy';
 export const CHECKOUT_GA_IDS = [
+  'G-DESWRP39RY',
   'G-SNF2R7PDY7',
   'G-TYBDTV738R',
   'G-PROVIDE_IF_NEEDED',
