@@ -65,12 +65,11 @@
 .author-context-tabs {
   width: 100%;
   min-width: 0;
-  min-height: 5.25rem;
-  grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, max-content);
+  justify-content: space-between;
 }
 .author-context-tabs ion-segment-button {
   min-width: 0;
-  min-height: 5.25rem;
   --padding-start: 0;
   --padding-end: 0;
 }
@@ -82,13 +81,18 @@
 }
 .author-context-tabs ion-label {
   display: flex;
-  flex-direction: column;
   align-items: center;
   white-space: nowrap;
-  margin-block: 0.4rem;
+  margin-block: 0;
 }
 .author-context-tabs ion-chip {
-  margin: 0.2rem 0 0;
+  flex: none;
+  justify-content: center;
+  min-height: 1.25rem;
+  padding: 0 0.125rem;
+  font-size: 0.6875rem;
+  line-height: 1;
+  top: -0.1875rem;
 }
 .author-run-readiness {
   --min-height: 2.25rem;

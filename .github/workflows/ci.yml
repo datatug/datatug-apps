@@ -163,6 +163,12 @@ jobs:
           fi
           pnpm exec playwright install --with-deps "${browsers[@]}"
 
+      - name: Smoke query context count geometry on Chromium
+        if: steps.affected-app.outputs.datatug_app == 'true'
+        env:
+          DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
+        run: pnpm nx run datatug-app:e2e -- --project=chromium --grep='query context counts stay inline through two digits and unavailable drafts'
+
       - name: Set up Java for checkout Firestore emulator
         if: steps.affected-app.outputs.datatug_app == 'true'
         uses: actions/setup-java@v5
