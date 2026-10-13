@@ -595,3 +595,5 @@ Alex requested four further improvements: real-provider/device verification, dis
 
 
 See the [subscription-management evidence](subscription-management-evidence-20261013.md) for the current local journey, transfer limitations, dependency delivery and remaining provider/device verification.
+
+The later [real TEST-provider verification](subscription-management-evidence-20261013.md#real-test-provider-verification--later-2026-10-13) confirms a dedicated buyer's Pro monthly TEST payment, authenticated public return, delayed reconciliation and refresh recovery. Business monthly/yearly forms and quotes load, but submission remains unpaid; Business payment/setup acceptance is open. Shared settings also need a fresh-evidence recovery path. The original TEST runtime and IAM are restored. This supersedes earlier statements that no real provider payment has been exercised, without claiming Business or physical-device acceptance.
