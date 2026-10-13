@@ -1180,7 +1180,7 @@
     </section>
   }
   @if ((running() || resultPageLoading()) && federatedProgress(); as progress) {
-    <p role="status" aria-live="polite">
+    <p role="status" aria-live="polite" data-testid="federated-progress">
       {{
         progress.stage === 'preparing'
           ? 'Preparing source snapshot'

@@ -218,6 +218,7 @@ columns:
     await page.locator('ion-select[label="Result mode"]').click();
     await page.getByRole('radio', { name: 'Full result' }).click();
     await page.getByRole('button', { name: 'OK' }).click();
+    await expect(page.getByTestId('query-save-state')).toHaveAttribute('role', 'status');
     await page.evaluate(() => {
       const state = globalThis as typeof globalThis & {
         __federatedProgress?: string[];
@@ -225,7 +226,7 @@ columns:
       state.__federatedProgress = [];
       new MutationObserver(() => {
         const text = document
-          .querySelector('[role="status"]')
+          .querySelector('[data-testid="federated-progress"]')
           ?.textContent?.replace(/\s+/g, ' ')
           .trim();
         if (text && state.__federatedProgress?.at(-1) !== text)
