@@ -345,6 +345,10 @@ import type {
 } from '../../federated-local-results';
 import { graphStableIdentity } from '../../public-data/native-graph-executor';
 import { QueryContextSqlService } from '../../query-context-sql.service';
+import { SessionWorkspaceService } from '../../../session-context/session-workspace.service';
+import { SessionResultCacheService, tryWriteSessionResultCache } from '../../../session-context/session-result-cache.service';
+import { sessionResultFingerprint } from '../../../session-context/session-result-fingerprint';
+import type { ContextDefinitionDocument } from '../../../session-context/session-context-contract';
 import {
   PublicSqliteQueryService,
   type PublicSqliteSourceDiscovery,
@@ -660,6 +664,12 @@ export function extractLinkedEntityNames(
   ],
 })
 export class QueryPageComponent implements OnDestroy, ViewDidEnter {
+  private readonly sessionWorkspace = inject(SessionWorkspaceService, { optional: true });
+  private readonly contextSessionId = inject(ActivatedRoute).snapshot.paramMap.get('sessionId') ?? '';
+  private readonly sessionPinning = signal(false);
+  private readonly sessionRecordedRun = signal<string | undefined>(undefined);
+  private readonly sessionRecordedInput = signal('');
+  private readonly sessionResultCache = inject(SessionResultCacheService);
   public readonly sqlQueryType = QueryType.SQL;
 
   private readonly injector = inject(Injector);
@@ -1962,6 +1972,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   public async runComparisonBoth(): Promise<void> {
+    if (this.contextSessionId) { this.runError.set('Session comparison needs separately pinned side inputs. Use the supported single-query session path.'); return; }
     if (!this.comparisonBlocker().startsWith('Ready')) return;
     const project = this.project?.ref;
     const definition = this.queryDef();
@@ -3839,7 +3850,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.agentContext.securityContextId();
       this.investigationContext.items();
       this.investigationContext.promotionRevision();
+      if (this.contextSessionId) this.sessionWorkspace?.snapshotFor(this.contextSessionId);
       this.syncScopeAndBindings();
+    });
+    effect(() => {
+      const runId = this.sessionRecordedRun();
+      const running = this.running(), pinning = this.sessionPinning(), error = this.runError();
+      if (runId && !running && !pinning) untracked(() => { void this.finishSessionQuery('failed', error ? 'source-query-failed' : 'client-run-interrupted'); });
     });
     effect(() => {
       const selected = this.selectedAuthorResultRow();
@@ -4755,11 +4772,15 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       return;
     }
     const selectionFacts = this.buildSelectionFacts(parameters);
-    const contextFacts = this.investigationContext
+    const contextFacts = this.sessionWorkspace && this.contextSessionId
+      ? this.sessionWorkspace.appliedFactsFor(this.contextSessionId, this.envId ?? '')
+      : this.investigationContext
       .items()
       .filter((item) => item.enabled && isFactSelectedForBinding(item));
     const activeContextScope = this.investigationContext.scope();
-    const contextScopeKey = activeContextScope
+    const contextScopeKey = this.sessionWorkspace && this.contextSessionId
+      ? this.sessionWorkspace.bindingScopeKey(this.contextSessionId, this.envId ?? '')
+      : activeContextScope
       ? scopeKey(activeContextScope)
       : undefined;
     const clearedParamIds = this.clearedParamIds();
@@ -4807,6 +4828,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       : discovery;
 
     const snapshotKey = JSON.stringify([
+      this.contextSessionId,
       this.project?.ref.storeId,
       this.project?.ref.projectId,
       this.envId,
@@ -5244,7 +5266,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     definition: IQueryDef,
     timing?: QueryRunTiming,
   ): void {
-    if (!this.hasCompleteResult(result)) return;
+    if (!this.hasCompleteResult(result)) { void this.finishSessionQuery('failed', 'incomplete-result'); return; }
+    void this.finishSessionQuery('completed');
     const frozenResult = snapshotCommittedResult(result);
     const request = definition.request as ITextQueryRequest & {
       readonly method?: string;
@@ -5298,6 +5321,96 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
    * bindingOrigins for the submitted parameter keys — display provenance only, never
    * authorization. */
   public runQuery(): void {
+    if (this.sessionWorkspace && this.contextSessionId) {
+      if (!this.sessionPinning() && !this.running() && !this.sessionRecordedRun()) void this.runSessionQuery();
+      return;
+    }
+    this.runQueryWithPinnedInput();
+  }
+
+  private async runSessionQuery(): Promise<void> {
+    const workspace = this.sessionWorkspace;
+    const definition = this.queryDef();
+    if (!workspace || !definition || !this.contextSessionId || !workspace.canExecuteFor(this.contextSessionId)) {
+      this.runError.set('Resume this session before running a query.'); return;
+    }
+    const scopes = workspace.capabilities()?.environments.filter((scope) => scope.environmentId === this.envId) ?? [];
+    if (scopes.length !== 1) { this.runError.set('Choose one admitted environment and identity domain before running this session query.'); return; }
+    const request = definition.request as ITextQueryRequest;
+    if (![QueryType.SQL, QueryType.DTQL, QueryType.TugQL].includes(request.queryType) || typeof request.text !== 'string') {
+      this.runError.set('This session adapter can record SQL and TugQL executions. This request type has no supported private definition snapshot yet.'); return;
+    }
+    if (this.rebindSuggestions().length || this.hasBlockedBindings()) {
+      this.runError.set('Review and accept the current context bindings before creating a saved session run.'); return;
+    }
+    const latestFacts = workspace.appliedFactsFor(this.contextSessionId, this.envId ?? '');
+    const bindings = this.effectiveBindings();
+    if (bindings.some((binding) => binding.origin === 'context' && !latestFacts.some((fact) => fact.id === binding.factId && fact.value && binding.value && typedValuesEqual(fact.value, binding.value)))) {
+      this.runError.set('These frozen bindings differ from the current applied manifest. Review the new context before running.'); return;
+    }
+    const resolvedParameters: Record<string, TypedValue> = Object.fromEntries(bindings.flatMap((binding) =>
+      binding.value ? [[binding.parameterId, binding.value] as const] : []));
+    if (this.isTugqlAuthorJourney() && this.authorHasCustomerIdParameter()) {
+      if (!this.authorCustomerIdValid()) { this.runError.set('Enter a whole-number CustomerId before running.'); return; }
+      resolvedParameters['CustomerId'] = { type: 'integer', value: this.authorCustomerId() };
+    }
+    const document: ContextDefinitionDocument = { schemaVersion: 1, kind: 'query', queries: [{ id: definition.id ?? this.queryId ?? 'query', queryType: request.queryType as 'SQL' | 'DTQL' | 'TugQL', text: request.text,
+      ...(definition.connectionId ? { connectionId: definition.connectionId } : {}), parameters: (definition.parameters ?? []).map(({ id, type, isRequired }) => ({ id, type, ...(isRequired !== undefined ? { isRequired } : {}) })),
+    }] };
+    const encoded = JSON.stringify(document), original = JSON.stringify(definition);
+    const contextSetId = workspace.snapshotFor(this.contextSessionId)?.contextSet.id;
+    this.sessionPinning.set(true);
+    try {
+      const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(encoded)))].map((value) => value.toString(16).padStart(2, '0')).join('');
+      const pinned = await workspace.pinInput(this.contextSessionId, scopes[0], 'query', definition.id ?? this.queryId ?? 'query', `sha256:${digest}`, undefined, resolvedParameters, document);
+      if (!pinned) throw new Error(workspace.error() || 'The query input could not be confirmed.');
+      if (pinned.run.executionAuthority !== 'client') {
+        this.runError.set('The server accepted this query run. The browser will not dispatch it; check saved session history for the outcome.');
+        return;
+      }
+      this.sessionRecordedRun.set(pinned.runId);
+      this.sessionRecordedInput.set(pinned.input.id);
+      if (JSON.stringify(this.queryDef()) !== original || workspace.snapshotFor(this.contextSessionId)?.contextSet.id !== contextSetId || !workspace.canExecuteFor(this.contextSessionId))
+        throw new Error('The query definition, context or lifecycle changed before dispatch. Review it and run again.');
+      this.runQueryWithPinnedInput();
+    } catch (error) {
+      this.runError.set(error instanceof Error ? error.message : 'The session query could not start.');
+      await this.finishSessionQuery('failed', 'client-dispatch-rejected');
+    } finally { this.sessionPinning.set(false); }
+  }
+
+  private async finishSessionQuery(state: 'completed' | 'failed', errorCode?: string): Promise<void> {
+    const runId = this.sessionRecordedRun();
+    if (!runId || !this.sessionWorkspace) return;
+    this.sessionRecordedRun.set(undefined);
+    let finalState = state;
+    let finalErrorCode = errorCode?.replaceAll('-', '_').toUpperCase();
+    let resultRef: string | undefined;
+    if (state === 'completed') {
+      const result = this.runResult(), inputId = this.sessionRecordedInput();
+      if (!result || !inputId) {
+        finalState = 'failed'; finalErrorCode = 'CLIENT_RESULT_MISSING';
+      } else {
+        try {
+          resultRef = await sessionResultFingerprint(result);
+          const saved = await tryWriteSessionResultCache(this.sessionResultCache, this.sessionWorkspace.deviceViewKey(this.contextSessionId, `query-result-${resultRef}`), { runId, inputId, result });
+          if (!saved) this.runError.set('The query result is available in this tab, but its display cache could not be saved. The source will not be rerun.');
+        } catch {
+          if (!resultRef) { finalState = 'failed'; finalErrorCode = 'CLIENT_RESULT_FINGERPRINT_FAILED'; }
+        }
+      }
+    }
+    this.sessionRecordedInput.set('');
+    const confirmed = await this.sessionWorkspace.reportClientRun(this.contextSessionId, runId, 'query', [{ id: 'query', state: finalState,
+      ...(finalState === 'completed' && resultRef ? { resultRef } : {}), ...(finalState === 'failed' ? { errorCode: finalErrorCode ?? 'CLIENT_EXECUTION_FAILED' } : {}) }]);
+    if (!confirmed) this.runError.set('The query finished; its session outcome is unconfirmed. Retry the retained operation.');
+  }
+
+  private runQueryWithPinnedInput(): void {
+    if (this.sessionWorkspace && this.contextSessionId && !this.sessionWorkspace.canExecuteFor(this.contextSessionId)) {
+      this.runError.set('Resume this session before running a query.');
+      return;
+    }
     this.authorFormatNavigationSnapshot.set(undefined);
     if (this.isTugqlAuthorJourney() && this.authorRunReadiness().action === 'parameters') {
       this.authorRunParameterAttempt.set({
@@ -5945,6 +6058,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
    * a request with no known snapshot id is refused rather than sent with an empty one
    * (the server's own `req.Validate()` would reject that anyway). */
   public runSnapshot(): void {
+    if (this.contextSessionId) { this.runError.set('Recorded-source replay needs its own session input pin. Use Run for the supported live query path.'); return; }
     const snapshot = this.availableSnapshot();
     if (!this.lastRequest || !this.lastRequestScope || !snapshot) {
       return;

@@ -1,5 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { NavController } from '@ionic/angular';
+import { Router } from '@angular/router';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import {
   IProjBoard,
@@ -13,6 +14,7 @@ import {
   IProjectContext,
   ProjectPage,
   tryProjectUrl,
+  parseProjectUrl,
 } from '../../nav/nav-models';
 import { IProjectRef, isValidProjectRef } from '../../core/project-context';
 import { projectPageHref } from '../../nav/project-page-href';
@@ -23,6 +25,7 @@ type NavigationOptions = NonNullable<
 >;
 
 export type ProjectTopLevelPage =
+  | 'sessions'
   | 'chat'
   | 'demo-db-sandbox'
   | 'overview'
@@ -52,6 +55,7 @@ export type ProjectTopLevelPage =
 @Injectable({ providedIn: 'root' })
 export class DatatugNavService {
   private readonly nav = inject(NavController);
+  private readonly router = inject(Router, { optional: true });
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
 
   goStore(store: IDatatugStoreContext): void {
@@ -243,7 +247,13 @@ export class DatatugNavService {
     page: ProjectPage | undefined,
     errMessage: string,
   ): string | undefined {
-    const url = tryProjectUrl(ref, page);
+    let scopedPage = page;
+    const current = this.router ? parseProjectUrl(this.router.url.split('?')[0]) : undefined;
+    const session = current?.ok && current.storeId === ref.storeId && current.projectId === ref.projectId && current.spaceID === ref.spaceID
+      ? /^\/sessions\/([A-Za-z0-9_-]{1,128})(?:\/|$)/.exec(current.rest)?.[1] : undefined;
+    const parts = Array.isArray(page) ? page : typeof page === 'string' ? page.split('/') : [];
+    if (session && parts[0] !== 'sessions') scopedPage = ['sessions', session, ...parts];
+    const url = tryProjectUrl(ref, scopedPage);
     if (typeof url === 'string') {
       return url;
     }

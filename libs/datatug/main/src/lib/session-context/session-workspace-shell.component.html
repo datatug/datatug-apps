@@ -1,0 +1,205 @@
+<ion-tabs #sessionTabs>
+  <div slot="top" class="session-top">
+  <ion-tab-bar class="session-tabs" (ionTabButtonClick)="selectSession($event)">
+    @for (session of workspace.openSessions(); track session.id) {
+      <ion-tab-button [id]="'session-tab-' + session.id" [tab]="session.id" [href]="sessionHref(session.id)"
+        [attr.tabindex]="focusTabId() === session.id ? 0 : -1"
+        [attr.aria-label]="session.title + ', ' + session.state + ' session'"
+        (keydown)="tabKeydown($event, session.id)">
+        <ion-label>{{ session.title }} <small>{{ session.state === 'active' ? 'Running' : session.state }}</small></ion-label>
+      </ion-tab-button>
+      <ion-button class="session-tab-close" fill="clear" size="small" [attr.aria-label]="'Close ' + session.title + ' tab'" (click)="closeSession(session.id)">×</ion-button>
+    }
+  </ion-tab-bar>
+  <ion-item lines="full" class="session-summary">
+    <ion-buttons slot="start">
+      <ion-button (click)="chooserOpen.set(true)">All sessions</ion-button>
+      <ion-button (click)="beginCreate()" [disabled]="!workspace.capabilities() || workspace.busy()">New session</ion-button>
+    </ion-buttons>
+    @if (workspace.session(); as session) {
+      <ion-button fill="clear" (click)="drawerOpen.set(true)" aria-haspopup="dialog">
+        Context · {{ workspace.appliedCount() }} applied
+        @if (workspace.hasPendingSelection()) { <strong> · Changes not applied</strong> }
+      </ion-button>
+      <ion-buttons slot="end">
+        <ion-button (click)="beginRename()" [disabled]="!workspace.canExecute()">Rename</ion-button>
+        <ion-button (click)="openWorkspacePage('invoice-explorer')">Explorer</ion-button>
+        <ion-button (click)="openWorkspacePage('invoice-overview')">Invoice overview</ion-button>
+        <ion-button (click)="openWorkspacePage('composer')">Composer</ion-button>
+        <ion-button (click)="openRunHistory()">Run history</ion-button>
+        @if (session.state === 'active') {
+          <ion-button (click)="workspace.transition('stop')" [disabled]="workspace.busy()">Stop</ion-button>
+        } @else if (session.state === 'stopped') {
+          <ion-button (click)="workspace.transition('start')" [disabled]="workspace.busy()">Resume</ion-button>
+          <ion-button (click)="workspace.transition('archive')" [disabled]="workspace.busy()">Archive</ion-button>
+        } @else if (session.state === 'archived') {
+          <ion-button (click)="workspace.transition('restore')" [disabled]="workspace.busy()">Restore</ion-button>
+        }
+        <ion-button color="danger" (click)="deleteOpen.set(true)" [disabled]="workspace.busy() || (session.pendingRunCount || 0) > 0" [title]="(session.pendingRunCount || 0) > 0 ? 'Accepted work is unresolved; settle its receipt before deleting.' : 'Delete session'">Delete</ion-button>
+      </ion-buttons>
+    }
+  </ion-item>
+  </div>
+  @if (workspace.loading()) { <ion-item slot="top" lines="none"><ion-spinner slot="start" /><ion-label>Loading saved session…</ion-label></ion-item> }
+  @if (workspace.error()) {
+    <ion-item slot="top" color="danger" role="alert"><ion-label>{{ workspace.error() }}</ion-label>
+      @if (workspace.canRetry()) { <ion-button slot="end" (click)="workspace.retry()">Check and recover</ion-button> }
+    </ion-item>
+  }
+  @if (workspace.canRetry() && !workspace.error()) {
+    <ion-item slot="top" color="warning" role="status">
+      <ion-label>A previous operation has no confirmed receipt. Check its saved status before continuing.</ion-label>
+      <ion-button slot="end" (click)="workspace.retry()">Check and recover</ion-button>
+    </ion-item>
+  }
+  @if (workspace.draftError()) {
+    <ion-item slot="top" color="warning" role="alert"><ion-label>{{ workspace.draftError() }}</ion-label><ion-button slot="end" (click)="workspace.retryDraft()">Retry save</ion-button></ion-item>
+  }
+  @if (workspace.notice()) { <ion-item slot="top" lines="none" role="status"><ion-label>{{ workspace.notice() }}</ion-label></ion-item> }
+</ion-tabs>
+
+<ion-modal [isOpen]="drawerOpen()" (didDismiss)="drawerOpen.set(false)" cssClass="context-bag-drawer">
+  <ng-template>
+    <ion-header><ion-toolbar><ion-title>Context Bag</ion-title><ion-buttons slot="end"><ion-button (click)="drawerOpen.set(false)">Done</ion-button></ion-buttons></ion-toolbar></ion-header>
+    <ion-content>
+      @if (workspace.snapshot(); as snapshot) {
+        <ion-item lines="full"><ion-label><h2>{{ snapshot.session.title }}</h2><p>{{ snapshot.session.databaseId }} · {{ snapshot.session.state }}</p></ion-label></ion-item>
+        <ion-item><ion-checkbox [checked]="workspace.draft().enabled" (ionChange)="workspace.stageEnabled($event.detail.checked)" [disabled]="!workspace.canExecute()">All session context</ion-checkbox></ion-item>
+        <ion-item><ion-select label="Bag" [value]="workspace.selectedBag()?.id" (ionChange)="workspace.chooseBag($event.detail.value)">
+          @for (bag of snapshot.bags; track bag.id) { <ion-select-option [value]="bag.id">{{ bag.title }} · {{ bag.scope.environmentId }}</ion-select-option> }
+        </ion-select><ion-button slot="end" fill="clear" (click)="beginCreate(true)" [disabled]="!workspace.canExecute()">Add bag</ion-button></ion-item>
+        @if (workspace.selectedBag(); as bag) {
+          <ion-item lines="full"><ion-label><h2>{{ bag.title }}</h2><p>{{ bag.scope.environmentId }} · {{ bag.scope.identityDomain }} · revision {{ bag.version }}</p></ion-label><ion-button slot="end" (click)="beginRename(true)" [disabled]="!workspace.canExecute()">Rename bag</ion-button></ion-item>
+          <ion-item><ion-buttons><ion-button (click)="workspace.attachChecked()">Attach checked entries</ion-button><ion-button (click)="attachAllOpen.set(true)">Attach all entries…</ion-button></ion-buttons></ion-item>
+          @for (entry of workspace.selectedEntries(); track entry.id) {
+            <ion-item>
+              <ion-checkbox slot="start" [attr.aria-label]="'Use ' + workspace.entryLabel(entry)" [checked]="workspace.isChecked(entry.id)" (ionChange)="workspace.stageEntry(entry, $event.detail.checked)" [disabled]="!workspace.canExecute()" />
+              <ion-label><h3>{{ workspace.entryLabel(entry) }}</h3><p>{{ entry.subject.conceptId }} → {{ entry.subject.fieldId }}</p><p>{{ workspace.valueLabel({entryId: entry.id, revisionId: entry.currentRevisionId}) }}</p></ion-label>
+              <ion-buttons slot="end"><ion-button (click)="editEntry(entry)" [disabled]="!workspace.canExecute()">Edit</ion-button><ion-button (click)="workspace.attach(entry)">Attach</ion-button></ion-buttons>
+            </ion-item>
+          } @empty { <ion-item><ion-label color="medium">This bag is empty. Add a typed value, then Apply Context.</ion-label></ion-item> }
+          @if (workspace.canExecute()) {
+            <ion-item lines="full"><ion-label><h2>{{ entryEditing() ? 'Edit entry' : 'Add entry' }}</h2><p>Save creates a revision. Apply controls workspace binding.</p></ion-label></ion-item>
+            @if (availableSubjects().length) {
+              <ion-item><ion-select label="Mapped field" [value]="subjectChoice()" (ionChange)="subjectChanged($event.detail.value)">
+                @for (subject of availableSubjects(); track subject.id) { <ion-select-option [value]="subject.id">{{ subject.label }}</ion-select-option> }
+              </ion-select></ion-item>
+            } @else {
+              <ion-item><ion-label color="medium">No field suggestions are admitted by this server. Enter explicit source-local mapping IDs; no relationship is inferred.</ion-label></ion-item>
+              <ion-item><ion-input label="Semantic concept ID" [ngModel]="conceptDraft()" (ngModelChange)="conceptDraft.set($event)" /></ion-item>
+              <ion-item><ion-input label="Semantic field ID" [ngModel]="fieldDraft()" (ngModelChange)="fieldDraft.set($event)" /></ion-item>
+              <ion-item><ion-input label="Field mapping reference" [ngModel]="mappingDraft()" (ngModelChange)="mappingDraft.set($event)" /></ion-item>
+            }
+            <ion-item><ion-input label="Label (optional)" [ngModel]="aliasDraft()" (ngModelChange)="aliasDraft.set($event)" /></ion-item>
+            <ion-item><ion-select label="Shape" [value]="valueShape()" (ionChange)="valueShape.set($event.detail.value)"><ion-select-option value="scalar">Single value</ion-select-option><ion-select-option value="set">Set · one value per line</ion-select-option></ion-select></ion-item>
+            <ion-item><ion-select label="Type" [value]="valueType()" (ionChange)="valueType.set($event.detail.value)">@for (type of types; track type) { <ion-select-option [value]="type">{{ type }}</ion-select-option> }</ion-select></ion-item>
+            <ion-item><ion-textarea label="Value" labelPlacement="stacked" [autoGrow]="true" [ngModel]="valueDraft()" (ngModelChange)="valueDraft.set($event)" /></ion-item>
+            @if (entryError()) { <ion-item color="danger" role="alert"><ion-label>{{ entryError() }}</ion-label></ion-item> }
+            <ion-item><ion-button (click)="saveEntry()" [disabled]="workspace.busy()">{{ entryEditing() ? 'Save revision' : 'Add entry' }}</ion-button></ion-item>
+          }
+          <ion-item lines="none"><ion-button color="danger" fill="outline" (click)="clearOpen.set(true)" [disabled]="!workspace.canExecute() || !bag.entryIds.length">Clear context</ion-button></ion-item>
+        }
+        @if (workspace.draft().attachments.length) {
+          <ion-item lines="full"><ion-label><h2>Composer attachments</h2><p>Independent of All session context. Send pins revisions.</p></ion-label></ion-item>
+          @for (ref of workspace.draft().attachments; track ref.entryId) {
+            <ion-item><ion-label>{{ workspace.valueLabel(ref) }} · {{ ref.revisionId }}</ion-label><ion-button slot="end" fill="clear" (click)="workspace.detach(ref.entryId)">Remove</ion-button></ion-item>
+          }
+        }
+      }
+    </ion-content>
+    <ion-footer><ion-toolbar><ion-note class="ion-padding-start">{{ workspace.hasPendingSelection() ? 'Changes not applied' : 'Applied selection is current' }}</ion-note><ion-buttons slot="end"><ion-button fill="solid" (click)="workspace.apply()" [disabled]="!workspace.canExecute() || !workspace.hasPendingSelection()">Apply Context</ion-button></ion-buttons></ion-toolbar></ion-footer>
+  </ng-template>
+</ion-modal>
+
+<ion-modal [isOpen]="runHistoryOpen()" (didDismiss)="runHistoryOpen.set(false)">
+  <ng-template>
+    <ion-header><ion-toolbar><ion-title>Run history</ion-title><ion-buttons slot="end"><ion-button (click)="runHistoryOpen.set(false)">Done</ion-button></ion-buttons></ion-toolbar></ion-header>
+    <ion-content>
+      @if (runHistoryError()) { <ion-item color="danger" role="alert"><ion-label>{{ runHistoryError() }}</ion-label></ion-item> }
+      @if (runHistoryLoading() && !runHistory().length) { <ion-item><ion-spinner slot="start" /><ion-label>Loading saved runs…</ion-label></ion-item> }
+      @for (run of runHistory(); track run.id) {
+        <ion-item>
+          <ion-label><h2>{{ run.kind }} · {{ run.state === 'outcome-unknown' ? 'Outcome unknown' : run.state }}</h2><p>{{ run.definitionId }} · {{ run.createdAt }}</p><p>{{ run.inputSnapshotId }} · {{ run.outcomeOrigin || 'Awaiting outcome' }}@if (run.errorCode) { <span> · {{ run.errorCode }}</span> }</p></ion-label>
+          @if (run.executionAuthority === 'client' && run.state === 'accepted' && workspace.capabilities()?.actions?.includes('reportClientRun')) {
+            <ion-button slot="end" fill="outline" (click)="prepareOutcomeUnknown(run)" [disabled]="outcomeUnknownBusy() || workspace.busy()">Acknowledge unknown outcome</ion-button>
+          }
+        </ion-item>
+      } @empty {
+        @if (!runHistoryLoading()) { <ion-item><ion-label>No saved runs in this session.</ion-label></ion-item> }
+      }
+      @if (runHistoryHasMore()) { <ion-item><ion-button (click)="loadMoreRunHistory()" [disabled]="runHistoryLoading()">Load more runs</ion-button></ion-item> }
+    </ion-content>
+  </ng-template>
+</ion-modal>
+
+<ion-modal [isOpen]="chooserOpen()" (didDismiss)="chooserOpen.set(false)">
+  <ng-template>
+    <ion-header><ion-toolbar><ion-title>All sessions</ion-title><ion-buttons slot="end"><ion-button (click)="chooserOpen.set(false)">Done</ion-button></ion-buttons></ion-toolbar></ion-header>
+    <ion-content>
+      <ion-item><ion-input label="Search" [ngModel]="sessionSearch()" (ngModelChange)="sessionSearch.set($event)" /></ion-item>
+      <ion-item><ion-select label="State" [value]="sessionFilter()" (ionChange)="sessionFilter.set($event.detail.value)"><ion-select-option value="all">All</ion-select-option><ion-select-option value="active">Running</ion-select-option><ion-select-option value="stopped">Stopped</ion-select-option><ion-select-option value="archived">Archived</ion-select-option></ion-select></ion-item>
+      @for (session of visibleSessions(); track session.id) {
+        <ion-item button (click)="openSession(session)"><ion-label><h2>{{ session.title }}</h2><p>{{ session.state }} · {{ session.databaseId }}</p></ion-label></ion-item>
+      } @empty { <ion-item><ion-label>No saved sessions match.</ion-label></ion-item> }
+      @if (workspace.hasMore()) { <ion-item><ion-button (click)="workspace.loadMore()" [disabled]="workspace.loading()">Load more sessions</ion-button></ion-item> }
+      <ion-item><ion-button (click)="beginCreate()" [disabled]="!workspace.capabilities()">New session</ion-button></ion-item>
+      <ion-item><ion-button fill="outline" (click)="beginLegacyImport()" [disabled]="!workspace.capabilities()?.actions?.includes('importLegacy')">Import from this browser…</ion-button></ion-item>
+    </ion-content>
+  </ng-template>
+</ion-modal>
+
+<ion-modal [isOpen]="legacyImportOpen()" (didDismiss)="legacyImportOpen.set(false)">
+  <ng-template>
+    <ion-header><ion-toolbar><ion-title>Import saved browser data</ion-title><ion-buttons slot="end"><ion-button (click)="legacyImportOpen.set(false)">Cancel</ion-button></ion-buttons></ion-toolbar></ion-header>
+    <ion-content>
+      <ion-item><ion-label><p>Choose the authorized environment explicitly. Import creates one new session and default bag. It does not run queries. Original browser records remain available.</p></ion-label></ion-item>
+      <ion-item><ion-select label="Target environment" [value]="legacyImportScope()" (ionChange)="legacyImportScope.set($event.detail.value); loadLegacyImportPreview()">
+        @for (scope of workspace.capabilities()?.environments; track scopeKey(scope)) { <ion-select-option [value]="scopeKey(scope)">{{ environmentLabel(scope) }}</ion-select-option> }
+      </ion-select></ion-item>
+      @if (legacyImportScope()) {
+        @if (legacyImportLoading()) { <ion-item><ion-spinner slot="start" /><ion-label>Reading legacy records on this browser…</ion-label></ion-item> }
+        @if (legacyImportError()) { <ion-item color="danger" role="alert"><ion-label>{{ legacyImportError() }}</ion-label></ion-item> }
+        @if (legacyImportPreview(); as preview) {
+          @for (warning of preview.warnings; track warning) { <ion-item color="warning"><ion-label>{{ warning }}</ion-label></ion-item> }
+          <ion-item><ion-checkbox [checked]="legacyImportIncludeContext()" (ionChange)="legacyImportIncludeContext.set($event.detail.checked)">Include portable legacy context entries ({{ readyContextCount(preview) }})</ion-checkbox></ion-item>
+          @if (legacyImportIncludeContext()) {
+            @for (entry of preview.entries; track entry.id) {
+              <ion-item>
+                <ion-label><h3>{{ entry.label }}</h3><p>{{ entry.valueLabel }}</p>@if (entry.blockedReason) { <p>{{ entry.blockedReason }}</p> }</ion-label>
+                @if (entry.blockedReason) { <ion-note slot="end">Review required</ion-note> } @else { <ion-note slot="end">Ready</ion-note> }
+              </ion-item>
+            } @empty { <ion-item><ion-label>No legacy context entries were found for this environment on this browser.</ion-label></ion-item> }
+          }
+          <ion-item lines="full"><ion-label><h2>Saved conversations</h2><p>Only user questions are imported. Saved SQL, result rows, and execution traces are not copied.</p></ion-label></ion-item>
+          @for (conversation of preview.conversations; track conversation.id) {
+            <ion-item>
+              <ion-checkbox slot="start" [checked]="legacyImportSelectedConversations().includes(conversation.id)" [disabled]="!conversation.messages.length" (ionChange)="toggleLegacyConversation(conversation.id, $event.detail.checked)" [attr.aria-label]="'Import ' + conversation.title" />
+              <ion-label><h3>{{ conversation.title }}</h3><p>{{ conversation.kind }} · {{ conversation.messages.length }} question(s) · {{ conversation.createdAt || 'date unavailable' }}</p>@if (conversation.warning) { <p>{{ conversation.warning }}</p> }</ion-label>
+            </ion-item>
+          } @empty { <ion-item><ion-label>No saved conversations were found on this browser.</ion-label></ion-item> }
+        }
+      }
+      @if (workspace.error()) { <ion-item color="danger" role="alert"><ion-label>{{ workspace.error() }}</ion-label></ion-item> }
+    </ion-content>
+    <ion-footer><ion-toolbar><ion-buttons slot="end"><ion-button fill="solid" (click)="importLegacy()" [disabled]="!canImportLegacy() || legacyImportLoading() || workspace.busy()">@if (workspace.busy()) { <ion-spinner slot="start" /> }Import to a new session</ion-button></ion-buttons></ion-toolbar></ion-footer>
+  </ng-template>
+</ion-modal>
+
+<ion-modal [isOpen]="createOpen() || addBagOpen() || !!renameTarget()" (didDismiss)="createOpen.set(false); addBagOpen.set(false); renameTarget.set(undefined)">
+  <ng-template>
+    <ion-header><ion-toolbar><ion-title>{{ renameTarget() ? 'Rename ' + renameTarget() : addBagOpen() ? 'New bag' : 'New session' }}</ion-title><ion-buttons slot="end"><ion-button (click)="createOpen.set(false); addBagOpen.set(false); renameTarget.set(undefined)">Cancel</ion-button></ion-buttons></ion-toolbar></ion-header>
+    <ion-content>
+      <ion-item><ion-input label="Title" [ngModel]="titleDraft()" (ngModelChange)="titleDraft.set($event)" /></ion-item>
+      @if (!renameTarget()) { <ion-item><ion-select label="Environment" [value]="scopeDraft()" (ionChange)="scopeDraft.set($event.detail.value)">
+        @for (scope of workspace.capabilities()?.environments; track scopeKey(scope)) { <ion-select-option [value]="scopeKey(scope)">{{ environmentLabel(scope) }}</ion-select-option> }
+      </ion-select></ion-item> }
+      @if (formError()) { <ion-item color="danger" role="alert"><ion-label>{{ formError() }}</ion-label></ion-item> }
+      @if (workspace.error()) { <ion-item color="danger" role="alert"><ion-label>{{ workspace.error() }}</ion-label></ion-item> }
+      <ion-item><ion-button (click)="saveCreate(addBagOpen())" [disabled]="workspace.busy()">{{ renameTarget() ? 'Save title' : addBagOpen() ? 'Create bag' : 'Create session' }}</ion-button></ion-item>
+    </ion-content>
+  </ng-template>
+</ion-modal>
+<ion-alert [isOpen]="clearOpen()" (didDismiss)="clearOpen.set(false)" header="Clear context?" [message]="'Empty ' + (workspace.selectedBag()?.title || 'this bag') + '? Its applied binding and unsent attachments are removed. Other bags and saved history are retained.'" [buttons]="clearButtons" />
+<ion-alert [isOpen]="deleteOpen()" (didDismiss)="deleteOpen.set(false)" header="Delete session?" message="This hides the session. Referenced evidence and retained history follow the server retention policy." [buttons]="deleteButtons" />
+<ion-alert [isOpen]="attachAllOpen()" (didDismiss)="attachAllOpen.set(false)" header="Attach all entries?" [message]="'Attach all ' + workspace.selectedEntries().length + ' entries from this bag to the composer? This is independent of the session context master.'" [buttons]="attachAllButtons" />
+<ion-alert [isOpen]="outcomeUnknownConfirmOpen()" (didDismiss)="outcomeUnknownConfirmOpen.set(false)" header="Acknowledge unknown outcome?" message="This records that the browser cannot confirm the accepted run's outcome. Another tab may still be running it. This does not cancel the run or rerun its query. The run remains in session history." [buttons]="outcomeUnknownButtons" />

@@ -1,6 +1,8 @@
 import { RouterModule, Routes } from '@angular/router';
 import { NgModule } from '@angular/core';
 import { ENABLE_EMPTY_SHELL_PAGES } from '../core/feature-flags';
+import { SessionWorkspaceService } from '../session-context/session-workspace.service';
+import { admitSessionWorkspace } from '../session-context/session-route.guard';
 import {
   routingParamBoard,
   routingParamDbCatalogId,
@@ -272,6 +274,25 @@ export const datatugProjectRoutes: Routes = [
   },
   ...(ENABLE_EMPTY_SHELL_PAGES ? emptyShellProjectRoutes : []),
 ];
+
+// The session ID is a real Ionic stack ID. Legacy project/query addresses remain
+// valid; adding this parent preserves folder-qualified ?id= and every query page.
+export const sessionWorkspacePages: Routes = datatugProjectRoutes.filter((route) =>
+  ['chat', 'overview', 'board/:board', 'boards', 'entities', 'entity/:entityId',
+    'env/:environmentId', 'query', 'queries', 'servers'].includes(route.path ?? ''),
+);
+sessionWorkspacePages.push({ path: 'invoice-overview', loadComponent: () => import('../session-context/invoice-dashboard.component').then((m) => m.InvoiceDashboardComponent) });
+sessionWorkspacePages.push({ path: 'invoice-explorer', loadComponent: () => import('../session-context/invoice-explorer.component').then((m) => m.InvoiceExplorerComponent) });
+sessionWorkspacePages.push({ path: 'composer', loadComponent: () => import('../session-context/session-composer.component').then((m) => m.SessionComposerComponent) });
+sessionWorkspacePages.push({ path: 'variables', loadComponent: () => import('../session-context/session-bag-page.component').then((m) => m.SessionBagPageComponent) });
+datatugProjectRoutes.unshift({
+  path: 'sessions',
+  providers: [SessionWorkspaceService],
+  loadComponent: () => import('../session-context/session-workspace-shell.component').then((m) => m.SessionWorkspaceShellComponent),
+  children: [{ path: ':sessionId', canActivateChild: [admitSessionWorkspace], children: [
+    { path: '', pathMatch: 'full', redirectTo: 'overview' }, ...sessionWorkspacePages,
+  ] }],
+});
 
 @NgModule({
   imports: [RouterModule.forChild(datatugProjectRoutes)],

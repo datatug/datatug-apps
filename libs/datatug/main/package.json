@@ -10,6 +10,7 @@
     "@dalgo/indexeddb": "*",
     "ag-grid-angular": "^36.2.0",
     "ag-grid-community": "^36.2.0",
+    "idb": "^8.0.3",
     "@ingitdb/client": "*",
     "@ingitdb/client-github": "*",
     "@ionic/angular": ">=9.0.0 <10.0.0",
