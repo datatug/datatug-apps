@@ -368,9 +368,11 @@ export class CasesPageComponent {
   protected checkUrl(id: string): string {
     return projectPageHref(this.scope.ref(), ['checks', id]);
   }
-  protected validatorUrl(queryId: string, caseId: string): string {
+  protected validatorUrl(queryId: string, caseId: string) {
     const url = projectPageHref(this.scope.ref(), 'checks');
-    return `${url}${url.includes('?') ? '&' : '?'}query=${encodeURIComponent(queryId)}&caseId=${encodeURIComponent(caseId)}`;
+    return this.router.parseUrl(
+      `${url}${url.includes('?') ? '&' : '?'}query=${encodeURIComponent(queryId)}&caseId=${encodeURIComponent(caseId)}`,
+    );
   }
   protected queryUrl(id: string): string {
     const url = projectPageHref(this.scope.ref(), ['query', id]);
@@ -381,9 +383,11 @@ export class CasesPageComponent {
     caseId: string,
     applicationId: string,
     stepId: string,
-  ): string {
+  ) {
     const url = this.queryUrl(queryId);
-    return `${url}&caseId=${encodeURIComponent(caseId)}&applicationId=${encodeURIComponent(applicationId)}&scenarioStepId=${encodeURIComponent(stepId)}`;
+    return this.router.parseUrl(
+      `${url}&caseId=${encodeURIComponent(caseId)}&applicationId=${encodeURIComponent(applicationId)}&scenarioStepId=${encodeURIComponent(stepId)}`,
+    );
   }
   protected incidentUrl(ref: string): string | undefined {
     const [store, id] = ref.split('/');

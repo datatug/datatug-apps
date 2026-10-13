@@ -92,6 +92,14 @@
   background: #fff0ee;
   color: #932d24;
 }
+.feedback.unknown {
+  background: #fff4da;
+  color: #73500d;
+}
+#detective-check-run-result:focus {
+  outline: 2px solid var(--ion-color-primary, #2763a5);
+  outline-offset: 3px;
+}
 .result-summary {
   border-left: 4px solid var(--ion-color-primary, #2763a5);
   padding: 10px 12px;

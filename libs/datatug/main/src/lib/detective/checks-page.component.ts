@@ -1,4 +1,4 @@
-import { CommonModule } from '@angular/common';
+import { CommonModule, DOCUMENT } from '@angular/common';
 import { DEMO_PROJECT_REF } from '@datatug/project-address';
 import {
   ChangeDetectionStrategy,
@@ -33,9 +33,11 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/angular';
-import { firstValueFrom } from 'rxjs';
+import { catchError, firstValueFrom, forkJoin, map, of } from 'rxjs';
 import { projectPageHref } from '../nav/project-page-href';
 import { IEnvironmentFull } from '../models/definition/environments';
+import { IQueryDef } from '../models/definition/query-def';
+import { QueriesService } from '../queries/queries.service';
 import { ProjectService } from '../services/project/project.service';
 import {
   DetectiveClientService,
@@ -55,6 +57,7 @@ import {
   CheckInput,
   CheckRun,
   CheckStep,
+  CheckStepResult,
   DetectiveInputValue,
   DetectiveState,
   PublishedValidator,
@@ -63,6 +66,7 @@ import {
 } from './models';
 import { ValidationRunResultsComponent } from './validation-run-results.component';
 import { DetectiveDemoStarterComponent } from './detective-demo-starter.component';
+import { checkConsumers, inspectCheck } from './check-inspection';
 
 const NEW_CHECK = (): CheckDefinition => ({
   id: '',
@@ -121,6 +125,8 @@ export class ChecksPageComponent {
   private readonly router = inject(Router);
   private readonly client = inject(DetectiveClientService);
   private readonly projectService = inject(ProjectService);
+  private readonly queriesService = inject(QueriesService);
+  private readonly document = inject(DOCUMENT);
   protected readonly scope = useDetectivePageContext();
   protected readonly publicDemo = computed(
     () =>
@@ -139,6 +145,9 @@ export class ChecksPageComponent {
   protected readonly busy = signal(false);
   protected readonly error = signal('');
   protected readonly message = signal('');
+  protected readonly messageOutcome = signal<'pass' | 'fail' | 'unknown'>(
+    'pass',
+  );
   protected readonly search = signal('');
   protected readonly draft = signal<CheckDefinition | undefined>(undefined);
   protected readonly validatorDraft = signal<PublishedValidator | undefined>(
@@ -157,6 +166,10 @@ export class ChecksPageComponent {
     Record<string, { value: string; end: string }>
   >({});
   protected readonly selectedRun = signal<CheckRun | undefined>(undefined);
+  protected readonly queryDetails = signal<Record<string, IQueryDef | null>>(
+    {},
+  );
+  protected readonly queryDetailsLoading = signal(false);
   protected readonly checkId = computed(
     () => this.params().get('checkId') || undefined,
   );
@@ -209,20 +222,50 @@ export class ChecksPageComponent {
   protected readonly displayedRun = computed(
     () => this.selectedRun() || this.history()[0],
   );
+  protected readonly observedSources = computed(() => {
+    const sources = new Set<string>();
+    const visit = (steps: CheckStepResult[]) => {
+      for (const step of steps) {
+        if (step.source) sources.add(step.source);
+        if (step.children) visit(step.children);
+      }
+    };
+    visit(this.displayedRun()?.steps || []);
+    return [...sources];
+  });
   protected readonly displayedQueryRun = computed(
     () => this.selectedRun() || this.queryHistory()[0],
   );
-  protected readonly usedBy = computed(() =>
-    (this.state()?.checks || []).filter((check) =>
-      check.steps.some(
-        (step) =>
-          step.checkId === this.checkId() ||
-          step.validators?.some(
-            (validator) => validator.checkId === this.checkId(),
-          ),
+  protected readonly inspection = computed(() => {
+    const check = this.current();
+    const state = this.state();
+    return check && state ? inspectCheck(check, state) : undefined;
+  });
+  protected readonly usedBy = computed(() => {
+    const id = this.checkId();
+    const state = this.state();
+    return id && state ? checkConsumers(id, state) : undefined;
+  });
+  private readonly loadQueryDetails = effect((onCleanup) => {
+    const ref = this.scope.ref();
+    const ids = this.inspection()?.queryIds || [];
+    this.queryDetails.set({});
+    this.queryDetailsLoading.set(false);
+    if (!ref || !ids.length) return;
+    this.queryDetailsLoading.set(true);
+    const subscription = forkJoin(
+      ids.map((id) =>
+        this.queriesService.getQuery(ref, id).pipe(
+          map((query) => [id, query] as const),
+          catchError(() => of([id, null] as const)),
+        ),
       ),
-    ),
-  );
+    ).subscribe((queries) => {
+      this.queryDetails.set(Object.fromEntries(queries));
+      this.queryDetailsLoading.set(false);
+    });
+    onCleanup(() => subscription.unsubscribe());
+  });
   // Hosted environments are admitted by the server; local agents retain their
   // project_full source until both transports expose the same state field.
   private readonly loadEnvironments = effect((onCleanup) => {
@@ -305,9 +348,35 @@ export class ChecksPageComponent {
       caseId ? ['detective', caseId] : 'detective',
     );
   }
-  protected queryUrl(id: string): string {
+  protected queryUrl(id: string) {
     const url = projectPageHref(this.scope.ref(), ['query', id]);
-    return `${url}${url.includes('?') ? '&' : '?'}id=${encodeURIComponent(id)}`;
+    return this.router.parseUrl(
+      `${url}${url.includes('?') ? '&' : '?'}id=${encodeURIComponent(id)}`,
+    );
+  }
+  protected validatorSummary(validator: ValidatorDefinition): string {
+    const target = validator.checkId
+      ? ` → Check ${validator.checkId}`
+      : validator.field
+        ? ` · ${validator.field}${validator.otherField ? ` / ${validator.otherField}` : ''}`
+        : '';
+    return `${validator.scope} ${validator.kind || 'published'} · ${validator.severity}${target}`;
+  }
+  private focusRunResult(): void {
+    // The results card is conditional on the returned run. Let Angular render
+    // the signal before moving keyboard focus and scrolling it into view.
+    setTimeout(() => {
+      const result = this.document.getElementById('detective-check-run-result');
+      result?.focus();
+      result?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+  private notify(
+    message: string,
+    outcome: 'pass' | 'fail' | 'unknown' = 'pass',
+  ): void {
+    this.messageOutcome.set(outcome);
+    this.message.set(message);
   }
   protected editQueryValidators(): void {
     const queryId = this.queryId();
@@ -442,7 +511,7 @@ export class ChecksPageComponent {
         );
       await this.refresh();
       this.queryValidatorDraft.set(undefined);
-      this.message.set(`Saved local Validators for ${draft.queryId}.`);
+      this.notify(`Saved local Validators for ${draft.queryId}.`);
     } catch (error) {
       this.error.set(
         detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
@@ -518,9 +587,11 @@ export class ChecksPageComponent {
         throw new Error('The project store did not return a Validator run.');
       await this.refresh();
       this.selectedRun.set(response.run);
-      this.message.set(
+      this.notify(
         `Validator run ${response.run.id}: ${response.run.outcome}.`,
+        response.run.outcome,
       );
+      this.focusRunResult();
     } catch (error) {
       this.error.set(
         detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
@@ -763,7 +834,7 @@ export class ChecksPageComponent {
       await this.router.navigateByUrl(this.checkUrl(response.check.id), {
         replaceUrl: draft.version === 0,
       });
-      this.message.set(
+      this.notify(
         `Saved Check ${response.check.id} · version ${response.check.version}.`,
       );
     } catch (error) {
@@ -855,7 +926,7 @@ export class ChecksPageComponent {
         throw new Error('The project store did not return the Validator.');
       await this.refresh();
       this.validatorDraft.set(undefined);
-      this.message.set(`Published Validator ${response.validator.id}.`);
+      this.notify(`Published Validator ${response.validator.id}.`);
     } catch (error) {
       this.error.set(
         detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),
@@ -906,7 +977,7 @@ export class ChecksPageComponent {
     }
     this.runInputText.set(next);
     if (added)
-      this.message.set(
+      this.notify(
         `${added} matching Case inputs copied for review. Run uses the values shown below.`,
       );
   }
@@ -954,7 +1025,11 @@ export class ChecksPageComponent {
         throw new Error('The project store did not return a run.');
       await this.refresh();
       this.selectedRun.set(response.run);
-      this.message.set(`Run ${response.run.id}: ${response.run.outcome}.`);
+      this.notify(
+        `Run ${response.run.id}: ${response.run.outcome}.`,
+        response.run.outcome,
+      );
+      this.focusRunResult();
     } catch (error) {
       this.error.set(
         detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),

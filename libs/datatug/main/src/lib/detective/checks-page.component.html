@@ -41,7 +41,14 @@
         <p class="feedback error" role="alert">{{ error() }}</p>
       }
       @if (message()) {
-        <p class="feedback" role="status">{{ message() }}</p>
+        <p
+          class="feedback"
+          [class.error]="messageOutcome() === 'fail'"
+          [class.unknown]="messageOutcome() === 'unknown'"
+          role="status"
+        >
+          {{ message() }}
+        </p>
       }
 
       @if (queryId(); as query) {
@@ -495,7 +502,9 @@
               }
             </ion-list>
             @if (displayedQueryRun(); as run) {
-              <sneat-validation-run-results [run]="run" />
+              <div id="detective-check-run-result" tabindex="-1">
+                <sneat-validation-run-results [run]="run" />
+              </div>
             }
             @if (state()?.runsHasMore) {
               <ion-button
@@ -1151,15 +1160,155 @@
                       </p></ion-label
                     ></ion-item
                   >
+                  @for (
+                    validator of step.validators || [];
+                    track validator.id
+                  ) {
+                    <ion-item
+                      ><ion-label>
+                        <h4>
+                          {{ validator.id }}
+                          @if (validator.validatorId) {
+                            · published {{ validator.validatorId }}
+                          }
+                        </h4>
+                        <p>{{ validatorSummary(validator) }}</p>
+                      </ion-label></ion-item
+                    >
+                  }
                 }
               </ion-list>
-              @if (usedBy().length) {
-                <h2>Used by</h2>
+              <h2>Before you run</h2>
+              <p>
+                These are saved catalog dependencies. The server checks current
+                access and source admission when the run starts.
+              </p>
+              @if (inspection(); as dependencies) {
                 <p>
-                  @for (parent of usedBy(); track parent.id) {
-                    <a [routerLink]="checkUrl(parent.id)">{{ parent.id }}</a>
-                  }
+                  {{ dependencies.checks.length }} nested Checks ·
+                  {{ dependencies.queryIds.length }} saved queries ·
+                  {{ dependencies.validators.length }} Validator uses.
                 </p>
+                @if (state()?.capabilities; as limits) {
+                  <p>
+                    Store-advertised limits: {{ limits.maxRows }} rows · nested
+                    Check fanout {{ limits.maxFanout }}. The saved query and
+                    executor may impose tighter limits. Actual query and Check
+                    invocations are reported in the run receipt.
+                  </p>
+                }
+                @if (observedSources().length && displayedRun(); as previous) {
+                  <p>
+                    Previous run in {{ previous.environment }} observed
+                    {{ observedSources().join(', ') }} at
+                    {{ previous.startedAt | date: 'medium' }}. The next run
+                    rechecks source admission.
+                  </p>
+                }
+                @if (dependencies.checks.length) {
+                  <h3>Nested Checks</h3>
+                  <ion-list>
+                    @for (
+                      dependency of dependencies.checks;
+                      track dependency.id
+                    ) {
+                      <ion-item
+                        ><ion-label
+                          ><a [routerLink]="checkUrl(dependency.id)">{{
+                            dependency.title
+                          }}</a>
+                          · {{ dependency.id }} · version
+                          {{ dependency.version }}</ion-label
+                        ></ion-item
+                      >
+                    }
+                  </ion-list>
+                }
+                @if (dependencies.queryIds.length) {
+                  <h3>Saved queries and declared sources</h3>
+                  <ion-list>
+                    @for (id of dependencies.queryIds; track id) {
+                      <ion-item
+                        ><ion-label>
+                          <h4>
+                            <a [routerLink]="queryUrl(id)">{{ id }}</a>
+                          </h4>
+                          @if (queryDetails()[id]; as query) {
+                            @if (query.federation; as federation) {
+                              <p>
+                                Declared origin: {{ federation.ovdbBaseUrl }}
+                              </p>
+                              <p>
+                                Tables:
+                                @for (
+                                  table of federation.tables;
+                                  track $index
+                                ) {
+                                  {{ table.database || 'default' }}/{{
+                                    table.name
+                                  }}
+                                }
+                              </p>
+                              @if (federation.bounds; as bounds) {
+                                <p>
+                                  Saved bounds: {{ bounds.resultRows }} result
+                                  rows · {{ bounds.bytes }} bytes ·
+                                  {{ bounds.timeoutMs }} ms.
+                                </p>
+                              }
+                            } @else {
+                              <p>No source declaration in this saved query.</p>
+                            }
+                          } @else if (queryDetailsLoading()) {
+                            <p>Loading saved query…</p>
+                          } @else {
+                            <p>
+                              Saved query metadata unavailable; source is
+                              resolved by the server at run time.
+                            </p>
+                          }
+                        </ion-label></ion-item
+                      >
+                    }
+                  </ion-list>
+                }
+                @if (dependencies.missing.length) {
+                  <ion-note color="danger"
+                    >Unresolved catalog references:
+                    {{ dependencies.missing.join(', ') }}</ion-note
+                  >
+                }
+              }
+              @if (usedBy(); as consumers) {
+                @if (
+                  consumers.checks.length ||
+                  consumers.validators.length ||
+                  consumers.queries.length
+                ) {
+                  <h2>Used by</h2>
+                  <p>
+                    @for (parent of consumers.checks; track parent.id) {
+                      Check
+                      <a [routerLink]="checkUrl(parent.id)">{{ parent.id }}</a>
+                      ·
+                    }
+                    @for (
+                      published of consumers.validators;
+                      track published.id
+                    ) {
+                      published Validator {{ published.title }} ({{
+                        published.id
+                      }}) ·
+                    }
+                    @for (query of consumers.queries; track query.queryId) {
+                      query-local Validators on
+                      <a [routerLink]="queryUrl(query.queryId)">{{
+                        query.queryId
+                      }}</a>
+                      ·
+                    }
+                  </p>
+                }
               }
             </ion-card-content></ion-card
           >
@@ -1290,7 +1439,9 @@
                 <p>No manual runs yet.</p>
               }
               @if (displayedRun(); as run) {
-                <sneat-validation-run-results [run]="run" />
+                <div id="detective-check-run-result" tabindex="-1">
+                  <sneat-validation-run-results [run]="run" />
+                </div>
               }
               @if (state()?.runsHasMore) {
                 <ion-button
