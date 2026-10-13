@@ -24,6 +24,11 @@ const paths = [
   '/subscribe?checkout=test',
   '/pricing/return?session_id=cs_test_paid',
   '/login',
+  '/checkout/sign-in?plan=pro&period=monthly&checkout=test',
+  '/subscriptions?checkout=test',
+  '/subscriptions/billing_one?checkout=test',
+  '/subscriptions/billing_one/transfer?checkout=test&requestId=transfer_one',
+  '/sso?returnTo=%2Fsubscriptions%3Fcheckout%3Dtest',
   '/login#/pricing/return?session_id=cs_test_paid',
 ];
 
@@ -55,6 +60,7 @@ it.each(paths)(
         { hostname: 'datatug.app' },
         { head: { appendChild: append } },
       );
+      expect(target['ga-disable-G-DESWRP39RY']).toBe(true);
       expect(append).not.toHaveBeenCalled();
       registerPosthog({ token: 'fixture' });
       history.replaceState(null, '', '/project/github.com/datatug/demo');
@@ -63,6 +69,7 @@ it.each(paths)(
     } finally {
       for (const key of [
         '__datatugOptionalTrackingDisabled',
+        'ga-disable-G-DESWRP39RY',
         'ga-disable-G-SNF2R7PDY7',
         'ga-disable-G-TYBDTV738R',
         'ga-disable-G-PROVIDE_IF_NEEDED',

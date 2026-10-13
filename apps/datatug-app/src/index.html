@@ -139,7 +139,7 @@
         var incidentius = profile === 'incidentius' || (profile !== 'datatug' && host === 'app.incidentius.com');
         if (!incidentius) {
           window.__datatugOptionalTrackingDisabled = true;
-          ['G-SNF2R7PDY7', 'G-TYBDTV738R', 'G-PROVIDE_IF_NEEDED'].forEach(function (id) { window['ga-disable-' + id] = true; });
+          ['G-DESWRP39RY', 'G-SNF2R7PDY7', 'G-TYBDTV738R', 'G-PROVIDE_IF_NEEDED'].forEach(function (id) { window['ga-disable-' + id] = true; });
         }
       })();
     </script>
@@ -158,14 +158,14 @@
             authPage && returnTo && returnTo.slice(0, 1) === '/' && returnTo.slice(0, 2) !== '//' ? normalize(returnTo) : '';
           if ([path, continuation].some(function (value) { return value === 'checkout/sign-in' || value === 'subscriptions' || value.indexOf('subscriptions/') === 0 || value === 'subscribe' || value === 'pricing/return' || value === 'business/checkout' || value === 'business/checkout/return'; })) {
             window.__datatugCheckoutPrivacy = true;
-            ['G-SNF2R7PDY7', 'G-TYBDTV738R', 'G-PROVIDE_IF_NEEDED'].forEach(function (id) { window['ga-disable-' + id] = true; });
+            ['G-DESWRP39RY', 'G-SNF2R7PDY7', 'G-TYBDTV738R', 'G-PROVIDE_IF_NEEDED'].forEach(function (id) { window['ga-disable-' + id] = true; });
           }
         } catch (_) { /* Invalid routes are not checkout. */ }
       })();
     </script>
-    <!-- Google Analytics (skipped on localhost) -->
+    <!-- Google Analytics (skipped on localhost and checkout) -->
     <script>
-      if (!window.__datatugOptionalTrackingDisabled && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+      if (!window.__datatugCheckoutPrivacy && !window.__datatugOptionalTrackingDisabled && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
         var s = document.createElement('script');
         s.async = true;
         s.src = 'https://www.googletagmanager.com/gtag/js?id=G-SNF2R7PDY7';
