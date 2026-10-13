@@ -430,9 +430,34 @@ export function requireCustomerIdParameterSource(tree: TugQLTree): void {
   const from = query['from'] as Readonly<Record<string, unknown>> | undefined;
   const alias = typeof from?.['alias'] === 'string' ? from['alias'] : 'Invoice';
   const where = query['where'] as Readonly<Record<string, unknown>> | undefined;
+  const conditions = where?.['and'];
+  const guardedWhere = Array.isArray(conditions) && conditions.length === 2
+    ? conditions[0] as Readonly<Record<string, unknown>>
+    : where;
   const left = where?.['left'] as Readonly<Record<string, unknown>> | undefined;
   const right = where?.['right'] as Readonly<Record<string, unknown>> | undefined;
-  if (where?.['op'] !== '==' || left?.['field'] !== 'CustomerId' || (left['source'] !== undefined && left['source'] !== alias) || right?.['param'] !== 'CustomerId') {
+  const guardLeft = guardedWhere === where ? left : guardedWhere?.['left'] as Readonly<Record<string, unknown>> | undefined;
+  const guardRight = guardedWhere === where ? right : guardedWhere?.['right'] as Readonly<Record<string, unknown>> | undefined;
+  const invoiceIdCondition = Array.isArray(conditions) && conditions.length === 2
+    ? conditions[1] as Readonly<Record<string, unknown>>
+    : undefined;
+  const invoiceIdLeft = invoiceIdCondition?.['left'] as Readonly<Record<string, unknown>> | undefined;
+  const invoiceIdRight = invoiceIdCondition?.['right'] as Readonly<Record<string, unknown>> | undefined;
+  const validInvoiceIdCondition = !invoiceIdCondition || (
+    Object.keys(where ?? {}).length === 1 &&
+    Object.keys(invoiceIdCondition).length === 3 &&
+    invoiceIdCondition['op'] === '==' &&
+    invoiceIdLeft?.['field'] === 'InvoiceId' &&
+    (invoiceIdLeft['source'] === undefined || invoiceIdLeft['source'] === alias) &&
+    Object.keys(invoiceIdLeft).every((key) => ['field', 'source'].includes(key)) &&
+    Object.keys(invoiceIdRight ?? {}).length === 1 &&
+    typeof invoiceIdRight?.['value'] === 'number' &&
+    Number.isSafeInteger(invoiceIdRight['value']) &&
+    (invoiceIdRight['value'] as number) > 0
+  );
+  if ((conditions !== undefined && !invoiceIdCondition) || !validInvoiceIdCondition ||
+      guardedWhere?.['op'] !== '==' || guardLeft?.['field'] !== 'CustomerId' ||
+      (guardLeft['source'] !== undefined && guardLeft['source'] !== alias) || guardRight?.['param'] !== 'CustomerId') {
     let outerParameter = false;
     const findOuterParameter = (value: unknown): void => {
       if (!value || typeof value !== 'object') return;
@@ -445,7 +470,7 @@ export function requireCustomerIdParameterSource(tree: TugQLTree): void {
     if (outerParameter)
       throw new Error('The CustomerId predicate must stay inside the referenced CTE, with no outer WHERE.');
     throw new Error(
-      'Use the declared @CustomerId parameter as the value in Invoice.CustomerId equality.',
+      'Use the declared @CustomerId equality, optionally followed by one positive integer InvoiceId equality.',
     );
   }
   let parameterUses = 0;
@@ -458,6 +483,21 @@ export function requireCustomerIdParameterSource(tree: TugQLTree): void {
   };
   scan(tree);
   if (parameterUses !== 1) throw new Error('Use @CustomerId only in the guarded Invoice.CustomerId equality.');
+}
+
+/** Retain only the admitted InvoiceId literal after proving the authored CustomerId guard. */
+export function preparePublicSqliteInvoiceStructuralDocument(document: TugQLDocument): TugQLDocument {
+  const tree = document.tree;
+  if (!tree || tree.definitions?.length)
+    throw new Error('The physical Invoice profile requires a direct Invoice query.');
+  requireCustomerIdParameterSource(tree);
+  const copy = { ...tree };
+  delete (copy as Record<string, unknown>)['parameters'];
+  const query = { ...tree.query } as Record<string, unknown>;
+  const conditions = (query['where'] as Readonly<Record<string, unknown>> | undefined)?.['and'];
+  if (Array.isArray(conditions) && conditions.length === 2) query['where'] = conditions[1];
+  else delete query['where'];
+  return { sourceMetadata: document.sourceMetadata, tree: { ...copy, query } as TugQLTree };
 }
 
 /** Validate literal provenance before resolveTugQL replaces parameters with values. */
@@ -507,10 +547,21 @@ export function compilePublicSqliteTugQL(
     query.from.joins.some((join) => join.from.kind === 'query')
   )
     return compileBoundedCteGraph(resolved, options);
-  if (query.where !== undefined) {
-    throw new Error(
-      'Compile only the structurally resolved query with its guarded CustomerId predicate removed.',
-    );
+  const invoiceIdWhere = query.where;
+  let invoiceIdLiteral: number | undefined;
+  if (invoiceIdWhere !== undefined) {
+    if (!options.authoredSource)
+      throw new Error('The InvoiceId filter requires its exact authored TugQL source.');
+    if (invoiceIdWhere.kind !== 'comparison' || invoiceIdWhere.operator !== '==' ||
+        invoiceIdWhere.left.kind !== 'field' ||
+        invoiceIdWhere.left.field.field !== 'InvoiceId' ||
+        invoiceIdWhere.left.field.source !== (query.from.alias ?? 'Invoice') ||
+        invoiceIdWhere.right.kind !== 'literal' ||
+        typeof invoiceIdWhere.right.value !== 'number' ||
+        !Number.isSafeInteger(invoiceIdWhere.right.value) ||
+        invoiceIdWhere.right.value <= 0)
+      throw new Error('Only one positive integer InvoiceId equality may accompany the guarded CustomerId filter.');
+    invoiceIdLiteral = invoiceIdWhere.right.value;
   }
   const limit = query.limit;
   const isJoined = query.from.joins.length > 0;
@@ -691,7 +742,8 @@ export function compilePublicSqliteTugQL(
     (new Set(aliases).size !== aliases.length || aliases.some((name) => !name))
   )
     throw new Error('Every projected field must have a unique output alias.');
-  const outputColumns: readonly PublicSqliteOutputColumn[] = isJoined
+  const verifiedProjection = !grouped && (isJoined || !!options.authoredSource);
+  const outputColumns: readonly PublicSqliteOutputColumn[] = verifiedProjection
     ? Object.freeze(
         columns.map((column, index) => {
           if (column.expression.kind !== 'field')
@@ -719,9 +771,7 @@ export function compilePublicSqliteTugQL(
   // resolution. The resolver receives a parameter-free structural document;
   // this fixed predicate is then added to the same compiler output for preview
   // and execution, without inventing a binding value.
-  sql.push(
-    `WHERE ${quoteIdentifier(alias)}.${quoteIdentifier('CustomerId')} = ?`,
-  );
+  sql.push(`WHERE ${quoteIdentifier(alias)}.${quoteIdentifier('CustomerId')} = ?${invoiceIdLiteral === undefined ? '' : ` AND ${quoteIdentifier(alias)}.${quoteIdentifier('InvoiceId')} = ?`}`);
   if (isJoined && join) {
     const customerAlias = join.from.alias ?? 'Customer';
     const predicate = `${quoteIdentifier(alias)}.${quoteIdentifier('CustomerId')} = ${quoteIdentifier(customerAlias)}.${quoteIdentifier('CustomerId')}`;
@@ -732,6 +782,10 @@ export function compilePublicSqliteTugQL(
     );
   }
   const fixedBindings: (string | number | null)[] = [];
+  if (invoiceIdLiteral !== undefined) {
+    fixedBindings.push(invoiceIdLiteral);
+    bindingNames.push('InvoiceId (literal)');
+  }
   if (grouped && havingSql !== undefined && havingThreshold !== undefined) {
     sql.push(
       `GROUP BY ${quoteIdentifier(alias)}.${quoteIdentifier('CustomerId')}`,
@@ -761,11 +815,12 @@ export function compilePublicSqliteTugQL(
     ...(options.relationship
       ? { relationship: Object.freeze(options.relationship) }
       : {}),
-    ...(isJoined ? { outputColumns: Object.freeze(outputColumns) } : {}),
+    ...(verifiedProjection ? { outputColumns: Object.freeze(outputColumns) } : {}),
     authorProof: Object.freeze({
       profile: 'invoice-query' as const,
       resolvedQuery: freezeQuery(query),
-      ...(isJoined && columns.some((column) =>
+      ...(verifiedProjection ? { authoredSource: options.authoredSource } : {}),
+      ...(verifiedProjection && columns.some((column) =>
         column.expression.kind === 'field' &&
         column.expression.field.source === invoiceAlias &&
         column.expression.field.field === 'InvoiceDate',

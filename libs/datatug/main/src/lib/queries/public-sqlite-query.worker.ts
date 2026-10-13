@@ -4,6 +4,7 @@ import type { TugQLResolved } from '@dalgo/core';
 import {
   compilePublicSqliteTugQL,
   preparePublicSqliteCteStructuralDocument,
+  preparePublicSqliteInvoiceStructuralDocument,
   type PublicSqliteAuthorProof,
   type PublicSqliteOutputColumn,
   type PublicSqliteRelationshipReceipt,
@@ -314,7 +315,9 @@ export async function executePinnedSql(
   if (authorProof) {
     const allowedProofKeys = authorProfileKind === 'bounded-cte-query'
       ? ['profile', 'resolvedQuery', 'authoredSource']
-      : ['profile', 'resolvedQuery', 'relationship', 'rawInvoiceDateTextRule'];
+      : authorProfileKind === 'invoice-query'
+        ? ['profile', 'resolvedQuery', 'authoredSource', 'relationship', 'rawInvoiceDateTextRule']
+        : ['profile', 'resolvedQuery', 'relationship', 'rawInvoiceDateTextRule'];
     if (
       !authorProof ||
       typeof authorProof !== 'object' ||
@@ -368,7 +371,62 @@ export async function executePinnedSql(
         type: column.type.toLowerCase().includes('int') ? 'integer' : column.type.toLowerCase().includes('char') || column.type.toLowerCase().includes('text') || column.type.toLowerCase().includes('string') ? 'string' : 'unsupported',
         lineage: column.lineage ?? [],
       })) as PublicSqliteOutputColumn[];
+    } else if (authorProfileKind === 'invoice-query' && authorProof.authoredSource) {
+      const authoredSource = authorProof.authoredSource;
+      if (new TextEncoder().encode(authoredSource).byteLength > MAX_SQL_BYTES)
+        throw new Error('The InvoiceId filter source is too large.');
+      const parsed = parseTugQL(authoredSource);
+      if (parsed.diagnostics.length || !parsed.document.tree)
+        throw new Error('The InvoiceId filter proof contains invalid authored TugQL.');
+      const structuralDocument = preparePublicSqliteInvoiceStructuralDocument(parsed.document);
+      const authoredWhere = parsed.document.tree.query['where'] as Readonly<Record<string, unknown>> | undefined;
+      const filtered = Array.isArray(authoredWhere?.['and']);
+      if (filtered !== (structuralDocument.tree?.query['where'] !== undefined))
+        throw new Error('The InvoiceId filter proof is missing its exact authored predicate.');
+      const relationship = authorProof.relationship;
+      const authorization = resolveTugQL(structuralDocument, {
+        authorizedSchemas: [{
+          version: schemaVersion ?? '',
+          tables: [
+            { name: 'Invoice', fields: [
+              { name: 'CustomerId', type: 'integer', authorized: true },
+              { name: 'InvoiceId', type: 'integer', authorized: true },
+              { name: 'InvoiceDate', type: 'datetime', authorized: true },
+            ] },
+            ...(relationship ? [{ name: 'Customer', fields: [
+              { name: 'CustomerId', type: 'integer', authorized: true },
+              { name: 'FirstName', type: 'string', authorized: true },
+              { name: 'LastName', type: 'string', authorized: true },
+              { name: 'Email', type: 'string', authorized: true },
+            ] }] : []),
+          ],
+        }],
+        relationships: relationship ? [{
+          id: relationship.id,
+          version: relationship.version,
+          from: { table: 'Invoice', source: relationship.fromSource },
+          to: { table: 'Customer', source: relationship.toSource },
+          pairs: relationship.pairs,
+          exactTypedEquality: true,
+        }] : [],
+        pinnedImports: [], bindings: [],
+      });
+      if (authorization.diagnostics.length || !authorization.resolved ||
+          JSON.stringify(authorization.resolved.query) !== JSON.stringify(authorProof.resolvedQuery))
+        throw new Error('The worker resolved InvoiceId filter differs from the Author proof.');
+      resolved = authorization.resolved;
+      if (!authorization.resolved.query.groupBy && !authorization.resolved.query.having) coreOutputColumns = authorization.resolved.columns.map((column) => {
+        const resolvedType = column.type.toLowerCase();
+        const type: PublicSqliteOutputColumn['type'] = /int/u.test(resolvedType) ? 'integer' :
+          /date|time|char|text|string/u.test(resolvedType) ? 'string' : (() => {
+            throw new Error('The Invoice output has an unsupported resolved type.');
+          })();
+        return { name: column.name, type, lineage: column.lineage ?? [] };
+      });
     } else {
+      if (authorProfileKind === 'invoice-query' &&
+          (authorProof.resolvedQuery.where !== undefined || expectedOutputColumns !== undefined))
+        throw new Error('The Invoice projection and InvoiceId filter require independently verified authored TugQL.');
       resolved = {
         query: authorProof.resolvedQuery,
         columns: [],
@@ -421,7 +479,7 @@ export async function executePinnedSql(
         .filter((index) => index >= 0),
     );
     if (rawInvoiceDateColumnIndexes.length && derivedDateRule !== 'chinook-invoice-datetime-text/v1')
-      throw new Error('The joined InvoiceDate output is missing its raw-text storage rule.');
+      throw new Error('The InvoiceDate output is missing its raw-text storage rule.');
     if (!rawInvoiceDateColumnIndexes.length && derivedDateRule !== undefined)
       throw new Error('The raw InvoiceDate storage rule has no projected InvoiceDate output.');
     joined = derived.authorProof.profile === 'customer-count-cte' || derived.authorProof.profile === 'bounded-cte-query' || derived.relationship !== undefined;
@@ -466,7 +524,7 @@ export async function executePinnedSql(
         if (rawInvoiceDateColumnIndexes.some((index) =>
           raw[index] === null || typeof raw[index] !== 'string',
         ))
-          throw new Error('The joined InvoiceDate result must remain non-null SQLite text.');
+          throw new Error('The InvoiceDate result must remain non-null SQLite text.');
         const row = raw.map((cell): Cell => {
           if (
             cell === null ||
@@ -561,6 +619,7 @@ if (
             fixtureSha256: FIXTURE_SHA256,
             schemaVersion,
             draftRevision,
+            ...(proof.authoredSource ? { authoredSource: proof.authoredSource } : {}),
             ...(proof.relationship ? { relationship: proof.relationship } : {}),
           },
         );

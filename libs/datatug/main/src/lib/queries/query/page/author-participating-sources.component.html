@@ -36,12 +36,7 @@
         >
           <ion-label class="ion-text-wrap">
             <h3>{{ source.name }}{{ source.alias ? ' as ' + source.alias : '' }}</h3>
-            @if (source.scope) { <p>{{ source.scope }}</p> }
-            <p>{{ source.description }}</p>
-            @if (!source.removable) { <p>{{ source.removalReason }}</p> }
-            @if (source.kind === 'join' && source.name.toLowerCase() === 'customer' && removeJoinReason()) {
-              <p>{{ removeJoinReason() }}</p>
-            }
+            <p>{{ source.kind === 'main' ? 'FROM' : source.kind === 'join' ? (source.joinType?.toUpperCase() === 'JOIN' ? 'JOIN' : source.joinType?.toUpperCase() + ' JOIN') : source.kind.toUpperCase() }}@if (source.kind === 'main') { · Required source · cannot remove } @else if (!source.removable) { · Cannot remove here }</p>
           </ion-label>
           @if (source.kind === 'join' && source.name.toLowerCase() === 'customer') {
             <ion-buttons slot="end">
@@ -60,6 +55,13 @@
         </ion-item>
         @if (selectedSource() === source.id) {
           <ion-list data-testid="author-participating-source-details">
+            <ion-item lines="none"><ion-label class="ion-text-wrap">
+              <p>{{ source.scope }} · {{ source.description }}</p>
+              @if (source.removalReason) { <p>{{ source.removalReason }}</p> }
+              @if (source.kind === 'join' && source.name.toLowerCase() === 'customer' && removeJoinReason()) {
+                <p>{{ removeJoinReason() }}</p>
+              }
+            </ion-label></ion-item>
             @if (source.database || source.schema || tableSchema(source)) {
               <ion-item lines="none"><ion-label>Database: {{ source.database || 'default' }} · Schema: {{ source.schema || tableSchema(source) || 'main' }}</ion-label></ion-item>
             }

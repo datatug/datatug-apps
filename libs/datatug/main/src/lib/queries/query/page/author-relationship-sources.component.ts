@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 import { IonAccordion, IonAccordionGroup, IonButton, IonButtons, IonCheckbox, IonIcon, IonItem, IonLabel, IonList, IonListHeader, IonNote } from '@ionic/angular';
 import { addIcons } from 'ionicons';
-import { gitMergeOutline, optionsOutline, refreshOutline } from 'ionicons/icons';
+import { copyOutline, gitMergeOutline, optionsOutline, refreshOutline } from 'ionicons/icons';
 import type { PublicSqliteSourceDiscovery } from '../../public-sqlite-query.service';
 import type { AuthorCustomerField, AuthorRelationshipSourceReview } from './author-relationship-source-edit';
 
@@ -22,7 +22,7 @@ import type { AuthorCustomerField, AuthorRelationshipSourceReview } from './auth
 })
 export class AuthorRelationshipSourcesComponent implements OnChanges {
   public constructor() {
-    addIcons({ gitMergeOutline, optionsOutline, refreshOutline });
+    addIcons({ copyOutline, gitMergeOutline, optionsOutline, refreshOutline });
   }
 
   public readonly active = input(false);
@@ -37,6 +37,31 @@ export class AuthorRelationshipSourcesComponent implements OnChanges {
   public readonly customerAlreadyJoined = input(false);
   public readonly statusMessage = input.required<string>();
   public readonly expandedTable = signal<'Invoice' | 'Customer' | undefined>(undefined);
+  private readonly copyFeedback = signal<{ sources: PublicSqliteSourceDiscovery; text: string } | undefined>(undefined);
+  public readonly copyStatus = () => {
+    const feedback = this.copyFeedback();
+    return feedback && feedback.sources === this.sources() ? feedback.text : '';
+  };
+
+  public async copyMetadataIdentifier(value: string, label: string): Promise<void> {
+    const snapshot = this.sources();
+    if (!snapshot) return;
+    let write: Promise<void>;
+    try {
+      const clipboard = globalThis.navigator?.clipboard;
+      if (!clipboard?.writeText) throw new Error('Clipboard unavailable');
+      write = clipboard.writeText(value);
+    } catch {
+      this.copyFeedback.set({ sources: snapshot, text: `Couldn't copy ${label}. Try again.` });
+      return;
+    }
+    try {
+      await write;
+      if (this.sources() === snapshot) this.copyFeedback.set({ sources: snapshot, text: `${label} copied` });
+    } catch {
+      if (this.sources() === snapshot) this.copyFeedback.set({ sources: snapshot, text: `Couldn't copy ${label}. Try again.` });
+    }
+  }
 
   public readonly activated = output<void>();
   public readonly refreshRequested = output<void>();

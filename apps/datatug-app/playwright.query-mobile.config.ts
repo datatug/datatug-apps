@@ -22,7 +22,7 @@ export default defineConfig({
     {
       name: 'query-mobile-webkit',
       testMatch: ['query-author.spec.ts', 'query-compare.spec.ts'],
-      grep: /query workspace clarity|TugQL and SQL coloring|native SQL editor highlights|TugQL suggestions are explicit|mobile editor actions format, undo, and open completion without executing|Format diagnostics navigate the unchanged draft|Preview syntax errors navigate to the exact unchanged draft without running it|cold saved Chinook query|compares the maintained Chinook invoice query/u,
+      grep: /query workspace clarity|query workspace six polish|expanding source metadata grows|Run validates a missing Customer ID|TugQL and SQL coloring|native SQL editor highlights|TugQL suggestions are explicit|mobile editor actions format, undo, and open completion without executing|Format diagnostics navigate the unchanged draft|Preview syntax errors navigate to the exact unchanged draft without running it|cold saved Chinook query|compares the maintained Chinook invoice query/u,
       use: { ...devices['iPhone 13'], browserName: 'webkit' },
     },
   ],
