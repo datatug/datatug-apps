@@ -187,6 +187,34 @@ test('mobile home hero leads with the artwork and keeps navigation in an accessi
   }
 });
 
+test('desktop home hero fills the viewport with the harbor behind localized copy', async () => {
+  const css = await read('../src/styles/global.css');
+  const desktopRule = css.match(/@media \(min-width: 1200px\) \{([\s\S]*?)\n\}/)?.[1] ?? '';
+  const tabletRule = css.match(/@media \(min-width: 901px\) and \(max-width: 1199px\) \{([\s\S]*?)\n\}/)?.[1] ?? '';
+
+  assert.match(desktopRule, /\.home-hero \{ display: grid; min-height: clamp\(/);
+  assert.match(desktopRule, /\.home-grid \{ z-index: 2; width: 100%; max-width: none;/);
+  assert.match(desktopRule, /\.hero-art \{ position: absolute; z-index: 0; inset: 0; grid-area: auto;/);
+  assert.match(desktopRule, /\.hero-art::after \{ position: absolute; z-index: 1; inset: 0; background: linear-gradient\(/);
+  assert.match(desktopRule, /\.art-caption \{ position: absolute; z-index: 2;/);
+  assert.match(desktopRule, /\.home-heading, \.home-details \{ position: relative; z-index: 2;/);
+  assert.match(desktopRule, /object-fit: cover; object-position: center 52%/);
+  assert.match(tabletRule, /grid-template-areas: 'heading' 'art' 'details'/);
+  assert.match(tabletRule, /\.hero-art \{ position: relative;/);
+
+  for (const [locale, path] of [
+    ['en', '../dist/index.html'],
+    ['ru', '../dist/ru/index.html'],
+  ]) {
+    const html = await read(path);
+    assert.match(html, new RegExp(`<html[^>]+lang="${locale}"`));
+    assert.match(html, /<section class="home-hero">[\s\S]*?<figure class="hero-art">[\s\S]*?incidentius-harbor/);
+    assert.match(html, /class="home-heading"[\s\S]*?class="home-details"/);
+    assert.match(html, /class="button primary"/);
+    assert.match(html, /class="button secondary"/);
+  }
+});
+
 test('all eight interior routes localize navigation, metadata, and product copy', async () => {
   const pages = [
     ['investigations', 'en', 'Investigation method', 'Incidentius is in development'],
