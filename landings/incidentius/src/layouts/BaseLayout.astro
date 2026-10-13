@@ -124,4 +124,59 @@ const chrome: SiteChrome = {
     </style>
   </Fragment>
   <slot />
+  <Fragment slot="scripts">
+    <script is:inline data-mobile-menu-label={localized.chrome.a11y.mobileMenu}>
+      const mobileMenuLabel = document.currentScript?.dataset.mobileMenuLabel;
+      const setupIncidentiusMobileMenu = () => {
+        const header = document.querySelector('.site-header');
+        const bar = header?.querySelector('.bar');
+        const nav = bar?.querySelector(':scope > .primary');
+        const navEnd = bar?.querySelector(':scope > .nav-end');
+        if (!header || !bar || !nav || !navEnd) return;
+
+        const menu = document.createElement('details');
+        menu.className = 'incidentius-mobile-nav';
+        const button = document.createElement('summary');
+        button.setAttribute('aria-label', mobileMenuLabel || 'Open site navigation');
+        const icon = document.createElement('span');
+        icon.className = 'incidentius-menu-icon';
+        icon.setAttribute('aria-hidden', 'true');
+        button.append(icon);
+        menu.append(button);
+
+        const mobile = window.matchMedia('(max-width: 1199px)');
+        const placeMenu = () => {
+          if (mobile.matches) {
+            menu.append(nav);
+            bar.append(menu);
+            header.classList.add('incidentius-menu-enhanced');
+          } else {
+            menu.open = false;
+            bar.insertBefore(nav, navEnd);
+            menu.remove();
+            header.classList.remove('incidentius-menu-enhanced');
+          }
+        };
+        placeMenu();
+        mobile.addEventListener('change', placeMenu);
+        menu.addEventListener('click', (event) => {
+          if (event.target.closest('a')) menu.open = false;
+        });
+        document.addEventListener('click', (event) => {
+          if (!menu.contains(event.target)) menu.open = false;
+        });
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape' && menu.open) {
+            menu.open = false;
+            button.focus();
+          }
+        });
+      };
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', setupIncidentiusMobileMenu, { once: true });
+      } else {
+        setupIncidentiusMobileMenu();
+      }
+    </script>
+  </Fragment>
 </SharedLayout>
