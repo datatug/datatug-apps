@@ -3535,6 +3535,10 @@ test('query workspace clarity keeps the Preview heading and SQL readable at desk
       const scroller = active.querySelector('ion-content')?.shadowRoot?.querySelector('.inner-scroll');
       if (scroller) scroller.scrollTop = 0;
     });
+    await expect.poll(
+      () => preview.locator('.author-preview-heading').evaluate(heading => heading.getBoundingClientRect().width),
+      { message: `Preview heading reaches its expected width at ${width}px` },
+    ).toBeGreaterThanOrEqual(width === 1280 ? 300 : 220);
     const geometry = await preview.evaluate(root => {
       const heading = root.querySelector('.author-preview-heading');
       const title = heading?.querySelector('h3');
