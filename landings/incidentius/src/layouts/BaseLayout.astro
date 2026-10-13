@@ -93,6 +93,53 @@ const chrome: SiteChrome = {
       href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&amp;family=Manrope:wght@400;500;600;700;800&amp;display=swap"
       rel="stylesheet"
     />
+    <script is:inline id="incidentius-analytics-consent">
+      window.dataLayer = window.dataLayer || [];
+      function gtag() { window.dataLayer.push(arguments); }
+      var GA_ID = "G-3YFSWSX4T2";
+      var gaStarted = false;
+      function gaStartAnalytics() {
+        if (gaStarted) return;
+        gaStarted = true;
+        gtag("consent", "default", { analytics_storage: "granted", ad_storage: "denied", ad_user_data: "denied", ad_personalization: "denied" });
+        gtag("js", new Date());
+        gtag("config", GA_ID, { allow_google_signals: false, allow_ad_personalization_signals: false, page_location: location.origin + location.pathname });
+        var script = document.createElement("script");
+        script.async = true;
+        script.src = "https://www.googletagmanager.com/gtag/js?id=" + GA_ID;
+        document.head.appendChild(script);
+      }
+      function gaSetConsent(value) {
+        try { localStorage.setItem("ga-consent", value); } catch (_) {}
+        if (value === "granted") gaStartAnalytics();
+        var banner = document.getElementById("ga-consent-banner");
+        if (banner) banner.remove();
+      }
+      function gaInitializeConsent() {
+        var saved;
+        try { saved = localStorage.getItem("ga-consent"); } catch (_) {}
+        if (saved === "granted") { gaStartAnalytics(); return; }
+        if (saved === "denied" || document.getElementById("ga-consent-banner")) return;
+        var wrap = document.createElement("div");
+        wrap.id = "ga-consent-banner";
+        wrap.setAttribute("role", "dialog");
+        wrap.setAttribute("aria-label", "Cookie consent");
+        wrap.innerHTML = "<p>May we use analytics cookies to measure site traffic? Analytics stays off until you accept.</p>" +
+          '<div class="ga-consent-actions"><button type="button" id="ga-decline">Decline</button><button type="button" id="ga-accept">Accept</button></div>';
+        document.body.appendChild(wrap);
+        document.getElementById("ga-accept").addEventListener("click", function () { gaSetConsent("granted"); });
+        document.getElementById("ga-decline").addEventListener("click", function () { gaSetConsent("denied"); });
+      }
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", gaInitializeConsent, { once: true });
+      else gaInitializeConsent();
+    </script>
+    <style is:global>
+      #ga-consent-banner { position: fixed; left: 1rem; right: 1rem; bottom: 1rem; z-index: 2147483647; max-width: 520px; margin: 0 auto; background: #1c1f26; color: #e6e6e6; border: 1px solid #2c3038; border-radius: 12px; padding: 1rem 1.1rem; box-shadow: 0 6px 24px rgba(0,0,0,.3); font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+      #ga-consent-banner p { margin: 0 0 .7rem; }
+      #ga-consent-banner .ga-consent-actions { display: flex; gap: .5rem; justify-content: flex-end; }
+      #ga-consent-banner button { cursor: pointer; border-radius: 8px; padding: .4rem .9rem; font-size: 14px; border: 1px solid #3a3f4b; background: #262a32; color: #e6e6e6; }
+      #ga-consent-banner button#ga-accept { background: #2f6f43; border-color: #2f6f43; color: #fff; }
+    </style>
   </Fragment>
   <slot />
 </SharedLayout>
