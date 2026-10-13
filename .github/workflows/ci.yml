@@ -186,6 +186,16 @@ jobs:
           DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
         run: pnpm nx affected --target=e2e --parallel=1 --base=${{ env.NX_BASE }}
 
+      - name: Upload app Playwright report and traces
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: datatug-app-e2e-results
+          path: |
+            coverage/apps/datatug-app-e2e/report
+            coverage/apps/datatug-app-e2e/results
+          if-no-files-found: ignore
+
       - name: nx query mobile WebKit e2e affected
         env:
           DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
