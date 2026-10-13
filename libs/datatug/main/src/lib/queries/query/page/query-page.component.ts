@@ -746,6 +746,14 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly hostedDetectiveState = signal<DetectiveState | undefined>(
     undefined,
   );
+  private readonly hostedDetectiveProjectRef = signal<IProjectRef | undefined>(
+    undefined,
+  );
+  private readonly hostedDetectiveLoadedScope = signal<string | undefined>(
+    undefined,
+  );
+  private hostedDetectiveRequestKey?: string;
+  private hostedDetectiveRequestGeneration = 0;
   public readonly hostedDetectiveError = signal<string | undefined>(undefined);
   public readonly hostedEnvironment = signal('');
   private readonly hostedExecution = signal<HostedQueryExecution | undefined>(
@@ -1441,6 +1449,22 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           branch: ref.branch,
         }
       : undefined;
+  }
+
+  private detectiveScopeKey(
+    ref: IProjectRef,
+    context: DetectiveRequestContext,
+  ): string {
+    return JSON.stringify({ ref, context });
+  }
+
+  private hasCurrentDetectiveState(): boolean {
+    const ref = this.project?.ref;
+    const context = ref ? this.detectiveContext(ref) : undefined;
+    return !!ref &&
+      !!context &&
+      this.hostedDetectiveLoadedScope() ===
+        this.detectiveScopeKey(ref, context);
   }
 
   public get queryValidatorsHref(): string | undefined {
@@ -4644,6 +4668,49 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.investigationContext.promotionRevision();
       this.syncScopeAndBindings();
     });
+    // Agent security contexts are project/base-URL specific reactive handles.
+    // A cold route can arrive before agent-info resolves; keep this effect
+    // subscribed to the exact handle so its eventual identity starts the read.
+    effect(() => {
+      const ref = this.hostedDetectiveProjectRef();
+      if (!ref) return;
+      const context = this.detectiveContext(ref);
+      const requestKey = context
+        ? this.detectiveScopeKey(ref, context)
+        : `${JSON.stringify(ref)}:unavailable`;
+      if (requestKey === this.hostedDetectiveRequestKey) return;
+      this.hostedDetectiveRequestKey = requestKey;
+      const generation = ++this.hostedDetectiveRequestGeneration;
+      this.hostedDetectiveLoadedScope.set(undefined);
+      this.hostedDetectiveState.set(undefined);
+      this.hostedDetectiveError.set(undefined);
+      if (!context) return;
+      this.detectiveClient
+        .state(context)
+        .pipe(takeUntil(this.destroyed))
+        .subscribe({
+          next: (state) => {
+            if (
+              generation === this.hostedDetectiveRequestGeneration &&
+              this.hostedDetectiveRequestKey === requestKey &&
+              equalProjectRef(this.project?.ref, ref)
+            ) {
+              this.hostedDetectiveState.set(state);
+              this.hostedDetectiveLoadedScope.set(requestKey);
+            }
+          },
+          error: (error: unknown) => {
+            if (
+              generation === this.hostedDetectiveRequestGeneration &&
+              this.hostedDetectiveRequestKey === requestKey &&
+              equalProjectRef(this.project?.ref, ref)
+            )
+              this.hostedDetectiveError.set(
+                detectiveErrorMessage(error, context.kind === 'cloud'),
+              );
+          },
+        });
+    });
     effect(() => {
       const selected = this.selectedAuthorResultRow();
       if (selected && this.currentAuthorResultRow() !== selected)
@@ -5293,18 +5360,35 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.localScenarioExecution.set(undefined);
     this.hostedSelectedRow.set(undefined);
     this.hostedStatusFilter.set('all');
+    this.hostedDetectiveLoadedScope.set(undefined);
+    this.hostedDetectiveProjectRef.set(ref);
     const context = this.detectiveContext(ref);
+    const requestKey = context
+      ? this.detectiveScopeKey(ref, context)
+      : `${JSON.stringify(ref)}:unavailable`;
+    this.hostedDetectiveRequestKey = requestKey;
+    const generation = ++this.hostedDetectiveRequestGeneration;
     if (!context) return;
     this.detectiveClient
       .state(context)
       .pipe(takeUntil(this.destroyed))
       .subscribe({
         next: (state) => {
-          if (equalProjectRef(this.project?.ref, ref))
+          if (
+            generation === this.hostedDetectiveRequestGeneration &&
+            this.hostedDetectiveRequestKey === requestKey &&
+            equalProjectRef(this.project?.ref, ref)
+          ) {
             this.hostedDetectiveState.set(state);
+            this.hostedDetectiveLoadedScope.set(requestKey);
+          }
         },
         error: (error: unknown) => {
-          if (equalProjectRef(this.project?.ref, ref))
+          if (
+            generation === this.hostedDetectiveRequestGeneration &&
+            this.hostedDetectiveRequestKey === requestKey &&
+            equalProjectRef(this.project?.ref, ref)
+          )
             this.hostedDetectiveError.set(
               detectiveErrorMessage(error, context.kind === 'cloud'),
             );
@@ -6918,7 +7002,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         environment,
         securityContextId,
         queryId,
-        ...(this.hostedScenarioTarget() ? { record: true } : {}),
+        ...(this.hasCurrentDetectiveState() && this.hostedScenarioTarget()
+          ? { record: true }
+          : {}),
         source: this.selectedSource(),
         parameters,
         bindingOrigins,

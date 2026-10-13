@@ -143,8 +143,12 @@ class SqlEditorHostStub {
   readonly sqlChanged = output<string>();
 }
 
-function agentContextStub(securityContextId: string | undefined = 'sctx-1') {
-  const scopedSecurityContextId = signal<string | undefined>(securityContextId);
+function agentContextStub(
+  securityContextId: string | undefined | null = 'sctx-1',
+) {
+  const scopedSecurityContextId = signal<string | undefined>(
+    securityContextId === null ? undefined : securityContextId,
+  );
   return {
     securityContextId: scopedSecurityContextId,
     contextFor: vi.fn(() => ({ securityContextId: scopedSecurityContextId })),
@@ -2807,6 +2811,118 @@ select (
     });
     expect(component.hostedDetectiveState()?.capabilities.canRead).toBe(true);
     expect(component.hostedEnvironment()).toBe('');
+  });
+
+  it('loads a cold local Scenario target when the project-specific agent identity resolves', async () => {
+    const ref = project.ref;
+    const params = convertToParamMap({
+      caseId: 'case-local',
+      applicationId: 'application-local',
+      scenarioStepId: 'step-local',
+    });
+    component = await createComponent({}, queryDef, '<p></p>', {
+      project: of({ ref }),
+      routeRef: ref,
+      routeId: queryDef.id,
+      queryParams: of(convertToParamMap({ id: queryDef.id })),
+      securityContextId: null,
+    });
+    const route = TestBed.inject(ActivatedRoute);
+    Object.defineProperty(route.snapshot, 'queryParamMap', {
+      value: params,
+      configurable: true,
+    });
+    const detective = TestBed.inject(DetectiveClientService);
+    const caseItem = {
+      id: 'case-local',
+      title: 'Local investigation',
+      status: 'active',
+      version: 1,
+      context: {},
+      incidentRefs: [],
+      scenarioRefs: [],
+      runRefs: [],
+      evidence: [],
+      findings: [],
+      timeline: [],
+      scenarioApplications: [
+        {
+          id: 'application-local',
+          scenarioId: 'scenario-local',
+          scenarioVersion: 1,
+          appliedAt: '2026-10-13T00:00:00Z',
+          appliedBy: 'user',
+          snapshot: {
+            id: 'scenario-local',
+            title: 'Cold route',
+            version: 1,
+            inputs: [],
+            steps: [{ id: 'step-local', kind: 'query', ref: queryDef.id }],
+          },
+          steps: [{ stepId: 'step-local', status: 'pending' }],
+        },
+      ],
+    };
+    const state = {
+      checks: [],
+      validators: [],
+      queryValidators: [],
+      cases: [caseItem],
+      runs: [],
+      scenarios: [],
+      runsHasMore: false,
+      capabilities: {
+        localOnly: true,
+        canRead: true,
+        canWrite: true,
+        canRun: true,
+        maxRows: 100,
+        maxFanout: 10,
+      },
+    } as unknown as DetectiveState;
+    vi.mocked(detective.state).mockReturnValue(of(state));
+
+    expect(detective.state).not.toHaveBeenCalled();
+    expect(component.hostedScenarioTarget()).toBeUndefined();
+    agentContext.securityContextId.set('sctx-resolved');
+    TestBed.tick();
+
+    expect(detective.state).toHaveBeenCalledWith({
+      kind: 'agent',
+      agentStoreId: ref.storeId,
+      project: ref.projectId,
+      securityContextId: 'sctx-resolved',
+      branch: undefined,
+    });
+    expect(component.hostedScenarioTarget()).toEqual({
+      caseId: 'case-local',
+      applicationId: 'application-local',
+      stepId: 'step-local',
+    });
+    runQueryMock.mockReturnValue(
+      of({
+        recordset: { columns: [], rows: [] },
+        limitations: [],
+        bindingsApplied: [],
+        provenance: {
+          source: 'sqlite',
+          queryId: queryDef.id,
+          mode: 'live',
+          observedAt: '2026-10-13T00:00:00Z',
+          executionProfile: 'protected',
+        },
+        truncated: false,
+        execution: {
+          storeId: ref.storeId,
+          projectId: ref.projectId,
+          executionId: 'local-execution-cold',
+        },
+      }),
+    );
+    component.runQuery();
+    expect(runQueryMock).toHaveBeenCalledWith(
+      expect.objectContaining({ queryId: queryDef.id, record: true }),
+    );
   });
 
   it('correlates hosted Validator status only to the exact retained query execution', async () => {
@@ -5605,6 +5721,7 @@ select (
       routeId?: string;
       urlQueryId?: string;
       routeRef?: IProjectRef;
+      securityContextId?: string | null;
     },
   ): Promise<QueryPageComponent> {
     Object.defineProperty(window, 'history', {
@@ -5615,7 +5732,7 @@ select (
     runQueryMock = vi.fn();
     federatedRunMock = vi.fn();
     federatedGetPageMock = vi.fn();
-    agentContext = agentContextStub();
+    agentContext = agentContextStub(navigation?.securityContextId);
     await TestBed.configureTestingModule({
       imports: [QueryPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
