@@ -3250,6 +3250,7 @@ select (
       component.queryDef.set({
         ...queryDef,
         connectionId: 'chinook-sqlite',
+        parameters: [],
         request: {
           queryType: QueryType.SQL,
           text: 'SELECT 1',
@@ -3451,6 +3452,7 @@ select (
     component.queryDef.set({
       ...queryDef,
       connectionId: 'chinook-sqlite',
+      parameters: [],
       request: {
         queryType: QueryType.SQL,
         text: 'SELECT 1',
@@ -3507,6 +3509,7 @@ select (
       const definition = {
         ...queryDef,
         connectionId: 'chinook-sqlite',
+        parameters: [],
         request: {
           queryType: QueryType.SQL,
           text: 'SELECT 1',
@@ -3688,6 +3691,8 @@ select (
     };
     component = await createComponent({}, definition);
 
+    expect(component.authorMode()).toBe('code');
+    component.setAuthorMode('compose');
     expect(component.authorMode()).toBe('compose');
     component.setAuthorMode('code');
     component.authorComposeTextChanged(source.replace('limit 100', 'limit 90'));
@@ -4513,7 +4518,7 @@ select (
       activeQueries: [{ ...loadingState, def: definition }],
     });
 
-    expect(component.authorMode()).toBe('compose');
+    expect(component.authorMode()).toBe('code');
   });
 
   it('reselects the cold mode after a same-query security scope change', async () => {
@@ -4533,13 +4538,13 @@ select (
       request: { queryType: QueryType.DTQL, text: source } as ITextQueryRequest,
     };
     component = await createComponent({}, definition);
-    component.setAuthorMode('code');
-    expect(component.authorMode()).toBe('code');
+    component.setAuthorMode('compose');
+    expect(component.authorMode()).toBe('compose');
 
     agentContext.securityContextId.set('sctx-2');
     await runFixture.whenStable();
 
-    expect(component.authorMode()).toBe('compose');
+    expect(component.authorMode()).toBe('code');
   });
 
   it('cancels a scheduled lookup focus when the destination scope is superseded', async () => {
