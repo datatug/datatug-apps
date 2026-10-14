@@ -7,10 +7,24 @@
 -->
 <ion-header class="home-header">
   <ion-toolbar color="light">
-    <ion-title>{{ headerTitle() }}</ion-title>
+    <ion-title>
+      <!--
+        The side panel is hidden while signed out on home (founder
+        2026-10-14: no empty panel), so the brand header it carried lives
+        here instead; signed in, the panel shows the brand and this header
+        keeps just the motto (UX brief §1: never both).
+      -->
+      @if (showBrand()) {
+        <span class="home-header-brand">{{ profile.brandName }}</span>
+      }
+      @if (motto()) {
+        <span class="home-header-motto">{{ motto() }}</span>
+      }
+    </ion-title>
     @if (authStatus() === 'notAuthenticated') {
       <ion-buttons slot="end">
         <ion-button
+          color="primary"
           routerLink="/login"
           routerDirection="forward"
           style="text-transform: none"
@@ -24,9 +38,15 @@
 </ion-header>
 
 <ion-content>
+  <!-- Card-header standard (brief §1; founder 2026-10-14): grayish full-width
+       header divider in the side-panel chrome family, boundary before content. -->
   <ion-card>
+    <ion-item color="light">
+      <ion-label>
+        <h2>Your data workbench</h2>
+      </ion-label>
+    </ion-item>
     <ion-card-content>
-      <h2>Your data workbench</h2>
       <ul>
         <li>Feel the power of context</li>
         <li>Do not repeat yourself</li>
@@ -38,8 +58,12 @@
   <sneat-datatug-platform-block />
 
   <ion-card>
+    <ion-item color="light">
+      <ion-label>
+        <h2>Try Detective with real checks</h2>
+      </ion-label>
+    </ion-item>
     <ion-card-content>
-      <h2>Try Detective with real checks</h2>
       <p>
         Explore the public demo, then create a private Case and run Checks in
         your Personal Space. No local agent or purchase is needed.

@@ -1,7 +1,11 @@
 <ion-card data-testid="platform-block">
+  <ion-item color="light" id="platform-block-title">
+    <ion-label>
+      <h2>{{ title }}</h2>
+    </ion-label>
+  </ion-item>
   <ion-card-content>
     <section aria-labelledby="platform-block-title">
-      <h2 id="platform-block-title">{{ title }}</h2>
       <p class="lede">{{ lede }}</p>
       <ul class="parts" aria-label="The parts of DataTug">
         @for (part of parts; track part.id) {

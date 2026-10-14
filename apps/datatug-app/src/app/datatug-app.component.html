@@ -17,12 +17,14 @@
   @if (compactHeader()) {
     <ion-header class="compact-header">
       <ion-toolbar color="light">
-        <ion-buttons slot="start">
-          <ion-menu-button
-            menuIcon="menu-outline"
-            class="app-level-menu-button"
-          ></ion-menu-button>
-        </ion-buttons>
+        @if (!homePanelHidden()) {
+          <ion-buttons slot="start">
+            <ion-menu-button
+              menuIcon="menu-outline"
+              class="app-level-menu-button"
+            ></ion-menu-button>
+          </ion-buttons>
+        }
         <ion-title size="small">
           <span class="compact-brand">{{ profile.brandName }}</span>
           @if (profile.motto) {
@@ -31,7 +33,9 @@
         </ion-title>
         @if (authStatus() === 'notAuthenticated') {
           <ion-buttons slot="end">
-            <ion-button fill="clear" routerLink="/login">Sign in</ion-button>
+            <ion-button color="primary" routerLink="/login">
+              Sign in
+            </ion-button>
           </ion-buttons>
         }
       </ion-toolbar>
@@ -40,11 +44,11 @@
   <ion-split-pane
     [class.authentication]="checkoutAuth()"
     contentId="main-content"
-    [when]="checkout() ? false : '(min-width: 992px)'"
+    [when]="paneWhen()"
   >
     <ion-menu
-      [disabled]="checkout()"
-      [style.display]="checkout() ? 'none' : null"
+      [disabled]="checkout() || homePanelHidden()"
+      [style.display]="checkout() || homePanelHidden() ? 'none' : null"
       contentId="main-content"
       type="overlay"
       sneatResizableMenu

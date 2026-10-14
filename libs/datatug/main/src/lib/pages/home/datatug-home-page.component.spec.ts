@@ -66,8 +66,17 @@ describe('HomePage', () => {
 describe('HomePage header & footer (UX brief §1/§2/§14)', () => {
   afterEach(() => TestBed.resetTestingModule());
 
-  it('content header shows the profile motto, not the brand', () => {
-    const fixture = configure(undefined);
+  it('signed out (no home panel): header carries brand AND motto', () => {
+    // The panel is hidden while signed out on home (founder 2026-10-14: "no
+    // empty side panel"), so the header owns the brand it used to live in.
+    const fixture = configure('notAuthenticated');
+    const title = fixture.nativeElement.querySelector('ion-title');
+    expect(title.innerHTML).toContain('DataTug.app');
+    expect(title.innerHTML).toContain(PRODUCT_PROFILES.datatug.motto);
+  });
+
+  it('signed in (panel visible): header shows the motto only, never the brand', () => {
+    const fixture = configure('authenticated');
     const title = fixture.nativeElement.querySelector('ion-title');
     expect(title.innerHTML).toContain(PRODUCT_PROFILES.datatug.motto);
     expect(title.innerHTML).not.toContain('DataTug.app');

@@ -10,6 +10,8 @@ import {
   IonContent,
   IonGrid,
   IonHeader,
+  IonItem,
+  IonLabel,
   IonRow,
   IonTitle,
   IonToolbar,
@@ -48,6 +50,8 @@ import { DetectiveDemoStarterComponent } from '../../detective/detective-demo-st
     IonContent,
     IonCard,
     IonCardContent,
+    IonItem,
+    IonLabel,
     IonGrid,
     IonRow,
     IonCol,
@@ -62,14 +66,18 @@ export class DatatugHomePageComponent {
   // (REQ:profile-config-is-declarative).
   protected readonly profile = inject(PRODUCT_PROFILE);
 
-  // The content header shows the profile's motto when it has one — the brand
-  // is already in the side-panel header, so repeating it here was the §1
-  // duplication this removes.
-  protected readonly headerTitle = computed(
-    () => this.profile.motto ?? this.profile.brandName,
-  );
+  protected readonly motto = computed(() => this.profile.motto);
 
   protected readonly authStatus = toSignal(
     inject(SneatAuthStateService).authStatus,
+  );
+
+  // Signed out on home the side panel (brand header included) is hidden
+  // entirely (founder 2026-10-14), so the brand must show here; signed in,
+  // the panel carries the brand and this header keeps only the motto —
+  // §1: never both. Until auth resolves the brand shows (the panel is
+  // hidden for the same duration by the shell's matching rule).
+  protected readonly showBrand = computed(
+    () => this.authStatus() !== 'authenticated',
   );
 }

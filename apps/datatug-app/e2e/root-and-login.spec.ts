@@ -49,11 +49,14 @@ test('renders the root page', async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByText('My projects')).toBeVisible();
   await expect(page.locator('sneat-datatug-home')).toBeVisible();
-  // The menu outlet is mounted, but on /home its body is intentionally
-  // empty (UX brief §2: no redundant store/incidents/version controls on
-  // the home panel) — assert attached, not visible.
-  await expect(page.locator('sneat-datatug-menu')).toBeAttached();
-  await expect(page.locator('ion-menu')).toBeVisible();
+  // Signed out on the start page the side panel is hidden entirely (founder
+  // 2026-10-14: "We do not need empty side panel on homepage") — the menu
+  // stays in the DOM but collapsed, and the content header carries the brand.
+  await expect(page.locator('ion-menu')).toBeHidden();
+  await expect(
+    page.locator('ion-app > ion-split-pane').locator('ion-menu'),
+  ).toBeHidden();
+  await expect(page.locator('.home-header-brand')).toBeVisible();
   expect(clientErrors).toEqual([]);
 });
 
