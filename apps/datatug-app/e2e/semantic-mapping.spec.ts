@@ -186,7 +186,11 @@ test('column meaning saves a complete personal copy, stays visible and survives 
   await (
     await modelDownloadPromise
   ).saveAs('coverage/apps/datatug-app-e2e/query.modelspec.json');
-  const exported = JSON.parse(await readFile((await download.path())!, 'utf8'));
+  const downloadPath = await download.path();
+  if (!downloadPath) {
+    throw new Error('query.modelspec download produced no local path');
+  }
+  const exported = JSON.parse(await readFile(downloadPath, 'utf8'));
   expect(exported.format).toBe('meaning/draft-2');
   expect(
     exported.concepts.find(
