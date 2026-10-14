@@ -38,6 +38,9 @@
         @if (incident.description) {
           <p>{{ incident.description }}</p>
         }
+        @if (createCaseUrl(); as href) {
+          <ion-button [href]="href" fill="outline">Investigate in a Case</ion-button>
+        }
       </ion-card-content>
     </ion-card>
 

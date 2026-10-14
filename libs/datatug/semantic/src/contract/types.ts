@@ -157,6 +157,13 @@ export interface ResultProvenance {
   readonly executionProfile: ExecutionProfile;
 }
 
+/** Immutable reference to an execution persisted by the trusted agent. */
+export interface ExecutionRef {
+  readonly storeId: string;
+  readonly projectId: string;
+  readonly executionId: string;
+}
+
 /** The exact success envelope for every read/execute endpoint below except
  * `semantic/columns` and `semantic/related`. */
 export interface Result extends SourceRightsEvidence {
@@ -168,6 +175,8 @@ export interface Result extends SourceRightsEvidence {
   readonly bindingsApplied: readonly Binding[];
   readonly provenance: ResultProvenance;
   readonly truncated: boolean;
+  /** Present only when the request explicitly asks the agent to retain the result. */
+  readonly execution?: ExecutionRef;
 }
 
 // ---- Scope and source identity ----
@@ -253,6 +262,8 @@ export interface ExecutionRequest {
   readonly mode: ExecutionMode;
   readonly snapshotId?: string;
   readonly limit?: number;
+  /** Persist this saved-query execution and return its immutable reference. */
+  readonly record?: boolean;
 }
 
 // ---- Endpoint request/response shapes ----

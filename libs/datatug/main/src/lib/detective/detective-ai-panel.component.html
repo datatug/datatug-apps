@@ -1,0 +1,1384 @@
+<ion-card>
+  <ion-card-content>
+    <h2>AI investigation proposals</h2>
+    <ion-button fill="outline" size="small" (click)="toggleOpen()">{{
+      open() ? 'Hide AI proposals' : 'Open AI proposals'
+    }}</ion-button>
+    @if (open()) {
+      <p>
+        Send only text you are permitted to share with the configured project AI
+        provider. Generation saves private, cited suggestions; it does not
+        change project records or run a Check. Review an edited derivative
+        before Confirm.
+      </p>
+      @if (error()) {
+        <ion-note color="danger" role="alert">{{ error() }}</ion-note>
+      }
+      @if (message()) {
+        <p role="status">{{ message() }}</p>
+      }
+      <ion-item>
+        <ion-label position="stacked">Source text for AI</ion-label>
+        <ion-textarea
+          aria-label="Source text for AI"
+          [value]="text()"
+          (ionInput)="text.set($event.detail.value || '')"
+          placeholder="Paste an investigation note or ticket"
+        ></ion-textarea>
+      </ion-item>
+      <div class="form-grid">
+        <ion-item
+          ><ion-label position="stacked">Expected count name</ion-label
+          ><ion-input
+            aria-label="Expected count name"
+            [value]="countName()"
+            (ionInput)="countName.set($event.detail.value || '')"
+            placeholder="invoices"
+          ></ion-input
+        ></ion-item>
+        <ion-item
+          ><ion-label position="stacked">Expected count</ion-label
+          ><ion-input
+            aria-label="Expected count"
+            type="number"
+            min="0"
+            [value]="countValue()"
+            (ionInput)="countValue.set($event.detail.value || '')"
+          ></ion-input
+        ></ion-item>
+      </div>
+      <ion-button fill="outline" size="small" (click)="addExpectedCount()"
+        >Add expected count</ion-button
+      >
+      @for (entry of countEntries(); track entry[0]) {
+        <ion-badge>{{ entry[0] }}: {{ entry[1] }}</ion-badge>
+        <ion-button
+          fill="clear"
+          size="small"
+          (click)="removeExpectedCount(entry[0])"
+          >Remove</ion-button
+        >
+      }
+      <div>
+        <ion-button [disabled]="busy() || !text().trim()" (click)="generate()"
+          >Request AI proposals</ion-button
+        >
+      </div>
+      @if (assistantText()) {
+        <p>{{ assistantText() }}</p>
+      }
+      @if (matches().length) {
+        <h3>Existing resources mentioned</h3>
+        <ion-list>
+          @for (match of matches(); track match.kind + match.id) {
+            <ion-item
+              ><ion-label
+                >{{ match.kind }} · {{ match.title }} ({{ match.id }}, revision
+                {{ match.revision }})</ion-label
+              ></ion-item
+            >
+          }
+        </ion-list>
+      }
+      <h3>Private proposals</h3>
+      <ion-list>
+        @for (proposal of proposals(); track proposal.id) {
+          <ion-item button (click)="selectProposal(proposal)">
+            <ion-label
+              >{{ proposal.draft.title }}
+              <p>
+                {{ proposal.draft.kind }} · expires
+                {{ proposal.expiresAt | date: 'medium' }}
+                @if (proposal.parentProposalId) {
+                  · reviewed derivative
+                }
+              </p></ion-label
+            >
+          </ion-item>
+        } @empty {
+          <ion-item
+            ><ion-label
+              >No private AI proposals returned for this project.</ion-label
+            ></ion-item
+          >
+        }
+      </ion-list>
+      @if (hasMore()) {
+        <ion-button fill="outline" [disabled]="busy()" (click)="loadMore()"
+          >Older proposals</ion-button
+        >
+      }
+    }
+  </ion-card-content>
+</ion-card>
+
+@if (open() && selected(); as proposal) {
+  @if (draft(); as item) {
+    <ion-card>
+      <ion-card-content>
+        <h2>Review {{ item.kind }}</h2>
+        <p>
+          Proposal {{ proposal.id }} · catalog
+          {{ proposal.basis.catalogRevision }} · expires
+          {{ proposal.expiresAt | date: 'medium' }}
+        </p>
+        <ion-item
+          ><ion-label position="stacked">Proposal title</ion-label
+          ><ion-input
+            aria-label="Proposal title"
+            [value]="item.title"
+            (ionInput)="updateDraft({ title: $event.detail.value || '' })"
+          ></ion-input
+        ></ion-item>
+        @if (item.ambiguities?.length) {
+          <h3>Ambiguities to resolve</h3>
+          <ion-list>
+            @for (ambiguity of item.ambiguities || []; track $index) {
+              <ion-item
+                ><ion-label>{{ ambiguity }}</ion-label></ion-item
+              >
+            }
+          </ion-list>
+        }
+        <h3>Cited source spans</h3>
+        <ion-list>
+          @for (source of sourceTrail(); track source.sourceId + source.start) {
+            <ion-item
+              ><ion-label
+                ><strong
+                  >{{ source.sourceId }} · {{ source.start }}–{{
+                    source.end
+                  }}</strong
+                >
+                <p>
+                  “{{ source.quote }}” · confidence {{ source.confidence }}
+                  @if (source.ambiguous) {
+                    · ambiguous
+                  }
+                </p></ion-label
+              ></ion-item
+            >
+          } @empty {
+            <ion-item
+              ><ion-label
+                >No cited spans. Do not confirm a factual claim without
+                evidence.</ion-label
+              ></ion-item
+            >
+          }
+        </ion-list>
+        @if (item.context) {
+          <h3>Extracted context and provenance</h3>
+          @for (entry of contextEntries(); track entry[0]) {
+            <ion-item
+              ><ion-label
+                >{{ entry[0] }} = {{ displayValue(entry[1].value) }}
+                <p>
+                  @for (
+                    source of entry[1].provenance;
+                    track source.sourceId + source.start
+                  ) {
+                    “{{ source.quote }}” ({{ source.confidence }})
+                    @if (source.ambiguous) {
+                      ambiguous
+                    }
+                  }
+                </p></ion-label
+              ></ion-item
+            >
+          }
+        }
+        @if (item.query; as query) {
+          <h3>Saved query draft</h3>
+          <div class="form-grid">
+            <ion-item
+              ><ion-label position="stacked">Query ID</ion-label
+              ><ion-input
+                aria-label="Query ID"
+                [value]="query.id"
+                (ionInput)="updateQuery({ id: $event.detail.value || '' })"
+              ></ion-input
+            ></ion-item>
+            <ion-item
+              ><ion-label position="stacked">Query title</ion-label
+              ><ion-input
+                aria-label="Query title"
+                [value]="query.title"
+                (ionInput)="updateQuery({ title: $event.detail.value || '' })"
+              ></ion-input
+            ></ion-item>
+            <ion-item
+              ><ion-label position="stacked">Query type</ion-label
+              ><ion-input
+                aria-label="Query type"
+                [value]="query.type"
+                (ionInput)="updateQuery({ type: $event.detail.value || '' })"
+              ></ion-input
+            ></ion-item>
+            <ion-item
+              ><ion-label position="stacked">Connection ID</ion-label
+              ><ion-input
+                aria-label="Connection ID"
+                [value]="query.connectionId || ''"
+                (ionInput)="
+                  updateQuery({ connectionId: $event.detail.value || '' })
+                "
+              ></ion-input
+            ></ion-item>
+          </div>
+          <ion-item
+            ><ion-label position="stacked">Query text</ion-label
+            ><ion-textarea
+              aria-label="Query text"
+              [autoGrow]="true"
+              [value]="query.text"
+              (ionInput)="updateQuery({ text: $event.detail.value || '' })"
+            ></ion-textarea
+          ></ion-item>
+          <p>
+            Expected revision: {{ query.expectedRevision || 'new saved query' }}
+          </p>
+        }
+        @if (item.check; as check) {
+          <h3>Check draft</h3>
+          <div class="form-grid">
+            <ion-item
+              ><ion-label position="stacked">Check ID</ion-label
+              ><ion-input
+                aria-label="Check ID"
+                [value]="check.id"
+                (ionInput)="updateCheck({ id: $event.detail.value || '' })"
+              ></ion-input
+            ></ion-item>
+            <ion-item
+              ><ion-label position="stacked">Check title</ion-label
+              ><ion-input
+                aria-label="Check title"
+                [value]="check.title"
+                (ionInput)="updateCheck({ title: $event.detail.value || '' })"
+              ></ion-input
+            ></ion-item>
+          </div>
+          <ion-item
+            ><ion-label position="stacked">Description</ion-label
+            ><ion-textarea
+              aria-label="Check description"
+              [value]="check.description || ''"
+              (ionInput)="
+                updateCheck({ description: $event.detail.value || '' })
+              "
+            ></ion-textarea
+          ></ion-item>
+          <h4>Steps</h4>
+          @for (step of check.steps; track $index; let i = $index) {
+            <div class="form-grid">
+              <ion-item
+                ><ion-label position="stacked">Step ID</ion-label
+                ><ion-input
+                  [attr.aria-label]="'Step ' + (i + 1) + ' ID'"
+                  [value]="step.id"
+                  (ionInput)="
+                    updateCheckStep(i, { id: $event.detail.value || '' })
+                  "
+                ></ion-input
+              ></ion-item>
+              <ion-item
+                ><ion-label position="stacked">Kind</ion-label
+                ><ion-select
+                  [attr.aria-label]="'Step ' + (i + 1) + ' kind'"
+                  [value]="step.kind"
+                  (ionChange)="
+                    updateCheckStep(i, { kind: $event.detail.value })
+                  "
+                  ><ion-select-option value="query">Query</ion-select-option
+                  ><ion-select-option value="check"
+                    >Nested Check</ion-select-option
+                  ></ion-select
+                ></ion-item
+              >
+              <ion-item
+                ><ion-label position="stacked">{{
+                  step.kind === 'query' ? 'Saved query ID' : 'Nested Check ID'
+                }}</ion-label
+                ><ion-input
+                  [attr.aria-label]="'Step ' + (i + 1) + ' reference'"
+                  [value]="
+                    step.kind === 'query'
+                      ? step.queryId || ''
+                      : step.checkId || ''
+                  "
+                  (ionInput)="
+                    updateCheckStep(
+                      i,
+                      step.kind === 'query'
+                        ? { queryId: $event.detail.value || '' }
+                        : { checkId: $event.detail.value || '' }
+                    )
+                  "
+                ></ion-input
+              ></ion-item>
+              <ion-button
+                fill="clear"
+                color="medium"
+                (click)="removeCheckStep(i)"
+                >Remove step</ion-button
+              >
+            </div>
+            <h5>Step input bindings</h5>
+            @for (
+              binding of step.bindings || [];
+              track $index;
+              let b = $index
+            ) {
+              <div class="form-grid">
+                <ion-item
+                  ><ion-input
+                    label="Child/query input"
+                    label-placement="stacked"
+                    [value]="binding.input"
+                    (ionInput)="
+                      updateCheckStepBinding(i, b, {
+                        input: $event.detail.value || '',
+                      })
+                    "
+                /></ion-item>
+                <ion-item
+                  ><ion-input
+                    label="From parent input"
+                    label-placement="stacked"
+                    [value]="binding.fromInput || ''"
+                    (ionInput)="
+                      updateCheckStepBinding(i, b, {
+                        fromInput: $event.detail.value || '',
+                        fromColumn: '',
+                      })
+                    "
+                /></ion-item>
+                <ion-item
+                  ><ion-input
+                    label="Or result column"
+                    label-placement="stacked"
+                    [value]="binding.fromColumn || ''"
+                    (ionInput)="
+                      updateCheckStepBinding(i, b, {
+                        fromColumn: $event.detail.value || '',
+                        fromInput: '',
+                      })
+                    "
+                /></ion-item>
+                <ion-item
+                  ><ion-select
+                    label="Range part"
+                    label-placement="stacked"
+                    [value]="binding.part || ''"
+                    (ionChange)="
+                      updateCheckStepBinding(i, b, {
+                        part: $event.detail.value || undefined,
+                      })
+                    "
+                    ><ion-select-option value="">Whole value</ion-select-option
+                    ><ion-select-option value="start">Start</ion-select-option
+                    ><ion-select-option value="end"
+                      >End</ion-select-option
+                    ></ion-select
+                  ></ion-item
+                >
+                <ion-button
+                  fill="clear"
+                  color="medium"
+                  (click)="removeCheckStepBinding(i, b)"
+                  >Remove binding</ion-button
+                >
+              </div>
+            }
+            <ion-button
+              fill="outline"
+              size="small"
+              (click)="addCheckStepBinding(i)"
+              >Add step binding</ion-button
+            >
+            @for (
+              validator of step.validators || [];
+              track $index;
+              let v = $index
+            ) {
+              <div class="form-grid">
+                <ion-item
+                  ><ion-label position="stacked">Validator ID</ion-label
+                  ><ion-input
+                    [attr.aria-label]="'Step ' + (i + 1) + ' Validator ID'"
+                    [value]="validator.id"
+                    (ionInput)="
+                      updateCheckStepValidator(i, v, {
+                        id: $event.detail.value || '',
+                      })
+                    "
+                  ></ion-input
+                ></ion-item>
+                <ion-item
+                  ><ion-label position="stacked">Validator kind</ion-label
+                  ><ion-select
+                    [attr.aria-label]="'Step ' + (i + 1) + ' Validator kind'"
+                    [value]="validator.kind"
+                    (ionChange)="
+                      updateCheckStepValidator(i, v, {
+                        kind: $event.detail.value,
+                      })
+                    "
+                    ><ion-select-option value="non-null"
+                      >Non-null</ion-select-option
+                    ><ion-select-option value="equals-fields"
+                      >Equals fields</ion-select-option
+                    ><ion-select-option value="row-count"
+                      >Row count</ion-select-option
+                    ><ion-select-option value="unique">Unique</ion-select-option
+                    ><ion-select-option value="sum-equals"
+                      >Sum equals</ion-select-option
+                    ><ion-select-option value="check"
+                      >Nested Check</ion-select-option
+                    ></ion-select
+                  ></ion-item
+                >
+                <ion-item
+                  ><ion-label position="stacked">Field</ion-label
+                  ><ion-input
+                    [attr.aria-label]="'Step ' + (i + 1) + ' Validator field'"
+                    [value]="validator.field || ''"
+                    (ionInput)="
+                      updateCheckStepValidator(i, v, {
+                        field: $event.detail.value || '',
+                      })
+                    "
+                  ></ion-input
+                ></ion-item>
+                <ion-item
+                  ><ion-select
+                    label="Published Validator"
+                    label-placement="stacked"
+                    [value]="validator.validatorId || ''"
+                    (ionChange)="
+                      useCatalogValidator(i, v, $event.detail.value || '')
+                    "
+                    ><ion-select-option value=""
+                      >Local definition</ion-select-option
+                    >
+                    @for (
+                      catalog of state()?.validators || [];
+                      track catalog.id
+                    ) {
+                      <ion-select-option [value]="catalog.id">{{
+                        catalog.title || catalog.id
+                      }}</ion-select-option>
+                    }
+                  </ion-select></ion-item
+                >
+                <ion-item
+                  ><ion-label position="stacked">Severity</ion-label
+                  ><ion-select
+                    [attr.aria-label]="
+                      'Step ' + (i + 1) + ' Validator severity'
+                    "
+                    [value]="validator.severity"
+                    (ionChange)="
+                      updateCheckStepValidator(i, v, {
+                        severity: $event.detail.value,
+                      })
+                    "
+                    ><ion-select-option value="critical"
+                      >Critical</ion-select-option
+                    ><ion-select-option value="error">Error</ion-select-option
+                    ><ion-select-option value="warning"
+                      >Warning</ion-select-option
+                    ><ion-select-option value="info"
+                      >Info</ion-select-option
+                    ></ion-select
+                  ></ion-item
+                >
+                <ion-item
+                  ><ion-select
+                    label="Scope"
+                    label-placement="stacked"
+                    [value]="validator.scope"
+                    (ionChange)="
+                      updateCheckStepValidator(i, v, {
+                        scope: $event.detail.value,
+                      })
+                    "
+                    ><ion-select-option value="row">Row</ion-select-option
+                    ><ion-select-option value="set"
+                      >Set</ion-select-option
+                    ></ion-select
+                  ></ion-item
+                >
+                <ion-item
+                  ><ion-input
+                    label="Related field"
+                    label-placement="stacked"
+                    [value]="validator.otherField || ''"
+                    (ionInput)="
+                      updateCheckStepValidator(i, v, {
+                        otherField: $event.detail.value || '',
+                      })
+                    "
+                /></ion-item>
+                <ion-item
+                  ><ion-input
+                    label="Nested Check ID"
+                    label-placement="stacked"
+                    [value]="validator.checkId || ''"
+                    (ionInput)="
+                      updateCheckStepValidator(i, v, {
+                        checkId: $event.detail.value || '',
+                      })
+                    "
+                /></ion-item>
+                <ion-item
+                  ><ion-select
+                    label="If source unavailable"
+                    label-placement="stacked"
+                    [value]="validator.onUnavailable || 'block'"
+                    (ionChange)="
+                      updateCheckStepValidator(i, v, {
+                        onUnavailable: $event.detail.value,
+                      })
+                    "
+                    ><ion-select-option value="block">Block</ion-select-option
+                    ><ion-select-option value="fail">Fail</ion-select-option
+                    ><ion-select-option value="warn">Warn</ion-select-option
+                    ><ion-select-option value="skip"
+                      >Skip</ion-select-option
+                    ></ion-select
+                  ></ion-item
+                >
+                <ion-item
+                  ><ion-select
+                    label="Expected value type"
+                    label-placement="stacked"
+                    [value]="
+                      expectedType(
+                        'step-' + i + '-' + v,
+                        validator.expected?.type
+                      )
+                    "
+                    (ionChange)="setStepExpectedType(i, v, $event.detail.value)"
+                    ><ion-select-option value="number">Number</ion-select-option
+                    ><ion-select-option value="integer"
+                      >Integer</ion-select-option
+                    ><ion-select-option value="decimal"
+                      >Decimal</ion-select-option
+                    ><ion-select-option value="string">String</ion-select-option
+                    ><ion-select-option value="boolean"
+                      >Boolean</ion-select-option
+                    ><ion-select-option value="date">Date</ion-select-option
+                    ><ion-select-option value="datetime"
+                      >Date and time</ion-select-option
+                    ><ion-select-option value="null"
+                      >Null</ion-select-option
+                    ></ion-select
+                  ></ion-item
+                >
+                <ion-item
+                  ><ion-input
+                    label="Expected value"
+                    label-placement="stacked"
+                    [value]="
+                      expectedValueEdits()['step-' + i + '-' + v] ??
+                      validator.expected?.value ??
+                      ''
+                    "
+                    (ionInput)="
+                      setStepExpected(
+                        i,
+                        v,
+                        $event.detail.value || '',
+                        expectedType(
+                          'step-' + i + '-' + v,
+                          validator.expected?.type
+                        )
+                      )
+                    "
+                /></ion-item>
+                @if (expectedValueErrors()['step-' + i + '-' + v]; as error) {
+                  <ion-note color="danger" role="alert">{{ error }}</ion-note>
+                }
+              </div>
+              @for (
+                binding of validator.bindings || [];
+                track $index;
+                let b = $index
+              ) {
+                <div class="form-grid">
+                  <ion-item
+                    ><ion-input
+                      label="Nested Check input"
+                      label-placement="stacked"
+                      [value]="binding.input"
+                      (ionInput)="
+                        updateStepValidatorBinding(i, v, b, {
+                          input: $event.detail.value || '',
+                        })
+                      "
+                  /></ion-item>
+                  <ion-item
+                    ><ion-input
+                      label="From result column"
+                      label-placement="stacked"
+                      [value]="binding.fromColumn || ''"
+                      (ionInput)="
+                        updateStepValidatorBinding(i, v, b, {
+                          fromColumn: $event.detail.value || '',
+                          fromInput: '',
+                        })
+                      "
+                  /></ion-item>
+                  <ion-item
+                    ><ion-input
+                      label="Or parent input"
+                      label-placement="stacked"
+                      [value]="binding.fromInput || ''"
+                      (ionInput)="
+                        updateStepValidatorBinding(i, v, b, {
+                          fromInput: $event.detail.value || '',
+                          fromColumn: '',
+                        })
+                      "
+                  /></ion-item>
+                  <ion-button
+                    fill="clear"
+                    color="medium"
+                    (click)="removeStepValidatorBinding(i, v, b)"
+                    >Remove binding</ion-button
+                  >
+                </div>
+              }
+              <ion-button
+                fill="outline"
+                size="small"
+                (click)="addStepValidatorBinding(i, v)"
+                >Add Validator binding</ion-button
+              >
+              <ion-button
+                fill="clear"
+                color="medium"
+                (click)="removeCheckStepValidator(i, v)"
+                >Remove Validator</ion-button
+              >
+            }
+            <ion-button
+              fill="outline"
+              size="small"
+              (click)="addCheckStepValidator(i)"
+              >Add Validator</ion-button
+            >
+          }
+          <ion-button fill="outline" size="small" (click)="addCheckStep()"
+            >Add step</ion-button
+          >
+        }
+        @if (item.validator; as published) {
+          <h3>Published Validator draft</h3>
+          <div class="form-grid">
+            <ion-item
+              ><ion-label position="stacked">Catalog ID</ion-label
+              ><ion-input
+                aria-label="Validator catalog ID"
+                [value]="published.id"
+                (ionInput)="updateValidator({ id: $event.detail.value || '' })"
+              ></ion-input
+            ></ion-item>
+            <ion-item
+              ><ion-label position="stacked">Title</ion-label
+              ><ion-input
+                aria-label="Validator title"
+                [value]="published.title"
+                (ionInput)="
+                  updateValidator({ title: $event.detail.value || '' })
+                "
+              ></ion-input
+            ></ion-item>
+            <ion-item
+              ><ion-label position="stacked">Definition ID</ion-label
+              ><ion-input
+                aria-label="Validator definition ID"
+                [value]="published.validator.id"
+                (ionInput)="
+                  updateValidatorDefinition({ id: $event.detail.value || '' })
+                "
+              ></ion-input
+            ></ion-item>
+            <ion-item
+              ><ion-label position="stacked">Kind</ion-label
+              ><ion-select
+                aria-label="Validator kind"
+                [value]="published.validator.kind"
+                (ionChange)="
+                  updateValidatorDefinition({ kind: $event.detail.value })
+                "
+                ><ion-select-option value="non-null">Non-null</ion-select-option
+                ><ion-select-option value="equals-fields"
+                  >Equals fields</ion-select-option
+                ><ion-select-option value="row-count"
+                  >Row count</ion-select-option
+                ><ion-select-option value="unique">Unique</ion-select-option
+                ><ion-select-option value="sum-equals"
+                  >Sum equals</ion-select-option
+                ><ion-select-option value="check"
+                  >Nested Check</ion-select-option
+                ></ion-select
+              ></ion-item
+            >
+            <ion-item
+              ><ion-label position="stacked">Scope</ion-label
+              ><ion-select
+                aria-label="Validator scope"
+                [value]="published.validator.scope"
+                (ionChange)="
+                  updateValidatorDefinition({ scope: $event.detail.value })
+                "
+                ><ion-select-option value="row">Row</ion-select-option
+                ><ion-select-option value="set"
+                  >Set</ion-select-option
+                ></ion-select
+              ></ion-item
+            >
+            <ion-item
+              ><ion-label position="stacked">Severity</ion-label
+              ><ion-select
+                aria-label="Validator severity"
+                [value]="published.validator.severity"
+                (ionChange)="
+                  updateValidatorDefinition({ severity: $event.detail.value })
+                "
+                ><ion-select-option value="critical">Critical</ion-select-option
+                ><ion-select-option value="error">Error</ion-select-option
+                ><ion-select-option value="warning">Warning</ion-select-option
+                ><ion-select-option value="info"
+                  >Info</ion-select-option
+                ></ion-select
+              ></ion-item
+            >
+            <ion-item
+              ><ion-label position="stacked">Field</ion-label
+              ><ion-input
+                aria-label="Validator field"
+                [value]="published.validator.field || ''"
+                (ionInput)="
+                  updateValidatorDefinition({
+                    field: $event.detail.value || '',
+                  })
+                "
+              ></ion-input
+            ></ion-item>
+            <ion-item
+              ><ion-label position="stacked">Related field</ion-label
+              ><ion-input
+                aria-label="Related field"
+                [value]="published.validator.otherField || ''"
+                (ionInput)="
+                  updateValidatorDefinition({
+                    otherField: $event.detail.value || '',
+                  })
+                "
+              ></ion-input
+            ></ion-item>
+            <ion-item
+              ><ion-label position="stacked">Nested Check ID</ion-label
+              ><ion-input
+                aria-label="Validator nested Check ID"
+                [value]="published.validator.checkId || ''"
+                (ionInput)="
+                  updateValidatorDefinition({
+                    checkId: $event.detail.value || '',
+                  })
+                "
+              ></ion-input
+            ></ion-item>
+            <ion-item
+              ><ion-select
+                label="Expected value type"
+                label-placement="stacked"
+                [value]="
+                  expectedType('published', published.validator.expected?.type)
+                "
+                (ionChange)="setPublishedExpectedType($event.detail.value)"
+                ><ion-select-option value="number">Number</ion-select-option
+                ><ion-select-option value="integer">Integer</ion-select-option
+                ><ion-select-option value="decimal">Decimal</ion-select-option
+                ><ion-select-option value="string">String</ion-select-option
+                ><ion-select-option value="boolean">Boolean</ion-select-option
+                ><ion-select-option value="date">Date</ion-select-option
+                ><ion-select-option value="datetime"
+                  >Date and time</ion-select-option
+                ><ion-select-option value="null"
+                  >Null</ion-select-option
+                ></ion-select
+              ></ion-item
+            >
+            <ion-item
+              ><ion-input
+                label="Expected value"
+                label-placement="stacked"
+                [value]="
+                  expectedValueEdits()['published'] ??
+                  published.validator.expected?.value ??
+                  ''
+                "
+                (ionInput)="
+                  setPublishedExpected(
+                    $event.detail.value || '',
+                    expectedType(
+                      'published',
+                      published.validator.expected?.type
+                    )
+                  )
+                "
+            /></ion-item>
+            @if (expectedValueErrors()['published']; as error) {
+              <ion-note color="danger" role="alert">{{ error }}</ion-note>
+            }
+          </div>
+          @for (
+            binding of published.validator.bindings || [];
+            track $index;
+            let b = $index
+          ) {
+            <div class="form-grid">
+              <ion-item
+                ><ion-input
+                  label="Nested Check input"
+                  label-placement="stacked"
+                  [value]="binding.input"
+                  (ionInput)="
+                    updatePublishedBinding(b, {
+                      input: $event.detail.value || '',
+                    })
+                  "
+              /></ion-item>
+              <ion-item
+                ><ion-input
+                  label="From result column"
+                  label-placement="stacked"
+                  [value]="binding.fromColumn || ''"
+                  (ionInput)="
+                    updatePublishedBinding(b, {
+                      fromColumn: $event.detail.value || '',
+                      fromInput: '',
+                    })
+                  "
+              /></ion-item>
+              <ion-item
+                ><ion-input
+                  label="Or parent input"
+                  label-placement="stacked"
+                  [value]="binding.fromInput || ''"
+                  (ionInput)="
+                    updatePublishedBinding(b, {
+                      fromInput: $event.detail.value || '',
+                      fromColumn: '',
+                    })
+                  "
+              /></ion-item>
+              <ion-button
+                fill="clear"
+                color="medium"
+                (click)="removePublishedBinding(b)"
+                >Remove binding</ion-button
+              >
+            </div>
+          }
+          <ion-button
+            fill="outline"
+            size="small"
+            (click)="addPublishedBinding()"
+            >Add nested Check binding</ion-button
+          >
+        }
+        @if (item.scenario; as scenario) {
+          <h3>Scenario draft</h3>
+          <div class="form-grid">
+            <ion-item
+              ><ion-label position="stacked">Scenario ID</ion-label
+              ><ion-input
+                aria-label="Scenario ID"
+                [value]="scenario.id"
+                (ionInput)="updateScenario({ id: $event.detail.value || '' })"
+              ></ion-input
+            ></ion-item>
+            <ion-item
+              ><ion-label position="stacked">Scenario title</ion-label
+              ><ion-input
+                aria-label="Scenario title"
+                [value]="scenario.title"
+                (ionInput)="
+                  updateScenario({ title: $event.detail.value || '' })
+                "
+              ></ion-input
+            ></ion-item>
+          </div>
+          <ion-item
+            ><ion-label position="stacked">Description</ion-label
+            ><ion-textarea
+              aria-label="Scenario description"
+              [value]="scenario.description || ''"
+              (ionInput)="
+                updateScenario({ description: $event.detail.value || '' })
+              "
+            ></ion-textarea
+          ></ion-item>
+          @for (step of scenario.steps; track $index; let i = $index) {
+            <div class="form-grid">
+              <ion-item
+                ><ion-label position="stacked">Step ID</ion-label
+                ><ion-input
+                  [attr.aria-label]="'Scenario step ' + (i + 1) + ' ID'"
+                  [value]="step.id"
+                  (ionInput)="
+                    updateScenarioStep(i, { id: $event.detail.value || '' })
+                  "
+                ></ion-input
+              ></ion-item>
+              <ion-item
+                ><ion-label position="stacked">Kind</ion-label
+                ><ion-select
+                  [attr.aria-label]="'Scenario step ' + (i + 1) + ' kind'"
+                  [value]="step.kind"
+                  (ionChange)="
+                    updateScenarioStep(i, { kind: $event.detail.value })
+                  "
+                  ><ion-select-option value="query">Query</ion-select-option
+                  ><ion-select-option value="check"
+                    >Check</ion-select-option
+                  ></ion-select
+                ></ion-item
+              >
+              <ion-item
+                ><ion-label position="stacked">Reference ID</ion-label
+                ><ion-input
+                  [attr.aria-label]="'Scenario step ' + (i + 1) + ' reference'"
+                  [value]="step.ref"
+                  (ionInput)="
+                    updateScenarioStep(i, { ref: $event.detail.value || '' })
+                  "
+                ></ion-input
+              ></ion-item>
+              @if (step.kind === 'query') {
+                @for (
+                  binding of step.bindings || [];
+                  track $index;
+                  let j = $index
+                ) {
+                  <div class="form-grid">
+                    <ion-item
+                      ><ion-label position="stacked">Query parameter</ion-label
+                      ><ion-input
+                        [attr.aria-label]="
+                          'Scenario step ' + (i + 1) + ' query parameter'
+                        "
+                        [value]="binding.input"
+                        (ionInput)="updateScenarioStep(i, { bindings: (step.bindings || []).map((item, n) => n === j ? { ...item, input: $event.detail.value || '' } : item) })"
+                    /></ion-item>
+                    <ion-item
+                      ><ion-label position="stacked">Case input</ion-label
+                      ><ion-input
+                        [attr.aria-label]="
+                          'Scenario step ' + (i + 1) + ' case input'
+                        "
+                        [value]="binding.fromInput || ''"
+                        (ionInput)="updateScenarioStep(i, { bindings: (step.bindings || []).map((item, n) => n === j ? { ...item, fromInput: $event.detail.value || undefined, fromColumn: undefined } : item) })"
+                    /></ion-item>
+                    <ion-item
+                      ><ion-label position="stacked">Range endpoint</ion-label
+                      ><ion-select
+                        [attr.aria-label]="
+                          'Scenario step ' + (i + 1) + ' range endpoint'
+                        "
+                        [value]="binding.part || ''"
+                        (ionChange)="updateScenarioStep(i, { bindings: (step.bindings || []).map((item, n) => n === j ? { ...item, part: $event.detail.value || undefined } : item) })"
+                        ><ion-select-option value=""
+                          >Whole value</ion-select-option
+                        ><ion-select-option value="start"
+                          >Start</ion-select-option
+                        ><ion-select-option value="end"
+                          >End</ion-select-option
+                        ></ion-select
+                      ></ion-item
+                    >
+                    <ion-button
+                      fill="clear"
+                      color="medium"
+                      (click)="updateScenarioStep(i, { bindings: (step.bindings || []).filter((_, n) => n !== j) })"
+                      >Remove binding</ion-button
+                    >
+                  </div>
+                }
+                <ion-button
+                  size="small"
+                  fill="clear"
+                  (click)="
+                    updateScenarioStep(i, {
+                      bindings: [
+                        ...(step.bindings || []),
+                        { input: '', fromInput: '' },
+                      ],
+                    })
+                  "
+                  >Add binding</ion-button
+                >
+              }
+              <ion-button
+                fill="clear"
+                color="medium"
+                (click)="removeScenarioStep(i)"
+                >Remove step</ion-button
+              >
+            </div>
+          }
+          <ion-button fill="outline" size="small" (click)="addScenarioStep()"
+            >Add step</ion-button
+          >
+        }
+        @if (item.check || item.query || item.scenario) {
+          <h4>Declared inputs</h4>
+          @for (
+            definition of inputDefinitions();
+            track $index;
+            let i = $index
+          ) {
+            <div class="form-grid">
+              <ion-item
+                ><ion-label position="stacked">Input name</ion-label
+                ><ion-input
+                  [attr.aria-label]="'Input ' + (i + 1) + ' name'"
+                  [value]="definition.name"
+                  (ionInput)="
+                    updateInputDefinition(i, {
+                      name: $event.detail.value || '',
+                    })
+                  "
+                ></ion-input
+              ></ion-item>
+              <ion-item
+                ><ion-label position="stacked">Value type</ion-label
+                ><ion-select
+                  [attr.aria-label]="'Input ' + (i + 1) + ' type'"
+                  [value]="definition.type"
+                  (ionChange)="
+                    updateInputDefinition(i, { type: $event.detail.value })
+                  "
+                  ><ion-select-option value="string">String</ion-select-option
+                  ><ion-select-option value="integer">Integer</ion-select-option
+                  ><ion-select-option value="decimal">Decimal</ion-select-option
+                  ><ion-select-option value="number">Number</ion-select-option
+                  ><ion-select-option value="boolean">Boolean</ion-select-option
+                  ><ion-select-option value="date">Date</ion-select-option
+                  ><ion-select-option value="datetime"
+                    >Date-time</ion-select-option
+                  ></ion-select
+                ></ion-item
+              >
+              <ion-item
+                ><ion-label position="stacked">Cardinality</ion-label
+                ><ion-select
+                  [attr.aria-label]="'Input ' + (i + 1) + ' cardinality'"
+                  [value]="definition.cardinality"
+                  (ionChange)="
+                    updateInputDefinition(i, {
+                      cardinality: $event.detail.value,
+                    })
+                  "
+                  ><ion-select-option value="scalar">One</ion-select-option
+                  ><ion-select-option value="set">Set</ion-select-option
+                  ><ion-select-option value="range"
+                    >Range</ion-select-option
+                  ></ion-select
+                ></ion-item
+              >
+              <ion-button
+                fill="clear"
+                color="medium"
+                (click)="removeInputDefinition(i)"
+                >Remove input</ion-button
+              >
+            </div>
+          }
+          <ion-button fill="outline" size="small" (click)="addInputDefinition()"
+            >Add input</ion-button
+          >
+        }
+        @if (item.case; as caseEdit) {
+          <h3>Case edit draft</h3>
+          <p>
+            Case {{ caseEdit.caseId }} · expected version
+            {{ caseEdit.expectedVersion }}
+          </p>
+          <ion-item
+            ><ion-label position="stacked">Case title</ion-label
+            ><ion-input
+              aria-label="Case title"
+              [value]="caseEdit.title || ''"
+              (ionInput)="updateCase({ title: $event.detail.value || '' })"
+            ></ion-input
+          ></ion-item>
+          <ion-item
+            ><ion-label position="stacked">Status</ion-label
+            ><ion-select
+              aria-label="Case status"
+              [value]="caseEdit.status || 'active'"
+              (ionChange)="updateCase({ status: $event.detail.value })"
+              ><ion-select-option value="active">Active</ion-select-option
+              ><ion-select-option value="closed">Closed</ion-select-option
+              ><ion-select-option value="archived"
+                >Archived</ion-select-option
+              ></ion-select
+            ></ion-item
+          >
+          <ion-item
+            ><ion-label position="stacked">Closure reason</ion-label
+            ><ion-textarea
+              aria-label="Closure reason"
+              [value]="caseEdit.closureReason || ''"
+              (ionInput)="
+                updateCase({ closureReason: $event.detail.value || '' })
+              "
+            ></ion-textarea
+          ></ion-item>
+          <h4>Findings</h4>
+          @for (
+            finding of caseEdit.findings || [];
+            track $index;
+            let i = $index
+          ) {
+            <div class="form-grid">
+              <ion-item
+                ><ion-label position="stacked">Finding ID</ion-label
+                ><ion-input
+                  [attr.aria-label]="'Finding ' + (i + 1) + ' ID'"
+                  [value]="finding.id"
+                  (ionInput)="
+                    updateCaseFinding(i, { id: $event.detail.value || '' })
+                  "
+                ></ion-input
+              ></ion-item>
+              <ion-item
+                ><ion-label position="stacked">Finding status</ion-label
+                ><ion-select
+                  [attr.aria-label]="'Finding ' + (i + 1) + ' status'"
+                  [value]="finding.status"
+                  (ionChange)="
+                    updateCaseFinding(i, { status: $event.detail.value })
+                  "
+                  ><ion-select-option value="hypothesis"
+                    >Hypothesis</ion-select-option
+                  ><ion-select-option value="confirmed"
+                    >Confirmed</ion-select-option
+                  ></ion-select
+                ></ion-item
+              >
+              <ion-item
+                ><ion-label position="stacked">Finding text</ion-label
+                ><ion-textarea
+                  [attr.aria-label]="'Finding ' + (i + 1) + ' text'"
+                  [value]="finding.text"
+                  (ionInput)="
+                    updateCaseFinding(i, { text: $event.detail.value || '' })
+                  "
+                ></ion-textarea
+              ></ion-item>
+              <ion-item
+                ><ion-label position="stacked"
+                  >Evidence IDs, comma-separated</ion-label
+                ><ion-input
+                  [attr.aria-label]="'Finding ' + (i + 1) + ' evidence IDs'"
+                  [value]="(finding.evidenceRefs || []).join(', ')"
+                  (ionInput)="
+                    updateCaseFindingEvidence(i, $event.detail.value || '')
+                  "
+                ></ion-input
+              ></ion-item>
+              <ion-button
+                fill="clear"
+                color="medium"
+                (click)="removeCaseFinding(i)"
+                >Remove finding</ion-button
+              >
+            </div>
+          }
+          <ion-button fill="outline" size="small" (click)="addCaseFinding()"
+            >Add hypothesis finding</ion-button
+          >
+        }
+        @if (item.run; as run) {
+          <h3>Manual Check run draft</h3>
+          <div class="form-grid">
+            <ion-item
+              ><ion-label position="stacked">Check ID</ion-label
+              ><ion-input
+                aria-label="Run Check ID"
+                [value]="run.checkId"
+                (ionInput)="updateRun({ checkId: $event.detail.value || '' })"
+              ></ion-input
+            ></ion-item>
+            <ion-item
+              ><ion-label position="stacked">Case ID</ion-label
+              ><ion-input
+                aria-label="Run Case ID"
+                [value]="run.caseId || ''"
+                (ionInput)="updateRun({ caseId: $event.detail.value || '' })"
+              ></ion-input
+            ></ion-item>
+            <ion-item
+              ><ion-label position="stacked">Logical environment</ion-label
+              ><ion-select
+                aria-label="Run logical environment"
+                [value]="run.environment"
+                (ionChange)="updateRun({ environment: $event.detail.value })"
+              >
+                @for (
+                  environment of state()?.environments || [];
+                  track environment
+                ) {
+                  <ion-select-option [value]="environment">{{
+                    environment
+                  }}</ion-select-option>
+                }
+              </ion-select></ion-item
+            >
+          </div>
+        }
+        @if (item.context || item.case || item.run) {
+          <h4>Typed context or run inputs</h4>
+          @for (entry of inputEntries(); track entry[0]) {
+            <div class="form-grid">
+              <ion-item
+                ><ion-label position="stacked">Name</ion-label
+                ><ion-input
+                  [attr.aria-label]="'Input name ' + entry[0]"
+                  [value]="entry[0]"
+                  [disabled]="item.kind === 'extract-context'"
+                  (ionChange)="
+                    renameInputValue(entry[0], $event.detail.value || '')
+                  "
+                ></ion-input
+              ></ion-item>
+              <ion-item
+                ><ion-label position="stacked">Type</ion-label
+                ><ion-select
+                  [attr.aria-label]="'Input type ' + entry[0]"
+                  [value]="entry[1].type"
+                  (ionChange)="
+                    updateInput(entry[0], { type: $event.detail.value })
+                  "
+                  ><ion-select-option value="string">String</ion-select-option
+                  ><ion-select-option value="integer">Integer</ion-select-option
+                  ><ion-select-option value="decimal">Decimal</ion-select-option
+                  ><ion-select-option value="number">Number</ion-select-option
+                  ><ion-select-option value="boolean">Boolean</ion-select-option
+                  ><ion-select-option value="date">Date</ion-select-option
+                  ><ion-select-option value="datetime"
+                    >Date-time</ion-select-option
+                  ></ion-select
+                ></ion-item
+              >
+              <ion-item
+                ><ion-label position="stacked">Cardinality</ion-label
+                ><ion-select
+                  [attr.aria-label]="'Input cardinality ' + entry[0]"
+                  [value]="entry[1].cardinality"
+                  (ionChange)="
+                    updateInput(entry[0], { cardinality: $event.detail.value })
+                  "
+                  ><ion-select-option value="scalar">One</ion-select-option
+                  ><ion-select-option value="set">Set</ion-select-option
+                  ><ion-select-option value="range"
+                    >Range</ion-select-option
+                  ></ion-select
+                ></ion-item
+              >
+              <ion-item
+                ><ion-label position="stacked"
+                  >Value (comma-separated for a set)</ion-label
+                ><ion-input
+                  [attr.aria-label]="'Input value ' + entry[0]"
+                  [value]="entry[1].text"
+                  (ionInput)="
+                    updateInput(entry[0], { text: $event.detail.value || '' })
+                  "
+                ></ion-input
+              ></ion-item>
+              @if (entry[1].cardinality === 'range') {
+                <ion-item
+                  ><ion-label position="stacked">Range end</ion-label
+                  ><ion-input
+                    [attr.aria-label]="'Range end ' + entry[0]"
+                    [value]="entry[1].end"
+                    (ionInput)="
+                      updateInput(entry[0], { end: $event.detail.value || '' })
+                    "
+                  ></ion-input
+                ></ion-item>
+              }
+              @if (item.kind !== 'extract-context') {
+                <ion-button
+                  fill="clear"
+                  color="medium"
+                  (click)="removeInputValue(entry[0])"
+                  >Remove value</ion-button
+                >
+              }
+            </div>
+          }
+          @if (item.kind !== 'extract-context') {
+            <ion-button fill="outline" size="small" (click)="addInputValue()"
+              >Add typed value</ion-button
+            >
+          }
+        }
+        @if (item.kind === 'extract-context') {
+          <ion-item
+            ><ion-label position="stacked"
+              >Apply reviewed values to Case</ion-label
+            ><ion-select
+              aria-label="Context target Case"
+              [value]="reviewCaseId()"
+              (ionChange)="reviewCaseId.set($event.detail.value || '')"
+            >
+              @for (candidate of state()?.cases || []; track candidate.id) {
+                <ion-select-option [value]="candidate.id"
+                  >{{ candidate.title }} ({{ candidate.id }})</ion-select-option
+                >
+              }
+            </ion-select></ion-item
+          >
+          <p>
+            The selected Case version is checked by the server. Keep hypotheses
+            separate from confirmed findings.
+          </p>
+        }
+        @if (item.explanation; as explanation) {
+          <h3>Explanation only</h3>
+          <p>{{ explanation.summary }}</p>
+          <p>{{ explanation.basis }}</p>
+          <p>
+            Run {{ explanation.runId }}. This proposal does not mutate records
+            or change Validator outcomes.
+          </p>
+        }
+        @if (reviewable()) {
+          <ion-button [disabled]="busy()" (click)="review()"
+            >Save edited derivative for review</ion-button
+          >
+        }
+        @if (confirmable()) {
+          <ion-button color="warning" [disabled]="busy()" (click)="confirm()"
+            >Confirm reviewed project action</ion-button
+          >
+        }
+        @if (receipt(); as saved) {
+          <p role="status">
+            Operation {{ saved.operationId }} · resource {{ saved.resourceId }}
+          </p>
+        }
+      </ion-card-content>
+    </ion-card>
+  }
+}

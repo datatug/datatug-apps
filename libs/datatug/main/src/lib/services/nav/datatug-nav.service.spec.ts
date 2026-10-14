@@ -1,3 +1,4 @@
+import { Router } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
 import { NavController } from '@ionic/angular';
 import { ErrorLogger, type IErrorLogger } from '@sneat/core';
@@ -11,10 +12,12 @@ import { IQueryDef, ITextQueryRequest, QueryType } from '../../models/definition
 
 describe('DatatugNavService', () => {
   let service: DatatugNavService;
+  let router: { url: string };
   let navMock: Partial<Record<keyof NavController, Mock>>;
   let errorLoggerMock: Partial<Record<keyof IErrorLogger, Mock>>;
 
   beforeEach(() => {
+    router = { url: '/' };
     navMock = {
       navigateRoot: vi.fn().mockResolvedValue(true),
       navigateForward: vi.fn().mockResolvedValue(true),
@@ -29,6 +32,7 @@ describe('DatatugNavService', () => {
     TestBed.configureTestingModule({
       providers: [
         DatatugNavService,
+        { provide: Router, useValue: router },
         { provide: NavController, useValue: navMock },
         { provide: ErrorLogger, useValue: errorLoggerMock },
       ],
@@ -66,6 +70,27 @@ describe('DatatugNavService', () => {
     });
     expect(navMock.navigateRoot).not.toHaveBeenCalled();
     expect(navMock.navigateForward).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{ storeId: 'localhost:8989', projectId: 'p1' }, '/store/localhost:8989/project/p1'],
+    [{ storeId: 'firestore', spaceID: 'S1', projectId: 'p1' }, '/space/S1/store/firestore/project/p1'],
+  ])('keeps admitted session links and project-scoped Detective navigation for %j', (ref, base) => {
+    const project = { ref } as IProjectContext;
+    router.url = `${base}/sessions/session-a/overview`;
+    for (const page of ['queries', 'overview']) {
+      const expected = `${base}/sessions/session-a/${page}`;
+      expect(service.projectPageUrl(project.ref, page)).toBe(expected);
+      service.goProjPage(page, project);
+      expect(navMock.navigateForward).toHaveBeenLastCalledWith(expected, { state: { project } });
+    }
+    for (const page of ['checks', 'detective', 'sessions']) {
+      const expected = `${base}/${page}`;
+      expect(service.projectPageUrl(project.ref, page)).toBe(expected);
+      service.goProjPage(page, project);
+      expect(navMock.navigateForward).toHaveBeenLastCalledWith(expected, { state: { project } });
+    }
+    expect(errorLoggerMock.logError).not.toHaveBeenCalled();
   });
 
   describe('goStore', () => {

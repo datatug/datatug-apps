@@ -2,19 +2,25 @@ import { parseProjectUrl, tryProjectUrl } from './project-url';
 
 describe('Space-qualified metadata addresses', () => {
   const ref = { storeId: 'firestore', spaceID: 'S1', projectId: 'same' };
-  it.each(['', 'overview', 'queries', 'query/q'])(
-    'round trips %s without losing Space ownership',
-    (page) => {
-      const url = tryProjectUrl(ref, page);
-      expect(url).toBe(
-        `/space/S1/store/firestore/project/same${page ? `/${page}` : ''}`,
-      );
-      expect(parseProjectUrl(url as string)).toMatchObject({
-        ok: true,
-        ...ref,
-      });
-    },
-  );
+  it.each([
+    '',
+    'overview',
+    'queries',
+    'query/q',
+    'checks',
+    'checks/invoice-check',
+    'detective',
+    'detective/invoice-case',
+  ])('round trips %s without losing Space ownership', (page) => {
+    const url = tryProjectUrl(ref, page);
+    expect(url).toBe(
+      `/space/S1/store/firestore/project/same${page ? `/${page}` : ''}`,
+    );
+    expect(parseProjectUrl(url as string)).toMatchObject({
+      ok: true,
+      ...ref,
+    });
+  });
   it.each(['query', 'chat', 'env/local', 'boards', 'public-data'])(
     'refuses unsupported %s',
     (page) => {
@@ -30,8 +36,12 @@ describe('Space-qualified metadata addresses', () => {
     expect(parseProjectUrl(url as string)).toMatchObject({ ok: true, ...ref });
   });
   it('rejects a raw multi-segment query id that the shared route cannot bind', () => {
-    expect(tryProjectUrl(ref, 'query/folder/q')).toMatchObject({ reason: 'not-representable' });
-    expect(parseProjectUrl('/space/S1/store/firestore/project/same/query/folder/q')).toMatchObject({
+    expect(tryProjectUrl(ref, 'query/folder/q')).toMatchObject({
+      reason: 'not-representable',
+    });
+    expect(
+      parseProjectUrl('/space/S1/store/firestore/project/same/query/folder/q'),
+    ).toMatchObject({
       ok: false,
     });
   });

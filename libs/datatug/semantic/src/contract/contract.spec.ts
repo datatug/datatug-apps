@@ -168,6 +168,20 @@ describe('contract fixtures decode without throwing', () => {
     ]);
 
     expect(decodeResult(resultTruncated).truncated).toBe(true);
+    expect(
+      decodeResult({
+        ...resultLive,
+        execution: {
+          storeId: 'sqlite',
+          projectId: 'billing',
+          executionId: 'exec-1',
+        },
+      }).execution,
+    ).toEqual({
+      storeId: 'sqlite',
+      projectId: 'billing',
+      executionId: 'exec-1',
+    });
   });
 
   it('queries/applicable: runnable, needs-input, needs-target (with ambiguous), source-unavailable', () => {

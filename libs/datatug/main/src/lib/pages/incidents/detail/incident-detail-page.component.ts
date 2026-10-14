@@ -40,6 +40,7 @@ import {
 } from '../../../incidents/models';
 import { IncidentReadPanelsComponent } from './incident-read-panels.component';
 import { agentBaseUrl } from '../../../services/repo/agent-url';
+import { projectPageHref } from '../../../nav/project-page-href';
 
 /**
  * The incident detail page. Its route (`incidents/:storeId/:incidentId`)
@@ -118,6 +119,17 @@ export class IncidentDetailPageComponent {
       queryParams: context ? incidentContextQueryParams(context) : undefined,
     });
     return this.router.serializeUrl(tree);
+  });
+  protected readonly createCaseUrl = computed(() => {
+    const context = this.requestContext();
+    const incidentId = this.incidentId();
+    if (!context || !incidentId) return undefined;
+    const href = projectPageHref({
+      storeId: context.agentStoreId,
+      projectId: context.scope.project,
+    }, 'detective');
+    const incidentRef = `${context.scope.storeId}/${incidentId}`;
+    return `${href}${href.includes('?') ? '&' : '?'}incident=${encodeURIComponent(incidentRef)}`;
   });
   protected readonly recordCommands = computed(() => {
     const storeId = this.routeParams().get(routingParamStoreId);

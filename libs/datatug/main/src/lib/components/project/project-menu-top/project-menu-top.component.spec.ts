@@ -1,3 +1,4 @@
+import { Router } from '@angular/router';
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ErrorLogger } from '@sneat/core';
@@ -12,12 +13,15 @@ import { datatugProjectRoutes } from '../../../routes/datatug-routing-proj';
 describe('ProjectContextMenuComponent', () => {
   let component: ProjectMenuTopComponent;
   let fixture: ComponentFixture<ProjectMenuTopComponent>;
+  let router: { url: string; events: ReturnType<typeof of> };
 
   beforeEach(async () => {
+    router = { url: '/', events: of() };
     await TestBed.configureTestingModule({
       imports: [ProjectMenuTopComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
+        { provide: Router, useValue: router },
         {
           provide: ErrorLogger,
           useValue: {
@@ -59,6 +63,22 @@ describe('ProjectContextMenuComponent', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it.each([
+    [{ storeId: 'localhost:8989', projectId: 'p1' }, '/store/localhost:8989/project/p1'],
+    [{ storeId: 'firestore', spaceID: 'S1', projectId: 'p1' }, '/space/S1/store/firestore/project/p1'],
+  ])('builds visible menu links in the admitted project/session scopes for %j', (ref, base) => {
+    component.project = { ref };
+    router.url = `${base}/sessions/session-a/overview`;
+    expect(component.projectPageUrl('queries')).toBe(`${base}/sessions/session-a/queries`);
+    expect(component.projectPageUrl('overview')).toBe(`${base}/sessions/session-a/overview`);
+    expect(component.projectPageUrl('checks')).toBe(`${base}/checks`);
+    expect(component.projectPageUrl('detective')).toBe(`${base}/detective`);
+    expect(component.projectPageUrl('sessions')).toBe(`${base}/sessions`);
+    if (!('spaceID' in ref)) expect(component.projectPageUrl('variables')).toBe(`${base}/sessions/session-a/variables`);
+    router.url = '/store/localhost:8989/project/other/sessions/session-b/overview';
+    expect(component.projectPageUrl('queries')).toBe(`${base}/queries`);
   });
 
   it('REQ:context-basket — links to the Investigation Context screen (the former "Variables" empty-shell entry), unconditionally', () => {
