@@ -488,11 +488,11 @@ test.describe('GitHub-store project — every side-menu page loads without error
    * bug in `trackQueryParams()` (processed `env=` before `id=`) threw a
    * user-visible "Something went wrong: An attempt to set unknown env as an
    * active one: local" toast on this exact URL every time. Both fixed in
-   * `query-page.component.ts`/`.html` (this task) — this is the read-only,
-   * black-box proof: the real query text and its linked entities are
-   * visible in the DOM, and no ErrorLoggerService.logError fires at all.
+   * `query-page.component.ts`/`.html` (that task). This read-only regression
+   * proves the real source loads on the cold URL, while source inventory is
+   * explicitly unavailable without trustworthy structural or catalog data.
    */
-  test("the founder's own reported URL — direct navigation to a legacy SQL query (no click-through) shows its query text and linked entities", async ({
+  test("the founder's own reported URL — direct navigation to a legacy SQL query shows its editable source and honest source availability", async ({
     page,
   }) => {
     const errors = installErrorLoggerWatch(page);
@@ -507,16 +507,12 @@ test.describe('GitHub-store project — every side-menu page loads without error
     await expect(bodyText).toBeVisible({ timeout: 20_000 });
     await expect(bodyText).toContainText('FROM Artist');
 
-    // Linked entities — `artists_with_albums.sql.json` carries no
-    // parameters/recordsets metadata at all (confirmed against the real
-    // repo file: `{"title": "Artists with albums"}`, nothing else), so this
-    // exercises `extractLinkedEntityNames()`'s own FROM/JOIN text-scan
-    // fallback (query-page.component.ts) rather than the metadata path the
-    // DTQL test above exercises.
-    const linkedEntities = page.getByTestId('linked-entities');
-    await expect(linkedEntities).toBeVisible({ timeout: 15_000 });
-    await expect(linkedEntities.getByText('Artist', { exact: true })).toBeVisible();
-    await expect(linkedEntities.getByText('Album', { exact: true })).toBeVisible();
+    // The complex SQL has no authoritative source inventory. A display-text
+    // FROM/JOIN scan must not be presented as catalog-confirmed source facts.
+    await page.getByTestId('workspace-sources-tab').click();
+    await expect(page.getByTestId('workspace-sources-panel')).toContainText(
+      'Authoritative source inventory is unavailable',
+    );
 
     expect(errors).toEqual([]);
   });

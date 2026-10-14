@@ -208,6 +208,25 @@ interface CommittedQueryDefinition {
   readonly nativeGraph?: NonNullable<IQueryDef['federation']>['nativeGraph'];
 }
 
+/** A saved DTQL body is legacy only when its source positively names a YAML or
+ * JSON query document. TugQL diagnostics are never evidence of a format switch. */
+const isLegacyDtqlSource = (source: string): boolean => {
+  const normalized = source.replace(/^\uFEFF/u, '');
+  const firstLine = normalized.split(/\r?\n/u)
+    .find((line) => line.trim() && !line.trimStart().startsWith('#'))
+    ?.trimStart() ?? '';
+  if (/^(?:from|columns|where|orderBy|limit):(?:\s|$)/u.test(firstLine))
+    return true;
+  if (!normalized.trimStart().startsWith('{')) return false;
+  try {
+    const document: unknown = JSON.parse(normalized);
+    return !!document && typeof document === 'object' && !Array.isArray(document) &&
+      Object.hasOwn(document, 'from');
+  } catch {
+    return false;
+  }
+};
+
 type CommittedQueryResult = Omit<FederatedQueryResult, 'bindingsApplied'> & {
   readonly bindingsApplied: readonly {
     readonly parameterId: string;
@@ -1254,13 +1273,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       ? 'Related source count unavailable'
       : `${count} available related source${count === 1 ? '' : 's'}`;
   }
-  public readonly authorContextTab = signal<
-    'parameters' | 'sources' | 'related' | undefined
-  >(undefined);
   public readonly activeAuthorContextTab = computed(
-    () =>
-      this.authorContextTab() ??
-      (this.authorHasCustomerIdParameter() ? 'parameters' : 'related'),
+    () => {
+      const tab = this.workspaceTab();
+      return tab === 'parameters' || tab === 'sources' || tab === 'related'
+        ? tab
+        : undefined;
+    },
   );
   public readonly authorResultSnapshotKey = computed(() => {
     const result = this.runResult();
@@ -2191,8 +2210,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         scopeKey: current.scopeKey,
         queryIdentity: current.queryIdentity,
       });
-    this.authorModeExplicit = true;
-    this.authorMode.set('code');
+    this.setAuthorMode('code');
     this.authorFormatStatus.set('InvoiceId filter added. Undo available.');
     status(`InvoiceId ${value.value} added to TugQL Query. Undo available.`);
     if (this.authorRowDetailsOpen()) {
@@ -3202,6 +3220,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   private selectWorkspaceTab(tab: WorkspaceTab): void {
+    const previous = this.workspaceTab();
+    if ((previous === 'sources' || previous === 'related') &&
+      tab !== 'sources' && tab !== 'related')
+      this.authorSourcesToggled(false);
     this.workspaceTab.set(tab);
     this.changeDetector.markForCheck();
     afterNextRender(() => {
@@ -3241,13 +3263,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public authorContextTabChanged(value: unknown): void {
     if (value !== 'parameters' && value !== 'sources' && value !== 'related')
       return;
-    const wasDiscovering =
-      this.activeAuthorContextTab() === 'sources' ||
-      this.activeAuthorContextTab() === 'related';
-    this.authorContextTab.set(value);
     this.selectWorkspaceTab(value);
-    const isDiscovering = value === 'sources' || value === 'related';
-    if (wasDiscovering && !isDiscovering) this.authorSourcesToggled(false);
   }
 
   public authorResultSelectionChanged(
@@ -3860,12 +3876,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.queryState = nextState;
       this.queryDef.set(updatedDefinition);
       this.queryEditorStateService.updateQueryState(nextState);
-      this.refreshAuthorSourcesIfVisible();
       this.authorSourceReview.set(undefined);
       this.authorSourceReviewGeneration++;
       this.authorSourceReviewContext = undefined;
       this.authorModeExplicit = true;
       this.authorMode.set('code');
+      this.selectWorkspaceTab('tugql');
+      this.authorSourceMessage.set('');
       this.authorFormatStatus.set(
         selectedFields.length
           ? `Applied the admitted join with ${selectedFields.join(', ')} outputs. The prior result is retained; Preview SQL before Run.`
@@ -3961,7 +3978,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public canNavigateToAuthorPreviewSyntaxDiagnostic(): boolean {
     const snapshot = this.previewDiagnosticNavigationSnapshot();
     if (!this.isCurrentAuthorPreviewDiagnosticSnapshot(snapshot)) return false;
-    if (this.authorMode() !== 'code') return true;
+    if (this.workspaceTab() !== 'tugql') return true;
     return !!this.authorCodeEditor?.isFormatDiagnosticNavigable(
       snapshot.source,
       snapshot.diagnostic.span,
@@ -3976,11 +3993,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     )
       return;
 
-    if (this.authorMode() !== 'code') {
+    if (this.workspaceTab() !== 'tugql') {
       const generation = ++this.previewDiagnosticNavigationGeneration;
       this.pendingPreviewDiagnosticNavigation = { generation, snapshot };
-      this.authorModeExplicit = true;
-      this.authorMode.set('code');
+      this.setAuthorMode('code');
       this.changeDetector.markForCheck();
       afterNextRender(
         () => this.consumePendingPreviewDiagnosticNavigation(generation),
@@ -4771,7 +4787,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
             );
             return;
           }
-          this.authorMode.set('code');
+          this.setAuthorMode('code');
           this.queryTextChanged(
             new CustomEvent('ionInput', {
               detail: { value: plan.expandedSource },
@@ -5125,6 +5141,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         this.queryPageTitle.set('Query');
         return;
       }
+      // The editor service emits a loading placeholder before a same-ID saved
+      // reload. Its next definition is a new source-format decision, while
+      // ordinary draft emissions keep the original representation pinned.
+      if (queryState.isLoading && !queryState.def)
+        this.loadedTextRepresentation.set(undefined);
       const structuralDraft = this.authorSavedDefinition();
       if (
         structuralDraft &&
@@ -5169,7 +5190,6 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         this.semanticSaving.set(false);
         this.semanticDialog.set(undefined);
         this.authorRunParameterAttempt.set(undefined);
-        this.authorContextTab.set(undefined);
         this.authorSourcesToggled(false);
         this.selectedAuthorResultRow.set(undefined);
       }
@@ -5197,14 +5217,14 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         this.confirmedConflicts.set(new Map());
         this.bindingSnapshotKey = '';
         const original = (queryState.def?.request as ITextQueryRequest | undefined)?.text ?? '';
-        const legacySource = /^\s*(?:\{|(?:from|columns|where|orderBy|limit)\s*:)/iu.test(original);
-        const parsed = legacySource ? undefined : parseTugQL(original);
+        const legacyDtql = effectiveDefinition.request.queryType === QueryType.DTQL &&
+          isLegacyDtqlSource(original);
         this.loadedTextRepresentation.set({
           scope: representationScope,
-          kind: effectiveDefinition.request.queryType === QueryType.DTQL &&
-            (legacySource || !parsed?.document.tree || parsed.diagnostics.length > 0)
-            ? 'dtql' : 'tugql',
+          kind: legacyDtql ? 'dtql' : 'tugql',
         });
+        this.selectWorkspaceTab(effectiveDefinition.request.queryType === QueryType.SQL
+          ? 'sql' : legacyDtql ? 'dtql' : 'tugql');
       }
       const nextPlanIdentity = graphStableIdentity(
         effectiveDefinition?.federation?.nativeGraph,
@@ -5440,7 +5460,6 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           this.agentRunEnvironments.set([]);
           this.agentRunEnvironmentsError.set('');
           this.agentSelectedEnvironment.set('');
-          this.authorContextTab.set(undefined);
           this.authorSourcesToggled(false);
           this.selectedAuthorResultRow.set(undefined);
           this.sharedQuerySaveAllowed.set(false);
@@ -7188,7 +7207,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.runError.set('Correct or clear invalid parameter values before Run.');
       return;
     }
-    if (this.hasBlockedBindings()) {
+    // The bounded TugQL runner validates its own CustomerId input below;
+    // generic saved-query bindings are not the inputs sent to that worker.
+    if (!this.isTugqlAuthorJourney() && this.hasBlockedBindings()) {
       this.runError.set('Resolve every ambiguous, conflicting or required parameter before Run.');
       return;
     }

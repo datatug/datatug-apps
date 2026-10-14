@@ -454,6 +454,7 @@ test.describe('J2 — from a value to related knowledge', () => {
     await activePage(page)
       .getByText('customer-invoices', { exact: false })
       .click();
+    await activePage(page).getByTestId('workspace-parameters-tab').click();
     await expect(
       activePage(page)
         .getByText('Customer.ID', { exact: false })
@@ -473,7 +474,7 @@ test.describe('J2 — from a value to related knowledge', () => {
         response.request().method() === 'POST',
       { timeout: 15_000 },
     );
-    await activePage(page).getByText('Run query', { exact: false }).click();
+    await activePage(page).getByTestId('workspace-run').click();
     const runRequestBody = (await runRequestPromise).postDataJSON() as {
       bindingOrigins?: Array<{
         parameterId?: string;
@@ -759,6 +760,7 @@ test.describe('J3 — carrying context', () => {
     // singleton the whole app shares, so no reload was ever needed for this
     // binding to be visible, only for the query page itself to exist.
     await openSavedQuery(page, 'customers', 'Customer purchases by genre');
+    await activePage(page).getByTestId('workspace-parameters-tab').click();
     await expect(
       activePage(page)
         .getByText('Customer.ID', { exact: false })
@@ -783,9 +785,7 @@ test.describe('J3 — carrying context', () => {
     // toBeDisabled()/toBeEnabled() match `:disabled`, which only native form elements
     // ever satisfy, so they misreport an `ion-button` regardless of its actual state.
     // The `disabled` attribute's presence/absence on the host is the reliable signal.
-    const runButton = activePage(page).locator('ion-button', {
-      hasText: 'Run query',
-    });
+    const runButton = activePage(page).getByTestId('workspace-run');
     await expect(runButton).not.toHaveAttribute('disabled');
 
     // AC:context-carries's own wording — "disabling the chip empties it" — names the
@@ -980,12 +980,13 @@ test.describe('J4 — restricted principal', () => {
     await activePage(page)
       .getByText('customer-invoices', { exact: false })
       .click();
+    await activePage(page).getByTestId('workspace-parameters-tab').click();
     await expect(
       activePage(page)
         .getByText('Customer.ID', { exact: false })
         .getByText('from selection', { exact: false }),
     ).toBeVisible({ timeout: 10_000 });
-    await activePage(page).getByText('Run query', { exact: false }).click();
+    await activePage(page).getByTestId('workspace-run').click();
 
     const canadianRunBody = (await (
       await canadianRunResponsePromise

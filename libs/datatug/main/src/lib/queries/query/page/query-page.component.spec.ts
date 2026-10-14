@@ -896,10 +896,11 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       blocked: true,
       action: 'code',
     });
-    component.authorContextTab.set('related');
+    component.authorContextTabChanged('related');
     component.recoverAuthorRun();
     expect(component.authorMode()).toBe('code');
-    expect(component.activeAuthorContextTab()).toBe('related');
+    expect(component.workspaceTab()).toBe('tugql');
+    expect(component.activeAuthorContextTab()).toBeUndefined();
   });
 
   it('allows a fresh explicit preview after editing a pending draft and fences the old finally', async () => {
@@ -1109,7 +1110,7 @@ select i.InvoiceId
 from Invoice as i
 select (
 `);
-    component.authorContextTab.set('parameters');
+    component.authorContextTabChanged('parameters');
     await settleQueryPage();
 
     expect(component.authorParameterDeclarationCount()).toBeUndefined();
@@ -1142,6 +1143,7 @@ select (
 
   it('requires explicit source metadata refresh after editing a valid draft in Sources', async () => {
     component = await createTugQLAuthor(authorSource);
+    await settleQueryPage();
     const discovery = vi
       .spyOn(
         TestBed.inject(PublicSqliteQueryService),
@@ -1156,12 +1158,13 @@ select (
       TestBed.inject(PublicSqliteQueryService),
       'prepareTugQL',
     );
-    component.authorContextTab.set('sources');
+    component.authorContextTabChanged('sources');
     component.authorSourcesToggled(true);
     await vi.waitFor(() =>
       expect(component.authorSourceMetadata()).toBe(sourceDiscovery),
     );
     expect(discovery).toHaveBeenCalledTimes(1);
+    expect(component.workspaceTab()).toBe('sources');
 
     component.queryTextChanged(
       new CustomEvent('ionInput', {
@@ -1204,6 +1207,33 @@ select (
     expect(prepare).not.toHaveBeenCalled();
   });
 
+  it('cancels late Sources discovery on tab exit and reads again only when Sources is reopened', async () => {
+    component = await createTugQLAuthor(authorSource);
+    const sqlite = TestBed.inject(PublicSqliteQueryService);
+    let completeFirst!: (value: typeof sourceDiscovery) => void;
+    const discovery = vi.spyOn(sqlite, 'discoverInvoiceCustomerSources')
+      .mockImplementationOnce(() => new Promise((resolve) => { completeFirst = resolve; }))
+      .mockResolvedValue(sourceDiscovery);
+    component.authorContextTabChanged('sources');
+    component.authorSourcesToggled(true);
+    expect(discovery).toHaveBeenCalledTimes(1);
+    expect(component.authorSourceLoading()).toBe(true);
+
+    component.setAuthorMode('code');
+    expect(component.workspaceTab()).toBe('tugql');
+    expect(component.activeAuthorContextTab()).toBeUndefined();
+    expect(component.authorSourceLoading()).toBe(false);
+    completeFirst(sourceDiscovery);
+    await settleQueryPage();
+    expect(component.authorSourceMetadata()).toBeUndefined();
+    expect(discovery).toHaveBeenCalledTimes(1);
+
+    component.authorContextTabChanged('sources');
+    component.authorSourcesToggled(true);
+    await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
+    expect(discovery).toHaveBeenCalledTimes(2);
+  });
+
   it('does not request or expose the Chinook catalog for a schema-qualified Invoice source', async () => {
     component = await createTugQLAuthor(`from other.Invoice as i
 join Customer as c
@@ -1234,7 +1264,7 @@ select i.InvoiceId
       TestBed.inject(PublicSqliteQueryService),
       'discoverInvoiceCustomerSources',
     );
-    component.authorContextTab.set('sources');
+    component.authorContextTabChanged('sources');
 
     component.authorSourcesToggled(true);
 
@@ -1288,7 +1318,7 @@ select i.InvoiceId
     );
     expect(component.currentAuthorResultRow()?.row).toBe(relatedRow);
 
-    component.authorContextTab.set('related');
+    component.authorContextTabChanged('related');
     expect(component.currentAuthorResultRow()?.row).toBe(relatedRow);
     expect(component.authorResultSnapshotKey()).toBe(relatedSnapshotKey);
 
@@ -2505,7 +2535,7 @@ select i.InvoiceId
     };
     component.runResult.set(priorResult as never);
     expect(component.authorRelatedSourceCount()).toBeUndefined();
-    component.authorContextTab.set('sources');
+    component.authorContextTabChanged('sources');
     component.authorSourcesToggled(true);
     await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(1));
     await vi.waitFor(() =>
@@ -2520,10 +2550,9 @@ select i.InvoiceId
     expect(reviewed?.after).toContain('c.FirstName');
 
     await component.applyAuthorRelationshipReview();
-    await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(3));
-    await vi.waitFor(() =>
-      expect(component.authorSourceMetadata()).toBe(sourceDiscovery),
-    );
+    expect(discovery).toHaveBeenCalledTimes(2);
+    expect(component.workspaceTab()).toBe('tugql');
+    expect(component.activeAuthorContextTab()).toBeUndefined();
 
     const definition = component.queryDef();
     expect((definition?.request as ITextQueryRequest | undefined)?.text).toBe(
@@ -2568,7 +2597,7 @@ select i.InvoiceId
     const update = vi.spyOn(editor, 'updateQueryState');
     const priorResult = historyResultFor(queryDef);
     component.runResult.set(priorResult);
-    component.authorContextTab.set('sources');
+    component.authorContextTabChanged('sources');
     component.authorSourcesToggled(true);
     await vi.waitFor(() =>
       expect(component.authorSourceMetadata()).toBe(sourceDiscovery),
@@ -2576,12 +2605,9 @@ select i.InvoiceId
 
     expect(component.authorCanJoinRelationship()).toBe(true);
     await component.joinAuthorRelationship();
-    await vi.waitFor(() =>
-      expect(sqlite.discoverInvoiceCustomerSources).toHaveBeenCalledTimes(3),
-    );
-    await vi.waitFor(() =>
-      expect(component.authorSourceMetadata()).toBe(sourceDiscovery),
-    );
+    expect(sqlite.discoverInvoiceCustomerSources).toHaveBeenCalledTimes(2);
+    expect(component.workspaceTab()).toBe('tugql');
+    expect(component.activeAuthorContextTab()).toBeUndefined();
 
     expect(component.queryBodyText()).toContain('join Customer as c');
     expect(component.queryBodyText()).not.toContain('c.FirstName');
@@ -2597,12 +2623,13 @@ select i.InvoiceId
     expect(prepare).not.toHaveBeenCalled();
 
     component.undoAuthorTugQLFormat();
-    await vi.waitFor(() =>
-      expect(sqlite.discoverInvoiceCustomerSources).toHaveBeenCalledTimes(4),
-    );
+    expect(sqlite.discoverInvoiceCustomerSources).toHaveBeenCalledTimes(2);
+    component.authorContextTabChanged('sources');
+    component.authorSourcesToggled(true);
     await vi.waitFor(() =>
       expect(component.authorSourceMetadata()).toBe(sourceDiscovery),
     );
+    expect(sqlite.discoverInvoiceCustomerSources).toHaveBeenCalledTimes(3);
 
     expect(component.queryBodyText()).toBe(authorSource);
     expect(component.queryDef()?.relationshipBindings).toBeUndefined();
@@ -2634,7 +2661,7 @@ select i.InvoiceId
     const priorResult = historyResultFor(queryDef);
     component.runResult.set(priorResult);
 
-    component.authorContextTab.set('sources');
+    component.authorContextTabChanged('sources');
     component.authorSourcesToggled(true);
     await vi.waitFor(() =>
       expect(component.authorSourceMetadata()).toBe(sourceDiscovery),
@@ -2647,8 +2674,11 @@ select i.InvoiceId
     ]);
     expect(component.isChanged).toBe(true);
 
+    expect(discovery).toHaveBeenCalledTimes(2);
+    expect(component.workspaceTab()).toBe('tugql');
+    component.authorContextTabChanged('sources');
     component.authorSourcesToggled(true);
-    await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(4));
+    await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(3));
     await vi.waitFor(() =>
       expect(component.authorSourceMetadata()).toBe(sourceDiscovery),
     );
@@ -2665,10 +2695,8 @@ select i.InvoiceId
     await vi.waitFor(() =>
       expect(component.queryBodyText()).not.toContain('join Customer'),
     );
-    await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(6));
-    await vi.waitFor(() =>
-      expect(component.authorSourceMetadata()).toBe(sourceDiscovery),
-    );
+    expect(discovery).toHaveBeenCalledTimes(4);
+    expect(component.workspaceTab()).toBe('tugql');
     expect(component.queryBodyText()).not.toContain('c.FirstName');
     expect(component.queryBodyText()).toContain('order by i.InvoiceId');
     expect(component.queryDef()?.relationshipBindings).toEqual([]);
@@ -2680,10 +2708,13 @@ select i.InvoiceId
     expect(component.canUndoAuthorFormat()).toBe(true);
 
     component.undoAuthorTugQLFormat();
-    await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(7));
+    expect(discovery).toHaveBeenCalledTimes(4);
+    component.authorContextTabChanged('sources');
+    component.authorSourcesToggled(true);
     await vi.waitFor(() =>
       expect(component.authorSourceMetadata()).toBe(sourceDiscovery),
     );
+    expect(discovery).toHaveBeenCalledTimes(5);
     expect(component.queryBodyText()).toBe(joinedText);
     expect(component.queryDef()?.relationshipBindings).toEqual([
       sourceDiscovery.relationship,
@@ -10000,6 +10031,41 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
     expect(component.isNativeDtqlWorkspace()).toBe(true);
     expect(component.isTugqlAuthorJourney()).toBe(false);
     expect(component.workspaceTab()).toBe('dtql');
+  });
+
+  it('keeps malformed saved TugQL in CodeMirror and its bounded execution guard', async () => {
+    const malformed: IQueryDef = {
+      ...dtqlDef,
+      connectionId: 'chinook-sqlite',
+      request: { queryType: QueryType.DTQL, text: 'FROM Invoice\nSELECT ()' } as ITextQueryRequest,
+    };
+    component = await createComponent(malformed);
+    expect(component.isNativeDtqlWorkspace()).toBe(false);
+    expect(component.isTugqlAuthorJourney()).toBe(true);
+    expect(component.workspaceTab()).toBe('tugql');
+    component.queryTextChanged(new CustomEvent('ionInput', { detail: { value: 'from:\n  name: Invoice\n' } }));
+    expect(component.isNativeDtqlWorkspace()).toBe(false);
+    expect(component.isTugqlAuthorJourney()).toBe(true);
+  });
+
+  it('reclassifies the same query ID only after a saved loading placeholder and new definition', async () => {
+    const state = new BehaviorSubject({
+      currentQueryId: dtqlDef.id,
+      activeQueries: [{ id: dtqlDef.id, queryType: QueryType.DTQL, request: dtqlDef.request, def: dtqlDef }],
+    } as IQueryEditorState);
+    component = await createComponent(dtqlDef, '', [], state);
+    expect(component.isNativeDtqlWorkspace()).toBe(true);
+    const reloaded: IQueryDef = {
+      ...dtqlDef,
+      connectionId: 'chinook-sqlite',
+      request: { queryType: QueryType.DTQL, text: 'FROM Invoice\nSELECT ()' } as ITextQueryRequest,
+    };
+    state.next({ currentQueryId: dtqlDef.id, activeQueries: [{ id: dtqlDef.id, queryType: QueryType.SQL, request: { queryType: QueryType.SQL, text: '' } as ISqlQueryRequest, isLoading: true }] } as IQueryEditorState);
+    state.next({ currentQueryId: dtqlDef.id, activeQueries: [{ id: dtqlDef.id, queryType: QueryType.DTQL, request: reloaded.request, def: reloaded }] } as IQueryEditorState);
+    await fixture.whenStable();
+    expect(component.isNativeDtqlWorkspace()).toBe(false);
+    expect(component.isTugqlAuthorJourney()).toBe(true);
+    expect(component.workspaceTab()).toBe('tugql');
   });
 
   it('resolves explicitly edited optional SQL declarations without inventing metadata or changing source', async () => {

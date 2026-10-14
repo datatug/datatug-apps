@@ -61,7 +61,7 @@
 }
 
 :host ::ng-deep .author-code-editor-view .cm-editor {
-  height: clamp(11rem, calc(100dvh - 29rem), 18rem);
+  height: clamp(11rem, calc(100dvh - 30.5rem), 18rem);
   min-height: 0;
 }
 
@@ -106,8 +106,10 @@
   .author-code-surface {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
     align-self: stretch;
-    min-height: clamp(11rem, calc(100dvh - 29rem), 18rem);
+    height: clamp(11rem, calc(100dvh - 30.5rem), 18rem);
+    min-height: 0;
   }
 
   .author-code-editor-view {

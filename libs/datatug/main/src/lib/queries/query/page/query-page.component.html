@@ -94,14 +94,14 @@
       @if (isNativeDtqlWorkspace()) {
         <ion-segment-button value="dtql" data-testid="workspace-dtql-tab" aria-label="DTQL source"><ion-label>DTQL source</ion-label></ion-segment-button>
       }
-      <ion-segment-button value="parameters" data-testid="workspace-parameters-tab" [attr.aria-label]="'Parameters, ' + authorParameterCountLabel()">
-        <ion-label>Parameters <ion-chip class="ion-no-margin workspace-count"><ion-text color="medium">{{ authorParameterDeclarationCount() ?? '…' }}</ion-text></ion-chip></ion-label>
+      <ion-segment-button value="parameters" data-testid="workspace-parameters-tab">
+        <ion-label [attr.aria-label]="'Parameters, ' + authorParameterCountLabel()">Parameters <ion-chip aria-hidden="true" class="ion-no-margin workspace-count"><ion-text color="medium">{{ authorParameterDeclarationCount() ?? '…' }}</ion-text></ion-chip></ion-label>
       </ion-segment-button>
-      <ion-segment-button value="sources" data-testid="workspace-sources-tab" [attr.aria-label]="'Sources, ' + authorSourceCountLabel()">
-        <ion-label>Sources <ion-chip class="ion-no-margin workspace-count"><ion-text color="medium">{{ authorSourceOccurrenceCount() ?? '…' }}</ion-text></ion-chip></ion-label>
+      <ion-segment-button value="sources" data-testid="workspace-sources-tab">
+        <ion-label [attr.aria-label]="'Sources, ' + authorSourceCountLabel()">Sources <ion-chip aria-hidden="true" class="ion-no-margin workspace-count"><ion-text color="medium">{{ authorSourceOccurrenceCount() ?? '…' }}</ion-text></ion-chip></ion-label>
       </ion-segment-button>
-      <ion-segment-button value="related" data-testid="workspace-related-tab" [attr.aria-label]="'Related, ' + authorRelatedSourceCountLabel()">
-        <ion-label>Related <ion-chip class="ion-no-margin workspace-count"><ion-text color="medium">{{ authorRelatedSourceCount() ?? '…' }}</ion-text></ion-chip></ion-label>
+      <ion-segment-button value="related" data-testid="workspace-related-tab">
+        <ion-label [attr.aria-label]="'Related, ' + authorRelatedSourceCountLabel()">Related <ion-chip aria-hidden="true" class="ion-no-margin workspace-count"><ion-text color="medium">{{ authorRelatedSourceCount() ?? '…' }}</ion-text></ion-chip></ion-label>
       </ion-segment-button>
     </ion-segment>
   </ng-template>
@@ -483,17 +483,21 @@
           [disabled]="queryState.isSaving"
           (ionChange)="queryTitleChanged($event)"
         />
-        <ion-select interface="popover" slot="end">
-          <ion-select-option value="q1">Query #1</ion-select-option>
-          <ion-select-option value="q2">Query #2</ion-select-option>
-          <ion-select-option value="q3">Query #3</ion-select-option>
-          <ion-select-option value="q4">Query #4</ion-select-option>
-        </ion-select>
+        @if (!isTextQueryWorkspace()) {
+          <ion-select interface="popover" slot="end">
+            <ion-select-option value="q1">Query #1</ion-select-option>
+            <ion-select-option value="q2">Query #2</ion-select-option>
+            <ion-select-option value="q3">Query #3</ion-select-option>
+            <ion-select-option value="q4">Query #4</ion-select-option>
+          </ion-select>
+        }
       </ion-item>
+      @if (!isTextQueryWorkspace()) {
       <ion-item>
         <ion-icon name="folder-outline" slot="start" />
         <ion-input label="Folder" labelPlacement="start" readonly="true" value="/" />
       </ion-item>
+      }
     </ion-card>
   }
 
@@ -984,14 +988,20 @@
               <ion-item [color]="nativeParameterError(parameter.id) || nativeParameterBinding(parameter.id)?.blocked ? 'warning' : undefined">
                 <ion-label class="ion-text-wrap">
                   {{ parameter.title || parameter.id }}
+                  @if (nativeParameterBinding(parameter.id); as binding) {
+                    <p>Mapped field: {{ bindingFieldLabel(binding) }}</p>
+                  }
                   <p>{{ parameter.type }} · {{ parameter.isRequired ? 'Required' : 'Optional' }}
-                    @if (nativeParameterBinding(parameter.id)?.value && !nativeParameterError(parameter.id)) {
+                    @if (nativeParameterBinding(parameter.id)?.value !== undefined && !nativeParameterError(parameter.id)) {
                       · {{ bindingValueLabel(nativeParameterBinding(parameter.id)!) }}
                     }
                   </p>
                   @if (nativeParameterError(parameter.id); as error) { <p role="alert">{{ error }}</p> }
-                  @if (nativeParameterBinding(parameter.id)?.blocked === 'ambiguous') { <p>Choose one context value before Run.</p> }
-                  @if (nativeParameterBinding(parameter.id)?.blocked === 'conflict-unconfirmed') { <p>Confirm the selection and context conflict before Run.</p> }
+                  @if (nativeParameterBinding(parameter.id); as binding) {
+                    @if (binding.blocked === 'ambiguous') { <p>ambiguous — {{ ambiguousValuesLabel(binding) }}</p> }
+                    @if (binding.blocked === 'conflict-unconfirmed') { <p>conflict — {{ conflictLabel(binding) }}</p> }
+                    @if (binding.blocked === 'missing-required') { <p>required — no value supplied</p> }
+                  }
                 </ion-label>
                 @if (nativeParameterSupported(parameter)) {
                   @if (parameter.type === 'boolean' || parameter.type === 'bit') {
@@ -1009,13 +1019,35 @@
                       (ionInput)="setNativeParameterInput(parameter, $event.detail.value)" />
                   }
                   @if (nativeParameterBinding(parameter.id)?.value !== undefined) {
-                    <ion-button slot="end" fill="clear" [attr.aria-label]="'Clear ' + parameter.id"
+                    <ion-button slot="end" fill="clear" title="Clear this binding" [attr.aria-label]="'Clear ' + parameter.id"
                       (click)="clearNativeParameter(parameter.id)"><ion-icon name="close-outline" /></ion-button>
                   }
                 } @else {
                   <ion-note slot="end">Manual editor unavailable for this type.</ion-note>
                 }
               </ion-item>
+              @if (nativeParameterBinding(parameter.id); as binding) {
+                @if (binding.cohortOptions?.length) {
+                  <ion-item lines="none">
+                    <ion-label class="ion-text-wrap">{{ parameter.title || parameter.id }} context</ion-label>
+                    <ion-buttons slot="end">
+                      @for (option of binding.cohortOptions; track option.factKey) {
+                        @if (option.factKey !== selectedCohortFactKey(parameter.id)) {
+                          <ion-button fill="outline" (click)="chooseContextCohort(parameter.id, option.factKey)">
+                            {{ selectedCohortFactKey(parameter.id) ? 'Other compare side:' : 'Use' }} {{ cohortOptionLabel(option) }}
+                          </ion-button>
+                        }
+                      }
+                    </ion-buttons>
+                  </ion-item>
+                }
+                @if (binding.blocked === 'conflict-unconfirmed') {
+                  <ion-item lines="none">
+                    <ion-label class="ion-text-wrap">Choose the selection value for {{ parameter.title || parameter.id }}</ion-label>
+                    <ion-button slot="end" fill="clear" title="Use the selection value" (click)="confirmConflict(parameter.id)">Use selection</ion-button>
+                  </ion-item>
+                }
+              }
             }
           </ion-list>
         } @else {
@@ -1221,7 +1253,7 @@
       }
       @if (!isHostedProject && queryDef()?.connectionId; as connectionId) {
         <p class="ion-padding-horizontal">
-          Saved source: {{ connectionId }}. Run checks its public SQLite fixture
+          Selected source: {{ connectionId }}. Run checks its public SQLite fixture
           and integrity pin before showing results.
         </p>
       }

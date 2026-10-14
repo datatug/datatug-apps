@@ -40,6 +40,7 @@ test('compares the maintained Chinook invoice query against two public fixtures 
   const editor = author.getByTestId('query-body-text').locator('.cm-content');
   await expect(editor).toContainText(/i\.InvoiceId as InvoiceId/u);
   await expect(editor).toContainText(/i\.InvoiceDate as InvoiceDate/u);
+  await author.getByTestId('workspace-parameters-tab').click();
   const customerId = author.getByTestId('author-customer-id').locator('input');
   await expect(customerId).toHaveValue('');
   await author.getByTestId('author-preview-tab').click();
@@ -49,7 +50,9 @@ test('compares the maintained Chinook invoice query against two public fixtures 
   await expect(author.getByTestId('author-sql-preview')).toContainText('Required · unset');
   expect(await page.evaluate(() => (window as unknown as { __compareWorkerStarts: number }).__compareWorkerStarts)).toBe(0);
 
+  await author.getByTestId('workspace-parameters-tab').click();
   await customerId.fill('1');
+  await author.getByTestId('author-preview-tab').click();
   await author.getByTestId('author-preview').click();
   await expect(author.getByTestId('author-sql-preview')).toContainText('LIMIT 100');
   expect(await page.evaluate(() => (window as unknown as { __compareWorkerStarts: number }).__compareWorkerStarts)).toBe(0);
@@ -116,6 +119,7 @@ test('compares the maintained Chinook invoice query against two public fixtures 
   await expect(page.getByTestId('tugql-author')).toBeVisible();
   await author.getByTestId('author-code-tab').click();
   await expect(page.getByTestId('query-body-text').locator('.cm-content')).toContainText(/i\.InvoiceDate as InvoiceDate/u);
+  await author.getByTestId('workspace-parameters-tab').click();
   await expect(page.getByTestId('author-customer-id').locator('input')).toHaveValue('1');
   await page.getByTestId('query-view-compare').locator('button').click();
   await expect(page.getByTestId('comparison-result')).toBeVisible();
@@ -144,6 +148,7 @@ test('compares the maintained Chinook invoice query against two public fixtures 
   await savedCompareQuery.click();
   await expect(page).toHaveURL(/\/query\/demodb%2Fchinook-invoice-compare/u);
   await expect(page.getByTestId('tugql-author')).toBeVisible();
+  await page.getByTestId('tugql-author').getByTestId('workspace-parameters-tab').click();
   await expect(page.getByTestId('author-customer-id').locator('input')).toHaveValue('');
   await expect(page.getByTestId('comparison-result')).toHaveCount(0);
   expect(await page.evaluate(() => (window as unknown as { __compareWorkerStarts: number }).__compareWorkerStarts)).toBe(3);
