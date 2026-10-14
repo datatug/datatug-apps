@@ -43,7 +43,10 @@ test('renders the root page', async ({ page }) => {
 
   await page.goto('/');
 
-  await expect(page.getByText('DataTug.app').first()).toBeVisible();
+  // The first 'DataTug.app' text node is the hidden menu's brand link
+  // (display:none panel while signed out on home) — assert the visible
+  // header brand instead.
+  await expect(page.locator('.home-header-brand')).toBeVisible();
   await expect(
     page.getByRole('heading', { name: 'Your data workbench' }),
   ).toBeVisible();
