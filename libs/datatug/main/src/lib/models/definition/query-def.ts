@@ -28,6 +28,7 @@ export interface IQueryFolderContext extends IQueryFolder {
 
 // Defines user's query
 export interface IQueryDef extends IQueryItem {
+  semanticModel?: import("../../queries/semantic-mapping").SemanticModel;
   request: IQueryRequest;
   /** Reviewed schema relationship pins retained by Git-backed query files. */
   relationshipBindings?: readonly IQueryRelationshipBinding[];

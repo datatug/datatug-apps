@@ -228,7 +228,7 @@ describe('SqlEditorPage', () => {
           provide: QueryContextSqlService,
           useValue: { setSql: vi.fn(), setTarget: vi.fn() },
         },
-        { provide: QueriesService, useValue: {} },
+        { provide: QueriesService, useValue: { devicePersonal: { list: vi.fn(async () => []) } } },
         { provide: Coordinator, useValue: { execute: vi.fn() } },
         {
           provide: QueryEditorStateService,
@@ -428,6 +428,7 @@ describe('QueryPageComponent — new SQL draft navigation', () => {
           {
             provide: QueriesService,
             useValue: {
+              devicePersonal: { list: vi.fn(async () => []) },
               authorityDenied: () => of(undefined),
               authentication: () => of({ status: 'signedOut' }),
               getRevision,
@@ -4807,7 +4808,7 @@ select (
           provide: QueryContextSqlService,
           useValue: { setSql: vi.fn(), setTarget: vi.fn() },
         },
-        { provide: QueriesService, useValue: navigation?.queries ?? {} },
+        { provide: QueriesService, useValue: { devicePersonal: { list: vi.fn(async () => []) }, ...(navigation?.queries as Record<string, unknown> | undefined) } },
         { provide: ProjectService, useValue: { getFull: vi.fn() } },
         { provide: Coordinator, useValue: { execute: vi.fn() } },
         {
@@ -7359,6 +7360,51 @@ select (
     ]);
   });
 
+  it.each([false, true])('does not settle a pending session run while restoring a semantic copy (incomplete=%s)', async (incomplete) => {
+    const reportClientRun = vi.fn(async () => true);
+    const workspace = {
+      capabilities: () => ({ actorId: 'actor-a', databaseId: 'db-a', projectId: 'demo-project', environments: [] }),
+      canExecuteFor: () => true,
+      bindingScopeKey: () => 'scope-a',
+      snapshotFor: (id: string) => ({ session: { id }, contextSet: { id: 'context-a' } }),
+      appliedFactsFor: () => [],
+      reportClientRun,
+      error: () => '',
+      deviceViewKey: vi.fn(),
+    };
+    component = await createComponent({}, queryDef, '<p></p>', {
+      project: of(project), sessionId: 'session-a', sessionWorkspace: workspace,
+    });
+    const internal = component as unknown as {
+      sessionRecordedRun: { (): string | undefined; set(value: string | undefined): void };
+      sessionRecordedInput: { (): string; set(value: string): void };
+      sessionRecordedSessionId: { (): string; set(value: string): void };
+      running: { set(value: boolean): void };
+      semanticExecutedDefinition: () => IQueryDef | undefined;
+      committedRun: () => unknown;
+      commitSuccessfulResult(result: FederatedQueryResult, definition: IQueryDef, timing?: undefined, recordSessionOutcome?: boolean): void;
+    };
+    internal.running.set(true);
+    internal.sessionRecordedRun.set('run-still-pending');
+    internal.sessionRecordedInput.set('input-original');
+    internal.sessionRecordedSessionId.set('session-a');
+    const restored = {
+      ...historyResultFor(queryDef),
+      ...(incomplete ? { hasMore: true } : {}),
+    };
+
+    internal.commitSuccessfulResult(restored, { ...queryDef, id: 'device-personal-copy' }, undefined, false);
+    await runFixture.whenStable();
+
+    expect(reportClientRun).not.toHaveBeenCalled();
+    expect(internal.sessionRecordedRun()).toBe('run-still-pending');
+    expect(internal.sessionRecordedInput()).toBe('input-original');
+    expect(internal.sessionRecordedSessionId()).toBe('session-a');
+    expect(internal.semanticExecutedDefinition()?.id).toBe(incomplete ? undefined : 'device-personal-copy');
+    if (incomplete) expect(internal.committedRun()).toBeUndefined();
+    else expect(internal.committedRun()).toBeDefined();
+  });
+
   it('resets promotion rebinding when the security context changes in the same project and environment', async () => {
     component = await createComponent({});
     const overlay = investigationContext.addValue({
@@ -8060,7 +8106,7 @@ describe('QueryPageComponent — clearing a required parameter blocks Run (S96)'
           provide: QueryContextSqlService,
           useValue: { setSql: vi.fn(), setTarget: vi.fn() },
         },
-        { provide: QueriesService, useValue: {} },
+        { provide: QueriesService, useValue: { devicePersonal: { list: vi.fn(async () => []) } } },
         { provide: Coordinator, useValue: { execute: vi.fn() } },
         {
           provide: QueryEditorStateService,
@@ -8490,7 +8536,7 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
           provide: QueryContextSqlService,
           useValue: { setSql: vi.fn(), setTarget: vi.fn() },
         },
-        { provide: QueriesService, useValue: {} },
+        { provide: QueriesService, useValue: { devicePersonal: { list: vi.fn(async () => []) } } },
         { provide: Coordinator, useValue: { execute: vi.fn() } },
         {
           provide: QueryEditorStateService,

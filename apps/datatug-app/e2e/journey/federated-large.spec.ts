@@ -218,7 +218,10 @@ columns:
     await page.locator('ion-select[label="Result mode"]').click();
     await page.getByRole('radio', { name: 'Full result' }).click();
     await page.getByRole('button', { name: 'OK' }).click();
-    await expect(page.getByTestId('query-save-state')).toHaveAttribute('role', 'status');
+    await expect(page.getByTestId('query-save-state')).toHaveAttribute(
+      'role',
+      'status',
+    );
     await page.evaluate(() => {
       const state = globalThis as typeof globalThis & {
         __federatedProgress?: string[];
@@ -313,8 +316,11 @@ columns:
     });
     expect(
       await page.evaluate(async () =>
-        (await indexedDB.databases()).filter((database) =>
-          database.name?.startsWith('datatug-'),
+        (await indexedDB.databases()).filter(
+          (database) =>
+            // Personal queries are persistent user work, not transient result stores.
+            database.name?.startsWith('datatug-') &&
+            database.name !== 'datatug-personal-queries',
         ),
       ),
     ).toEqual([]);
