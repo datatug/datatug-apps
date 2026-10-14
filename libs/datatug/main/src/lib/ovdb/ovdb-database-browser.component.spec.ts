@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { demoSqliteCatalog } from '../queries/demo-sqlite-catalog';
 import { localOvdbFetchFor, MemorySqliteDatabase } from '../demo-sqlite/local-demodb.spec-helper';
 import { fetchOvdbDescriptor, type OvdbConnection } from './ovdb-connection';
-import { OvdbConfirmService } from './ovdb-confirm.service';
+import { OvdbConfirmService, type OvdbConfirmRequest } from './ovdb-confirm.service';
 import { OvdbDatabaseBrowserComponent } from './ovdb-database-browser.component';
 
 const entry = demoSqliteCatalog.chinook;
@@ -18,7 +18,7 @@ async function setup(table?: string, options: {
   const fetchFn = options.wrapFetch?.(local) ?? local.fetch;
   const descriptor = await fetchOvdbDescriptor(fetchFn, local.baseUrl, 'chinook');
   const connection: OvdbConnection = { id: 'c', title: 'Chinook (local SQLite)', baseUrl: local.baseUrl, databaseId: 'chinook', fetch: fetchFn, descriptor };
-  const confirm = vi.fn(async () => options.confirm ?? true);
+  const confirm = vi.fn(async (_request: OvdbConfirmRequest) => options.confirm ?? true);
   await TestBed.configureTestingModule({
     imports: [OvdbDatabaseBrowserComponent],
     providers: [provideRouter([]), { provide: OvdbConfirmService, useValue: { confirm } }],
