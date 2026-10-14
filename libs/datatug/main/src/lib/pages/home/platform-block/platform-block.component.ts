@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
-import { IonCard, IonCardContent, IonIcon } from '@ionic/angular';
+import { IonCard, IonCardContent, IonIcon, IonItem, IonLabel } from '@ionic/angular';
 import { addIcons } from 'ionicons';
 import {
   browsersOutline,
@@ -30,7 +30,7 @@ addIcons({
   selector: 'sneat-datatug-platform-block',
   templateUrl: './platform-block.component.html',
   styleUrl: './platform-block.component.scss',
-  imports: [IonCard, IonCardContent, IonIcon],
+  imports: [IonCard, IonCardContent, IonIcon, IonItem, IonLabel],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class PlatformBlockComponent {

@@ -181,7 +181,8 @@ test('column meaning saves a complete personal copy, stays visible and survives 
     .getByRole('button', { name: 'Export MeaningGraph', exact: true })
     .click();
   const download = await downloadPromise;
-  await download.saveAs('coverage/apps/datatug-app-e2e/query.meaning.json');
+  const meaningExportPath = 'coverage/apps/datatug-app-e2e/query.meaning.json';
+  await download.saveAs(meaningExportPath);
   const modelDownloadPromise = page.waitForEvent('download');
   await editor
     .getByRole('button', { name: 'Export ModelSpec', exact: true })
@@ -189,7 +190,7 @@ test('column meaning saves a complete personal copy, stays visible and survives 
   await (
     await modelDownloadPromise
   ).saveAs('coverage/apps/datatug-app-e2e/query.modelspec.json');
-  const exported = JSON.parse(await readFile('coverage/apps/datatug-app-e2e/query.meaning.json', 'utf8'));
+  const exported = JSON.parse(await readFile(meaningExportPath, 'utf8'));
   expect(exported.format).toBe('meaning/draft-2');
   expect(
     exported.concepts.find(

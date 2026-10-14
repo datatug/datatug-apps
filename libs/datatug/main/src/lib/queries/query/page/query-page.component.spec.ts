@@ -940,14 +940,16 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     expect(component.authorPlan()).toBe(currentPlan);
   });
 
-  it('publishes a pending preview across an equivalent definition replacement but still discards edit-and-revert', async () => {
+  it('keeps equivalent-definition Preview success and failure current but discards edit-and-revert', async () => {
     component = await createTugQLAuthor(authorSource);
     component.authorCustomerId.set('1');
     let resolveFirst!: (plan: PublicSqliteQueryPreview) => void;
-    let resolveSecond!: (plan: PublicSqliteQueryPreview) => void;
+    let rejectSecond!: (error: Error) => void;
+    let resolveThird!: (plan: PublicSqliteQueryPreview) => void;
     vi.spyOn(TestBed.inject(PublicSqliteQueryService), 'prepareTugQL')
       .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
-      .mockImplementationOnce(() => new Promise((resolve) => { resolveSecond = resolve; }));
+      .mockImplementationOnce(() => new Promise((_, reject) => { rejectSecond = reject; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveThird = resolve; }));
 
     const pendingFirst = component.previewTugql();
     const previousDefinition = component.queryDef();
@@ -971,10 +973,28 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     expect(component.authorRunReadiness().blocked).toBe(false);
 
     const pendingSecond = component.previewTugql();
+    const currentDefinition = component.queryDef();
+    component.authorCustomerIdChanged(
+      new CustomEvent('ionInput', { detail: { value: '1' } }),
+    );
+    (component as unknown as {
+      onQueryEditorStateChanged: (state: IQueryEditorState) => void;
+    }).onQueryEditorStateChanged({
+      currentQueryId: component.queryState.id,
+      activeQueries: [{ ...component.queryState, def: currentDefinition }],
+    } as IQueryEditorState);
+    expect(component.queryDef()).not.toBe(currentDefinition);
+    expect(component.queryDef()).toEqual(currentDefinition);
+    rejectSecond(new Error('current preview failure'));
+    await pendingSecond;
+    expect(component.authorError()).toContain('current preview failure');
+    expect(component.authorPlan()).toBeUndefined();
+
+    const pendingThird = component.previewTugql();
     component.authorCodeChanged(`${authorSource}\n`);
     component.authorCodeChanged(authorSource);
-    resolveSecond(comparisonPreview(component.authorDraftRevision()));
-    await pendingSecond;
+    resolveThird(comparisonPreview(component.authorDraftRevision()));
+    await pendingThird;
     expect(component.authorPlan()).toBeUndefined();
     expect(component.authorRunReadiness()).toMatchObject({
       blocked: true,
@@ -3873,7 +3893,7 @@ select (
     expect(component.authorPreviewSyntaxDiagnostic()).toBeUndefined();
   });
 
-  it('does not expose a location for a parser sentinel and discards an obsolete async Preview error', async () => {
+  it('does not expose a location for a parser sentinel and discards a Preview error after edit-and-revert', async () => {
     component = await createTugQLAuthor('select x');
     await component.previewTugql();
     expect(component.authorError()).toBeTruthy();
@@ -3881,8 +3901,6 @@ select (
 
     const validSource = 'from Invoice as i\nlimit 10\nselect i.InvoiceId';
     component.authorCodeChanged(validSource);
-    const definition = component.queryDef();
-    if (!definition) throw new Error('Expected the current saved definition');
     let rejectPreview!: (error: Error) => void;
     vi.spyOn(
       TestBed.inject(PublicSqliteQueryService),
@@ -3895,7 +3913,8 @@ select (
     );
 
     const pending = component.previewTugql();
-    component.queryDef.set({ ...definition });
+    component.authorCodeChanged(`${validSource}\n`);
+    component.authorCodeChanged(validSource);
     rejectPreview(new Error('obsolete preview failure'));
     await pending;
 

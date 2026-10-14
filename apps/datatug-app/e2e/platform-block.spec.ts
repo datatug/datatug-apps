@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 // Founder, 2026-10-03: "I want user to be explained scope of project early. So I see that at all 3 DataTug sites."
 // The home page's "One platform, four ways in." block (libs/datatug/main/src/lib/pages/home/platform-block) shows
-// the four parts with the statuses datatug.io and datatug.ai show; the side menu credits DALgo under the build info
+// the four parts with the statuses datatug.io and datatug.ai show; the home footer credits DALgo next to the build info (UX brief §14 moved it out of the sidebar card)
 // (founder: "The dalgo credit can be given on DataTug.app as well").
 
 test('the home page shows the four parts of the platform, with their statuses and links', async ({
@@ -132,7 +132,7 @@ for (const width of [360, 390, 768, 1280]) {
   });
 }
 
-test('the side menu credits DALgo next to the build info, as a keyboard-focusable link', async ({
+test('the home footer credits DALgo next to the build info, as a keyboard-focusable link', async ({
   page,
 }) => {
   await page.goto('/');

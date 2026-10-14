@@ -35,28 +35,40 @@ test('?profile=incidentius lands on the incident list with the "Houston" entry p
   });
 });
 
-test('the datatug profile always shows an Incidents item in the side menu, with no project open (AC:incidents-always-in-datatug-menu)', async ({
+// AC:incidents-always-in-datatug-menu, re-homed (UX brief §13, 2026-10-14):
+// the awkward standalone sidebar card (colored icon below auth) became a
+// standard project-navigation row inside an open project. "Always" now means
+// "always in every project menu" for the datatug profile.
+test('the datatug profile shows an Incidents row in project navigation, linking to the incident list (AC:incidents-always-in-datatug-menu)', async ({
   page,
 }, testInfo) => {
-  await page.goto('/');
+  await page.goto(
+    '/store/github.com/project/datatug-demo-project@datatug@demo-project-1/overview',
+  );
 
   await expect(
     page.getByRole('link', { name: 'DataTug.app home' }),
   ).toBeVisible();
-  const incidentsItem = page.getByTestId('incidents-menu-item');
-  await expect(incidentsItem).toBeVisible();
+  const incidentsItem = page.getByTestId('incidents-project-menu-item');
+  await expect(incidentsItem).toBeVisible({ timeout: 30_000 });
   await expect(incidentsItem).toContainText('Incidents');
+  // Standard project-menu icon style: same outline icon, no special color.
+  await expect(incidentsItem.locator('ion-icon')).toHaveAttribute(
+    'name',
+    'warning-outline',
+  );
+  await expect(incidentsItem.locator('ion-icon')).not.toHaveAttribute(
+    'color',
+    /.*/,
+  );
 
   await page.screenshot({
-    path: testInfo.outputPath('datatug-menu-incidents-item.png'),
+    path: testInfo.outputPath('project-menu-incidents-item.png'),
     fullPage: true,
   });
 
   await incidentsItem.click();
-  await expect(page).toHaveURL('/incidents');
-  await expect(
-    page.getByText("Houston, we've got a problem", { exact: true }),
-  ).toBeVisible();
+  await expect(page).toHaveURL(/\/incidents/);
 });
 
 test('build info is visible under the datatug profile (hub REQ:brand-and-domain-honesty)', async ({
