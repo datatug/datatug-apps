@@ -13,10 +13,10 @@ import { DatatugUserService } from '../services/base/datatug-user-service';
 // onProjectChanged are `protected` (template-only). Cast to read them in tests.
 interface MenuInternals {
   isLoginPage(): boolean;
+  isHomePage(): boolean;
+  showAuthCard(): boolean;
   currentStoreId(): string | undefined;
   currentProject(): unknown;
-  currentEnvironment(): unknown;
-  incidentQueryParams(): Readonly<Record<string, string>> | undefined;
   datatugUserState(): unknown;
   onProjectChanged(project?: unknown): void;
 }
@@ -180,52 +180,12 @@ describe('DatatugMenuComponent', () => {
     });
   });
 
-  describe('Incidents menu item (hub product-profiles REQ:profile-table)', () => {
-    // Founder, 2026-09-11, verbatim: "DataTug app should always have
-    // Incidents menu item in side menu." — AC:incidents-always-in-datatug-menu
-    // requires it present both with and without a project open.
-    it('is present under the default (datatug) profile with no project open', () => {
-      const fixture = createComponent('/');
-      fixture.detectChanges();
-      const item = fixture.nativeElement.querySelector(
-        '[data-testid="incidents-menu-item"]',
-      );
-      expect(item).toBeTruthy();
-      // Not `.textContent` — under this spec's CUSTOM_ELEMENTS_SCHEMA
-      // override, happy-dom's `textContent` getter on an (unregistered,
-      // schema-stubbed) `ion-*` custom element returns `''` even though the
-      // light-DOM markup is correct (confirmed via `.innerHTML`); `innerHTML`
-      // reads the real serialized markup instead.
-      expect(item.innerHTML).toContain('Incidents');
-    });
-
-    it('is present under the default (datatug) profile with a project open', () => {
-      const fixture = createComponent('/');
-      fixture.detectChanges();
-      project$.next({ ref: { projectId: 'p1', storeId: 's1' } });
-      fixture.detectChanges();
-      const item = fixture.nativeElement.querySelector(
-        '[data-testid="incidents-menu-item"]',
-      );
-      expect(item).toBeTruthy();
-    });
-
-    it('is present on the login page too — no feature flag or page removes it', () => {
-      const fixture = createComponent('/login');
-      fixture.detectChanges();
-      const item = fixture.nativeElement.querySelector(
-        '[data-testid="incidents-menu-item"]',
-      );
-      expect(item).toBeTruthy();
-    });
-
-    it('reads the declarative showIncidentsMenuItem field, not the profile identity', () => {
-      // incidentius sets showIncidentsMenuItem: false (it would be a
-      // redundant shortcut to the page that is already its own home) — this
-      // is a data-driven decision in the profile table, not a branch here.
-      TestBed.overrideProvider(PRODUCT_PROFILE, {
-        useValue: PRODUCT_PROFILES.incidentius,
-      });
+  describe('Incidents item relocated to project navigation (UX brief §13)', () => {
+    // The awkward standalone Incidents sidebar card (a colored warning icon
+    // floating below the auth card) is gone; the item now renders inside
+    // ProjectMenuTopComponent next to the other project destinations (its
+    // presence is covered by project-menu-top.component.spec.ts).
+    it('no longer renders a standalone incidents card in the side panel', () => {
       const fixture = createComponent('/');
       fixture.detectChanges();
       expect(
@@ -233,6 +193,58 @@ describe('DatatugMenuComponent', () => {
           '[data-testid="incidents-menu-item"]',
         ),
       ).toBeNull();
+    });
+  });
+
+  describe('home panel cleanup (UX brief §2)', () => {
+    it('recognizes the /home start page', () => {
+      const c = createComponent('/home').componentInstance;
+      expect(peek(c).isHomePage()).toBe(true);
+      routerEvents.next(new NavigationEnd(9, '/', '/'));
+      expect(peek(c).isHomePage()).toBe(false);
+    });
+
+    it('hides the store-selector card, the version card and the DALgo credit on /home', () => {
+      const fixture = createComponent('/home');
+      fixture.detectChanges();
+      expect(
+        fixture.nativeElement.querySelector(
+          'sneat-datatug-menu-store-selector',
+        ),
+      ).toBeNull();
+      expect(
+        fixture.nativeElement.querySelector('sneat-app-version'),
+      ).toBeNull();
+      expect(
+        fixture.nativeElement.querySelector('[data-testid="powered-by-dalgo"]'),
+      ).toBeNull();
+    });
+
+    it('shows the auth card on /home only once a user is actually signed in', () => {
+      const fixture = createComponent('/home');
+      fixture.detectChanges();
+      expect(
+        fixture.nativeElement.querySelector('sneat-datatug-auth-menu-item'),
+      ).toBeNull();
+      userState$.next({
+        status: 'authenticated',
+        record: { id: 'u1' },
+      });
+      fixture.detectChanges();
+      expect(
+        fixture.nativeElement.querySelector('sneat-datatug-auth-menu-item'),
+      ).toBeTruthy();
+    });
+
+    it('keeps the version card and the DALgo credit on non-home pages', () => {
+      const fixture = createComponent('/login');
+      fixture.detectChanges();
+      expect(
+        fixture.nativeElement.querySelector('sneat-app-version'),
+      ).toBeTruthy();
+      expect(
+        fixture.nativeElement.querySelector('[data-testid="powered-by-dalgo"]'),
+      ).toBeTruthy();
     });
   });
 
@@ -279,11 +291,13 @@ describe('DatatugMenuComponent', () => {
       expect(link?.textContent).toContain('Powered by DALgo');
     });
 
-    it('sits in the same card as the build info, right after it', () => {
+    it('is a standalone attribution line, outside the version card (UX brief §14)', () => {
       const fixture = createComponent('/');
       fixture.detectChanges();
       const version = fixture.nativeElement.querySelector('sneat-app-version');
-      expect(version.nextElementSibling?.contains(credit(fixture))).toBe(true);
+      expect(version.closest('ion-card')?.contains(credit(fixture))).toBe(
+        false,
+      );
     });
 
     it('is on the login page too', () => {
@@ -316,22 +330,8 @@ describe('DatatugMenuComponent', () => {
       expect(peek(c).currentProject()).toBe(project);
     });
 
-    it('builds the incidents link from the current agent, project, and environment', () => {
-      const c = createComponent('/').componentInstance;
-      storeId$.next('localhost:8989');
-      project$.next({
-        ref: { projectId: 'billing', storeId: 'localhost:8989' },
-      });
-      env$.next({ id: 'prod' });
-
-      expect(peek(c).currentEnvironment()).toEqual({ id: 'prod' });
-      expect(peek(c).incidentQueryParams()).toEqual({
-        agent: 'localhost:8989',
-        storeId: 'billing',
-        project: 'billing',
-        environment: 'prod',
-      });
-    });
+    // The incident-scope query params moved with the Incidents item into
+    // ProjectMenuTopComponent — see project-menu-top.component.spec.ts.
 
     it('updates the current project via onProjectChanged', () => {
       const c = createComponent('/').componentInstance;

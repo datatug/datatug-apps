@@ -1,9 +1,9 @@
 import { Component, OnDestroy, computed, inject, signal } from '@angular/core';
-import { NavigationEnd, Router, RouterLink } from '@angular/router';
+import { NavigationEnd, Router } from '@angular/router';
 import { AnalyticsService, ErrorLogger, IErrorLogger } from '@sneat/core';
 import { Subject } from 'rxjs';
 import { filter, takeUntil } from 'rxjs/operators';
-import { IonCard, IonIcon, IonItem, IonLabel } from '@ionic/angular';
+import { IonCard } from '@ionic/angular';
 import { AppVersionComponent } from '@sneat/components';
 import { PRODUCT_PROFILE } from '@datatug/product-profiles';
 import { DatatugCoreModule } from '../core/datatug-core.module';
@@ -11,12 +11,7 @@ import { DatatugServicesStoreModule } from '../services/repo/datatug-services-st
 import { DatatugServicesProjectModule } from '../services/project/datatug-services-project.module';
 import { DatatugServicesNavModule } from '../services/nav/datatug-services-nav.module';
 import { DatatugServicesUnsortedModule } from '../services/unsorted/datatug-services-unsorted.module';
-import {
-  IEnvContext,
-  IEnvDbTableContext,
-  IProjectContext,
-} from '../nav/nav-models';
-import { incidentContextQueryParams } from '../incidents/incident-route-context';
+import { IEnvDbTableContext, IProjectContext } from '../nav/nav-models';
 import {
   DatatugUserService,
   IDatatugUserState,
@@ -35,10 +30,6 @@ import { DatatugAuthMenuItemComponent } from './datatug-auth-menu-item.component
   styleUrls: ['./datatug-menu.component.scss'],
   imports: [
     IonCard,
-    IonItem,
-    IonIcon,
-    IonLabel,
-    RouterLink,
     DatatugAuthMenuItemComponent,
     DatatugCoreModule,
     DatatugServicesStoreModule,
@@ -65,42 +56,30 @@ export class DatatugMenuComponent implements OnDestroy {
   private readonly analytics = inject(AnalyticsService, { optional: true });
   // Resolved once at bootstrap (or overridden directly in a test — see
   // `PRODUCT_PROFILE`'s own doc comment) and read here only for its
-  // declarative `showIncidentsMenuItem` field — never branched on by
-  // identity (REQ:profile-config-is-declarative). Fixed `true` for
-  // `datatug` (founder, 2026-09-11, verbatim: "DataTug app should always
-  // have Incidents menu item in side menu.") — present with or without a
-  // project open, no feature flag or project setting removes it.
+  // declarative `showPoweredByDalgo` field — never branched on by identity
+  // (REQ:profile-config-is-declarative).
   protected readonly profile = inject(PRODUCT_PROFILE);
 
   protected readonly isLoginPage = signal(false);
+  // On the home page the selector/Incidents/version blocks are redundant
+  // with main content (UX brief §2) — the panel keeps only project context
+  // and the auth card once signed in.
+  protected readonly isHomePage = signal(false);
   protected readonly currentStoreId = signal<string | undefined>(undefined);
   protected readonly currentProject = signal<IProjectContext | undefined>(
     undefined,
   );
-  protected readonly currentEnvironment = signal<IEnvContext | undefined>(
-    undefined,
-  );
-  protected readonly incidentQueryParams = computed(() => {
-    const agentStoreId = this.currentStoreId();
-    const project = this.currentProject()?.ref.projectId;
-    const environment = this.currentEnvironment()?.id;
-    if (!agentStoreId || !project || !environment) {
-      return undefined;
-    }
-    return incidentContextQueryParams({
-      agentStoreId,
-      scope: {
-        // The local MVP defaults incident storage to the active project's
-        // own repository; the server returns the qualified store ID for all
-        // subsequent links.
-        storeId: project,
-        project,
-        environment,
-      },
-    });
-  });
   protected readonly datatugUserState = signal<IDatatugUserState | undefined>(
     undefined,
+  );
+  // Signed-out home: the app header owns "Sign in", so the panel card is
+  // hidden while auth is still settling too (avoids a flash-then-hide).
+  protected readonly showAuthCard = computed(
+    () =>
+      !this.isLoginPage() &&
+      !(
+        this.isHomePage() && this.datatugUserState()?.status !== 'authenticated'
+      ),
   );
 
   public table?: IEnvDbTableContext;
@@ -110,22 +89,19 @@ export class DatatugMenuComponent implements OnDestroy {
     const errorLogger = this.errorLogger;
     const datatugNavContextService = this.datatugNavContextService;
 
-    this.setIsLoginPage(this.isLoginUrl(this.router.url));
+    this.setRouteState(this.router.url);
     this.router.events
       .pipe(
         filter((e): e is NavigationEnd => e instanceof NavigationEnd),
         takeUntil(this.destroyed),
       )
-      .subscribe((e) =>
-        this.setIsLoginPage(this.isLoginUrl(e.urlAfterRedirects)),
-      );
+      .subscribe((e) => this.setRouteState(e.urlAfterRedirects));
 
     try {
       this.trackCurrentUser();
       if (datatugNavContextService) {
         this.trackCurrentStore();
         this.trackCurrentProject();
-        this.trackCurrentEnvironment();
         this.trackCurrentEnvDbTable();
       } else {
         console.error('datatugNavContextService is not injected');
@@ -139,7 +115,21 @@ export class DatatugMenuComponent implements OnDestroy {
     return url.split(/[?#]/)[0] === '/login';
   }
 
-  private setIsLoginPage(isLoginPage: boolean): void {
+  // The profile's start page, read declaratively (ProductProfile.homePath +
+  // profile-home-redirect.guard); the '/' redirect pass-through is excluded.
+  private isHomeUrl(url: string): boolean {
+    // Only landing-style profiles drop the redundant panel blocks on their
+    // start page (see ProductProfile.minimalSignedOutHome); other profiles'
+    // start pages are ordinary app screens and keep the full panel.
+    if (this.profile.minimalSignedOutHome !== true) {
+      return false;
+    }
+    return url.split(/[?#]/)[0] === `/${this.profile.homePath}`;
+  }
+
+  private setRouteState(url: string): void {
+    const isLoginPage = this.isLoginUrl(url);
+    this.isHomePage.set(this.isHomeUrl(url));
     const enteredLoginPage = isLoginPage && !this.isLoginPage();
     this.isLoginPage.set(isLoginPage);
     if (enteredLoginPage && this.analytics) {
@@ -224,16 +214,6 @@ export class DatatugMenuComponent implements OnDestroy {
   protected onProjectChanged = (project?: IProjectContext) => {
     this.currentProject.set(project);
   };
-
-  private trackCurrentEnvironment(): void {
-    this.datatugNavContextService.currentEnv
-      .pipe(takeUntil(this.destroyed))
-      .subscribe({
-        next: (environment) => this.currentEnvironment.set(environment),
-        error: (err) =>
-          this.errorLogger.logError(err, 'Failed to get current environment'),
-      });
-  }
 
   private trackCurrentEnvDbTable(): void {
     this.datatugNavContextService.currentEnvDbTable

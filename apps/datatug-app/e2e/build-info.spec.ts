@@ -1,8 +1,10 @@
 import { expect, test } from '@playwright/test';
 
-// Smoke test for the side-menu build-info footer — the shared
-// @sneat/components AppVersionComponent (<sneat-app-version />,
-// datatug-menu.component.html), fed this app's own stamped build info via
+// Smoke test for the build-info footer — the shared
+// @sneat/components AppVersionComponent; on /home it lives in the main-
+// content footer (UX brief §14; datatug-home-page.component.html), off home
+// in the side panel (datatug-menu.component.html) — fed this app's own stamped
+// build info via
 // the shared @sneat/core-public runtime contract (provideBuildInfo() in
 // apps/datatug-app/src/main.ts) — see apps/datatug-app/README.md "Build
 // info". Runs against the shared dev server like every other spec in this
@@ -23,7 +25,7 @@ import { expect, test } from '@playwright/test';
 // `build-info-version` / `build-info-hash` test ids the previous local
 // MenuBuildInfoComponent used.
 
-test('side menu shows a real (non-placeholder) short git hash once expanded', async ({
+test('the footer shows a real (non-placeholder) short git hash once expanded', async ({
   page,
 }) => {
   await page.goto('/');
