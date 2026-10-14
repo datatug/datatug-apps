@@ -186,7 +186,7 @@ test('column meaning saves a complete personal copy, stays visible and survives 
   await (
     await modelDownloadPromise
   ).saveAs('coverage/apps/datatug-app-e2e/query.modelspec.json');
-  const exported = JSON.parse(await readFile((await download.path())!, 'utf8'));
+  const exported = JSON.parse(await readFile('coverage/apps/datatug-app-e2e/query.meaning.json', 'utf8'));
   expect(exported.format).toBe('meaning/draft-2');
   expect(
     exported.concepts.find(
