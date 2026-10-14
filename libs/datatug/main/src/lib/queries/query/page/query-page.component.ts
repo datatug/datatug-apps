@@ -28,6 +28,7 @@ import {
   type TugQLDiagnostic,
   type TugQLFormatOptions,
 } from '@dalgo/core';
+import { parseDocument as parseYamlDocument } from 'yaml';
 import { NgTemplateOutlet } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { PublicDataService } from '../../public-data/public-data.service';
@@ -46,6 +47,7 @@ import {
   afterNextRender,
   ElementRef,
   Injector,
+  HostListener,
   ChangeDetectorRef,
   Component,
   OnDestroy,
@@ -86,6 +88,8 @@ const isGithubStoreId = (storeId?: string): boolean =>
 
 const isBrowserSqlProject = (ref?: IProjectRef): boolean =>
   !!ref && (isGithubStoreId(ref.storeId) || isSharedProjectRef(ref));
+
+type WorkspaceTab = 'compose' | 'tugql' | 'preview' | 'sql' | 'dtql' | 'parameters' | 'sources' | 'related';
 
 const hasQueryActivity = (ref?: IProjectRef): boolean =>
   !!ref &&
@@ -205,6 +209,36 @@ interface CommittedQueryDefinition {
   };
   readonly nativeGraph?: NonNullable<IQueryDef['federation']>['nativeGraph'];
 }
+
+/** A saved DTQL body is legacy only when its source positively names a YAML or
+ * JSON query document. TugQL diagnostics are never evidence of a format switch. */
+const isLegacyDtqlSource = (source: string): boolean => {
+  const normalized = source.replace(/^\uFEFF/u, '');
+  const firstLine = normalized.split(/\r?\n/u)
+    .find((line) => line.trim() && !line.trimStart().startsWith('#') &&
+      !/^(?:---|\.\.\.)(?:\s|$)/u.test(line.trimStart()) &&
+      !/^%(?:YAML|TAG)\b/u.test(line.trimStart()))
+    ?.trimStart() ?? '';
+  // All root keys accepted by @dalgo/core's DTQL document model. A known
+  // mapping key keeps an incomplete YAML draft in its original editor.
+  if (/^(?:from|where|orderBy|limit|offset|columns|groupBy|having|money):(?:\s|$)/u.test(firstLine))
+    return true;
+  try {
+    // The actual YAML reader also accepts JSON and flow mappings. This only
+    // identifies the saved source format; query validity remains the engine's job.
+    const parsed = parseYamlDocument(normalized, {
+      prettyErrors: false,
+      strict: true,
+      uniqueKeys: true,
+    });
+    if (parsed.errors.length) return false;
+    const document: unknown = parsed.toJS();
+    return !!document && typeof document === 'object' && !Array.isArray(document) &&
+      Object.hasOwn(document, 'from');
+  } catch {
+    return false;
+  }
+};
 
 type CommittedQueryResult = Omit<FederatedQueryResult, 'bindingsApplied'> & {
   readonly bindingsApplied: readonly {
@@ -342,6 +376,7 @@ import {
   BindingParameterRef,
   CandidateTarget,
   displayTypedValue,
+  decodeTypedValue,
   ExecutionBindingOrigin,
   Fact,
   hasBlockingBindings,
@@ -376,7 +411,7 @@ import {
   IEnvDbServer,
   IEnvironmentSummary,
 } from '../../../models/definition/environments';
-import { IParameter } from '../../../models/definition/parameter';
+import { IParameter, IParameterDef } from '../../../models/definition/parameter';
 import {
   IQueryDef,
   ISqlQueryRequest,
@@ -457,7 +492,7 @@ import { AuthorRelationshipSourcesComponent } from './author-relationship-source
 import { AuthorParticipatingSourcesComponent } from './author-participating-sources.component';
 import { AuthorCurrentRowComponent } from './author-current-row.component';
 import { useInvoiceIdAsAuthorFilter } from './author-row-filter-edit';
-import { readAuthorComposeProfile } from './author-compose-profile';
+import { transferSqlToTugql } from './sql-tugql-transfer';
 import {
   customerIdLookupValue,
   hasVerifiedCustomerIdLineage,
@@ -825,6 +860,19 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   @ViewChild(AuthorCodeEditorComponent)
   private authorCodeEditor?: AuthorCodeEditorComponent;
 
+  private workspaceTabBar?: ElementRef<HTMLElement>;
+  private workspaceTabResizeObserver?: ResizeObserver;
+  private workspaceTabRevealFrame?: number;
+
+  @ViewChild('workspaceTabBar', { read: ElementRef })
+  private set workspaceTabBarRef(ref: ElementRef<HTMLElement> | undefined) {
+    this.workspaceTabResizeObserver?.disconnect();
+    this.workspaceTabBar = ref;
+    if (!ref || typeof ResizeObserver === 'undefined') return;
+    this.workspaceTabResizeObserver = new ResizeObserver(() => this.scheduleWorkspaceTabReveal());
+    this.workspaceTabResizeObserver.observe(ref.nativeElement);
+  }
+
   public project?: IProjectContext;
   private navigationDraft?: { ref: IProjectRef; query: IQueryDef };
   private authorPreviewLifetime = 0;
@@ -844,6 +892,22 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly authorMode = signal<'compose' | 'code' | 'preview'>(
     'compose',
   );
+  public readonly workspaceTab = signal<WorkspaceTab>('tugql');
+  private readonly loadedTextRepresentation = signal<
+    { readonly scope: string; readonly kind: 'tugql' | 'dtql' } | undefined
+  >(undefined);
+  public readonly isNativeDtqlWorkspace = computed(() =>
+    this.queryDef()?.request.queryType === QueryType.DTQL &&
+    this.loadedTextRepresentation()?.kind === 'dtql',
+  );
+  public readonly isTextQueryWorkspace = computed(() => {
+    const type = this.queryDef()?.request.queryType;
+    return type === QueryType.SQL || type === QueryType.DTQL || type === QueryType.TugQL;
+  });
+  public readonly isNativeSqlWorkspace = computed(() =>
+    this.queryDef()?.request.queryType === QueryType.SQL,
+  );
+  public readonly sqlTugqlTransfer = computed(() => transferSqlToTugql(this.queryDef()));
   private readonly authorFormatUndo = signal<AuthorFormatUndo | undefined>(
     undefined,
   );
@@ -1137,6 +1201,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     () => this.authorCustomerId().trim().length === 0,
   );
   public readonly authorHasCustomerIdParameter = computed(() => {
+    if (this.isNativeDtqlWorkspace()) return false;
     const source = this.queryBodyText();
     if (!source) return false;
     const parsed = parseTugQL(source);
@@ -1148,6 +1213,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     return false;
   });
   public readonly authorParameterDeclarationCount = computed(() => {
+    if (this.isNativeSqlWorkspace() || this.isNativeDtqlWorkspace())
+      return this.queryDef()?.parameters?.length ?? 0;
     const source = this.queryBodyText();
     if (!source) return undefined;
     const parsed = parseTugQL(source);
@@ -1165,6 +1232,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     inspectAuthorParticipatingSources(this.queryBodyText() ?? ''),
   );
   public authorRelatedSourceCount(): number | undefined {
+    if (!this.isTugqlAuthorJourney()) return undefined;
     const metadata = this.authorSourceMetadata();
     const inventory = this.authorParticipatingSourceInventory();
     if (!metadata || !inventory.available) return undefined;
@@ -1192,6 +1260,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     return inventory.customerJoined ? 0 : 1;
   }
   public authorSourceOccurrenceCount(): number | undefined {
+    if (this.isNativeDtqlWorkspace()) return undefined;
+    if (this.isNativeSqlWorkspace()) {
+      const transfer = this.sqlTugqlTransfer();
+      return transfer.supported ? transfer.sourceCount : undefined;
+    }
     const inventory = this.authorParticipatingSourceInventory();
     return inventory.available ? inventory.sources.length : undefined;
   }
@@ -1213,13 +1286,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       ? 'Related source count unavailable'
       : `${count} available related source${count === 1 ? '' : 's'}`;
   }
-  public readonly authorContextTab = signal<
-    'parameters' | 'sources' | 'related' | undefined
-  >(undefined);
   public readonly activeAuthorContextTab = computed(
-    () =>
-      this.authorContextTab() ??
-      (this.authorHasCustomerIdParameter() ? 'parameters' : 'related'),
+    () => {
+      const tab = this.workspaceTab();
+      return tab === 'parameters' || tab === 'sources' || tab === 'related'
+        ? tab
+        : undefined;
+    },
   );
   public readonly authorResultSnapshotKey = computed(() => {
     const result = this.runResult();
@@ -1340,7 +1413,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly isTugqlAuthorJourney = computed(
     () =>
       this.queryDef()?.connectionId === 'chinook-sqlite' &&
-      this.queryDef()?.request.queryType === QueryType.DTQL,
+      this.queryDef()?.request.queryType === QueryType.DTQL &&
+      !this.isNativeDtqlWorkspace(),
   );
 
   public parameters?: IParameter[];
@@ -1526,6 +1600,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private readonly userBindingValues = signal<ReadonlyMap<string, TypedValue>>(
     new Map(),
   );
+  private readonly nativeParameterDrafts = signal<ReadonlyMap<string, string>>(new Map());
+  private readonly nativeParameterErrors = signal<ReadonlyMap<string, string>>(new Map());
   private readonly selectedContextFactKeys = signal<
     ReadonlyMap<string, string>
   >(new Map());
@@ -1565,7 +1641,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
    * required value — Run must be disabled and the reason shown (REQ:no-hidden-filters,
    * AC:typed-context-isolation "conflict blocks an unconfirmed run"). */
   public readonly hasBlockedBindings = computed(() =>
-    hasBlockingBindings(this.bindings()),
+    hasBlockingBindings(this.bindings()) || this.nativeParameterErrors().size > 0,
   );
   public readonly running = signal(false);
   public readonly federatedProgress = signal<
@@ -2077,6 +2153,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       status('This row changed. Select a current result row and try again.');
       return;
     }
+    if (!this.isTugqlAuthorJourney()) {
+      status('Use as filter requires verified InvoiceId lineage from a supported TugQL run. Edit the original source to filter this query.');
+      return;
+    }
     const receipt = selected.result.publicSqliteReceipt;
     const output = receipt?.outputColumns?.[action.index];
     const column = selected.recordset.columns[action.index];
@@ -2143,8 +2223,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         scopeKey: current.scopeKey,
         queryIdentity: current.queryIdentity,
       });
-    this.authorModeExplicit = true;
-    this.authorMode.set('code');
+    this.setAuthorMode('code');
     this.authorFormatStatus.set('InvoiceId filter added. Undo available.');
     status(`InvoiceId ${value.value} added to TugQL Query. Undo available.`);
     if (this.authorRowDetailsOpen()) {
@@ -3126,6 +3205,53 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     );
   }
 
+  private revealWorkspaceTab(tab: WorkspaceTab): void {
+    const segment = this.workspaceTabBar?.nativeElement;
+    if (!segment?.isConnected || segment.getBoundingClientRect().width === 0) return;
+    const button = segment.querySelector<HTMLElement>(`ion-segment-button[value="${tab}"]`);
+    if (!button || segment.scrollWidth <= segment.clientWidth) return;
+    const viewport = segment.getBoundingClientRect();
+    const selected = button.getBoundingClientRect();
+    const delta = selected.left < viewport.left
+      ? selected.left - viewport.left
+      : selected.right > viewport.right
+        ? selected.right - viewport.right
+        : 0;
+    if (Math.abs(delta) > 1)
+      segment.scrollTo({ left: segment.scrollLeft + delta, behavior: 'instant' });
+  }
+
+  private scheduleWorkspaceTabReveal(): void {
+    if (this.workspaceTabRevealFrame !== undefined)
+      cancelAnimationFrame(this.workspaceTabRevealFrame);
+    this.workspaceTabRevealFrame = requestAnimationFrame(() => {
+      this.workspaceTabRevealFrame = requestAnimationFrame(() => {
+        this.workspaceTabRevealFrame = undefined;
+        this.revealWorkspaceTab(this.workspaceTab());
+      });
+    });
+  }
+
+  @HostListener('window:resize')
+  public onWorkspaceWindowResize(): void {
+    // Ionic can relayout its scrollable segment after the host's observer has
+    // run. A viewport resize also reveals the selected tab after that reflow.
+    this.scheduleWorkspaceTabReveal();
+  }
+
+  private selectWorkspaceTab(tab: WorkspaceTab): void {
+    const previous = this.workspaceTab();
+    if ((previous === 'sources' || previous === 'related') &&
+      tab !== 'sources' && tab !== 'related')
+      this.authorSourcesToggled(false);
+    this.workspaceTab.set(tab);
+    this.changeDetector.markForCheck();
+    afterNextRender(() => {
+      if (this.workspaceTab() !== tab) return;
+      this.revealWorkspaceTab(tab);
+    }, { injector: this.injector });
+  }
+
   public setAuthorMode(mode: 'compose' | 'code' | 'preview'): void {
     if (mode !== 'compose' && mode !== 'code' && mode !== 'preview') return;
     if (mode !== 'code') {
@@ -3134,23 +3260,36 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     }
     this.authorModeExplicit = true;
     this.authorMode.set(mode);
+    this.selectWorkspaceTab(mode === 'code' ? 'tugql' : mode);
+  }
+
+  public setWorkspaceTab(value: unknown): void {
+    if (value === 'compose' || value === 'tugql' || value === 'preview') {
+      if (this.isTugqlAuthorJourney()) this.setAuthorMode(value === 'tugql' ? 'code' : value);
+      else this.selectWorkspaceTab(value);
+      return;
+    }
+    if (value === 'sql' && this.isNativeSqlWorkspace()) {
+      this.selectWorkspaceTab('sql');
+      return;
+    }
+    if (value === 'dtql' && this.isNativeDtqlWorkspace()) {
+      this.selectWorkspaceTab('dtql');
+      return;
+    }
+    this.authorContextTabChanged(value);
   }
 
   public authorContextTabChanged(value: unknown): void {
     if (value !== 'parameters' && value !== 'sources' && value !== 'related')
       return;
-    const wasDiscovering =
-      this.activeAuthorContextTab() === 'sources' ||
-      this.activeAuthorContextTab() === 'related';
-    this.authorContextTab.set(value);
-    const isDiscovering = value === 'sources' || value === 'related';
-    if (wasDiscovering && !isDiscovering) this.authorSourcesToggled(false);
+    this.selectWorkspaceTab(value);
   }
 
   public authorResultSelectionChanged(
     event: SelectionChangedEvent<QueryResultGridRow>,
   ): void {
-    if (!this.isTugqlAuthorJourney()) return;
+    if (!this.isTextQueryWorkspace()) return;
     this.authorResultGridApi = event.api;
     const row = event.selectedNodes?.find((node) => node.isSelected())?.data;
     this.setAuthorResultRow(row);
@@ -3159,7 +3298,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public authorResultCellFocused(
     event: CellFocusedEvent<QueryResultGridRow>,
   ): void {
-    if (!this.isTugqlAuthorJourney() || event.rowIndex === null) return;
+    if (!this.isTextQueryWorkspace() || event.rowIndex === null) return;
     this.authorResultGridApi = event.api;
     const node = event.api.getDisplayedRowAtIndex(event.rowIndex);
     const row = node?.data;
@@ -3180,7 +3319,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public authorResultRowClicked(
     event: RowClickedEvent<QueryResultGridRow>,
   ): void {
-    if (!this.isTugqlAuthorJourney()) return;
+    if (!this.isTextQueryWorkspace()) return;
     this.authorResultGridApi = event.api;
     this.setAuthorResultRow(event.data);
   }
@@ -3615,6 +3754,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.authorSourceMetadataIdentity = undefined;
       this.authorModeExplicit = true;
       this.authorMode.set('code');
+      this.selectWorkspaceTab('tugql');
       this.authorSourceMessage.set(
         'Removed the Customer JOIN and its dependent outputs locally. Prior results are retained; Preview SQL and Run remain explicit.',
       );
@@ -3756,12 +3896,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.queryState = nextState;
       this.queryDef.set(updatedDefinition);
       this.queryEditorStateService.updateQueryState(nextState);
-      this.refreshAuthorSourcesIfVisible();
       this.authorSourceReview.set(undefined);
       this.authorSourceReviewGeneration++;
       this.authorSourceReviewContext = undefined;
       this.authorModeExplicit = true;
       this.authorMode.set('code');
+      this.selectWorkspaceTab('tugql');
+      this.authorSourceMessage.set('');
       this.authorFormatStatus.set(
         selectedFields.length
           ? `Applied the admitted join with ${selectedFields.join(', ')} outputs. The prior result is retained; Preview SQL before Run.`
@@ -3857,7 +3998,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public canNavigateToAuthorPreviewSyntaxDiagnostic(): boolean {
     const snapshot = this.previewDiagnosticNavigationSnapshot();
     if (!this.isCurrentAuthorPreviewDiagnosticSnapshot(snapshot)) return false;
-    if (this.authorMode() !== 'code') return true;
+    if (this.workspaceTab() !== 'tugql') return true;
     return !!this.authorCodeEditor?.isFormatDiagnosticNavigable(
       snapshot.source,
       snapshot.diagnostic.span,
@@ -3872,11 +4013,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     )
       return;
 
-    if (this.authorMode() !== 'code') {
+    if (this.workspaceTab() !== 'tugql') {
       const generation = ++this.previewDiagnosticNavigationGeneration;
       this.pendingPreviewDiagnosticNavigation = { generation, snapshot };
-      this.authorModeExplicit = true;
-      this.authorMode.set('code');
+      this.setAuthorMode('code');
       this.changeDetector.markForCheck();
       afterNextRender(
         () => this.consumePendingPreviewDiagnosticNavigation(generation),
@@ -4141,6 +4281,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       // A target change starts in the conservative editor until its definition
       // has arrived and the visual profile can be checked.
       this.authorMode.set('code');
+      this.selectWorkspaceTab(definition?.request.queryType === QueryType.SQL ? 'sql' : this.isNativeDtqlWorkspace() ? 'dtql' : 'tugql');
     }
     if (
       resolveDefault &&
@@ -4148,15 +4289,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       !this.authorModeDefaultResolved &&
       !this.authorModeExplicit
     ) {
-      const request = definition.request;
-      this.authorMode.set(
-        definition.connectionId === 'chinook-sqlite' &&
-          request?.queryType === QueryType.DTQL &&
-          readAuthorComposeProfile((request as ITextQueryRequest).text ?? '')
-            .supported
-          ? 'compose'
-          : 'code',
-      );
+      this.authorMode.set('code');
+      this.selectWorkspaceTab(definition.request.queryType === QueryType.SQL ? 'sql' : this.isNativeDtqlWorkspace() ? 'dtql' : 'tugql');
       this.authorModeDefaultResolved = true;
     }
   }
@@ -4607,7 +4741,6 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.authorDraftRevision() === revision &&
       this.historyScope() === scopeSnapshot &&
       this.queryId === queryIdSnapshot &&
-      this.queryDef() === definition &&
       JSON.stringify(this.queryDef()) === definitionSnapshot &&
       JSON.stringify(this.project?.ref) === projectSnapshot &&
       this.agentContext.securityContextId() === securityContextIdSnapshot &&
@@ -4673,7 +4806,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
             );
             return;
           }
-          this.authorMode.set('code');
+          this.setAuthorMode('code');
           this.queryTextChanged(
             new CustomEvent('ionInput', {
               detail: { value: plan.expandedSource },
@@ -5000,6 +5133,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     try {
       this.editorState = editorState;
       if (!editorState?.currentQueryId) {
+        this.loadedTextRepresentation.set(undefined);
         this.queryPageTitle.set('Query');
         this.customerInvoiceExample.set(false);
         if (this.queryId) {
@@ -5026,6 +5160,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         this.queryPageTitle.set('Query');
         return;
       }
+      // The editor service emits a loading placeholder before a same-ID saved
+      // reload. Its next definition is a new source-format decision, while
+      // ordinary draft emissions keep the original representation pinned.
+      if (queryState.isLoading && !queryState.def)
+        this.loadedTextRepresentation.set(undefined);
       const structuralDraft = this.authorSavedDefinition();
       if (
         structuralDraft &&
@@ -5070,7 +5209,6 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         this.semanticSaving.set(false);
         this.semanticDialog.set(undefined);
         this.authorRunParameterAttempt.set(undefined);
-        this.authorContextTab.set(undefined);
         this.authorSourcesToggled(false);
         this.selectedAuthorResultRow.set(undefined);
       }
@@ -5088,6 +5226,25 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
                 : queryState.def.connectionId,
           }
         : undefined;
+      const representationScope = JSON.stringify([this.project?.ref, queryState.id]);
+      if (effectiveDefinition && this.loadedTextRepresentation()?.scope !== representationScope) {
+        this.nativeParameterDrafts.set(new Map());
+        this.nativeParameterErrors.set(new Map());
+        this.userBindingValues.set(new Map());
+        this.clearedParamIds.set(new Set());
+        this.selectedContextFactKeys.set(new Map());
+        this.confirmedConflicts.set(new Map());
+        this.bindingSnapshotKey = '';
+        const original = (queryState.def?.request as ITextQueryRequest | undefined)?.text ?? '';
+        const legacyDtql = effectiveDefinition.request.queryType === QueryType.DTQL &&
+          isLegacyDtqlSource(original);
+        this.loadedTextRepresentation.set({
+          scope: representationScope,
+          kind: legacyDtql ? 'dtql' : 'tugql',
+        });
+        this.selectWorkspaceTab(effectiveDefinition.request.queryType === QueryType.SQL
+          ? 'sql' : legacyDtql ? 'dtql' : 'tugql');
+      }
       const nextPlanIdentity = graphStableIdentity(
         effectiveDefinition?.federation?.nativeGraph,
       );
@@ -5188,6 +5345,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   };
 
   ngOnDestroy(): void {
+    this.workspaceTabResizeObserver?.disconnect();
+    if (this.workspaceTabRevealFrame !== undefined)
+      cancelAnimationFrame(this.workspaceTabRevealFrame);
     this.invalidateSemanticMapping();
     this.authorViewActive = false;
     ++this.authorRowDetailsFocusGeneration;
@@ -5319,7 +5479,6 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           this.agentRunEnvironments.set([]);
           this.agentRunEnvironmentsError.set('');
           this.agentSelectedEnvironment.set('');
-          this.authorContextTab.set(undefined);
           this.authorSourcesToggled(false);
           this.selectedAuthorResultRow.set(undefined);
           this.sharedQuerySaveAllowed.set(false);
@@ -5971,7 +6130,6 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private updateBindings(explicitlyResolvedParameterId?: string): void {
     const parameterDefs = this.queryState.def?.parameters || [];
     const parameters: BindingParameterRef[] = parameterDefs
-      .filter((p) => !!p.meta)
       .map((p) => ({ id: p.id, meta: p.meta, required: p.isRequired }));
     if (!parameters.length) {
       this.bindings.set([]);
@@ -6208,6 +6366,64 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.updateBindings(parameterId);
   }
 
+  public nativeParameterValue(parameterId: string): string {
+    const draft = this.nativeParameterDrafts().get(parameterId);
+    if (draft !== undefined) return draft;
+    const value = this.bindings().find((binding) => binding.parameterId === parameterId)?.value;
+    return value === undefined ? '' : String(value.value);
+  }
+
+  public nativeParameterBinding(parameterId: string): ResolvedBinding | undefined {
+    return this.bindings().find((binding) => binding.parameterId === parameterId);
+  }
+
+  public nativeParameterError(parameterId: string): string | undefined {
+    return this.nativeParameterErrors().get(parameterId);
+  }
+
+  public nativeParameterInputKind(parameter: IParameterDef): 'text' | 'decimal' | 'numeric' {
+    return parameter.type === 'integer' ? 'numeric' :
+      ['number', 'float', 'decimal', 'money'].includes(parameter.type) ? 'decimal' : 'text';
+  }
+
+  public nativeParameterSupported(parameter: IParameterDef): boolean {
+    return parameter.type !== 'binary' && !parameter.isMultiValue;
+  }
+
+  public clearNativeParameter(parameterId: string): void {
+    this.nativeParameterDrafts.set(new Map(this.nativeParameterDrafts()).set(parameterId, ''));
+    this.nativeParameterErrors.set(new Map([...this.nativeParameterErrors()].filter(([id]) => id !== parameterId)));
+    this.clearBinding(parameterId);
+  }
+
+  public setNativeParameterInput(parameter: IParameterDef, input: string | null | undefined): void {
+    const raw = input ?? '';
+    this.nativeParameterDrafts.set(new Map(this.nativeParameterDrafts()).set(parameter.id, raw));
+    if (!raw.length) {
+      this.clearNativeParameter(parameter.id);
+      return;
+    }
+    const kind = parameter.type === 'integer' ? 'integer' :
+      parameter.type === 'decimal' || parameter.type === 'money' ? 'decimal' :
+      parameter.type === 'number' || parameter.type === 'float' ? 'number' :
+      parameter.type === 'boolean' || parameter.type === 'bit' ? 'boolean' :
+      parameter.type === 'date' ? 'date' :
+      parameter.type === 'datetime' ? 'datetime' :
+      ['string', 'text', 'UUID', 'GUID'].includes(parameter.type) ? 'string' : undefined;
+    try {
+      if (!kind || parameter.isMultiValue) throw new Error('This parameter type needs a supported editor.');
+      const candidate = { type: kind, value: kind === 'number' ? Number(raw) : kind === 'boolean' ? raw === 'true' ? true : raw === 'false' ? false : raw : raw };
+      const value = decodeTypedValue(candidate);
+      if (value.type === 'integer' && !Number.isSafeInteger(Number(value.value)))
+        throw new Error('This integer cannot be represented losslessly by SQL.');
+      this.nativeParameterErrors.set(new Map([...this.nativeParameterErrors()].filter(([id]) => id !== parameter.id)));
+      this.editBinding(parameter.id, value);
+    } catch {
+      this.clearBinding(parameter.id);
+      this.nativeParameterErrors.set(new Map(this.nativeParameterErrors()).set(parameter.id, `Enter a valid ${parameter.type} value before running.`));
+    }
+  }
+
   public chooseContextCohort(parameterId: string, factKey: string): void {
     this.dismissedRebinds.delete(parameterId);
     this.clearedParamIds.set(
@@ -6406,6 +6622,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.queryDef()?.connectionId,
       this.selectedSource(),
       this.envId,
+      this.effectiveBindings().map((binding) => [
+        binding.parameterId,
+        binding.value,
+        binding.origin,
+        binding.factId,
+      ]),
     ]);
   }
 
@@ -7000,6 +7222,16 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       return;
     }
     this.authorRunParameterAttempt.set(undefined);
+    if (this.nativeParameterErrors().size) {
+      this.runError.set('Correct or clear invalid parameter values before Run.');
+      return;
+    }
+    // The bounded TugQL runner validates its own CustomerId input below;
+    // generic saved-query bindings are not the inputs sent to that worker.
+    if (!this.isTugqlAuthorJourney() && this.hasBlockedBindings()) {
+      this.runError.set('Resolve every ambiguous, conflicting or required parameter before Run.');
+      return;
+    }
     const runRequestedAt = monotonicTime();
     const projectRef = this.project?.ref;
     const projectId = projectRef?.projectId;
@@ -7030,8 +7262,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     }
     if (
       isGithubStoreId(this.project?.ref.storeId) &&
-      definition?.connectionId === 'chinook-sqlite' &&
-      definition.request.queryType === QueryType.DTQL
+      definition &&
+      this.isTugqlAuthorJourney()
     ) {
       if (this.running()) return;
       if (!this.authorCustomerIdValid()) {
@@ -7121,28 +7353,66 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       definition.request.queryType === QueryType.SQL
     ) {
       if (this.running()) return;
+      const declared = definition.parameters ?? [];
+      const effective = this.effectiveBindings();
+      const exactBindings = declared.map((parameter) =>
+        effective.find((binding) => binding.parameterId === parameter.id)?.value,
+      );
+      if (declared.length && (exactBindings.some((value) => value === undefined) || effective.length !== declared.length)) {
+        this.runError.set('This browser SQLite source requires a value for every declared parameter. Set each value before Run, or use an agent target that supports optional SQL inputs.');
+        return;
+      }
+      const parameterValues: Record<string, TypedValue> = Object.fromEntries(
+        declared.map((parameter, index) => [parameter.id, structuredClone(exactBindings[index] as TypedValue)]),
+      );
+      // The browser worker reports the executed rows, but its generic SQL envelope
+      // does not echo bindings. Retain the exact validated inputs dispatched with
+      // this request as client-reported facts for the result header and prior run.
+      const dispatched: Binding[] = [];
+      for (const parameter of declared) {
+        const binding = effective.find((candidate) => candidate.parameterId === parameter.id);
+        if (!binding) {
+          this.runError.set('This browser SQLite source requires a value for every declared parameter.');
+          return;
+        }
+        dispatched.push({
+          parameterId: parameter.id,
+          value: parameterValues[parameter.id],
+          origin: binding.origin === 'user' ? 'manual' : (binding.origin ?? 'default'),
+          originEvidence: 'client-reported' as const,
+          ...(binding.factId ? { factId: binding.factId } : {}),
+        });
+      }
+      const dispatchedBindings: readonly Binding[] = cloneAndFreeze(dispatched);
       const runScope = this.historyScope();
       const executedDefinition = structuredClone(definition);
+      const executedBindings = JSON.stringify(effective);
       const lifetime = ++this.federatedRunLifetime;
       const current = (): boolean =>
         lifetime === this.federatedRunLifetime &&
         this.historyScope() === runScope &&
-        JSON.stringify(this.queryDef()) === JSON.stringify(executedDefinition);
+        JSON.stringify(this.queryDef()) === JSON.stringify(executedDefinition) &&
+        JSON.stringify(this.effectiveBindings()) === executedBindings;
       this.running.set(true);
       this.runError.set(undefined);
-      void this.publicSqliteQuery
-        .run(projectRef, executedDefinition, () =>
-          this.reportGitHubQueryDispatch(projectRef),
-        )
+      const onDispatched = () => this.reportGitHubQueryDispatch(projectRef);
+      void (declared.length
+        ? this.publicSqliteQuery.runParameterized(projectRef, executedDefinition, parameterValues, onDispatched)
+        : this.publicSqliteQuery.run(projectRef, executedDefinition, onDispatched))
         .then((result) => {
           if (!current()) return;
-          this.showAttemptResult(result);
+          const displayedResult = dispatchedBindings.length
+            ? { ...result, bindingsApplied: dispatchedBindings }
+            : result;
+          this.lastRunBindingRoles.set(new Map(effective.flatMap((binding) =>
+            binding.role ? [[binding.parameterId, binding.role] as const] : [])));
+          this.showAttemptResult(displayedResult);
           const timing: QueryRunTiming = {
             allResultsLoadedMs: Math.max(0, monotonicTime() - runRequestedAt),
             noRecords: result.recordset.rows.length === 0,
           };
           this.queryRunTiming.set(timing);
-          this.commitSuccessfulResult(result, executedDefinition, timing);
+          this.commitSuccessfulResult(displayedResult, executedDefinition, timing);
         })
         .catch((error: unknown) => {
           if (current()) {

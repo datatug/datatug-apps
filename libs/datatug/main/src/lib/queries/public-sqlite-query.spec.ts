@@ -454,6 +454,147 @@ it('runs typed SQL for a local project only after its local agent admits the exa
   }
 });
 
+it('executes the saved Albums SQL with exact named inputs through the real SQLite worker rules', async () => {
+  // Same SQL shape and placeholders as demo-project-1/queries/albums/albums_by_title.sql.
+  const albumsSql = `SELECT
+    al.AlbumId,
+    al.Title AS AlbumTitle,
+    ar.ArtistId,
+    ar.Name AS ArtistName,
+    (SELECT COUNT(1) FROM Track AS t WHERE t.AlbumId = al.AlbumId) AS TracksCount,
+    (SELECT COUNT(DISTINCT GenreId) FROM Track AS t WHERE t.AlbumId = al.AlbumId) AS GenresCount
+FROM Album AS al
+INNER JOIN Artist AS ar ON ar.ArtistId = al.ArtistId
+WHERE
+\tal.AlbumId = IFNULL(@AlbumId, al.AlbumId)
+AND al.ArtistId = IFNULL(@ArtistId, al.ArtistId)
+ORDER BY Title`;
+  const SQL = await initSqlJs();
+  const db = new SQL.Database();
+  db.run(`CREATE TABLE Album (AlbumId INTEGER, Title TEXT, ArtistId INTEGER);
+    CREATE TABLE Artist (ArtistId INTEGER, Name TEXT);
+    CREATE TABLE Track (TrackId INTEGER, AlbumId INTEGER, GenreId INTEGER);
+    INSERT INTO Artist VALUES (1, 'A');
+    INSERT INTO Album VALUES (1, 'First', 1), (2, 'Second', 1);
+    INSERT INTO Track VALUES (1, 1, 10), (2, 1, 10);`);
+  const fixture = db.export();
+  db.close();
+  const dispatched: { sql: string; bindings: readonly (string | number | null)[] }[] = [];
+  class ExecutingWorker {
+    public onmessage: ((event: MessageEvent) => void) | null = null;
+    public onerror: (() => void) | null = null;
+    public postMessage(message: { sql: string; bindings: readonly (string | number | null)[] }): void {
+      dispatched.push(message);
+      void executePinnedSql(message.sql, fixture, message.bindings)
+        .then((result) => this.onmessage?.({ data: { ok: true, result } } as MessageEvent))
+        .catch((error) => this.onmessage?.({ data: { ok: false, error: String(error) } } as MessageEvent));
+    }
+    public terminate(): void { /* owned by the service */ }
+  }
+  TestBed.configureTestingModule({
+    providers: [
+      PublicSqliteQueryService,
+      { provide: GithubProjectReaderService, useValue: { getRawJson: vi.fn() } },
+      { provide: ProjectQueryApiService, useValue: { connectionCatalog: vi.fn(() => of(catalog)) } },
+    ],
+  });
+  vi.stubGlobal('Worker', ExecutingWorker);
+  try {
+    const definition: IQueryDef = {
+      id: 'albums/albums_by_title', connectionId: 'chinook-sqlite',
+      parameters: [
+        { id: 'AlbumId', type: 'integer' },
+        { id: 'ArtistId', type: 'integer' },
+      ],
+      request: { queryType: QueryType.SQL, text: albumsSql } as ISqlQueryRequest,
+    };
+    const original = JSON.stringify(definition);
+    const result = await TestBed.inject(PublicSqliteQueryService).runParameterized(
+      { storeId: 'github.com', projectId: 'demo', projectApi: 'cloud' },
+      definition,
+      { AlbumId: { type: 'integer', value: '1' }, ArtistId: { type: 'integer', value: '1' } },
+    );
+    expect(result.recordset.rows).toHaveLength(1);
+    expect(result.recordset.rows[0]?.[0]).toEqual({ type: 'integer', value: '1' });
+    expect(dispatched).toHaveLength(1);
+    expect(dispatched[0].sql).toBe(albumsSql.replace('@AlbumId', '?').replace('@ArtistId', '?'));
+    expect(dispatched[0].bindings).toEqual([1, 1]);
+    expect(JSON.stringify(definition)).toBe(original);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+it('maps each named SQL occurrence by exact ID and refuses ambiguous placeholder shapes before dispatch', async () => {
+  const messages: unknown[] = [];
+  const catalogRead = vi.fn(() => of(catalog));
+  class AnsweringWorker {
+    public onmessage: ((event: MessageEvent) => void) | null = null;
+    public onerror: (() => void) | null = null;
+    public postMessage(message: unknown): void {
+      messages.push(message);
+      this.onmessage?.({ data: { ok: true, result: { columns: ['AlbumId'], rows: [[1]] } } } as MessageEvent);
+    }
+    public terminate(): void { /* owned by the service */ }
+  }
+  TestBed.configureTestingModule({
+    providers: [
+      PublicSqliteQueryService,
+      { provide: GithubProjectReaderService, useValue: { getRawJson: vi.fn() } },
+      { provide: ProjectQueryApiService, useValue: { connectionCatalog: catalogRead } },
+    ],
+  });
+  vi.stubGlobal('Worker', AnsweringWorker);
+  try {
+    const service = TestBed.inject(PublicSqliteQueryService);
+    const project: IProjectRef = { storeId: 'github.com', projectId: 'demo', projectApi: 'cloud' };
+    const definition = (sql: string): IQueryDef => ({
+      id: 'album-lookup', connectionId: 'chinook-sqlite',
+      // Deliberately opposite to SQL occurrence order.
+      parameters: [{ id: 'ArtistId', type: 'integer' }, { id: 'AlbumId', type: 'integer' }],
+      request: { queryType: QueryType.SQL, text: sql } as ISqlQueryRequest,
+    });
+    const values = { ArtistId: { type: 'integer', value: '-2' }, AlbumId: { type: 'integer', value: '0' } } as const;
+    const sql = `SELECT '@ArtistId', "@AlbumId", [@AlbumId], \`@ArtistId\`, AlbumId
+      FROM Album /* @ArtistId */ WHERE AlbumId = @AlbumId -- @ArtistId
+      AND ArtistId = :ArtistId OR AlbumId = $AlbumId`;
+    await service.runParameterized(project, definition(sql), values);
+    expect(messages).toEqual([{
+      sql: sql.replace('@AlbumId --', '? --').replace(':ArtistId OR', '? OR').replace('$AlbumId', '?'),
+      bindings: [0, -2, 0],
+    }]);
+    await service.runParameterized(project, definition('SELECT (@AlbumId), :ArtistId FROM Album'), values);
+    expect(messages[1]).toEqual({ sql: 'SELECT (?), ? FROM Album', bindings: [0, -2] });
+    await service.runParameterized(project, definition('SELECT AlbumId FROM Album$Archive WHERE AlbumId = @AlbumId AND ArtistId = @ArtistId'), values);
+    expect(messages[2]).toEqual({
+      sql: 'SELECT AlbumId FROM Album$Archive WHERE AlbumId = ? AND ArtistId = ?',
+      bindings: [0, -2],
+    });
+    const invalid = [
+      'SELECT @Missing FROM Album',
+      'SELECT @AlbumId, ? FROM Album',
+      'SELECT ?1 FROM Album',
+      'SELECT $AlbumId::suffix FROM Album',
+      'SELECT $AlbumId(1) FROM Album',
+      'SELECT @AlbumId\u0301, @ArtistId FROM Album',
+      'SELECT @AlbumId😀, @ArtistId FROM Album',
+      'SELECT @AlbumId$ArtistId FROM Album',
+      'SELECT @AlbumId FROM Album',
+      'SELECT ? FROM Album',
+      'SELECT ?, ?, ? FROM Album',
+      'SELECT AlbumId FROM Album',
+      "SELECT '@AlbumId FROM Album",
+      'SELECT AlbumId FROM Album /* @AlbumId',
+    ];
+    for (const source of invalid)
+      await expect(service.runParameterized(project, definition(source), values)).rejects.toThrow();
+    expect(messages).toHaveLength(3);
+    expect(catalogRead).toHaveBeenCalledTimes(3);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
 describe('bounded SQLite worker', () => {
   let fixture: Uint8Array;
   it('uses the app-copied SQL.js wasm asset for supplied comparison fixture bytes', () => {

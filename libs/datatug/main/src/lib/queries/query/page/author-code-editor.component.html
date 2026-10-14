@@ -1,3 +1,4 @@
+@if (visible() && language() === 'TugQL') {
 <ion-item class="author-code-header" lines="none">
   <ng-content select="[author-editor-tabs]" />
   @if (visible() && language() === 'TugQL' && canFormat()) {
@@ -38,6 +39,7 @@
     </ion-buttons>
   }
 </ion-item>
+}
 @if (visible() && language() === 'TugQL') {
   <ion-popover
     data-testid="author-code-tools-popover"
