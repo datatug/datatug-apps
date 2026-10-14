@@ -42,11 +42,11 @@ import {
   IDatatugUserState,
 } from '../../../services/base/datatug-user-service';
 
-// The demo project listed under the GitHub store: the root of datatug/chinook-demo (G-A1c; the home page's entry).
-const DEMO_PROJECT_ID = 'chinook-demo@datatug@';
-// What the "Open a GitHub project" form is pre-filled with (datatug/datatug-demo-projects, folder demo-project-1).
+// The one shared demo project listed under the GitHub store (G-A1c; the home page's entry).
+const DEMO_PROJECT_ID = 'datatug-demo-project@datatug@demo-project-1';
+// What the "Open a GitHub project" form is pre-filled with (datatug/datatug-demo-project, folder demo-project-1).
 const FORM_DEFAULT_PROJECT_ID =
-  'datatug-demo-projects@datatug@demo-project-1';
+  'datatug-demo-project@datatug@demo-project-1';
 
 // Real-template imports for the `describe('project list gating ...')` block
 // below, minus `DatatugServicesStoreModule` (the real component's own

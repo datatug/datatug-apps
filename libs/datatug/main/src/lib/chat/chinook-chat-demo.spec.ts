@@ -19,7 +19,7 @@ describe('the advertised Chinook demo Chat uses the real bundled fixture', () =>
   afterEach(() => vi.unstubAllGlobals());
 
   it('seeds all eleven tables for the canonical route and runs a deterministic bounded query', async () => {
-    const address = parseProjectUrl('/project/github.com/datatug/chinook-demo/chat');
+    const address = parseProjectUrl('/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat');
     if (!address.ok) throw new Error('The advertised demo route is invalid.');
     expect(address).toMatchObject(DEMO_PROJECT_REF);
     expect(fixture.version).toBe(CHINOOK_FIXTURE_VERSION);
@@ -54,6 +54,7 @@ describe('the advertised Chinook demo Chat uses the real bundled fixture', () =>
   });
 
   it.each([
+    ['github.com', 'chinook-demo@datatug@'],
     ['github.com', 'chinook-demo@other@'],
     ['github.com', 'chinook-demo@datatug@folder'],
     ['github.com', 'chinook-demo@datatug@@v1'],

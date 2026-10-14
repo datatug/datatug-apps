@@ -77,7 +77,7 @@
         } else if (!q) {
           return;
         } else if ((g ? g[1].indexOf('//') < 0 : p.indexOf('(') < 0) && (s[0] === 'demo' ? n === 1 : s[0] === 'project' && s[1] === 'github.com' && s[2] && s[3] &&
-            (n === 5 ? s[4] === 'chat' : n === 8 && s[4] === 'tree' && s[5] && s[6] === '-' && s[7] === 'chat'))) {
+            (n === 5 ? s[4] === 'chat' : n >= 8 && s[4] === 'tree' && s[5] && s[n - 2] === '-' && s[n - 1] === 'chat' && s.slice(6, n - 2).indexOf('-') < 0))) {
           window.__datatugHandoffSearch = q;
           // So that a reload before the app has started does not lose the question.
           try { sessionStorage.setItem('datatug.demo.handoff.v1', p.replace(/\/$/, '') + q); } catch (e) {}

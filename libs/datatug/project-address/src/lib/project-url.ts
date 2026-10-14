@@ -30,16 +30,15 @@ export const getStoreId = (repo: string): string => {
 };
 
 /**
- * The demo project, which the app's home page and the hand-off page open: `datatug/chinook-demo`, at the root of
- * its repository, on the default branch (address `/project/github.com/datatug/chinook-demo`). The same project as
+ * The shared demo project, in `datatug/datatug-demo-project/demo-project-1` on the default branch. The same project as
  * the one trusted project of `isTrustedProjectAddress` (design 3.6).
  */
 export const DEMO_PROJECT_REF: IProjectRef = {
   storeId: GITHUB_STORE_ID,
   projectId: formatGithubProjectId({
     org: 'datatug',
-    repo: 'chinook-demo',
-    folder: '',
+    repo: 'datatug-demo-project',
+    folder: 'demo-project-1',
   }),
 };
 

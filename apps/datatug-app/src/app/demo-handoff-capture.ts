@@ -22,7 +22,8 @@
 // Only the hand-off addresses (demo-handoff-path.ts) are touched; every other URL is left exactly as it is.
 //
 // Which hand-offs are shown back. `/demo` and the start-chat page of the demo project itself
-// (`datatug/chinook-demo`, default branch, repository root) show the visitor's question. The page of any other repository
+// (`datatug/datatug-demo-project/demo-project-1`, default branch), plus exact old
+// `datatug/chinook-demo` addresses being redirected there, show the visitor's question. The page of any other repository
 // does not: a message chosen by whoever made the link must not be displayed inside datatug.app's pages under
 // someone else's repository address. For those the query is still taken out of the address bar and kept out of
 // every report; only the language is kept, for the neutral page. See isTrustedHandoff().
@@ -58,7 +59,8 @@ let current: DemoHandoff | undefined;
 /**
  * Whether the hand-off at this path may be shown back to the visitor: `/demo`, or the start-chat page (or the old
  * chat address) of a project the app
- * trusts, decided by the one trust function (`isTrustedProjectAddress`, design 3.6) on the PARSED project address:
+ * trusts, decided by `isTrustedProjectAddress` (design 3.6) on the PARSED project address or by the exact
+ * historical `datatug/chinook-demo` redirect alias:
  * owner and repository ASCII-lower-cased and compared for exact equality with the compiled-in list, on its default
  * branch, that is with no `tree/<ref>` or with `tree/HEAD`. Anything else, however similar (`chinook-demo-evil`,
  * `tree/<sha>`, a look-alike letter such as the Kelvin sign U+212A that `toLowerCase()` would turn into `k`), is not.
@@ -67,12 +69,18 @@ export function isTrustedHandoff(pathname: string): boolean {
   const target = handoffTargetOfPath(pathname);
   if (!target) return false;
   if (target.kind === 'demo') return true;
+  // The former first-party repository is an exact, default-branch alias during
+  // the shared-project cutover. Keep its question for the redirect, but never
+  // accept Unicode lookalikes or another repository/folder as that alias.
+  if (/^[\x20-\x7e]+$/.test(target.owner) && /^[\x20-\x7e]+$/.test(target.repo) &&
+      target.owner.toLowerCase() === 'datatug' && target.repo.toLowerCase() === 'chinook-demo' &&
+      (target.ref === undefined || target.ref === 'HEAD') && target.dir.length === 0) return true;
   const project = parseProjectUrl(
     `/project/github.com/${encodeURIComponent(target.owner)}/${encodeURIComponent(target.repo)}` +
       (target.ref === undefined
         ? ''
         : `/tree/${encodeURIComponent(target.ref)}`) +
-      // A folder is another project (and never a trusted one: the demo project is at the root of its repository).
+      // Only the canonical demo-project-1 folder is trusted by isTrustedProjectAddress.
       ('dir' in target && target.dir.length > 0
         ? '/' + target.dir.map(encodeURIComponent).join('/')
         : ''),
