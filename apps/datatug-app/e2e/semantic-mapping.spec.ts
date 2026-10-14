@@ -70,6 +70,7 @@ test('column meaning saves a complete personal copy, stays visible and survives 
     .getByRole('button', { name: 'Save personal copy', exact: true })
     .click();
   await expect(page).toHaveURL(/device-personal-/);
+  await expect(page.getByRole('link', { name: 'Edit query Validators' })).toHaveCount(0);
   await page.setViewportSize({ width: 1280, height: 900 });
   await expect(
     page.getByRole('button', {
@@ -115,6 +116,7 @@ test('column meaning saves a complete personal copy, stays visible and survives 
   await expect(page.getByTestId('query-save-state')).toContainText(
     'Saved on this device',
   );
+  await expect(page.getByRole('link', { name: 'Edit query Validators' })).toHaveCount(0);
   const reopened = activePage(page);
   await reopened.getByTestId('author-customer-id').locator('input').fill('1');
   await reopened.getByTestId('author-preview-tab').click();

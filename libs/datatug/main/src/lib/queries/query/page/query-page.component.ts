@@ -1374,7 +1374,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   public get isHostedProject(): boolean {
-    return !!this.project && isSharedProjectRef(this.project.ref);
+    return (
+      !!this.project &&
+      isSharedProjectRef(this.project.ref) &&
+      !isDevicePersonalQuery(this.queryId ?? '')
+    );
   }
 
   public hostedScenarioTarget():
@@ -1384,6 +1388,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         stepId: string;
       }
     | undefined {
+    if (isDevicePersonalQuery(this.queryId ?? '')) return undefined;
     const params = this.route.snapshot.queryParamMap;
     const caseId = params.get('caseId');
     const applicationId = params.get('applicationId');
@@ -1476,8 +1481,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   public get queryValidatorsHref(): string | undefined {
     const queryId = this.queryId;
-    if (!queryId || this.queryState.isNew || !this.project?.ref)
-      return undefined;
+    if (
+      !queryId ||
+      isDevicePersonalQuery(queryId) ||
+      this.queryState.isNew ||
+      !this.project?.ref
+    ) return undefined;
     const href = projectPageHref(this.project.ref, 'checks');
     return `${href}${href.includes('?') ? '&' : '?'}query=${encodeURIComponent(queryId)}`;
   }
@@ -1672,7 +1681,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   );
   public readonly activeHostedExecution = computed(() => {
     const execution = this.hostedExecution();
-    return execution &&
+    return !isDevicePersonalQuery(this.queryDef()?.id ?? this.queryId ?? '') &&
+      execution &&
       execution.result === this.runResult() &&
       execution.generation === this.displayedResultGeneration() &&
       execution.projectKey === JSON.stringify(this.project?.ref) &&
@@ -5027,6 +5037,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       const previousCustomerId = this.authorCustomerId();
       const scopeChanged = this.queryId !== queryState.id;
       if (scopeChanged) {
+        this.hostedExecution.set(undefined);
+        this.localScenarioExecution.set(undefined);
+        this.hostedSelectedRow.set(undefined);
+        this.hostedStatusFilter.set('all');
         ++this.semanticMappingLifetime;
         this.semanticSaving.set(false);
         this.semanticDialog.set(undefined);
@@ -6494,6 +6508,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     if (
       !ref.spaceID ||
       !definition ||
+      isDevicePersonalQuery(queryId) ||
       this.queryState.isNew ||
       this.queryState.isSaving ||
       this.isChanged
@@ -6834,7 +6849,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     }
     this.historySelection++;
     this.queryRunTiming.set(undefined);
-    if (projectRef && isSharedProjectRef(projectRef)) {
+    if (projectRef && this.isHostedProject) {
       this.runHostedSavedQuery(projectRef, queryId, definition, runRequestedAt);
       return;
     }

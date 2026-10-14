@@ -3125,6 +3125,8 @@ select (
       2,
     );
     expect(component.hostedScenarioMessage()).toContain('recorded');
+    expect(component.isHostedProject).toBe(true);
+    expect(component.queryValidatorsHref).toContain('query=customer-invoices');
     const callsBeforePendingState = validate.mock.calls.length;
     const pendingState = new Subject<DetectiveState>();
     vi.spyOn(detective, 'state').mockReturnValue(pendingState);
@@ -3164,6 +3166,35 @@ select (
     expect(
       vi.spyOn(TestBed.inject(PublicSqliteQueryService), 'run'),
     ).not.toHaveBeenCalled();
+
+    component.hostedEnvironment.set('demo');
+    expect(component.activeHostedExecution()).toBeDefined();
+    const personal = {
+      ...savedDefinition,
+      id: 'device-personal-22222222-2222-2222-2222-222222222222',
+    };
+    const personalState = { ...originalQueryState, id: personal.id, def: personal };
+    (component as unknown as {
+      onQueryEditorStateChanged(state: IQueryEditorState): void;
+    }).onQueryEditorStateChanged({
+      currentQueryId: personal.id,
+      activeQueries: [personalState],
+    });
+    expect(component.activeHostedExecution()).toBeUndefined();
+    expect(component.isHostedProject).toBe(false);
+    expect(component.queryValidatorsHref).toBeUndefined();
+    const personalCase = {
+      ...caseItem,
+      scenarioApplications: caseItem.scenarioApplications.map(application => ({
+        ...application,
+        snapshot: { ...application.snapshot, steps: [{ id: 'step-1', kind: 'query', ref: personal.id }] },
+      })),
+    };
+    component.hostedDetectiveState.set({ ...latest, cases: [personalCase] } as never);
+    expect(component.hostedScenarioTarget()).toBeUndefined();
+    const actionsBeforePersonal = validate.mock.calls.length;
+    await component.completeHostedScenarioStep();
+    expect(validate).toHaveBeenCalledTimes(actionsBeforePersonal);
   });
 
   it.each(['source rejected', 'dispatched', 'worker failed'])(
@@ -6201,6 +6232,51 @@ select (
       );
       expect(runQueryMock).not.toHaveBeenCalled();
       expect(TestBed.inject(Coordinator).execute).not.toHaveBeenCalled();
+      expect(component.runError()).toBeUndefined();
+    },
+  );
+
+  it.each(['federation', 'sqlite'] as const)(
+    'runs a device-personal %s copy in a shared project through its current browser definition',
+    async (execution) => {
+      const id = 'device-personal-11111111-1111-1111-1111-111111111111';
+      const definition: IQueryDef = execution === 'federation'
+        ? createHostedDemoDbQuery(id)
+        : {
+            ...queryDef, id, parameters: [], connectionId: 'chinook-sqlite',
+            request: { queryType: QueryType.SQL, text: 'SELECT 2' } as ISqlQueryRequest,
+          };
+      if (execution === 'federation') {
+        definition.request = {
+          ...definition.request,
+          text: (definition.request as ITextQueryRequest).text.replace('limit: 20', 'limit: 7'),
+        } as ITextQueryRequest;
+      }
+      component = await createComponent({}, definition);
+      component.project = {
+        ref: { storeId: 'firestore', spaceID: 'space_1', projectId: 'project_1' },
+      };
+      component.envId = undefined;
+      const result = historyResultFor(definition);
+      federatedRunMock.mockResolvedValue(result);
+      const sqlite = vi.spyOn(TestBed.inject(PublicSqliteQueryService), 'run')
+        .mockResolvedValue(result);
+      const detective = TestBed.inject(DetectiveClientService);
+      expect(component.isHostedProject).toBe(false);
+      expect(component.queryValidatorsHref).toBeUndefined();
+      component.runQuery();
+      await vi.waitFor(() => expect(component.running()).toBe(false));
+      if (execution === 'federation') {
+        expect(federatedRunMock).toHaveBeenCalledOnce();
+        expect(federatedRunMock.mock.calls[0][0]).toEqual(definition);
+        expect(sqlite).not.toHaveBeenCalled();
+      } else {
+        expect(sqlite).toHaveBeenCalledWith(component.project.ref, definition, expect.any(Function));
+        expect(federatedRunMock).not.toHaveBeenCalled();
+      }
+      expect(detective.runHostedQuery).not.toHaveBeenCalled();
+      expect(detective.action).not.toHaveBeenCalled();
+      expect(runQueryMock).not.toHaveBeenCalled();
       expect(component.runError()).toBeUndefined();
     },
   );
