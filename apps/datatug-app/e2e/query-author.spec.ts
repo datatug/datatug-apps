@@ -1350,8 +1350,8 @@ test('TugQL suggestions are explicit, source-safe, and touch reachable', async (
           const tab = document.querySelector('[data-testid="author-preview-tab"]');
           const content = document.querySelector('sneat-datatug-sql-editor ion-content');
           const scroller = content?.shadowRoot?.querySelector('[part="scroll"]');
-          const input = host.querySelector('input:not(.cloned-input)') ??
-            host.shadowRoot?.querySelector('input:not(.cloned-input)');
+          const input = host.querySelector<HTMLInputElement>('input:not(.cloned-input)') ??
+            host.shadowRoot?.querySelector<HTMLInputElement>('input:not(.cloned-input)');
           if (!tab || !scroller || !input ||
             (host as HTMLElement).style.pointerEvents === 'none' || input.style.transform) return false;
           const beforeTop = tab.getBoundingClientRect().top;
