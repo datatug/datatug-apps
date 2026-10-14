@@ -2660,11 +2660,11 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   const editorPane = invoiceAuthorPage.locator('#workspace-editor-pane');
   const resultsPane = invoiceAuthorPage.locator('#workspace-results-pane');
   if (isMobile) {
-    await page.locator('#workspace-jump-to-results').click();
+    await invoiceAuthorPage.locator('#workspace-jump-to-results').click();
     await expect(invoiceAuthorPage.getByTestId('author-results-empty')).toBeVisible();
     await expect(resultsPane).toBeVisible();
     await expect(editorPane).toBeVisible();
-    await page.locator('#workspace-back-to-editor').click();
+    await invoiceAuthorPage.locator('#workspace-back-to-editor').click();
     await expect(editorPane).toBeVisible();
     await expect(resultsPane).toBeVisible();
   } else {
@@ -3017,7 +3017,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expect(preview.locator('pre')).toHaveText(previewSql ?? '');
   await expectIonicButtonDisabled(author.getByTestId('author-run'), false);
   await author.getByTestId('author-run').click();
-  if (isMobile) await page.locator('#workspace-jump-to-results').click();
+  if (isMobile) await invoiceAuthorPage.locator('#workspace-jump-to-results').click();
   const receipt = page.getByTestId('author-execution-receipt');
   await expect(receipt).toBeVisible({ timeout: 20_000 });
   await expect(receipt).toContainText('Executed');
@@ -3057,7 +3057,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await rows.nth(1).getByRole('gridcell').first().click();
   await page.keyboard.press('ArrowDown');
   await expect(currentRow).toContainText('Position 2 of 7');
-  if (isMobile) await page.locator('#workspace-back-to-editor').click();
+  if (isMobile) await invoiceAuthorPage.locator('#workspace-back-to-editor').click();
   await author.getByTestId('author-view-tabs')
     .locator('ion-segment-button[value="sources"]')
     .click();
@@ -3083,10 +3083,10 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expect(author.getByTestId('author-related-parameter-status')).toHaveCount(0);
   expect(workersStarted).toBe(workerCountBeforeInspection);
   if (isMobile) {
-    await page.locator('#workspace-jump-to-results').click();
+    await invoiceAuthorPage.locator('#workspace-jump-to-results').click();
     await expect(currentRow).toContainText('Position 2 of 7');
   }
-  if (isMobile) await page.locator('#workspace-back-to-editor').click();
+  if (isMobile) await invoiceAuthorPage.locator('#workspace-back-to-editor').click();
   await author.getByTestId('author-view-tabs')
     .locator('ion-segment-button[value="parameters"]')
     .click();
@@ -3129,7 +3129,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   }
   expect(errors).toEqual([]);
 
-  if (isMobile) await page.locator('#workspace-back-to-editor').click();
+  if (isMobile) await invoiceAuthorPage.locator('#workspace-back-to-editor').click();
   await author.getByTestId('author-compose-tab').click();
   await expect(joinedLimit).toHaveValue('75');
   await joinedLimit.fill('3');
@@ -3137,10 +3137,10 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await author.getByTestId('author-code-tab').click();
   const reducedSource = limitedWithDate.replace('limit 75', 'limit 3');
   await expectEditorSource(page, editor, reducedSource);
-  if (isMobile) await page.locator('#workspace-jump-to-results').click();
+  if (isMobile) await invoiceAuthorPage.locator('#workspace-jump-to-results').click();
   await expect(receipt).toBeVisible();
   await expect(receipt).toContainText('7 rows');
-  if (isMobile) await page.locator('#workspace-back-to-editor').click();
+  if (isMobile) await invoiceAuthorPage.locator('#workspace-back-to-editor').click();
   await expect(author.getByTestId('author-run')).toHaveAttribute(
     'disabled',
     '',
@@ -3157,7 +3157,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   expect(reducedPreviewSql).toContain('"c"."FirstName"');
   expect(workersStarted).toBe(1);
   await author.getByTestId('author-run').click();
-  if (isMobile) await page.locator('#workspace-jump-to-results').click();
+  if (isMobile) await invoiceAuthorPage.locator('#workspace-jump-to-results').click();
   await expect(receipt).toContainText('Executed', { timeout: 20_000 });
   await expect(receipt).toContainText('3 rows');
   await expect.poll(() => workersStarted).toBe(2);
