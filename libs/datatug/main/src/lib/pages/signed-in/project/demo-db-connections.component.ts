@@ -117,7 +117,7 @@ function validCatalog(raw: ConnectionCatalog): boolean {
                   · <a [href]="chinookQueryHref()">Explore PostgreSQL artist track totals</a>
                 }
                 @if (edition.storage === 'sqlite') {
-                  <p>Copy to local Dev will be available after the browser database update.</p>
+                  · <a [href]="'/demo/sqlite/' + edition.dataset" [attr.data-testid]="'explore-local-' + edition.dataset">Explore SQLite in DataTug (editable copy in this browser)</a>
                 }
               </ion-label>
             </ion-item>

@@ -17,6 +17,7 @@ import {
   checkoutOrRoot,
   canonicalDemoShortMatcher,
   datatugProfileOnly,
+  demoSqliteMatcher,
   handoffOrRoot,
   legacyChinookDemoMatcher,
   redirectCanonicalDemoShort,
@@ -117,7 +118,8 @@ describe('DataTug app routes', () => {
 
   // G-0: a hand-off from the sites must never fail to match (Sentry's crash-report dialog, the question lost).
   it('has the hand-off route: a matcher (case-insensitive, matrix parameters ignored), lazy, no flag, DataTug profile or the root', () => {
-    const matching = routes.filter((r) => r.matcher);
+    // demo-sqlite-route.spec.ts covers the /demo/sqlite matcher.
+    const matching = routes.filter((r) => r.matcher && r.matcher !== demoSqliteMatcher);
     expect(matching.length).toBe(3);
     expect(matching[0].matcher).toBe(legacyChinookDemoMatcher);
     expect(matching[0].canMatch).toEqual([redirectLegacyChinookDemo]);
@@ -142,6 +144,7 @@ describe('DataTug app routes', () => {
       'business/checkout',
       'subscribe',
       'pricing/return',
+      undefined, // /demo/sqlite: DemoDB local SQLite explorer (matcher)
       undefined, // exact historical Chinook demo alias
       undefined, // exact shared-project short folder alias
       undefined, // the hand-off route, which has a matcher instead of a path

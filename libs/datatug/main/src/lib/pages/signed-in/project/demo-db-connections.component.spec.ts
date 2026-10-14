@@ -51,6 +51,10 @@ describe('shared project database connections', () => {
     expect(fixture.nativeElement.querySelectorAll('ion-button').length).toBe(0);
     expect(fixture.nativeElement.querySelector('a[href*="chinook-postgresql-artist-tracks"]')).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('Hosted BigQuery editions');
+    for (const dataset of datasets) {
+      expect(fixture.nativeElement.querySelector(`a[data-testid="explore-local-${dataset}"]`)?.getAttribute('href'))
+        .toBe(`/demo/sqlite/${dataset}`);
+    }
     const rendered = fixture.nativeElement.innerHTML;
     expect(rendered).toContain('demodb-dev.chinook');
     expect(rendered).toContain('your own BigQuery execution project');
