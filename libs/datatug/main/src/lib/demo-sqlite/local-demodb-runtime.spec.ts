@@ -1,41 +1,64 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createOvdbFetch, fetchOverPort, serveFetchOverPort, type FetchPort } from '@openvaultdb/inprocess';
+import {
+  CanonicalFetchError,
+  CanonicalIntegrityError,
+  DatasetStorageError,
+  PoolUnavailableError,
+  reviveError,
+  serializeError,
+  type BridgePort,
+} from '@dalgo/sqlite-wasm/opfs';
+import { createOvdbFetch, fetchOverPort, serveFetchOverPort } from '@openvaultdb/inprocess';
 import { demoSqliteCatalog } from '../queries/demo-sqlite-catalog';
 import { fetchOvdbDescriptor } from '../ovdb/ovdb-connection';
 import type { CreateOvdbFetch } from './local-demodb-host';
-import type { MessageOnlyPort } from './local-demodb-port';
-import { createLocalDemoDbRuntime, type DemoDbSessionLike, type DemoDbSessionOptions, type LocalDemoDbRuntimeDeps } from './local-demodb-runtime';
+import { LocalDemoDbOpenError } from './local-demodb-errors';
+import {
+  classifyOpenFailure,
+  createLocalDemoDbRuntime,
+  type DemoDbSessionLike,
+  type DemoDbSessionOptions,
+  type LocalDemoDbRuntimeDeps,
+} from './local-demodb-runtime';
 import { MemorySqliteDatabase, memoryModifiedFlag } from './local-demodb.spec-helper';
 
 /**
- * A port shaped like @dalgo/sqlite-wasm's bridge ports: listeners are kept
- * whatever the event type (as `Endpoint`/`ServedPort` do), and data is copied.
+ * A port with the contract of @dalgo/sqlite-wasm's `BridgePort`: listeners are kept per
+ * event type, `message` carries data (copied), and `close` is dispatched once.
  */
-class TypeIgnoringPort implements MessageOnlyPort {
-  readonly listeners = new Set<(event: MessageEvent) => void>();
-  peer?: TypeIgnoringPort;
+class FakeBridgePort implements BridgePort {
+  readonly #listeners = { message: new Set<(event: never) => void>(), messageerror: new Set<(event: never) => void>(), close: new Set<(event: never) => void>() };
+  peer?: FakeBridgePort;
   closed = false;
   postMessage(message: unknown): void {
+    if (this.closed) return;
     const copy = structuredClone(message);
-    setTimeout(() => this.peer?.listeners.forEach((listener) => listener({ data: copy } as MessageEvent)), 0);
+    setTimeout(() => this.peer?.deliver(copy), 0);
   }
-  addEventListener(_type: 'message', listener: (event: MessageEvent) => void): void {
-    this.listeners.add(listener);
+  deliver(data: unknown): void {
+    if (this.closed) return;
+    this.#listeners.message.forEach((listener) => (listener as (event: MessageEvent) => void)({ data } as MessageEvent));
   }
-  removeEventListener(_type: 'message', listener: (event: MessageEvent) => void): void {
-    this.listeners.delete(listener);
+  addEventListener(type: 'message' | 'messageerror' | 'close', listener: (event: never) => void): void {
+    this.#listeners[type].add(listener);
+  }
+  removeEventListener(type: 'message' | 'messageerror' | 'close', listener: (event: never) => void): void {
+    this.#listeners[type].delete(listener);
   }
   start(): void {
     /* flowing */
   }
   close(): void {
+    if (this.closed) return;
     this.closed = true;
+    this.#listeners.close.forEach((listener) => (listener as (event: Event) => void)(new Event('close')));
+    this.peer?.close();
   }
 }
 
-function pair(): [TypeIgnoringPort, TypeIgnoringPort] {
-  const a = new TypeIgnoringPort();
-  const b = new TypeIgnoringPort();
+function pair(): [FakeBridgePort, FakeBridgePort] {
+  const a = new FakeBridgePort();
+  const b = new FakeBridgePort();
   a.peer = b;
   b.peer = a;
   return [a, b];
@@ -45,11 +68,9 @@ const entry = demoSqliteCatalog.chinook;
 
 function fakeDeps() {
   const database = new MemorySqliteDatabase();
-  const worker = new EventTarget() as EventTarget & Worker;
   let options: DemoDbSessionOptions | undefined;
   const session = {
     role: 'leader',
-    closed: false,
     ready: vi.fn(async () => ({
       persistent: true,
       replacedPreviousVersion: true,
@@ -67,30 +88,37 @@ function fakeDeps() {
   const deps: LocalDemoDbRuntimeDeps = {
     openDemoDb: (given) => {
       options = given;
-      given.createWorker();
       return session;
     },
     createOvdbFetch: createOvdbFetch as unknown as CreateOvdbFetch,
     fetchOverPort: (port) => fetchOverPort(port),
     serveFetchOverPort: (fetch, port) => serveFetchOverPort(fetch, port),
-    createWorker: () => worker,
+    createWorker: () => ({}) as Worker,
     modifiedFlag: () => memoryModifiedFlag(),
   };
-  return { deps, session, database, worker, options: () => options };
+  return {
+    deps,
+    session,
+    database,
+    options: (): DemoDbSessionOptions => {
+      if (!options) throw new Error('openDemoDb was not called');
+      return options;
+    },
+  };
 }
 
 describe('createLocalDemoDbRuntime', () => {
   it('pins the canonical file and serves OVDB to this tab over the bridge port', async () => {
     const { deps, options } = fakeDeps();
     const runtime = createLocalDemoDbRuntime(deps, { entry, onProgress: vi.fn() });
-    expect(options()?.pin).toEqual({ dataset: 'chinook', url: entry.url, sha256: entry.sha256, bytes: entry.bytes });
+    expect(options().pin).toEqual({ dataset: 'chinook', url: entry.url, sha256: entry.sha256, bytes: entry.bytes });
     expect(await runtime.ready()).toEqual({
       persistent: true,
       replacedPreviousVersion: true,
       imported: true,
       canonicalSha256: entry.sha256,
     });
-    // Several requests in a row: a message must never be taken for the port closing.
+    // Several requests in a row: the bridge's `message` events must not be taken for `close`.
     for (let i = 0; i < 3; i++) {
       const descriptor = await fetchOvdbDescriptor(runtime.fetch, runtime.baseUrl, 'chinook');
       expect(descriptor.collections).toContain('Artist');
@@ -98,14 +126,28 @@ describe('createLocalDemoDbRuntime', () => {
     }
   });
 
-  it('forwards the worker’s download progress', () => {
-    const { deps, worker } = fakeDeps();
+  it('keeps small datasets in two copies with a memory fallback, and large ones in one copy without', () => {
+    const small = fakeDeps();
+    createLocalDemoDbRuntime(small.deps, { entry, onProgress: vi.fn() });
+    expect(small.options()).toMatchObject({ memoryFallback: 'allow', storagePolicy: 'working-and-pristine' });
+    const large = fakeDeps();
+    createLocalDemoDbRuntime(large.deps, { entry: demoSqliteCatalog.adventureworks, onProgress: vi.fn() });
+    expect(large.options()).toMatchObject({ memoryFallback: 'forbid', storagePolicy: 'single-copy' });
+  });
+
+  it('maps the worker phases to the download bar and install steps', () => {
+    const { deps, options } = fakeDeps();
     const onProgress = vi.fn();
     createLocalDemoDbRuntime(deps, { entry, onProgress });
-    worker.dispatchEvent(Object.assign(new Event('message'), { data: { type: 'datatug/demodb-progress', phase: 'download', loaded: 42 } }));
-    worker.dispatchEvent(Object.assign(new Event('message'), { data: { id: 1, ok: true, value: null } }));
-    expect(onProgress).toHaveBeenCalledTimes(1);
-    expect(onProgress).toHaveBeenCalledWith({ type: 'datatug/demodb-progress', phase: 'download', loaded: 42 });
+    options().onProgress({ phase: 'fetch', loaded: 42, total: 100 });
+    options().onProgress({ phase: 'verify' });
+    options().onProgress({ phase: 'importWorking', total: 100 });
+    options().onProgress({ phase: 'somethingNew' });
+    expect(onProgress.mock.calls.map(([progress]) => progress)).toEqual([
+      { phase: 'download', loaded: 42, total: 100 },
+      { phase: 'install', step: 'verify' },
+      { phase: 'install', step: 'importWorking' },
+    ]);
   });
 
   it('closes the fetch and the session', async () => {
@@ -116,11 +158,42 @@ describe('createLocalDemoDbRuntime', () => {
     await expect(runtime.fetch(`${runtime.baseUrl}/v1/databases/chinook`)).rejects.toThrow();
   });
 
-  it('positive control: fetchOverPort straight on a bridge-shaped port dies after the first answer', async () => {
-    const [client, served] = pair();
-    serveFetchOverPort(createOvdbFetch({ databases: { chinook: new MemorySqliteDatabase() } }), served as unknown as FetchPort);
-    const fetch = fetchOverPort(client as unknown as FetchPort);
-    await fetchOvdbDescriptor(fetch, 'https://local.ovdb.invalid', 'chinook');
-    await expect(fetchOvdbDescriptor(fetch, 'https://local.ovdb.invalid', 'chinook')).rejects.toThrow();
+  it('reports a failed open as a classified error', async () => {
+    const { deps, session } = fakeDeps();
+    session.ready.mockRejectedValueOnce(new PoolUnavailableError('locked', 'held'));
+    const runtime = createLocalDemoDbRuntime(deps, { entry, onProgress: vi.fn() });
+    await expect(runtime.ready()).rejects.toMatchObject({ kind: 'locked' });
+  });
+});
+
+describe('classifyOpenFailure', () => {
+  const quota = Object.assign(new Error('The quota has been exceeded.'), { name: 'QuotaExceededError' });
+  const kindOf = (error: unknown) => (classifyOpenFailure(error) as LocalDemoDbOpenError).kind;
+
+  it('recognises a quota failure by class, operation and cause, not by message', () => {
+    expect(kindOf(new DatasetStorageError('import', 'could not write', { cause: quota }))).toBe('quota');
+    expect(kindOf(new PoolUnavailableError('quota', 'full'))).toBe('quota');
+    // A message that mentions space or quota is not a quota failure.
+    expect(kindOf(new DatasetStorageError('import', 'no space left, quota full', { cause: new Error('I/O') }))).toBe('storage');
+    expect(kindOf(new DatasetStorageError('open', 'could not open', { cause: quota }))).toBe('storage');
+  });
+
+  it('tells a held pool and unusable OPFS apart', () => {
+    expect(kindOf(new PoolUnavailableError('locked', 'held'))).toBe('locked');
+    for (const reason of ['missing-api', 'security', 'sync-handles-unavailable', 'other'] as const) {
+      expect(kindOf(new PoolUnavailableError(reason, 'no OPFS'))).toBe('opfs-unavailable');
+    }
+  });
+
+  it('classifies download and integrity failures, and leaves other errors alone', () => {
+    expect(kindOf(new CanonicalFetchError('HTTP 503', 503))).toBe('download');
+    expect(kindOf(new CanonicalIntegrityError('bad sha'))).toBe('integrity');
+    const other = new Error('boom');
+    expect(classifyOpenFailure(other)).toBe(other);
+  });
+
+  it('works on errors revived from the worker, which keep their class', () => {
+    const revived = reviveError(serializeError(new DatasetStorageError('import', 'could not write', { cause: quota })));
+    expect(kindOf(revived)).toBe('quota');
   });
 });

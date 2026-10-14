@@ -6,8 +6,15 @@
 //   local-demodb.worker.ts and opens the OPFS copy)
 //     └─ leader's serve.port: serveFetchOverPort(createLocalOvdbFetch(...))  (in-process OVDB)
 //   session.connect() in every tab ── fetchOverPort ──▶ the `fetch` DataTug uses
-import { openDemoDb } from '@dalgo/sqlite-wasm/opfs';
-import { createOvdbFetch, fetchOverPort, serveFetchOverPort, type FetchPort } from '@openvaultdb/inprocess';
+import {
+  CanonicalFetchError,
+  CanonicalIntegrityError,
+  DatasetStorageError,
+  PoolUnavailableError,
+  openDemoDb,
+  type BridgePort,
+} from '@dalgo/sqlite-wasm/opfs';
+import { createOvdbFetch, fetchOverPort, serveFetchOverPort } from '@openvaultdb/inprocess';
 import {
   createLocalOvdbFetch,
   LOCAL_OVDB_BASE_URL,
@@ -16,8 +23,9 @@ import {
   type LocalSqliteDatabase,
   type ModifiedFlag,
 } from './local-demodb-host';
-import { isDemoDbProgressMessage } from './local-demodb-progress';
-import { asFetchPort, type MessageOnlyPort } from './local-demodb-port';
+import { LocalDemoDbOpenError } from './local-demodb-errors';
+import { mapDemoDbProgress, type DemoDbProgressEventLike } from './local-demodb-progress';
+import { isLargeDemoSqliteDataset } from '../queries/demo-sqlite-catalog';
 import type { LocalDemoDbOpenReport, LocalDemoDbRuntime, OpenLocalDemoDbRuntime } from './local-demodb.types';
 
 const requestType = 'openvaultdb/fetch-request';
@@ -48,7 +56,7 @@ export interface DemoDbSessionLike {
     readonly canonical: { readonly sha256: string };
     readonly fallback?: { readonly reason: string; readonly message: string };
   }>;
-  connect(protocol: typeof fetchPortProtocol): MessageOnlyPort;
+  connect(protocol: typeof fetchPortProtocol): BridgePort;
   subscribe(listener: (event: { readonly type: string; readonly role?: string }) => void): () => void;
   close(): void;
 }
@@ -57,18 +65,42 @@ export interface DemoDbSessionLike {
 export interface DemoDbSessionOptions {
   readonly pin: { readonly dataset: string; readonly url: string; readonly sha256: string; readonly bytes: number };
   readonly createWorker: () => Worker;
+  readonly onProgress: (event: DemoDbProgressEventLike) => void;
+  /** `forbid` for large datasets: where OPFS cannot be used the session fails before any download. */
+  readonly memoryFallback: 'allow' | 'forbid';
+  readonly storagePolicy: 'working-and-pristine' | 'single-copy';
   readonly serve: {
-    port(port: MessageOnlyPort, context: { readonly database: unknown }): (() => void) | undefined;
+    port(port: BridgePort, context: { readonly database: unknown }): (() => void) | undefined;
   };
 }
 
 export interface LocalDemoDbRuntimeDeps {
   readonly openDemoDb: (options: DemoDbSessionOptions) => DemoDbSessionLike;
   readonly createOvdbFetch: CreateOvdbFetch;
-  readonly fetchOverPort: (port: FetchPort) => typeof globalThis.fetch & { dispose(): void };
-  readonly serveFetchOverPort: (fetch: typeof globalThis.fetch, port: FetchPort) => () => void;
+  readonly fetchOverPort: (port: BridgePort) => typeof globalThis.fetch & { dispose(): void };
+  readonly serveFetchOverPort: (fetch: typeof globalThis.fetch, port: BridgePort) => () => void;
   readonly createWorker: () => Worker;
   readonly modifiedFlag: (dataset: string, sha256: string) => ModifiedFlag;
+}
+
+/**
+ * The failure to show for an error of `openDemoDb`: the typed errors of
+ * @dalgo/sqlite-wasm keep their class across the worker and the tabs, so this
+ * tells them apart by class and field, never by message. Anything else is
+ * returned unchanged.
+ */
+export function classifyOpenFailure(error: unknown): unknown {
+  if (error instanceof PoolUnavailableError) {
+    if (error.reason === 'locked' || error.retriable) return new LocalDemoDbOpenError('locked', error.message, { cause: error });
+    return new LocalDemoDbOpenError(error.reason === 'quota' ? 'quota' : 'opfs-unavailable', error.message, { cause: error });
+  }
+  if (error instanceof DatasetStorageError) {
+    const quota = error.operation === 'import' && (error.cause as { name?: unknown } | undefined)?.name === 'QuotaExceededError';
+    return new LocalDemoDbOpenError(quota ? 'quota' : 'storage', error.message, { cause: error });
+  }
+  if (error instanceof CanonicalFetchError) return new LocalDemoDbOpenError('download', error.message, { cause: error });
+  if (error instanceof CanonicalIntegrityError) return new LocalDemoDbOpenError('integrity', error.message, { cause: error });
+  return error;
 }
 
 function localStorageOrUndefined(): Storage | undefined {
@@ -87,13 +119,13 @@ export function createLocalDemoDbRuntime(
   const canonical = { url: entry.url, sha256: entry.sha256, bytes: entry.bytes };
   const session = deps.openDemoDb({
     pin: { dataset: entry.dataset, ...canonical },
-    createWorker: () => {
-      const worker = deps.createWorker();
-      worker.addEventListener('message', (event: MessageEvent) => {
-        if (isDemoDbProgressMessage(event.data)) onProgress(event.data);
-      });
-      return worker;
+    createWorker: deps.createWorker,
+    onProgress: (event) => {
+      const progress = mapDemoDbProgress(event);
+      if (progress) onProgress(progress);
     },
+    memoryFallback: isLargeDemoSqliteDataset(entry) ? 'forbid' : 'allow',
+    storagePolicy: entry.storagePolicy,
     serve: {
       port: (served, { database }) =>
         deps.serveFetchOverPort(
@@ -104,17 +136,19 @@ export function createLocalDemoDbRuntime(
             canonical,
             modified: deps.modifiedFlag(entry.dataset, entry.sha256),
           }),
-          asFetchPort(served) as FetchPort,
+          served,
         ),
     },
   });
-  const port = asFetchPort(session.connect(fetchPortProtocol));
-  const fetch = deps.fetchOverPort(port as FetchPort);
+  const port = session.connect(fetchPortProtocol);
+  const fetch = deps.fetchOverPort(port);
   return {
     baseUrl: LOCAL_OVDB_BASE_URL,
     fetch,
     ready: async (): Promise<LocalDemoDbOpenReport> => {
-      const report = await session.ready();
+      const report = await session.ready().catch((error: unknown) => {
+        throw classifyOpenFailure(error);
+      });
       return {
         persistent: report.persistent,
         replacedPreviousVersion: report.replacedPreviousVersion,

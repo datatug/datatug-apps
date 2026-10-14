@@ -97,6 +97,25 @@ describe('OvdbRecordEditorComponent', () => {
     expect(local.database.tables['Artist'].map((row) => row['ArtistId'])).toEqual([1, 2]);
   });
 
+  it('opens one confirmation however many times Delete is clicked while it is open', async () => {
+    const { component, confirm, changes } = await setup({ collection: 'Artist', record: { ArtistId: 3, Name: 'Aerosmith' } });
+    await Promise.all([component.deleteRecord(), component.deleteRecord(), component.deleteRecord()]);
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(changes).toEqual(['deleted']);
+  });
+
+  it('shows NULL, an empty string and a text value differently', async () => {
+    const shown = async (value: unknown) => {
+      TestBed.resetTestingModule();
+      const { q } = await setup({ collection: 'Artist', record: { ArtistId: 3, Name: value } });
+      const cell = q('record-field-Name')?.querySelector('.ovdb-value') as HTMLElement;
+      return { text: cell.textContent?.trim(), kind: cell.dataset['valueKind'], muted: cell.classList.contains('ovdb-null') };
+    };
+    expect(await shown(null)).toEqual({ text: 'NULL', kind: 'null', muted: true });
+    expect(await shown('')).toEqual({ text: '(empty)', kind: 'empty', muted: true });
+    expect(await shown('NULL')).toEqual({ text: 'NULL', kind: 'value', muted: false });
+  });
+
   it('does nothing when the deletion is cancelled', async () => {
     const { component, confirm, changes, local } = await setup({ collection: 'Artist', record: { ArtistId: 3, Name: 'Aerosmith' }, confirm: false });
     const before = local.requests.length;

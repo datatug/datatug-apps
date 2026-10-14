@@ -7,7 +7,8 @@ import {
   classifyOpenError,
   type LocalDemoDbEnvironment,
 } from './local-demodb.service';
-import { FakeLocalDemoDbRuntime, fakeEnvironment, namedError } from './local-demodb.spec-helper';
+import { LocalDemoDbOpenError } from './local-demodb-errors';
+import { FakeLocalDemoDbRuntime, fakeEnvironment } from './local-demodb.spec-helper';
 import type { LocalDemoDbRuntimeOptions } from './local-demodb.types';
 
 const flush = async (): Promise<void> => {
@@ -58,8 +59,11 @@ describe('LocalDemoDbSession', () => {
     expect(session.state()).toMatchObject({ kind: 'loading', phase: 'download', loaded: 1_000_000, total: 4915200, showProgress: false });
     vi.advanceTimersByTime(PROGRESS_DELAY_MS);
     expect(session.state()).toMatchObject({ showProgress: true });
-    runtimes[0].progress({ phase: 'install' });
-    expect(session.state()).toMatchObject({ phase: 'install', loaded: 4915200 });
+    // The download reports its own total when it knows one.
+    runtimes[0].progress({ phase: 'download', loaded: 2_000_000, total: 4_000_000 });
+    expect(session.state()).toMatchObject({ phase: 'download', loaded: 2_000_000, total: 4_000_000 });
+    runtimes[0].progress({ phase: 'install', step: 'importWorking' });
+    expect(session.state()).toMatchObject({ phase: 'install', step: 'importWorking', loaded: 4_000_000 });
     runtimes[0].open({ imported: true });
     await started;
     expect(session.state().kind).toBe('ready');
@@ -68,7 +72,7 @@ describe('LocalDemoDbSession', () => {
   it('asks before downloading a large dataset that is not stored, then opens on Continue', async () => {
     const { session, runtimes, loader } = harness('adventureworks');
     await session.start();
-    expect(session.state()).toEqual({ kind: 'confirm-large', downloadBytes: 35367459, storageBytes: 253640704 });
+    expect(session.state()).toEqual({ kind: 'confirm-large', downloadBytes: 35367459, storageBytes: 126820352 });
     expect(loader).not.toHaveBeenCalled();
     const confirmed = session.confirmDownload();
     await flush();
@@ -94,7 +98,8 @@ describe('LocalDemoDbSession', () => {
     const env = fakeEnvironment({ storageEstimate: async () => ({ quota: 300_000_000, usage: 200_000_000 }) });
     const { session, loader } = harness('adventureworks', env);
     await session.start();
-    expect(session.state()).toEqual({ kind: 'insufficient-storage', neededBytes: 253640704, availableBytes: 100_000_000 });
+    // AdventureWorks keeps one copy (~126.8 MB): it does not fit into 100 MB.
+    expect(session.state()).toEqual({ kind: 'insufficient-storage', neededBytes: 126820352, availableBytes: 100_000_000 });
     expect(loader).not.toHaveBeenCalled();
   });
 
@@ -144,7 +149,7 @@ describe('LocalDemoDbSession', () => {
     const { session, runtimes } = harness('chinook');
     const started = session.start();
     await flush();
-    runtimes[0].fail(namedError('PoolUnavailableError', 'OPFS files are locked', { reason: 'locked', retriable: true, code: 'opfs_unavailable' }));
+    runtimes[0].fail(new LocalDemoDbOpenError('locked', 'OPFS files are locked'));
     await started;
     expect(session.state().kind).toBe('locked-retry');
     expect(runtimes[0].closed).toBe(true);
@@ -155,21 +160,31 @@ describe('LocalDemoDbSession', () => {
     expect(session.state().kind).toBe('ready');
   });
 
-  it('explains a storage failure while importing', async () => {
-    const { session, runtimes } = harness('adventureworks', (() => {
-      const env = fakeEnvironment();
-      env.stored.set('adventureworks', true);
-      return env;
-    })());
+  it('explains a quota failure while importing, with the dataset-specific need', async () => {
+    const env = fakeEnvironment();
+    env.stored.set('adventureworks', true);
+    const { session, runtimes } = harness('adventureworks', env);
     const started = session.start();
     await flush();
-    runtimes[0].fail(namedError('DatasetStorageError', 'could not write', { code: 'dataset_storage' }));
+    runtimes[0].fail(new LocalDemoDbOpenError('quota', 'could not write'));
     await started;
     expect(session.state()).toEqual({
       kind: 'failed',
       storage: true,
-      message: 'Not enough browser storage for this dataset (needs ~253.6 MB). Free space or try a smaller dataset.',
+      message: 'Not enough browser storage for this dataset (needs ~126.8 MB). Free space or try a smaller dataset.',
     });
+  });
+
+  it('shows a large dataset that cannot use OPFS as unsupported, with nothing downloaded', async () => {
+    const env = fakeEnvironment();
+    env.stored.set('adventureworks', true);
+    const { session, runtimes } = harness('adventureworks', env);
+    const started = session.start();
+    await flush();
+    runtimes[0].fail(new LocalDemoDbOpenError('opfs-unavailable', 'no OPFS'));
+    await started;
+    expect(session.state()).toEqual({ kind: 'unsupported-browser', message: LARGE_DATASET_NEEDS_OPFS });
+    expect(runtimes[0].closed).toBe(true);
   });
 
   it('reports a runtime that cannot be loaded as failed', async () => {
@@ -187,14 +202,16 @@ describe('LocalDemoDbSession', () => {
     expect(loader).not.toHaveBeenCalled();
   });
 
-  it('refuses the reserved single-copy policy until the storage layer supports it', async () => {
-    const session = new LocalDemoDbSession(
-      { ...demoSqliteCatalog.adventureworks, storagePolicy: 'single-copy' },
-      fakeEnvironment(),
-      vi.fn(),
-    );
-    await session.start();
-    expect(session.state()).toMatchObject({ kind: 'failed' });
+  it('opens a single-copy dataset like any other', async () => {
+    const env = fakeEnvironment();
+    env.stored.set('adventureworks', true);
+    const { session, runtimes } = harness('adventureworks', env);
+    expect(demoSqliteCatalog.adventureworks.storagePolicy).toBe('single-copy');
+    const started = session.start();
+    await flush();
+    runtimes[0].open();
+    await started;
+    expect(session.state().kind).toBe('ready');
   });
 
   it('refreshes the descriptor and closes the runtime on dispose', async () => {
@@ -213,18 +230,27 @@ describe('LocalDemoDbSession', () => {
 
 describe('classifyOpenError', () => {
   const entry = demoSqliteCatalog.chinook;
-  it('maps download and integrity failures', () => {
-    expect(classifyOpenError(namedError('CanonicalFetchError', 'HTTP 503'), entry)).toMatchObject({ kind: 'failed', storage: false });
-    expect(classifyOpenError(namedError('CanonicalIntegrityError', 'bad sha'), entry)).toMatchObject({
+  it('maps each failure kind to a state the page explains', () => {
+    expect(classifyOpenError(new LocalDemoDbOpenError('download', 'HTTP 503'), entry)).toMatchObject({
+      kind: 'failed',
+      storage: false,
+      message: expect.stringContaining('could not be downloaded'),
+    });
+    expect(classifyOpenError(new LocalDemoDbOpenError('integrity', 'bad sha'), entry)).toMatchObject({
       message: expect.stringContaining('checksum'),
     });
-    expect(classifyOpenError(namedError('DatasetStorageError', 'QuotaExceededError', { code: 'dataset_storage' }), entry)).toMatchObject({
+    expect(classifyOpenError(new LocalDemoDbOpenError('quota', 'x'), entry)).toMatchObject({
       storage: true,
       message: expect.stringContaining('Not enough browser storage'),
     });
-    expect(classifyOpenError(namedError('DatasetStorageError', 'I/O error', { code: 'dataset_storage' }), entry)).toMatchObject({
+    expect(classifyOpenError(new LocalDemoDbOpenError('storage', 'I/O error'), entry)).toMatchObject({
       storage: true,
       message: expect.stringContaining('could not be stored'),
     });
+    expect(classifyOpenError(new LocalDemoDbOpenError('locked', 'held'), entry).kind).toBe('locked-retry');
+  });
+
+  it('does not read a message for quota: a plain error that mentions quota is an ordinary failure', () => {
+    expect(classifyOpenError(new Error('quota exceeded'), entry)).toMatchObject({ kind: 'failed', storage: false });
   });
 });

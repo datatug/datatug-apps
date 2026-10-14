@@ -30,7 +30,7 @@ import {
   type OvdbDescriptor,
 } from './ovdb-connection';
 import { OvdbConfirmService } from './ovdb-confirm.service';
-import { formatOvdbValue, ovdbFormFields } from './ovdb-record-form';
+import { displayOvdbValue, ovdbFormFields, type OvdbDisplayValue } from './ovdb-record-form';
 import { OVDB_PAGE_SIZE, describeOvdbError, listOvdbRows, resetOvdbDatabase, type OvdbRow } from './ovdb-records';
 import { ovdbCollectionSchema } from './ovdb-connection';
 
@@ -131,8 +131,19 @@ import { ovdbCollectionSchema } from './ovdb-connection';
                 </thead>
                 <tbody>
                   @for (row of rows(); track row.key; let i = $index) {
-                    <tr [class.selected]="row.key === selectedKey()" (click)="select(row)" [attr.data-testid]="'row-' + i">
-                      @for (column of columns(); track column) { <td>{{ cell(column, row.data[column]) }}</td> }
+                    <tr
+                      tabindex="0"
+                      [class.selected]="row.key === selectedKey()"
+                      [attr.aria-current]="row.key === selectedKey() ? 'true' : null"
+                      (click)="select(row)"
+                      (keydown.enter)="select(row, $event)"
+                      (keydown.space)="select(row, $event)"
+                      [attr.data-testid]="'row-' + i"
+                    >
+                      @for (column of columns(); track column) {
+                        @let value = cell(column, row.data[column]);
+                        <td [class.ovdb-null]="value.kind !== 'value'" [attr.data-cell-kind]="value.kind">{{ value.text }}</td>
+                      }
                     </tr>
                   }
                 </tbody>
@@ -159,6 +170,8 @@ import { ovdbCollectionSchema } from './ovdb-connection';
     .ovdb-grid { border-collapse: collapse; font-size: 13px; width: 100%; }
     .ovdb-grid th, .ovdb-grid td { border-bottom: 1px solid var(--ion-color-light-shade); padding: 4px 8px; text-align: left; white-space: nowrap; max-width: 24em; overflow: hidden; text-overflow: ellipsis; }
     .ovdb-grid tbody tr { cursor: pointer; }
+    .ovdb-grid tbody tr:focus-visible { outline: 2px solid var(--ion-color-primary); outline-offset: -2px; }
+    .ovdb-null { color: var(--ion-color-medium); font-style: italic; }
     .ovdb-grid tr.selected { background: var(--ion-color-primary-tint); color: var(--ion-color-primary-contrast); }
     .ovdb-error { color: var(--ion-color-danger); }
     .ovdb-subtitle { margin: 4px 0 0; color: var(--ion-color-medium); font-size: 14px; }
@@ -173,6 +186,8 @@ export class OvdbDatabaseBrowserComponent {
   readonly table = input<string | undefined>(undefined);
   /** Extra status shown in the header (for example "Local copy ready"). */
   readonly statusText = input<string>('');
+  /** Added to the Reset Database confirmation (for example that a reset needs the network). */
+  readonly resetNote = input<string>('');
   /** Emits the re-read descriptor after a successful reset. */
   readonly descriptorChange = output<OvdbDescriptor>();
 
@@ -201,6 +216,7 @@ export class OvdbDatabaseBrowserComponent {
   protected readonly resetMessage = signal('');
   protected readonly resetError = signal('');
   #loadEpoch = 0;
+  #confirmingReset = false;
 
   constructor() {
     effect(() => {
@@ -214,14 +230,16 @@ export class OvdbDatabaseBrowserComponent {
     });
   }
 
-  protected cell(column: string, value: unknown): string {
+  protected cell(column: string, value: unknown): OvdbDisplayValue {
     const table = this.table();
     const schema = table ? ovdbCollectionSchema(this.liveConnection().descriptor, table) : undefined;
     const field = ovdbFormFields(schema, { [column]: value }).find((f) => f.name === column);
-    return field ? formatOvdbValue(field, value) : String(value ?? '');
+    return field ? displayOvdbValue(field, value) : { text: String(value ?? ''), kind: value === null || value === undefined ? 'null' : 'value' };
   }
 
-  protected select(row: OvdbRow): void {
+  /** Selects a row; for a key press, stops the page from scrolling on Space. */
+  protected select(row: OvdbRow, event?: Event): void {
+    event?.preventDefault();
     this.selectedKey.set(row.key);
   }
 
@@ -253,13 +271,25 @@ export class OvdbDatabaseBrowserComponent {
   }
 
   async resetDatabase(): Promise<void> {
-    if (!this.caps().reset || this.resetting()) return;
+    if (!this.caps().reset || this.resetting() || this.#confirmingReset) return;
     const connection = this.liveConnection();
-    const confirmed = await this.confirmService.confirm({
-      header: 'Reset Database?',
-      message: `All your local changes to ${connection.title} will be lost and the original DemoDB data restored. This cannot be undone.`,
-      confirmText: 'Reset Database',
-    });
+    // A second click while the dialog is open must not open another one.
+    this.#confirmingReset = true;
+    let confirmed: boolean;
+    try {
+      confirmed = await this.confirmService.confirm({
+        header: 'Reset Database?',
+        message: [
+          `All your local changes to ${connection.title} will be lost and the original DemoDB data restored. This cannot be undone.`,
+          this.resetNote(),
+        ]
+          .filter(Boolean)
+          .join(' '),
+        confirmText: 'Reset Database',
+      });
+    } finally {
+      this.#confirmingReset = false;
+    }
     if (!confirmed) return;
     const expectedSha = connection.descriptor.canonical?.sha256;
     this.resetting.set(true);

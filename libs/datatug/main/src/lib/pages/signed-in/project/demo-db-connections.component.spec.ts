@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { GithubProjectReaderService } from '../../../services/repo/github/github-project-reader.service';
@@ -33,7 +34,7 @@ describe('shared project database connections', () => {
       bigQueryEditions, bigQueryPlans: plans }));
     await TestBed.configureTestingModule({
       imports: [DemoDbConnectionsComponent],
-      providers: [{ provide: GithubProjectReaderService, useValue: { getRawJson } }],
+      providers: [provideRouter([]), { provide: GithubProjectReaderService, useValue: { getRawJson } }],
     }).compileComponents();
     const fixture = TestBed.createComponent(DemoDbConnectionsComponent);
     fixture.componentRef.setInput('projectRef', canonical);
@@ -72,7 +73,7 @@ describe('shared project database connections', () => {
       bigQueryEditions, bigQueryPlans: plans }));
     await TestBed.configureTestingModule({
       imports: [DemoDbConnectionsComponent],
-      providers: [{ provide: GithubProjectReaderService, useValue: { getRawJson } }],
+      providers: [provideRouter([]), { provide: GithubProjectReaderService, useValue: { getRawJson } }],
     }).compileComponents();
     const fixture = TestBed.createComponent(DemoDbConnectionsComponent);
     fixture.componentRef.setInput('projectRef', canonical);
@@ -100,7 +101,7 @@ describe('shared project database connections', () => {
       bigQueryEditions, bigQueryPlans: plans }));
     await TestBed.configureTestingModule({
       imports: [DemoDbConnectionsComponent],
-      providers: [{ provide: GithubProjectReaderService, useValue: { getRawJson } }],
+      providers: [provideRouter([]), { provide: GithubProjectReaderService, useValue: { getRawJson } }],
     }).compileComponents();
     const fixture = TestBed.createComponent(DemoDbConnectionsComponent);
     fixture.componentRef.setInput('projectRef', canonical);
@@ -120,7 +121,7 @@ describe('shared project database connections', () => {
       bigQueryEditions, bigQueryPlans: plans }));
     await TestBed.configureTestingModule({
       imports: [DemoDbConnectionsComponent],
-      providers: [{ provide: GithubProjectReaderService, useValue: { getRawJson } }],
+      providers: [provideRouter([]), { provide: GithubProjectReaderService, useValue: { getRawJson } }],
     }).compileComponents();
     const fixture = TestBed.createComponent(DemoDbConnectionsComponent);
     fixture.componentRef.setInput('projectRef', canonical);
@@ -135,7 +136,7 @@ describe('shared project database connections', () => {
     const getRawJson = vi.fn(() => of(legacyCatalog));
     await TestBed.configureTestingModule({
       imports: [DemoDbConnectionsComponent],
-      providers: [{ provide: GithubProjectReaderService, useValue: { getRawJson } }],
+      providers: [provideRouter([]), { provide: GithubProjectReaderService, useValue: { getRawJson } }],
     }).compileComponents();
     const fixture = TestBed.createComponent(DemoDbConnectionsComponent);
     fixture.componentRef.setInput('projectRef', canonical);
@@ -152,7 +153,7 @@ describe('shared project database connections', () => {
     const getRawJson = vi.fn();
     await TestBed.configureTestingModule({
       imports: [DemoDbConnectionsComponent],
-      providers: [{ provide: GithubProjectReaderService, useValue: { getRawJson } }],
+      providers: [provideRouter([]), { provide: GithubProjectReaderService, useValue: { getRawJson } }],
     }).compileComponents();
     const fixture = TestBed.createComponent(DemoDbConnectionsComponent);
     for (const projectId of ['chinook-demo@datatug@', 'datatug-demo-projects@datatug@demo-project-1',
@@ -170,7 +171,7 @@ describe('shared project database connections', () => {
       bigQueryEditions, bigQueryPlans: plans }));
     await TestBed.configureTestingModule({
       imports: [DemoDbConnectionsComponent],
-      providers: [{ provide: GithubProjectReaderService, useValue: { getRawJson } }],
+      providers: [provideRouter([]), { provide: GithubProjectReaderService, useValue: { getRawJson } }],
     }).compileComponents();
     const fixture = TestBed.createComponent(DemoDbConnectionsComponent);
     fixture.componentRef.setInput('projectRef', canonical);
@@ -187,7 +188,7 @@ describe('shared project database connections', () => {
       bigQueryEditions: changed, bigQueryPlans: plans }));
     await TestBed.configureTestingModule({
       imports: [DemoDbConnectionsComponent],
-      providers: [{ provide: GithubProjectReaderService, useValue: { getRawJson } }],
+      providers: [provideRouter([]), { provide: GithubProjectReaderService, useValue: { getRawJson } }],
     }).compileComponents();
     const fixture = TestBed.createComponent(DemoDbConnectionsComponent);
     fixture.componentRef.setInput('projectRef', canonical);

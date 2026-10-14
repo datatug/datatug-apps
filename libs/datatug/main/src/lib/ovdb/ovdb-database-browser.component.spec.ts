@@ -79,6 +79,61 @@ describe('OvdbDatabaseBrowserComponent', () => {
     expect(local.database.tables['Artist']).toHaveLength(2);
   });
 
+  it('opens a row with the keyboard: Enter and Space, rows reachable by Tab', async () => {
+    const { q, settle } = await setup('Artist');
+    await vi.waitFor(async () => {
+      await settle();
+      expect(q('row-0')).not.toBeNull();
+    });
+    expect(q('row-0')?.getAttribute('tabindex')).toBe('0');
+    const press = (el: HTMLElement | null, key: string) => {
+      const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+      el?.dispatchEvent(event);
+      return event;
+    };
+    expect(press(q('row-1'), 'Enter').defaultPrevented).toBe(true);
+    await settle();
+    expect(q('row-1')?.getAttribute('aria-current')).toBe('true');
+    expect(q('ovdb-record')?.textContent).toContain('Artist');
+    expect(press(q('row-2'), ' ').defaultPrevented).toBe(true); // Space must not scroll the page
+    await settle();
+    expect(q('row-2')?.getAttribute('aria-current')).toBe('true');
+    expect(q('row-1')?.getAttribute('aria-current')).toBeNull();
+    // Other keys do nothing.
+    press(q('row-0'), 'a');
+    await settle();
+    expect(q('row-0')?.getAttribute('aria-current')).toBeNull();
+  });
+
+  it('shows NULL and an empty string in the grid differently from each other and from text', async () => {
+    const database = new MemorySqliteDatabase();
+    database.tables['Artist'][0]['Name'] = null;
+    database.tables['Artist'][1]['Name'] = '';
+    database.tables['Artist'][2]['Name'] = 'NULL';
+    const { q, settle } = await setup('Artist', { database });
+    await vi.waitFor(async () => {
+      await settle();
+      expect(q('row-2')).not.toBeNull();
+    });
+    const nameCell = (i: number) => q(`row-${i}`)?.querySelectorAll('td')[1] as HTMLElement;
+    expect([0, 1, 2].map((i) => [nameCell(i).textContent, nameCell(i).dataset['cellKind']])).toEqual([
+      ['NULL', 'null'],
+      ['(empty)', 'empty'],
+      ['NULL', 'value'],
+    ]);
+    expect(nameCell(0).classList.contains('ovdb-null')).toBe(true);
+    expect(nameCell(2).classList.contains('ovdb-null')).toBe(false);
+  });
+
+  it('opens one Reset confirmation however many times the button is clicked, and adds the host note', async () => {
+    const { component, confirm, fixture } = await setup(undefined, { confirm: false });
+    fixture.componentRef.setInput('resetNote', 'Resetting needs a network connection.');
+    await Promise.all([component.resetDatabase(), component.resetDatabase()]);
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(confirm.mock.calls[0][0].message).toContain('Resetting needs a network connection.');
+    expect(confirm.mock.calls[0][0].message).toContain('All your local changes');
+  });
+
   it('explains an unknown table', async () => {
     const { q } = await setup('Nope');
     expect(q('ovdb-unknown-table')?.textContent).toContain('There is no table “Nope”');

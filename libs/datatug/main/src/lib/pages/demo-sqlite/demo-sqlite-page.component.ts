@@ -11,7 +11,7 @@
 //   /demo/sqlite/<id>/table/<name>    rows + record view (edit / delete)
 //
 // Large-dataset confirmation: Continue → progress → tables; Cancel → /demo/sqlite.
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, signal, untracked } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, signal, untracked, viewChild } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink } from '@angular/router';
@@ -33,6 +33,7 @@ import {
   IonSpinner,
   IonTitle,
   IonToolbar,
+  type ViewWillEnter,
 } from '@ionic/angular';
 import { map } from 'rxjs';
 import { OvdbDatabaseBrowserComponent } from '../../ovdb/ovdb-database-browser.component';
@@ -44,9 +45,17 @@ import {
   formatMegabytes,
   type DemoSqliteCatalogEntry,
 } from '../../queries/demo-sqlite-catalog';
+import type { DemoDbInstallStep } from '../../demo-sqlite/local-demodb-progress';
 import { LocalDemoDbService, type LocalDemoDbSession, type LocalDemoDbState } from '../../demo-sqlite/local-demodb.service';
 
 const persistenceNotice = 'Changes will not be saved in this browser: this window cannot keep a local copy (for example a private window), so edits are lost when you reload.';
+
+const installLabels: Record<DemoDbInstallStep, string> = {
+  verify: 'Verifying the download…',
+  importPristine: 'Saving the original copy…',
+  importWorking: 'Saving your editable copy…',
+  open: 'Opening the local copy…',
+};
 
 @Component({
   selector: 'sneat-datatug-demo-sqlite-page',
@@ -106,9 +115,15 @@ const persistenceNotice = 'Changes will not be saved in this browser: this windo
             <ion-card data-testid="demo-sqlite-confirm-large">
               <ion-card-header><ion-card-title>Download {{ entry()!.title }}?</ion-card-title></ion-card-header>
               <ion-card-content>
-                <p>
-                  This dataset downloads ~{{ mb(entry()!.transferBytes) }} and uses ~{{ mb(storageBytes()) }} of browser storage
-                  (working copy + pristine copy). Continue?
+                <p data-testid="demo-sqlite-confirm-figures">
+                  This dataset downloads ~{{ mb(entry()!.transferBytes) }} (compressed in transit; {{ mb(entry()!.bytes) }} once unpacked)
+                  and uses ~{{ mb(storageBytes()) }} of browser storage
+                  @if (singleCopy()) {
+                    (one working copy). Reset Database downloads it again, so resetting needs a network connection.
+                  } @else {
+                    (working copy + pristine copy).
+                  }
+                  Continue?
                 </p>
                 <ion-button data-testid="demo-sqlite-continue" (click)="continueDownload()">Continue</ion-button>
                 <ion-button data-testid="demo-sqlite-cancel" fill="clear" routerLink="/demo/sqlite">Cancel</ion-button>
@@ -186,6 +201,7 @@ const persistenceNotice = 'Changes will not be saved in this browser: this windo
                 [basePath]="basePath()"
                 [table]="tableParam()"
                 [statusText]="persistent() ? 'Local copy ready' : 'Local copy (memory only)'"
+                [resetNote]="resetNote()"
               />
             }
           }
@@ -205,11 +221,13 @@ const persistenceNotice = 'Changes will not be saved in this browser: this windo
     </ion-content>
   `,
 })
-export class DemoSqlitePageComponent {
+export class DemoSqlitePageComponent implements ViewWillEnter {
   private readonly route = inject(ActivatedRoute);
   private readonly service = inject(LocalDemoDbService);
 
   protected readonly persistenceNotice = persistenceNotice;
+  private readonly browser = viewChild(OvdbDatabaseBrowserComponent);
+  #entered = false;
   protected readonly allDatasets = demoSqliteDatasetIds.map((id) => demoSqliteCatalog[id]);
   protected readonly datasetParam = toSignal(this.route.paramMap.pipe(map((params) => params.get('dataset') ?? '')), {
     initialValue: this.route.snapshot.paramMap.get('dataset') ?? '',
@@ -230,6 +248,14 @@ export class DemoSqlitePageComponent {
   protected readonly storageBytes = computed(() => {
     const entry = this.entry();
     return entry ? demoSqliteStorageBytes(entry) : 0;
+  });
+  protected readonly singleCopy = computed(() => this.entry()?.storagePolicy === 'single-copy');
+  /** Added to the Reset confirmation: a single-copy dataset has no stored original, so reset downloads it. */
+  protected readonly resetNote = computed(() => {
+    const entry = this.entry();
+    return entry && this.singleCopy()
+      ? `Resetting downloads the original data again (~${formatMegabytes(entry.transferBytes)}), so it needs a network connection.`
+      : '';
   });
   protected readonly availableBytes = computed(() => {
     const state = this.state();
@@ -255,12 +281,13 @@ export class DemoSqlitePageComponent {
       case 'opening':
         return { label: 'Opening the local copy…' };
       case 'download':
+        // Decoded (unpacked) bytes, so this differs from the compressed transfer size shown in the confirmation.
         return {
-          label: `Downloading ${(state.loaded / 1_000_000).toFixed(1)} of ${this.mb(state.total)}`,
+          label: `Downloading ${(state.loaded / 1_000_000).toFixed(1)} of ${this.mb(state.total)} (unpacked size)`,
           value: state.total ? Math.min(1, state.loaded / state.total) : undefined,
         };
       case 'install':
-        return { label: 'Verifying and saving the local copy…' };
+        return { label: installLabels[state.step ?? 'verify'] };
     }
   });
 
@@ -283,6 +310,18 @@ export class DemoSqlitePageComponent {
       if (state.kind === 'ready' && state.replacedPreviousVersion) untracked(() => this.replacedNotice.set(true));
     });
     destroyRef.onDestroy(() => this.session()?.dispose());
+  }
+
+  /**
+   * Ionic keeps a page of the navigation stack alive and goes back to it when its address is visited again
+   * (list → table). Its rows may be old by then (another tab may have edited them), so they are read again.
+   */
+  ionViewWillEnter(): void {
+    if (!this.#entered) {
+      this.#entered = true;
+      return;
+    }
+    void this.browser()?.reload();
   }
 
   protected mb(bytes: number): string {

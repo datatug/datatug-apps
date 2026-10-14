@@ -22,7 +22,7 @@ import {
   type LocalSqliteSchema,
   type ModifiedFlag,
 } from './local-demodb-host';
-import type { DemoDbProgressMessage } from './local-demodb-progress';
+import type { DemoDbProgress } from './local-demodb-progress';
 import type { LocalDemoDbOpenReport, LocalDemoDbRuntime, LocalDemoDbRuntimeOptions } from './local-demodb.types';
 import type { LocalDemoDbEnvironment } from './local-demodb.service';
 
@@ -268,8 +268,8 @@ export class FakeLocalDemoDbRuntime implements LocalDemoDbRuntime {
     this.closed = true;
   }
 
-  progress(message: { phase: 'download'; loaded: number } | { phase: 'install' }): void {
-    this.options.onProgress({ type: 'datatug/demodb-progress', ...message } as DemoDbProgressMessage);
+  progress(message: DemoDbProgress): void {
+    this.options.onProgress(message);
   }
   open(report: Partial<LocalDemoDbOpenReport> = {}): void {
     this.#role = 'leader';
@@ -285,13 +285,6 @@ export class FakeLocalDemoDbRuntime implements LocalDemoDbRuntime {
   fail(error: unknown): void {
     this.#settle.reject(error);
   }
-}
-
-export function namedError(name: string, message: string, extra: Record<string, unknown> = {}): Error {
-  const error = new Error(message);
-  error.name = name;
-  Object.assign(error, extra);
-  return error;
 }
 
 export function fakeEnvironment(overrides: Partial<LocalDemoDbEnvironment> = {}): LocalDemoDbEnvironment & { stored: Map<string, boolean> } {

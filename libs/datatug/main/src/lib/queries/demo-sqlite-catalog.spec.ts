@@ -20,7 +20,8 @@ describe('demoSqliteCatalog', () => {
       // SQLite files are whole pages.
       expect(entry.bytes % 512).toBe(0);
       expect(entry.transferBytes > 0 && entry.transferBytes <= entry.bytes).toBe(true);
-      expect(entry.storagePolicy).toBe('working-and-pristine');
+      // Only the large dataset keeps a single copy (Reset downloads it again).
+      expect(entry.storagePolicy).toBe(id === 'adventureworks' ? 'single-copy' : 'working-and-pristine');
       expect(entry.title.length).toBeGreaterThan(0);
       expect(Object.keys(entry).sort()).toEqual(
         ['bytes', 'dataset', 'sha256', 'storagePolicy', 'title', 'transferBytes', 'url'],
@@ -54,9 +55,9 @@ describe('demoSqliteCatalog', () => {
   it('marks only AdventureWorks as large and sizes storage by policy', () => {
     expect(demoSqliteDatasetIds.filter((id) => isLargeDemoSqliteDataset(demoSqliteCatalog[id])))
       .toEqual(['adventureworks']);
-    expect(demoSqliteStorageBytes(demoSqliteCatalog.adventureworks)).toBe(253640704);
-    expect(demoSqliteStorageBytes({ ...demoSqliteCatalog.adventureworks, storagePolicy: 'single-copy' }))
-      .toBe(126820352);
+    expect(demoSqliteStorageBytes(demoSqliteCatalog.adventureworks)).toBe(126820352);
+    expect(demoSqliteStorageBytes({ ...demoSqliteCatalog.adventureworks, storagePolicy: 'working-and-pristine' }))
+      .toBe(253640704);
     expect(formatMegabytes(253640704)).toBe('253.6 MB');
   });
 });

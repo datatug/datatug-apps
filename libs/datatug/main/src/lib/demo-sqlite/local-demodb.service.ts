@@ -9,7 +9,9 @@
 //   loading ─▶ locked-retry (pool held by another context; Try again) | failed
 //
 // Large datasets (catalog `bytes` above LARGE_DEMO_SQLITE_BYTES) never run from
-// memory: when the session falls back to memory they end in unsupported-browser.
+// memory: the session is opened with memoryFallback 'forbid', so where OPFS cannot
+// be used it fails before downloading and the page shows unsupported-browser.
+// A catalog `single-copy` policy keeps one OPFS copy (Reset downloads again).
 import { Injectable, InjectionToken, Signal, computed, inject, signal } from '@angular/core';
 import {
   demoSqliteStorageBytes,
@@ -19,7 +21,8 @@ import {
   type DemoSqliteCatalogEntry,
 } from '../queries/demo-sqlite-catalog';
 import { fetchOvdbDescriptor, type OvdbConnection, type OvdbDescriptor } from '../ovdb/ovdb-connection';
-import type { DemoDbProgressMessage } from './local-demodb-progress';
+import { LocalDemoDbOpenError } from './local-demodb-errors';
+import type { DemoDbInstallStep, DemoDbProgress } from './local-demodb-progress';
 import type { LocalDemoDbOpenReport, LocalDemoDbRuntime, OpenLocalDemoDbRuntime } from './local-demodb.types';
 
 export type LocalDemoDbState =
@@ -32,8 +35,10 @@ export type LocalDemoDbState =
       readonly phase: 'opening' | 'download' | 'install';
       /** Decoded bytes received so far. */
       readonly loaded: number;
-      /** Decoded size from the catalog. */
+      /** Decoded size of the file (from the download itself when it knows, else the catalog). */
       readonly total: number;
+      /** What the install phase is doing. */
+      readonly step?: DemoDbInstallStep;
       /** False for the first ~400 ms, so a quick open shows no progress UI. */
       readonly showProgress: boolean;
     }
@@ -130,10 +135,6 @@ export const LOCAL_DEMODB_RUNTIME_LOADER = new InjectionToken<() => Promise<Open
   },
 );
 
-function errorField(error: unknown, field: string): unknown {
-  return typeof error === 'object' && error !== null ? (error as Record<string, unknown>)[field] : undefined;
-}
-
 export function storageShortageMessage(entry: DemoSqliteCatalogEntry): string {
   return `Not enough browser storage for this dataset (needs ~${formatMegabytes(demoSqliteStorageBytes(entry))}). Free space or try a smaller dataset.`;
 }
@@ -143,30 +144,29 @@ export const LARGE_DATASET_NEEDS_OPFS =
 
 /** Maps a failure of opening the dataset to a state the page can explain. */
 export function classifyOpenError(error: unknown, entry: DemoSqliteCatalogEntry): LocalDemoDbState {
-  const name = errorField(error, 'name');
   const message = error instanceof Error ? error.message : String(error);
-  if (name === 'PoolUnavailableError' && (errorField(error, 'reason') === 'locked' || errorField(error, 'retriable') === true)) {
-    return {
-      kind: 'locked-retry',
-      message: 'The local copy is still held by another tab or a page that is closing. Close other DataTug tabs of this dataset, then try again.',
-    };
-  }
-  if (name === 'DatasetStorageError' || errorField(error, 'code') === 'dataset_storage') {
-    // The `operation` ("import" | "open") does not cross the worker boundary (it is
-    // not in sqlite-wasm's SerializedError), so quota is recognised by the message.
-    return /quota|space|full|exceed/i.test(message) || isLargeDemoSqliteDataset(entry)
-      ? { kind: 'failed', storage: true, message: storageShortageMessage(entry) }
-      : { kind: 'failed', storage: true, message: `The local copy could not be stored in this browser: ${message}` };
-  }
-  if (name === 'CanonicalFetchError') {
-    return { kind: 'failed', storage: false, message: 'The dataset could not be downloaded. Check your connection and try again.' };
-  }
-  if (name === 'CanonicalIntegrityError') {
-    return {
-      kind: 'failed',
-      storage: false,
-      message: 'The downloaded dataset did not match its published checksum, so it was not opened. Try again later.',
-    };
+  if (error instanceof LocalDemoDbOpenError) {
+    switch (error.kind) {
+      case 'locked':
+        return {
+          kind: 'locked-retry',
+          message: 'The local copy is still held by another tab or a page that is closing. Close other DataTug tabs of this dataset, then try again.',
+        };
+      case 'opfs-unavailable':
+        return { kind: 'unsupported-browser', message: LARGE_DATASET_NEEDS_OPFS };
+      case 'quota':
+        return { kind: 'failed', storage: true, message: storageShortageMessage(entry) };
+      case 'storage':
+        return { kind: 'failed', storage: true, message: `The local copy could not be stored in this browser: ${message}` };
+      case 'download':
+        return { kind: 'failed', storage: false, message: 'The dataset could not be downloaded. Check your connection and try again.' };
+      case 'integrity':
+        return {
+          kind: 'failed',
+          storage: false,
+          message: 'The downloaded dataset did not match its published checksum, so it was not opened. Try again later.',
+        };
+    }
   }
   return { kind: 'failed', storage: false, message: `The local database could not be opened: ${message}` };
 }
@@ -205,11 +205,6 @@ export class LocalDemoDbSession {
     const epoch = ++this.#epoch;
     this.#state.set({ kind: 'checking' });
     const entry = this.entry;
-    if (entry.storagePolicy !== 'working-and-pristine') {
-      // A single-copy policy needs an upstream openDemoDb option that does not exist yet.
-      this.#state.set({ kind: 'failed', storage: false, message: 'This dataset is not available as a local copy yet.' });
-      return;
-    }
     if (!this.environment.supportsWorkers()) {
       this.#state.set({
         kind: 'unsupported-browser',
@@ -277,13 +272,13 @@ export class LocalDemoDbSession {
     this.#connection.set(undefined);
   }
 
-  #onProgress = (epoch: number, message: DemoDbProgressMessage): void => {
+  #onProgress = (epoch: number, message: DemoDbProgress): void => {
     const state = this.#state();
     if (epoch !== this.#epoch || state.kind !== 'loading') return;
     this.#state.set(
       message.phase === 'download'
-        ? { ...state, phase: 'download', loaded: message.loaded }
-        : { ...state, phase: 'install', loaded: this.entry.bytes },
+        ? { ...state, phase: 'download', loaded: message.loaded, total: message.total ?? this.entry.bytes }
+        : { ...state, phase: 'install', step: message.step, loaded: state.total },
     );
   };
 

@@ -112,6 +112,22 @@ export function formatOvdbValue(field: Pick<OvdbFormField, 'kind' | 'scale'>, va
   return String(value);
 }
 
+/** A value as shown read-only: NULL and the empty string get their own labels, so they differ from each other and from text. */
+export interface OvdbDisplayValue {
+  readonly text: string;
+  /** `null` for NULL, `empty` for the empty string, `value` for anything else. */
+  readonly kind: 'null' | 'empty' | 'value';
+}
+
+export const OVDB_NULL_LABEL = 'NULL';
+export const OVDB_EMPTY_LABEL = '(empty)';
+
+export function displayOvdbValue(field: Pick<OvdbFormField, 'kind' | 'scale'>, value: unknown): OvdbDisplayValue {
+  if (value === null || value === undefined) return { text: OVDB_NULL_LABEL, kind: 'null' };
+  if (value === '') return { text: OVDB_EMPTY_LABEL, kind: 'empty' };
+  return { text: formatOvdbValue(field, value), kind: 'value' };
+}
+
 export function initialOvdbInput(field: OvdbFormField, value: unknown): OvdbFieldInput {
   return { text: formatOvdbValue(field, value), isNull: value === null || value === undefined };
 }

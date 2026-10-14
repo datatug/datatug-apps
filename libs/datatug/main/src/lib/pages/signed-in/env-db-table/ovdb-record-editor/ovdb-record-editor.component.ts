@@ -27,10 +27,11 @@ import {
 import { ovdbCollectionSchema, ovdbRecordActions, type OvdbConnection } from '../../../../ovdb/ovdb-connection';
 import { OvdbConfirmService } from '../../../../ovdb/ovdb-confirm.service';
 import {
-  formatOvdbValue,
+  displayOvdbValue,
   initialOvdbInput,
   ovdbFormFields,
   ovdbRecordChanges,
+  type OvdbDisplayValue,
   type OvdbFieldInput,
   type OvdbFormField,
 } from '../../../../ovdb/ovdb-record-form';
@@ -109,9 +110,8 @@ export type OvdbRecordChange = 'saved' | 'deleted';
                   <ion-note color="danger" role="alert">{{ fieldError }}</ion-note>
                 }
               } @else {
-                <div class="ovdb-value" [class.ovdb-null]="rec[field.name] === null || rec[field.name] === undefined">
-                  {{ display(field, rec[field.name]) }}
-                </div>
+                @let shown = display(field, rec[field.name]);
+                <div class="ovdb-value" [class.ovdb-null]="shown.kind !== 'value'" [attr.data-value-kind]="shown.kind">{{ shown.text }}</div>
                 @if (editing() && field.lockedReason) {
                   <ion-note>{{ field.lockedReason }}</ion-note>
                 }
@@ -143,7 +143,6 @@ export type OvdbRecordChange = 'saved' | 'deleted';
   styles: `
     .ovdb-value { padding: 4px 0 8px; white-space: pre-wrap; word-break: break-word; }
     .ovdb-null { color: var(--ion-color-medium); font-style: italic; }
-    .ovdb-null:empty::before { content: 'NULL'; }
     .ovdb-error { color: var(--ion-color-danger); }
   `,
 })
@@ -161,6 +160,7 @@ export class OvdbRecordEditorComponent {
   protected readonly errors = signal<Readonly<Record<string, string>>>({});
   protected readonly error = signal('');
   protected readonly notice = signal('');
+  #confirmingDelete = false;
 
   protected readonly actions = computed(() => ovdbRecordActions(this.connection().descriptor, this.collection()));
   protected readonly fields = computed(() =>
@@ -185,8 +185,8 @@ export class OvdbRecordEditorComponent {
     });
   }
 
-  protected display(field: OvdbFormField, value: unknown): string {
-    return formatOvdbValue(field, value);
+  protected display(field: OvdbFormField, value: unknown): OvdbDisplayValue {
+    return displayOvdbValue(field, value);
   }
 
   protected inputMode(field: OvdbFormField): string {
@@ -256,13 +256,20 @@ export class OvdbRecordEditorComponent {
   async deleteRecord(): Promise<void> {
     const record = this.record();
     const keyField = this.actions().keyField;
-    if (!record || !keyField || !this.actions().delete || this.busy()) return;
+    if (!record || !keyField || !this.actions().delete || this.busy() || this.#confirmingDelete) return;
     const id = record[keyField] as string | number;
-    const confirmed = await this.confirmService.confirm({
-      header: 'Delete record?',
-      message: `Delete ${this.collection()} ${keyField} ${String(id)}? This cannot be undone (except by resetting the database).`,
-      confirmText: 'Delete',
-    });
+    // A second click while the dialog is open must not open another one.
+    this.#confirmingDelete = true;
+    let confirmed: boolean;
+    try {
+      confirmed = await this.confirmService.confirm({
+        header: 'Delete record?',
+        message: `Delete ${this.collection()} ${keyField} ${String(id)}? This cannot be undone (except by resetting the database).`,
+        confirmText: 'Delete',
+      });
+    } finally {
+      this.#confirmingDelete = false;
+    }
     if (!confirmed) return;
     this.busy.set(true);
     this.error.set('');

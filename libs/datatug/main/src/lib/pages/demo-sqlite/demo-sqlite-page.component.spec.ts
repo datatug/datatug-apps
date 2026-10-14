@@ -4,7 +4,8 @@ import { BehaviorSubject } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OvdbConfirmService } from '../../ovdb/ovdb-confirm.service';
 import { LOCAL_DEMODB_ENVIRONMENT, LOCAL_DEMODB_RUNTIME_LOADER, type LocalDemoDbEnvironment } from '../../demo-sqlite/local-demodb.service';
-import { FakeLocalDemoDbRuntime, fakeEnvironment, namedError } from '../../demo-sqlite/local-demodb.spec-helper';
+import { LocalDemoDbOpenError } from '../../demo-sqlite/local-demodb-errors';
+import { FakeLocalDemoDbRuntime, fakeEnvironment } from '../../demo-sqlite/local-demodb.spec-helper';
 import type { LocalDemoDbRuntimeOptions } from '../../demo-sqlite/local-demodb.types';
 import { DemoSqlitePageComponent } from './demo-sqlite-page.component';
 
@@ -100,24 +101,29 @@ describe('DemoSqlitePageComponent', () => {
       await settle();
       expect(q('demo-sqlite-confirm-large')).not.toBeNull();
     });
-    expect(q('demo-sqlite-confirm-large')?.textContent).toContain(
-      'This dataset downloads ~35.4 MB and uses ~253.6 MB of browser storage (working copy + pristine copy). Continue?',
-    );
+    // One set of figures, each labelled: compressed transfer, unpacked size, stored size; and what Reset needs.
+    const figures = q('demo-sqlite-confirm-figures')?.textContent?.replace(/\s+/g, ' ') ?? '';
+    expect(figures).toContain('downloads ~35.4 MB (compressed in transit; 126.8 MB once unpacked)');
+    expect(figures).toContain('uses ~126.8 MB of browser storage (one working copy)');
+    expect(figures).toContain('Reset Database downloads it again, so resetting needs a network connection');
     expect(q('demo-sqlite-cancel')?.getAttribute('href')).toBe('/demo/sqlite');
     expect(loader).not.toHaveBeenCalled();
     vi.useFakeTimers();
     q('demo-sqlite-continue')?.click();
     await vi.waitFor(() => expect(runtimes).toHaveLength(1));
-    runtimes[0].progress({ phase: 'download', loaded: 12_400_000 });
+    runtimes[0].progress({ phase: 'download', loaded: 12_400_000, total: 126_820_352 });
     await settle();
     expect(q('demo-sqlite-progress')).toBeNull(); // not before ~400 ms
     vi.advanceTimersByTime(400);
     await settle();
     expect(q('demo-sqlite-progress')?.textContent).toContain('Preparing local copy (126.8 MB)');
-    expect(q('demo-sqlite-progress')?.textContent).toContain('Downloading 12.4 of 126.8 MB');
-    runtimes[0].progress({ phase: 'install' });
+    expect(q('demo-sqlite-progress')?.textContent).toContain('Downloading 12.4 of 126.8 MB (unpacked size)');
+    runtimes[0].progress({ phase: 'install', step: 'verify' });
     await settle();
-    expect(q('demo-sqlite-progress')?.textContent).toContain('Verifying and saving the local copy');
+    expect(q('demo-sqlite-progress')?.textContent).toContain('Verifying the download');
+    runtimes[0].progress({ phase: 'install', step: 'importWorking' });
+    await settle();
+    expect(q('demo-sqlite-progress')?.textContent).toContain('Saving your editable copy');
     vi.useRealTimers();
     runtimes[0].open({ imported: true });
     await vi.waitFor(async () => {
@@ -152,7 +158,7 @@ describe('DemoSqlitePageComponent', () => {
   it('offers a retry for a locked local copy', async () => {
     const { q, runtimes, settle } = await setup({ dataset: 'chinook' });
     await vi.waitFor(() => expect(runtimes).toHaveLength(1));
-    runtimes[0].fail(namedError('PoolUnavailableError', 'locked', { reason: 'locked', retriable: true }));
+    runtimes[0].fail(new LocalDemoDbOpenError('locked', 'locked'));
     await vi.waitFor(async () => {
       await settle();
       expect(q('demo-sqlite-locked')).not.toBeNull();
@@ -174,5 +180,22 @@ describe('DemoSqlitePageComponent', () => {
     await settle();
     await vi.waitFor(() => expect(runtimes).toHaveLength(2));
     expect(runtimes[0].closed).toBe(true);
+  });
+
+  it('reads the rows again when Ionic returns to the page, but not on its first entry', async () => {
+    const { q, runtimes, settle, fixture } = await setup({ dataset: 'chinook', table: 'Artist' });
+    await vi.waitFor(() => expect(runtimes).toHaveLength(1));
+    runtimes[0].open();
+    await vi.waitFor(async () => {
+      await settle();
+      expect(q('ovdb-rows')).not.toBeNull();
+    });
+    const queries = () => runtimes[0].local.requests.filter((r) => r.url.endsWith('/query')).length;
+    const before = queries();
+    fixture.componentInstance.ionViewWillEnter(); // first entry: the page just loaded its rows
+    await settle();
+    expect(queries()).toBe(before);
+    fixture.componentInstance.ionViewWillEnter(); // back to a page kept in the stack
+    await vi.waitFor(() => expect(queries()).toBe(before + 1));
   });
 });

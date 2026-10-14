@@ -2,7 +2,7 @@
 // runtime (local-demodb-runtime.ts, which pulls in @dalgo/sqlite-wasm/opfs and
 // @openvaultdb/inprocess). Type-only: importing this file adds no code.
 import type { DemoSqliteCatalogEntry } from '../queries/demo-sqlite-catalog';
-import type { DemoDbProgressMessage } from './local-demodb-progress';
+import type { DemoDbProgress } from './local-demodb-progress';
 
 /** The leader's open report (`OpenReport` of @dalgo/sqlite-wasm/opfs), as DataTug uses it. */
 export interface LocalDemoDbOpenReport {
@@ -28,7 +28,7 @@ export interface LocalDemoDbRuntime {
 
 export interface LocalDemoDbRuntimeOptions {
   readonly entry: DemoSqliteCatalogEntry;
-  readonly onProgress: (message: DemoDbProgressMessage) => void;
+  readonly onProgress: (message: DemoDbProgress) => void;
 }
 
 export type OpenLocalDemoDbRuntime = (options: LocalDemoDbRuntimeOptions) => LocalDemoDbRuntime;

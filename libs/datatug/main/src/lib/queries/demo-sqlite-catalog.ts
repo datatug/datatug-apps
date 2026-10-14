@@ -24,10 +24,9 @@ export type DemoSqliteDatasetId = (typeof demoSqliteDatasetIds)[number];
 /**
  * How the browser keeps a dataset:
  * - `working-and-pristine`: an editable working copy plus a pristine copy that
- *   Reset restores without downloading again (the only policy implemented).
- * - `single-copy`: only the working copy; Reset downloads the file again.
- *   Reserved for large datasets; the local DemoDB service refuses it until the
- *   storage layer supports it.
+ *   Reset restores without downloading again.
+ * - `single-copy`: only the working copy (half the storage); Reset downloads
+ *   the file again, so it needs the network. Used for large datasets.
  */
 export type DemoSqliteStoragePolicy = 'working-and-pristine' | 'single-copy';
 
@@ -95,7 +94,7 @@ export const demoSqliteCatalog: Readonly<
     sha256: '6a105e1982becfe003fc7a307d7cad9d738390cedd79d166c2167fd817168109',
     bytes: 126820352,
     transferBytes: 35367459,
-    storagePolicy: 'working-and-pristine',
+    storagePolicy: 'single-copy',
   },
   employees: {
     dataset: 'employees',
