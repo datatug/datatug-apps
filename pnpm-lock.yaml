@@ -140,8 +140,8 @@ importers:
         specifier: 1.2.3
         version: 1.2.3
       '@openvaultdb/inprocess':
-        specifier: github:openvaultdb/openvaultdb-ts#f4bfd7a0e5d601a86515e25e11cc8264a71b8aa7&path:/packages/inprocess
-        version: git+https://github.com/openvaultdb/openvaultdb-ts.git#f4bfd7a0e5d601a86515e25e11cc8264a71b8aa7&path:/packages/inprocess(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42)
+        specifier: github:openvaultdb/openvaultdb-ts#9a5af8a45d1394ff68c7666da09c25450b317560&path:/packages/inprocess
+        version: https://codeload.github.com/openvaultdb/openvaultdb-ts/tar.gz/9a5af8a45d1394ff68c7666da09c25450b317560#path:/packages/inprocess(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42)
       '@sentry/angular':
         specifier: 10.70.0
         version: 10.70.0(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(@angular/router@22.1.3(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(@angular/platform-browser@22.1.3(@angular/animations@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))(rxjs@7.8.2))(rxjs@7.8.2)
@@ -4230,8 +4230,8 @@ packages:
     resolution: {integrity: sha512-eSYWTm620tTk45EKSedaUL8MFYI8hW164hIXsgIHyxu3VobUB3fFCu5t0hQby6OoWRPsG1KkKUG2M5UadiLiVg==}
     engines: {node: '>=14'}
 
-  '@openvaultdb/inprocess@git+https://github.com/openvaultdb/openvaultdb-ts.git#f4bfd7a0e5d601a86515e25e11cc8264a71b8aa7&path:/packages/inprocess':
-    resolution: {commit: f4bfd7a0e5d601a86515e25e11cc8264a71b8aa7, path: /packages/inprocess, repo: https://github.com/openvaultdb/openvaultdb-ts.git, type: git}
+  '@openvaultdb/inprocess@https://codeload.github.com/openvaultdb/openvaultdb-ts/tar.gz/9a5af8a45d1394ff68c7666da09c25450b317560#path:/packages/inprocess':
+    resolution: {gitHosted: true, integrity: sha512-lrHMszfa1BQgYwmJIRnXfX326krRS04V9l+Akl+6isHruAC1633Dww7JCmxTqoZw0uzKqO53pwoabeug3z+70g==, path: /packages/inprocess, tarball: https://codeload.github.com/openvaultdb/openvaultdb-ts/tar.gz/9a5af8a45d1394ff68c7666da09c25450b317560}
     version: 0.0.0
     engines: {node: '>=20'}
     peerDependencies:
@@ -16132,7 +16132,7 @@ snapshots:
 
   '@opentelemetry/semantic-conventions@1.43.0': {}
 
-  '@openvaultdb/inprocess@git+https://github.com/openvaultdb/openvaultdb-ts.git#f4bfd7a0e5d601a86515e25e11cc8264a71b8aa7&path:/packages/inprocess(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42)':
+  '@openvaultdb/inprocess@https://codeload.github.com/openvaultdb/openvaultdb-ts/tar.gz/9a5af8a45d1394ff68c7666da09c25450b317560#path:/packages/inprocess(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42)':
     dependencies:
       '@dalgo/core': https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42
       yaml: 2.8.2
