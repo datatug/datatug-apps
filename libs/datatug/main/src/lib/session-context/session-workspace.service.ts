@@ -1,5 +1,6 @@
 import { Injectable, InjectionToken, computed, inject, signal } from '@angular/core';
 import { openDB } from 'idb';
+import { SneatApiNotAuthenticatedError } from '@sneat/api';
 import type { Fact } from '@sneat/datatug-semantic';
 import type { TypedValue } from '@sneat/datatug-semantic';
 import { IProjectRef, equalProjectRef, projectRefToString } from '../core/project-context';
@@ -67,6 +68,8 @@ const errorMessage = (error: unknown): string => {
   if (status === 404 || status === 501) return 'Session Context Bags are not available on this server.';
   return error instanceof Error ? error.message : 'The server could not confirm this operation. Your draft is retained.';
 };
+const needsSignIn = (error: unknown): boolean =>
+  error === SneatApiNotAuthenticatedError || errorStatus(error) === 401;
 const refsKey = (refs: readonly ContextEntryRef[]): string => JSON.stringify([...refs].sort((a, b) => a.entryId.localeCompare(b.entryId)));
 
 /** One shell instance owns its session tabs. Cached snapshots never substitute for denied server reads. */
@@ -89,6 +92,7 @@ export class SessionWorkspaceService {
   readonly focusedSessionId = signal('');
   readonly loading = signal(false);
   readonly busy = signal(false);
+  readonly authRequired = signal(false);
   readonly error = signal('');
   readonly draftError = signal('');
   readonly notice = signal('');
@@ -135,6 +139,7 @@ export class SessionWorkspaceService {
       const page = await this.api.list(project, capabilities);
       const pending = await this.drafts.readPending(this.pendingKey(project, capabilities));
       if (generation !== this.generation) return;
+      this.authRequired.set(false);
       this.capabilities.set(capabilities);
       const actorPending = pending?.capabilities.actorId === capabilities.actorId ? pending : undefined;
       this.pending.set(actorPending);
@@ -144,7 +149,10 @@ export class SessionWorkspaceService {
       this.hasMore.set(page.hasMore);
       this.openSessionIds.set(this.readOpenTabs(capabilities).filter((id) => page.items.some((session) => session.id === id)));
     } catch (error) {
-      if (generation === this.generation) this.error.set(errorMessage(error));
+      if (generation === this.generation) {
+        this.authRequired.set(needsSignIn(error));
+        this.error.set(this.authRequired() ? '' : errorMessage(error));
+      }
     } finally {
       if (generation === this.generation) this.loading.set(false);
     }
@@ -590,7 +598,7 @@ export class SessionWorkspaceService {
   }
   private saveOpenTabs(): void { try { localStorage.setItem(this.tabKey(), JSON.stringify(this.openSessionIds())); } catch { /* Tab preferences carry no authority; draft persistence has a separate error. */ } }
   private reset(): void {
-    this.generation++; this.focusGeneration++; this.capabilities.set(undefined); this.sessions.set([]); this.snapshots.set({}); this.deviceDrafts.set({});
+    this.generation++; this.focusGeneration++; this.capabilities.set(undefined); this.authRequired.set(false); this.sessions.set([]); this.snapshots.set({}); this.deviceDrafts.set({});
     this.focusedSessionId.set(''); this.openSessionIds.set([]); this.pending.set(undefined); this.busy.set(false); this.loading.set(false); this.error.set(''); this.draftError.set(''); this.notice.set('');
   }
 }

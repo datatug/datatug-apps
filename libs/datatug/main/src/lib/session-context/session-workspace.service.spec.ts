@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { SneatApiNotAuthenticatedError } from '@sneat/api';
 import { SessionContextApiService } from './session-context-api.service';
 import { SessionWorkspaceService, SESSION_DEVICE_DRAFTS, SessionDeviceDraft, SessionPendingOperation } from './session-workspace.service';
 import { ContextCapabilities, ContextCommand, ContextReceipt, ContextSnapshot } from './session-context-contract';
@@ -58,6 +59,40 @@ describe('SessionWorkspaceService authority and draft boundaries', () => {
     } }] });
     service = TestBed.inject(SessionWorkspaceService);
     await service.openProject(project); await service.focus('s1');
+  });
+
+  it('treats only the API unauthenticated sentinel and HTTP 401 as sign-in required', async () => {
+    service.setActor('signed-in-before-test'); service.setActor('');
+    api.capabilities.mockRejectedValueOnce(SneatApiNotAuthenticatedError);
+    await service.openProject(project);
+    expect(service.authRequired()).toBe(true);
+    expect(service.error()).toBe('');
+    expect(api.list).toHaveBeenCalledTimes(1);
+
+    service.setActor('signed-in-before-test'); service.setActor('');
+    api.capabilities.mockRejectedValueOnce({ status: 401 });
+    await service.openProject(project);
+    expect(service.authRequired()).toBe(true);
+    expect(service.error()).toBe('');
+  });
+
+  it('keeps forbidden, network, and unrelated string errors distinct from sign-in-required', async () => {
+    service.setActor('signed-in-before-test'); service.setActor('');
+    api.capabilities.mockRejectedValueOnce({ status: 403 });
+    await service.openProject(project);
+    expect(service.authRequired()).toBe(false);
+    expect(service.error()).toContain('Access to this session');
+
+    service.setActor('signed-in-before-test'); service.setActor('');
+    api.capabilities.mockRejectedValueOnce({ status: 0 });
+    await service.openProject(project);
+    expect(service.authRequired()).toBe(false);
+
+    service.setActor('signed-in-before-test'); service.setActor('');
+    api.capabilities.mockRejectedValueOnce('not authenticated');
+    await service.openProject(project);
+    expect(service.authRequired()).toBe(false);
+    expect(service.error()).toContain('could not confirm');
   });
 
   it('stages entry/master changes and applies only the selected environment', async () => {

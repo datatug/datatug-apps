@@ -3,6 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, NavigationEnd, Router } from '@angular/router';
 import { SneatAuthStateService } from '@sneat/auth-core';
+import { AuthPanelComponent } from '@sneat/auth-ui';
 import {
   IonAlert, IonButton, IonButtons, IonCheckbox, IonContent, IonFooter, IonHeader,
   IonInput, IonItem, IonLabel, IonModal, IonNote, IonSelect, IonSelectOption,
@@ -23,7 +24,7 @@ import { SessionWorkspaceService } from './session-workspace.service';
   templateUrl: './session-workspace-shell.component.html',
   styleUrl: './session-workspace-shell.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, IonTabs, IonTabBar, IonTabButton, IonItem, IonLabel,
+  imports: [FormsModule, AuthPanelComponent, IonTabs, IonTabBar, IonTabButton, IonItem, IonLabel,
     IonButton, IonButtons, IonSpinner, IonModal, IonHeader, IonToolbar, IonTitle,
     IonContent, IonFooter, IonInput, IonSelect, IonSelectOption, IonCheckbox,
     IonTextarea, IonNote, IonAlert],
@@ -152,6 +153,7 @@ export class SessionWorkspaceShellComponent {
     delete tree.queryParams['session'];
     return this.router.serializeUrl(tree);
   }
+  signInReturnTo(): string { return this.router.url; }
   async selectSession(event: Event): Promise<void> {
     // Guard the draft, then delegate to Ionic's real router-stack selection API.
     event.stopPropagation();
