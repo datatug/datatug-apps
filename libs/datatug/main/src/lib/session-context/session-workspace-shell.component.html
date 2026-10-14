@@ -38,9 +38,15 @@
       </ion-buttons>
     }
   </ion-item>
+  @if (workspace.authRequired()) {
+    <ion-item color="warning" role="status">
+      <ion-label>Sign in to view or create sessions for this project.</ion-label>
+      <ion-button slot="end" (click)="chooserOpen.set(true)">Sign in</ion-button>
+    </ion-item>
+  }
   </div>
   @if (workspace.loading()) { <ion-item slot="top" lines="none"><ion-spinner slot="start" /><ion-label>Loading saved session…</ion-label></ion-item> }
-  @if (workspace.error()) {
+  @if (workspace.error() && !workspace.authRequired()) {
     <ion-item slot="top" color="danger" role="alert"><ion-label>{{ workspace.error() }}</ion-label>
       @if (workspace.canRetry()) { <ion-button slot="end" (click)="workspace.retry()">Check and recover</ion-button> }
     </ion-item>
@@ -135,14 +141,19 @@
   <ng-template>
     <ion-header><ion-toolbar><ion-title>All sessions</ion-title><ion-buttons slot="end"><ion-button (click)="chooserOpen.set(false)">Done</ion-button></ion-buttons></ion-toolbar></ion-header>
     <ion-content>
-      <ion-item><ion-input label="Search" [ngModel]="sessionSearch()" (ngModelChange)="sessionSearch.set($event)" /></ion-item>
-      <ion-item><ion-select label="State" [value]="sessionFilter()" (ionChange)="sessionFilter.set($event.detail.value)"><ion-select-option value="all">All</ion-select-option><ion-select-option value="active">Running</ion-select-option><ion-select-option value="stopped">Stopped</ion-select-option><ion-select-option value="archived">Archived</ion-select-option></ion-select></ion-item>
-      @for (session of visibleSessions(); track session.id) {
-        <ion-item button (click)="openSession(session)"><ion-label><h2>{{ session.title }}</h2><p>{{ session.state }} · {{ session.databaseId }}</p></ion-label></ion-item>
-      } @empty { <ion-item><ion-label>No saved sessions match.</ion-label></ion-item> }
-      @if (workspace.hasMore()) { <ion-item><ion-button (click)="workspace.loadMore()" [disabled]="workspace.loading()">Load more sessions</ion-button></ion-item> }
-      <ion-item><ion-button (click)="beginCreate()" [disabled]="!workspace.capabilities()">New session</ion-button></ion-item>
-      <ion-item><ion-button fill="outline" (click)="beginLegacyImport()" [disabled]="!workspace.capabilities()?.actions?.includes('importLegacy')">Import from this browser…</ion-button></ion-item>
+      @if (workspace.authRequired()) {
+        <ion-item lines="full"><ion-label><h2>Sign in required</h2><p>Your saved sessions are available after you sign in. Signing in will return you to this project.</p></ion-label></ion-item>
+        <sneat-auth-panel [returnTo]="signInReturnTo()" [showIntro]="false" />
+      } @else {
+        <ion-item><ion-input label="Search" [ngModel]="sessionSearch()" (ngModelChange)="sessionSearch.set($event)" /></ion-item>
+        <ion-item><ion-select label="State" [value]="sessionFilter()" (ionChange)="sessionFilter.set($event.detail.value)"><ion-select-option value="all">All</ion-select-option><ion-select-option value="active">Running</ion-select-option><ion-select-option value="stopped">Stopped</ion-select-option><ion-select-option value="archived">Archived</ion-select-option></ion-select></ion-item>
+        @for (session of visibleSessions(); track session.id) {
+          <ion-item button (click)="openSession(session)"><ion-label><h2>{{ session.title }}</h2><p>{{ session.state }} · {{ session.databaseId }}</p></ion-label></ion-item>
+        } @empty { <ion-item><ion-label>No saved sessions match.</ion-label></ion-item> }
+        @if (workspace.hasMore()) { <ion-item><ion-button (click)="workspace.loadMore()" [disabled]="workspace.loading()">Load more sessions</ion-button></ion-item> }
+        <ion-item><ion-button (click)="beginCreate()" [disabled]="!workspace.capabilities()">New session</ion-button></ion-item>
+        <ion-item><ion-button fill="outline" (click)="beginLegacyImport()" [disabled]="!workspace.capabilities()?.actions?.includes('importLegacy')">Import from this browser…</ion-button></ion-item>
+      }
     </ion-content>
   </ng-template>
 </ion-modal>
