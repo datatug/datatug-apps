@@ -868,3 +868,11 @@ datatug-cli-chat-page {
     }
   }
 }
+
+// Narrow layouts render the shell's compact application header
+// (datatug-app.component, UX brief §1) which owns the menu affordance, so
+// per-page ion-menu-button bars would double it — hide the page-level ones
+// while the compact header is shown.
+ion-app.compact-header-mode ion-menu-button:not(.app-level-menu-button) {
+  display: none;
+}

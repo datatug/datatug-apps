@@ -1,4 +1,4 @@
-<ion-app>
+<ion-app [class.compact-header-mode]="compactHeader()">
   @if (checkoutAuth()) {
     <header class="auth-brand">
       <a routerLink="/home" [attr.aria-label]="profile.brandName + ' home'">{{
@@ -7,14 +7,53 @@
       <a routerLink="/home">Return to {{ profile.brandName }}</a>
     </header>
   }
+  <!--
+    Compact application header for narrow layouts (UX brief §1): when the
+    side panel is hidden there was no header/menu affordance at all. Sits
+    outside the split pane (ion-split-pane identifies its main child by id
+    among DIRECT children, so the header cannot live inside it) and shares
+    the side-panel's grayish `color="light"` chrome family.
+  -->
+  @if (compactHeader()) {
+    <ion-header class="compact-header">
+      <ion-toolbar color="light">
+        @if (!homePanelHidden()) {
+          <ion-buttons slot="start">
+            <ion-menu-button
+              menuIcon="menu-outline"
+              class="app-level-menu-button"
+            ></ion-menu-button>
+          </ion-buttons>
+        }
+        <ion-title size="small">
+          <a
+            class="brand-home-link compact-brand"
+            routerLink="/"
+            [attr.aria-label]="profile.brandName + ' home'"
+            >{{ profile.brandName }}</a
+          >
+          @if (profile.motto) {
+            <span class="compact-motto">{{ profile.motto }}</span>
+          }
+        </ion-title>
+        @if (authStatus() === 'notAuthenticated') {
+          <ion-buttons slot="end">
+            <ion-button color="primary" routerLink="/login">
+              Sign in
+            </ion-button>
+          </ion-buttons>
+        }
+      </ion-toolbar>
+    </ion-header>
+  }
   <ion-split-pane
     [class.authentication]="checkoutAuth()"
     contentId="main-content"
-    [when]="checkout() ? false : '(min-width: 992px)'"
+    [when]="paneWhen()"
   >
     <ion-menu
-      [disabled]="checkout()"
-      [style.display]="checkout() ? 'none' : null"
+      [disabled]="checkout() || homePanelHidden()"
+      [style.display]="checkout() || homePanelHidden() ? 'none' : null"
       contentId="main-content"
       type="overlay"
       sneatResizableMenu

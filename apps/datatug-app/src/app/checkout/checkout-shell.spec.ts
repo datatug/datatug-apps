@@ -2,6 +2,8 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { MenuController } from '@ionic/angular/menu-controller';
 import { ErrorLogger } from '@sneat/core';
+import { SneatAuthStateService } from '@sneat/auth-core';
+import { of } from 'rxjs';
 import { PRODUCT_PROFILE } from '@datatug/product-profiles';
 import { DatatugAppComponent } from '../datatug-app.component';
 import { isCheckoutShellAddress } from './checkout-privacy-state';
@@ -34,6 +36,10 @@ it('hides and restores the panel after navigation without recreating the router 
       ]),
       { provide: MenuController, useValue: { close: async () => true } },
       { provide: ErrorLogger, useValue: {} },
+      {
+        provide: SneatAuthStateService,
+        useValue: { authStatus: of('authenticated') },
+      },
       { provide: PRODUCT_PROFILE, useValue: { brandName: 'DataTug' } },
     ],
   });
