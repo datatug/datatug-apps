@@ -1,5 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { NavController } from '@ionic/angular';
+import { Router } from '@angular/router';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import {
   IProjBoard,
@@ -15,7 +16,7 @@ import {
   tryProjectUrl,
 } from '../../nav/nav-models';
 import { IProjectRef, isValidProjectRef } from '../../core/project-context';
-import { projectPageHref } from '../../nav/project-page-href';
+import { projectPageHref, projectPageInCurrentSession } from '../../nav/project-page-href';
 import { IStoreRef, storeRefToId } from '@sneat/core';
 
 type NavigationOptions = NonNullable<
@@ -23,6 +24,7 @@ type NavigationOptions = NonNullable<
 >;
 
 export type ProjectTopLevelPage =
+  | 'sessions'
   | 'chat'
   | 'checks'
   | 'detective'
@@ -54,6 +56,7 @@ export type ProjectTopLevelPage =
 @Injectable({ providedIn: 'root' })
 export class DatatugNavService {
   private readonly nav = inject(NavController);
+  private readonly router = inject(Router, { optional: true });
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
 
   goStore(store: IDatatugStoreContext): void {
@@ -232,7 +235,7 @@ export class DatatugNavService {
    * with no exact address (`tryProjectUrl` refuses its id) has no page to link to: the root.
    */
   public projectPageUrl(c: IProjectRef, name: string, id?: string): string {
-    return projectPageHref(c, id ? [name, id] : [name]);
+    return projectPageHref(c, id ? [name, id] : [name], this.router?.url);
   }
 
   /**
@@ -245,7 +248,7 @@ export class DatatugNavService {
     page: ProjectPage | undefined,
     errMessage: string,
   ): string | undefined {
-    const url = tryProjectUrl(ref, page);
+    const url = tryProjectUrl(ref, projectPageInCurrentSession(ref, page, this.router?.url));
     if (typeof url === 'string') {
       return url;
     }

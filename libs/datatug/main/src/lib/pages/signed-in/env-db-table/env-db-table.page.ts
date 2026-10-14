@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import { toObservable } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { SessionWorkspaceService } from '../../../session-context/session-workspace.service';
 import { ActivatedRoute, Router } from '@angular/router';
 import { filter, first } from 'rxjs/operators';
 import {
@@ -161,6 +162,10 @@ addIcons({ pricetag, helpCircleOutline });
   ],
 })
 export class EnvDbTablePageComponent implements OnDestroy {
+  private readonly sessionWorkspace = inject(SessionWorkspaceService, { optional: true });
+  readonly contextSessionId = inject(ActivatedRoute).snapshot.paramMap.get('sessionId') ?? '';
+  readonly sessionContextNotice = signal('');
+  readonly sessionViewAll = signal(false);
   private readonly datatugNavContextService = inject(DatatugNavContextService);
   private readonly route = inject(ActivatedRoute);
   private readonly projService = inject(ProjectService);
@@ -649,6 +654,17 @@ from ${this.tableFromClause(currentTable)}`;
     if (!this.project || !this.envId || !this.dbId || !this.table?.name) {
       return;
     }
+    if (this.sessionWorkspace && this.contextSessionId) {
+      if (!this.sessionWorkspace.canExecuteFor(this.contextSessionId)) {
+        this.sessionContextNotice.set('Resume this session before reading source rows.');
+        return;
+      }
+      if (!this.sessionViewAll()) {
+        this.sessionContextNotice.set('No verified Context Bag relationship is available for this table. Use the session Invoice Explorer, or explicitly choose View all for an unconstrained read.');
+        return;
+      }
+      this.sessionContextNotice.set('View all · explicitly unconstrained. Context Bag entries are not used by this table.');
+    }
     try {
       this.step = 'loadData';
       this.agentService
@@ -672,6 +688,7 @@ from ${this.tableFromClause(currentTable)}`;
       this.errorLogger.logError(e, 'Failed to load data');
     }
   }
+  viewAllSessionRows(): void { this.sessionViewAll.set(true); this.loadData(); }
 
   private processResponse = (response: ISelectResponse): void => {
     try {

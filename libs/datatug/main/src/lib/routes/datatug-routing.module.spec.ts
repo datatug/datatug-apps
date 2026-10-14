@@ -11,7 +11,7 @@ import {
 } from '../core/datatug-routing-params';
 
 describe('datatugRoutes', () => {
-  it('admits Space overview, queries, Checks and Detective routes', () => {
+  it('admits Space overview, queries, Checks, Detective and session routes', () => {
     const route = datatugRoutes.find(
       (candidate) =>
         candidate.path === 'space/:spaceId/store/:storeId/project/:projectId',
@@ -19,6 +19,7 @@ describe('datatugRoutes', () => {
     expect(route?.children?.map((child) => child.path)).toEqual([
       '',
       'overview',
+      'sessions',
       'queries',
       'checks',
       'detective',
@@ -41,6 +42,9 @@ describe('datatugRoutes', () => {
     expect(matches([...base, 'detective'])).toBe(true);
     expect(matches([...base, 'detective', 'invoice-case'])).toBe(true);
     expect(matches([...base, 'query', 'genre-mix'])).toBe(true);
+    expect(matches([...base, 'sessions'])).toBe(true);
+    expect(matches([...base, 'sessions', 's1', 'composer'])).toBe(true);
+    expect(matches([...base, 'sessions', 's1', 'query', 'genre-mix'])).toBe(true);
     const encoded = new DefaultUrlSerializer().parse(
       '/space/S1/store/firestore/project/P1/query/folder%2Fgenre-mix',
     );
@@ -50,6 +54,7 @@ describe('datatugRoutes', () => {
     expect(matches([...base, 'query', 'folder', 'genre-mix'])).toBe(false);
     expect(matches([...base, 'query', '..'])).toBe(false);
     expect(matches([...base, 'chat'])).toBe(false);
+    expect(matches([...base, 'sessions', 's1', 'env', 'local'])).toBe(false);
     expect(matches([...base, 'env', 'local'])).toBe(false);
   });
   it('redirects signed-out to the home page', () => {

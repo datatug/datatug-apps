@@ -10,14 +10,14 @@
   is out of scope for this MVP integration; it always renders every item as chips
   for now.
 -->
-@if (!metadataOnly()) {
+@if (!metadataOnly() && !inSessionWorkspace()) {
   <sneat-datatug-investigation-context-bar />
 }
 @for (page of projTopLevelPages; track page) {
   @if (
     (page.path !== 'demo-db-sandbox' || isDemoDbProject()) &&
     (!metadataOnly() ||
-      ['overview', 'queries', 'checks', 'detective'].includes(page.path))
+      ['overview', 'queries', 'checks', 'detective', 'sessions'].includes(page.path))
   ) {
     <ion-menu-toggle autoHide="false">
       <ion-item
@@ -28,7 +28,7 @@
       >
         <ion-icon slot="start" [name]="page.icon" />
         <ion-label [class.current]="(currentFolder | async) === page.path">{{
-          page.title
+          page.path === 'variables' && inSessionWorkspace() ? 'Context Bag' : page.title
         }}</ion-label>
         @if (!page.path && !project?.brief) {
           <ion-spinner name="lines-small" />

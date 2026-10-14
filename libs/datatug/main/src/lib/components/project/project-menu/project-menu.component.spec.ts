@@ -162,7 +162,7 @@ describe('shared project menu refuses active-query tab', () => {
       host.querySelector('sneat-datatug-investigation-context-bar'),
     ).toBeNull();
     const items = [...host.querySelectorAll('ion-item')];
-    expect(items).toHaveLength(4);
+    expect(items).toHaveLength(5);
     expect(nav.goProjPage).not.toHaveBeenCalled();
     expect(queryActions.openNewQuery).not.toHaveBeenCalled();
     expect(queryState.setCurrentQuery).not.toHaveBeenCalled();

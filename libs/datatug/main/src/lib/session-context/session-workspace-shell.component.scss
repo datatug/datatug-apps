@@ -1,0 +1,16 @@
+:host { display: block; position: absolute; inset: 0; }
+.session-top { display: flex; flex: 0 0 auto; flex-direction: column; }
+.session-tabs { justify-content: flex-start; overflow-x: auto; flex-shrink: 0; min-height: 48px; }
+ion-tab-button { flex: 0 0 auto; min-width: 110px; max-width: 220px; }
+ion-tab-button ion-label { overflow: hidden; text-overflow: ellipsis; }
+ion-tab-button small { display: block; color: var(--ion-color-medium); font-size: .7rem; }
+.session-summary { --min-height: 42px; font-size: .82rem; }
+.session-summary strong { font-weight: 600; }
+.session-tab-close { flex: 0 0 auto; margin-left: -6px; }
+ion-modal.context-bag-drawer { --width: min(560px, 90vw); --height: 100%; --border-radius: 0; justify-content: flex-end; }
+@media (max-width: 680px) {
+  ion-modal.context-bag-drawer { --width: 100%; }
+  .session-summary { --padding-start: 4px; --inner-padding-end: 4px; }
+  .session-summary ion-button { font-size: .7rem; --padding-start: 5px; --padding-end: 5px; }
+  ion-tab-button { min-width: 90px; max-width: 150px; }
+}

@@ -69,6 +69,7 @@ import { Coordinator } from '../../../executor/coordinator';
 import { ProjectService } from '../../../services/project/project.service';
 import { QueryEditorStateService } from '../../query-editor-state-service';
 import { QueryWorkspaceLayoutComponent } from './query-workspace-layout.component';
+import { SessionWorkspaceService } from '../../../session-context/session-workspace.service';
 import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
 import {
@@ -5746,8 +5747,11 @@ select (
     template = '<ul aria-label="Access blockers">@for (blocker of accessBlockers(); track $index) {<li>{{ blocker }}</li>}</ul>',
     navigation?: {
       queryParams?: Observable<ReturnType<typeof convertToParamMap>>;
+      paramMap?: Observable<ReturnType<typeof convertToParamMap>>;
       editor?: Observable<IQueryEditorState>;
       project: Observable<IProjectContext | undefined>;
+      sessionId?: string;
+      sessionWorkspace?: unknown;
       realEditor?: boolean;
       queries?: unknown;
       routeId?: string;
@@ -5806,20 +5810,17 @@ select (
                       : {},
                 ),
               ),
-            paramMap: of(
-              convertToParamMap(
-                navigation?.realEditor && !navigation.routeId
-                  ? { storeId: 'github.com', projectId: 'repo@owner@folder' }
-                  : navigation?.routeId
-                    ? { ...navigation.routeRef, queryId: navigation.routeId }
-                    : {},
-              ),
-            ),
+            paramMap: navigation?.paramMap ?? of(convertToParamMap({
+              ...(navigation?.realEditor && !navigation.routeId ? { storeId: 'github.com', projectId: 'repo@owner@folder' } : {}),
+              ...(navigation?.routeId ? { ...navigation.routeRef, queryId: navigation.routeId } : {}),
+              ...(navigation?.sessionId ? { sessionId: navigation.sessionId } : {}),
+            })),
             snapshot: {
               paramMap: convertToParamMap(
-                navigation?.routeId
-                  ? { ...navigation.routeRef, queryId: navigation.routeId }
-                  : {},
+                {
+                  ...(navigation?.routeId ? { ...navigation.routeRef, queryId: navigation.routeId } : {}),
+                  ...(navigation?.sessionId ? { sessionId: navigation.sessionId } : {}),
+                },
               ),
               queryParamMap: convertToParamMap(
                 navigation?.realEditor && !navigation.routeId
@@ -5832,6 +5833,7 @@ select (
             },
           },
         },
+        ...(navigation?.sessionWorkspace ? [{ provide: SessionWorkspaceService, useValue: navigation.sessionWorkspace }] : []),
         {
           provide: Router,
           useValue: {
@@ -8457,6 +8459,90 @@ select (
         origin: 'user',
       }),
     ]);
+  });
+
+  it.each(['parameter', 'session'] as const)('rejects a deferred session pin when its %s changes, reporting only to the original pinned run', async (changed) => {
+    const sessionParams = new BehaviorSubject(convertToParamMap({ sessionId: 'session-a' }));
+    const scope = { environmentId: 'production', identityDomain: 'local-test-domain' };
+    let resolvePin!: (value: Awaited<ReturnType<SessionWorkspaceService['pinInput']>>) => void;
+    const pinResponse = new Promise<Awaited<ReturnType<SessionWorkspaceService['pinInput']>>>((resolve) => { resolvePin = resolve; });
+    const pinInput = vi.fn<(...args: Parameters<SessionWorkspaceService['pinInput']>) => ReturnType<SessionWorkspaceService['pinInput']>>(() => pinResponse);
+    const reportClientRun = vi.fn(async () => true);
+    const workspace = {
+      capabilities: () => ({ actorId: 'actor-a', databaseId: 'db-a', projectId: 'demo-project', environments: [scope] }),
+      canExecuteFor: () => true,
+      bindingScopeKey: (id: string) => JSON.stringify(['db-a', 'demo-project', id, 'production', 'context-a']),
+      snapshotFor: (id: string) => id === 'session-a' ? { session: { id }, contextSet: { id: 'context-a' } } : { session: { id }, contextSet: { id: 'context-b' } },
+      appliedFactsFor: () => [],
+      pinInput,
+      reportClientRun,
+      error: () => '',
+      deviceViewKey: vi.fn(),
+    };
+    component = await createComponent({}, queryDef, '<p></p>', {
+      project: of(project), sessionId: 'session-a', paramMap: sessionParams,
+      sessionWorkspace: workspace,
+    });
+    component.editBinding('CustomerId', { type: 'integer', value: '5' });
+    const run = (component as unknown as { runSessionQuery(): Promise<void> }).runSessionQuery();
+    await vi.waitFor(() => expect(pinInput).toHaveBeenCalledOnce());
+    expect(pinInput.mock.calls[0][0]).toBe('session-a');
+    expect(pinInput.mock.calls[0][6]).toEqual({ CustomerId: { type: 'integer', value: '5' } });
+
+    if (changed === 'parameter') component.editBinding('CustomerId', { type: 'integer', value: '9' });
+    else sessionParams.next(convertToParamMap({ sessionId: 'session-b' }));
+    resolvePin({ runId: 'run_original', run: { executionAuthority: 'client' }, input: { id: 'input_original' } } as never);
+    await run;
+
+    expect(runQueryMock).not.toHaveBeenCalled();
+    expect(reportClientRun).toHaveBeenCalledWith('session-a', 'run_original', 'query', [
+      { id: 'query', state: 'failed', errorCode: 'CLIENT_DISPATCH_REJECTED' },
+    ]);
+  });
+
+  it.each([false, true])('does not settle a pending session run while restoring a semantic copy (incomplete=%s)', async (incomplete) => {
+    const reportClientRun = vi.fn(async () => true);
+    const workspace = {
+      capabilities: () => ({ actorId: 'actor-a', databaseId: 'db-a', projectId: 'demo-project', environments: [] }),
+      canExecuteFor: () => true,
+      bindingScopeKey: () => 'scope-a',
+      snapshotFor: (id: string) => ({ session: { id }, contextSet: { id: 'context-a' } }),
+      appliedFactsFor: () => [],
+      reportClientRun,
+      error: () => '',
+      deviceViewKey: vi.fn(),
+    };
+    component = await createComponent({}, queryDef, '<p></p>', {
+      project: of(project), sessionId: 'session-a', sessionWorkspace: workspace,
+    });
+    const internal = component as unknown as {
+      sessionRecordedRun: { (): string | undefined; set(value: string | undefined): void };
+      sessionRecordedInput: { (): string; set(value: string): void };
+      sessionRecordedSessionId: { (): string; set(value: string): void };
+      running: { set(value: boolean): void };
+      semanticExecutedDefinition: () => IQueryDef | undefined;
+      committedRun: () => unknown;
+      commitSuccessfulResult(result: FederatedQueryResult, definition: IQueryDef, timing?: undefined, recordSessionOutcome?: boolean): void;
+    };
+    internal.running.set(true);
+    internal.sessionRecordedRun.set('run-still-pending');
+    internal.sessionRecordedInput.set('input-original');
+    internal.sessionRecordedSessionId.set('session-a');
+    const restored = {
+      ...historyResultFor(queryDef),
+      ...(incomplete ? { hasMore: true } : {}),
+    };
+
+    internal.commitSuccessfulResult(restored, { ...queryDef, id: 'device-personal-copy' }, undefined, false);
+    await runFixture.whenStable();
+
+    expect(reportClientRun).not.toHaveBeenCalled();
+    expect(internal.sessionRecordedRun()).toBe('run-still-pending');
+    expect(internal.sessionRecordedInput()).toBe('input-original');
+    expect(internal.sessionRecordedSessionId()).toBe('session-a');
+    expect(internal.semanticExecutedDefinition()?.id).toBe(incomplete ? undefined : 'device-personal-copy');
+    if (incomplete) expect(internal.committedRun()).toBeUndefined();
+    else expect(internal.committedRun()).toBeDefined();
   });
 
   it('resets promotion rebinding when the security context changes in the same project and environment', async () => {

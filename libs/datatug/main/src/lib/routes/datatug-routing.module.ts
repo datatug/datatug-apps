@@ -8,6 +8,8 @@ import {
 } from '../core/datatug-routing-params';
 import { githubProjectRoutes } from './github-project-routes';
 import { isSharedProjectRef } from '../core/project-context';
+import { SessionWorkspaceService } from '../session-context/session-workspace.service';
+import { admitSessionWorkspace } from '../session-context/session-route.guard';
 import {
   profileHomeRedirectGuard,
   profileStartPageGuard,
@@ -155,7 +157,11 @@ export const datatugRoutes: Routes = [
             /^[A-Za-z0-9_-]+$/.test(segments[7].path)) ||
           (segments.length === 8 &&
             segments[6].path === 'query' &&
-            /^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(segments[7].path))),
+            /^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(segments[7].path)) ||
+          (segments[6]?.path === 'sessions' && (segments.length === 7 ||
+            (/^[A-Za-z0-9_-]{1,128}$/.test(segments[7]?.path ?? '') &&
+              (segments.length === 8 || (segments.length === 9 && ['overview', 'queries', 'invoice-overview', 'invoice-explorer', 'composer'].includes(segments[8].path)) ||
+                (segments.length === 10 && segments[8].path === 'query' && /^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(segments[9].path))))))),
     ],
     children: [
       ...['', 'overview'].map((path) => ({
@@ -165,6 +171,19 @@ export const datatugRoutes: Routes = [
             (m) => m.ProjectPageComponent,
           ),
       })),
+      {
+        path: 'sessions', providers: [SessionWorkspaceService],
+        loadComponent: () => import('../session-context/session-workspace-shell.component').then((m) => m.SessionWorkspaceShellComponent),
+        children: [{ path: ':sessionId', canActivateChild: [admitSessionWorkspace], children: [
+          { path: '', pathMatch: 'full', redirectTo: 'overview' },
+          { path: 'overview', loadComponent: () => import('../pages/signed-in/project/project-page.component').then((m) => m.ProjectPageComponent) },
+          { path: 'queries', loadComponent: () => import('../queries/queries/queries-page.component').then((m) => m.QueriesPageComponent) },
+          { path: 'invoice-overview', loadComponent: () => import('../session-context/invoice-dashboard.component').then((m) => m.InvoiceDashboardComponent) },
+          { path: 'invoice-explorer', loadComponent: () => import('../session-context/invoice-explorer.component').then((m) => m.InvoiceExplorerComponent) },
+          { path: 'composer', loadComponent: () => import('../session-context/session-composer.component').then((m) => m.SessionComposerComponent) },
+          { path: 'query', children: [{ path: ':queryId', loadComponent: () => import('../queries/query/page/query-page.component').then((m) => m.QueryPageComponent) }] },
+        ] }],
+      },
       {
         path: 'queries',
         loadComponent: () =>
