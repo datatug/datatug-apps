@@ -31,7 +31,9 @@ const COMPLETION_INTERACTION_DELAY_MS = 75;
 // Playwright resolves ControlOrMeta from the host OS, but CodeMirror treats
 // iPhone/iPad/iPod UAs as Mac and binds Mod to Meta.
 const generateAuthorPreview = async (author: Locator): Promise<void> => {
-  await author.getByTestId('author-preview-tab').click();
+  const previewTab = author.getByTestId('author-preview-tab');
+  await previewTab.click();
+  await expect(previewTab).toHaveClass(/segment-button-checked/u);
   const nativeButton = author.getByTestId('author-preview').locator('button');
   await expect(nativeButton).toBeVisible();
   await nativeButton.scrollIntoViewIfNeeded();
@@ -1339,7 +1341,33 @@ test('TugQL suggestions are explicit, source-safe, and touch reachable', async (
 
   const customerId = await openCustomerId(author);
   await customerId.fill('1');
+  // Ionic relocates the focused input while scroll assist moves content above
+  // the keyboard. Wait until that move finishes before tapping the Preview tab.
+  if (isMobile) {
+    await expect
+      .poll(() =>
+        author.getByTestId('author-customer-id').evaluate(async (host) => {
+          const tab = document.querySelector('[data-testid="author-preview-tab"]');
+          const content = document.querySelector('sneat-datatug-sql-editor ion-content');
+          const scroller = content?.shadowRoot?.querySelector('[part="scroll"]');
+          const input = host.querySelector('input:not(.cloned-input)') ??
+            host.shadowRoot?.querySelector('input:not(.cloned-input)');
+          if (!tab || !scroller || !input ||
+            (host as HTMLElement).style.pointerEvents === 'none' || input.style.transform) return false;
+          const beforeTop = tab.getBoundingClientRect().top;
+          const beforeScroll = scroller.scrollTop;
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+          return (host as HTMLElement).style.pointerEvents !== 'none' &&
+            !input.style.transform &&
+            Math.abs(tab.getBoundingClientRect().top - beforeTop) < 1 &&
+            Math.abs(scroller.scrollTop - beforeScroll) < 1;
+        }),
+      )
+      .toBe(true);
+  }
   await generateAuthorPreview(author);
+  await expect(author.getByTestId('author-preview-pane')).toContainText('CustomerId');
   await expectIonicButtonDisabled(runButton, false);
   await author.getByTestId('author-run').click();
   if (isMobile) await page.locator('#workspace-jump-to-results').click();
