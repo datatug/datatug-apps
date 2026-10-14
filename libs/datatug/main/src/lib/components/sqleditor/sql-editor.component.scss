@@ -26,6 +26,21 @@
   --sql-comment: #cbd5e1;
 }
 
+@media (prefers-color-scheme: dark) {
+  :host {
+    --sql-surface: #111827;
+    --sql-foreground: #f9fafb;
+    --sql-gutter-surface: #1f2937;
+    --sql-gutter-foreground: #e5e7eb;
+    --sql-active-line: #1e293b;
+    --sql-selection: #374151;
+    --sql-keyword: #93c5fd;
+    --sql-string: #86efac;
+    --sql-number: #fcd34d;
+    --sql-comment: #cbd5e1;
+  }
+}
+
 
 @media (forced-colors: active) {
   :host {
