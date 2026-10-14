@@ -101,8 +101,8 @@ describe('ProjectMenuComponent — Active Queries tab renders QueriesMenuCompone
   });
 });
 
-describe('shared metadata menu refuses active-query tab', () => {
-  it('renders only Overview even when an old menu instance retains the queries tab', async () => {
+describe('shared metadata menu exposes only project and session navigation', () => {
+  it('renders Overview and Sessions when an old menu instance retains the queries tab', async () => {
     const { DatatugNavContextService } =
       await import('../../../services/nav/datatug-nav-context.service');
     const { DatatugNavService } =
@@ -159,11 +159,18 @@ describe('shared metadata menu refuses active-query tab', () => {
     expect(
       host.querySelector('sneat-datatug-investigation-context-bar'),
     ).toBeNull();
-    expect(host.querySelectorAll('ion-item')).toHaveLength(1);
-    const overview = host.querySelector('ion-item');
+    expect(host.querySelectorAll('ion-item')).toHaveLength(2);
+    const menuItems = Array.from(host.querySelectorAll('ion-item'));
+    const overview = menuItems[0];
     if (!overview) throw new Error('Missing overview menu item');
     overview.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(nav.goProjPage).toHaveBeenCalledWith('overview', project, {
+      project,
+    });
+    const sessions = menuItems[1];
+    if (!sessions) throw new Error('Missing sessions menu item');
+    sessions.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(nav.goProjPage).toHaveBeenLastCalledWith('sessions', project, {
       project,
     });
     expect(queryActions.openNewQuery).not.toHaveBeenCalled();

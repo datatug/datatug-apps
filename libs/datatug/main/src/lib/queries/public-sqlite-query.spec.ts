@@ -414,6 +414,46 @@ it.each([
   },
 );
 
+it('runs typed SQL for a local project only after its local agent admits the exact fixture', async () => {
+  const catalogRead = vi.fn(() => of(catalog));
+  const rawReader = vi.fn(() => of(catalog));
+  const messages: unknown[] = [];
+  class LocalFixtureWorker {
+    public onmessage: ((event: MessageEvent) => void) | null = null;
+    public onerror: (() => void) | null = null;
+    public postMessage(message: unknown): void {
+      messages.push(message);
+      this.onmessage?.({ data: { ok: true, result: { columns: ['InvoiceId'], rows: [[1]] } } } as MessageEvent);
+    }
+    public terminate(): void { /* worker lifecycle is asserted by the service */ }
+  }
+  TestBed.configureTestingModule({
+    providers: [
+      PublicSqliteQueryService,
+      { provide: GithubProjectReaderService, useValue: { getRawJson: rawReader } },
+      { provide: ProjectQueryApiService, useValue: { connectionCatalog: catalogRead } },
+    ],
+  });
+  vi.stubGlobal('Worker', LocalFixtureWorker);
+  try {
+    const project = { storeId: 'http-127.0.0.1:18990', projectId: 'datatug-demo-project' };
+    const definition: IQueryDef = {
+      id: 'invoice-lookup', connectionId: 'chinook-sqlite',
+      parameters: [{ id: 'InvoiceId', type: 'integer', isRequired: true }],
+      request: { queryType: QueryType.SQL, text: 'SELECT InvoiceId FROM Invoice WHERE InvoiceId = ?' } as ISqlQueryRequest,
+    };
+    const result = await TestBed.inject(PublicSqliteQueryService).runParameterized(project, definition, {
+      InvoiceId: { type: 'integer', value: '1' },
+    });
+    expect(result.recordset.rows).toEqual([[{ type: 'integer', value: '1' }]]);
+    expect(catalogRead).toHaveBeenCalledWith(project);
+    expect(rawReader).not.toHaveBeenCalled();
+    expect(messages).toEqual([{ sql: 'SELECT InvoiceId FROM Invoice WHERE InvoiceId = ?', bindings: [1] }]);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
 describe('bounded SQLite worker', () => {
   let fixture: Uint8Array;
   it('uses the app-copied SQL.js wasm asset for supplied comparison fixture bytes', () => {

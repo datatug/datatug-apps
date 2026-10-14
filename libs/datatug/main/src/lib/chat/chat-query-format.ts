@@ -81,8 +81,11 @@ function adapterFilterSql(field: string, operator: string, value: unknown): stri
 }
 
 /** SQL for the local Chinook SQLite target, derived from the validated DTQL. */
-export function chatSQLite(query: ParsedChinookQuery): string {
-  if (isJoinedDTQLQuery(query)) return joinedSQLite(query);
+export function chatSQLite(query: ParsedChinookQuery, parameterFields: readonly string[] = []): string {
+  if (isJoinedDTQLQuery(query)) {
+    if (parameterFields.length) throw new Error('This query does not support scalar session bindings across a JOIN.');
+    return joinedSQLite(query);
+  }
   const [schema, table] = query.source.name.split('.');
   if (!schema || !table) throw new Error('This query has no SQL source.');
   const needsArtist = table === 'Track' && [...query.filters, ...query.orders]
@@ -96,7 +99,11 @@ export function chatSQLite(query: ParsedChinookQuery): string {
     : '');
   const lines = [select, from];
   if (query.filters.length) {
-    const conditions = query.filters.map((filter) => adapterFilterSql(column(filter.field), filter.operator, filter.value));
+    const conditions = query.filters.map((filter) => {
+      if (!parameterFields.includes(filter.field)) return adapterFilterSql(column(filter.field), filter.operator, filter.value);
+      if (filter.operator !== '==') throw new Error('A session input needs an equality binding.');
+      return `${column(filter.field)} = ?`;
+    });
     lines.push(`WHERE ${conditions.join(' AND ')}`);
   }
   if (query.orders.length) {

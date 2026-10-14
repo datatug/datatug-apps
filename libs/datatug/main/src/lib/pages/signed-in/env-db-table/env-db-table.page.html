@@ -25,6 +25,7 @@
 </ion-header>
 
 <ion-content>
+  @if (sessionContextNotice()) { <ion-item color="warning" role="status"><ion-label>{{ sessionContextNotice() }}</ion-label>@if (!sessionViewAll()) { <ion-button slot="end" (click)="viewAllSessionRows()">View all</ion-button> }</ion-item> }
   <ion-item class="sql-editor ion-margin ion-no-padding" style="min-height: 0">
     <sneat-datatug-sql [sql]="sql" [readonly]="true" />
     <ion-buttons slot="end" class="ion-no-margin">
@@ -300,7 +301,7 @@
   </div>
 </ion-content>
 </div>
-@if (hasSelection()) {
+@if (hasSelection() && !contextSessionId) {
 <div class="ion-page context-panel-pane">
   <ion-header>
     <ion-toolbar>

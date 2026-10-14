@@ -34,8 +34,8 @@ import { EnvironmentService } from '../unsorted/environment.service';
 import { IDatatugNavContext } from '../../nav/nav-models';
 
 // What follows the project in its address (`parseProjectUrl().rest`: `/env/<env>/db/<db>/table/<table>`, as typed).
-const reEnv = /^\/env\/(.+?)(?:\/|$)/,
-  reEnvDb = /^\/env\/\w+\/db\/(.+?)(?:\/|$)/,
+const reEnv = /^(?:\/sessions\/[A-Za-z0-9_-]+)?\/env\/(.+?)(?:\/|$)/,
+  reEnvDb = /^(?:\/sessions\/[A-Za-z0-9_-]+)?\/env\/\w+\/db\/(.+?)(?:\/|$)/,
   reTable = /\/table\/(.+?)(?:\/|$)/;
 
 /** What an address names: the store, and (when it is a project address) the project and what follows it. */

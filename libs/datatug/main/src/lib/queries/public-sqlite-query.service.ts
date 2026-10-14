@@ -9,7 +9,7 @@ import {
   throwIfEmpty,
   timeout,
 } from 'rxjs';
-import type { TypedValue } from '@sneat/datatug-semantic';
+import { decodeTypedValue, type TypedValue } from '@sneat/datatug-semantic';
 import type {
   IQueryDef,
   IQueryRelationshipBinding,
@@ -48,6 +48,11 @@ const FIXTURE_SHA256 =
   '7651ba378ac2fcd0dfc3c66fb101f7a7eed3ba39a612ec642b96e20702061f15';
 const FIXTURE_BYTES = 1007616;
 const RUN_TIMEOUT_MS = 10000;
+const GITHUB_STORES = new Set(['github', 'github.com', 'firestore']);
+
+function usesAgentProjectApi(project: IProjectRef): boolean {
+  return project.projectApi === 'local' || project.projectApi === 'cloud' || project.spaceID !== undefined || !GITHUB_STORES.has(project.storeId);
+}
 
 function abortError(): Error {
   const error = new Error('The browser SQLite query was cancelled.');
@@ -504,7 +509,7 @@ export class PublicSqliteQueryService {
     const deadline = Date.now() + RUN_TIMEOUT_MS;
     const [catalog, invoiceFile, customerFile, refs] = await Promise.all([
       firstValueFromAbortable(
-        (project.projectApi === 'cloud' || project.spaceID !== undefined
+        (usesAgentProjectApi(project)
           ? this.projectApi.connectionCatalog<ConnectionCatalog>(project)
           : this.reader.getRawJson<ConnectionCatalog>(
               project.projectId,
@@ -974,9 +979,41 @@ export class PublicSqliteQueryService {
         'This query has no admitted public browser SQLite source.',
       );
     }
+    return this.runBoundSql(project, definition, [], onDispatched);
+  }
+
+  /** Ordinary typed parameters, on the same admitted read-only worker and fixture. */
+  async runParameterized(
+    project: IProjectRef,
+    definition: IQueryDef,
+    values: Readonly<Record<string, TypedValue>>,
+    onDispatched?: () => void,
+  ): Promise<FederatedQueryResult> {
+    if (definition.request.queryType !== QueryType.SQL || !definition.connectionId || definition.federation ||
+      !definition.parameters?.length || Object.keys(values).length !== definition.parameters.length)
+      throw new Error('This query requires its exact declared scalar inputs.');
+    const bindings = definition.parameters.map((parameter): string | number | null => {
+      const value = decodeTypedValue(values[parameter.id]);
+      if (parameter.isMultiValue || value.type !== parameter.type)
+        throw new Error(`Input ${parameter.id} has an incompatible type or cardinality.`);
+      if (value.type === 'integer') {
+        const number = Number(value.value);
+        if (!Number.isSafeInteger(number) || BigInt(value.value) !== BigInt(number)) throw new Error('This SQLite input cannot represent that integer losslessly.');
+        return number;
+      }
+      if (value.type === 'string' || value.type === 'date' || value.type === 'datetime') return value.value;
+      if (value.type === 'boolean') return value.value ? 1 : 0;
+      throw new Error('This browser SQLite binding requires a losslessly supported scalar type.');
+    });
+    return this.runBoundSql(project, definition, bindings, onDispatched);
+  }
+
+  private async runBoundSql(
+    project: IProjectRef, definition: IQueryDef, bindings: readonly (string | number | null)[], onDispatched?: () => void,
+  ): Promise<FederatedQueryResult> {
     const deadline = Date.now() + RUN_TIMEOUT_MS;
     const catalog = await firstValueFrom(
-      (project.projectApi === 'cloud' || project.spaceID !== undefined
+      (usesAgentProjectApi(project)
         ? this.projectApi.connectionCatalog<ConnectionCatalog>(project)
         : this.reader.getRawJson<ConnectionCatalog>(
             project.projectId,
@@ -995,7 +1032,7 @@ export class PublicSqliteQueryService {
         }),
       ),
     );
-    admitPublicSqliteSource(catalog, definition.connectionId);
+    admitPublicSqliteSource(catalog, definition.connectionId ?? '');
     if (typeof Worker === 'undefined')
       throw new Error('This browser does not support SQLite query workers.');
     const sql = (definition.request as ITextQueryRequest).text;
@@ -1018,7 +1055,7 @@ export class PublicSqliteQueryService {
           clearTimeout(timer);
           reject(new Error('The browser SQLite worker failed.'));
         };
-        worker.postMessage({ sql });
+        worker.postMessage({ sql, bindings });
         onDispatched?.();
       });
       if (!reply.ok || !reply.result)
@@ -1066,7 +1103,7 @@ export class PublicSqliteQueryService {
       );
     }
     const catalog = await firstValueFromAbortable(
-      (project.projectApi === 'cloud' || project.spaceID !== undefined
+      (usesAgentProjectApi(project)
         ? this.projectApi.connectionCatalog<ConnectionCatalog>(project)
         : this.reader.getRawJson<ConnectionCatalog>(
             project.projectId,
