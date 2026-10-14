@@ -89,11 +89,20 @@ importers:
         specifier: 6.43.6
         version: 6.43.6
       '@dalgo/core':
-        specifier: 0.7.4
-        version: 0.7.4
+        specifier: github:dal-go/dalgo-js#24eb5b7ef8f044c274cb33beda353b2413e17c42
+        version: https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42
       '@dalgo/indexeddb':
         specifier: github:dal-go/dalgo-http-adapters#519665be7bab21bae3c388eb2395afb8b6df1be9&path:/packages/indexeddb
-        version: https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/519665be7bab21bae3c388eb2395afb8b6df1be9#path:/packages/indexeddb(@dalgo/core@0.7.4)
+        version: https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/519665be7bab21bae3c388eb2395afb8b6df1be9#path:/packages/indexeddb(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42)
+      '@dalgo/ovdb':
+        specifier: github:dal-go/dalgo-http-adapters#28bc59754f068335d08fb31c7aae5216b9f8bf56&path:/packages/ovdb
+        version: https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/28bc59754f068335d08fb31c7aae5216b9f8bf56#path:/packages/ovdb(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42)
+      '@dalgo/sqlite-sql':
+        specifier: github:dal-go/dalgo-http-adapters#154b9852badff801787baa4d539073f38009fbfa&path:/packages/sqlite-sql
+        version: https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/154b9852badff801787baa4d539073f38009fbfa#path:/packages/sqlite-sql(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42)
+      '@dalgo/sqlite-wasm':
+        specifier: github:dal-go/dalgo-http-adapters#154b9852badff801787baa4d539073f38009fbfa&path:/packages/sqlite-wasm
+        version: https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/154b9852badff801787baa4d539073f38009fbfa#path:/packages/sqlite-wasm(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42)(@dalgo/sqlite-sql@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/154b9852badff801787baa4d539073f38009fbfa#path:/packages/sqlite-sql(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42))(@sqlite.org/sqlite-wasm@3.53.4-build2)
       '@firebase/auth':
         specifier: 1.12.1
         version: 1.12.1(@firebase/app@0.14.9)
@@ -130,6 +139,9 @@ importers:
       '@lezer/highlight':
         specifier: 1.2.3
         version: 1.2.3
+      '@openvaultdb/inprocess':
+        specifier: github:openvaultdb/openvaultdb-ts#f4bfd7a0e5d601a86515e25e11cc8264a71b8aa7&path:/packages/inprocess
+        version: git+https://github.com/openvaultdb/openvaultdb-ts.git#f4bfd7a0e5d601a86515e25e11cc8264a71b8aa7&path:/packages/inprocess(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42)
       '@sentry/angular':
         specifier: 10.70.0
         version: 10.70.0(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(@angular/router@22.1.3(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(@angular/platform-browser@22.1.3(@angular/animations@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))(rxjs@7.8.2))(rxjs@7.8.2)
@@ -193,6 +205,9 @@ importers:
       '@sneat/wormhole':
         specifier: ^0.0.6
         version: 0.0.6(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2)
+      '@sqlite.org/sqlite-wasm':
+        specifier: 3.53.4-build2
+        version: 3.53.4-build2
       '@stripe/stripe-js':
         specifier: ^10.0.0
         version: 10.0.0
@@ -2024,8 +2039,9 @@ packages:
   '@dabh/diagnostics@2.0.8':
     resolution: {integrity: sha512-R4MSXTVnuMzGD7bzHdW2ZhhdPC/igELENcq5IjEverBvq5hn1SXCWcsi6eSsdWP0/Ur+SItRRjAktmdoX/8R/Q==}
 
-  '@dalgo/core@0.7.4':
-    resolution: {integrity: sha512-CtMCVnB2hm7bXmWpmXYBwyvwrtJk58q9/fPS4cx3FyGHRAtX9p7a7Zt13gXSSBP1SG0U+3PZ//uvlzMFlemN6A==}
+  '@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42':
+    resolution: {gitHosted: true, tarball: https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42}
+    version: 0.7.4
     engines: {node: '>=20'}
 
   '@dalgo/indexeddb@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/519665be7bab21bae3c388eb2395afb8b6df1be9#path:/packages/indexeddb':
@@ -2034,6 +2050,32 @@ packages:
     engines: {node: '>=20'}
     peerDependencies:
       '@dalgo/core': ^0.1.0
+
+  '@dalgo/ovdb@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/28bc59754f068335d08fb31c7aae5216b9f8bf56#path:/packages/ovdb':
+    resolution: {gitHosted: true, path: /packages/ovdb, tarball: https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/28bc59754f068335d08fb31c7aae5216b9f8bf56}
+    version: 0.2.0
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@dalgo/core': '>=0.6.0 <0.9.0'
+
+  '@dalgo/sqlite-sql@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/154b9852badff801787baa4d539073f38009fbfa#path:/packages/sqlite-sql':
+    resolution: {gitHosted: true, integrity: sha512-KTGjy9T8L9I1X4LGecW94TyAt3wFlpTCPvlaBHo0WQ5q4/6ScPkTlLs2u+dPvqNMryyVvXfQiyhwbfLcDcFk/g==, path: /packages/sqlite-sql, tarball: https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/154b9852badff801787baa4d539073f38009fbfa}
+    version: 0.0.0
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@dalgo/core': '>=0.2.0 <1.0.0'
+
+  '@dalgo/sqlite-wasm@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/154b9852badff801787baa4d539073f38009fbfa#path:/packages/sqlite-wasm':
+    resolution: {gitHosted: true, integrity: sha512-KTGjy9T8L9I1X4LGecW94TyAt3wFlpTCPvlaBHo0WQ5q4/6ScPkTlLs2u+dPvqNMryyVvXfQiyhwbfLcDcFk/g==, path: /packages/sqlite-wasm, tarball: https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/154b9852badff801787baa4d539073f38009fbfa}
+    version: 0.0.0
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@dalgo/core': '>=0.7.4 <0.9.0'
+      '@dalgo/sqlite-sql': '>=0.0.0 <1.0.0'
+      '@sqlite.org/sqlite-wasm': '>=3.50.0'
+    peerDependenciesMeta:
+      '@sqlite.org/sqlite-wasm':
+        optional: true
 
   '@discoveryjs/json-ext@1.1.0':
     resolution: {integrity: sha512-Xc3VhU02wqZ1HvHRJUwL09HkZSTvidqY5Ya0NXBSYOxAp+Ln9dcJr9fySI+CkONzP3PekQo9WdzCv0PGER/mOA==}
@@ -4188,6 +4230,13 @@ packages:
     resolution: {integrity: sha512-eSYWTm620tTk45EKSedaUL8MFYI8hW164hIXsgIHyxu3VobUB3fFCu5t0hQby6OoWRPsG1KkKUG2M5UadiLiVg==}
     engines: {node: '>=14'}
 
+  '@openvaultdb/inprocess@git+https://github.com/openvaultdb/openvaultdb-ts.git#f4bfd7a0e5d601a86515e25e11cc8264a71b8aa7&path:/packages/inprocess':
+    resolution: {commit: f4bfd7a0e5d601a86515e25e11cc8264a71b8aa7, path: /packages/inprocess, repo: https://github.com/openvaultdb/openvaultdb-ts.git, type: git}
+    version: 0.0.0
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@dalgo/core': '>=0.7.4 <0.9.0'
+
   '@oslojs/encoding@1.1.0':
     resolution: {integrity: sha512-70wQhgYmndg4GCPxPPxPGevRKqTIJ2Nh4OkiMWmDAVYsTQ+Ta7Sq+rPevXyXGdzr30/qZBnyOalCszoMxlyldQ==}
 
@@ -5605,6 +5654,10 @@ packages:
 
   '@speed-highlight/core@1.2.24':
     resolution: {integrity: sha512-qeW2e1l78afw8VhRPfPQ1Gjj+KU5XFQ/OFV5ti6eTa9bruO7mJyZtA4vw0ofqmA3tKCkROE9xLk3VZoeRc98nw==}
+
+  '@sqlite.org/sqlite-wasm@3.53.4-build2':
+    resolution: {integrity: sha512-kQVArGJA4z7s56Dm8t+eTBXad4LiohuVj9pfgDNOcxa+Ic5xMrWlLPTq6cT0hw5S4MIvtpsraW+B0wD+IPvC7A==}
+    engines: {node: '>=22'}
 
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
@@ -13802,13 +13855,29 @@ snapshots:
       enabled: 2.0.0
       kuler: 2.0.0
 
-  '@dalgo/core@0.7.4':
+  '@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42':
     dependencies:
       yaml: 2.8.2
 
-  '@dalgo/indexeddb@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/519665be7bab21bae3c388eb2395afb8b6df1be9#path:/packages/indexeddb(@dalgo/core@0.7.4)':
+  '@dalgo/indexeddb@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/519665be7bab21bae3c388eb2395afb8b6df1be9#path:/packages/indexeddb(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42)':
     dependencies:
-      '@dalgo/core': 0.7.4
+      '@dalgo/core': https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42
+
+  '@dalgo/ovdb@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/28bc59754f068335d08fb31c7aae5216b9f8bf56#path:/packages/ovdb(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42)':
+    dependencies:
+      '@dalgo/core': https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42
+      yaml: 2.8.2
+
+  '@dalgo/sqlite-sql@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/154b9852badff801787baa4d539073f38009fbfa#path:/packages/sqlite-sql(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42)':
+    dependencies:
+      '@dalgo/core': https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42
+
+  '@dalgo/sqlite-wasm@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/154b9852badff801787baa4d539073f38009fbfa#path:/packages/sqlite-wasm(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42)(@dalgo/sqlite-sql@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/154b9852badff801787baa4d539073f38009fbfa#path:/packages/sqlite-sql(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42))(@sqlite.org/sqlite-wasm@3.53.4-build2)':
+    dependencies:
+      '@dalgo/core': https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42
+      '@dalgo/sqlite-sql': https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/154b9852badff801787baa4d539073f38009fbfa#path:/packages/sqlite-sql(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42)
+    optionalDependencies:
+      '@sqlite.org/sqlite-wasm': 3.53.4-build2
 
   '@discoveryjs/json-ext@1.1.0': {}
 
@@ -16063,6 +16132,11 @@ snapshots:
 
   '@opentelemetry/semantic-conventions@1.43.0': {}
 
+  '@openvaultdb/inprocess@git+https://github.com/openvaultdb/openvaultdb-ts.git#f4bfd7a0e5d601a86515e25e11cc8264a71b8aa7&path:/packages/inprocess(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42)':
+    dependencies:
+      '@dalgo/core': https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42
+      yaml: 2.8.2
+
   '@oslojs/encoding@1.1.0': {}
 
   '@oxc-parser/binding-android-arm-eabi@0.121.0':
@@ -17128,6 +17202,8 @@ snapshots:
       text-hex: 1.0.0
 
   '@speed-highlight/core@1.2.24': {}
+
+  '@sqlite.org/sqlite-wasm@3.53.4-build2': {}
 
   '@standard-schema/spec@1.1.0': {}
 

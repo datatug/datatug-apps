@@ -33,7 +33,11 @@ packages:
 # pnpm 10+ reads settings from here (the package.json "pnpm" field is no longer read).
 # Allow these dependencies to run their install/build scripts.
 allowBuilds:
-  '@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/1534acd4d0e4a104c58eba09fb9c25619efc8f24': true
+  '@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42': true
+  '@dalgo/ovdb@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/28bc59754f068335d08fb31c7aae5216b9f8bf56#path:/packages/ovdb': true
+  '@dalgo/sqlite-sql@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/154b9852badff801787baa4d539073f38009fbfa#path:/packages/sqlite-sql': true
+  '@dalgo/sqlite-wasm@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/154b9852badff801787baa4d539073f38009fbfa#path:/packages/sqlite-wasm': true
+  '@openvaultdb/inprocess@git+https://github.com/openvaultdb/openvaultdb-ts.git#f4bfd7a0e5d601a86515e25e11cc8264a71b8aa7&path:/packages/inprocess': true
   '@dalgo/indexeddb@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/519665be7bab21bae3c388eb2395afb8b6df1be9#path:/packages/indexeddb': true
   '@firebase/util': true
   '@parcel/watcher': true
