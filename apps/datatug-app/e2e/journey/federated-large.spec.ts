@@ -175,8 +175,11 @@ columns:
     await page.goto(
       `/store/${incidentAgentServer.storeId}/project/datatug-demo-project/query/${queryId}?id=sales/${queryId}`,
     );
+    await page.getByTestId('workspace-parameters-tab').click();
+    const parameters = page.getByTestId('workspace-parameters-panel');
+    await expect(parameters).toBeVisible();
     await expect(
-      page.getByText('Visible rows loads the first result page'),
+      parameters.getByText('Visible rows loads the first result page'),
     ).toBeVisible();
     expect(
       await page
@@ -185,7 +188,7 @@ columns:
           (element) => (element as HTMLElement & { value: string }).value,
         ),
     ).toBe('visible');
-    await page.locator('ion-button').filter({ hasText: 'Run query' }).click();
+    await page.getByTestId('workspace-run').click();
     const pages = page.getByLabel('Result pages');
     const resultGrid = page.locator('ag-grid-angular');
     const accessibleGrid = resultGrid.getByRole('grid');
@@ -240,7 +243,7 @@ columns:
         subtree: true,
       });
     });
-    await page.locator('ion-button').filter({ hasText: 'Run query' }).click();
+    await page.getByTestId('workspace-run').click();
     await expect(pages).toContainText(`Rows 1–100 of ${rowCount}`, {
       timeout: 90_000,
     });

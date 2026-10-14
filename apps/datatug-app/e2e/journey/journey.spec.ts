@@ -229,6 +229,12 @@ function catalogTableRow(page: Page, tableName: string): Locator {
   });
 }
 
+function customerBindingRow(page: Page): Locator {
+  return activePage(page)
+    .getByRole('region', { name: 'Parameters' })
+    .locator('ion-item', { hasText: 'Mapped field: Customer.ID' });
+}
+
 /**
  * Task 17 item B.2 (S121b): real in-app navigation to a saved query's own
  * page, replacing J3's former `page.goto(<query url>)` shortcut. Clicks the
@@ -454,13 +460,8 @@ test.describe('J2 — from a value to related knowledge', () => {
     await activePage(page)
       .getByText('customer-invoices', { exact: false })
       .click();
-    await expect(
-      activePage(page)
-        .getByText('Customer.ID', { exact: false })
-        .getByText('from selection', {
-          exact: false,
-        }),
-    ).toBeVisible({ timeout: 10_000 });
+    await activePage(page).getByTestId('workspace-parameters-tab').click();
+    await expect(customerBindingRow(page)).toContainText('from selection', { timeout: 10_000 });
     const runRequestPromise = page.waitForRequest(
       (request) =>
         request.url().includes('/datatug/exec/run_query') &&
@@ -473,7 +474,7 @@ test.describe('J2 — from a value to related knowledge', () => {
         response.request().method() === 'POST',
       { timeout: 15_000 },
     );
-    await activePage(page).getByText('Run query', { exact: false }).click();
+    await activePage(page).getByTestId('workspace-run').click();
     const runRequestBody = (await runRequestPromise).postDataJSON() as {
       bindingOrigins?: Array<{
         parameterId?: string;
@@ -759,13 +760,8 @@ test.describe('J3 — carrying context', () => {
     // singleton the whole app shares, so no reload was ever needed for this
     // binding to be visible, only for the query page itself to exist.
     await openSavedQuery(page, 'customers', 'Customer purchases by genre');
-    await expect(
-      activePage(page)
-        .getByText('Customer.ID', { exact: false })
-        .getByText('from context', {
-          exact: false,
-        }),
-    ).toBeVisible({ timeout: 10_000 });
+    await activePage(page).getByTestId('workspace-parameters-tab').click();
+    await expect(customerBindingRow(page)).toContainText('from context', { timeout: 10_000 });
 
     // S96 — api-contract.md "Binding and context behavior": "The user can clear a
     // value; a cleared required value blocks Run until supplied." `CustomerId` is
@@ -783,9 +779,7 @@ test.describe('J3 — carrying context', () => {
     // toBeDisabled()/toBeEnabled() match `:disabled`, which only native form elements
     // ever satisfy, so they misreport an `ion-button` regardless of its actual state.
     // The `disabled` attribute's presence/absence on the host is the reliable signal.
-    const runButton = activePage(page).locator('ion-button', {
-      hasText: 'Run query',
-    });
+    const runButton = activePage(page).getByTestId('workspace-run');
     await expect(runButton).not.toHaveAttribute('disabled');
 
     // AC:context-carries's own wording — "disabling the chip empties it" — names the
@@ -803,32 +797,20 @@ test.describe('J3 — carrying context', () => {
       .locator('sneat-datatug-investigation-context-bar')
       .getByText('Customer.ID', { exact: false });
     await contextChip.click();
-    await expect(
-      activePage(page)
-        .getByText('Customer.ID', { exact: false })
-        .getByText('required', { exact: false }),
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(customerBindingRow(page)).toContainText('Required', { timeout: 10_000 });
     await expect(runButton).toHaveAttribute('disabled', '');
 
     // Disabling is not removing (REQ:context-basket) — re-enabling the same chip
     // restores the "from context" binding.
     await contextChip.click();
-    await expect(
-      activePage(page)
-        .getByText('Customer.ID', { exact: false })
-        .getByText('from context', { exact: false }),
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(customerBindingRow(page)).toContainText('from context', { timeout: 10_000 });
     await expect(runButton).not.toHaveAttribute('disabled');
 
     // The query page's own "Clear this binding" button (REQ:parameter-auto-binding:
     // "The user MUST be able to clear or override a bound value before running") —
     // a page-local override, independent of the global context chip above.
-    await activePage(page).getByTitle('Clear this binding').click();
-    await expect(
-      activePage(page)
-        .getByText('Customer.ID', { exact: false })
-        .getByText('required', { exact: false }),
-    ).toBeVisible({ timeout: 10_000 });
+    await customerBindingRow(page).getByRole('button', { name: 'Clear CustomerId' }).click();
+    await expect(customerBindingRow(page)).toContainText('Required', { timeout: 10_000 });
     await expect(runButton).toHaveAttribute('disabled', '');
   });
 });
@@ -980,12 +962,9 @@ test.describe('J4 — restricted principal', () => {
     await activePage(page)
       .getByText('customer-invoices', { exact: false })
       .click();
-    await expect(
-      activePage(page)
-        .getByText('Customer.ID', { exact: false })
-        .getByText('from selection', { exact: false }),
-    ).toBeVisible({ timeout: 10_000 });
-    await activePage(page).getByText('Run query', { exact: false }).click();
+    await activePage(page).getByTestId('workspace-parameters-tab').click();
+    await expect(customerBindingRow(page)).toContainText('from selection', { timeout: 10_000 });
+    await activePage(page).getByTestId('workspace-run').click();
 
     const canadianRunBody = (await (
       await canadianRunResponsePromise

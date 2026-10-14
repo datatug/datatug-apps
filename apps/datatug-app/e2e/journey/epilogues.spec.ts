@@ -1,3 +1,4 @@
+import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures/agent-server';
 import { activePage } from './helpers/active-page';
 
@@ -33,30 +34,31 @@ import { activePage } from './helpers/active-page';
  * half of Epilogue B already holds today; nothing was found that needed a STOP
  * on that specific point.
  *
- * A DIFFERENT, real gap surfaced while designing Epilogue B's "the user
- * selects/enters ... and runs" step: query-page.component.html has no manual
- * parameter-entry control anywhere (confirmed directly — its only per-binding
- * controls are "Use selection" and "Clear this binding"; an unbound required
- * parameter just renders "required — no value supplied", no input). This is
- * the exact same gap journey.spec.ts's own J4 comment already documents. Rather
- * than fabricate a UI action that cannot really happen (the alternative J4's own
- * comment already rejects as "a worse fiction"), Epilogue B below reads the
- * Feature text's own "supplies/**reselects**" wording literally: the colleague
- * browses back into the Customer table and clicks the value, the same
- * REQ:parameter-auto-binding path J2 already proves — not a different UI, and
- * not a workaround. That path is only blocked once, for the Brazilian customer
- * under the support principal (Country/BillingCountry ACL filters that row out
- * of the grid entirely — the identical, already-documented reason
- * journey.spec.ts's own J4 test uses a direct, unintercepted request instead of
- * a UI click for that one customer). This file reuses that same established
- * technique, for the same reason, rather than inventing a new one — see that
- * request below for the full comment.
+ * Epilogue B deliberately reselects Customer.ID from the table after opening
+ * the link. The unified Parameters pane also offers manual input, but
+ * reselecting proves the selection origin and the recipient's own ACL. The
+ * support principal cannot select the filtered Brazilian customer row; the
+ * existing direct, unintercepted request below checks that separate denial.
  */
 
 const DEMO_PROJECT_ID = 'datatug-demo-project'; // datatug-demo-projects/demo-project-1/datatug-project.json #id
 const DEMO_ENV_ID = 'local'; // .../demo-project-1/environments/local
 const DEMO_DB_CATALOG_ID = 'chinook-local'; // .../environments/local/catalogs/chinook-local
 const CUSTOMER_TABLE_TYPE = 'main.Customer';
+
+async function openParameters(page: Page): Promise<Locator> {
+  const query = activePage(page);
+  await query.getByTestId('workspace-parameters-tab').click();
+  const panel = query.getByTestId('workspace-parameters-panel');
+  await expect(panel).toBeVisible();
+  return panel;
+}
+
+function customerBindingRow(panel: Locator): Locator {
+  return panel
+    .locator('ion-item', { hasText: 'Mapped field: Customer.ID' })
+    .first();
+}
 
 test.describe('Epilogue A — close/reopen', () => {
   test('closing a tab does not stop the agent; a new page/context starts with empty Investigation Context, but project assets persist', async ({
@@ -186,19 +188,15 @@ test.describe('Epilogue A — close/reopen', () => {
     });
 
     await reopenedPage.goto(customerInvoicesUrl);
-    await expect(
-      activePage(reopenedPage).locator('ion-card-title', { hasText: 'Parameters' }),
-    ).toBeVisible({ timeout: 15_000 });
-    await expect(
-      activePage(reopenedPage).getByText('Customer.ID', { exact: false }),
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(customerBindingRow(await openParameters(reopenedPage))).toContainText(
+      'Customer.ID',
+      { timeout: 10_000 },
+    );
     await reopenedPage.goto(customerPurchasesUrl);
-    await expect(
-      activePage(reopenedPage).locator('ion-card-title', { hasText: 'Parameters' }),
-    ).toBeVisible({ timeout: 15_000 });
-    await expect(
-      activePage(reopenedPage).getByText('Customer.ID', { exact: false }),
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(customerBindingRow(await openParameters(reopenedPage))).toContainText(
+      'Customer.ID',
+      { timeout: 10_000 },
+    );
 
     // --- Open a NEW browser context (a genuinely separate browser session,
     // not just a new tab) at the same project URL ---
@@ -229,19 +227,15 @@ test.describe('Epilogue A — close/reopen', () => {
     });
 
     await freshPage.goto(customerInvoicesUrl);
-    await expect(
-      activePage(freshPage).locator('ion-card-title', { hasText: 'Parameters' }),
-    ).toBeVisible({ timeout: 15_000 });
-    await expect(
-      activePage(freshPage).getByText('Customer.ID', { exact: false }),
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(customerBindingRow(await openParameters(freshPage))).toContainText(
+      'Customer.ID',
+      { timeout: 10_000 },
+    );
     await freshPage.goto(customerPurchasesUrl);
-    await expect(
-      activePage(freshPage).locator('ion-card-title', { hasText: 'Parameters' }),
-    ).toBeVisible({ timeout: 15_000 });
-    await expect(
-      activePage(freshPage).getByText('Customer.ID', { exact: false }),
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(customerBindingRow(await openParameters(freshPage))).toContainText(
+      'Customer.ID',
+      { timeout: 10_000 },
+    );
 
     await freshContext.close();
   });
@@ -285,11 +279,10 @@ test.describe('Epilogue B — share/replay', () => {
       activePage(page).getByText('customer-invoices', { exact: false }),
     ).toBeVisible({ timeout: 15_000 });
     await activePage(page).getByText('customer-invoices', { exact: false }).click();
-    await expect(
-      activePage(page)
-        .getByText('Customer.ID', { exact: false })
-        .getByText('from selection', { exact: false }),
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(customerBindingRow(await openParameters(page))).toContainText(
+      'from selection',
+      { timeout: 10_000 },
+    );
 
     // `updateUrl()` (query-page.component.ts:798) only runs from
     // `ionViewDidEnter()`/`envChanged()`/`editorTabChanged()` — an Ionic
@@ -341,19 +334,15 @@ test.describe('Epilogue B — share/replay', () => {
     // sessionStorage, so InvestigationContextService's basket for this scope is
     // empty (Epilogue A above already proves that mechanism); CustomerId
     // (isRequired) shows the same blocked state J3 already covers.
-    await expect(
-      activePage(colleaguePage)
-        .getByText('Customer.ID', { exact: false })
-        .getByText('required', { exact: false }),
-    ).toBeVisible({ timeout: 10_000 });
-    const colleagueRunButton = activePage(colleaguePage).locator('ion-button', {
-      hasText: 'Run query',
-    });
+    const colleaguePageBinding = customerBindingRow(await openParameters(colleaguePage));
+    await expect(colleaguePageBinding).toContainText('required — no value supplied', { timeout: 10_000 });
+    await expect(colleaguePageBinding.getByRole('textbox', { name: 'CustomerId value' }))
+      .toHaveValue('');
+    const colleagueRunButton = activePage(colleaguePage).getByTestId('workspace-run');
     await expect(colleagueRunButton).toHaveAttribute('disabled', '');
 
-    // "supplies/reselects needed values" — see this file's header: no manual
-    // entry control exists, so the colleague browses back into the data and
-    // clicks the value, exactly REQ:parameter-auto-binding/J2's own path.
+    // Reselect the value from the table to prove the recipient's own
+    // selection provenance, as in REQ:parameter-auto-binding/J2.
     await colleaguePage.goto(customerTableUrl);
     await expect(activePage(colleaguePage).locator('.tabulator-row').first()).toBeVisible({
       timeout: 15_000,
@@ -367,18 +356,17 @@ test.describe('Epilogue B — share/replay', () => {
     await expect(activePage(colleaguePage).locator('sneat-datatug-context-panel')).toBeVisible({
       timeout: 15_000,
     });
+    await activePage(colleaguePage).getByText('customer-invoices', { exact: false }).click();
+    await expect(customerBindingRow(await openParameters(colleaguePage))).toContainText(
+      'from selection',
+      { timeout: 10_000 },
+    );
     const colleagueRunResponsePromise = colleaguePage.waitForResponse(
       (res) =>
         res.url().includes('/datatug/exec/run_query') && res.request().method() === 'POST',
       { timeout: 15_000 },
     );
-    await activePage(colleaguePage).getByText('customer-invoices', { exact: false }).click();
-    await expect(
-      activePage(colleaguePage)
-        .getByText('Customer.ID', { exact: false })
-        .getByText('from selection', { exact: false }),
-    ).toBeVisible({ timeout: 10_000 });
-    await activePage(colleaguePage).getByText('Run query', { exact: false }).click();
+    await activePage(colleaguePage).getByTestId('workspace-run').click();
     const colleagueRunBody = (await (await colleagueRunResponsePromise).json()) as {
       recordset?: { rows: unknown[] };
     };
@@ -412,11 +400,10 @@ test.describe('Epilogue B — share/replay', () => {
     );
     await supportColleaguePage.goto(rewrittenUrl);
     await firstSupportRequest;
-    await expect(
-      activePage(supportColleaguePage)
-        .getByText('Customer.ID', { exact: false })
-        .getByText('required', { exact: false }),
-    ).toBeVisible({ timeout: 10_000 });
+    const supportColleaguePageBinding = customerBindingRow(await openParameters(supportColleaguePage));
+    await expect(supportColleaguePageBinding).toContainText('required — no value supplied', { timeout: 10_000 });
+    await expect(supportColleaguePageBinding.getByRole('textbox', { name: 'CustomerId value' }))
+      .toHaveValue('');
 
     // Customer 3 (Canadian) is visible under `--as support`'s own ACL (same
     // fixture/policy J4 already proves) — reselect it the same real way.
@@ -437,20 +424,19 @@ test.describe('Epilogue B — share/replay', () => {
     await expect(
       activePage(supportColleaguePage).locator('sneat-datatug-context-panel'),
     ).toBeVisible({ timeout: 15_000 });
+    await activePage(supportColleaguePage)
+      .getByText('customer-invoices', { exact: false })
+      .click();
+    await expect(customerBindingRow(await openParameters(supportColleaguePage))).toContainText(
+      'from selection',
+      { timeout: 10_000 },
+    );
     const canadianRunResponsePromise = supportColleaguePage.waitForResponse(
       (res) =>
         res.url().includes('/datatug/exec/run_query') && res.request().method() === 'POST',
       { timeout: 15_000 },
     );
-    await activePage(supportColleaguePage)
-      .getByText('customer-invoices', { exact: false })
-      .click();
-    await expect(
-      activePage(supportColleaguePage)
-        .getByText('Customer.ID', { exact: false })
-        .getByText('from selection', { exact: false }),
-    ).toBeVisible({ timeout: 10_000 });
-    await activePage(supportColleaguePage).getByText('Run query', { exact: false }).click();
+    await activePage(supportColleaguePage).getByTestId('workspace-run').click();
     const canadianRunBody = (await (await canadianRunResponsePromise).json()) as {
       recordset?: { rows: unknown[] };
       limitations?: { rowsFiltered: boolean }[];
