@@ -26,7 +26,12 @@
           </ion-buttons>
         }
         <ion-title size="small">
-          <span class="compact-brand">{{ profile.brandName }}</span>
+          <a
+            class="brand-home-link compact-brand"
+            routerLink="/"
+            [attr.aria-label]="profile.brandName + ' home'"
+            >{{ profile.brandName }}</a
+          >
           @if (profile.motto) {
             <span class="compact-motto">{{ profile.motto }}</span>
           }

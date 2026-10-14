@@ -102,25 +102,34 @@ export class DatatugAppComponent {
   private readonly menuController = inject(MenuController);
   private readonly errorLogger = inject(ErrorLogger);
 
-  // Mirror of the split-pane `when: '(min-width: 992px)'` breakpoint: below
-  // it the side panel is hidden, so the shell renders its own compact
+  // Single source for the side-panel breakpoint: at or above it the split
+  // pane reveals the panel, below it the shell renders its own compact
   // header (menu affordance + brand + motto + Sign in) — UX brief §1.
+  // Keep datatug-app.component.scss and datatug-home-page.component.scss
+  // media queries in sync with this value.
   // The MediaQueryList change event calls the signal write directly, so it
   // is zoneless-safe without a manual change-detection nudge.
-  private readonly narrowQuery = window.matchMedia('(max-width: 991.98px)');
+  private static readonly PANEL_MIN_WIDTH = 992;
+  private readonly narrowQuery = window.matchMedia(
+    `(max-width: ${DatatugAppComponent.PANEL_MIN_WIDTH - 0.02}px)`,
+  );
   protected readonly menuHidden = signal(this.narrowQuery.matches);
 
-  // `authStatus` emits the current state on subscribe; before the first
-  // emission `authStatus()` is undefined and no Sign-in button is rendered
-  // (avoids a flash for returning signed-in users).
+  // The auth service seeds 'authenticating' synchronously on subscribe, so
+  // `authStatus()` starts as 'authenticating': neither the Sign-in button
+  // (not 'notAuthenticated') nor the hidden-panel branch fires until the
+  // state settles — no flash for returning signed-in users.
   protected readonly authStatus = toSignal(
     inject(SneatAuthStateService).authStatus,
   );
 
-  // The start page (/ or /home for the datatug profile).
+  // The profile's start page, read declaratively (`homePath`, so e.g.
+  // incidentius' /incidents is never treated as home here); the bare '/'
+  // redirect pass-through is deliberately excluded so a signed-out boot
+  // under other profiles never flashes the panel hidden.
   private readonly appHomePath = computed(() => {
     const path = this.currentUrl().split(/[?#]/)[0];
-    return path === '/' || path === '/home';
+    return path === `/${this.profile.homePath}`;
   });
 
   // Founder, 2026-10-14: "We do not need empty side panel on homepage".
@@ -149,7 +158,9 @@ export class DatatugAppComponent {
   // Split-pane visibility: hidden for the checkout shell (existing rule)
   // and for the signed-out home page (see `homePanelHidden`).
   protected readonly paneWhen = computed(() =>
-    this.checkout() || this.homePanelHidden() ? false : '(min-width: 992px)',
+    this.checkout() || this.homePanelHidden()
+      ? false
+      : `(min-width: ${DatatugAppComponent.PANEL_MIN_WIDTH}px)`,
   );
 
   constructor() {

@@ -120,7 +120,10 @@ describe('DatatugAppComponent shell — signed-out home panel hidden (founder 20
     await TestBed.configureTestingModule({
       imports: [DatatugAppComponent],
       providers: [
-        provideRouter([{ path: '**', children: [] }]),
+        provideRouter([
+          { path: 'home', children: [] },
+          { path: '**', children: [] },
+        ]),
         { provide: MenuController, useValue: { close: vi.fn() } },
         authMock(status),
         {
@@ -134,6 +137,9 @@ describe('DatatugAppComponent shell — signed-out home panel hidden (founder 20
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
     }).compileComponents();
     const fixture = TestBed.createComponent(DatatugAppComponent);
+    // The panel-hiding rule keys off the profile's start page (/home for
+    // datatug), not the '/' redirect pass-through — navigate there first.
+    await TestBed.inject(Router).navigateByUrl('/home');
     fixture.detectChanges();
     return fixture;
   };

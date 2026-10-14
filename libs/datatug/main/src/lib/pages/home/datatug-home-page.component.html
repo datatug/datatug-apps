@@ -15,7 +15,12 @@
         keeps just the motto (UX brief §1: never both).
       -->
       @if (showBrand()) {
-        <span class="home-header-brand">{{ profile.brandName }}</span>
+        <a
+          class="brand-home-link home-header-brand"
+          routerLink="/"
+          [attr.aria-label]="profile.brandName + ' home'"
+          >{{ profile.brandName }}</a
+        >
       }
       @if (motto()) {
         <span class="home-header-motto">{{ motto() }}</span>

@@ -115,11 +115,10 @@ export class DatatugMenuComponent implements OnDestroy {
     return url.split(/[?#]/)[0] === '/login';
   }
 
-  // `/home` is the DataTug profile's start page (see ProductProfile.homePath
-  // and profile-home-redirect.guard); `/` only ever flashes through it on its
-  // way to the redirect target, so it is not treated as "home".
+  // The profile's start page, read declaratively (ProductProfile.homePath +
+  // profile-home-redirect.guard); the '/' redirect pass-through is excluded.
   private isHomeUrl(url: string): boolean {
-    return url.split(/[?#]/)[0] === '/home';
+    return url.split(/[?#]/)[0] === `/${this.profile.homePath}`;
   }
 
   private setRouteState(url: string): void {

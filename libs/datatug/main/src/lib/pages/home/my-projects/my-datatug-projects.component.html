@@ -5,16 +5,6 @@
     </ion-label>
     <ion-buttons slot="end">
       @switch (authState?.status) {
-        @case ("notAuthenticated") {
-          <ion-button
-            routerLink="/login"
-            color="primary"
-            routerDirection="forward"
-            style="text-transform: none"
-          >
-            Sign in
-          </ion-button>
-        }
         @case ("authenticated") {
           <ion-button
             color="medium"
