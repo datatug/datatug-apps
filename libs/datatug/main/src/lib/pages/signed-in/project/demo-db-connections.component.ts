@@ -1,58 +1,106 @@
 import { Component, Input, InjectionToken, computed, inject, signal } from '@angular/core';
+import { IonButton, IonCard, IonCardHeader, IonCardTitle, IonItem, IonLabel, IonList } from '@ionic/angular';
 import { firstValueFrom } from 'rxjs';
-import {
-  IonButton, IonCard, IonCardHeader, IonCardTitle, IonItem, IonLabel, IonList,
-} from '@ionic/angular';
 import type { IProjectRef } from '../../../core/project-context';
 import { projectPageHref } from '../../../nav/project-page-href';
 import { GithubProjectReaderService } from '../../../services/repo/github/github-project-reader.service';
 import { DEMODB_DATASETS, DemoDbLocalCopy, type DemoDbDataset, type LocalDemoDbConnection } from '../environment/demo-db-local-copy';
 
-export interface DemoDbEditionConnection {
+const datasets = DEMODB_DATASETS;
+type Dataset = DemoDbDataset;
+
+export const DEMODB_LOCAL_COPY = new InjectionToken<DemoDbLocalCopy>('DemoDB local browser copy', {
+  providedIn: 'root', factory: () => new DemoDbLocalCopy(),
+});
+type Storage = 'sqlite' | 'postgresql' | 'ingitdb';
+interface BigQueryEdition {
   readonly id: string;
-  readonly dataset: DemoDbDataset;
-  readonly storage: 'sqlite' | 'postgresql' | 'ingitdb';
+  readonly dataset: Dataset;
+  readonly storage: 'bigquery';
+  readonly sourceProjectId: 'demodb-dev';
+  readonly datasetId: Dataset;
+  readonly location: 'US';
+  readonly authentication: 'google-account-required';
+  readonly executionProjectId: 'user-selected';
+  readonly publicReadRole: 'READER';
+  readonly publicReadPrincipal: 'allAuthenticatedUsers';
+  readonly readiness: 'public-read-user-project-required';
+  readonly query: 'not-enabled-in-browser';
+  readonly copy: 'not-enabled';
+  readonly tableCount: number;
+  readonly rowCount: number;
+  readonly sourceRepository: string;
+  readonly sourceRevision: string;
+  readonly sourceSqliteSha256: string;
+  readonly verification: string;
+}
+const projectId = 'datatug-demo-project@datatug@demo-project-1';
+const chinookPostgresqlQueryId = 'demodb/chinook-postgresql-artist-tracks';
+
+interface DemoDbConnection {
+  readonly id: string;
+  readonly dataset: Dataset;
+  readonly storage: Storage;
   readonly tags: readonly string[];
   readonly environments: readonly string[];
   readonly readiness: 'public-api' | 'hosted-api-pending' | 'hosted-repository';
   readonly source: string;
   readonly fixtureSha256?: string;
   readonly query: 'ovdb-read' | 'setup-required' | 'local-checkout-required';
-  readonly copy: 'explicit-browser-import' | 'unavailable';
 }
 
-interface DemoDbConnectionCatalog {
+interface ConnectionCatalog {
   readonly format: 'datatug-demo-connections/v1';
-  readonly connections: readonly DemoDbEditionConnection[];
-  readonly bigQueryPlans: readonly { readonly id: string; readonly title: string; readonly directory: string; readonly readiness: 'setup-required' }[];
+  readonly connections: readonly DemoDbConnection[];
+  readonly bigQueryEditions?: readonly BigQueryEdition[];
+  readonly bigQueryPlans: readonly {
+    readonly id: string;
+    readonly title: string;
+    readonly directory: string;
+    readonly readiness: 'setup-required';
+  }[];
 }
 
-export const DEMODB_LOCAL_COPY = new InjectionToken<DemoDbLocalCopy>('DemoDB local browser copy', {
-  providedIn: 'root', factory: () => new DemoDbLocalCopy(),
-});
-
-const projectId = 'datatug-demo-project@datatug@demo-project-1';
-
-function validateCatalog(raw: DemoDbConnectionCatalog): DemoDbConnectionCatalog {
+function validCatalog(raw: ConnectionCatalog): boolean {
   if (raw?.format !== 'datatug-demo-connections/v1' || !Array.isArray(raw.connections) ||
-      raw.connections.length !== DEMODB_DATASETS.length * 3 || !Array.isArray(raw.bigQueryPlans)) {
-    throw new Error('The shared DemoDB connection catalogue is incomplete.');
-  }
-  for (const dataset of DEMODB_DATASETS) {
-    for (const storage of ['sqlite', 'postgresql', 'ingitdb'] as const) {
-      const matches = raw.connections.filter((entry) => entry.id === `${dataset}-${storage}`);
-      if (matches.length !== 1 || matches[0].dataset !== dataset || matches[0].storage !== storage ||
-          !matches[0].tags.includes(dataset) || !matches[0].tags.includes(storage) ||
-          !Array.isArray(matches[0].environments) ||
-          (storage === 'sqlite' && (matches[0].source !== `https://demodb.dev/ovdb/v1/databases/${dataset}` ||
-            !/^[a-f0-9]{64}$/.test(matches[0].fixtureSha256 ?? '') || matches[0].readiness !== 'public-api')) ||
-          (storage === 'postgresql' && matches[0].readiness !== 'hosted-api-pending') ||
-          (storage === 'ingitdb' && matches[0].readiness !== 'hosted-repository')) {
-        throw new Error('The shared DemoDB connection catalogue has an invalid edition.');
-      }
-    }
-  }
-  return raw;
+      raw.connections.length !== datasets.length * 3 || !Array.isArray(raw.bigQueryPlans)) return false;
+  const editionsValid = datasets.every((dataset) => (['sqlite', 'postgresql', 'ingitdb'] as const).every((storage) => {
+    const matches = raw.connections.filter((entry) => entry.id === `${dataset}-${storage}`);
+    if (matches.length !== 1) return false;
+    const entry = matches[0];
+    return entry.dataset === dataset && entry.storage === storage &&
+      Array.isArray(entry.tags) && entry.tags.includes(dataset) && entry.tags.includes(storage) &&
+      Array.isArray(entry.environments) &&
+      (storage !== 'sqlite' || (entry.readiness === 'public-api' &&
+        entry.source === `https://demodb.dev/ovdb/v1/databases/${dataset}`)) &&
+      (storage !== 'postgresql' ||
+        (entry.readiness === 'hosted-api-pending' && entry.query === 'setup-required' &&
+          entry.source === `https://demodb.dev/${dataset}/`) ||
+        (entry.readiness === 'public-api' && entry.query === 'ovdb-read' &&
+          entry.source === `https://cloud.openvaultdb.com/v1/databases/${dataset}-postgresql`)) &&
+      (storage !== 'ingitdb' || (entry.readiness === 'hosted-repository' &&
+        new RegExp(`^https://github\\.com/demo-db/${dataset}/tree/[a-f0-9]{40}/ingitdb$`).test(entry.source)));
+  }));
+  const hostedEditions = raw.bigQueryEditions;
+  const bigQueryValid = hostedEditions === undefined || (
+    Array.isArray(hostedEditions) && hostedEditions.length === datasets.length && datasets.every((dataset) => {
+      const matches = hostedEditions.filter((edition) => edition?.id === `${dataset}-bigquery`);
+      if (matches.length !== 1) return false;
+      const edition = matches[0];
+      return edition.dataset === dataset && edition.storage === 'bigquery' &&
+        edition.sourceProjectId === 'demodb-dev' && edition.datasetId === dataset && edition.location === 'US' &&
+        edition.authentication === 'google-account-required' && edition.executionProjectId === 'user-selected' &&
+        edition.publicReadRole === 'READER' && edition.publicReadPrincipal === 'allAuthenticatedUsers' &&
+        edition.readiness === 'public-read-user-project-required' && edition.query === 'not-enabled-in-browser' &&
+        edition.copy === 'not-enabled' && Number.isSafeInteger(edition.tableCount) && edition.tableCount > 0 &&
+        Number.isSafeInteger(edition.rowCount) && edition.rowCount >= 0 &&
+        /^https:\/\/github\.com\/demo-db\/[a-z0-9-]+$/.test(edition.sourceRepository) &&
+        /^[a-f0-9]{40}$/.test(edition.sourceRevision) && /^[a-f0-9]{64}$/.test(edition.sourceSqliteSha256) &&
+        edition.verification === 'https://github.com/demo-db/websites/blob/main/config/bigquery-hosting.json';
+    })
+  );
+  return editionsValid && bigQueryValid && raw.bigQueryPlans.every((plan) => plan?.readiness === 'setup-required' &&
+    /^https:\/\/github\.com\/openvaultdb\/directory\/blob\/[a-f0-9]{40}\/index\.json$/.test(plan.directory));
 }
 
 @Component({
@@ -71,6 +119,9 @@ function validateCatalog(raw: DemoDbConnectionCatalog): DemoDbConnectionCatalog 
                 <p>{{ edition.tags.join(' · ') }} · {{ edition.environments.join(', ') }}</p>
                 <p>{{ readiness(edition) }}</p>
                 <a [href]="edition.source" target="_blank" rel="noopener noreferrer">Source</a>
+                @if (edition.id === 'chinook-postgresql' && edition.readiness === 'public-api' && chinookQueryHref()) {
+                  · <a [href]="chinookQueryHref()">Explore PostgreSQL artist track totals</a>
+                }
                 @if (progress()[edition.dataset] && edition.storage === 'sqlite') {
                   <p>Copying {{ progress()[edition.dataset]!.done }} / {{ progress()[edition.dataset]!.total }} rows ({{ progress()[edition.dataset]!.table }})</p>
                 }
@@ -82,7 +133,7 @@ function validateCatalog(raw: DemoDbConnectionCatalog): DemoDbConnectionCatalog 
                 @if (busy()[edition.dataset]) {
                   <ion-button slot="end" (click)="cancel(edition.dataset)">Cancel copy</ion-button>
                 } @else {
-                  <ion-button slot="end" [disabled]="activeCopy() !== undefined" (click)="copy(edition)">Copy to local Dev</ion-button>
+                  <ion-button slot="end" [disabled]="activeCopy() !== undefined || !edition.fixtureSha256" (click)="copy(edition)">Copy to local Dev</ion-button>
                 }
               }
             </ion-item>
@@ -103,11 +154,30 @@ function validateCatalog(raw: DemoDbConnectionCatalog): DemoDbConnectionCatalog 
           }
         </ion-list>
       </ion-card>
+      @if (catalog()!.bigQueryEditions?.length) {
+        <ion-card>
+          <ion-card-header><ion-card-title>Hosted BigQuery editions</ion-card-title></ion-card-header>
+          <ion-list>
+            @for (edition of catalog()!.bigQueryEditions ?? []; track edition.id) {
+              <ion-item>
+                <ion-label>
+                  <strong>{{ edition.dataset }} · {{ edition.tableCount }} tables · {{ edition.rowCount.toLocaleString() }} rows</strong>
+                  <p>Source: {{ edition.sourceProjectId }}.{{ edition.datasetId }} · {{ edition.location }} · source revision {{ edition.sourceRevision }}</p>
+                  <p>Google account required. Choose your own BigQuery execution project before querying; charges apply to that project. Browser queries and copy are not enabled.</p>
+                  <p>Source SQLite SHA-256: <code>{{ edition.sourceSqliteSha256 }}</code></p>
+                  <a href="https://console.cloud.google.com/bigquery" target="_blank" rel="noopener noreferrer">Open BigQuery Console and select your execution project</a>
+                  · <a [href]="edition.verification" target="_blank" rel="noopener noreferrer">Verified hosting manifest</a>
+                </ion-label>
+              </ion-item>
+            }
+          </ion-list>
+        </ion-card>
+      }
       <ion-card>
         <ion-card-header><ion-card-title>BigQuery discoveries (setup planned)</ion-card-title></ion-card-header>
         <ion-list>
           @for (plan of catalog()!.bigQueryPlans; track plan.id) {
-            <ion-item><ion-label>{{ plan.title }} · user's Google account and execution project required
+            <ion-item><ion-label>{{ plan.title }} · your Google account and execution project required
               <p><a [href]="plan.directory" target="_blank" rel="noopener noreferrer">OVDB Directory</a> · Query unavailable</p>
             </ion-label></ion-item>
           }
@@ -124,8 +194,9 @@ export class DemoDbConnectionsComponent {
   private readonly controllers = new Map<DemoDbDataset, AbortController>();
   private loadEpoch = 0;
   private currentProjectRef?: IProjectRef;
-  protected readonly catalog = signal<DemoDbConnectionCatalog | undefined>(undefined);
+  protected readonly catalog = signal<ConnectionCatalog | undefined>(undefined);
   protected readonly error = signal<string | undefined>(undefined);
+  protected readonly chinookQueryHref = signal<string | undefined>(undefined);
   protected readonly local = signal<Partial<Record<DemoDbDataset, LocalDemoDbConnection>>>({});
   protected readonly localConnections = computed(() => Object.values(this.local()).filter((entry): entry is LocalDemoDbConnection => !!entry));
   protected readonly busy = signal<Partial<Record<DemoDbDataset, boolean>>>({});
@@ -136,34 +207,46 @@ export class DemoDbConnectionsComponent {
   @Input() set projectRef(ref: IProjectRef | undefined) {
     const epoch = ++this.loadEpoch;
     this.currentProjectRef = ref;
-    if (ref?.storeId !== 'github.com' || ref.projectId !== projectId) {
-      this.catalog.set(undefined);
-      this.error.set(undefined);
-      return;
+    this.local.set({});
+    this.catalog.set(undefined);
+    this.error.set(undefined);
+    this.chinookQueryHref.set(undefined);
+    if (ref?.storeId === 'github.com' && ref.projectId === projectId) {
+      const page = projectPageHref(ref, ['query', chinookPostgresqlQueryId]);
+      if (page !== '/') this.chinookQueryHref.set(`${page}?id=${encodeURIComponent(chinookPostgresqlQueryId)}`);
+      void this.load(epoch);
     }
-    void this.load(epoch);
   }
 
   private async load(epoch: number): Promise<void> {
     try {
-      const data = await firstValueFrom(this.reader.getRawJson<DemoDbConnectionCatalog>(projectId, 'connections/demo-db.json'));
+      const data = await firstValueFrom(this.reader.getRawJson<ConnectionCatalog>(projectId, 'connections/demo-db.json'));
       if (epoch !== this.loadEpoch) return;
-      this.catalog.set(validateCatalog(data as DemoDbConnectionCatalog));
-      const connections = await Promise.all(DEMODB_DATASETS.map(async (id) => [id, await this.copyService.connection(id)] as const));
-      if (epoch !== this.loadEpoch) return;
-      this.local.set(Object.fromEntries(connections.filter(([, value]) => value)));
+      if (!data || !validCatalog(data)) throw new Error('Invalid catalogue');
+      this.catalog.set(data);
+      void this.loadLocal(epoch);
     } catch {
       if (epoch === this.loadEpoch) this.error.set('The shared DemoDB connection catalogue could not be loaded.');
     }
   }
 
-  protected readiness(entry: DemoDbEditionConnection): string {
-    if (entry.readiness === 'public-api') return 'Public read-only OVDB API';
+  /** A browser without usable IndexedDB must not hide the shared catalogue. */
+  private async loadLocal(epoch: number): Promise<void> {
+    try {
+      const connections = await Promise.all(datasets.map(async (id) => [id, await this.copyService.connection(id)] as const));
+      if (epoch === this.loadEpoch) this.local.set(Object.fromEntries(connections.filter(([, value]) => value)));
+    } catch { /* No local copies are listed. */ }
+  }
+
+  protected readiness(entry: DemoDbConnection): string {
+    if (entry.readiness === 'public-api') return entry.storage === 'postgresql'
+      ? 'Public read-only PostgreSQL through OVDB'
+      : 'Public read-only OVDB API';
     if (entry.readiness === 'hosted-repository') return 'Pinned inGitDB repository; local checkout required for queries';
     return 'PostgreSQL query endpoint pending';
   }
 
-  protected async copy(entry: DemoDbEditionConnection): Promise<void> {
+  protected async copy(entry: DemoDbConnection): Promise<void> {
     if (entry.storage !== 'sqlite' || entry.readiness !== 'public-api' || !entry.fixtureSha256 || this.activeCopy()) return;
     const controller = new AbortController();
     this.activeCopy.set(entry.dataset);

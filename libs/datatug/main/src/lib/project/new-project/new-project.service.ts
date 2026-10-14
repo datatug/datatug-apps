@@ -1,34 +1,58 @@
 import { Injectable, inject } from '@angular/core';
-import { PopoverController } from '@ionic/angular';
-import { NewProjectFormComponent } from './new-project-form.component';
+import { Router } from '@angular/router';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
+import type { BusinessGithubContinuation } from './business-github-continuation';
 
 @Injectable()
 export class NewProjectService {
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
-  private readonly popoverController = inject(PopoverController);
+  private readonly router = inject(Router);
 
-  public openNewProjectDialog(): void {
-    this.popoverController
-      .create({
-        component: NewProjectFormComponent,
-        cssClass: 'small-popover',
-        componentProps: {
-          onCancel: () =>
-            this.popoverController
-              .dismiss()
-              .catch(
-                this.errorLogger.logErrorHandler(
-                  'failed to dismiss popover on cancel',
-                ),
-              ),
+  public navigateToNewProjectPage(
+    store?: 'github',
+    returnUrl = this.router.url,
+    continuation?: BusinessGithubContinuation,
+  ): void {
+    const safeReturnUrl = safeNewProjectReturnUrl(returnUrl);
+    void this.router
+      .navigate(['/new-project'], {
+        queryParams: {
+          ...(store ? { store } : {}),
+          // These values are request intent only. The creation endpoint still
+          // verifies current Business authority for this actor and Space.
+          ...(continuation
+            ? {
+                billingIntent: 'space_business',
+                spaceID: continuation.spaceID,
+              }
+            : {}),
+          returnUrl: safeReturnUrl,
         },
       })
-      .then((popover) => {
-        popover
-          .present()
-          .catch(this.errorLogger.logErrorHandler('Failed to present modal'));
-      })
-      .catch(this.errorLogger.logErrorHandler('Failed to create modal:'));
+      .catch(
+        this.errorLogger.logErrorHandler(
+          'Failed to navigate to the new project page',
+        ),
+      );
+  }
+}
+
+/** Only allow a same-app path to be used as the page's Back/Cancel destination. */
+export function safeNewProjectReturnUrl(
+  value: string | null | undefined,
+): string {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) return '/';
+  try {
+    const url = new URL(value, 'https://datatug.local');
+    if (url.origin !== 'https://datatug.local') return '/';
+    if (
+      url.pathname === '/new-project' ||
+      url.pathname.startsWith('/new-project/')
+    )
+      return '/';
+    // Return destinations should not replay OAuth codes or unrelated query state.
+    return url.pathname || '/';
+  } catch {
+    return '/';
   }
 }

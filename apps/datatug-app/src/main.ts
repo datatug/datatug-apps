@@ -1,3 +1,5 @@
+import { provideCheckoutPurchaseRecovery } from './app/checkout/checkout-purchase-recovery';
+import { provideSubscriptionSettings } from './app/checkout/subscription-settings-provider';
 import { bootstrapApplication } from '@angular/platform-browser';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
@@ -26,14 +28,31 @@ import {
 import { RANDOM_ID_OPTIONS, RandomIdService } from '@sneat/random';
 import { DATATUG_AGENT_BASE_URL } from '@sneat/datatug-semantic';
 import { agentBaseUrlOfPath } from './app/agent-base-url';
+import {
+  provideDatatugBusinessCheckoutApiOrigin,
+  provideDatatugBusinessCheckoutLiveApiOrigin,
+  provideDatatugBusinessCheckoutLiveEnabled,
+} from './app/checkout/business-checkout-config';
+import { provideCheckoutAnalyticsPrivacy } from './app/checkout/checkout-analytics-privacy';
 import { routes } from './app/datatug-app-routes';
 import { DatatugAppComponent } from './app/datatug-app.component';
 import { buildInfo } from './build-info';
-import { datatugAppEnvironmentConfig } from './environments/environment';
+import {
+  datatugAppEnvironmentConfig as environmentConfig,
+  datatugBusinessCheckoutApiOrigin,
+  datatugBusinessCheckoutLiveApiOrigin,
+  datatugBusinessCheckoutLiveEnabled,
+} from './environments/environment';
+import { withoutDataTugTracking } from './launch-tracking';
 import { registerIonicons } from './register-ionicons';
 import { registerPosthog } from './register-posthog';
 import { captureCliChatCapability } from './app/cli-chat-capability';
 import { cliChatProjectInterceptor } from './app/cli-chat-project.interceptor';
+
+const datatugAppEnvironmentConfig = withoutDataTugTracking(environmentConfig, {
+  hostname: location.hostname,
+  queryProfile: new URLSearchParams(location.search).get('profile'),
+});
 
 captureCliChatCapability();
 
@@ -44,6 +63,16 @@ if (datatugAppEnvironmentConfig.posthog) {
 bootstrapApplication(DatatugAppComponent, {
   providers: [
     provideZonelessChangeDetection(),
+    provideCheckoutAnalyticsPrivacy(),
+    provideCheckoutPurchaseRecovery(),
+    provideSubscriptionSettings(),
+    provideDatatugBusinessCheckoutApiOrigin(datatugBusinessCheckoutApiOrigin),
+    provideDatatugBusinessCheckoutLiveApiOrigin(
+      datatugBusinessCheckoutLiveApiOrigin,
+    ),
+    provideDatatugBusinessCheckoutLiveEnabled(
+      datatugBusinessCheckoutLiveEnabled,
+    ),
     provideHttpClient(withInterceptors([cliChatProjectInterceptor])),
     provideIonicAngular(),
     provideAnimationsAsync(),

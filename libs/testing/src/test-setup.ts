@@ -3,8 +3,7 @@ import {
   setupAngularTestingEnvironment,
   setupGlobalMocks,
 } from './base-test-setup';
-import { ErrorLogger, AnalyticsService } from '@sneat/core';
-import { Auth } from 'firebase/auth';
+import { ErrorLogger, AnalyticsService, SNEAT_FIREBASE_AUTH } from '@sneat/core';
 import { Firestore } from 'firebase/firestore';
 
 export function configureGlobalTestBed() {
@@ -28,7 +27,7 @@ export function configureGlobalTestBed() {
           },
         },
         {
-          provide: Auth,
+          provide: SNEAT_FIREBASE_AUTH,
           useValue: {
             onIdTokenChanged: vi.fn(() => () => void 0),
             onAuthStateChanged: vi.fn(() => () => void 0),

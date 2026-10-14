@@ -228,7 +228,7 @@ export class ProjectPageComponent
       );
       return;
     }
-    const url = tryProjectUrl(project.ref, `${projItemType}s`);
+    const url = tryProjectUrl(project.ref, projItemType === 'query' ? 'queries' : `${projItemType}s`);
     if (typeof url !== 'string') {
       this.errorLogger.logError(
         new Error(`no exact address for the project (${url.reason})`),

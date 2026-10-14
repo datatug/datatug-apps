@@ -1,12 +1,17 @@
 import { TestBed } from '@angular/core/testing';
 import { ErrorLogger } from '@sneat/core';
-import { defer, from, of } from 'rxjs';
+import { defer, EMPTY, firstValueFrom, from, of, Subject } from 'rxjs';
 
 import { QueryEditorStateService } from './query-editor-state-service';
 import { QueriesService } from './queries.service';
 import { ProjectService } from '../services/project/project.service';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import { QueryType } from '../models/definition/query-def';
+import type { IQueryDef, ITextQueryRequest } from '../models/definition/query-def';
+import {
+  createHostedDemoDbQuery,
+  withHostedDemoDbSource,
+} from './hosted-demo-db-query';
 
 describe('QueryEditorStateService', () => {
   beforeEach(() => {
@@ -41,6 +46,279 @@ describe('QueryEditorStateService', () => {
 
   it('should be created', () => {
     expect(TestBed.inject(QueryEditorStateService)).toBeTruthy();
+  });
+
+  it('opens an authorized target while preserving its draft and narrowing fresh save capability', () => {
+    const service = TestBed.inject(QueryEditorStateService);
+    const original: IQueryDef = {
+      id: 'chinook-invoice-author-draft-test',
+      title: 'Invoice Author',
+      request: { queryType: QueryType.DTQL, text: 'from Invoice\nlimit 10' } as ITextQueryRequest,
+    };
+    const state = service.newQuery({
+      id: original.id,
+      queryType: QueryType.DTQL,
+      def: original,
+      request: {
+        queryType: QueryType.DTQL,
+        text: 'from Invoice\nlimit 3',
+      } as ITextQueryRequest,
+      revision: 'draft-base',
+      saveSupported: true,
+    });
+    const authorized: IQueryDef = {
+      ...original,
+      request: { queryType: QueryType.DTQL, text: 'from Invoice\nlimit 100' } as ITextQueryRequest,
+    };
+
+    const opened = service.openAuthorizedQuery(original.id, authorized, undefined, {
+      revision: 'fresh-revision',
+      branchHead: 'fresh-head',
+      saveSupported: false,
+      unsupportedSaveReason: 'This query has fields the save API cannot preserve.',
+    });
+
+    expect(opened.request?.queryType).toBe(QueryType.DTQL);
+    expect((opened.request as { text?: string }).text).toBe('from Invoice\nlimit 3');
+    expect(opened.def).toBe(original);
+    expect(opened.revision).toBe('draft-base');
+    expect(opened.saveSupported).toBe(false);
+    expect(opened.saveError).toContain('fields the save API cannot preserve');
+    expect(service.getQueryState(original.id)).toMatchObject(opened);
+    expect(state.id).toBe(original.id);
+  });
+
+  it('opens a newly authorized definition with its read revision', () => {
+    const service = TestBed.inject(QueryEditorStateService);
+    const definition: IQueryDef = {
+      id: 'chinook-invoice-author-fresh-read-test',
+      title: 'Invoice Author',
+      request: { queryType: QueryType.DTQL, text: 'from Invoice\nlimit 10' } as ITextQueryRequest,
+    };
+
+    const opened = service.openAuthorizedQuery(definition.id, definition, undefined, {
+      revision: 'authorized-revision',
+      branchHead: 'authorized-head',
+      saveSupported: true,
+    });
+
+    expect(opened).toMatchObject({
+      id: definition.id,
+      def: definition,
+      request: definition.request,
+      revision: 'authorized-revision',
+      branchHead: 'authorized-head',
+      saveSupported: true,
+    });
+    expect(service.getQueryState(definition.id)).toMatchObject(opened);
+  });
+});
+
+describe('QueryEditorStateService — hosted DemoDB query creation and save', () => {
+  it('creates a query with the complete selected DTQL/federation definition and marks it persisted', async () => {
+    const project = {
+      ref: { storeId: 'github.com', projectId: 'owner/repo' },
+      summary: {
+        id: 'owner/repo',
+        title: 'Test project',
+        access: 'private' as const,
+      },
+    };
+    const draft = withHostedDemoDbSource(
+      createHostedDemoDbQuery('hosted-demodb-save-test'),
+      'adventureworks.Person.Person',
+    );
+    const pendingCreate = new Subject<
+      ReturnType<typeof createHostedDemoDbQuery>
+    >();
+    const createQuery = vi.fn<QueriesService['createQuery']>(() => pendingCreate);
+
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        QueryEditorStateService,
+        {
+          provide: ErrorLogger,
+          useValue: {
+            logError: vi.fn(),
+            logErrorHandler: vi.fn(() => vi.fn()),
+          },
+        },
+        {
+          provide: QueriesService,
+          useValue: { getQuery: vi.fn(), createQuery, updateQuery: vi.fn() },
+        },
+        { provide: ProjectService, useValue: { getFull: vi.fn() } },
+        {
+          provide: DatatugNavContextService,
+          useValue: { currentProject: of(project), currentEnv: of(undefined) },
+        },
+      ],
+    });
+
+    const service = TestBed.inject(QueryEditorStateService);
+    const state = service.newQuery({
+      id: draft.id,
+      title: draft.title,
+      isNew: true,
+      queryType: QueryType.DTQL,
+      def: draft,
+      request: draft.request,
+      federation: draft.federation,
+    });
+
+    const save = firstValueFrom(service.saveQuery(state, project.ref));
+    const savingState = service.getQueryState(draft.id);
+    if (!savingState)
+      throw new Error('Expected query draft while save is pending');
+    const newerRequest = {
+      queryType: QueryType.DTQL,
+      text: 'from:\n  database: adventureworks\n  schema: Person\n  name: Person\n  alias: p\nlimit: 5\n',
+    } as ITextQueryRequest;
+    service.updateQueryState({
+      ...savingState,
+      title: 'Edited while saving',
+      request: newerRequest,
+    });
+    pendingCreate.next(draft);
+    pendingCreate.complete();
+    await save;
+
+    expect(createQuery).toHaveBeenCalledOnce();
+    expect(createQuery.mock.calls[0][1]).toMatchObject({
+      id: 'hosted-demodb-save-test',
+      request: draft.request,
+      federation: {
+        ovdbBaseUrl: 'https://demodb.dev/ovdb',
+        tables: [{ database: 'adventureworks', name: 'Person.Person' }],
+      },
+    });
+    expect(service.getQueryState(draft.id)).toMatchObject({
+      isNew: false,
+      title: 'Edited while saving',
+      request: newerRequest,
+      federation: draft.federation,
+    });
+  });
+});
+
+describe('QueryEditorStateService — GitHub public SQLite save', () => {
+  it('saves an authored SQL query with its explicit source in a cloned project', async () => {
+    const project = {
+      ref: {
+        storeId: 'github.com',
+        projectId: 'demo@buyer@project',
+        projectApi: 'cloud' as const,
+        branch: 'main',
+      },
+      summary: {
+        id: 'demo@buyer@project',
+        title: 'Shared demo',
+        access: 'protected' as const,
+      },
+    };
+    const saveRevision = vi.fn((_ref, request) =>
+      of({
+        query: request.query,
+        revision: 'saved-revision',
+        branchHead: 'saved-head',
+      }),
+    );
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        QueryEditorStateService,
+        {
+          provide: ErrorLogger,
+          useValue: {
+            logError: vi.fn(),
+            logErrorHandler: vi.fn(() => vi.fn()),
+          },
+        },
+        {
+          provide: QueriesService,
+          useValue: {
+            capabilities: () => of({ querySave: true }),
+            saveRevision,
+            authorityDenied: () => EMPTY,
+            authentication: () => of({ status: 'authenticated' }),
+          },
+        },
+        { provide: ProjectService, useValue: { getFull: vi.fn() } },
+        {
+          provide: DatatugNavContextService,
+          useValue: { currentProject: of(project), currentEnv: of(undefined) },
+        },
+      ],
+    });
+    const service = TestBed.inject(QueryEditorStateService);
+    const definition = {
+      id: 'genre-mix',
+      title: 'Genre mix',
+      request: { queryType: QueryType.SQL, text: 'SELECT 1 AS GenreId' },
+    };
+    const state = service.newQuery({
+      id: definition.id,
+      title: definition.title,
+      queryType: QueryType.SQL,
+      request: definition.request,
+      def: definition,
+      connectionId: 'chinook-sqlite',
+      branchHead: 'initial-head',
+      isNew: true,
+    });
+    await firstValueFrom(service.saveQuery(state, project.ref));
+    expect(saveRevision).toHaveBeenCalledOnce();
+    expect(saveRevision.mock.calls[0][1]).toMatchObject({
+      branch: 'main',
+      expectedBranchHead: 'initial-head',
+      query: {
+        id: 'genre-mix',
+        type: QueryType.SQL,
+        text: 'SELECT 1 AS GenreId',
+        connectionId: 'chinook-sqlite',
+      },
+    });
+    expect(service.getQueryState('genre-mix')?.def?.connectionId).toBe(
+      'chinook-sqlite',
+    );
+  });
+});
+
+describe('QueryEditorStateService — Space-owned saved SQL', () => {
+  it('saves a new bound SQL query without Git branches and retains its revision', async () => {
+    const project = {
+      ref: { storeId: 'firestore', spaceID: 'space_1', projectId: 'project_1' },
+      summary: { id: 'project_1', title: 'Shared demo', access: 'protected' as const },
+    };
+    const saveRevision = vi.fn((_ref, request) => of({ query: request.query, revision: 'revision_1' }));
+    const branches = vi.fn();
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ providers: [
+      QueryEditorStateService,
+      { provide: ErrorLogger, useValue: { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) } },
+      { provide: QueriesService, useValue: {
+        capabilities: () => of({ querySave: true }), saveRevision, branches,
+        authorityDenied: () => EMPTY,
+        authentication: () => of({ status: 'authenticated', user: { uid: 'actor_1' } }),
+      } },
+      { provide: ProjectService, useValue: { getFull: vi.fn() } },
+      { provide: DatatugNavContextService, useValue: { currentProject: of(project), currentEnv: of(undefined) } },
+    ] });
+    const service = TestBed.inject(QueryEditorStateService);
+    const def = { id: 'genre-mix', title: 'Genre mix', request: { queryType: QueryType.SQL, text: 'SELECT 1' } };
+    const state = service.newQuery({ id: def.id, title: def.title, queryType: QueryType.SQL,
+      request: def.request, def, connectionId: 'chinook-sqlite', isNew: true });
+    await firstValueFrom(service.saveQuery(state, project.ref));
+    expect(saveRevision).toHaveBeenCalledOnce();
+    expect(saveRevision.mock.calls[0][1]).toMatchObject({
+      ifNoneMatch: true, query: { id: 'genre-mix', type: QueryType.SQL,
+        text: 'SELECT 1', connectionId: 'chinook-sqlite' },
+    });
+    expect(saveRevision.mock.calls[0][1]).not.toHaveProperty('branch');
+    expect(saveRevision.mock.calls[0][1]).not.toHaveProperty('expectedBranchHead');
+    expect(branches).not.toHaveBeenCalled();
+    expect(service.getQueryState(def.id)).toMatchObject({ isNew: false, revision: 'revision_1' });
   });
 });
 

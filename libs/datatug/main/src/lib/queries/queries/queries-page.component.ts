@@ -1,4 +1,5 @@
 import { Component, inject } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Params, Router } from '@angular/router';
 import {
@@ -28,6 +29,7 @@ import {
 import { DatatugCoreModule } from '../../core/datatug-core.module';
 import { IProjectContext } from '../../nav/nav-models';
 import { projectPageHref } from '../../nav/project-page-href';
+import { ProjectContextService } from '../../services/project/project-context.service';
 import { DatatugServicesNavModule } from '../../services/nav/datatug-services-nav.module';
 import { DatatugQueriesServicesModule } from '../datatug-queries-services.module';
 import { QueriesTabComponent } from './queries-tab.component';
@@ -98,6 +100,8 @@ export class QueriesPageComponent
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly projectContext = inject(ProjectContextService);
+  private readonly currentProjectRef = toSignal(this.projectContext.current$, { initialValue: undefined });
 
   public isActiveView = false;
 
@@ -112,7 +116,7 @@ export class QueriesPageComponent
   public project?: IProjectContext;
 
   public get defaultBackHref(): string {
-    return projectPageHref(this.project?.ref);
+    return projectPageHref(this.project?.ref ?? this.currentProjectRef());
   }
 
   constructor() {

@@ -15,7 +15,9 @@ export default defineConfig({
   // playwright.error-dialog.config.ts instead. demo-handoff.spec.ts (G-0) is
   // the same: it asserts what the PRODUCTION build reports to Sentry and
   // analytics, so it has its own config (playwright.demo-handoff.config.ts).
-  testIgnore: ['enterprise-sso.spec.ts', 'error-dialog.spec.ts', 'demo-handoff.spec.ts'],
+  // Deployed-provider checks require their explicit opt-in config, dedicated
+  // identity and disabled sensitive artifacts; never discover them here.
+  testIgnore: ['checkout-journey.spec.ts', 'checkout-provider.spec.ts', 'enterprise-sso.spec.ts', 'error-dialog.spec.ts', 'demo-handoff.spec.ts'],
   outputDir: '../../coverage/apps/datatug-app-e2e/results',
   fullyParallel: true,
   reporter: [
@@ -67,7 +69,7 @@ export default defineConfig({
       // 'error-dialog.spec.ts' and adds 'journey/**' — journey/ has its own
       // project below (real agent, no interception) and must not also run
       // under this default project.
-      testIgnore: ['enterprise-sso.spec.ts', 'error-dialog.spec.ts', 'demo-handoff.spec.ts', 'journey/**'],
+      testIgnore: ['checkout-journey.spec.ts', 'checkout-provider.spec.ts', 'enterprise-sso.spec.ts', 'error-dialog.spec.ts', 'demo-handoff.spec.ts', 'journey/**'],
       use: { ...devices['Desktop Chrome'] },
     },
     {

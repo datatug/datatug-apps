@@ -1,22 +1,79 @@
+import { savedMeaningChoices, type SavedMeaningChoice } from '../../semantic-meaning-reuse';
+import { SemanticColumnHeaderComponent } from '../../semantic-column-header.component';
+import { SemanticMappingDialogComponent } from '../../semantic-mapping-dialog.component';
+import { validateSemanticModel, createSemanticModel, semanticQueryHash, semanticValidationState, type SemanticModel } from '../../semantic-mapping';
+import { isDevicePersonalQuery } from '../../device-personal-queries';
+import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
+import { readGithubProjectId } from '@datatug/project-address';
 import { SourceRightsNoticeComponent } from '@sneat/datatug-semantic';
+import {
+  DetectiveClientService,
+  detectiveErrorMessage,
+  type DetectiveRequestContext,
+  type HostedQueryResponse,
+} from '../../../detective/detective-client.service';
+import { ValidationRunResultsComponent } from '../../../detective/validation-run-results.component';
+import {
+  caseRunLinkMessage,
+  type ValidationRowSelection,
+} from '../../../detective/detective-forms';
+import type {
+  CheckRun,
+  DetectiveExecutionRef,
+  DetectiveState,
+} from '../../../detective/models';
+import {
+  formatTugQL,
+  parseTugQL,
+  type TugQLDiagnostic,
+  type TugQLFormatOptions,
+} from '@dalgo/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { PublicDataService } from '../../public-data/public-data.service';
+import { IEnvironmentFull } from '../../../models/definition/environments';
+import { ProjectService } from '../../../services/project/project.service';
+import { agentBaseUrl } from '../../../services/repo/agent-url';
 import { ConfiguredPublicDataSourcesService } from '../../public-data/configured-public-data-sources.service';
 import { SavedPlanReview } from '../../public-data/saved-plan-review';
 import { INITIAL_CANONICAL_PINS } from '../../public-data/canonical-metadata';
-import { scenarioRevisionChanges, SAVED_SCENARIO_PUBLICATION_BLOCKER } from '../../public-data/public-data-scenario';
+import { monotonicTime } from '../../public-data/bounded-run-budget';
 import {
+  scenarioRevisionChanges,
+  SAVED_SCENARIO_PUBLICATION_BLOCKER,
+} from '../../public-data/public-data-scenario';
+import {
+  afterNextRender,
+  ElementRef,
   Injector,
   ChangeDetectorRef,
   Component,
   OnDestroy,
+  ViewChild,
   computed,
   effect,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Params, Router } from '@angular/router';
+import { ActivatedRoute, Params, Router, NavigationEnd } from '@angular/router';
+import { AgGridAngular } from 'ag-grid-angular';
+import { addIcons } from 'ionicons';
+import { copyOutline, shieldCheckmarkOutline } from 'ionicons/icons';
+import {
+  AllCommunityModule,
+  ModuleRegistry,
+  type ColDef,
+  type CellFocusedEvent,
+  type GridApi,
+  type RowClickedEvent,
+  type RowClassRules,
+  type ICellRendererParams,
+  type SelectionChangedEvent,
+  type SuppressKeyboardEventParams,
+} from 'ag-grid-community';
 import {
   ErrorLogger,
   IErrorLogger,
@@ -27,16 +84,226 @@ import {
 const isGithubStoreId = (storeId?: string): boolean =>
   storeId === STORE_ID_GITHUB_COM || storeId === STORE_TYPE_GITHUB;
 
+const isBrowserSqlProject = (ref?: IProjectRef): boolean =>
+  !!ref && (isGithubStoreId(ref.storeId) || isSharedProjectRef(ref));
+
+const hasQueryActivity = (ref?: IProjectRef): boolean =>
+  !!ref &&
+  ((isGithubStoreId(ref.storeId) && ref.projectApi === 'cloud') ||
+    isSharedProjectRef(ref));
+
+ModuleRegistry.registerModules([AllCommunityModule]);
+
+interface QueryResultGridRow {
+  readonly [columnId: string]: string;
+}
+
+type HostedRowStatus = 'pass' | 'fail' | 'unknown';
+
+interface HostedQueryExecution {
+  readonly result: FederatedQueryResult;
+  readonly generation: number;
+  readonly projectKey: string;
+  readonly queryId: string;
+  readonly environment: string;
+  readonly execution: DetectiveExecutionRef;
+  readonly queryRevision: string;
+  readonly resultFingerprint: string;
+  readonly run?: CheckRun;
+  readonly validationPending?: boolean;
+  readonly validationError?: string;
+  readonly caseLinkNotice?: string;
+}
+
+interface LocalScenarioExecution {
+  readonly projectKey: string;
+  readonly queryId: string;
+  readonly environment: string;
+  readonly execution: DetectiveExecutionRef;
+}
+
+const sameExecution = (
+  first: DetectiveExecutionRef | undefined,
+  second: DetectiveExecutionRef | undefined,
+): boolean =>
+  !!first &&
+  !!second &&
+  first.storeId === second.storeId &&
+  first.projectId === second.projectId &&
+  first.executionId === second.executionId;
+
+interface QueryResultGridRowSnapshot {
+  readonly result: FederatedQueryResult;
+  readonly recordset: FederatedQueryResult['recordset'];
+  readonly rows: FederatedQueryResult['recordset']['rows'];
+  readonly row: FederatedQueryResult['recordset']['rows'][number];
+  readonly resultSetId: string;
+  readonly resultPageIndex: number;
+  readonly resultGeneration: number;
+  readonly position: number;
+}
+
+const CUSTOMER_INVOICE_LOOKUP_QUERY_ID = 'chinook-invoice-author';
+
+// displayTypedValue converts integer strings through Number(), which can round wide values.
+const displayQueryResultValue = (value: TypedValue): string =>
+  value.type === 'integer' ? value.value : displayTypedValue(value);
+
+const cloneAndFreeze = <T>(value: T): T => {
+  const clone = structuredClone(value);
+  const freeze = (item: unknown): void => {
+    if (!item || typeof item !== 'object' || Object.isFrozen(item)) return;
+    Object.values(item).forEach(freeze);
+    Object.freeze(item);
+  };
+  freeze(clone);
+  return clone;
+};
+
+const sha256Text = async (value: string): Promise<string> => {
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(value),
+  );
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, '0'),
+  ).join('');
+};
+
 /** Shown instead of ever calling `SemanticApiService.runQuery()` for a
  * GitHub-store project — there is no CLI agent to execute against (founder
  * ruling 2026-09-11, deliverable 2: "an explicit, friendly notice with the
  * command to run, not a thrown error"). */
 export const GITHUB_QUERY_RUN_MESSAGE =
   'This project is browsed read-only from GitHub — running a query needs a DataTug agent. Clone the repo and run `datatug serve --project <path>` to execute it.';
+export const SHARED_QUERY_RUN_MESSAGE =
+  'Choose the pinned public SQLite source to run a SQL query in this browser.';
+
+interface QueryRunTiming {
+  readonly firstRecordMs?: number;
+  readonly allResultsLoadedMs: number;
+  readonly noRecords: boolean;
+}
+
+interface PendingAuthorLookupNavigation {
+  readonly targetId: string;
+  readonly requestRevision: number;
+  readonly projectRef: IProjectRef;
+  readonly environment?: string;
+  readonly securityContextId?: string;
+  routeObserved: boolean;
+  navigationSucceeded?: boolean;
+  observedNavigationId?: number;
+  routeSuperseded: boolean;
+}
+
+interface CommittedQueryDefinition {
+  readonly request: {
+    readonly queryType: QueryType;
+    readonly text?: string;
+    readonly method?: string;
+  };
+  readonly nativeGraph?: NonNullable<IQueryDef['federation']>['nativeGraph'];
+}
+
+type CommittedQueryResult = Omit<FederatedQueryResult, 'bindingsApplied'> & {
+  readonly bindingsApplied: readonly {
+    readonly parameterId: string;
+    readonly type: TypedValue['type'];
+    readonly set: true;
+    readonly origin: Binding['origin'];
+    readonly originEvidence: Binding['originEvidence'];
+    readonly factId?: string;
+  }[];
+};
+
+/** Retained receipts record binding metadata without copying runtime values. */
+const snapshotCommittedResult = (
+  result: FederatedQueryResult,
+): CommittedQueryResult =>
+  cloneAndFreeze({
+    ...result,
+    bindingsApplied: result.bindingsApplied.map((binding) => ({
+      parameterId: binding.parameterId,
+      type: binding.value.type,
+      set: true as const,
+      origin: binding.origin,
+      originEvidence: binding.originEvidence,
+      ...(binding.factId ? { factId: binding.factId } : {}),
+    })),
+  });
+
+interface CommittedQueryRun {
+  readonly result: CommittedQueryResult;
+  readonly displayedResultGeneration: number;
+  readonly executedDefinition: CommittedQueryDefinition;
+  readonly queryIdentity: symbol;
+  readonly scope: {
+    readonly storeId?: string;
+    readonly projectId?: string;
+    readonly queryId?: string;
+    readonly securityContextId?: string;
+    readonly environment?: string;
+    readonly target: string;
+  };
+  readonly targetIdentity: string;
+  readonly timing?: QueryRunTiming;
+  readonly provenance: FederatedQueryResult['provenance'];
+}
+
+interface AuthorFormatUndo {
+  readonly action?: 'format' | 'filter';
+  readonly originalSource: string;
+  readonly formattedSource: string;
+  readonly scopeKey: string;
+  readonly queryIdentity: symbol;
+}
+
+interface AuthorRelationshipUndo {
+  readonly action: 'join' | 'remove';
+  readonly originalSource: string;
+  readonly joinedSource: string;
+  readonly scopeKey: string;
+  readonly queryIdentity: symbol;
+  readonly originalRelationshipBindings?: IQueryDef['relationshipBindings'];
+}
+
+interface AuthorFormatDiagnosticSnapshot {
+  readonly definition: IQueryDef;
+  readonly source: string;
+  readonly draftRevision: number;
+  readonly scopeKey: string;
+  readonly queryIdentity: symbol;
+  readonly diagnostics: readonly TugQLDiagnostic[];
+  readonly remainingCount: number;
+}
+
+interface AuthorPreviewDiagnosticSnapshot {
+  readonly definition: IQueryDef;
+  readonly source: string;
+  readonly draftRevision: number;
+  readonly scopeKey: string;
+  readonly queryIdentity: symbol;
+  readonly queryId?: string;
+  readonly historyScope: string;
+  readonly lifetime: number;
+  readonly errorRevision: number;
+  readonly diagnostic: TugQLDiagnostic;
+}
+
+const isNoTargetFormatDiagnostic = (diagnostic: TugQLDiagnostic): boolean =>
+  (diagnostic.code === 'input_too_large' ||
+    diagnostic.code === 'expected_from') &&
+  diagnostic.span.start.line === 1 &&
+  diagnostic.span.start.column === 1 &&
+  diagnostic.span.end.line === 1 &&
+  diagnostic.span.end.column === 1;
 import { RandomIdService } from '@sneat/random';
-import { distinctUntilChanged, takeUntil } from 'rxjs/operators';
-import { Subject } from 'rxjs';
+import { distinctUntilChanged, takeUntil, filter, take } from 'rxjs/operators';
+import { firstValueFrom, map, Subject } from 'rxjs';
 import {
+  IonAccordion,
+  IonAccordionGroup,
   IonBackButton,
   IonBadge,
   IonButton,
@@ -45,6 +312,7 @@ import {
   IonCardContent,
   IonCardHeader,
   IonCardTitle,
+  IonChip,
   IonContent,
   IonHeader,
   IonIcon,
@@ -54,11 +322,16 @@ import {
   IonList,
   IonListHeader,
   IonMenuButton,
+  IonModal,
+  IonNote,
   IonSelect,
   IonSelectOption,
+  IonSegment,
+  IonSegmentButton,
   IonSpinner,
   IonText,
   IonTextarea,
+  IonTitle,
   IonToolbar,
   ViewDidEnter,
 } from '@ionic/angular';
@@ -85,12 +358,18 @@ import {
   tryDecodeErrorEnvelope,
   TypedValue,
 } from '@sneat/datatug-semantic';
-import { IProjectRef } from '../../../core/project-context';
+import {
+  IProjectRef,
+  equalProjectRef,
+  isSharedProjectRef,
+} from '../../../core/project-context';
+import { fromProjectQueryWire } from '../../project-query-contract';
 import { DatatugCoreModule } from '../../../core/datatug-core.module';
 import {
   IQueryEditorState,
   IQueryEnvState,
   IQueryState,
+  AuthorBindingProvenance,
 } from '../../../editor/models';
 import { Coordinator } from '../../../executor/coordinator';
 import {
@@ -101,6 +380,7 @@ import { IParameter } from '../../../models/definition/parameter';
 import {
   IQueryDef,
   ISqlQueryRequest,
+  ITextQueryRequest,
   QueryType,
 } from '../../../models/definition/query-def';
 import {
@@ -109,6 +389,7 @@ import {
 } from '../../../nav/nav-models';
 import { projectPageHref } from '../../../nav/project-page-href';
 import { ProjectTracker } from '../../../services/nav/contexts/project.tracker';
+import { GitHubProjectActivityService } from '../../../services/project/github-project-activity.service';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { DatatugServicesNavModule } from '../../../services/nav/datatug-services-nav.module';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
@@ -116,11 +397,77 @@ import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatu
 import { DatatugExecutorModule } from '../../../executor/datatug-executor.module';
 import { DatatugQueriesServicesModule } from '../../datatug-queries-services.module';
 import { QueriesService } from '../../queries.service';
-import { FederatedQueryService, type FederatedQueryProgress, type FederatedQueryResult } from '../../federated-query.service';
+import {
+  HOSTED_DEMO_DB_SOURCES,
+  hostedDemoDbSourceId,
+  isHostedDemoDbStarterQuery,
+  withHostedDemoDbSource,
+} from '../../hosted-demo-db-query';
+import {
+  FederatedQueryService,
+  type FederatedQueryProgress,
+  type FederatedQueryResult,
+} from '../../federated-query.service';
 import { federatedVisibleMode } from '../../federated-query-executor';
-import type { LocalResultDescriptor, LocalResultRef } from '../../federated-local-results';
+import type {
+  LocalResultDescriptor,
+  LocalResultRef,
+} from '../../federated-local-results';
 import { graphStableIdentity } from '../../public-data/native-graph-executor';
 import { QueryContextSqlService } from '../../query-context-sql.service';
+import { SessionWorkspaceService } from '../../../session-context/session-workspace.service';
+import { SessionResultCacheService, tryWriteSessionResultCache } from '../../../session-context/session-result-cache.service';
+import { sessionResultFingerprint } from '../../../session-context/session-result-fingerprint';
+import type { ContextDefinitionDocument } from '../../../session-context/session-context-contract';
+import {
+  PublicSqliteQueryService,
+  type PublicSqliteSourceDiscovery,
+} from '../../public-sqlite-query.service';
+import type { PublicSqlitePreparedPlan } from '../../public-sqlite-tugql';
+import { PUBLIC_SQLITE_COMPARE_WASM_PIN } from '../../public-sqlite-comparison-pin.token';
+import {
+  PublicSqliteComparisonSession,
+  PUBLIC_CHINOOK_COMPARISON_TARGETS,
+  isSupportedPublicSqliteComparisonProjection,
+  compareSessionObservations,
+  type ComparisonContextSnapshot,
+  type ComparisonFixtureTarget,
+  type ComparisonSessionSnapshot,
+  type ComparisonSideToken,
+  type SessionCompareResult,
+} from '../../public-sqlite-comparison';
+import { PublicSqliteComparisonPanelComponent } from './public-sqlite-comparison-panel.component';
+import {
+  reviewAuthorRelationshipSource,
+  type AuthorCustomerField,
+  type AuthorRelationshipSourceReview,
+} from './author-relationship-source-edit';
+import {
+  inspectAuthorParticipatingSources,
+  removeAuthorCustomerJoin,
+} from './author-participating-sources';
+import { AuthorSqlPreviewComponent } from './author-sql-preview.component';
+import {
+  AuthorCodeEditorComponent,
+  createSourceSpanValidator,
+  sourceSpanIsValid,
+} from './author-code-editor.component';
+import { AuthorComposeControlsComponent } from './author-compose-controls.component';
+import { AuthorRelationshipSourcesComponent } from './author-relationship-sources.component';
+import { AuthorParticipatingSourcesComponent } from './author-participating-sources.component';
+import { AuthorCurrentRowComponent } from './author-current-row.component';
+import { useInvoiceIdAsAuthorFilter } from './author-row-filter-edit';
+import { readAuthorComposeProfile } from './author-compose-profile';
+import {
+  customerIdLookupValue,
+  hasVerifiedCustomerIdLineage,
+} from './author-customer-lookup';
+import { QueryWorkspaceLayoutComponent } from './query-workspace-layout.component';
+import { SqlEditorComponent } from '../../../components/sqleditor/sql-editor.component';
+import type {
+  PublicSqliteExecutionReceipt,
+  PublicSqliteQueryPreview,
+} from '../../public-sqlite-tugql';
 import {
   isQueryChanged,
   QueryEditorStateService,
@@ -152,6 +499,8 @@ interface RebindSuggestion {
 function typedValuesEqual(a: TypedValue, b: TypedValue): boolean {
   return a.type === b.type && a.value === b.value;
 }
+
+const githubQueryEditReportMinIntervalMs = 1_100;
 
 /** Writes `next` into `sig` only if it differs from the current value per `equal` —
  * see `updateBindings()`'s own comment on why an unconditional `.set()` inside an
@@ -307,7 +656,19 @@ export function extractLinkedEntityNames(
 @Component({
   selector: 'sneat-datatug-sql-editor',
   templateUrl: './query-page.component.html',
+  styleUrl: './query-page.component.scss',
   imports: [
+    SemanticMappingDialogComponent,
+    AuthorComposeControlsComponent,
+    AuthorSqlPreviewComponent,
+    AuthorCodeEditorComponent,
+    AuthorRelationshipSourcesComponent,
+    AuthorParticipatingSourcesComponent,
+    AuthorCurrentRowComponent,
+    PublicSqliteComparisonPanelComponent,
+    QueryWorkspaceLayoutComponent,
+    SqlEditorComponent,
+    NgTemplateOutlet,
     // DatatugNavContextService and EnvironmentService are now
     // providedIn: 'root' (nav-context-root-singletons); QueriesService,
     // QueryContextSqlService, QueryEditorStateService and Coordinator
@@ -335,28 +696,38 @@ export function extractLinkedEntityNames(
     DatatugQueriesServicesModule,
     DatatugExecutorModule,
     FormsModule,
+    AgGridAngular,
+    ValidationRunResultsComponent,
     HttpQueryEditorComponent,
     SneatDatatugPageTitleComponent,
     IonHeader,
     IonToolbar,
+    IonTitle,
     IonButtons,
     IonMenuButton,
+    IonModal,
+    IonAccordion,
+    IonAccordionGroup,
     IonBackButton,
     IonButton,
     IonContent,
     IonCard,
     IonCardHeader,
     IonCardTitle,
+    IonChip,
     IonCardContent,
     IonItem,
     IonInput,
     IonSelect,
     IonSelectOption,
+    IonSegment,
+    IonSegmentButton,
     IonIcon,
     IonLabel,
     IonList,
     IonListHeader,
     IonBadge,
+    IonNote,
     IonSpinner,
     IonText,
     IonTextarea,
@@ -365,31 +736,618 @@ export function extractLinkedEntityNames(
   ],
 })
 export class QueryPageComponent implements OnDestroy, ViewDidEnter {
+  private readonly sessionWorkspace = inject(SessionWorkspaceService, { optional: true });
+  private readonly route = inject(ActivatedRoute);
+  private readonly contextSessionId = toSignal(this.route.paramMap.pipe(map((params) => params.get('sessionId') ?? '')), {
+    initialValue: this.route.snapshot.paramMap.get('sessionId') ?? '',
+  });
+  private readonly sessionPinning = signal(false);
+  private readonly sessionRecordedRun = signal<string | undefined>(undefined);
+  private readonly sessionRecordedInput = signal('');
+  private readonly sessionRecordedSessionId = signal('');
+  private sessionCompletionGeneration = 0;
+  private readonly sessionResultCache = inject(SessionResultCacheService);
+  public readonly sqlQueryType = QueryType.SQL;
+
   private readonly injector = inject(Injector);
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly randomIdService = inject(RandomIdService);
   private readonly datatugNavContextService = inject(DatatugNavContextService);
-  private readonly route = inject(ActivatedRoute);
+  private readonly githubProjectActivity = inject(GitHubProjectActivityService);
   private readonly router = inject(Router);
   private readonly queryContextSqlService = inject(QueryContextSqlService);
   private readonly queriesService = inject(QueriesService);
+  public readonly agentRunEnvironments = signal<IEnvironmentFull[]>([]);
+  public readonly agentRunEnvironmentsLoading = signal(false);
+  public readonly agentRunEnvironmentsError = signal('');
+  public readonly agentSelectedEnvironment = signal('');
   private readonly federatedQuery = inject(FederatedQueryService);
+  private readonly publicSqliteQuery = inject(PublicSqliteQueryService);
   private readonly semanticApi = inject(SemanticApiService);
+  private readonly detectiveClient = inject(DetectiveClientService);
+  public readonly hostedDetectiveState = signal<DetectiveState | undefined>(
+    undefined,
+  );
+  private readonly hostedDetectiveProjectRef = signal<IProjectRef | undefined>(
+    undefined,
+  );
+  private readonly hostedDetectiveLoadedScope = signal<string | undefined>(
+    undefined,
+  );
+  private hostedDetectiveRequestKey?: string;
+  private hostedDetectiveRequestGeneration = 0;
+  public readonly hostedDetectiveError = signal<string | undefined>(undefined);
+  public readonly hostedEnvironment = signal('');
+  private readonly hostedExecution = signal<HostedQueryExecution | undefined>(
+    undefined,
+  );
+  private readonly localScenarioExecution = signal<
+    LocalScenarioExecution | undefined
+  >(undefined);
+  public readonly hostedStatusFilter = signal<'all' | HostedRowStatus>('all');
+  public readonly hostedSelectedRow = signal<number | undefined>(undefined);
+  public readonly hostedScenarioBusy = signal(false);
+  private hostedScenarioCompletionToken = 0;
+  public readonly hostedScenarioMessage = signal('');
+  public readonly hostedScenarioError = signal('');
   private readonly agentContext = inject(AgentContextService);
   private readonly investigationContext = inject(InvestigationContextService);
   private readonly coordinator = inject(Coordinator);
   private readonly queryEditorStateService = inject(QueryEditorStateService);
   private readonly envService = inject(EnvironmentService);
   private readonly changeDetector = inject(ChangeDetectorRef);
+  private authorRunAbort?: AbortController;
+  private readonly comparisonSession = new PublicSqliteComparisonSession();
+  private comparisonPreparedPlan?: PublicSqlitePreparedPlan;
+  private comparisonAccessGeneration = 0;
+  private comparisonAbort?: AbortController;
+  private comparisonGeneration = 0;
+  private comparisonObservedScopeIdentity?: string;
+  private comparisonRouteProjectRef?: IProjectRef;
+  /** Full ref for the latest accepted nav-context summary; stale page summaries cannot restore access. */
+  private comparisonAccessProjectRef?: IProjectRef;
+  private readonly comparisonWasmPin = inject(PUBLIC_SQLITE_COMPARE_WASM_PIN, {
+    optional: true,
+  });
+  private authorLookupFocusRevision = 0;
+  private authorLookupRequestRevision = 0;
+  private pendingAuthorLookupNavigation?: PendingAuthorLookupNavigation;
+  private authorModeScopeKey = '';
+  private authorModeContextKey = '';
+  private authorModeDefaultResolved = false;
+  private authorModeExplicit = false;
+  @ViewChild('authorLookupHeading', { read: ElementRef })
+  private authorLookupHeading?: ElementRef<HTMLElement>;
+
+  @ViewChild(QueryWorkspaceLayoutComponent)
+  private authorWorkspaceLayout?: QueryWorkspaceLayoutComponent;
+
+  @ViewChild(AuthorCodeEditorComponent)
+  private authorCodeEditor?: AuthorCodeEditorComponent;
 
   public project?: IProjectContext;
+  private navigationDraft?: { ref: IProjectRef; query: IQueryDef };
+  private authorPreviewLifetime = 0;
+  private previewDiagnosticNavigationSnapshot = signal<
+    AuthorPreviewDiagnosticSnapshot | undefined
+  >(undefined);
+  private pendingPreviewDiagnosticNavigation?: {
+    readonly generation: number;
+    readonly snapshot: AuthorPreviewDiagnosticSnapshot;
+  };
+  private previewDiagnosticNavigationGeneration = 0;
+  private authorErrorRevision = 0;
+  private lastGitHubQueryEditReport?: { key: string; at: number };
 
   public showQueryBuilder?: boolean;
   public editorTab: 'text' | 'builder' = 'text';
+  public readonly authorMode = signal<'compose' | 'code' | 'preview'>(
+    'compose',
+  );
+  private readonly authorFormatUndo = signal<AuthorFormatUndo | undefined>(
+    undefined,
+  );
+  private readonly authorRelationshipUndo = signal<
+    AuthorRelationshipUndo | undefined
+  >(undefined);
+  private readonly authorFormatNavigationSnapshot = signal<
+    AuthorFormatDiagnosticSnapshot | undefined
+  >(undefined);
+  public readonly authorFormatStatus = signal('');
+  public authorFormatDiagnosticItems(): readonly TugQLDiagnostic[] {
+    const snapshot = this.authorFormatNavigationSnapshot();
+    return this.isCurrentAuthorFormatDiagnosticSnapshot(snapshot)
+      ? snapshot.diagnostics
+      : [];
+  }
+  public authorFormatDiagnosticRemainder(): number {
+    const snapshot = this.authorFormatNavigationSnapshot();
+    return this.isCurrentAuthorFormatDiagnosticSnapshot(snapshot)
+      ? snapshot.remainingCount
+      : 0;
+  }
+  public readonly canUndoAuthorFormat = computed(() => {
+    const relationshipUndo = this.authorRelationshipUndo();
+    const current = this.currentAuthorFormatContext();
+    if (
+      relationshipUndo &&
+      current &&
+      this.authorMode() === 'code' &&
+      !this.running() &&
+      !this.queryState.isSaving &&
+      current.scopeKey === relationshipUndo.scopeKey &&
+      current.queryIdentity === relationshipUndo.queryIdentity &&
+      this.queryBodyText() === relationshipUndo.joinedSource
+    )
+      return true;
+    const undo = this.authorFormatUndo();
+    if (!undo) return false;
+    return (
+      !!current &&
+      this.authorMode() === 'code' &&
+      !this.running() &&
+      !this.queryState.isSaving &&
+      current.scopeKey === undo.scopeKey &&
+      current.queryIdentity === undo.queryIdentity &&
+      this.queryBodyText() === undo.formattedSource
+    );
+  });
+  public readonly authorCustomerId = signal('');
+  public readonly customerInvoiceExample = signal(false);
+  private readonly initializedCustomerInvoiceExamples = new Set<string>();
+
+  private initializeCustomerInvoiceExample(): void {
+    const ref = this.project?.ref;
+    const address = ref && readGithubProjectId(ref.projectId);
+    const routeId = this.route.snapshot.paramMap.get('queryId');
+    const parameterId = this.route.snapshot.queryParamMap?.get('id');
+    const routeProjectId = this.route.snapshot.paramMap.get('projectId');
+    const routeStoreId = this.route.snapshot.paramMap.get('storeId');
+    const admitted =
+      (!routeId || !parameterId || routeId === parameterId) &&
+      (routeId || parameterId) === this.queryState.id &&
+      (!routeProjectId || routeProjectId === ref?.projectId) &&
+      (!routeStoreId || routeStoreId === ref?.storeId) &&
+      equalProjectRef(this.comparisonAccessProjectRef, ref) &&
+      this.route.snapshot.queryParamMap?.get('example') ===
+        'customer-invoices' &&
+      ref?.storeId === 'github.com' &&
+      ref.spaceID === undefined &&
+      ref.projectApi === undefined &&
+      ref.branch === undefined &&
+      address?.ok === true &&
+      address.id.org === 'datatug' &&
+      address.id.repo === 'datatug-demo-project' &&
+      address.id.folder === 'demo-project-1' &&
+      address.id.ref === undefined &&
+      this.comparisonProjectAccess() === 'public' &&
+      this.queryState.id === 'demodb/chinook-customer-invoice-join' &&
+      this.queryState.def?.connectionId === 'chinook-sqlite' &&
+      this.queryState.def?.request.queryType === QueryType.DTQL;
+    this.customerInvoiceExample.set(!!admitted);
+    if (!admitted || !ref) return;
+    const key = JSON.stringify(ref) + ':' + this.queryState.id;
+    if (this.initializedCustomerInvoiceExamples.has(key)) return;
+    this.initializedCustomerInvoiceExamples.add(key);
+    if (
+      Object.prototype.hasOwnProperty.call(
+        this.queryState.authorBindings ?? {},
+        'CustomerId',
+      )
+    )
+      return;
+    this.authorCustomerIdChanged(
+      new CustomEvent('ionInput', { detail: { value: '1' } }),
+    );
+  }
+
+  public readonly authorBindingRevision = signal(0);
+  public readonly authorDraftRevision = signal(0);
+  public readonly authorPlan = signal<PublicSqliteQueryPreview | undefined>(
+    undefined,
+  );
+  public readonly authorPreviewLoading = signal(false);
+  private readonly authorRunParameterAttempt = signal<
+    | {
+        readonly scope: string;
+        readonly definition: IQueryDef | undefined;
+        readonly binding: string;
+        readonly draftRevision: number;
+      }
+    | undefined
+  >(undefined);
+  public readonly authorRunParameterWarning = computed(() => {
+    const attempt = this.authorRunParameterAttempt();
+    if (!attempt) return undefined;
+    return attempt.scope === this.authorRunParameterScope() &&
+      attempt.definition === this.queryDef() &&
+      attempt.binding === this.authorCustomerId() &&
+      attempt.draftRevision === this.authorDraftRevision() &&
+      this.authorRunReadiness().action === 'parameters'
+      ? this.authorRunReadiness().message
+      : undefined;
+  });
+
+  /** The same gates drive the header explanation and Run's disabled state. */
+  public authorRunReadiness(): {
+    readonly blocked: boolean;
+    readonly message: string;
+    readonly action?: 'parameters' | 'preview' | 'error' | 'code';
+  } {
+    if (this.running()) return { blocked: true, message: 'Running query…' };
+    if (this.queryState.isSaving)
+      return { blocked: true, message: 'Saving query…' };
+    if (this.authorPreviewLoading())
+      return { blocked: true, message: 'Preparing SQL preview…' };
+    if (!this.queryId || !this.project || !this.queryDef())
+      return {
+        blocked: true,
+        message: 'Waiting for the query and project to load.',
+      };
+    if (this.authorUnsupportedParameterNames().length)
+      return {
+        blocked: true,
+        message: 'This draft has parameters that this form cannot bind.',
+        action: 'code',
+      };
+    if (!this.authorHasCustomerIdParameter())
+      return {
+        blocked: true,
+        message:
+          'This parameter-free draft is unavailable in the current runner. Review a supported parameterized draft.',
+        action: 'code',
+      };
+    const plan = this.authorPlan();
+    if (
+      this.authorError() &&
+      (!plan || plan.draftRevision !== this.authorDraftRevision())
+    )
+      return {
+        blocked: true,
+        message: 'SQL preview needs attention. Review the draft error.',
+        action: this.canNavigateToAuthorPreviewSyntaxDiagnostic()
+          ? 'error'
+          : 'code',
+      };
+    if (!this.authorCustomerIdValid())
+      return {
+        blocked: true,
+        message: this.authorCustomerIdMissing()
+          ? 'Customer ID is required to Run.'
+          : 'Customer ID must be a whole number.',
+        action: 'parameters',
+      };
+    if (!plan || plan.draftRevision !== this.authorDraftRevision()) {
+      return {
+        blocked: true,
+        message: 'Preview the current draft to enable Run.',
+        action: 'preview',
+      };
+    }
+    return {
+      blocked: false,
+      message: this.authorHasCustomerIdParameter()
+        ? 'Ready to Run with Customer ID ' + this.authorCustomerId() + '.'
+        : 'Ready to Run the current preview.',
+    };
+  }
+
+  public recoverAuthorRun(): void {
+    switch (this.authorRunReadiness().action) {
+      case 'parameters':
+        this.authorContextTabChanged('parameters');
+        this.focusAuthorParameterAfterRender();
+        break;
+      case 'preview':
+        this.setAuthorMode('preview');
+        void this.previewTugql();
+        break;
+      case 'error':
+        this.navigateToAuthorPreviewSyntaxDiagnostic();
+        break;
+      case 'code':
+        this.setAuthorMode('code');
+        break;
+    }
+  }
+
+  @ViewChild('authorCustomerInput') private authorCustomerInput?: IonInput;
+  private authorParameterFocusRevision = 0;
+
+  private focusAuthorParameterAfterRender(): void {
+    const revision = ++this.authorParameterFocusRevision;
+    const definition = this.queryDef();
+    const scope = this.historyScope();
+    const current = (): boolean =>
+      revision === this.authorParameterFocusRevision &&
+      this.queryDef() === definition &&
+      this.historyScope() === scope &&
+      this.queryView() === 'author' &&
+      this.activeAuthorContextTab() === 'parameters' &&
+      !this.running() &&
+      !this.queryState.isSaving;
+    this.changeDetector.markForCheck();
+    afterNextRender(
+      () => {
+        if (current()) void this.authorCustomerInput?.setFocus();
+      },
+      { injector: this.injector },
+    );
+  }
+  public readonly queryView = signal<'author' | 'compare'>('author');
+  public readonly comparisonSnapshot = signal<
+    ComparisonSessionSnapshot | undefined
+  >(undefined);
+  public readonly comparisonResult = signal<SessionCompareResult | undefined>(
+    undefined,
+  );
+  public readonly comparisonBusy = signal(false);
+  public readonly comparisonMessage = signal('');
+  public readonly comparisonCustomerBinding = signal(
+    'No comparison pair has been run.',
+  );
+  public readonly comparisonQueryLimit = signal('—');
+  /** Access comes from the ref-matched project summary, never ambient auth state. */
+  public readonly comparisonProjectAccess = signal<
+    'public' | 'private' | 'protected' | undefined
+  >(undefined);
+  public readonly comparisonBlocker = computed(() => {
+    const project = this.project?.ref;
+    if (
+      !project ||
+      !isGithubStoreId(project.storeId) ||
+      project.spaceID !== undefined ||
+      project.projectApi === 'cloud'
+    )
+      return 'Compare is available for admitted public GitHub projects.';
+    if (this.comparisonProjectAccess() !== 'public')
+      return 'Public project access is required; wait for the matching project summary to load.';
+    const definition = this.queryDef();
+    if (
+      !definition ||
+      !this.isTugqlAuthorJourney() ||
+      definition.connectionId !== 'chinook-sqlite'
+    )
+      return 'Compare is available for the admitted Chinook Invoice TugQL query.';
+    const plan = this.authorPlan();
+    if (!plan || plan.draftRevision !== this.authorDraftRevision())
+      return 'Preview SQL to check the current draft before running both fixtures.';
+    if (plan.expandedSource !== undefined)
+      return 'Review and apply the displayed relationship completion in Code, then Preview the updated draft before comparing.';
+    if (
+      plan.authorProof.profile !== 'invoice-query' ||
+      !plan.relationship ||
+      !Number.isSafeInteger(plan.authorProof.resolvedQuery.limit) ||
+      (plan.authorProof.resolvedQuery.limit ?? 0) < 1 ||
+      (plan.authorProof.resolvedQuery.limit ?? 101) > 100
+    )
+      return 'Compare supports the bounded Invoice-to-Customer query profile only.';
+    if (!isSupportedPublicSqliteComparisonProjection(plan))
+      return 'Select InvoiceId plus supported text fields such as InvoiceDate before comparing.';
+    if (!this.authorCustomerIdValid())
+      return 'Enter a whole-number Customer ID binding before running both fixtures.';
+    return 'Ready · Preview is current; both fixture queries will use the same frozen binding.';
+  });
+  public readonly authorCustomerIdValid = computed(
+    () =>
+      /^-?\d+$/u.test(this.authorCustomerId()) &&
+      Number.isSafeInteger(Number(this.authorCustomerId())),
+  );
+  public readonly authorCustomerIdMissing = computed(
+    () => this.authorCustomerId().trim().length === 0,
+  );
+  public readonly authorHasCustomerIdParameter = computed(() => {
+    const source = this.queryBodyText();
+    if (!source) return false;
+    const parsed = parseTugQL(source);
+    const hasDeclaredParameter = parsed.document.tree?.parameters?.some(
+      (parameter) => parameter.name.toLowerCase() === 'customerid',
+    );
+    if (hasDeclaredParameter) return true;
+    if (parsed.diagnostics.length) return /@CustomerId\b/iu.test(source);
+    return false;
+  });
+  public readonly authorParameterDeclarationCount = computed(() => {
+    const source = this.queryBodyText();
+    if (!source) return undefined;
+    const parsed = parseTugQL(source);
+    const tree = parsed.document.tree;
+    if (tree) return tree.parameters?.length ?? 0;
+    return /@CustomerId\b/iu.test(source) ? 1 : undefined;
+  });
+  public readonly authorUnsupportedParameterNames = computed(() => {
+    const parsed = parseTugQL(this.queryBodyText() ?? '');
+    return (parsed.document.tree?.parameters ?? [])
+      .filter((parameter) => parameter.name.toLowerCase() !== 'customerid')
+      .map((parameter) => parameter.name);
+  });
+  public readonly authorParticipatingSourceInventory = computed(() =>
+    inspectAuthorParticipatingSources(this.queryBodyText() ?? ''),
+  );
+  public authorRelatedSourceCount(): number | undefined {
+    const metadata = this.authorSourceMetadata();
+    const inventory = this.authorParticipatingSourceInventory();
+    if (!metadata || !inventory.available) return undefined;
+    const main = inventory.sources.find((source) => source.kind === 'main');
+    if (
+      main?.name.toLowerCase() !== 'invoice' ||
+      (main.schema !== undefined && main.schema !== 'main') ||
+      main.database
+    )
+      return undefined;
+    if (
+      inventory.sources.some(
+        (source) =>
+          source.kind !== 'main' &&
+          !(
+            source.kind === 'join' &&
+            source.name.toLowerCase() === 'customer' &&
+            source.removable &&
+            (source.schema === undefined || source.schema === 'main') &&
+            !source.database
+          ),
+      )
+    )
+      return undefined;
+    return inventory.customerJoined ? 0 : 1;
+  }
+  public authorSourceOccurrenceCount(): number | undefined {
+    const inventory = this.authorParticipatingSourceInventory();
+    return inventory.available ? inventory.sources.length : undefined;
+  }
+  public authorParameterCountLabel(): string {
+    const count = this.authorParameterDeclarationCount();
+    return count === undefined
+      ? 'Parameter count unavailable'
+      : `${count} parameter${count === 1 ? '' : 's'}`;
+  }
+  public authorSourceCountLabel(): string {
+    const count = this.authorSourceOccurrenceCount();
+    return count === undefined
+      ? 'Source count unavailable'
+      : `${count} participating source${count === 1 ? '' : 's'}`;
+  }
+  public authorRelatedSourceCountLabel(): string {
+    const count = this.authorRelatedSourceCount();
+    return count === undefined
+      ? 'Related source count unavailable'
+      : `${count} available related source${count === 1 ? '' : 's'}`;
+  }
+  public readonly authorContextTab = signal<
+    'parameters' | 'sources' | 'related' | undefined
+  >(undefined);
+  public readonly activeAuthorContextTab = computed(
+    () =>
+      this.authorContextTab() ??
+      (this.authorHasCustomerIdParameter() ? 'parameters' : 'related'),
+  );
+  public readonly authorResultSnapshotKey = computed(() => {
+    const result = this.runResult();
+    const recordset = this.displayedRecordset();
+    const rows = this.visibleResultRows();
+    if (!result || !recordset) return undefined;
+    return Object.freeze([
+      result,
+      recordset,
+      rows,
+      this.relatedResultSet(),
+      this.resultPageIndex(),
+      this.displayedResultGeneration(),
+    ]);
+  });
+  public readonly authorError = signal<string | undefined>(undefined);
+
+  private setAuthorError(message: string | undefined): void {
+    this.authorErrorRevision++;
+    this.authorError.set(message);
+  }
+  public readonly authorSourceDiscovery = signal<
+    PublicSqliteSourceDiscovery | undefined
+  >(undefined);
+  private authorSourceMetadataSource = '';
+  private authorSourceMetadataIdentity?: symbol;
+  public readonly authorSourceLoading = signal(false);
+  public readonly authorSourceMessage = signal('');
+  public readonly authorCustomerRemovalOpen = signal(false);
+  public readonly authorCustomerRemovalOutputs = signal<readonly string[]>([]);
+  private pendingAuthorCustomerRemoval?: {
+    readonly source: string;
+    readonly draftRevision: number;
+    readonly scopeKey: string;
+    readonly queryIdentity: symbol;
+    readonly relationship: NonNullable<
+      IQueryDef['relationshipBindings']
+    >[number];
+  };
+  public readonly authorSourceReview = signal<
+    AuthorRelationshipSourceReview | undefined
+  >(undefined);
+  public readonly authorSourceSelectedFields = signal<
+    readonly AuthorCustomerField[]
+  >(['FirstName']);
+  public readonly authorCanJoinRelationship = computed(() => {
+    if (
+      this.authorSourceLoading() ||
+      this.running() ||
+      this.queryState.isSaving === true
+    )
+      return false;
+    const context = this.currentAuthorSourceContext();
+    const discovery = this.authorSourceMetadata();
+    return (
+      !!context &&
+      !!discovery &&
+      reviewAuthorRelationshipSource(context.source, [], discovery.relationship)
+        .ok
+    );
+  });
+  public readonly authorCanRemoveCustomerJoin = computed(() => {
+    if (
+      this.authorSourceLoading() ||
+      this.running() ||
+      this.queryState.isSaving === true
+    )
+      return false;
+    const context = this.currentAuthorSourceContext();
+    const definition = this.queryDef();
+    const discovery = this.authorSourceMetadata();
+    const binding = definition?.relationshipBindings?.find(
+      (candidate) =>
+        candidate.id === discovery?.relationship.id &&
+        candidate.version === discovery.relationship.version,
+    );
+    return (
+      !!context &&
+      !!definition &&
+      !!binding &&
+      removeAuthorCustomerJoin(context.source, binding).ok
+    );
+  });
+  public authorCustomerJoinRemovalReason(): string | undefined {
+    if (this.running() || this.queryState.isSaving === true)
+      return 'Source edits are unavailable while the query is running or saving.';
+    const context = this.currentAuthorSourceContext();
+    if (!context)
+      return 'The current project and query context is unavailable.';
+    const definition = this.queryDef();
+    const discovery = this.authorSourceMetadata();
+    if (!discovery)
+      return 'Current source metadata must be admitted again before this JOIN can be removed.';
+    const binding = definition?.relationshipBindings?.find(
+      (candidate) =>
+        candidate.id === discovery.relationship.id &&
+        candidate.version === discovery.relationship.version,
+    );
+    if (!binding)
+      return 'This JOIN has no matching admitted relationship binding.';
+    const proposal = removeAuthorCustomerJoin(context.source, binding);
+    return proposal.ok ? undefined : proposal.reason;
+  }
+  public readonly authorCustomerOutputChoices: readonly AuthorCustomerField[] =
+    Object.freeze(['FirstName', 'LastName', 'Email']);
+  private authorSourceRequestGeneration = 0;
+  private authorSourceReviewGeneration = 0;
+  private authorSourceScopeKey = '';
+  private authorSourceReviewContext?: {
+    readonly scopeKey: string;
+    readonly queryIdentity: symbol;
+    readonly source: string;
+    readonly draftRevision: number;
+    readonly selectedFields: readonly AuthorCustomerField[];
+    readonly reviewGeneration: number;
+    readonly schemaVersion: string;
+  };
+  public readonly isTugqlAuthorJourney = computed(
+    () =>
+      this.queryDef()?.connectionId === 'chinook-sqlite' &&
+      this.queryDef()?.request.queryType === QueryType.DTQL,
+  );
 
   public parameters?: IParameter[];
 
   public editorState?: IQueryEditorState = undefined;
+  /** Current selected query's header label; normalized only for presentation. */
+  public readonly queryPageTitle = signal('Query');
   public queryState: IQueryState = {
     id: '',
     queryType: QueryType.SQL,
@@ -398,6 +1356,29 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       text: '',
     } as ISqlQueryRequest,
   };
+  /** Structural Author edits update the executable definition. Retain the saved
+   * definition separately until a real save or reload replaces that local draft. */
+  private readonly authorSavedDefinition = signal<
+    | {
+        readonly queryId: string;
+        readonly saved: IQueryDef;
+        readonly local: IQueryDef;
+      }
+    | undefined
+  >(undefined);
+
+  private trackAuthorStructuralDraft(local: IQueryDef): void {
+    const previous = this.authorSavedDefinition();
+    const queryId = this.queryState.id;
+    if (!queryId) return;
+    if (previous?.queryId !== queryId) {
+      const saved = this.queryState.def;
+      if (!saved) return;
+      this.authorSavedDefinition.set({ queryId, saved, local });
+    } else if (previous) {
+      this.authorSavedDefinition.set({ ...previous, local });
+    }
+  }
 
   public get activeEnv(): IQueryEnvState | undefined {
     return this.queryState?.activeEnv;
@@ -407,11 +1388,130 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     return this.queryState?.id;
   }
 
+  public get isHostedProject(): boolean {
+    return (
+      !!this.project &&
+      isSharedProjectRef(this.project.ref) &&
+      !isDevicePersonalQuery(this.queryId ?? '')
+    );
+  }
+
+  public hostedScenarioTarget():
+    | {
+        caseId: string;
+        applicationId: string;
+        stepId: string;
+      }
+    | undefined {
+    if (isDevicePersonalQuery(this.queryId ?? '')) return undefined;
+    const params = this.route.snapshot.queryParamMap;
+    const caseId = params.get('caseId');
+    const applicationId = params.get('applicationId');
+    const stepId = params.get('scenarioStepId');
+    const item = this.hostedDetectiveState()?.cases.find(
+      (candidate) => candidate.id === caseId,
+    );
+    const application = item?.scenarioApplications?.find(
+      (candidate) => candidate.id === applicationId,
+    );
+    const step = application?.snapshot.steps.find(
+      (candidate) => candidate.id === stepId,
+    );
+    const receipt = application?.steps.find(
+      (candidate) => candidate.stepId === stepId,
+    );
+    return caseId &&
+      applicationId &&
+      stepId &&
+      item?.status === 'active' &&
+      step?.kind === 'query' &&
+      step.ref === this.queryId &&
+      receipt?.status === 'pending'
+      ? { caseId, applicationId, stepId }
+      : undefined;
+  }
+
+  public activeLocalScenarioExecution(): LocalScenarioExecution | undefined {
+    const ref = this.project?.ref;
+    const receipt = this.localScenarioExecution();
+    const target = this.hostedScenarioTarget();
+    return ref &&
+      target &&
+      !isSharedProjectRef(ref) &&
+      receipt?.projectKey === JSON.stringify(ref) &&
+      receipt.queryId === this.queryId &&
+      receipt.environment === (this.queryState.activeEnv?.id ?? this.envId)
+      ? receipt
+      : undefined;
+  }
+
+  private detectiveContext(
+    ref: IProjectRef,
+  ): DetectiveRequestContext | undefined {
+    if (isSharedProjectRef(ref)) {
+      return ref.spaceID
+        ? {
+            kind: 'cloud',
+            storage: 'firestore',
+            spaceID: ref.spaceID,
+            project: ref.projectId,
+          }
+        : undefined;
+    }
+    if (
+      isBrowserSqlProject(ref) ||
+      ref.storeId === 'firestore' ||
+      ref.projectApi === 'cloud'
+    )
+      return undefined;
+    const securityContextId = this.agentContext
+      .contextFor(agentBaseUrl(ref.storeId))
+      .securityContextId();
+    return securityContextId
+      ? {
+          kind: 'agent',
+          agentStoreId: ref.storeId,
+          project: ref.projectId,
+          securityContextId,
+          branch: ref.branch,
+        }
+      : undefined;
+  }
+
+  private detectiveScopeKey(
+    ref: IProjectRef,
+    context: DetectiveRequestContext,
+  ): string {
+    return JSON.stringify({ ref, context });
+  }
+
+  private hasCurrentDetectiveState(): boolean {
+    const ref = this.project?.ref;
+    const context = ref ? this.detectiveContext(ref) : undefined;
+    return !!ref &&
+      !!context &&
+      this.hostedDetectiveLoadedScope() ===
+        this.detectiveScopeKey(ref, context);
+  }
+
+  public get queryValidatorsHref(): string | undefined {
+    const queryId = this.queryId;
+    if (
+      !queryId ||
+      isDevicePersonalQuery(queryId) ||
+      this.queryState.isNew ||
+      !this.project?.ref
+    ) return undefined;
+    const href = projectPageHref(this.project.ref, 'checks');
+    return `${href}${href.includes('?') ? '&' : '?'}query=${encodeURIComponent(queryId)}`;
+  }
+
   public queryFolderPath = '';
 
   /** Where the back button goes with no history: the project's queries, in the folder of this query. */
   public get queriesBackHref(): string {
-    return `${projectPageHref(this.project?.ref, 'queries')}?folder=${this.queryFolderPath}`;
+    const href = projectPageHref(this.project?.ref, 'queries');
+    return `${href}${href.includes('?') ? '&' : '?'}folder=${encodeURIComponent(this.queryFolderPath)}`;
   }
   public envId?: string;
   public envDbServerId?: string;
@@ -468,61 +1568,877 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     hasBlockingBindings(this.bindings()),
   );
   public readonly running = signal(false);
-  public readonly federatedProgress = signal<FederatedQueryProgress | undefined>(undefined);
+  public readonly federatedProgress = signal<
+    FederatedQueryProgress | undefined
+  >(undefined);
   public readonly resultPageIndex = signal(0);
   public readonly resultPageSize = 100;
   public readonly federatedMode = signal<'full' | 'visible'>('full');
   public readonly visibleModeSupport = computed(() => {
     const definition = this.queryDef();
-    return definition ? federatedVisibleMode(definition) : { supported: false, defaultMode: 'full' as const };
+    return definition
+      ? federatedVisibleMode(definition)
+      : { supported: false, defaultMode: 'full' as const };
   });
   public readonly ovdbDestination = computed(() => {
-    try { return new URL(this.queryDef()?.federation?.ovdbBaseUrl ?? '').origin; }
-    catch { return 'the configured OVDB endpoint'; }
+    try {
+      return new URL(this.queryDef()?.federation?.ovdbBaseUrl ?? '').origin;
+    } catch {
+      return 'the configured OVDB endpoint';
+    }
   });
   public readonly resultPageLoading = signal(false);
-  private readonly resultPageRows = signal<RunQueryResponse['recordset']['rows']>([]);
+  private resultPageRequestGeneration = 0;
+  private readonly resultPageRows = signal<
+    RunQueryResponse['recordset']['rows']
+  >([]);
   /** In-memory OVDB credential for the current query only. */
   public readonly ovdbToken = signal('');
+  /** Changes fence work authorized by a previous token without storing token bytes. */
+  private readonly ovdbCredentialGeneration = signal(0);
   public readonly accessBlockers = signal<readonly string[]>([]);
   public readonly runError = signal<string | undefined>(undefined);
-  public readonly runResult = signal<FederatedQueryResult | undefined>(undefined);
+  public readonly runResult = signal<FederatedQueryResult | undefined>(
+    undefined,
+  );
+  private readonly executionCopyFeedback = signal<
+    | {
+        readonly receipt: PublicSqliteExecutionReceipt;
+        readonly text: string;
+      }
+    | undefined
+  >(undefined);
+  private executionCopyGeneration = 0;
+  public readonly executionCopyStatus = computed(() => {
+    const feedback = this.executionCopyFeedback();
+    return feedback &&
+      feedback.receipt === this.runResult()?.publicSqliteReceipt
+      ? feedback.text
+      : '';
+  });
+
+  public async copyExecutionIdentifier(
+    receipt: PublicSqliteExecutionReceipt,
+    value: string,
+    label: string,
+  ): Promise<void> {
+    if (this.runResult()?.publicSqliteReceipt !== receipt) return;
+    const generation = ++this.executionCopyGeneration;
+    this.executionCopyFeedback.set(undefined);
+    let write: Promise<void>;
+    try {
+      const clipboard = globalThis.navigator?.clipboard;
+      if (!clipboard?.writeText) throw new Error('Clipboard unavailable');
+      write = clipboard.writeText(value);
+    } catch {
+      if (this.executionCopyGeneration === generation)
+        this.executionCopyFeedback.set({
+          receipt,
+          text: `Couldn't copy ${label}. Try again.`,
+        });
+      return;
+    }
+    try {
+      await write;
+      if (
+        this.executionCopyGeneration === generation &&
+        this.runResult()?.publicSqliteReceipt === receipt
+      )
+        this.executionCopyFeedback.set({ receipt, text: `${label} copied` });
+    } catch {
+      if (
+        this.executionCopyGeneration === generation &&
+        this.runResult()?.publicSqliteReceipt === receipt
+      )
+        this.executionCopyFeedback.set({
+          receipt,
+          text: `Couldn't copy ${label}. Try again.`,
+        });
+    }
+  }
+  private readonly displayedResultGeneration = signal(0);
+  public readonly queryRunTiming = signal<QueryRunTiming | undefined>(
+    undefined,
+  );
+  /** Last complete execution, frozen separately from the latest attempt/result pane. */
+  public readonly committedRun = signal<CommittedQueryRun | undefined>(
+    undefined,
+  );
+  public readonly previousCommittedRun = computed(() => {
+    const committed = this.committedRun();
+    return committed &&
+      (committed.displayedResultGeneration !==
+        this.displayedResultGeneration() ||
+        committed.queryIdentity !== this.currentQueryIdentity() ||
+        committed.targetIdentity !== this.currentResultTargetIdentity() ||
+        this.running() ||
+        !!this.runError())
+      ? committed
+      : undefined;
+  });
+  public readonly displayedResultIsPreviousRun = computed(() => {
+    const committed = this.committedRun();
+    return (
+      !!committed &&
+      committed.displayedResultGeneration ===
+        this.displayedResultGeneration() &&
+      (this.running() ||
+        !!this.runError() ||
+        committed.queryIdentity !== this.currentQueryIdentity() ||
+        committed.targetIdentity !== this.currentResultTargetIdentity())
+    );
+  });
   public readonly localResults = signal<readonly LocalResultDescriptor[]>([]);
   public readonly localHistoryLoading = signal(false);
   public readonly localHistoryError = signal<string | undefined>(undefined);
-  public readonly selectedHistoricalResult = signal<LocalResultRef | undefined>(undefined);
-  public readonly historicalDefinition = signal<IQueryDef | undefined>(undefined);
+  public readonly selectedHistoricalResult = signal<LocalResultRef | undefined>(
+    undefined,
+  );
+  public readonly activeHostedExecution = computed(() => {
+    const execution = this.hostedExecution();
+    return !isDevicePersonalQuery(this.queryDef()?.id ?? this.queryId ?? '') &&
+      execution &&
+      execution.result === this.runResult() &&
+      execution.generation === this.displayedResultGeneration() &&
+      execution.projectKey === JSON.stringify(this.project?.ref) &&
+      execution.queryId === this.queryId &&
+      execution.environment === this.hostedEnvironment() &&
+      !this.selectedHistoricalResult() &&
+      !this.displayedResultIsPreviousRun() &&
+      this.relatedResultSet() === 'affiliations'
+      ? execution
+      : undefined;
+  });
+  public readonly hostedRowStatuses = computed(() => {
+    const execution = this.activeHostedExecution();
+    const statuses = new Map<number, HostedRowStatus>();
+    if (
+      !execution?.run ||
+      execution.run.executionStatus !== 'completed' ||
+      !sameExecution(execution.execution, execution.run.steps[0]?.execution)
+    )
+      return statuses;
+    // Nested Check rows belong to their own query execution and must not be
+    // projected onto the root query's row indexes.
+    for (const row of execution.run.steps[0].validators || []) {
+      if (row.rowIndex === undefined) continue;
+      const outcome: HostedRowStatus =
+        row.outcome === 'fail'
+          ? 'fail'
+          : row.outcome === 'pass'
+            ? 'pass'
+            : 'unknown';
+      const old = statuses.get(row.rowIndex);
+      if (
+        outcome === 'fail' ||
+        (outcome === 'unknown' && old !== 'fail') ||
+        !old
+      )
+        statuses.set(row.rowIndex, outcome);
+    }
+    return statuses;
+  });
+  public readonly hostedSelectedRowCells = computed(() => {
+    const index = this.hostedSelectedRow();
+    const execution = this.activeHostedExecution();
+    if (index === undefined || !execution) return undefined;
+    const row = execution.result.recordset.rows[index];
+    return row?.map((value, column) => ({
+      name:
+        execution.result.recordset.columns[column]?.name ??
+        `Column ${column + 1}`,
+      value: displayQueryResultValue(value),
+    }));
+  });
+  public readonly historicalDefinition = signal<IQueryDef | undefined>(
+    undefined,
+  );
   public readonly relatedResultSet = signal('affiliations');
   private historySelection = 0;
   private historyCatalogRequest = 0;
+  private observedSecurityContextId?: string;
+  private hasObservedSecurityContext = false;
   private executedGraphDefinition?: IQueryDef;
   private federatedRunLifetime = 0;
-  public readonly historicalPins = computed(() => JSON.stringify(this.historicalDefinition()?.federation?.nativeGraph, null, 2));
+  private semanticRunLifetime = 0;
+  public readonly historicalPins = computed(() =>
+    JSON.stringify(
+      this.historicalDefinition()?.federation?.nativeGraph,
+      null,
+      2,
+    ),
+  );
   public readonly displayedRecordset = computed(() => {
     const result = this.runResult();
-    return this.relatedResultSet() === 'affiliations' ? result?.recordset : result?.relatedRecordsets?.find((set) => set.id === this.relatedResultSet())?.recordset;
+    return this.relatedResultSet() === 'affiliations'
+      ? result?.recordset
+      : result?.relatedRecordsets?.find(
+          (set) => set.id === this.relatedResultSet(),
+        )?.recordset;
   });
   private readonly publicDataMetadata = inject(PublicDataService);
-  public readonly savedPlanReview = new SavedPlanReview(() => this.queryDef(), this.publicDataMetadata, this.queriesService, () => this.project?.ref, async (definition, signal) => {
-    const source = definition.publicData?.declaredSource;
-    if (!source || !this.project) return undefined;
-    return this.injector.get(ConfiguredPublicDataSourcesService).resolveSaved(this.project, source, signal);
-  });
+  public readonly savedPlanReview = new SavedPlanReview(
+    () => this.queryDef(),
+    this.publicDataMetadata,
+    this.queriesService,
+    () => this.project?.ref,
+    async (definition, signal) => {
+      const source = definition.publicData?.declaredSource;
+      if (!source || !this.project) return undefined;
+      return this.injector
+        .get(ConfiguredPublicDataSourcesService)
+        .resolveSaved(this.project, source, signal);
+    },
+  );
   public readonly publicDataRevisionAcknowledged = signal(false);
   public readonly publicDataRevisionChanges = computed(() => {
     const saved = this.queryDef()?.publicData;
     return saved ? scenarioRevisionChanges(saved, INITIAL_CANONICAL_PINS) : [];
   });
-  public readonly resultTotalRows = computed(() => this.relatedResultSet() === 'affiliations' ? this.runResult()?.totalRows ?? this.runResult()?.recordset.rows.length ?? 0 : this.runResult()?.relatedRecordsets?.find((set) => set.id === this.relatedResultSet())?.totalRows ?? 0);
-  public readonly resultHasMore = computed(() => !this.selectedHistoricalResult() && this.runResult()?.hasMore === true);
+  public readonly resultTotalRows = computed(() =>
+    this.relatedResultSet() === 'affiliations'
+      ? (this.runResult()?.totalRows ??
+        this.runResult()?.recordset.rows.length ??
+        0)
+      : (this.runResult()?.relatedRecordsets?.find(
+          (set) => set.id === this.relatedResultSet(),
+        )?.totalRows ?? 0),
+  );
+  public readonly resultTotalRowsKnown = computed(() => {
+    const result = this.runResult();
+    if (!result) return false;
+    if (this.relatedResultSet() === 'affiliations')
+      return result.totalRows !== undefined || result.hasMore !== true;
+    return (
+      result.relatedRecordsets?.some(
+        (set) => set.id === this.relatedResultSet(),
+      ) ?? true
+    );
+  });
+  public readonly resultHasMore = computed(
+    () =>
+      !this.selectedHistoricalResult() && this.runResult()?.hasMore === true,
+  );
   public readonly visibleResultRows = computed(() => {
     const result = this.runResult();
-    if (result?.totalRows !== undefined || result?.hasMore) return this.resultPageRows();
-    const rows = result?.recordset.rows ?? [];
+    const recordset = this.displayedRecordset();
+    if (!result || !recordset) return [];
+    if (result?.totalRows !== undefined || result?.hasMore)
+      return this.resultPageRows();
+    const rows = recordset.rows;
     const start = this.resultPageIndex() * this.resultPageSize;
     return rows.slice(start, start + this.resultPageSize);
   });
-  public readonly resultPageEnd = computed(() => Math.min((this.resultPageIndex() + 1) * this.resultPageSize, this.resultTotalRows()));
+  readonly semanticDialog = signal<SemanticModel | undefined>(undefined);
+  readonly semanticColumn = signal(0);
+  readonly semanticSaving = signal(false);
+  readonly semanticBeforeSave = signal<SemanticModel | undefined>(undefined);
+  readonly semanticError = signal('');
+  readonly semanticNotice = signal('');
+  readonly semanticStorage = signal('');
+  readonly semanticSaveToProject = signal(false);
+  readonly semanticSaveLabel = signal('Save meaning');
+  readonly semanticSavedChoices = signal<readonly SavedMeaningChoice[]>([]);
+  readonly semanticChoicesLoading = signal(false);
+  readonly semanticChoicesMessage = signal('');
+  readonly semanticExecutedDefinition = signal<IQueryDef | undefined>(undefined);
+  readonly semanticCurrentHash = signal('');
+  private static pendingSemanticCopy?: { id: string; result: FederatedQueryResult; definition: IQueryDef; environment?: string; selectedSource?: string };
+  readonly semanticBasis = signal<SemanticModel['basis'] | undefined>(undefined);
+  readonly semanticPersonalCopies = signal<IQueryDef[]>([]);
+  private readonly semanticNav = inject(DatatugNavService);
+  private semanticBasisGeneration = 0;
+  private semanticMappingLifetime = 0;
+  readonly semanticValidation = computed(() => semanticValidationState(
+    this.queryDef()?.semanticModel, this.semanticBasis(), this.semanticCurrentHash(), this.displayedResultIsPreviousRun(),
+  ));
+  readonly semanticNeedsReview = computed(() => this.semanticValidation() === 'review');
+  semanticColumnLabel(index: number): string {
+    const bundle = this.semanticSaving() ? this.semanticBeforeSave() : this.queryDef()?.semanticModel;
+    const binding = bundle?.bindings.find(item => item.columnIndex === index);
+    const property = bundle?.meaning.concepts.find(item => item.id === binding?.concept);
+    const entity = bundle?.meaning.concepts.find(item => item.id === property?.of);
+    return property ? [entity?.labels.en, property.labels.en, binding?.role].filter(Boolean).join(' · ') : '';
+  }
+  async openColumnMeaning(index: number): Promise<void> {
+    if (!this.project) return;
+    const basis = this.semanticBasis();
+    if (!basis || !this.semanticCurrentHash()) { this.semanticNotice.set('Checking the current query output. Try again in a moment.'); return; }
+    const lifetime = ++this.semanticMappingLifetime, project = this.project, queryId = this.queryState.id ?? '', ref = project.ref;
+    const active = () => lifetime === this.semanticMappingLifetime && this.project?.ref === ref && this.queryState.id === queryId;
+    if (this.displayedResultIsPreviousRun() || this.semanticCurrentHash() !== basis.queryHash) { this.semanticNotice.set('Run the updated query before mapping its columns. Existing meanings need review.'); return; }
+    this.semanticNotice.set('');
+    this.semanticError.set(''); this.semanticColumn.set(index);
+    const current = this.queryDef()?.semanticModel;
+    const fresh = createSemanticModel(basis);
+    if (current) {
+      fresh.meaning = structuredClone(current.meaning);
+      fresh.bindings = current.bindings.filter(binding => binding.columnIndex < fresh.basis.columns.length);
+    }
+    let supported = false;
+    if (!isDevicePersonalQuery(this.queryState.id ?? '') && (this.project.ref.projectApi || isSharedProjectRef(this.project.ref))) {
+      try { const capabilities = await firstValueFrom(this.queriesService.capabilities(this.project.ref)); supported = !!capabilities.querySave && !!capabilities.semanticModel && this.queryState.saveSupported !== false; } catch { supported = false; }
+    }
+    if (!active()) return;
+    this.semanticSaveToProject.set(supported);
+    const personal = isDevicePersonalQuery(this.queryState.id ?? '');
+    this.semanticStorage.set(personal ? 'Saved on this device.' : supported ? 'Saves meanings in this project.' : 'Creates a personal copy saved on this device.');
+    this.semanticSaveLabel.set(personal || supported ? 'Save meaning' : 'Save personal copy');
+    this.semanticSavedChoices.set([]);
+    this.semanticChoicesLoading.set(true);
+    this.semanticChoicesMessage.set('');
+    this.semanticDialog.set(fresh);
+    void this.queriesService.devicePersonal.list(ref).then(items => {
+      if (this.semanticDialog() !== fresh || this.queryState.id !== queryId || this.project?.ref !== ref) return;
+      const result = savedMeaningChoices(items.map(item => item.query), queryId);
+      this.semanticSavedChoices.set(result.choices);
+      this.semanticChoicesMessage.set(result.skipped ? 'Some saved meanings could not be loaded. You can still create a property.' : '');
+    }).catch(() => {
+      if (this.semanticDialog() === fresh && this.queryState.id === queryId && this.project?.ref === ref)
+        this.semanticChoicesMessage.set('Saved meanings could not be loaded. You can still create a property.');
+    }).finally(() => { if (this.semanticDialog() === fresh) this.semanticChoicesLoading.set(false); });
+  }
+  async saveColumnMeaning(bundle: SemanticModel): Promise<void> {
+    const project = this.project, definition = this.queryDef();
+    if (!project || !definition || this.semanticSaving()) return;
+    const sourceState = this.queryState, originalDefinition = sourceState.def;
+    const sourceResult = this.runResult(), environment = this.envId, selectedSource = this.selectedSource();
+    const lifetime = ++this.semanticMappingLifetime;
+    const active = () => lifetime === this.semanticMappingLifetime && this.project?.ref === project.ref && this.queryState.id === sourceState.id;
+    this.semanticBeforeSave.set(originalDefinition?.semanticModel);
+    this.semanticSaving.set(true); this.semanticError.set('');
+    try {
+      validateSemanticModel(bundle);
+      const current = { ...definition, request: this.queryState.request ?? definition.request, connectionId: this.queryState.connectionId ?? definition.connectionId, federation: this.queryState.federation ?? definition.federation, semanticModel: bundle };
+      const supported = this.semanticSaveToProject();
+      if (isDevicePersonalQuery(current.id) || supported) {
+        this.queryEditorStateService.updateQueryState({ ...this.queryState, def: current });
+        await firstValueFrom(this.queryEditorStateService.saveQuery({ ...sourceState, def: current }, project.ref));
+        if (!active()) return;
+      } else {
+        const copy = { ...current, id: `device-personal-${crypto.randomUUID()}`, title: `${current.title || 'Query'} · Personal` };
+        await firstValueFrom(this.queriesService.createQuery(project.ref, copy));
+        if (!active()) return;
+        const result = sourceResult;
+        if (result) QueryPageComponent.pendingSemanticCopy = { id: copy.id, result, definition: copy, environment, selectedSource };
+        this.queryEditorStateService.newQuery({ ...sourceState, id: copy.id, title: copy.title, def: copy, request: copy.request, isNew: false, isSaving: false });
+        this.semanticSaving.set(false);
+        this.semanticDialog.set(undefined);
+        this.router.events.pipe(filter(event => event instanceof NavigationEnd), take(1)).subscribe(() => {
+          if (result && this.queryState.id === copy.id) {
+            QueryPageComponent.pendingSemanticCopy = undefined;
+            this.setDisplayedResult(result);
+            this.commitSuccessfulResult(result, copy, undefined, false);
+          }
+        });
+        this.semanticNav.goQuery(project, copy, 'edit');
+      }
+      if (!active()) return;
+      this.semanticSaving.set(false);
+      this.semanticDialog.set(undefined);
+      void this.queriesService.devicePersonal.list(project.ref).then(items => { if (this.project?.ref === project.ref) this.semanticPersonalCopies.set(items.map(item => item.query)); }).catch(() => undefined);
+    } catch (error) {
+      if (!active()) return;
+      if (originalDefinition) this.queryEditorStateService.updateQueryState({ ...sourceState, def: originalDefinition, isSaving: false });
+      this.semanticError.set(error instanceof Error ? error.message : 'Meaning could not be saved. Your draft is retained.');
+    }
+    finally { if (active()) this.semanticSaving.set(false); }
+  }
+  openSemanticPersonalCopy(id: string): void {
+    const query = this.semanticPersonalCopies().find(item => item.id === id);
+    if (query && this.project) this.semanticNav.goQuery(this.project, query, 'edit');
+  }
+  public readonly resultGridColumnDefs = computed<ColDef<QueryResultGridRow>[]>(
+    () => {
+      const result = this.runResult();
+      const receipt = result?.publicSqliteReceipt;
+      const canOfferLookup =
+        !!result &&
+        this.relatedResultSet() === 'affiliations' &&
+        !this.selectedHistoricalResult() &&
+        !this.displayedResultIsPreviousRun() &&
+        !this.publicSqliteRunIsStale(result);
+      const columns = (this.displayedRecordset()?.columns ?? []).map<
+        ColDef<QueryResultGridRow>
+      >(
+        (column, index) => {
+          const columnId = `result_${index}`;
+          const canLookupCustomer =
+            hasVerifiedCustomerIdLineage(receipt, index, column.name) &&
+            canOfferLookup;
+          return {
+            colId: columnId,
+            field: columnId,
+            headerName: column.name,
+            headerComponent: SemanticColumnHeaderComponent,
+            headerComponentParams: {
+              meaningLabel: this.semanticColumnLabel(index),
+              checking: this.semanticValidation() === 'checking',
+              needsReview:
+                !!this.queryDef()?.semanticModel?.bindings.some(
+                  (binding) => binding.columnIndex === index,
+                ) && this.semanticNeedsReview(),
+              openMeaning: () => { void this.openColumnMeaning(index); },
+            },
+            sortable: false,
+            minWidth: 120,
+            ...(canLookupCustomer ||
+            (index === 0 && this.isTugqlAuthorJourney())
+              ? {
+                  cellRenderer: (
+                    params: ICellRendererParams<QueryResultGridRow, string>,
+                  ) =>
+                    this.renderInspectedResultCell(
+                      params,
+                      canLookupCustomer ? receipt : undefined,
+                      this.currentQueryIdentity(),
+                      index,
+                      column.name,
+                    ),
+                  suppressKeyboardEvent: (
+                    params: SuppressKeyboardEventParams<
+                      QueryResultGridRow,
+                      string
+                    >,
+                  ) => this.suppressCustomerLookupKeyboardEvent(params),
+                }
+              : {}),
+          };
+        },
+      );
+      if (this.activeHostedExecution()?.run?.executionStatus === 'completed')
+        columns.unshift({
+          colId: 'validation_status',
+          field: 'validation_status',
+          headerName: 'Validation',
+          sortable: true,
+          minWidth: 135,
+        });
+      return columns;
+    },
+  );
+  private readonly resultGridRowSnapshots = new WeakMap<
+    QueryResultGridRow,
+    QueryResultGridRowSnapshot
+  >();
+  public readonly selectedAuthorResultRow = signal<
+    QueryResultGridRowSnapshot | undefined
+  >(undefined);
+  public readonly currentAuthorResultRow = computed(() => {
+    const selected = this.selectedAuthorResultRow();
+    if (!selected) return undefined;
+    return selected.result === this.runResult() &&
+      selected.recordset === this.displayedRecordset() &&
+      selected.resultSetId === this.relatedResultSet() &&
+      selected.resultPageIndex === this.resultPageIndex() &&
+      selected.resultGeneration === this.displayedResultGeneration() &&
+      selected.rows === this.visibleResultRows()
+      ? selected
+      : undefined;
+  });
+  private readonly authorRowFilterFeedback = signal<
+    | {
+        readonly row: readonly TypedValue[];
+        readonly snapshotKey: unknown;
+        readonly text: string;
+      }
+    | undefined
+  >(undefined);
+  public readonly authorRowFilterStatus = computed(() => {
+    const feedback = this.authorRowFilterFeedback();
+    return feedback &&
+      feedback.row === this.currentAuthorResultRow()?.row &&
+      feedback.snapshotKey === this.authorResultSnapshotKey()
+      ? feedback.text
+      : '';
+  });
+  public clearAuthorRowFilterStatus(): void {
+    this.authorRowFilterFeedback.set(undefined);
+  }
+
+  public useAuthorResultValueAsFilter(action: {
+    readonly index: number;
+    readonly row: readonly TypedValue[];
+    readonly snapshotKey: unknown;
+  }): void {
+    const selected = this.currentAuthorResultRow();
+    const status = (text: string): void => {
+      this.authorRowFilterFeedback.set({
+        row: action.row,
+        snapshotKey: action.snapshotKey,
+        text,
+      });
+    };
+    if (
+      !selected ||
+      selected.row !== action.row ||
+      action.snapshotKey !== this.authorResultSnapshotKey()
+    ) {
+      status('This row changed. Select a current result row and try again.');
+      return;
+    }
+    const receipt = selected.result.publicSqliteReceipt;
+    const output = receipt?.outputColumns?.[action.index];
+    const column = selected.recordset.columns[action.index];
+    const value = action.row[action.index];
+    if (
+      this.running() ||
+      this.queryState.isSaving ||
+      this.resultPageLoading() ||
+      this.selectedHistoricalResult() ||
+      this.displayedResultIsPreviousRun() ||
+      this.publicSqliteRunIsStale(selected.result) ||
+      this.authorPlan()?.draftRevision !== this.authorDraftRevision()
+    ) {
+      status(
+        'These results belong to a previous draft. Preview and run the current draft before filtering.',
+      );
+      return;
+    }
+    if (
+      !receipt ||
+      !column ||
+      !output ||
+      output.name !== column.name ||
+      output.type !== 'integer' ||
+      output.lineage.length !== 1 ||
+      (receipt.relationship &&
+        output.lineage[0]?.source !== receipt.relationship.fromSource) ||
+      output.lineage[0]?.field !== 'InvoiceId' ||
+      value?.type !== 'integer' ||
+      !/^[1-9]\d*$/u.test(value.value) ||
+      !Number.isSafeInteger(Number(value.value))
+    ) {
+      status(
+        'Filtering is available for a verified InvoiceId integer cell. Copy this value or edit other filters in TugQL Code.',
+      );
+      return;
+    }
+    const source = this.queryBodyText();
+    if (source === undefined) {
+      status(
+        'The current TugQL draft is unavailable. Reopen this query before filtering.',
+      );
+      return;
+    }
+    const edit = useInvoiceIdAsAuthorFilter(source, value.value);
+    if (!edit.ok) {
+      status(edit.reason);
+      return;
+    }
+    if (edit.after === source) {
+      status(`This draft already filters InvoiceId ${value.value}.`);
+      return;
+    }
+    this.queryTextChanged(
+      new CustomEvent('ionInput', { detail: { value: edit.after } }),
+      false,
+    );
+    const current = this.currentAuthorFormatContext();
+    if (current)
+      this.authorFormatUndo.set({
+        action: 'filter',
+        originalSource: source,
+        formattedSource: edit.after,
+        scopeKey: current.scopeKey,
+        queryIdentity: current.queryIdentity,
+      });
+    this.authorModeExplicit = true;
+    this.authorMode.set('code');
+    this.authorFormatStatus.set('InvoiceId filter added. Undo available.');
+    status(`InvoiceId ${value.value} added to TugQL Query. Undo available.`);
+    if (this.authorRowDetailsOpen()) {
+      this.authorRowDetailsShowEditorAfterDismiss = true;
+      this.authorRowDetailsOpen.set(false);
+    }
+  }
+  public readonly authorResultRowSelection = {
+    mode: 'singleRow' as const,
+    enableClickSelection: true,
+    checkboxes: false,
+    headerCheckbox: false,
+  };
+  public readonly authorRowDetailsOpen = signal(false);
+  private authorRowDetailsShowEditorAfterDismiss = false;
+  private authorRowDetailsFocusGeneration = 0;
+  private authorViewActive = true;
+  private authorRowDetailsSnapshot?: unknown;
+  private authorRowDetailsCaller?: HTMLElement;
+  private authorResultGridApi?: GridApi<QueryResultGridRow>;
+
+  public openAuthorRowDetails(event: Event): void {
+    if (!this.currentAuthorResultRow() || this.resultPageLoading()) return;
+    ++this.authorRowDetailsFocusGeneration;
+    this.authorRowDetailsCaller = event.currentTarget as HTMLElement;
+    this.authorRowDetailsSnapshot = this.authorResultSnapshotKey();
+    this.authorRowDetailsOpen.set(true);
+  }
+
+  public authorRowDetailsDismissed(): void {
+    this.authorRowDetailsOpen.set(false);
+    const showEditor = this.authorRowDetailsShowEditorAfterDismiss;
+    this.authorRowDetailsShowEditorAfterDismiss = false;
+    const caller = this.authorRowDetailsCaller;
+    const snapshot = this.authorRowDetailsSnapshot;
+    const generation = this.authorRowDetailsFocusGeneration;
+    const query = this.currentQueryIdentity();
+    const scope = this.historyScope();
+    this.authorRowDetailsCaller = undefined;
+    this.authorRowDetailsSnapshot = undefined;
+    if (showEditor) {
+      requestAnimationFrame(() => {
+        if (
+          this.authorViewActive &&
+          this.queryView() === 'author' &&
+          query === this.currentQueryIdentity() &&
+          scope === this.historyScope()
+        )
+          this.authorWorkspaceLayout?.showEditor();
+      });
+      return;
+    }
+    // Ionic emits didDismiss before completing overlay/focus-trap teardown.
+    // Restore on the next frame, only while the originating view and row still own it.
+    requestAnimationFrame(() => {
+      if (
+        !caller?.isConnected ||
+        !this.authorViewActive ||
+        this.queryView() !== 'author' ||
+        generation !== this.authorRowDetailsFocusGeneration ||
+        this.authorRowDetailsOpen() ||
+        query !== this.currentQueryIdentity() ||
+        scope !== this.historyScope() ||
+        snapshot !== this.authorResultSnapshotKey() ||
+        !this.currentAuthorResultRow()
+      )
+        return;
+      const focusTarget =
+        caller.shadowRoot?.querySelector<HTMLElement>('button, a') ?? caller;
+      focusTarget.focus({ preventScroll: true });
+    });
+  }
+
+  public readonly authorResultRowClassRules: RowClassRules<QueryResultGridRow> =
+    {
+      'author-inspected-row': (params) => {
+        const snapshot =
+          params.data && this.resultGridRowSnapshots.get(params.data);
+        return !!snapshot && snapshot === this.currentAuthorResultRow();
+      },
+    };
+
+  private renderInspectedResultCell(
+    params: ICellRendererParams<QueryResultGridRow, string>,
+    receipt: PublicSqliteExecutionReceipt | undefined,
+    queryIdentity: symbol,
+    columnIndex: number,
+    columnName: string,
+  ): HTMLElement {
+    const content = this.renderCustomerLookupCell(
+      params,
+      receipt,
+      queryIdentity,
+      columnIndex,
+      columnName,
+    );
+    if (
+      columnIndex !== 0 ||
+      !params.data ||
+      this.resultGridRowSnapshots.get(params.data) !==
+        this.currentAuthorResultRow()
+    )
+      return content;
+    const cell = document.createElement('span');
+    cell.className = 'author-inspected-cell';
+    const marker = document.createElement('span');
+    marker.className = 'author-inspected-row-marker';
+    marker.textContent = '▶';
+    marker.setAttribute('role', 'img');
+    marker.setAttribute(
+      'aria-label',
+      'Current row, position ' + this.currentAuthorResultRow()?.position,
+    );
+    marker.title = 'Current row';
+    cell.append(marker, content);
+    return cell;
+  }
+  public readonly resultGridRows = computed<QueryResultGridRow[]>(() => {
+    const result = this.runResult();
+    const recordset = this.displayedRecordset();
+    const rows = this.visibleResultRows();
+    if (!result || !recordset) return [];
+    const execution = this.activeHostedExecution();
+    const statuses = this.hostedRowStatuses();
+    const filter = this.hostedStatusFilter();
+    return rows.flatMap((row, index) => {
+      const rowIndex = this.resultPageIndex() * this.resultPageSize + index;
+      const status =
+        execution?.run?.executionStatus === 'completed'
+          ? (statuses.get(rowIndex) ?? 'unknown')
+          : undefined;
+      if (status && filter !== 'all' && filter !== status) return [];
+      const projected = Object.fromEntries(
+        row.map((cell, columnIndex) => [
+          `result_${columnIndex}`,
+          displayQueryResultValue(cell),
+        ]),
+      );
+      if (status) projected['validation_status'] = status;
+      this.resultGridRowSnapshots.set(projected, {
+        result,
+        recordset,
+        rows,
+        row,
+        resultSetId: this.relatedResultSet(),
+        resultPageIndex: this.resultPageIndex(),
+        resultGeneration: this.displayedResultGeneration(),
+        position: this.resultPageIndex() * this.resultPageSize + index + 1,
+      });
+      return [projected];
+    });
+  });
+  public readonly resultGridDefaultColDef: ColDef<QueryResultGridRow> = {
+    initialFlex: 1,
+    resizable: true,
+  };
+  public readonly resultGridNoRowsTemplate =
+    '<span class="ag-overlay-no-rows-center">No rows.</span>';
+
+  public selectHostedValidationRow(selection: ValidationRowSelection): void {
+    const execution = this.activeHostedExecution();
+    if (
+      !execution?.run ||
+      selection.queryId !== execution.queryId ||
+      !sameExecution(selection.execution, execution.execution) ||
+      !/^root\/0\/validator\/\d+$/u.test(selection.nodePath) ||
+      selection.rowIndex === undefined ||
+      selection.rowIndex < 0 ||
+      selection.rowIndex >= execution.result.recordset.rows.length
+    )
+      return;
+    const rowIndex = selection.rowIndex;
+    this.hostedStatusFilter.set('all');
+    this.resultPageIndex.set(Math.floor(rowIndex / this.resultPageSize));
+    this.hostedSelectedRow.set(rowIndex);
+  }
+
+  private renderCustomerLookupCell(
+    params: ICellRendererParams<QueryResultGridRow, string>,
+    receipt: PublicSqliteExecutionReceipt | undefined,
+    queryIdentity: symbol,
+    columnIndex: number,
+    columnName: string,
+  ): HTMLElement {
+    const value = document.createElement('span');
+    value.textContent = params.value ?? '';
+    const rowIndex = params.node.rowIndex;
+    const result = this.runResult();
+    const current =
+      !!result &&
+      rowIndex !== null &&
+      this.relatedResultSet() === 'affiliations' &&
+      !this.selectedHistoricalResult() &&
+      !this.displayedResultIsPreviousRun() &&
+      !this.publicSqliteRunIsStale(result);
+    const customerId = customerIdLookupValue(
+      receipt,
+      columnIndex,
+      columnName,
+      rowIndex === null
+        ? undefined
+        : this.visibleResultRows()[rowIndex]?.[columnIndex],
+      current,
+    );
+    if (!customerId) return value;
+
+    const cell = document.createElement('div');
+    cell.className = 'author-customer-cell';
+    cell.append(value);
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'author-customer-lookup-action';
+    button.dataset['testid'] = 'author-customer-lookup-action';
+    button.dataset['gridRow'] = String(rowIndex);
+    button.dataset['gridColumn'] = params.column?.getColId() ?? '';
+    button.textContent = 'Look up invoices';
+    button.setAttribute(
+      'aria-label',
+      `Look up invoices for Customer ID ${customerId}`,
+    );
+    button.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        event.stopPropagation();
+        button.click();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      event.preventDefault();
+      event.stopPropagation();
+      params.api.tabToNextCell(event);
+    });
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      if (rowIndex !== null && receipt?.executionId) {
+        this.openAuthorCustomerLookup(
+          columnIndex,
+          columnName,
+          rowIndex,
+          receipt.executionId,
+          customerId,
+          queryIdentity,
+        );
+      }
+    });
+    cell.append(button);
+    return cell;
+  }
+
+  /**
+   * AG Grid keeps keyboard focus on the gridcell and does not include controls
+   * in a cell renderer in its normal Tab sequence. Let Tab enter this action
+   * from the focused CustomerId cell; the button itself delegates Tab back to
+   * AG Grid so navigation continues through cells and out of the grid.
+   */
+  private suppressCustomerLookupKeyboardEvent(
+    params: SuppressKeyboardEventParams<QueryResultGridRow, string>,
+  ): boolean {
+    const event = params.event;
+    if (event.key !== 'Tab' && event.key !== 'Enter' && event.key !== ' ') {
+      return false;
+    }
+    const rowIndex = params.node.rowIndex;
+    if (rowIndex === null) return false;
+    const columnId = params.column.getColId();
+    const eventTarget = event.target;
+    if (!(eventTarget instanceof Element)) return false;
+    const gridCell = eventTarget.closest<HTMLElement>('.ag-cell');
+    const button = gridCell?.querySelector<HTMLButtonElement>(
+      '.author-customer-lookup-action',
+    );
+    if (
+      button?.dataset['gridRow'] !== String(rowIndex) ||
+      button?.dataset['gridColumn'] !== columnId
+    ) {
+      return false;
+    }
+    if (!button || event.target === button) return false;
+    if (event.key === 'Tab') {
+      if (event.shiftKey) return false;
+      event.preventDefault();
+      button.focus();
+      return true;
+    }
+    event.preventDefault();
+    button.click();
+    return true;
+  }
+  public readonly resultPageEnd = computed(() =>
+    Math.min(
+      (this.resultPageIndex() + 1) * this.resultPageSize,
+      this.resultTotalRows(),
+    ),
+  );
   private readonly lastRunBindingRoles = signal<
     ReadonlyMap<string, ResolvedBinding['role']>
   >(new Map());
@@ -539,6 +2455,21 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
    * this component's first render. See AGENTS.md's "Change detection &
    * state" section. */
   public readonly queryDef = signal<IQueryDef | undefined>(undefined);
+  /** Semantic equality avoids marking an unchanged definition as an edit. */
+  private readonly identityDefinition = computed(() => {
+    const definition = this.queryDef();
+    if (!definition) return undefined;
+    const executionDefinition = { ...definition };
+    delete executionDefinition.semanticModel;
+    return executionDefinition;
+  }, {
+    equal: (left, right) => JSON.stringify(left) === JSON.stringify(right),
+  });
+  /** Receipts identify a draft without copying request or credential bytes. */
+  private readonly queryIdentityToken = computed(() => {
+    this.identityDefinition();
+    return Symbol('query-definition');
+  });
 
   /** SQL/DTQL body text for the current query, for the `editor=text` panel
    * below — `undefined` for an HTTP query (no text-shaped `request`) or
@@ -549,6 +2480,2272 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       ? (request as ISqlQueryRequest).text
       : undefined;
   });
+  public readonly hostedDemoDbSources = HOSTED_DEMO_DB_SOURCES;
+  public readonly selectedHostedDemoDbSource = computed(() =>
+    hostedDemoDbSourceId(this.queryDef()),
+  );
+  public readonly canChangeHostedDemoDbSource = computed(() =>
+    isHostedDemoDbStarterQuery(this.queryDef()),
+  );
+
+  public canChoosePublicSqliteSource(): boolean {
+    return (
+      isBrowserSqlProject(this.project?.ref) &&
+      this.queryDef()?.request.queryType === QueryType.SQL
+    );
+  }
+
+  public readonly sharedQuerySaveAllowed = signal(false);
+  public canSaveQuery(): boolean {
+    return (
+      isDevicePersonalQuery(this.queryState.id ?? '') ||
+      !this.project ||
+      !isSharedProjectRef(this.project.ref) ||
+      this.sharedQuerySaveAllowed()
+    );
+  }
+
+  public querySaveState(): string {
+    if (!this.queryDef()) return 'Loading';
+    if (this.queryState.isSaving) return 'Saving';
+    if (isDevicePersonalQuery(this.queryState.id ?? '')) return this.isChanged ? 'Unsaved · On this device' : 'Saved on this device';
+    if (this.queryState.saveSupported === false || !this.canSaveQuery())
+      return this.isChanged ? 'Unsaved · Read-only' : 'Read-only';
+    return this.isChanged ? 'Unsaved' : 'Saved';
+  }
+
+  public publicSqliteSourceChanged(event: Event): void {
+    if (!this.canChoosePublicSqliteSource()) return;
+    const connectionId = (event as CustomEvent<{ value: string }>).detail.value;
+    if (connectionId !== '' && connectionId !== 'chinook-sqlite') return;
+    this.queryEditorStateService.updateQueryState({
+      ...this.queryState,
+      connectionId,
+    });
+  }
+
+  public setQueryView(view: 'author' | 'compare'): void {
+    if (view !== 'author') {
+      this.authorFormatNavigationSnapshot.set(undefined);
+      this.clearPreviewDiagnosticNavigation();
+    }
+    this.queryView.set(view);
+  }
+
+  private invalidateComparison(reason: string): void {
+    this.comparisonAccessGeneration++;
+    this.comparisonGeneration++;
+    this.comparisonAbort?.abort();
+    this.comparisonAbort = undefined;
+    const snapshot = this.comparisonSession.snapshot();
+    if (snapshot && !snapshot.invalidated) {
+      this.comparisonSession.invalidate(reason);
+      this.comparisonSnapshot.set(this.comparisonSession.snapshot());
+    }
+    this.comparisonBusy.set(false);
+    if (snapshot)
+      this.comparisonMessage.set(
+        `${reason} The earlier observation is retained as previous page-memory output.`,
+      );
+  }
+
+  private expireComparisonSession(reason: string): void {
+    this.invalidateComparison(reason);
+    this.comparisonSession.clear();
+    this.comparisonSnapshot.set(undefined);
+    this.comparisonResult.set(undefined);
+    this.comparisonPreparedPlan = undefined;
+    this.comparisonCustomerBinding.set('No comparison pair has been run.');
+    this.comparisonQueryLimit.set('—');
+    this.comparisonMessage.set(
+      'The comparison session ended when this page was left or closed.',
+    );
+  }
+
+  /** Ionic caches routed pages, so comparison memory must expire on leave as well as destroy. */
+  private invalidateSemanticMapping(): void {
+    ++this.semanticMappingLifetime;
+    this.semanticDialog.set(undefined);
+    this.semanticSaving.set(false);
+  }
+
+  public ionViewWillLeave(): void {
+    this.invalidateSemanticMapping();
+    this.authorViewActive = false;
+    ++this.authorRowDetailsFocusGeneration;
+    ++this.authorPreviewLifetime;
+    this.authorPreviewLoading.set(false);
+    this.authorRowDetailsOpen.set(false);
+    this.authorFormatNavigationSnapshot.set(undefined);
+    this.clearPreviewDiagnosticNavigation();
+    this.expireComparisonSession(
+      'The comparison session ended when this page was left.',
+    );
+    this.changeDetector.detectChanges();
+  }
+
+  private comparisonInputKey(): string {
+    return JSON.stringify({
+      project: this.project?.ref,
+      accessClassification: this.comparisonProjectAccess(),
+      agentSecurityContextId: this.agentContext.securityContextId(),
+      queryId: this.queryId,
+      definition: this.queryDef(),
+      source: this.queryBodyText(),
+      draftRevision: this.authorDraftRevision(),
+      bindingRevision: this.authorBindingRevision(),
+      customerId: this.authorCustomerId(),
+      accessGeneration: this.comparisonAccessGeneration,
+    });
+  }
+
+  private preparedComparisonPlan(
+    preview: PublicSqliteQueryPreview,
+  ): PublicSqlitePreparedPlan {
+    if (preview.expandedSource !== undefined)
+      throw new Error(
+        'Review and apply the displayed relationship completion in Code, then Preview the updated draft before comparing.',
+      );
+    const customerId = Number(this.authorCustomerId());
+    if (!this.authorCustomerIdValid() || !Number.isSafeInteger(customerId))
+      throw new Error('Compare requires a whole-number CustomerId binding.');
+    const { fixedBindings, bindingSlots, ...base } = preview;
+    const bindings = bindingSlots
+      ? bindingSlots.map((slot) =>
+          slot.kind === 'customer-id' ? customerId : slot.value,
+        )
+      : (() => {
+          if (preview.bindingNames[0] !== 'CustomerId')
+            throw new Error(
+              'The frozen query is missing its CustomerId binding.',
+            );
+          return [customerId, ...fixedBindings];
+        })();
+    return cloneAndFreeze({ ...base, bindings }) as PublicSqlitePreparedPlan;
+  }
+
+  private async comparisonContext(
+    plan: PublicSqlitePreparedPlan,
+    project: IProjectRef,
+  ): Promise<ComparisonContextSnapshot> {
+    this.assertPublicComparisonScope(project);
+    const relationship = plan.relationship;
+    if (!relationship)
+      throw new Error(
+        'Preview the declared Invoice-to-Customer relationship first.',
+      );
+    const draftRevision = this.authorDraftRevision();
+    return Object.freeze({
+      projectRef: JSON.stringify(project),
+      pageMemoryScope: `public-github:${JSON.stringify(project)}`,
+      accessClassification: 'public',
+      ...(this.agentContext.securityContextId()
+        ? { agentSecurityContextId: this.agentContext.securityContextId() }
+        : {}),
+      accessGeneration: this.comparisonAccessGeneration,
+      draftRevision,
+      authoredSourceFingerprint: await sha256Text(this.queryBodyText() ?? ''),
+      relationshipFingerprint: await sha256Text(JSON.stringify(relationship)),
+      typedBindingsFingerprint: await sha256Text(
+        JSON.stringify({ CustomerId: plan.bindings[0] }),
+      ),
+    });
+  }
+
+  private assertPublicComparisonScope(project: IProjectRef): void {
+    if (
+      !equalProjectRef(this.project?.ref, project) ||
+      this.comparisonProjectAccess() !== 'public' ||
+      !isGithubStoreId(project.storeId) ||
+      project.spaceID !== undefined ||
+      project.projectApi === 'cloud'
+    )
+      throw new Error(
+        'Public project access is required for this comparison session.',
+      );
+  }
+
+  private assertComparisonInputCurrent(key: string): void {
+    if (this.comparisonInputKey() !== key)
+      throw new Error(
+        'The draft, binding, project, or access context changed. Preview again before comparing.',
+      );
+  }
+
+  public async runComparisonBoth(): Promise<void> {
+    if (this.contextSessionId()) { this.runError.set('Session comparison needs separately pinned side inputs. Use the supported single-query session path.'); return; }
+    if (!this.comparisonBlocker().startsWith('Ready')) return;
+    const project = this.project?.ref;
+    const definition = this.queryDef();
+    if (!project || !definition) return;
+    const inputKey = this.comparisonInputKey();
+    const reviewedPreview = this.authorPlan();
+    if (
+      !reviewedPreview ||
+      reviewedPreview.draftRevision !== this.authorDraftRevision()
+    )
+      return;
+    const reviewedPreviewJson = JSON.stringify(reviewedPreview);
+    const operation = ++this.comparisonGeneration;
+    this.comparisonBusy.set(true);
+    this.comparisonMessage.set(
+      'Rechecking the admitted project metadata before either worker starts.',
+    );
+    try {
+      const preview = await this.publicSqliteQuery.prepareTugQL(
+        project,
+        definition,
+        this.authorDraftRevision(),
+        undefined,
+        true,
+      );
+      this.assertComparisonInputCurrent(inputKey);
+      if (preview.expandedSource !== undefined)
+        throw new Error(
+          'Review and apply the displayed relationship completion in Code, then Preview the updated draft before comparing.',
+        );
+      if (
+        JSON.stringify(preview) !== reviewedPreviewJson ||
+        JSON.stringify(this.authorPlan()) !== reviewedPreviewJson
+      )
+        throw new Error(
+          'The project metadata or compiled SQL changed after Preview. Preview again to review the current plan before running both fixtures.',
+        );
+      const plan = this.preparedComparisonPlan(preview);
+      if (plan.authorProof.profile !== 'invoice-query' || !plan.relationship)
+        throw new Error(
+          'The live query profile does not support fixture comparison.',
+        );
+      this.comparisonCustomerBinding.set(
+        `CustomerId ${String(plan.bindings[0])} · frozen integer binding`,
+      );
+      this.comparisonQueryLimit.set(
+        String(plan.authorProof.resolvedQuery.limit),
+      );
+      const context = await this.comparisonContext(plan, project);
+      this.assertComparisonInputCurrent(inputKey);
+      if (operation !== this.comparisonGeneration) return;
+      const snapshot = this.comparisonSession.begin(context);
+      // A previous diff remains visible until the replacement pair has passed its
+      // fresh metadata, Preview-plan and authorization-context admission checks.
+      this.comparisonResult.set(undefined);
+      this.comparisonPreparedPlan = plan;
+      this.comparisonSnapshot.set(snapshot);
+      this.comparisonMessage.set(
+        'Both independent fixture queries are running.',
+      );
+      await Promise.all(
+        PUBLIC_CHINOOK_COMPARISON_TARGETS.map(async (target) => {
+          const token = this.comparisonSession.startSide(target.id);
+          this.comparisonSnapshot.set(this.comparisonSession.snapshot());
+          await this.runComparisonSide(
+            token,
+            project,
+            definition,
+            plan,
+            operation,
+          );
+        }),
+      );
+    } catch (error) {
+      if (operation === this.comparisonGeneration) {
+        this.comparisonMessage.set(
+          error instanceof Error
+            ? error.message
+            : 'The comparison pair could not start.',
+        );
+        this.setAuthorError(
+          error instanceof Error
+            ? error.message
+            : 'The comparison pair could not start.',
+        );
+      }
+    } finally {
+      if (operation === this.comparisonGeneration)
+        this.comparisonBusy.set(false);
+    }
+  }
+
+  private async runComparisonSide(
+    token: ComparisonSideToken,
+    project: IProjectRef,
+    definition: IQueryDef,
+    plan: PublicSqlitePreparedPlan,
+    operation: number,
+  ): Promise<void> {
+    try {
+      const observation = await this.publicSqliteQuery.runComparisonSide(
+        project,
+        definition,
+        plan,
+        token.target.id,
+        token.signal,
+      );
+      if (operation !== this.comparisonGeneration) return;
+      this.comparisonSession.completeSide(token, observation);
+    } catch (error) {
+      if (operation === this.comparisonGeneration) {
+        this.comparisonSession.failSide(
+          token,
+          error instanceof Error ? error.message : 'The fixture query failed.',
+        );
+      }
+    } finally {
+      if (operation === this.comparisonGeneration) {
+        this.comparisonSnapshot.set(this.comparisonSession.snapshot());
+        this.updateComparisonRunMessage(operation);
+      }
+    }
+  }
+
+  private updateComparisonRunMessage(operation: number): void {
+    if (operation !== this.comparisonGeneration || this.comparisonResult())
+      return;
+    const snapshot = this.comparisonSession.snapshot();
+    if (!snapshot || snapshot.invalidated) return;
+
+    const running = snapshot.sides.filter((side) => side.status === 'running');
+    const queued = snapshot.sides.filter((side) => side.status === 'queued');
+    const failed = snapshot.sides.filter((side) => side.status === 'failed');
+    const cancelled = snapshot.sides.filter(
+      (side) => side.status === 'cancelled',
+    );
+    const label = (side: (typeof snapshot.sides)[number]): string =>
+      side.target.role === 'baseline' ? 'Baseline' : 'Candidate';
+    if (running.length || queued.length) {
+      const pending = [...running, ...queued].map(label);
+      const finishedFailures = failed.map(label);
+      const finishedCancellations = cancelled.map(label);
+      const finished = [
+        ...(finishedFailures.length
+          ? [
+              `${finishedFailures.join(' and ')} fixture quer${finishedFailures.length === 1 ? 'y failed' : 'ies failed'}`,
+            ]
+          : []),
+        ...(finishedCancellations.length
+          ? [
+              `${finishedCancellations.join(' and ')} fixture quer${finishedCancellations.length === 1 ? 'y was' : 'ies were'} cancelled`,
+            ]
+          : []),
+      ];
+      this.comparisonMessage.set(
+        `${finished.length ? `${finished.join('; ')}; ` : ''}${pending.join(' and ')} fixture ${pending.length === 1 ? 'query is' : 'queries are'} still running.`,
+      );
+      return;
+    }
+    if (failed.length) {
+      this.comparisonMessage.set(
+        `${failed.map(label).join(' and ')} fixture quer${failed.length === 1 ? 'y failed' : 'ies failed'}. Retry a failed side to continue.`,
+      );
+      return;
+    }
+    if (cancelled.length) {
+      this.comparisonMessage.set(
+        `${cancelled.map(label).join(' and ')} fixture quer${cancelled.length === 1 ? 'y was' : 'ies were'} cancelled. Retry a cancelled side to continue.`,
+      );
+      return;
+    }
+    if (snapshot.sides.every((side) => side.status === 'complete')) {
+      this.comparisonMessage.set(
+        'Both fixture queries completed with complete bounded results.',
+      );
+    }
+  }
+
+  public async retryComparisonSide(
+    targetId: ComparisonFixtureTarget['id'],
+  ): Promise<void> {
+    const snapshot = this.comparisonSession.snapshot();
+    const plan = this.comparisonPreparedPlan;
+    const project = this.project?.ref;
+    const definition = this.queryDef();
+    if (
+      !snapshot ||
+      snapshot.invalidated ||
+      !plan ||
+      !project ||
+      !definition ||
+      this.comparisonBusy()
+    )
+      return;
+    try {
+      this.assertPublicComparisonScope(project);
+    } catch (error) {
+      this.invalidateComparison(
+        error instanceof Error
+          ? error.message
+          : 'The public project scope changed.',
+      );
+      return;
+    }
+    const inputKey = this.comparisonInputKey();
+    this.comparisonBusy.set(true);
+    this.comparisonMessage.set(
+      `Retrying the ${targetId === 'chinook-baseline' ? 'Baseline' : 'Candidate'} query.`,
+    );
+    const operation = this.comparisonGeneration;
+    try {
+      this.assertComparisonInputCurrent(inputKey);
+      const token = this.comparisonSession.startSide(targetId);
+      this.comparisonSnapshot.set(this.comparisonSession.snapshot());
+      await this.runComparisonSide(token, project, definition, plan, operation);
+    } finally {
+      if (operation === this.comparisonGeneration)
+        this.comparisonBusy.set(false);
+    }
+  }
+
+  public cancelComparisonSide(targetId: ComparisonFixtureTarget['id']): void {
+    this.comparisonSession.cancelSide(targetId);
+    this.comparisonSnapshot.set(this.comparisonSession.snapshot());
+    this.updateComparisonRunMessage(this.comparisonGeneration);
+  }
+
+  public async compareCompletedResults(): Promise<void> {
+    const snapshot = this.comparisonSession.snapshot();
+    const plan = this.comparisonPreparedPlan;
+    const project = this.project?.ref;
+    const definition = this.queryDef();
+    if (
+      !snapshot ||
+      snapshot.invalidated ||
+      !plan ||
+      !project ||
+      !definition ||
+      this.comparisonBusy()
+    )
+      return;
+    try {
+      this.assertPublicComparisonScope(project);
+    } catch (error) {
+      this.invalidateComparison(
+        error instanceof Error
+          ? error.message
+          : 'The public project scope changed.',
+      );
+      return;
+    }
+    if (
+      !snapshot.sides.every(
+        (side) => side.status === 'complete' && side.observation,
+      )
+    )
+      return;
+    if (!this.comparisonWasmPin) {
+      this.setAuthorError(
+        'The verified Core comparison asset is not configured for this build.',
+      );
+      return;
+    }
+    const inputKey = this.comparisonInputKey();
+    const operation = ++this.comparisonGeneration;
+    const controller = new AbortController();
+    this.comparisonAbort = controller;
+    this.comparisonBusy.set(true);
+    this.comparisonMessage.set(
+      'Checking current project metadata and the verified Core comparison module.',
+    );
+    this.setAuthorError(undefined);
+    try {
+      // Explicit Compare re-reads the current catalog and schemas before Core sees either result.
+      const livePreview = await this.publicSqliteQuery.prepareTugQL(
+        project,
+        definition,
+        this.authorDraftRevision(),
+        controller.signal,
+        true,
+      );
+      this.assertComparisonInputCurrent(inputKey);
+      const livePlan = this.preparedComparisonPlan(livePreview);
+      if (JSON.stringify(livePlan) !== JSON.stringify(plan))
+        throw new Error(
+          'The current catalog, schema, relationship, or query no longer matches both observations. Run both again.',
+        );
+      const liveContext = await this.comparisonContext(livePlan, project);
+      if (JSON.stringify(liveContext) !== JSON.stringify(snapshot.context))
+        throw new Error(
+          'The draft, typed binding, project, or principal changed. Run both again.',
+        );
+      const baseline = snapshot.sides.find(
+        (side) => side.target.role === 'baseline',
+      )?.observation;
+      const candidate = snapshot.sides.find(
+        (side) => side.target.role === 'candidate',
+      )?.observation;
+      if (!baseline || !candidate)
+        throw new Error(
+          'Both fixture observations must be complete before Compare.',
+        );
+      const result = await compareSessionObservations(
+        baseline,
+        candidate,
+        snapshot.context,
+        snapshot.generation,
+        this.comparisonWasmPin,
+        controller.signal,
+      );
+      this.assertComparisonInputCurrent(inputKey);
+      if (
+        operation !== this.comparisonGeneration ||
+        this.comparisonSession.snapshot()?.generation !== snapshot.generation
+      )
+        return;
+      this.comparisonResult.set(result);
+      this.comparisonMessage.set(
+        'Comparison finished from two complete bounded query observations.',
+      );
+    } catch (error) {
+      if (operation === this.comparisonGeneration) {
+        this.comparisonMessage.set(
+          error instanceof Error
+            ? error.message
+            : 'Core could not compare these complete results.',
+        );
+        this.setAuthorError(
+          error instanceof Error
+            ? error.message
+            : 'Core could not compare these complete results.',
+        );
+      }
+    } finally {
+      if (this.comparisonAbort === controller) this.comparisonAbort = undefined;
+      if (operation === this.comparisonGeneration)
+        this.comparisonBusy.set(false);
+    }
+  }
+
+  public hostedDemoDbSourceChanged(event: Event): void {
+    const sourceId = (event as CustomEvent<{ value: string }>).detail.value;
+    const definition = this.queryDef();
+    if (
+      this.queryState.saveSupported === false ||
+      !definition ||
+      !sourceId ||
+      !isHostedDemoDbStarterQuery(definition)
+    )
+      return;
+    const selected = withHostedDemoDbSource(definition, sourceId);
+    this.queryState = {
+      ...this.queryState,
+      queryType: QueryType.DTQL,
+      request: selected.request,
+      federation: selected.federation,
+    };
+    this.queryEditorStateService.updateQueryState(this.queryState);
+  }
+
+  protected setOvdbToken(value: string | null | undefined): void {
+    const nextToken = value ?? '';
+    if (this.ovdbToken() === nextToken) return;
+    this.ovdbToken.set(nextToken);
+    this.ovdbCredentialGeneration.update((generation) => generation + 1);
+    this.invalidateHistoryScope();
+  }
+
+  public queryTextChanged(event: Event, reportActivity = true): void {
+    const isAuthorDraft = this.isTugqlAuthorJourney();
+    // Local Author editing is independent of whether this rich query can be
+    // serialized back to its current remote source. Save remains gated, but a
+    // supported local draft must still update in Compose and Code.
+    if (
+      this.queryState.saveSupported === false &&
+      !isAuthorDraft &&
+      !this.project?.ref.spaceID
+    )
+      return;
+    const text = (event as CustomEvent<{ value?: string }>).detail.value ?? '';
+    if (
+      !this.queryState.request ||
+      this.queryState.request.queryType === QueryType.HTTP
+    )
+      return;
+    const previousText = (this.queryState.request as ITextQueryRequest).text;
+    if (isAuthorDraft && text !== previousText) {
+      this.authorRunParameterAttempt.set(undefined);
+      this.clearAuthorRowFilterStatus();
+    }
+    const sourceContextVisible =
+      isAuthorDraft &&
+      text !== previousText &&
+      (this.activeAuthorContextTab() === 'sources' ||
+        this.activeAuthorContextTab() === 'related');
+    if (reportActivity && text !== previousText)
+      this.reportGitHubQueryEdit(this.project?.ref);
+    this.queryState = {
+      ...this.queryState,
+      request: { ...this.queryState.request, text } as ITextQueryRequest,
+    };
+    if (isAuthorDraft) {
+      this.clearPreviewDiagnosticNavigation();
+      this.authorFormatUndo.set(undefined);
+      this.authorRelationshipUndo.set(undefined);
+      this.authorFormatNavigationSnapshot.set(undefined);
+      this.authorFormatStatus.set('');
+      this.invalidateAuthorDefinitionRun();
+      ++this.authorLookupRequestRevision;
+      this.queryDef.update((definition) =>
+        definition
+          ? {
+              ...definition,
+              request: { ...definition.request, text } as ITextQueryRequest,
+            }
+          : definition,
+      );
+      this.authorDraftRevision.update((revision) => revision + 1);
+      if (sourceContextVisible) {
+        ++this.authorSourceRequestGeneration;
+        this.authorSourceLoading.set(false);
+        this.authorSourceDiscovery.set(undefined);
+        this.authorSourceMetadataSource = '';
+        this.authorSourceMetadataIdentity = undefined;
+        this.authorSourceReview.set(undefined);
+        this.authorSourceReviewGeneration++;
+        this.authorSourceReviewContext = undefined;
+        this.authorSourceMessage.set(
+          'The TugQL draft changed; source metadata is stale. Refresh to inspect this draft.',
+        );
+      }
+      this.authorPlan.set(undefined);
+      this.setAuthorError(undefined);
+      this.invalidateComparison(
+        'The query draft changed; run both fixtures again.',
+      );
+    }
+    this.queryEditorStateService.updateQueryState(this.queryState);
+  }
+
+  public sqlTextChanged(text: string): void {
+    this.queryTextChanged(
+      new CustomEvent('ionInput', { detail: { value: text } }),
+    );
+  }
+
+  public authorCodeChanged(text: string): void {
+    this.queryTextChanged(
+      new CustomEvent('ionInput', { detail: { value: text } }),
+    );
+  }
+
+  public setAuthorMode(mode: 'compose' | 'code' | 'preview'): void {
+    if (mode !== 'compose' && mode !== 'code' && mode !== 'preview') return;
+    if (mode !== 'code') {
+      this.authorFormatNavigationSnapshot.set(undefined);
+      this.clearPreviewDiagnosticNavigation();
+    }
+    this.authorModeExplicit = true;
+    this.authorMode.set(mode);
+  }
+
+  public authorContextTabChanged(value: unknown): void {
+    if (value !== 'parameters' && value !== 'sources' && value !== 'related')
+      return;
+    const wasDiscovering =
+      this.activeAuthorContextTab() === 'sources' ||
+      this.activeAuthorContextTab() === 'related';
+    this.authorContextTab.set(value);
+    const isDiscovering = value === 'sources' || value === 'related';
+    if (wasDiscovering && !isDiscovering) this.authorSourcesToggled(false);
+  }
+
+  public authorResultSelectionChanged(
+    event: SelectionChangedEvent<QueryResultGridRow>,
+  ): void {
+    if (!this.isTugqlAuthorJourney()) return;
+    this.authorResultGridApi = event.api;
+    const row = event.selectedNodes?.find((node) => node.isSelected())?.data;
+    this.setAuthorResultRow(row);
+  }
+
+  public authorResultCellFocused(
+    event: CellFocusedEvent<QueryResultGridRow>,
+  ): void {
+    if (!this.isTugqlAuthorJourney() || event.rowIndex === null) return;
+    this.authorResultGridApi = event.api;
+    const node = event.api.getDisplayedRowAtIndex(event.rowIndex);
+    const row = node?.data;
+    const snapshot = row && this.resultGridRowSnapshots.get(row);
+    if (
+      snapshot &&
+      snapshot.result === this.runResult() &&
+      snapshot.rows === this.visibleResultRows() &&
+      snapshot.recordset === this.displayedRecordset() &&
+      snapshot.resultSetId === this.relatedResultSet() &&
+      snapshot.resultPageIndex === this.resultPageIndex() &&
+      snapshot.resultGeneration === this.displayedResultGeneration()
+    )
+      node?.setSelected?.(true, true);
+    this.setAuthorResultRow(row);
+  }
+
+  public authorResultRowClicked(
+    event: RowClickedEvent<QueryResultGridRow>,
+  ): void {
+    if (!this.isTugqlAuthorJourney()) return;
+    this.authorResultGridApi = event.api;
+    this.setAuthorResultRow(event.data);
+  }
+
+  private setAuthorResultRow(row: QueryResultGridRow | undefined): void {
+    const previous = this.currentAuthorResultRow();
+    this.selectedAuthorResultRow.set(
+      row ? this.resultGridRowSnapshots.get(row) : undefined,
+    );
+    const inspected = this.currentAuthorResultRow();
+    if (previous === inspected) return;
+    this.authorResultGridApi?.forEachNode?.((node) => {
+      const snapshot = node.data && this.resultGridRowSnapshots.get(node.data);
+      if (node.data && (snapshot === previous || snapshot === inspected))
+        node.setData(node.data);
+    });
+    this.authorResultGridApi?.refreshCells?.({
+      columns: ['result_0'],
+      force: true,
+    });
+  }
+
+  public authorSourcesToggled(open: boolean): void {
+    if (open) void this.loadAuthorSources();
+    else {
+      ++this.authorSourceRequestGeneration;
+      this.authorSourceLoading.set(false);
+    }
+  }
+
+  private refreshAuthorSourcesIfVisible(): void {
+    const tab = this.activeAuthorContextTab();
+    if (tab === 'sources' || tab === 'related') this.authorSourcesToggled(true);
+  }
+
+  private currentAuthorSourceContext():
+    | {
+        readonly project: IProjectRef;
+        readonly queryId: string;
+        readonly draftRevision: number;
+        readonly source: string;
+        readonly scopeKey: string;
+        readonly queryIdentity: symbol;
+      }
+    | undefined {
+    const project = this.project?.ref;
+    const definition = this.queryDef();
+    const source = this.queryBodyText();
+    if (
+      !project ||
+      !definition ||
+      !source ||
+      !this.queryState.id ||
+      !this.isTugqlAuthorJourney()
+    )
+      return undefined;
+    const authorContext = this.currentAuthorFormatContext();
+    if (!authorContext) return undefined;
+    return {
+      project,
+      queryId: this.queryState.id,
+      draftRevision: this.authorDraftRevision(),
+      source,
+      scopeKey: authorContext.scopeKey,
+      queryIdentity: authorContext.queryIdentity,
+    };
+  }
+
+  public authorSourceMetadata(): PublicSqliteSourceDiscovery | undefined {
+    const context = this.currentAuthorSourceContext();
+    const inventory = this.authorParticipatingSourceInventory();
+    const mainSource = inventory.sources.find(
+      (source) => source.kind === 'main',
+    );
+    const supportedSources = inventory.sources.every(
+      (source) =>
+        (source.kind === 'main' &&
+          source.name.toLowerCase() === 'invoice' &&
+          (source.schema === undefined || source.schema === 'main') &&
+          !source.database) ||
+        (source.kind === 'join' &&
+          source.name.toLowerCase() === 'customer' &&
+          source.removable &&
+          (source.schema === undefined || source.schema === 'main') &&
+          !source.database),
+    );
+    return context?.scopeKey === this.authorSourceScopeKey &&
+      context.source === this.authorSourceMetadataSource &&
+      context.queryIdentity === this.authorSourceMetadataIdentity &&
+      inventory.available &&
+      mainSource?.name.toLowerCase() === 'invoice' &&
+      (mainSource.schema === undefined || mainSource.schema === 'main') &&
+      !mainSource.database &&
+      supportedSources
+      ? this.authorSourceDiscovery()
+      : undefined;
+  }
+
+  public authorCurrentLimit(): string {
+    const source = this.queryBodyText();
+    if (!source) return 'not recognized in this draft';
+    const parsed = parseTugQL(source);
+    if (parsed.diagnostics.length || !parsed.document.tree)
+      return 'not recognized in this draft';
+    const limit = parsed.document.tree.query['limit'];
+    return typeof limit === 'number' && Number.isSafeInteger(limit) && limit > 0
+      ? String(limit)
+      : 'not recognized in this draft';
+  }
+
+  private isCurrentAuthorSourceContext(
+    context:
+      | {
+          readonly project: IProjectRef;
+          readonly queryId: string;
+          readonly draftRevision: number;
+          readonly source: string;
+          readonly scopeKey: string;
+          readonly queryIdentity: symbol;
+        }
+      | undefined,
+  ): boolean {
+    const current = this.currentAuthorSourceContext();
+    return (
+      !!context &&
+      !!current &&
+      current.project.projectId === context.project.projectId &&
+      current.queryId === context.queryId &&
+      current.draftRevision === context.draftRevision &&
+      current.source === context.source &&
+      current.scopeKey === context.scopeKey &&
+      current.queryIdentity === context.queryIdentity
+    );
+  }
+
+  private async loadAuthorSources(): Promise<void> {
+    const context = this.currentAuthorSourceContext();
+    if (!context) {
+      this.authorSourceMessage.set(
+        'Open a loaded Chinook Invoice draft to inspect its admitted sources.',
+      );
+      return;
+    }
+    const inventory = this.authorParticipatingSourceInventory();
+    const main = inventory.sources.find((source) => source.kind === 'main');
+    const supportedSources = inventory.sources.every(
+      (source) =>
+        (source.kind === 'main' &&
+          source.name.toLowerCase() === 'invoice' &&
+          (source.schema === undefined || source.schema === 'main') &&
+          !source.database) ||
+        (source.kind === 'join' &&
+          source.name.toLowerCase() === 'customer' &&
+          source.removable &&
+          (source.schema === undefined || source.schema === 'main') &&
+          !source.database),
+    );
+    if (
+      !inventory.available ||
+      main?.name.toLowerCase() !== 'invoice' ||
+      (main.schema !== undefined && main.schema !== 'main') ||
+      main.database ||
+      !supportedSources
+    ) {
+      ++this.authorSourceRequestGeneration;
+      this.authorSourceLoading.set(false);
+      this.authorSourceDiscovery.set(undefined);
+      this.authorSourceMetadataSource = '';
+      this.authorSourceMetadataIdentity = undefined;
+      this.authorSourceMessage.set(
+        !inventory.available
+          ? (inventory.reason ??
+              'Source metadata is unavailable until the TugQL draft parses.')
+          : 'Source metadata is unavailable for this structure. This panel admits only main.Invoice and the declared Invoice–Customer relationship.',
+      );
+      return;
+    }
+    const generation = ++this.authorSourceRequestGeneration;
+    this.authorSourceLoading.set(true);
+    this.authorSourceMessage.set(
+      'Checking the current project catalog, fields, and declared relationship…',
+    );
+    this.authorSourceReview.set(undefined);
+    this.authorSourceReviewContext = undefined;
+    try {
+      const discovery =
+        await this.publicSqliteQuery.discoverInvoiceCustomerSources(
+          context.project,
+        );
+      if (
+        generation !== this.authorSourceRequestGeneration ||
+        !this.isCurrentAuthorSourceContext(context)
+      )
+        return;
+      this.authorSourceDiscovery.set(discovery);
+      this.authorSourceScopeKey = context.scopeKey;
+      this.authorSourceMetadataSource = context.source;
+      this.authorSourceMetadataIdentity = context.queryIdentity;
+      this.authorSourceMessage.set('');
+    } catch (error) {
+      if (
+        generation !== this.authorSourceRequestGeneration ||
+        !this.isCurrentAuthorSourceContext(context)
+      )
+        return;
+      this.authorSourceDiscovery.set(undefined);
+      this.authorSourceMetadataSource = '';
+      this.authorSourceMetadataIdentity = undefined;
+      this.authorSourceMessage.set(
+        error instanceof Error
+          ? error.message
+          : 'The current source metadata could not be admitted.',
+      );
+    } finally {
+      if (generation === this.authorSourceRequestGeneration)
+        this.authorSourceLoading.set(false);
+    }
+  }
+
+  public authorSourceFieldChanged(
+    field: AuthorCustomerField,
+    event: Event,
+  ): void {
+    const checked =
+      (event.currentTarget as HTMLInputElement | null)?.checked === true;
+    this.authorSourceFieldSelectionChanged(field, checked);
+  }
+
+  public authorSourceFieldSelectionChanged(
+    field: AuthorCustomerField,
+    checked: boolean,
+  ): void {
+    const fields = this.authorSourceSelectedFields();
+    const next = checked
+      ? [...fields.filter((item) => item !== field), field]
+      : fields.filter((item) => item !== field);
+    const order: readonly AuthorCustomerField[] = [
+      'FirstName',
+      'LastName',
+      'Email',
+    ];
+    this.authorSourceSelectedFields.set(
+      order.filter((item) => next.includes(item)),
+    );
+    this.invalidateComparison('The selected relationship projection changed.');
+    this.buildAuthorSourceReview();
+  }
+
+  public reviewAuthorRelationship(): void {
+    this.authorSourceSelectedFields.set(['FirstName']);
+    this.buildAuthorSourceReview();
+  }
+
+  public async joinAuthorRelationship(): Promise<void> {
+    if (this.authorSourceLoading() || !this.authorCanJoinRelationship()) return;
+    const originalSource = this.queryBodyText();
+    const originalDefinition = this.queryDef();
+    if (!originalSource || !originalDefinition) return;
+    const originalRelationshipBindings =
+      originalDefinition.relationshipBindings;
+    this.authorSourceSelectedFields.set([]);
+    this.buildAuthorSourceReview();
+    const review = this.authorSourceReview();
+    if (!review || review.selectedFields.length !== 0) return;
+    await this.applyAuthorRelationshipReview();
+    const current = this.currentAuthorFormatContext();
+    if (
+      this.queryBodyText() === review.after &&
+      current &&
+      this.queryDef()?.relationshipBindings?.some(
+        (binding) =>
+          binding.id === review.relationship.id &&
+          binding.version === review.relationship.version,
+      )
+    ) {
+      this.authorRelationshipUndo.set({
+        action: 'join',
+        originalSource,
+        joinedSource: review.after,
+        scopeKey: current.scopeKey,
+        queryIdentity: current.queryIdentity,
+        originalRelationshipBindings,
+      });
+    }
+  }
+
+  public requestAuthorCustomerJoinRemoval(): void {
+    if (!this.authorCanRemoveCustomerJoin()) return;
+    const context = this.currentAuthorSourceContext();
+    const definition = this.queryDef();
+    const discovery = this.authorSourceMetadata();
+    const binding = definition?.relationshipBindings?.find(
+      (candidate) =>
+        candidate.id === discovery?.relationship.id &&
+        candidate.version === discovery.relationship.version,
+    );
+    if (!context || !binding) return;
+    const proposal = removeAuthorCustomerJoin(context.source, binding);
+    if (!proposal.ok) {
+      this.authorSourceMessage.set(proposal.reason);
+      return;
+    }
+    this.pendingAuthorCustomerRemoval = {
+      source: context.source,
+      draftRevision: context.draftRevision,
+      scopeKey: context.scopeKey,
+      queryIdentity: context.queryIdentity,
+      relationship: binding,
+    };
+    this.authorCustomerRemovalOutputs.set(proposal.removedOutputs);
+    if (proposal.removedOutputs.length) {
+      this.authorCustomerRemovalOpen.set(true);
+      return;
+    }
+    void this.applyAuthorCustomerJoinRemoval();
+  }
+
+  public confirmAuthorCustomerJoinRemoval(confirmed: boolean): void {
+    this.authorCustomerRemovalOpen.set(false);
+    if (confirmed) void this.applyAuthorCustomerJoinRemoval();
+    else {
+      this.pendingAuthorCustomerRemoval = undefined;
+      this.authorCustomerRemovalOutputs.set([]);
+    }
+  }
+
+  private async applyAuthorCustomerJoinRemoval(): Promise<void> {
+    const pending = this.pendingAuthorCustomerRemoval;
+    const context = this.currentAuthorSourceContext();
+    const definition = this.queryDef();
+    const discovery = this.authorSourceMetadata();
+    if (
+      !pending ||
+      !context ||
+      !definition ||
+      !discovery ||
+      pending.source !== context.source ||
+      pending.draftRevision !== context.draftRevision ||
+      pending.scopeKey !== context.scopeKey ||
+      pending.queryIdentity !== context.queryIdentity ||
+      pending.relationship.id !== discovery.relationship.id ||
+      pending.relationship.version !== discovery.relationship.version ||
+      !this.isCurrentAuthorSourceContext(context)
+    ) {
+      this.pendingAuthorCustomerRemoval = undefined;
+      this.authorCustomerRemovalOutputs.set([]);
+      this.authorSourceMessage.set(
+        'The source changed before removal. Reopen Sources and inspect the current draft.',
+      );
+      return;
+    }
+    const generation = ++this.authorSourceRequestGeneration;
+    this.authorSourceLoading.set(true);
+    this.authorSourceMessage.set(
+      'Rechecking the admitted relationship before removing it…',
+    );
+    try {
+      const currentDiscovery =
+        await this.publicSqliteQuery.discoverInvoiceCustomerSources(
+          context.project,
+        );
+      if (
+        generation !== this.authorSourceRequestGeneration ||
+        !this.isCurrentAuthorSourceContext(context) ||
+        this.queryDef() !== definition ||
+        currentDiscovery.schemaVersion !== discovery.schemaVersion ||
+        JSON.stringify(currentDiscovery.relationship) !==
+          JSON.stringify(pending.relationship)
+      ) {
+        this.authorSourceMessage.set(
+          'The source metadata changed. No source was removed; inspect the current draft again.',
+        );
+        return;
+      }
+      const proposal = removeAuthorCustomerJoin(
+        context.source,
+        pending.relationship,
+      );
+      if (
+        !proposal.ok ||
+        JSON.stringify(proposal.removedOutputs) !==
+          JSON.stringify(this.authorCustomerRemovalOutputs())
+      ) {
+        this.authorSourceMessage.set(
+          proposal.ok
+            ? 'The Customer outputs changed before removal. No source was removed; inspect the current draft again.'
+            : proposal.reason,
+        );
+        return;
+      }
+      const updatedDefinition: IQueryDef = {
+        ...definition,
+        request: {
+          ...definition.request,
+          text: proposal.after,
+        } as ITextQueryRequest,
+        relationshipBindings: (definition.relationshipBindings ?? []).filter(
+          (candidate) =>
+            candidate.id !== pending.relationship.id ||
+            candidate.version !== pending.relationship.version,
+        ),
+      };
+      const nextState: IQueryState = {
+        ...this.queryState,
+        def: updatedDefinition,
+        request: updatedDefinition.request,
+      };
+      this.trackAuthorStructuralDraft(updatedDefinition);
+      this.invalidateAuthorDefinitionRun();
+      ++this.authorLookupRequestRevision;
+      this.authorFormatUndo.set(undefined);
+      this.authorPlan.set(undefined);
+      this.setAuthorError(undefined);
+      this.authorDraftRevision.update((revision) => revision + 1);
+      this.queryState = nextState;
+      this.queryDef.set(updatedDefinition);
+      this.queryEditorStateService.updateQueryState(nextState);
+      const current = this.currentAuthorFormatContext();
+      if (current)
+        this.authorRelationshipUndo.set({
+          action: 'remove',
+          originalSource: context.source,
+          joinedSource: proposal.after,
+          scopeKey: current.scopeKey,
+          queryIdentity: current.queryIdentity,
+          originalRelationshipBindings: definition.relationshipBindings,
+        });
+      this.authorSourceReview.set(undefined);
+      this.authorSourceReviewGeneration++;
+      this.authorSourceReviewContext = undefined;
+      this.authorSourceMetadataSource = '';
+      this.authorSourceMetadataIdentity = undefined;
+      this.authorModeExplicit = true;
+      this.authorMode.set('code');
+      this.authorSourceMessage.set(
+        'Removed the Customer JOIN and its dependent outputs locally. Prior results are retained; Preview SQL and Run remain explicit.',
+      );
+      this.refreshAuthorSourcesIfVisible();
+    } catch (error) {
+      this.authorSourceMessage.set(
+        error instanceof Error
+          ? error.message
+          : 'The source could not be removed.',
+      );
+    } finally {
+      if (generation === this.authorSourceRequestGeneration)
+        this.authorSourceLoading.set(false);
+      this.pendingAuthorCustomerRemoval = undefined;
+      this.authorCustomerRemovalOutputs.set([]);
+    }
+  }
+
+  private buildAuthorSourceReview(): void {
+    const context = this.currentAuthorSourceContext();
+    const discovery = this.authorSourceMetadata();
+    if (!context || !discovery) {
+      this.authorSourceReviewGeneration++;
+      this.authorSourceMessage.set(
+        'Admit current source metadata before reviewing an edit.',
+      );
+      return;
+    }
+    const result = reviewAuthorRelationshipSource(
+      context.source,
+      this.authorSourceSelectedFields(),
+      discovery.relationship,
+    );
+    if (!result.ok) {
+      this.authorSourceReviewGeneration++;
+      this.authorSourceReview.set(undefined);
+      this.authorSourceReviewContext = undefined;
+      this.authorSourceMessage.set(result.reason);
+      return;
+    }
+    const reviewGeneration = ++this.authorSourceReviewGeneration;
+    this.authorSourceReview.set(result.review);
+    this.authorSourceReviewContext = {
+      scopeKey: context.scopeKey,
+      queryIdentity: context.queryIdentity,
+      source: context.source,
+      draftRevision: context.draftRevision,
+      selectedFields: Object.freeze([...this.authorSourceSelectedFields()]),
+      reviewGeneration,
+      schemaVersion: discovery.schemaVersion,
+    };
+    this.authorSourceMessage.set(
+      'Review the source and relationship binding before applying. No query has run.',
+    );
+  }
+
+  public async applyAuthorRelationshipReview(): Promise<void> {
+    const review = this.authorSourceReview();
+    const reviewed = this.authorSourceReviewContext;
+    const reviewGeneration = this.authorSourceReviewGeneration;
+    const selectedFields = Object.freeze([
+      ...this.authorSourceSelectedFields(),
+    ]);
+    const context = this.currentAuthorSourceContext();
+    const discovery = this.authorSourceMetadata();
+    if (
+      !review ||
+      !reviewed ||
+      !context ||
+      !discovery ||
+      !this.isCurrentAuthorSourceContext(context) ||
+      reviewed.scopeKey !== context.scopeKey ||
+      reviewed.queryIdentity !== context.queryIdentity ||
+      reviewed.source !== context.source ||
+      reviewed.draftRevision !== context.draftRevision ||
+      reviewed.reviewGeneration !== reviewGeneration ||
+      JSON.stringify(reviewed.selectedFields) !==
+        JSON.stringify(selectedFields) ||
+      reviewed.schemaVersion !== discovery.schemaVersion
+    ) {
+      this.authorSourceMessage.set(
+        'This review is stale. Reopen Sources and relationships, then review the edit again.',
+      );
+      this.authorSourceReview.set(undefined);
+      return;
+    }
+    const applyGeneration = ++this.authorSourceRequestGeneration;
+    this.authorSourceLoading.set(true);
+    this.authorSourceMessage.set(
+      'Rechecking source metadata before applying the reviewed draft…',
+    );
+    try {
+      const currentDiscovery =
+        await this.publicSqliteQuery.discoverInvoiceCustomerSources(
+          context.project,
+        );
+      if (
+        applyGeneration !== this.authorSourceRequestGeneration ||
+        this.authorSourceReview() !== review ||
+        this.authorSourceReviewGeneration !== reviewGeneration ||
+        this.authorDraftRevision() !== reviewed.draftRevision ||
+        JSON.stringify(this.authorSourceSelectedFields()) !==
+          JSON.stringify(selectedFields) ||
+        this.authorSourceReviewContext !== reviewed ||
+        !this.isCurrentAuthorSourceContext(context) ||
+        currentDiscovery.schemaVersion !== reviewed.schemaVersion ||
+        JSON.stringify(currentDiscovery.relationship) !==
+          JSON.stringify(review.relationship)
+      ) {
+        this.authorSourceReview.set(undefined);
+        this.authorSourceMessage.set(
+          'The source metadata or relationship pin changed. Review the current source again.',
+        );
+        return;
+      }
+      const definition = this.queryDef();
+      if (!definition || definition.request.queryType !== QueryType.DTQL)
+        return;
+      const updatedDefinition: IQueryDef = {
+        ...definition,
+        request: {
+          ...definition.request,
+          text: review.after,
+        } as ITextQueryRequest,
+        relationshipBindings: [review.relationship],
+      };
+      const nextState: IQueryState = {
+        ...this.queryState,
+        def: updatedDefinition,
+        request: updatedDefinition.request,
+      };
+      this.trackAuthorStructuralDraft(updatedDefinition);
+      this.invalidateAuthorDefinitionRun();
+      ++this.authorLookupRequestRevision;
+      this.authorFormatUndo.set(undefined);
+      this.authorPlan.set(undefined);
+      this.setAuthorError(undefined);
+      this.authorDraftRevision.update((revision) => revision + 1);
+      this.queryState = nextState;
+      this.queryDef.set(updatedDefinition);
+      this.queryEditorStateService.updateQueryState(nextState);
+      this.refreshAuthorSourcesIfVisible();
+      this.authorSourceReview.set(undefined);
+      this.authorSourceReviewGeneration++;
+      this.authorSourceReviewContext = undefined;
+      this.authorModeExplicit = true;
+      this.authorMode.set('code');
+      this.authorFormatStatus.set(
+        selectedFields.length
+          ? `Applied the admitted join with ${selectedFields.join(', ')} outputs. The prior result is retained; Preview SQL before Run.`
+          : 'Applied the admitted join with no added output columns. The prior result is retained; Preview SQL before Run.',
+      );
+    } catch (error) {
+      this.authorSourceMessage.set(
+        error instanceof Error
+          ? error.message
+          : 'The reviewed source edit could not be applied.',
+      );
+    } finally {
+      if (applyGeneration === this.authorSourceRequestGeneration)
+        this.authorSourceLoading.set(false);
+    }
+  }
+
+  private currentAuthorFormatContext():
+    | { readonly scopeKey: string; readonly queryIdentity: symbol }
+    | undefined {
+    const definition = this.queryDef();
+    if (
+      !definition ||
+      definition.connectionId !== 'chinook-sqlite' ||
+      definition.request.queryType !== QueryType.DTQL ||
+      this.queryBodyText() === undefined
+    )
+      return undefined;
+    return {
+      scopeKey: JSON.stringify({
+        queryId: this.queryState.id,
+        definitionId: definition.id,
+        project: this.project?.ref,
+        environment: this.queryState.activeEnv?.id ?? this.envId,
+        securityContextId: this.agentContext.securityContextId(),
+      }),
+      queryIdentity: this.currentQueryIdentity(),
+    };
+  }
+
+  private canFormatAuthorTugQL(): boolean {
+    return (
+      !!this.currentAuthorFormatContext() &&
+      this.authorMode() === 'code' &&
+      !this.running() &&
+      !this.queryState.isSaving
+    );
+  }
+
+  private isCurrentAuthorFormatDiagnosticSnapshot(
+    snapshot: AuthorFormatDiagnosticSnapshot | undefined,
+  ): snapshot is AuthorFormatDiagnosticSnapshot {
+    if (
+      !snapshot ||
+      this.queryView() !== 'author' ||
+      this.authorMode() !== 'code' ||
+      !this.isTugqlAuthorJourney() ||
+      this.running() ||
+      this.queryState.isSaving ||
+      this.queryBodyText() !== snapshot.source ||
+      this.authorDraftRevision() !== snapshot.draftRevision ||
+      this.queryDef() !== snapshot.definition
+    )
+      return false;
+    const current = this.currentAuthorFormatContext();
+    return (
+      !!current &&
+      current.scopeKey === snapshot.scopeKey &&
+      current.queryIdentity === snapshot.queryIdentity
+    );
+  }
+
+  public navigateToAuthorFormatDiagnostic(diagnostic: TugQLDiagnostic): void {
+    const snapshot = this.authorFormatNavigationSnapshot();
+    if (
+      !this.isCurrentAuthorFormatDiagnosticSnapshot(snapshot) ||
+      !snapshot.diagnostics.includes(diagnostic)
+    )
+      return;
+    this.authorCodeEditor?.navigateToFormatDiagnostic(
+      snapshot.source,
+      diagnostic,
+    );
+  }
+
+  public authorPreviewSyntaxDiagnostic(): TugQLDiagnostic | undefined {
+    const snapshot = this.previewDiagnosticNavigationSnapshot();
+    return this.isCurrentAuthorPreviewDiagnosticSnapshot(snapshot)
+      ? snapshot.diagnostic
+      : undefined;
+  }
+
+  public canNavigateToAuthorPreviewSyntaxDiagnostic(): boolean {
+    const snapshot = this.previewDiagnosticNavigationSnapshot();
+    if (!this.isCurrentAuthorPreviewDiagnosticSnapshot(snapshot)) return false;
+    if (this.authorMode() !== 'code') return true;
+    return !!this.authorCodeEditor?.isFormatDiagnosticNavigable(
+      snapshot.source,
+      snapshot.diagnostic.span,
+    );
+  }
+
+  public navigateToAuthorPreviewSyntaxDiagnostic(): void {
+    const snapshot = this.previewDiagnosticNavigationSnapshot();
+    if (
+      !this.isCurrentAuthorPreviewDiagnosticSnapshot(snapshot) ||
+      !this.canNavigateToAuthorPreviewSyntaxDiagnostic()
+    )
+      return;
+
+    if (this.authorMode() !== 'code') {
+      const generation = ++this.previewDiagnosticNavigationGeneration;
+      this.pendingPreviewDiagnosticNavigation = { generation, snapshot };
+      this.authorModeExplicit = true;
+      this.authorMode.set('code');
+      this.changeDetector.markForCheck();
+      afterNextRender(
+        () => this.consumePendingPreviewDiagnosticNavigation(generation),
+        { injector: this.injector },
+      );
+      return;
+    }
+
+    const navigated = this.authorCodeEditor?.navigateToFormatDiagnostic(
+      snapshot.source,
+      snapshot.diagnostic,
+    );
+    if (navigated) this.clearPreviewDiagnosticNavigation();
+  }
+
+  private consumePendingPreviewDiagnosticNavigation(generation: number): void {
+    const pending = this.pendingPreviewDiagnosticNavigation;
+    if (!pending || pending.generation !== generation) return;
+    this.pendingPreviewDiagnosticNavigation = undefined;
+
+    const editor = this.authorCodeEditor;
+    if (
+      !this.isCurrentAuthorPreviewDiagnosticSnapshot(pending.snapshot) ||
+      this.authorMode() !== 'code' ||
+      !editor?.isFormatDiagnosticNavigable(
+        pending.snapshot.source,
+        pending.snapshot.diagnostic.span,
+      )
+    ) {
+      this.clearPreviewDiagnosticNavigation();
+      return;
+    }
+
+    editor.navigateToFormatDiagnostic(
+      pending.snapshot.source,
+      pending.snapshot.diagnostic,
+    );
+    this.clearPreviewDiagnosticNavigation();
+  }
+
+  private clearPreviewDiagnosticNavigation(): void {
+    this.previewDiagnosticNavigationGeneration++;
+    this.pendingPreviewDiagnosticNavigation = undefined;
+    this.previewDiagnosticNavigationSnapshot.set(undefined);
+  }
+
+  private isCurrentAuthorPreviewDiagnosticSnapshot(
+    snapshot: AuthorPreviewDiagnosticSnapshot | undefined,
+  ): snapshot is AuthorPreviewDiagnosticSnapshot {
+    if (
+      !snapshot ||
+      this.queryView() !== 'author' ||
+      !this.isTugqlAuthorJourney() ||
+      this.authorErrorRevision !== snapshot.errorRevision ||
+      this.authorError() === undefined ||
+      this.running() ||
+      this.queryState.isSaving ||
+      this.queryId !== snapshot.queryId ||
+      this.historyScope() !== snapshot.historyScope ||
+      this.authorPreviewLifetime !== snapshot.lifetime ||
+      this.queryBodyText() !== snapshot.source ||
+      this.authorDraftRevision() !== snapshot.draftRevision ||
+      this.queryDef() !== snapshot.definition ||
+      !sourceSpanIsValid(snapshot.source, snapshot.diagnostic.span) ||
+      isNoTargetFormatDiagnostic(snapshot.diagnostic)
+    )
+      return false;
+    const current = this.currentAuthorFormatContext();
+    return (
+      !!current &&
+      current.scopeKey === snapshot.scopeKey &&
+      current.queryIdentity === snapshot.queryIdentity
+    );
+  }
+
+  public formatAuthorTugQL(): void {
+    if (!this.canFormatAuthorTugQL()) return;
+    this.authorFormatNavigationSnapshot.set(undefined);
+    this.clearPreviewDiagnosticNavigation();
+    const source = this.queryBodyText();
+    if (source === undefined) return;
+    const options: TugQLFormatOptions = {
+      keywordCase: 'preserve-existing',
+      indentation: 'preserve-existing',
+      defaultKeywordCase: 'lowercase',
+      defaultIndentation: 'two-spaces',
+    };
+    const formatted = formatTugQL(source, options);
+    if (formatted.diagnostics.length) {
+      this.authorFormatStatus.set(
+        `TugQL was not changed: ${formatted.diagnostics
+          .map((item) => item.message)
+          .filter(
+            (message, index, messages) => messages.indexOf(message) === index,
+          )
+          .join(' ')}`,
+      );
+      const parsed = parseTugQL(source);
+      const isSourceSpanValid = createSourceSpanValidator(source);
+      const positioned: TugQLDiagnostic[] = [];
+      let remainingCount = 0;
+      for (const diagnostic of parsed.diagnostics) {
+        if (
+          isNoTargetFormatDiagnostic(diagnostic) ||
+          !isSourceSpanValid(diagnostic.span)
+        )
+          continue;
+        if (positioned.length < 5) positioned.push(diagnostic);
+        else remainingCount++;
+      }
+      const current = this.currentAuthorFormatContext();
+      const definition = this.queryDef();
+      if (current && definition && positioned.length) {
+        const diagnostics = cloneAndFreeze(positioned);
+        this.authorFormatNavigationSnapshot.set({
+          definition,
+          source,
+          draftRevision: this.authorDraftRevision(),
+          scopeKey: current.scopeKey,
+          queryIdentity: current.queryIdentity,
+          diagnostics,
+          remainingCount,
+        });
+      }
+      return;
+    }
+    if (formatted.source === source) {
+      this.authorFormatStatus.set('TugQL is already formatted.');
+      return;
+    }
+
+    this.queryTextChanged(
+      new CustomEvent('ionInput', { detail: { value: formatted.source } }),
+      false,
+    );
+    const current = this.currentAuthorFormatContext();
+    if (!current) return;
+    this.authorFormatUndo.set({
+      action: 'format',
+      originalSource: source,
+      formattedSource: formatted.source,
+      scopeKey: current.scopeKey,
+      queryIdentity: current.queryIdentity,
+    });
+    this.authorFormatStatus.set('TugQL formatted.');
+  }
+
+  public undoAuthorTugQLFormat(): void {
+    const relationshipUndo = this.authorRelationshipUndo();
+    if (relationshipUndo && this.canUndoAuthorRelationship(relationshipUndo)) {
+      const definition = this.queryDef();
+      if (!definition || definition.request.queryType !== QueryType.DTQL)
+        return;
+      const updatedDefinition: IQueryDef = {
+        ...definition,
+        request: {
+          ...definition.request,
+          text: relationshipUndo.originalSource,
+        } as ITextQueryRequest,
+        relationshipBindings: relationshipUndo.originalRelationshipBindings,
+      };
+      const nextState: IQueryState = {
+        ...this.queryState,
+        def: updatedDefinition,
+        request: updatedDefinition.request,
+      };
+      this.trackAuthorStructuralDraft(updatedDefinition);
+      this.authorRelationshipUndo.set(undefined);
+      this.authorFormatUndo.set(undefined);
+      this.clearPreviewDiagnosticNavigation();
+      this.authorFormatNavigationSnapshot.set(undefined);
+      this.authorFormatStatus.set(
+        relationshipUndo.action === 'remove'
+          ? 'Source removal undone.'
+          : 'Join undone.',
+      );
+      this.invalidateAuthorDefinitionRun();
+      ++this.authorLookupRequestRevision;
+      this.authorPlan.set(undefined);
+      this.setAuthorError(undefined);
+      this.authorDraftRevision.update((revision) => revision + 1);
+      this.queryState = nextState;
+      this.queryDef.set(updatedDefinition);
+      this.queryEditorStateService.updateQueryState(nextState);
+      this.refreshAuthorSourcesIfVisible();
+      this.authorSourceReview.set(undefined);
+      this.authorSourceReviewGeneration++;
+      this.authorSourceReviewContext = undefined;
+      this.authorSourceMessage.set(
+        relationshipUndo.action === 'remove'
+          ? 'Undid the local source removal and restored the relationship binding. The prior result is retained.'
+          : 'Undid the local join and restored the original relationship bindings. The prior result is retained.',
+      );
+      return;
+    }
+    const undo = this.authorFormatUndo();
+    if (!undo || !this.canFormatAuthorTugQL()) return;
+    const current = this.currentAuthorFormatContext();
+    if (
+      !current ||
+      current.scopeKey !== undo.scopeKey ||
+      current.queryIdentity !== undo.queryIdentity ||
+      this.queryBodyText() !== undo.formattedSource
+    ) {
+      this.authorFormatUndo.set(undefined);
+      this.authorFormatStatus.set(
+        'Undo format is no longer available because this draft or query context changed.',
+      );
+      return;
+    }
+    this.authorFormatUndo.set(undefined);
+    this.queryTextChanged(
+      new CustomEvent('ionInput', {
+        detail: { value: undo.originalSource },
+      }),
+      false,
+    );
+    this.authorFormatStatus.set(
+      undo.action === 'filter'
+        ? 'InvoiceId filter undone.'
+        : 'Formatting undone.',
+    );
+  }
+
+  private canUndoAuthorRelationship(undo: AuthorRelationshipUndo): boolean {
+    const current = this.currentAuthorFormatContext();
+    return (
+      !!current &&
+      this.authorMode() === 'code' &&
+      !this.running() &&
+      !this.queryState.isSaving &&
+      current.scopeKey === undo.scopeKey &&
+      current.queryIdentity === undo.queryIdentity &&
+      this.queryBodyText() === undo.joinedSource
+    );
+  }
+
+  private syncAuthorMode(definition?: IQueryDef, resolveDefault = false): void {
+    const nextScopeKey = JSON.stringify({
+      queryId: this.queryState.id,
+      project: this.project?.ref,
+      environment: this.queryState.activeEnv?.id ?? this.envId,
+      securityContextId: this.agentContext.securityContextId(),
+    });
+    const nextContextKey = JSON.stringify({
+      project: this.project?.ref,
+      environment: this.queryState.activeEnv?.id ?? this.envId,
+      securityContextId: this.agentContext.securityContextId(),
+    });
+    if (nextContextKey !== this.authorModeContextKey) {
+      ++this.authorLookupRequestRevision;
+      this.authorModeContextKey = nextContextKey;
+    }
+    if (nextScopeKey !== this.authorModeScopeKey) {
+      this.authorFormatUndo.set(undefined);
+      this.authorFormatNavigationSnapshot.set(undefined);
+      this.authorFormatStatus.set('');
+      ++this.authorLookupFocusRevision;
+      this.authorModeScopeKey = nextScopeKey;
+      this.authorModeDefaultResolved = false;
+      this.authorModeExplicit = false;
+      // A target change starts in the conservative editor until its definition
+      // has arrived and the visual profile can be checked.
+      this.authorMode.set('code');
+    }
+    if (
+      resolveDefault &&
+      definition &&
+      !this.authorModeDefaultResolved &&
+      !this.authorModeExplicit
+    ) {
+      const request = definition.request;
+      this.authorMode.set(
+        definition.connectionId === 'chinook-sqlite' &&
+          request?.queryType === QueryType.DTQL &&
+          readAuthorComposeProfile((request as ITextQueryRequest).text ?? '')
+            .supported
+          ? 'compose'
+          : 'code',
+      );
+      this.authorModeDefaultResolved = true;
+    }
+  }
+
+  public authorComposeTextChanged(text: string): void {
+    this.queryTextChanged(
+      new CustomEvent('ionInput', { detail: { value: text } }),
+    );
+  }
+
+  public cancelAuthorRun(): void {
+    this.authorRunAbort?.abort();
+  }
+
+  private invalidateAuthorDefinitionRun(): void {
+    ++this.authorPreviewLifetime;
+    this.authorPreviewLoading.set(false);
+    this.clearPreviewDiagnosticNavigation();
+    ++this.semanticRunLifetime;
+    this.invalidateFederatedRun();
+    this.invalidateHistoryRequests();
+    this.stopFederatedRun();
+  }
+
+  public authorCustomerIdChanged(event: Event): void {
+    const detail = (event as CustomEvent<{ value?: string }>).detail;
+    const target = event.target as HTMLInputElement | null;
+    const value = detail?.value ?? target?.value ?? '';
+    const previousOrigin = this.authorCustomerIdOrigin();
+    const originChanged =
+      previousOrigin.origin !== 'manual' ||
+      previousOrigin.originEvidence !== 'client-reported' ||
+      previousOrigin.sourceQueryId !== undefined ||
+      previousOrigin.sourceColumn !== undefined;
+    if (value !== this.authorCustomerId() || originChanged) {
+      this.authorRunParameterAttempt.set(undefined);
+      this.authorBindingRevision.update((revision) => revision + 1);
+      ++this.authorLookupRequestRevision;
+      this.invalidateComparison(
+        'The CustomerId binding changed; run both fixtures again.',
+      );
+    }
+    this.authorCustomerId.set(value);
+    const next: IQueryState = {
+      ...this.queryState,
+      authorBindings: {
+        ...(this.queryState.authorBindings ?? {}),
+        CustomerId: value,
+      },
+      authorBindingProvenance: {
+        ...(this.queryState.authorBindingProvenance ?? {}),
+        CustomerId: {
+          origin: 'manual',
+          originEvidence: 'client-reported',
+        },
+      },
+    };
+    this.queryState = next;
+    this.queryEditorStateService.updateQueryState(next);
+  }
+
+  private async openAuthorCustomerLookup(
+    columnIndex: number,
+    columnName: string,
+    rowIndex: number,
+    expectedExecutionId: string,
+    expectedCustomerId: string,
+    expectedQueryIdentity: symbol,
+  ): Promise<void> {
+    const lookupRequestRevision = ++this.authorLookupRequestRevision;
+    ++this.authorLookupFocusRevision;
+    const result = this.runResult();
+    const receipt = result?.publicSqliteReceipt;
+    if (
+      !result ||
+      receipt?.executionId !== expectedExecutionId ||
+      this.currentQueryIdentity() !== expectedQueryIdentity
+    ) {
+      return;
+    }
+    const row = this.visibleResultRows()[rowIndex];
+    const isCurrent =
+      !!result &&
+      this.relatedResultSet() === 'affiliations' &&
+      !this.selectedHistoricalResult() &&
+      !this.displayedResultIsPreviousRun() &&
+      !this.publicSqliteRunIsStale(result);
+    const customerId = customerIdLookupValue(
+      receipt,
+      columnIndex,
+      columnName,
+      row?.[columnIndex],
+      isCurrent,
+    );
+    const projectRef = this.project?.ref;
+    if (
+      !customerId ||
+      customerId !== expectedCustomerId ||
+      !projectRef ||
+      !this.queryId
+    ) {
+      return;
+    }
+
+    const sourceQueryId = this.queryId;
+    const activeEnvironment = this.queryState.activeEnv?.id ?? this.envId;
+    const sourceProjectRef = projectRef;
+    const sourceEnvironment = activeEnvironment;
+    const sourceDefinition = this.queryDef();
+    const sourceSecurityContextId = this.agentContext.securityContextId();
+    const sourceDraftRevision = this.authorDraftRevision();
+    const sourceBindingRevision = this.authorBindingRevision();
+    const requestIsCurrent = (): boolean =>
+      this.authorLookupRequestRevision === lookupRequestRevision &&
+      equalProjectRef(this.project?.ref, sourceProjectRef) &&
+      this.queryId === sourceQueryId &&
+      this.queryDef() === sourceDefinition &&
+      (this.queryState.activeEnv?.id ?? this.envId) === sourceEnvironment &&
+      this.agentContext.securityContextId() === sourceSecurityContextId &&
+      this.authorDraftRevision() === sourceDraftRevision &&
+      this.authorBindingRevision() === sourceBindingRevision &&
+      this.runResult() === result &&
+      this.runResult()?.publicSqliteReceipt?.executionId ===
+        expectedExecutionId &&
+      this.currentQueryIdentity() === expectedQueryIdentity;
+    let lookupDefinition: IQueryDef;
+    let lookupRevision:
+      | {
+          revision: string;
+          branchHead?: string;
+          saveSupported?: boolean;
+          unsupportedSaveReason?: string;
+        }
+      | undefined;
+    try {
+      if (sourceProjectRef.projectApi) {
+        const loaded = await firstValueFrom(
+          this.queriesService.getRevision(
+            sourceProjectRef,
+            CUSTOMER_INVOICE_LOOKUP_QUERY_ID,
+          ),
+        );
+        lookupDefinition = fromProjectQueryWire(loaded.query);
+        lookupRevision = loaded;
+      } else {
+        lookupDefinition = await firstValueFrom(
+          this.queriesService.getQuery(
+            sourceProjectRef,
+            CUSTOMER_INVOICE_LOOKUP_QUERY_ID,
+          ),
+        );
+      }
+    } catch {
+      // A cloud 401/403 is also delivered through QueriesService's authority
+      // invalidation stream. Never restore cached private data in that case.
+      if (requestIsCurrent()) {
+        this.setAuthorError(
+          'The invoice lookup could not be opened. Your current results are still available.',
+        );
+      }
+      return;
+    }
+    if (!requestIsCurrent()) return;
+    const pendingNavigation: PendingAuthorLookupNavigation = {
+      targetId: CUSTOMER_INVOICE_LOOKUP_QUERY_ID,
+      requestRevision: lookupRequestRevision,
+      projectRef: sourceProjectRef,
+      environment: sourceEnvironment,
+      securityContextId: sourceSecurityContextId,
+      routeObserved: false,
+      routeSuperseded: false,
+    };
+    this.pendingAuthorLookupNavigation = pendingNavigation;
+    let navigated = false;
+    try {
+      navigated = await this.router.navigate([], {
+        relativeTo: this.route,
+        info: pendingNavigation,
+        queryParams: {
+          id: CUSTOMER_INVOICE_LOOKUP_QUERY_ID,
+          editor: 'text',
+          ...(activeEnvironment ? { env: activeEnvironment } : {}),
+        },
+        queryParamsHandling: 'merge',
+      });
+    } catch (error: unknown) {
+      this.errorLogger.logError(
+        error,
+        'Failed to open the Customer invoice lookup query',
+      );
+      if (this.pendingAuthorLookupNavigation === pendingNavigation)
+        this.pendingAuthorLookupNavigation = undefined;
+      await this.restoreSourceRouteIfLookupIsStillCurrent(
+        pendingNavigation,
+        sourceQueryId,
+        activeEnvironment,
+      );
+      if (requestIsCurrent())
+        this.setAuthorError(
+          'The invoice lookup could not be opened. Your current results are still available.',
+        );
+      return;
+    }
+    if (this.pendingAuthorLookupNavigation === pendingNavigation)
+      this.pendingAuthorLookupNavigation = undefined;
+    pendingNavigation.navigationSucceeded = navigated;
+    if (!navigated) {
+      await this.restoreSourceRouteIfLookupIsStillCurrent(
+        pendingNavigation,
+        sourceQueryId,
+        activeEnvironment,
+      );
+      if (requestIsCurrent())
+        this.setAuthorError(
+          'The invoice lookup could not be opened. Your current results are still available.',
+        );
+      return;
+    }
+
+    // The route transition changes the current query as part of Angular's
+    // query-param subscription. Recheck the original action and context after
+    // that asynchronous boundary before publishing the selected binding.
+    if (
+      !requestIsCurrent() ||
+      !this.isLatestAuthorLookupNavigation(pendingNavigation)
+    ) {
+      await this.restoreSourceRouteIfLookupIsStillCurrent(
+        pendingNavigation,
+        sourceQueryId,
+        activeEnvironment,
+      );
+      return;
+    }
+
+    this.authorMode.set('compose');
+    this.authorPlan.set(undefined);
+    this.setAuthorError(undefined);
+    let lookup: IQueryState;
+    try {
+      lookup = this.queryEditorStateService.openAuthorizedQuery(
+        CUSTOMER_INVOICE_LOOKUP_QUERY_ID,
+        lookupDefinition,
+        sourceProjectRef,
+        lookupRevision,
+      );
+    } catch {
+      // The source draft/result was deliberately kept intact until navigation
+      // succeeded. If opening its preflighted target still fails synchronously,
+      // restore the source URL without asking the state service to reload it.
+      if (requestIsCurrent()) {
+        await this.restoreSourceRouteIfLookupIsStillCurrent(
+          pendingNavigation,
+          sourceQueryId,
+          activeEnvironment,
+        );
+      }
+      if (requestIsCurrent())
+        this.setAuthorError(
+          'The invoice lookup could not be opened. Your current results are still available.',
+        );
+      return;
+    }
+    this.authorBindingRevision.update((revision) => revision + 1);
+    this.queryEditorStateService.updateQueryState({
+      ...lookup,
+      authorBindings: {
+        ...(lookup.authorBindings ?? {}),
+        CustomerId: customerId,
+      },
+      authorBindingProvenance: {
+        ...(lookup.authorBindingProvenance ?? {}),
+        CustomerId: {
+          origin: 'selection',
+          originEvidence: 'client-reported',
+          sourceQueryId,
+          sourceColumn: columnName,
+        },
+      },
+    });
+    this.authorWorkspaceLayout?.scrollToEditor();
+    this.focusAuthorLookupAfterRender();
+  }
+
+  private focusAuthorLookupAfterRender(): void {
+    const focusRevision = ++this.authorLookupFocusRevision;
+    const expectedDraftRevision = this.authorDraftRevision();
+    const expectedBindingRevision = this.authorBindingRevision();
+    const expectedProject = JSON.stringify(this.project?.ref);
+    const expectedEnvironment = this.queryState.activeEnv?.id;
+    const expectedSecurityContext = this.agentContext.securityContextId();
+    const canFocus = (): boolean =>
+      focusRevision === this.authorLookupFocusRevision &&
+      expectedDraftRevision === this.authorDraftRevision() &&
+      expectedBindingRevision === this.authorBindingRevision() &&
+      this.queryId === CUSTOMER_INVOICE_LOOKUP_QUERY_ID &&
+      JSON.stringify(this.project?.ref) === expectedProject &&
+      this.queryState.activeEnv?.id === expectedEnvironment &&
+      this.agentContext.securityContextId() === expectedSecurityContext;
+
+    this.changeDetector.markForCheck();
+    afterNextRender(
+      () => {
+        if (!canFocus()) return;
+        this.authorLookupHeading?.nativeElement.focus();
+      },
+      { injector: this.injector },
+    );
+  }
+
+  private isLatestAuthorLookupNavigation(
+    pendingNavigation: PendingAuthorLookupNavigation,
+  ): boolean {
+    const latest = this.router.lastSuccessfulNavigation?.();
+    const inFlight = this.router.currentNavigation?.();
+    return (
+      pendingNavigation.routeObserved &&
+      !pendingNavigation.routeSuperseded &&
+      !!latest &&
+      pendingNavigation.observedNavigationId !== undefined &&
+      latest.id === pendingNavigation.observedNavigationId &&
+      latest.extras.info === pendingNavigation &&
+      (!inFlight || inFlight.id === pendingNavigation.observedNavigationId)
+    );
+  }
+
+  private async restoreSourceRouteIfLookupIsStillCurrent(
+    pendingNavigation: PendingAuthorLookupNavigation,
+    sourceQueryId: string,
+    environment?: string,
+  ): Promise<void> {
+    const routedId = this.route.snapshot.queryParamMap.get('id');
+    const latest = this.router.lastSuccessfulNavigation?.();
+    const inFlight = this.router.currentNavigation?.();
+    const newerNavigationStarted =
+      (!!inFlight && inFlight.id !== pendingNavigation.observedNavigationId) ||
+      (!!latest &&
+        pendingNavigation.observedNavigationId !== undefined &&
+        latest.id > pendingNavigation.observedNavigationId &&
+        latest.extras.info !== pendingNavigation);
+    if (
+      !pendingNavigation.routeObserved ||
+      pendingNavigation.routeSuperseded ||
+      newerNavigationStarted ||
+      this.pendingAuthorLookupNavigation ||
+      routedId !== pendingNavigation.targetId
+    ) {
+      return;
+    }
+    const routeStillOwned =
+      this.isLatestAuthorLookupNavigation(pendingNavigation);
+    const sameScope =
+      equalProjectRef(this.project?.ref, pendingNavigation.projectRef) &&
+      (this.queryState.activeEnv?.id ?? this.envId) ===
+        pendingNavigation.environment &&
+      this.agentContext.securityContextId() ===
+        pendingNavigation.securityContextId;
+    if (!sameScope) {
+      // The route is still the actual user-visible destination, but its
+      // original source-scope request is stale. Reconcile a successful route
+      // through the normal authorized loader without applying the old selected
+      // binding. Never restore an old source route or load a failed target in a
+      // different security context.
+      if (routeStillOwned && this.queryId !== routedId)
+        this.queryEditorStateService.openQuery(routedId);
+      return;
+    }
+    if (this.queryId !== sourceQueryId) return;
+    const projectRef = this.project?.ref;
+    if (!projectRef) return;
+    const restore: PendingAuthorLookupNavigation = {
+      targetId: sourceQueryId,
+      requestRevision: this.authorLookupRequestRevision,
+      projectRef,
+      environment: this.queryState.activeEnv?.id ?? this.envId,
+      securityContextId: this.agentContext.securityContextId(),
+      routeObserved: false,
+      routeSuperseded: false,
+    };
+    this.pendingAuthorLookupNavigation = restore;
+    let restored = false;
+    try {
+      restored = await this.router.navigate([], {
+        relativeTo: this.route,
+        info: restore,
+        queryParams: {
+          id: sourceQueryId,
+          editor: 'text',
+          ...(environment ? { env: environment } : {}),
+        },
+        queryParamsHandling: 'merge',
+        replaceUrl: true,
+      });
+    } catch (error: unknown) {
+      this.errorLogger.logError(
+        error,
+        'Failed to restore the source query after lookup navigation',
+      );
+    } finally {
+      if (this.pendingAuthorLookupNavigation === restore)
+        this.pendingAuthorLookupNavigation = undefined;
+    }
+    const latestAfterRestore = this.router.lastSuccessfulNavigation?.();
+    const inFlightAfterRestore = this.router.currentNavigation?.();
+    const newerNavigationAfterRestore =
+      (!!inFlightAfterRestore &&
+        inFlightAfterRestore.id !== restore.observedNavigationId) ||
+      (!!latestAfterRestore &&
+        restore.observedNavigationId !== undefined &&
+        latestAfterRestore.id > restore.observedNavigationId &&
+        latestAfterRestore.extras.info !== restore);
+    if (
+      !restore.routeSuperseded &&
+      !newerNavigationAfterRestore &&
+      !this.pendingAuthorLookupNavigation &&
+      this.authorLookupRequestRevision === restore.requestRevision &&
+      equalProjectRef(this.project?.ref, restore.projectRef) &&
+      (this.queryState.activeEnv?.id ?? this.envId) === restore.environment &&
+      this.agentContext.securityContextId() === restore.securityContextId &&
+      pendingNavigation.routeObserved &&
+      !restored &&
+      this.route.snapshot.queryParamMap.get('id') === routedId &&
+      this.queryId === sourceQueryId
+    ) {
+      // A canceled or rejected rollback left the destination URL active. Load
+      // that still-owned route through the authorized state service so
+      // the page cannot show the source query beneath a destination URL.
+      this.queryEditorStateService.openQuery(routedId);
+    }
+  }
+
+  public async previewTugql(): Promise<void> {
+    const project = this.project?.ref;
+    const definition = this.queryDef();
+    if (!project || !definition || !this.isTugqlAuthorJourney()) return;
+    const revision = this.authorDraftRevision();
+    const definitionSnapshot = JSON.stringify(definition);
+    const scopeSnapshot = this.historyScope();
+    const queryIdSnapshot = this.queryId;
+    const projectSnapshot = JSON.stringify(project);
+    const securityContextIdSnapshot = this.agentContext.securityContextId();
+    const authorContextSnapshot = this.currentAuthorFormatContext();
+    const lifetime = ++this.authorPreviewLifetime;
+    this.clearPreviewDiagnosticNavigation();
+    this.authorFormatNavigationSnapshot.set(undefined);
+    const isCurrent = (): boolean =>
+      lifetime === this.authorPreviewLifetime &&
+      this.isTugqlAuthorJourney() &&
+      this.authorDraftRevision() === revision &&
+      this.historyScope() === scopeSnapshot &&
+      this.queryId === queryIdSnapshot &&
+      this.queryDef() === definition &&
+      JSON.stringify(this.queryDef()) === definitionSnapshot &&
+      JSON.stringify(this.project?.ref) === projectSnapshot &&
+      this.agentContext.securityContextId() === securityContextIdSnapshot &&
+      !!authorContextSnapshot &&
+      this.currentAuthorFormatContext()?.scopeKey ===
+        authorContextSnapshot.scopeKey &&
+      this.currentAuthorFormatContext()?.queryIdentity ===
+        authorContextSnapshot.queryIdentity;
+    this.authorPlan.set(undefined);
+    this.authorPreviewLoading.set(true);
+    this.setAuthorError(undefined);
+    try {
+      const source = (definition.request as ISqlQueryRequest).text;
+      if (
+        definition.request.queryType === QueryType.DTQL &&
+        definition.connectionId === 'chinook-sqlite' &&
+        !definition.federation
+      ) {
+        const parsed = parseTugQL(source);
+        if (parsed.diagnostics.length) {
+          if (!isCurrent()) return;
+          this.setAuthorError(
+            parsed.diagnostics
+              .map((diagnostic) => diagnostic.message)
+              .join(' '),
+          );
+          const diagnostic = parsed.diagnostics.find(
+            (candidate) =>
+              !isNoTargetFormatDiagnostic(candidate) &&
+              sourceSpanIsValid(source, candidate.span),
+          );
+          const context = authorContextSnapshot;
+          if (diagnostic && context) {
+            this.previewDiagnosticNavigationSnapshot.set({
+              definition,
+              source,
+              draftRevision: revision,
+              scopeKey: context.scopeKey,
+              queryIdentity: context.queryIdentity,
+              queryId: queryIdSnapshot,
+              historyScope: scopeSnapshot,
+              lifetime,
+              errorRevision: this.authorErrorRevision,
+              diagnostic,
+            });
+          }
+          return;
+        }
+      }
+      const plan = await this.publicSqliteQuery.prepareTugQL(
+        project,
+        definition,
+        revision,
+      );
+      if (isCurrent()) {
+        if (plan.expandedSource !== undefined) {
+          if (
+            plan.expandedSource ===
+            (definition.request as ISqlQueryRequest).text
+          ) {
+            this.setAuthorError(
+              'The relationship completion did not change the draft. Review the JOIN in Code.',
+            );
+            return;
+          }
+          this.authorMode.set('code');
+          this.queryTextChanged(
+            new CustomEvent('ionInput', {
+              detail: { value: plan.expandedSource },
+            }),
+          );
+          if (this.queryDef()?.request.queryType !== QueryType.DTQL) return;
+          if (
+            (this.queryDef()?.request as ITextQueryRequest | undefined)
+              ?.text !== plan.expandedSource
+          ) {
+            this.setAuthorError(
+              'The relationship completion could not be applied to this draft. Review the JOIN in Code.',
+            );
+            return;
+          }
+          // A missing or shorthand ON clause is never hidden inside a preview
+          // plan or run. Show the exact source edit in Code, then compile that
+          // now-visible draft again; the user must still choose Run explicitly.
+          void this.previewTugql();
+          return;
+        }
+        this.authorPlan.set(plan);
+        if (this.authorFormatStatus().includes('Preview SQL before Run.'))
+          this.authorFormatStatus.set('');
+      }
+    } catch (error: unknown) {
+      if (isCurrent())
+        this.setAuthorError(
+          error instanceof Error ? error.message : 'The TugQL preview failed.',
+        );
+    } finally {
+      if (lifetime === this.authorPreviewLifetime)
+        this.authorPreviewLoading.set(false);
+    }
+  }
+
+  public publicSqliteCustomerIdLabel(result: FederatedQueryResult): string {
+    const applied = result.bindingsApplied.find(
+      (binding) => binding.parameterId === 'CustomerId',
+    );
+    return applied?.value.type === 'integer' ? applied.value.value : 'applied';
+  }
+
+  public authorCustomerIdOrigin(): AuthorBindingProvenance {
+    return (
+      this.queryState.authorBindingProvenance?.['CustomerId'] ?? {
+        origin: 'manual',
+        originEvidence: 'client-reported',
+      }
+    );
+  }
+
+  public publicSqliteRunIsStale(result: FederatedQueryResult): boolean {
+    const applied = result.bindingsApplied.find(
+      (binding) => binding.parameterId === 'CustomerId',
+    );
+    return (
+      this.displayedResultIsPreviousRun() ||
+      !this.authorCustomerIdValid() ||
+      result.publicSqliteReceipt?.draftRevision !==
+        this.authorDraftRevision() ||
+      applied?.value.type !== 'integer' ||
+      Number(applied.value.value) !== Number(this.authorCustomerId()) ||
+      applied.origin !== this.authorCustomerIdOrigin().origin ||
+      applied.originEvidence !== this.authorCustomerIdOrigin().originEvidence ||
+      (this.authorCustomerIdOrigin().origin === 'selection' &&
+        (result.publicSqliteReceipt?.clientReportedBinding?.sourceQueryId !==
+          this.authorCustomerIdOrigin().sourceQueryId ||
+          result.publicSqliteReceipt?.clientReportedBinding?.sourceColumn !==
+            this.authorCustomerIdOrigin().sourceColumn))
+    );
+  }
 
   /** Entity/collection names this query references — see
    * {@link extractLinkedEntityNames}'s own doc comment. */
@@ -584,6 +4781,38 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   };
 
   constructor() {
+    effect(() => {
+      const definition = this.queryDef(), recordset = this.displayedRecordset(), resultSet = this.relatedResultSet(), executed = this.semanticExecutedDefinition();
+      const generation = ++this.semanticBasisGeneration;
+      this.semanticBasis.set(undefined);
+      this.semanticCurrentHash.set('');
+      if (!definition) return;
+      const project = this.project;
+      if (project) void this.queriesService.devicePersonal.list(project.ref).then(items => { if (generation === this.semanticBasisGeneration) this.semanticPersonalCopies.set(items.map(item => item.query)); }).catch(() => undefined);
+      void semanticQueryHash(definition.request.queryType, (definition.request as ISqlQueryRequest).text ?? '', definition.connectionId ?? '', definition.federation ?? null).then(hash => { if (generation === this.semanticBasisGeneration) this.semanticCurrentHash.set(hash); });
+      if (!recordset || !executed) return;
+      void semanticQueryHash(executed.request.queryType, (executed.request as ISqlQueryRequest).text ?? '', executed.connectionId ?? '', executed.federation ?? null).then(queryHash => {
+        if (generation === this.semanticBasisGeneration) this.semanticBasis.set({ queryHash, resultIndex: resultSet === 'affiliations' ? 0 : 1 + (this.runResult()?.relatedRecordsets?.findIndex(item => item.id === resultSet) ?? 0), columns: recordset.columns.map(column => ({ name: column.name, dataType: column.type ?? 'unknown' })) });
+      });
+    });
+    addIcons({ copyOutline, shieldCheckmarkOutline });
+    this.observedSecurityContextId = this.agentContext.securityContextId();
+    this.hasObservedSecurityContext = true;
+    const navigationQuery = history.state.query as IQueryDef | undefined;
+    const navigationProject = history.state.project as
+      | IProjectContext
+      | undefined;
+    if (
+      history.state.action === 'create' &&
+      navigationQuery?.id &&
+      navigationQuery.request &&
+      navigationProject?.ref
+    ) {
+      this.navigationDraft = {
+        ref: navigationProject.ref,
+        query: navigationQuery,
+      };
+    }
     // REQ:applicable-queries / INTEGRATION.md §3 — EnvDbTablePageComponent.onOpenQuery
     // carries the context panel's resolved Candidate bindings/targets (selection wins
     // over context, REQ:parameter-auto-binding) via router state, since this shared
@@ -603,7 +4832,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
     this.trackQueryState();
     const query = history.state.query as IQueryDef;
-    if (query) {
+    if (
+      query &&
+      !this.navigationDraft &&
+      !this.route.snapshot.queryParamMap.get('projectApi')
+    ) {
       this.setQuery(query);
     }
 
@@ -626,7 +4859,69 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.agentContext.securityContextId();
       this.investigationContext.items();
       this.investigationContext.promotionRevision();
+      const sessionId = this.contextSessionId();
+      if (sessionId) this.sessionWorkspace?.snapshotFor(sessionId);
       this.syncScopeAndBindings();
+    });
+    // Agent security contexts are project/base-URL specific reactive handles.
+    // A cold route can arrive before agent-info resolves; keep this effect
+    // subscribed to the exact handle so its eventual identity starts the read.
+    effect(() => {
+      const ref = this.hostedDetectiveProjectRef();
+      if (!ref) return;
+      const context = this.detectiveContext(ref);
+      const requestKey = context
+        ? this.detectiveScopeKey(ref, context)
+        : `${JSON.stringify(ref)}:unavailable`;
+      if (requestKey === this.hostedDetectiveRequestKey) return;
+      this.hostedDetectiveRequestKey = requestKey;
+      const generation = ++this.hostedDetectiveRequestGeneration;
+      this.hostedDetectiveLoadedScope.set(undefined);
+      this.hostedDetectiveState.set(undefined);
+      this.hostedDetectiveError.set(undefined);
+      if (!context) return;
+      this.detectiveClient
+        .state(context)
+        .pipe(takeUntil(this.destroyed))
+        .subscribe({
+          next: (state) => {
+            if (
+              generation === this.hostedDetectiveRequestGeneration &&
+              this.hostedDetectiveRequestKey === requestKey &&
+              equalProjectRef(this.project?.ref, ref)
+            ) {
+              this.hostedDetectiveState.set(state);
+              this.hostedDetectiveLoadedScope.set(requestKey);
+            }
+          },
+          error: (error: unknown) => {
+            if (
+              generation === this.hostedDetectiveRequestGeneration &&
+              this.hostedDetectiveRequestKey === requestKey &&
+              equalProjectRef(this.project?.ref, ref)
+            )
+              this.hostedDetectiveError.set(
+                detectiveErrorMessage(error, context.kind === 'cloud'),
+              );
+          },
+        });
+    });
+    effect(() => {
+      const runId = this.sessionRecordedRun();
+      const running = this.running(), pinning = this.sessionPinning(), error = this.runError();
+      if (runId && !running && !pinning) untracked(() => { void this.finishSessionQuery('failed', error ? 'source-query-failed' : 'client-run-interrupted'); });
+    });
+    effect(() => {
+      const selected = this.selectedAuthorResultRow();
+      if (selected && this.currentAuthorResultRow() !== selected)
+        this.selectedAuthorResultRow.set(undefined);
+      if (
+        this.authorRowDetailsOpen() &&
+        (!this.currentAuthorResultRow() ||
+          this.resultPageLoading() ||
+          this.authorRowDetailsSnapshot !== this.authorResultSnapshotKey())
+      )
+        this.authorRowDetailsOpen.set(false);
     });
   }
 
@@ -638,6 +4933,40 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const projectId = this.project?.ref.projectId;
     const environment = this.envId;
     const securityContextId = this.agentContext.securityContextId();
+    const parameterAttempt = untracked(this.authorRunParameterAttempt);
+    if (
+      parameterAttempt &&
+      parameterAttempt.scope !== this.authorRunParameterScope()
+    )
+      this.authorRunParameterAttempt.set(undefined);
+    const accessClassification = equalProjectRef(
+      this.comparisonAccessProjectRef,
+      this.project?.ref,
+    )
+      ? this.comparisonProjectAccess()
+      : undefined;
+    const scopeIdentity = JSON.stringify({
+      project: this.project?.ref,
+      queryId: this.queryId,
+      accessClassification,
+      securityContextId,
+    });
+    if (
+      this.comparisonObservedScopeIdentity &&
+      this.comparisonObservedScopeIdentity !== scopeIdentity
+    )
+      this.invalidateComparison(
+        'The project, access classification, query, or agent context changed.',
+      );
+    this.comparisonObservedScopeIdentity = scopeIdentity;
+    if (
+      this.hasObservedSecurityContext &&
+      this.observedSecurityContextId !== securityContextId
+    )
+      this.invalidateHistoryScope();
+    this.observedSecurityContextId = securityContextId;
+    this.hasObservedSecurityContext = true;
+    this.syncAuthorMode(this.queryDef(), true);
     if (projectId && environment && securityContextId) {
       this.investigationContext.setScope({
         project: projectId,
@@ -649,8 +4978,17 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   ionViewDidEnter(): void {
+    this.authorViewActive = true;
     try {
       this.updateUrl(); // If called in constructor breaks back button
+      const semanticCopy = QueryPageComponent.pendingSemanticCopy;
+      if (semanticCopy && semanticCopy.id === this.queryState.id) {
+        QueryPageComponent.pendingSemanticCopy = undefined;
+        this.envId = semanticCopy.environment;
+        this.selectedSource.set(semanticCopy.selectedSource);
+        this.setDisplayedResult(semanticCopy.result);
+        this.commitSuccessfulResult(semanticCopy.result, semanticCopy.definition, undefined, false);
+      }
     } catch (e) {
       this.errorLogger.logError(e, 'Failed to process ionViewDidEnter event');
     }
@@ -662,9 +5000,20 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     try {
       this.editorState = editorState;
       if (!editorState?.currentQueryId) {
+        this.queryPageTitle.set('Query');
+        this.customerInvoiceExample.set(false);
         if (this.queryId) {
-          this.invalidateHistoryScope(); this.queryDef.set(undefined);
-          this.queryState = { ...this.queryState, id: '' };
+          this.invalidateComparison('The selected query was closed.');
+          this.invalidateHistoryScope();
+          this.queryDef.set(undefined);
+          this.queryState = {
+            id: '',
+            queryType: QueryType.SQL,
+            request: { queryType: QueryType.SQL, text: '' } as ISqlQueryRequest,
+          };
+          this.authorCustomerId.set('');
+          this.authorPlan.set(undefined);
+          this.changeDetector.markForCheck();
         }
         return;
       }
@@ -672,31 +5021,148 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         (qs) => qs.id === editorState.currentQueryId,
       );
       if (!queryState) {
+        // A closed or unresolved selection must never inherit the previous
+        // query's name while the editor state catches up.
+        this.queryPageTitle.set('Query');
         return;
       }
+      const structuralDraft = this.authorSavedDefinition();
+      if (
+        structuralDraft &&
+        (structuralDraft.queryId !== queryState.id ||
+          (queryState.def !== structuralDraft.local &&
+            queryState.def !== structuralDraft.saved))
+      )
+        this.authorSavedDefinition.set(undefined);
+      const currentTitle = queryState.title ?? queryState.def?.title;
+      this.queryPageTitle.set(
+        typeof currentTitle === 'string'
+          ? currentTitle.trim() || 'Query'
+          : 'Query',
+      );
+      if (
+        this.navigationDraft?.query.id === queryState.id &&
+        !queryState.isNew &&
+        queryState.def
+      ) {
+        this.navigationDraft = undefined;
+        const navigationState = history.state as Record<string, unknown>;
+        if (
+          navigationState?.['action'] === 'create' &&
+          (navigationState['query'] as IQueryDef | undefined)?.id ===
+            queryState.id
+        ) {
+          const savedState = { ...navigationState };
+          delete savedState['action'];
+          delete savedState['query'];
+          history.replaceState(savedState, '');
+        }
+      }
       const previousDefinition = this.queryDef();
+      const previousCustomerId = this.authorCustomerId();
       const scopeChanged = this.queryId !== queryState.id;
-      const nextPlanIdentity = graphStableIdentity(queryState.def?.federation?.nativeGraph);
-      const planChanged = graphStableIdentity(previousDefinition?.federation?.nativeGraph) !== nextPlanIdentity || (!!this.executedGraphDefinition?.federation?.nativeGraph && graphStableIdentity(this.executedGraphDefinition.federation.nativeGraph) !== nextPlanIdentity);
-      if (scopeChanged) this.invalidateHistoryScope();
-      else if (planChanged) {
+      if (scopeChanged) {
+        this.hostedExecution.set(undefined);
+        this.localScenarioExecution.set(undefined);
+        this.hostedSelectedRow.set(undefined);
+        this.hostedStatusFilter.set('all');
+        ++this.semanticMappingLifetime;
+        this.semanticSaving.set(false);
+        this.semanticDialog.set(undefined);
+        this.authorRunParameterAttempt.set(undefined);
+        this.authorContextTab.set(undefined);
+        this.authorSourcesToggled(false);
+        this.selectedAuthorResultRow.set(undefined);
+      }
+      const effectiveDefinition = queryState.def
+        ? {
+            ...queryState.def,
+            ...(queryState.title !== undefined
+              ? { title: queryState.title }
+              : {}),
+            ...(queryState.request ? { request: queryState.request } : {}),
+            federation: queryState.federation ?? queryState.def.federation,
+            connectionId:
+              queryState.connectionId !== undefined
+                ? queryState.connectionId || undefined
+                : queryState.def.connectionId,
+          }
+        : undefined;
+      const nextPlanIdentity = graphStableIdentity(
+        effectiveDefinition?.federation?.nativeGraph,
+      );
+      const queryDefinitionChanged =
+        !!previousDefinition &&
+        !!effectiveDefinition &&
+        JSON.stringify(previousDefinition) !==
+          JSON.stringify(effectiveDefinition);
+      const planChanged =
+        graphStableIdentity(previousDefinition?.federation?.nativeGraph) !==
+          nextPlanIdentity ||
+        (!!this.executedGraphDefinition?.federation?.nativeGraph &&
+          graphStableIdentity(
+            this.executedGraphDefinition.federation.nativeGraph,
+          ) !== nextPlanIdentity);
+      if (
+        scopeChanged ||
+        ((this.project?.ref.projectApi === 'cloud' ||
+          (this.project && isSharedProjectRef(this.project.ref))) &&
+          previousDefinition &&
+          !effectiveDefinition)
+      ) {
+        this.invalidateComparison(
+          'The selected query or project scope changed.',
+        );
+        this.invalidateHistoryScope();
+      } else if (queryDefinitionChanged || planChanged) {
+        this.invalidateComparison('The saved query definition changed.');
+        // Editing the selected query preserves its last completed output as a
+        // previous-run receipt. Fence active executions while keeping their frozen
+        // definition, scope, provenance, and timing attached to that output.
+        ++this.semanticRunLifetime;
         this.invalidateFederatedRun();
         this.invalidateHistoryRequests();
         const result = this.runResult();
-        if (result?.localResult && result.nativeGraph && this.executedGraphDefinition) {
+        if (
+          planChanged &&
+          result?.localResult &&
+          result.nativeGraph &&
+          this.executedGraphDefinition
+        ) {
           this.selectedHistoricalResult.set(result.localResult);
           this.historicalDefinition.set(this.executedGraphDefinition);
         }
         this.stopFederatedRun();
       }
+      if (effectiveDefinition !== previousDefinition || queryState.isSaving)
+        this.authorFormatNavigationSnapshot.set(undefined);
       this.queryState = queryState;
+      this.authorCustomerId.set(
+        queryState.authorBindings?.['CustomerId'] ?? '',
+      );
+      this.initializeCustomerInvoiceExample();
+      if (previousCustomerId !== this.authorCustomerId())
+        this.invalidateComparison('The CustomerId binding changed.');
       // Signal write (zoneless-safe, unlike the plain-field write just
       // above) — see `queryDef`'s own doc comment.
-      if (this.queryDef() !== queryState.def) { this.savedPlanReview.reset(); this.publicDataRevisionAcknowledged.set(false); }
-      if (this.queryDef()?.id !== queryState.def?.id) this.ovdbToken.set('');
-      if (queryState.def && this.queryDef()?.id !== queryState.def.id) this.federatedMode.set(federatedVisibleMode(queryState.def).defaultMode);
-      this.queryDef.set(queryState.def);
-      if (queryState.def?.federation?.nativeGraph) void this.refreshLocalHistory();
+      const definitionChanged =
+        previousDefinition?.id !== effectiveDefinition?.id ||
+        previousDefinition?.request !== effectiveDefinition?.request ||
+        previousDefinition?.federation !== effectiveDefinition?.federation ||
+        previousDefinition?.publicData !== effectiveDefinition?.publicData;
+      if (definitionChanged) {
+        this.savedPlanReview.reset();
+        this.publicDataRevisionAcknowledged.set(false);
+      }
+      if (this.queryDef()?.id !== queryState.def?.id) this.setOvdbToken('');
+      if (effectiveDefinition && this.queryDef()?.id !== effectiveDefinition.id)
+        this.federatedMode.set(
+          federatedVisibleMode(effectiveDefinition).defaultMode,
+        );
+      this.queryDef.set(effectiveDefinition);
+      this.changeDetector.markForCheck();
+      if (effectiveDefinition?.federation?.nativeGraph)
+        void this.refreshLocalHistory();
       if (this.queryState.environments && !this.queryState.activeEnv) {
         this.setActiveEnv(this.queryState.environments[0].id);
       }
@@ -705,6 +5171,14 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         this.datatugNavContextService.setCurrentEnvironment(this.envId);
       }
       this.syncScopeAndBindings();
+      const semanticCopy = QueryPageComponent.pendingSemanticCopy;
+      if (semanticCopy && semanticCopy.id === queryState.id && this.route.snapshot.queryParamMap.get('id') === semanticCopy.id) {
+        QueryPageComponent.pendingSemanticCopy = undefined;
+        this.envId = semanticCopy.environment;
+        this.selectedSource.set(semanticCopy.selectedSource);
+        this.setDisplayedResult(semanticCopy.result);
+        this.commitSuccessfulResult(semanticCopy.result, semanticCopy.definition, undefined, false);
+      }
     } catch (e) {
       this.errorLogger.logError(
         e,
@@ -714,7 +5188,21 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   };
 
   ngOnDestroy(): void {
+    this.invalidateSemanticMapping();
+    this.authorViewActive = false;
+    ++this.authorRowDetailsFocusGeneration;
+    ++this.authorPreviewLifetime;
+    this.authorFormatNavigationSnapshot.set(undefined);
+    this.expireComparisonSession('This page session ended.');
+    ++this.authorLookupFocusRevision;
+    ++this.authorLookupRequestRevision;
+    this.pendingAuthorLookupNavigation = undefined;
+    this.authorRunAbort?.abort();
+    this.authorRunAbort = undefined;
+    ++this.semanticRunLifetime;
     this.invalidateFederatedRun();
+    this.setDisplayedResult(undefined);
+    this.committedRun.set(undefined);
     this.historySelection++;
     this.savedPlanReview.destroy();
     void this.federatedQuery.dispose().catch(() => undefined);
@@ -752,6 +5240,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
             return;
           }
           this.envId = id;
+          this.agentSelectedEnvironment.set(id);
 
           let activeEnv = this.queryState.environments?.find(
             (env) => env.id === id,
@@ -790,18 +5279,93 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.datatugNavContextService.currentProject
       .pipe(takeUntil(this.destroyed))
       .subscribe((currentProject) => {
-        if (
-          !currentProject ||
-          (this.project?.ref.projectId === currentProject.ref.projectId &&
-            this.project?.ref.storeId === currentProject.ref.storeId &&
-            this.project?.summary?.environments?.length ===
-              currentProject.summary?.environments?.length)
-        ) {
+        if (!currentProject) {
+          if (this.project) {
+            this.comparisonAccessProjectRef = undefined;
+            this.comparisonProjectAccess.set(undefined);
+            this.invalidateComparison(
+              'The current project context was cleared.',
+            );
+          }
           return; // TODO: cleanup query state?
         }
-        if (this.project?.ref.projectId !== currentProject.ref.projectId || this.project?.ref.storeId !== currentProject.ref.storeId) this.invalidateHistoryScope();
+        if (
+          this.comparisonRouteProjectRef &&
+          !equalProjectRef(this.comparisonRouteProjectRef, currentProject.ref)
+        )
+          return;
+        if (
+          equalProjectRef(this.project?.ref, currentProject.ref) &&
+          this.project?.summary?.environments?.length ===
+            currentProject.summary?.environments?.length &&
+          this.project?.summary?.access === currentProject.summary?.access &&
+          this.comparisonProjectAccess() === currentProject.summary?.access
+        ) {
+          this.restoreNavigationDraft(currentProject.ref);
+          return;
+        }
+        if (
+          this.project?.ref.projectId !== currentProject.ref.projectId ||
+          this.project?.ref.storeId !== currentProject.ref.storeId
+        )
+          this.invalidateHistoryScope();
+        const previousRef = this.project?.ref;
         this.project = currentProject;
-        if (this.queryDef()?.federation?.nativeGraph) void this.refreshLocalHistory();
+        this.refreshHostedProject(currentProject.ref, previousRef);
+        this.comparisonAccessProjectRef = currentProject.ref;
+        this.comparisonProjectAccess.set(currentProject.summary?.access);
+        this.initializeCustomerInvoiceExample();
+        if (!equalProjectRef(previousRef, currentProject.ref)) {
+          this.agentRunEnvironments.set([]);
+          this.agentRunEnvironmentsError.set('');
+          this.agentSelectedEnvironment.set('');
+          this.authorContextTab.set(undefined);
+          this.authorSourcesToggled(false);
+          this.selectedAuthorResultRow.set(undefined);
+          this.sharedQuerySaveAllowed.set(false);
+          if (isSharedProjectRef(currentProject.ref)) {
+            this.queriesService
+              .capabilities(currentProject.ref)
+              .pipe(takeUntil(this.destroyed))
+              .subscribe({
+                next: (capabilities) => {
+                  if (equalProjectRef(this.project?.ref, currentProject.ref))
+                    this.sharedQuerySaveAllowed.set(
+                      capabilities.querySave === true,
+                    );
+                },
+                error: () => {
+                  if (equalProjectRef(this.project?.ref, currentProject.ref))
+                    this.sharedQuerySaveAllowed.set(false);
+                },
+              });
+          }
+        }
+        if (hasQueryActivity(currentProject.ref)) {
+          this.githubProjectActivity.resolve(currentProject.ref).subscribe({
+            error: (error: unknown) =>
+              this.errorLogger.logError(
+                error,
+                'Failed to resolve GitHub Business query activity context',
+              ),
+          });
+        }
+        this.restoreNavigationDraft(currentProject.ref);
+        if (
+          (currentProject.ref.projectApi ||
+            isSharedProjectRef(currentProject.ref)) &&
+          !equalProjectRef(previousRef, currentProject.ref)
+        ) {
+          const routeId = this.route.snapshot.paramMap.get('queryId');
+          const parameterId = this.route.snapshot.queryParamMap.get('id');
+          const id =
+            routeId && parameterId && routeId !== parameterId
+              ? undefined
+              : routeId || parameterId;
+          if (id) this.queryEditorStateService.openQuery(id);
+        }
+        if (this.queryDef()?.federation?.nativeGraph)
+          void this.refreshLocalHistory();
         this.syncScopeAndBindings();
         const summary = currentProject?.summary;
         if (!summary) {
@@ -847,6 +5411,48 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     } catch (e) {
       this.errorLogger.logError(e, 'Failed to set active environment');
     }
+  }
+
+  public async loadAgentRunEnvironments(): Promise<void> {
+    const ref = this.project?.ref;
+    if (!ref || isBrowserSqlProject(ref) || this.agentRunEnvironmentsLoading())
+      return;
+    this.agentRunEnvironmentsLoading.set(true);
+    this.agentRunEnvironmentsError.set('');
+    try {
+      const project = await firstValueFrom(
+        this.injector.get(ProjectService).getFull(ref),
+      );
+      if (!equalProjectRef(this.project?.ref, ref)) return;
+      this.agentRunEnvironments.set(project.environments || []);
+      if (!project.environments?.length)
+        this.agentRunEnvironmentsError.set(
+          'No logical environments are configured for this project.',
+        );
+    } catch {
+      if (equalProjectRef(this.project?.ref, ref))
+        this.agentRunEnvironmentsError.set(
+          'Could not load project environments from the agent. Retry or reconnect.',
+        );
+    } finally {
+      this.agentRunEnvironmentsLoading.set(false);
+    }
+  }
+
+  public isAgentRunProject(): boolean {
+    return !!this.project && !isBrowserSqlProject(this.project.ref);
+  }
+
+  public selectAgentRunEnvironment(id: string): void {
+    if (
+      !this.agentRunEnvironments().some((environment) => environment.id === id)
+    )
+      return;
+    this.agentSelectedEnvironment.set(id);
+    this.envId = id;
+    this.datatugNavContextService.setCurrentEnvironment(id);
+    this.setActiveEnv(id);
+    this.runError.set(undefined);
   }
 
   private getEnvData(projRef: IProjectRef, envId: string): void {
@@ -943,13 +5549,20 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         // as the active environment for a direct URL load, only a click-
         // through from within the app already had a matching `queryState`
         // by the time `env` was applied).
-        let queryId = queryParams.get('id');
+        const routeId = this.route.snapshot.paramMap.get('queryId');
+        const parameterId = queryParams.get('id');
+        if (routeId && parameterId && routeId !== parameterId) {
+          this.customerInvoiceExample.set(false);
+          this.runError.set('Query URL and query ID disagree.');
+          return;
+        }
+        let queryId = routeId || parameterId;
         const isNew = !queryId;
         if (isNew) {
           queryId = this.randomIdService.newRandomId();
-          queryId = '' + (this.editorState?.activeQueries?.length || 1);
         }
         this.setQueryId(queryId, isNew);
+        this.initializeCustomerInvoiceExample();
 
         const envId = queryParams.get('env');
         if (envId) {
@@ -959,11 +5572,77 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     });
   }
 
+  private refreshHostedProject(
+    ref: IProjectRef,
+    previousRef?: IProjectRef,
+  ): void {
+    if (equalProjectRef(previousRef, ref)) return;
+    this.hostedDetectiveState.set(undefined);
+    this.hostedDetectiveError.set(undefined);
+    this.hostedEnvironment.set('');
+    this.hostedExecution.set(undefined);
+    this.localScenarioExecution.set(undefined);
+    this.hostedSelectedRow.set(undefined);
+    this.hostedStatusFilter.set('all');
+    this.hostedDetectiveLoadedScope.set(undefined);
+    this.hostedDetectiveProjectRef.set(ref);
+    const context = this.detectiveContext(ref);
+    const requestKey = context
+      ? this.detectiveScopeKey(ref, context)
+      : `${JSON.stringify(ref)}:unavailable`;
+    this.hostedDetectiveRequestKey = requestKey;
+    const generation = ++this.hostedDetectiveRequestGeneration;
+    if (!context) return;
+    this.detectiveClient
+      .state(context)
+      .pipe(takeUntil(this.destroyed))
+      .subscribe({
+        next: (state) => {
+          if (
+            generation === this.hostedDetectiveRequestGeneration &&
+            this.hostedDetectiveRequestKey === requestKey &&
+            equalProjectRef(this.project?.ref, ref)
+          ) {
+            this.hostedDetectiveState.set(state);
+            this.hostedDetectiveLoadedScope.set(requestKey);
+          }
+        },
+        error: (error: unknown) => {
+          if (
+            generation === this.hostedDetectiveRequestGeneration &&
+            this.hostedDetectiveRequestKey === requestKey &&
+            equalProjectRef(this.project?.ref, ref)
+          )
+            this.hostedDetectiveError.set(
+              detectiveErrorMessage(error, context.kind === 'cloud'),
+            );
+        },
+      });
+  }
+
   private onProjRefChanged = (ref: IProjectRef) => {
+    this.comparisonRouteProjectRef = ref;
     const prevProject = this.project;
-    if (ref.projectId !== prevProject?.ref.projectId || ref.storeId !== prevProject?.ref.storeId) this.invalidateHistoryScope();
-    this.project = newProjectContextFromRef(ref);
-    if (this.queryDef()?.federation?.nativeGraph) void this.refreshLocalHistory();
+    if (
+      ref.projectId !== prevProject?.ref.projectId ||
+      ref.storeId !== prevProject?.ref.storeId
+    )
+      this.invalidateHistoryScope();
+    const sameResolvedProject =
+      equalProjectRef(prevProject?.ref, ref) && !!prevProject?.summary;
+    this.project = sameResolvedProject
+      ? prevProject
+      : newProjectContextFromRef(ref);
+    this.refreshHostedProject(ref, prevProject?.ref);
+    // A genuinely new route ref arrives before its summary and has no admission.
+    // Preserve a summary only when it already belongs to this exact full ref.
+    if (!sameResolvedProject) {
+      this.comparisonAccessProjectRef = undefined;
+      this.comparisonProjectAccess.set(undefined);
+    }
+    this.syncScopeAndBindings();
+    if (this.queryDef()?.federation?.nativeGraph)
+      void this.refreshLocalHistory();
     if (
       this.queryId &&
       (ref.projectId !== prevProject?.ref?.projectId ||
@@ -984,6 +5663,20 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   private setQueryId(id?: string | null, isNew = false): void {
+    const pendingNavigation = this.pendingAuthorLookupNavigation;
+    const currentNavigation = this.router.currentNavigation?.();
+    const isOwnedNavigation =
+      !!pendingNavigation &&
+      pendingNavigation.targetId === id &&
+      currentNavigation?.extras.info === pendingNavigation;
+    if (pendingNavigation && !isOwnedNavigation && currentNavigation) {
+      pendingNavigation.routeSuperseded = true;
+    }
+    if (isOwnedNavigation && pendingNavigation) {
+      pendingNavigation.routeObserved = true;
+      pendingNavigation.observedNavigationId = currentNavigation?.id;
+      return;
+    }
     if (this.queryId === id) {
       return;
     }
@@ -995,9 +5688,38 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     if (i >= 0) {
       this.queryFolderPath = id.substring(0, i);
     }
-    if (!isNew) {
+    if (!isNew && this.navigationDraft?.query.id !== id) {
       this.queryEditorStateService.openQuery(id);
     }
+  }
+
+  private restoreNavigationDraft(ref: IProjectRef): void {
+    const draft = this.navigationDraft;
+    if (
+      !draft ||
+      !(
+        equalProjectRef(draft.ref, ref) ||
+        (!draft.ref.projectApi &&
+          !ref.projectApi &&
+          draft.ref.storeId === ref.storeId &&
+          draft.ref.projectId === ref.projectId &&
+          draft.ref.spaceID === ref.spaceID)
+      )
+    )
+      return;
+    const existing = this.queryEditorStateService.getQueryState(draft.query.id);
+    if (existing?.isNew) return;
+    const state: IQueryState = {
+      id: draft.query.id,
+      title: draft.query.title,
+      queryType: draft.query.request.queryType,
+      request: draft.query.request,
+      def: draft.query,
+      federation: draft.query.federation,
+      isNew: true,
+    };
+    if (existing) this.queryEditorStateService.updateQueryState(state);
+    else this.queryEditorStateService.newQuery(state);
   }
 
   private setQuery(query: IQueryDef): void {
@@ -1025,7 +5747,23 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   public get isChanged(): boolean {
-    return isQueryChanged(this.queryState);
+    if (isQueryChanged(this.queryState)) return true;
+    const draft = this.authorSavedDefinition();
+    if (!draft || draft.queryId !== this.queryState.id) return false;
+    return (
+      JSON.stringify({
+        request: this.queryState.request,
+        relationshipBindings: this.queryState.def?.relationshipBindings?.length
+          ? this.queryState.def.relationshipBindings
+          : undefined,
+      }) !==
+      JSON.stringify({
+        request: draft.saved.request,
+        relationshipBindings: draft.saved.relationshipBindings?.length
+          ? draft.saved.relationshipBindings
+          : undefined,
+      })
+    );
   }
 
   serverChanged(event: CustomEvent): void {
@@ -1082,6 +5820,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   public queryTitleChanged(event: Event): void {
+    if (this.queryState.saveSupported === false && !this.project?.ref.spaceID)
+      return;
     const ce = event as CustomEvent;
     this.queryState = {
       ...this.queryState,
@@ -1137,7 +5877,68 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     return envState;
   }
 
+  public readonly queryBranches = signal<
+    readonly { name: string; head: string }[]
+  >([]);
+  public readonly branchError = signal<string | undefined>(undefined);
+  public loadQueryBranches(): void {
+    const ref = this.project?.ref;
+    if (!ref?.projectApi) return;
+    this.queryBranches.set([]);
+    this.branchError.set(undefined);
+    this.queriesService.branches(ref).subscribe({
+      next: (result) => {
+        if (!equalProjectRef(ref, this.project?.ref)) return;
+        this.queryBranches.set(
+          ref.projectApi === 'local'
+            ? result.branches.filter(
+                (branch) => branch.name === result.currentBranch,
+              )
+            : result.branches,
+        );
+      },
+      error: () => {
+        if (equalProjectRef(ref, this.project?.ref))
+          this.branchError.set(
+            'Branches could not be loaded. The draft is unchanged.',
+          );
+      },
+    });
+  }
+  public queryBranchChanged(event: Event): void {
+    const branch = (event as CustomEvent<{ value: string }>).detail.value;
+    const ref = this.project?.ref;
+    if (
+      ref?.projectApi !== 'cloud' ||
+      !this.queryBranches().some((item) => item.name === branch) ||
+      branch === ref.branch
+    )
+      return;
+    if (
+      this.isChanged &&
+      !confirm('Discard this draft and open the selected branch?')
+    )
+      return;
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { projectApi: 'cloud', branch },
+      queryParamsHandling: 'merge',
+    });
+  }
+
+  public reloadSavedQuery(): void {
+    if (
+      !this.queryState.id ||
+      (this.isChanged &&
+        !confirm('Discard this draft and reload the saved query?'))
+    )
+      return;
+    this.queryEditorStateService.reloadQuery(this.queryState.id);
+  }
+
   public saveChanges(): void {
+    if (this.semanticSaving()) return;
+    if (!this.canSaveQuery()) return;
     if (!this.isChanged) {
       alert('Query does not require saving as is not changed yet');
       return;
@@ -1146,7 +5947,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.queryEditorStateService
         .saveQuery(this.queryState, this.project.ref)
         .subscribe({
-          error: this.errorLogger.logErrorHandler('Failed to save query'),
+          error: () => {
+            /* The common API publishes a safe inline error; legacy failures keep the logger. */ if (
+              !this.project?.ref.projectApi
+            )
+              this.errorLogger.logError('Failed to save query');
+          },
         });
     }
   }
@@ -1174,11 +5980,16 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       return;
     }
     const selectionFacts = this.buildSelectionFacts(parameters);
-    const contextFacts = this.investigationContext
+    const sessionId = this.contextSessionId();
+    const contextFacts = this.sessionWorkspace && sessionId
+      ? this.sessionWorkspace.appliedFactsFor(sessionId, this.envId ?? '')
+      : this.investigationContext
       .items()
       .filter((item) => item.enabled && isFactSelectedForBinding(item));
     const activeContextScope = this.investigationContext.scope();
-    const contextScopeKey = activeContextScope
+    const contextScopeKey = this.sessionWorkspace && sessionId
+      ? this.sessionWorkspace.bindingScopeKey(sessionId, this.envId ?? '')
+      : activeContextScope
       ? scopeKey(activeContextScope)
       : undefined;
     const clearedParamIds = this.clearedParamIds();
@@ -1226,6 +6037,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       : discovery;
 
     const snapshotKey = JSON.stringify([
+      sessionId,
       this.project?.ref.storeId,
       this.project?.ref.projectId,
       this.envId,
@@ -1543,6 +6355,177 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
    * the template can call it directly. */
   protected readonly displayValue = displayTypedValue;
 
+  private currentQueryIdentity(): symbol {
+    return this.queryIdentityToken();
+  }
+
+  private setDisplayedResult(result: FederatedQueryResult | undefined): void {
+    ++this.resultPageRequestGeneration;
+    this.resultPageLoading.set(false);
+    this.displayedResultGeneration.update((generation) => generation + 1);
+    this.runResult.set(result);
+  }
+
+  private updateDisplayedAttemptTotalRows(
+    totalRows: number,
+    generation: number | undefined,
+  ): void {
+    if (
+      generation === undefined ||
+      this.displayedResultGeneration() !== generation
+    )
+      return;
+    const displayed = this.runResult();
+    if (!displayed) return;
+    const updated = { ...displayed, totalRows, hasMore: false };
+    this.runResult.set(updated);
+    const committed = this.committedRun();
+    if (committed?.displayedResultGeneration === generation) {
+      const frozenResult = snapshotCommittedResult(updated);
+      this.committedRun.set(
+        Object.freeze({
+          ...committed,
+          result: frozenResult,
+          provenance: frozenResult.provenance,
+        }),
+      );
+    }
+  }
+
+  private showAttemptResult(result: FederatedQueryResult): void {
+    this.selectedHistoricalResult.set(undefined);
+    this.historicalDefinition.set(undefined);
+    this.relatedResultSet.set('affiliations');
+    this.resultPageIndex.set(0);
+    this.resultPageRows.set(result.recordset.rows);
+    this.setDisplayedResult(result);
+  }
+
+  private currentResultTargetIdentity(): string {
+    return JSON.stringify([
+      this.queryDef()?.connectionId,
+      this.selectedSource(),
+      this.envId,
+    ]);
+  }
+
+  private currentResultTargetLabel(
+    definition = this.queryDef(),
+    result?: FederatedQueryResult,
+  ): string {
+    const federationBase = definition?.federation?.ovdbBaseUrl;
+    if (federationBase) {
+      try {
+        return `OVDB at ${new URL(federationBase).origin}`;
+      } catch {
+        return 'Configured OVDB endpoint';
+      }
+    }
+    const connectionId = definition?.connectionId;
+    if (connectionId === 'chinook-sqlite')
+      return 'Chinook SQLite browser fixture';
+    if (connectionId) {
+      const connection = this.activeEnv?.summary?.connections?.[connectionId];
+      return connection?.database
+        ? `Database ${connection.database}`
+        : 'Saved database connection';
+    }
+    const selectedSource = this.selectedSource();
+    const source = selectedSource ?? result?.provenance.source;
+    if (source) {
+      const label = this.availableTargets().find(
+        (target) => target.source === source,
+      )?.label;
+      if (label) return label;
+      if (selectedSource) return 'Selected authorized source';
+      if (result?.provenance.source)
+        return `Source ${result.provenance.source}`;
+    }
+    const environment =
+      this.activeEnv?.title ??
+      this.queryState.environments?.find((item) => item.id === this.envId)
+        ?.title;
+    if (environment) return `Environment ${environment}`;
+    return this.envId ? 'Current environment' : 'Authorized query target';
+  }
+
+  private currentEnvironmentLabel(): string | undefined {
+    return (
+      this.activeEnv?.title ??
+      this.queryState.environments?.find((item) => item.id === this.envId)
+        ?.title
+    );
+  }
+
+  protected previousResultDisplayCount(rowCount: number): number {
+    return Math.min(rowCount, this.resultPageSize);
+  }
+
+  private hasCompleteResult(result: FederatedQueryResult): boolean {
+    const runtimePages = Object.values(result.runtimeRead?.pages ?? {});
+    return (
+      result.truncated !== true &&
+      result.hasMore !== true &&
+      !runtimePages.some((page) => !page.complete || page.possiblyMore)
+    );
+  }
+
+  private commitSuccessfulResult(
+    result: FederatedQueryResult,
+    definition: IQueryDef,
+    timing?: QueryRunTiming,
+    recordSessionOutcome = true,
+  ): void {
+    if (!this.hasCompleteResult(result)) {
+      if (recordSessionOutcome) void this.finishSessionQuery('failed', 'incomplete-result');
+      return;
+    }
+    this.semanticExecutedDefinition.set(definition);
+    if (recordSessionOutcome) void this.finishSessionQuery('completed');
+    const frozenResult = snapshotCommittedResult(result);
+    const request = definition.request as ITextQueryRequest & {
+      readonly method?: string;
+    };
+    const executedDefinition: CommittedQueryDefinition = cloneAndFreeze({
+      request: {
+        queryType: request.queryType,
+        ...(request.queryType === QueryType.HTTP
+          ? typeof request.method === 'string'
+            ? { method: request.method }
+            : {}
+          : typeof request.text === 'string'
+            ? { text: request.text }
+            : {}),
+      },
+      ...(definition.federation?.nativeGraph
+        ? { nativeGraph: definition.federation.nativeGraph }
+        : {}),
+    });
+    const securityContextId = this.agentContext.securityContextId();
+    const resultTarget = this.currentResultTargetLabel(definition, result);
+    this.committedRun.set(
+      Object.freeze({
+        result: frozenResult,
+        displayedResultGeneration: this.displayedResultGeneration(),
+        executedDefinition,
+        queryIdentity: this.currentQueryIdentity(),
+        scope: Object.freeze({
+          storeId: this.project?.ref.storeId,
+          projectId: this.project?.ref.projectId,
+          queryId: this.queryId,
+          ...(securityContextId ? { securityContextId } : {}),
+          ...(this.currentEnvironmentLabel()
+            ? { environment: `Environment ${this.currentEnvironmentLabel()}` }
+            : {}),
+          target: resultTarget,
+        }),
+        targetIdentity: this.currentResultTargetIdentity(),
+        ...(timing ? { timing: Object.freeze({ ...timing }) } : {}),
+        provenance: frozenResult.provenance,
+      }),
+    );
+  }
+
   /** REQ:parameter-auto-binding, REQ:no-hidden-filters, REQ:limitation-visible
    * (INTEGRATION.md §5-6) — runs the query through SemanticApiService (never a
    * browser-built query) with only the bindings the user has actually seen and not
@@ -1551,15 +6534,488 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
    * project/environment/securityContextId Scope and, per api-contract.md, the exact
    * bindingOrigins for the submitted parameter keys — display provenance only, never
    * authorization. */
+  private runHostedSavedQuery(
+    ref: IProjectRef,
+    queryId: string,
+    definition: IQueryDef | undefined,
+    runRequestedAt: number,
+  ): void {
+    if (this.running()) return;
+    if (
+      !ref.spaceID ||
+      !definition ||
+      isDevicePersonalQuery(queryId) ||
+      this.queryState.isNew ||
+      this.queryState.isSaving ||
+      this.isChanged
+    ) {
+      this.runError.set('Save this query before running its hosted revision.');
+      return;
+    }
+    const state = this.hostedDetectiveState();
+    if (!state?.capabilities.canRun) {
+      this.runError.set(
+        this.hostedDetectiveError() ??
+          'Hosted execution is unavailable for this project. Reload after its executor is connected.',
+      );
+      return;
+    }
+    const environment = this.hostedEnvironment();
+    if (!environment || !state.environments?.includes(environment)) {
+      this.runError.set(
+        'Select an available hosted environment before running.',
+      );
+      return;
+    }
+    if (this.hasBlockedBindings()) {
+      this.runError.set(
+        'Resolve every ambiguous, conflicting or required parameter before running.',
+      );
+      return;
+    }
+    const missingFact = this.effectiveBindings().find(
+      (binding) =>
+        (binding.origin === 'selection' || binding.origin === 'context') &&
+        !binding.factId,
+    );
+    if (missingFact) {
+      this.runError.set(
+        `Cannot run ${missingFact.parameterId}: its bound value has no fact provenance.`,
+      );
+      return;
+    }
+    const inputs = Object.fromEntries(
+      this.effectiveBindings().map((binding) => [
+        binding.parameterId,
+        binding.value as TypedValue,
+      ]),
+    );
+    const context = {
+      kind: 'cloud' as const,
+      storage: 'firestore' as const,
+      spaceID: ref.spaceID,
+      project: ref.projectId,
+    };
+    const projectKey = JSON.stringify(ref);
+    const definitionKey = JSON.stringify(definition);
+    const lifetime = ++this.federatedRunLifetime;
+    const current = (): boolean =>
+      lifetime === this.federatedRunLifetime &&
+      JSON.stringify(this.project?.ref) === projectKey &&
+      this.queryId === queryId &&
+      this.hostedEnvironment() === environment &&
+      JSON.stringify(this.queryDef()) === definitionKey;
+    this.hostedExecution.set(undefined);
+    this.hostedSelectedRow.set(undefined);
+    this.hostedStatusFilter.set('all');
+    this.hostedScenarioMessage.set('');
+    this.hostedScenarioError.set('');
+    this.running.set(true);
+    this.runError.set(undefined);
+    this.detectiveClient
+      .runHostedQuery(context, queryId, environment, inputs)
+      .pipe(takeUntil(this.destroyed))
+      .subscribe({
+        next: (response: HostedQueryResponse) => {
+          if (!current()) return;
+          const execution = response.result.execution;
+          if (
+            !execution ||
+            execution.storeId !== ref.storeId ||
+            execution.projectId !== ref.projectId
+          ) {
+            this.runError.set(
+              'The hosted query returned no matching retained execution receipt.',
+            );
+            this.running.set(false);
+            return;
+          }
+          const result: FederatedQueryResult = response.result;
+          this.showAttemptResult(result);
+          const timing: QueryRunTiming = {
+            allResultsLoadedMs: Math.max(0, monotonicTime() - runRequestedAt),
+            noRecords: result.recordset.rows.length === 0,
+          };
+          this.queryRunTiming.set(timing);
+          this.commitSuccessfulResult(result, definition, timing);
+          const executed: HostedQueryExecution = {
+            result,
+            generation: this.displayedResultGeneration(),
+            projectKey,
+            queryId,
+            environment,
+            execution,
+            queryRevision: response.queryRevision,
+            resultFingerprint: response.resultFingerprint,
+          };
+          this.hostedExecution.set(executed);
+          const validateReceipt = (attempt: number): void => {
+            if (!current()) return;
+            this.detectiveClient
+              .action(context, {
+                type: 'run-query-validators',
+                queryId,
+                environment,
+                execution,
+                ...(this.hostedScenarioTarget()
+                  ? { caseId: this.hostedScenarioTarget()?.caseId }
+                  : {}),
+              })
+              .pipe(takeUntil(this.destroyed))
+              .subscribe({
+                next: (validated) => {
+                  if (!current()) return;
+                  const run = validated.run;
+                  if (run?.executionStatus === 'pending') {
+                    this.hostedExecution.set({
+                      ...executed,
+                      run,
+                      validationPending: true,
+                    });
+                    this.running.set(false);
+                    if (attempt < 20)
+                      setTimeout(() => validateReceipt(attempt + 1), 1500);
+                    else
+                      this.hostedExecution.set({
+                        ...executed,
+                        run,
+                        validationError:
+                          'Validation is still pending. Refresh run history to inspect its final outcome.',
+                      });
+                    return;
+                  }
+                  if (
+                    !run ||
+                    run.kind !== 'query-validators' ||
+                    run.queryId !== queryId ||
+                    run.environment !== environment ||
+                    run.steps[0]?.queryId !== queryId ||
+                    !sameExecution(execution, run.steps[0]?.execution)
+                  ) {
+                    this.hostedExecution.set({
+                      ...executed,
+                      validationError:
+                        'Validation did not return a run linked to these exact query rows.',
+                    });
+                  } else {
+                    this.hostedExecution.set({
+                      ...executed,
+                      run,
+                      caseLinkNotice: caseRunLinkMessage(
+                        this.hostedScenarioTarget()?.caseId,
+                        run.id,
+                        validated.caseLinkStatus,
+                        run.executionStatus,
+                      ),
+                    });
+                  }
+                  this.running.set(false);
+                },
+                error: (error: unknown) => {
+                  if (!current()) return;
+                  if (
+                    error instanceof HttpErrorResponse &&
+                    error.status === 409 &&
+                    attempt < 20
+                  ) {
+                    this.hostedExecution.set({
+                      ...executed,
+                      validationPending: true,
+                    });
+                    this.running.set(false);
+                    setTimeout(() => validateReceipt(attempt + 1), 1500);
+                    return;
+                  }
+                  this.hostedExecution.set({
+                    ...executed,
+                    validationError: detectiveErrorMessage(error, true),
+                  });
+                  this.running.set(false);
+                },
+              });
+          };
+          validateReceipt(0);
+        },
+        error: (error: unknown) => {
+          if (!current()) return;
+          this.runError.set(detectiveErrorMessage(error, true));
+          this.running.set(false);
+        },
+      });
+  }
+
+  public async completeHostedScenarioStep(): Promise<void> {
+    const ref = this.project?.ref;
+    const target = this.hostedScenarioTarget();
+    const hostedExecution = this.activeHostedExecution();
+    const localExecution = this.activeLocalScenarioExecution();
+    const executionRef =
+      hostedExecution?.execution ?? localExecution?.execution;
+    const queryId = hostedExecution?.queryId ?? localExecution?.queryId;
+    const environment =
+      hostedExecution?.environment ?? localExecution?.environment;
+    const context = ref ? this.detectiveContext(ref) : undefined;
+    if (
+      !ref ||
+      !target ||
+      !executionRef ||
+      !queryId ||
+      queryId !== this.queryId ||
+      !environment ||
+      !context ||
+      this.hostedScenarioBusy()
+    )
+      return;
+    const completionToken = ++this.hostedScenarioCompletionToken;
+    const isCurrent = (): boolean =>
+      equalProjectRef(this.project?.ref, ref) &&
+      this.queryId === queryId &&
+      this.hostedScenarioTarget()?.caseId === target.caseId &&
+      this.hostedScenarioTarget()?.applicationId === target.applicationId &&
+      this.hostedScenarioTarget()?.stepId === target.stepId &&
+      (hostedExecution
+        ? this.activeHostedExecution() === hostedExecution
+        : this.activeLocalScenarioExecution() === localExecution);
+    this.hostedScenarioBusy.set(true);
+    this.hostedScenarioError.set('');
+    this.hostedScenarioMessage.set('');
+    try {
+      const latest = await firstValueFrom(this.detectiveClient.state(context));
+      if (!isCurrent()) return;
+      const item = latest.cases.find(
+        (candidate) => candidate.id === target.caseId,
+      );
+      const application = item?.scenarioApplications?.find(
+        (candidate) => candidate.id === target.applicationId,
+      );
+      const step = application?.snapshot.steps.find(
+        (candidate) => candidate.id === target.stepId,
+      );
+      const receipt = application?.steps.find(
+        (candidate) => candidate.stepId === target.stepId,
+      );
+      if (
+        !item ||
+        item.status !== 'active' ||
+        step?.kind !== 'query' ||
+        step.ref !== queryId ||
+        receipt?.status !== 'pending'
+      )
+        throw new Error(
+          'This Scenario step changed. Return to the Case and review it.',
+        );
+      const response = await firstValueFrom(
+        this.detectiveClient.action(
+          context,
+          {
+            type: 'record-scenario-step',
+            caseId: item.id,
+            applicationId: target.applicationId,
+            stepId: target.stepId,
+            stepStatus: 'completed',
+            queryId,
+            environment,
+            execution: executionRef,
+          },
+          item.version,
+        ),
+      );
+      if (!isCurrent()) return;
+      const updatedCase = response.case;
+      if (!updatedCase)
+        throw new Error('The project store did not return the updated Case.');
+      this.hostedDetectiveState.set({
+        ...latest,
+        cases: latest.cases.map((candidate) =>
+          candidate.id === item.id ? updatedCase : candidate,
+        ),
+      });
+      this.hostedScenarioMessage.set(
+        hostedExecution
+          ? 'Scenario query step recorded from this saved execution. Its evidence outcome is unknown until a Validator asserts it.'
+          : 'Scenario query step recorded from the persisted local query execution. The receipt proves execution, not a validation outcome.',
+      );
+    } catch (error) {
+      if (isCurrent())
+        this.hostedScenarioError.set(
+          detectiveErrorMessage(error, context.kind === 'cloud'),
+        );
+    } finally {
+      if (completionToken === this.hostedScenarioCompletionToken)
+        this.hostedScenarioBusy.set(false);
+    }
+  }
+
   public runQuery(): void {
-    const projectId = this.project?.ref.projectId;
+    if (this.sessionWorkspace && this.contextSessionId()) {
+      if (!this.sessionPinning() && !this.running() && !this.sessionRecordedRun()) void this.runSessionQuery();
+      return;
+    }
+    this.runQueryWithPinnedInput();
+  }
+
+  private async runSessionQuery(): Promise<void> {
+    const workspace = this.sessionWorkspace;
+    const definition = this.queryDef();
+    const sessionId = this.contextSessionId();
+    if (!workspace || !definition || !sessionId || !workspace.canExecuteFor(sessionId)) {
+      this.runError.set('Resume this session before running a query.'); return;
+    }
+    const scopes = workspace.capabilities()?.environments.filter((scope) => scope.environmentId === this.envId) ?? [];
+    if (scopes.length !== 1) { this.runError.set('Choose one admitted environment and identity domain before running this session query.'); return; }
+    const request = definition.request as ITextQueryRequest;
+    if (![QueryType.SQL, QueryType.DTQL, QueryType.TugQL].includes(request.queryType) || typeof request.text !== 'string') {
+      this.runError.set('This session adapter can record SQL and TugQL executions. This request type has no supported private definition snapshot yet.'); return;
+    }
+    if (this.rebindSuggestions().length || this.hasBlockedBindings()) {
+      this.runError.set('Review and accept the current context bindings before creating a saved session run.'); return;
+    }
+    this.sessionCompletionGeneration++;
+    const latestFacts = workspace.appliedFactsFor(sessionId, this.envId ?? '');
+    const bindings = this.effectiveBindings();
+    if (bindings.some((binding) => binding.origin === 'context' && !latestFacts.some((fact) => fact.id === binding.factId && fact.value && binding.value && typedValuesEqual(fact.value, binding.value)))) {
+      this.runError.set('These frozen bindings differ from the current applied manifest. Review the new context before running.'); return;
+    }
+    const resolvedParameters: Record<string, TypedValue> = Object.fromEntries(bindings.flatMap((binding) =>
+      binding.value ? [[binding.parameterId, binding.value] as const] : []));
+    if (this.isTugqlAuthorJourney() && this.authorHasCustomerIdParameter()) {
+      if (!this.authorCustomerIdValid()) { this.runError.set('Enter a whole-number CustomerId before running.'); return; }
+      resolvedParameters['CustomerId'] = { type: 'integer', value: this.authorCustomerId() };
+    }
+    const document: ContextDefinitionDocument = { schemaVersion: 1, kind: 'query', queries: [{ id: definition.id ?? this.queryId ?? 'query', queryType: request.queryType as 'SQL' | 'DTQL' | 'TugQL', text: request.text,
+      ...(definition.connectionId ? { connectionId: definition.connectionId } : {}), parameters: (definition.parameters ?? []).map(({ id, type, isRequired }) => ({ id, type, ...(isRequired !== undefined ? { isRequired } : {}) })),
+    }] };
+    const encoded = JSON.stringify(document);
+    const contextSetId = workspace.snapshotFor(sessionId)?.contextSet.id;
+    const admittedCapabilities = workspace.capabilities();
+    const projectRef = this.project?.ref ? structuredClone(this.project.ref) : undefined;
+    const executionIdentity = (): string => JSON.stringify({
+      sessionId: this.contextSessionId(), queryId: this.queryId, project: this.project?.ref,
+      environmentId: this.envId, scopes: workspace.capabilities()?.environments.filter((scope) => scope.environmentId === this.envId),
+      contextSetId: workspace.snapshotFor(sessionId)?.contextSet.id, definition: this.queryDef(),
+      bindings: this.effectiveBindings(), source: this.selectedSource(),
+      securityContextId: this.agentContext.securityContextId(), authorCustomerId: this.authorCustomerId(),
+      authorCustomerIdValid: this.authorCustomerIdValid(), authorCustomerIdOrigin: this.authorCustomerIdOrigin(),
+      authorDraftRevision: this.authorDraftRevision(), authorBindingRevision: this.authorBindingRevision(),
+      authorPlan: this.authorPlan(), actorId: workspace.capabilities()?.actorId,
+      databaseId: workspace.capabilities()?.databaseId, projectId: workspace.capabilities()?.projectId,
+    });
+    const capturedExecutionIdentity = executionIdentity();
+    const queryId = definition.id ?? this.queryId ?? 'query';
+    const scope = structuredClone(scopes[0]);
+    const pinnedParameters = structuredClone(resolvedParameters);
+    const pinnedDocument = structuredClone(document);
+    const samePlan = (): boolean => executionIdentity() === capturedExecutionIdentity &&
+      workspace.canExecuteFor(sessionId) && !!admittedCapabilities &&
+      admittedCapabilities.actorId === workspace.capabilities()?.actorId &&
+      admittedCapabilities.databaseId === workspace.capabilities()?.databaseId &&
+      admittedCapabilities.projectId === workspace.capabilities()?.projectId &&
+      JSON.stringify(projectRef) === JSON.stringify(this.project?.ref);
+    this.sessionPinning.set(true);
+    try {
+      const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(encoded)))].map((value) => value.toString(16).padStart(2, '0')).join('');
+      if (!samePlan()) throw new Error('The query definition, context or scope changed before pinning. Review it and run again.');
+      const pinned = await workspace.pinInput(sessionId, scope, 'query', queryId, `sha256:${digest}`, undefined, pinnedParameters, pinnedDocument);
+      if (!pinned) throw new Error(workspace.error() || 'The query input could not be confirmed.');
+      if (pinned.run.executionAuthority !== 'client') {
+        this.runError.set('The server accepted this query run. The browser will not dispatch it; check saved session history for the outcome.');
+        return;
+      }
+      this.sessionRecordedSessionId.set(sessionId);
+      this.sessionRecordedRun.set(pinned.runId);
+      this.sessionRecordedInput.set(pinned.input.id);
+      if (!samePlan() || workspace.snapshotFor(sessionId)?.contextSet.id !== contextSetId)
+        throw new Error('The query definition, parameters, source, scope or session changed after input pinning. Dispatch was stopped; the run outcome still needs confirmation. Review it before starting a new run.');
+      this.runQueryWithPinnedInput();
+    } catch (error) {
+      if (samePlan()) this.runError.set(error instanceof Error ? error.message : 'The session query could not start.');
+      await this.finishSessionQuery('failed', 'client-dispatch-rejected', sessionId);
+    } finally { this.sessionPinning.set(false); }
+  }
+
+  private async finishSessionQuery(state: 'completed' | 'failed', errorCode?: string, capturedSessionId = this.sessionRecordedSessionId() || this.contextSessionId()): Promise<void> {
+    const runId = this.sessionRecordedRun();
+    if (!runId || !this.sessionWorkspace || !capturedSessionId) return;
+    const completionGeneration = ++this.sessionCompletionGeneration;
+    const workspace = this.sessionWorkspace;
+    const inputId = this.sessionRecordedInput();
+    const currentResult = state === 'completed' ? this.runResult() : undefined;
+    const result = currentResult === undefined ? undefined : structuredClone(currentResult);
+    const capabilities = workspace.capabilities();
+    const projectRef = this.project?.ref ? structuredClone(this.project.ref) : undefined;
+    const samePrincipal = (): boolean =>
+      workspace.capabilities()?.actorId === capabilities?.actorId &&
+      workspace.capabilities()?.databaseId === capabilities?.databaseId &&
+      workspace.capabilities()?.projectId === capabilities?.projectId &&
+      JSON.stringify(this.project?.ref) === JSON.stringify(projectRef);
+    const mayUpdateView = (): boolean => samePrincipal() && completionGeneration === this.sessionCompletionGeneration && this.contextSessionId() === capturedSessionId;
+    // Clear the old run synchronously. Async fingerprint/cache work from this
+    // run must not overwrite the state of a newer run or session.
+    this.sessionRecordedRun.set(undefined);
+    this.sessionRecordedInput.set('');
+    this.sessionRecordedSessionId.set('');
+    let finalState = state;
+    let finalErrorCode = errorCode?.replaceAll('-', '_').toUpperCase();
+    let resultRef: string | undefined;
+    if (state === 'completed') {
+      if (!result || !inputId) {
+        finalState = 'failed'; finalErrorCode = 'CLIENT_RESULT_MISSING';
+      } else {
+        try {
+          resultRef = await sessionResultFingerprint(result);
+          if (!samePrincipal()) return;
+          const cacheKey = workspace.deviceViewKey(capturedSessionId, `query-result-${resultRef}`, {
+            actorId: capabilities?.actorId, databaseId: capabilities?.databaseId, project: projectRef,
+          });
+          const saved = await tryWriteSessionResultCache(this.sessionResultCache, cacheKey, { runId, inputId, result });
+          if (!saved && mayUpdateView()) this.runError.set('The query result is available in this tab, but its display cache could not be saved. The source will not be rerun.');
+        } catch {
+          if (!resultRef) { finalState = 'failed'; finalErrorCode = 'CLIENT_RESULT_FINGERPRINT_FAILED'; }
+        }
+      }
+    }
+    if (!samePrincipal()) return;
+    const confirmed = await workspace.reportClientRun(capturedSessionId, runId, 'query', [{ id: 'query', state: finalState,
+      ...(finalState === 'completed' && resultRef ? { resultRef } : {}), ...(finalState === 'failed' ? { errorCode: finalErrorCode ?? 'CLIENT_EXECUTION_FAILED' } : {}) }]);
+    if (!confirmed && mayUpdateView()) this.runError.set('The query finished; its session outcome is unconfirmed. Retry the retained operation.');
+  }
+
+  private runQueryWithPinnedInput(): void {
+    const sessionId = this.contextSessionId();
+    if (this.sessionWorkspace && sessionId && !this.sessionWorkspace.canExecuteFor(sessionId)) {
+      this.runError.set('Resume this session before running a query.');
+      return;
+    }
+    this.authorFormatNavigationSnapshot.set(undefined);
+    if (
+      this.isTugqlAuthorJourney() &&
+      this.authorRunReadiness().action === 'parameters'
+    ) {
+      this.authorRunParameterAttempt.set({
+        scope: this.authorRunParameterScope(),
+        definition: this.queryDef(),
+        binding: this.authorCustomerId(),
+        draftRevision: this.authorDraftRevision(),
+      });
+      return;
+    }
+    this.authorRunParameterAttempt.set(undefined);
+    const runRequestedAt = monotonicTime();
+    const projectRef = this.project?.ref;
+    const projectId = projectRef?.projectId;
     const queryId = this.queryId;
     if (!projectId || !queryId) {
       return;
     }
     const definition = this.queryDef();
-    if (definition?.publicData && this.publicDataRevisionChanges().length && !this.publicDataRevisionAcknowledged()) {
-      this.runError.set('Canonical metadata revisions changed. Inspect the saved pins and explicitly acknowledge before re-execution.');
+    if (
+      definition?.publicData &&
+      this.publicDataRevisionChanges().length &&
+      !this.publicDataRevisionAcknowledged()
+    ) {
+      this.runError.set(
+        'Canonical metadata revisions changed. Inspect the saved pins and explicitly acknowledge before re-execution.',
+      );
       return;
     }
     if (definition?.publicData) {
@@ -1567,42 +7023,276 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       return;
     }
     this.historySelection++;
-    this.selectedHistoricalResult.set(undefined);
-    this.historicalDefinition.set(undefined);
-    this.relatedResultSet.set('affiliations');
-    this.resultPageIndex.set(0);
-    this.resultPageRows.set([]);
+    this.queryRunTiming.set(undefined);
+    if (projectRef && this.isHostedProject) {
+      this.runHostedSavedQuery(projectRef, queryId, definition, runRequestedAt);
+      return;
+    }
+    if (
+      isGithubStoreId(this.project?.ref.storeId) &&
+      definition?.connectionId === 'chinook-sqlite' &&
+      definition.request.queryType === QueryType.DTQL
+    ) {
+      if (this.running()) return;
+      if (!this.authorCustomerIdValid()) {
+        this.runError.set(
+          'Enter a whole-number CustomerId before running this query.',
+        );
+        return;
+      }
+      const previewPlan = this.authorPlan();
+      if (
+        !previewPlan ||
+        previewPlan.draftRevision !== this.authorDraftRevision()
+      ) {
+        this.runError.set('Preview the current TugQL draft before Run.');
+        return;
+      }
+      const runScope = this.historyScope();
+      const executedDefinition = structuredClone(definition);
+      const draftRevision = this.authorDraftRevision();
+      const bindingRevision = this.authorBindingRevision();
+      const customerId = this.authorCustomerId();
+      const queryIdSnapshot = this.queryId;
+      const projectSnapshot = JSON.stringify(projectRef);
+      const lifetime = ++this.federatedRunLifetime;
+      const controller = new AbortController();
+      this.authorRunAbort = controller;
+      const current = (): boolean =>
+        lifetime === this.federatedRunLifetime &&
+        this.historyScope() === runScope &&
+        this.queryId === queryIdSnapshot &&
+        JSON.stringify(this.project?.ref) === projectSnapshot &&
+        this.authorDraftRevision() === draftRevision &&
+        this.authorBindingRevision() === bindingRevision &&
+        this.authorCustomerId() === customerId &&
+        this.authorPlan() === previewPlan &&
+        JSON.stringify(this.queryDef()) === JSON.stringify(executedDefinition);
+      this.running.set(true);
+      this.runError.set(undefined);
+      void this.publicSqliteQuery
+        .runTugQL(
+          projectRef,
+          executedDefinition,
+          draftRevision,
+          customerId,
+          previewPlan,
+          controller.signal,
+          this.authorCustomerIdOrigin(),
+          () => this.reportGitHubQueryDispatch(projectRef),
+        )
+        .then((result) => {
+          if (!current()) return;
+          this.showAttemptResult(result);
+          const timing: QueryRunTiming = {
+            allResultsLoadedMs: Math.max(0, monotonicTime() - runRequestedAt),
+            noRecords: result.recordset.rows.length === 0,
+          };
+          this.queryRunTiming.set(timing);
+          this.commitSuccessfulResult(result, executedDefinition, timing);
+        })
+        .catch((error: unknown) => {
+          if (
+            current() &&
+            !(error instanceof Error && error.name === 'AbortError')
+          ) {
+            if (this.isAuthorizationFailure(error))
+              this.invalidateHistoryScope();
+            this.runError.set(
+              error instanceof Error
+                ? error.message
+                : 'The public SQLite query failed.',
+            );
+          }
+        })
+        .finally(() => {
+          if (this.authorRunAbort === controller)
+            this.authorRunAbort = undefined;
+          if (lifetime === this.federatedRunLifetime) {
+            if (!current()) this.queryRunTiming.set(undefined);
+            this.running.set(false);
+          }
+        });
+      return;
+    }
+    if (
+      isBrowserSqlProject(this.project?.ref) &&
+      definition?.connectionId &&
+      definition.request.queryType === QueryType.SQL
+    ) {
+      if (this.running()) return;
+      const runScope = this.historyScope();
+      const executedDefinition = structuredClone(definition);
+      const lifetime = ++this.federatedRunLifetime;
+      const current = (): boolean =>
+        lifetime === this.federatedRunLifetime &&
+        this.historyScope() === runScope &&
+        JSON.stringify(this.queryDef()) === JSON.stringify(executedDefinition);
+      this.running.set(true);
+      this.runError.set(undefined);
+      void this.publicSqliteQuery
+        .run(projectRef, executedDefinition, () =>
+          this.reportGitHubQueryDispatch(projectRef),
+        )
+        .then((result) => {
+          if (!current()) return;
+          this.showAttemptResult(result);
+          const timing: QueryRunTiming = {
+            allResultsLoadedMs: Math.max(0, monotonicTime() - runRequestedAt),
+            noRecords: result.recordset.rows.length === 0,
+          };
+          this.queryRunTiming.set(timing);
+          this.commitSuccessfulResult(result, executedDefinition, timing);
+        })
+        .catch((error: unknown) => {
+          if (current()) {
+            if (this.isAuthorizationFailure(error))
+              this.invalidateHistoryScope();
+            this.runError.set(
+              error instanceof Error
+                ? error.message
+                : 'The public SQLite query failed.',
+            );
+          }
+        })
+        .finally(() => {
+          if (lifetime === this.federatedRunLifetime) {
+            if (!current()) this.queryRunTiming.set(undefined);
+            this.running.set(false);
+          }
+        });
+      return;
+    }
     if (definition?.federation) {
       if (this.running()) return;
+      const runStartedAt = runRequestedAt;
+      const runMode = this.federatedMode();
+      let firstRecordAt: number | undefined;
       this.running.set(true);
       this.federatedProgress.set(undefined);
       this.runError.set(undefined);
-      this.runResult.set(undefined);
-      const runScope = this.historyScope(), lifetime = ++this.federatedRunLifetime;
+      const runScope = this.historyScope(),
+        lifetime = ++this.federatedRunLifetime;
       const executedDefinition = structuredClone(definition);
       const executedIdentity = graphStableIdentity(executedDefinition);
-      const current = (): boolean => lifetime === this.federatedRunLifetime && this.historyScope() === runScope && graphStableIdentity(this.queryDef()) === executedIdentity;
+      const credentialGeneration = this.ovdbCredentialGeneration();
+      const runtimeToken = this.ovdbToken().trim();
+      let reportedTotalRows: number | undefined;
+      let resultPublished = false;
+      let publishedGeneration: number | undefined;
+      const current = (): boolean =>
+        lifetime === this.federatedRunLifetime &&
+        this.historyScope() === runScope &&
+        credentialGeneration === this.ovdbCredentialGeneration() &&
+        graphStableIdentity(this.queryDef()) === executedIdentity;
       this.executedGraphDefinition = executedDefinition;
-      this.federatedQuery.run(executedDefinition, (progress) => { if (current()) this.federatedProgress.set(progress); }, this.ovdbToken().trim(), this.federatedMode(), (totalRows) => {
-        if (current()) this.runResult.update((result) => result ? { ...result, totalRows, hasMore: false } : result);
-      }).then((result) => {
-        if (current()) {
-          this.executedGraphDefinition = executedDefinition;
-          this.resultPageRows.set(result.recordset.rows);
-          this.runResult.set(result);
-          if (result.localResult && this.project?.ref) {
-            void this.federatedQuery.associateLocalResult(this.project.ref, queryId, result.localResult)
-              .then(() => current() ? this.refreshLocalHistory() : undefined)
-              .catch((error: unknown) => { if (current()) this.localHistoryError.set(error instanceof Error ? error.message : 'Cannot associate the local result.'); });
+      this.reportGitHubQueryDispatch(projectRef);
+      this.federatedQuery
+        .run(
+          executedDefinition,
+          (progress) => {
+            if (current()) this.federatedProgress.set(progress);
+          },
+          runtimeToken,
+          runMode,
+          (totalRows) => {
+            if (!current()) return;
+            if (!resultPublished) {
+              reportedTotalRows = totalRows;
+              return;
+            }
+            this.updateDisplayedAttemptTotalRows(
+              totalRows,
+              publishedGeneration,
+            );
+          },
+          runMode === 'full'
+            ? {
+                onFirstRecord: (at) => {
+                  if (current() && firstRecordAt === undefined)
+                    firstRecordAt = at;
+                },
+              }
+            : {},
+        )
+        .then((result) => {
+          if (current()) {
+            const runtimePages = Object.values(result.runtimeRead?.pages ?? {});
+            const allResultsComplete =
+              result.hasMore !== true &&
+              result.truncated !== true &&
+              !runtimePages.some((page) => !page.complete || page.possiblyMore);
+            const completedResult =
+              reportedTotalRows !== undefined
+                ? { ...result, totalRows: reportedTotalRows, hasMore: false }
+                : result;
+            let timing: QueryRunTiming | undefined;
+            if (runMode === 'full' && allResultsComplete) {
+              const resultRows =
+                completedResult.totalRows ??
+                completedResult.recordset.rows.length;
+              timing = {
+                ...(resultRows === 0 || firstRecordAt === undefined
+                  ? {}
+                  : {
+                      firstRecordMs: Math.max(0, firstRecordAt - runStartedAt),
+                    }),
+                allResultsLoadedMs: Math.max(0, monotonicTime() - runStartedAt),
+                noRecords: resultRows === 0,
+              };
+              this.queryRunTiming.set(timing);
+            }
+            this.executedGraphDefinition = executedDefinition;
+            this.showAttemptResult(completedResult);
+            resultPublished = true;
+            publishedGeneration = this.displayedResultGeneration();
+            if (runMode === 'full' && allResultsComplete)
+              this.commitSuccessfulResult(
+                completedResult,
+                executedDefinition,
+                timing,
+              );
+            if (completedResult.localResult && this.project?.ref) {
+              void this.federatedQuery
+                .associateLocalResult(
+                  this.project.ref,
+                  queryId,
+                  completedResult.localResult,
+                )
+                .then(() =>
+                  current() ? this.refreshLocalHistory() : undefined,
+                )
+                .catch((error: unknown) => {
+                  if (current())
+                    this.localHistoryError.set(
+                      error instanceof Error
+                        ? error.message
+                        : 'Cannot associate the local result.',
+                    );
+                });
+            }
           }
-        }
-      }).catch((error: unknown) => {
-        if (current()) this.runError.set(error instanceof Error ? error.message : 'The direct OVDB query failed.');
-      }).finally(() => {
-        if (lifetime !== this.federatedRunLifetime) return;
-        if (current()) this.running.set(false);
-        else { this.invalidateFederatedRun(); this.stopFederatedRun(); }
-      });
+        })
+        .catch((error: unknown) => {
+          if (current()) {
+            if (this.isAuthorizationFailure(error))
+              this.invalidateHistoryScope();
+            this.queryRunTiming.set(undefined);
+            this.runError.set(
+              error instanceof Error
+                ? error.message
+                : 'The direct OVDB query failed.',
+            );
+          }
+        })
+        .finally(() => {
+          if (lifetime !== this.federatedRunLifetime) return;
+          if (current()) this.running.set(false);
+          else {
+            this.invalidateFederatedRun();
+            this.stopFederatedRun();
+          }
+        });
       return;
     }
     // Checked before requiring `environment`/`securityContextId` below: a
@@ -1614,13 +7304,23 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     // GitHub-store query did nothing at all — no message, no thrown error,
     // just nothing — for deliverable 2, "an explicit, friendly notice...
     // not a thrown error").
-    if (isGithubStoreId(this.project?.ref.storeId)) {
-      this.runError.set(GITHUB_QUERY_RUN_MESSAGE);
+    if (isBrowserSqlProject(this.project?.ref)) {
+      this.runError.set(
+        this.project && isSharedProjectRef(this.project.ref)
+          ? SHARED_QUERY_RUN_MESSAGE
+          : GITHUB_QUERY_RUN_MESSAGE,
+      );
       return;
     }
     const environment = this.envId;
     const securityContextId = this.agentContext.securityContextId();
     if (!environment || !securityContextId) {
+      this.runError.set(
+        !environment
+          ? 'Select a logical project environment below before running this query.'
+          : 'The agent security context is unavailable. Reconnect to the project agent and retry.',
+      );
+      if (!environment) void this.loadAgentRunEnvironments();
       return;
     }
     // REQ:no-hidden-filters, AC:typed-context-isolation "conflict blocks an
@@ -1679,6 +7379,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         environment,
         securityContextId,
         queryId,
+        ...(this.hasCurrentDetectiveState() && this.hostedScenarioTarget()
+          ? { record: true }
+          : {}),
         source: this.selectedSource(),
         parameters,
         bindingOrigins,
@@ -1690,86 +7393,199 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   public async changeResultPage(delta: number): Promise<void> {
     const next = this.resultPageIndex() + delta;
-    if (next < 0 || (next * this.resultPageSize >= this.resultTotalRows() && !this.resultHasMore())) return;
+    if (
+      next < 0 ||
+      (next * this.resultPageSize >= this.resultTotalRows() &&
+        !this.resultHasMore())
+    )
+      return;
     const result = this.runResult();
     if (!result?.hasMore && result?.totalRows === undefined) {
       this.resultPageIndex.set(next);
       return;
     }
-    const previousRows = this.resultPageRows();
-    const selection = this.historySelection, set = this.relatedResultSet();
+    const cachedRows = this.resultPageRows();
+    const previousRows =
+      cachedRows.length > 0
+        ? cachedRows
+        : this.resultPageIndex() === 0
+          ? (this.displayedRecordset()?.rows ?? [])
+          : cachedRows;
+    const requestGeneration = ++this.resultPageRequestGeneration;
+    const selection = this.historySelection,
+      set = this.relatedResultSet();
     this.resultPageRows.set([]);
     this.resultPageLoading.set(true);
     try {
-      const rows = await this.federatedQuery.getPage(next, set, this.selectedHistoricalResult() ?? result?.localResult);
+      const rows = await this.federatedQuery.getPage(
+        next,
+        set,
+        this.selectedHistoricalResult() ?? result?.localResult,
+      );
       const current = this.runResult();
-      if (selection === this.historySelection && set === this.relatedResultSet() && current === result) {
+      if (
+        selection === this.historySelection &&
+        set === this.relatedResultSet() &&
+        current === result
+      ) {
         if (rows.length === 0 && next > 0) {
           this.resultPageRows.set(previousRows);
-          this.runResult.set({ ...current, totalRows: next * this.resultPageSize, hasMore: false });
+          this.runResult.set({
+            ...current,
+            totalRows: next * this.resultPageSize,
+            hasMore: false,
+          });
+        } else {
+          this.resultPageIndex.set(next);
+          this.resultPageRows.set(rows);
+          if (current.hasMore && rows.length < this.resultPageSize)
+            this.runResult.set({
+              ...current,
+              totalRows: next * this.resultPageSize + rows.length,
+              hasMore: false,
+            });
         }
-        else { this.resultPageIndex.set(next); this.resultPageRows.set(rows); if (current.hasMore && rows.length < this.resultPageSize) this.runResult.set({ ...current, totalRows: next * this.resultPageSize + rows.length, hasMore: false }); }
       }
     } catch (error) {
-      if (selection !== this.historySelection || set !== this.relatedResultSet()) return;
+      const current = this.runResult();
+      if (
+        selection !== this.historySelection ||
+        set !== this.relatedResultSet() ||
+        current !== result
+      )
+        return;
       this.resultPageRows.set(previousRows);
-      this.runError.set(error instanceof Error ? error.message : 'Cannot load result page.');
+      this.runError.set(
+        error instanceof Error ? error.message : 'Cannot load result page.',
+      );
     } finally {
-      if (selection === this.historySelection && set === this.relatedResultSet()) this.resultPageLoading.set(false);
+      if (requestGeneration === this.resultPageRequestGeneration)
+        this.resultPageLoading.set(false);
     }
   }
 
   public async refreshLocalHistory(): Promise<void> {
-    const projectRef = this.project?.ref, queryId = this.queryId;
+    const projectRef = this.project?.ref,
+      queryId = this.queryId;
     if (!projectRef || !queryId) return;
-    const request = ++this.historyCatalogRequest, scope = this.historyScope();
+    const request = ++this.historyCatalogRequest,
+      scope = this.historyScope();
     this.localResults.set([]);
     this.localHistoryLoading.set(true);
     try {
-      const results = await this.federatedQuery.listLocalResults({ projectRef, queryId }, (message) => {
-        if (request === this.historyCatalogRequest && this.historyScope() === scope) this.localHistoryError.set(message);
-      });
-      if (request === this.historyCatalogRequest && this.historyScope() === scope) this.localResults.set(results);
-    } catch (error) { if (request === this.historyCatalogRequest && this.historyScope() === scope) this.localHistoryError.set(error instanceof Error ? error.message : 'No local result available.'); }
-    finally { if (request === this.historyCatalogRequest && this.historyScope() === scope) this.localHistoryLoading.set(false); }
+      const results = await this.federatedQuery.listLocalResults(
+        { projectRef, queryId },
+        (message) => {
+          if (
+            request === this.historyCatalogRequest &&
+            this.historyScope() === scope
+          )
+            this.localHistoryError.set(message);
+        },
+      );
+      if (
+        request === this.historyCatalogRequest &&
+        this.historyScope() === scope
+      )
+        this.localResults.set(results);
+    } catch (error) {
+      if (
+        request === this.historyCatalogRequest &&
+        this.historyScope() === scope
+      )
+        this.localHistoryError.set(
+          error instanceof Error ? error.message : 'No local result available.',
+        );
+    } finally {
+      if (
+        request === this.historyCatalogRequest &&
+        this.historyScope() === scope
+      )
+        this.localHistoryLoading.set(false);
+    }
   }
 
   private historyScope(): string {
-    return JSON.stringify([this.project?.ref.storeId, this.project?.ref.projectId, this.queryId]);
+    return JSON.stringify([
+      this.project?.ref.storeId,
+      this.project?.ref.projectId,
+      this.queryId,
+    ]);
+  }
+
+  private authorRunParameterScope(): string {
+    return JSON.stringify({
+      project: this.project?.ref,
+      history: this.historyScope(),
+      environment: this.envId,
+      securityContextId: this.agentContext.securityContextId(),
+      resultTarget: this.currentResultTargetIdentity(),
+    });
   }
 
   private invalidateHistoryRequests(): void {
-    ++this.historySelection; ++this.historyCatalogRequest;
-    this.localHistoryLoading.set(false); this.resultPageLoading.set(false);
+    ++this.historySelection;
+    ++this.historyCatalogRequest;
+    ++this.resultPageRequestGeneration;
+    this.localHistoryLoading.set(false);
+    this.resultPageLoading.set(false);
     this.localHistoryError.set(undefined);
   }
 
   private invalidateFederatedRun(): void {
+    this.authorRunAbort?.abort();
+    this.authorRunAbort = undefined;
     ++this.federatedRunLifetime;
-    this.running.set(false); this.federatedProgress.set(undefined);
+    this.running.set(false);
+    this.federatedProgress.set(undefined);
+    this.queryRunTiming.set(undefined);
   }
 
   private stopFederatedRun(): void {
     const lifetime = this.federatedRunLifetime;
     void this.federatedQuery.dispose().catch((error: unknown) => {
-      if (lifetime === this.federatedRunLifetime) this.localHistoryError.set(error instanceof Error ? error.message : 'Cannot stop the previous execution.');
+      if (lifetime === this.federatedRunLifetime)
+        this.localHistoryError.set(
+          error instanceof Error
+            ? error.message
+            : 'Cannot stop the previous execution.',
+        );
     });
   }
 
   private invalidateHistoryScope(): void {
-    this.invalidateFederatedRun(); this.stopFederatedRun();
+    ++this.authorLookupFocusRevision;
+    ++this.authorPreviewLifetime;
+    this.authorPreviewLoading.set(false);
+    this.authorRowDetailsOpen.set(false);
+    this.clearPreviewDiagnosticNavigation();
+    this.authorPlan.set(undefined);
+    this.setAuthorError(undefined);
+    ++this.semanticRunLifetime;
+    this.invalidateFederatedRun();
+    this.stopFederatedRun();
     this.invalidateHistoryRequests();
-    this.selectedHistoricalResult.set(undefined); this.historicalDefinition.set(undefined);
-    this.executedGraphDefinition = undefined; this.runResult.set(undefined); this.resultPageRows.set([]);
-    this.localResults.set([]); this.resultPageIndex.set(0); this.relatedResultSet.set('affiliations');
+    this.selectedHistoricalResult.set(undefined);
+    this.historicalDefinition.set(undefined);
+    this.executedGraphDefinition = undefined;
+    this.setDisplayedResult(undefined);
+    this.committedRun.set(undefined);
+    this.runError.set(undefined);
+    this.resultPageRows.set([]);
+    this.localResults.set([]);
+    this.resultPageIndex.set(0);
+    this.relatedResultSet.set('affiliations');
   }
 
   /** Selecting history is a local read. It never invokes metadata, a Worker or a provider. */
   public async openHistoricalResult(id: string): Promise<void> {
     this.invalidateFederatedRun();
-    const selection = ++this.historySelection, scope = this.historyScope();
-    const current = (): boolean => selection === this.historySelection && scope === this.historyScope();
-    this.localHistoryLoading.set(true); this.localHistoryError.set(undefined);
+    const selection = ++this.historySelection,
+      scope = this.historyScope();
+    const current = (): boolean =>
+      selection === this.historySelection && scope === this.historyScope();
+    this.localHistoryLoading.set(true);
+    this.localHistoryError.set(undefined);
     try {
       await this.federatedQuery.dispose();
       if (!current()) return;
@@ -1778,31 +7594,59 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.selectedHistoricalResult.set(opened.result.localResult);
       this.historicalDefinition.set(opened.executedDefinition);
       this.executedGraphDefinition = opened.executedDefinition;
-      this.relatedResultSet.set('affiliations'); this.resultPageIndex.set(0);
+      this.relatedResultSet.set('affiliations');
+      this.resultPageIndex.set(0);
       this.resultPageLoading.set(false);
-      this.resultPageRows.set(opened.result.recordset.rows); this.runResult.set(opened.result);
-    } catch (error) { if (current()) this.localHistoryError.set(error instanceof Error ? error.message : 'No local result available.'); }
-    finally { if (current()) this.localHistoryLoading.set(false); }
+      this.resultPageRows.set(opened.result.recordset.rows);
+      this.setDisplayedResult(opened.result);
+    } catch (error) {
+      if (current())
+        this.localHistoryError.set(
+          error instanceof Error ? error.message : 'No local result available.',
+        );
+    } finally {
+      if (current()) this.localHistoryLoading.set(false);
+    }
   }
 
   public async changeRelatedResultSet(set: string): Promise<void> {
     const result = this.runResult();
-    if (!result || !['affiliations', 'locations', 'aliases'].includes(set)) return;
-    ++this.historySelection; this.relatedResultSet.set(set); this.resultPageIndex.set(0);
-    this.resultPageRows.set(set === 'affiliations' ? result.recordset.rows : result.relatedRecordsets?.find((item) => item.id === set)?.recordset.rows ?? []);
+    if (!result || !['affiliations', 'locations', 'aliases'].includes(set))
+      return;
+    ++this.historySelection;
+    this.relatedResultSet.set(set);
+    this.resultPageIndex.set(0);
+    this.resultPageRows.set(
+      set === 'affiliations'
+        ? result.recordset.rows
+        : (result.relatedRecordsets?.find((item) => item.id === set)?.recordset
+            .rows ?? []),
+    );
     this.resultPageLoading.set(false);
   }
 
   public async deleteHistoricalResult(id: string): Promise<void> {
-    this.localHistoryLoading.set(true); this.localHistoryError.set(undefined);
+    this.localHistoryLoading.set(true);
+    this.localHistoryError.set(undefined);
     try {
       await this.federatedQuery.deleteLocalResult(id);
-      if (this.selectedHistoricalResult()?.id === id || this.runResult()?.localResult?.id === id) {
+      if (
+        this.selectedHistoricalResult()?.id === id ||
+        this.runResult()?.localResult?.id === id ||
+        this.committedRun()?.result.localResult?.id === id
+      ) {
         this.invalidateHistoryScope();
       }
       await this.refreshLocalHistory();
-    } catch (error) { this.localHistoryError.set(error instanceof Error ? error.message : 'Cannot delete the selected local result.'); }
-    finally { this.localHistoryLoading.set(false); }
+    } catch (error) {
+      this.localHistoryError.set(
+        error instanceof Error
+          ? error.message
+          : 'Cannot delete the selected local result.',
+      );
+    } finally {
+      this.localHistoryLoading.set(false);
+    }
   }
 
   /** api-contract.md "Bounded lookups and HTTP" — the user's explicit choice to view a
@@ -1813,10 +7657,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
    * a request with no known snapshot id is refused rather than sent with an empty one
    * (the server's own `req.Validate()` would reject that anyway). */
   public runSnapshot(): void {
+    if (this.contextSessionId()) { this.runError.set('Recorded-source replay needs its own session input pin. Use Run for the supported live query path.'); return; }
     const snapshot = this.availableSnapshot();
     if (!this.lastRequest || !this.lastRequestScope || !snapshot) {
       return;
     }
+    this.queryRunTiming.set(undefined);
     this.running.set(true);
     this.runError.set(undefined);
     this.accessBlockers.set([]);
@@ -1831,6 +7677,58 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     );
   }
 
+  private reportGitHubQueryDispatch(ref?: IProjectRef): void {
+    if (!ref || !hasQueryActivity(ref)) {
+      return;
+    }
+    this.githubProjectActivity
+      .reportForCurrentProject(
+        ref,
+        this.randomIdService.newRandomId(),
+        'query_execution_dispatched',
+      )
+      .subscribe({
+        error: (error: unknown) =>
+          this.errorLogger.logError(
+            error,
+            'Failed to record GitHub Business query activity',
+          ),
+      });
+  }
+
+  private reportGitHubQueryEdit(ref?: IProjectRef): void {
+    if (!ref || !hasQueryActivity(ref)) {
+      return;
+    }
+    const key = JSON.stringify({
+      ref,
+      queryId: this.queryId,
+      bindingGeneration: this.githubProjectActivity.bindingGeneration,
+    });
+    const now = Date.now();
+    const last = this.lastGitHubQueryEditReport;
+    if (
+      last?.key === key &&
+      now - last.at < githubQueryEditReportMinIntervalMs
+    ) {
+      return;
+    }
+    this.lastGitHubQueryEditReport = { key, at: now };
+    this.githubProjectActivity
+      .reportForCurrentProject(
+        ref,
+        this.randomIdService.newRandomId(),
+        'query_edit',
+      )
+      .subscribe({
+        error: (error: unknown) =>
+          this.errorLogger.logError(
+            error,
+            'Failed to record GitHub Business query edit activity',
+          ),
+      });
+  }
+
   private executeQuery(
     request: RunQueryRequest,
     requestScope: {
@@ -1841,18 +7739,59 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   ): void {
     this.lastRequest = request;
     this.lastRequestScope = requestScope;
+    this.localScenarioExecution.set(undefined);
+    const definition = this.queryDef();
+    if (!definition) return;
+    this.reportGitHubQueryDispatch(this.project?.ref);
+    const executedDefinition = structuredClone(definition);
+    const queryIdentity = this.currentQueryIdentity();
+    const targetIdentity = this.currentResultTargetIdentity();
+    const scenarioTarget = request.record
+      ? this.hostedScenarioTarget()
+      : undefined;
+    const runStartedAt = monotonicTime();
+    const lifetime = ++this.semanticRunLifetime;
+    const current = (): boolean =>
+      lifetime === this.semanticRunLifetime &&
+      this.investigationContext.isCurrentScope(requestScope) &&
+      this.currentQueryIdentity() === queryIdentity &&
+      this.currentResultTargetIdentity() === targetIdentity;
     this.semanticApi.runQuery(request).subscribe({
       next: (response) => {
         // Task 15 item 4 — discard a late response for a scope the user has since left
         // (project/environment/principal switch mid-flight): api-contract.md "late
         // responses from another scope are discarded".
-        if (!this.investigationContext.isCurrentScope(requestScope)) {
-          return;
-        }
-        this.runResult.set(response);
+        if (!current()) return;
+        this.localScenarioExecution.set(
+          request.record &&
+            scenarioTarget &&
+            this.hostedScenarioTarget()?.caseId === scenarioTarget.caseId &&
+            this.hostedScenarioTarget()?.applicationId ===
+              scenarioTarget.applicationId &&
+            this.hostedScenarioTarget()?.stepId === scenarioTarget.stepId &&
+            response.execution &&
+            !response.truncated &&
+            response.provenance.queryId === request.queryId
+            ? {
+                projectKey: JSON.stringify(this.project?.ref),
+                queryId: request.queryId || '',
+                environment: requestScope.environment,
+                execution: response.execution,
+              }
+            : undefined,
+        );
+        const timing: QueryRunTiming = {
+          allResultsLoadedMs: Math.max(0, monotonicTime() - runStartedAt),
+          noRecords: response.recordset.rows.length === 0,
+        };
+        this.showAttemptResult(response);
+        this.queryRunTiming.set(timing);
+        this.commitSuccessfulResult(response, executedDefinition, timing);
         this.running.set(false);
       },
-      error: (err: unknown) => this.handleRunError(err, request, requestScope),
+      error: (err: unknown) => {
+        if (current()) this.handleRunError(err, request, requestScope);
+      },
     });
   }
 
@@ -1874,6 +7813,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       err instanceof HttpErrorResponse
         ? tryDecodeErrorEnvelope(err.error)
         : undefined;
+    if (this.isAuthorizationFailure(err, envelope?.error.code))
+      this.invalidateHistoryScope();
     this.accessBlockers.set(
       envelope?.details?.authorization?.blockers.map(
         (b) => `${b.layerId ?? 'source'}: ${b.code}`,
@@ -1925,8 +7866,48 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     return Number.isNaN(date.getTime()) ? iso : date.toISOString().slice(0, 10);
   }
 
+  protected committedDefinitionText(
+    definition: CommittedQueryDefinition,
+  ): string {
+    const request = definition.request;
+    if (request.queryType === QueryType.HTTP) {
+      return `${request.method ?? 'HTTP'} request. URL and request body are omitted from this receipt for privacy.`;
+    }
+    if (typeof request.text === 'string') return request.text;
+    return 'Executed request text is unavailable.';
+  }
+
+  protected committedDefinitionPins(
+    definition: CommittedQueryDefinition,
+  ): string | undefined {
+    const plan = definition.nativeGraph;
+    return plan ? JSON.stringify(plan, null, 2) : undefined;
+  }
+
+  protected formatQueryDuration(milliseconds: number): string {
+    const rounded = Math.round(Math.max(0, milliseconds));
+    return rounded < 1000
+      ? `${rounded === 0 && milliseconds > 0 ? '<1' : rounded} ms`
+      : `${(rounded / 1000).toFixed(1)} s`;
+  }
+
   private extractErrorMessage(err: unknown): string {
     const message = (err as { message?: unknown } | undefined)?.message;
     return message ? String(message) : 'Failed to run the query';
+  }
+
+  private isAuthorizationFailure(err: unknown, code?: string): boolean {
+    const normalizedCode = code?.toUpperCase();
+    if (
+      normalizedCode === 'ACCESS_DENIED' ||
+      normalizedCode === 'UNAUTHENTICATED' ||
+      normalizedCode === 'STALE_CONTEXT'
+    )
+      return true;
+    if (err instanceof HttpErrorResponse && [401, 403].includes(err.status))
+      return true;
+    return /\b(?:ACCESS[_-]DENIED|UNAUTHENTICATED|UNAUTHORIZED|FORBIDDEN)\b|\bfailed\s*\([^)]*\b(?:401|403)\b[^)]*\)/i.test(
+      this.extractErrorMessage(err),
+    );
   }
 }

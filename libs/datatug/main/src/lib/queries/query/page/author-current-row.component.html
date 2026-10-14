@@ -1,0 +1,46 @@
+<section class="author-current-row" aria-label="Current row" data-testid="author-current-row">
+  <ion-item lines="none">
+    <ion-label>
+      <h3>Current row</h3>
+      @if (position(); as rowPosition) {
+        @if (totalKnown()) {
+          <p>Position {{ rowPosition }} of {{ totalRows() }}</p>
+        } @else {
+          <p>Position {{ rowPosition }} · more rows available · total unknown</p>
+        }
+      } @else {
+        <p>Select a row in Results</p>
+      }
+    </ion-label>
+    @if (row()) {
+      <ion-buttons slot="end"><ion-button fill="clear" aria-label="Copy current record" title="Copy current record" (click)="copyRecord()"><ion-icon slot="icon-only" name="copy-outline" /></ion-button></ion-buttons>
+    }
+  </ion-item>
+  @if (copyStatus() || filterStatus()) {
+    <ion-item lines="none"><ion-label class="ion-text-wrap" role="status" aria-live="polite">{{ copyStatus() || filterStatus() }}</ion-label></ion-item>
+  }
+  @if (row(); as selectedRow) {
+    <ion-list>
+      @for (column of columns(); track $index) {
+        <ion-item lines="inset" data-testid="author-current-row-field">
+          <ion-label class="ion-text-wrap">
+            <h4>
+              {{ column.name }}
+              @if (duplicateColumnName($index)) {
+                <ion-note>· column {{ $index + 1 }}</ion-note>
+              }
+            </h4>
+            <h2 class="author-current-row-value">{{ valueText($index) }}</h2>
+            <ion-note>{{ valueType($index) }}</ion-note>
+          </ion-label>
+          <ion-buttons slot="end">
+            <ion-button fill="clear" [attr.aria-label]="'Copy ' + column.name + (duplicateColumnName($index) ? ' column ' + ($index + 1) : '') + ' value'" [attr.title]="'Copy ' + column.name + (duplicateColumnName($index) ? ' column ' + ($index + 1) : '') + ' value'" (click)="copyValue($index)"><ion-icon slot="icon-only" name="copy-outline" /></ion-button>
+            <ion-button fill="clear" [attr.aria-label]="'Use ' + column.name + (duplicateColumnName($index) ? ' column ' + ($index + 1) : '') + ' as filter'" [attr.title]="'Use ' + column.name + (duplicateColumnName($index) ? ' column ' + ($index + 1) : '') + ' as filter'" (click)="requestFilter($index)"><ion-icon slot="icon-only" name="funnel-outline" /></ion-button>
+          </ion-buttons>
+        </ion-item>
+      }
+    </ion-list>
+  } @else if (totalRows() === 0) {
+    <ion-item lines="none"><ion-label>No rows in this result.</ion-label></ion-item>
+  }
+</section>

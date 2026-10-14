@@ -10,7 +10,10 @@ import {
 } from './canonical-metadata';
 import { parseHttpsJsonCatalog } from '../../project-files/https-json-catalog';
 import type { DeclaredCatalogContext } from './declared-source';
-import type { NativeRepresentationContract } from './representation-discovery';
+import type {
+  NativeRepresentationContract,
+  Reference,
+} from './representation-discovery';
 
 /** Hypothetical publication envelope around exact landed, small provider metadata. */
 export async function nativeFixture(kind: 'ror' | 'geo', exact = false) {
@@ -40,7 +43,13 @@ export async function nativeFixture(kind: 'ror' | 'geo', exact = false) {
     repository: String(manifest.provider['repository']),
     revision: String(manifest.provider['commit']),
   });
-  const content = (file: ImmutableFile): string => {
+  const providerFile = (reference: Reference): ImmutableFile => ({
+    ...reference,
+    repository: reference.repository ?? String(manifest.provider['repository']),
+    revision: reference.revision ?? String(manifest.provider['commit']),
+  });
+  const content = (reference: Reference): string => {
+    const file = providerFile(reference);
     const value = files.get(immutableUrl(file));
     if (value === undefined) throw new Error('Missing fixture bytes.');
     return value;
@@ -67,7 +76,7 @@ export async function nativeFixture(kind: 'ror' | 'geo', exact = false) {
     // Independent synthetic structural fixture: make optionality explicit.
     sourceModel.entities.Input.properties.country_iso.required = false;
     const updated = await put(
-      contract.source.schema,
+      providerFile(contract.source.schema),
       JSON.stringify(sourceModel),
     );
     Object.assign(contract.source.schema, { sha256: updated.sha256 });
@@ -86,7 +95,7 @@ export async function nativeFixture(kind: 'ror' | 'geo', exact = false) {
       : '[{"id":"one","country_iso":"CA"}]';
   const data = await put(
     {
-      ...contract.source.schema,
+      ...providerFile(contract.source.schema),
       path:
         kind === 'ror'
           ? contract.source.schema.path.replace(
@@ -232,6 +241,7 @@ export async function nativeFixture(kind: 'ror' | 'geo', exact = false) {
     models,
     files,
     own,
+    referenceFile: providerFile,
     put,
     publish,
     http,

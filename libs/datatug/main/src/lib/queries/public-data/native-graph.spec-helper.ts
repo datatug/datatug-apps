@@ -58,15 +58,30 @@ export function graphFixturePlan(aliases = true, rows = 1000): NativeGraphPlan {
 }
 export function graphFixtureTransport(
   p: NativeGraphPlan,
-  input: Record<string, readonly Record<string, unknown>[]>,
+  input: object,
 ) {
+  const stageIds = new Set(profile.stages.map((stage) => stage.id));
+  const entries = Object.entries(input).filter(([name]) => stageIds.has(name));
+  if (
+    entries.some(
+      ([, rows]) =>
+        !Array.isArray(rows) ||
+        rows.some((row) => row === null || typeof row !== 'object'),
+    )
+  ) {
+    throw new Error('Graph fixture tables must contain row objects.');
+  }
+  const tables = Object.fromEntries(entries) as Record<
+    string,
+    readonly Record<string, unknown>[]
+  >;
   return vi.fn<typeof fetch>(async (_url, init) => {
     const q = JSON.parse(String(init?.body)),
       id = profile.stages.find((s) => s.entity === q.from.name)
         ?.id as NativeStageId;
     const field = q.where.left.field,
       values = q.where.right.values as string[];
-    const data = records(input[id] ?? [])
+    const data = records(tables[id] ?? [])
       .filter((r) => values.includes(r.data[field] as string))
       .slice(q.offset, q.offset + q.limit);
     const headers = Object.fromEntries(

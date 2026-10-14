@@ -18,11 +18,11 @@ const connection = {
 
 describe('shared project local Dev query page', () => {
   it('loads the promoted source after reload and submits a typed DALgo page', async () => {
-    const query = vi.fn(async () => ({ records: [{ key: { path: 'main.Things/1' }, data: { amount: '10.00' } }],
+    const query = vi.fn<(dataset: string, table: string, request: unknown) => Promise<unknown>>(async () => ({ records: [{ key: { path: 'main.Things/1' }, data: { amount: '10.00' } }],
       nextCursor: { values: ['10.00', 'main.Things/1'] } }));
     const load = vi.fn(async (dataset: string) => ({ ...connection, dataset,
       id: `${dataset}-indexeddb-local` }));
-    const route = { paramMap: new BehaviorSubject(params), snapshot: { paramMap: params } };
+    const route = { paramMap: new BehaviorSubject(params), queryParamMap: new BehaviorSubject(convertToParamMap({})), snapshot: { paramMap: params, queryParamMap: convertToParamMap({}) } };
     await TestBed.configureTestingModule({ imports: [DemoDbLocalQueryComponent], providers: [
       { provide: ActivatedRoute, useValue: route },
       { provide: DEMODB_LOCAL_COPY, useValue: { connection: load, query } },
@@ -68,7 +68,7 @@ describe('shared project local Dev query page', () => {
 
   it('refuses the route outside the exact shared project', async () => {
     const wrong = convertToParamMap({ storeId: 'github.com', projectId: 'chinook-demo@datatug@', dataset: 'chinook' });
-    const route = { paramMap: new BehaviorSubject(wrong), snapshot: { paramMap: wrong } };
+    const route = { paramMap: new BehaviorSubject(wrong), queryParamMap: new BehaviorSubject(convertToParamMap({})), snapshot: { paramMap: wrong, queryParamMap: convertToParamMap({}) } };
     const load = vi.fn();
     await TestBed.configureTestingModule({ imports: [DemoDbLocalQueryComponent], providers: [
       { provide: ActivatedRoute, useValue: route },

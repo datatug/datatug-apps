@@ -1,0 +1,109 @@
+<div class="result-summary" role="status">
+  <strong>{{ run().id }}</strong> · {{ run().startedAt | date: 'medium' }} ·
+  {{ run().environment }} · execution {{ run().executionStatus }} · outcome
+  {{ run().outcome }} · highest finding severity {{ run().severity || 'none' }}.
+  {{ run().queryExecutions }} query executions;
+  {{ run().checkInvocations }} Check invocations. Input values are excluded from
+  history; {{ run().inputNames.join(', ') || 'no input names' }} recorded.
+</div>
+<p role="status">
+  Validator results: {{ failingCount() }} failed, {{ unknownCount() }} unknown,
+  {{ passingCount() }} passed.
+  @if (!showPassing() && passingCount()) {
+    Passing details are collapsed.
+  }
+</p>
+@if (passingCount()) {
+  <ion-button size="small" fill="clear" (click)="togglePassing()">
+    {{
+      showPassing() ? 'Collapse passing details' : 'Show all passing details'
+    }}
+  </ion-button>
+}
+@if (rows().length) {
+  <p>
+    Filter by outcome, configured severity, Validator, or row in this run. Row
+    numbers refer to this execution.
+  </p>
+  <p>
+    Nested query row numbers are child-local evidence. Drilldown is available
+    only for the exact root query receipt; an authorized child snapshot is not
+    available here.
+  </p>
+  @if (visibleRows().length) {
+    <ag-grid-angular
+      class="ag-theme-quartz"
+      style="display: block; height: 280px; width: 100%"
+      [columnDefs]="columns"
+      [rowData]="visibleRows()"
+      [defaultColDef]="defaultColumn"
+      (rowClicked)="onGridRowClicked($event)"
+    />
+  }
+}
+<ion-list aria-label="Nested Check and Validator results">
+  @for (line of visibleLines(); track line.key) {
+    <ion-item
+      [style.--padding-start.px]="16 + line.depth * 20"
+      [button]="
+        line.rowIndex !== undefined &&
+        canSelect({
+          rowIndex: line.rowIndex,
+          queryId: line.queryId,
+          execution: line.execution,
+          nodePath: line.nodePath || '',
+        })
+      "
+      (click)="
+        line.rowIndex !== undefined &&
+          selectLine({
+            rowIndex: line.rowIndex,
+            queryId: line.queryId,
+            execution: line.execution,
+            nodePath: line.nodePath || '',
+          })
+      "
+    >
+      <ion-label
+        ><h3>
+          {{ line.label }}
+          @if (line.rowIndex !== undefined) {
+            · row {{ line.rowIndex + 1 }}
+            @if (
+              !canSelect({
+                rowIndex: line.rowIndex,
+                queryId: line.queryId,
+                execution: line.execution,
+                nodePath: line.nodePath || '',
+              })
+            ) {
+              · {{ line.queryId || 'child query' }} child-local row; snapshot
+              drilldown unavailable
+            }
+          }
+        </h3>
+        <p>
+          execution {{ line.executionStatus }} · outcome {{ line.outcome }}
+          @if (line.severity) {
+            · configured severity {{ line.severity }} (applies on failure)
+          }
+          @if (line.message) {
+            · {{ line.message }}
+          }
+        </p>
+        @if (line.source || line.observedAt) {
+          <p>
+            {{ line.source }} · observed {{ line.observedAt }} ·
+            {{ line.executionProfile }}
+            @if (line.queryRevision) {
+              · query {{ line.queryRevision }}
+            }
+            @if (line.resultFingerprint) {
+              · result {{ line.resultFingerprint }}
+            }
+          </p>
+        }
+      </ion-label>
+    </ion-item>
+  }
+</ion-list>

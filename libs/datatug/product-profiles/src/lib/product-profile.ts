@@ -44,11 +44,14 @@ export interface ProductProfile {
 
   /**
    * Path (relative to the app root, no leading slash) this profile's home route
-   * redirects to. Empty string means the root route itself (`/`) is the home
-   * page — no redirect. Non-empty means `/` redirects to `/${homePath}` (see
+   * redirects to. Non-empty means `/` redirects to `/${homePath}` (see
    * `profile-home-redirect.guard.ts` in `@sneat/datatug-main`), which is the "at
    * most, registering a new home route" a new profile needs alongside its table
-   * entry.
+   * entry. `datatug` uses `home`, so its start page has an address of its own
+   * that survives a refresh (the DataTug.app landing page answers a full page
+   * load of `/`); `incidentius` uses `incidents`. Empty string means the root
+   * route itself (`/`) is the home page — no redirect; no registered profile
+   * does this today.
    */
   readonly homePath: string;
 
@@ -76,6 +79,9 @@ export interface ProductProfile {
    */
   readonly showPoweredByDalgo: boolean;
 
+  /** Product-specific billing entry; omitted when the profile has no checkout. */
+  readonly pricingUrl?: string;
+
   /**
    * Exact hostnames that select this profile (REQ:profile-table: "A profile
    * MUST be selected by hostname"). Empty means this profile is never chosen by
@@ -97,8 +103,9 @@ export const PRODUCT_PROFILES: Readonly<
 > = Object.freeze({
   datatug: Object.freeze({
     id: 'datatug',
+    pricingUrl: 'https://datatug.app/en/pricing/',
     brandName: 'DataTug.app',
-    homePath: '',
+    homePath: 'home',
     entryPointLabel: 'Open a project',
     showIncidentsMenuItem: true,
     showPoweredByDalgo: true,
@@ -125,5 +132,7 @@ export const DEFAULT_PRODUCT_PROFILE_ID: ProductProfileId = 'datatug';
 export function isProductProfileId(
   value: string | null | undefined,
 ): value is ProductProfileId {
-  return !!value && Object.prototype.hasOwnProperty.call(PRODUCT_PROFILES, value);
+  return (
+    !!value && Object.prototype.hasOwnProperty.call(PRODUCT_PROFILES, value)
+  );
 }

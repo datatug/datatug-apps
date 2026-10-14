@@ -150,19 +150,28 @@ describe('QueriesTabComponent — GitHub-store "Personal" tab empty state (S163)
         },
         {
           provide: Router,
-          useValue: { navigate: vi.fn(() => Promise.resolve(true)), events: of() },
+          useValue: {
+            navigate: vi.fn(() => Promise.resolve(true)),
+            events: of(),
+          },
         },
         { provide: QueriesService, useValue: { getQueriesFolder } },
         {
           provide: DatatugNavContextService,
-          useValue: { currentProject: of(githubProject), currentEnv: of(undefined) },
+          useValue: {
+            currentProject: of(githubProject),
+            currentEnv: of(undefined),
+          },
         },
         { provide: DatatugNavService, useValue: { goQuery: vi.fn() } },
       ],
     })
       .overrideComponent(QueriesTabComponent, {
         remove: { imports: [SqlEditorComponent] },
-        add: { imports: [SqlEditorStubComponent], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+        add: {
+          imports: [SqlEditorStubComponent],
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+        },
       })
       .compileComponents();
 
@@ -198,6 +207,34 @@ describe('QueriesTabComponent — GitHub-store "Personal" tab empty state (S163)
     ]);
     const text = (fixture.nativeElement as HTMLElement).innerHTML;
     expect(text).not.toContain(GITHUB_PERSONAL_QUERIES_MESSAGE);
+  });
+
+  it('keeps New query while hiding unsupported hosted GitHub folder actions', () => {
+    fixture.componentRef.setInput('rootFolder', 'shared');
+    fixture.detectChanges();
+    fixture.componentInstance.project.set({
+      ref: {
+        storeId: 'github.com',
+        projectId: 'repo@owner@datatug',
+        projectApi: 'cloud',
+        branch: 'work',
+      },
+    } as IProjectContext);
+    fixture.detectChanges();
+    fixture.componentInstance.currentFolder = {
+      path: '~',
+      id: '',
+      folders: [{ id: 'existing' }],
+      items: [],
+    };
+    fixture.changeDetectorRef.markForCheck();
+    fixture.detectChanges();
+
+    const page = fixture.nativeElement as HTMLElement;
+    expect(page.querySelector('ion-button[title="New query"]')).not.toBeNull();
+    expect(page.querySelector('ion-button[title="New folder"]')).toBeNull();
+    expect(page.querySelector('ion-button[title="Delete folder"]')).toBeNull();
+    expect(fixture.componentInstance.supportsFolderMutations()).toBe(false);
   });
 
   it('switching from "personal" to "shared" clears the notice and loads the shared tree', () => {
@@ -268,19 +305,28 @@ describe('QueriesTabComponent — agent-backed "Personal" tab (S174)', () => {
         },
         {
           provide: Router,
-          useValue: { navigate: vi.fn(() => Promise.resolve(true)), events: of() },
+          useValue: {
+            navigate: vi.fn(() => Promise.resolve(true)),
+            events: of(),
+          },
         },
         { provide: QueriesService, useValue: { getQueriesFolder } },
         {
           provide: DatatugNavContextService,
-          useValue: { currentProject: of(agentProject), currentEnv: of(undefined) },
+          useValue: {
+            currentProject: of(agentProject),
+            currentEnv: of(undefined),
+          },
         },
         { provide: DatatugNavService, useValue: { goQuery: vi.fn() } },
       ],
     })
       .overrideComponent(QueriesTabComponent, {
         remove: { imports: [SqlEditorComponent] },
-        add: { imports: [SqlEditorStubComponent], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+        add: {
+          imports: [SqlEditorStubComponent],
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+        },
       })
       .compileComponents();
   }
@@ -288,7 +334,9 @@ describe('QueriesTabComponent — agent-backed "Personal" tab (S174)', () => {
   it('an old agent\'s "~" fallback shows the unsupported notice, never the shared items, under the "Personal" label', async () => {
     const getQueriesFolder = vi.fn((_ref, _path, rootFolder) =>
       rootFolder === 'personal'
-        ? throwError(() => new Error(AGENT_PERSONAL_QUERIES_UNSUPPORTED_MESSAGE))
+        ? throwError(
+            () => new Error(AGENT_PERSONAL_QUERIES_UNSUPPORTED_MESSAGE),
+          )
         : of(sharedFolder),
     );
     await setup(getQueriesFolder);
@@ -326,7 +374,9 @@ describe('QueriesTabComponent — agent-backed "Personal" tab (S174)', () => {
   it('the "shared" tab is unaffected — still reads and renders the real shared items', async () => {
     const getQueriesFolder = vi.fn((_ref, _path, rootFolder) =>
       rootFolder === 'personal'
-        ? throwError(() => new Error(AGENT_PERSONAL_QUERIES_UNSUPPORTED_MESSAGE))
+        ? throwError(
+            () => new Error(AGENT_PERSONAL_QUERIES_UNSUPPORTED_MESSAGE),
+          )
         : of(sharedFolder),
     );
     await setup(getQueriesFolder);

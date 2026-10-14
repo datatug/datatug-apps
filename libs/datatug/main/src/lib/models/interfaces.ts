@@ -122,7 +122,17 @@ export function allUserProjectsAsFlatList(
     const store = { id: storeId, ...stores[storeId] };
     for (const projectId in store.projects) {
       const project = { id: projectId, ...store.projects[projectId] };
-      projects.push({ ref: { projectId, storeId }, store, project });
+      projects.push({
+        ref: {
+          projectId,
+          storeId,
+          ...(project.projectApi
+            ? { projectApi: project.projectApi, branch: project.branch }
+            : {}),
+        },
+        store,
+        project,
+      });
     }
   }
   return projects;
@@ -151,6 +161,8 @@ export interface IProjectBrief {
   readonly access?: ProjectAccess;
   readonly title: string;
   readonly titleOverride?: string;
+  readonly projectApi?: 'cloud' | 'local';
+  readonly branch?: string;
 }
 
 export interface IDatatugProjectBriefWithId extends IProjectBrief {

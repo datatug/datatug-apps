@@ -153,9 +153,31 @@ describe('ProjectService', () => {
       // and 404'd, so this assertion is the regression guard for that.
       expect(sneatApi.post).toHaveBeenCalledWith(
         'datatug/projects/create_project?store=firestore',
-        projData,
+        { ...projData, billingIntent: 'personal_pro' },
       );
       expect(createdId).toBe('new-project-id');
+    });
+
+    it('preserves an explicit Space Business billing intent in the request', () => {
+      sneatApi.post.mockReturnValue(of({ id: 'new-project-id' }));
+      const service = TestBed.inject(ProjectService);
+
+      service
+        .createNewProject('firestore', {
+          ...projData,
+          billingIntent: 'space_business',
+          spaceID: 'space_1',
+        })
+        .subscribe();
+
+      expect(sneatApi.post).toHaveBeenCalledWith(
+        'datatug/projects/create_project?store=firestore',
+        {
+          ...projData,
+          billingIntent: 'space_business',
+          spaceID: 'space_1',
+        },
+      );
     });
 
     it('errors as an Observable (not a throw) for an unsupported store type', () => {

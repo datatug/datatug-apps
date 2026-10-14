@@ -35,7 +35,7 @@ describe('withDatatugUserData', () => {
       extDoc('From ext doc'),
     );
     expect(
-      state.record?.datatug?.stores?.firestore?.projects?.['proj1234']?.title,
+      state.record?.datatug?.stores?.['firestore']?.projects?.['proj1234']?.title,
     ).toBe('From ext doc');
   });
 
@@ -45,7 +45,7 @@ describe('withDatatugUserData', () => {
       extDoc('From ext doc'),
     );
     expect(
-      state.record?.datatug?.stores?.firestore?.projects?.['proj1234']?.title,
+      state.record?.datatug?.stores?.['firestore']?.projects?.['proj1234']?.title,
     ).toBe('From ext doc');
   });
 
@@ -55,7 +55,7 @@ describe('withDatatugUserData', () => {
       undefined,
     );
     expect(
-      state.record?.datatug?.stores?.firestore?.projects?.['proj1234']?.title,
+      state.record?.datatug?.stores?.['firestore']?.projects?.['proj1234']?.title,
     ).toBe('Legacy');
   });
 
@@ -74,7 +74,7 @@ describe('withDatatugUserData', () => {
     const state = withDatatugUserData(sneatUserState(null), extDoc('Created'));
     expect(state.record?.title).toBe('');
     expect(
-      state.record?.datatug?.stores?.firestore?.projects?.['proj1234']?.title,
+      state.record?.datatug?.stores?.['firestore']?.projects?.['proj1234']?.title,
     ).toBe('Created');
   });
 });

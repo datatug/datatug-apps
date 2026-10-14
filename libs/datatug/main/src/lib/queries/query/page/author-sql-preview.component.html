@@ -1,0 +1,87 @@
+<section class="author-sql-preview" data-testid="author-sql-preview">
+  <ion-item class="author-preview-heading" lines="none">
+    <ion-label>
+      <h3>SQL preview</h3>
+      <p>Compiled for the pinned SQLite source · Preview · Not executed</p>
+    </ion-label>
+  </ion-item>
+  <ion-item class="author-preview-actions" lines="none">
+    <ion-buttons slot="start" class="preview-buttons">
+      <ion-button
+        class="sql-action"
+        data-testid="author-preview"
+        fill="outline"
+        color="primary"
+        [disabled]="refreshDisabled()"
+        (click)="requestRefresh()"
+      >Refresh SQL preview</ion-button>
+      <ion-button
+        class="sql-action"
+        data-testid="author-wrap-sql"
+        aria-label="Wrap SQL"
+        fill="clear"
+        [color]="wrapSql() ? 'primary' : 'medium'"
+        [attr.aria-pressed]="wrapSql()"
+        (click)="toggleWrapping()"
+      >
+        Wrap SQL
+      </ion-button>
+      <ion-button
+        class="sql-action"
+        data-testid="author-copy-sql"
+        aria-label="Copy SQL"
+        fill="clear"
+        color="medium"
+        [disabled]="copyPending()"
+        (click)="copyCurrentSql()"
+      >
+        Copy SQL
+      </ion-button>
+    </ion-buttons>
+  </ion-item>
+  <div
+    class="author-sql-scroll"
+    [class.author-sql-scroll--wrapped]="wrapSql()"
+    tabindex="0"
+    aria-label="Compiled SQLite SQL"
+  >
+    <pre><code>@for (token of sqlTokens(); track $index) {<span [class]="token.kind ? 'tugql-token-' + token.kind : null">{{ token.text }}</span>}</code></pre>
+  </div>
+  <p
+    class="copy-status"
+    role="status"
+    aria-live="polite"
+    aria-atomic="true"
+    data-testid="author-copy-sql-status"
+  >
+    {{ copyStatus() }}
+  </p>
+  <sneat-author-source-inspector [plan]="plan()" />
+  <div class="author-binding-list" aria-label="SQL bindings">
+    @for (
+      binding of bindings;
+      track $index;
+      let i = $index
+    ) {
+      <div class="author-binding-row">
+        <code class="author-binding-index">?{{ i + 1 }}</code>
+        @if (binding.kind === 'customer-id') {
+          <span class="author-binding-name">{{ binding.label }}</span>
+          <span class="author-binding-value">
+            @if (customerIdValid()) {
+              {{ customerId() }} · ready
+            } @else if (customerIdMissing()) {
+              Required · unset
+            } @else {
+              Invalid · enter a whole number
+            }
+          </span>
+        } @else {
+          <span class="author-binding-name">{{ binding.label }}</span>
+          <span class="author-binding-value">{{ binding.value }}</span>
+        }
+      </div>
+    }
+  </div>
+  <p class="author-binding-note">Preview never executes the query.</p>
+</section>

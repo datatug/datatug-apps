@@ -180,19 +180,20 @@ describe('demo-handoff-path', () => {
           owner: 'datatug',
           repo: 'chinook-demo',
           ref: undefined,
+          dir: [],
         },
       ],
       [
         '/(project/github.com/acme/demo/chat)',
-        { kind: 'chat', owner: 'acme', repo: 'demo', ref: undefined },
+        { kind: 'chat', owner: 'acme', repo: 'demo', ref: undefined, dir: [] },
       ],
       [
         '/(project/github.com/acme/demo/tree/HEAD/-/chat)',
-        { kind: 'chat', owner: 'acme', repo: 'demo', ref: 'HEAD' },
+        { kind: 'chat', owner: 'acme', repo: 'demo', ref: 'HEAD', dir: [] },
       ],
       [
         '///project/github.com/acme/demo/tree/HEAD/-/chat/',
-        { kind: 'chat', owner: 'acme', repo: 'demo', ref: 'HEAD' },
+        { kind: 'chat', owner: 'acme', repo: 'demo', ref: 'HEAD', dir: [] },
       ],
       [
         '//project/github.com/acme/demo/start-chat',
@@ -212,7 +213,7 @@ describe('demo-handoff-path', () => {
       expect(handoffTarget(['demo'])).toEqual({ kind: 'demo' });
       expect(
         handoffTarget(['project', 'github.com', 'o', 'r', 'chat']),
-      ).toEqual({ kind: 'chat', owner: 'o', repo: 'r', ref: undefined });
+      ).toEqual({ kind: 'chat', owner: 'o', repo: 'r', ref: undefined, dir: [] });
       expect(
         handoffTarget([
           'Project',
@@ -224,7 +225,7 @@ describe('demo-handoff-path', () => {
           '-',
           'CHAT',
         ]),
-      ).toEqual({ kind: 'chat', owner: 'O', repo: 'R', ref: 'Ab' });
+      ).toEqual({ kind: 'chat', owner: 'O', repo: 'R', ref: 'Ab', dir: [] });
     });
     it('reads the start-chat address, at the root, on a ref, and in a folder', () => {
       expect(
@@ -257,10 +258,10 @@ describe('demo-handoff-path', () => {
         ]),
       ).toEqual({ kind: 'start-chat', owner: 'o', repo: 'r', ref: 'HEAD', dir: ['a', 'B'] });
     });
-    it('the old chat address keeps its shape: no folder', () => {
+    it('a nested chat address retains its project folder', () => {
       expect(
         handoffTarget(['project', 'github.com', 'o', 'r', 'tree', 'x', 'd', '-', 'chat']),
-      ).toBeUndefined();
+      ).toEqual({ kind: 'chat', owner: 'o', repo: 'r', ref: 'x', dir: ['d'] });
     });
     it.each([
       [[]],

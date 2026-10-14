@@ -41,7 +41,7 @@ describe('MyProjectsComponent', () => {
         },
         {
           provide: NewProjectService,
-          useValue: { openNewProjectDialog: vi.fn() },
+          useValue: { navigateToNewProjectPage: vi.fn() },
         },
       ],
     })
@@ -76,7 +76,10 @@ describe('MyProjectsComponent', () => {
 
     expect(nav.goProject).toHaveBeenCalledTimes(1);
     expect(nav.goProject.mock.calls[0][0]).toMatchObject({
-      ref: { storeId: 'github', projectId: 'datatug-demo-project@datatug@demo-project-1' },
+      ref: {
+        storeId: 'github',
+        projectId: 'datatug-demo-project@datatug@demo-project-1',
+      },
       brief: { title: 'DataTug Demo Project @ GitHub', access: 'public' },
     });
   });

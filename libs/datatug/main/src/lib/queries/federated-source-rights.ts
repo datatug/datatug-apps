@@ -36,7 +36,7 @@ export class FederatedSourceRights {
   private readonly undeclaredIds = new Map<string, string>();
   private reported = false;
   constructor(
-    planned: readonly PlannedRightsSource[],
+    private readonly planned: readonly PlannedRightsSource[],
     inventories: ReadonlyMap<string, readonly SourceRight[] | undefined>,
     expectedSourceRights?: readonly SourceRight[],
     private readonly expectedServerId?: string,
@@ -143,6 +143,35 @@ export class FederatedSourceRights {
       response['usedSourceIds'] !== undefined
     )
       this.reported = true;
+    if (size(this.evidence()) > 262144)
+      throw new Error('Source terms inventory exceeds metadata budget.');
+  }
+  /** A whole-query response reports the union of all used sources once, in its
+   * terminal footer. Check it against the inventory frozen before the POST. */
+  acceptWholeQuery(response: Record<string, unknown>): void {
+    if (this.expectedServerId === undefined &&
+      (response['sourceRights'] !== undefined || response['usedSourceIds'] !== undefined))
+      throw new Error('New source terms evidence requires the admitted server identity.');
+    const evidence = decodeSourceRightsEvidence(response);
+    const expected = [...this.entries.values()].sort((a, b) => a.sourceId.localeCompare(b.sourceId));
+    const got = [...(evidence.sourceRights ?? [])].sort((a, b) => a.sourceId.localeCompare(b.sourceId));
+    if (identity(got) !== identity(expected))
+      throw new Error('Source terms missing, late or changed after preflight.');
+    for (const id of evidence.usedSourceIds ?? []) {
+      if (expected.some((right) => right.sourceId === id)) { this.used.add(id); continue; }
+      const pieces = id.startsWith('ovdb:') ? id.slice(5).split('/') : [];
+      let matched = false;
+      try {
+        matched = pieces.length === 3 &&
+          decodeURIComponent(pieces[0]) === this.expectedServerId &&
+          this.planned.some((source) => source.database === decodeURIComponent(pieces[1]) && source.name === decodeURIComponent(pieces[2]));
+      } catch { /* malformed id */ }
+      if (!matched) throw new Error('Unknown source usage identity.');
+      this.used.add(id);
+    }
+    if (got.length && identity([...this.used].sort()) !== identity(got.map((right) => right.sourceId).sort()))
+      throw new Error('Structured source usage evidence missing.');
+    if (response['sourceRights'] !== undefined || response['usedSourceIds'] !== undefined) this.reported = true;
     if (size(this.evidence()) > 262144)
       throw new Error('Source terms inventory exceeds metadata budget.');
   }

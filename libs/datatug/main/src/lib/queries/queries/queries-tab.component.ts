@@ -1,9 +1,11 @@
+import { QueriesUiService } from '../queries-ui.service';
 import { TitleCasePipe } from '@angular/common';
 import {
   ChangeDetectorRef,
   Component,
   effect,
   inject,
+  Injector,
   input,
   model,
   signal,
@@ -73,6 +75,7 @@ type QueryType = 'SQL' | 'GraphQL' | 'HTTP';
   ],
 })
 export class QueriesTabComponent {
+  private readonly injector = inject(Injector);
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
@@ -581,7 +584,24 @@ export class QueriesTabComponent {
     this.applyFilter();
   }
 
+  newQuery(): void {
+    const project = this.project();
+    if (project)
+      void this.injector.get(QueriesUiService).openNewQuery(project.ref);
+  }
+
+  public supportsFolderMutations(): boolean {
+    const ref = this.project()?.ref;
+    return !(
+      (ref?.spaceID !== undefined) ||
+      (ref?.projectApi === 'cloud' &&
+      (ref.storeId === 'github.com' || ref.storeId === 'github')
+      )
+    );
+  }
+
   newFolder(): void {
+    if (!this.supportsFolderMutations()) return;
     const name = prompt('Name of a new folder?');
     if (!name) {
       return;
@@ -619,6 +639,7 @@ export class QueriesTabComponent {
   }
 
   public deleteFolder(): void {
+    if (!this.supportsFolderMutations()) return;
     const m =
       this.currentFolder.path === '~'
         ? 'Are you sure you want to delete all queries and sub-folder?'
@@ -667,7 +688,9 @@ export class QueriesTabComponent {
  * instead of an `ErrorLogger.logError()` toast.
  */
 function isGithubPersonalQueriesError(err: unknown): boolean {
-  return err instanceof Error && err.message === GITHUB_PERSONAL_QUERIES_MESSAGE;
+  return (
+    err instanceof Error && err.message === GITHUB_PERSONAL_QUERIES_MESSAGE
+  );
 }
 
 /**

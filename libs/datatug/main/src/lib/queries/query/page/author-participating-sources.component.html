@@ -1,0 +1,89 @@
+<section data-testid="author-participating-sources">
+  <ion-item lines="none">
+    <ion-label class="ion-text-wrap">
+      <h3>Participating sources</h3>
+      @if (statusMessage()) {
+        <p role="status" aria-live="polite">{{ statusMessage() }}</p>
+      }
+    </ion-label>
+    <ion-buttons slot="end">
+      <ion-button
+        data-testid="author-sources-refresh"
+        aria-label="Refresh source metadata"
+        title="Refresh source metadata"
+        fill="clear"
+        [disabled]="disabled()"
+        (click)="refreshRequested.emit()"
+      >
+        <ion-icon slot="icon-only" name="refresh-outline" />
+      </ion-button>
+    </ion-buttons>
+  </ion-item>
+  @if (!inventory().available) {
+    <ion-item lines="none" role="status"><ion-label class="ion-text-wrap">{{ inventory().reason }}</ion-label></ion-item>
+  } @else if (!inventory().sources.length) {
+    <ion-item lines="none"><ion-label>No participating sources were found in this draft.</ion-label></ion-item>
+  } @else {
+    <ion-list>
+      @for (source of inventory().sources; track source.id) {
+        <ion-item
+          button
+          detail
+          [attr.aria-expanded]="selectedSource() === source.id"
+          [attr.data-source-kind]="source.kind"
+          data-testid="author-participating-source"
+          (click)="toggleDetails(source)"
+        >
+          <ion-label class="ion-text-wrap">
+            <h3>{{ source.name }}{{ source.alias ? ' as ' + source.alias : '' }}</h3>
+            <p>{{ source.kind === 'main' ? 'FROM' : source.kind === 'join' ? (source.joinType?.toUpperCase() === 'JOIN' ? 'JOIN' : source.joinType?.toUpperCase() + ' JOIN') : source.kind.toUpperCase() }}@if (source.kind === 'main') { · Required source · cannot remove } @else if (!source.removable) { · Cannot remove here }</p>
+          </ion-label>
+          @if (source.kind === 'join' && source.name.toLowerCase() === 'customer') {
+            <ion-buttons slot="end">
+              <ion-button
+                data-testid="author-source-remove-join"
+                aria-label="Remove Customer join from TugQL"
+                title="Remove Customer join"
+                fill="clear"
+                [disabled]="disabled() || !source.removable || !canRemoveJoin()"
+                (click)="$event.stopPropagation(); removeRequested.emit()"
+              >
+                <ion-icon name="trash-outline" slot="icon-only" />
+              </ion-button>
+            </ion-buttons>
+          }
+        </ion-item>
+        @if (selectedSource() === source.id) {
+          <ion-list data-testid="author-participating-source-details">
+            <ion-item lines="none"><ion-label class="ion-text-wrap">
+              <p>{{ source.scope }} · {{ source.description }}</p>
+              @if (source.removalReason) { <p>{{ source.removalReason }}</p> }
+              @if (source.kind === 'join' && source.name.toLowerCase() === 'customer' && removeJoinReason()) {
+                <p>{{ removeJoinReason() }}</p>
+              }
+            </ion-label></ion-item>
+            @if (source.database || source.schema || tableSchema(source)) {
+              <ion-item lines="none"><ion-label>Database: {{ source.database || 'default' }} · Schema: {{ source.schema || tableSchema(source) || 'main' }}</ion-label></ion-item>
+            }
+            @for (field of tableFields(source); track $index) {
+              <ion-item lines="inset"><ion-label class="ion-text-wrap"><code>{{ field.name }}</code> · {{ field.type }}</ion-label></ion-item>
+            } @empty {
+              <ion-item lines="none"><ion-label class="ion-text-wrap">Field metadata is not included in this admitted catalog snapshot.</ion-label></ion-item>
+            }
+          </ion-list>
+        }
+      }
+    </ion-list>
+  }
+  <ion-alert
+    data-testid="author-remove-customer-confirmation"
+    [isOpen]="removalConfirmOpen()"
+    header="Remove Customer source?"
+    [message]="removalOutputs().length ? 'This also removes the Customer output fields: ' + removalOutputs().join(', ') + '. The edit stays local and does not run or save.' : 'This removes the Customer JOIN only. The edit stays local and does not run or save.'"
+    [buttons]="[
+      { text: 'Cancel', role: 'cancel' },
+      { text: 'Remove source', role: 'confirm' }
+    ]"
+    (didDismiss)="removalConfirmed.emit($event.detail.role === 'confirm')"
+  />
+</section>

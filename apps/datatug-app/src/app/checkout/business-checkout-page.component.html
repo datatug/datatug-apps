@@ -1,0 +1,348 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-title><a routerLink="/">DataTug</a> · Business</ion-title>
+  </ion-toolbar>
+</ion-header>
+<ion-content>
+  <main>
+    <h1>
+      {{
+        returning ? 'Check your Business checkout' : 'Review Business checkout'
+      }}
+    </h1>
+    @if (!returning) {
+      <datatug-checkout-price-summary
+        planName="DataTug Business"
+        [monthlyMinor]="9900"
+        [business]="true"
+        [yearly]="period() === 'annual'"
+        [quote]="state().quote"
+        [allowPeriodChange]="apiAvailable() && !selectionLocked()"
+        (yearlySelected)="choosePeriod('annual')"
+      />
+    }
+    @if (mode() === 'test') {
+      <p class="test-mode" role="note">
+        TEST mode only. This does not make a live payment or activate Business
+        access.
+      </p>
+    } @else if (returning) {
+      <p class="live-mode" role="note">
+        We’re checking your Business subscription. Access will be available here
+        once confirmed.
+      </p>
+    }
+
+    @if (state().user; as user) {
+      <p>Signed in as {{ user.email || 'your DataTug account' }}</p>
+      <button type="button" (click)="signOut()">Use another account</button>
+    }
+
+    @if (!returning && apiAvailable()) {
+      <section aria-labelledby="period-heading">
+        <h2 id="period-heading">Billing period</h2>
+        <div class="choices" role="group" aria-label="Billing period">
+          <button
+            type="button"
+            [disabled]="selectionLocked()"
+            [attr.aria-pressed]="period() === 'monthly'"
+            (click)="choosePeriod('monthly')"
+          >
+            Monthly
+          </button>
+          <button
+            type="button"
+            [disabled]="selectionLocked()"
+            [attr.aria-pressed]="period() === 'annual'"
+            (click)="choosePeriod('annual')"
+          >
+            Yearly
+          </button>
+        </div>
+      </section>
+
+      @if (!selectedSpace()) {
+        <section aria-labelledby="space-heading">
+          <h2 id="space-heading">Choose a Space</h2>
+          <p>
+            Select a shared Space where you have an owner or admin role. The
+            server checks current access before quoting.
+          </p>
+          @if (spaces().length) {
+            <div
+              class="space-list"
+              role="group"
+              aria-label="Spaces you administer"
+            >
+              @for (space of spaces(); track space.id) {
+                <button
+                  type="button"
+                  [disabled]="selectionLocked()"
+                  [attr.aria-pressed]="selectedSpaceID() === space.id"
+                  (click)="chooseSpace(space.id)"
+                >
+                  {{ space.title }} <span>{{ space.type }}</span>
+                </button>
+              }
+            </div>
+          } @else if (state().stage !== 'sign-in') {
+            <p>No eligible shared Spaces are available on this account.</p>
+          }
+          @if (canCreateSpace()) {
+            <form class="create-space" (submit)="createSpace($event)">
+              <h3>Create a shared Space</h3>
+              <p>
+                Your new Space will be selected after owner access is confirmed.
+              </p>
+              <label for="business-space-name">Space name</label>
+              <input
+                id="business-space-name"
+                name="spaceName"
+                type="text"
+                maxlength="100"
+                required
+                autocomplete="organization"
+                [value]="spaceName()"
+                [disabled]="
+                  spaceCreationStage() !== 'idle' ||
+                  !!createdSpaceID() ||
+                  spaceCreationUncertain()
+                "
+                (input)="spaceName.set($any($event.target).value)"
+              />
+              @if (createdSpaceID()) {
+                <button
+                  type="button"
+                  [disabled]="spaceCreationStage() !== 'idle'"
+                  (click)="checkCreatedSpace()"
+                >
+                  Check Space access
+                </button>
+              } @else {
+                <button
+                  type="submit"
+                  [disabled]="
+                    spaceCreationStage() !== 'idle' ||
+                    !spaceName().trim() ||
+                    spaceCreationUncertain()
+                  "
+                >
+                  {{
+                    spaceCreationStage() === 'creating'
+                      ? 'Creating Space…'
+                      : 'Create Space'
+                  }}
+                </button>
+              }
+              <p role="status" aria-live="polite">
+                @if (spaceCreationStage() === 'waiting') {
+                  Waiting for owner access…
+                }
+                @if (
+                  spaceCreationUncertain() && spaceCreationStage() === 'idle'
+                ) {
+                  Space creation may have completed. Select the Space above when
+                  it appears on your account.
+                } @else {
+                  {{ spaceCreationError() }}
+                }
+              </p>
+            </form>
+          }
+        </section>
+      } @else {
+        <p class="selected-space">
+          Space: <strong>{{ selectedSpace()?.title }}</strong>
+        </p>
+        @if (!selectionLocked()) {
+          <button type="button" class="change-space" (click)="chooseSpace('')">
+            Choose another Space
+          </button>
+        }
+      }
+    }
+
+    <p role="status" aria-live="polite">
+      @switch (state().stage) {
+        @case ('unavailable') {
+          {{ state().message }}
+        }
+        @case ('sign-in') {
+          Sign in to review the quote for the selected Space.
+        }
+        @case ('select-space') {
+          {{ state().message || 'Choose a Space you administer to continue.' }}
+        }
+        @case ('loading') {
+          Checking the Business {{ mode().toUpperCase() }} quote…
+        }
+        @case ('quote') {
+          Review the Space, price and early-access terms before continuing.
+        }
+        @case ('creating-session') {
+          Preparing the secure {{ mode().toUpperCase() }} checkout…
+        }
+        @case ('mounting') {
+          Loading the secure {{ mode().toUpperCase() }} payment form…
+        }
+        @case ('payment') {
+          @if (mode() === 'test') {
+            Enter test payment details in the secure form. No live payment or
+            Business access will be created.
+          } @else {
+            Continue with secure checkout to subscribe to DataTug Business.
+            Access is available once your subscription is confirmed.
+          }
+        }
+        @case ('checking') {
+          Checking {{ mode().toUpperCase() }} checkout status…
+        }
+        @case ('test-complete') {
+          Test checkout complete. Business access is pending reconciliation.
+        }
+        @case ('business-active') {
+          {{ mode().toUpperCase() }} Business access is active for this Space.
+          @if (mode() === 'test') {
+            This does not activate LIVE access.
+          }
+        }
+        @case ('business-ended') {
+          {{ mode().toUpperCase() }} Business access has ended for this Space. A
+          new paid confirmation in this mode is required before continuing.
+        }
+        @case ('expired') {
+          This {{ mode().toUpperCase() }} checkout expired. You can return to
+          the pricing page.
+        }
+        @case ('pending') {
+          {{ state().message }}
+        }
+        @default {
+          {{ state().message }}
+        }
+      }
+    </p>
+
+    @if (state().stage === 'sign-in' || state().status === 401) {
+      <section
+        class="checkout-auth"
+        aria-labelledby="business-checkout-auth-heading"
+      >
+        <h2 id="business-checkout-auth-heading">
+          Continue with your DataTug account
+        </h2>
+        <sneat-auth-panel [returnTo]="authReturnTo()" [showIntro]="false" />
+      </section>
+    }
+
+    @if (state().quote; as quote) {
+      <section aria-labelledby="quote-heading">
+        <h2 id="quote-heading">
+          Your Business {{ mode().toUpperCase() }} quote
+        </h2>
+        @if (selectedSpace()) {
+          <p>
+            For <strong>{{ selectedSpace()?.title }}</strong>
+          </p>
+        }
+        <h3>Early access</h3>
+        <p>
+          DataTug Business is in early access. Your subscription will be
+          confirmed before Business access is available.
+        </p>
+        <label class="consent">
+          <input
+            type="checkbox"
+            [disabled]="
+              state().stage === 'creating-session' ||
+              state().stage === 'mounting' ||
+              state().stage === 'payment'
+            "
+            [checked]="accepted()"
+            (change)="accepted.set($any($event.target).checked)"
+          />
+          @if (mode() === 'test') {
+            I understand this is a TEST checkout and Business access is not
+            activated automatically.
+          } @else {
+            I understand this is a LIVE Business subscription and access is
+            available only after confirmation.
+          }
+        </label>
+        <p>
+          <button
+            type="button"
+            [disabled]="
+              !accepted() ||
+              state().stage === 'creating-session' ||
+              state().stage === 'mounting' ||
+              state().stage === 'payment'
+            "
+            (click)="pay()"
+          >
+            {{
+              state().retrySameQuote
+                ? 'Retry this ' + mode().toUpperCase() + ' checkout'
+                : 'Continue to ' + mode().toUpperCase() + ' payment'
+            }}
+          </button>
+        </p>
+      </section>
+    }
+
+    <section
+      [hidden]="state().stage !== 'payment' && state().stage !== 'mounting'"
+      [attr.aria-label]="mode().toUpperCase() + ' payment form'"
+    >
+      <div #embedded></div>
+    </section>
+
+    @if (
+      state().stage === 'error' ||
+      state().stage === 'pending' ||
+      state().stage === 'expired'
+    ) {
+      @if (!state().retrySameQuote) {
+        <button type="button" (click)="retry()">
+          {{
+            state().code === 'quote_expired'
+              ? 'Get a fresh quote'
+              : returning
+                ? 'Check again'
+                : 'Retry this quote'
+          }}
+        </button>
+      }
+    }
+    @if (state().stage === 'test-complete') {
+      <p>
+        Business access is not granted by this page. It remains pending
+        reconciliation.
+      </p>
+      <p><a routerLink="/">Continue to DataTug</a></p>
+    }
+    @if (
+      state().stage === 'business-active' &&
+      state().spaceID &&
+      mode() === 'live'
+    ) {
+      <p>
+        <a
+          [routerLink]="['/new-project']"
+          [queryParams]="{
+            spaceID: state().spaceID,
+            billingIntent: 'space_business',
+          }"
+          >Create a project in this Space</a
+        >
+      </p>
+    }
+    <nav aria-label="Checkout navigation">
+      <a [href]="backToPricing()">Back to pricing</a>
+      ·
+      <button type="button" class="link-button" (click)="cancel()">
+        Cancel and return to DataTug
+      </button>
+    </nav>
+  </main>
+</ion-content>

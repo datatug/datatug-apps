@@ -1,8 +1,18 @@
-import { Injectable, inject } from '@angular/core';
-import { Observable, throwError } from 'rxjs';
+import { DevicePersonalQueries, isDevicePersonalQuery } from './device-personal-queries';
+import {
+  ProjectQueryApiService,
+  type ProjectQuerySave,
+} from '../services/project/project-query-api.service';
+import { SneatAuthStateService } from '@sneat/auth-core';
+import {
+  fromProjectQueryWire,
+  type ProjectQueryRevision,
+} from './project-query-contract';
+import { Injectable, Injector, inject } from '@angular/core';
+import { Observable, throwError, of, switchMap, startWith, from, tap } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { STORE_ID_GITHUB_COM, STORE_TYPE_GITHUB } from '@sneat/core';
-import { IProjectRef } from '../core/project-context';
+import { IProjectRef, isSharedProjectRef } from '../core/project-context';
 import { IParameterDef } from '../models/definition/parameter';
 import { IRecordsetDef } from '../models/definition/recordset';
 import {
@@ -87,7 +97,9 @@ interface IWireQueryItem {
   type: string;
   text?: string;
   draft?: boolean;
+  connectionId?: string;
   parameters?: IParameterDef[];
+  relationshipBindings?: IQueryDef['relationshipBindings'];
   dbModel?: string;
   targets?: IQueryTarget[];
   recordsets?: IRecordsetDef[];
@@ -127,7 +139,10 @@ function toQueryRequest(type: string, text: string | undefined): IQueryRequest {
   // `queryType === 'SQL'` for the inline-SQL-preview panel
   // (queries-tab.component.html) — a DTQL query's `text` is its own YAML
   // body, harmlessly unused by that branch.
-  return { queryType: type as QueryType, text: text ?? '' } as ITextQueryRequest;
+  return {
+    queryType: type as QueryType,
+    text: text ?? '',
+  } as ITextQueryRequest;
 }
 
 function toQueryDef(item: IWireQueryItem): IQueryDef {
@@ -159,6 +174,9 @@ function toQueryFolder(folder: IWireQueryFolder): IQueryFolder {
 // `QueriesService` instead of for `QueryEditorStateService`).
 @Injectable({ providedIn: 'root' })
 export class QueriesService {
+  private readonly injector = inject(Injector);
+  readonly devicePersonal = inject(DevicePersonalQueries);
+  private readonly deviceRevisions = new Map<string, number>();
   private readonly projItemService = inject<ProjectItemService<IQueryDef>>(
     QUERY_PROJ_ITEM_SERVICE,
   );
@@ -198,13 +216,37 @@ export class QueriesService {
     folderPath: string,
     rootFolder?: 'shared' | 'personal' | 'bookmarked',
   ): Observable<IQueryFolder | null | undefined> {
+    if (rootFolder === 'personal' && (isGithubStoreId(projRef.storeId) || projRef.projectApi === 'cloud' || isSharedProjectRef(projRef)))
+      return from(this.devicePersonal.list(projRef)).pipe(map(items => ({ id: 'user:device', title: 'On this device', items: items.map(item => item.query), folders: [] })));
+    if (projRef.projectApi === 'cloud' || isSharedProjectRef(projRef)) {
+      if (rootFolder === 'personal')
+        return throwError(
+          () =>
+            new Error(
+              'Personal queries are not supported by this project API.',
+            ),
+        );
+      const empty: IQueryFolder = { id: '~', folders: [], items: [] };
+      return this.authentication().pipe(
+        switchMap((auth) =>
+          auth.status === 'authenticated' && auth.user?.uid
+            ? this.injector
+                .get(ProjectQueryApiService)
+                .folder<IWireQueryFolder>(projRef)
+                .pipe(map(toQueryFolder), startWith(empty))
+            : of(empty),
+        ),
+      );
+    }
     if (isGithubStoreId(projRef.storeId)) {
       if (rootFolder === 'personal') {
         return throwError(() => new Error(GITHUB_PERSONAL_QUERIES_MESSAGE));
       }
       return this.githubReader
         .getQueriesFolder(projRef.projectId)
-        .pipe(map((folder) => toQueryFolder(folder as unknown as IWireQueryFolder)));
+        .pipe(
+          map((folder) => toQueryFolder(folder as unknown as IWireQueryFolder)),
+        );
     }
     const root = rootFolder === 'personal' ? 'personal' : undefined;
     return this.projItemService
@@ -219,7 +261,36 @@ export class QueriesService {
       );
   }
 
+  public capabilities(ref: IProjectRef) {
+    return this.injector.get(ProjectQueryApiService).capabilities(ref);
+  }
+  public branches(ref: IProjectRef) {
+    return this.injector.get(ProjectQueryApiService).branches(ref);
+  }
+  public authorityDenied() {
+    return this.injector.get(ProjectQueryApiService).authorityDenied;
+  }
+  public authentication() {
+    return this.injector.get(SneatAuthStateService).authState;
+  }
+  public getRevision(
+    ref: IProjectRef,
+    id: string,
+  ): Observable<ProjectQueryRevision> {
+    return this.injector.get(ProjectQueryApiService).read(ref, id, ref.branch);
+  }
+  public saveRevision(
+    ref: IProjectRef,
+    save: ProjectQuerySave,
+  ): Observable<ProjectQueryRevision> {
+    return this.injector.get(ProjectQueryApiService).save(ref, save);
+  }
   public getQuery(projRef: IProjectRef, id: string): Observable<IQueryDef> {
+    if (isDevicePersonalQuery(id)) return from(this.devicePersonal.read(projRef, id)).pipe(tap(item => this.deviceRevisions.set(id, item.revision)), map(item => item.query));
+    if (projRef.projectApi || isSharedProjectRef(projRef))
+      return this.getRevision(projRef, id).pipe(
+        map((reply) => fromProjectQueryWire(reply.query)),
+      );
     if (isGithubStoreId(projRef.storeId)) {
       return this.githubReader
         .getQuery(projRef.projectId, id)
@@ -249,6 +320,7 @@ export class QueriesService {
     projRef: IProjectRef,
     query: IQueryDef,
   ): Observable<IQueryDef> {
+    if (isDevicePersonalQuery(query.id)) return from(this.devicePersonal.save(projRef, query, 0)).pipe(tap(item => this.deviceRevisions.set(query.id, item.revision)), map(item => item.query));
     return this.projItemService.createProjItem(projRef, query);
   }
 
@@ -256,6 +328,7 @@ export class QueriesService {
     projRef: IProjectRef,
     query: IQueryDef,
   ): Observable<IQueryDef> {
+    if (isDevicePersonalQuery(query.id)) return from(this.devicePersonal.save(projRef, query, this.deviceRevisions.get(query.id) ?? -1)).pipe(tap(item => this.deviceRevisions.set(query.id, item.revision)), map(item => item.query));
     return this.projItemService.updateProjItem(projRef, query);
   }
 

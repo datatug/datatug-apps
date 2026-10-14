@@ -1,0 +1,13 @@
+:host {
+  display: block;
+  min-width: 0;
+}
+
+.compose-controls {
+  padding: 0;
+  background: transparent;
+}
+
+.compose-controls ion-list-header {
+  min-height: 2.5rem;
+}

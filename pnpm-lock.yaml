@@ -18,10 +18,10 @@ overrides:
   '@angular/animations': 22.1.3
   '@sneat/api-public': 0.27.6
   '@sneat/api': 0.27.6
-  '@sneat/auth-core': 0.27.6
+  '@sneat/auth-core': 0.27.30
   '@sneat/auth-models': 0.27.6
-  '@sneat/auth-ui': 0.27.20
-  '@sneat/components': 0.27.23
+  '@sneat/auth-ui': 0.27.31
+  '@sneat/components': 0.27.32
   '@sneat/core-public': 0.27.23
   '@sneat/core': 0.27.23
   '@sneat/data': 0.27.6
@@ -70,12 +70,30 @@ importers:
       '@capacitor/core':
         specifier: 8.1.0
         version: 8.1.0
+      '@codemirror/autocomplete':
+        specifier: 6.20.3
+        version: 6.20.3
+      '@codemirror/commands':
+        specifier: 6.10.4
+        version: 6.10.4
+      '@codemirror/lang-sql':
+        specifier: 6.10.0
+        version: 6.10.0
+      '@codemirror/language':
+        specifier: 6.12.4
+        version: 6.12.4
+      '@codemirror/state':
+        specifier: 6.7.1
+        version: 6.7.1
+      '@codemirror/view':
+        specifier: 6.43.6
+        version: 6.43.6
       '@dalgo/core':
-        specifier: github:dal-go/dalgo-js#1534acd4d0e4a104c58eba09fb9c25619efc8f24
-        version: https://codeload.github.com/dal-go/dalgo-js/tar.gz/1534acd4d0e4a104c58eba09fb9c25619efc8f24
+        specifier: 0.7.4
+        version: 0.7.4
       '@dalgo/indexeddb':
-        specifier: github:dal-go/dalgo-http-adapters#519665be7bab21bae3c388eb2395afb8b6df1be9&path:/packages/indexeddb
-        version: https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/519665be7bab21bae3c388eb2395afb8b6df1be9#path:/packages/indexeddb(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/1534acd4d0e4a104c58eba09fb9c25619efc8f24)
+        specifier: github:dal-go/dalgo-http-adapters#e14b17e896377ef3f608f9d8e272fb87d8b8de23&path:/packages/indexeddb
+        version: https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/e14b17e896377ef3f608f9d8e272fb87d8b8de23#path:/packages/indexeddb(@dalgo/core@0.7.4)
       '@firebase/auth':
         specifier: 1.12.1
         version: 1.12.1(@firebase/app@0.14.9)
@@ -109,6 +127,9 @@ importers:
       '@ionic/core':
         specifier: 9.0.0
         version: 9.0.0
+      '@lezer/highlight':
+        specifier: 1.2.3
+        version: 1.2.3
       '@sentry/angular':
         specifier: 10.70.0
         version: 10.70.0(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(@angular/router@22.1.3(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(@angular/platform-browser@22.1.3(@angular/animations@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))(rxjs@7.8.2))(rxjs@7.8.2)
@@ -120,19 +141,19 @@ importers:
         version: 0.27.6(163a10137aedaca34a82f5363b9305db)
       '@sneat/app-auth':
         specifier: 0.27.6
-        version: 0.27.6(900c51a9ee7dbde2b095fd57dc07a721)
+        version: 0.27.6(54559bce9cde2789a899cfbeaf39d98f)
       '@sneat/auth-core':
-        specifier: 0.27.6
-        version: 0.27.6(dd55e6f98d2609056ed5ab9db3c674a4)
+        specifier: 0.27.30
+        version: 0.27.30(dd55e6f98d2609056ed5ab9db3c674a4)
       '@sneat/auth-models':
         specifier: 0.27.6
         version: 0.27.6(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))
       '@sneat/auth-ui':
-        specifier: 0.27.20
-        version: 0.27.20(85befd5091b0833e555ca32a8d7c669f)
+        specifier: 0.27.31
+        version: 0.27.31(9b4b8bb94d10d4fff1fa35a0910698dc)
       '@sneat/components':
-        specifier: 0.27.23
-        version: 0.27.23(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(@ionic/angular@9.0.0(6ff9fc4b486d8c68e67889d2ebc5db9b))(@sneat/core-public@0.27.23(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))
+        specifier: 0.27.32
+        version: 0.27.32(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(@ionic/angular@9.0.0(6ff9fc4b486d8c68e67889d2ebc5db9b))(@sneat/core-public@0.27.23(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))
       '@sneat/core':
         specifier: 0.27.23
         version: 0.27.23(@angular/animations@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(@angular/router@22.1.3(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(@angular/platform-browser@22.1.3(@angular/animations@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))(rxjs@7.8.2))(@ionic/angular@9.0.0(6ff9fc4b486d8c68e67889d2ebc5db9b))(@sneat/core-public@0.27.23(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))(firebase@12.10.0)(rxjs@7.8.2)
@@ -172,6 +193,9 @@ importers:
       '@sneat/wormhole':
         specifier: ^0.0.6
         version: 0.0.6(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2)
+      '@stripe/stripe-js':
+        specifier: ^10.0.0
+        version: 10.0.0
       ag-grid-angular:
         specifier: 36.2.0
         version: 36.2.0(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))
@@ -202,6 +226,9 @@ importers:
       rxjs:
         specifier: 7.8.2
         version: 7.8.2
+      sql.js:
+        specifier: 1.14.2
+        version: 1.14.2
       tabulator-tables:
         specifier: 6.3.1
         version: 6.3.1
@@ -299,6 +326,9 @@ importers:
       '@types/node':
         specifier: 24.13.3
         version: 24.13.3
+      '@types/sql.js':
+        specifier: 1.4.11
+        version: 1.4.11
       '@types/tabulator-tables':
         specifier: 6.3.1
         version: 6.3.1
@@ -1952,6 +1982,9 @@ packages:
   '@codemirror/commands@6.10.4':
     resolution: {integrity: sha512-Ryk9y9T0FFVF0cUGhAknveAyUOl/A1qReTFi+qPKtOh2Z9F4AUBz3XOrYD4ZEgZirdugVzHvd/2/Wcwy5OliTg==}
 
+  '@codemirror/lang-sql@6.10.0':
+    resolution: {integrity: sha512-6ayPkEd/yRw0XKBx5uAiToSgGECo/GY2NoJIHXIIQh1EVwLuKoU8BP/qK0qH5NLXAbtJRLuT73hx7P9X34iO4w==}
+
   '@codemirror/language@6.12.4':
     resolution: {integrity: sha512-1q4PaT+o6PbgpkJt4Q8Fv5XJxTy4FUZ4MWETtyiDw3J0Pyr9E2vqcKL+k9wcvjNTIsauxvE7OfmWj3FRPHQ76A==}
 
@@ -1991,17 +2024,16 @@ packages:
   '@dabh/diagnostics@2.0.8':
     resolution: {integrity: sha512-R4MSXTVnuMzGD7bzHdW2ZhhdPC/igELENcq5IjEverBvq5hn1SXCWcsi6eSsdWP0/Ur+SItRRjAktmdoX/8R/Q==}
 
-  '@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/1534acd4d0e4a104c58eba09fb9c25619efc8f24':
-    resolution: {gitHosted: true, integrity: sha512-mcNxif6K5ueHV7DZPQ5wVxnzHhJL2GcaN3F/pn6EUM94Hv3NusW0rHL7b+GFBmhXo1eMBYQiMol4n78yfw2qyQ==, tarball: https://codeload.github.com/dal-go/dalgo-js/tar.gz/1534acd4d0e4a104c58eba09fb9c25619efc8f24}
-    version: 0.2.0
+  '@dalgo/core@0.7.4':
+    resolution: {integrity: sha512-CtMCVnB2hm7bXmWpmXYBwyvwrtJk58q9/fPS4cx3FyGHRAtX9p7a7Zt13gXSSBP1SG0U+3PZ//uvlzMFlemN6A==}
     engines: {node: '>=20'}
 
-  '@dalgo/indexeddb@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/519665be7bab21bae3c388eb2395afb8b6df1be9#path:/packages/indexeddb':
-    resolution: {gitHosted: true, integrity: sha512-EtYCb/hij2MzP/C5seshCy/r0t5GSJbujSMrmx6LRi/suoqZFnTIYX0xv0MwuOP/NxcBiHPlsLNsmnMNLqi+Og==, path: /packages/indexeddb, tarball: https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/519665be7bab21bae3c388eb2395afb8b6df1be9}
-    version: 0.1.0
+  '@dalgo/indexeddb@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/e14b17e896377ef3f608f9d8e272fb87d8b8de23#path:/packages/indexeddb':
+    resolution: {gitHosted: true, integrity: sha512-DYqAuYIMusTl5tp9rvBUJHeN6JHU6O4HkRIegFZ4JIHF25UQ9laUTYvaWDm3H7RH+GKOzzf06tAw+YL1zv4Wcw==, path: /packages/indexeddb, tarball: https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/e14b17e896377ef3f608f9d8e272fb87d8b8de23}
+    version: 0.2.0
     engines: {node: '>=20'}
     peerDependencies:
-      '@dalgo/core': ^0.1.0
+      '@dalgo/core': ^0.2.0
 
   '@discoveryjs/json-ext@1.1.0':
     resolution: {integrity: sha512-Xc3VhU02wqZ1HvHRJUwL09HkZSTvidqY5Ya0NXBSYOxAp+Ln9dcJr9fySI+CkONzP3PekQo9WdzCv0PGER/mOA==}
@@ -5388,7 +5420,7 @@ packages:
       '@capacitor/core': '>=8.0.0 <9.0.0'
       '@sneat/api-firebase-auth': ^0.27.0
       '@sneat/app-public': ^0.27.0
-      '@sneat/auth-core': 0.27.6
+      '@sneat/auth-core': 0.27.30
       '@sneat/core': 0.27.23
       '@sneat/logging': 0.27.25
       firebase: '*'
@@ -5411,8 +5443,8 @@ packages:
     peerDependencies:
       astro: '>=7'
 
-  '@sneat/auth-core@0.27.6':
-    resolution: {integrity: sha512-8Nny9FkRUGI120iv1+obyV7431iwmeVzRZRcpYmLCDLGV9K9DondQjTS/riLIwNX2uCe2/sEfVW3Z9T2zb8WLQ==}
+  '@sneat/auth-core@0.27.30':
+    resolution: {integrity: sha512-5wCwQMSy9/wR+71ku/P3/xA+O5dFM8vNEA/u4563bc/4yogyGbPPSjDcNXY8KhL57M4PEMSYiRqoEv8su44eEA==}
     peerDependencies:
       '@angular/common': 22.1.3
       '@angular/core': 22.1.3
@@ -5433,8 +5465,8 @@ packages:
       '@angular/common': 22.1.3
       '@angular/core': 22.1.3
 
-  '@sneat/auth-ui@0.27.20':
-    resolution: {integrity: sha512-tbsuNgV65lZJ6aFBAr6GOx75s32ZpOKQeJ6jWNDbA7u1uAJ2mnIvdQzuwwqBgX+J2yl9Gy9Gepq9+qpPbz6TdQ==}
+  '@sneat/auth-ui@0.27.31':
+    resolution: {integrity: sha512-lTyF43l7cRwoklqB4KzXdxc6vIsQOCUS9Hw58tRK8+V20MVUE+wV32UDacnDtmjbppoj25wKvy1YKM3Rx55jiw==}
     peerDependencies:
       '@angular/common': 22.1.3
       '@angular/core': 22.1.3
@@ -5442,7 +5474,7 @@ packages:
       '@angular/router': 22.1.3
       '@ionic/angular': '>=9.0.0 <10.0.0'
       '@sneat/api': 0.27.6
-      '@sneat/auth-core': 0.27.6
+      '@sneat/auth-core': 0.27.30
       '@sneat/auth-models': 0.27.6
       '@sneat/core': 0.27.23
       '@sneat/random': '*'
@@ -5454,8 +5486,8 @@ packages:
     engines: {node: '>=18'}
     hasBin: true
 
-  '@sneat/components@0.27.23':
-    resolution: {integrity: sha512-75+a3En4O/C5i8V5Y58Wqe8TkhXsH8N89R7XSggMygRF1JT6EORrJPRrnS42HIZXwi4cY4XwksElmbUeFlzaBA==}
+  '@sneat/components@0.27.32':
+    resolution: {integrity: sha512-wizw3pzf7qVlgS4/GxVCS9oUPWIInBdSfEf3gHYrrNgVUwq7gzxtMapQdWO8O1OdaP3wf+53Uvi5/HE37w9Etw==}
     peerDependencies:
       '@angular/common': 22.1.3
       '@angular/core': 22.1.3
@@ -5581,6 +5613,10 @@ packages:
     resolution: {integrity: sha512-cgWD+GeuvJpTe1WQn40p02+BJ2j0j1YJ17GdkF2qKIQ23s2e3Zivq5yISXS3dcuV6oUJFN93jprdk+nk/sq99Q==}
     engines: {node: '>=16.0.0', npm: '>=7.10.0'}
     hasBin: true
+
+  '@stripe/stripe-js@10.0.0':
+    resolution: {integrity: sha512-y5LKFTtnz1ciM+IQfrDfHcpjGlsm5Ao4onaUn4scurI/B6rNhrmV+ScTPDo+3Ges5oF8ol4tBkBAIZyVXVBIXw==}
+    engines: {node: '>=12.16'}
 
   '@swc-node/core@1.15.0':
     resolution: {integrity: sha512-WAerrrl087WgenB92XG4Th2t0NQFfMNLYSe0sW2cEMMqM/LQmP4rozsDJl0vuzTrbewjpKQryxFXI+aYig/dBg==}
@@ -5736,6 +5772,9 @@ packages:
   '@types/deep-eql@4.0.2':
     resolution: {integrity: sha512-c9h9dVVMigMPc4bwTvC5dxqtqJZwQPePsWjPlpSOnojbor6pGqdk541lfA7AqFQr5pB1BRdq0juY9db81BwyFw==}
 
+  '@types/emscripten@1.41.6':
+    resolution: {integrity: sha512-uN+9i8bFT5CUcZfyIEYDrSueACEyKGbUs5kC/72DGlZZoinh84sJfVV0i8UOJD1asdzkvLPBRrKs41kZ8MdEXg==}
+
   '@types/eslint-scope@3.7.7':
     resolution: {integrity: sha512-MzMFlSLBqNF2gcHWO0G1vP/YQyfvrxZ0bF+u7mzUdZ1/xK4A4sru+nraZz5i3iEIk1l1uyicaDVTB4QbbEkAYg==}
 
@@ -5831,6 +5870,9 @@ packages:
 
   '@types/sockjs@0.3.36':
     resolution: {integrity: sha512-MK9V6NzAS1+Ud7JV9lJLFqW85VbC9dq3LmwZCuBe4wBDgKC0Kj/jd8Xl+nSviU+Qc3+m7umHHyHg//2KSa0a0Q==}
+
+  '@types/sql.js@1.4.11':
+    resolution: {integrity: sha512-QXIx38p2ZThJaK9vP5ZdqdlRe1FG9I8SmCZOS7FHfB/2qPAjZwkL7/vlfPg6N/oWHuuOaGg/P/IRwfP2W0kWVQ==}
 
   '@types/tabulator-tables@6.3.1':
     resolution: {integrity: sha512-qL05wGXVy0yfWcF8LCE9+9uSeUIpeKdgpm8YmOAPTjLd3FaoZziPOhVxIiLzEhLTFfOvbuwnaWDm4v4i87diRQ==}
@@ -10516,6 +10558,9 @@ packages:
     resolution: {integrity: sha512-kTYRg5FIcvsDtYUG2Qn9pYT6xKwiLJN5TTIvc5Mur6hIg4pSfdpHu8Yyu5bqESLHnVM3mXzD446cb2+uEaKZXg==}
     hasBin: true
 
+  sql.js@1.14.2:
+    resolution: {integrity: sha512-3ZGPovObMFrdw79zrUHbfdE/DLIsy8jdNdssmMSQuRAymedU6q84asPt0kgiqrdMYlPegDItiIMfmIXzZnYFcw==}
+
   stack-trace@0.0.10:
     resolution: {integrity: sha512-KGzahc7puUKkzyMt+IqAep+TVNbKP+k2Lmwhub39m1AsTSkaDutx56aDCo+HLDzf/D26BIHTJWNiTG1KAJiQCg==}
 
@@ -13684,6 +13729,15 @@ snapshots:
       '@codemirror/view': 6.43.6
       '@lezer/common': 1.5.2
 
+  '@codemirror/lang-sql@6.10.0':
+    dependencies:
+      '@codemirror/autocomplete': 6.20.3
+      '@codemirror/language': 6.12.4
+      '@codemirror/state': 6.7.1
+      '@lezer/common': 1.5.2
+      '@lezer/highlight': 1.2.3
+      '@lezer/lr': 1.4.10
+
   '@codemirror/language@6.12.4':
     dependencies:
       '@codemirror/state': 6.7.1
@@ -13748,13 +13802,13 @@ snapshots:
       enabled: 2.0.0
       kuler: 2.0.0
 
-  '@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/1534acd4d0e4a104c58eba09fb9c25619efc8f24':
+  '@dalgo/core@0.7.4':
     dependencies:
       yaml: 2.8.2
 
-  '@dalgo/indexeddb@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/519665be7bab21bae3c388eb2395afb8b6df1be9#path:/packages/indexeddb(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/1534acd4d0e4a104c58eba09fb9c25619efc8f24)':
+  '@dalgo/indexeddb@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/e14b17e896377ef3f608f9d8e272fb87d8b8de23#path:/packages/indexeddb(@dalgo/core@0.7.4)':
     dependencies:
-      '@dalgo/core': https://codeload.github.com/dal-go/dalgo-js/tar.gz/1534acd4d0e4a104c58eba09fb9c25619efc8f24
+      '@dalgo/core': 0.7.4
 
   '@discoveryjs/json-ext@1.1.0': {}
 
@@ -16886,7 +16940,7 @@ snapshots:
       rxjs: 7.8.2
       tslib: 2.8.1
 
-  '@sneat/app-auth@0.27.6(900c51a9ee7dbde2b095fd57dc07a721)':
+  '@sneat/app-auth@0.27.6(54559bce9cde2789a899cfbeaf39d98f)':
     dependencies:
       '@angular/common': 22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2)
       '@angular/core': 22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)
@@ -16894,7 +16948,7 @@ snapshots:
       '@capacitor/core': 8.1.0
       '@sneat/api-firebase-auth': 0.27.6(38cd439b6cc73ac60b1f0d519cd31edf)
       '@sneat/app-public': 0.27.6(293c1a1160045dd234049aa99bc672eb)
-      '@sneat/auth-core': 0.27.6(dd55e6f98d2609056ed5ab9db3c674a4)
+      '@sneat/auth-core': 0.27.30(dd55e6f98d2609056ed5ab9db3c674a4)
       '@sneat/core': 0.27.23(@angular/animations@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(@angular/router@22.1.3(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(@angular/platform-browser@22.1.3(@angular/animations@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))(rxjs@7.8.2))(@ionic/angular@9.0.0(6ff9fc4b486d8c68e67889d2ebc5db9b))(@sneat/core-public@0.27.23(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))(firebase@12.10.0)(rxjs@7.8.2)
       '@sneat/logging': 0.27.25(92be4c455de5a6d6441f43f7647faa20)
       firebase: 12.10.0
@@ -16917,7 +16971,7 @@ snapshots:
     dependencies:
       astro: 7.3.2(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(@types/node@24.13.3)(jiti@2.7.0)(less@4.6.7)(sass-embedded@1.100.0)(sass@1.101.0)(terser@5.49.0)(yaml@2.9.0)
 
-  '@sneat/auth-core@0.27.6(dd55e6f98d2609056ed5ab9db3c674a4)':
+  '@sneat/auth-core@0.27.30(dd55e6f98d2609056ed5ab9db3c674a4)':
     dependencies:
       '@angular/common': 22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2)
       '@angular/core': 22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)
@@ -16939,7 +16993,7 @@ snapshots:
       '@angular/core': 22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)
       tslib: 2.8.1
 
-  '@sneat/auth-ui@0.27.20(85befd5091b0833e555ca32a8d7c669f)':
+  '@sneat/auth-ui@0.27.31(9b4b8bb94d10d4fff1fa35a0910698dc)':
     dependencies:
       '@angular/common': 22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2)
       '@angular/core': 22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)
@@ -16947,7 +17001,7 @@ snapshots:
       '@angular/router': 22.1.3(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(@angular/platform-browser@22.1.3(@angular/animations@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))(rxjs@7.8.2)
       '@ionic/angular': 9.0.0(6ff9fc4b486d8c68e67889d2ebc5db9b)
       '@sneat/api': 0.27.6(163a10137aedaca34a82f5363b9305db)
-      '@sneat/auth-core': 0.27.6(dd55e6f98d2609056ed5ab9db3c674a4)
+      '@sneat/auth-core': 0.27.30(dd55e6f98d2609056ed5ab9db3c674a4)
       '@sneat/auth-models': 0.27.6(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))
       '@sneat/core': 0.27.23(@angular/animations@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(@angular/router@22.1.3(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(@angular/platform-browser@22.1.3(@angular/animations@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))(rxjs@7.8.2))(@ionic/angular@9.0.0(6ff9fc4b486d8c68e67889d2ebc5db9b))(@sneat/core-public@0.27.23(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))(firebase@12.10.0)(rxjs@7.8.2)
       '@sneat/random': 0.0.4(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))
@@ -16957,7 +17011,7 @@ snapshots:
 
   '@sneat/build-info@0.27.23': {}
 
-  '@sneat/components@0.27.23(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(@ionic/angular@9.0.0(6ff9fc4b486d8c68e67889d2ebc5db9b))(@sneat/core-public@0.27.23(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))':
+  '@sneat/components@0.27.32(@angular/common@22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(@ionic/angular@9.0.0(6ff9fc4b486d8c68e67889d2ebc5db9b))(@sneat/core-public@0.27.23(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)))':
     dependencies:
       '@angular/common': 22.1.3(@angular/core@22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2))(rxjs@7.8.2)
       '@angular/core': 22.1.3(@angular/compiler@22.1.3)(rxjs@7.8.2)
@@ -17087,6 +17141,8 @@ snapshots:
       '@rollup/rollup-linux-x64-musl': 4.44.0
       '@rollup/rollup-win32-arm64-msvc': 4.44.0
       '@rollup/rollup-win32-x64-msvc': 4.44.0
+
+  '@stripe/stripe-js@10.0.0': {}
 
   '@swc-node/core@1.15.0(@swc/core@1.16.2(@swc/helpers@0.5.23))(@swc/types@0.1.28)':
     dependencies:
@@ -17226,6 +17282,8 @@ snapshots:
 
   '@types/deep-eql@4.0.2': {}
 
+  '@types/emscripten@1.41.6': {}
+
   '@types/eslint-scope@3.7.7':
     dependencies:
       '@types/eslint': 9.6.1
@@ -17337,6 +17395,11 @@ snapshots:
 
   '@types/sockjs@0.3.36':
     dependencies:
+      '@types/node': 24.13.3
+
+  '@types/sql.js@1.4.11':
+    dependencies:
+      '@types/emscripten': 1.41.6
       '@types/node': 24.13.3
 
   '@types/tabulator-tables@6.3.1': {}
@@ -23101,6 +23164,8 @@ snapshots:
     dependencies:
       argparse: 2.0.1
       nearley: 2.20.1
+
+  sql.js@1.14.2: {}
 
   stack-trace@0.0.10: {}
 

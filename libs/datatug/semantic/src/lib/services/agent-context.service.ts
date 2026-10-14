@@ -7,7 +7,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { Observable, finalize, map, shareReplay, tap } from 'rxjs';
+import { Observable, finalize, map, shareReplay, tap, throwError } from 'rxjs';
 import { AgentInfo } from '../../contract/types';
 import { decodeAgentInfo } from '../../contract/decoders';
 import { DATATUG_AGENT_BASE_URL } from '../tokens/datatug-agent-base-url.token';
@@ -102,6 +102,11 @@ export class AgentContextService {
     if (state.refreshing) {
       return state.refreshing;
     }
+    if (!hasHttpOrigin(state.baseUrl)) {
+      return throwError(
+        () => new Error('No HTTP(S) DataTug agent is configured for this page.'),
+      );
+    }
     const request = this.http.get<unknown>(`${state.baseUrl}/agent-info`).pipe(
       map((raw) => decodeAgentInfo(raw)),
       tap((info) => state.infoSignal.set(info)),
@@ -114,6 +119,32 @@ export class AgentContextService {
     );
     state.refreshing = request;
     return request;
+  }
+}
+
+function hasHttpOrigin(baseUrl: string): boolean {
+  try {
+    const schemeRelative = baseUrl.startsWith('//');
+    const pageProtocol = globalThis.location?.protocol;
+    if (
+      schemeRelative &&
+      pageProtocol !== 'http:' &&
+      pageProtocol !== 'https:'
+    ) {
+      return false;
+    }
+    // `getStoreUrl()` intentionally returns protocol-relative agent origins for
+    // bare host:port local stores. Resolve those only against a real HTTP(S)
+    // browser page; don't assume a scheme in non-browser contexts.
+    const url = new URL(
+      schemeRelative ? `${pageProtocol}${baseUrl}` : baseUrl,
+    );
+    return (
+      (url.protocol === 'http:' || url.protocol === 'https:') &&
+      url.hostname.length > 0
+    );
+  } catch {
+    return false;
   }
 }
 

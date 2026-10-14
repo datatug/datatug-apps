@@ -163,6 +163,134 @@ describe('configured source adapter using pinned actual Directory and registry f
       )[0].reason,
     ).toMatch(/original upstream/);
   });
+  describe('reads the newer index keys beside the earlier ones', () => {
+    type Entry = Record<string, unknown>;
+    const choicesWith = (change: {
+      directory?: CanonicalIndexes['directory'];
+      models?: CanonicalIndexes['models'];
+    }) =>
+      configuredFieldChoices(
+        connection,
+        [table],
+        {
+          ...indexes,
+          directory: change.directory ?? directory,
+          models: change.models ?? models,
+        },
+        [suggestion],
+      );
+    // Every recordset's mapping, spelled as `spell` says (see `directoryWith` callers).
+    const directoryWith = (spell: (set: Entry) => Entry) => ({
+      ...directory,
+      databases: directory.databases.map((db) => ({
+        ...db,
+        recordsets: db.recordsets.map((set) => spell(set)),
+      })),
+    });
+    const modelsWith = (spell: (record: Entry) => Entry) => ({
+      ...models,
+      models: models.models.map((entry) => ({
+        ...entry,
+        ...spell(entry),
+      })),
+    });
+    const renamed = (set: Entry): Entry => {
+      const { modelEntity, ...rest } = set;
+      return { ...rest, modelRecordType: modelEntity };
+    };
+    // The registry's index entry with its record types and their members under the newer keys.
+    const current = (entry: Entry): Entry => {
+      const { entities, ...rest } = entry;
+      return {
+        ...rest,
+        records: (entities as Entry[]).map((record) => {
+          const { properties, ...others } = record;
+          return { ...others, fields: properties };
+        }),
+      };
+    };
+    const earlier = choicesWith({});
+
+    it('gives the same choices as before for modelRecordType, and for records with fields', () => {
+      expect(
+        earlier.find((value) => value.property === 'Country')?.source,
+      ).toBeDefined();
+      expect(choicesWith({ directory: directoryWith(renamed) })).toEqual(
+        earlier,
+      );
+      expect(
+        choicesWith({
+          models: modelsWith((entry) => ({
+            ...current(entry),
+            entities: undefined,
+          })),
+        }),
+      ).toEqual(earlier);
+      expect(
+        choicesWith({
+          directory: directoryWith(renamed),
+          models: modelsWith((entry) => ({
+            ...current(entry),
+            entities: undefined,
+          })),
+        }),
+      ).toEqual(earlier);
+    });
+    it('lets modelRecordType win over modelEntity where both are present', () => {
+      expect(
+        choicesWith({
+          directory: directoryWith((set) => ({
+            ...renamed(set),
+            modelEntity: 'Invoice',
+          })),
+        }),
+      ).toEqual(earlier);
+      expect(
+        choicesWith({
+          directory: directoryWith((set) => ({
+            ...set,
+            modelRecordType: 'Invoice',
+          })),
+        }).every((value) => !value.source),
+      ).toBe(true);
+    });
+    it('lets fields win over properties on a record type that has both', () => {
+      expect(
+        choicesWith({
+          models: modelsWith((entry) => ({
+            ...current(entry),
+            entities: undefined,
+            records: (current(entry)['records'] as Entry[]).map((record) => ({
+              ...record,
+              properties: [],
+            })),
+          })),
+        }),
+      ).toEqual(earlier);
+    });
+    it('falls back to properties on a record type that has no fields', () => {
+      expect(
+        choicesWith({
+          models: modelsWith((entry) => ({
+            ...entry,
+            entities: undefined,
+            records: entry['entities'],
+          })),
+        }),
+      ).toEqual(earlier);
+    });
+    it('lets records win over entities where both are present', () => {
+      const emptied = (record: Entry): Entry => ({ ...record, properties: [] });
+      expect(
+        choicesWith({
+          models: modelsWith((entry) => ({
+            ...current(entry),
+            entities: (entry['entities'] as Entry[]).map(emptied),
+          })),
+        }),
+      ).toEqual(earlier);
+    });
+  });
   it('uses existing project/environment/catalog services to resolve selected source metadata without querying rows', async () => {
     const environments = {
       getEnvSummary: vi.fn(() =>

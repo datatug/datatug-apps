@@ -1,20 +1,23 @@
+import { Router } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
 import { NavController } from '@ionic/angular';
-import { ErrorLogger } from '@sneat/core';
+import { ErrorLogger, type IErrorLogger } from '@sneat/core';
 import { DatatugNavService, IDbObjectNavParams } from './datatug-nav.service';
 import { describe, it, expect, beforeEach, vi, Mock } from 'vitest';
 import { DEMO_PROJECT_REF } from '../../nav/github-project-address';
 import { IDatatugStoreContext, IProjectContext } from '../../nav/nav-models';
 import { IProjectRef } from '../../core/project-context';
-import { IProjBoard, IProjEntity } from '../../models/definition/project';
-import { IQueryDef, QueryType } from '../../models/definition/query-def';
+import { IProjBoard, IProjEntity, IProjEnv } from '../../models/definition/project';
+import { IQueryDef, ITextQueryRequest, QueryType } from '../../models/definition/query-def';
 
 describe('DatatugNavService', () => {
   let service: DatatugNavService;
+  let router: { url: string };
   let navMock: Partial<Record<keyof NavController, Mock>>;
-  let errorLoggerMock: Partial<Record<keyof ErrorLogger, Mock>>;
+  let errorLoggerMock: Partial<Record<keyof IErrorLogger, Mock>>;
 
   beforeEach(() => {
+    router = { url: '/' };
     navMock = {
       navigateRoot: vi.fn().mockResolvedValue(true),
       navigateForward: vi.fn().mockResolvedValue(true),
@@ -29,6 +32,7 @@ describe('DatatugNavService', () => {
     TestBed.configureTestingModule({
       providers: [
         DatatugNavService,
+        { provide: Router, useValue: router },
         { provide: NavController, useValue: navMock },
         { provide: ErrorLogger, useValue: errorLoggerMock },
       ],
@@ -40,7 +44,7 @@ describe('DatatugNavService', () => {
     expect(service).toBeTruthy();
   });
 
-  it('navigates a shared reference to its scoped overview and refuses queries/chat/table pages', () => {
+  it('navigates a shared reference to its scoped overview and queries while refusing chat and table pages', () => {
     const project: IProjectContext = {
       ref: { storeId: 'firestore', spaceID: 'S1', projectId: 'same' },
     };
@@ -51,6 +55,11 @@ describe('DatatugNavService', () => {
     );
     navMock.navigateRoot?.mockClear();
     service.goProject(project, 'queries');
+    expect(navMock.navigateRoot).toHaveBeenCalledWith(
+      '/space/S1/store/firestore/project/same/queries',
+      undefined,
+    );
+    navMock.navigateRoot?.mockClear();
     service.goProject(project, 'chat');
     service.goTable({
       project,
@@ -61,6 +70,27 @@ describe('DatatugNavService', () => {
     });
     expect(navMock.navigateRoot).not.toHaveBeenCalled();
     expect(navMock.navigateForward).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{ storeId: 'localhost:8989', projectId: 'p1' }, '/store/localhost:8989/project/p1'],
+    [{ storeId: 'firestore', spaceID: 'S1', projectId: 'p1' }, '/space/S1/store/firestore/project/p1'],
+  ])('keeps admitted session links and project-scoped Detective navigation for %j', (ref, base) => {
+    const project = { ref } as IProjectContext;
+    router.url = `${base}/sessions/session-a/overview`;
+    for (const page of ['queries', 'overview']) {
+      const expected = `${base}/sessions/session-a/${page}`;
+      expect(service.projectPageUrl(project.ref, page)).toBe(expected);
+      service.goProjPage(page, project);
+      expect(navMock.navigateForward).toHaveBeenLastCalledWith(expected, { state: { project } });
+    }
+    for (const page of ['checks', 'detective', 'sessions']) {
+      const expected = `${base}/${page}`;
+      expect(service.projectPageUrl(project.ref, page)).toBe(expected);
+      service.goProjPage(page, project);
+      expect(navMock.navigateForward).toHaveBeenLastCalledWith(expected, { state: { project } });
+    }
+    expect(errorLoggerMock.logError).not.toHaveBeenCalled();
   });
 
   describe('goStore', () => {
@@ -137,7 +167,7 @@ describe('DatatugNavService', () => {
     function queryDef(id: string): IQueryDef {
       return {
         id,
-        request: { queryType: QueryType.SQL, text: 'select 1' },
+        request: { queryType: QueryType.SQL, text: 'select 1' } as ITextQueryRequest,
       };
     }
 
@@ -264,7 +294,7 @@ describe('DatatugNavService', () => {
         expect(navMock[method]).toHaveBeenCalledTimes(1);
         expect(navMock[method]?.mock.calls[0][0]).toBe(base + tail);
       }
-      expect(errorLoggerMock.logError).not.toHaveBeenCalled();
+      expect(errorLoggerMock['logError']).not.toHaveBeenCalled();
     });
 
     // The item is named by its own id, or by the id passed beside it; with neither the page itself is the target.
@@ -309,7 +339,8 @@ describe('DatatugNavService', () => {
         'goQuery with no id',
         (s, p) =>
           s.goQuery(p, {
-            request: { queryType: QueryType.SQL, text: 'select 1' },
+            id: '',
+            request: { queryType: QueryType.SQL, text: 'select 1' } as ITextQueryRequest,
           } as IQueryDef),
         'navigateForward',
         '/query',
@@ -373,7 +404,7 @@ describe('DatatugNavService', () => {
       );
       service.goQuery(github, {
         id: 'customers/customer-invoices',
-        request: { queryType: QueryType.SQL, text: 'select 1' },
+        request: { queryType: QueryType.SQL, text: 'select 1' } as ITextQueryRequest,
       });
       expect(navMock.navigateForward).toHaveBeenCalledWith(
         '/project/github.com/datatug/chinook-demo/query/customers%2Fcustomer-invoices',
@@ -406,7 +437,7 @@ describe('DatatugNavService', () => {
         (s, p) =>
           s.goQuery(p, {
             id: 'q',
-            request: { queryType: QueryType.SQL, text: 'select 1' },
+            request: { queryType: QueryType.SQL, text: 'select 1' } as ITextQueryRequest,
           }),
       ],
     ])(
@@ -415,8 +446,8 @@ describe('DatatugNavService', () => {
         go(service, { ref: { storeId: 'localhost:8989', projectId: '50%' } });
         expect(navMock.navigateRoot).not.toHaveBeenCalled();
         expect(navMock.navigateForward).not.toHaveBeenCalled();
-        expect(errorLoggerMock.logError).toHaveBeenCalledTimes(1);
-        expect(errorLoggerMock.logError).toHaveBeenCalledWith(
+        expect(errorLoggerMock['logError']).toHaveBeenCalledTimes(1);
+        expect(errorLoggerMock['logError']).toHaveBeenCalledWith(
           expect.objectContaining({
             message: expect.stringContaining('no exact address'),
           }),

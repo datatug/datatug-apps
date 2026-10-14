@@ -1,3 +1,4 @@
+import { PRODUCT_PROFILE } from '@datatug/product-profiles';
 import { JsonPipe } from '@angular/common';
 import {
   ChangeDetectionStrategy,
@@ -7,7 +8,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { RouterModule } from '@angular/router';
+import { NavigationEnd, Router, RouterModule } from '@angular/router';
 import {
   IonButton,
   IonButtons,
@@ -45,6 +46,9 @@ import { Subject, takeUntil } from 'rxjs';
   ],
 })
 export class DatatugAuthMenuItemComponent implements OnDestroy {
+  private readonly pricingBase = inject(PRODUCT_PROFILE).pricingUrl;
+  private readonly router = inject(Router);
+  protected readonly pricingUrl = signal(this.pricingBase);
   private readonly errorLogger = inject(ErrorLogger);
   private readonly navCtrl = inject(NavController);
   private readonly authStateService = inject(SneatAuthStateService);
@@ -63,7 +67,23 @@ export class DatatugAuthMenuItemComponent implements OnDestroy {
   protected readonly personName = personNames;
 
   constructor() {
-    this.userService.userState.pipe(takeUntil(this.destroyed)).subscribe(this.user.set);
+    const pricingLink = (search: string) => {
+      if (!this.pricingBase) return;
+      const params = new URLSearchParams(search);
+      const checkout = params.get('checkout');
+      const mode = params.get('mode');
+      const test = params.getAll('checkout').length <= 1 && params.getAll('mode').length <= 1 &&
+        (!checkout || checkout === 'test') && (!mode || mode === 'test') &&
+        (checkout === 'test' || mode === 'test');
+      this.pricingUrl.set(this.pricingBase + (test ? '?checkout=test' : ''));
+    };
+    pricingLink(location.search);
+    this.router.events.pipe(takeUntil(this.destroyed)).subscribe((event) => {
+      if (event instanceof NavigationEnd) pricingLink(event.urlAfterRedirects.split('?')[1]?.split('#')[0] ?? '');
+    });
+    this.userService.userState
+      .pipe(takeUntil(this.destroyed))
+      .subscribe(this.user.set);
     this.authStateService.authState.pipe(takeUntil(this.destroyed)).subscribe({
       next: this.authState.set,
       error: (err) => {

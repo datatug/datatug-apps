@@ -18,7 +18,11 @@ import {
   FederatedQueryService,
   type FederatedQueryResult,
 } from '../federated-query.service';
-import { QueryType, type IQueryDef } from '../../models/definition/query-def';
+import {
+  QueryType,
+  type IQueryDef,
+  type ITextQueryRequest,
+} from '../../models/definition/query-def';
 import { INITIAL_CANONICAL_PINS } from './canonical-metadata';
 import {
   type PublicDataSuggestion,
@@ -422,7 +426,7 @@ describe('Public data route fixture UI journey (no deployed runtime claims)', ()
     );
     state.metadata.scenario.mockReturnValue({
       ...state.definition,
-      request: { ...state.definition.request, text: 'changed' },
+      request: { ...state.definition.request, text: 'changed' } as ITextQueryRequest,
     });
     await state.click('Read next source page: geo.Countries');
     expect(state.federation.continueSource).toHaveBeenCalledTimes(1);

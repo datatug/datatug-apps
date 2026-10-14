@@ -19,6 +19,12 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      attestations: read
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -49,11 +55,28 @@ jobs:
       - name: test:check-zoneless-fields (detector's own unit tests)
         run: pnpm run test:check-zoneless-fields
 
+      - name: test:checkout-flow (quote, payment and return contract)
+        run: pnpm run test:checkout-flow
+
       - name: test:wrangler-routes (preserve production app hostnames)
         run: pnpm run test:wrangler-routes
 
+      - name: test:RecordsetCompare artifact verifier guards
+        run: python3 -m unittest discover -s tools/recordsetcompare -p 'test_*.py' -v
+
       - name: nx build affected
         run: pnpm nx affected --target=build --base=${{ env.NX_BASE }} --parallel=8
+
+      - name: Find affected datatug-app target
+        id: affected-app
+        run: |
+          projects="$(pnpm exec nx show projects --affected --json)"
+          app_affected="$(PROJECTS_JSON="$projects" node -e 'process.stdout.write(JSON.parse(process.env.PROJECTS_JSON).includes("datatug-app") ? "true" : "false")')"
+          echo "datatug_app=$app_affected" >> "$GITHUB_OUTPUT"
+
+      - name: Verify emitted RecordsetCompare assets
+        if: steps.affected-app.outputs.datatug_app == 'true'
+        run: python3 tools/recordsetcompare/consume.py verify-dist
 
   test:
     runs-on: ubuntu-latest
@@ -67,6 +90,9 @@ jobs:
 
       - name: Derive appropriate SHAs for base and head for nx affected commands
         uses: nrwl/nx-set-shas@v5
+
+      - name: nx typecheck-spec main
+        run: pnpm nx run datatug-main:typecheck-spec
 
       - name: Cache Vite dependency pre-bundle
         uses: actions/cache@v5
@@ -82,6 +108,12 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     needs: build
+    permissions:
+      actions: read
+      contents: read
+      attestations: read
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -90,14 +122,100 @@ jobs:
 
       - uses: ./.github/actions/pnpm
 
+      # The browser suite counts the real reader's GitHub API/raw requests, but
+      # anonymous API access from a shared CI runner can exhaust its quota.
+      # Serve the current public demo commit through the existing GitHub HTTP
+      # fake, and check the live API/tree/raw contracts at that same commit.
+      - name: Checkout canonical demo project
+        uses: actions/checkout@v6
+        with:
+          repository: datatug/datatug-demo-project
+          ref: main
+          path: datatug-demo-project
+
+      - name: Verify live canonical GitHub source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sha="$(git -C datatug-demo-project rev-parse HEAD)"
+          test "$(gh api repos/datatug/datatug-demo-project/commits/HEAD --jq .sha)" = "$sha"
+          tree="$(gh api "repos/datatug/datatug-demo-project/git/trees/$sha?recursive=1" --jq '[.truncated, ([.tree[].path] | index("demo-project-1/entities/Album/Album.entity.json") != null), ([.tree[].path] | index("demo-project-1/queries/customers/customer-invoices.query.json") != null)] | @json')"
+          test "$tree" = '[false,true,true]'
+          curl -fsSL "https://raw.githubusercontent.com/datatug/datatug-demo-project/$sha/demo-project-1/entities/Album/Album.entity.json" -o "$RUNNER_TEMP/demo-album.json"
+          cmp datatug-demo-project/demo-project-1/entities/Album/Album.entity.json "$RUNNER_TEMP/demo-album.json"
+
       - name: Derive appropriate SHAs for base and head for nx affected commands
         uses: nrwl/nx-set-shas@v5
 
+      - name: Find affected datatug-app project
+        id: affected-app
+        run: |
+          projects="$(pnpm exec nx show projects --affected --json)"
+          app_affected="$(PROJECTS_JSON="$projects" node -e 'process.stdout.write(JSON.parse(process.env.PROJECTS_JSON).includes("datatug-app") ? "true" : "false")')"
+          echo "datatug_app=$app_affected" >> "$GITHUB_OUTPUT"
+
       - name: Install Playwright browsers
-        run: pnpm exec playwright install --with-deps chromium
+        run: |
+          browsers=(chromium)
+          if [[ "${{ steps.affected-app.outputs.datatug_app }}" == "true" ]]; then
+            browsers+=(webkit)
+          fi
+          pnpm exec playwright install --with-deps "${browsers[@]}"
+
+      - name: Smoke query context count geometry on Chromium
+        if: steps.affected-app.outputs.datatug_app == 'true'
+        env:
+          DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
+        run: pnpm nx run datatug-app:e2e -- --project=chromium --grep='query context counts stay inline through two digits and unavailable drafts'
+
+      - name: Set up Java for checkout Firestore emulator
+        if: steps.affected-app.outputs.datatug_app == 'true'
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: nx checkout journey e2e affected
+        run: pnpm nx affected --target=e2e-checkout --parallel=1 --base=${{ env.NX_BASE }}
+
+      - name: Upload checkout journey traces
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: checkout-journey-e2e-results
+          path: coverage/apps/datatug-checkout/results
+          if-no-files-found: ignore
 
       - name: nx e2e affected
+        env:
+          DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
         run: pnpm nx affected --target=e2e --parallel=1 --base=${{ env.NX_BASE }}
+
+      - name: Upload app Playwright report and traces
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: datatug-app-e2e-results
+          path: |
+            coverage/apps/datatug-app-e2e/report
+            coverage/apps/datatug-app-e2e/results
+          if-no-files-found: ignore
+
+      - name: nx query mobile WebKit e2e affected
+        env:
+          DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
+        run: pnpm nx affected --target=e2e-query-mobile --parallel=1 --base=${{ env.NX_BASE }}
+
+      - name: Upload query mobile WebKit Playwright report and traces
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: query-mobile-webkit-e2e-results
+          path: |
+            coverage/apps/datatug-query-mobile/report
+            coverage/apps/datatug-query-mobile/results
+          if-no-files-found: ignore
 
       # G-0 hand-off suite (apps/datatug-app/e2e/demo-handoff.spec.ts): the holding page for /demo and the
       # project chat, and proof that the visitor's question reaches no analytics or error report. It needs the
@@ -131,62 +249,48 @@ jobs:
     # env var below in sync when bumping DATATUG_CLI_REF.
     name: journey e2e (real datatug-cli agent)
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      attestations: read
     needs: build
     env:
-      # Pinned datatug-cli release tag (not `main`) so this job is
+      GH_TOKEN: ${{ github.token }}
+      # Pinned datatug release tag (not `main`) so this job is
       # reproducible. Bump by checking the newest `vX.Y.Z` tag:
-      #   git ls-remote --tags https://github.com/datatug/datatug-cli.git
+      #   gh release list --repo datatug/datatug
       # See apps/datatug-app/e2e/README.md "Bumping the pinned CLI tag".
-      DATATUG_CLI_REF: v0.46.0
+      DATATUG_CLI_REF: v0.78.0
     steps:
       - name: Checkout datatug-apps
         uses: actions/checkout@v6
 
-      # Public repo (datatug/datatug-cli), pinned release tag. actions/checkout
-      # refuses a `path` that escapes the primary checkout's directory, so this
-      # nests it inside the datatug-apps checkout instead of beside it. Nothing
-      # here needs a true sibling: DATATUG_BIN points straight at the built
-      # binary, and this repo's pnpm workspace is a single package at '.'
-      # (pnpm-workspace.yaml), so an extra unrelated Go repo directory
-      # alongside it doesn't get pulled into `pnpm install`.
-      - name: Checkout datatug-cli (${{ env.DATATUG_CLI_REF }})
-        uses: actions/checkout@v6
-        with:
-          repository: datatug/datatug-cli
-          ref: ${{ env.DATATUG_CLI_REF }}
-          path: datatug-cli
+      # Download prebuilt datatug binary from public datatug/datatug releases.
+      - name: Download and verify pinned datatug CLI (${{ env.DATATUG_CLI_REF }})
+        run: |
+          mkdir -p "$RUNNER_TEMP/datatug-bin" "$RUNNER_TEMP/datatug-dl"
+          gh release download "${{ env.DATATUG_CLI_REF }}" \
+            --repo datatug/datatug \
+            --pattern "datatug_*_linux_amd64.tar.gz" \
+            --pattern "datatug_*_checksums.txt" \
+            --dir "$RUNNER_TEMP/datatug-dl"
+          cd "$RUNNER_TEMP/datatug-dl"
+          grep "linux_amd64.tar.gz" datatug_*_checksums.txt | sha256sum --check
+          tar -xzf datatug_*_linux_amd64.tar.gz -C "$RUNNER_TEMP/datatug-bin" datatug
+          chmod +x "$RUNNER_TEMP/datatug-bin/datatug"
+          echo "DATATUG_BIN=$RUNNER_TEMP/datatug-bin/datatug" >> "$GITHUB_ENV"
 
-      # Public repo (datatug/datatug-demo-projects), main branch — the demo
+      # Public repo (datatug/datatug-demo-project), main branch — the demo
       # project the journey suite drives the agent against. Same nested-path
-      # reasoning as datatug-cli above.
-      - name: Checkout datatug-demo-projects (main)
+      # reasoning as datatug-apps checkout above.
+      - name: Checkout datatug-demo-project (main)
         uses: actions/checkout@v6
         with:
-          repository: datatug/datatug-demo-projects
+          repository: datatug/datatug-demo-project
           ref: main
-          path: datatug-demo-projects
+          path: datatug-demo-project
 
       - uses: ./.github/actions/pnpm
-
-      - name: Set up Go (version from datatug-cli's go.mod)
-        uses: actions/setup-go@v7
-        with:
-          go-version-file: datatug-cli/go.mod
-          cache: true
-          cache-dependency-path: datatug-cli/go.sum
-
-      # CGO_ENABLED=0 builds a working `datatug serve` binary: datatug-cli's
-      # main.go still blank-imports the cgo-only github.com/mattn/go-sqlite3
-      # driver, but without cgo that import compiles to an inert stub rather
-      # than failing the build (verified locally against v0.20.6, go1.27.1).
-      # Required setup step: no continue-on-error — a build failure here must
-      # fail the job, not be silently skipped.
-      - name: Build datatug CLI (CGO_ENABLED=0, from repo root)
-        working-directory: datatug-cli
-        run: |
-          mkdir -p "$RUNNER_TEMP/datatug-bin"
-          CGO_ENABLED=0 go build -o "$RUNNER_TEMP/datatug-bin/datatug" .
-          echo "DATATUG_BIN=$RUNNER_TEMP/datatug-bin/datatug" >> "$GITHUB_ENV"
 
       # The journey fixture (e2e/journey/fixtures/agent-server.ts) spawns
       # `datatug serve` itself; it does not fetch this dependency. `datatug
@@ -196,7 +300,7 @@ jobs:
       # a pinned copy of the same fixture file to the same path
       # (`~/datatug/dbs/chinook-local.sqlite`) that
       # environments/local/catalogs/chinook-local/chinook-local.db.json in
-      # datatug-demo-projects declares, without the `serve` call. Verify the
+      # datatug-demo-project declares, without the `serve` call. Verify the
       # content: github.com/.../blob?raw=true can return HTML with HTTP 200.
       - name: Fetch and verify pinned Chinook SQLite fixture
         run: |
@@ -213,11 +317,11 @@ jobs:
       # for the actual test run (`nx run datatug-app:serve:development`), so
       # this is a production-config build check, not a second server.
       - name: Build datatug-app
-        run: pnpm exec nx run datatug-app:build
+        run: python3 tools/recordsetcompare/build_app.py
 
       - name: Run journey e2e (J1-J4, real datatug-cli agent)
         env:
-          DATATUG_DEMO_DIR: ${{ github.workspace }}/datatug-demo-projects/demo-project-1
+          DATATUG_DEMO_DIR: ${{ github.workspace }}/datatug-demo-project/demo-project-1
         run: pnpm exec playwright test -c apps/datatug-app/playwright.config.ts --project=journey --workers=1
 
       - name: Upload Playwright report

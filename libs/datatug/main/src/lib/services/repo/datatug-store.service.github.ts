@@ -42,9 +42,8 @@ export class DatatugStoreGithubService implements IDatatugStoreService {
   >();
 
   /**
-   * Drops the summaries of every project of a repository, so the next one is read again: a project was just created
-   * in it (`GithubProjectCreateService`), and what was kept for the address, "no project here" included, is out of
-   * date. The reader forgets the repository's commit separately (`GithubProjectReaderService.forget`).
+   * Drops the summaries of every project of a repository after its commit changes.
+   * The reader forgets the repository's commit separately (`GithubProjectReaderService.forget`).
    */
   forget(org: string, repo: string): void {
     const wanted = `${org}/${repo}`.toLowerCase();

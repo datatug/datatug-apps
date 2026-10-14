@@ -7,16 +7,21 @@ import BaseLayout from '../layouts/BaseLayout.astro';
   description="The requested Incidentius page could not be found."
   noindex={true}
   localeIndependent={true}
+  langSwitcher={false}
 >
   <section class="not-found">
     <div class="container">
       <p class="eyebrow">404 · Evidence missing</p>
       <h1>This path does not support the hypothesis.</h1>
       <p>
-        The page you requested is not part of the Incidentius investigation record.
-        Return to the landing page to follow the evidence from the start.
+        This page is not part of the Incidentius product vision. Incidentius is
+        in development; you can explore the idea from its beginning.
       </p>
-      <a class="button primary" href="/">Return to Incidentius</a>
+      <a class="button primary" href="/">Explore Incidentius</a>
+      <div lang="ru" class="not-found-ru">
+        <p>Страница не найдена. Incidentius находится в разработке — познакомьтесь с будущим продуктом на главной странице.</p>
+        <a class="button light" href="/ru/">Главная на русском</a>
+      </div>
     </div>
   </section>
 </BaseLayout>
@@ -25,4 +30,5 @@ import BaseLayout from '../layouts/BaseLayout.astro';
   .not-found { display: grid; min-height: 68vh; place-items: center; padding: 5rem 0; text-align: center; }
   h1 { max-width: 830px; margin: 0 auto 1.5rem; font-size: clamp(3rem, 7vw, 6rem); }
   p:not(.eyebrow) { max-width: 620px; margin: 0 auto 2rem; color: var(--color-text-muted); font-size: 1.1rem; }
+  .not-found-ru { margin-top: 2.5rem; }
 </style>

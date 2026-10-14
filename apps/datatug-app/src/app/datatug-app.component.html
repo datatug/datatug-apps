@@ -1,6 +1,20 @@
 <ion-app>
-  <ion-split-pane contentId="main-content">
+  @if (checkoutAuth()) {
+    <header class="auth-brand">
+      <a routerLink="/home" [attr.aria-label]="profile.brandName + ' home'">{{
+        profile.brandName
+      }}</a>
+      <a routerLink="/home">Return to {{ profile.brandName }}</a>
+    </header>
+  }
+  <ion-split-pane
+    [class.authentication]="checkoutAuth()"
+    contentId="main-content"
+    [when]="checkout() ? false : '(min-width: 992px)'"
+  >
     <ion-menu
+      [disabled]="checkout()"
+      [style.display]="checkout() ? 'none' : null"
       contentId="main-content"
       type="overlay"
       sneatResizableMenu
@@ -14,8 +28,11 @@
               routerLink="/"
               [attr.aria-label]="profile.brandName + ' home'"
               (click)="closeMenu()"
-              >{{ profile.brandName }}@if (profile.planned) {<span class="brand-planned-badge"> Planned</span>}</a
-            >
+              >{{ profile.brandName }}
+              @if (profile.planned) {
+                <span class="brand-planned-badge"> Planned</span>
+              }
+            </a>
           </ion-title>
         </ion-toolbar>
       </ion-header>

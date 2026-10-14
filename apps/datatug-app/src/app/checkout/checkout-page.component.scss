@@ -1,0 +1,190 @@
+ion-content {
+  --background: var(--ion-color-light);
+}
+.checkout-shell {
+  box-sizing: border-box;
+  width: min(100%, 48rem);
+  margin: 0 auto;
+  padding: 1.5rem 1rem 2rem;
+}
+.checkout-intro {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-height: 8rem;
+}
+.auth-intro {
+  min-height: 0;
+}
+.checkout-intro > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
+.checkout-art {
+  position: relative;
+  flex: 0 0 12rem;
+  height: 8rem;
+}
+.checkout-art img {
+  position: absolute;
+  object-fit: contain;
+}
+.tug {
+  left: 0;
+  bottom: 0;
+  width: 9rem;
+  height: 6rem;
+}
+:host ::ng-deep .checkout-auth ion-card {
+  margin-inline: 0;
+  --background: #fff;
+}
+.checkout-auth > p {
+  margin: 1.5rem 0 0.75rem;
+  line-height: 1.5;
+}
+ion-chip {
+  margin-inline-end: 1rem;
+  --background: #fff0c2;
+  --color: #805400;
+}
+.checkout-intro h1 {
+  margin: 0.2rem 0 1rem;
+  font-size: clamp(1.45rem, 5vw, 1.9rem);
+  line-height: 1.2;
+}
+.plan-kicker {
+  margin: 0;
+  color: var(--ion-color-medium-shade);
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+.checkout-status,
+.legal-note {
+  margin: 0.85rem 0;
+  line-height: 1.5;
+}
+.checkout-status {
+  color: var(--ion-color-medium-shade);
+}
+.legal-note {
+  font-size: 0.9rem;
+}
+a {
+  color: var(--ion-color-primary);
+}
+button {
+  min-height: 2.75rem;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid var(--ion-color-medium);
+  border-radius: 0.55rem;
+  background: var(--ion-background-color);
+  color: var(--ion-text-color);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+button:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: 3px solid var(--ion-color-primary);
+  outline-offset: 2px;
+}
+button:disabled {
+  opacity: 0.58;
+  cursor: default;
+}
+.primary-action {
+  display: block;
+  width: 100%;
+  min-height: 3.15rem;
+  border-color: var(--ion-color-primary);
+  background: var(--ion-color-primary);
+  color: var(--ion-color-primary-contrast);
+  font-size: 1rem;
+}
+.early-access {
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--ion-color-step-150);
+}
+.early-access h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+.early-access-copy {
+  margin-bottom: 0;
+  line-height: 1.5;
+}
+.consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  margin-top: 1rem;
+  line-height: 1.45;
+}
+.consent input {
+  flex: 0 0 auto;
+  width: 1.15rem;
+  height: 1.15rem;
+  margin: 0.1rem 0 0;
+  accent-color: var(--ion-color-primary);
+}
+section[hidden] {
+  display: none;
+}
+.checkout-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--ion-color-step-150);
+  font-size: 0.9rem;
+}
+@media (min-width: 40rem) {
+  .checkout-shell {
+    padding: 2rem 1.5rem 3rem;
+  }
+  .quote-card {
+    padding: 1.25rem;
+  }
+}
+
+select,
+input:not([type='checkbox']) {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-height: 44px;
+  margin-block: 0.5rem 1rem;
+  font: inherit;
+}
+
+@media (max-width: 30rem) {
+  .checkout-art {
+    flex-basis: 6.5rem;
+    height: 6rem;
+  }
+  .tug {
+    width: 6rem;
+    height: 4rem;
+  }
+  .checkout-intro h1 {
+    font-size: 1.45rem;
+  }
+}
+
+ion-card {
+  margin-inline: 0;
+  --background: #fff;
+}
+ion-card-content p {
+  line-height: 1.5;
+}
+ion-card-content ion-button {
+  margin-top: 1rem;
+}
+ion-card-content ion-checkbox {
+  margin-top: 1rem;
+}

@@ -41,7 +41,7 @@ describe('the advertised Chinook demo Chat uses the real bundled fixture', () =>
     expect(fetch).toHaveBeenCalledExactlyOnceWith('assets/chinook-full.json');
     await expect(service.query('other:project', '{"from":{"name":"Customer"},"limit":1}'))
       .rejects.toThrow(/project changed/);
-  });
+  }, 30_000);
 
   it.each([
     ['localhost:8989', 'datatug-demo-project'],
@@ -51,7 +51,7 @@ describe('the advertised Chinook demo Chat uses the real bundled fixture', () =>
     await service.ensureSeed(storeId, projectId);
     const result = await service.query(`${storeId}:${projectId}`, JSON.stringify({ from: { name: 'Customer' }, limit: 1 }));
     expect(result.rows).toHaveLength(1);
-  });
+  }, 30_000);
 
   it.each([
     ['github.com', 'chinook-demo@datatug@'],

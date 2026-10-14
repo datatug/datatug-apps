@@ -793,6 +793,8 @@ export class NativeGraphExecution {
   private readonly observedPins = new Map<string, CompleteRuntimeReadPins>();
   private readonly rows = new Map<NativeStageId, readonly BoundedRecord[]>();
   private readonly coverage = new Map<NativeStageId, GraphCoverage>();
+  /** Organization keys depend only on the frozen selected-affiliation snapshot. */
+  private organizationKeys?: readonly string[];
   private readonly joins = new Map<
     string,
     { left: readonly TokenRow[]; right: readonly TokenRow[]; rows: readonly Link[] }
@@ -982,6 +984,8 @@ export class NativeGraphExecution {
     return graphStableIdentity(value);
   }
   private keys(id: NativeStageId): readonly string[] {
+    if (id === 'organizations' && this.organizationKeys)
+      return this.organizationKeys;
     const edge = this.graph.edges.find((e) => e.to === id),
       values = new Set<string>();
     if (id === 'organizations') {
@@ -1012,6 +1016,12 @@ export class NativeGraphExecution {
       throw new Error(
         'The native graph exceeds its distinct ROR/place identifier bound.',
       );
+    if (id === 'organizations') {
+      this.organizationKeys = result;
+      // This is the one retained copy of this immutable bounded key set.
+      // readStage stores the same array in coverage and must not charge it again.
+      this.ledger.retain('coverage-keys:organizations', result);
+    }
     return result;
   }
   private currentCoverage(stage: NativeStageId): GraphCoverage | undefined {
@@ -1079,7 +1089,8 @@ export class NativeGraphExecution {
     const mount = this.plan.stages[id],
       keys = this.keys(id),
       fingerprint = this.ledger.serializedIdentity('coverage-identity:' + id, [this.planDigest, id, keys, mount]);
-    this.ledger.retain('coverage-keys:' + id, keys);
+    if (id !== 'organizations')
+      this.ledger.retain('coverage-keys:' + id, keys);
     const previous = this.coverage.get(id);
     if (previous && previous.fingerprint !== fingerprint)
       throw new Error(

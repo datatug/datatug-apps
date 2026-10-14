@@ -7,7 +7,7 @@ import { join } from 'node:path';
  * and keep the visitor's question out of every analytics and error report. Before this the router threw NG04002,
  * Sentry's crash-report dialog opened, the address bar was rewritten to `/` and the question was lost.
  *
- * MUST run against the PRODUCTION build (real Sentry DSN, real analytics): see
+ * MUST run against the PRODUCTION build (real Sentry DSN, optional analytics disabled): see
  * playwright.demo-handoff.config.ts, `pnpm e2e:demo-handoff`. Nothing here talks to a third party: every
  * request to a host other than the app's own is recorded and answered with an empty reply.
  *
@@ -15,6 +15,9 @@ import { join } from 'node:path';
  */
 const SENTRY_DIALOG = '.sentry-error-embed';
 const MARKER = 'ZEBRA-SECRET-QUESTION-7731';
+const CANONICAL_PROJECT = '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1';
+const CANONICAL_CHAT = `${CANONICAL_PROJECT}/-/chat`;
+const CANONICAL_START_CHAT = `${CANONICAL_PROJECT}/-/start-chat`;
 
 const EN_QUESTION = `Which countries listen to the most jazz per person? ${MARKER} <b>bold</b> <img src=x onerror="window.__pwned=1">`;
 const RU_QUESTION = `Какие страны слушают больше всего джаза на душу населения? ${MARKER} 🎷`;
@@ -122,8 +125,8 @@ async function shot(page: Page, name: string): Promise<void> {
 const HANDOFF_HOST = 'https://handoff.datatug.test';
 
 /**
- * Serves the production build as if it lived on an https host that is not localhost (so the app turns its
- * analytics and error reporting on, as in production), and stands in for Google Analytics with a script that
+ * Serves the production build on an https host (Sentry diagnostics remain configured, while DataTug optional
+ * analytics stay disabled), and stands in for Google Analytics with a script that
  * reports what gtag.js reports: the page location and every command.
  */
 async function onProductionLikeHost(
@@ -230,6 +233,7 @@ async function expectNoQuestion(
   watched: { external: External[]; requests: string[] },
   keptForReload = false,
 ) {
+  await expectDiagnosticsWithoutOptionalTracking(page, watched.external);
   expect(hasMarker(page.url()), `address bar ${page.url()}`).toBe(false);
   const state = await page.evaluate(() => ({
     title: document.title,
@@ -252,14 +256,42 @@ async function expectNoQuestion(
   expect(state.entries.filter(hasMarker), 'history entries').toEqual([]);
   expect(watched.requests.filter(hasMarker), 'own requests').toEqual([]);
   expect(leaks(watched.external), 'third-party requests').toEqual([]);
-  // Not vacuous: Google Analytics reported the page, and Sentry received the probe.
-  const hosts = new Set(
-    watched.external.map((request) => new URL(request.url).hostname),
-  );
-  expect([...hosts].some((h) => h.includes('google-analytics.com'))).toBe(true);
-  expect([...hosts].some((h) => h.includes('sentry.io'))).toBe(true);
 }
 
+
+/** Absence of optional SDK traffic is now the launch contract. Sentry's probe
+ * still exercises the outgoing observer, and the separate GA control below
+ * proves that the stub can detect a location leak when explicitly invoked.
+ */
+async function expectDiagnosticsWithoutOptionalTracking(
+  page: Page,
+  external: External[],
+) {
+  // Finish lazy chunk/preload requests and the error probe before evaluating
+  // the observer or ending the test's intercepted request context.
+  await page.waitForLoadState('networkidle');
+  expect(
+    await page.evaluate(
+      () =>
+        (window as unknown as { __datatugOptionalTrackingDisabled?: boolean })
+          .__datatugOptionalTrackingDisabled,
+    ),
+  ).toBe(true);
+  const hosts = external.map((request) => new URL(request.url).hostname);
+  expect(
+    hosts.filter(
+      (host) =>
+        host.includes('google-analytics.com') ||
+        host.includes('googletagmanager.com') ||
+        host.includes('posthog.com'),
+    ),
+    'optional analytics must not start',
+  ).toEqual([]);
+  expect(
+    hosts.some((host) => host.includes('sentry.io')),
+    'Sentry error probe exercises the observer',
+  ).toBe(true);
+}
 
 const VIEWPORTS = [
   { name: '390', width: 390, height: 844 },
@@ -322,13 +354,13 @@ test.describe('the hand-off holding page', () => {
             new URL(page.url()).pathname + new URL(page.url()).search,
           ).toBe('/demo');
 
-          // Two links: the demo project as the home page opens it (its short address, G-A1c), and the site.
+          // Two links: the shared nested demo project as the home page opens it, and the site.
           await expect(
             page.getByRole('link', {
               name:
                 lang === 'en' ? 'Open the demo project' : 'Открыть демо-проект',
             }),
-          ).toHaveAttribute('href', '/project/github.com/datatug/chinook-demo');
+          ).toHaveAttribute('href', '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1');
           await expect(
             page.getByRole('link', {
               name: lang === 'en' ? 'Back to the site' : 'Назад на сайт',
@@ -490,6 +522,33 @@ test.describe('the hand-off holding page', () => {
     ).toHaveAttribute('href', 'https://datatug.ai/ru/');
   });
 
+  test('a visitor who came from the DataTug.app landing goes back to its root (its Russian home page from the Russian pages), and one who came from the app itself goes to datatug.io', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const origin = new URL(baseURL ?? '').origin;
+    await stubExternal(context, (o) => o === origin);
+    await page.goto('/demo?q=Hi&lang=en', {
+      referer: 'https://datatug.app/en/pricing/?q=secret',
+    });
+    await expect(
+      page.getByRole('link', { name: 'Back to the site' }),
+    ).toHaveAttribute('href', 'https://datatug.app/');
+    await page.goto('/demo?q=Hi&lang=ru', {
+      referer: 'https://datatug.app/ru/some/page?q=secret',
+    });
+    await expect(
+      page.getByRole('link', { name: 'Назад на сайт' }),
+    ).toHaveAttribute('href', 'https://datatug.app/ru/');
+    await page.goto('/demo?q=Hi&lang=en', {
+      referer: 'https://datatug.app/home',
+    });
+    await expect(
+      page.getByRole('link', { name: 'Back to the site' }),
+    ).toHaveAttribute('href', 'https://datatug.io/');
+  });
+
   test('blank lines in the question are collapsed and the quote picks its own text direction', async ({
     page,
     context,
@@ -519,8 +578,8 @@ test.describe('the hand-off holding page', () => {
     await expect(page.locator('html')).toHaveAttribute('lang', 'ru');
 
     await page.getByRole('link', { name: 'Открыть демо-проект' }).click();
-    // The demo project at its short address (G-A1c), as the home page opens it.
-    await expect(page).toHaveURL(/\/project\/github\.com\/datatug\/chinook-demo$/);
+    // The shared nested project, as the home page opens it.
+    await expect(page).toHaveURL(/\/project\/github\.com\/datatug\/datatug-demo-project\/tree\/HEAD\/demo-project-1$/);
     // The app's own defaults (index.html): the page kept in the Ionic stack must not leave its own behind.
     await expect(page).toHaveTitle('DataTug.app');
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
@@ -614,9 +673,9 @@ test.describe('the hand-off holding page', () => {
       await expect(page.locator('#demo-holding-message')).toContainText(
         SENTENCE.ru.withQuestion,
       );
-      // The old hand-off address is moved (replaced) to the start-chat page of the same project, with no query.
+      // The former repository is an alias of the shared project's start-chat page, with no query.
       expect(new URL(page.url()).pathname + new URL(page.url()).search).toBe(
-        path.replace(/chat$/, 'start-chat'),
+        CANONICAL_START_CHAT,
       );
       await page.waitForTimeout(1500);
       await expect(page.locator(SENTRY_DIALOG)).toHaveCount(0);
@@ -688,7 +747,7 @@ test.describe('the hand-off holding page', () => {
   // G-A1b: the short project route and the holding page share the project chat address. With a question the
   // holding page (the chat cannot run it yet, and it must not be lost); without one, the project's own chat page.
   // The demo flag is off in this production build and is not consulted either way.
-  const TRUSTED = '/project/github.com/datatug/chinook-demo/chat';
+  const TRUSTED = CANONICAL_CHAT;
 
   test('the demo project chat address with no question is the project chat page, not the holding page, and keeps its URL', async ({
     page,
@@ -724,7 +783,7 @@ test.describe('the hand-off holding page', () => {
       });
       await expect(page.locator('#demo-holding-message')).toHaveCount(0);
       expect(new URL(page.url()).pathname + new URL(page.url()).search).toBe(
-        TRUSTED,
+        CANONICAL_CHAT,
       );
     });
   }
@@ -975,6 +1034,36 @@ test.describe('the start-chat confirmation page (founder ruling 2026-10-03)', ()
   const OTHER_ROOT = '/project/github.com/acme/demo';
   const enc = encodeURIComponent(MARKER);
 
+  test('the site short folder start-chat link keeps its fragment question through the canonical redirect and reload', async ({
+    page, context, baseURL,
+  }) => {
+    const short = '/project/github.com/datatug/datatug-demo-project/demo-project-1/start-chat';
+    const watched = await openAndWatch(page, context, baseURL ?? '', `${short}#msg=${enc}&lang=ru`, async () => {
+      await expect(page.locator('#demo-holding-message')).toBeVisible({ timeout: 20_000 });
+    });
+    await expect(page.locator('blockquote')).toHaveText(MARKER);
+    expect(new URL(page.url()).pathname + new URL(page.url()).search + new URL(page.url()).hash).toBe(CANONICAL_START_CHAT);
+    await expectNoQuestion(page, watched, true);
+    await page.reload();
+    await expect(page.locator('blockquote')).toHaveText(MARKER);
+    expect(new URL(page.url()).pathname + new URL(page.url()).search + new URL(page.url()).hash).toBe(CANONICAL_START_CHAT);
+  });
+
+  test('the short folder start-chat GET form strips its query before analytics and keeps the question on reload', async ({
+    page, context, baseURL,
+  }) => {
+    const short = '/project/github.com/datatug/datatug-demo-project/demo-project-1/start-chat';
+    const watched = await openAndWatch(page, context, baseURL ?? '', `${short}?msg=${enc}&lang=ru`, async () => {
+      await expect(page.locator('#demo-holding-message')).toBeVisible({ timeout: 20_000 });
+    });
+    await expect(page.locator('blockquote')).toHaveText(MARKER);
+    expect(new URL(page.url()).pathname + new URL(page.url()).search + new URL(page.url()).hash).toBe(CANONICAL_START_CHAT);
+    await expectNoQuestion(page, watched, true);
+    await page.reload();
+    await expect(page.locator('blockquote')).toHaveText(MARKER);
+    expect(new URL(page.url()).pathname + new URL(page.url()).search + new URL(page.url()).hash).toBe(CANONICAL_START_CHAT);
+  });
+
   // The five addresses of the ruling, and the old ones, each on the trusted project and on another one: the question
   // is in no address, history entry, title, storage but the one per-tab hand-off key (trusted only), or request.
   const ADDRESSES: [label: string, path: (root: string) => string, own: (root: string) => string][] = [
@@ -1001,10 +1090,12 @@ test.describe('the start-chat confirmation page (founder ruling 2026-10-03)', ()
         const watched = await openAndWatch(page, context, baseURL ?? '', path(root), async () => {
           await expect(page.locator('#demo-holding-message')).toBeVisible({ timeout: 20_000 });
         });
-        // The address: the start-chat page of the project, with no question and no fragment (own query keys stay). The
-        // router writes a `//` or a root-group spelling in its one form.
+        // The exact old demo alias redirects to the shared project, clearing its query. Other repositories
+        // retain their own safe query keys. The router normalizes `//` and root-group spellings.
         const url = new URL(page.url());
-        expect(url.pathname + url.search + url.hash).toBe(own(root));
+        expect(url.pathname + url.search + url.hash).toBe(
+          trusted ? CANONICAL_START_CHAT : own(root),
+        );
         if (trusted) {
           await expect(page.locator('blockquote')).toHaveText(MARKER);
           await expect(page.locator('#demo-holding-message')).toContainText(SENTENCE.ru.withQuestion);
@@ -1022,7 +1113,9 @@ test.describe('the start-chat confirmation page (founder ruling 2026-10-03)', ()
         if (trusted) await expect(page.locator('blockquote')).toHaveText(MARKER);
         else expect(await page.content()).not.toContain(MARKER);
         const again = new URL(page.url());
-        expect(again.pathname + again.search + again.hash).toBe(own(root));
+        expect(again.pathname + again.search + again.hash).toBe(
+          trusted ? CANONICAL_START_CHAT : own(root),
+        );
       });
     }
   }
@@ -1098,7 +1191,9 @@ test.describe('the start-chat confirmation page (founder ruling 2026-10-03)', ()
         await expect(page.locator('blockquote'), path).toHaveCount(0);
         expect(await page.content(), path).not.toContain(MARKER);
       }
-      expect(new URL(page.url()).pathname + new URL(page.url()).search + new URL(page.url()).hash, path).toBe(path);
+      expect(new URL(page.url()).pathname + new URL(page.url()).search + new URL(page.url()).hash, path).toBe(
+        echoes ? CANONICAL_START_CHAT : path,
+      );
     }
   });
 
@@ -1122,7 +1217,7 @@ test.describe('the start-chat confirmation page (founder ruling 2026-10-03)', ()
     await page.reload();
     await expect(page.locator('#demo-holding-message')).toContainText(SENTENCE.en.without, { timeout: 20_000 });
     await expect(page.locator('blockquote')).toHaveCount(0);
-    expect(new URL(page.url()).pathname).toBe(`${TRUSTED_ROOT}/start-chat`);
+    expect(new URL(page.url()).pathname).toBe(CANONICAL_START_CHAT);
   });
 
   test('the project chat page never reads a question: a fragment or a stored hand-off does not turn it into the confirmation page', async ({
@@ -1137,7 +1232,7 @@ test.describe('the start-chat confirmation page (founder ruling 2026-10-03)', ()
     await page.goto(`${TRUSTED_ROOT}/chat#msg=${enc}`);
     await expect(page.locator('ion-title', { hasText: 'Chat' })).toBeVisible({ timeout: 20_000 });
     await expect(page.locator('#demo-holding-message')).toHaveCount(0);
-    expect(new URL(page.url()).pathname).toBe(`${TRUSTED_ROOT}/chat`);
+    expect(new URL(page.url()).pathname).toBe(CANONICAL_CHAT);
   });
 
   test('the old chat address with a question is replaced by start-chat: Back does not return to it', async ({ page, context, baseURL }) => {
@@ -1152,7 +1247,7 @@ test.describe('the start-chat confirmation page (founder ruling 2026-10-03)', ()
         .entries()
         .map((entry) => new URL(entry.url).pathname),
     );
-    expect(entries.at(-1)).toBe(`${TRUSTED_ROOT}/start-chat`);
+    expect(entries.at(-1)).toBe(CANONICAL_START_CHAT);
     expect(entries.filter((e) => e.endsWith('/chat'))).toEqual([]);
   });
 
@@ -1187,15 +1282,47 @@ test.describe('the start-chat confirmation page (founder ruling 2026-10-03)', ()
 test.describe('the question reaches no analytics or error report', () => {
   const HOST = 'https://handoff.datatug.test';
 
-  test('control: the same stand-in for Google Analytics does see a query that is NOT stripped (so it is not blind)', async ({
+  test('control: the same stand-in for Google Analytics detects an explicitly emitted location leak (so it is not blind)', async ({
     page,
     context,
     baseURL,
   }) => {
     const external = await onProductionLikeHost(context, baseURL ?? '');
-    await page.goto(`${HOST}/no-such-route-xyz?q=${MARKER}`);
-    await page.waitForTimeout(2000);
-    expect(leaks(external).length).toBeGreaterThan(0);
+    // Keep this observer control independent of the production app. The app
+    // correctly scrubs unknown routes during startup, which can remove the
+    // marker before the deliberately injected SDK observes location.href.
+    await page.route(
+      (url) =>
+        url.origin === HOST && url.pathname === '/__observer-control.html',
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'text/html',
+          body: '<!doctype html><title>observer control</title>',
+        }),
+    );
+    await page.goto(`${HOST}/__observer-control.html?q=${MARKER}`);
+    // Deliberately invoke the fixture SDK only in this observer control. The app
+    // must never load it; a Sentry request alone must not make this control pass.
+    await page.addScriptTag({
+      url: 'https://www.googletagmanager.com/gtag/js?id=observer-control',
+    });
+    await page.evaluate(() => {
+      (window as unknown as { dataLayer: unknown[] }).dataLayer.push([
+        'observer-control',
+      ]);
+    });
+    await expect
+      .poll(
+        () =>
+          leaks(
+            external.filter(
+              (request) =>
+                new URL(request.url).hostname === 'www.google-analytics.com',
+            ),
+          ).length,
+      )
+      .toBeGreaterThan(0);
   });
 
   test('/demo: Google Analytics, Sentry (an error is thrown on purpose) and PostHog never receive it', async ({
@@ -1220,19 +1347,7 @@ test.describe('the question reaches no analytics or error report', () => {
     );
     await page.waitForTimeout(3000);
 
-    const hosts = new Set(
-      external.map((request) => new URL(request.url).hostname),
-    );
-    // Not vacuous: Google Analytics saw page commands and a location, Sentry received the probe.
-    expect([...hosts].some((h) => h.includes('google-analytics.com'))).toBe(
-      true,
-    );
-    expect([...hosts].some((h) => h.includes('sentry.io'))).toBe(true);
-    expect(
-      external.some((request) =>
-        request.url.includes('dl=' + encodeURIComponent(`${HOST}/demo`) + '&'),
-      ),
-    ).toBe(true);
+    await expectDiagnosticsWithoutOptionalTracking(page, external);
     expect(leaks(external)).toEqual([]);
   });
 });
@@ -1246,7 +1361,7 @@ test.describe('a question on a project address that is not a hand-off address is
     '/project/github.com/datatug/chinook-demo',
     '/Project/GitHub.com/datatug/chinook-demo/tree/HEAD/dir/-/Chat',
   ]) {
-    test(`${path}?msg=…&x=1: the address bar loses msg and keeps x=1, and nothing outgoing carries it`, async ({
+    test(`${path}?msg=…&x=1: the address bar loses msg and nothing outgoing carries it`, async ({
       page,
       context,
       baseURL,
@@ -1295,19 +1410,14 @@ test.describe('a question on a project address that is not a hand-off address is
       const url = new URL(page.url());
       expect(url.searchParams.has('msg')).toBe(false);
       expect(url.searchParams.has('q')).toBe(false);
-      expect(url.searchParams.get('x')).toBe('1');
-      // The queries page rewrites its own address (adds its default query, drops the fragment), on the old form
-      // of the address too; every other page leaves the fragment where the script left it.
-      if (!path.endsWith('/queries')) expect(url.hash).toBe('#frag');
+      // Only an ordinary project page keeps unrelated query keys. Nested chat is now a hand-off,
+      // and the exact old repository root redirects to the shared project; both clear the query.
+      expect(url.searchParams.get('x')).toBe(path.endsWith('/queries') ? '1' : null);
+      // The queries page and hand-off capture clear the fragment; the old root alias also
+      // redirects to the shared project without carrying the fragment forward.
+      expect(url.hash).toBe('');
       expect(page.url()).not.toContain(MARKER);
-      // Not vacuous: the stand-in for Google Analytics saw page commands, Sentry received the probe.
-      const hosts = new Set(
-        external.map((request) => new URL(request.url).hostname),
-      );
-      expect([...hosts].some((h) => h.includes('google-analytics.com'))).toBe(
-        true,
-      );
-      expect([...hosts].some((h) => h.includes('sentry.io'))).toBe(true);
+      await expectDiagnosticsWithoutOptionalTracking(page, external);
       const leaked = external.filter((request) =>
         [request.url, request.body].some(
           (text) =>
@@ -1585,13 +1695,7 @@ test.describe('the matrix-parameter address reaches no analytics either', () => 
       }),
     );
     await page.waitForTimeout(3000);
-    const hosts = new Set(
-      external.map((request) => new URL(request.url).hostname),
-    );
-    expect([...hosts].some((h) => h.includes('google-analytics.com'))).toBe(
-      true,
-    );
-    expect([...hosts].some((h) => h.includes('sentry.io'))).toBe(true);
+    await expectDiagnosticsWithoutOptionalTracking(page, external);
     const leaked = external.filter((request) =>
       [request.url, request.body].some(
         (text) =>

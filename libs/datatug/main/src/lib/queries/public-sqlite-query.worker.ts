@@ -1,0 +1,660 @@
+import initSqlJs from 'sql.js';
+import { parseTugQL, resolveTugQL } from '@dalgo/core';
+import type { TugQLResolved } from '@dalgo/core';
+import {
+  compilePublicSqliteTugQL,
+  preparePublicSqliteCteStructuralDocument,
+  preparePublicSqliteInvoiceStructuralDocument,
+  type PublicSqliteAuthorProof,
+  type PublicSqliteOutputColumn,
+  type PublicSqliteRelationshipReceipt,
+} from './public-sqlite-tugql';
+import {
+  publicSqliteComparisonTarget,
+  type ComparisonFixtureTarget,
+} from './public-sqlite-comparison';
+
+const FIXTURE_URL = 'https://chinook.demodb.dev/data/chinook.sqlite';
+const FIXTURE_SHA256 =
+  '7651ba378ac2fcd0dfc3c66fb101f7a7eed3ba39a612ec642b96e20702061f15';
+const FIXTURE_BYTES = 1007616;
+const PUBLIC_COMPARISON_SCHEMA_SHA256 =
+  '8392c76c7fd8da3bce20d1cec2c60223692a08915787f5c7393cec1c0b6acb94';
+const MAX_ROWS = 1000;
+const MAX_COLUMNS = 40;
+const MAX_RESULT_BYTES = 1 << 20;
+const MAX_SQL_BYTES = 64 << 10;
+
+type Cell = string | number | null;
+type WorkerRelationship = PublicSqliteRelationshipReceipt;
+type WorkerOutputColumn = PublicSqliteOutputColumn;
+interface RunMessage {
+  readonly mode?: 'author' | 'comparison';
+  readonly comparisonTarget?: ComparisonFixtureTarget;
+  readonly sql: string;
+  readonly bindings?: readonly (string | number | null)[];
+  readonly bindingNames?: readonly string[];
+  readonly fixtureSha256?: string;
+  readonly schemaVersion?: string;
+  readonly draftRevision?: number;
+  readonly authorProfile?: boolean;
+  readonly authorProfileKind?: PublicSqliteAuthorProof['profile'];
+  readonly relationship?: WorkerRelationship;
+  readonly outputColumns?: readonly WorkerOutputColumn[];
+  readonly authorProof?: PublicSqliteAuthorProof;
+}
+interface WorkerExecutionReceipt {
+  readonly executionId: string;
+  readonly sql: string;
+  readonly bindings: readonly (string | number | null)[];
+  readonly bindingNames: readonly string[];
+  readonly fixtureSha256: string;
+  readonly targetId?: ComparisonFixtureTarget['id'];
+  readonly schemaSha256?: string;
+  readonly schemaVersion: string;
+  readonly draftRevision: number;
+  readonly schemaFingerprint: string;
+  readonly relationship?: WorkerRelationship;
+  readonly outputColumns?: readonly WorkerOutputColumn[];
+}
+interface ResultMessage {
+  readonly columns: readonly string[];
+  readonly rows: readonly (readonly Cell[])[];
+  readonly schemaFingerprint?: string;
+}
+
+function bindParameterCount(sql: string): number {
+  let quote = '';
+  let count = 0;
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i];
+    const next = sql[i + 1];
+    if (quote) {
+      if (ch === quote) {
+        if (next === quote && quote !== ']') i++;
+        else quote = '';
+      }
+      continue;
+    }
+    if (ch === '-' && next === '-') {
+      i = sql.indexOf('\n', i + 2);
+      if (i < 0) break;
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      i = sql.indexOf('*/', i + 2);
+      if (i < 0) break;
+      i++;
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === '`' || ch === '[') {
+      quote = ch === '[' ? ']' : ch;
+      continue;
+    }
+    if (
+      ch === '?' ||
+      ((ch === ':' || ch === '@' || ch === '$') && /[A-Za-z_]/.test(next ?? ''))
+    ) {
+      if (ch !== '?') return -1;
+      count++;
+    }
+  }
+  return count;
+}
+
+export function publicSqliteWasmOptions(origin: string): {
+  readonly locateFile: () => string;
+} {
+  return {
+    locateFile: () => new URL('/assets/sql-wasm.wasm', origin).href,
+  };
+}
+
+function verifyPinnedInvoiceSchema(
+  db: import('sql.js').Database,
+  joined: boolean,
+): string {
+  const result = db.exec('PRAGMA table_info("Invoice")')[0];
+  const actual = new Map(
+    (result?.values ?? []).map(
+      (row) => [String(row[1]), String(row[2]).toUpperCase()] as const,
+    ),
+  );
+  const expected = new Map([
+    ['CustomerId', 'INTEGER'],
+    ['InvoiceId', 'INTEGER'],
+    ['InvoiceDate', 'DATETIME'],
+  ]);
+  for (const [name, type] of expected) {
+    if (actual.get(name) !== type)
+      throw new Error(`Pinned Chinook Invoice schema mismatch at ${name}.`);
+  }
+  const invoiceFingerprint = [...expected]
+    .map(([name, type]) => `${name}:${type}`)
+    .join('|');
+  if (!joined) return invoiceFingerprint;
+  const customer = db.exec('PRAGMA table_info("Customer")')[0];
+  const customerColumns = customer?.values ?? [];
+  const customerId = customerColumns.filter(
+    (row) => String(row[1]) === 'CustomerId',
+  );
+  if (
+    customerId.length !== 1 ||
+    String(customerId[0]?.[2]).toUpperCase() !== 'INTEGER' ||
+    Number(customerId[0]?.[5]) !== 1
+  )
+    throw new Error('Pinned Chinook Customer primary key mismatch.');
+  const fk = db.exec('PRAGMA foreign_key_list("Invoice")')[0]?.values ?? [];
+  const customerFks = fk.filter((row) => String(row[2]) === 'Customer');
+  if (
+    customerFks.length !== 1 ||
+    String(customerFks[0]?.[3]) !== 'CustomerId' ||
+    String(customerFks[0]?.[4]) !== 'CustomerId'
+  )
+    throw new Error('Pinned Chinook Invoice foreign key mismatch.');
+  for (const name of ['FirstName', 'LastName', 'Email']) {
+    const matches = customerColumns.filter((row) => String(row[1]) === name);
+    if (
+      matches.length !== 1 ||
+      !/^(?:N?VARCHAR|N?CHAR|TEXT|CLOB)(?:\b|\()/iu.test(
+        String(matches[0]?.[2]).trim(),
+      )
+    )
+      throw new Error(`Pinned Chinook Customer schema mismatch at ${name}.`);
+  }
+  return `${invoiceFingerprint}|CustomerId:INTEGER:PK|FirstName:STRING|LastName:STRING|Email:STRING|FK_Invoice_Customer_CustomerId:Invoice.CustomerId->Customer.CustomerId`;
+}
+
+export async function readPinnedFixture(): Promise<Uint8Array> {
+  const response = await fetch(FIXTURE_URL, {
+    redirect: 'error',
+    credentials: 'omit',
+    cache: 'no-store',
+  });
+  if (!response.ok || !response.body)
+    throw new Error('The public Chinook fixture is unavailable.');
+  if (Number(response.headers.get('content-length')) > FIXTURE_BYTES)
+    throw new Error('The public Chinook fixture exceeds its pinned size.');
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    length += value.byteLength;
+    if (length > FIXTURE_BYTES) {
+      await reader.cancel();
+      throw new Error('The public Chinook fixture exceeds its pinned size.');
+    }
+    chunks.push(value);
+  }
+  if (length !== FIXTURE_BYTES)
+    throw new Error('The public Chinook fixture size differs from its pin.');
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  const actual = [...new Uint8Array(digest)]
+    .map((part) => part.toString(16).padStart(2, '0'))
+    .join('');
+  if (actual !== FIXTURE_SHA256)
+    throw new Error('The public Chinook fixture hash differs from its pin.');
+  return bytes;
+}
+
+/** Fetches only an exact catalog-pinned comparison asset and verifies all bytes. */
+export async function readComparisonFixture(
+  target: ComparisonFixtureTarget,
+  signal?: AbortSignal,
+): Promise<Uint8Array> {
+  const pinned = publicSqliteComparisonTarget(target.id);
+  if (JSON.stringify(target) !== JSON.stringify(pinned))
+    throw new Error('The comparison target differs from its browser pin.');
+  const response = await fetch(pinned.url, {
+    redirect: 'error',
+    credentials: 'omit',
+    cache: 'no-store',
+    signal,
+  });
+  if (!response.ok || !response.body)
+    throw new Error('The public comparison fixture is unavailable.');
+  const contentLength = response.headers.get('content-length');
+  if (contentLength !== null && Number(contentLength) !== pinned.bytes)
+    throw new Error('The public comparison fixture length differs from its pin.');
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  try {
+    while (true) {
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+      const { done, value } = await reader.read();
+      if (done) break;
+      length += value.byteLength;
+      if (length > pinned.bytes) {
+        await reader.cancel();
+        throw new Error('The public comparison fixture exceeds its pinned size.');
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  if (length !== pinned.bytes)
+    throw new Error('The public comparison fixture size differs from its pin.');
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  const actual = [...new Uint8Array(digest)]
+    .map((part) => part.toString(16).padStart(2, '0'))
+    .join('');
+  if (actual !== pinned.sha256)
+    throw new Error('The public comparison fixture hash differs from its pin.');
+  return bytes;
+}
+
+export async function executePinnedSql(
+  sql: string,
+  fixture?: Uint8Array,
+  bindings: readonly (string | number | null)[] = [],
+  authorProfile = false,
+  joined = false,
+  expectedOutputColumnNames?: readonly string[],
+  authorProof?: PublicSqliteAuthorProof,
+  bindingNames?: readonly string[],
+  schemaVersion?: string,
+  draftRevision?: number,
+  authorProfileKind?: PublicSqliteAuthorProof['profile'],
+  fixtureSha256?: string,
+  expectedOutputColumns?: readonly WorkerOutputColumn[],
+  authorRelationship?: WorkerRelationship,
+  comparisonTarget?: ComparisonFixtureTarget,
+): Promise<ResultMessage> {
+  if (
+    typeof sql !== 'string' ||
+    new TextEncoder().encode(sql).byteLength > MAX_SQL_BYTES ||
+    !/^\s*(?:select|with)\b/i.test(sql)
+  ) {
+    throw new Error('Use one read-only SELECT statement of at most 64 KiB.');
+  }
+  if (
+    (authorProfile && (
+      !authorProfileKind ||
+      !authorProof ||
+      authorProof.profile !== authorProfileKind ||
+      fixtureSha256 !== FIXTURE_SHA256 ||
+      !schemaVersion?.trim() ||
+      !Number.isSafeInteger(draftRevision) ||
+      (draftRevision as number) < 0 ||
+      !bindingNames?.length
+    )) ||
+    (!authorProfile && (
+      authorProfileKind !== undefined ||
+      authorProof !== undefined ||
+      authorRelationship !== undefined
+    ))
+  )
+    throw new Error('The Author profile proof or execution metadata is missing or invalid.');
+  if (comparisonTarget) {
+    const pinned = publicSqliteComparisonTarget(comparisonTarget.id);
+    if (
+      JSON.stringify(comparisonTarget) !== JSON.stringify(pinned) ||
+      !authorProfile ||
+      fixtureSha256 !== FIXTURE_SHA256 ||
+      pinned.schemaSha256 !== PUBLIC_COMPARISON_SCHEMA_SHA256
+    )
+      throw new Error('The comparison target or shared schema pin is invalid.');
+  }
+  let rawInvoiceDateColumnIndexes: readonly number[] = [];
+  if (authorProof) {
+    const allowedProofKeys = authorProfileKind === 'bounded-cte-query'
+      ? ['profile', 'resolvedQuery', 'authoredSource']
+      : authorProfileKind === 'invoice-query'
+        ? ['profile', 'resolvedQuery', 'authoredSource', 'relationship', 'rawInvoiceDateTextRule']
+        : ['profile', 'resolvedQuery', 'relationship', 'rawInvoiceDateTextRule'];
+    if (
+      !authorProof ||
+      typeof authorProof !== 'object' ||
+      Array.isArray(authorProof) ||
+      Object.keys(authorProof).some((key) => !allowedProofKeys.includes(key)) ||
+      !authorProof.resolvedQuery
+    )
+      throw new Error('The Author proof contains unsupported or missing fields.');
+    if (
+      (authorProfileKind === 'customer-count-cte' || authorProfileKind === 'bounded-cte-query') &&
+      (authorRelationship !== undefined || authorProof.relationship !== undefined)
+    )
+      throw new Error('The CTE Author profile cannot carry a physical relationship receipt.');
+    let resolved: TugQLResolved;
+    let coreOutputColumns: PublicSqliteOutputColumn[] | undefined;
+    if (authorProfileKind === 'bounded-cte-query') {
+      const authoredSource = authorProof.authoredSource;
+      if (typeof authoredSource !== 'string' || new TextEncoder().encode(authoredSource).byteLength > MAX_SQL_BYTES)
+        throw new Error('The bounded CTE Author proof is missing its authored source.');
+      const parsed = parseTugQL(authoredSource);
+      if (parsed.diagnostics.length || !parsed.document.tree)
+        throw new Error('The bounded CTE Author proof contains invalid authored TugQL.');
+      const structuralDocument = preparePublicSqliteCteStructuralDocument(parsed.document);
+      const authorization = resolveTugQL(structuralDocument, {
+        authorizedSchemas: [{
+          version: schemaVersion ?? '',
+          tables: [
+            { name: 'Invoice', fields: [
+              { name: 'CustomerId', type: 'integer', authorized: true },
+              { name: 'InvoiceId', type: 'integer', authorized: true },
+            ] },
+            { name: 'Customer', fields: [
+              { name: 'CustomerId', type: 'integer', authorized: true },
+              { name: 'FirstName', type: 'string', authorized: true },
+              { name: 'LastName', type: 'string', authorized: true },
+              { name: 'Email', type: 'string', authorized: true },
+            ] },
+          ],
+        }],
+        relationships: [],
+        pinnedImports: [],
+        bindings: [],
+      });
+      if (authorization.diagnostics.length || !authorization.resolved)
+        throw new Error('The worker could not independently resolve the bounded CTE source.');
+      if (JSON.stringify(authorization.resolved.query) !== JSON.stringify(authorProof.resolvedQuery))
+        throw new Error('The worker resolved AST differs from the Author proof.');
+      resolved = authorization.resolved;
+      coreOutputColumns = authorization.resolved.columns.map((column) => ({
+        name: column.name,
+        type: column.type.toLowerCase().includes('int') ? 'integer' : column.type.toLowerCase().includes('char') || column.type.toLowerCase().includes('text') || column.type.toLowerCase().includes('string') ? 'string' : 'unsupported',
+        lineage: column.lineage ?? [],
+      })) as PublicSqliteOutputColumn[];
+    } else if (authorProfileKind === 'invoice-query' && authorProof.authoredSource) {
+      const authoredSource = authorProof.authoredSource;
+      if (new TextEncoder().encode(authoredSource).byteLength > MAX_SQL_BYTES)
+        throw new Error('The InvoiceId filter source is too large.');
+      const parsed = parseTugQL(authoredSource);
+      if (parsed.diagnostics.length || !parsed.document.tree)
+        throw new Error('The InvoiceId filter proof contains invalid authored TugQL.');
+      const structuralDocument = preparePublicSqliteInvoiceStructuralDocument(parsed.document);
+      const authoredWhere = parsed.document.tree.query['where'] as Readonly<Record<string, unknown>> | undefined;
+      const filtered = Array.isArray(authoredWhere?.['and']);
+      if (filtered !== (structuralDocument.tree?.query['where'] !== undefined))
+        throw new Error('The InvoiceId filter proof is missing its exact authored predicate.');
+      const relationship = authorProof.relationship;
+      const authorization = resolveTugQL(structuralDocument, {
+        authorizedSchemas: [{
+          version: schemaVersion ?? '',
+          tables: [
+            { name: 'Invoice', fields: [
+              { name: 'CustomerId', type: 'integer', authorized: true },
+              { name: 'InvoiceId', type: 'integer', authorized: true },
+              { name: 'InvoiceDate', type: 'datetime', authorized: true },
+            ] },
+            ...(relationship ? [{ name: 'Customer', fields: [
+              { name: 'CustomerId', type: 'integer', authorized: true },
+              { name: 'FirstName', type: 'string', authorized: true },
+              { name: 'LastName', type: 'string', authorized: true },
+              { name: 'Email', type: 'string', authorized: true },
+            ] }] : []),
+          ],
+        }],
+        relationships: relationship ? [{
+          id: relationship.id,
+          version: relationship.version,
+          from: { table: 'Invoice', source: relationship.fromSource },
+          to: { table: 'Customer', source: relationship.toSource },
+          pairs: relationship.pairs,
+          exactTypedEquality: true,
+        }] : [],
+        pinnedImports: [], bindings: [],
+      });
+      if (authorization.diagnostics.length || !authorization.resolved ||
+          JSON.stringify(authorization.resolved.query) !== JSON.stringify(authorProof.resolvedQuery))
+        throw new Error('The worker resolved InvoiceId filter differs from the Author proof.');
+      resolved = authorization.resolved;
+      if (!authorization.resolved.query.groupBy && !authorization.resolved.query.having) coreOutputColumns = authorization.resolved.columns.map((column) => {
+        const resolvedType = column.type.toLowerCase();
+        const type: PublicSqliteOutputColumn['type'] = /int/u.test(resolvedType) ? 'integer' :
+          /date|time|char|text|string/u.test(resolvedType) ? 'string' : (() => {
+            throw new Error('The Invoice output has an unsupported resolved type.');
+          })();
+        return { name: column.name, type, lineage: column.lineage ?? [] };
+      });
+    } else {
+      if (authorProfileKind === 'invoice-query' &&
+          (authorProof.resolvedQuery.where !== undefined || expectedOutputColumns !== undefined))
+        throw new Error('The Invoice projection and InvoiceId filter require independently verified authored TugQL.');
+      resolved = {
+        query: authorProof.resolvedQuery,
+        columns: [],
+        schemaVersion: schemaVersion ?? '',
+        dependencies: [],
+        relationships: [],
+      } as unknown as TugQLResolved;
+    }
+    const derived = compilePublicSqliteTugQL(resolved, {
+      fixtureSha256: FIXTURE_SHA256,
+      schemaVersion: schemaVersion ?? '',
+      draftRevision: draftRevision ?? -1,
+      ...(authorProof.authoredSource ? { authoredSource: authorProof.authoredSource } : {}),
+      ...(authorProof.relationship ? { relationship: authorProof.relationship } : {}),
+    });
+    if (coreOutputColumns && JSON.stringify(derived.outputColumns) !== JSON.stringify(coreOutputColumns))
+      throw new Error('The bounded CTE compiler output metadata differs from worker Core resolution.');
+    const bindingsMatch = derived.bindingSlots
+      ? bindings.length === derived.bindingSlots.length && derived.bindingSlots.every((slot, index) =>
+          slot.kind === 'customer-id'
+            ? Number.isSafeInteger(bindings[index])
+            : bindings[index] === slot.value,
+        )
+      : bindings.length === 1 + derived.fixedBindings.length &&
+        Number.isSafeInteger(bindings[0]) &&
+        JSON.stringify(bindings.slice(1)) === JSON.stringify(derived.fixedBindings);
+    if (
+      !authorProfile ||
+      derived.authorProof?.profile !== authorProfileKind ||
+      sql !== derived.sql ||
+      JSON.stringify(bindingNames) !== JSON.stringify(derived.bindingNames) ||
+      JSON.stringify(expectedOutputColumnNames) !==
+        JSON.stringify(derived.outputColumns?.map((column) => column.name)) ||
+      JSON.stringify(expectedOutputColumns) !== JSON.stringify(derived.outputColumns) ||
+      JSON.stringify(authorRelationship) !== JSON.stringify(derived.relationship) ||
+      !bindingsMatch
+    )
+      throw new Error('The Author execution request differs from its independently compiled profile.');
+    const derivedDateRule = derived.authorProof?.rawInvoiceDateTextRule;
+    if (authorProof.rawInvoiceDateTextRule !== derivedDateRule)
+      throw new Error('The InvoiceDate storage rule differs from the independent Author proof.');
+    const invoiceAlias = derived.authorProof?.resolvedQuery.from.alias ?? 'Invoice';
+    rawInvoiceDateColumnIndexes = Object.freeze(
+      (derived.outputColumns ?? [])
+        .map((column, index) =>
+          column.lineage.some((item) => item.source === invoiceAlias && item.field === 'InvoiceDate')
+            ? index
+            : -1,
+        )
+        .filter((index) => index >= 0),
+    );
+    if (rawInvoiceDateColumnIndexes.length && derivedDateRule !== 'chinook-invoice-datetime-text/v1')
+      throw new Error('The InvoiceDate output is missing its raw-text storage rule.');
+    if (!rawInvoiceDateColumnIndexes.length && derivedDateRule !== undefined)
+      throw new Error('The raw InvoiceDate storage rule has no projected InvoiceDate output.');
+    joined = derived.authorProof.profile === 'customer-count-cte' || derived.authorProof.profile === 'bounded-cte-query' || derived.relationship !== undefined;
+  }
+  const SQL = await initSqlJs(publicSqliteWasmOptions(self.location.origin));
+  const db = new SQL.Database(fixture ?? (await readPinnedFixture()));
+  try {
+    const schemaFingerprint = authorProfile
+      ? verifyPinnedInvoiceSchema(db, joined)
+      : undefined;
+    db.run('PRAGMA query_only = ON');
+    db.run('PRAGMA trusted_schema = OFF');
+    const columns: string[] = [];
+    const rows: Cell[][] = [];
+    let statements = 0;
+    for (const statement of db.iterateStatements(sql)) {
+      if (++statements !== 1)
+        throw new Error('Use one read-only SELECT statement.');
+      const statementSql = statement.getSQL();
+      const expectedBindings = bindParameterCount(statementSql);
+      if (
+        expectedBindings < 0 ||
+        expectedBindings !== bindings.length ||
+        bindings.some(
+          (value) =>
+            value !== null &&
+            typeof value !== 'string' &&
+            (typeof value !== 'number' || !Number.isSafeInteger(value)),
+        )
+      )
+        throw new Error('The browser SQLite query bindings are invalid.');
+      if (bindings.length && !statement.bind([...bindings]))
+        throw new Error('The browser SQLite query bindings are invalid.');
+      columns.push(...statement.getColumnNames());
+      if (!columns.length || columns.length > MAX_COLUMNS)
+        throw new Error('The query must return 1 to 40 columns.');
+      let resultBytes = 0;
+      while (statement.step()) {
+        if (rows.length >= MAX_ROWS)
+          throw new Error('The query exceeds the 1,000-row browser limit.');
+        const raw = statement.get();
+        if (rawInvoiceDateColumnIndexes.some((index) =>
+          raw[index] === null || typeof raw[index] !== 'string',
+        ))
+          throw new Error('The InvoiceDate result must remain non-null SQLite text.');
+        const row = raw.map((cell): Cell => {
+          if (
+            cell === null ||
+            typeof cell === 'number' ||
+            typeof cell === 'string'
+          )
+            return cell;
+          throw new Error(
+            'Blob columns are unavailable in the browser result grid.',
+          );
+        });
+        resultBytes += new TextEncoder().encode(JSON.stringify(row)).byteLength;
+        if (resultBytes > MAX_RESULT_BYTES)
+          throw new Error('The query exceeds the 1 MiB browser result limit.');
+        rows.push(row);
+      }
+    }
+    if (statements !== 1)
+      throw new Error('Use one read-only SELECT statement.');
+    if (
+      expectedOutputColumnNames &&
+      (expectedOutputColumnNames.length !== columns.length ||
+        expectedOutputColumnNames.some(
+          (name, index) => columns[index] !== name,
+        ))
+    ) {
+      throw new Error(
+        'The SQLite result columns differ from the prepared output lineage.',
+      );
+    }
+    return {
+      columns,
+      rows,
+      ...(schemaFingerprint ? { schemaFingerprint } : {}),
+    };
+  } finally {
+    db.close();
+  }
+}
+
+if (
+  typeof self !== 'undefined' &&
+  'postMessage' in self &&
+  typeof Window === 'undefined'
+) {
+  self.onmessage = (event: MessageEvent<RunMessage>) => {
+    const mode = event.data.mode ?? 'author';
+    const comparisonTarget = event.data.comparisonTarget;
+    if (
+      (mode !== 'author' && mode !== 'comparison') ||
+      (mode === 'comparison') !== (comparisonTarget !== undefined) ||
+      (mode === 'comparison' && event.data.authorProfile !== true)
+    ) {
+      self.postMessage({ ok: false, error: 'The SQLite worker request mode is invalid.' });
+      return;
+    }
+    void (comparisonTarget ? readComparisonFixture(comparisonTarget) : Promise.resolve(undefined))
+      .then((fixture) => executePinnedSql(
+      event.data.sql,
+      fixture,
+      event.data.bindings ?? [],
+      event.data.authorProfile === true,
+      event.data.relationship !== undefined || event.data.authorProof !== undefined,
+      event.data.outputColumns?.map((column) => column.name),
+      event.data.authorProof,
+      event.data.bindingNames,
+      event.data.schemaVersion,
+      event.data.draftRevision,
+      event.data.authorProfileKind,
+      event.data.fixtureSha256,
+      event.data.outputColumns,
+      event.data.relationship,
+      comparisonTarget,
+    ))
+      .then((result) => {
+        if (!event.data.authorProfile) {
+          self.postMessage({ ok: true, result });
+          return;
+        }
+        const proof = event.data.authorProof as PublicSqliteAuthorProof;
+        const schemaVersion = event.data.schemaVersion as string;
+        const draftRevision = event.data.draftRevision as number;
+        const receiptPlan = compilePublicSqliteTugQL(
+          {
+            query: proof.resolvedQuery,
+            columns: [],
+            schemaVersion,
+            dependencies: [],
+            relationships: [],
+          } as unknown as TugQLResolved,
+          {
+            fixtureSha256: FIXTURE_SHA256,
+            schemaVersion,
+            draftRevision,
+            ...(proof.authoredSource ? { authoredSource: proof.authoredSource } : {}),
+            ...(proof.relationship ? { relationship: proof.relationship } : {}),
+          },
+        );
+        const receipt: WorkerExecutionReceipt = {
+          executionId: crypto.randomUUID(),
+          sql: event.data.sql,
+          bindings: event.data.bindings ?? [],
+          bindingNames: event.data.bindingNames as readonly string[],
+      fixtureSha256: event.data.comparisonTarget?.sha256 ?? event.data.fixtureSha256 as string,
+      ...(event.data.comparisonTarget
+        ? {
+            targetId: event.data.comparisonTarget.id,
+            schemaSha256: event.data.comparisonTarget.schemaSha256,
+          }
+        : {}),
+          schemaVersion,
+          draftRevision,
+          schemaFingerprint: result.schemaFingerprint ?? '',
+          ...(receiptPlan.relationship
+            ? { relationship: receiptPlan.relationship }
+            : {}),
+          ...(receiptPlan.outputColumns
+            ? { outputColumns: receiptPlan.outputColumns }
+            : {}),
+        };
+        self.postMessage({ ok: true, result, receipt });
+      })
+      .catch((error: unknown) =>
+        self.postMessage({
+          ok: false,
+          error:
+            error instanceof Error
+              ? error.message
+              : 'The browser SQLite query failed.',
+        }),
+      );
+  };
+}

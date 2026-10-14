@@ -1,9 +1,11 @@
+import { DevicePersonalQueries } from './device-personal-queries';
 import { TestBed } from '@angular/core/testing';
-import { of } from 'rxjs';
+import { lastValueFrom, of } from 'rxjs';
+import { SneatAuthStateService } from '@sneat/auth-core';
+import { ProjectQueryApiService } from '../services/project/project-query-api.service';
 
 import {
   AGENT_PERSONAL_QUERIES_UNSUPPORTED_MESSAGE,
-  GITHUB_PERSONAL_QUERIES_MESSAGE,
   QueriesService,
 } from './queries.service';
 import { QUERY_PROJ_ITEM_SERVICE } from './queries.service.token';
@@ -32,6 +34,28 @@ describe('QueriesService', () => {
   it('should be created', () => {
     expect(TestBed.inject(QueriesService)).toBeTruthy();
   });
+});
+
+it('loads a Space-owned saved-query folder through authenticated revision transport', async () => {
+  const ref: IProjectRef = { storeId: 'firestore', spaceID: 'S1', projectId: 'P1' };
+  const folder = vi.fn(() => of({ id: '~', items: [{ id: 'genre-mix', title: 'Genre mix', type: 'SQL', connectionId: 'chinook-sqlite' }] }));
+  const read = vi.fn(() => of({ query: { folderPath: '', id: 'genre-mix', title: 'Genre mix', type: 'SQL', text: 'SELECT 1', connectionId: 'chinook-sqlite' }, revision: 'r1' }));
+  const raw = vi.fn();
+  TestBed.configureTestingModule({ providers: [
+    QueriesService,
+    { provide: QUERY_PROJ_ITEM_SERVICE, useValue: { getFolder: raw, getProjItem: raw } },
+    { provide: GithubProjectReaderService, useValue: { getQueriesFolder: raw, getQuery: raw } },
+    { provide: SneatAuthStateService, useValue: { authState: of({ status: 'authenticated', user: { uid: 'actor_1' } }) } },
+    { provide: ProjectQueryApiService, useValue: { folder, read } },
+  ] });
+  const service = TestBed.inject(QueriesService);
+  const result = await lastValueFrom(service.getQueriesFolder(ref, '~', 'shared'));
+  expect(folder).toHaveBeenCalledWith(ref);
+  expect(result?.items?.[0]).toMatchObject({ id: 'genre-mix', connectionId: 'chinook-sqlite', request: { queryType: 'SQL', text: '' } });
+  const detail = await lastValueFrom(service.getQuery(ref, 'genre-mix'));
+  expect(read).toHaveBeenCalledWith(ref, 'genre-mix', undefined);
+  expect(detail.request).toEqual({ queryType: 'SQL', text: 'SELECT 1' });
+  expect(raw).not.toHaveBeenCalled();
 });
 
 /**
@@ -159,18 +183,13 @@ describe('QueriesService.getQueriesFolder — GitHub-store personal vs shared (S
     return TestBed.inject(QueriesService);
   }
 
-  it('rejects with GITHUB_PERSONAL_QUERIES_MESSAGE for rootFolder "personal" — never calls the reader', () => {
+  it('lists device personal copies without reading the shared repository tree', async () => {
     const getQueriesFolder = vi.fn(() => of(sharedFolder));
     const service = createService(getQueriesFolder);
 
-    const next = vi.fn();
-    const error = vi.fn();
-    service.getQueriesFolder(projRef, '~', 'personal').subscribe({ next, error });
-
-    expect(next).not.toHaveBeenCalled();
-    expect(error).toHaveBeenCalledWith(
-      expect.objectContaining({ message: GITHUB_PERSONAL_QUERIES_MESSAGE }),
-    );
+    vi.spyOn(TestBed.inject(DevicePersonalQueries), 'list').mockResolvedValue([]);
+    const folder = await lastValueFrom(service.getQueriesFolder(projRef, '~', 'personal'));
+    expect(folder).toEqual({ id: 'user:device', title: 'On this device', items: [], folders: [] });
     expect(getQueriesFolder).not.toHaveBeenCalled();
   });
 

@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "repository": "datatug/datatug-core",
+  "tag": "v0.47.3",
+  "sourceCommit": "8ccbf96d5c4c8501dc764546cbdb98b9a8603de3",
+  "sourceRef": "refs/heads/main",
+  "workflowPath": ".github/workflows/golangci.yml",
+  "workflowIdentity": "https://github.com/datatug/datatug-core/.github/workflows/golangci.yml@refs/heads/main",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "archiveName": "datatug-recordsetcompare-0.47.3.tar.gz",
+  "archiveBytes": 1613006,
+  "archiveSHA256": "5321918243482f1934c2a8bf9919309fa118283107f47094a809611268c9ca9e",
+  "abi": "recordsetcompare/1",
+  "files": {
+    "DATATUG-LICENSE.txt": {
+      "bytes": 1067,
+      "sha256": "9f09a79beba82593d387f74472fe30ed884798d730e5a1375c02398dd8cfe9d6"
+    },
+    "GO-LICENSE.txt": {
+      "bytes": 1453,
+      "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+    },
+    "THIRD-PARTY-NOTICES.md": {
+      "bytes": 21081,
+      "sha256": "e8fb2c1824d370f0d29e959c4fc944585849f3756d1df60f4fdc68b71c426824"
+    },
+    "index.d.ts": {
+      "bytes": 507,
+      "sha256": "b74513c5823c654f2b23d02121a25328c1878d9466a3818b3aae34a3f93ffcbb"
+    },
+    "index.mjs": {
+      "bytes": 3901,
+      "sha256": "39e38284ee643882f40b44a17943442c1f5c0400d02d605883fdd4c01fa7383f"
+    },
+    "manifest.json": {
+      "bytes": 1558,
+      "sha256": "f61de1a86767715b918c09b8c84121eaef234dd4139021ab5ded5e2c82d132bb"
+    },
+    "node-loader.mjs": {
+      "bytes": 2156,
+      "sha256": "84caab7ed1f2fa3c909f638f430bb0b64a31c2eef70e41d9e659c301818eb047"
+    },
+    "recordsetcompare-node-worker.mjs": {
+      "bytes": 1146,
+      "sha256": "299f5079d20f1bf55d0632454c7248716835447b5d207382631f05b24d763603"
+    },
+    "recordsetcompare-worker.js": {
+      "bytes": 3362,
+      "sha256": "90810bae640fbdd20b5a43fbcac54c18eab51b6e16ed55bc3eff156faa08fd06"
+    },
+    "recordsetcompare.wasm": {
+      "bytes": 5911491,
+      "sha256": "411aa361affa0eae77d1a9025615b0ab5033e27dbd730333e9eb62eceb97d262"
+    },
+    "wasm_exec.js": {
+      "bytes": 16992,
+      "sha256": "0c949f4996f9a89698e4b5c586de32249c3b69b7baadb64d220073cc04acba14"
+    }
+  }
+}

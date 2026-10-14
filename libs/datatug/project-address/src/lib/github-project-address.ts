@@ -75,6 +75,31 @@ export function formatGithubProjectId(project: IGithubProjectId): string {
   return `${repo}@${org}@${project.folder}`;
 }
 
+/**
+ * Cloud API wire key: always three parts, including the default folder, with
+ * branch/ref carried separately by the operation. UI ids keep their shortest spelling.
+ * An empty folder retains the old wire value; cloud API root projects remain unsupported.
+ */
+export function formatGithubProjectApiKey(project: IGithubProjectId): string {
+  const { repo, org, folder } = project;
+  if (
+    typeof repo !== 'string' ||
+    typeof org !== 'string' ||
+    !isSafePathSegment(repo) ||
+    !isSafePathSegment(org) ||
+    !GITHUB_REPO_PATTERN.test(repo) ||
+    !GITHUB_OWNER_PATTERN.test(org) ||
+    asciiLowerCase(repo).endsWith('.git')
+  )
+    throw new GithubProjectIdError(
+      'owner-or-repo',
+      'Invalid GitHub project API key',
+    );
+  if (folder !== '' && !isValidGithubProjectApiFolder(folder))
+    throw new GithubProjectIdError('folder', 'Invalid GitHub project API key');
+  return `${asciiLowerCase(repo)}@${asciiLowerCase(org)}@${folder}`;
+}
+
 /** What GitHub allows as an owner (a user or an organisation): ASCII letters, digits, hyphens. */
 export const GITHUB_OWNER_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 
@@ -121,16 +146,33 @@ export function isValidGithubFolder(folder: unknown): folder is string {
   );
 }
 
+/** Released cloud backend project-folder contract; read-only GitHub addresses are broader. */
+export function isValidGithubProjectApiFolder(
+  folder: unknown,
+): folder is string {
+  return (
+    typeof folder === 'string' &&
+    folder.length > 0 &&
+    folder.length <= 256 &&
+    folder
+      .split('/')
+      .every(
+        (segment) =>
+          segment.length <= 128 &&
+          /^[A-Za-z0-9]/.test(segment) &&
+          !/[^A-Za-z0-9._-]/.test(segment),
+      )
+  );
+}
+
 export type NewProjectFolderReading =
   | { readonly ok: true; readonly folder: string }
   | { readonly ok: false; readonly reason: 'leading-slash' | 'invalid' };
 
 /**
- * The folder field of the new-project form, as the reader will accept it. A blank field means the default folder
- * (`datatug`); a folder starting with `/` is refused (it would read as an absolute path); trailing slashes are
- * dropped; what is left must be {@link isValidGithubFolder} and not empty, so `..`, `.`, a backslash, an empty
- * segment (`a//b`), a `-` segment, `@`, `%`, `?` and `#` are all refused: a project can only be created in a
- * folder that the reader (and so its address) can open.
+ * New project creation uses the cloud API folder contract. Blank means `datatug`;
+ * leading slash is refused and trailing slashes are removed before validation.
+ * Generic read-only GitHub addresses retain their broader folder contract.
  */
 export function readNewProjectFolder(typed: unknown): NewProjectFolderReading {
   const trimmed = typeof typed === 'string' ? typed.trim() : '';
@@ -141,7 +183,7 @@ export function readNewProjectFolder(typed: unknown): NewProjectFolderReading {
     return { ok: false, reason: 'leading-slash' };
   }
   const folder = trimmed.replace(/\/+$/, '');
-  return folder !== '' && isValidGithubFolder(folder)
+  return isValidGithubProjectApiFolder(folder)
     ? { ok: true, folder }
     : { ok: false, reason: 'invalid' };
 }
@@ -227,7 +269,9 @@ const TRUSTED_GITHUB_PROJECTS: readonly {
   readonly owner: string;
   readonly repo: string;
   readonly folder: string;
-}[] = [{ owner: 'datatug', repo: 'datatug-demo-project', folder: 'demo-project-1' }];
+}[] = [
+  { owner: 'datatug', repo: 'datatug-demo-project', folder: 'demo-project-1' },
+];
 
 function isTrustedGithubProject(address: {
   readonly owner: string;

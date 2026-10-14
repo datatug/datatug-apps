@@ -1,0 +1,207 @@
+<section class="author-source-discovery" data-testid="author-source-discovery">
+  <ion-item lines="none">
+    <ion-label>
+      <h3>Related sources</h3>
+      <p>Pinned Chinook relationships</p>
+    </ion-label>
+    <ion-buttons slot="end">
+      <ion-button
+        data-testid="author-related-refresh"
+        aria-label="Refresh source metadata"
+        title="Refresh source metadata"
+        fill="clear"
+        [disabled]="disabled() || loading()"
+        (click)="refreshRequested.emit()"
+      >
+        <ion-icon slot="icon-only" name="refresh-outline" />
+      </ion-button>
+    </ion-buttons>
+  </ion-item>
+  @if (loading()) {
+    <ion-item lines="none" role="status" aria-live="polite">
+      <ion-label>Checking current project metadata…</ion-label>
+    </ion-item>
+  }
+  @if (sources(); as admitted) {
+    @if (eligibleCustomerSource()) {
+    <ion-list>
+      <ion-item
+        button
+        detail
+        [attr.aria-expanded]="expandedTable() === 'Customer'"
+        data-testid="author-related-customer"
+        (click)="toggleTable('Customer')"
+      >
+        <ion-label class="ion-text-wrap">
+          <h4>Customer</h4>
+          <p>
+            @for (field of admitted.customerFields; track field.name; let last = $last) {
+              <code>{{ field.name }}</code>@if (!last) { · }
+            }
+          </p>
+        </ion-label>
+        <ion-buttons slot="end">
+          <ion-button
+            data-testid="author-source-review"
+            aria-label="Review join and outputs"
+            title="Review join and outputs"
+            fill="clear"
+            [disabled]="disabled() || !canJoin()"
+            (click)="requestOutputReview($event)"
+          >
+            <ion-icon slot="icon-only" name="options-outline" />
+          </ion-button>
+          <ion-button
+            data-testid="author-related-join"
+            aria-label="Join Customer using the declared Invoice to Customer relationship"
+            title="Join Customer"
+            fill="clear"
+            [disabled]="disabled() || !canJoin()"
+            (click)="joinRelationship($event)"
+          >
+            <ion-icon slot="icon-only" name="git-merge-outline" />
+          </ion-button>
+        </ion-buttons>
+      </ion-item>
+      @if (expandedTable() === 'Customer') {
+        <ion-list data-testid="author-related-customer-details">
+          <ion-list-header><ion-label>Customer metadata</ion-label></ion-list-header>
+          <ion-item lines="none"><ion-label>Schema: {{ sourceSchema('Customer') || 'not supplied' }}</ion-label></ion-item>
+          @for (field of admitted.customerFields; track $index) {
+            <ion-item lines="inset"><ion-label class="ion-text-wrap"><code>{{ field.name }}</code> · {{ field.type }}</ion-label></ion-item>
+          }
+          <ion-item lines="none">
+            <ion-label class="ion-text-wrap">
+              <p>Declared relationship: {{ admitted.relationship.id }}</p>
+              @for (pair of admitted.relationship.pairs; track pair.fromField) {
+                <p>{{ admitted.relationship.from.schema }}.{{ admitted.relationship.from.table }}.{{ pair.fromField }} → {{ admitted.relationship.to.schema }}.{{ admitted.relationship.to.table }}.{{ pair.toField }}</p>
+              }
+              <p>{{ admitted.relationshipProvenance }} · {{ admitted.cardinality }} · Cross-source cost: {{ admitted.crossSourceCost }}</p>
+            </ion-label>
+          </ion-item>
+        </ion-list>
+      }
+    </ion-list>
+    } @else {
+      <ion-item lines="none" data-testid="author-related-empty">
+        <ion-label class="ion-text-wrap">
+          <p>Customer is already included.</p>
+        </ion-label>
+        <ion-buttons slot="end"><ion-button fill="clear" data-testid="author-related-sources-link" (click)="sourcesRequested.emit()">Sources</ion-button></ion-buttons>
+      </ion-item>
+    }
+    <ion-accordion-group data-testid="author-related-metadata-details">
+      <ion-accordion value="coverage">
+        <ion-item slot="header"><ion-label class="ion-text-wrap">Metadata coverage and cost</ion-label></ion-item>
+        <ion-list slot="content">
+          <ion-item><ion-label>Source</ion-label><ion-note slot="end">Pinned Chinook SQLite</ion-note></ion-item>
+          <ion-item><ion-label>Relationship</ion-label><ion-note slot="end">Invoice → Customer</ion-note></ion-item>
+          <ion-item><ion-label>Cardinality</ion-label><ion-note slot="end">{{ admitted.cardinality }}</ion-note></ion-item>
+          <ion-item><ion-label>Cross-source cost</ion-label><ion-note slot="end">{{ admitted.crossSourceCost }}</ion-note></ion-item>
+          <ion-item><ion-label>Current limit</ion-label><ion-note slot="end">{{ currentLimit() }}</ion-note></ion-item>
+          <ion-item><ion-label>Fixture SHA-256</ion-label><ion-note slot="end">{{ admitted.fixtureSha256.slice(0, 12) }}…</ion-note>
+            <ion-buttons slot="end"><ion-button fill="clear" aria-label="Copy metadata fixture SHA-256" title="Copy metadata fixture SHA-256" (click)="copyMetadataIdentifier(admitted.fixtureSha256, 'Fixture SHA-256')"><ion-icon slot="icon-only" name="copy-outline" /></ion-button></ion-buttons>
+          </ion-item>
+          @if (copyStatus(); as status) { <ion-item lines="none"><ion-label role="status" aria-live="polite">{{ status }}</ion-label></ion-item> }
+          <ion-accordion-group>
+            <ion-accordion value="technical-receipt">
+              <ion-item slot="header"><ion-label>Advanced metadata</ion-label></ion-item>
+              <ion-list slot="content">
+                <ion-item><ion-label class="ion-text-wrap">{{ admitted.relationshipProvenance }} · {{ admitted.cardinality }}</ion-label></ion-item>
+                <ion-item><ion-label class="ion-text-wrap">This public catalog snapshot covers only the declared Invoice–Customer relationship. Views are not included.</ion-label></ion-item>
+                <ion-item><ion-label class="ion-text-wrap">Joined InvoiceDate values keep the pinned SQLite DATETIME as raw text.</ion-label></ion-item>
+                <ion-item><ion-label class="ion-text-wrap">Admitted schema version <code>{{ admitted.schemaVersion }}</code></ion-label>
+                  <ion-buttons slot="end"><ion-button fill="clear" aria-label="Copy admitted schema version" title="Copy admitted schema version" (click)="copyMetadataIdentifier(admitted.schemaVersion, 'Schema version')"><ion-icon slot="icon-only" name="copy-outline" /></ion-button></ion-buttons>
+                </ion-item>
+                <ion-item><ion-label class="ion-text-wrap">Fixture SHA-256 <code>{{ admitted.fixtureSha256 }}</code></ion-label></ion-item>
+                <ion-item><ion-label>Relationship version</ion-label><ion-note slot="end">{{ admitted.relationship.version }}</ion-note></ion-item>
+                <ion-item><ion-label class="ion-text-wrap">Refresh reads metadata only; it never executes this query.</ion-label></ion-item>
+              </ion-list>
+            </ion-accordion>
+          </ion-accordion-group>
+        </ion-list>
+      </ion-accordion>
+    </ion-accordion-group>
+    @if (review(); as proposed) {
+      <section class="author-source-review" data-testid="author-source-review-panel" aria-label="Review proposed relationship draft">
+        <ion-item lines="none"><ion-label><h3>Review the proposed draft</h3></ion-label></ion-item>
+        <ion-list>
+          <ion-list-header><ion-label>Customer output fields</ion-label></ion-list-header>
+          @for (field of choices(); track field) {
+            <ion-item>
+              <ion-checkbox
+                slot="start"
+                [attr.aria-label]="'Customer.' + field"
+                [checked]="selectedFields().includes(field)"
+                [disabled]="disabled()"
+                (ionChange)="onCustomerFieldChanged(field, $event)"
+              />
+              <ion-label>Customer.{{ field }}</ion-label>
+              @if (field === 'FirstName') {
+                <ion-note slot="end">suggested</ion-note>
+              }
+            </ion-item>
+          }
+          <ion-item lines="none">
+            <ion-label class="ion-text-wrap">
+              <p>Clear every field to apply the declared relationship without adding an output.</p>
+            </ion-label>
+          </ion-item>
+        </ion-list>
+        <ion-list>
+          <ion-list-header><ion-label>Reviewed change</ion-label></ion-list-header>
+          <ion-item>
+            <ion-label class="ion-text-wrap">
+              <h4>Binding</h4>
+              <p>{{ proposed.relationship.id }} · main.{{ proposed.relationship.from.table }}.CustomerId → main.{{ proposed.relationship.to.table }}.CustomerId · {{ proposed.relationship.version }}</p>
+            </ion-label>
+          </ion-item>
+          <ion-item>
+            <ion-label class="ion-text-wrap">
+              <h4>Output lineage</h4>
+              @if (proposed.outputLineage.length) {
+                @for (column of proposed.outputLineage; track column.output) {
+                  <p>{{ column.output }} ← {{ column.source }}.{{ column.field }}</p>
+                }
+              } @else {
+                <p>No output columns</p>
+              }
+              @if (!proposed.selectedFields.length) {
+                <p>No added Customer outputs</p>
+              }
+            </ion-label>
+          </ion-item>
+          <ion-item lines="none"><ion-label><p>Current LIMIT: {{ proposed.limit }}</p><p>Apply does not run. Preview and Run remain explicit.</p></ion-label></ion-item>
+        </ion-list>
+        <div class="author-source-diff" aria-label="Exact source before and after">
+          <ion-item>
+            <ion-label class="ion-text-wrap"><h4>Current source</h4><pre>{{ proposed.before }}</pre></ion-label>
+          </ion-item>
+          <ion-item>
+            <ion-label class="ion-text-wrap"><h4>Proposed source</h4><pre>{{ proposed.after }}</pre></ion-label>
+          </ion-item>
+        </div>
+        <ion-item>
+          <ion-buttons slot="end">
+            <ion-button
+              data-testid="author-source-apply"
+              [disabled]="disabled()"
+              (click)="applyRequested.emit()"
+            >Apply reviewed draft</ion-button>
+          </ion-buttons>
+        </ion-item>
+      </section>
+    }
+  } @else if (!loading()) {
+    <ion-item lines="none" data-testid="author-source-unavailable">
+      <ion-label class="ion-text-wrap">
+        <p>Related metadata is unavailable. Refresh to check again.</p>
+      </ion-label>
+    </ion-item>
+  }
+  @if (statusMessage()) {
+    <ion-item lines="none" role="status" aria-live="polite" data-testid="author-source-status">
+      <ion-label class="ion-text-wrap">{{ statusMessage() }}</ion-label>
+    </ion-item>
+  }
+</section>

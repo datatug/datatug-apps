@@ -26,8 +26,14 @@ async function discover(
   );
   const declared = await verifyDeclaredCatalog(fixture.context, reader);
   const indexes = await readCanonicalIndexes(pins, reader);
+  const { schema, data, ...sourceDetails } = fixture.contract.source;
+  const source: NonNullable<Parameters<typeof discoverRepresentations>[0]> = {
+    ...sourceDetails,
+    schema: fixture.referenceFile(schema),
+    ...(data ? { data: fixture.referenceFile(data) } : {}),
+  };
   const suggestions = await discoverRepresentations(
-    fixture.contract.source,
+    source,
     indexes,
     reader,
     declared,

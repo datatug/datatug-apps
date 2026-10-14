@@ -57,23 +57,43 @@ test('the platform block sits after the lead card and before the project cards',
   page,
 }) => {
   await page.goto('/');
-  const order = await page
-    .locator('sneat-datatug-home ion-content')
-    .evaluate((content) =>
-      Array.from(content.children)
-        .map((el) => el.tagName.toLowerCase())
-        .filter(
-          (tag) =>
-            tag === 'ion-card' ||
-            tag.startsWith('sneat-') ||
-            tag === 'ion-grid',
-        ),
-    );
-  expect(order.slice(0, 3)).toEqual([
-    'ion-card',
-    'sneat-datatug-platform-block',
-    'ion-grid',
-  ]);
+  const content = page.locator('sneat-datatug-home ion-content');
+  const lead = content.getByRole('heading', { name: 'Your data workbench' });
+  const platform = content.getByTestId('platform-block');
+  const detective = content.getByRole('heading', {
+    name: 'Try Detective with real checks',
+  });
+  const projects = content.locator('.home-cards-grid');
+  for (const section of [lead, platform, detective, projects]) {
+    await expect(section).toBeVisible();
+  }
+  const order = await content.evaluate((element) => {
+    const lead = element.querySelector('ion-card');
+    const platform = element.querySelector('sneat-datatug-platform-block');
+    const detective = element
+      .querySelector('sneat-datatug-detective-demo-starter')
+      ?.closest('ion-card');
+    const projects = element.querySelector('.home-cards-grid');
+    const precedes = (
+      before: Element | null | undefined,
+      after: Element | null | undefined,
+    ) =>
+      !!before &&
+      !!after &&
+      !!(
+        before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING
+      );
+    return {
+      leadBeforePlatform: precedes(lead, platform),
+      platformBeforeDetective: precedes(platform, detective),
+      detectiveBeforeProjects: precedes(detective, projects),
+    };
+  });
+  expect(order).toEqual({
+    leadBeforePlatform: true,
+    platformBeforeDetective: true,
+    detectiveBeforeProjects: true,
+  });
 });
 
 for (const width of [360, 390, 768, 1280]) {

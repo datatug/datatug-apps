@@ -93,6 +93,12 @@ export interface CompletedChatQuery {
   readonly join?: ChatJoinLineage;
 }
 
+export interface ChatImportTranscript {
+  readonly session: ChatSession;
+  readonly messages: readonly { readonly id: string; readonly text: string; readonly createdAt?: string }[];
+  readonly omittedCount: number;
+}
+
 const sessionKey = (id: string) => key('ChatSessions', id);
 const turnKey = (id: string) => key('ChatTurns', id);
 const queryKey = (id: string) => key('ChatQueries', id);
@@ -179,6 +185,27 @@ export class ChatSessionService {
         : { ...turn, rows: snapshot?.rows, columns: snapshot?.columns };
     });
     return { session, turns };
+  }
+
+  /** Read only user question text for an explicit legacy session import; result rows and saved SQL are never loaded. */
+  async importTranscript(scope: string, id: string, limit = 1000, maxTextLength = 100_000): Promise<ChatImportTranscript> {
+    const session = await this.requireSession(scope, id);
+    if (!Array.isArray(session.turnIds)) throw new Error('This saved conversation has invalid message metadata.');
+    const turnIds = session.turnIds.slice(0, limit);
+    const turns = await this.database.getMany<StoredTurn>(turnIds.map(turnKey));
+    const messages: { id: string; text: string; createdAt?: string }[] = [];
+    let omittedCount = session.turnIds.length - turnIds.length;
+    for (let index = 0; index < turns.length; index++) {
+      const stored = turns[index];
+      if (!stored.exists || stored.data.sessionId !== id || typeof stored.data.question !== 'string' || !stored.data.question.trim() ||
+          stored.data.question.length > maxTextLength) {
+        omittedCount++;
+        continue;
+      }
+      messages.push({ id: turnIds[index], text: stored.data.question,
+        ...(typeof stored.data.createdAt === 'string' && !Number.isNaN(Date.parse(stored.data.createdAt)) ? { createdAt: stored.data.createdAt } : {}) });
+    }
+    return { session, messages, omittedCount };
   }
 
   async appendQuestion(scope: string, sessionId: string, question: string): Promise<ChatTurn> {

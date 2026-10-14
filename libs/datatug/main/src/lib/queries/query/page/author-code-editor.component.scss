@@ -1,0 +1,160 @@
+:host {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  --tugql-keyword: #174f91;
+  --tugql-parameter: #713f8f;
+  --tugql-string: #17623a;
+  --tugql-number: #854d0e;
+  --tugql-comment: #57534e;
+}
+
+.author-code-header {
+  grid-column: 1 / -1;
+  width: 100%;
+  --min-height: 2.75rem;
+  --padding-start: 0.75rem;
+  --inner-padding-end: 0.75rem;
+  --background: transparent;
+}
+
+.author-code-format-actions ion-button {
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+  margin: 0;
+}
+
+.author-code-surface.author-code-surface-hidden {
+  display: none;
+}
+
+.author-code-projection-row,
+.author-code-surface,
+.author-format-diagnostics {
+  min-width: 0;
+}
+
+.author-code-tools-row {
+  grid-column: 1 / -1;
+}
+
+.author-code-surface,
+.author-code-panel-row,
+.author-code-status-row,
+.author-format-diagnostics {
+  grid-column: 1;
+}
+
+.author-code-sidebar-row {
+  grid-column: 1;
+  align-self: start;
+}
+
+.author-code-sidebar-row:empty,
+.author-code-status-row:empty {
+  display: none;
+}
+
+.author-code-suggestions ion-button:focus-visible {
+  outline: 2px solid var(--ion-color-primary, #1d4ed8);
+  outline-offset: 2px;
+}
+
+:host ::ng-deep .author-code-editor-view .cm-editor {
+  height: clamp(11rem, calc(100dvh - 29rem), 18rem);
+  min-height: 0;
+}
+
+:host ::ng-deep .author-code-editor-view .cm-scroller {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+:host ::ng-deep .author-code-editor-view .cm-content {
+  min-height: 0;
+}
+
+:host-context(.ion-palette-dark) {
+  --tugql-keyword: #93c5fd;
+  --tugql-parameter: #d8b4fe;
+  --tugql-string: #86efac;
+  --tugql-number: #fcd34d;
+  --tugql-comment: #cbd5e1;
+}
+
+@media (max-width: 700px) {
+  .author-code-format-actions,
+  .author-code-suggestions {
+    display: none;
+  }
+}
+
+@media (min-width: 1100px) {
+  :host {
+    grid-template-columns: minmax(0, 2fr) minmax(18.5rem, 1fr);
+    align-items: start;
+  }
+
+  .author-code-surface,
+  .author-code-panel-row,
+  .author-code-status-row,
+  .author-format-diagnostics {
+    grid-column: 1;
+  }
+
+  .author-code-surface {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-self: stretch;
+    min-height: clamp(11rem, calc(100dvh - 29rem), 18rem);
+  }
+
+  .author-code-editor-view {
+    min-height: 0;
+    height: 100%;
+  }
+
+  :host ::ng-deep .author-code-editor-view .cm-editor {
+    height: 100%;
+  }
+
+  .author-code-sidebar-row {
+    grid-column: 2;
+    grid-row: 3;
+  }
+
+  :host(:not(.author-no-parameters)) .author-code-sidebar-row {
+    align-self: stretch;
+    border-inline-start: 1px solid
+      var(
+        --ion-item-border-color,
+        var(
+          --ion-border-color,
+          var(
+            --ion-color-step-150,
+            var(--ion-background-color-step-150, #dedede)
+          )
+        )
+      );
+  }
+
+  :host(.author-no-parameters) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  :host(.author-no-parameters) .author-code-surface,
+  :host(.author-no-parameters) .author-code-panel-row,
+  :host(.author-no-parameters) .author-code-status-row,
+  :host(.author-no-parameters) .author-format-diagnostics,
+  :host(.author-no-parameters) .author-code-sidebar-row {
+    grid-column: 1;
+    grid-row: auto;
+  }
+}
+
+@media (max-height: 560px) and (max-width: 1099px) {
+  :host ::ng-deep .author-code-editor-view .cm-editor {
+    height: 10rem;
+  }
+}

@@ -3,7 +3,7 @@
   "compilerOptions": {
     "outDir": "../../../dist/out-tsc",
     "module": "esnext",
-    "target": "es2016",
+    "target": "esnext",
     "types": [
       "node",
       "vitest/globals",

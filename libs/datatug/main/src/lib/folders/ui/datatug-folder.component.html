@@ -15,7 +15,7 @@
 </ion-segment>
 
 @switch (tab) {
-  @case ("entities") {
+  @case ('entities') {
     <ion-card>
       <ion-card-content>
         <p>Not implemented yet (tab: {{ tab }})</p>
@@ -23,7 +23,7 @@
       </ion-card-content>
     </ion-card>
   }
-  @case ("environments") {
+  @case ('environments') {
     <sneat-card-list
       [isFilterable]="true"
       title="Environments"
@@ -31,7 +31,7 @@
       [create]="createEnvironment"
     />
   }
-  @case ("boards") {
+  @case ('boards') {
     <sneat-card-list
       [isFilterable]="true"
       title="Boards"
@@ -45,20 +45,14 @@
     <!--					   (itemClick)="goBoard($event)"-->
     <!--					   [getRouterLink]="getItemLink('board')"-->
   }
-  @case ("queries") {
-    <sneat-card-list
-      [isFilterable]="true"
-      title="Queries"
-      itemIcon="clipboard-outline"
-      [isLoading]="folder() === undefined"
-      [items]="queries"
-      [create]="createFolderItem"
-    >
-      <!--					   -->
-      <!--					   (cardTitleClick)="goProjFolder(Board)"-->
-      <!--					   (itemClick)="goBoard($event)"-->
-      <!--					   [getRouterLink]="getItemLink('board')"-->
-      >
-    </sneat-card-list>
+  @case ('queries') {
+    <ion-card>
+      <ion-card-content>
+        <p>Browse this project's saved queries and folders.</p>
+        <ion-button [disabled]="!projectRef()" (click)="goToQueries()"
+          >Browse queries</ion-button
+        >
+      </ion-card-content>
+    </ion-card>
   }
 }

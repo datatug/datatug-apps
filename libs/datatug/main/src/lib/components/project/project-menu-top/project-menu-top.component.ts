@@ -1,5 +1,6 @@
 import { AsyncPipe } from '@angular/common';
 import { Component, OnDestroy, inject, signal } from '@angular/core';
+import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import { ENABLE_EMPTY_SHELL_PAGES } from '../../../core/feature-flags';
 import {
   IonButton,
@@ -7,12 +8,13 @@ import {
   IonIcon,
   IonItem,
   IonLabel,
+  IonMenuToggle,
   IonSpinner,
 } from '@ionic/angular';
 import { InvestigationContextBarComponent } from '@sneat/datatug-semantic';
 import { Observable, Subject } from 'rxjs';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
-import { takeUntil } from 'rxjs/operators';
+import { filter, takeUntil } from 'rxjs/operators';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import {
   DatatugNavService,
@@ -20,7 +22,8 @@ import {
 } from '../../../services/nav/datatug-nav.service';
 import { DatatugUserService } from '../../../services/base/datatug-user-service';
 import { IProjectSummary } from '../../../models/definition/project';
-import { IProjectContext } from '../../../nav/nav-models';
+import { IProjectContext, parseProjectUrl } from '../../../nav/nav-models';
+import { projectPageHref } from '../../../nav/project-page-href';
 import { addIcons } from 'ionicons';
 import { chatbubblesOutline } from 'ionicons/icons';
 
@@ -39,6 +42,8 @@ interface IProjectTopLevelPage {
   templateUrl: './project-menu-top.component.html',
   imports: [
     IonItem,
+    IonMenuToggle,
+    RouterLink,
     AsyncPipe,
     IonIcon,
     IonLabel,
@@ -60,6 +65,8 @@ export class ProjectMenuTopComponent implements OnDestroy {
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly datatugNavContextService = inject(DatatugNavContextService);
   private readonly nav = inject(DatatugNavService);
+  private readonly router = inject(Router, { optional: true });
+  readonly inSessionWorkspace = signal(false);
   private readonly userService = inject(DatatugUserService);
 
   // Widgets, Tags and DB models are empty-shell pages — see
@@ -95,9 +102,29 @@ export class ProjectMenuTopComponent implements OnDestroy {
     },
     ...ProjectMenuTopComponent.sortProjectPages([
       {
+        path: 'sessions',
+        title: 'Sessions',
+        icon: 'albums-outline',
+      },
+      {
+        path: 'demo-db-sandbox',
+        title: 'DemoDB sandbox',
+        icon: 'server-outline',
+      },
+      {
         path: 'chat',
         title: 'Chat',
         icon: 'chatbubbles-outline',
+      },
+      {
+        path: 'checks',
+        title: 'Checks',
+        icon: 'checkmark-done-outline',
+      },
+      {
+        path: 'detective',
+        title: 'Detective',
+        icon: 'compass-outline',
       },
       {
         path: 'boards',
@@ -159,12 +186,19 @@ export class ProjectMenuTopComponent implements OnDestroy {
   }
 
   project?: IProjectContext;
+  readonly isDemoDbProject = signal(false);
   readonly metadataOnly = signal(false);
   public currentFolder: Observable<string | undefined>;
 
   private destroyed = new Subject<void>();
 
   constructor() {
+    const syncSession = () => {
+      const parsed = this.router ? parseProjectUrl(this.router.url.split('?')[0]) : undefined;
+      this.inSessionWorkspace.set(!!parsed?.ok && /^\/sessions\/[^/]+(?:\/|$)/.test(parsed.rest));
+    };
+    syncSession();
+    this.router?.events.pipe(filter((event) => event instanceof NavigationEnd), takeUntil(this.destroyed)).subscribe(syncSession);
     const datatugNavContextService = this.datatugNavContextService;
 
     this.datatugNavContextService.currentProject
@@ -181,6 +215,12 @@ export class ProjectMenuTopComponent implements OnDestroy {
   private setProject = (project?: IProjectContext) => {
     this.project = project;
     this.metadataOnly.set(project?.ref.spaceID !== undefined);
+    // Keep the writable sandbox entry scoped to the canonical public DemoDB
+    // project. The API independently enforces authenticated per-user access.
+    this.isDemoDbProject.set(
+      project?.ref.storeId === 'github.com' &&
+        project.ref.projectId === 'datatug-demo-project@datatug@demo-project-1',
+    );
   };
 
   ngOnDestroy() {
@@ -188,12 +228,17 @@ export class ProjectMenuTopComponent implements OnDestroy {
     this.destroyed.complete();
   }
 
+  projectPageUrl(page: ProjectTopLevelPage): string {
+    return projectPageHref(this.project?.ref, page, this.router?.url);
+  }
+
   goProjPage(event: Event, page: ProjectTopLevelPage): boolean {
     event.preventDefault();
     event.stopPropagation();
     if (
       (this.cliBridgeChat && page !== 'chat') ||
-      (this.metadataOnly() && page !== 'overview')
+      (this.metadataOnly() &&
+        !['overview', 'queries', 'checks', 'detective', 'sessions'].includes(page))
     )
       return false;
     const project = this.project;

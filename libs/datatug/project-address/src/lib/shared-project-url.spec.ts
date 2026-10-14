@@ -2,20 +2,26 @@ import { parseProjectUrl, tryProjectUrl } from './project-url';
 
 describe('Space-qualified metadata addresses', () => {
   const ref = { storeId: 'firestore', spaceID: 'S1', projectId: 'same' };
-  it.each(['', 'overview'])(
-    'round trips %s without losing Space ownership',
-    (page) => {
-      const url = tryProjectUrl(ref, page);
-      expect(url).toBe(
-        `/space/S1/store/firestore/project/same${page ? '/overview' : ''}`,
-      );
-      expect(parseProjectUrl(url as string)).toMatchObject({
-        ok: true,
-        ...ref,
-      });
-    },
-  );
-  it.each(['queries', 'query/q', 'chat', 'env/local', 'boards', 'public-data'])(
+  it.each([
+    '',
+    'overview',
+    'queries',
+    'query/q',
+    'checks',
+    'checks/invoice-check',
+    'detective',
+    'detective/invoice-case',
+  ])('round trips %s without losing Space ownership', (page) => {
+    const url = tryProjectUrl(ref, page);
+    expect(url).toBe(
+      `/space/S1/store/firestore/project/same${page ? `/${page}` : ''}`,
+    );
+    expect(parseProjectUrl(url as string)).toMatchObject({
+      ok: true,
+      ...ref,
+    });
+  });
+  it.each(['query', 'chat', 'env/local', 'boards', 'public-data'])(
     'refuses unsupported %s',
     (page) => {
       expect(tryProjectUrl(ref, page)).toMatchObject({ ok: false });
@@ -24,6 +30,21 @@ describe('Space-qualified metadata addresses', () => {
       ).toMatchObject({ ok: false });
     },
   );
+  it('keeps a folder-qualified query id as one encoded page segment', () => {
+    const url = tryProjectUrl(ref, ['query', 'folder/q']);
+    expect(url).toBe('/space/S1/store/firestore/project/same/query/folder%2Fq');
+    expect(parseProjectUrl(url as string)).toMatchObject({ ok: true, ...ref });
+  });
+  it('rejects a raw multi-segment query id that the shared route cannot bind', () => {
+    expect(tryProjectUrl(ref, 'query/folder/q')).toMatchObject({
+      reason: 'not-representable',
+    });
+    expect(
+      parseProjectUrl('/space/S1/store/firestore/project/same/query/folder/q'),
+    ).toMatchObject({
+      ok: false,
+    });
+  });
   it.each(['', '..', 'a/b', '%2F', ' a', 'a?x', 'a#x', 'a\\b'])(
     'refuses malformed Space %s',
     (spaceID) => {

@@ -1,5 +1,6 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { ErrorLogger } from '@sneat/core';
 import { of } from 'rxjs';
 
@@ -101,8 +102,8 @@ describe('ProjectMenuComponent — Active Queries tab renders QueriesMenuCompone
   });
 });
 
-describe('shared metadata menu refuses active-query tab', () => {
-  it('renders only Overview even when an old menu instance retains the queries tab', async () => {
+describe('shared project menu refuses active-query tab', () => {
+  it('renders supported project destinations even when an old menu instance retains the queries tab', async () => {
     const { DatatugNavContextService } =
       await import('../../../services/nav/datatug-nav-context.service');
     const { DatatugNavService } =
@@ -129,6 +130,7 @@ describe('shared metadata menu refuses active-query tab', () => {
     await TestBed.configureTestingModule({
       imports: [ProjectMenuComponent],
       providers: [
+        provideRouter([]),
         {
           provide: DatatugNavContextService,
           useValue: {
@@ -159,13 +161,9 @@ describe('shared metadata menu refuses active-query tab', () => {
     expect(
       host.querySelector('sneat-datatug-investigation-context-bar'),
     ).toBeNull();
-    expect(host.querySelectorAll('ion-item')).toHaveLength(1);
-    const overview = host.querySelector('ion-item');
-    if (!overview) throw new Error('Missing overview menu item');
-    overview.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    expect(nav.goProjPage).toHaveBeenCalledWith('overview', project, {
-      project,
-    });
+    const items = [...host.querySelectorAll('ion-item')];
+    expect(items).toHaveLength(5);
+    expect(nav.goProjPage).not.toHaveBeenCalled();
     expect(queryActions.openNewQuery).not.toHaveBeenCalled();
     expect(queryState.setCurrentQuery).not.toHaveBeenCalled();
   });

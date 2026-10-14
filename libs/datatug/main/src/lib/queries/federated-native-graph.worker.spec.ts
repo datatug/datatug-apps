@@ -111,9 +111,31 @@ describe('native graph Worker/service/storage fixture integration, no publicatio
   });
 
   it('refuses changed native provenance before source I/O at the actual Worker boundary', async () => {
-    const { service, http } = await workerFixture(), definition = { ...transactionDefinition(), id: 'native-graph-p1-storage-fixture' };
-    if (!definition.federation?.nativeGraph) throw new Error('Missing graph fixture.');
-    definition.federation.nativeGraph.stages.locations.nativeSnapshot.sha256 = 'f'.repeat(64);
+    const { service, http } = await workerFixture();
+    const original = transactionDefinition();
+    const federation = original.federation;
+    const graph = federation?.nativeGraph;
+    if (!federation || !graph) throw new Error('Missing graph fixture.');
+    const definition = {
+      ...original,
+      id: 'native-graph-p1-storage-fixture',
+      federation: {
+        ...federation,
+        nativeGraph: {
+          ...graph,
+          stages: {
+            ...graph.stages,
+            locations: {
+              ...graph.stages.locations,
+              nativeSnapshot: {
+                ...graph.stages.locations.nativeSnapshot,
+                sha256: 'f'.repeat(64),
+              },
+            },
+          },
+        },
+      },
+    };
     await expect(service.run(definition)).rejects.toThrow();
     expect(control.wireRequests).toEqual([]); expect(http).not.toHaveBeenCalled(); await service.dispose();
   });

@@ -6,7 +6,7 @@ import { activePage } from './journey/helpers/active-page';
 /**
  * S136 (founder ruling 2026-09-11: "Not a single page is loading from side
  * menu without error... Make sure all projects pages are loadable with
- * datatug-demo-projects@datatug@demo-project-1 - test it locally and verify
+ * datatug-demo-project@datatug@demo-project-1 - test it locally and verify
  * once fixed in prod") — the GitHub-store read path, exercised against the
  * REAL github.com/api.github.com/raw.githubusercontent.com (no route
  * interception, unlike `root-and-login.spec.ts`'s agent-mocking suite):
@@ -33,9 +33,10 @@ import { activePage } from './journey/helpers/active-page';
  *    no GitHub-specific work.
  */
 /**
- * `DATATUG_E2E_GITHUB_FAKE=<a checkout of datatug/datatug-demo-projects>` serves that checkout in place of the three
+ * `DATATUG_E2E_GITHUB_FAKE=<a checkout of datatug/datatug-demo-project>` serves that checkout in place of the three
  * hosts (see `helpers/fake-github.ts`): no network, no share of the 60 anonymous API requests an hour. Unset, this
- * file talks to the real GitHub, as it always did.
+ * file talks to the real GitHub, as it always did. CI checks out the current canonical commit, verifies its live
+ * commit/tree/raw contracts, then uses that checkout for these browser journeys and request-budget assertions.
  */
 const GITHUB_FAKE_DIR = process.env['DATATUG_E2E_GITHUB_FAKE'];
 
@@ -47,17 +48,17 @@ test.skip(
 test.beforeEach(async ({ context }) => {
   if (GITHUB_FAKE_DIR) {
     await installFakeGithub(context, [
-      { fullName: 'datatug/datatug-demo-projects', dir: GITHUB_FAKE_DIR },
+      { fullName: 'datatug/datatug-demo-project', dir: GITHUB_FAKE_DIR },
     ]);
   }
 });
 
-const PROJECT_ID = 'datatug-demo-projects@datatug@demo-project-1';
+const PROJECT_ID = 'datatug-demo-project@datatug@demo-project-1';
 // G-A1c (design `demo-as-github-project.md` 3.1, 3.4): a GitHub project is at its short address. This project is
-// `datatug/datatug-demo-projects`, folder `demo-project-1`, default branch (`HEAD`); its pages follow the `/-/`
+// `datatug/datatug-demo-project`, folder `demo-project-1`, default branch (`HEAD`); its pages follow the `/-/`
 // that ends the locator. The old address of the same project, `OLD_PROJECT_URL`, keeps working.
 const PROJECT_URL =
-  '/project/github.com/datatug/datatug-demo-projects/tree/HEAD/demo-project-1';
+  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1';
 const PAGES_URL = `${PROJECT_URL}/-`;
 const OLD_PROJECT_URL = `/store/github.com/project/${PROJECT_ID}`;
 
@@ -354,17 +355,9 @@ test.describe('GitHub-store project — every side-menu page loads without error
 
     // --- Queries page, direct ?tab=personal navigation ----------------------
     await page.goto(`${PAGES_URL}/queries?tab=personal`);
-    await expect(
-      activePage(page).getByText(
-        'This project is browsed read-only from GitHub',
-        { exact: false },
-      ),
-    ).toBeVisible({ timeout: 15_000 });
-    await expect(
-      activePage(page).getByText('personal queries need a DataTug agent', {
-        exact: false,
-      }),
-    ).toBeVisible();
+    // Personal queries are now real full-query copies persisted on this device.
+    await expect(activePage(page).locator('input[placeholder="Filter"]')).toBeVisible({ timeout: 15_000 });
+    await expect(activePage(page).getByText('personal queries need a DataTug agent', { exact: false })).not.toBeVisible();
     // The Personal tab must NOT fall back to the Shared tab's real folder
     // tree (the exact bug this follow-up fixes).
     for (const folder of ['albums', 'artists', 'customers', 'invoices', 'reference', 'tracks']) {
@@ -399,10 +392,8 @@ test.describe('GitHub-store project — every side-menu page loads without error
       .getByTitle('Edit')
       .click();
 
-    // `query-page.component.html`'s own `ion-title` is a hardcoded literal
-    // "Query" — the real title lives in an `ion-input [value]="queryState.title"`
-    // (an editable title field, not text content Playwright's text locators
-    // can see) just below it. Pre-existing, not GitHub-specific.
+    // The live header follows the selected query title while preserving the
+    // surrounding project context.
     await expect
       .poll(
         () =>
@@ -512,14 +503,9 @@ test.describe('GitHub-store project — every side-menu page loads without error
 
     // Query text — `artists_with_albums.sql`'s real body (no store menu
     // click involved, this is a cold navigation straight to the query).
-    const bodyText = page.getByTestId('query-body-text');
+    const bodyText = page.getByRole('textbox', { name: 'SQL query' });
     await expect(bodyText).toBeVisible({ timeout: 20_000 });
-    await expect
-      .poll(
-        () => bodyText.evaluate((el: unknown) => (el as { value?: string }).value),
-        { timeout: 20_000 },
-      )
-      .toContain('FROM Artist');
+    await expect(bodyText).toContainText('FROM Artist');
 
     // Linked entities — `artists_with_albums.sql.json` carries no
     // parameters/recordsets metadata at all (confirmed against the real
@@ -579,17 +565,14 @@ test.describe('GitHub-store project — every side-menu page loads without error
     // actually activated QueryPageComponent inside the real project
     // context, not just that *something* rendered.
     const pageTitle = page.locator('sneat-datatug-page-title');
-    await expect(pageTitle).toContainText('Query', { timeout: 20_000 });
-    await expect(pageTitle).toContainText('DataTug Demo Project 1');
+    await expect(pageTitle).toContainText('Artists with albums', {
+      timeout: 20_000,
+    });
+    await expect(pageTitle).toContainText('DataTug Demo: DemoDB datasets');
 
-    const bodyText = page.getByTestId('query-body-text');
+    const bodyText = page.getByRole('textbox', { name: 'SQL query' });
     await expect(bodyText).toBeVisible({ timeout: 20_000 });
-    await expect
-      .poll(
-        () => bodyText.evaluate((el: unknown) => (el as { value?: string }).value),
-        { timeout: 20_000 },
-      )
-      .toContain('FROM Artist');
+    await expect(bodyText).toContainText('FROM Artist');
 
     expect(errors).toEqual([]);
     // NG04002 surfaces as Angular's own internal `console.error`, not
@@ -678,7 +661,7 @@ test.describe('GitHub-store project — every side-menu page loads without error
     // that *something* rendered where the Servers list used to be.
     const pageTitle = dbServerPage.locator('sneat-datatug-page-title');
     await expect(pageTitle).toContainText('DB server:', { timeout: 15_000 });
-    await expect(pageTitle).toContainText('DataTug Demo Project 1');
+    await expect(pageTitle).toContainText('DataTug Demo: DemoDB datasets');
 
     // The rest of the detail page's own structure — Host/Environments/
     // Databases cards (dbserver-page.component.html) — renders even though
@@ -779,13 +762,37 @@ test.describe('GitHub-store project — addresses (G-A1c)', () => {
     expect(errors).toEqual([]);
   });
 
-  test("the home page's demo entry opens the demo project at /project/github.com/datatug/chinook-demo", async ({
+  test("the home page's demo entry opens the shared nested demo project", async ({
     page,
   }) => {
     await page.goto('/');
     await page.getByText('DataTug Demo Project @ GitHub').click();
     await expect
       .poll(() => pathOf(page), { timeout: 15_000 })
-      .toBe('/project/github.com/datatug/chinook-demo');
+      .toBe(PROJECT_URL);
+  });
+
+  test('the published short folder link shows the 18 storage connections and any hosted editions in its catalogue', async ({ page }) => {
+    await page.goto('/project/github.com/datatug/datatug-demo-project/demo-project-1');
+    await expect.poll(() => pathOf(page), { timeout: 15_000 }).toBe(PROJECT_URL);
+    const connections = activePage(page).locator('sneat-datatug-demodb-connections ion-card').first();
+    await expect(connections.getByText('Database connections')).toBeVisible({ timeout: 15_000 });
+    await expect(connections.locator('ion-item')).toHaveCount(18);
+    await expect(connections.getByText('chinook / sqlite')).toBeVisible();
+    await expect(connections.getByText('employees / ingitdb')).toBeVisible();
+
+    // Older cached v1 catalogues have no `bigQueryEditions` field. The UI
+    // keeps those working while newer catalogues add six hosted cards.
+    const hosted = activePage(page).locator('sneat-datatug-demodb-connections ion-card', {
+      hasText: 'Hosted BigQuery editions',
+    });
+    const hostedCount = await hosted.count();
+    expect(hostedCount).toBeLessThanOrEqual(1);
+    if (hostedCount === 1) {
+      await expect(hosted.locator('ion-item')).toHaveCount(6);
+      await expect(hosted.getByText('chinook · 11 tables · 15,607 rows')).toBeVisible();
+      await expect(hosted.getByText('employees · 6 tables · 13,584 rows')).toBeVisible();
+      await expect(hosted.locator('a[href="https://console.cloud.google.com/bigquery"]')).toHaveCount(6);
+    }
   });
 });

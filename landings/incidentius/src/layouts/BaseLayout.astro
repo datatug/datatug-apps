@@ -3,71 +3,46 @@ import '../styles/global.css';
 import SharedLayout from '@sneat/astro/layouts/BaseLayout.astro';
 import type { SiteChrome, SiteMeta } from '@sneat/astro/config';
 import { i18n } from '../i18n';
+import { copy, type Locale } from '../copy';
 
 interface Props {
+  locale?: Locale;
   title?: string;
   description?: string;
   noindex?: boolean;
   localeIndependent?: boolean;
+  langSwitcher?: boolean;
 }
 
+const locale: Locale = Astro.props.locale ?? (i18n.localeFromPath(Astro.url.pathname) as Locale);
+const localized = copy[locale];
 const {
-  title = 'Incidentius — Turn incident evidence into a defensible resolution',
-  description = 'Investigate incidents with evidence, executable queries, hypotheses, comparisons, checks, metrics and a resolution record that preserves how the conclusion was reached.',
+  title = localized.home.title,
+  description = localized.siteDescription,
   noindex = false,
   localeIndependent = false,
+  langSwitcher = true,
 } = Astro.props;
-
-const siteDescription =
-  'Incidentius helps teams investigate incidents from evidence and preserve a defensible resolution record.';
+const siteDescription = localized.siteDescription;
 
 const site: SiteMeta = {
   name: 'Incidentius',
   url: 'https://incidentius.com',
   description: siteDescription,
   favicon: '/favicon.svg',
-  themeColor: '#08141f',
+  themeColor: '#f4f0e7',
   ogImageDefault: '/og-card.svg',
 };
 
 const chrome: SiteChrome = {
   brand: 'Incidentius',
-  nav: [
-    { href: '#method', label: 'Method' },
-    { href: '#record', label: 'Resolution record' },
-    { href: '#datatug', label: 'DataTug' },
-  ],
-  cta: {
-    href: 'https://app.incidentius.com',
-    label: 'Open Incidentius',
-    labelShort: 'Open app',
-  },
-  footer: {
-    tagline: 'Incident investigations built from evidence, not hindsight.',
-    groups: [
-      {
-        title: 'Investigate',
-        links: [
-          { href: '#method', label: 'The method' },
-          { href: '#record', label: 'Resolution records' },
-        ],
-      },
-      {
-        title: 'DataTug',
-        links: [
-          { href: 'https://datatug.app', label: 'DataTug website', external: true },
-          { href: 'https://github.com/datatug', label: 'Open-source projects', external: true },
-        ],
-      },
-    ],
-    owner: 'Incidentius',
-    ecosystemHref: 'https://datatug.app',
-    ecosystemLabel: 'An incident-investigation capability of DataTug',
-  },
+  nav: [...localized.chrome.nav],
+  cta: localized.chrome.cta,
+  footer: { ...localized.chrome.footer, groups: localized.chrome.footer.groups.map((group) => ({ ...group, links: [...group.links] })) },
   a11y: {
-    skipToContent: 'Skip to content',
-    brandHome: 'Incidentius home',
-    primaryNav: 'Primary navigation',
+    skipToContent: localized.chrome.a11y.skipToContent,
+    brandHome: localized.chrome.a11y.brandHome,
+    primaryNav: localized.chrome.a11y.primaryNav,
   },
 };
 ---
@@ -76,14 +51,15 @@ const chrome: SiteChrome = {
   i18n={i18n}
   site={site}
   chrome={chrome}
-  locale="en"
+  locale={locale}
   title={title}
   description={description}
   siteDescription={siteDescription}
   ogImage="/og-card.svg"
   noindex={noindex}
   localeIndependent={localeIndependent}
-  langSwitcher={false}
+  langSwitcher={langSwitcher}
+  langLabel={localized.chrome.a11y.languageMenu}
 >
   <Fragment slot="head">
     <link rel="manifest" href="/manifest.webmanifest" />
@@ -93,6 +69,114 @@ const chrome: SiteChrome = {
       href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&amp;family=Manrope:wght@400;500;600;700;800&amp;display=swap"
       rel="stylesheet"
     />
+    <script is:inline id="incidentius-analytics-consent">
+      window.dataLayer = window.dataLayer || [];
+      function gtag() { window.dataLayer.push(arguments); }
+      var GA_ID = "G-3YFSWSX4T2";
+      var gaStarted = false;
+      function gaStartAnalytics() {
+        if (gaStarted) return;
+        gaStarted = true;
+        gtag("consent", "default", { analytics_storage: "granted", ad_storage: "denied", ad_user_data: "denied", ad_personalization: "denied" });
+        gtag("js", new Date());
+        gtag("config", GA_ID, { allow_google_signals: false, allow_ad_personalization_signals: false, page_location: location.origin + location.pathname });
+        var script = document.createElement("script");
+        script.async = true;
+        script.src = "https://www.googletagmanager.com/gtag/js?id=" + GA_ID;
+        document.head.appendChild(script);
+      }
+      function gaSetConsent(value) {
+        try { localStorage.setItem("ga-consent", value); } catch (_) {}
+        if (value === "granted") gaStartAnalytics();
+        var banner = document.getElementById("ga-consent-banner");
+        if (banner) banner.remove();
+      }
+      function gaInitializeConsent() {
+        var saved;
+        try { saved = localStorage.getItem("ga-consent"); } catch (_) {}
+        if (saved === "granted") { gaStartAnalytics(); return; }
+        if (saved === "denied" || document.getElementById("ga-consent-banner")) return;
+        var wrap = document.createElement("div");
+        wrap.id = "ga-consent-banner";
+        wrap.setAttribute("role", "dialog");
+        var isRussian = document.documentElement.lang === "ru";
+        wrap.setAttribute("aria-label", isRussian ? "Настройки файлов cookie" : "Cookie consent");
+        var message = isRussian
+          ? "Разрешить аналитические файлы cookie для измерения посещаемости? Аналитика отключена, пока вы не дадите согласие."
+          : "May we use analytics cookies to measure site traffic? Analytics stays off until you accept.";
+        var decline = isRussian ? "Отклонить" : "Decline";
+        var accept = isRussian ? "Принять" : "Accept";
+        wrap.innerHTML = "<p>" + message + "</p>" +
+          '<div class="ga-consent-actions"><button type="button" id="ga-decline">' + decline + '</button><button type="button" id="ga-accept">' + accept + '</button></div>';
+        document.body.appendChild(wrap);
+        document.getElementById("ga-accept").addEventListener("click", function () { gaSetConsent("granted"); });
+        document.getElementById("ga-decline").addEventListener("click", function () { gaSetConsent("denied"); });
+      }
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", gaInitializeConsent, { once: true });
+      else gaInitializeConsent();
+    </script>
+    <style is:global>
+      #ga-consent-banner { position: fixed; left: 1rem; right: 1rem; bottom: 1rem; z-index: 2147483647; max-width: 520px; margin: 0 auto; background: #102d43; color: #f7f3ea; border: 1px solid #315571; border-radius: 12px; padding: 1rem 1.1rem; box-shadow: 0 6px 24px rgba(0,0,0,.22); font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+      #ga-consent-banner p { margin: 0 0 .7rem; }
+      #ga-consent-banner .ga-consent-actions { display: flex; gap: .5rem; justify-content: flex-end; }
+      #ga-consent-banner button { cursor: pointer; border-radius: 8px; padding: .4rem .9rem; font-size: 14px; border: 1px solid #7895a8; background: #183c55; color: #f7f3ea; }
+      #ga-consent-banner button#ga-accept { background: #b84635; border-color: #b84635; color: white; }
+    </style>
   </Fragment>
   <slot />
+  <Fragment slot="scripts">
+    <script is:inline data-mobile-menu-label={localized.chrome.a11y.mobileMenu}>
+      const mobileMenuLabel = document.currentScript?.dataset.mobileMenuLabel;
+      const setupIncidentiusMobileMenu = () => {
+        const header = document.querySelector('.site-header');
+        const bar = header?.querySelector('.bar');
+        const nav = bar?.querySelector(':scope > .primary');
+        const navEnd = bar?.querySelector(':scope > .nav-end');
+        if (!header || !bar || !nav || !navEnd) return;
+
+        const menu = document.createElement('details');
+        menu.className = 'incidentius-mobile-nav';
+        const button = document.createElement('summary');
+        button.setAttribute('aria-label', mobileMenuLabel || 'Open site navigation');
+        const icon = document.createElement('span');
+        icon.className = 'incidentius-menu-icon';
+        icon.setAttribute('aria-hidden', 'true');
+        button.append(icon);
+        menu.append(button);
+
+        const mobile = window.matchMedia('(max-width: 1199px)');
+        const placeMenu = () => {
+          if (mobile.matches) {
+            menu.append(nav);
+            bar.append(menu);
+            header.classList.add('incidentius-menu-enhanced');
+          } else {
+            menu.open = false;
+            bar.insertBefore(nav, navEnd);
+            menu.remove();
+            header.classList.remove('incidentius-menu-enhanced');
+          }
+        };
+        placeMenu();
+        mobile.addEventListener('change', placeMenu);
+        menu.addEventListener('click', (event) => {
+          if (event.target.closest('a')) menu.open = false;
+        });
+        document.addEventListener('click', (event) => {
+          if (!menu.contains(event.target)) menu.open = false;
+        });
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape' && menu.open) {
+            menu.open = false;
+            button.focus();
+          }
+        });
+      };
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', setupIncidentiusMobileMenu, { once: true });
+      } else {
+        setupIncidentiusMobileMenu();
+      }
+    </script>
+  </Fragment>
 </SharedLayout>

@@ -1,0 +1,7 @@
+---
+import ProductPage from '../../../components/ProductPage.astro';
+import { i18n } from '../../../i18n';
+export function getStaticPaths() { return i18n.localeParams(); }
+const locale = Astro.params.locale as 'en'|'ru';
+---
+<ProductPage locale={locale} slug="context" />

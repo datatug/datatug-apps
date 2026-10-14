@@ -1,5 +1,13 @@
 import { IEnvironmentConfig } from '@sneat/core';
 import type { DatatugDemoConfig } from './demo-config';
+import { TEST_CHECKOUT_ORIGIN } from '../app/checkout/checkout-config.mjs';
+
+// TEST uses its isolated host. LIVE uses the verified production API origin.
+export const datatugBusinessCheckoutApiOrigin: string | null =
+  TEST_CHECKOUT_ORIGIN;
+export const datatugBusinessCheckoutLiveApiOrigin: string | null =
+  'https://api.sneat.cloud';
+export const datatugBusinessCheckoutLiveEnabled = true;
 
 // Shared Sneat identity pool — `sneat-eur3-1` — used by every Sneat product
 // (consumer + business). This is permanent per the 2026-06-09 single-identity

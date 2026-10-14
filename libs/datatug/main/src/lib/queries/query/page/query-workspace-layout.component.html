@@ -1,0 +1,46 @@
+<div class="workspace-navigation">
+  <ng-content select="[query-workspace-navigation]" />
+</div>
+<section
+  class="workspace-pane workspace-editor-pane"
+  id="workspace-editor-pane"
+  aria-label="Query editor"
+  tabindex="-1"
+  #editorRegion
+>
+  @if (showResultsJump()) {
+    <nav class="workspace-mobile-navigation" aria-label="Editor navigation">
+      <ion-item lines="none">
+        <ion-label>Editor</ion-label>
+        <ion-buttons slot="end">
+          <ion-button id="workspace-jump-to-results" data-testid="workspace-jump-to-results" (click)="showResults()">
+            Jump to results
+          </ion-button>
+        </ion-buttons>
+      </ion-item>
+    </nav>
+  }
+  <ng-content select="[query-workspace-editor]" />
+</section>
+<section
+  class="workspace-pane workspace-results-pane"
+  [class.workspace-results-pane-empty]="!showResultsJump()"
+  [hidden]="!showResultsJump()"
+  id="workspace-results-pane"
+  aria-label="Query results"
+  tabindex="-1"
+  #resultsRegion
+>
+  @if (showResultsJump()) {
+    <nav class="workspace-mobile-navigation" aria-label="Results navigation">
+      <ion-item lines="none">
+        <ion-buttons slot="end">
+          <ion-button id="workspace-back-to-editor" data-testid="workspace-back-to-editor" (click)="showEditor()">
+            Back to editor
+          </ion-button>
+        </ion-buttons>
+      </ion-item>
+    </nav>
+  }
+  <ng-content select="[query-workspace-results]" />
+</section>

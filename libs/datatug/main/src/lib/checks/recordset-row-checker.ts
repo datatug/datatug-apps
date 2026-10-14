@@ -5,18 +5,23 @@ import {
 } from '../models/definition/checks/recordset-checks';
 import { IRecordsetDef } from '../models/definition/recordset';
 import { IRecordsetCheck } from './recordset/interfaces';
+import { IValueCheckResult } from './values/interfaces';
 import {
   RecordsetMaxCountCheck,
   RecordsetMinCountCheck,
 } from './recordset/count-checks';
 import { newFieldCheckFromDef } from './values/mapper';
 
+interface IRecordsetCheckResultsWithCells extends IRecordsetCheckResults {
+  byColumn: Record<number, Record<number, IValueCheckResult[]>>;
+}
+
 export function checkRecordsetResult(
   def: IRecordsetDef,
   result: IRecordsetResult,
 ): IRecordsetCheckResults {
   const checks = def.checks?.map(newRecordsetCheckFromDef);
-  const results: IRecordsetCheckResults = {
+  const results: IRecordsetCheckResultsWithCells = {
     recordset: checks?.map((check) => check.checkRecordsetResult(result)) || [],
     byColumn: {},
   };

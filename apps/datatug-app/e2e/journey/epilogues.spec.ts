@@ -164,7 +164,7 @@ test.describe('Epilogue A — close/reopen', () => {
         .locator('ion-card ion-input')
         .first()
         .getByRole('textbox'),
-    ).toHaveValue('DataTug Demo Project 1', { timeout: 15_000 });
+    ).toHaveValue('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
     // The empty state must be the REAL empty-context rendering: the assertion
     // above already forced a wait for real content before this check runs, so
     // an absent chip here cannot be "still loading".
@@ -214,7 +214,7 @@ test.describe('Epilogue A — close/reopen', () => {
         .locator('ion-card ion-input')
         .first()
         .getByRole('textbox'),
-    ).toHaveValue('DataTug Demo Project 1', { timeout: 15_000 });
+    ).toHaveValue('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
     await expect(
       freshPage.locator('sneat-datatug-investigation-context-bar'),
     ).not.toContainText('Customer.ID', { timeout: 5_000 });

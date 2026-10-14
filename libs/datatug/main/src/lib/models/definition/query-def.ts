@@ -9,13 +9,8 @@ import type { PublicDataScenario } from '../../queries/public-data/public-data-s
 export enum QueryType {
   HTTP = 'HTTP',
   SQL = 'SQL',
-  // DTQL: datatug-cli's own `datatug.QueryType` (query.go) has carried this
-  // since before this enum was last touched — demo-project-1's own
-  // customer-invoices.query.json is DTQL-typed, and GET
-  // /datatug/queries/all_queries (Task 17 item A.1, S121) lists it with
-  // that type verbatim. Added here (rather than folding it into SQL) so
-  // QueriesTabComponent's type badge/filter show the query's real,
-  // server-reported type instead of a lossy substitution.
+  TugQL = 'TugQL',
+  // DTQL: retained as backwards-compatible alias for TugQL.
   DTQL = 'DTQL',
 }
 
@@ -33,7 +28,12 @@ export interface IQueryFolderContext extends IQueryFolder {
 
 // Defines user's query
 export interface IQueryDef extends IQueryItem {
+  semanticModel?: import("../../queries/semantic-mapping").SemanticModel;
   request: IQueryRequest;
+  /** Reviewed schema relationship pins retained by Git-backed query files. */
+  relationshipBindings?: readonly IQueryRelationshipBinding[];
+  /** Project connection declaration ID; never a URL or credential. */
+  connectionId?: string;
   draft?: boolean;
   parameters?: IParameterDef[];
   dbModel?: string;
@@ -42,7 +42,10 @@ export interface IQueryDef extends IQueryItem {
   federation?: {
     readonly ovdbBaseUrl: string;
     /** One admitted origin/identity pair; not independent source eligibility. */
-    readonly expectedServerIdentity?: { readonly baseUrl: string; readonly serverId: string };
+    readonly expectedServerIdentity?: {
+      readonly baseUrl: string;
+      readonly serverId: string;
+    };
     /** Required captured evidence for structured sources; metadata is never admission authority. */
     readonly expectedSourceRights?: readonly import('@sneat/datatug-semantic').SourceRight[];
     readonly bounds?: BoundedFederation;
@@ -69,6 +72,17 @@ export interface IQueryDef extends IQueryItem {
   };
   publicData?: PublicDataScenario;
   widgets?: IWidgetRef[];
+}
+
+export interface IQueryRelationshipBinding {
+  readonly id: string;
+  readonly version: string;
+  readonly from: { readonly schema: string; readonly table: string };
+  readonly to: { readonly schema: string; readonly table: string };
+  readonly pairs: readonly {
+    readonly fromField: string;
+    readonly toField: string;
+  }[];
 }
 
 // Defines request to some data without parameters

@@ -36,15 +36,37 @@ export interface IQueryEnvState {
   readonly error?: unknown;
 }
 
+/** Local, client-reported origin for an unsaved Author binding. */
+export interface AuthorBindingProvenance {
+  readonly origin: 'selection' | 'manual';
+  readonly originEvidence: 'client-reported';
+  readonly sourceQueryId?: string;
+  readonly sourceColumn?: string;
+}
+
 export interface IQueryState extends IQueryStateDto {
   readonly id?: string;
   readonly isNew?: boolean;
   readonly title?: string;
   readonly request?: IQueryRequest;
+  /** Draft source configuration; kept separate from `def` until saved. */
+  readonly federation?: IQueryDef['federation'];
+  /** Draft project source binding; empty string explicitly clears one. */
+  readonly connectionId?: string;
+  /** Visible TugQL author bindings kept with the shared unsaved editor draft. */
+  readonly authorBindings?: Readonly<Record<string, string>>;
+  /** Source selection details remain local to the shared unsaved draft. */
+  readonly authorBindingProvenance?: Readonly<
+    Record<string, AuthorBindingProvenance>
+  >;
   readonly response?: IExecuteResponse;
   readonly targetDbModel?: IProjDbModelBrief;
   readonly activeEnv?: IQueryEnvState;
   readonly environments?: ReadonlyArray<IQueryEnvState>;
   readonly isSaving?: boolean;
   readonly isLoading?: boolean;
+  readonly revision?: string;
+  readonly branchHead?: string;
+  readonly saveError?: string;
+  readonly saveSupported?: boolean;
 }

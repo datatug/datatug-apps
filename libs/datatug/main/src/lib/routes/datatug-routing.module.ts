@@ -8,21 +8,54 @@ import {
 } from '../core/datatug-routing-params';
 import { githubProjectRoutes } from './github-project-routes';
 import { isSharedProjectRef } from '../core/project-context';
-import { profileHomeRedirectGuard } from './profile-home-redirect.guard';
+import { SessionWorkspaceService } from '../session-context/session-workspace.service';
+import { admitSessionWorkspace } from '../session-context/session-route.guard';
+import {
+  profileHomeRedirectGuard,
+  profileStartPageGuard,
+  START_PAGE_PATH,
+} from './profile-home-redirect.guard';
+
+const loadDatatugHomePage = () =>
+  import('../pages/home/datatug-home-page.component').then(
+    (m) => m.DatatugHomePageComponent,
+  );
 
 export const datatugRoutes: Routes = [
   {
-    // The active product profile's home route may not be this one — see
-    // `profile-home-redirect.guard.ts` (hub `product-profiles`
-    // REQ:profile-table). Under the `datatug` profile (empty `homePath`)
-    // the guard is a no-op and this still loads DatatugHomePageComponent
-    // directly, exactly as before the guard existed.
+    path: 'new-project',
+    loadComponent: () =>
+      import('../project/new-project/new-project-form.component').then(
+        (m) => m.NewProjectFormComponent,
+      ),
+  },
+  {
+    path: 'github/callback',
+    loadComponent: () =>
+      import('../project/new-project/github-authorization-page.component').then(
+        (m) => m.GithubAuthorizationPageComponent,
+      ),
+  },
+  {
+    // The app root. It shows nothing itself: the guard sends `/` to the active
+    // product profile's home route (`homePath`; `datatug` -> `/home`,
+    // `incidentius` -> `/incidents` — see `profile-home-redirect.guard.ts`,
+    // hub `product-profiles` REQ:profile-table). A full page load of `/` on
+    // datatug.app is answered by the landing page, not by this app, which is
+    // why the start page has the address below. The component stays here only
+    // for a profile with an empty `homePath` (none registered today), whose
+    // home page is the root itself.
     path: '',
     canActivate: [profileHomeRedirectGuard],
-    loadComponent: () =>
-      import('../pages/home/datatug-home-page.component').then(
-        (m) => m.DatatugHomePageComponent,
-      ),
+    loadComponent: loadDatatugHomePage,
+  },
+  {
+    // The DataTug start page, at an address that survives a refresh. Only a
+    // profile whose `homePath` is `home` (`datatug`) shows it; under any other
+    // profile `profileStartPageGuard` sends `/home` to that profile's own home.
+    path: START_PAGE_PATH,
+    canActivate: [profileStartPageGuard],
+    loadComponent: loadDatatugHomePage,
   },
   {
     // The incident list — `incidentius` profile home (redirected here by
@@ -103,7 +136,7 @@ export const datatugRoutes: Routes = [
     pathMatch: 'full',
     redirectTo: '/',
   },
-  // Metadata only: no reuse of the private project's child query/write routes.
+  // Space-owned projects expose only their saved-query journey.
   {
     path: 'space/:spaceId/store/:storeId/project/:projectId',
     canMatch: [
@@ -115,15 +148,100 @@ export const datatugRoutes: Routes = [
           projectId: segments[5]?.path,
         }) &&
         (segments.length === 6 ||
-          (segments.length === 7 && segments[6].path === 'overview')),
+          (segments.length === 7 &&
+            ['overview', 'queries', 'checks', 'detective'].includes(
+              segments[6].path,
+            )) ||
+          (segments.length === 8 &&
+            ['checks', 'detective'].includes(segments[6].path) &&
+            /^[A-Za-z0-9_-]+$/.test(segments[7].path)) ||
+          (segments.length === 8 &&
+            segments[6].path === 'query' &&
+            /^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(segments[7].path)) ||
+          (segments[6]?.path === 'sessions' && (segments.length === 7 ||
+            (/^[A-Za-z0-9_-]{1,128}$/.test(segments[7]?.path ?? '') &&
+              (segments.length === 8 || (segments.length === 9 && ['overview', 'queries', 'invoice-overview', 'invoice-explorer', 'composer'].includes(segments[8].path)) ||
+                (segments.length === 10 && segments[8].path === 'query' && /^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(segments[9].path))))))),
     ],
-    children: ['', 'overview'].map((path) => ({
-      path,
-      loadComponent: () =>
-        import('../pages/signed-in/project/project-page.component').then(
-          (m) => m.ProjectPageComponent,
-        ),
-    })),
+    children: [
+      ...['', 'overview'].map((path) => ({
+        path,
+        loadComponent: () =>
+          import('../pages/signed-in/project/project-page.component').then(
+            (m) => m.ProjectPageComponent,
+          ),
+      })),
+      {
+        path: 'sessions', providers: [SessionWorkspaceService],
+        loadComponent: () => import('../session-context/session-workspace-shell.component').then((m) => m.SessionWorkspaceShellComponent),
+        children: [{ path: ':sessionId', canActivateChild: [admitSessionWorkspace], children: [
+          { path: '', pathMatch: 'full', redirectTo: 'overview' },
+          { path: 'overview', loadComponent: () => import('../pages/signed-in/project/project-page.component').then((m) => m.ProjectPageComponent) },
+          { path: 'queries', loadComponent: () => import('../queries/queries/queries-page.component').then((m) => m.QueriesPageComponent) },
+          { path: 'invoice-overview', loadComponent: () => import('../session-context/invoice-dashboard.component').then((m) => m.InvoiceDashboardComponent) },
+          { path: 'invoice-explorer', loadComponent: () => import('../session-context/invoice-explorer.component').then((m) => m.InvoiceExplorerComponent) },
+          { path: 'composer', loadComponent: () => import('../session-context/session-composer.component').then((m) => m.SessionComposerComponent) },
+          { path: 'query', children: [{ path: ':queryId', loadComponent: () => import('../queries/query/page/query-page.component').then((m) => m.QueryPageComponent) }] },
+        ] }],
+      },
+      {
+        path: 'queries',
+        loadComponent: () =>
+          import('../queries/queries/queries-page.component').then(
+            (m) => m.QueriesPageComponent,
+          ),
+      },
+      {
+        path: 'checks',
+        children: [
+          {
+            path: '',
+            loadComponent: () =>
+              import('../detective/checks-page.component').then(
+                (m) => m.ChecksPageComponent,
+              ),
+          },
+          {
+            path: ':checkId',
+            loadComponent: () =>
+              import('../detective/checks-page.component').then(
+                (m) => m.ChecksPageComponent,
+              ),
+          },
+        ],
+      },
+      {
+        path: 'detective',
+        children: [
+          {
+            path: '',
+            loadComponent: () =>
+              import('../detective/cases-page.component').then(
+                (m) => m.CasesPageComponent,
+              ),
+          },
+          {
+            path: ':caseId',
+            loadComponent: () =>
+              import('../detective/cases-page.component').then(
+                (m) => m.CasesPageComponent,
+              ),
+          },
+        ],
+      },
+      {
+        path: 'query',
+        children: [
+          {
+            path: ':queryId',
+            loadComponent: () =>
+              import('../queries/query/page/query-page.component').then(
+                (m) => m.QueryPageComponent,
+              ),
+          },
+        ],
+      },
+    ],
   },
   // The short address of a GitHub project: `/project/github.com/<owner>/<repo>…` (design
   // `demo-as-github-project.md` 3.4). Matched by matchers, not paths; the old `store/…` form below is unchanged.

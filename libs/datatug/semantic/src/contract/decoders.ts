@@ -32,6 +32,7 @@ import {
   ErrorBody,
   ErrorDetails,
   ErrorEnvelope,
+  ExecutionRef,
   ExecutionMode,
   ExecutionProfile,
   Fact,
@@ -436,11 +437,30 @@ function decodeResultProvenance(v: unknown, path: string): ResultProvenance {
   };
 }
 
+function decodeExecutionRef(v: unknown, path: string): ExecutionRef {
+  const obj = requireObject(v, path);
+  requireExactKeys(obj, ['storeId', 'projectId', 'executionId'], path);
+  return {
+    storeId: requireString(obj['storeId'], `${path}.storeId`),
+    projectId: requireString(obj['projectId'], `${path}.projectId`),
+    executionId: requireString(obj['executionId'], `${path}.executionId`),
+  };
+}
+
 export function decodeResult(v: unknown, path = 'result'): Result {
   const obj = requireObject(v, path);
   requireExactKeys(
     obj,
-    ['recordset', 'limitations', 'bindingsApplied', 'provenance', 'truncated', 'sourceRights', 'usedSourceIds'],
+    [
+      'recordset',
+      'limitations',
+      'bindingsApplied',
+      'provenance',
+      'truncated',
+      'sourceRights',
+      'usedSourceIds',
+      'execution',
+    ],
     path,
   );
   const recordsetObj = requireObject(obj['recordset'], `${path}.recordset`);
@@ -470,6 +490,11 @@ export function decodeResult(v: unknown, path = 'result'): Result {
     bindingsApplied,
     provenance: decodeResultProvenance(obj['provenance'], `${path}.provenance`),
     truncated: requireBoolean(obj['truncated'], `${path}.truncated`),
+    ...(obj['execution'] === undefined
+      ? {}
+      : {
+          execution: decodeExecutionRef(obj['execution'], `${path}.execution`),
+        }),
   };
 }
 

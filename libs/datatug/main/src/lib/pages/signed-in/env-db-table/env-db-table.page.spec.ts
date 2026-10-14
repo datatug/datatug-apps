@@ -1,5 +1,14 @@
-import { CUSTOM_ELEMENTS_SCHEMA, signal } from '@angular/core';
+import {
+  Component,
+  CUSTOM_ELEMENTS_SCHEMA,
+  input,
+  output,
+  signal,
+} from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { HttpClient } from '@angular/common/http';
 import { ActivatedRoute, Router } from '@angular/router';
 import { NavController } from '@ionic/angular';
@@ -22,6 +31,31 @@ import { DatatugNavContextService } from '../../../services/nav/datatug-nav-cont
 import { ProjectService } from '../../../services/project/project.service';
 import { AgentService } from '../../../services/repo/agent.service';
 import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
+
+@Component({ selector: 'sneat-datatug-sql', standalone: true, template: '' })
+class SqlEditorHostStub {
+  readonly sql = input('');
+  readonly readonly = input(false);
+  readonly disabled = input(false);
+  readonly sqlChanged = output<string>();
+}
+
+function sqlEditorTemplate(): string {
+  const template = readFileSync(
+    resolve(
+      'libs/datatug/main/src/lib/pages/signed-in/env-db-table/env-db-table.page.html',
+    ),
+    'utf8',
+  );
+  const start = template.indexOf('<ion-item class="sql-editor');
+  const end = template.indexOf('</ion-item>', start);
+  if (start < 0 || end < 0) {
+    throw new Error(
+      'Could not locate the maintained database SQL editor fragment.',
+    );
+  }
+  return template.slice(start, end + '</ion-item>'.length);
+}
 
 function agentContextStub(securityContextId: string | undefined = 'sctx-1') {
   return {
@@ -99,8 +133,8 @@ describe('EnvDbTablePage', () => {
     })
       .overrideComponent(EnvDbTablePageComponent, {
         set: {
-          imports: [],
-          template: '',
+          imports: [SqlEditorHostStub],
+          template: sqlEditorTemplate(),
           schemas: [CUSTOM_ELEMENTS_SCHEMA],
           providers: [],
         },
@@ -109,6 +143,34 @@ describe('EnvDbTablePage', () => {
 
     fixture = TestBed.createComponent(EnvDbTablePageComponent);
     component = fixture.componentInstance;
+  });
+
+  it('renders the shared SQL editor as a read-only source viewer', () => {
+    const template = readFileSync(
+      resolve(
+        'libs/datatug/main/src/lib/pages/signed-in/env-db-table/env-db-table.page.html',
+      ),
+      'utf8',
+    );
+    expect(template).toContain(
+      '<sneat-datatug-sql [sql]="sql" [readonly]="true"',
+    );
+    expect(template).not.toContain('<code-editor');
+  });
+
+  it('mounts the maintained SQL source as read-only without a change handler', () => {
+    fixture.detectChanges();
+
+    const sqlEditor = fixture.debugElement.query(
+      By.directive(SqlEditorHostStub),
+    );
+    expect(sqlEditor).not.toBeNull();
+    expect(sqlEditor.componentInstance.sql()).toBe('select * from');
+    expect(sqlEditor.componentInstance.readonly()).toBe(true);
+    expect(sqlEditor.componentInstance.disabled()).toBe(false);
+    sqlEditor.componentInstance.sqlChanged.emit('SELECT 1;');
+    fixture.detectChanges();
+    expect(component.sql).toBe('select * from');
   });
 
   it('should create', () => {
@@ -134,13 +196,13 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
     name: 'Customer',
     meta: {
       name: 'Customer',
+      dbType: 'BASE TABLE',
       schema: 'main',
       columns: [
         { name: 'CustomerId', dbType: 'integer' },
         { name: 'FirstName', dbType: 'string' },
       ],
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any,
+    },
   };
 
   async function createComponent(
@@ -317,10 +379,12 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
   // there is no second, parallel cell-click mechanism left beside the context panel.
   it('does not select an FK-backed cell that the server has not mapped semantically', async () => {
     component = await createComponent([]);
+    const meta = table.meta;
+    if (!meta) throw new Error('Expected the fixture table metadata');
     component.table = {
       ...table,
       meta: {
-        ...(table.meta as Record<string, unknown>),
+        ...meta,
         foreignKeys: [
           {
             name: 'FK_Customer_Country',
@@ -328,8 +392,7 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
             refTable: { schema: 'main', name: 'Country' },
           },
         ],
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } as any,
+      },
     };
 
     const cellEl = document.createElement('div');
@@ -429,26 +492,42 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
 
   // G-A1c: the query page is at the address `projectUrl()` writes, a GitHub project's short address included.
   it.each([
-    ['a GitHub project', { storeId: 'github.com', projectId: 'chinook-demo@datatug@' }, '/project/github.com/datatug/chinook-demo/query/customers%2Fcustomer-invoices?id=customers%2Fcustomer-invoices'],
-    ['a GitHub project in a folder', { storeId: 'github', projectId: 'r@o@d' }, '/project/github.com/o/r/tree/HEAD/d/-/query/customers%2Fcustomer-invoices?id=customers%2Fcustomer-invoices'],
-  ])('onOpenQuery opens the query of %s at its address', async (_name, ref, address) => {
-    component = await createComponent();
-    component.project = { ref };
+    [
+      'a GitHub project',
+      { storeId: 'github.com', projectId: 'chinook-demo@datatug@' },
+      '/project/github.com/datatug/chinook-demo/query/customers%2Fcustomer-invoices?id=customers%2Fcustomer-invoices',
+    ],
+    [
+      'a GitHub project in a folder',
+      { storeId: 'github', projectId: 'r@o@d' },
+      '/project/github.com/o/r/tree/HEAD/d/-/query/customers%2Fcustomer-invoices?id=customers%2Fcustomer-invoices',
+    ],
+  ])(
+    'onOpenQuery opens the query of %s at its address',
+    async (_name, ref, address) => {
+      component = await createComponent();
+      component.project = { ref };
 
-    component.onOpenQuery({
-      queryId: 'customers/customer-invoices',
-      bindings: [],
-      targets: [],
-      state: 'runnable',
-    });
+      component.onOpenQuery({
+        queryId: 'customers/customer-invoices',
+        bindings: [],
+        targets: [],
+        state: 'runnable',
+      });
 
-    expect(routerMock.navigateByUrl).toHaveBeenCalledWith(address, expect.any(Object));
-    expect(logErrorMock).not.toHaveBeenCalled();
-  });
+      expect(routerMock.navigateByUrl).toHaveBeenCalledWith(
+        address,
+        expect.any(Object),
+      );
+      expect(logErrorMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('onOpenQuery navigates nowhere, and says so, for a project that has no exact address', async () => {
     component = await createComponent();
-    component.project = { ref: { storeId: 'localhost:8989', projectId: '50%' } };
+    component.project = {
+      ref: { storeId: 'localhost:8989', projectId: '50%' },
+    };
 
     component.onOpenQuery({
       queryId: 'customer-invoices',
@@ -459,7 +538,9 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
 
     expect(routerMock.navigateByUrl).not.toHaveBeenCalled();
     expect(logErrorMock).toHaveBeenCalledWith(
-      expect.objectContaining({ message: expect.stringContaining('no exact address') }),
+      expect.objectContaining({
+        message: expect.stringContaining('no exact address'),
+      }),
       'Failed to open query',
     );
   });

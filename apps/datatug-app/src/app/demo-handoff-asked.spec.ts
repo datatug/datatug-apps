@@ -354,7 +354,7 @@ describe('which hand-off addresses show the holding page', () => {
       '/project/github.com/datatug/chinook-demo',
       '/project/github.com/datatug/chinook-demo/queries',
       '/project/github.com/datatug/chinook-demo/chat/extra',
-      '/project/github.com/datatug/chinook-demo/tree/HEAD/dir/-/chat',
+      '/project/github.com/datatug/chinook-demo/tree/HEAD/dir/-/chat/extra',
       '/store/github.com/project/chinook-demo@datatug@/chat',
       '/demo/other',
       '/project/gitlab.com/datatug/chinook-demo/chat',

@@ -176,15 +176,26 @@ describe('the routes as registered', () => {
     expect(old?.redirectTo).toBeUndefined();
   });
 
-  it('guards the shared metadata route and exposes only root and overview children', () => {
+  it('guards the shared project route and exposes query, Check, Detective and session children', () => {
     const shared = datatugRoutes.find(
       (r) => r.path === 'space/:spaceId/store/:storeId/project/:projectId',
     );
     expect(shared?.canMatch).toHaveLength(1);
-    expect(shared?.children?.map((r) => r.path)).toEqual(['', 'overview']);
+    expect(shared?.children?.map((r) => r.path)).toEqual([
+      '',
+      'overview',
+      'sessions',
+      'queries',
+      'checks',
+      'detective',
+      'query',
+    ]);
     expect(
-      shared?.children?.every((r) => typeof r.loadComponent === 'function'),
+      shared?.children?.slice(0, 3).every((r) => typeof r.loadComponent === 'function'),
     ).toBe(true);
+    expect(shared?.children?.find((route) => route.path === 'query')?.children?.map((r) => r.path)).toEqual([
+      ':queryId',
+    ]);
     expect(shared?.loadChildren).toBeUndefined();
     expect(shared?.redirectTo).toBeUndefined();
   });
@@ -195,7 +206,10 @@ describe('the routes as registered', () => {
         .filter((r) => !githubProjectRoutes.includes(r))
         .map((r) => r.path),
     ).toEqual([
+      'new-project',
+      'github/callback',
       '',
+      'home',
       'incidents',
       'incidents/new',
       'incidents/:storeId/:incidentId/record',
@@ -306,6 +320,22 @@ describe('navigating to a short address', () => {
       expect(result.projectId).toBe(projectId);
     },
   );
+
+  it('cold-opens a private Cloud address without anonymous manifest or branch reads', async () => {
+    const result = await visit('/project/github.com/o/r/tree/HEAD/folder/-/queries?projectApi=cloud&branch=work', {
+      summaryResult: () => throwError(() => new Error('private repository')),
+    });
+    expect(result.component).toBe(PageStub);
+    expect(result.projectId).toBe('r@o@folder');
+    expect(summary).not.toHaveBeenCalled();
+    expect(branch).not.toHaveBeenCalled();
+  });
+  it.each(['projectApi=other&branch=work', 'projectApi=cloud', 'projectApi=cloud&projectApi=local&branch=work'])('refuses malformed Cloud transport %s without anonymous fallback', async (query) => {
+    const result = await visit(`/project/github.com/o/r/queries?${query}`);
+    expect(result.component).toBe(ProblemStub);
+    expect(summary).not.toHaveBeenCalled();
+    expect(branch).not.toHaveBeenCalled();
+  });
 
   it('the old form opens as before, with no redirect and no question asked of GitHub', async () => {
     const result = await visit(
@@ -755,7 +785,7 @@ describe('navigating to a short address', () => {
         ],
       });
       const result = await TestBed.runInInjectionContext(() =>
-        githubAddressCanMatch({} as never, segments('/project/github.com/O/r')),
+        githubAddressCanMatch({} as never, segments('/project/github.com/O/r'), {} as never),
       );
       expect(TestBed.inject(Router).serializeUrl(result as never)).toBe(
         '/project/github.com/o/r',
@@ -769,7 +799,7 @@ describe('navigating to a short address', () => {
         ],
       });
       const result = await TestBed.runInInjectionContext(() =>
-        githubAddressCanMatch({} as never, segments('/project/github.com/o/r')),
+        githubAddressCanMatch({} as never, segments('/project/github.com/o/r'), {} as never),
       );
       expect(result).toBe(false);
     });

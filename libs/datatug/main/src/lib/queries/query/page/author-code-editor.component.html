@@ -1,0 +1,163 @@
+<ion-item class="author-code-header" lines="none">
+  <ng-content select="[author-editor-tabs]" />
+  @if (visible() && language() === 'TugQL' && canFormat()) {
+    <ion-buttons slot="end" class="author-code-format-actions">
+      <ion-button
+        data-testid="author-format-tugql"
+        aria-label="Format TugQL"
+        title="Format TugQL"
+        fill="clear"
+        [disabled]="disabled()"
+        (click)="formatRequested.emit()"
+      >
+        <ion-icon name="code-working-outline" slot="icon-only" aria-hidden="true" />
+      </ion-button>
+      <ion-button
+        data-testid="author-undo-format"
+        aria-label="Undo"
+        title="Undo"
+        fill="clear"
+        [disabled]="!canUndoFormat()"
+        (click)="undoFormatRequested.emit()"
+      >
+        <ion-icon name="arrow-undo-outline" slot="icon-only" aria-hidden="true" />
+      </ion-button>
+    </ion-buttons>
+  }
+  @if (visible() && language() === 'TugQL') {
+    <ion-buttons slot="end" class="author-code-suggestions">
+      <ion-button
+        fill="clear"
+        aria-label="Suggestions (Ctrl+Space)"
+        title="Show TugQL suggestions · Ctrl+Space"
+        [disabled]="readOnly() || disabled()"
+        (click)="requestSuggestions()"
+      >
+        <ion-icon name="list-outline" slot="icon-only" aria-hidden="true" />
+      </ion-button>
+    </ion-buttons>
+  }
+</ion-item>
+@if (visible() && language() === 'TugQL') {
+  <ion-popover
+    data-testid="author-code-tools-popover"
+    [trigger]="toolsTriggerId"
+    [dismissOnSelect]="true"
+    aria-label="Editor actions"
+    (didDismiss)="menuDidDismiss()"
+  >
+    <ng-template>
+      <ion-list>
+        @if (canFormat()) {
+          <ion-item
+            button
+            detail="false"
+            aria-label="Format TugQL"
+            [disabled]="disabled()"
+            (click)="selectMenuAction('format')"
+          >
+            <ion-icon name="code-working-outline" slot="start" aria-hidden="true" />
+            <ion-label>Format TugQL</ion-label>
+          </ion-item>
+          <ion-item
+            button
+            detail="false"
+            aria-label="Undo"
+            [disabled]="!canUndoFormat() || disabled()"
+            (click)="selectMenuAction('undo')"
+          >
+            <ion-icon name="arrow-undo-outline" slot="start" aria-hidden="true" />
+            <ion-label>Undo</ion-label>
+          </ion-item>
+        }
+        <ion-item
+          button
+          detail="false"
+          aria-label="Suggestions (Ctrl+Space)"
+          [disabled]="readOnly() || disabled()"
+          (click)="selectMenuAction('suggestions')"
+        >
+          <ion-icon name="list-outline" slot="start" aria-hidden="true" />
+          <ion-label>Suggestions <span>(Ctrl+Space)</span></ion-label>
+        </ion-item>
+      </ion-list>
+    </ng-template>
+  </ion-popover>
+}
+<div class="author-code-projection-row author-code-tools-row">
+  <ng-content select="[author-editor-tools]" />
+</div>
+<div
+  class="author-code-surface"
+  [class.author-code-surface-hidden]="!visible()"
+>
+  @for (editor of [instance()]; track editor.generation) {
+    <code-editor
+      class="author-code-editor-view"
+      [root]="editorRoot"
+      [value]="editor.value"
+      [language]="editor.language"
+      [languages]="languages"
+      [extensions]="editor.extensions"
+      [readonly]="readOnly()"
+      [disabled]="disabled()"
+      [lineWrapping]="true"
+    />
+  }
+</div>
+<div class="author-code-projection-row author-code-panel-row">
+  <ng-content select="[author-editor-panel]" />
+</div>
+<div class="author-code-projection-row author-code-status-row">
+  <ng-content select="[author-editor-status]" />
+</div>
+@if (visible() && formatDiagnostics().length) {
+  <section class="author-format-diagnostics" aria-label="Format diagnostics">
+    <ion-list>
+      <ion-item lines="none">
+        <ion-label class="ion-text-wrap">
+          <p>Locations refer to the unchanged draft.</p>
+        </ion-label>
+      </ion-item>
+      @for (diagnostic of formatDiagnostics(); track $index) {
+          <ion-item
+            class="author-format-diagnostic"
+            button
+            lines="none"
+            detail="false"
+            [disabled]="!isFormatDiagnosticNavigable(text(), diagnostic.span)"
+            [attr.aria-label]="
+              'Go to line ' +
+              diagnostic.span.start.line +
+              ', column ' +
+              diagnostic.span.start.column +
+              ': ' +
+              diagnostic.message
+            "
+            (click)="formatDiagnosticRequested.emit(diagnostic)"
+          >
+            <ion-note
+              slot="start"
+              color="primary"
+              class="author-format-diagnostic-location"
+            >
+              {{ diagnostic.span.start.line }}:{{
+                diagnostic.span.start.column
+              }}
+            </ion-note>
+            <ion-label class="ion-text-wrap">{{ diagnostic.message }}</ion-label>
+          </ion-item>
+      }
+    @if (remainingFormatDiagnosticCount() > 0) {
+      <ion-item lines="none">
+        <ion-label class="ion-text-wrap">
+          <p role="status">And {{ remainingFormatDiagnosticCount() }} more diagnostics.</p>
+        </ion-label>
+      </ion-item>
+    }
+    </ion-list>
+  </section>
+}
+<div class="author-code-projection-row author-code-sidebar-row">
+  <ng-content select="[author-editor-sidebar]" />
+</div>

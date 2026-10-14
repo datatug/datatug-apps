@@ -25,13 +25,9 @@
 </ion-header>
 
 <ion-content>
+  @if (sessionContextNotice()) { <ion-item color="warning" role="status"><ion-label>{{ sessionContextNotice() }}</ion-label>@if (!sessionViewAll()) { <ion-button slot="end" (click)="viewAllSessionRows()">View all</ion-button> }</ion-item> }
   <ion-item class="sql-editor ion-margin ion-no-padding" style="min-height: 0">
-    <code-editor
-      style="height: auto"
-      [(ngModel)]="sql"
-      [readonly]="true"
-      [language]="'sql'"
-    />
+    <sneat-datatug-sql [sql]="sql" [readonly]="true" />
     <ion-buttons slot="end" class="ion-no-margin">
       <ion-button color="medium">Columns</ion-button>
       <ion-button color="medium">Group</ion-button>
@@ -89,7 +85,7 @@
     </ion-card-header>
     @if (table?.meta?.foreignKeys?.length) {
     <ion-list>
-      @for (fk of table?.meta?.foreignKeys || []; track fk.name) {
+      @for (fk of table.meta.foreignKeys || []; track fk.name) {
       <ion-item>
         <ion-label>
           {{ fk.name }}
@@ -119,7 +115,7 @@
       <ion-card-title>Unique keys</ion-card-title>
     </ion-card-header>
     <ion-list>
-      @for (ak of table?.meta?.alternateKeys || []; track ak.name) {
+      @for (ak of table.meta.alternateKeys || []; track ak.name) {
       <ion-item>
         <ion-label>{{ ak.name }}</ion-label>
         <ion-text slot="end" color="medium" style="font-size: smaller"
@@ -135,7 +131,7 @@
       <ion-card-title>Indexes</ion-card-title>
     </ion-card-header>
     <ion-list>
-      @for (ix of table?.meta?.indexes || []; track ix.name) {
+      @for (ix of table.meta.indexes || []; track ix.name) {
       <ion-item>
         <ion-label>
           {{ ix.name }}
@@ -246,7 +242,7 @@
         </ion-buttons>
       </ion-item>
       @if (currentRow?.data && table?.meta?.columns) { @for (col of
-      table?.meta?.columns || []; track col.name) {
+      table.meta.columns || []; track col.name) {
       <ion-item>
         <ion-label>{{ col.name }}</ion-label>
         <ion-input
@@ -265,7 +261,7 @@
     </ion-segment>
 
     @if (table?.meta && cardTab === 'fks') { @if
-    (table?.meta?.foreignKeys?.length) { @for (fk of table?.meta?.foreignKeys ||
+    (table.meta.foreignKeys?.length) { @for (fk of table.meta.foreignKeys ||
     []; track fk) {
     <sneat-datatug-fk-card
       [fk]="fk"
@@ -275,9 +271,9 @@
     } } @else {
     <p>No foreign keys</p>
     } } @if (table?.meta && cardTab === 'refs') { @if
-    (table?.meta?.referencedBy?.length) {
+    (table.meta.referencedBy?.length) {
     <ion-card>
-      @for (ref of table?.meta?.referencedBy || []; track ref.schema + ref.name)
+      @for (ref of table.meta.referencedBy || []; track ref.schema + ref.name)
       { @for (fk of ref.foreignKeys; track fk.name) {
       <ion-item>
         <a
@@ -292,7 +288,7 @@
             style="font-size: smaller"
           >
             ({{ fk.columns.join(', ') }}) ⇒ ({{
-            table?.meta?.primaryKey?.columns?.join(', ') }})
+            table.meta.primaryKey?.columns?.join(', ') }})
             <small>by foreign key {{ fk.name }}</small></ion-text
           >
         </p>
@@ -305,7 +301,7 @@
   </div>
 </ion-content>
 </div>
-@if (hasSelection()) {
+@if (hasSelection() && !contextSessionId) {
 <div class="ion-page context-panel-pane">
   <ion-header>
     <ion-toolbar>

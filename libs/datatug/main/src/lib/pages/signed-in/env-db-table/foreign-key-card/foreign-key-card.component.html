@@ -20,7 +20,7 @@
     </ion-card-title>
   </ion-card-header>
   @if (table?.meta?.columns) {
-    @for (c of table?.meta?.columns || []; track c) {
+    @for (c of table.meta.columns || []; track c) {
       <ion-item>
         <ion-label>
           {{ c.name }}

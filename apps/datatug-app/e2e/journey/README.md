@@ -14,7 +14,7 @@ comments) means: without the env vars below, this project simply does not run.
 
 | Var | Meaning |
 |---|---|
-| `DATATUG_DEMO_DIR` | Path to a `datatug-demo-projects/demo-project-1` checkout. If unset, the fixture tries `../datatug-demo-projects/demo-project-1` one, two and three directories above the repo root (covers both a plain sibling-checkout layout and a nested `<repo>/.worktrees/<task>/...` worktree). |
+| `DATATUG_DEMO_DIR` | Path to a `datatug-demo-project/demo-project-1` checkout. If unset, the fixture tries `../datatug-demo-project/demo-project-1` one, two and three directories above the repo root (covers both a plain sibling-checkout layout and a nested `<repo>/.worktrees/<task>/...` worktree). |
 | `DATATUG_BIN` | Path to an already-built `datatug` binary. Takes priority over `DATATUG_CLI_DIR` when both are set. |
 | `DATATUG_CLI_DIR` | Path to a `datatug-cli` checkout; the fixture runs `go build -o <tmp>/datatug .` in it once per worker (needs `go` on `PATH`). Ignored if `DATATUG_BIN` is set. |
 
@@ -43,7 +43,7 @@ go build -o /tmp/datatug .
 # 3. Run the suite with the fixture's own env vars, from datatug-apps:
 cd ~/projects/datatug/datatug-apps
 DATATUG_BIN=/tmp/datatug \
-DATATUG_DEMO_DIR=~/projects/datatug/datatug-demo-projects/demo-project-1 \
+DATATUG_DEMO_DIR=~/projects/datatug/datatug-demo-project/demo-project-1 \
 pnpm exec nx run datatug-app:e2e
 ```
 

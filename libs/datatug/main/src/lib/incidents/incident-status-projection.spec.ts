@@ -1,6 +1,7 @@
 import { incidentStatusProjection } from './incident-status-projection';
 import type {
   IncidentDetail,
+  IncidentFactInput,
   IncidentFactView,
   IncidentStreamItem,
 } from './models';
@@ -45,7 +46,7 @@ const affectedFact = (
 
 describe('incidentStatusProjection', () => {
   it('cites the visible status event and never words a hypothesis as a fact', () => {
-    const hypothesisFact: IncidentFactView = {
+    const hypothesisFact: IncidentFactInput = {
       id: 'fx-rate',
       entity: 'FxRate',
       field: 'Provider',
@@ -54,6 +55,7 @@ describe('incidentStatusProjection', () => {
       enabled: true,
       role: 'suspected',
       layer: 'hypothesis:H17',
+      scope: { storeId: 'ops', projectId: 'billing', environment: 'prod' },
     };
     const events = [
       item({

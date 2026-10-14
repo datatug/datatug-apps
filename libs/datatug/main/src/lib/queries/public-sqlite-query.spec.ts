@@ -1,0 +1,2058 @@
+import initSqlJs from 'sql.js';
+import { readFile } from 'node:fs/promises';
+import { TestBed } from '@angular/core/testing';
+import { NEVER, of, type Observable } from 'rxjs';
+import { QueryType } from '../models/definition/query-def';
+import type {
+  IQueryDef,
+  ISqlQueryRequest,
+  ITextQueryRequest,
+} from '../models/definition/query-def';
+import type { IProjectRef } from '../core/project-context';
+import { GithubProjectReaderService } from '../services/repo/github/github-project-reader.service';
+import { ProjectQueryApiService } from '../services/project/project-query-api.service';
+import {
+  admitPublicSqliteSource,
+  PublicSqliteQueryService,
+} from './public-sqlite-query.service';
+import {
+  executePinnedSql,
+  publicSqliteWasmOptions,
+  readPinnedFixture,
+} from './public-sqlite-query.worker';
+import type {
+  PublicSqliteClientReportedBinding,
+  PublicSqlitePreparedPlan,
+} from './public-sqlite-tugql';
+
+const invoiceAuthorProof: PublicSqlitePreparedPlan['authorProof'] = {
+  profile: 'invoice-query',
+  resolvedQuery: {
+    kind: 'recursive-dtql',
+    from: { kind: 'table', name: 'Invoice', alias: 'i', joins: [] },
+    limit: 10,
+    columns: [
+      {
+        expression: {
+          kind: 'field',
+          field: { source: 'i', field: 'InvoiceId' },
+        },
+      },
+    ],
+  },
+};
+
+const catalog = {
+  format: 'datatug-demo-connections/v1',
+  connections: [
+    {
+      id: 'chinook-sqlite',
+      dataset: 'chinook',
+      storage: 'sqlite',
+      readiness: 'public-api',
+      source: 'https://demodb.dev/ovdb/v1/databases/chinook',
+      fixtureSha256:
+        '7651ba378ac2fcd0dfc3c66fb101f7a7eed3ba39a612ec642b96e20702061f15',
+      browserFixture: {
+        url: 'https://chinook.demodb.dev/data/chinook.sqlite',
+        bytes: 1007616,
+      },
+    },
+  ],
+};
+
+describe('public browser SQLite admission', () => {
+  it('admits only the unique declared pinned public source', () => {
+    expect(() =>
+      admitPublicSqliteSource(catalog, 'chinook-sqlite'),
+    ).not.toThrow();
+    expect(() => admitPublicSqliteSource(catalog, 'other')).toThrow();
+    expect(() =>
+      admitPublicSqliteSource(
+        {
+          ...catalog,
+          connections: [...catalog.connections, catalog.connections[0]],
+        },
+        'chinook-sqlite',
+      ),
+    ).toThrow();
+    expect(() =>
+      admitPublicSqliteSource(
+        {
+          ...catalog,
+          connections: [
+            {
+              ...catalog.connections[0],
+              browserFixture: {
+                ...catalog.connections[0].browserFixture,
+                url: 'https://other.example/db',
+              },
+            },
+          ],
+        },
+        'chinook-sqlite',
+      ),
+    ).toThrow();
+    expect(() =>
+      admitPublicSqliteSource(
+        {
+          ...catalog,
+          connections: [{ ...catalog.connections[0], fixtureSha256: 'bad' }],
+        },
+        'chinook-sqlite',
+      ),
+    ).toThrow();
+    expect(() =>
+      admitPublicSqliteSource(
+        {
+          ...catalog,
+          connections: [
+            { ...catalog.connections[0], readiness: 'hosted-api-pending' },
+          ],
+        },
+        'chinook-sqlite',
+      ),
+    ).toThrow();
+  });
+});
+
+it('executes prepared integer bindings through the same SQLite worker path', async () => {
+  const SQL = await initSqlJs();
+  const db = new SQL.Database();
+  db.run('CREATE TABLE Invoice (InvoiceId INTEGER, CustomerId INTEGER)');
+  db.run('INSERT INTO Invoice VALUES (101, 1), (202, 2), (303, 2)');
+  const fixture = db.export();
+  db.close();
+
+  await expect(
+    executePinnedSql(
+      'SELECT InvoiceId FROM Invoice WHERE CustomerId = ? LIMIT 100',
+      fixture,
+      [2],
+    ),
+  ).resolves.toEqual({ columns: ['InvoiceId'], rows: [[202], [303]] });
+  await expect(
+    executePinnedSql(
+      'SELECT InvoiceId FROM Invoice WHERE CustomerId = ? LIMIT 100',
+      fixture,
+    ),
+  ).rejects.toThrow('bindings are invalid');
+  await expect(
+    executePinnedSql(
+      'SELECT InvoiceId FROM Invoice WHERE CustomerId = ? LIMIT 100',
+      fixture,
+      [2, 3],
+    ),
+  ).rejects.toThrow('bindings are invalid');
+
+  const groupedSql =
+    'SELECT CustomerId, COUNT(*) AS InvoiceCount FROM Invoice WHERE CustomerId = ? GROUP BY CustomerId HAVING COUNT(*) >= ? LIMIT 10';
+  await expect(executePinnedSql(groupedSql, fixture, [2, 2])).resolves.toEqual({
+    columns: ['CustomerId', 'InvoiceCount'],
+    rows: [[2, 2]],
+  });
+  await expect(executePinnedSql(groupedSql, fixture, [2, 3])).resolves.toEqual({
+    columns: ['CustomerId', 'InvoiceCount'],
+    rows: [],
+  });
+});
+
+it('checks the pinned relationship schema and returns deterministically ordered typed join columns', async () => {
+  const SQL = await initSqlJs();
+  const db = new SQL.Database();
+  db.run(
+    'CREATE TABLE Customer (CustomerId INTEGER PRIMARY KEY, FirstName NVARCHAR(40) NOT NULL, LastName NVARCHAR(20) NOT NULL, Email NVARCHAR(60) NOT NULL)',
+  );
+  db.run(
+    'CREATE TABLE Invoice (InvoiceId INTEGER PRIMARY KEY, CustomerId INTEGER NOT NULL REFERENCES Customer(CustomerId), InvoiceDate DATETIME NOT NULL)',
+  );
+  db.run(
+    "INSERT INTO Customer VALUES (1, 'Luis', 'Gonzaga', 'luisg@embraer.com.br')",
+  );
+  db.run(
+    "INSERT INTO Invoice VALUES (382, 1, '2009-01-01'), (98, 1, '2009-01-01'), (327, 1, '2009-01-01'), (121, 1, '2009-01-01'), (316, 1, '2009-01-01'), (143, 1, '2009-01-01'), (195, 1, '2009-01-01')",
+  );
+  const fixture = db.export();
+  db.close();
+  const sql =
+    'SELECT i.InvoiceId AS InvoiceId, i.CustomerId AS CustomerId, c.FirstName AS FirstName, c.LastName AS LastName, c.Email AS Email FROM Invoice AS i INNER JOIN Customer AS c ON i.CustomerId = c.CustomerId WHERE i.CustomerId = ? ORDER BY i.InvoiceId ASC LIMIT 100';
+  const result = await executePinnedSql(sql, fixture, [1], false, true);
+  expect(result.columns).toEqual([
+    'InvoiceId',
+    'CustomerId',
+    'FirstName',
+    'LastName',
+    'Email',
+  ]);
+  expect(result.rows.map((row) => row[0])).toEqual([
+    98, 121, 143, 195, 316, 327, 382,
+  ]);
+  expect(result.rows[0]).toEqual([
+    98,
+    1,
+    'Luis',
+    'Gonzaga',
+    'luisg@embraer.com.br',
+  ]);
+  await expect(
+    executePinnedSql(sql, fixture, [1], false, true, [
+      'CustomerId',
+      'InvoiceId',
+    ]),
+  ).rejects.toThrow('result columns differ from the prepared output lineage');
+});
+
+const pinnedFixturePath = process.env['DATATUG_CHINOOK_FIXTURE_PATH'];
+
+it('cancels a started Author worker and terminates it promptly', async () => {
+  const workerInstances: Array<{
+    onmessage: ((event: MessageEvent) => void) | null;
+    onerror: (() => void) | null;
+    posted: boolean;
+    terminated: boolean;
+  }> = [];
+  class PendingWorker {
+    public onmessage: ((event: MessageEvent) => void) | null = null;
+    public onerror: (() => void) | null = null;
+    public posted = false;
+    public terminated = false;
+    public postMessage(): void {
+      this.posted = true;
+    }
+    public terminate(): void {
+      this.terminated = true;
+    }
+    constructor() {
+      workerInstances.push(this);
+    }
+  }
+  TestBed.configureTestingModule({
+    providers: [
+      PublicSqliteQueryService,
+      {
+        provide: GithubProjectReaderService,
+        useValue: { getRawJson: () => of(catalog) },
+      },
+      {
+        provide: ProjectQueryApiService,
+        useValue: { connectionCatalog: () => of(catalog) },
+      },
+    ],
+  });
+  vi.stubGlobal('Worker', PendingWorker);
+  try {
+    const controller = new AbortController();
+    const service = TestBed.inject(PublicSqliteQueryService);
+    const plan = Object.freeze({
+      sql: 'SELECT "i"."InvoiceId" FROM "Invoice" AS "i" WHERE "i"."CustomerId" = ? LIMIT 10',
+      bindings: Object.freeze([1]),
+      bindingNames: Object.freeze(['CustomerId']),
+      sourceId: 'chinook-sqlite' as const,
+      fixtureSha256:
+        '7651ba378ac2fcd0dfc3c66fb101f7a7eed3ba39a612ec642b96e20702061f15',
+      schemaVersion: 'fixture:typed-invoice-v1',
+      draftRevision: 1,
+      authorProof: invoiceAuthorProof,
+    });
+    const pending = service['executePlan'](
+      {
+        storeId: 'github.com',
+        projectId: 'demo@buyer@project',
+        projectApi: 'cloud',
+        branch: 'main',
+      },
+      {
+        id: 'chinook-invoice-author',
+        connectionId: 'chinook-sqlite',
+        request: { queryType: QueryType.DTQL, text: '' } as ITextQueryRequest,
+      },
+      plan,
+      controller.signal,
+    );
+    await vi.waitFor(() => expect(workerInstances.at(-1)?.posted).toBe(true));
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(workerInstances.at(-1)?.terminated).toBe(true);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+it('bounds a stalled authenticated catalogue read before launching a worker', async () => {
+  TestBed.configureTestingModule({
+    providers: [
+      PublicSqliteQueryService,
+      {
+        provide: GithubProjectReaderService,
+        useValue: { getRawJson: vi.fn() },
+      },
+      {
+        provide: ProjectQueryApiService,
+        useValue: { connectionCatalog: () => NEVER },
+      },
+    ],
+  });
+  vi.useFakeTimers();
+  try {
+    const result = TestBed.inject(PublicSqliteQueryService).run(
+      {
+        storeId: 'github.com',
+        projectId: 'demo@buyer@project',
+        projectApi: 'cloud',
+        branch: 'main',
+      },
+      {
+        id: 'q',
+        connectionId: 'chinook-sqlite',
+        request: {
+          queryType: QueryType.SQL,
+          text: 'SELECT 1',
+        } as ISqlQueryRequest,
+      },
+    );
+    const rejected = expect(result).rejects.toThrow(
+      'source check exceeded 10 seconds',
+    );
+    await vi.advanceTimersByTimeAsync(10001);
+    await rejected;
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it.each([
+  'shared',
+  'github',
+  'worker-error',
+  'source-error',
+  'worker-construction-error',
+])(
+  'signals activity only after admitted SQL worker dispatch: %s',
+  async (scenario) => {
+    const events: string[] = [];
+    class AnsweringWorker {
+      public onmessage: ((event: MessageEvent) => void) | null = null;
+      public onerror: (() => void) | null = null;
+      public postMessage(): void {
+        events.push('post');
+        if (scenario === 'worker-error') {
+          this.onerror?.();
+          return;
+        }
+        this.onmessage?.({
+          data: { ok: true, result: { columns: ['n'], rows: [[1]] } },
+        } as MessageEvent);
+      }
+      public terminate(): void {
+        events.push('terminate');
+      }
+    }
+    const catalogRead = vi.fn(() =>
+      of(scenario === 'source-error' ? {} : catalog),
+    );
+    TestBed.configureTestingModule({
+      providers: [
+        PublicSqliteQueryService,
+        {
+          provide: GithubProjectReaderService,
+          useValue: { getRawJson: vi.fn() },
+        },
+        {
+          provide: ProjectQueryApiService,
+          useValue: { connectionCatalog: catalogRead },
+        },
+      ],
+    });
+    vi.stubGlobal(
+      'Worker',
+      scenario === 'worker-construction-error'
+        ? class {
+            constructor() {
+              throw new Error('Worker unavailable');
+            }
+          }
+        : AnsweringWorker,
+    );
+    try {
+      const ref: IProjectRef =
+        scenario === 'shared'
+          ? { storeId: 'firestore', spaceID: 'space_1', projectId: 'project_1' }
+          : {
+              storeId: 'github.com',
+              projectId: 'demo@buyer@project',
+              projectApi: 'cloud',
+              branch: 'main',
+            };
+      const pending = TestBed.inject(PublicSqliteQueryService).run(
+        ref,
+        {
+          id: 'q',
+          connectionId: 'chinook-sqlite',
+          request: {
+            queryType: QueryType.SQL,
+            text: 'SELECT 1',
+          } as ISqlQueryRequest,
+        },
+        () => events.push('report'),
+      );
+      if (scenario.endsWith('error')) {
+        await expect(pending).rejects.toThrow();
+        expect(events).toEqual(
+          scenario === 'worker-error' ? ['post', 'report', 'terminate'] : [],
+        );
+      } else {
+        const result = await pending;
+        expect(result.recordset.rows).toEqual([
+          [{ type: 'integer', value: '1' }],
+        ]);
+        expect(events).toEqual(['post', 'report', 'terminate']);
+      }
+      expect(catalogRead).toHaveBeenCalledWith(ref);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  },
+);
+
+it('runs typed SQL for a local project only after its local agent admits the exact fixture', async () => {
+  const catalogRead = vi.fn(() => of(catalog));
+  const rawReader = vi.fn(() => of(catalog));
+  const messages: unknown[] = [];
+  class LocalFixtureWorker {
+    public onmessage: ((event: MessageEvent) => void) | null = null;
+    public onerror: (() => void) | null = null;
+    public postMessage(message: unknown): void {
+      messages.push(message);
+      this.onmessage?.({ data: { ok: true, result: { columns: ['InvoiceId'], rows: [[1]] } } } as MessageEvent);
+    }
+    public terminate(): void { /* worker lifecycle is asserted by the service */ }
+  }
+  TestBed.configureTestingModule({
+    providers: [
+      PublicSqliteQueryService,
+      { provide: GithubProjectReaderService, useValue: { getRawJson: rawReader } },
+      { provide: ProjectQueryApiService, useValue: { connectionCatalog: catalogRead } },
+    ],
+  });
+  vi.stubGlobal('Worker', LocalFixtureWorker);
+  try {
+    const project = { storeId: 'http-127.0.0.1:18990', projectId: 'datatug-demo-project' };
+    const definition: IQueryDef = {
+      id: 'invoice-lookup', connectionId: 'chinook-sqlite',
+      parameters: [{ id: 'InvoiceId', type: 'integer', isRequired: true }],
+      request: { queryType: QueryType.SQL, text: 'SELECT InvoiceId FROM Invoice WHERE InvoiceId = ?' } as ISqlQueryRequest,
+    };
+    const result = await TestBed.inject(PublicSqliteQueryService).runParameterized(project, definition, {
+      InvoiceId: { type: 'integer', value: '1' },
+    });
+    expect(result.recordset.rows).toEqual([[{ type: 'integer', value: '1' }]]);
+    expect(catalogRead).toHaveBeenCalledWith(project);
+    expect(rawReader).not.toHaveBeenCalled();
+    expect(messages).toEqual([{ sql: 'SELECT InvoiceId FROM Invoice WHERE InvoiceId = ?', bindings: [1] }]);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+describe('bounded SQLite worker', () => {
+  let fixture: Uint8Array;
+  it('uses the app-copied SQL.js wasm asset for supplied comparison fixture bytes', () => {
+    expect(publicSqliteWasmOptions('http://localhost:4387').locateFile()).toBe(
+      'http://localhost:4387/assets/sql-wasm.wasm',
+    );
+  });
+
+  beforeAll(async () => {
+    const SQL = await initSqlJs();
+    const db = new SQL.Database();
+    db.run(
+      "CREATE TABLE Genre (GenreId INTEGER, Name TEXT); INSERT INTO Genre VALUES (1, 'Rock'), (2, 'Jazz')",
+    );
+    fixture = db.export();
+    db.close();
+  });
+  it('returns a one-statement read with columns and rows', async () => {
+    expect(
+      await executePinnedSql(
+        'SELECT GenreId, Name FROM Genre ORDER BY GenreId',
+        fixture,
+      ),
+    ).toEqual({
+      columns: ['GenreId', 'Name'],
+      rows: [
+        [1, 'Rock'],
+        [2, 'Jazz'],
+      ],
+    });
+  });
+  it('rejects writes, multiple statements, blobs, and oversized result sets', async () => {
+    await expect(
+      executePinnedSql('DELETE FROM Genre', fixture),
+    ).rejects.toThrow('read-only SELECT');
+    await expect(
+      executePinnedSql('SELECT 1; SELECT 2', fixture),
+    ).rejects.toThrow('one read-only SELECT');
+    await expect(executePinnedSql("SELECT X'00'", fixture)).rejects.toThrow(
+      'Blob columns',
+    );
+    await expect(
+      executePinnedSql('SELECT Name FROM Genre WHERE GenreId = ?', fixture),
+    ).rejects.toThrow('bindings are invalid');
+    await expect(
+      executePinnedSql(
+        'WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<1001) SELECT x FROM n',
+        fixture,
+      ),
+    ).rejects.toThrow('1,000-row');
+  });
+});
+
+it('fetches only the pinned public fixture without credentials and refuses changed bytes', async () => {
+  const fetchMock = vi.fn(async () => new Response(new Uint8Array(1007616)));
+  vi.stubGlobal('fetch', fetchMock);
+  try {
+    await expect(readPinnedFixture()).rejects.toThrow('hash differs');
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://chinook.demodb.dev/data/chinook.sqlite',
+      {
+        redirect: 'error',
+        credentials: 'omit',
+        cache: 'no-store',
+      },
+    );
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+describe('Author TugQL structural preview and Run binding', () => {
+  const columns = [
+    { name: 'CustomerId', dbType: 'INTEGER', isNullable: false },
+    { name: 'InvoiceId', dbType: 'INTEGER', isNullable: false },
+    { name: 'InvoiceDate', dbType: 'DATETIME', isNullable: false },
+  ];
+  const customerColumns = [
+    { name: 'CustomerId', dbType: 'INTEGER', isNullable: false, pkPosition: 1 },
+    { name: 'FirstName', dbType: 'NVARCHAR(40)', isNullable: false },
+    { name: 'LastName', dbType: 'NVARCHAR(20)', isNullable: false },
+    { name: 'Email', dbType: 'NVARCHAR(60)', isNullable: false },
+  ];
+  const refs = {
+    version: 1,
+    foreignKeys: [{
+      name: 'FK_Invoice_Customer_CustomerId',
+      table: { schema: 'main', name: 'Invoice' },
+      columns: ['CustomerId'],
+      refTable: { schema: 'main', name: 'Customer' },
+      refColumns: ['CustomerId'],
+    }],
+  };
+  const project: IProjectRef = {
+    storeId: 'github.com',
+    projectId: 'demo@buyer@project',
+    projectApi: 'cloud',
+    branch: 'main',
+  };
+  const definition = (text: string): IQueryDef => ({
+    id: 'chinook-invoice-author',
+    connectionId: 'chinook-sqlite',
+    request: { queryType: QueryType.DTQL, text } as ITextQueryRequest,
+  });
+  const joinedDefinition = (text: string): IQueryDef => ({
+    ...definition(text),
+    relationshipBindings: [
+      {
+        id: 'FK_Invoice_Customer_CustomerId',
+        version:
+          '7651ba378ac2fcd0dfc3c66fb101f7a7eed3ba39a612ec642b96e20702061f15:main.Invoice.CustomerId:INTEGER->main.Customer.CustomerId:INTEGER:PRIMARY_KEY:v1',
+        from: { schema: 'main', table: 'Invoice' },
+        to: { schema: 'main', table: 'Customer' },
+        pairs: [{ fromField: 'CustomerId', toField: 'CustomerId' }],
+      },
+    ],
+  });
+  const groupedSource = [
+    'parameters (',
+    '  @CustomerId integer required',
+    ')',
+    'from Invoice as i',
+    'where i.CustomerId = @CustomerId',
+    'group by i.CustomerId',
+    'having count(*) >= 7',
+    'limit 10',
+    'select i.CustomerId, count(*) as InvoiceCount',
+    '',
+  ].join('\n');
+  const cteSource = [
+    'parameters (',
+    '  @CustomerId integer required',
+    ')',
+    'with CustomerCounts as (',
+    '  from Invoice as i',
+    '  where i.CustomerId = @CustomerId',
+    '  group by i.CustomerId',
+    '  having count(*) >= 7',
+    '  limit 100',
+    '  select (',
+    '    i.CustomerId',
+    '    count(*) as InvoiceCount',
+    '  )',
+    ')',
+    'from CustomerCounts as totals',
+    'join Customer as c',
+    '  on totals.CustomerId = c.CustomerId',
+    'order by totals.CustomerId asc',
+    'limit 10',
+    'select (',
+    '  totals.CustomerId',
+    '  totals.InvoiceCount',
+    '  c.FirstName',
+    '  c.LastName',
+    '  c.Email',
+    ')',
+    '',
+  ].join('\n');
+  const reader = {
+    getRawJson: vi.fn(
+      (_projectId: string, path: string): Observable<unknown> =>
+        of(path.endsWith('Customer/main.Customer.columns.json')
+          ? { columns: customerColumns }
+          : path.endsWith('chinook.refs.json')
+            ? refs
+            : path.endsWith('Invoice/main.Invoice.columns.json')
+              ? { columns }
+              : catalog),
+    ),
+  };
+  const projectApi = { connectionCatalog: vi.fn(() => of(catalog)) };
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        PublicSqliteQueryService,
+        { provide: GithubProjectReaderService, useValue: reader },
+        { provide: ProjectQueryApiService, useValue: projectApi },
+      ],
+    });
+    reader.getRawJson.mockReset();
+    reader.getRawJson.mockImplementation((_projectId: string, path: string) =>
+      of(path.endsWith('Customer/main.Customer.columns.json')
+        ? { columns: customerColumns }
+        : path.endsWith('chinook.refs.json')
+          ? refs
+          : path.endsWith('Invoice/main.Invoice.columns.json')
+            ? { columns }
+            : catalog),
+    );
+    projectApi.connectionCatalog.mockClear();
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('discovers only the currently admitted Invoice and Customer fields and declared key', async () => {
+    const discovery = await TestBed.inject(PublicSqliteQueryService)
+      .discoverInvoiceCustomerSources(project);
+
+    expect(discovery.invoiceFields).toEqual([
+      { name: 'CustomerId', type: 'integer' },
+      { name: 'InvoiceId', type: 'integer' },
+      { name: 'InvoiceDate', type: 'datetime' },
+    ]);
+    expect(discovery.customerFields).toEqual([
+      { name: 'CustomerId', type: 'integer' },
+      { name: 'FirstName', type: 'string' },
+      { name: 'LastName', type: 'string' },
+      { name: 'Email', type: 'string' },
+    ]);
+    expect(discovery.relationship).toEqual({
+      id: 'FK_Invoice_Customer_CustomerId',
+      version: expect.stringContaining(':main.Invoice.CustomerId:INTEGER->main.Customer.CustomerId:INTEGER:PRIMARY_KEY:v1'),
+      from: { schema: 'main', table: 'Invoice' },
+      to: { schema: 'main', table: 'Customer' },
+      pairs: [{ fromField: 'CustomerId', toField: 'CustomerId' }],
+    });
+    expect(discovery.cardinality).toContain('declared');
+    expect(discovery.crossSourceCost).toBe('unknown');
+    expect(reader.getRawJson.mock.calls.map((call) => call[1])).toEqual(expect.arrayContaining([
+      'dbmodels/chinook/main/tables/Invoice/main.Invoice.columns.json',
+      'dbmodels/chinook/main/tables/Customer/main.Customer.columns.json',
+      'dbmodels/chinook/chinook.refs.json',
+    ]));
+  });
+
+  it('prepares a single-Invoice scan without requiring unrelated Customer or FK metadata', async () => {
+    reader.getRawJson.mockImplementation((_projectId, path) => {
+      if (path.endsWith('Customer/main.Customer.columns.json') || path.endsWith('chinook.refs.json'))
+        throw new Error(`Unrelated relationship metadata was requested: ${path}`);
+      return of(path.endsWith('Invoice/main.Invoice.columns.json') ? { columns } : catalog);
+    });
+
+    const preview = await TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+      project,
+      definition(groupedSource),
+      4,
+    );
+
+    expect(preview.sql).toContain('FROM "Invoice" AS "i"');
+    expect(reader.getRawJson.mock.calls.some((call) =>
+      String(call[1]).endsWith('Customer/main.Customer.columns.json') ||
+      String(call[1]).endsWith('chinook.refs.json'),
+    )).toBe(false);
+  });
+
+  it('keeps a source-qualified joined InvoiceDate as non-null SQLite text at the worker boundary', async () => {
+    const source = [
+      'parameters (',
+      '  @CustomerId integer required',
+      ')',
+      'from Invoice as i',
+      'join Customer as c',
+      '  on i.CustomerId = c.CustomerId',
+      'where i.CustomerId = @CustomerId',
+      'limit 10',
+      'select i.InvoiceId, i.InvoiceDate, c.FirstName',
+      '',
+    ].join('\n');
+    const preview = await TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+      project,
+      joinedDefinition(source),
+      8,
+    );
+    expect(preview.authorProof?.rawInvoiceDateTextRule)
+      .toBe('chinook-invoice-datetime-text/v1');
+    expect(preview.outputColumns).toContainEqual({
+      name: 'InvoiceDate',
+      type: 'string',
+      lineage: [{ source: 'i', field: 'InvoiceDate' }],
+    });
+
+    const makeFixture = async (dateSql: string): Promise<Uint8Array> => {
+      const SQL = await initSqlJs();
+      const db = new SQL.Database();
+      db.run('CREATE TABLE Customer (CustomerId INTEGER PRIMARY KEY, FirstName NVARCHAR(40), LastName NVARCHAR(20), Email NVARCHAR(60))');
+      db.run('CREATE TABLE Invoice (InvoiceId INTEGER PRIMARY KEY, CustomerId INTEGER NOT NULL REFERENCES Customer(CustomerId), InvoiceDate DATETIME)');
+      db.run("INSERT INTO Customer VALUES (1, 'Ada', 'Lovelace', 'ada@example.test')");
+      db.run(`INSERT INTO Invoice VALUES (10, 1, ${dateSql})`);
+      const fixture = db.export();
+      db.close();
+      return fixture;
+    };
+    const runFixture = (fixture: Uint8Array) => executePinnedSql(
+      preview.sql,
+      fixture,
+      [1],
+      true,
+      true,
+      preview.outputColumns?.map((column) => column.name),
+      preview.authorProof,
+      preview.bindingNames,
+      preview.schemaVersion,
+      preview.draftRevision,
+      preview.authorProof?.profile,
+      preview.fixtureSha256,
+      preview.outputColumns,
+      preview.relationship,
+    );
+
+    await expect(runFixture(await makeFixture("'2009-01-01 00:00:00'")))
+      .resolves.toMatchObject({ rows: [[10, '2009-01-01 00:00:00', 'Ada']] });
+    await expect(runFixture(await makeFixture('NULL')))
+      .rejects.toThrow('InvoiceDate result must remain non-null SQLite text');
+    await expect(runFixture(await makeFixture('123')))
+      .rejects.toThrow('InvoiceDate result must remain non-null SQLite text');
+  });
+
+  it('admits a guarded InvoiceId filter only with its exact authored source and fixed binding', async () => {
+    const source = [
+      'parameters (',
+      '  @CustomerId integer required',
+      ')',
+      'from Invoice as i',
+      'join Customer as c',
+      '  on i.CustomerId = c.CustomerId',
+      'where i.CustomerId = @CustomerId and i.InvoiceId = 143',
+      'limit 10',
+      'select i.InvoiceId, i.InvoiceDate, c.FirstName',
+      '',
+    ].join('\n');
+    const preview = await TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+      project, joinedDefinition(source), 9,
+    );
+    expect(preview.sql).toContain('WHERE "i"."CustomerId" = ? AND "i"."InvoiceId" = ?');
+    expect(preview.fixedBindings).toEqual([143]);
+    expect(preview.bindingNames).toEqual(['CustomerId', 'InvoiceId (literal)']);
+    expect(preview.authorProof?.authoredSource).toBe(source);
+
+    const SQL = await initSqlJs();
+    const db = new SQL.Database();
+    db.run('CREATE TABLE Customer (CustomerId INTEGER PRIMARY KEY, FirstName NVARCHAR(40), LastName NVARCHAR(20), Email NVARCHAR(60))');
+    db.run('CREATE TABLE Invoice (InvoiceId INTEGER PRIMARY KEY, CustomerId INTEGER NOT NULL REFERENCES Customer(CustomerId), InvoiceDate DATETIME)');
+    db.run("INSERT INTO Customer VALUES (1, 'Ada', 'Lovelace', 'ada@example.test')");
+    db.run("INSERT INTO Invoice VALUES (143, 1, '2009-01-01 00:00:00')");
+    db.run("INSERT INTO Invoice VALUES (121, 1, '2009-01-02 00:00:00')");
+    const fixture = db.export();
+    db.close();
+    const run = (
+      bindings: readonly (string | number | null)[],
+      proof = preview.authorProof,
+      expectedColumns = preview.outputColumns,
+    ) => executePinnedSql(
+      preview.sql, fixture, bindings, true, true,
+      expectedColumns?.map((column) => column.name), proof,
+      preview.bindingNames, preview.schemaVersion, preview.draftRevision,
+      proof?.profile, preview.fixtureSha256, expectedColumns, preview.relationship,
+    );
+
+    await expect(run([1, 143])).resolves.toMatchObject({ rows: [[143, '2009-01-01 00:00:00', 'Ada']] });
+    await expect(run([1, 121])).rejects.toThrow('differs from its independently compiled profile');
+    await expect(run([1, 143], { ...preview.authorProof, authoredSource: source.replace('InvoiceId = 143', 'InvoiceId = 121') }))
+      .rejects.toThrow('differs from the Author proof');
+    await expect(run([1, 143], { ...preview.authorProof, authoredSource: undefined }))
+      .rejects.toThrow('require independently verified authored TugQL');
+    await expect(run([1, 143], preview.authorProof, preview.outputColumns?.map((column) => ({ ...column, lineage: [] }))))
+      .rejects.toThrow('differs from its independently compiled profile');
+  });
+
+  it('worker-verifies InvoiceId lineage for an untouched plain Invoice run before filtering', async () => {
+    const source = [
+      'parameters (',
+      '  @CustomerId integer required',
+      ')',
+      'from Invoice as i',
+      'where i.CustomerId = @CustomerId',
+      'limit 10',
+      'select i.InvoiceId, i.InvoiceDate',
+      '',
+    ].join('\n');
+    const preview = await TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+      project, definition(source), 10,
+    );
+    expect(preview.outputColumns).toEqual([
+      { name: 'InvoiceId', type: 'integer', lineage: [{ source: 'i', field: 'InvoiceId' }] },
+      { name: 'InvoiceDate', type: 'string', lineage: [{ source: 'i', field: 'InvoiceDate' }] },
+    ]);
+    expect(preview.authorProof.authoredSource).toBe(source);
+    expect(preview.authorProof.rawInvoiceDateTextRule).toBe('chinook-invoice-datetime-text/v1');
+    const SQL = await initSqlJs();
+    const db = new SQL.Database();
+    db.run('CREATE TABLE Invoice (InvoiceId INTEGER PRIMARY KEY, CustomerId INTEGER NOT NULL, InvoiceDate DATETIME)');
+    db.run("INSERT INTO Invoice VALUES (98, 1, '2009-01-01 00:00:00')");
+    const fixture = db.export();
+    db.close();
+    const run = (proof = preview.authorProof, columns = preview.outputColumns) => executePinnedSql(
+      preview.sql, fixture, [1], true, true,
+      columns?.map((column) => column.name), proof,
+      preview.bindingNames, preview.schemaVersion, preview.draftRevision,
+      proof.profile, preview.fixtureSha256, columns,
+    );
+    await expect(run()).resolves.toMatchObject({ rows: [[98, '2009-01-01 00:00:00']] });
+    await expect(run({ ...preview.authorProof, authoredSource: undefined }))
+      .rejects.toThrow('require independently verified authored TugQL');
+    await expect(run(preview.authorProof, preview.outputColumns?.map((column) => ({ ...column, lineage: [] }))))
+      .rejects.toThrow('differs from its independently compiled profile');
+  });
+
+  it.skipIf(!pinnedFixturePath)(
+    'executes the admitted compiled join SQL and bindings against the hash-pinned fixture',
+    async () => {
+      const fixture = new Uint8Array(
+        await readFile(pinnedFixturePath as string),
+      );
+      expect(fixture.byteLength).toBe(1007616);
+      const digest = await crypto.subtle.digest('SHA-256', fixture);
+      expect(
+        [...new Uint8Array(digest)]
+          .map((part) => part.toString(16).padStart(2, '0'))
+          .join(''),
+      ).toBe(
+        '7651ba378ac2fcd0dfc3c66fb101f7a7eed3ba39a612ec642b96e20702061f15',
+      );
+      const customerColumns = [
+        {
+          name: 'CustomerId',
+          dbType: 'INTEGER',
+          isNullable: false,
+          pkPosition: 1,
+        },
+        { name: 'FirstName', dbType: 'NVARCHAR(40)', isNullable: false },
+        { name: 'LastName', dbType: 'NVARCHAR(20)', isNullable: false },
+        { name: 'Email', dbType: 'NVARCHAR(60)', isNullable: false },
+      ];
+      const refs = {
+        version: 1,
+        foreignKeys: [
+          {
+            name: 'FK_Invoice_Customer_CustomerId',
+            table: { schema: 'main', name: 'Invoice' },
+            columns: ['CustomerId'],
+            refTable: { schema: 'main', name: 'Customer' },
+            refColumns: ['CustomerId'],
+          },
+        ],
+      };
+      reader.getRawJson.mockImplementation((_projectId, path) =>
+        of(
+          path.endsWith('Customer/main.Customer.columns.json')
+            ? { columns: customerColumns }
+            : path.endsWith('chinook.refs.json')
+              ? refs
+              : path.endsWith('Invoice/main.Invoice.columns.json')
+                ? { columns }
+                : catalog,
+        ),
+      );
+      const source = (limit: 3 | 100) =>
+        [
+          'parameters (',
+          '  @CustomerId integer required',
+          ')',
+          'from Invoice as i',
+          'join Customer as c',
+          '  on i.CustomerId = c.CustomerId',
+          'where i.CustomerId = @CustomerId',
+          `limit ${limit}`,
+          'select i.InvoiceId, i.InvoiceDate, i.CustomerId, c.FirstName, c.LastName, c.Email',
+          '',
+        ].join('\n');
+      const service = TestBed.inject(PublicSqliteQueryService);
+      const runCompiledPlan = async (limit: 3 | 100) => {
+        const preview = await service.prepareTugQL(
+          project,
+          joinedDefinition(source(limit)),
+          90 + limit,
+        );
+        expect(preview).not.toHaveProperty('expandedSource');
+        expect(preview.relationship?.id).toBe(
+          'FK_Invoice_Customer_CustomerId',
+        );
+        expect(preview.sql).toContain('INNER JOIN "Customer" AS "c"');
+        expect(preview.sql).toContain('ORDER BY "i"."InvoiceId" ASC');
+        const result = await executePinnedSql(
+          preview.sql,
+          fixture,
+          [1, ...preview.fixedBindings],
+          true,
+          true,
+          preview.outputColumns?.map((column) => column.name),
+          preview.authorProof,
+          preview.bindingNames,
+          preview.schemaVersion,
+          preview.draftRevision,
+          preview.authorProof.profile,
+          preview.fixtureSha256,
+          preview.outputColumns,
+          preview.relationship,
+        );
+        return result;
+      };
+      const result = await runCompiledPlan(100);
+      expect(result.rows.map((row) => row[0])).toEqual([
+        98, 121, 143, 195, 316, 327, 382,
+      ]);
+      expect(result.rows.map((row) => row[1])).toEqual(
+        [
+          '2022-03-11 00:00:00',
+          '2022-06-13 00:00:00',
+          '2022-09-15 00:00:00',
+          '2023-05-06 00:00:00',
+          '2024-10-27 00:00:00',
+          '2024-12-07 00:00:00',
+          '2025-08-07 00:00:00',
+        ],
+      );
+      expect(result.rows.map((row) => row[3])).toEqual(
+        Array(7).fill('Luís'),
+      );
+      expect(result.rows.map((row) => row[5])).toEqual(
+        Array(7).fill('luisg@embraer.com.br'),
+      );
+      expect(result.schemaFingerprint).toContain(
+        'FK_Invoice_Customer_CustomerId:Invoice.CustomerId->Customer.CustomerId',
+      );
+      const limited = await runCompiledPlan(3);
+      expect(limited.rows.map((row) => row[0])).toEqual([98, 121, 143]);
+
+      const compileAndRunCte = async (source: string, revision: number) => {
+        const preview = await service.prepareTugQL(
+          project,
+          definition(source),
+          revision,
+        );
+        return executePinnedSql(
+          preview.sql,
+          fixture,
+          [1, ...preview.fixedBindings],
+          true,
+          true,
+          preview.outputColumns?.map((column) => column.name),
+          preview.authorProof,
+          preview.bindingNames,
+          preview.schemaVersion,
+          preview.draftRevision,
+          preview.authorProof?.profile,
+          preview.fixtureSha256,
+          preview.outputColumns,
+          preview.relationship,
+        );
+      };
+      const cteResult = await compileAndRunCte(cteSource, 101);
+      expect(cteResult.columns).toEqual([
+        'CustomerId', 'InvoiceCount', 'FirstName', 'LastName', 'Email',
+      ]);
+      expect(cteResult.rows).toEqual([
+        [1, 7, 'Luís', 'Gonçalves', 'luisg@embraer.com.br'],
+      ]);
+      const cteOverSeven = await compileAndRunCte(
+        cteSource.replace('having count(*) >= 7', 'having count(*) > 7'),
+        102,
+      );
+      expect(cteOverSeven.rows).toEqual([]);
+
+      const graphSource = [
+        'parameters (',
+        '  @CustomerId integer required',
+        ')',
+        'with CustomerCounts as (',
+        '  from Invoice as i',
+        '  where i.CustomerId = @CustomerId',
+        '  group by i.CustomerId',
+        '  having count(*) >= 7',
+        '  limit 100',
+        '  select (',
+        '    i.CustomerId',
+        '    count(*) as InvoiceCount',
+        '  )',
+        ')',
+        'with EligibleCounts as (',
+        '  from CustomerCounts as counts',
+        '  where counts.InvoiceCount >= 7',
+        '  limit 100',
+        '  select (',
+        '    counts.CustomerId',
+        '    counts.InvoiceCount',
+        '  )',
+        ')',
+        'with CustomerFields as (',
+        '  from Customer as c',
+        '  order by c.CustomerId asc',
+        '  limit 100',
+        '  select (',
+        '    c.CustomerId',
+        '    c.FirstName',
+        '    c.LastName',
+        '    c.Email',
+        '  )',
+        ')',
+        'from EligibleCounts as totals',
+        'join CustomerFields as customer',
+        '  on totals.CustomerId = customer.CustomerId',
+        'order by totals.CustomerId asc',
+        'limit 10',
+        'select (',
+        '  totals.CustomerId',
+        '  totals.InvoiceCount',
+        '  customer.FirstName',
+        '  customer.LastName',
+        '  customer.Email',
+        ')',
+        '',
+      ].join('\n');
+      const graphPreview = await service.prepareTugQL(
+        project,
+        definition(graphSource),
+        103,
+      );
+      expect(graphPreview.authorProof.profile).toBe('bounded-cte-query');
+      expect(graphPreview.relationship).toBeUndefined();
+      expect(graphPreview.bindingNames).toEqual([
+        'CustomerId',
+        'HAVING threshold (literal)',
+        'WHERE literal',
+      ]);
+      const graphResult = await executePinnedSql(
+        graphPreview.sql,
+        fixture,
+        [1, ...graphPreview.fixedBindings],
+        true,
+        true,
+        graphPreview.outputColumns?.map((column) => column.name),
+        graphPreview.authorProof,
+        graphPreview.bindingNames,
+        graphPreview.schemaVersion,
+        graphPreview.draftRevision,
+        graphPreview.authorProof.profile,
+        graphPreview.fixtureSha256,
+        graphPreview.outputColumns,
+      );
+      expect(graphResult.rows).toEqual([
+        [1, 7, 'Luís', 'Gonçalves', 'luisg@embraer.com.br'],
+      ]);
+
+      const emptyGraphPreview = await service.prepareTugQL(
+        project,
+        definition(graphSource.replace(
+          'where counts.InvoiceCount >= 7',
+          'where counts.InvoiceCount >= 8',
+        )),
+        104,
+      );
+      const emptyGraphResult = await executePinnedSql(
+        emptyGraphPreview.sql,
+        fixture,
+        [1, ...emptyGraphPreview.fixedBindings],
+        true,
+        true,
+        emptyGraphPreview.outputColumns?.map((column) => column.name),
+        emptyGraphPreview.authorProof,
+        emptyGraphPreview.bindingNames,
+        emptyGraphPreview.schemaVersion,
+        emptyGraphPreview.draftRevision,
+        emptyGraphPreview.authorProof.profile,
+        emptyGraphPreview.fixtureSha256,
+        emptyGraphPreview.outputColumns,
+      );
+      expect(emptyGraphResult.rows).toEqual([]);
+
+      const nestedLocalSource = `parameters (
+  @CustomerId integer required
+)
+with EligibleCounts as (
+  with CustomerCounts as (
+    from Invoice as i
+    where i.CustomerId = @CustomerId
+    group by i.CustomerId
+    having count(*) >= 7
+    limit 100
+    select (
+      i.CustomerId
+      count(*) as InvoiceCount
+    )
+  )
+  from CustomerCounts as counts
+  where counts.InvoiceCount >= 7
+  limit 100
+  select (
+    counts.CustomerId
+    counts.InvoiceCount
+  )
+)
+with CustomerFields as (
+  from Customer as c
+  order by c.CustomerId asc
+  limit 100
+  select (
+    c.CustomerId
+    c.FirstName
+    c.LastName
+    c.Email
+  )
+)
+from EligibleCounts as totals
+join CustomerFields as customer
+  on totals.CustomerId = customer.CustomerId
+order by totals.CustomerId asc
+limit 10
+select (
+  totals.CustomerId
+  totals.InvoiceCount
+  customer.FirstName
+  customer.LastName
+  customer.Email
+)
+`;
+      const nestedPreview = await service.prepareTugQL(
+        project,
+        definition(nestedLocalSource),
+        105,
+      );
+      expect(nestedPreview.authorProof.profile).toBe('bounded-cte-query');
+      const nestedResult = await executePinnedSql(
+        nestedPreview.sql,
+        fixture,
+        [1, ...nestedPreview.fixedBindings],
+        true,
+        true,
+        nestedPreview.outputColumns?.map((column) => column.name),
+        nestedPreview.authorProof,
+        nestedPreview.bindingNames,
+        nestedPreview.schemaVersion,
+        nestedPreview.draftRevision,
+        nestedPreview.authorProof.profile,
+        nestedPreview.fixtureSha256,
+        nestedPreview.outputColumns,
+      );
+      expect(nestedResult.rows).toEqual([
+        [1, 7, 'Luís', 'Gonçalves', 'luisg@embraer.com.br'],
+      ]);
+    },
+  );
+
+  it('previews SQL with the required binding unset and does not create a worker', async () => {
+    const worker = vi.fn(() => {
+      throw new Error('Preview must not create a Worker.');
+    });
+    vi.stubGlobal('Worker', worker);
+
+    const preview = await TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+      project,
+      definition(groupedSource),
+      4,
+    );
+
+    expect(preview.sql).toContain('WHERE "i"."CustomerId" = ?');
+    expect(preview.sql).toContain('HAVING COUNT(*) >= ?');
+    expect(preview.sql).not.toContain('= 42');
+    expect(preview.fixedBindings).toEqual([7]);
+    expect(preview.bindingNames).toEqual([
+      'CustomerId',
+      'HAVING threshold (literal)',
+    ]);
+    expect(preview).not.toHaveProperty('bindings');
+    expect(worker).not.toHaveBeenCalled();
+    expect(reader.getRawJson).toHaveBeenCalledWith(
+      'demo@buyer@project',
+      'dbmodels/chinook/main/tables/Invoice/main.Invoice.columns.json',
+    );
+  });
+
+  it('previews the bounded customer-count CTE without a physical relationship receipt', async () => {
+    const worker = vi.fn(() => {
+      throw new Error('Preview must not create a Worker.');
+    });
+    vi.stubGlobal('Worker', worker);
+    const preview = await TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+      project,
+      definition(cteSource),
+      19,
+    );
+
+    expect(preview.sql).toContain('FROM (\nSELECT "i"."CustomerId" AS "CustomerId"');
+    expect(preview.sql).toContain('INNER JOIN "Customer" AS "c"');
+    expect(preview.sql).toContain('"totals"."CustomerId" = "c"."CustomerId"');
+    expect(preview.sql).toContain('HAVING COUNT(*) >= ?');
+    expect(preview.sql).not.toContain('= 1');
+    expect(preview.sql).not.toContain('>= 7');
+    expect(preview).not.toHaveProperty('relationship');
+    expect(preview).not.toHaveProperty('bindings');
+    expect(preview.fixedBindings).toEqual([7]);
+    expect(preview.authorProof?.profile).toBe('customer-count-cte');
+    expect(preview.outputColumns).toEqual([
+      { name: 'CustomerId', type: 'integer', lineage: [{ source: 'i', field: 'CustomerId' }] },
+      { name: 'InvoiceCount', type: 'integer', lineage: [] },
+      { name: 'FirstName', type: 'string', lineage: [{ source: 'c', field: 'FirstName' }] },
+      { name: 'LastName', type: 'string', lineage: [{ source: 'c', field: 'LastName' }] },
+      { name: 'Email', type: 'string', lineage: [{ source: 'c', field: 'Email' }] },
+    ]);
+    expect(worker).not.toHaveBeenCalled();
+  });
+
+  it('rejects a CTE CustomerId predicate moved to the outer query before schema reads', async () => {
+    const malformed = cteSource.replace(
+      '  where i.CustomerId = @CustomerId\n',
+      '',
+    ).replace(
+      'order by totals.CustomerId asc',
+      'where totals.CustomerId = @CustomerId\norder by totals.CustomerId asc',
+    );
+    await expect(
+      TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+        project,
+        definition(malformed),
+        20,
+      ),
+    ).rejects.toThrow('predicate must stay inside the referenced CTE');
+    expect(reader.getRawJson).not.toHaveBeenCalled();
+  });
+
+  it('rejects a schema-qualified CTE source before resolution can erase the qualifier', async () => {
+    const qualified = cteSource.replace(
+      'from CustomerCounts as totals',
+      'from forbidden.CustomerCounts as totals',
+    );
+    await expect(
+      TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+        project,
+        definition(qualified),
+        20,
+      ),
+    ).rejects.toThrow('unqualified named CTE reference');
+    expect(reader.getRawJson).not.toHaveBeenCalled();
+  });
+
+  it('rejects case-insensitively colliding CTE and Customer aliases', async () => {
+    const conflictingAliases = cteSource
+      .replace('join Customer as c', 'join Customer as TOTALS')
+      .replaceAll('c.', 'TOTALS.');
+    await expect(
+      TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+        project,
+        definition(conflictingAliases),
+        20,
+      ),
+    ).rejects.toThrow('CTE and Customer aliases must be distinct');
+  });
+
+  it('allows an inner Invoice alias to match the outer CTE alias in its nested scope', async () => {
+    const sameNestedAlias = cteSource
+      .replace('from Invoice as i', 'from Invoice as totals')
+      .replaceAll('i.', 'totals.');
+    const preview = await TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+      project,
+      definition(sameNestedAlias),
+      20,
+    );
+    expect(preview.sql).toContain('FROM "Invoice" AS "totals"');
+    expect(preview.sql).toContain(') AS "totals"');
+  });
+
+  it('rejects a CTE projection missing either required Customer string field', async () => {
+    for (const source of [
+      cteSource.replace('  c.LastName\n', ''),
+      cteSource.replace('  c.Email\n', ''),
+    ]) {
+      await expect(
+        TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+          project,
+          definition(source),
+          20,
+        ),
+      ).rejects.toThrow('all three Customer string fields');
+    }
+  });
+
+  it('still verifies the physical Customer primary key for a derived CTE join', async () => {
+    reader.getRawJson.mockImplementation((_projectId, path) =>
+      of(path.endsWith('Customer/main.Customer.columns.json')
+        ? {
+            columns: customerColumns.map((column) =>
+              column.name === 'CustomerId' ? { ...column, pkPosition: 0 } : column,
+            ),
+          }
+        : path.endsWith('chinook.refs.json')
+          ? refs
+          : path.endsWith('Invoice/main.Invoice.columns.json')
+            ? { columns }
+            : catalog),
+    );
+    await expect(
+      TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+        project,
+        definition(cteSource),
+        20,
+      ),
+    ).rejects.toThrow('Customer.CustomerId must be the non-null INTEGER primary key.');
+  });
+
+  it('keeps renamed CTE, key, and count aliases with a reversed explicit join', async () => {
+    const renamed = [
+      'parameters (',
+      '  @CustomerId integer required',
+      ')',
+      'with InvoiceTotals as (',
+      '  from Invoice as i',
+      '  where i.CustomerId = @CustomerId',
+      '  group by i.CustomerId',
+      '  having count(*) >= 7',
+      '  limit 100',
+      '  select (',
+      '    i.CustomerId as CustomerKey',
+      '    count(*) as InvoiceTotal',
+      '  )',
+      ')',
+      'from InvoiceTotals as counts',
+      'join Customer as c',
+      '  on c.CustomerId = counts.CustomerKey',
+      'order by counts.CustomerKey asc',
+      'limit 10',
+      'select (',
+      '  counts.CustomerKey',
+      '  counts.InvoiceTotal',
+      '  c.FirstName',
+      '  c.LastName',
+      '  c.Email',
+      ')',
+      '',
+    ].join('\n');
+    const preview = await TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+      project,
+      definition(renamed),
+      21,
+    );
+    expect(preview.sql).toContain('AS "CustomerKey"');
+    expect(preview.sql).toContain('AS "InvoiceTotal"');
+    expect(preview.sql).toContain('"counts"."CustomerKey" = "c"."CustomerId"');
+    expect(preview.outputColumns?.slice(0, 2)).toEqual([
+      { name: 'CustomerKey', type: 'integer', lineage: [{ source: 'i', field: 'CustomerId' }] },
+      { name: 'InvoiceTotal', type: 'integer', lineage: [] },
+    ]);
+  });
+
+  it('rejects case-insensitively colliding aliases in the legacy Invoice join', async () => {
+    const source = [
+      'parameters (',
+      '  @CustomerId integer required',
+      ')',
+      'from Invoice as i',
+      'join Customer as I',
+      '  on i.CustomerId = I.CustomerId',
+      'where i.CustomerId = @CustomerId',
+      'limit 100',
+      'select i.InvoiceId, i.CustomerId, I.FirstName, I.LastName, I.Email',
+      '',
+    ].join('\n');
+    await expect(
+      TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+        project,
+        joinedDefinition(source),
+        21,
+      ),
+    ).rejects.toThrow('Invoice and Customer aliases must be distinct');
+  });
+
+  it('rejects a missing or tampered CTE proof at the worker boundary', async () => {
+    const preview = await TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+      project,
+      definition(cteSource),
+      22,
+    );
+    const outputNames = preview.outputColumns?.map((column) => column.name);
+    const invoke = (
+      sql: string,
+      bindings: readonly (string | number | null)[],
+      columns: readonly string[] | undefined,
+      proof: typeof preview.authorProof | undefined,
+      profile: 'invoice-query' | 'customer-count-cte' | 'bounded-cte-query' | undefined,
+      fullColumns: typeof preview.outputColumns = preview.outputColumns,
+      relationship: typeof preview.relationship = preview.relationship,
+    ) =>
+      executePinnedSql(
+        sql,
+        undefined,
+        bindings,
+        true,
+        true,
+        columns,
+        proof,
+        preview.bindingNames,
+        preview.schemaVersion,
+        preview.draftRevision,
+        profile,
+        preview.fixtureSha256,
+        fullColumns,
+        relationship,
+      );
+
+    // Supplying each changed field explicitly exercises the immutable request
+    // that the browser worker receives from Run.
+    await expect(invoke(
+      preview.sql,
+      [1, ...preview.fixedBindings],
+      outputNames,
+      undefined,
+      'customer-count-cte',
+    )).rejects.toThrow('profile proof or execution metadata');
+    const commentedSql = preview.sql.replace('FROM (\n', 'FROM /* disguised source */ (\n');
+    await expect(invoke(
+      commentedSql,
+      [1, ...preview.fixedBindings],
+      outputNames,
+      undefined,
+      undefined,
+    )).rejects.toThrow('profile proof or execution metadata');
+    const invoiceScan = {
+      kind: 'recursive-dtql',
+      from: { kind: 'table', name: 'Invoice', alias: 'i', joins: [] },
+      limit: 10,
+      columns: [{ expression: { kind: 'field', field: { source: 'i', field: 'InvoiceId' } } }],
+    } as unknown as typeof preview.authorProof.resolvedQuery;
+    await expect(invoke(
+      preview.sql,
+      [1, ...preview.fixedBindings],
+      outputNames,
+      { profile: 'customer-count-cte', resolvedQuery: invoiceScan },
+      'customer-count-cte',
+    )).rejects.toThrow('independently compiled profile');
+    for (const duplicateAlias of ['InvoiceCount', 'invoicecount']) {
+      const duplicateInnerExports = structuredClone(
+        preview.authorProof.resolvedQuery,
+      ) as unknown as {
+        from: {
+          as: string;
+          query: { columns: Array<{ as?: string }> };
+          joins: Array<{
+            on: Array<{
+              left: { source: string; field: string };
+              right: { source: string; field: string };
+            }>;
+          }>;
+        };
+        orderBy: Array<{ field: { source: string; field: string } }>;
+        columns: Array<{
+          expression: {
+            kind: 'field';
+            field: { source: string; field: string };
+          };
+          as?: string;
+        }>;
+      };
+      const keyExport = duplicateInnerExports.from.query.columns[0];
+      const countExport = duplicateInnerExports.from.query.columns[1];
+      const outerOrder = duplicateInnerExports.orderBy[0];
+      const outerKey = duplicateInnerExports.columns[0];
+      if (!keyExport || !countExport || !outerOrder || !outerKey)
+        throw new Error('The compiled CTE proof must contain both exports and its outer key.');
+      keyExport.as = duplicateAlias;
+      countExport.as = duplicateAlias;
+      for (const side of [
+        duplicateInnerExports.from.joins[0]?.on[0]?.left,
+        duplicateInnerExports.from.joins[0]?.on[0]?.right,
+      ]) {
+        if (side?.source === duplicateInnerExports.from.as)
+          side.field = duplicateAlias;
+      }
+      outerOrder.field.field = duplicateAlias;
+      outerKey.expression.field.field = duplicateAlias;
+      outerKey.as = 'CustomerId';
+      await expect(invoke(
+        preview.sql,
+        [1, ...preview.fixedBindings],
+        outputNames,
+        {
+          profile: 'customer-count-cte',
+          resolvedQuery: duplicateInnerExports as unknown as typeof preview.authorProof.resolvedQuery,
+        },
+        'customer-count-cte',
+      )).rejects.toThrow('key and count outputs must have distinct names');
+    }
+    await expect(executePinnedSql(
+      preview.sql,
+      undefined,
+      [1, ...preview.fixedBindings],
+      true,
+      true,
+      outputNames,
+      preview.authorProof,
+      preview.bindingNames,
+      undefined,
+      undefined,
+      'customer-count-cte',
+      preview.fixtureSha256,
+      preview.outputColumns,
+    )).rejects.toThrow('profile proof or execution metadata');
+    await expect(executePinnedSql(
+      preview.sql,
+      undefined,
+      [1, ...preview.fixedBindings],
+      true,
+      true,
+      outputNames,
+      preview.authorProof,
+      preview.bindingNames,
+      preview.schemaVersion,
+      -1,
+      'customer-count-cte',
+      preview.fixtureSha256,
+      preview.outputColumns,
+    )).rejects.toThrow('profile proof or execution metadata');
+    await expect(executePinnedSql(
+      preview.sql,
+      undefined,
+      [1, ...preview.fixedBindings],
+      true,
+      true,
+      outputNames,
+      preview.authorProof,
+      preview.bindingNames,
+      preview.schemaVersion,
+      preview.draftRevision,
+      preview.authorProof?.profile,
+      'bad-fixture-hash',
+    )).rejects.toThrow('profile proof or execution metadata');
+    await expect(invoke(
+      preview.sql,
+      [1, ...preview.fixedBindings],
+      outputNames,
+      preview.authorProof
+        ? { ...preview.authorProof, profile: 'wrong' as 'customer-count-cte' }
+        : undefined,
+      'customer-count-cte',
+    )).rejects.toThrow('profile proof or execution metadata');
+    await expect(invoke(
+      `${preview.sql} `,
+      [1, ...preview.fixedBindings],
+      outputNames,
+      preview.authorProof,
+      'customer-count-cte',
+    )).rejects.toThrow('independently compiled profile');
+    const fabricatedRelationship = {
+      id: 'FK_Invoice_Customer_CustomerId',
+      version: '1',
+      fromSource: 'Invoice',
+      toSource: 'Customer',
+      joinType: 'inner',
+      pairs: [{ fromField: 'CustomerId', toField: 'CustomerId' }],
+    } as const;
+    await expect(invoke(
+      preview.sql,
+      [1, ...preview.fixedBindings],
+      outputNames,
+      preview.authorProof,
+      'customer-count-cte',
+      preview.outputColumns,
+      fabricatedRelationship,
+    )).rejects.toThrow('cannot carry a physical relationship receipt');
+    await expect(invoke(
+      preview.sql,
+      [1, ...preview.fixedBindings],
+      ['ChangedOutput'],
+      preview.authorProof,
+      'customer-count-cte',
+    )).rejects.toThrow('independently compiled profile');
+    const changedLineage = preview.outputColumns?.map((column, index) =>
+      index === 0 ? { ...column, lineage: [] } : column,
+    );
+    await expect(invoke(
+      preview.sql,
+      [1, ...preview.fixedBindings],
+      outputNames,
+      preview.authorProof,
+      'customer-count-cte',
+      changedLineage,
+    )).rejects.toThrow('independently compiled profile');
+    await expect(invoke(
+      preview.sql,
+      [1, 8],
+      outputNames,
+      preview.authorProof,
+      'customer-count-cte',
+    )).rejects.toThrow('independently compiled profile');
+    await expect(invoke(
+      preview.sql,
+      [1, ...preview.fixedBindings],
+      outputNames,
+      undefined,
+      undefined,
+    )).rejects.toThrow('profile proof or execution metadata');
+  });
+
+  it('previews a resolver-backed Invoice to Customer join and returns a source-preserving completion', async () => {
+    const customerColumns = [
+      {
+        name: 'CustomerId',
+        dbType: 'INTEGER',
+        isNullable: false,
+        pkPosition: 1,
+      },
+      { name: 'FirstName', dbType: 'NVARCHAR(40)', isNullable: false },
+      { name: 'LastName', dbType: 'NVARCHAR(20)', isNullable: false },
+      { name: 'Email', dbType: 'NVARCHAR(60)', isNullable: false },
+    ];
+    const refs = {
+      version: 1,
+      foreignKeys: [
+        {
+          name: 'FK_Invoice_Customer_CustomerId',
+          table: { schema: 'main', name: 'Invoice' },
+          columns: ['CustomerId'],
+          refTable: { schema: 'main', name: 'Customer' },
+          refColumns: ['CustomerId'],
+        },
+      ],
+    };
+    reader.getRawJson.mockImplementation((_projectId, path) =>
+      of(
+        path.endsWith('Customer/main.Customer.columns.json')
+          ? { columns: customerColumns }
+          : path.endsWith('chinook.refs.json')
+            ? refs
+            : path.endsWith('Invoice/main.Invoice.columns.json')
+              ? { columns }
+              : catalog,
+      ),
+    );
+    const source = [
+      'parameters (',
+      '  @CustomerId integer required',
+      ')',
+      'from Invoice as i',
+      'join Customer as c -- retained join note',
+      '-- comment stays after the join',
+      'where i.CustomerId = @CustomerId',
+      'limit 100',
+      'select i.InvoiceId, i.CustomerId, c.FirstName, c.LastName, c.Email',
+      '',
+    ].join('\n');
+    const service = TestBed.inject(PublicSqliteQueryService);
+    const query = joinedDefinition(source);
+    const preview = await service.prepareTugQL(project, query, 12);
+    expect(preview.sql).toContain(
+      'INNER JOIN "Customer" AS "c" ON "i"."CustomerId" = "c"."CustomerId"',
+    );
+    expect(preview.sql).toContain('ORDER BY "i"."InvoiceId" ASC');
+    expect(preview.sql).toContain('WHERE "i"."CustomerId" = ?');
+    expect(preview.expandedSource).toContain(
+      'join Customer as c -- retained join note\n  on i.CustomerId = c.CustomerId\n-- comment stays after the join',
+    );
+    expect(preview.relationship).toMatchObject({
+      id: 'FK_Invoice_Customer_CustomerId',
+      fromSource: 'i',
+      toSource: 'c',
+      pairs: [{ fromField: 'CustomerId', toField: 'CustomerId' }],
+    });
+    expect(
+      preview.outputColumns?.find((column) => column.name === 'CustomerId'),
+    ).toEqual({
+      name: 'CustomerId',
+      type: 'integer',
+      lineage: [{ source: 'i', field: 'CustomerId' }],
+    });
+    expect(preview.fixedBindings).toEqual([]);
+    expect(preview).not.toHaveProperty('bindings');
+    await expect(service.runTugQL(project, query, 12, '1', preview)).rejects.toThrow(
+      'Apply the displayed relationship completion',
+    );
+
+    let tamperReceipt: 'relationship' | 'lineage' | undefined;
+    class JoinedReceiptWorker {
+      public onmessage: ((event: MessageEvent) => void) | null = null;
+      public onerror: (() => void) | null = null;
+      public postMessage(message: Record<string, unknown>): void {
+        const relationship = message['relationship'] as {
+          readonly id: string;
+          readonly version: string;
+        };
+        const outputColumns = message['outputColumns'] as {
+          readonly name: string;
+          readonly type: string;
+          readonly lineage: readonly { readonly source: string; readonly field: string }[];
+        }[];
+        queueMicrotask(() =>
+          this.onmessage?.({
+            data: {
+              ok: true,
+              result: {
+                columns: [
+                  'InvoiceId',
+                  'CustomerId',
+                  'FirstName',
+                  'LastName',
+                  'Email',
+                ],
+                rows: [
+                  [
+                    98,
+                    1,
+                    'Luís',
+                    'Gonçalves',
+                    'luisg@embraer.com.br',
+                  ],
+                ],
+              },
+              receipt: {
+                executionId: '00000000-0000-4000-8000-000000000002',
+                sql: message['sql'],
+                bindings: message['bindings'],
+                bindingNames: message['bindingNames'],
+                fixtureSha256: message['fixtureSha256'],
+                schemaVersion: message['schemaVersion'],
+                draftRevision: message['draftRevision'],
+                schemaFingerprint:
+                  'CustomerId:INTEGER|InvoiceId:INTEGER|InvoiceDate:DATETIME|CustomerId:INTEGER:PK|FirstName:STRING|LastName:STRING|Email:STRING|FK_Invoice_Customer_CustomerId:Invoice.CustomerId->Customer.CustomerId',
+                relationship:
+                  tamperReceipt === 'relationship'
+                    ? { ...relationship, id: 'FK_changed' }
+                    : relationship,
+                outputColumns:
+                  tamperReceipt === 'lineage'
+                    ? [
+                        {
+                          ...outputColumns[0],
+                          lineage: [{ source: 'c', field: 'InvoiceId' }],
+                        },
+                        ...outputColumns.slice(1),
+                      ]
+                    : outputColumns,
+              },
+            },
+          } as MessageEvent),
+        );
+      }
+      public terminate(): void {
+        return;
+      }
+    }
+    vi.stubGlobal('Worker', JoinedReceiptWorker);
+    const completedQuery = joinedDefinition(preview.expandedSource ?? '');
+    const completedPreview = await service.prepareTugQL(project, completedQuery, 13);
+    expect(completedPreview).not.toHaveProperty('expandedSource');
+    tamperReceipt = 'relationship';
+    await expect(
+      service.runTugQL(project, completedQuery, 13, '1', completedPreview),
+    ).rejects.toThrow('worker receipt did not match');
+    tamperReceipt = 'lineage';
+    await expect(
+      service.runTugQL(project, completedQuery, 13, '1', completedPreview),
+    ).rejects.toThrow('worker receipt did not match');
+    tamperReceipt = undefined;
+    const result = await service.runTugQL(project, completedQuery, 13, '1', completedPreview);
+    expect(
+      result.recordset.columns.find((column) => column.name === 'CustomerId')
+        ?.type,
+    ).toBe('integer');
+    expect(
+      result.recordset.columns.find((column) => column.name === 'Email')?.type,
+    ).toBe('string');
+    expect(
+      result.publicSqliteReceipt?.outputColumns?.find(
+        (column) => column.name === 'CustomerId',
+      ),
+    ).toEqual({
+      name: 'CustomerId',
+      type: 'integer',
+      lineage: [{ source: 'i', field: 'CustomerId' }],
+    });
+    expect(result.recordset.rows[0]?.[1]).toEqual({
+      type: 'integer',
+      value: '1',
+    });
+
+    const shorthandSource = source.replace(
+      'join Customer as c -- retained join note\n-- comment stays after the join',
+      'join Customer as c\n  on CustomerId\n-- comment stays after the join',
+    );
+    const shorthand = await TestBed.inject(
+      PublicSqliteQueryService,
+    ).prepareTugQL(project, joinedDefinition(shorthandSource), 13);
+    await expect(
+      service.runTugQL(project, joinedDefinition(shorthandSource), 13, '1', shorthand),
+    ).rejects.toThrow('Apply the displayed relationship completion');
+    expect(shorthand.expandedSource).toContain(
+      'join Customer as c\n  on i.CustomerId = c.CustomerId\n-- comment stays after the join',
+    );
+
+    reader.getRawJson.mockImplementation((_projectId, path) =>
+      of(
+        path.endsWith('Customer/main.Customer.columns.json')
+          ? { columns: customerColumns }
+          : path.endsWith('chinook.refs.json')
+            ? { version: 1, foreignKeys: [] }
+            : path.endsWith('Invoice/main.Invoice.columns.json')
+              ? { columns }
+              : catalog,
+      ),
+    );
+    await expect(
+      TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+        project,
+        joinedDefinition(source),
+        12,
+      ),
+    ).rejects.toThrow('missing, changed, or ambiguous');
+
+    reader.getRawJson.mockImplementation((_projectId, path) =>
+      of(
+        path.endsWith('Customer/main.Customer.columns.json')
+          ? {
+              columns: customerColumns.map((column) =>
+                column.name === 'CustomerId'
+                  ? { ...column, pkPosition: 0 }
+                  : column,
+              ),
+            }
+          : path.endsWith('chinook.refs.json')
+            ? refs
+            : path.endsWith('Invoice/main.Invoice.columns.json')
+              ? { columns }
+              : catalog,
+      ),
+    );
+    await expect(
+      TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+        project,
+        joinedDefinition(source),
+        12,
+      ),
+    ).rejects.toThrow('non-null INTEGER primary key');
+
+    reader.getRawJson.mockImplementation((_projectId, path) =>
+      of(
+        path.endsWith('Customer/main.Customer.columns.json')
+          ? { columns: customerColumns }
+          : path.endsWith('chinook.refs.json')
+            ? {
+                version: 1,
+                foreignKeys: [...refs.foreignKeys, ...refs.foreignKeys],
+              }
+            : path.endsWith('Invoice/main.Invoice.columns.json')
+              ? { columns }
+              : catalog,
+      ),
+    );
+    await expect(
+      TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+        project,
+        joinedDefinition(source),
+        12,
+      ),
+    ).rejects.toThrow('missing, changed, or ambiguous');
+
+    reader.getRawJson.mockImplementation((_projectId, path) =>
+      of(
+        path.endsWith('Customer/main.Customer.columns.json')
+          ? { columns: customerColumns }
+          : path.endsWith('chinook.refs.json')
+            ? {
+                ...refs,
+                foreignKeys: [
+                  ...refs.foreignKeys,
+                  {
+                    name: 'FK_Invoice_Customer_CustomerId',
+                    table: { schema: 'main', name: 'Playlist' },
+                    columns: ['CustomerId'],
+                    refTable: { schema: 'main', name: 'Track' },
+                    refColumns: ['CustomerId'],
+                  },
+                ],
+              }
+            : path.endsWith('Invoice/main.Invoice.columns.json')
+              ? { columns }
+              : catalog,
+      ),
+    );
+    await expect(
+      service.prepareTugQL(project, joinedDefinition(source), 12),
+    ).rejects.toThrow('missing, changed, or ambiguous');
+  });
+
+  it('rejects duplicate output aliases through the normal TugQL resolver', async () => {
+    const duplicateAlias = [
+      'parameters (',
+      '  @CustomerId integer required',
+      ')',
+      'from Invoice as i',
+      'where i.CustomerId = @CustomerId',
+      'limit 10',
+      'select i.InvoiceId as Value, i.InvoiceDate as Value',
+      '',
+    ].join('\n');
+
+    await expect(
+      TestBed.inject(PublicSqliteQueryService).prepareTugQL(
+        project,
+        definition(duplicateAlias),
+        1,
+      ),
+    ).rejects.toThrow();
+  });
+
+  it('blocks an invalid Run and binds a valid value into the recompiled template', async () => {
+    const workerMessages: Record<string, unknown>[] = [];
+    let workerTerminated = false;
+    class ReceiptWorker {
+      public onmessage: ((event: MessageEvent) => void) | null = null;
+      public onerror: (() => void) | null = null;
+      public postMessage(message: Record<string, unknown>): void {
+        workerMessages.push(message);
+        queueMicrotask(() =>
+          this.onmessage?.({
+            data: {
+              ok: true,
+              result: {
+                columns: ['CustomerId', 'InvoiceCount'],
+                rows: [[2, 7]],
+              },
+              receipt: {
+                executionId: '00000000-0000-4000-8000-000000000001',
+                sql: message['sql'],
+                bindings: message['bindings'],
+                bindingNames: message['bindingNames'],
+                fixtureSha256: message['fixtureSha256'],
+                schemaVersion: message['schemaVersion'],
+                draftRevision: message['draftRevision'],
+                schemaFingerprint:
+                  'CustomerId:INTEGER|InvoiceId:INTEGER|InvoiceDate:DATETIME',
+              },
+            },
+          } as MessageEvent),
+        );
+      }
+      public terminate(): void {
+        workerTerminated = true;
+      }
+    }
+    vi.stubGlobal('Worker', ReceiptWorker);
+
+    const service = TestBed.inject(PublicSqliteQueryService);
+    const query = definition(groupedSource);
+    const preview = await service.prepareTugQL(project, query, 8);
+    const onDispatched = vi.fn();
+    await expect(
+      service.runTugQL(project, query, 8, '', preview, undefined, undefined, onDispatched),
+    ).rejects.toThrow('whole-number CustomerId');
+    expect(workerMessages).toHaveLength(0);
+
+    expect(onDispatched).not.toHaveBeenCalled();
+    const result = await service.runTugQL(project, query, 8, '42', preview, undefined, undefined, onDispatched);
+    expect(onDispatched).toHaveBeenCalledOnce();
+    expect(workerMessages).toHaveLength(1);
+    expect(workerMessages[0]['sql']).toBe(preview.sql);
+    expect(workerMessages[0]['bindings']).toEqual([42, 7]);
+    expect(workerMessages[0]['bindingNames']).toEqual([
+      'CustomerId',
+      'HAVING threshold (literal)',
+    ]);
+    expect(workerTerminated).toBe(true);
+    expect(result.bindingsApplied).toEqual([
+      {
+        parameterId: 'CustomerId',
+        value: { type: 'integer', value: '42' },
+        origin: 'manual',
+        originEvidence: 'client-reported',
+      },
+    ]);
+
+    await expect(
+      service.runTugQL(
+        project,
+        query,
+        8,
+        '42',
+        preview,
+        undefined,
+        {
+          origin: 'other',
+          originEvidence: 'client-reported',
+        } as unknown as PublicSqliteClientReportedBinding,
+      ),
+    ).rejects.toThrow('input origin is invalid');
+    expect(workerMessages).toHaveLength(1);
+
+    const inputOrigin = {
+      origin: 'selection' as const,
+      originEvidence: 'client-reported' as const,
+      sourceQueryId: 'chinook-customer-invoice-join',
+      sourceColumn: 'CustomerId',
+    };
+    const selectedPromise = service.runTugQL(
+      project,
+      query,
+      8,
+      '42',
+      preview,
+      undefined,
+      inputOrigin,
+    );
+    inputOrigin.sourceQueryId = 'mutated-after-call';
+    const selected = await selectedPromise;
+    expect(selected.bindingsApplied[0]).toMatchObject({
+      origin: 'selection',
+      originEvidence: 'client-reported',
+    });
+    expect(selected.publicSqliteReceipt?.clientReportedBinding).toEqual({
+      origin: 'selection',
+      originEvidence: 'client-reported',
+      sourceQueryId: 'chinook-customer-invoice-join',
+      sourceColumn: 'CustomerId',
+    });
+  });
+});

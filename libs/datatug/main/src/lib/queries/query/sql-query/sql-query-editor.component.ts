@@ -73,8 +73,8 @@ import { SqlParser, IAstQuery } from '../../../services/unsorted/sql-parser';
 import { ISqlCommandRequest } from '../../../dto/requests';
 import { IExecuteRequest } from '../../../dto/request';
 import { IRecordsetResult, IRecordset } from '../../../dto/execute';
+import { ICommandResponseItem } from '../../../dto/command-response';
 import {
-  ICommandResponseItem,
   ICommandResponseWithRecordset,
 } from '../../../dto/response';
 import { IEnvDbServer } from '../../../models/definition/environments';

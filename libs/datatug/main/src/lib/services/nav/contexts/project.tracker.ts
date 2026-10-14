@@ -1,5 +1,6 @@
+import { readProjectApiQuery } from '../../../nav/project-api-routing';
 import { ActivatedRoute } from '@angular/router';
-import { Observable } from 'rxjs';
+import { combineLatest, Observable } from 'rxjs';
 import { routingParamProjectId } from '../../../core/datatug-routing-params';
 import {
   equalProjectRef,
@@ -39,8 +40,9 @@ export class ProjectTracker {
       takeUntil(stopNotifier),
       map((paramMap) => paramMap.get(routingParamProjectId) || ''),
     );
-    this.projectRef = route.paramMap.pipe(
-      map((params) => ({
+    this.projectRef = combineLatest([route.paramMap, route.queryParamMap]).pipe(
+      map(([params, query]) => ({
+        ...readProjectApiQuery(query),
         storeId: params.get('storeId') || '',
         projectId: params.get(routingParamProjectId) || '',
         ...(params.has('spaceId')
@@ -54,6 +56,8 @@ export class ProjectTracker {
     if (
       isValidProjectRef(project?.ref) &&
       project.ref.spaceID === undefined &&
+      !project.ref.projectApi &&
+      !route.snapshot?.queryParamMap?.has('projectApi') &&
       !route.snapshot?.paramMap.has('spaceId')
     ) {
       this.projectRef = this.projectRef.pipe(startWith(project.ref));

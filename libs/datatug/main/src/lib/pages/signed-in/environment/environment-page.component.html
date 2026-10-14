@@ -17,7 +17,7 @@
     </ion-card-header>
     @if (env?.dbServers) {
       <ion-list>
-        @for (server of env?.dbServers || []; track server) {
+        @for (server of env.dbServers || []; track server) {
           <ion-item tappable (click)="goDbServer(server)">
             @if (server) {
               <ion-label
@@ -46,7 +46,7 @@
     </ion-card-header>
     @if (env?.dbServers) {
       <ion-list>
-        @for (dbServer of env?.dbServers || []; track dbServer) {
+        @for (dbServer of env.dbServers || []; track dbServer) {
           @for (catalog of dbServer.catalogs || []; track catalog) {
             <ion-item tappable (click)="goDb(catalog)">
               <ion-label>{{ catalog }}</ion-label>
@@ -70,7 +70,7 @@
     </ion-card-header>
     @if (env?.dbServers) {
       <ion-list>
-        @for (dbServer of env?.dbServers || []; track dbServer) {
+        @for (dbServer of env.dbServers || []; track dbServer) {
           <ion-item tappable (click)="goDbServer(dbServer)">
             @if (dbServer) {
               <ion-label

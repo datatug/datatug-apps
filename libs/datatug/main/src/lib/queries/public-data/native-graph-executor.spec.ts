@@ -21,14 +21,23 @@ import {
 import { NATIVE_GRAPH_ORIGINAL_DECISION } from './native-graph-contract';
 import type { BoundedRecord } from './bounded-federation';
 import { JsonNumberToken } from './strict-json';
+import * as publicDataScenario from './public-data-scenario';
 
 const budgets: BoundedRunBudget[] = [];
+type Mutable<T> = T extends string
+  ? T
+  : T extends readonly unknown[]
+  ? { -readonly [Key in keyof T]: Mutable<T[Key]> }
+  : T extends object
+    ? { -readonly [Key in keyof T]: Mutable<T[Key]> }
+    : T;
 const budget = (): BoundedRunBudget => {
   const b = new BoundedRunBudget(5 * 1024 * 1024, 10000);
   budgets.push(b);
   return b;
 };
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const b of budgets.splice(0)) b.close();
 });
 const records = (rows: readonly Record<string, unknown>[]): BoundedRecord[] =>
@@ -107,7 +116,7 @@ describe('finite W1 native graph', () => {
     ).toBe('invalid');
   });
   it('executes pinned DALgo on native relations: two affiliations, two locations and38 aliases become4 and76 occurrences', async () => {
-    const p = plan(),
+    const p = structuredClone(plan()) as Mutable<NativeGraphPlan>,
       http = transport(p, sample);
     const execution = new NativeGraphExecution(
       p,
@@ -148,7 +157,13 @@ describe('finite W1 native graph', () => {
       transport(p, input),
       'https://runtime.example', graphFixtureMetadataTransport,
     );
+    const validRorUrl = vi.spyOn(publicDataScenario, 'validNativeRorUrl');
     const result = await execution.run();
+    // Each source URL is checked once for grouping and once for row status.
+    // Rebuilding the stage key set per affiliation would add millions of
+    // validations, so keep this work linear in the selected affiliations.
+    expect(validRorUrl.mock.calls.length).toBeGreaterThanOrEqual(1000);
+    expect(validRorUrl.mock.calls.length).toBeLessThanOrEqual(2000);
     expect(result.affiliations).toHaveLength(1000);
     expect(result.locations).toHaveLength(1000);
     expect(result.aliases).toHaveLength(0);
@@ -186,7 +201,7 @@ describe('finite W1 native graph', () => {
     expect(http).not.toHaveBeenCalled();
   });
   it('keeps singleton partial reads unresolved and does not cascade a continuation', async () => {
-    const p = plan(),
+    const p = structuredClone(plan()) as Mutable<NativeGraphPlan>,
       http = transport(p, sample),
       execution = new NativeGraphExecution(
         p,
@@ -270,7 +285,7 @@ describe('finite W1 native graph', () => {
     ).rejects.toThrow('Duplicate native child identity');
   });
   it('refuses changed runtime pins and unknown graph fields before accepting rows', async () => {
-    const p = plan(),
+    const p = structuredClone(plan()) as Mutable<NativeGraphPlan>,
       http = transport(p, sample);
     p.envelope.graphs[0].edges[0] = {
       ...p.envelope.graphs[0].edges[0],
@@ -313,7 +328,9 @@ describe('finite W1 native graph', () => {
     await executeFiniteGraphJoin(left, right, ledger);
     expect(ledger.candidates).toBe(2);
     expect(ledger.intermediate).toBe(2);
-    const shape = finiteGraphJoin('left', 'right');
+    const shape = structuredClone(
+      finiteGraphJoin('left', 'right'),
+    ) as Mutable<ReturnType<typeof finiteGraphJoin>>;
     shape.from.joins[0].hints = { algorithms: ['nestedLoop'] };
     expect(() => assertFiniteGraphJoin(shape)).toThrow('flat hash');
     ledger.reserve(0, 99998);
@@ -480,7 +497,7 @@ describe('finite W1 native graph', () => {
   it('saved plan identity includes every graph/operator/stage/native/runtime pin and request option', () => {
     const p = plan();
     const identity = graphStableIdentity(p),
-      copy = structuredClone(p);
+      copy = structuredClone(p) as Mutable<NativeGraphPlan>;
     copy.stages.admin1.runtime.manifestSha256 = 'e'.repeat(64);
     expect(graphStableIdentity(copy)).not.toBe(identity);
     copy.stages.admin1.runtime.manifestSha256 =

@@ -10,9 +10,11 @@ import {
   AgentContextService,
   ContextItem,
   InvestigationContextService,
+  type ContextScope,
 } from '@sneat/datatug-semantic';
 import { RandomIdService } from '@sneat/random';
 import { BehaviorSubject, defer, of, Subject } from 'rxjs';
+import type { Mock } from 'vitest';
 import { IncidentCreatePageComponent } from './incident-create-page.component';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { IncidentClientService } from '../../../incidents/incident-client.service';
@@ -55,7 +57,10 @@ describe('IncidentCreatePageComponent', () => {
   let securityContextId: ReturnType<typeof signal<string | undefined>>;
   let refreshAgentContextSpy: ReturnType<typeof vi.fn>;
   let investigationItems: ReturnType<typeof signal<readonly ContextItem[]>>;
-  let setScopeSpy: ReturnType<typeof vi.fn>;
+  let setScopeSpy: Mock<(
+    scope: Omit<ContextScope, 'agentUrl'> | ContextScope,
+    agentUrl?: string,
+  ) => void>;
   let clearContextSpy: ReturnType<typeof vi.fn>;
   let isCurrentScopeSpy: ReturnType<typeof vi.fn>;
   let createSpy: ReturnType<typeof vi.fn>;
@@ -67,10 +72,12 @@ describe('IncidentCreatePageComponent', () => {
     itemsByAgent?: Readonly<Record<string, readonly ContextItem[]>>,
   ): Promise<void> => {
     storeId$ = new BehaviorSubject<string | undefined>('localhost:8989');
-    project$ = new BehaviorSubject({
+    project$ = new BehaviorSubject<
+      { ref: { storeId: string; projectId: string } } | undefined
+    >({
       ref: { storeId: 'localhost:8989', projectId: 'billing' },
     });
-    environment$ = new BehaviorSubject({ id: 'prod' });
+    environment$ = new BehaviorSubject<{ id: string } | undefined>({ id: 'prod' });
     queryParamMap$ = new BehaviorSubject(convertToParamMap(query));
     securityContextId = signal<string | undefined>('ctx-1');
     refreshAgentContextSpy = vi.fn(() => of({ securityContextId: 'ctx-1' }));
@@ -293,9 +300,9 @@ describe('IncidentCreatePageComponent', () => {
     expect(guidance?.getAttribute('aria-live')).toBe('polite');
   });
 
-  it.each([
-    [{ agent: 'agent-b:8989' }, 'agent B'],
-    [{ project: 'operations' }, 'an explicit project'],
+  it.each<Record<string, string>>([
+    { agent: 'agent-b:8989' },
+    { project: 'operations' },
   ])(
     'fails closed and keeps persistent guidance for partial URL scope: %s',
     async (query) => {

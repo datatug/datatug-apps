@@ -1,22 +1,38 @@
+<sneat-datatug-semantic-mapping-dialog [bundle]="semanticDialog()" [needsReview]="semanticNeedsReview()" [columnIndex]="semanticColumn()" [columnName]="semanticBasis()?.columns?.[semanticColumn()]?.name || ''" [saving]="semanticSaving()" [error]="semanticError()" [storageLabel]="semanticStorage()" [saveLabel]="semanticSaveLabel()" [savedChoices]="semanticSavedChoices()" [choicesLoading]="semanticChoicesLoading()" [choicesMessage]="semanticChoicesMessage()" (save)="saveColumnMeaning($event)" (dismissed)="semanticDialog.set(undefined)" />
 <ion-header>
-  <ion-toolbar>
+  <ion-toolbar color="light">
     <ion-buttons slot="start">
       <ion-menu-button />
-      <ion-back-button [defaultHref]="queriesBackHref" />
+      <ion-back-button
+        [defaultHref]="queriesBackHref"
+        text=""
+        aria-label="Back to queries"
+      />
     </ion-buttons>
-    <sneat-datatug-page-title pageTitle="Query" />
+    <sneat-datatug-page-title
+      class="query-page-title"
+      [pageTitle]="queryPageTitle()"
+    />
+    <ion-title class="query-mobile-title">Query</ion-title>
+    <ion-note slot="end" class="query-save-state" data-testid="query-save-state" role="status">{{ querySaveState() }}</ion-note>
     <ion-buttons slot="end">
+      @if (queryValidatorsHref; as href) {
+        <ion-button class="query-action" [href]="href" fill="clear" aria-label="Edit query Validators">
+          <ion-icon name="shield-checkmark-outline" slot="start" />
+          <ion-label class="query-action-text">Validators</ion-label>
+        </ion-button>
+      }
       <ion-button
-        class="ion-padding-horizontal"
+        class="query-action"
         slot="end"
-        [disabled]="queryState.isSaving"
+        [disabled]="semanticSaving() || queryState.isSaving || queryState.saveSupported === false || !canSaveQuery()"
         [fill]="isChanged ? 'solid' : 'clear'"
         [color]="isChanged ? 'danger' : 'medium'"
-        title="Save changes"
+        aria-label="Save changes"
         (click)="saveChanges()"
       >
         <ion-icon name="save-outline" slot="start" />
-        <ion-label>
+        <ion-label class="query-action-text">
           @if (queryState.isSaving) {
             Saving...
           } @else {
@@ -29,6 +45,83 @@
 </ion-header>
 
 <ion-content color="light">
+      @if (semanticPersonalCopies().length) {
+        <ion-select label="Personal queries on this device" placeholder="Open a saved copy" interface="popover" (ionChange)="openSemanticPersonalCopy($event.detail.value)">
+          @for (copy of semanticPersonalCopies(); track copy.id) { <ion-select-option [value]="copy.id">{{ copy.title || copy.id }}</ion-select-option> }
+        </ion-select>
+      }
+
+  @if (isTugqlAuthorJourney()) {
+    <sneat-query-workspace-layout [showResultsJump]="queryView() === 'author'">
+      <div query-workspace-navigation>
+        <ion-buttons class="query-view-switch" role="group" aria-label="Query workspace view">
+          <ion-button data-testid="query-view-author"
+            [class.is-active]="queryView() === 'author'"
+            [attr.aria-pressed]="queryView() === 'author'"
+            fill="clear"
+            [color]="queryView() === 'author' ? 'primary' : 'medium'"
+            (click)="setQueryView('author')">Author</ion-button>
+          <ion-button data-testid="query-view-compare"
+            [class.is-active]="queryView() === 'compare'"
+            [attr.aria-pressed]="queryView() === 'compare'"
+            fill="clear"
+            [color]="queryView() === 'compare' ? 'primary' : 'medium'"
+            (click)="setQueryView('compare')">Compare</ion-button>
+        </ion-buttons>
+      </div>
+      <div query-workspace-editor>
+        <ng-container *ngTemplateOutlet="queryEditor" />
+      </div>
+      @if (queryView() === 'author') {
+        <div query-workspace-results>
+          <ng-container *ngTemplateOutlet="queryResults" />
+        </div>
+      }
+    </sneat-query-workspace-layout>
+  }
+  <ng-template #queryEditor>
+  @if (project?.ref?.projectApi && !isTugqlAuthorJourney()) {
+    <ion-item
+      ><ion-label>Branch: {{ project.ref.branch }}</ion-label
+      ><ion-button
+        (click)="loadQueryBranches()"
+        [disabled]="queryState.isSaving"
+        fill="clear"
+        >List branches</ion-button
+      ><ion-button (click)="reloadSavedQuery()" [disabled]="queryState.isSaving"
+        >Reload saved query</ion-button
+      ></ion-item
+    >
+    @if (queryBranches().length && project.ref.projectApi === 'cloud') {
+      <ion-item
+        ><ion-select
+          label="Open branch"
+          [value]="project.ref.branch"
+          (ionChange)="queryBranchChanged($event)"
+          [disabled]="queryState.isSaving"
+        >
+          @for (branch of queryBranches(); track branch.name) {
+            <ion-select-option [value]="branch.name">{{
+              branch.name
+            }}</ion-select-option>
+          }
+        </ion-select></ion-item
+      >
+    }
+    @if (branchError(); as error) {
+      <ion-item
+        ><ion-label color="danger">{{ error }}</ion-label></ion-item
+      >
+    }
+    @if (queryState.saveError; as error) {
+      <ion-item
+        ><ion-label color="danger" class="ion-text-wrap">{{
+          error
+        }}</ion-label></ion-item
+      >
+    }
+  }
+
   @if (queryDef()?.publicData; as saved) {
     <ion-card
       ><ion-card-header
@@ -298,53 +391,567 @@
       </ion-card-content></ion-card
     >
   }
-  <ion-card>
-    <ion-item>
-      <ion-input
-        placeholder="Title - is required"
-        [value]="queryState.title"
-        (ionChange)="queryTitleChanged($event)"
-        readonly="false"
-      />
-      <ion-select interface="popover" slot="end">
-        <ion-select-option value="q1">Query #1</ion-select-option>
-        <ion-select-option value="q2">Query #2</ion-select-option>
-        <ion-select-option value="q3">Query #3</ion-select-option>
-        <ion-select-option value="q4">Query #4</ion-select-option>
-      </ion-select>
-    </ion-item>
-    <ion-item>
-      <ion-icon name="folder-outline" slot="start" />
-      <ion-label color="medium">Folder:</ion-label>
-      <ion-input readonly="true" value="/" />
-    </ion-item>
-  </ion-card>
+  @if (canChangeHostedDemoDbSource() && !isTugqlAuthorJourney()) {
+    <ion-card data-testid="hosted-demo-db-query-source">
+      <ion-card-header>
+        <ion-card-title>Hosted DemoDB source</ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        <p>
+          Choose a public read-only table. The saved query keeps its source in
+          the federation definition and runs in this browser.
+        </p>
+        <ion-item>
+          <ion-select
+            label="Database and table"
+            aria-label="Hosted DemoDB database and table"
+            interface="popover"
+            [value]="selectedHostedDemoDbSource()"
+            [disabled]="
+              running() ||
+              queryState.isSaving ||
+              queryState.saveSupported === false
+            "
+            (ionChange)="hostedDemoDbSourceChanged($event)"
+          >
+            @for (source of hostedDemoDbSources; track source.id) {
+              <ion-select-option [value]="source.id">{{
+                source.label
+              }}</ion-select-option>
+            }
+          </ion-select>
+        </ion-item>
+      </ion-card-content>
+    </ion-card>
+  }
+
+  @if (canChoosePublicSqliteSource() && !isTugqlAuthorJourney()) {
+    <ion-card>
+      <ion-card-header
+        ><ion-card-title>Public SQLite source</ion-card-title></ion-card-header
+      >
+      <ion-card-content>
+        <ion-item>
+          <ion-select
+            label="Saved connection"
+            aria-label="Saved SQLite connection"
+            [value]="queryDef()?.connectionId || ''"
+            [disabled]="running() || queryState.isSaving"
+            (ionChange)="publicSqliteSourceChanged($event)"
+          >
+            <ion-select-option value="">No browser source</ion-select-option>
+            <ion-select-option value="chinook-sqlite"
+              >Chinook · pinned public SQLite</ion-select-option
+            >
+          </ion-select>
+        </ion-item>
+      </ion-card-content>
+    </ion-card>
+  }
+  @if (!isTugqlAuthorJourney()) {
+    <ion-card>
+      <ion-item>
+        <ion-input
+          placeholder="Title - is required"
+          [readonly]="queryState.saveSupported === false && !project?.ref?.spaceID"
+          [value]="queryState.title"
+          [disabled]="queryState.isSaving"
+          (ionChange)="queryTitleChanged($event)"
+        />
+        <ion-select interface="popover" slot="end">
+          <ion-select-option value="q1">Query #1</ion-select-option>
+          <ion-select-option value="q2">Query #2</ion-select-option>
+          <ion-select-option value="q3">Query #3</ion-select-option>
+          <ion-select-option value="q4">Query #4</ion-select-option>
+        </ion-select>
+      </ion-item>
+      <ion-item>
+        <ion-icon name="folder-outline" slot="start" />
+        <ion-label color="medium">Folder:</ion-label>
+        <ion-input readonly="true" value="/" />
+      </ion-item>
+    </ion-card>
+  }
 
   @if (queryState.queryType === 'HTTP') {
     <sneat-datatug-http-query-editor />
-  } @else if (editorTab === 'text') {
-    <!-- S155 (founder ruling 2026-09-10): the query page previously had no
-         body editor at all for SQL/DTQL — the old `sneat-datatug-sql-query`
-         binding this replaces was commented out and never wired up, so the
-         query's own text, already correctly loaded onto
-         `queryState.request.text` (GithubProjectReaderService.getQuery() /
-         QueriesService.getQuery(), confirmed correct by this task's own
-         tests), simply never reached the DOM. Read-only here: this card is
-         about DISPLAY, not editing — this page's existing `isChanged`/`Save`
-         flow (title only, so far) is unaffected, and a GitHub-store project
-         has no agent to persist a body edit to anyway. -->
+  } @else if (isTugqlAuthorJourney()) {
+    @if (queryView() === 'compare') {
+      <sneat-public-sqlite-comparison-panel
+        [snapshot]="comparisonSnapshot()"
+        [result]="comparisonResult()"
+        [blockedReason]="comparisonBlocker()"
+        [customerBinding]="comparisonCustomerBinding()"
+        [queryLimit]="comparisonQueryLimit()"
+        [message]="comparisonMessage()"
+        [busy]="comparisonBusy()"
+        (runBoth)="runComparisonBoth()"
+        (retrySide)="retryComparisonSide($event)"
+        (cancelSide)="cancelComparisonSide($event)"
+        (compare)="compareCompletedResults()"
+      />
+    } @else {
+    <ion-card class="author-card" data-testid="tugql-author">
+          <ion-card-header>
+            <ion-item class="author-card-title-row" lines="none">
+              <ion-label class="ion-text-wrap">
+                <ion-card-title
+                  #authorLookupHeading
+                  tabindex="-1"
+                  role="heading"
+                  aria-level="2"
+                  data-workspace-heading
+                  >{{ queryPageTitle() }}</ion-card-title
+                >
+                <p>Chinook · pinned SQLite</p>
+              </ion-label>
+                  <ion-buttons slot="end">
+                    @if (authorMode() === 'code') {
+                      <ion-button
+                        class="author-code-overflow"
+                        [id]="authorCodeEditor.toolsTriggerId"
+                        fill="clear"
+                        aria-label="More editor actions"
+                        title="More editor actions"
+                      >
+                        <ion-icon name="ellipsis-horizontal" aria-hidden="true" />
+                      </ion-button>
+                    }
+
+                    <ion-button
+                      data-testid="author-run"
+                      class="author-run-button"
+                      color="primary"
+                      fill="solid"
+                      [disabled]="authorRunReadiness().blocked && authorRunReadiness().action !== 'parameters'"
+                      [attr.aria-describedby]="authorRunReadiness().action === 'parameters' && !authorRunParameterWarning() ? null : 'author-run-readiness'"
+                      (click)="runQuery()"
+                    >
+                      @if (running()) {
+                        <ion-spinner name="dots" slot="start" />
+                      }
+                      Run
+                    </ion-button>
+                    @if (running()) {
+                      <ion-button
+                        data-testid="author-cancel"
+                        fill="clear"
+                        (click)="cancelAuthorRun()"
+                        >Cancel</ion-button
+                      >
+                    }
+                  </ion-buttons>
+            </ion-item>
+            @if (authorRunReadiness(); as readiness) {
+              @if (authorRunParameterWarning(); as warning) {
+              <ion-item color="warning" lines="none" data-testid="author-run-parameter-warning">
+                <ion-icon name="warning-outline" slot="start" aria-hidden="true" />
+                <ion-label class="ion-text-wrap">
+                  <p id="author-run-readiness" data-testid="author-run-readiness" role="alert">{{ warning }}</p>
+                </ion-label>
+                <ion-buttons slot="end">
+                  <ion-button fill="clear" data-testid="author-run-recovery" (click)="recoverAuthorRun()">Set parameter</ion-button>
+                </ion-buttons>
+              </ion-item>
+              } @else if (readiness.blocked && readiness.action !== 'parameters') {
+              <ion-item class="author-run-readiness" lines="none">
+                <ion-label class="ion-text-wrap">
+                  <p id="author-run-readiness" data-testid="author-run-readiness" role="status">{{ readiness.message }}</p>
+                </ion-label>
+                @if (readiness.action; as action) {
+                  <ion-buttons slot="end">
+                    <ion-button fill="clear" data-testid="author-run-recovery" (click)="recoverAuthorRun()">
+                      {{ action === 'preview' ? 'Preview SQL' : action === 'error' ? 'Go to error' : 'Review draft' }}
+                    </ion-button>
+                  </ion-buttons>
+                }
+              </ion-item>
+              } @else if (!readiness.blocked) {
+                <ion-note id="author-run-readiness" data-testid="author-run-readiness" role="status" class="ion-padding-start">Current draft ready</ion-note>
+              }
+            }
+          </ion-card-header>
+          <ion-card-content>
+            <sneat-author-code-editor
+              #authorCodeEditor
+              class="author-code-editor"
+              data-testid="query-body-text"
+              label="TugQL Query"
+              [text]="queryBodyText() ?? ''"
+              [visible]="authorMode() === 'code'"
+              [disabled]="queryState.isSaving || running()"
+              [readOnly]="
+                queryState.saveSupported === false && !isTugqlAuthorJourney()
+              "
+              [formatDiagnostics]="authorFormatDiagnosticItems()"
+              [remainingFormatDiagnosticCount]="
+                authorFormatDiagnosticRemainder()
+              "
+              [canFormat]="authorMode() === 'code'"
+              [canUndoFormat]="canUndoAuthorFormat()"
+              (textChange)="authorCodeChanged($event)"
+              (formatDiagnosticRequested)="
+                navigateToAuthorFormatDiagnostic($event)
+              "
+              (formatRequested)="formatAuthorTugQL()"
+              (undoFormatRequested)="undoAuthorTugQLFormat()"
+            >
+              <ion-buttons
+                author-editor-tabs
+                class="query-view-switch author-mode-switch"
+                slot="start"
+                role="group"
+                aria-label="Query editor view"
+                data-testid="author-view-tabs"
+              >
+                <ion-button
+                  class="author-mode-option"
+                  data-testid="author-compose-tab"
+                  [class.is-active]="authorMode() === 'compose'"
+                  [attr.aria-pressed]="authorMode() === 'compose'"
+                  fill="clear"
+                  [color]="authorMode() === 'compose' ? 'primary' : 'medium'"
+                  (click)="setAuthorMode('compose')"
+                  >Compose</ion-button
+                >
+                <ion-button
+                  class="author-mode-option"
+                  data-testid="author-code-tab"
+                  [class.is-active]="authorMode() === 'code'"
+                  [attr.aria-pressed]="authorMode() === 'code'"
+                  fill="clear"
+                  [color]="authorMode() === 'code' ? 'primary' : 'medium'"
+                  (click)="setAuthorMode('code')"
+                  >TugQL Query</ion-button
+                >
+                <ion-button
+                  class="author-mode-option"
+                  data-testid="author-preview-tab"
+                  [class.is-active]="authorMode() === 'preview'"
+                  [attr.aria-pressed]="authorMode() === 'preview'"
+                  fill="clear"
+                  [color]="authorMode() === 'preview' ? 'primary' : 'medium'"
+                  (click)="setAuthorMode('preview')"
+                  >Preview SQL</ion-button
+                >
+              </ion-buttons>
+              <div author-editor-sidebar>
+                <div
+                  class="author-context-sticky-header"
+                  data-testid="author-context-sticky-header"
+                >
+                  <ion-segment
+                    class="author-context-tabs"
+                    data-testid="author-context-tabs"
+                    aria-label="Query context"
+                    mode="md"
+                    [value]="activeAuthorContextTab()"
+                    (ionChange)="authorContextTabChanged($event.detail.value)"
+                  >
+                    <ion-segment-button value="parameters">
+                      <ion-label>
+                        Parameters
+                        <ion-chip class="ion-no-margin" [attr.aria-label]="authorParameterCountLabel()">
+                          {{ authorParameterDeclarationCount() ?? '…' }}
+                        </ion-chip>
+                      </ion-label>
+                    </ion-segment-button>
+                    <ion-segment-button value="sources">
+                      <ion-label>
+                        Sources
+                        <ion-chip class="ion-no-margin" [attr.aria-label]="authorSourceCountLabel()">
+                          {{ authorSourceOccurrenceCount() ?? '…' }}
+                        </ion-chip>
+                      </ion-label>
+                    </ion-segment-button>
+                    <ion-segment-button value="related">
+                      <ion-label>
+                        Related
+                        <ion-chip class="ion-no-margin" [attr.aria-label]="authorRelatedSourceCountLabel()">
+                          {{ authorRelatedSourceCount() ?? '…' }}
+                        </ion-chip>
+                      </ion-label>
+                    </ion-segment-button>
+                  </ion-segment>
+                </div>
+                <section
+                  aria-label="Parameters"
+                  [hidden]="activeAuthorContextTab() !== 'parameters'"
+                  data-testid="author-parameters-panel"
+                >
+                @if (authorHasCustomerIdParameter()) {
+                @if (customerInvoiceExample()) {
+                  <p
+                    data-testid="customer-invoice-example-guidance"
+                    role="status"
+                  >
+                    Try Customer ID 1: Preview SQL, then Run. Inspect the
+                    invoice rows below; customer 1 has 7 invoices. Change the
+                    customer ID to explore another customer, then preview and
+                    run again.
+                  </p>
+                }
+                <ion-item class="author-parameter-row">
+                  <ion-input
+                    class="author-customer-input"
+                    #authorCustomerInput
+                    data-testid="author-customer-id"
+                    type="number"
+                    inputmode="numeric"
+                    label="Customer ID"
+                    labelPlacement="start"
+                    helperText="Required · whole number"
+                    [class.ion-invalid]="
+                      !authorCustomerIdMissing() && !authorCustomerIdValid()
+                    "
+                    [class.ion-touched]="
+                      !authorCustomerIdMissing() && !authorCustomerIdValid()
+                    "
+                    [class.ng-invalid]="
+                      !authorCustomerIdMissing() && !authorCustomerIdValid()
+                    "
+                    [class.ng-touched]="
+                      !authorCustomerIdMissing() && !authorCustomerIdValid()
+                    "
+                    [errorText]="
+                      !authorCustomerIdMissing() && !authorCustomerIdValid()
+                        ? 'Enter a whole-number Customer ID'
+                        : undefined
+                    "
+                    [value]="authorCustomerId()"
+                    [disabled]="queryState.isSaving || running()"
+                    (ionInput)="authorCustomerIdChanged($event)"
+                  />
+                </ion-item>
+                <ion-item lines="none">
+                  <ion-label class="ion-text-wrap">
+                  @if (authorCustomerIdOrigin(); as customerIdOrigin) {
+                    <p
+                      data-testid="author-binding-origin"
+                    >
+                      @if (customerIdOrigin.origin === 'selection') {
+                        Customer ID {{ authorCustomerId() }} · selection ·
+                        {{ customerIdOrigin.sourceQueryId }}.{{
+                          customerIdOrigin.sourceColumn
+                        }}
+                        → {{ queryDef()?.title || queryId }} · client-reported.
+                      } @else {
+                        Customer ID {{ authorCustomerId() || '—' }} · manual ·
+                        client-reported.
+                      }
+                    </p>
+                  }
+                  @if (authorCustomerIdValid() && !authorPlan()) {
+                    <p role="status">
+                      Preview the current TugQL draft before Run.
+                    </p>
+                  }
+                  </ion-label>
+                </ion-item>
+                }
+                @if (authorUnsupportedParameterNames().length) {
+                  <ion-item lines="none">
+                    <ion-label class="ion-text-wrap">
+                      <p>This draft declares parameters that this author form cannot bind:</p>
+                      @for (name of authorUnsupportedParameterNames(); track name) {
+                        <p>{{ name }} · declaration visible; binding is unavailable here.</p>
+                      }
+                    </ion-label>
+                  </ion-item>
+                } @else if (authorParameterDeclarationCount() === 0) {
+                  <ion-item lines="none">
+                    <ion-label class="ion-text-wrap">
+                      <p>No query parameters are declared in this draft.</p>
+                    </ion-label>
+                  </ion-item>
+                } @else if (authorParameterDeclarationCount() === undefined) {
+                  <ion-item lines="none" role="status">
+                    <ion-label class="ion-text-wrap">
+                      <p>Parameter declarations are unavailable until TugQL diagnostics are corrected.</p>
+                    </ion-label>
+                  </ion-item>
+                }
+                </section>
+                <section
+                  aria-label="Participating sources"
+                  [hidden]="activeAuthorContextTab() !== 'sources'"
+                  data-testid="author-sources-panel"
+                >
+                  <sneat-author-participating-sources
+                    [active]="activeAuthorContextTab() === 'sources'"
+                    [inventory]="authorParticipatingSourceInventory()"
+                    [metadata]="authorSourceMetadata()"
+                    [statusMessage]="authorSourceMessage()"
+                    [disabled]="authorSourceLoading() || running() || queryState.isSaving === true"
+                    [canRemoveJoin]="authorCanRemoveCustomerJoin()"
+                    [removeJoinReason]="authorCustomerJoinRemovalReason()"
+                    [removalOutputs]="authorCustomerRemovalOutputs()"
+                    [removalConfirmOpen]="authorCustomerRemovalOpen()"
+                    (removeRequested)="requestAuthorCustomerJoinRemoval()"
+                    (removalConfirmed)="confirmAuthorCustomerJoinRemoval($event)"
+                    (activated)="authorSourcesToggled(true)"
+                    (refreshRequested)="authorSourcesToggled(true)"
+                  />
+                </section>
+                <section
+                  aria-label="Related sources"
+                  [hidden]="activeAuthorContextTab() !== 'related'"
+                  data-testid="author-related-panel"
+                >
+                  <sneat-author-relationship-sources
+                    [active]="activeAuthorContextTab() === 'related'"
+                    [sources]="authorSourceMetadata()"
+                    [currentLimit]="authorCurrentLimit()"
+                    [loading]="authorSourceLoading()"
+                    [review]="authorSourceReview()"
+                    [choices]="authorCustomerOutputChoices"
+                    [selectedFields]="authorSourceSelectedFields()"
+                    [disabled]="
+                      authorSourceLoading() ||
+                      running() ||
+                      queryState.isSaving === true
+                    "
+                    [canJoin]="authorCanJoinRelationship()"
+                    [customerAlreadyJoined]="authorParticipatingSourceInventory().customerJoined"
+                    [statusMessage]="authorSourceMessage()"
+                    (activated)="authorSourcesToggled(true)"
+                    (refreshRequested)="authorSourcesToggled(true)"
+                    (sourcesRequested)="authorContextTabChanged('sources')"
+                    (customerFieldChanged)="
+                      authorSourceFieldSelectionChanged(
+                        $event.field,
+                        $event.checked
+                      )
+                    "
+                    (reviewRequested)="reviewAuthorRelationship()"
+                    (joinRequested)="joinAuthorRelationship()"
+                    (applyRequested)="applyAuthorRelationshipReview()"
+                  />
+                </section>
+                @if (authorError()) {
+                  <div class="author-actions" data-testid="author-error">
+                    <ion-text
+                      id="author-preview-error-message"
+                      color="danger"
+                      role="alert"
+                      aria-live="assertive"
+                      >{{ authorError() }}</ion-text
+                    >
+                    @if (authorPreviewSyntaxDiagnostic(); as diagnostic) {
+                      <ion-button
+                        size="large"
+                        fill="clear"
+                        data-testid="author-preview-go-to-error"
+                        [disabled]="
+                          !canNavigateToAuthorPreviewSyntaxDiagnostic()
+                        "
+                        [attr.aria-label]="
+                          'Go to line ' +
+                          diagnostic.span.start.line +
+                          ', column ' +
+                          diagnostic.span.start.column
+                        "
+                        aria-describedby="author-preview-error-message"
+                        (click)="navigateToAuthorPreviewSyntaxDiagnostic()"
+                        >Go to line {{ diagnostic.span.start.line }}, column
+                        {{ diagnostic.span.start.column }}</ion-button
+                      >
+                    }
+                  </div>
+                }
+
+              </div>
+              <div author-editor-panel>
+                @if (authorMode() === 'compose') {
+                  <sneat-author-compose-controls
+                    [source]="queryBodyText() ?? ''"
+                    (sourceChanged)="authorComposeTextChanged($event)"
+                    (editInCode)="setAuthorMode('code')"
+                  />
+                }
+                <div
+                  class="author-preview-panel"
+                  [hidden]="authorMode() !== 'preview'"
+                >
+                  @if (authorPlan(); as plan) {
+                    <div
+                      class="author-sql-pane"
+                      data-testid="author-preview-pane"
+                    >
+                      <sneat-author-sql-preview
+                        [plan]="plan"
+                        [customerId]="authorCustomerId()"
+                        [customerIdValid]="authorCustomerIdValid()"
+                        [customerIdMissing]="authorCustomerIdMissing()"
+                        [refreshDisabled]="
+                          running() || authorPreviewLoading() || queryState.isSaving === true
+                        "
+                        (refreshRequested)="previewTugql()"
+                      />
+                    </div>
+                  } @else {
+                    <section
+                      class="author-preview-empty"
+                      data-testid="author-preview-empty"
+                    >
+                      <h3>SQL preview · Not executed</h3>
+                      <p>
+                        Generate a preview for the current TugQL draft. A
+                        Customer ID is optional for preview; Preview never
+                        executes the query.
+                      </p>
+                      <ion-button
+                        data-testid="author-preview"
+                        fill="outline"
+                        [disabled]="running() || authorPreviewLoading() || queryState.isSaving"
+                        (click)="previewTugql()"
+                        >Generate SQL preview</ion-button
+                      >
+                    </section>
+                  }
+                </div>
+              </div>
+              <div author-editor-status>
+                @if (authorFormatStatus()) {
+                  <ion-item lines="none" data-testid="author-format-status">
+                    <ion-label class="ion-text-wrap" role="status" aria-live="polite">{{ authorFormatStatus() }}</ion-label>
+                  </ion-item>
+                }
+              </div>
+            </sneat-author-code-editor>
+          </ion-card-content>
+        </ion-card>
+      }
+    } @else if (editorTab === 'text') {
+    <!-- Saved query text is editable and persists with its definition through
+         the selected project's query API. -->
     <ion-card>
       <ion-card-header>
         <ion-card-title>Query text</ion-card-title>
       </ion-card-header>
       <ion-card-content>
-        @if (queryBodyText(); as bodyText) {
-          <ion-textarea
-            data-testid="query-body-text"
-            readonly="true"
-            autoGrow="true"
-            [value]="bodyText"
-          />
+        @if (queryBodyText() !== undefined) {
+          @if (queryDef()?.request.queryType === sqlQueryType) {
+            <sneat-datatug-sql
+              class="query-sql-editor"
+              data-testid="query-body-text"
+              [sql]="queryBodyText() ?? ''"
+              [disabled]="queryState.isSaving || running()"
+              [readonly]="queryState.saveSupported === false && !project?.ref?.spaceID"
+              [lineNumbers]="false"
+              [autoCloseBrackets]="false"
+              (sqlChanged)="sqlTextChanged($event)"
+            />
+          } @else {
+            <ion-textarea
+              data-testid="query-body-text"
+              autoGrow="true"
+              [value]="queryBodyText()"
+              [disabled]="queryState.isSaving || running()"
+              [readonly]="queryState.saveSupported === false && !project?.ref?.spaceID"
+              (ionInput)="queryTextChanged($event)"
+            />
+          }
         } @else {
           <ion-text color="medium">No query text.</ion-text>
         }
@@ -352,7 +959,7 @@
     </ion-card>
   }
 
-  @if (linkedEntities().length) {
+  @if (linkedEntities().length && !isTugqlAuthorJourney()) {
     <!-- S155 — the query's linked entities/collections; see
          `extractLinkedEntityNames()`'s own doc comment (query-page.component.ts)
          for the two sources this reads (parameter/recordset `meta.entity`,
@@ -378,198 +985,274 @@
     clear it here. An ambiguous or unconfirmed-conflict parameter blocks Run until
     resolved (AC:typed-context-isolation).
   -->
-  <ion-card>
-    <ion-card-header>
-      <ion-card-title>Parameters</ion-card-title>
-    </ion-card-header>
-    @if (visibleBindings().length) {
-      <ion-list>
-        @for (binding of visibleBindings(); track binding.parameterId) {
-          <ion-item [color]="binding.blocked ? 'warning' : undefined">
-            <ion-label>
-              {{ bindingFieldLabel(binding) }}
-              @if (binding.blocked === 'ambiguous') {
-                <p>ambiguous — {{ ambiguousValuesLabel(binding) }}</p>
-              } @else if (binding.blocked === 'conflict-unconfirmed') {
-                <p>conflict — {{ conflictLabel(binding) }}</p>
-              } @else if (binding.blocked === 'missing-required') {
-                <p>required — no value supplied</p>
-              } @else {
-                <p>{{ bindingValueLabel(binding) }}</p>
-              }
-            </ion-label>
-            @if (binding.cohortOptions?.length) {
-              @for (option of binding.cohortOptions; track option.factKey) {
-                @if (
-                  option.factKey !== selectedCohortFactKey(binding.parameterId)
-                ) {
-                  <ion-button
-                    slot="end"
-                    fill="outline"
-                    (click)="
-                      chooseContextCohort(binding.parameterId, option.factKey)
-                    "
-                  >
-                    @if (selectedCohortFactKey(binding.parameterId)) {
-                      Other compare side:
-                    } @else {
-                      Use
-                    }
-                    {{ cohortOptionLabel(option) }}
-                  </ion-button>
+  @if (!isTugqlAuthorJourney()) {
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>Parameters</ion-card-title>
+      </ion-card-header>
+      @if (visibleBindings().length) {
+        <ion-list>
+          @for (binding of visibleBindings(); track binding.parameterId) {
+            <ion-item [color]="binding.blocked ? 'warning' : undefined">
+              <ion-label>
+                {{ bindingFieldLabel(binding) }}
+                @if (binding.blocked === 'ambiguous') {
+                  <p>ambiguous — {{ ambiguousValuesLabel(binding) }}</p>
+                } @else if (binding.blocked === 'conflict-unconfirmed') {
+                  <p>conflict — {{ conflictLabel(binding) }}</p>
+                } @else if (binding.blocked === 'missing-required') {
+                  <p>required — no value supplied</p>
+                } @else {
+                  <p>{{ bindingValueLabel(binding) }}</p>
+                }
+              </ion-label>
+              @if (binding.cohortOptions?.length) {
+                @for (option of binding.cohortOptions; track option.factKey) {
+                  @if (
+                    option.factKey !==
+                    selectedCohortFactKey(binding.parameterId)
+                  ) {
+                    <ion-button
+                      slot="end"
+                      fill="outline"
+                      (click)="
+                        chooseContextCohort(binding.parameterId, option.factKey)
+                      "
+                    >
+                      @if (selectedCohortFactKey(binding.parameterId)) {
+                        Other compare side:
+                      } @else {
+                        Use
+                      }
+                      {{ cohortOptionLabel(option) }}
+                    </ion-button>
+                  }
                 }
               }
-            }
-            @if (binding.blocked === 'conflict-unconfirmed') {
-              <ion-button
-                slot="end"
-                fill="clear"
-                title="Use the selection value"
-                (click)="confirmConflict(binding.parameterId)"
-              >
-                Use selection
-              </ion-button>
-            } @else if (binding.value !== undefined) {
-              <ion-button
-                slot="end"
-                fill="clear"
-                title="Clear this binding"
-                (click)="clearBinding(binding.parameterId)"
-              >
-                <ion-icon name="close-outline" />
-              </ion-button>
-            }
-          </ion-item>
-        }
-      </ion-list>
-    } @else {
-      <ion-card-content>
-        <ion-text color="medium"
-          >No parameters bound from selection or context.</ion-text
-        >
-      </ion-card-content>
-    }
+              @if (binding.blocked === 'conflict-unconfirmed') {
+                <ion-button
+                  slot="end"
+                  fill="clear"
+                  title="Use the selection value"
+                  (click)="confirmConflict(binding.parameterId)"
+                >
+                  Use selection
+                </ion-button>
+              } @else if (binding.value !== undefined) {
+                <ion-button
+                  slot="end"
+                  fill="clear"
+                  title="Clear this binding"
+                  (click)="clearBinding(binding.parameterId)"
+                >
+                  <ion-icon name="close-outline" />
+                </ion-button>
+              }
+            </ion-item>
+          }
+        </ion-list>
+      } @else {
+        <ion-card-content>
+          <ion-text color="medium"
+            >No parameters bound from selection or context.</ion-text
+          >
+        </ion-card-content>
+      }
 
-    @for (suggestion of rebindSuggestions(); track suggestion.parameterId) {
-      <ion-item color="warning" data-testid="rebind-choice">
-        <ion-label>
-          Context changed for {{ suggestion.parameterId }}
-          <p>
-            {{ rebindSuggestionLabel(suggestion) }}. Current binding is
-            preserved.
-          </p>
-        </ion-label>
-        <ion-button
-          slot="end"
-          fill="clear"
-          (click)="keepCurrentBinding(suggestion.parameterId)"
-        >
-          Keep current
-        </ion-button>
-        <ion-button slot="end" (click)="acceptRebind(suggestion.parameterId)">
-          Use new context
-        </ion-button>
-      </ion-item>
-    }
+      @for (suggestion of rebindSuggestions(); track suggestion.parameterId) {
+        <ion-item color="warning" data-testid="rebind-choice">
+          <ion-label>
+            Context changed for {{ suggestion.parameterId }}
+            <p>
+              {{ rebindSuggestionLabel(suggestion) }}. Current binding is
+              preserved.
+            </p>
+          </ion-label>
+          <ion-button
+            slot="end"
+            fill="clear"
+            (click)="keepCurrentBinding(suggestion.parameterId)"
+          >
+            Keep current
+          </ion-button>
+          <ion-button slot="end" (click)="acceptRebind(suggestion.parameterId)">
+            Use new context
+          </ion-button>
+        </ion-item>
+      }
 
-    @if (availableTargets().length) {
-      <!-- api-contract.md needs-target/TARGET_REQUIRED — a real target selector, never
+      @if (availableTargets().length) {
+        <!-- api-contract.md needs-target/TARGET_REQUIRED — a real target selector, never
            a hidden source; targets come only from an authorized Candidate or a
            TARGET_REQUIRED error's own error.targets. -->
-      <ion-item>
-        <ion-label>Target</ion-label>
-        <ion-select
-          interface="popover"
-          [value]="selectedSource()"
-          (ionChange)="chooseTarget($event.detail.value)"
-        >
-          @for (target of availableTargets(); track target.source) {
-            <ion-select-option [value]="target.source">{{
-              target.label
-            }}</ion-select-option>
-          }
-        </ion-select>
-      </ion-item>
-    }
-
-    @if (queryDef()?.federation) {
-      <ion-item>
-        <ion-label position="stacked">OVDB bearer token (optional)</ion-label>
-        <ion-input
-          aria-label="OVDB bearer token"
-          type="password"
-          autocomplete="off"
-          [value]="ovdbToken()"
-          (ionInput)="ovdbToken.set($event.detail.value || '')"
-        />
-      </ion-item>
-      <p class="ion-padding-horizontal">
-        This token is sent to {{ ovdbDestination() }} for this run.
-      </p>
-    }
-
-    @if (queryDef()?.federation) {
-      <ion-item>
-        <ion-select
-          label="Result mode"
-          [value]="federatedMode()"
-          (ionChange)="federatedMode.set($event.detail.value)"
-          [disabled]="running()"
-        >
-          <ion-select-option value="full">Full result</ion-select-option>
-          <ion-select-option
-            value="visible"
-            [disabled]="!visibleModeSupport().supported"
-            >Visible rows</ion-select-option
+        <ion-item>
+          <ion-label>Target</ion-label>
+          <ion-select
+            interface="popover"
+            [value]="selectedSource()"
+            (ionChange)="chooseTarget($event.detail.value)"
           >
-        </ion-select>
-      </ion-item>
-      <p class="ion-padding-horizontal">
-        @if (visibleModeSupport().supported) {
-          Visible rows loads the first result page, then computes later pages as
-          you request them.
-        } @else {
-          {{ visibleModeSupport().reason }}
-        }
-      </p>
-    }
-    <ion-item lines="none">
-      <ion-buttons>
-        <ion-button
-          fill="solid"
-          color="primary"
-          [disabled]="
-            running() ||
-            !queryId ||
-            !project ||
-            hasBlockedBindings() ||
-            (availableTargets().length > 0 && !selectedSource())
-          "
-          (click)="runQuery()"
-        >
-          @if (running()) {
-            <ion-spinner name="dots" slot="start" />
-          } @else {
-            <ion-icon name="play-outline" slot="start" />
-          }
-          Run query
-        </ion-button>
-      </ion-buttons>
-    </ion-item>
-  </ion-card>
+            @for (target of availableTargets(); track target.source) {
+              <ion-select-option [value]="target.source">{{
+                target.label
+              }}</ion-select-option>
+            }
+          </ion-select>
+        </ion-item>
+      }
 
+      @if (queryDef()?.federation) {
+        <ion-item>
+          <ion-label position="stacked">OVDB bearer token (optional)</ion-label>
+          <ion-input
+            aria-label="OVDB bearer token"
+            type="password"
+            autocomplete="off"
+            [value]="ovdbToken()"
+            (ionInput)="setOvdbToken($event.detail.value)"
+          />
+        </ion-item>
+        <p class="ion-padding-horizontal">
+          This token is sent to {{ ovdbDestination() }} for this run.
+        </p>
+      }
+
+      @if (queryDef()?.federation) {
+        <ion-item>
+          <ion-select
+            label="Result mode"
+            [value]="federatedMode()"
+            (ionChange)="federatedMode.set($event.detail.value)"
+            [disabled]="running()"
+          >
+            <ion-select-option value="full">Full result</ion-select-option>
+            <ion-select-option
+              value="visible"
+              [disabled]="!visibleModeSupport().supported"
+              >Visible rows</ion-select-option
+            >
+          </ion-select>
+        </ion-item>
+        <p class="ion-padding-horizontal">
+          @if (visibleModeSupport().supported) {
+            Visible rows loads the first result page, then computes later pages
+            as you request them.
+          } @else {
+            {{ visibleModeSupport().reason }}
+          }
+        </p>
+      }
+      @if (isHostedProject) {
+        <ion-item>
+          <ion-label>Hosted environment</ion-label>
+          <ion-select
+            aria-label="Hosted environment"
+            interface="popover"
+            placeholder="Select environment"
+            [value]="hostedEnvironment()"
+            [disabled]="!hostedDetectiveState()?.capabilities?.canRun || running()"
+            (ionChange)="hostedEnvironment.set($event.detail.value || '')"
+          >
+            @for (environment of hostedDetectiveState()?.environments || []; track environment) {
+              <ion-select-option [value]="environment">{{ environment }}</ion-select-option>
+            }
+          </ion-select>
+        </ion-item>
+        @if (hostedDetectiveError(); as error) {
+          <p class="ion-padding-horizontal" role="alert">{{ error }}</p>
+        } @else if (hostedDetectiveState() && !hostedDetectiveState()?.capabilities?.canRun) {
+          <p class="ion-padding-horizontal" role="status">Hosted execution is unavailable for this project.</p>
+        }
+        <p class="ion-padding-horizontal">Hosted runs execute the saved query revision. Save edits before running; select an admitted environment explicitly.</p>
+      }
+      @if (isAgentRunProject()) {
+        @if (agentRunEnvironments().length) {
+          <ion-item>
+            <ion-label>Logical environment</ion-label>
+            <ion-select aria-label="Logical environment" interface="popover" placeholder="Select environment"
+              [value]="agentSelectedEnvironment() || envId || ''" [disabled]="running()"
+              (ionChange)="selectAgentRunEnvironment($event.detail.value || '')">
+              @for (environment of agentRunEnvironments(); track environment.id) {
+                <ion-select-option [value]="environment.id">{{ environment.title || environment.id }}</ion-select-option>
+              }
+            </ion-select>
+          </ion-item>
+        } @else {
+          <p class="ion-padding-horizontal">{{ envId ? 'Current logical environment: ' + envId : 'Select a logical environment before running.' }}</p>
+        }
+        <ion-button class="ion-margin-horizontal" fill="clear" size="small"
+          [disabled]="agentRunEnvironmentsLoading()" (click)="loadAgentRunEnvironments()">
+          {{ agentRunEnvironmentsLoading() ? 'Loading environments…' : 'Load project environments' }}
+        </ion-button>
+        @if (agentRunEnvironmentsError()) {
+          <ion-note color="danger" class="ion-padding-horizontal" role="alert">{{ agentRunEnvironmentsError() }}</ion-note>
+        }
+      }
+      <ion-item lines="none">
+        <ion-buttons>
+          <ion-button
+            fill="solid"
+            color="primary"
+            [disabled]="
+              running() ||
+              !queryId ||
+              !project ||
+              hasBlockedBindings() ||
+              (isHostedProject && (!hostedDetectiveState()?.capabilities?.canRun || !hostedEnvironment() || queryState.isNew || queryState.isSaving || isChanged)) ||
+              (!queryDef()?.connectionId &&
+                availableTargets().length > 0 &&
+                !selectedSource())
+            "
+            (click)="runQuery()"
+          >
+            @if (running()) {
+              <ion-spinner name="dots" slot="start" />
+            } @else {
+              <ion-icon name="play-outline" slot="start" />
+            }
+            Run query
+          </ion-button>
+        </ion-buttons>
+      </ion-item>
+      @if (!isHostedProject && queryDef()?.connectionId; as connectionId) {
+        <p class="ion-padding-horizontal">
+          Saved source: {{ connectionId }}. Run checks its public SQLite fixture
+          and integrity pin before showing results.
+        </p>
+      }
+    </ion-card>
+  }
+  </ng-template>
+
+  <ng-template #queryResults>
+  <section class="author-results" [attr.aria-labelledby]="isTugqlAuthorJourney() ? 'author-results-heading' : null">
+  @if (isTugqlAuthorJourney()) {
+    <ion-item class="author-results-heading" lines="none">
+      <ion-label>
+        <h2 id="author-results-heading" tabindex="-1" data-workspace-heading>Results</h2>
+      </ion-label>
+    </ion-item>
+  }
+  @if (isTugqlAuthorJourney() && !runResult() && !running()) {
+    <section class="author-results-empty" role="status" data-testid="author-results-empty">
+      <strong>Not executed</strong>
+      <p>SQL preview checks the query shape only. Choose a Customer ID, preview the current draft, then Run to load rows and an execution receipt.</p>
+    </section>
+  }
   @if ((running() || resultPageLoading()) && federatedProgress(); as progress) {
-    <p role="status" aria-live="polite">
+    <p role="status" aria-live="polite" data-testid="federated-progress">
       {{
         progress.stage === 'preparing'
           ? 'Preparing source snapshot'
           : progress.stage === 'loading'
             ? 'Loading sources'
-            : progress.stage === 'processing'
-              ? 'Processing rows'
-              : progress.stage === 'lookup'
-                ? 'Looking up records'
-                : 'Query complete'
+            : progress.stage === 'streaming'
+              ? 'Receiving query rows'
+              : progress.stage === 'processing'
+                ? 'Processing rows'
+                : progress.stage === 'lookup'
+                  ? 'Looking up records'
+                  : 'Query complete'
       }}: loaded {{ progress.rowsLoaded }} rows; processed
       {{ progress.rowsProcessed }} rows. HTTP lookups:
       {{ progress.requestsCompleted }} completed,
@@ -607,32 +1290,248 @@
 
   @if (queryDef()?.federation?.nativeGraph) {
     <ion-card data-testid="local-result-history">
-      <ion-card-header><ion-card-title>Local result history</ion-card-title></ion-card-header>
+      <ion-card-header
+        ><ion-card-title>Local result history</ion-card-title></ion-card-header
+      >
       <ion-card-content>
-        <p>Open retained output from this browser. Results keep their executed plan and pins.</p>
-        @if (localHistoryLoading()) { <ion-spinner /> }
-        @if (localHistoryError(); as error) { <ion-text color="danger">{{ error }}</ion-text> }
-        @if (!localHistoryLoading() && !localResults().length) { <p>No local result available.</p> }
+        <p>
+          Open retained output from this browser. Results keep their executed
+          plan and pins.
+        </p>
+        @if (localHistoryLoading()) {
+          <ion-spinner />
+        }
+        @if (localHistoryError(); as error) {
+          <ion-text color="danger">{{ error }}</ion-text>
+        }
+        @if (!localHistoryLoading() && !localResults().length) {
+          <p>No local result available.</p>
+        }
         @for (artifact of localResults(); track artifact.id) {
           <ion-item>
-            <ion-label>{{ artifact.observedAt }} · {{ artifact.counts.affiliations }} affiliations · {{ artifact.counts.locations }} locations · {{ artifact.counts.aliases }} alternate names</ion-label>
-            <ion-button [disabled]="localHistoryLoading()" (click)="openHistoricalResult(artifact.id)">Open historical result</ion-button>
-            <ion-button color="danger" fill="clear" [disabled]="localHistoryLoading()" (click)="deleteHistoricalResult(artifact.id)">Delete this result</ion-button>
+            <ion-label
+              >{{ artifact.observedAt }} ·
+              {{ artifact.counts.affiliations }} affiliations ·
+              {{ artifact.counts.locations }} locations ·
+              {{ artifact.counts.aliases }} alternate names</ion-label
+            >
+            <ion-button
+              [disabled]="localHistoryLoading()"
+              (click)="openHistoricalResult(artifact.id)"
+              >Open historical result</ion-button
+            >
+            <ion-button
+              color="danger"
+              fill="clear"
+              [disabled]="localHistoryLoading()"
+              (click)="deleteHistoricalResult(artifact.id)"
+              >Delete this result</ion-button
+            >
           </ion-item>
         }
       </ion-card-content>
     </ion-card>
   }
+  @if (previousCommittedRun(); as previous) {
+    <details class="previous-run-disclosure" [open]="!isTugqlAuthorJourney()">
+      <summary>Previous run history</summary>
+    <ion-card data-testid="previous-committed-result">
+      <ion-card-content>
+        <p>
+          Query {{ previous.scope.queryId }} · target
+          {{ previous.scope.target }} ·
+          @if (previous.scope.environment) {
+            {{ previous.scope.environment }} ·
+          }
+          {{ previous.provenance.mode }} · {{ previous.provenance.source }} ·
+          observed {{ previous.provenance.observedAt }}
+        </p>
+        @if (previous.timing; as timing) {
+          <p data-testid="previous-run-timings">
+            Time to first record:
+            @if (timing.noRecords) {
+              No records
+            } @else if (timing.firstRecordMs !== undefined) {
+              {{ formatQueryDuration(timing.firstRecordMs) }}
+            } @else {
+              Unavailable
+            }
+            · All results loaded in
+            {{ formatQueryDuration(timing.allResultsLoadedMs) }}
+          </p>
+        }
+        <p>
+          Showing the first
+          {{
+            previousResultDisplayCount(previous.result.recordset.rows.length)
+          }}
+          of {{ previous.result.recordset.rows.length }} rows retained in this
+          receipt
+          @if (
+            previous.result.totalRows !== undefined &&
+            previous.result.totalRows !== previous.result.recordset.rows.length
+          ) {
+            (reported total: {{ previous.result.totalRows }})
+          }
+        </p>
+        <details>
+          <summary>Inspect previous result</summary>
+          <div role="list" aria-label="Previous successful result rows">
+            @for (
+              row of previous.result.recordset.rows.slice(0, resultPageSize);
+              track $index
+            ) {
+              <div role="listitem">
+                @for (cell of row; track $index) {
+                  <span
+                    ><strong
+                      >{{
+                        previous.result.recordset.columns[$index]?.name
+                      }}:</strong
+                    >
+                    {{ displayValue(cell) }}
+                  </span>
+                }
+              </div>
+            }
+          </div>
+          <details>
+            <summary>Executed query</summary>
+            <pre style="white-space: pre-wrap">{{
+              committedDefinitionText(previous.executedDefinition)
+            }}</pre>
+          </details>
+          @if (committedDefinitionPins(previous.executedDefinition); as pins) {
+            <details>
+              <summary>Executed plan and pins</summary>
+              <pre style="white-space: pre-wrap">{{ pins }}</pre>
+            </details>
+          }
+        </details>
+      </ion-card-content>
+    </ion-card>
+    </details>
+  }
   @if (runResult(); as result) {
+    @if (result.publicSqliteReceipt; as receipt) {
+      <section
+        class="author-receipt"
+        data-testid="author-execution-receipt"
+        aria-label="SQLite execution receipt"
+      >
+        <div class="author-receipt-summary">
+          <div class="author-receipt-status">
+            <span
+              class="receipt-status-dot"
+              [class.previous]="publicSqliteRunIsStale(result)"
+            ></span>
+            <strong>{{
+              publicSqliteRunIsStale(result) ? 'Previous run' : 'Executed'
+            }}</strong>
+          </div>
+          <p class="author-receipt-primary">
+            {{ resultTotalRows() }}
+            {{ resultTotalRows() === 1 ? 'row' : 'rows' }}
+            <span>Customer ID {{ publicSqliteCustomerIdLabel(result) }}</span>
+          </p>
+
+        </div>
+        <ion-accordion-group class="author-receipt-details">
+          <ion-accordion value="execution">
+            <ion-item slot="header" lines="none"><ion-label>Execution details</ion-label></ion-item>
+            <ion-list slot="content">
+              <ion-item><ion-label>Source</ion-label><ion-note slot="end">Pinned Chinook SQLite</ion-note></ion-item>
+              <ion-item data-testid="author-receipt-observed"><ion-label>Observed</ion-label><ion-note slot="end">{{ result.provenance.observedAt }}</ion-note></ion-item>
+              @if (!selectedHistoricalResult() && (publicSqliteRunIsStale(result) ? committedRun()?.timing : queryRunTiming()); as timing) {
+                <ion-item><ion-label>Loaded in</ion-label><ion-note slot="end">{{ formatQueryDuration(timing.allResultsLoadedMs) }}</ion-note></ion-item>
+              }
+              @if (receipt.relationship; as relationship) {
+                <ion-item data-testid="author-receipt-relationship"><ion-label class="ion-text-wrap">
+                  <h3>Relationship</h3>
+                  <p>{{ relationship.fromSource }}.{{ relationship.pairs[0]?.fromField }} → {{ relationship.toSource }}.{{ relationship.pairs[0]?.toField }}</p>
+                  <ion-note>Worker verified · {{ relationship.id }} · version {{ relationship.version }}</ion-note>
+                </ion-label></ion-item>
+              }
+              <ion-item>
+                <ion-label>Fixture SHA-256</ion-label>
+                <ion-note slot="end">{{ receipt.fixtureSha256.slice(0, 12) }}…</ion-note>
+                <ion-buttons slot="end"><ion-button fill="clear" aria-label="Copy fixture SHA-256" title="Copy fixture SHA-256" (click)="copyExecutionIdentifier(receipt, receipt.fixtureSha256, 'Fixture SHA-256')"><ion-icon name="copy-outline" slot="icon-only" /></ion-button></ion-buttons>
+              </ion-item>
+              <ion-item>
+                <ion-label>Execution ID</ion-label>
+                <ion-note slot="end">{{ receipt.executionId.slice(0, 12) }}…</ion-note>
+                <ion-buttons slot="end"><ion-button fill="clear" aria-label="Copy execution ID" title="Copy execution ID" (click)="copyExecutionIdentifier(receipt, receipt.executionId, 'Execution ID')"><ion-icon name="copy-outline" slot="icon-only" /></ion-button></ion-buttons>
+              </ion-item>
+              @if (executionCopyStatus(); as status) {
+                <ion-item lines="none"><ion-label role="status" aria-live="polite">{{ status }}</ion-label></ion-item>
+              }
+              <ion-accordion-group>
+                <ion-accordion value="advanced">
+                  <ion-item slot="header"><ion-label>Advanced receipt</ion-label></ion-item>
+                  <ion-list slot="content">
+                    <ion-item data-testid="author-receipt-draft-revision"><ion-label class="ion-text-wrap">Draft revision {{ receipt.draftRevision }} · source {{ receipt.sourceId }}</ion-label></ion-item>
+                    <ion-item data-testid="author-receipt-worker-id"><ion-label class="ion-text-wrap">Worker execution ID <code>{{ receipt.executionId }}</code></ion-label></ion-item>
+                    <ion-item><ion-label class="ion-text-wrap">Fixture SHA-256 <code>{{ receipt.fixtureSha256 }}</code></ion-label></ion-item>
+                    <ion-item><ion-label class="ion-text-wrap">Schema fingerprint <code>{{ receipt.schemaVersion }}</code></ion-label>
+                      <ion-buttons slot="end"><ion-button fill="clear" aria-label="Copy schema fingerprint" title="Copy schema fingerprint" (click)="copyExecutionIdentifier(receipt, receipt.schemaVersion, 'Schema fingerprint')"><ion-icon name="copy-outline" slot="icon-only" /></ion-button></ion-buttons>
+                    </ion-item>
+                    <ion-item data-testid="author-receipt-bindings"><ion-label class="ion-text-wrap">Worker verified bindings: {{ receipt.bindingNames.join(', ') }}.
+                      @if (receipt.clientReportedBinding; as inputOrigin) {
+                        Input origin: {{ inputOrigin.origin }} · {{ inputOrigin.originEvidence }}.
+                        @if (inputOrigin.origin === 'selection') { Selected from {{ inputOrigin.sourceQueryId }}.{{ inputOrigin.sourceColumn }} · target {{ receipt.sourceId }}. }
+                      } @else { Input origin: manual · client-reported. }
+                    </ion-label></ion-item>
+                    @if (!publicSqliteRunIsStale(result) && receipt.draftRevision === authorDraftRevision() && authorPlan()) {
+                      <ion-item><ion-label>The executed request matched the preview at Run time.</ion-label></ion-item>
+                    }
+                    <ion-accordion-group><ion-accordion value="sql">
+                      <ion-item slot="header"><ion-label>Executed SQL</ion-label></ion-item>
+                      <ion-item slot="content" data-testid="author-receipt-sql"><ion-label class="ion-text-wrap"><pre>{{ receipt.sql }}</pre></ion-label></ion-item>
+                    </ion-accordion></ion-accordion-group>
+                  </ion-list>
+                </ion-accordion>
+              </ion-accordion-group>
+            </ion-list>
+          </ion-accordion>
+        </ion-accordion-group>
+      </section>
+    }
     @if (selectedHistoricalResult()) {
-      <ion-text color="medium" data-testid="historical-result-label"><p>Historical local result · executed {{ result.provenance.observedAt }}. Original plan and pins; read-only viewing does not resume execution.</p></ion-text>
-      <details><summary>Executed plan and pins</summary><pre style="white-space: pre-wrap">{{ historicalPins() }}</pre></details>
+      <ion-text color="medium" data-testid="historical-result-label"
+        ><p>
+          Historical local result · executed {{ result.provenance.observedAt }}.
+          Original plan and pins; read-only viewing does not resume execution.
+        </p></ion-text
+      >
+      <details>
+        <summary>Executed plan and pins</summary>
+        <pre style="white-space: pre-wrap">{{ historicalPins() }}</pre>
+      </details>
+    }
+    @if (displayedResultIsPreviousRun() && !result.publicSqliteReceipt) {
+      <ion-text color="medium" data-testid="previous-run-label">
+        <p>
+          Previous successful run · query {{ committedRun()?.scope?.queryId }} ·
+          target {{ committedRun()?.scope?.target }} · observed
+          {{ committedRun()?.provenance?.observedAt }}
+        </p>
+      </ion-text>
     }
     @if (result.relatedRecordsets?.length) {
       <ion-item>
-        <ion-select aria-label="Result set" [value]="relatedResultSet()" (ionChange)="changeRelatedResultSet($event.detail.value)">
-          <ion-select-option value="affiliations">Affiliations</ion-select-option>
-          @for (set of result.relatedRecordsets; track set.id) { <ion-select-option [value]="set.id">{{ set.label }}</ion-select-option> }
+        <ion-select
+          aria-label="Result set"
+          [value]="relatedResultSet()"
+          (ionChange)="changeRelatedResultSet($event.detail.value)"
+        >
+          <ion-select-option value="affiliations"
+            >Affiliations</ion-select-option
+          >
+          @for (set of result.relatedRecordsets; track set.id) {
+            <ion-select-option [value]="set.id">{{
+              set.label
+            }}</ion-select-option>
+          }
         </ion-select>
       </ion-item>
     }
@@ -646,21 +1545,44 @@
          recorded date comes from Result.provenance.observedAt, which for a snapshot
          response is the fixture's actual capture time (never "now" — see
          datatug-cli's pkg/httpsource snapshot handling). -->
-    <ion-text color="medium" data-testid="result-provenance">
-      @if (result.provenance.mode === 'snapshot') {
-        snapshot · recorded
-        {{ formatRecordedDate(result.provenance.observedAt) }} ·
-        {{ result.provenance.source }}
-      } @else if (!selectedHistoricalResult()) {
-        live · {{ result.provenance.source }}
-      } @else {
-        recorded local output · {{ result.provenance.source }}
-      }
-    </ion-text>
+    @if (!result.publicSqliteReceipt) {
+      <div class="ion-padding-horizontal">
+        <ion-text color="medium" data-testid="result-provenance">
+          @if (result.provenance.mode === 'snapshot') {
+            snapshot · recorded
+            {{ formatRecordedDate(result.provenance.observedAt) }} ·
+            {{ result.provenance.source }}
+          } @else if (!selectedHistoricalResult()) {
+            live · {{ result.provenance.source }}
+          } @else {
+            recorded local output · {{ result.provenance.source }}
+          }
+        </ion-text>
 
-    <sneat-datatug-source-rights-notice [evidence]="result" />
+        @if (
+          !selectedHistoricalResult() &&
+            (displayedResultIsPreviousRun()
+              ? committedRun()?.timing
+              : queryRunTiming());
+          as timing
+        ) {
+          <p data-testid="query-run-timings">
+            Time to first record:
+            @if (timing.noRecords) {
+              No records
+            } @else if (timing.firstRecordMs !== undefined) {
+              {{ formatQueryDuration(timing.firstRecordMs) }}
+            } @else {
+              Unavailable
+            }
+            · All results loaded in
+            {{ formatQueryDuration(timing.allResultsLoadedMs) }}
+          </p>
+        }
+      </div>
+    }
 
-    @if (result.bindingsApplied.length) {
+    @if (result.bindingsApplied.length && !result.publicSqliteReceipt) {
       <!-- REQ:no-hidden-filters — "the results header MUST list the bindings that
            were applied". Origin/originEvidence are shown distinctly per the 2026-09-09
            handoff correction: a client-supplied origin is never presented as
@@ -688,86 +1610,217 @@
       </ion-list>
     }
 
-    <ion-card>
-      <ion-card-content style="overflow-x: auto">
-        @if (
-          resultTotalRows() > resultPageSize ||
-          resultHasMore() ||
-          resultPageIndex() > 0
-        ) {
-          <div aria-label="Result pages">
-            <ion-button
-              fill="clear"
-              [disabled]="resultPageLoading() || resultPageIndex() === 0"
-              (click)="changeResultPage(-1)"
-              >Previous</ion-button
-            >
-            Rows {{ resultPageIndex() * resultPageSize + 1 }}–{{
-              resultPageIndex() * resultPageSize + visibleResultRows().length
-            }}
-            @if (!resultHasMore()) {
-              of {{ resultTotalRows() }}
+    <div [class.ion-padding-horizontal]="!isTugqlAuthorJourney()">
+      @if (semanticNotice()) { <ion-note color="warning">{{ semanticNotice() }}</ion-note> }
+      @if (queryDef()?.semanticModel) { <ion-note>{{ semanticValidation() === 'checking' ? 'Checking saved meanings for this query output…' : semanticNeedsReview() ? 'Meanings need review: the query or result shape changed. Open each meaning to confirm it.' : 'Column meanings are saved for this query output.' }}</ion-note> }
+
+      @if (isTugqlAuthorJourney()) {
+        <ion-item class="author-row-details-shortcut" lines="none">
+          <ion-label class="ion-text-wrap">
+            @if (currentAuthorResultRow(); as inspected) {
+              <p>▶ Current row · position {{ inspected.position }}</p>
+            } @else {
+              <p>Select a row to inspect its raw values.</p>
             }
-            <ion-button
-              fill="clear"
-              [disabled]="
-                resultPageLoading() ||
-                (!resultHasMore() &&
-                  (resultPageIndex() + 1) * resultPageSize >= resultTotalRows())
-              "
-              (click)="changeResultPage(1)"
-              >Next</ion-button
-            >
-          </div>
-        }
-        <table
-          class="run-result-table"
-          style="width: 100%; border-collapse: collapse"
-        >
-          <thead>
-            <tr>
-              @for (col of displayedRecordset()?.columns; track col.name) {
-                <th
-                  style="
-                    text-align: left;
-                    border-bottom: 2px solid var(--ion-color-step-150, #d9d9d9);
-                    padding: 4px 8px;
-                  "
+          </ion-label>
+          <ion-buttons slot="end">
+            <ion-button fill="clear" data-testid="author-row-details-open" [disabled]="!currentAuthorResultRow() || resultPageLoading()" (click)="openAuthorRowDetails($event)">Row details</ion-button>
+          </ion-buttons>
+        </ion-item>
+      }
+      @if (
+        resultTotalRows() > resultPageSize ||
+        resultHasMore() ||
+        resultPageIndex() > 0
+      ) {
+        <div aria-label="Result pages">
+          <ion-button
+            fill="clear"
+            [disabled]="resultPageLoading() || resultPageIndex() === 0"
+            (click)="changeResultPage(-1)"
+            >Previous</ion-button
+          >
+          Rows {{ resultPageIndex() * resultPageSize + 1 }}–{{
+            resultPageIndex() * resultPageSize + visibleResultRows().length
+          }}
+          @if (!resultHasMore()) {
+            of {{ resultTotalRows() }}
+          }
+          <ion-button
+            fill="clear"
+            [disabled]="
+              resultPageLoading() ||
+              (!resultHasMore() &&
+                (resultPageIndex() + 1) * resultPageSize >= resultTotalRows())
+            "
+            (click)="changeResultPage(1)"
+            >Next</ion-button
+          >
+        </div>
+      }
+      <div
+        class="result-author-data"
+        [class.result-author-data-enabled]="isTugqlAuthorJourney()"
+      >
+      <div class="result-grid-viewport" [class.author-result-grid-viewport]="isTugqlAuthorJourney()">
+        <ag-grid-angular
+          class="ag-theme-quartz"
+          style="height: 100%; width: 100%"
+          [columnDefs]="resultGridColumnDefs()"
+          [headerHeight]="64"
+          [rowData]="resultGridRows()"
+          [defaultColDef]="resultGridDefaultColDef"
+          [rowSelection]="isTugqlAuthorJourney() ? authorResultRowSelection : undefined"
+          [rowClassRules]="isTugqlAuthorJourney() ? authorResultRowClassRules : undefined"
+          [loading]="resultPageLoading()"
+          [overlayNoRowsTemplate]="resultGridNoRowsTemplate"
+          (selectionChanged)="authorResultSelectionChanged($event)"
+          (cellFocused)="authorResultCellFocused($event)"
+          (rowClicked)="authorResultRowClicked($event)"
+        />
+      </div>
+      @if (isTugqlAuthorJourney() && displayedRecordset(); as currentRecordset) {
+        <sneat-author-current-row
+          [columns]="currentRecordset.columns"
+          [row]="currentAuthorResultRow()?.row"
+          [position]="currentAuthorResultRow()?.position"
+          [totalRows]="resultTotalRows()"
+          [totalKnown]="resultTotalRowsKnown()"
+          [snapshotKey]="authorResultSnapshotKey()"
+          [filterStatus]="authorRowFilterStatus()"
+          (useAsFilter)="useAuthorResultValueAsFilter($event)"
+          (copyRequested)="clearAuthorRowFilterStatus()"
+        />
+      }
+      </div>
+    </div>
+    <div class="ion-padding-horizontal">
+      <sneat-datatug-source-rights-notice
+        [evidence]="result"
+        [compact]="true"
+      />
+    </div>
+    @if (activeHostedExecution(); as hosted) {
+      <ion-card>
+        <ion-card-header>
+          <ion-card-title>Validation for these query rows</ion-card-title>
+        </ion-card-header>
+        <ion-card-content>
+          <p>Saved query revision {{ hosted.queryRevision }} · result fingerprint {{ hosted.resultFingerprint }} · execution {{ hosted.execution.executionId }}.</p>
+          @if (hostedScenarioTarget()) {
+            <ion-button [disabled]="hostedScenarioBusy()" (click)="completeHostedScenarioStep()">Record Scenario query step from this execution</ion-button>
+            <p>Completing the manual step records this authorized query receipt. It does not assert that its rows passed validation.</p>
+          }
+          @if (hostedScenarioMessage()) {
+            <p role="status">{{ hostedScenarioMessage() }}</p>
+          }
+          @if (hostedScenarioError()) {
+            <p role="alert">{{ hostedScenarioError() }}</p>
+          }
+          @if (hosted.validationPending) {
+            <p role="status">Validation is still running for this execution. Row status will appear when its receipt is ready.</p>
+          }
+          @if (hosted.validationError) {
+            <p role="alert">{{ hosted.validationError }} The query rows remain visible without validation status.</p>
+          }
+          @if (hosted.caseLinkNotice) {
+            <p role="status">{{ hosted.caseLinkNotice }}</p>
+          }
+          @if (hosted.run; as run) {
+            @if (run.executionStatus === 'completed') {
+              <ion-item>
+                <ion-label>Filter this result page by validation</ion-label>
+                <ion-select
+                  aria-label="Filter this result page by validation"
+                  interface="popover"
+                  [value]="hostedStatusFilter()"
+                  (ionChange)="hostedStatusFilter.set($event.detail.value || 'all')"
                 >
-                  {{ col.name }}
-                </th>
-              }
-            </tr>
-          </thead>
-          <tbody>
-            @for (row of visibleResultRows(); track $index) {
-              <tr>
-                @for (cell of row; track $index) {
-                  <td
-                    style="
-                      border-bottom: 1px solid
-                        var(--ion-color-step-100, #e6e6e6);
-                      padding: 4px 8px;
-                    "
-                  >
-                    {{ displayValue(cell) }}
-                  </td>
+                  <ion-select-option value="all">All rows</ion-select-option>
+                  <ion-select-option value="fail">Failed</ion-select-option>
+                  <ion-select-option value="unknown">Unknown or no row finding</ion-select-option>
+                  <ion-select-option value="pass">Passed</ion-select-option>
+                </ion-select>
+              </ion-item>
+              <p>Set-level findings appear below. Rows without a row-level finding are unknown here, never assumed to pass.</p>
+            } @else {
+              <p role="status">Validation execution {{ run.executionStatus }}. Row status is unavailable until completion.</p>
+            }
+            <sneat-validation-run-results
+              [run]="run"
+              [rootExecution]="hosted.execution"
+              [rootQueryId]="hosted.queryId"
+              (rowSelected)="selectHostedValidationRow($event)"
+            />
+            @if (hostedSelectedRowCells(); as cells) {
+              <ion-list aria-label="Selected validated query row">
+                <ion-list-header><ion-label>Query row {{ hostedSelectedRow()! + 1 }}</ion-label></ion-list-header>
+                @for (cell of cells; track cell.name) {
+                  <ion-item><ion-label>{{ cell.name }}: {{ cell.value }}</ion-label></ion-item>
                 }
-              </tr>
+              </ion-list>
             }
-            @if (!resultTotalRows()) {
-              <tr>
-                <td
-                  [attr.colspan]="displayedRecordset()?.columns.length"
-                  style="padding: 4px 8px"
-                >
-                  No rows.
-                </td>
-              </tr>
-            }
-          </tbody>
-        </table>
-      </ion-card-content>
-    </ion-card>
+          }
+        </ion-card-content>
+      </ion-card>
+    }
+    @if (activeLocalScenarioExecution(); as local) {
+      <ion-card>
+        <ion-card-header>
+          <ion-card-title>Local Scenario execution receipt</ion-card-title>
+        </ion-card-header>
+        <ion-card-content>
+          <p>Execution {{ local.execution.executionId }} was persisted by the project agent for this saved query and logical environment.</p>
+          <ion-button [disabled]="hostedScenarioBusy()" (click)="completeHostedScenarioStep()">Record Scenario query step from this execution</ion-button>
+          <p>This records execution evidence. It does not assert that the query rows passed validation.</p>
+          @if (hostedScenarioMessage()) {
+            <p role="status">{{ hostedScenarioMessage() }}</p>
+          }
+          @if (hostedScenarioError()) {
+            <p role="alert">{{ hostedScenarioError() }}</p>
+          }
+        </ion-card-content>
+      </ion-card>
+    }
+  }
+  </section>
+  </ng-template>
+
+  @if (!isTugqlAuthorJourney()) {
+    <ng-container *ngTemplateOutlet="queryEditor" />
+    <ng-container *ngTemplateOutlet="queryResults" />
   }
 </ion-content>
+
+<ion-modal
+  data-testid="author-row-details-sheet"
+  [isOpen]="authorRowDetailsOpen()"
+  [initialBreakpoint]="(displayedRecordset()?.columns?.length ?? 0) <= 3 ? 0.56 : 0.8"
+  [breakpoints]="[0, 0.56, 0.8, 1]"
+  aria-label="Current row details"
+  (didDismiss)="authorRowDetailsDismissed()"
+>
+  <ng-template>
+    <ion-header>
+      <ion-item lines="none">
+        <ion-label>Row details</ion-label>
+        <ion-buttons slot="end"><ion-button data-testid="author-row-details-close" (click)="authorRowDetailsOpen.set(false)">Close</ion-button></ion-buttons>
+      </ion-item>
+    </ion-header>
+    <ion-content>
+      @if (authorRowDetailsOpen() && !resultPageLoading() && currentAuthorResultRow(); as inspected) {
+        <sneat-author-current-row
+          [columns]="inspected.recordset.columns"
+          [row]="inspected.row"
+          [position]="inspected.position"
+          [totalRows]="resultTotalRows()"
+          [totalKnown]="resultTotalRowsKnown()"
+          [snapshotKey]="authorResultSnapshotKey()"
+          [filterStatus]="authorRowFilterStatus()"
+          (useAsFilter)="useAuthorResultValueAsFilter($event)"
+          (copyRequested)="clearAuthorRowFilterStatus()"
+        />
+      }
+    </ion-content>
+  </ng-template>
+</ion-modal>

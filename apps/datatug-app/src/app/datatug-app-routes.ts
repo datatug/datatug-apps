@@ -11,8 +11,17 @@ import {
 import { PRODUCT_PROFILE } from '@datatug/product-profiles';
 import { hasOutletGroup } from '@datatug/project-address';
 import { cliChatCapability } from './cli-chat-capability';
-import { DEMO_HANDOFF_KEY, DEMO_HANDOFF_STASH, handoffAsked, handoffDecision, searchAsksQuestion, searchOfQueryParams } from './demo-handoff-asked';
+import {
+  DEMO_HANDOFF_KEY,
+  DEMO_HANDOFF_STASH,
+  handoffAsked,
+  handoffDecision,
+  searchAsksQuestion,
+  searchOfQueryParams,
+} from './demo-handoff-asked';
 import { handoffUrlMatcher, routeSegments } from './demo-handoff-path';
+import { CheckoutLoadErrorComponent } from './checkout/checkout-load-error.component';
+import recordsetcompareLock from '../../recordsetcompare-lock.json';
 
 // Task 13 (S108, spec/research/2026-09-09-layered-acl-reconciliation.md,
 // datatug/datatug): the read-only worktree
@@ -51,21 +60,63 @@ import { handoffUrlMatcher, routeSegments } from './demo-handoff-path';
 // there the same addresses go to `/` (and on to that profile's home) instead of failing to match, which would
 // raise NG04002, a Sentry event and the crash-report dialog. (A route guard, not a component, so product-profiles'
 // rule that a component never branches on the profile's identity is not what this is.)
-const demoHoldingPage = () => import('./demo-holding-page.component').then((m) => m.DemoHoldingPageComponent);
+const demoHoldingPage = () =>
+  import('./demo-holding-page.component').then(
+    (m) => m.DemoHoldingPageComponent,
+  );
 
 /** Only the old first-party Chinook demo address is an alias of the consolidated project. */
-export const legacyChinookDemoMatcher = (segments: UrlSegment[], group: UrlSegmentGroup) => {
+export const legacyChinookDemoMatcher = (
+  segments: UrlSegment[],
+  group: UrlSegmentGroup,
+) => {
   if (hasOutletGroup(group)) return null;
-  if (segments.some((segment) => !/^[\x20-\x7e]+$/.test(segment.path))) return null;
+  if (segments.some((segment) => !/^[\x20-\x7e]+$/.test(segment.path)))
+    return null;
   const names = segments.map((segment) => segment.path.toLowerCase());
-  if (names[0] !== 'project' || names[1] !== 'github.com' || names[2] !== 'datatug' || names[3] !== 'chinook-demo') return null;
+  if (
+    names[0] !== 'project' ||
+    names[1] !== 'github.com' ||
+    names[2] !== 'datatug' ||
+    names[3] !== 'chinook-demo'
+  )
+    return null;
   const rest = names.slice(4);
   if (rest[0] === 'tree' && segments[5]?.path !== 'HEAD') return null;
-  if (!(rest.length === 0 ||
-        (rest.length === 1 && (rest[0] === 'chat' || rest[0] === 'start-chat')) ||
-        (rest.length === 2 && rest[0] === 'tree' && rest[1] === 'head') ||
-        (rest.length === 4 && rest[0] === 'tree' && rest[1] === 'head' && rest[2] === '-' &&
-          (rest[3] === 'chat' || rest[3] === 'start-chat')))) return null;
+  if (
+    !(
+      rest.length === 0 ||
+      (rest.length === 1 && (rest[0] === 'chat' || rest[0] === 'start-chat')) ||
+      (rest.length === 2 && rest[0] === 'tree' && rest[1] === 'head') ||
+      (rest.length === 4 &&
+        rest[0] === 'tree' &&
+        rest[1] === 'head' &&
+        rest[2] === '-' &&
+        (rest[3] === 'chat' || rest[3] === 'start-chat'))
+    )
+  )
+    return null;
+  return { consumed: segments };
+};
+
+/** The site's historic short folder spelling names only this one shared project. */
+export const canonicalDemoShortMatcher = (
+  segments: UrlSegment[],
+  group: UrlSegmentGroup,
+) => {
+  if (
+    hasOutletGroup(group) ||
+    segments.some((segment) => !/^[\x20-\x7e]+$/.test(segment.path))
+  )
+    return null;
+  const names = segments.map((segment) => segment.path.toLowerCase());
+  if (names.length !== 5 && names.length !== 6) return null;
+  if (
+    names.slice(0, 5).join('/') !==
+    'project/github.com/datatug/datatug-demo-project/demo-project-1'
+  )
+    return null;
+  if (names.length === 6 && names[5] !== 'start-chat') return null;
   return { consumed: segments };
 };
 
@@ -76,55 +127,101 @@ export const redirectLegacyChinookDemo: CanMatchFn = (_route, segments) => {
   let asked = false;
   if (page === 'chat' || page === 'start-chat') {
     const router = inject(Router);
-    const routerSearch = searchOfQueryParams(router.getCurrentNavigation()?.extractedUrl.queryParams ?? {});
+    const routerSearch = searchOfQueryParams(
+      router.getCurrentNavigation()?.extractedUrl.queryParams ?? {},
+    );
     if (page === 'chat') {
       asked = handoffAsked(names, undefined, routerSearch);
-      if (asked && typeof (window as unknown as Record<string, unknown>)[DEMO_HANDOFF_STASH] !== 'string') {
+      if (
+        asked &&
+        typeof (window as unknown as Record<string, unknown>)[
+          DEMO_HANDOFF_STASH
+        ] !== 'string'
+      ) {
         try {
           const saved = sessionStorage.getItem(DEMO_HANDOFF_KEY) ?? '';
           const split = saved.indexOf('?');
-          if (split >= 0 && routeSegments(saved.slice(0, split)).map((value) => value.toLowerCase()).join('/') ===
-              names.map((value) => value.toLowerCase()).join('/')) {
-            (window as unknown as Record<string, unknown>)[DEMO_HANDOFF_STASH] = saved.slice(split);
+          if (
+            split >= 0 &&
+            routeSegments(saved.slice(0, split))
+              .map((value) => value.toLowerCase())
+              .join('/') === names.map((value) => value.toLowerCase()).join('/')
+          ) {
+            (window as unknown as Record<string, unknown>)[DEMO_HANDOFF_STASH] =
+              saved.slice(split);
           }
-        } catch { /* Blocked storage leaves only the current page-load hand-off. */ }
+        } catch {
+          /* Blocked storage leaves only the current page-load hand-off. */
+        }
       }
-    } else if (routerSearch && typeof (window as unknown as Record<string, unknown>)[DEMO_HANDOFF_STASH] !== 'string') {
-      (window as unknown as Record<string, unknown>)[DEMO_HANDOFF_STASH] = routerSearch;
+    } else if (
+      routerSearch &&
+      typeof (window as unknown as Record<string, unknown>)[
+        DEMO_HANDOFF_STASH
+      ] !== 'string'
+    ) {
+      (window as unknown as Record<string, unknown>)[DEMO_HANDOFF_STASH] =
+        routerSearch;
     }
   } else {
     delete (window as unknown as Record<string, unknown>)[DEMO_HANDOFF_STASH];
   }
-  const suffix = page === 'chat' || page === 'start-chat' ? ['-', asked ? 'start-chat' : page] : [];
+  const suffix =
+    page === 'chat' || page === 'start-chat'
+      ? ['-', asked ? 'start-chat' : page]
+      : [];
   const destination = urlTreeOfSegments([
-    'project', 'github.com', 'datatug', 'datatug-demo-project', 'tree', 'HEAD', 'demo-project-1', ...suffix,
+    'project',
+    'github.com',
+    'datatug',
+    'datatug-demo-project',
+    'tree',
+    'HEAD',
+    'demo-project-1',
+    ...suffix,
   ]);
   if (suffix.length) {
     const canonicalPath = inject(Router).serializeUrl(destination);
-    let search = (window as unknown as Record<string, unknown>)[DEMO_HANDOFF_STASH];
+    let search = (window as unknown as Record<string, unknown>)[
+      DEMO_HANDOFF_STASH
+    ];
     if (typeof search !== 'string' || !searchAsksQuestion(search)) {
       try {
         const saved = sessionStorage.getItem(DEMO_HANDOFF_KEY) ?? '';
         const split = saved.indexOf('?');
         const stored = split < 0 ? [] : routeSegments(saved.slice(0, split));
-        if (stored.length === names.length && stored.every((part) => /^[\x20-\x7e]+$/.test(part)) &&
-            (names[4]?.toLowerCase() !== 'tree' || stored[5] === 'HEAD') &&
-            stored.map((part) => part.toLowerCase()).join('/') === names.map((part) => part.toLowerCase()).join('/')) {
+        if (
+          stored.length === names.length &&
+          stored.every((part) => /^[\x20-\x7e]+$/.test(part)) &&
+          (names[4]?.toLowerCase() !== 'tree' || stored[5] === 'HEAD') &&
+          stored.map((part) => part.toLowerCase()).join('/') ===
+            names.map((part) => part.toLowerCase()).join('/')
+        ) {
           search = saved.slice(split);
         }
-      } catch { /* Blocked storage leaves this page's in-memory hand-off intact. */ }
+      } catch {
+        /* Blocked storage leaves this page's in-memory hand-off intact. */
+      }
     }
     if (typeof search === 'string' && searchAsksQuestion(search)) {
-      (window as unknown as Record<string, unknown>)[DEMO_HANDOFF_STASH] = search;
-      try { sessionStorage.setItem(DEMO_HANDOFF_KEY, canonicalPath + search); }
-      catch { /* A blocked store still permits this page-load hand-off. */ }
+      (window as unknown as Record<string, unknown>)[DEMO_HANDOFF_STASH] =
+        search;
+      try {
+        sessionStorage.setItem(DEMO_HANDOFF_KEY, canonicalPath + search);
+      } catch {
+        /* A blocked store still permits this page-load hand-off. */
+      }
     }
   }
   return new RedirectCommand(destination, { replaceUrl: true });
 };
 
+// Both exact aliases use the same canonical destination and question rekeying.
+export const redirectCanonicalDemoShort = redirectLegacyChinookDemo;
+
 /** The hand-off page belongs to the DataTug product profile only. */
-export const datatugProfileOnly = (): boolean => inject(PRODUCT_PROFILE).id === 'datatug';
+export const datatugProfileOnly = (): boolean =>
+  inject(PRODUCT_PROFILE).id === 'datatug';
 
 /**
  * The URL tree of an address built from its decoded segments, not parsed from a string: the router's parser reads
@@ -154,17 +251,83 @@ export const handoffOrRoot: CanMatchFn = (_route, segments) => {
   const decision = handoffDecision(
     segments.map((segment) => segment.path),
     undefined,
-    searchOfQueryParams(router.getCurrentNavigation()?.extractedUrl.queryParams ?? {}),
+    searchOfQueryParams(
+      router.getCurrentNavigation()?.extractedUrl.queryParams ?? {},
+    ),
   );
   if (decision.kind === 'move-to-start-chat')
-    return new RedirectCommand(urlTreeOfSegments(decision.segments), { replaceUrl: true });
+    return new RedirectCommand(urlTreeOfSegments(decision.segments), {
+      replaceUrl: true,
+    });
   return decision.kind === 'page';
 };
 
+export const checkoutOrRoot: CanMatchFn = () =>
+  datatugProfileOnly() ? true : inject(Router).parseUrl('/');
+
+// The rejected promise branch covers only the lazy module import. A loaded
+// component's constructor, rendering, auth, and payment errors stay on their
+// existing paths. Never include the rejection or URL in diagnostics.
+const loadBusinessCheckoutPage = () =>
+  import('./checkout/business-checkout-page.component').then(
+    (module) => module.BusinessCheckoutPageComponent,
+    () => {
+      console.warn('business_checkout_page_import_failed');
+      return CheckoutLoadErrorComponent;
+    },
+  );
+
+const loadProCheckoutPage = () =>
+  import('./checkout/checkout-page.component').then(
+    (module) => module.CheckoutPageComponent,
+    () => {
+      console.warn('pro_checkout_page_import_failed');
+      return CheckoutLoadErrorComponent;
+    },
+  );
+
 export const routes: Routes = [
+  ...[
+    'subscriptions/:accountId/transfer',
+    'subscriptions/:accountId',
+    'subscriptions',
+  ].map((path) => ({
+    path,
+    canMatch: [checkoutOrRoot],
+    data: { subscriptionTransfer: path.endsWith('/transfer') },
+    loadComponent: () =>
+      import('./checkout/subscription-settings-page.component').then(
+        (m) => m.SubscriptionSettingsPageComponent,
+      ),
+  })),
+  {
+    path: 'checkout/sign-in',
+    canMatch: [checkoutOrRoot],
+    data: { checkoutAuth: true },
+    loadComponent: loadProCheckoutPage,
+  },
+  ...['business/checkout/return', 'business/checkout'].map((path) => ({
+    path,
+    canMatch: [checkoutOrRoot],
+    data: { businessCheckoutReturn: path === 'business/checkout/return' },
+    loadComponent: path.endsWith('/return')
+      ? loadBusinessCheckoutPage
+      : loadProCheckoutPage,
+  })),
+  ...['subscribe', 'pricing/return'].map((path) => ({
+    path,
+    canMatch: [checkoutOrRoot],
+    data: { checkoutReturn: path === 'pricing/return' },
+    loadComponent: loadProCheckoutPage,
+  })),
   {
     matcher: legacyChinookDemoMatcher,
     canMatch: [redirectLegacyChinookDemo],
+    loadComponent: demoHoldingPage,
+  },
+  {
+    matcher: canonicalDemoShortMatcher,
+    canMatch: [redirectCanonicalDemoShort],
     loadComponent: demoHoldingPage,
   },
   {
@@ -175,11 +338,13 @@ export const routes: Routes = [
   {
     path: 'store/:storeId/project/:projectId/chat',
     canMatch: [() => !!cliChatCapability()],
-    loadComponent: () => import('./cli-chat-page.component').then((m) => m.CliChatPageComponent),
+    loadComponent: () =>
+      import('./cli-chat-page.component').then((m) => m.CliChatPageComponent),
   },
   {
     path: 'chat',
-    loadComponent: () => import('./cli-chat-page.component').then((m) => m.CliChatPageComponent),
+    loadComponent: () =>
+      import('./cli-chat-page.component').then((m) => m.CliChatPageComponent),
   },
   {
     path: 'hello-world',
@@ -204,7 +369,25 @@ export const routes: Routes = [
   },
   {
     path: '',
-    loadChildren: () =>
-      import('@sneat/datatug-main').then((m) => m.DatatugRoutingModule),
+    loadChildren: async () => {
+      const main = await import('@sneat/datatug-main');
+      return [
+        {
+          path: '',
+          providers: [
+            {
+              provide: main.PUBLIC_SQLITE_COMPARE_WASM_PIN,
+              useValue: Object.freeze({
+                wasmSHA256:
+                  recordsetcompareLock.files['recordsetcompare.wasm'].sha256,
+                wasmBytes:
+                  recordsetcompareLock.files['recordsetcompare.wasm'].bytes,
+              }),
+            },
+          ],
+          loadChildren: () => main.DatatugRoutingModule,
+        },
+      ];
+    },
   },
 ];

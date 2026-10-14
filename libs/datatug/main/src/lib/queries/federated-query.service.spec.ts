@@ -45,6 +45,11 @@ describe('federated query worker boundary', () => {
         this.onmessage?.({ data } as MessageEvent);
       }
     }
+    const currentWorker = (): FakeWorker => {
+      const worker = FakeWorker.last;
+      if (!worker) throw new Error('Expected the worker to have started.');
+      return worker;
+    };
     const definition = {
       id: 'query',
       title: 'Query',
@@ -89,6 +94,20 @@ describe('federated query worker boundary', () => {
       silent.worker.send({ type: 'source', event: sourceEvent });
       silent.worker.send({ type: 'result', result });
       await expect(silent.run).resolves.toEqual(result);
+    });
+
+    it('routes the worker first decoded-record timestamp to the current run', async () => {
+      vi.stubGlobal('Worker', FakeWorker);
+      const firstRecord = vi.fn();
+      const active = await started(new FederatedQueryService(), {
+        onFirstRecord: firstRecord,
+      });
+      const at = 123456.75;
+      active.worker.send({ type: 'first-record', at });
+      active.worker.send({ type: 'result', result });
+      await expect(active.run).resolves.toEqual(result);
+      expect(firstRecord).toHaveBeenCalledOnce();
+      expect(firstRecord).toHaveBeenCalledWith(at);
     });
 
     it.each([{ type: 'fixture-audit' }, { type: 'error', message: '' }, { type: 'error' }])('rejects unexpected or empty error messages visibly without accepting output: %j', async (message) => {
@@ -155,7 +174,7 @@ describe('federated query worker boundary', () => {
       const replacement = service.run(definition);
       await rejected;
       await vi.waitFor(() => expect(FakeWorker.last?.posted.length).toBe(1));
-      const worker = FakeWorker.last as FakeWorker;
+      const worker = currentWorker();
       failOld(new Error('Old cleanup failed.')); await Promise.resolve(); await Promise.resolve();
       worker.send({ type: 'result', result });
       await expect(replacement).resolves.toEqual(result);
@@ -170,7 +189,7 @@ describe('federated query worker boundary', () => {
       const run = service.run(graph), rejected = expect(run).rejects.toThrow('cancelled');
       Object.assign(nativeGraph, { aliases: false });
       await vi.waitFor(() => expect(FakeWorker.last?.posted.length).toBe(1));
-      const sent = FakeWorker.last?.posted[0] as { definition: IQueryDef };
+      const sent = currentWorker().posted[0] as { definition: IQueryDef };
       expect(sent.definition.federation?.nativeGraph?.aliases).toBe(true);
       expect(sent.definition).not.toBe(graph);
       await service.dispose(); await rejected;
@@ -183,7 +202,7 @@ describe('federated query worker boundary', () => {
         FakeWorker.last = undefined;
         const run = service.run(graph), rejected = expect(run).rejects.toThrow('cancelled');
         await vi.waitFor(() => expect(FakeWorker.last?.posted.length).toBe(1));
-        const worker = FakeWorker.last as FakeWorker;
+        const worker = currentWorker();
         const storageId = (worker.posted[0] as { storageId: string }).storageId;
         return { rejected, worker, output: `datatug-output-${storageId}` };
       };
@@ -240,9 +259,8 @@ describe('federated query worker boundary', () => {
       const run = service.run(bounded);
       const rejected = expect(run).rejects.toThrow(/exceeded its deadline/);
       await vi.waitFor(() => expect(FakeWorker.last?.posted.length).toBe(1));
-      const worker = FakeWorker.last;
       await rejected;
-      expect(worker?.terminate).toHaveBeenCalledOnce();
+      expect(currentWorker().terminate).toHaveBeenCalledOnce();
       await expect(service.dispose()).resolves.toBeUndefined();
     });
 
@@ -264,8 +282,8 @@ describe('federated query worker boundary', () => {
       const promise = service.run(configured);
       const rejected = expect(promise).rejects.toThrow(/cancelled/);
       await vi.waitFor(() => expect(FakeWorker.last?.posted.length).toBe(1));
-      const worker = FakeWorker.last;
-      const first = worker?.posted[0] as { deadline: number; storageId: string };
+      const worker = currentWorker();
+      const first = worker.posted[0] as { deadline: number; storageId: string };
       expect(first.deadline).toBeGreaterThan(
         performance.timeOrigin + performance.now(),
       );
@@ -281,11 +299,11 @@ describe('federated query worker boundary', () => {
         };
         request.onerror = () => reject(request.error);
       });
-      worker?.send({ type: 'storage', name });
-      worker?.send({ type: 'storage', name: 'unowned-user-database' });
+      worker.send({ type: 'storage', name });
+      worker.send({ type: 'storage', name: 'unowned-user-database' });
       await service.dispose();
       await rejected;
-      expect(worker?.terminate).toHaveBeenCalledOnce();
+      expect(worker.terminate).toHaveBeenCalledOnce();
       expect((await indexedDB.databases()).some((db) => db.name === name)).toBe(
         false,
       );

@@ -2,6 +2,8 @@ import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, RouterLink, provideRouter } from '@angular/router';
 import { provideIonicAngular } from '@ionic/angular/provide';
+import { addIcons } from 'ionicons';
+import { add, hourglassOutline } from 'ionicons/icons';
 import {
   IonBackButton,
   IonButton,
@@ -24,7 +26,7 @@ import {
 } from '@ionic/angular';
 import { SneatErrorCardComponent } from '@sneat/components';
 import { ErrorLogger } from '@sneat/core';
-import { BehaviorSubject, of } from 'rxjs';
+import { BehaviorSubject, of, type Observable } from 'rxjs';
 
 import {
   DatatugStorePageComponent,
@@ -42,11 +44,14 @@ import {
   IDatatugUserState,
 } from '../../../services/base/datatug-user-service';
 
+// The app registers its icon set in main.ts. Register only those used by the
+// real store template so happy-dom embeds SVGs without network fetches.
+addIcons({ add, hourglassOutline });
+
 // The one shared demo project listed under the GitHub store (G-A1c; the home page's entry).
 const DEMO_PROJECT_ID = 'datatug-demo-project@datatug@demo-project-1';
 // What the "Open a GitHub project" form is pre-filled with (datatug/datatug-demo-project, folder demo-project-1).
-const FORM_DEFAULT_PROJECT_ID =
-  'datatug-demo-project@datatug@demo-project-1';
+const FORM_DEFAULT_PROJECT_ID = 'datatug-demo-project@datatug@demo-project-1';
 
 // Real-template imports for the `describe('project list gating ...')` block
 // below, minus `DatatugServicesStoreModule` (the real component's own
@@ -126,12 +131,12 @@ describe('StorePageComponent', () => {
         },
         {
           provide: NewProjectService,
-          useValue: { openNewProjectDialog: vi.fn() },
+          useValue: { navigateToNewProjectPage: vi.fn() },
         },
         {
           provide: DatatugUserService,
           useValue: {
-            datatugUserState: of({ status: undefined, record: null }),
+            datatugUserState: of({ status: undefined, record: undefined }),
           },
         },
       ],
@@ -189,7 +194,7 @@ describe('StorePageComponent', () => {
         lastCheckedAt: new Date(),
       };
       const agentStateService = TestBed.inject(AgentStateService) as {
-        watchAgentInfo: (storeId: string) => ReturnType<typeof of<IAgentState>>;
+        watchAgentInfo: (storeId: string) => Observable<IAgentState>;
       };
       agentStateService.watchAgentInfo = () => of(emittedState);
 
@@ -235,7 +240,10 @@ describe('StorePageComponent', () => {
             type: 'github',
             title: 'GitHub.com',
             projects: {
-              'my-repo@my-org@my-folder': { title: 'My repo', access: 'public' },
+              'my-repo@my-org@my-folder': {
+                title: 'My repo',
+                access: 'public',
+              },
             },
           },
         },
@@ -326,16 +334,32 @@ describe('StorePageComponent', () => {
       ).projectLink.call(Object.assign(component, { storeId }), { id });
 
     it.each([
-      ['github.com', 'chinook-demo@datatug@', '/project/github.com/datatug/chinook-demo'],
-      ['github', 'chinook-demo@datatug@', '/project/github.com/datatug/chinook-demo'],
+      [
+        'github.com',
+        'chinook-demo@datatug@',
+        '/project/github.com/datatug/chinook-demo',
+      ],
+      [
+        'github',
+        'chinook-demo@datatug@',
+        '/project/github.com/datatug/chinook-demo',
+      ],
       [
         'github.com',
         'datatug-demo-projects@datatug@demo-project-1',
         '/project/github.com/datatug/datatug-demo-projects/tree/HEAD/demo-project-1',
       ],
       ['firestore', 'p1', '/store/firestore/project/p1'],
-      ['http-localhost:8989', 'datatug-demo-project', '/store/http-localhost:8989/project/datatug-demo-project'],
-      ['localhost:8989', 'datatug-demo-project', '/store/localhost:8989/project/datatug-demo-project'],
+      [
+        'http-localhost:8989',
+        'datatug-demo-project',
+        '/store/http-localhost:8989/project/datatug-demo-project',
+      ],
+      [
+        'localhost:8989',
+        'datatug-demo-project',
+        '/store/localhost:8989/project/datatug-demo-project',
+      ],
       // Nothing to link to: no store yet, or a project with no exact address.
       [null, 'p1', '/'],
       ['localhost:8989', '50%', '/'],
@@ -350,14 +374,16 @@ describe('StorePageComponent', () => {
     });
 
     it('builds the project id of <repository>, <owner> and <folder> from the form fields (defaults) and navigates to the project page', () => {
-      const nav = TestBed.inject(DatatugNavService) as {
-        goProject: ReturnType<typeof vi.fn>;
-      };
+      const nav = TestBed.inject(DatatugNavService);
 
       component.openGithubProject(new Event('submit'));
 
-      expect(nav.goProject).toHaveBeenCalledTimes(1);
-      const projectContext = nav.goProject.mock.calls[0][0];
+      const goProject = vi.mocked(nav.goProject);
+      expect(goProject).toHaveBeenCalledTimes(1);
+      const call = goProject.mock.lastCall;
+      if (!call) throw new Error('Expected project navigation');
+      const projectContext = call[0];
+      if (!projectContext) throw new Error('Expected project context');
       expect(projectContext.ref).toEqual({
         projectId: FORM_DEFAULT_PROJECT_ID,
         storeId: 'github.com',
@@ -366,16 +392,17 @@ describe('StorePageComponent', () => {
     });
 
     it('builds the id from edited owner/repository/folder fields', () => {
-      const nav = TestBed.inject(DatatugNavService) as {
-        goProject: ReturnType<typeof vi.fn>;
-      };
+      const nav = TestBed.inject(DatatugNavService);
 
       component.updateGithubField('owner', 'my-org');
       component.updateGithubField('repository', 'my-repo');
       component.updateGithubField('folder', 'my-folder');
       component.openGithubProject(new Event('submit'));
 
-      const projectContext = nav.goProject.mock.calls[0][0];
+      const call = vi.mocked(nav.goProject).mock.lastCall;
+      if (!call) throw new Error('Expected project navigation');
+      const projectContext = call[0];
+      if (!projectContext) throw new Error('Expected project context');
       expect(projectContext.ref.projectId).toBe('my-repo@my-org@my-folder');
     });
 
@@ -384,40 +411,40 @@ describe('StorePageComponent', () => {
       // the default folder dropped), whatever the form was filled with.
       ['My-Org', 'My-Repo', 'My-Folder', 'my-repo@my-org@My-Folder'],
       ['datatug', 'chinook-demo', 'datatug', 'chinook-demo@datatug'],
-    ])('writes the one id of the project for %s/%s in %s', (owner, repo, folder, id) => {
-      const nav = TestBed.inject(DatatugNavService) as {
-        goProject: ReturnType<typeof vi.fn>;
-      };
+    ])(
+      'writes the one id of the project for %s/%s in %s',
+      (owner, repo, folder, id) => {
+        const nav = TestBed.inject(DatatugNavService);
 
-      component.updateGithubField('owner', owner);
-      component.updateGithubField('repository', repo);
-      component.updateGithubField('folder', folder);
-      component.openGithubProject(new Event('submit'));
+        component.updateGithubField('owner', owner);
+        component.updateGithubField('repository', repo);
+        component.updateGithubField('folder', folder);
+        component.openGithubProject(new Event('submit'));
 
-      expect(nav.goProject.mock.calls[0][0].ref.projectId).toBe(id);
-    });
+        const call = vi.mocked(nav.goProject).mock.lastCall;
+        if (!call) throw new Error('Expected project navigation');
+        if (!call[0]) throw new Error('Expected project context');
+        expect(call[0].ref.projectId).toBe(id);
+      },
+    );
 
     it('rejects an empty field without navigating', () => {
-      const nav = TestBed.inject(DatatugNavService) as {
-        goProject: ReturnType<typeof vi.fn>;
-      };
+      const nav = TestBed.inject(DatatugNavService);
 
       component.updateGithubField('owner', '');
       component.openGithubProject(new Event('submit'));
 
-      expect(nav.goProject).not.toHaveBeenCalled();
+      expect(vi.mocked(nav.goProject)).not.toHaveBeenCalled();
       expect(component.githubFormError()).toBeTruthy();
     });
 
     it('rejects a field containing "@" without navigating', () => {
-      const nav = TestBed.inject(DatatugNavService) as {
-        goProject: ReturnType<typeof vi.fn>;
-      };
+      const nav = TestBed.inject(DatatugNavService);
 
       component.updateGithubField('repository', 'bad@repo');
       component.openGithubProject(new Event('submit'));
 
-      expect(nav.goProject).not.toHaveBeenCalled();
+      expect(vi.mocked(nav.goProject)).not.toHaveBeenCalled();
       expect(component.githubFormError()).toBeTruthy();
     });
   });
@@ -446,7 +473,7 @@ describe('StorePageComponent', () => {
 
       authState = new BehaviorSubject<IDatatugUserState>({
         status: 'notAuthenticated',
-        record: null,
+        record: undefined,
       });
 
       await TestBed.configureTestingModule({
@@ -481,9 +508,12 @@ describe('StorePageComponent', () => {
           },
           {
             provide: NewProjectService,
-            useValue: { openNewProjectDialog: vi.fn() },
+            useValue: { navigateToNewProjectPage: vi.fn() },
           },
-          { provide: DatatugUserService, useValue: { datatugUserState: authState } },
+          {
+            provide: DatatugUserService,
+            useValue: { datatugUserState: authState },
+          },
         ],
       })
         .overrideComponent(DatatugStorePageComponent, {
@@ -521,7 +551,7 @@ describe('StorePageComponent', () => {
       (f.nativeElement as HTMLElement).innerHTML;
 
     it('anonymous + GitHub store: lists the demo project and shows the "Open a GitHub project" form, no sign-in prompt', () => {
-      authState.next({ status: 'notAuthenticated', record: null });
+      authState.next({ status: 'notAuthenticated', record: undefined });
 
       const f = render('github.com', [...GITHUB_DEMO_PROJECTS]);
 
@@ -535,8 +565,25 @@ describe('StorePageComponent', () => {
       expect(f.nativeElement.querySelectorAll('ion-input').length).toBe(3);
     });
 
+    it('offers the supported GitHub project creation route from the real store template', () => {
+      const f = render('github.com', [...GITHUB_DEMO_PROJECTS]);
+      const add = f.nativeElement.querySelector(
+        'ion-button[title="New project"]',
+      ) as HTMLElement | null;
+
+      expect(add).toBeTruthy();
+      expect(add?.hasAttribute('disabled')).toBe(false);
+      expect(html(f)).toContain(
+        'Add creates a DataTug project from the demo template',
+      );
+      add?.click();
+      expect(
+        TestBed.inject(NewProjectService).navigateToNewProjectPage,
+      ).toHaveBeenCalledWith('github');
+    });
+
     it('anonymous + firestore: still shows "Please sign in to see projects" (unchanged)', () => {
-      authState.next({ status: 'notAuthenticated', record: null });
+      authState.next({ status: 'notAuthenticated', record: undefined });
 
       const f = render('firestore', undefined);
 
@@ -546,7 +593,7 @@ describe('StorePageComponent', () => {
     });
 
     it('anonymous + agent store: still shows "Please sign in to see projects" (current behaviour preserved)', () => {
-      authState.next({ status: 'notAuthenticated', record: null });
+      authState.next({ status: 'notAuthenticated', record: undefined });
 
       const f = render('http-localhost:8989', undefined);
 
@@ -556,7 +603,7 @@ describe('StorePageComponent', () => {
     });
 
     it('authenticated + firestore: shows the project list, not the sign-in prompt (sanity check the gate still opens)', () => {
-      authState.next({ status: 'authenticated', record: null });
+      authState.next({ status: 'authenticated', record: undefined });
 
       const f = render('firestore', []);
 

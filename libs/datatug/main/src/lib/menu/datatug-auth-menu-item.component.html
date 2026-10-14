@@ -54,3 +54,7 @@
 @if (error()) {
   <ion-item> ERROR: {{ error() | json }}</ion-item>
 }
+
+@if (pricingUrl(); as url) {
+  <ion-item [href]="url" (click)="closeMenu()"><ion-label>Plans and pricing</ion-label></ion-item>
+}

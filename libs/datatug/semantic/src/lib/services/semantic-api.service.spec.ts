@@ -204,6 +204,11 @@ describe('SemanticApiService', () => {
         executionProfile: 'protected',
       },
       truncated: false,
+      execution: {
+        storeId: 'sqlite',
+        projectId: 'demo-project-1',
+        executionId: 'exec-1',
+      },
     };
     let result: RunQueryResponse | undefined;
     const request = {
@@ -212,6 +217,7 @@ describe('SemanticApiService', () => {
       parameters: { CustomerId: { type: 'integer' as const, value: '5' } },
       bindingOrigins: [{ parameterId: 'CustomerId', origin: 'selection' as const }],
       mode: 'live' as const,
+      record: true,
     };
     service.runQuery(request).subscribe((r) => (result = r));
 

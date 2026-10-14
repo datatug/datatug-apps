@@ -187,16 +187,14 @@ columns:
     ).toBe('visible');
     await page.locator('ion-button').filter({ hasText: 'Run query' }).click();
     const pages = page.getByLabel('Result pages');
+    const resultGrid = page.locator('ag-grid-angular');
+    const accessibleGrid = resultGrid.getByRole('grid');
     await expect(pages).toContainText('Rows 1–100');
-    await expect(page.locator('table.run-result-table tbody tr')).toHaveCount(
-      100,
-    );
+    await expect(accessibleGrid).toHaveAttribute('aria-rowcount', '101');
     await expect(
-      page
-        .locator('table.run-result-table tbody tr')
-        .nth(alphaRowIndex)
-        .locator('td')
-        .nth(2),
+      resultGrid.locator(
+        `.ag-row[row-index="${alphaRowIndex}"] [col-id="result_2"]`,
+      ),
     ).toContainText('Alpha');
     expect(ovdb.counts).toMatchObject({
       invoices: Math.ceil(100 / visibleSourcePageSize),
@@ -206,12 +204,11 @@ columns:
     ovdb.setCountryName('Gamma');
     await pages.getByText('Next').click();
     await expect(pages).toContainText('Rows 101–200');
+    await expect(accessibleGrid).toHaveAttribute('aria-rowcount', '101');
     await expect(
-      page
-        .locator('table.run-result-table tbody tr')
-        .nth(alphaRowIndex)
-        .locator('td')
-        .nth(2),
+      resultGrid.locator(
+        `.ag-row[row-index="${alphaRowIndex}"] [col-id="result_2"]`,
+      ),
     ).toContainText('Alpha');
     expect(ovdb.counts.invoices).toBe(Math.ceil(200 / visibleSourcePageSize));
     await pages.getByText('Previous').click();
@@ -221,6 +218,10 @@ columns:
     await page.locator('ion-select[label="Result mode"]').click();
     await page.getByRole('radio', { name: 'Full result' }).click();
     await page.getByRole('button', { name: 'OK' }).click();
+    await expect(page.getByTestId('query-save-state')).toHaveAttribute(
+      'role',
+      'status',
+    );
     await page.evaluate(() => {
       const state = globalThis as typeof globalThis & {
         __federatedProgress?: string[];
@@ -228,7 +229,7 @@ columns:
       state.__federatedProgress = [];
       new MutationObserver(() => {
         const text = document
-          .querySelector('[role="status"]')
+          .querySelector('[data-testid="federated-progress"]')
           ?.textContent?.replace(/\s+/g, ' ')
           .trim();
         if (text && state.__federatedProgress?.at(-1) !== text)
@@ -243,12 +244,11 @@ columns:
     await expect(pages).toContainText(`Rows 1–100 of ${rowCount}`, {
       timeout: 90_000,
     });
+    await expect(accessibleGrid).toHaveAttribute('aria-rowcount', '101');
     await expect(
-      page
-        .locator('table.run-result-table tbody tr')
-        .nth(alphaRowIndex)
-        .locator('td')
-        .nth(2),
+      resultGrid.locator(
+        `.ag-row[row-index="${alphaRowIndex}"] [col-id="result_2"]`,
+      ),
     ).toContainText('Gamma');
     expect(ovdb.counts).toMatchObject({
       invoices:
@@ -316,8 +316,11 @@ columns:
     });
     expect(
       await page.evaluate(async () =>
-        (await indexedDB.databases()).filter((database) =>
-          database.name?.startsWith('datatug-'),
+        (await indexedDB.databases()).filter(
+          (database) =>
+            // Personal queries are persistent user work, not transient result stores.
+            database.name?.startsWith('datatug-') &&
+            database.name !== 'datatug-personal-queries',
         ),
       ),
     ).toEqual([]);

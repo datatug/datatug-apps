@@ -206,15 +206,12 @@ export interface IAgentContext {
   port: number;
 }
 
-
 // Project addresses (design `demo-as-github-project.md` 3.1, 3.3, 3.4, 3.4a): the pure functions live in
 // `@datatug/project-address`, so that the app's eager code can use them; every existing import keeps its path.
 export {
   getStoreId,
   parseProjectUrl,
-  projectUrl,
   ProjectUrlError,
-  tryProjectUrl,
 } from '@datatug/project-address';
 export type {
   IGithubProjectParts,
@@ -223,3 +220,22 @@ export type {
   ProjectPage,
   ProjectUrlErrorReason,
 } from '@datatug/project-address';
+
+import {
+  projectUrl as baseProjectUrl,
+  tryProjectUrl as baseTryProjectUrl,
+  type ProjectPage as ApiProjectPage,
+} from '@datatug/project-address';
+import { projectApiQuery } from './project-api-routing';
+
+export function tryProjectUrl(ref: IProjectRef, page?: ApiProjectPage) {
+  const result = baseTryProjectUrl(ref, page);
+  if (typeof result !== 'string') return result;
+  const query = projectApiQuery(ref);
+  return query ? `${result}?${query}` : result;
+}
+export function projectUrl(ref: IProjectRef, page?: ApiProjectPage): string {
+  const path = baseProjectUrl(ref, page);
+  const query = projectApiQuery(ref);
+  return query ? `${path}?${query}` : path;
+}

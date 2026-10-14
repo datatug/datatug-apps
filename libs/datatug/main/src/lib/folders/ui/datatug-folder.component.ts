@@ -11,6 +11,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import {
   IonBadge,
+  IonButton,
   IonCard,
   IonCardContent,
   IonLabel,
@@ -46,6 +47,7 @@ import { DatatugBoardService } from '../../board/core/datatug-board.service';
     TitleCasePipe,
     IonSegment,
     IonSegmentButton,
+    IonButton,
     IonLabel,
     IonBadge,
     IonText,
@@ -81,7 +83,6 @@ export class DatatugFolderComponent implements OnChanges, OnDestroy {
   // pages/signed-in/project/project-page.component.ts (PR #95) for the
   // established pattern.
   readonly boards = signal<IProjItemBrief[] | undefined>(undefined);
-  queries?: IProjItemBrief[];
 
   readonly path = input('~');
   readonly projectRef = input<IProjectRef>();
@@ -197,6 +198,13 @@ export class DatatugFolderComponent implements OnChanges, OnDestroy {
         projectContext: { ref: projectRef },
       },
     );
+  }
+
+  public goToQueries(): void {
+    const projectRef = this.projectRef();
+    if (projectRef) {
+      this.datatugNavService.goProject({ ref: projectRef }, 'queries');
+    }
   }
 
   private subscribeForFolder(): void {

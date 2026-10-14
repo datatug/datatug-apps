@@ -71,4 +71,66 @@ describe('captured result source notices', () => {
       fixture.nativeElement.querySelector('[role=alert]').textContent,
     ).toContain('malformed or unsafe');
   });
+
+  it('hides valid empty evidence in compact mode and keeps malformed evidence visible', async () => {
+    const fixture = TestBed.createComponent(SourceRightsNoticeComponent);
+    fixture.componentRef.setInput('compact', true);
+    fixture.componentRef.setInput('evidence', {
+      usedSourceIds: ['ovdb:fixture-server/music/Album'],
+    });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent.trim()).toBe('');
+    expect(fixture.nativeElement.querySelector('details')).toBeNull();
+
+    fixture.componentRef.setInput('evidence', {
+      sourceRights: [
+        {
+          ...fixtures.structured.sourceRights[0],
+          declaration: { url: 'javascript:alert(1)' },
+        },
+      ],
+    });
+    await fixture.whenStable();
+    expect(
+      fixture.nativeElement.querySelector('[role=alert]').textContent,
+    ).toContain('malformed or unsafe');
+    expect(fixture.nativeElement.querySelector('details')).toBeNull();
+  });
+
+  it('keeps declared terms and missing-source evidence inside the compact disclosure', async () => {
+    const fixture = TestBed.createComponent(SourceRightsNoticeComponent);
+    const right = structuredClone(fixtures.structured.sourceRights[0]);
+    fixture.componentRef.setInput('compact', true);
+    fixture.componentRef.setInput('evidence', {
+      sourceRights: [
+        {
+          ...right,
+          attribution: { text: 'Credit this source' },
+          transformations: ['Rows were normalized'],
+        },
+      ],
+      usedSourceIds: [right.sourceId, 'ovdb:fixture-server/fx/another-source'],
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const element: HTMLElement = fixture.nativeElement;
+    expect(element.querySelector('summary')?.textContent).toContain(
+      'Source licences',
+    );
+    expect(
+      element.querySelector('[data-testid="source-rights-details"]'),
+    ).not.toBeNull();
+    expect(element.textContent).toContain(
+      'Check each source before sharing or reusing query results',
+    );
+    expect(element.textContent).toContain('Source credit: Credit this source');
+    expect(element.textContent).toContain(
+      'Transformation: Rows were normalized',
+    );
+    expect(element.textContent).toContain(
+      'Source data terms not declared: ovdb:fixture-server/fx/another-source',
+    );
+    expect(element.querySelector('a')?.rel).toBe('noopener noreferrer');
+  });
 });

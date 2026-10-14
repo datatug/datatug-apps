@@ -136,26 +136,25 @@ function resolveDemoDir(): Resolved<string> {
     return { ok: true, value: resolved };
   }
 
-  // Default: "../datatug-demo-projects/demo-project-1" relative to the repo.
+  // Default: "../datatug-demo-project/demo-project-1" relative to the repo.
   // Try the plain sibling-checkout layout CI is expected to use first (repos
   // checked out side by side), then one and two levels further up, which
   // covers a nested worktree checkout (<repo>/.worktrees/<task>/...) — the
   // layout this harness was itself developed in.
-  const candidates = [1, 2, 3].map((up) =>
-    path.resolve(
+  const candidates = ['datatug-demo-project', 'datatug-demo-projects'].flatMap((checkoutName) =>
+    [1, 2, 3].map((up) => path.resolve(
       repoRoot,
       ...Array<string>(up).fill('..'),
-      'datatug-demo-projects',
+      checkoutName,
       'demo-project-1',
-    ),
-  );
+    )));
   const found = candidates.find((candidate) => fs.existsSync(candidate));
   if (!found) {
     return {
       ok: false,
       skipReason:
         'Could not find the demo project. Set DATATUG_DEMO_DIR to a ' +
-        'datatug-demo-projects/demo-project-1 checkout, or check one out as ' +
+        'datatug-demo-project/demo-project-1 checkout, or check one out as ' +
         'a sibling of datatug-apps. Tried:\n' +
         candidates.map((candidate) => `  - ${candidate}`).join('\n'),
     };
@@ -477,8 +476,8 @@ async function startAgent(
         launched.kill('SIGKILL');
       }
       await childExitPromise;
-      const exitNote = exited
-        ? ` The process already exited (code=${exited.code}, signal=${exited.signal}).`
+      const exitNote = launched.exitCode !== null || launched.signalCode !== null
+        ? ` The process already exited (code=${launched.exitCode}, signal=${launched.signalCode}).`
         : '';
       throw new Error(
         `datatug serve (${binResult.value} ${args.join(' ')}) never answered ` +

@@ -16,6 +16,8 @@ import {
 } from './federated-query-storage';
 import { associateLocalResult, buildLocalResultDescriptor, createOutputStores, replaceGraphOutput, registerLocalResult, readLocalResultPage, type LocalResultDescriptor } from './federated-local-results';
 import { localResultBytes } from './local-result-bytes';
+import { ovdbStreamRow, type OvdbResultColumn } from './ovdb-stream-values';
+import { monotonicTime } from './public-data/bounded-run-budget';
 
 let outputDb: IDBDatabase | undefined;
 let outputName: string | undefined;
@@ -34,6 +36,10 @@ let stagedRows: TypedValue[][] | undefined;
 let executedDefinition: IQueryDef | undefined;
 let committed: LocalResultDescriptor | undefined;
 let replacementController: AbortController | undefined;
+let nativeColumns: readonly OvdbResultColumn[] | undefined;
+let nativePending: Readonly<Record<string, unknown>>[] = [];
+let nativePendingBytes = 0;
+const nativeBatchBytes = 1024 * 1024;
 
 async function openOutput(): Promise<IDBDatabase> {
   if (outputDb) return outputDb;
@@ -70,6 +76,29 @@ async function storeRows(
   rowsStored += rows.length;
 }
 
+async function storeNativeRows(rows: readonly Readonly<Record<string, unknown>>[], signal?: AbortSignal): Promise<void> {
+  if (!rows.length) return;
+  signal?.throwIfAborted();
+  if (closing) throw new Error('The query was cancelled.');
+  const db = await openOutput();
+  signal?.throwIfAborted();
+  if (closing) throw new Error('The query was cancelled.');
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction('rows', 'readwrite');
+    const abort = (): void => {
+      try { transaction.abort(); } catch { /* The transaction may have completed before the abort event. */ }
+    };
+    signal?.addEventListener('abort', abort, { once: true });
+    for (const [index, data] of rows.entries())
+      transaction.objectStore('rows').put({ nativeData: data }, rowsStored + index + 1);
+    transaction.oncomplete = () => { signal?.removeEventListener('abort', abort); resolve(); };
+    transaction.onerror = () => { signal?.removeEventListener('abort', abort); reject(queryStorageError(transaction.error)); };
+    transaction.onabort = () => { signal?.removeEventListener('abort', abort); reject(signal?.reason ?? queryStorageError(transaction.error)); };
+    if (signal?.aborted) abort();
+  });
+  rowsStored += rows.length;
+}
+
 async function sendPendingPage(): Promise<void> {
   const pending = pendingPage;
   if (!pending || (pending.index * 100 >= rowsStored && activeRun)) return;
@@ -90,8 +119,9 @@ async function sendPendingPage(): Promise<void> {
   }
 }
 
-async function readPage(index: number, resultSet = 'affiliations'): Promise<TypedValue[][]> {
+async function readPage(index: number, resultSet = 'affiliations', signal?: AbortSignal): Promise<TypedValue[][]> {
   if (committed) return readLocalResultPage(committed, index, resultSet);
+  signal?.throwIfAborted();
   const db = outputDb;
   if (!db || !Number.isSafeInteger(index) || index < 0)
     throw new Error('Result page is unavailable.');
@@ -102,10 +132,47 @@ async function readPage(index: number, resultSet = 'affiliations'): Promise<Type
   return await new Promise<TypedValue[][]>((resolve, reject) => {
     const related = resultSet !== 'affiliations';
     const transaction = db.transaction(related ? 'relatedRows' : 'rows', 'readonly');
-    const request = transaction.objectStore(related ? 'relatedRows' : 'rows').getAll(related ? IDBKeyRange.bound([resultSet, start - 1], [resultSet, start + 98]) : IDBKeyRange.bound(start, start + 99));
-    request.onsuccess = () => resolve(related ? request.result.map((row) => row.rows) as TypedValue[][] : request.result as TypedValue[][]);
-    request.onerror = () =>
-      reject(request.error ?? new Error('Cannot read result page.'));
+    const rows: TypedValue[][] = [];
+    let pageBytes = 2;
+    const abort = (): void => {
+      try { transaction.abort(); } catch { /* The transaction may have completed before the abort event. */ }
+    };
+    signal?.addEventListener('abort', abort, { once: true });
+    const request = transaction.objectStore(related ? 'relatedRows' : 'rows').openCursor(related ? IDBKeyRange.bound([resultSet, start - 1], [resultSet, start + 98]) : IDBKeyRange.bound(start, start + 99));
+    request.onsuccess = () => {
+      if (signal?.aborted) { reject(signal.reason); abort(); return; }
+      const cursor = request.result;
+      if (!cursor) return;
+      try {
+        const value = cursor.value as TypedValue[] | { nativeData: Readonly<Record<string, unknown>>; rows?: TypedValue[] };
+        let row: TypedValue[];
+        if (related) row = (value as { rows: TypedValue[] }).rows;
+        else if (Array.isArray(value)) row = value;
+        else if (nativeColumns) row = ovdbStreamRow(value.nativeData, nativeColumns);
+        else throw new Error('The streamed result columns are not final yet.');
+        pageBytes += localResultBytes(row) + (rows.length ? 1 : 0);
+        if (!related && nativeColumns && pageBytes > 8 * 1024 * 1024)
+          throw new Error('The streamed result page exceeds the browser byte limit.');
+        rows.push(row);
+        cursor.continue();
+      } catch (error) {
+        reject(error);
+        abort();
+      }
+    };
+    request.onerror = () => {
+      signal?.removeEventListener('abort', abort);
+      reject(signal?.reason ?? request.error ?? new Error('Cannot read result page.'));
+    };
+    transaction.onabort = () => {
+      signal?.removeEventListener('abort', abort);
+      reject(signal?.reason ?? queryStorageError(transaction.error));
+    };
+    transaction.oncomplete = () => {
+      signal?.removeEventListener('abort', abort);
+      resolve(rows);
+    };
+    if (signal?.aborted) abort();
   });
 }
 
@@ -320,12 +387,16 @@ self.onmessage = (
   visibleMode = message.mode === 'visible';
   rowsStored = 0;
   resultReady = false;
+  nativeColumns = undefined;
+  nativePending = [];
+  nativePendingBytes = 0;
   controller = new AbortController();
   const runController = controller;
   activeRun = (async () => {
     try {
       await closeOutput();
       committed = undefined;
+      let nativeStageSignal: AbortSignal | undefined;
       if (message.definition.federation?.nativeGraph) stagedRows = [];
       if (
         (message.definition.federation?.bounds?.driver ||
@@ -335,7 +406,7 @@ self.onmessage = (
         throw new Error(
           'A declared driver cannot replace its public targets with a static fallback.',
         );
-      const rawResult = await runFederatedQuery(
+      let rawResult = await runFederatedQuery(
         message.definition,
         (progress) => self.postMessage({ type: 'progress', progress }),
         message.token,
@@ -370,12 +441,46 @@ self.onmessage = (
           },
           onStorageOwned: (name) => self.postMessage({ type: 'storage', name }),
           ...(message.staticSource
-            ? { fetch: createStaticOvdbFetch(message.staticSource) }
+            ? { fetch: createStaticOvdbFetch(message.staticSource), disableNativeStream: true }
             : {}),
           onSourceLoaded: (event) =>
             self.postMessage({ type: 'source', event }),
+          onFirstRecord: () =>
+            self.postMessage({ type: 'first-record', at: monotonicTime() }),
+          onNativeRecord: async (data, effectiveSignal) => {
+            nativeStageSignal = effectiveSignal;
+            effectiveSignal?.throwIfAborted();
+            const bytes = localResultBytes(data);
+            if (nativePending.length && nativePendingBytes + bytes > nativeBatchBytes) {
+              const page = nativePending;
+              nativePending = [];
+              nativePendingBytes = 0;
+              await storeNativeRows(page, effectiveSignal ?? runController.signal);
+            }
+            nativePending.push(data);
+            nativePendingBytes += bytes;
+            if (nativePending.length >= 100 || nativePendingBytes >= nativeBatchBytes) {
+              const page = nativePending;
+              nativePending = [];
+              nativePendingBytes = 0;
+              await storeNativeRows(page, effectiveSignal ?? runController.signal);
+            }
+          },
         },
       );
+      if (nativePending.length) {
+        await storeNativeRows(nativePending, nativeStageSignal ?? runController.signal);
+        nativePending = [];
+        nativePendingBytes = 0;
+      }
+      if (rawResult.nativeStream || rawResult.nativeDirect) {
+        nativeStageSignal?.throwIfAborted();
+        if (rawResult.totalRows !== rowsStored)
+          throw new Error('The streamed result row count differs from staged output.');
+        nativeColumns = rawResult.recordset.columns;
+        rawResult = { ...rawResult, recordset: { ...rawResult.recordset, rows: await readPage(0, 'affiliations', nativeStageSignal) } };
+        nativeStageSignal?.throwIfAborted();
+      }
       const result = message.definition.federation?.nativeGraph
         ? await commitGraph(rawResult, stagedRows ?? [])
         : await storeRelated(rawResult);
@@ -399,6 +504,9 @@ self.onmessage = (
     } catch (error) {
       let messageText =
         error instanceof Error ? error.message : 'The query failed.';
+      nativePending = [];
+      nativePendingBytes = 0;
+      nativeColumns = undefined;
       try {
         await closeOutput();
       } catch (cleanupError) {
