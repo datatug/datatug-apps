@@ -141,6 +141,7 @@ export class DatatugAppComponent {
   // signed in the panel returns with the real user row.
   protected readonly homePanelHidden = computed(
     () =>
+      this.profile.minimalSignedOutHome === true &&
       this.appHomePath() &&
       !this.checkoutAuth() &&
       this.authStatus() !== 'authenticated',

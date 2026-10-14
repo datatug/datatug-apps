@@ -118,6 +118,12 @@ export class DatatugMenuComponent implements OnDestroy {
   // The profile's start page, read declaratively (ProductProfile.homePath +
   // profile-home-redirect.guard); the '/' redirect pass-through is excluded.
   private isHomeUrl(url: string): boolean {
+    // Only landing-style profiles drop the redundant panel blocks on their
+    // start page (see ProductProfile.minimalSignedOutHome); other profiles'
+    // start pages are ordinary app screens and keep the full panel.
+    if (this.profile.minimalSignedOutHome !== true) {
+      return false;
+    }
     return url.split(/[?#]/)[0] === `/${this.profile.homePath}`;
   }
 

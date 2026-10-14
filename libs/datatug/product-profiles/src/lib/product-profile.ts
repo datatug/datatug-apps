@@ -34,6 +34,18 @@ export interface ProductProfile {
   readonly brandName: string;
 
   /**
+   * True when this profile's start page is a landing-style unsigned entry
+   * point (UX brief §2 + founder 2026-10-14 "We do not need empty side panel
+   * on homepage"): while signed out the side panel hides entirely there —
+   * store selector, Incidents/version blocks and the signed-out auth card
+   * are all redundant with the landing content, whose header then carries
+   * the brand. Profiles without this field keep the full panel on their
+   * start page (incidentius' /incidents IS its app). Declarative flag — no
+   * component branches on profile identity (REQ:profile-config-is-declarative).
+   */
+  readonly minimalSignedOutHome?: boolean;
+
+  /**
    * Short motto/tagline shown in the compact application header on narrow
    * layouts, and as the home page's content-header title on wide layouts
    * (the brand already lives in the side-panel header — UX brief §1,
@@ -116,6 +128,7 @@ export const PRODUCT_PROFILES: Readonly<
     pricingUrl: 'https://datatug.app/en/pricing/',
     brandName: 'DataTug.app',
     motto: 'Tailored questions. Real answers.',
+    minimalSignedOutHome: true,
     homePath: 'home',
     entryPointLabel: 'Open a project',
     showIncidentsMenuItem: true,
