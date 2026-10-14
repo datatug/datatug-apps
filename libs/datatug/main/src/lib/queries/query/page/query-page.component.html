@@ -83,7 +83,7 @@
   }
   <ng-template #queryEditor>
   <ng-template #workspaceTabs>
-    <ion-segment #workspaceTabBar class="workspace-main-tabs" data-testid="author-view-tabs" aria-label="Query workspace tabs"
+    <ion-segment #workspaceTabBar mode="md" class="workspace-main-tabs" data-testid="author-view-tabs" aria-label="Query workspace tabs"
       [scrollable]="true" [value]="workspaceTab()" (ionChange)="setWorkspaceTab($event.detail.value)">
       <ion-segment-button value="compose" data-testid="author-compose-tab" aria-label="Compose"><ion-label>Compose</ion-label></ion-segment-button>
       <ion-segment-button value="tugql" data-testid="author-code-tab" aria-label="TugQL Query"><ion-label>TugQL Query</ion-label></ion-segment-button>

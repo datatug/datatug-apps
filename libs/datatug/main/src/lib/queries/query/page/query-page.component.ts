@@ -47,6 +47,7 @@ import {
   afterNextRender,
   ElementRef,
   Injector,
+  HostListener,
   ChangeDetectorRef,
   Component,
   OnDestroy,
@@ -3231,6 +3232,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     });
   }
 
+  @HostListener('window:resize')
+  public onWorkspaceWindowResize(): void {
+    // Ionic can relayout its scrollable segment after the host's observer has
+    // run. A viewport resize also reveals the selected tab after that reflow.
+    this.scheduleWorkspaceTabReveal();
+  }
+
   private selectWorkspaceTab(tab: WorkspaceTab): void {
     const previous = this.workspaceTab();
     if ((previous === 'sources' || previous === 'related') &&
@@ -4733,7 +4741,6 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.authorDraftRevision() === revision &&
       this.historyScope() === scopeSnapshot &&
       this.queryId === queryIdSnapshot &&
-      this.queryDef() === definition &&
       JSON.stringify(this.queryDef()) === definitionSnapshot &&
       JSON.stringify(this.project?.ref) === projectSnapshot &&
       this.agentContext.securityContextId() === securityContextIdSnapshot &&

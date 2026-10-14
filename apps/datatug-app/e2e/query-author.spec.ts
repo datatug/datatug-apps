@@ -32,7 +32,10 @@ const COMPLETION_INTERACTION_DELAY_MS = 75;
 // iPhone/iPad/iPod UAs as Mac and binds Mod to Meta.
 const generateAuthorPreview = async (author: Locator): Promise<void> => {
   await author.getByTestId('author-preview-tab').click();
-  await author.getByTestId('author-preview').click();
+  const nativeButton = author.getByTestId('author-preview').locator('button');
+  await expect(nativeButton).toBeVisible();
+  await nativeButton.scrollIntoViewIfNeeded();
+  await nativeButton.click();
 };
 
 const openEditorActions = async (
@@ -1176,6 +1179,8 @@ test('native SQL keeps one reachable workspace row and a read-only TugQL represe
   await expect(editor).toBeVisible({ timeout: 20_000 });
   await expectEditorSource(page, editor, saved);
   await expect(tabs.locator('ion-segment-button')).toHaveCount(7);
+  await expect(tabs).toHaveClass(/\bmd\b/u);
+  await expect(sourceTab).toHaveClass(/\bmd\b/u);
   await expect(tabs.locator('ion-segment-button[value="parameters"] ion-chip')).toHaveText('0');
   await expect(tabs.locator('ion-segment-button[value="sources"] ion-chip')).toHaveText('…');
   await expect.poll(() => tabs.evaluate((segment) => {
@@ -1191,6 +1196,13 @@ test('native SQL keeps one reachable workspace row and a read-only TugQL represe
   testInfo.annotations.push({ type: 'screenshot', description: 'unified-sql-390.png: expected the initially selected SQL source tab fully visible within one 48px scrollable Ionic row; observed it in view with the editable saved SQL below and no page overflow.' });
   await page.setViewportSize({ width: 1280, height: 720 });
   await expect.poll(() => tabs.evaluate((segment) => segment.getBoundingClientRect().width)).toBeGreaterThan(800);
+  const content = page.locator('sneat-datatug-sql-editor ion-content');
+  const verticalBefore = await content.evaluate(async (host) => {
+    const scroll = await (host as HTMLIonContentElement).getScrollElement();
+    scroll.scrollTop = Math.min(80, scroll.scrollHeight - scroll.clientHeight);
+    return scroll.scrollTop;
+  });
+  expect(verticalBefore).toBeGreaterThan(20);
   await page.setViewportSize({ width: 390, height: 844 });
   await expect.poll(() => tabs.evaluate((segment) => {
     const selected = segment.querySelector('ion-segment-button[value="sql"]');
@@ -1198,8 +1210,12 @@ test('native SQL keeps one reachable workspace row and a read-only TugQL represe
     const viewport = segment.getBoundingClientRect();
     const button = selected.getBoundingClientRect();
     return button.left >= viewport.left - 1 && button.right <= viewport.right + 1 &&
+      button.height >= 44 &&
       document.documentElement.scrollWidth <= innerWidth + 1;
   })).toBe(true);
+  const verticalAfter = await content.evaluate(async (host) =>
+    (await (host as HTMLIonContentElement).getScrollElement()).scrollTop);
+  expect(verticalAfter).toBeGreaterThanOrEqual(verticalBefore - 2);
   await expectEditorSource(page, editor, saved);
 
   await tabs.locator('ion-segment-button[value="tugql"]').click();
@@ -4454,6 +4470,9 @@ test('query workspace six polish filters untouched plain Invoice results without
   await expect(author).toBeVisible({ timeout: 20_000 });
   await (await openCustomerId(author)).fill('1');
   await generateAuthorPreview(author);
+  await expect(author.getByTestId('author-preview-pane')).toBeVisible();
+  await expect(author.getByTestId('author-preview-pane').locator('pre'))
+    .toContainText('WHERE "i"."CustomerId" = ?');
   await expectIonicButtonDisabled(author.getByTestId('author-run'), false);
   await author.getByTestId('author-run').click();
   if (mobile) await page.locator('#workspace-jump-to-results').click();

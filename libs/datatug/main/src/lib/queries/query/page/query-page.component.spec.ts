@@ -940,6 +940,48 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     expect(component.authorPlan()).toBe(currentPlan);
   });
 
+  it('publishes a pending preview across an equivalent definition replacement but still discards edit-and-revert', async () => {
+    component = await createTugQLAuthor(authorSource);
+    component.authorCustomerId.set('1');
+    let resolveFirst!: (plan: PublicSqliteQueryPreview) => void;
+    let resolveSecond!: (plan: PublicSqliteQueryPreview) => void;
+    vi.spyOn(TestBed.inject(PublicSqliteQueryService), 'prepareTugQL')
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveSecond = resolve; }));
+
+    const pendingFirst = component.previewTugql();
+    const previousDefinition = component.queryDef();
+    component.authorCustomerIdChanged(
+      new CustomEvent('ionInput', { detail: { value: '1' } }),
+    );
+    // The unit's editor-state service is stubbed, so deliver the emitted
+    // state to the real page handler. It rebuilds the effective definition.
+    (component as unknown as {
+      onQueryEditorStateChanged: (state: IQueryEditorState) => void;
+    }).onQueryEditorStateChanged({
+      currentQueryId: component.queryState.id,
+      activeQueries: [{ ...component.queryState, def: previousDefinition }],
+    } as IQueryEditorState);
+    expect(component.queryDef()).not.toBe(previousDefinition);
+    expect(component.queryDef()).toEqual(previousDefinition);
+    const currentPlan = comparisonPreview(component.authorDraftRevision());
+    resolveFirst(currentPlan);
+    await pendingFirst;
+    expect(component.authorPlan()).toBe(currentPlan);
+    expect(component.authorRunReadiness().blocked).toBe(false);
+
+    const pendingSecond = component.previewTugql();
+    component.authorCodeChanged(`${authorSource}\n`);
+    component.authorCodeChanged(authorSource);
+    resolveSecond(comparisonPreview(component.authorDraftRevision()));
+    await pendingSecond;
+    expect(component.authorPlan()).toBeUndefined();
+    expect(component.authorRunReadiness()).toMatchObject({
+      blocked: true,
+      action: 'preview',
+    });
+  });
+
   it('keeps the inspected marker and sheet on the latest raw row, closes on replacement and restores caller focus', async () => {
     component = await createTugQLAuthor(authorSource);
     const rawRows = [
