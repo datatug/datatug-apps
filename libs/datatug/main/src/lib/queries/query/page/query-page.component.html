@@ -16,8 +16,14 @@
     <ion-title class="query-mobile-title">Query</ion-title>
     <ion-note slot="end" class="query-save-state" data-testid="query-save-state" role="status">{{ querySaveState() }}</ion-note>
     <ion-buttons slot="end">
+      @if (queryValidatorsHref; as href) {
+        <ion-button class="query-action" [href]="href" fill="clear" aria-label="Edit query Validators">
+          <ion-icon name="shield-checkmark-outline" slot="start" />
+          <ion-label class="query-action-text">Validators</ion-label>
+        </ion-button>
+      }
       <ion-button
-        class="query-save-button"
+        class="query-action"
         slot="end"
         [disabled]="semanticSaving() || queryState.isSaving || queryState.saveSupported === false || !canSaveQuery()"
         [fill]="isChanged ? 'solid' : 'clear'"
@@ -26,7 +32,7 @@
         (click)="saveChanges()"
       >
         <ion-icon name="save-outline" slot="start" />
-        <ion-label class="query-save-label">
+        <ion-label class="query-action-text">
           @if (queryState.isSaving) {
             Saving...
           } @else {
@@ -1136,6 +1142,52 @@
           }
         </p>
       }
+      @if (isHostedProject) {
+        <ion-item>
+          <ion-label>Hosted environment</ion-label>
+          <ion-select
+            aria-label="Hosted environment"
+            interface="popover"
+            placeholder="Select environment"
+            [value]="hostedEnvironment()"
+            [disabled]="!hostedDetectiveState()?.capabilities?.canRun || running()"
+            (ionChange)="hostedEnvironment.set($event.detail.value || '')"
+          >
+            @for (environment of hostedDetectiveState()?.environments || []; track environment) {
+              <ion-select-option [value]="environment">{{ environment }}</ion-select-option>
+            }
+          </ion-select>
+        </ion-item>
+        @if (hostedDetectiveError(); as error) {
+          <p class="ion-padding-horizontal" role="alert">{{ error }}</p>
+        } @else if (hostedDetectiveState() && !hostedDetectiveState()?.capabilities?.canRun) {
+          <p class="ion-padding-horizontal" role="status">Hosted execution is unavailable for this project.</p>
+        }
+        <p class="ion-padding-horizontal">Hosted runs execute the saved query revision. Save edits before running; select an admitted environment explicitly.</p>
+      }
+      @if (isAgentRunProject()) {
+        @if (agentRunEnvironments().length) {
+          <ion-item>
+            <ion-label>Logical environment</ion-label>
+            <ion-select aria-label="Logical environment" interface="popover" placeholder="Select environment"
+              [value]="agentSelectedEnvironment() || envId || ''" [disabled]="running()"
+              (ionChange)="selectAgentRunEnvironment($event.detail.value || '')">
+              @for (environment of agentRunEnvironments(); track environment.id) {
+                <ion-select-option [value]="environment.id">{{ environment.title || environment.id }}</ion-select-option>
+              }
+            </ion-select>
+          </ion-item>
+        } @else {
+          <p class="ion-padding-horizontal">{{ envId ? 'Current logical environment: ' + envId : 'Select a logical environment before running.' }}</p>
+        }
+        <ion-button class="ion-margin-horizontal" fill="clear" size="small"
+          [disabled]="agentRunEnvironmentsLoading()" (click)="loadAgentRunEnvironments()">
+          {{ agentRunEnvironmentsLoading() ? 'Loading environments…' : 'Load project environments' }}
+        </ion-button>
+        @if (agentRunEnvironmentsError()) {
+          <ion-note color="danger" class="ion-padding-horizontal" role="alert">{{ agentRunEnvironmentsError() }}</ion-note>
+        }
+      }
       <ion-item lines="none">
         <ion-buttons>
           <ion-button
@@ -1146,6 +1198,7 @@
               !queryId ||
               !project ||
               hasBlockedBindings() ||
+              (isHostedProject && (!hostedDetectiveState()?.capabilities?.canRun || !hostedEnvironment() || queryState.isNew || queryState.isSaving || isChanged)) ||
               (!queryDef()?.connectionId &&
                 availableTargets().length > 0 &&
                 !selectedSource())
@@ -1161,7 +1214,7 @@
           </ion-button>
         </ion-buttons>
       </ion-item>
-      @if (queryDef()?.connectionId; as connectionId) {
+      @if (!isHostedProject && queryDef()?.connectionId; as connectionId) {
         <p class="ion-padding-horizontal">
           Saved source: {{ connectionId }}. Run checks its public SQLite fixture
           and integrity pin before showing results.
@@ -1647,6 +1700,88 @@
         [compact]="true"
       />
     </div>
+    @if (activeHostedExecution(); as hosted) {
+      <ion-card>
+        <ion-card-header>
+          <ion-card-title>Validation for these query rows</ion-card-title>
+        </ion-card-header>
+        <ion-card-content>
+          <p>Saved query revision {{ hosted.queryRevision }} · result fingerprint {{ hosted.resultFingerprint }} · execution {{ hosted.execution.executionId }}.</p>
+          @if (hostedScenarioTarget()) {
+            <ion-button [disabled]="hostedScenarioBusy()" (click)="completeHostedScenarioStep()">Record Scenario query step from this execution</ion-button>
+            <p>Completing the manual step records this authorized query receipt. It does not assert that its rows passed validation.</p>
+          }
+          @if (hostedScenarioMessage()) {
+            <p role="status">{{ hostedScenarioMessage() }}</p>
+          }
+          @if (hostedScenarioError()) {
+            <p role="alert">{{ hostedScenarioError() }}</p>
+          }
+          @if (hosted.validationPending) {
+            <p role="status">Validation is still running for this execution. Row status will appear when its receipt is ready.</p>
+          }
+          @if (hosted.validationError) {
+            <p role="alert">{{ hosted.validationError }} The query rows remain visible without validation status.</p>
+          }
+          @if (hosted.caseLinkNotice) {
+            <p role="status">{{ hosted.caseLinkNotice }}</p>
+          }
+          @if (hosted.run; as run) {
+            @if (run.executionStatus === 'completed') {
+              <ion-item>
+                <ion-label>Filter this result page by validation</ion-label>
+                <ion-select
+                  aria-label="Filter this result page by validation"
+                  interface="popover"
+                  [value]="hostedStatusFilter()"
+                  (ionChange)="hostedStatusFilter.set($event.detail.value || 'all')"
+                >
+                  <ion-select-option value="all">All rows</ion-select-option>
+                  <ion-select-option value="fail">Failed</ion-select-option>
+                  <ion-select-option value="unknown">Unknown or no row finding</ion-select-option>
+                  <ion-select-option value="pass">Passed</ion-select-option>
+                </ion-select>
+              </ion-item>
+              <p>Set-level findings appear below. Rows without a row-level finding are unknown here, never assumed to pass.</p>
+            } @else {
+              <p role="status">Validation execution {{ run.executionStatus }}. Row status is unavailable until completion.</p>
+            }
+            <sneat-validation-run-results
+              [run]="run"
+              [rootExecution]="hosted.execution"
+              [rootQueryId]="hosted.queryId"
+              (rowSelected)="selectHostedValidationRow($event)"
+            />
+            @if (hostedSelectedRowCells(); as cells) {
+              <ion-list aria-label="Selected validated query row">
+                <ion-list-header><ion-label>Query row {{ hostedSelectedRow()! + 1 }}</ion-label></ion-list-header>
+                @for (cell of cells; track cell.name) {
+                  <ion-item><ion-label>{{ cell.name }}: {{ cell.value }}</ion-label></ion-item>
+                }
+              </ion-list>
+            }
+          }
+        </ion-card-content>
+      </ion-card>
+    }
+    @if (activeLocalScenarioExecution(); as local) {
+      <ion-card>
+        <ion-card-header>
+          <ion-card-title>Local Scenario execution receipt</ion-card-title>
+        </ion-card-header>
+        <ion-card-content>
+          <p>Execution {{ local.execution.executionId }} was persisted by the project agent for this saved query and logical environment.</p>
+          <ion-button [disabled]="hostedScenarioBusy()" (click)="completeHostedScenarioStep()">Record Scenario query step from this execution</ion-button>
+          <p>This records execution evidence. It does not assert that the query rows passed validation.</p>
+          @if (hostedScenarioMessage()) {
+            <p role="status">{{ hostedScenarioMessage() }}</p>
+          }
+          @if (hostedScenarioError()) {
+            <p role="alert">{{ hostedScenarioError() }}</p>
+          }
+        </ion-card-content>
+      </ion-card>
+    }
   }
   </section>
   </ng-template>

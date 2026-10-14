@@ -71,6 +71,34 @@ const emptyShellProjectRoutes: Routes = [
 
 export const datatugProjectRoutes: Routes = [
   {
+    path: 'checks/:checkId',
+    loadComponent: () =>
+      import('../detective/checks-page.component').then(
+        (m) => m.ChecksPageComponent,
+      ),
+  },
+  {
+    path: 'checks',
+    loadComponent: () =>
+      import('../detective/checks-page.component').then(
+        (m) => m.ChecksPageComponent,
+      ),
+  },
+  {
+    path: 'detective/:caseId',
+    loadComponent: () =>
+      import('../detective/cases-page.component').then(
+        (m) => m.CasesPageComponent,
+      ),
+  },
+  {
+    path: 'detective',
+    loadComponent: () =>
+      import('../detective/cases-page.component').then(
+        (m) => m.CasesPageComponent,
+      ),
+  },
+  {
     path: 'public-data',
     loadComponent: () =>
       import('../queries/public-data/public-data-page.component').then(

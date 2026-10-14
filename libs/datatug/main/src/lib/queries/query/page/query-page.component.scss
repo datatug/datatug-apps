@@ -172,6 +172,20 @@
   .result-author-data-enabled {
     grid-template-columns: minmax(0, 1fr);
   }
+  .author-code-overflow {
+    display: inline-flex;
+  }
+  .author-mode-switch {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+  }
+  .author-mode-switch ion-button {
+    flex: 1 1 0;
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: normal;
+  }
 }
 :host ::ng-deep .author-customer-cell {
   display: flex;
@@ -199,30 +213,16 @@
   }
   .query-mobile-title {
     display: block;
+    position: static;
+    padding: 0;
+    text-align: start;
     min-width: 0;
   }
-  .query-save-button ion-icon {
+  .query-action ion-icon {
     margin-inline: 0;
   }
-  .query-save-label {
+  .query-action-text {
     display: none;
-  }
-
-}
-@media (max-width: 700px) {
-  .author-code-overflow {
-    display: inline-flex;
-  }
-  .author-mode-switch {
-    display: flex;
-    width: 100%;
-    min-width: 0;
-  }
-  .author-mode-switch ion-button {
-    flex: 1 1 0;
-    min-width: 0;
-    white-space: normal;
-    overflow-wrap: normal;
   }
 }
 @media (forced-colors: active) {

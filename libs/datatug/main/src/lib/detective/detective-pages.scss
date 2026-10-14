@@ -1,0 +1,124 @@
+:host {
+  display: block;
+}
+.detective-page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 16px 12px 40px;
+}
+.detective-page h1 {
+  font-size: 1.55rem;
+  margin: 0 0 4px;
+}
+.detective-page h2 {
+  font-size: 1.17rem;
+  margin: 20px 0 9px;
+}
+.detective-page h3 {
+  font-size: 1rem;
+  margin: 0 0 4px;
+}
+.detective-page h4 {
+  font-size: 0.92rem;
+  margin: 12px 0 5px;
+}
+.detective-page p {
+  line-height: 1.5;
+}
+.section-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.section-heading > div {
+  min-width: 0;
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin: 12px 0;
+}
+.form-grid .wide {
+  grid-column: 1 / -1;
+}
+.edit-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+  margin: 10px 0;
+}
+.edit-row ion-item {
+  min-width: 140px;
+  flex: 1 1 150px;
+}
+.detective-page ion-item.wide {
+  grid-column: 1 / -1;
+}
+.detective-page ion-label small {
+  display: block;
+  font-weight: 400;
+}
+.editor-block,
+.validator-editor {
+  border: 1px solid var(--ion-color-step-200, #dae2e9);
+  border-radius: 9px;
+  padding: 12px;
+  margin: 12px 0;
+}
+.validator-editor {
+  background: var(--ion-color-light, #f6f8fa);
+}
+.scope-note {
+  display: block;
+  padding: 5px 14px;
+}
+.busy-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px;
+}
+.feedback {
+  margin: 12px 10px;
+  padding: 10px 12px;
+  border-radius: 7px;
+  background: #e9f5ed;
+}
+.feedback.error {
+  background: #fff0ee;
+  color: #932d24;
+}
+.feedback.unknown {
+  background: #fff4da;
+  color: #73500d;
+}
+#detective-check-run-result:focus {
+  outline: 2px solid var(--ion-color-primary, #2763a5);
+  outline-offset: 3px;
+}
+.result-summary {
+  border-left: 4px solid var(--ion-color-primary, #2763a5);
+  padding: 10px 12px;
+  margin-top: 12px;
+  background: var(--ion-color-light, #f6f8fa);
+}
+.muted {
+  color: var(--ion-color-medium, #68737d);
+}
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+@media (max-width: 600px) {
+  .detective-page {
+    padding-inline: 4px;
+  }
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+}

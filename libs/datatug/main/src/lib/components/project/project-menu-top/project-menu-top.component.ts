@@ -1,6 +1,6 @@
 import { AsyncPipe } from '@angular/common';
 import { Component, OnDestroy, inject, signal } from '@angular/core';
-import { NavigationEnd, Router } from '@angular/router';
+import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import { ENABLE_EMPTY_SHELL_PAGES } from '../../../core/feature-flags';
 import {
   IonButton,
@@ -8,6 +8,7 @@ import {
   IonIcon,
   IonItem,
   IonLabel,
+  IonMenuToggle,
   IonSpinner,
 } from '@ionic/angular';
 import { InvestigationContextBarComponent } from '@sneat/datatug-semantic';
@@ -22,6 +23,7 @@ import {
 import { DatatugUserService } from '../../../services/base/datatug-user-service';
 import { IProjectSummary } from '../../../models/definition/project';
 import { IProjectContext, parseProjectUrl } from '../../../nav/nav-models';
+import { projectPageHref } from '../../../nav/project-page-href';
 import { addIcons } from 'ionicons';
 import { chatbubblesOutline } from 'ionicons/icons';
 
@@ -40,6 +42,8 @@ interface IProjectTopLevelPage {
   templateUrl: './project-menu-top.component.html',
   imports: [
     IonItem,
+    IonMenuToggle,
+    RouterLink,
     AsyncPipe,
     IonIcon,
     IonLabel,
@@ -111,6 +115,16 @@ export class ProjectMenuTopComponent implements OnDestroy {
         path: 'chat',
         title: 'Chat',
         icon: 'chatbubbles-outline',
+      },
+      {
+        path: 'checks',
+        title: 'Checks',
+        icon: 'checkmark-done-outline',
+      },
+      {
+        path: 'detective',
+        title: 'Detective',
+        icon: 'compass-outline',
       },
       {
         path: 'boards',
@@ -214,12 +228,17 @@ export class ProjectMenuTopComponent implements OnDestroy {
     this.destroyed.complete();
   }
 
+  projectPageUrl(page: ProjectTopLevelPage): string {
+    return projectPageHref(this.project?.ref, page, this.router?.url);
+  }
+
   goProjPage(event: Event, page: ProjectTopLevelPage): boolean {
     event.preventDefault();
     event.stopPropagation();
     if (
       (this.cliBridgeChat && page !== 'chat') ||
-      (this.metadataOnly() && page !== 'overview' && page !== 'sessions')
+      (this.metadataOnly() &&
+        !['overview', 'queries', 'checks', 'detective', 'sessions'].includes(page))
     )
       return false;
     const project = this.project;

@@ -16,31 +16,34 @@
 @for (page of projTopLevelPages; track page) {
   @if (
     (page.path !== 'demo-db-sandbox' || isDemoDbProject()) &&
-    (!metadataOnly() || page.path === 'overview' || page.path === 'sessions')
+    (!metadataOnly() ||
+      ['overview', 'queries', 'checks', 'detective', 'sessions'].includes(page.path))
   ) {
-    <ion-item
-      (click)="goProjPage($event, page.path)"
-      tappable
-      [disabled]="!project?.ref || (cliBridgeChat && page.path !== 'chat')"
-    >
-      <!--		[routerLink]="projectPageUrl(page.path)" routerDirection="root"-->
-      <ion-icon slot="start" [name]="page.icon" />
-      <ion-label [class.current]="(currentFolder | async) === page.path">{{
-        page.path === 'variables' && inSessionWorkspace() ? 'Context Bag' : page.title
-      }}</ion-label>
-      @if (!page.path && !project?.brief) {
-        <ion-spinner name="lines-small" />
-      }
-      <!--		<ion-badge color="medium" *ngIf="page.count && currentProject">{{page.count(currentProject) || 0}}</ion-badge>-->
-      @if (page.buttons) {
-        <ion-buttons slot="end">
-          @for (button of page.buttons; track button) {
-            <ion-button (click)="goProjPage($event, button.path)">
-              <ion-icon [name]="button.icon" />
-            </ion-button>
-          }
-        </ion-buttons>
-      }
-    </ion-item>
+    <ion-menu-toggle autoHide="false">
+      <ion-item
+        button
+        [routerLink]="projectPageUrl(page.path)"
+        routerDirection="root"
+        [disabled]="!project?.ref || (cliBridgeChat && page.path !== 'chat')"
+      >
+        <ion-icon slot="start" [name]="page.icon" />
+        <ion-label [class.current]="(currentFolder | async) === page.path">{{
+          page.path === 'variables' && inSessionWorkspace() ? 'Context Bag' : page.title
+        }}</ion-label>
+        @if (!page.path && !project?.brief) {
+          <ion-spinner name="lines-small" />
+        }
+        <!--		<ion-badge color="medium" *ngIf="page.count && currentProject">{{page.count(currentProject) || 0}}</ion-badge>-->
+        @if (page.buttons) {
+          <ion-buttons slot="end">
+            @for (button of page.buttons; track button) {
+              <ion-button (click)="goProjPage($event, button.path)">
+                <ion-icon [name]="button.icon" />
+              </ion-button>
+            }
+          </ion-buttons>
+        }
+      </ion-item>
+    </ion-menu-toggle>
   }
 }

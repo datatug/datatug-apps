@@ -58,10 +58,17 @@ export const DEMO_PROJECT_REF: IProjectRef = {
 const PROJECT_FILE_NAME = 'datatug-project.json';
 
 function sharedQueryPage(rest: string): boolean {
-  return rest === '' || rest === '/overview' || rest === '/queries' ||
+  return (
+    rest === '' ||
+    rest === '/overview' ||
+    rest === '/queries' ||
+    rest === '/checks' ||
+    rest === '/detective' ||
+    /^\/(?:checks|detective)\/[A-Za-z0-9_-]+$/.test(rest) ||
     /^\/query\/[A-Za-z0-9_-]+(?:%2F[A-Za-z0-9_-]+)*$/.test(rest) ||
     rest === '/sessions' ||
-    /^\/sessions\/[A-Za-z0-9_-]{1,128}(?:\/(?:overview|queries|invoice-overview|invoice-explorer|composer)|\/query\/[A-Za-z0-9_-]+(?:%2F[A-Za-z0-9_-]+)*)?$/.test(rest);
+    /^\/sessions\/[A-Za-z0-9_-]{1,128}(?:\/(?:overview|queries|invoice-overview|invoice-explorer|composer)|\/query\/[A-Za-z0-9_-]+(?:%2F[A-Za-z0-9_-]+)*)?$/.test(rest)
+  );
 }
 
 /** Why an address is not accepted. The app words each one for the visitor (design 3.4a). */
@@ -337,7 +344,8 @@ export function parseProjectUrl(
       segments[4] !== 'project' ||
       !sharedIdentifier(spaceID) ||
       !sharedIdentifier(projectId) ||
-      (rest === undefined || !sharedQueryPage(rest))
+      rest === undefined ||
+      !sharedQueryPage(rest)
     ) {
       return { ok: false, reason: 'invalid-path-segment' };
     }

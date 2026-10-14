@@ -14,10 +14,9 @@ import {
   IProjectContext,
   ProjectPage,
   tryProjectUrl,
-  parseProjectUrl,
 } from '../../nav/nav-models';
 import { IProjectRef, isValidProjectRef } from '../../core/project-context';
-import { projectPageHref } from '../../nav/project-page-href';
+import { projectPageHref, projectPageInCurrentSession } from '../../nav/project-page-href';
 import { IStoreRef, storeRefToId } from '@sneat/core';
 
 type NavigationOptions = NonNullable<
@@ -27,6 +26,8 @@ type NavigationOptions = NonNullable<
 export type ProjectTopLevelPage =
   | 'sessions'
   | 'chat'
+  | 'checks'
+  | 'detective'
   | 'demo-db-sandbox'
   | 'overview'
   | 'boards'
@@ -234,7 +235,7 @@ export class DatatugNavService {
    * with no exact address (`tryProjectUrl` refuses its id) has no page to link to: the root.
    */
   public projectPageUrl(c: IProjectRef, name: string, id?: string): string {
-    return projectPageHref(c, id ? [name, id] : [name]);
+    return projectPageHref(c, id ? [name, id] : [name], this.router?.url);
   }
 
   /**
@@ -247,13 +248,7 @@ export class DatatugNavService {
     page: ProjectPage | undefined,
     errMessage: string,
   ): string | undefined {
-    let scopedPage = page;
-    const current = this.router ? parseProjectUrl(this.router.url.split('?')[0]) : undefined;
-    const session = current?.ok && current.storeId === ref.storeId && current.projectId === ref.projectId && current.spaceID === ref.spaceID
-      ? /^\/sessions\/([A-Za-z0-9_-]{1,128})(?:\/|$)/.exec(current.rest)?.[1] : undefined;
-    const parts = Array.isArray(page) ? page : typeof page === 'string' ? page.split('/') : [];
-    if (session && parts[0] !== 'sessions') scopedPage = ['sessions', session, ...parts];
-    const url = tryProjectUrl(ref, scopedPage);
+    const url = tryProjectUrl(ref, projectPageInCurrentSession(ref, page, this.router?.url));
     if (typeof url === 'string') {
       return url;
     }
