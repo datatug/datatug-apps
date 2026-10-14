@@ -1213,9 +1213,39 @@ test('native SQL keeps one reachable workspace row and a read-only TugQL represe
       button.height >= 44 &&
       document.documentElement.scrollWidth <= innerWidth + 1;
   })).toBe(true);
-  const verticalAfter = await content.evaluate(async (host) =>
-    (await (host as HTMLIonContentElement).getScrollElement()).scrollTop);
-  expect(verticalAfter).toBeGreaterThanOrEqual(verticalBefore - 2);
+  const verticalAfterResize = await content.evaluate(async (host) => {
+    const scroll = await (host as HTMLIonContentElement).getScrollElement();
+    return scroll.scrollTop;
+  });
+  expect(verticalAfterResize).toBeGreaterThan(20);
+  // Responsive reflow can preserve the visible anchor with a different scrollTop.
+  // Isolate the tab reveal at a fixed viewport to catch vertical scrolling by it.
+  const verticalBeforeReveal = await content.evaluate(async (host) => {
+    const scroll = await (host as HTMLIonContentElement).getScrollElement();
+    scroll.scrollTop = Math.min(80, scroll.scrollHeight - scroll.clientHeight);
+    return scroll.scrollTop;
+  });
+  expect(verticalBeforeReveal).toBeGreaterThan(20);
+  const selectedWasOffscreen = await tabs.evaluate((segment) => {
+    segment.scrollLeft = 0;
+    const selected = segment.querySelector('ion-segment-button[value="sql"]');
+    if (!selected) return false;
+    return selected.getBoundingClientRect().right > segment.getBoundingClientRect().right + 1;
+  });
+  expect(selectedWasOffscreen).toBe(true);
+  await page.evaluate(() => window.dispatchEvent(new Event('resize')));
+  await expect.poll(() => tabs.evaluate((segment) => {
+    const selected = segment.querySelector('ion-segment-button[value="sql"]');
+    if (!selected) return false;
+    const viewport = segment.getBoundingClientRect();
+    const button = selected.getBoundingClientRect();
+    return button.left >= viewport.left - 1 && button.right <= viewport.right + 1;
+  })).toBe(true);
+  const verticalAfterReveal = await content.evaluate(async (host) => {
+    const scroll = await (host as HTMLIonContentElement).getScrollElement();
+    return scroll.scrollTop;
+  });
+  expect(Math.abs(verticalAfterReveal - verticalBeforeReveal)).toBeLessThanOrEqual(2);
   await expectEditorSource(page, editor, saved);
 
   await tabs.locator('ion-segment-button[value="tugql"]').click();
