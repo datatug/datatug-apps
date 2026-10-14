@@ -55,6 +55,7 @@ import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatu
 import { EntityService } from '../../../services/unsorted/entity.service';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
 import { SchemaService } from '../../../services/unsorted/schema.service';
+import { DemoDbConnectionsComponent } from './demo-db-connections.component';
 
 @Component({
   selector: 'sneat-datatug-project',
@@ -67,6 +68,7 @@ import { SchemaService } from '../../../services/unsorted/schema.service';
     DatatugServicesStoreModule,
     DatatugServicesUnsortedModule,
     DatatugFolderComponent,
+    DemoDbConnectionsComponent,
     IonHeader,
     IonToolbar,
     IonButtons,

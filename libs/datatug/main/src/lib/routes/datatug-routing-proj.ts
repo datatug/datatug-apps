@@ -69,6 +69,10 @@ const emptyShellProjectRoutes: Routes = [
 
 export const datatugProjectRoutes: Routes = [
   {
+    path: 'local-dev/:dataset',
+    loadComponent: () => import('../pages/signed-in/environment/demo-db-local-query.component').then((m) => m.DemoDbLocalQueryComponent),
+  },
+  {
     path: 'public-data',
     loadComponent: () => import('../queries/public-data/public-data-page.component').then((m) => m.PublicDataPageComponent),
   },
