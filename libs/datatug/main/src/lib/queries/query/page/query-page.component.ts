@@ -28,6 +28,7 @@ import {
   type TugQLDiagnostic,
   type TugQLFormatOptions,
 } from '@dalgo/core';
+import { parseDocument as parseYamlDocument } from 'yaml';
 import { NgTemplateOutlet } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { PublicDataService } from '../../public-data/public-data.service';
@@ -213,13 +214,24 @@ interface CommittedQueryDefinition {
 const isLegacyDtqlSource = (source: string): boolean => {
   const normalized = source.replace(/^\uFEFF/u, '');
   const firstLine = normalized.split(/\r?\n/u)
-    .find((line) => line.trim() && !line.trimStart().startsWith('#'))
+    .find((line) => line.trim() && !line.trimStart().startsWith('#') &&
+      !/^(?:---|\.\.\.)(?:\s|$)/u.test(line.trimStart()) &&
+      !/^%(?:YAML|TAG)\b/u.test(line.trimStart()))
     ?.trimStart() ?? '';
-  if (/^(?:from|columns|where|orderBy|limit):(?:\s|$)/u.test(firstLine))
+  // All root keys accepted by @dalgo/core's DTQL document model. A known
+  // mapping key keeps an incomplete YAML draft in its original editor.
+  if (/^(?:from|where|orderBy|limit|offset|columns|groupBy|having|money):(?:\s|$)/u.test(firstLine))
     return true;
-  if (!normalized.trimStart().startsWith('{')) return false;
   try {
-    const document: unknown = JSON.parse(normalized);
+    // The actual YAML reader also accepts JSON and flow mappings. This only
+    // identifies the saved source format; query validity remains the engine's job.
+    const parsed = parseYamlDocument(normalized, {
+      prettyErrors: false,
+      strict: true,
+      uniqueKeys: true,
+    });
+    if (parsed.errors.length) return false;
+    const document: unknown = parsed.toJS();
     return !!document && typeof document === 'object' && !Array.isArray(document) &&
       Object.hasOwn(document, 'from');
   } catch {

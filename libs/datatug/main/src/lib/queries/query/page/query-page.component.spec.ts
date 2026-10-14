@@ -29,7 +29,7 @@ import { By } from '@angular/platform-browser';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { IonSelect, IonSelectOption, NavController } from '@ionic/angular';
 import { Firestore } from 'firebase/firestore';
-import { parseTugQL, resolveTugQL } from '@dalgo/core';
+import { parseDTQL, parseTugQL, resolveTugQL } from '@dalgo/core';
 import { ErrorLogger } from '@sneat/core';
 import { RANDOM_ID_OPTIONS, RandomIdService } from '@sneat/random';
 import {
@@ -10046,6 +10046,24 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
     component.queryTextChanged(new CustomEvent('ionInput', { detail: { value: 'from:\n  name: Invoice\n' } }));
     expect(component.isNativeDtqlWorkspace()).toBe(false);
     expect(component.isTugqlAuthorJourney()).toBe(true);
+  });
+
+  it.each([
+    ['document marker', '---\nfrom:\n  name: Invoice\nlimit: 1\n'],
+    ['leading offset', 'offset: 0\nfrom:\n  name: Invoice\nlimit: 1\n'],
+    ['flow mapping', '{from: {name: Invoice}, limit: 1}'],
+  ])('keeps valid %s YAML DTQL in its native source pane', async (_shape, yaml) => {
+    expect(() => parseDTQL(yaml, { tables: [{ name: 'Invoice', fields: ['InvoiceId'] }] })).not.toThrow();
+    const definition: IQueryDef = {
+      ...dtqlDef,
+      connectionId: 'chinook-sqlite',
+      request: { queryType: QueryType.DTQL, text: yaml } as ITextQueryRequest,
+    };
+    component = await createComponent(definition);
+    expect(component.isNativeDtqlWorkspace()).toBe(true);
+    expect(component.isTugqlAuthorJourney()).toBe(false);
+    expect(component.workspaceTab()).toBe('dtql');
+    expect(component.queryBodyText()).toBe(yaml);
   });
 
   it('reclassifies the same query ID only after a saved loading placeholder and new definition', async () => {
