@@ -9,15 +9,13 @@ import {
   type PublicSqliteOutputColumn,
   type PublicSqliteRelationshipReceipt,
 } from './public-sqlite-tugql';
+import { demoSqliteCatalog } from './demo-sqlite-catalog';
 import {
   publicSqliteComparisonTarget,
   type ComparisonFixtureTarget,
 } from './public-sqlite-comparison';
 
-const FIXTURE_URL = 'https://chinook.demodb.dev/data/chinook.sqlite';
-const FIXTURE_SHA256 =
-  '7651ba378ac2fcd0dfc3c66fb101f7a7eed3ba39a612ec642b96e20702061f15';
-const FIXTURE_BYTES = 1007616;
+const CHINOOK_FIXTURE = demoSqliteCatalog.chinook;
 const PUBLIC_COMPARISON_SCHEMA_SHA256 =
   '8392c76c7fd8da3bce20d1cec2c60223692a08915787f5c7393cec1c0b6acb94';
 const MAX_ROWS = 1000;
@@ -166,14 +164,14 @@ function verifyPinnedInvoiceSchema(
 }
 
 export async function readPinnedFixture(): Promise<Uint8Array> {
-  const response = await fetch(FIXTURE_URL, {
+  const response = await fetch(CHINOOK_FIXTURE.url, {
     redirect: 'error',
     credentials: 'omit',
     cache: 'no-store',
   });
   if (!response.ok || !response.body)
     throw new Error('The public Chinook fixture is unavailable.');
-  if (Number(response.headers.get('content-length')) > FIXTURE_BYTES)
+  if (Number(response.headers.get('content-length')) > CHINOOK_FIXTURE.bytes)
     throw new Error('The public Chinook fixture exceeds its pinned size.');
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -182,13 +180,13 @@ export async function readPinnedFixture(): Promise<Uint8Array> {
     const { done, value } = await reader.read();
     if (done) break;
     length += value.byteLength;
-    if (length > FIXTURE_BYTES) {
+    if (length > CHINOOK_FIXTURE.bytes) {
       await reader.cancel();
       throw new Error('The public Chinook fixture exceeds its pinned size.');
     }
     chunks.push(value);
   }
-  if (length !== FIXTURE_BYTES)
+  if (length !== CHINOOK_FIXTURE.bytes)
     throw new Error('The public Chinook fixture size differs from its pin.');
   const bytes = new Uint8Array(length);
   let offset = 0;
@@ -200,7 +198,7 @@ export async function readPinnedFixture(): Promise<Uint8Array> {
   const actual = [...new Uint8Array(digest)]
     .map((part) => part.toString(16).padStart(2, '0'))
     .join('');
-  if (actual !== FIXTURE_SHA256)
+  if (actual !== CHINOOK_FIXTURE.sha256)
     throw new Error('The public Chinook fixture hash differs from its pin.');
   return bytes;
 }
@@ -288,7 +286,7 @@ export async function executePinnedSql(
       !authorProfileKind ||
       !authorProof ||
       authorProof.profile !== authorProfileKind ||
-      fixtureSha256 !== FIXTURE_SHA256 ||
+      fixtureSha256 !== CHINOOK_FIXTURE.sha256 ||
       !schemaVersion?.trim() ||
       !Number.isSafeInteger(draftRevision) ||
       (draftRevision as number) < 0 ||
@@ -306,7 +304,7 @@ export async function executePinnedSql(
     if (
       JSON.stringify(comparisonTarget) !== JSON.stringify(pinned) ||
       !authorProfile ||
-      fixtureSha256 !== FIXTURE_SHA256 ||
+      fixtureSha256 !== CHINOOK_FIXTURE.sha256 ||
       pinned.schemaSha256 !== PUBLIC_COMPARISON_SCHEMA_SHA256
     )
       throw new Error('The comparison target or shared schema pin is invalid.');
@@ -436,7 +434,7 @@ export async function executePinnedSql(
       } as unknown as TugQLResolved;
     }
     const derived = compilePublicSqliteTugQL(resolved, {
-      fixtureSha256: FIXTURE_SHA256,
+      fixtureSha256: CHINOOK_FIXTURE.sha256,
       schemaVersion: schemaVersion ?? '',
       draftRevision: draftRevision ?? -1,
       ...(authorProof.authoredSource ? { authoredSource: authorProof.authoredSource } : {}),
@@ -616,7 +614,7 @@ if (
             relationships: [],
           } as unknown as TugQLResolved,
           {
-            fixtureSha256: FIXTURE_SHA256,
+            fixtureSha256: CHINOOK_FIXTURE.sha256,
             schemaVersion,
             draftRevision,
             ...(proof.authoredSource ? { authoredSource: proof.authoredSource } : {}),
