@@ -53,7 +53,7 @@
     "@sneat/app-auth": "0.27.6",
     "@sneat/auth-core": "0.27.30",
     "@sneat/auth-models": "0.27.6",
-    "@sneat/auth-ui": "0.27.31",
+    "@sneat/auth-ui": "0.27.33",
     "@sneat/components": "0.27.32",
     "@sneat/core": "0.27.23",
     "@sneat/core-public": "0.27.23",

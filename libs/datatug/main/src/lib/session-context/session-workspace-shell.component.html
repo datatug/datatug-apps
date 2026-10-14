@@ -143,7 +143,7 @@
     <ion-content>
       @if (workspace.authRequired()) {
         <ion-item lines="full"><ion-label><h2>Sign in required</h2><p>Your saved sessions are available after you sign in. Signing in will return you to this project.</p></ion-label></ion-item>
-        <sneat-auth-panel [returnTo]="signInReturnTo()" [showIntro]="false" />
+        <sneat-auth-panel [returnTo]="signInReturnTo()" [showIntro]="false" initialMode="sign-in" />
       } @else {
         <ion-item><ion-input label="Search" [ngModel]="sessionSearch()" (ngModelChange)="sessionSearch.set($event)" /></ion-item>
         <ion-item><ion-select label="State" [value]="sessionFilter()" (ionChange)="sessionFilter.set($event.detail.value)"><ion-select-option value="all">All</ion-select-option><ion-select-option value="active">Running</ion-select-option><ion-select-option value="stopped">Stopped</ion-select-option><ion-select-option value="archived">Archived</ion-select-option></ion-select></ion-item>
