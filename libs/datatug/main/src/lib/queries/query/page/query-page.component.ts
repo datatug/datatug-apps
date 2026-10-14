@@ -1452,14 +1452,15 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
   async openColumnMeaning(index: number): Promise<void> {
     if (!this.project) return;
-    if (!this.semanticBasis() || !this.semanticCurrentHash()) { this.semanticNotice.set('Checking the current query output. Try again in a moment.'); return; }
+    const basis = this.semanticBasis();
+    if (!basis || !this.semanticCurrentHash()) { this.semanticNotice.set('Checking the current query output. Try again in a moment.'); return; }
     const lifetime = ++this.semanticMappingLifetime, project = this.project, queryId = this.queryState.id ?? '', ref = project.ref;
     const active = () => lifetime === this.semanticMappingLifetime && this.project?.ref === ref && this.queryState.id === queryId;
-    if (this.displayedResultIsPreviousRun() || this.semanticCurrentHash() !== this.semanticBasis()?.queryHash) { this.semanticNotice.set('Run the updated query before mapping its columns. Existing meanings need review.'); return; }
+    if (this.displayedResultIsPreviousRun() || this.semanticCurrentHash() !== basis.queryHash) { this.semanticNotice.set('Run the updated query before mapping its columns. Existing meanings need review.'); return; }
     this.semanticNotice.set('');
     this.semanticError.set(''); this.semanticColumn.set(index);
     const current = this.queryDef()?.semanticModel;
-    const fresh = createSemanticModel(this.semanticBasis()!);
+    const fresh = createSemanticModel(basis);
     if (current) {
       fresh.meaning = structuredClone(current.meaning);
       fresh.bindings = current.bindings.filter(binding => binding.columnIndex < fresh.basis.columns.length);
@@ -1934,7 +1935,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private readonly identityDefinition = computed(() => {
     const definition = this.queryDef();
     if (!definition) return undefined;
-    const { semanticModel: _semanticModel, ...executionDefinition } = definition;
+    const executionDefinition = { ...definition };
+    delete executionDefinition.semanticModel;
     return executionDefinition;
   }, {
     equal: (left, right) => JSON.stringify(left) === JSON.stringify(right),
