@@ -34,6 +34,47 @@
   opacity: 0.7;
 }
 
+// The compact header follows the `.auth-brand` precedent: absolute strip
+// over the app, with the split pane shifted below it — ion-split-pane is
+// `position: absolute; inset: 0` in Ionic, so normal flow would put the
+// header under it.
+$compact-header-height: 3.25rem;
+
+ion-app.compact-header-mode > ion-split-pane {
+  top: calc(
+    #{$compact-header-height} + var(--ion-safe-area-top, 0px)
+  );
+  height: calc(
+    100% - #{$compact-header-height} - var(--ion-safe-area-top, 0px)
+  );
+}
+
+// Same grayish toolbar family as the side-panel header, so the compact
+// header and the panel read as one chrome rather than unrelated blocks.
+// The safe-area padding keeps the toolbar full-height on notched devices,
+// matching the split-pane offset above.
+.compact-header {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 100;
+  padding-top: var(--ion-safe-area-top, 0px);
+
+  ion-toolbar {
+    --min-height: #{$compact-header-height};
+  }
+}
+
+.compact-brand {
+  font-weight: 600;
+}
+
+.compact-motto {
+  margin-inline-start: 0.5rem;
+  font-weight: normal;
+  font-size: 0.8em;
+  color: var(--ion-color-medium);
+}
+
 .auth-brand {
   position: absolute;
   inset: 0 0 auto;

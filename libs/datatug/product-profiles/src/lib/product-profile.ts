@@ -34,6 +34,14 @@ export interface ProductProfile {
   readonly brandName: string;
 
   /**
+   * Short motto/tagline shown in the compact application header on narrow
+   * layouts, and as the home page's content-header title on wide layouts
+   * (the brand already lives in the side-panel header — UX brief §1,
+   * 2026-10-14). Omitted = no motto rendered.
+   */
+  readonly motto?: string;
+
+  /**
    * True when this profile's brand has no registered domain / is not yet a
    * generally available surface (hub REQ:brand-and-domain-honesty — founder,
    * 2026-09-11: "keep with planned label"). The shell renders an explicit
@@ -63,12 +71,14 @@ export interface ProductProfile {
   readonly entryPointLabel: string;
 
   /**
-   * Whether the side menu always carries an *Incidents* item, with or without a
-   * project open, and regardless of any feature flag or project setting (hub
-   * REQ:profile-table, founder 2026-09-11, verbatim: "DataTug app should always
-   * have Incidents menu item in side menu."). Fixed `true` for `datatug`; other
-   * profiles decide their own value here — `incidentius` doesn't need a
-   * redundant menu shortcut to the page that is already its home.
+   * Whether the project navigation carries an *Incidents* item, regardless of
+   * any feature flag or project setting (hub REQ:profile-table, founder
+   * 2026-09-11: "DataTug app should always have Incidents menu item"; the
+   * 2026-10-14 UX brief §13 relocated it from a standalone side-panel card
+   * into the project menu, preserving the always-present promise per profile).
+   * Fixed `true` for `datatug`; other profiles decide their own value here —
+   * `incidentius` doesn't need a redundant menu shortcut to the page that is
+   * already its home.
    */
   readonly showIncidentsMenuItem: boolean;
 
@@ -105,6 +115,7 @@ export const PRODUCT_PROFILES: Readonly<
     id: 'datatug',
     pricingUrl: 'https://datatug.app/en/pricing/',
     brandName: 'DataTug.app',
+    motto: 'Tailored questions. Real answers.',
     homePath: 'home',
     entryPointLabel: 'Open a project',
     showIncidentsMenuItem: true,

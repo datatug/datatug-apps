@@ -1,8 +1,10 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   computed,
   inject,
+  signal,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { filter, map } from 'rxjs';
@@ -17,15 +19,19 @@ import {
   RouterOutlet,
 } from '@angular/router';
 import { IonApp } from '@ionic/angular/ion-app';
+import { IonButton } from '@ionic/angular/ion-button';
+import { IonButtons } from '@ionic/angular/ion-buttons';
 import { IonContent } from '@ionic/angular/ion-content';
 import { IonHeader } from '@ionic/angular/ion-header';
 import { IonMenu } from '@ionic/angular/ion-menu';
+import { IonMenuButton } from '@ionic/angular/ion-menu-button';
 import { IonRouterOutlet } from '@ionic/angular/ion-router-outlet';
 import { IonSplitPane } from '@ionic/angular/ion-split-pane';
 import { IonTitle } from '@ionic/angular/ion-title';
 import { IonToolbar } from '@ionic/angular/ion-toolbar';
 import { MenuController } from '@ionic/angular/menu-controller';
 import { ErrorLogger } from '@sneat/core';
+import { SneatAuthStateService } from '@sneat/auth-core';
 import { ResizableMenuDirective } from '@sneat/ui';
 import { PRODUCT_PROFILE } from '@datatug/product-profiles';
 
@@ -44,6 +50,9 @@ import { PRODUCT_PROFILE } from '@datatug/product-profiles';
     IonTitle,
     IonContent,
     IonRouterOutlet,
+    IonButtons,
+    IonMenuButton,
+    IonButton,
     RouterOutlet,
     RouterLink,
   ],
@@ -92,6 +101,39 @@ export class DatatugAppComponent {
   );
   private readonly menuController = inject(MenuController);
   private readonly errorLogger = inject(ErrorLogger);
+
+  // Mirror of the split-pane `when: '(min-width: 992px)'` breakpoint: below
+  // it the side panel is hidden, so the shell renders its own compact
+  // header (menu affordance + brand + motto + Sign in) — UX brief §1.
+  // The MediaQueryList change event calls the signal write directly, so it
+  // is zoneless-safe without a manual change-detection nudge.
+  private readonly narrowQuery = window.matchMedia('(max-width: 991.98px)');
+  protected readonly menuHidden = signal(this.narrowQuery.matches);
+
+  // `authStatus` emits the current state on subscribe; before the first
+  // emission `authStatus()` is undefined and no Sign-in button is rendered
+  // (avoids a flash for returning signed-in users).
+  protected readonly authStatus = toSignal(
+    inject(SneatAuthStateService).authStatus,
+  );
+
+  // Auth pages keep their own `auth-brand` strip, and the checkout shell
+  // (`checkout()` disables the menu by design) must not show a menu-button
+  // that can never open — the compact header only earns its place when the
+  // menu is genuinely reachable-but-hidden. Elsewhere on narrow layouts it
+  // is the menu + brand + motto affordance.
+  protected readonly compactHeader = computed(
+    () => this.menuHidden() && !this.checkoutAuth() && !this.checkout(),
+  );
+
+  constructor() {
+    const onChange = (event: MediaQueryListEvent) =>
+      this.menuHidden.set(event.matches);
+    this.narrowQuery.addEventListener('change', onChange);
+    inject(DestroyRef).onDestroy(() =>
+      this.narrowQuery.removeEventListener('change', onChange),
+    );
+  }
 
   // The active product profile (hub `product-profiles` REQ:profile-table),
   // resolved once at bootstrap (config override -> hostname -> `datatug`

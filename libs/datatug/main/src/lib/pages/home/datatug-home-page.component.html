@@ -1,16 +1,29 @@
-<ion-header [translucent]="true">
-  <ion-toolbar>
-    <ion-title>DataTug.app</ion-title>
+<!--
+  Content header (UX brief §1/§2): the brand lives in the side-panel header,
+  so the home content header carries the motto instead; Sign in moved here
+  from the "My projects" card area so it stays reachable on narrow layouts.
+  Hidden below the split-pane breakpoint — the shell's compact header owns
+  that width.
+-->
+<ion-header class="home-header">
+  <ion-toolbar color="light">
+    <ion-title>{{ headerTitle() }}</ion-title>
+    @if (authStatus() === 'notAuthenticated') {
+      <ion-buttons slot="end">
+        <ion-button
+          routerLink="/login"
+          routerDirection="forward"
+          style="text-transform: none"
+          data-testid="home-sign-in"
+        >
+          Sign in
+        </ion-button>
+      </ion-buttons>
+    }
   </ion-toolbar>
 </ion-header>
 
 <ion-content>
-  <ion-header collapse="condense">
-    <ion-toolbar>
-      <ion-title size="large">DataTug.app (condense)</ion-title>
-    </ion-toolbar>
-  </ion-header>
-
   <ion-card>
     <ion-card-content>
       <h2>Your data workbench</h2>
@@ -46,9 +59,24 @@
     </ion-row>
   </ion-grid>
 
-  <ion-card>
-    <ion-card-content>
-      <sneat-copyright />
-    </ion-card-content>
-  </ion-card>
+  <!--
+  Consolidated footer (UX brief §2/§14): one copyright/version block in main
+  content (the sidebar drops its copy on home), plus "Powered by DALgo" as a
+  standalone attribution line, not part of a card.
+-->
+  <footer class="home-footer">
+    <sneat-app-version />
+    @if (profile.showPoweredByDalgo) {
+      <p class="powered-by">
+        <a
+          href="https://dalgo.io"
+          target="_blank"
+          rel="noopener"
+          aria-label="Powered by DALgo, the database abstraction layer for Go"
+          data-testid="powered-by-dalgo"
+          >Powered by DALgo ↗</a
+        >
+      </p>
+    }
+  </footer>
 </ion-content>

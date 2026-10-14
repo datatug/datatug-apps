@@ -4,8 +4,19 @@ import { By } from '@angular/platform-browser';
 import { provideRouter, Router } from '@angular/router';
 import { MenuController } from '@ionic/angular/menu-controller';
 import { ErrorLogger } from '@sneat/core';
+import { SneatAuthStateService } from '@sneat/auth-core';
+import { of } from 'rxjs';
 import { ResizableMenuDirective } from '@sneat/ui';
 import { PRODUCT_PROFILE, PRODUCT_PROFILES } from '@datatug/product-profiles';
+
+// The shell reads auth status to decide whether the compact header shows
+// its Sign-in affordance; `authenticated` keeps the pre-existing brand/menu
+// assertions independent of it (the compact header only renders on narrow
+// viewports, where jsdom's matchMedia reports no match anyway).
+const authMock = () => ({
+  provide: SneatAuthStateService,
+  useValue: { authStatus: of('authenticated') },
+});
 
 import { DatatugAppComponent } from './datatug-app.component';
 
@@ -21,6 +32,7 @@ describe('AppComponent', () => {
       providers: [
         provideRouter([]),
         { provide: MenuController, useValue: menuCtrl },
+        authMock(),
         {
           provide: ErrorLogger,
           useValue: {
@@ -42,12 +54,14 @@ describe('AppComponent', () => {
   it('enables the shared resizable menu with DataTug-specific width storage', () => {
     fixture.detectChanges();
 
-    const menu = fixture.debugElement.query(By.directive(ResizableMenuDirective));
+    const menu = fixture.debugElement.query(
+      By.directive(ResizableMenuDirective),
+    );
 
     expect(menu).toBeTruthy();
-    expect(menu.injector.get(ResizableMenuDirective).sneatResizableMenuStorageKey).toBe(
-      'datatug.menu.width',
-    );
+    expect(
+      menu.injector.get(ResizableMenuDirective).sneatResizableMenuStorageKey,
+    ).toBe('datatug.menu.width');
   });
 
   it('renders the brand as a link to the home route', () => {
@@ -110,6 +124,7 @@ describe('DatatugAppComponent shell — rendered under each profile token', () =
       providers: [
         provideRouter([]),
         { provide: MenuController, useValue: menuCtrl },
+        authMock(),
         {
           provide: ErrorLogger,
           useValue: {

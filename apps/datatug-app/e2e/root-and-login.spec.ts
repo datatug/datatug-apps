@@ -49,7 +49,10 @@ test('renders the root page', async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByText('My projects')).toBeVisible();
   await expect(page.locator('sneat-datatug-home')).toBeVisible();
-  await expect(page.locator('sneat-datatug-menu')).toBeVisible();
+  // The menu outlet is mounted, but on /home its body is intentionally
+  // empty (UX brief §2: no redundant store/incidents/version controls on
+  // the home panel) — assert attached, not visible.
+  await expect(page.locator('sneat-datatug-menu')).toBeAttached();
   await expect(page.locator('ion-menu')).toBeVisible();
   expect(clientErrors).toEqual([]);
 });

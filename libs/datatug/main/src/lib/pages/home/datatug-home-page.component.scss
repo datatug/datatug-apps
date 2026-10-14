@@ -1,3 +1,37 @@
+// Below the split-pane breakpoint the shell renders its own compact header
+// (brand + motto + Sign in), so the home content header would stack a second
+// bar under it — hide it there (UX brief §1).
+@media (max-width: 991.98px) {
+  .home-header {
+    display: none;
+  }
+}
+
+.home-footer {
+  padding: 4px 4px 16px;
+}
+
+// "Powered by DALgo" as a standalone attribution line (not inside a card):
+// muted, but a real link (focusable, underlined on hover/focus). Same recipe
+// as the sidebar variant in datatug-menu.component.scss.
+.powered-by {
+  margin: 0;
+  padding: 4px 16px 12px;
+  font-size: 0.75rem;
+  color: var(--ion-color-medium);
+
+  a {
+    color: inherit;
+    text-decoration: none;
+
+    &:hover,
+    &:focus-visible {
+      color: var(--ion-color-primary);
+      text-decoration: underline;
+    }
+  }
+}
+
 // "My projects" and "Project stores" sit side by side in one row on medium+
 // screens (ion-col size="12" size-md="6" handles the breakpoint) and stack on
 // small screens. Both cards stretch to the row's height so a shorter card
