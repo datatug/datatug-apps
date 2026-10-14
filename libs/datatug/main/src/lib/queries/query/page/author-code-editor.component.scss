@@ -92,7 +92,7 @@
 
 @media (min-width: 1100px) {
   :host {
-    grid-template-columns: minmax(0, 2fr) minmax(18.5rem, 1fr);
+    grid-template-columns: minmax(0, 1fr);
     align-items: start;
   }
 
@@ -120,34 +120,6 @@
   }
 
   .author-code-sidebar-row {
-    grid-column: 2;
-    grid-row: 3;
-  }
-
-  :host(:not(.author-no-parameters)) .author-code-sidebar-row {
-    align-self: stretch;
-    border-inline-start: 1px solid
-      var(
-        --ion-item-border-color,
-        var(
-          --ion-border-color,
-          var(
-            --ion-color-step-150,
-            var(--ion-background-color-step-150, #dedede)
-          )
-        )
-      );
-  }
-
-  :host(.author-no-parameters) {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  :host(.author-no-parameters) .author-code-surface,
-  :host(.author-no-parameters) .author-code-panel-row,
-  :host(.author-no-parameters) .author-code-status-row,
-  :host(.author-no-parameters) .author-format-diagnostics,
-  :host(.author-no-parameters) .author-code-sidebar-row {
     grid-column: 1;
     grid-row: auto;
   }

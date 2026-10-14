@@ -55,6 +55,7 @@ import { IQueryEditorState, IQueryState } from '../../../editor/models';
 import { IProjectContext } from '../../../nav/nav-models';
 import type { IProjectFull } from '../../../models/definition/project';
 import type { IProjectRef } from '../../../core/project-context';
+import type { IParameterDef } from '../../../models/definition/parameter';
 import {
   IQueryDef,
   IHttpQueryRequest,
@@ -2928,11 +2929,16 @@ select (
   });
 
   it('correlates hosted Validator status only to the exact retained query execution', async () => {
-    component = await createComponent();
+    const savedDefinition: IQueryDef = {
+      ...queryDef,
+      request: { queryType: QueryType.DTQL, text: 'from:\n  name: Invoice\n' } as ITextQueryRequest,
+      parameters: [],
+    };
+    component = await createComponent({}, savedDefinition);
     component.project = {
       ref: { storeId: 'firestore', spaceID: 'space_1', projectId: 'project_1' },
     };
-    const savedDefinition = { ...queryDef, parameters: [] };
+    expect(component.isNativeDtqlWorkspace()).toBe(true);
     component.queryDef.set(savedDefinition);
     component.queryState = {
       ...component.queryState,
@@ -8769,6 +8775,39 @@ select (
     expect(component.runError()).toBeUndefined();
   });
 
+  it('keeps a loaded legacy YAML DTQL source on the admitted agent execution path', async () => {
+    const yaml = 'from:\n  name: Invoice\n  alias: i\nwhere:\n  op: ==\n  left:\n    field: CustomerId\n  right:\n    param: CustomerId\n';
+    const definition: IQueryDef = {
+      ...queryDef,
+      request: { queryType: QueryType.DTQL, text: yaml } as ITextQueryRequest,
+    };
+    component = await createComponent({}, definition);
+    component.project = project;
+    expect(component.isNativeDtqlWorkspace()).toBe(true);
+    expect(component.isTugqlAuthorJourney()).toBe(false);
+    expect(component.workspaceTab()).toBe('dtql');
+    investigationContext.addValue({
+      entityField: { entity: 'Customer', field: 'ID' },
+      value: 7,
+      label: 'Customer.ID = 7',
+      source: 'grid',
+    });
+    TestBed.tick();
+    const response = {
+      recordset: { columns: [{ name: 'InvoiceId', type: 'integer' }], rows: [[{ type: 'integer', value: '1' }]] },
+      limitations: [], bindingsApplied: [], truncated: false,
+      provenance: { source: 'chinook', mode: 'live', observedAt: '2026-10-14T00:00:00Z', executionProfile: 'protected' },
+    };
+    runQueryMock.mockReturnValue(of(response));
+    component.runQuery();
+    expect(runQueryMock).toHaveBeenCalledWith(expect.objectContaining({
+      queryId: definition.id,
+      parameters: { CustomerId: { type: 'integer', value: '7' } },
+    }));
+    expect(component.runResult()).toEqual(response);
+    expect(component.queryBodyText()).toBe(yaml);
+  });
+
   it('records a persisted local execution as the pending Scenario query step and fences a late route response', async () => {
     component = await createComponent({});
     component.project = project;
@@ -9870,15 +9909,15 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
       ),
       'utf8',
     );
-    const section = template.indexOf('<!-- Saved query text is editable');
-    const start = template.indexOf('<ion-card-content>', section);
-    const end = template.indexOf('</ion-card-content>', start);
-    if (section < 0 || start < 0 || end < 0) {
+    const card = template.indexOf('data-testid="unified-text-workspace"');
+    const start = template.indexOf('@if (isNativeSqlWorkspace()) {', card);
+    const end = template.indexOf('@if (!isNativeSqlWorkspace() && !isNativeDtqlWorkspace()) {', start);
+    if (card < 0 || start < 0 || end < 0) {
       throw new Error(
         'Could not locate the maintained query text editor fragment.',
       );
     }
-    return template.slice(start, end + '</ion-card-content>'.length);
+    return `<ion-card-content>${template.slice(start, end)}</ion-card-content>`;
   }
   beforeEach(() => {
     sessionStorage.clear();
@@ -9891,9 +9930,7 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
       ),
       'utf8',
     );
-    const sqlBranch = template.indexOf(
-      '@if (queryDef()?.request.queryType === sqlQueryType)',
-    );
+    const sqlBranch = template.indexOf('@if (isNativeSqlWorkspace()) {', template.indexOf('data-testid="unified-text-workspace"'));
     const sqlEditor = template.indexOf('<sneat-datatug-sql', sqlBranch);
     const fallbackTextarea = template.indexOf('<ion-textarea', sqlEditor);
 
@@ -9951,6 +9988,160 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
     );
     fixture.detectChanges();
     expect(component.queryBodyText()).toBe('from:\n  name: Artist\n');
+  });
+
+  it('keeps a loaded legacy DTQL query in its native source pane even while the draft changes', async () => {
+    component = await createComponent(dtqlDef);
+    expect(component.isTextQueryWorkspace()).toBe(true);
+    expect(component.isNativeDtqlWorkspace()).toBe(true);
+    expect(component.isTugqlAuthorJourney()).toBe(false);
+    expect(component.workspaceTab()).toBe('dtql');
+    component.queryTextChanged(new CustomEvent('ionInput', { detail: { value: 'FROM Invoice\nSELECT (InvoiceId)' } }));
+    expect(component.isNativeDtqlWorkspace()).toBe(true);
+    expect(component.isTugqlAuthorJourney()).toBe(false);
+    expect(component.workspaceTab()).toBe('dtql');
+  });
+
+  it('resolves explicitly edited optional SQL declarations without inventing metadata or changing source', async () => {
+    const albumId: IParameterDef = { id: 'AlbumId', type: 'integer' };
+    const sqlWithParameters: IQueryDef = {
+      ...legacySqlDef,
+      parameters: [
+        albumId,
+        { id: 'ArtistId', type: 'integer' },
+      ],
+    };
+    component = await createComponent(sqlWithParameters);
+    expect(component.authorParameterDeclarationCount()).toBe(2);
+    expect(component.bindings().map((item) => item.parameterId)).toEqual(['AlbumId', 'ArtistId']);
+    expect(component.effectiveBindings()).toEqual([]);
+    component.setNativeParameterInput(albumId, '12');
+    expect(component.effectiveBindings()).toMatchObject([{ parameterId: 'AlbumId', value: { type: 'integer', value: '12' }, origin: 'user' }]);
+    expect(component.queryBodyText()).toBe(legacySqlText);
+    component.setNativeParameterInput(albumId, '012');
+    expect(component.nativeParameterError('AlbumId')).toContain('valid integer');
+    expect(component.hasBlockedBindings()).toBe(true);
+    expect(component.effectiveBindings()).toEqual([]);
+    component.clearNativeParameter('AlbumId');
+    expect(component.nativeParameterError('AlbumId')).toBeUndefined();
+    expect(component.effectiveBindings()).toEqual([]);
+  });
+
+  it('blocks direct Run for invalid optional SQL input before agent dispatch and accepts lossless signed integers', async () => {
+    const albumId: IParameterDef = { id: 'AlbumId', type: 'integer' };
+    const definition: IQueryDef = {
+      ...legacySqlDef,
+      parameters: [albumId],
+    };
+    const agentProject: IProjectContext = {
+      ref: { storeId: 'http://localhost:8080', projectId: 'album-test' },
+    };
+    component = await createComponent(definition, '', [], undefined, agentProject);
+    component.project = agentProject;
+    component.envId = 'local';
+    const run = TestBed.inject(SemanticApiService).runQuery as ReturnType<typeof vi.fn>;
+
+    for (const invalid of ['abc', '9007199254740992', '-9007199254740992']) {
+      component.setNativeParameterInput(albumId, invalid);
+      expect(component.nativeParameterError('AlbumId')).toContain('valid integer');
+      expect(component.hasBlockedBindings()).toBe(true);
+      component.runQuery();
+      expect(component.runError()).toContain('Correct or clear invalid parameter');
+      expect(run).not.toHaveBeenCalled();
+    }
+
+    for (const valid of ['0', '-5', '9007199254740991']) {
+      component.setNativeParameterInput(albumId, valid);
+      expect(component.nativeParameterError('AlbumId')).toBeUndefined();
+      expect(component.effectiveBindings()).toMatchObject([
+        { parameterId: 'AlbumId', value: { type: 'integer', value: valid } },
+      ]);
+    }
+    component.clearNativeParameter('AlbumId');
+    expect(component.hasBlockedBindings()).toBe(false);
+    expect(component.effectiveBindings()).toEqual([]);
+    expect(run).not.toHaveBeenCalled();
+    expect(component.queryBodyText()).toBe(legacySqlText);
+  });
+
+  it('uses the existing admitted browser SQLite executor only for the complete declared SQL bindings', async () => {
+    const albumId: IParameterDef = { id: 'AlbumId', type: 'integer' };
+    const artistId: IParameterDef = { id: 'ArtistId', type: 'integer' };
+    const definition: IQueryDef = {
+      ...legacySqlDef,
+      connectionId: 'chinook-sqlite',
+      parameters: [albumId, artistId],
+    };
+    component = await createComponent(definition);
+    component.project = project;
+    const service = TestBed.inject(PublicSqliteQueryService);
+    const unbound = vi.spyOn(service, 'run').mockImplementation(() => new Promise<FederatedQueryResult>(() => undefined));
+    const parameterized = vi.spyOn(service, 'runParameterized').mockImplementation(() => new Promise<FederatedQueryResult>(() => undefined));
+
+    component.setNativeParameterInput(albumId, '0');
+    component.runQuery();
+    expect(component.runError()).toContain('requires a value for every declared parameter');
+    expect(unbound).not.toHaveBeenCalled();
+    expect(parameterized).not.toHaveBeenCalled();
+
+    component.setNativeParameterInput(artistId, '9007199254740992');
+    component.runQuery();
+    expect(component.nativeParameterError('ArtistId')).toContain('valid integer');
+    expect(unbound).not.toHaveBeenCalled();
+    expect(parameterized).not.toHaveBeenCalled();
+
+    component.setNativeParameterInput(artistId, '-5');
+    component.runQuery();
+    expect(unbound).not.toHaveBeenCalled();
+    expect(parameterized).toHaveBeenCalledOnce();
+    expect(parameterized).toHaveBeenCalledWith(
+      project.ref,
+      definition,
+      {
+        AlbumId: { type: 'integer', value: '0' },
+        ArtistId: { type: 'integer', value: '-5' },
+      },
+      expect.any(Function),
+    );
+    expect(component.queryBodyText()).toBe(legacySqlText);
+    expect(component.queryDef()).toEqual(definition);
+  });
+
+  it('keeps exact browser SQL inputs and client origins with the prior result after a draft binding edit', async () => {
+    const albumId: IParameterDef = { id: 'AlbumId', type: 'integer' };
+    const artistId: IParameterDef = { id: 'ArtistId', type: 'integer' };
+    const definition: IQueryDef = {
+      ...legacySqlDef,
+      connectionId: 'chinook-sqlite',
+      parameters: [albumId, artistId],
+    };
+    component = await createComponent(definition);
+    component.project = project;
+    const service = TestBed.inject(PublicSqliteQueryService);
+    const result = {
+      recordset: { columns: [{ name: 'AlbumId', type: 'unknown' }], rows: [[{ type: 'integer', value: '0' }]] },
+      limitations: [], bindingsApplied: [], truncated: false,
+      provenance: { source: 'Pinned public Chinook SQLite fixture', queryId: definition.id, mode: 'snapshot', observedAt: '2026-10-14T00:00:00Z', executionProfile: 'protected' },
+    } as FederatedQueryResult;
+    const parameterized = vi.spyOn(service, 'runParameterized').mockResolvedValue(result);
+
+    component.setNativeParameterInput(albumId, '0');
+    component.setNativeParameterInput(artistId, '-5');
+    component.runQuery();
+    await vi.waitFor(() => expect(component.runResult()).toBeDefined());
+    expect(parameterized).toHaveBeenCalledOnce();
+    expect(component.runResult()?.bindingsApplied).toEqual([
+      { parameterId: 'AlbumId', value: { type: 'integer', value: '0' }, origin: 'manual', originEvidence: 'client-reported' },
+      { parameterId: 'ArtistId', value: { type: 'integer', value: '-5' }, origin: 'manual', originEvidence: 'client-reported' },
+    ]);
+    expect(component.displayedResultIsPreviousRun()).toBe(false);
+    component.setNativeParameterInput(albumId, '7');
+    expect(component.displayedResultIsPreviousRun()).toBe(true);
+    expect(component.runResult()?.bindingsApplied.map((binding) => binding.value)).toEqual([
+      { type: 'integer', value: '0' }, { type: 'integer', value: '-5' },
+    ]);
+    expect(component.queryBodyText()).toBe(legacySqlText);
+    expect(component.queryDef()).toEqual(definition);
   });
   it('a direct-URL-loaded legacy SQL query (no parameters/recordsets metadata) exposes its own text and, from a FROM/JOIN scan, the tables it references', async () => {
     component = await createComponent(legacySqlDef);
