@@ -260,7 +260,7 @@ describe('SqlEditorPage', () => {
           provide: QueryContextSqlService,
           useValue: { setSql: vi.fn(), setTarget: vi.fn() },
         },
-        { provide: QueriesService, useValue: {} },
+        { provide: QueriesService, useValue: { devicePersonal: { list: vi.fn(async () => []) } } },
         { provide: Coordinator, useValue: { execute: vi.fn() } },
         {
           provide: QueryEditorStateService,
@@ -461,6 +461,7 @@ describe('QueryPageComponent — new SQL draft navigation', () => {
           {
             provide: QueriesService,
             useValue: {
+              devicePersonal: { list: vi.fn(async () => []) },
               authorityDenied: () => of(undefined),
               authentication: () => of({ status: 'signedOut' }),
               getRevision,
@@ -5813,7 +5814,7 @@ select (
           provide: QueryContextSqlService,
           useValue: { setSql: vi.fn(), setTarget: vi.fn() },
         },
-        { provide: QueriesService, useValue: navigation?.queries ?? {} },
+        { provide: QueriesService, useValue: { devicePersonal: { list: vi.fn(async () => []) }, ...(navigation?.queries as Record<string, unknown> | undefined) } },
         { provide: ProjectService, useValue: { getFull: vi.fn() } },
         { provide: Coordinator, useValue: { execute: vi.fn() } },
         {
@@ -9229,7 +9230,7 @@ describe('QueryPageComponent — clearing a required parameter blocks Run (S96)'
           provide: QueryContextSqlService,
           useValue: { setSql: vi.fn(), setTarget: vi.fn() },
         },
-        { provide: QueriesService, useValue: {} },
+        { provide: QueriesService, useValue: { devicePersonal: { list: vi.fn(async () => []) } } },
         { provide: Coordinator, useValue: { execute: vi.fn() } },
         {
           provide: QueryEditorStateService,
@@ -9660,7 +9661,7 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
           provide: QueryContextSqlService,
           useValue: { setSql: vi.fn(), setTarget: vi.fn() },
         },
-        { provide: QueriesService, useValue: {} },
+        { provide: QueriesService, useValue: { devicePersonal: { list: vi.fn(async () => []) } } },
         { provide: Coordinator, useValue: { execute: vi.fn() } },
         {
           provide: QueryEditorStateService,

@@ -355,17 +355,9 @@ test.describe('GitHub-store project — every side-menu page loads without error
 
     // --- Queries page, direct ?tab=personal navigation ----------------------
     await page.goto(`${PAGES_URL}/queries?tab=personal`);
-    await expect(
-      activePage(page).getByText(
-        'This project is browsed read-only from GitHub',
-        { exact: false },
-      ),
-    ).toBeVisible({ timeout: 15_000 });
-    await expect(
-      activePage(page).getByText('personal queries need a DataTug agent', {
-        exact: false,
-      }),
-    ).toBeVisible();
+    // Personal queries are now real full-query copies persisted on this device.
+    await expect(activePage(page).locator('input[placeholder="Filter"]')).toBeVisible({ timeout: 15_000 });
+    await expect(activePage(page).getByText('personal queries need a DataTug agent', { exact: false })).not.toBeVisible();
     // The Personal tab must NOT fall back to the Shared tab's real folder
     // tree (the exact bug this follow-up fixes).
     for (const folder of ['albums', 'artists', 'customers', 'invoices', 'reference', 'tracks']) {

@@ -7,6 +7,7 @@ import {
 
 /** The supported Core query envelope. Richer browser plans must refuse a lossy save. */
 export interface ProjectQueryWire {
+  readonly semanticModel?: IQueryDef["semanticModel"];
   readonly folderPath: string;
   readonly id: string;
   readonly title?: string;
@@ -32,6 +33,7 @@ export interface ProjectQueryRevision {
 
 export interface ProjectQueryCapabilities {
   readonly queryRead: boolean;
+  readonly semanticModel?: boolean;
   readonly querySave: boolean;
   readonly branches: boolean;
   readonly branchMerge: boolean;
@@ -76,6 +78,7 @@ export function toProjectQueryWire(
     'draft',
     'connectionId',
     'federation',
+    'semanticModel',
   ]);
   assertFields(query['request'], ['queryType', 'text']);
   if (![QueryType.SQL, QueryType.TugQL, QueryType.DTQL].includes(query['request'].queryType))
@@ -110,6 +113,7 @@ export function toProjectQueryWire(
   )
     throw new UnsupportedQueryContractError();
   return structuredClone({
+    ...(query.semanticModel ? { semanticModel: query.semanticModel } : {}),
     folderPath,
     id,
     ...(query.title !== undefined ? { title: query.title } : {}),
