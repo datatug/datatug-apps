@@ -1,4 +1,8 @@
-import { CUSTOM_ELEMENTS_SCHEMA, Provider } from '@angular/core';
+import {
+  CUSTOM_ELEMENTS_SCHEMA,
+  EnvironmentProviders,
+  Provider,
+} from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { of } from 'rxjs';
@@ -11,7 +15,7 @@ const configure = (
   authStatus: 'authenticated' | 'notAuthenticated' | undefined,
   profile?: (typeof PRODUCT_PROFILES)[keyof typeof PRODUCT_PROFILES],
 ) => {
-  const providers: Provider[] = [
+  const providers: Array<Provider | EnvironmentProviders> = [
     provideRouter([]),
     {
       provide: SneatAuthStateService,
