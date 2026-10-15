@@ -1,9 +1,10 @@
-import { HttpParams, provideHttpClient } from '@angular/common/http';
+import { HttpErrorResponse, HttpParams, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { SneatApiService } from '@sneat/api';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { SessionContextApiService } from './session-context-api.service';
+import { ProjectQueryApiService } from '../services/project/project-query-api.service';
 import { ContextCapabilities, ContextCommand, ContextReceipt } from './session-context-contract';
 
 const localProject = { storeId: 'http-localhost:8989', projectId: 'chinook' };
@@ -93,5 +94,75 @@ describe('SessionContextApiService command wire boundary', () => {
     request.flush(receipt);
     await expect(pending).resolves.toEqual(receipt);
     http.verify();
+  });
+});
+
+
+describe('SessionContextApiService GitHub branch admission', () => {
+  const github = { storeId: 'github.com', projectId: 'datatug-demo-project@datatug@demo-project-1' };
+  function setup(defaultBranch = 'trunk') {
+    const get = vi.fn((_path: string, _params: HttpParams) => of(capabilities));
+    const post = vi.fn((_path: string, _body: unknown, _options: { params: HttpParams }) => of({ receipt }));
+    const branches = vi.fn(() => of({ branches: [], defaultBranch }));
+    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting(), SessionContextApiService,
+      { provide: SneatApiService, useValue: { get, post } },
+      { provide: ProjectQueryApiService, useValue: { branches } },
+    ] });
+    return { service: TestBed.inject(SessionContextApiService), get, post, branches };
+  }
+  it('resolves a normal HEAD address through authenticated repository metadata and pins it for commands', async () => {
+    const { service, get, post, branches } = setup();
+    const ref = { ...github };
+    await service.capabilities(ref);
+    expect(branches).toHaveBeenCalledWith(ref);
+    expect(get.mock.calls[0][1].get('branch')).toBe('trunk');
+    expect(get.mock.calls[0][1].get('project')).toBe('datatug-demo-project@datatug@demo-project-1');
+    branches.mockReturnValue(of({ branches: [], defaultBranch: 'changed' }));
+    await service.command(ref, capabilities, command);
+    expect(post.mock.calls[0][2].params.get('branch')).toBe('trunk');
+    expect(branches).toHaveBeenCalledTimes(1);
+    await service.capabilities({ ...github });
+    expect(branches).toHaveBeenCalledTimes(2);
+    expect(get.mock.calls[1][1].get('branch')).toBe('changed');
+  });
+  it.each([
+    { ...github, projectId: github.projectId + '@main' },
+    { ...github, projectApi: 'cloud' as const, branch: 'main' },
+  ])('preserves the explicit branch for reads and commands: %j', async (ref) => {
+    const { service, get, post, branches } = setup();
+    await service.capabilities(ref);
+    await service.command(ref, capabilities, command);
+    expect(get.mock.calls[0][1].get('branch')).toBe('main');
+    expect(post.mock.calls[0][2].params.get('branch')).toBe('main');
+    expect(branches).not.toHaveBeenCalled();
+  });
+  it('rejects conflicting explicit selectors before mutation', async () => {
+    const { service, get, post, branches } = setup();
+    const ref = { ...github, projectId: github.projectId + '@main', branch: 'other' };
+    await expect(service.command(ref, capabilities, command)).rejects.toThrow('disagree');
+    expect(get).not.toHaveBeenCalled(); expect(post).not.toHaveBeenCalled(); expect(branches).not.toHaveBeenCalled();
+  });
+  it('sanitizes lookup failures and permits a later retry with the same project reference', async () => {
+    const { service, branches, get } = setup();
+    const ref = { ...github };
+    branches.mockReturnValueOnce(throwError(() => new Error('private provider diagnostic')));
+    await expect(service.capabilities(ref)).rejects.toThrow('The repository default branch could not be resolved. Open this project with an explicit branch.');
+    expect(get).not.toHaveBeenCalled();
+    await expect(service.capabilities(ref)).resolves.toEqual(capabilities);
+    expect(branches).toHaveBeenCalledTimes(2);
+  });
+  it.each([401, 403, 503])('retains authoritative admission status %s for workspace handling', async (status) => {
+    const { service, branches, get, post } = setup();
+    const failure = new HttpErrorResponse({ status });
+    branches.mockReturnValue(throwError(() => failure));
+    await expect(service.capabilities({ ...github })).rejects.toBe(failure);
+    await expect(service.command({ ...github }, capabilities, command)).rejects.toBe(failure);
+    expect(get).not.toHaveBeenCalled(); expect(post).not.toHaveBeenCalled();
+  });
+  it.each(['', 'HEAD', ' main', 'bad\nbranch', '@'])('blocks unavailable or invalid defaults before a session request: %j', async (branch) => {
+    const { service, get, post } = setup(branch);
+    await expect(service.capabilities({ ...github })).rejects.toThrow('default branch could not be resolved');
+    await expect(service.command({ ...github }, capabilities, command)).rejects.toThrow('default branch could not be resolved');
+    expect(get).not.toHaveBeenCalled(); expect(post).not.toHaveBeenCalled();
   });
 });
