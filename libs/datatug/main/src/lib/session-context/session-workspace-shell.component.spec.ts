@@ -151,14 +151,73 @@ describe('SessionWorkspaceShellComponent auth lifecycle', () => {
     expect(api.command).not.toHaveBeenCalled();
   });
 
-  it('allows creation when the capability and an admitted environment are available', () => {
+  it('allows creation when the capability and an admitted environment are available', async () => {
     const workspace = TestBed.inject(SessionWorkspaceService);
     const component = fixture.componentInstance;
     workspace.capabilities.set(caps);
 
     expect(component.canCreateSession()).toBe(true);
-    component.beginCreate();
+    component.chooserOpen.set(false);
+    await component.beginCreate();
     expect(component.createOpen()).toBe(true);
+  });
+
+  it('dismisses the real chooser before presenting create and waits for create didDismiss before navigation', async () => {
+    await fixture.whenStable();
+    const workspace = TestBed.inject(SessionWorkspaceService);
+    const component = fixture.componentInstance;
+    workspace.capabilities.set(caps);
+    component.chooserOpen.set(true);
+    fixture.detectChanges();
+    await vi.waitFor(() => expect(component.chooserPresented()).toBe(true));
+    const chooserDismissed = component.chooserModal()?.onDidDismiss();
+    const opening = component.beginCreate();
+    expect(component.createOpen()).toBe(false);
+    await chooserDismissed;
+    await opening;
+    expect(component.chooserOpen()).toBe(false);
+    await vi.waitFor(() => expect(component.createPresented()).toBe(true));
+    component.titleDraft.set('New session');
+    const focus = vi.spyOn(workspace, 'focus').mockResolvedValue();
+    vi.spyOn(workspace, 'create').mockResolvedValue('new-session');
+    const router = TestBed.inject(Router);
+    router.parseUrl = vi.fn(() => ({ queryParams: {} }) as ReturnType<Router['parseUrl']>);
+    const navigate = vi.fn(async () => true);
+    router.navigateByUrl = navigate;
+    let actuallyDismissed = false;
+    const dismissed = component.createModal()?.onDidDismiss().then(() => { actuallyDismissed = true; });
+    focus.mockImplementation(async () => { expect(actuallyDismissed).toBe(true); });
+    const saving = component.saveCreate();
+    expect(focus).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+    await dismissed;
+    await saving;
+    expect(component.createPresented()).toBe(false);
+    expect(component.chooserPresented()).toBe(false);
+    expect(navigate).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a failed create open and preserves normal cancellation cleanup', async () => {
+    await fixture.whenStable();
+    const workspace = TestBed.inject(SessionWorkspaceService);
+    const component = fixture.componentInstance;
+    workspace.capabilities.set(caps);
+    component.chooserOpen.set(false);
+    await component.beginCreate();
+    await vi.waitFor(() => expect(component.createPresented()).toBe(true));
+    component.titleDraft.set('Failed session');
+    vi.spyOn(workspace, 'create').mockImplementation(async () => { workspace.error.set('Save failed'); return undefined; });
+    const focus = vi.spyOn(workspace, 'focus');
+    await component.saveCreate();
+    expect(component.createOpen()).toBe(true);
+    expect(component.createPresented()).toBe(true);
+    expect(focus).not.toHaveBeenCalled();
+    const dismissed = component.createModal()?.onDidDismiss();
+    component.createOpen.set(false);
+    await dismissed;
+    expect(component.createPresented()).toBe(false);
+    expect(component.renameTarget()).toBeUndefined();
+    expect(component.addBagOpen()).toBe(false);
   });
 
   it('keeps loaded sessions available after a later workspace error', async () => {

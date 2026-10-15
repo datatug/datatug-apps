@@ -143,7 +143,7 @@
   </ng-template>
 </ion-modal>
 
-<ion-modal [isOpen]="chooserOpen()" (didDismiss)="chooserOpen.set(false)">
+<ion-modal #sessionChooser [isOpen]="chooserOpen()" (didPresent)="chooserPresented.set(true)" (didDismiss)="chooserPresented.set(false); chooserOpen.set(false)">
   <ng-template>
     <ion-header><ion-toolbar><ion-title>Open a session</ion-title><ion-buttons slot="end"><ion-button (click)="chooserOpen.set(false)">Done</ion-button></ion-buttons></ion-toolbar></ion-header>
     <ion-content>
@@ -229,7 +229,7 @@
   </ng-template>
 </ion-modal>
 
-<ion-modal [isOpen]="createOpen() || addBagOpen() || !!renameTarget()" (didDismiss)="createOpen.set(false); addBagOpen.set(false); renameTarget.set(undefined)">
+<ion-modal #sessionCreate [isOpen]="createOpen() || addBagOpen() || !!renameTarget()" (didPresent)="createPresented.set(true)" (didDismiss)="createPresented.set(false); createOpen.set(false); addBagOpen.set(false); renameTarget.set(undefined)">
   <ng-template>
     <ion-header><ion-toolbar><ion-title>{{ renameTarget() ? 'Rename ' + renameTarget() : addBagOpen() ? 'New bag' : 'New session' }}</ion-title><ion-buttons slot="end"><ion-button (click)="createOpen.set(false); addBagOpen.set(false); renameTarget.set(undefined)">Cancel</ion-button></ion-buttons></ion-toolbar></ion-header>
     <ion-content>

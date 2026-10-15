@@ -9,7 +9,7 @@ import {
   IonInput, IonItem, IonLabel, IonModal, IonNote, IonSelect, IonSelectOption,
   IonSpinner, IonTabBar, IonTabButton, IonTabs, IonTextarea, IonTitle, IonToolbar,
 } from '@ionic/angular';
-import { filter } from 'rxjs';
+import { filter, firstValueFrom } from 'rxjs';
 import { decodeTypedValue, type TypedValue, type TypedValueKind } from '@sneat/datatug-semantic';
 import { IProjectRef } from '../core/project-context';
 import { projectPageHref } from '../nav/project-page-href';
@@ -39,6 +39,18 @@ export class SessionWorkspaceShellComponent {
   private readonly trackerStop = new Subject<void>();
   private readonly tracker = new ProjectTracker(this.trackerStop, this.route);
   readonly tabs = viewChild(IonTabs);
+  readonly chooserModal = viewChild<IonModal>('sessionChooser');
+  readonly createModal = viewChild<IonModal>('sessionCreate');
+  readonly chooserPresented = signal(false);
+  readonly createPresented = signal(false);
+  private async dismissModal(modal: IonModal | undefined, open: boolean, presented: () => boolean): Promise<void> {
+    if (!modal || (!open && !presented())) return;
+    // isOpen initiates presentation; it is not a completed overlay lifecycle.
+    if (open && !presented()) await firstValueFrom(modal.didPresent);
+    const dismissed = modal.onDidDismiss();
+    await modal.dismiss();
+    await dismissed;
+  }
   readonly drawerOpen = signal(false);
   readonly chooserOpen = signal(false);
   readonly createOpen = signal(false);
@@ -268,7 +280,9 @@ export class SessionWorkspaceShellComponent {
     const next = sessions[target];
     if (next) { this.focusTabId.set(next.id); document.getElementById(`session-tab-${next.id}`)?.focus(); }
   }
-  beginCreate(bag = false): void {
+  async beginCreate(bag = false): Promise<void> {
+    if (!bag && !this.canCreateSession()) return;
+    await this.dismissModal(this.chooserModal(), this.chooserOpen(), this.chooserPresented);
     if (!bag && !this.canCreateSession()) return;
     this.renameTarget.set(undefined);
     this.titleDraft.set(''); this.formError.set('');
@@ -348,7 +362,12 @@ export class SessionWorkspaceShellComponent {
       if (!this.workspace.error()) this.addBagOpen.set(false);
     } else {
       const id = await this.workspace.create(this.titleDraft(), scope);
-      if (id) { this.createOpen.set(false); this.chooserOpen.set(false); await this.workspace.focus(id); await this.router.navigateByUrl(this.sessionHref(id), { replaceUrl: true }); }
+      if (id) {
+        await this.dismissModal(this.createModal(), this.createOpen(), this.createPresented);
+        await this.dismissModal(this.chooserModal(), this.chooserOpen(), this.chooserPresented);
+        await this.workspace.focus(id);
+        await this.router.navigateByUrl(this.sessionHref(id), { replaceUrl: true });
+      }
     }
   }
   scopeKey = contextScopeKey;
