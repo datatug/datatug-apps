@@ -12,6 +12,14 @@ import { BoardCardComponent } from '../board-card/board-card.component';
   imports: [IonCol, IonRow, BoardCardComponent],
 })
 export class BoardRowComponent {
+  cardCols(cols: number | undefined): string {
+    return typeof cols === 'number' &&
+      Number.isInteger(cols) &&
+      cols >= 1 &&
+      cols <= 12
+      ? String(cols)
+      : '6';
+  }
   readonly boardRowDef = input<BoardRow>();
   readonly boardContext = input<IBoardContext>();
   readonly projectRef = input<IProjectRef>();

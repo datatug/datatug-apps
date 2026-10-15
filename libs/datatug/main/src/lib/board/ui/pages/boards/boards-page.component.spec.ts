@@ -185,6 +185,9 @@ describe('BoardsPage renders boards once the project/folder arrive asynchronousl
     // because `sneat-card-list` reads `.title`, not `.name` — see that
     // method's own doc comment (S136) for the display bug this fixes.
     expect(boardsCard().items).toEqual([{ id: 'b1', title: 'Board One' }]);
+    // A store may accept create_board yet has no board reader. Do not offer
+    // a creation action that strands the user on the next step.
+    expect(fixture.nativeElement.textContent).not.toContain('New board');
   });
 });
 

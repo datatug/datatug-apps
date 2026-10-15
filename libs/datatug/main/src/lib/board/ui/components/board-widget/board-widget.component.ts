@@ -2,9 +2,10 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  inject,
   input,
 } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink, UrlTree } from '@angular/router';
 import { IonButton } from '@ionic/angular';
 import {
   BoardWidget,
@@ -24,6 +25,7 @@ import { TabsWidgetComponent } from '../widgets/tabs-widget/tabs-widget.componen
   imports: [TabsWidgetComponent, RouterLink, IonButton],
 })
 export class BoardWidgetComponent {
+  private readonly router = inject(Router);
   readonly level = input<number>();
   readonly cardTab = input<QueryType | 'grid' | 'card'>();
   // TODO: Skipped for migration because:
@@ -40,21 +42,15 @@ export class BoardWidgetComponent {
     () => this.widgetDef()?.data as SQLWidgetDef | undefined,
   );
   readonly queryId = computed(() => this.sqlWidgetDef()?.sql?.queryId?.trim());
-  readonly queryHref = computed(() => {
+  readonly queryUrlTree = computed<UrlTree | undefined>(() => {
     const ref = this.projectRef();
     const id = this.queryId();
     if (!ref || !id) return undefined;
     const href = projectPageHref(ref, ['query', id]);
-    return href === '/' ? undefined : href;
-  });
-  readonly queryParams = computed(() => {
-    const ref = this.projectRef();
-    return {
-      id: this.queryId(),
-      ...(ref?.projectApi
-        ? { projectApi: ref.projectApi, branch: ref.branch }
-        : {}),
-    };
+    if (href === '/') return undefined;
+    const tree = this.router.parseUrl(href);
+    tree.queryParams = { ...tree.queryParams, id };
+    return tree;
   });
 
   readonly boardContext = input<IBoardContext>();

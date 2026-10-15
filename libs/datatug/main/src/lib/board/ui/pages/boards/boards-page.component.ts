@@ -1,26 +1,14 @@
-import {
-  Component,
-  computed,
-  OnDestroy,
-  OnInit,
-  inject,
-  signal,
-} from '@angular/core';
+import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import {
   IonBackButton,
-  IonButton,
   IonButtons,
   IonContent,
   IonHeader,
-  IonIcon,
-  IonLabel,
   IonMenuButton,
   IonToolbar,
-  AlertController,
 } from '@ionic/angular';
 import { SneatCardListComponent } from '@sneat/components';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
-import { STORE_ID_GITHUB_COM, STORE_TYPE_GITHUB } from '@sneat/core';
 import { of, Subject } from 'rxjs';
 import {
   catchError,
@@ -48,7 +36,6 @@ import { DatatugServicesNavModule } from '../../../../services/nav/datatug-servi
 import { DatatugServicesProjectModule } from '../../../../services/project/datatug-services-project.module';
 import { DatatugServicesStoreModule } from '../../../../services/repo/datatug-services-store.module';
 import { DatatugServicesUnsortedModule } from '../../../../services/unsorted/datatug-services-unsorted.module';
-import { DatatugBoardService } from '../../../core/datatug-board.service';
 import { SneatDatatugPageTitleComponent } from '../../../../components/page-title/sneat-datatug-page-title.component';
 
 @Component({
@@ -81,9 +68,6 @@ import { SneatDatatugPageTitleComponent } from '../../../../components/page-titl
     IonBackButton,
     IonMenuButton,
     IonToolbar,
-    IonButton,
-    IonIcon,
-    IonLabel,
     IonContent,
   ],
 })
@@ -91,18 +75,7 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
   private readonly datatugNavContextService = inject(DatatugNavContextService);
   private readonly datatugNavService = inject(DatatugNavService);
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
-  private readonly boardService = inject(DatatugBoardService);
-  private readonly alertCtrl = inject(AlertController);
   private readonly foldersService = inject(DatatugFoldersService);
-
-  readonly canCreateBoard = computed(() => {
-    const storeId = this.project()?.ref?.storeId;
-    return (
-      !!storeId &&
-      storeId !== STORE_ID_GITHUB_COM &&
-      storeId !== STORE_TYPE_GITHUB
-    );
-  });
 
   // Signals, not plain fields: this app is zoneless
   // (provideZonelessChangeDetection(), main.ts). Both are written from
@@ -218,63 +191,4 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
       this.datatugNavService.goBoard(project, <IProjItemBrief>item);
     }
   }
-
-  async newBoard(): Promise<void> {
-    const modal = await this.alertCtrl.create({
-      message: 'New board',
-      inputs: [
-        {
-          name: 'title',
-          type: 'text',
-          // handler: v => {
-          // 	console.log('input handler:', v);
-          // },
-          placeholder: 'Name, should be unique',
-        },
-      ],
-      buttons: [
-        {
-          role: 'cancel',
-          text: 'Cancel',
-          cssClass: 'ion-color-medium',
-        },
-        {
-          text: 'Create',
-          handler: (value) => {
-            // const store: IProjStoreRef = {
-            // 	type: 'firestore',
-            // };
-            const project = this.project();
-            if (!project) {
-              return;
-            }
-            this.boardService
-              .createNewBoard({
-                projectRef: project.ref,
-                name: value.title as string,
-              })
-              .subscribe({
-                next: (board) => {
-                  // Matches the pre-signal behaviour: if the list hasn't
-                  // loaded yet, this silently no-ops (same as the old
-                  // `this.boards?.push()`).
-                  const boards = this.boards();
-                  if (boards) {
-                    this.boards.set([...boards, board]);
-                  }
-                },
-                error: this.logError(
-                  () =>
-                    `Failed to create a new board with title [${value.title}]`,
-                ),
-              });
-          },
-        },
-      ],
-    });
-    await modal.present();
-  }
-
-  private logError = (message: () => string) => (err: unknown) =>
-    this.errorLogger.logError(err, message());
 }

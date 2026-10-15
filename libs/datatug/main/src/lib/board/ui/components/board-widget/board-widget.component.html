@@ -12,10 +12,8 @@
       @if (sqlWidgetDef()?.title) {
         <p>{{ sqlWidgetDef()?.title }}</p>
       }
-      @if (queryHref(); as href) {
-        <ion-button [routerLink]="href" [queryParams]="queryParams()">
-          Open saved query
-        </ion-button>
+      @if (queryUrlTree(); as urlTree) {
+        <ion-button [routerLink]="urlTree"> Open saved query </ion-button>
       } @else {
         <p role="status">This saved query is unavailable.</p>
       }

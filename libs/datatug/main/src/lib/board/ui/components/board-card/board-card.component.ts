@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   Injectable,
+  inject,
   input,
 } from '@angular/core';
 import { IonCard, IonItem, IonLabel } from '@ionic/angular';
@@ -36,6 +37,7 @@ export class BoardCardTabService {
   imports: [IonCard, IonItem, IonLabel, BoardWidgetComponent],
 })
 export class BoardCardComponent {
+  readonly boardCardTab = inject(BoardCardTabService);
   // TODO: Skipped for migration because:
   //  This input is used in a control flow expression (e.g. `@if` or `*ngIf`)
   //  and migrating would break narrowing currently.

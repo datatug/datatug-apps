@@ -9,15 +9,6 @@
     <!--		<ion-segment value="boards">-->
     <!--			<ion-segment-button value="boards">Databoards</ion-segment-button>-->
     <!--		</ion-segment>-->
-
-    @if (canCreateBoard()) {
-      <ion-buttons slot="end">
-        <ion-button (click)="newBoard()">
-          <ion-icon color="primary" slot="start" name="add" />
-          <ion-label color="primary">New board</ion-label>
-        </ion-button>
-      </ion-buttons>
-    }
   </ion-toolbar>
 </ion-header>
 
