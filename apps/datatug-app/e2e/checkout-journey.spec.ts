@@ -147,12 +147,30 @@ async function signIn(page: Page, email: string) {
   await readyCheckout(page, 'authentication');
   await page.locator('ion-segment-button[value="in"]').click();
   await page.locator('ion-input[name="email"] input').fill(email);
-  await page.locator('ion-input[type="password"] input').fill(password);
+  const passwordInput = page.locator(
+    'ion-input[type="password"] input:not(.cloned-input)',
+  );
+  await passwordInput.fill(password);
+  // Finish the field's blur/update and focus scrolling before the mobile
+  // WebKit click, just as the Business activation helper does below.
+  await passwordInput.blur();
+  await expect(
+    page.locator('ion-input[type="password"] input.cloned-input'),
+  ).toHaveCount(0);
+  await expect(page.locator('ion-input[type="password"]')).toHaveJSProperty(
+    'value',
+    password,
+  );
+  const signInButton = page.getByRole('button', {
+    name: /Sign in.*with password/,
+  });
+  await signInButton.scrollIntoViewIfNeeded();
   // Wait for Ionic's host property as well as Playwright's native actionability.
   await expect(
     page.locator('ion-button').filter({ hasText: /Sign in.*with password/s }),
   ).toHaveJSProperty('disabled', false);
-  await page.getByRole('button', { name: /Sign in.*with password/ }).click();
+  await expect(signInButton).toBeEnabled();
+  await signInButton.click();
   await expect(
     page.getByText(`Signed in as ${email}`, { exact: true }),
   ).toBeVisible({ timeout: 20000 });
