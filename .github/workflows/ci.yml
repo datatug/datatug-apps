@@ -450,3 +450,71 @@ jobs:
           path: coverage/apps/datatug-app-e2e/journey/*.log
           if-no-files-found: ignore
           retention-days: 7
+
+  # Card links (Feature claude-mod-web-links): the table, records and record pages a DataTug Claude Code mod card
+  # links to, against a REAL `datatug daemon start` with links from `datatug daemon url`, served at
+  # datatug.localhost (the only development origin the agent admits). See apps/datatug-app/e2e/README.md
+  # "Card links". Runs once the repository variable DATATUG_LINKS_CLI_REF names a datatug release that has the
+  # read-only records/schema and records/lookup routes (datatug-cli #399).
+  agent-links:
+    name: card-link e2e (real datatug daemon)
+    if: ${{ vars.DATATUG_LINKS_CLI_REF != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      attestations: read
+    needs: build
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DATATUG_CLI_REF: ${{ vars.DATATUG_LINKS_CLI_REF }}
+    steps:
+      - name: Checkout datatug-apps
+        uses: actions/checkout@v6
+
+      - name: Download and verify datatug CLI (${{ env.DATATUG_CLI_REF }})
+        run: |
+          mkdir -p "$RUNNER_TEMP/datatug-bin" "$RUNNER_TEMP/datatug-dl"
+          gh release download "${{ env.DATATUG_CLI_REF }}" \
+            --repo datatug/datatug \
+            --pattern "datatug_*_linux_amd64.tar.gz" \
+            --pattern "datatug_*_checksums.txt" \
+            --dir "$RUNNER_TEMP/datatug-dl"
+          cd "$RUNNER_TEMP/datatug-dl"
+          grep "linux_amd64.tar.gz" datatug_*_checksums.txt | sha256sum --check
+          tar -xzf datatug_*_linux_amd64.tar.gz -C "$RUNNER_TEMP/datatug-bin" datatug
+          chmod +x "$RUNNER_TEMP/datatug-bin/datatug"
+          echo "DATATUG_BIN=$RUNNER_TEMP/datatug-bin/datatug" >> "$GITHUB_ENV"
+
+      - name: Checkout datatug-demo-project (main)
+        uses: actions/checkout@v6
+        with:
+          repository: datatug/datatug-demo-project
+          ref: main
+          path: datatug-demo-project
+
+      - uses: ./.github/actions/pnpm
+
+      - name: Fetch and verify pinned Chinook SQLite fixture
+        run: |
+          mkdir -p "$HOME/datatug/dbs"
+          curl -fsSL -o "$HOME/datatug/dbs/chinook-local.sqlite" \
+            "https://raw.githubusercontent.com/datatug/chinook-database/6334395117e2478a2712e083be614721341c26c9/ChinookDatabase/DataSources/Chinook_Sqlite.sqlite"
+          echo "f82efedb6c5c40734609e168bc5be5616a2eca6b90ed0048451a8674625e03a3  $HOME/datatug/dbs/chinook-local.sqlite" | sha256sum --check
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run card-link e2e
+        env:
+          DATATUG_DEMO_DIR: ${{ github.workspace }}/datatug-demo-project/demo-project-1
+        run: pnpm nx run datatug-app:e2e-agent-links
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: agent-links-e2e-playwright-report
+          path: coverage/apps/datatug-app-agent-links-e2e
+          if-no-files-found: ignore
+          retention-days: 7

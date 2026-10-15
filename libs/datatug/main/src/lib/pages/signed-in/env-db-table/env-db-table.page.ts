@@ -83,6 +83,14 @@ import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatu
 import { ForeignKeyCardComponent } from './foreign-key-card/foreign-key-card.component';
 import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
 import { SqlEditorComponent } from '../../../components/sqleditor/sql-editor.component';
+import { AgentTableRef } from '../../../agent-links/agent-link-api.service';
+import { linkTableRef } from '../../../agent-links/link-route';
+import {
+  SCHEMA_QUERY_PARAM,
+  qualifiedTableName,
+  tableIdentity,
+} from '../../../agent-links/table-identity';
+import { TableMetadataComponent } from '../../../agent-links/table-metadata/table-metadata.component';
 
 // Registers the same two icon names SemanticMarkerComponent uses
 // (libs/datatug/semantic/.../semantic-marker.component.ts) so they resolve when this
@@ -128,6 +136,7 @@ addIcons({ pricetag, helpCircleOutline });
     DatatugServicesStoreModule,
     DatatugServicesUnsortedModule,
     ForeignKeyCardComponent,
+    TableMetadataComponent,
     ContextPanelComponent,
     LimitationHeaderComponent,
     SqlEditorComponent,
@@ -193,7 +202,11 @@ export class EnvDbTablePageComponent implements OnDestroy {
   public readonly selection = signal<SemanticSelection | undefined>(undefined);
   public readonly hasSelection = computed(() => !!this.selection());
 
-  public tab: 'grid' | 'record' | 'keys' | 'references' = 'grid';
+  public tab: 'grid' | 'record' | 'columns' | 'keys' | 'references' = 'grid';
+
+  /** The table as the agent's read-only routes name it, for its live metadata (Feature claude-mod-web-links,
+   * Task 7); undefined when the address does not name a whole table. */
+  public readonly tableRef = signal<AgentTableRef | undefined>(undefined);
   public cardTab: 'fks' | 'refs' = 'fks';
 
   public table?: IEnvDbTableContext;
@@ -252,10 +265,20 @@ export class EnvDbTablePageComponent implements OnDestroy {
       // ever calling the agent, i.e. the grid never rendered any rows. Found while
       // diagnosing why journey e2e J1 doesn't see `.tabulator-row` after this
       // stream's table-page changes.
-      const [schema, name] = (paramMap.get(routingParamTableType) || '').split(
-        '.',
+      // REQ:table-identity (claude-mod-web-links): the `schema` query parameter, when present, is authoritative
+      // and the path segment is the whole table name (a schemaless `Album`, a SQLite table `a.b`).
+      const schemaParam =
+        route.snapshot.queryParamMap?.get(SCHEMA_QUERY_PARAM) ?? null;
+      const { schema, name } = tableIdentity(
+        paramMap.get(routingParamTableType) || '',
+        schemaParam,
       );
       this.table = { schema, name };
+      this.tableRef.set(linkTableRef(route.snapshot));
+      if (schemaParam !== null) {
+        // A card's metadata link (`…/table/<name>?schema=<s>`) opens on the table's metadata.
+        this.tab = 'columns';
+      }
       this.envId = paramMap.get(routingParamEnvironmentId) || undefined;
       this.dbId = paramMap.get(routingParamDbCatalogId) || undefined;
       if (this.envId && this.dbId && this.project) {
@@ -645,9 +668,7 @@ from ${this.tableFromClause(currentTable)}`;
    * `main.Album` for SQLite, verified against a live agent in lane S87's
    * report). Only ever needs the table's identity, never its `meta`. */
   private tableFromClause(table: IEnvDbTableContext): string {
-    return table.schema === 'dbo'
-      ? table.name
-      : `${table.schema}.${table.name}`;
+    return qualifiedTableName(table);
   }
 
   private loadData(): void {

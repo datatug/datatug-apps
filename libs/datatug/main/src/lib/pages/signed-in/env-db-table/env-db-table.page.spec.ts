@@ -176,6 +176,53 @@ describe('EnvDbTablePage', () => {
   it('should create', () => {
     expect(component).toBeTruthy();
   });
+
+  describe('opened from a card link (REQ:table-identity)', () => {
+    function linkRoute(tableType: string, query: Record<string, string>) {
+      const params: Record<string, string> = {
+        storeId: 'http-127.0.0.1:8989',
+        projectId: 'demo',
+        environmentId: 'local',
+        dbCatalogId: 'chinook',
+        tableType,
+      };
+      const paramMap = { get: (k: string) => params[k] ?? null, keys: Object.keys(params) };
+      const queryParamMap = { get: (k: string) => query[k] ?? null, keys: Object.keys(query) };
+      const snapshot = { paramMap, queryParamMap, params, pathFromRoot: [] as unknown[] };
+      snapshot.pathFromRoot = [snapshot];
+      return { snapshot, paramMap: of(paramMap), queryParamMap: of(queryParamMap) };
+    }
+
+    function create(tableType: string, query: Record<string, string>) {
+      // The suite's route stub is a plain object: point it at this link's address before the page reads it.
+      Object.assign(TestBed.inject(ActivatedRoute), linkRoute(tableType, query));
+      return TestBed.createComponent(EnvDbTablePageComponent).componentInstance;
+    }
+
+    it('reads the segment as the whole name when schema is present, and opens on the metadata', () => {
+      const page = create('a.b', { schema: '' });
+            expect(page.tab).toBe('columns');
+      expect(page.tableRef()).toEqual({
+        storeId: 'http-127.0.0.1:8989',
+        project: 'demo',
+        env: 'local',
+        source: 'chinook',
+        table: { schema: '', name: 'a.b' },
+      });
+    });
+
+    it('opens a schemaless Album, which used to become schema "Album" with no name', () => {
+      const page = create('Album', { schema: '' });
+      expect(page.tableRef()?.table).toEqual({ schema: '', name: 'Album' });
+    });
+
+    it('keeps the dotted reading and the grid for an in-app address with no schema', () => {
+      const page = create('main.Album', {});
+      expect(page.tableRef()?.table).toEqual({ schema: 'main', name: 'Album' });
+      expect(page.tab).toBe('grid');
+    });
+  });
+
 });
 
 // REQ:semantic-markers-in-grid, REQ:context-basket (INTEGRATION.md §2-3).

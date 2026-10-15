@@ -559,6 +559,20 @@ describe('DatatugNavContextService — reads the address with parseProjectUrl (G
       { schema: 'main', name: 'Album' },
     ],
     [
+      // REQ:table-identity (claude-mod-web-links): a card's link always carries `schema`, which is authoritative,
+      // and its segment is the whole table name — a schemaless `Album`, and a SQLite table named `a.b`.
+      '/store/http-127.0.0.1:8989/project/demo/env/local/db/chinook/table/Album?schema=#pk=%7B%7D',
+      'http-127.0.0.1:8989', 'demo', 'local', 'chinook', { schema: '', name: 'Album' },
+    ],
+    [
+      '/store/http-127.0.0.1:8989/project/demo/env/local/db/chinook/table/a.b/records?limit=5&schema=',
+      'http-127.0.0.1:8989', 'demo', 'local', 'chinook', { schema: '', name: 'a.b' },
+    ],
+    [
+      '/store/http-127.0.0.1:8989/project/demo/env/local/db/pg/table/My%20Orders?schema=sales',
+      'http-127.0.0.1:8989', 'demo', 'local', 'pg', { schema: 'sales', name: 'My Orders' },
+    ],
+    [
       '/store/github.com/project/Repo@Org@datatug/env/local',
       'github.com',
       'repo@org',
