@@ -29,7 +29,7 @@ const plans = ['world-bank-wdi', 'new-york-citibike'].map((id) => ({ id, title: 
   directory: `https://github.com/openvaultdb/directory/blob/${'b'.repeat(40)}/index.json`, readiness: 'setup-required' }));
 
 describe('shared project database connections', () => {
-  it('renders 18 existing editions, six hosted BigQuery datasets and blocked discoveries', async () => {
+  it('groups 18 existing editions and six BigQuery editions under six logical datasets', async () => {
     const getRawJson = vi.fn(() => of({ format: 'datatug-demo-connections/v1', connections: entries,
       bigQueryEditions, bigQueryPlans: plans }));
     await TestBed.configureTestingModule({
@@ -47,21 +47,30 @@ describe('shared project database connections', () => {
     for (const dataset of datasets) for (const storage of ['sqlite', 'postgresql', 'ingitdb']) {
       expect(catalog.connections.find((entry) => entry.id === `${dataset}-${storage}`)?.tags).toEqual([dataset, storage]);
     }
-    expect(fixture.nativeElement.querySelectorAll('ion-item').length).toBe(26);
+    expect(fixture.nativeElement.querySelectorAll('ion-item').length).toBe(8);
+    expect(fixture.nativeElement.querySelectorAll('[data-testid^="dataset-"]').length).toBe(6);
     expect(fixture.componentInstance['readiness'](catalog.connections[1])).toBe('PostgreSQL query endpoint pending');
     expect(fixture.nativeElement.querySelectorAll('ion-button').length).toBe(0);
     expect(fixture.nativeElement.querySelector('a[href*="chinook-postgresql-artist-tracks"]')).toBeNull();
-    expect(fixture.nativeElement.textContent).toContain('Hosted BigQuery editions');
+    expect(fixture.nativeElement.textContent).toContain('Demo databases');
     for (const dataset of datasets) {
       expect(fixture.nativeElement.querySelector(`a[data-testid="explore-local-${dataset}"]`)?.getAttribute('href'))
         .toBe(`/demo/sqlite/${dataset}`);
     }
     const rendered = fixture.nativeElement.innerHTML;
+    expect(rendered).toContain('your own execution project required');
+    expect(rendered).toContain('Browser querying and copying are unavailable');
     expect(rendered).toContain('demodb-dev.chinook');
-    expect(rendered).toContain('your own BigQuery execution project');
-    expect(rendered).toContain('Browser queries and copy are not enabled');
+    expect(rendered).toContain('Source SQLite SHA-256');
     expect(fixture.nativeElement.querySelectorAll('a[href="https://console.cloud.google.com/bigquery"]').length).toBe(6);
-    expect(fixture.nativeElement.querySelectorAll('ion-card-title')[2].textContent).toContain('discoveries');
+    expect(fixture.nativeElement.querySelectorAll('ion-card-title')[1].textContent).toContain('discoveries');
+    for (const dataset of datasets) {
+      const row = fixture.nativeElement.querySelector(`[data-testid="dataset-${dataset}"]`);
+      expect(row.innerHTML).toContain('SQLite');
+      expect(row.innerHTML).toContain('PostgreSQL');
+      expect(row.innerHTML).toContain('inGitDB');
+      expect(row.innerHTML).toContain('BigQuery');
+    }
   });
 
   it('deep-links only the ready Chinook PostgreSQL edition to its saved cross-storage query', async () => {
@@ -144,7 +153,7 @@ describe('shared project database connections', () => {
     await fixture.whenStable();
     fixture.detectChanges();
     expect(fixture.componentInstance['catalog']()).toBeDefined();
-    expect(fixture.nativeElement.querySelectorAll('ion-item').length).toBe(20);
+    expect(fixture.nativeElement.querySelectorAll('ion-item').length).toBe(8);
     expect(fixture.nativeElement.innerHTML).not.toContain('Hosted BigQuery editions');
     expect(fixture.nativeElement.innerHTML).toContain('BigQuery discoveries (setup planned)');
   });

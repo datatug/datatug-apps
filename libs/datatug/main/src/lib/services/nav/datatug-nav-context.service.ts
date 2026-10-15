@@ -302,6 +302,19 @@ export class DatatugNavContextService {
     //}
   }
 
+  /** Explicitly forget this tab's environment choice for the current project. */
+  public clearCurrentEnvironment(): void {
+    const key = this.lastEnvStorageKey();
+    if (key) {
+      try {
+        sessionStorage.removeItem(key);
+      } catch {
+        // The in-memory context can still be cleared when sessionStorage is unavailable.
+      }
+    }
+    this.setCurrentEnvironment(undefined);
+  }
+
   /**
    * What a URL names: its store, project and the page after the project. A short GitHub address that the short project route has
    * opened (the router state has its `storeId` and `projectId`, so a hand-off address that shows the holding page is

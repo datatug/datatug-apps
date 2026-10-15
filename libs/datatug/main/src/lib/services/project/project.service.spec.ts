@@ -3,7 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { ErrorLogger } from '@sneat/core';
 import { PrivateTokenStoreService } from '@sneat/auth-core';
 import { SneatApiService } from '@sneat/api';
-import { Observable, Subject, of } from 'rxjs';
+import { firstValueFrom, Observable, Subject, of } from 'rxjs';
 
 import { ProjectService } from './project.service';
 import { DatatugStoreServiceFactory } from '../repo/datatug-store-service-factory.service';
@@ -40,6 +40,31 @@ describe('ProjectService', () => {
 
   it('should be created', () => {
     expect(TestBed.inject(ProjectService)).toBeTruthy();
+  });
+
+  it('keeps full project responses separate when two agent stores use the same project ID', async () => {
+    http.get.mockImplementation((url: string) =>
+      of({
+        id: 'demo',
+        title: url.includes('8989') ? 'First store' : 'Second store',
+        environments: [],
+      }),
+    );
+    const service = TestBed.inject(ProjectService);
+    const first = { storeId: 'localhost:8989', projectId: 'demo' };
+    const second = { storeId: 'localhost:8990', projectId: 'demo' };
+
+    expect((await firstValueFrom(service.getFull(first))).title).toBe(
+      'First store',
+    );
+    expect((await firstValueFrom(service.getFull(second))).title).toBe(
+      'Second store',
+    );
+    expect((await firstValueFrom(service.getFull(first))).title).toBe(
+      'First store',
+    );
+    expect(http.get).toHaveBeenCalledTimes(2);
+    expect(http.get.mock.calls[0][0]).not.toBe(http.get.mock.calls[1][0]);
   });
 
   describe('project summary cache', () => {

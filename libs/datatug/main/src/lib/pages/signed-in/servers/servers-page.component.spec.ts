@@ -205,7 +205,7 @@ describe('ServersPage replaces "Loading..." once DB servers arrive (zoneless)', 
  * `isDeletingServer`'s `.update()` call alone (from inside the async
  * callback) is what causes Angular to re-render.
  */
-describe('ServersPage clears the delete button\'s disabled state once deletion completes (zoneless)', () => {
+describe("ServersPage clears the delete button's disabled state once deletion completes (zoneless)", () => {
   let component: ServersPageComponent;
   let fixture: ComponentFixture<ServersPageComponent>;
   let deleteDbServer$: Subject<void>;
@@ -492,7 +492,7 @@ describe('ServersPage numbers add up (S153 — GitHub-store demo project)', () =
     expect(rowLabelText()).toBe('(no host)');
   });
 
-  it('narrows the row\'s database count once the environment filter excludes some — but not all — of its contributing environments, keeping the badge/total in sync', async () => {
+  it("narrows the row's database count once the environment filter excludes some — but not all — of its contributing environments, keeping the badge/total in sync", async () => {
     fixture.detectChanges();
     await fixture.whenStable();
 
@@ -522,6 +522,47 @@ describe('ServersPage numbers add up (S153 — GitHub-store demo project)', () =
     expect(
       fixture.nativeElement.querySelector('ion-item[tappable]'),
     ).toBeNull();
+  });
+
+  it('filters the server list by driver, updates its count, and restores the row when cleared', async () => {
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const input = fixture.nativeElement.querySelector('ion-input');
+    const type = async (value: string) => {
+      input.dispatchEvent(new CustomEvent('ionInput', { detail: { value } }));
+      await fixture.whenStable();
+    };
+
+    await type('  SQLITE3 ');
+    expect(rowLabelText()).toBe('(no host)');
+    expect(dbTabBadgeText()).toBe('1');
+
+    await type('postgres');
+    expect(rowLabelText()).toBeUndefined();
+    expect(dbTabBadgeText()).toBe('0');
+    expect(html()).toContain('No matching database servers.');
+
+    await type('');
+    expect(rowLabelText()).toBe('(no host)');
+    expect(dbTabBadgeText()).toBe('1');
+  });
+
+  it('clears and restores all environment selections from the header actions', async () => {
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    fixture.nativeElement
+      .querySelector('[data-testid="clear-environments"]')
+      .click();
+    fixture.detectChanges();
+    expect(dbTabBadgeText()).toBe('0');
+
+    fixture.nativeElement
+      .querySelector('[data-testid="select-all-environments"]')
+      .click();
+    fixture.detectChanges();
+    expect(dbTabBadgeText()).toBe('1');
+    expect(rowDatabasesBadgeText()).toBe('5 databases');
   });
 });
 
@@ -562,7 +603,10 @@ describe('ServersPage.goDbServer() navigation target (S160, NG04002 regression; 
         { provide: NavController, useValue: { navigateForward } },
         {
           provide: DbServerService,
-          useValue: { getDbServers: vi.fn(() => of([])), deleteDbServer: vi.fn() },
+          useValue: {
+            getDbServers: vi.fn(() => of([])),
+            deleteDbServer: vi.fn(),
+          },
         },
         noopEnvironmentServiceProvider,
         noopProjectServiceProvider,
@@ -648,7 +692,9 @@ describe('ServersPage.goDbServer() navigation target (S160, NG04002 regression; 
 
     expect(navigateForward).not.toHaveBeenCalled();
     expect(logError).toHaveBeenCalledWith(
-      expect.objectContaining({ message: expect.stringContaining('no exact address') }),
+      expect.objectContaining({
+        message: expect.stringContaining('no exact address'),
+      }),
       'Failed to navigate to DB server page',
     );
   });

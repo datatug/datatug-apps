@@ -70,7 +70,7 @@ describe('MyProjectsComponent', () => {
     };
     expect(component.demoProjects).toHaveLength(1);
     const [demo] = component.demoProjects;
-    expect(demo.title).toBe('DataTug Demo Project @ GitHub');
+    expect(demo.title).toBe('DataTug public demo');
 
     component.goDemoProject(demo);
 
@@ -80,7 +80,7 @@ describe('MyProjectsComponent', () => {
         storeId: 'github',
         projectId: 'datatug-demo-project@datatug@demo-project-1',
       },
-      brief: { title: 'DataTug Demo Project @ GitHub', access: 'public' },
+      brief: { title: 'DataTug public demo', access: 'public' },
     });
   });
 });

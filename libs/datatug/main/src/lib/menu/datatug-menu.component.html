@@ -16,7 +16,10 @@
       />
     }
     @if (currentProject() && currentProject()?.ref?.spaceID === undefined) {
-      <sneat-datatug-menu-env-selector />
+      <sneat-datatug-menu-env-selector
+        [project]="currentProject()"
+        [currentEnvId]="currentEnvId()"
+      />
     }
   </ion-card>
 }
