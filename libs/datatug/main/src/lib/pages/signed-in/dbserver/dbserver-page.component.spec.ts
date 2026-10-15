@@ -10,7 +10,10 @@ import {
   GITHUB_DBSERVER_DETAIL_MESSAGE,
 } from '../../../services/unsorted/db-server.service';
 import { ProjectContextService } from '../../../services/project/project-context.service';
-import { IDbServerSummary } from '../../../models/definition/apis/database';
+import {
+  IDbCatalogSummary,
+  IDbServerSummary,
+} from '../../../models/definition/apis/database';
 
 describe('DbserverPage', () => {
   let component: DbserverPageComponent;
@@ -96,10 +99,12 @@ describe('DbserverPage replaces "Loading..." once the summary arrives (zoneless)
   let fixture: ComponentFixture<DbserverPageComponent>;
   let current$: Subject<unknown>;
   let getDbServerSummary$: Subject<IDbServerSummary>;
+  let getServerDatabases$: Subject<IDbCatalogSummary[]>;
 
   beforeEach(async () => {
     current$ = new Subject<unknown>();
     getDbServerSummary$ = new Subject<IDbServerSummary>();
+    getServerDatabases$ = new Subject<IDbCatalogSummary[]>();
 
     await TestBed.configureTestingModule({
       imports: [DbserverPageComponent],
@@ -131,7 +136,7 @@ describe('DbserverPage replaces "Loading..." once the summary arrives (zoneless)
           provide: DbServerService,
           useValue: {
             getDbServerSummary: vi.fn(() => getDbServerSummary$.asObservable()),
-            getServerDatabases: vi.fn(() => new Subject()),
+            getServerDatabases: vi.fn(() => getServerDatabases$.asObservable()),
           },
         },
         {
@@ -184,6 +189,83 @@ describe('DbserverPage replaces "Loading..." once the summary arrives (zoneless)
     expect(fixture.nativeElement.innerHTML).not.toContain('Loading...');
     expect(fixture.nativeElement.innerHTML).toContain('AdventureWorks');
     expect(fixture.nativeElement.innerHTML).toContain('prod');
+  });
+
+  it('shows the unique environment names and count from the loaded summary', async () => {
+    fixture.detectChanges();
+    current$.next({ id: 'target-1' });
+    getDbServerSummary$.next({
+      host: 'db1',
+      driver: 'sqlserver',
+      databases: [
+        { id: 'Orders', environments: ['prod', 'staging'] },
+        { id: 'Invoices', environments: ['prod'] },
+      ],
+    });
+    await fixture.whenStable();
+
+    const environments = [
+      ...fixture.nativeElement.querySelectorAll('ion-card'),
+    ].find((card: HTMLElement) =>
+      card
+        .querySelector('ion-item-divider')
+        ?.textContent?.includes('Environments'),
+    ) as HTMLElement;
+    expect(
+      environments
+        .querySelector('ion-item-divider ion-badge')
+        ?.textContent?.trim(),
+    ).toBe('2');
+    expect(
+      [...environments.querySelectorAll('ion-item ion-label')].map(
+        (label: Element) => label.textContent?.trim(),
+      ),
+    ).toEqual(['prod', 'staging']);
+    expect(environments.textContent).not.toContain('Local');
+  });
+
+  it('explains empty environments and shows other catalogs without an inert Add action', async () => {
+    const component = fixture.componentInstance;
+    fixture.detectChanges();
+    current$.next({ id: 'target-1' });
+    getDbServerSummary$.next({
+      host: 'db1',
+      driver: 'sqlserver',
+      databases: [],
+    });
+    getServerDatabases$.next([{ name: 'Warehouse' }]);
+    await fixture.whenStable();
+
+    expect(fixture.nativeElement.textContent).toContain(
+      'This server is not assigned to an environment in this project.',
+    );
+    component.tab = 'unknown';
+    fixture.changeDetectorRef.markForCheck();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Warehouse');
+    expect(
+      fixture.nativeElement.querySelector('ion-button[title="Add to project"]'),
+    ).toBeNull();
+  });
+
+  it('explains when the server has no other databases', async () => {
+    const component = fixture.componentInstance;
+    fixture.detectChanges();
+    current$.next({ id: 'target-1' });
+    getDbServerSummary$.next({
+      host: 'db1',
+      driver: 'sqlserver',
+      databases: [],
+    });
+    getServerDatabases$.next([]);
+    await fixture.whenStable();
+
+    component.tab = 'unknown';
+    fixture.changeDetectorRef.markForCheck();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain(
+      'No other databases found on this server.',
+    );
   });
 });
 
