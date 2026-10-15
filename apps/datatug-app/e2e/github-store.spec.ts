@@ -40,6 +40,11 @@ import { activePage } from './journey/helpers/active-page';
  */
 const GITHUB_FAKE_DIR = process.env['DATATUG_E2E_GITHUB_FAKE'];
 
+const projectOverviewButton = (page: Page, name: string) =>
+  activePage(page)
+    .getByRole('navigation', { name: 'Project overview sections' })
+    .getByRole('button', { name, exact: true });
+
 test.skip(
   process.env['DATATUG_E2E_OFFLINE'] === '1' && !GITHUB_FAKE_DIR,
   'requires network access to github.com/api.github.com/raw.githubusercontent.com — set DATATUG_E2E_OFFLINE=1 to skip',
@@ -169,9 +174,9 @@ test.describe('GitHub-store project — request budget (G-A2)', () => {
     const errors = installErrorLoggerWatch(page);
 
     await page.goto(PROJECT_URL);
-    await expect(
-      activePage(page).getByRole('tab', { name: 'Boards' }),
-    ).toBeVisible({ timeout: 20_000 });
+    await expect(projectOverviewButton(page, 'Boards')).toBeVisible({
+      timeout: 20_000,
+    });
     await page
       .locator('sneat-datatug-project-menu-top ion-item', {
         hasText: 'Entities',
@@ -213,9 +218,9 @@ test.describe('GitHub-store project — request budget (G-A2)', () => {
     // Warm: the same browser, a new page load, within the 5 minutes the resolved commit is remembered.
     github.length = 0;
     await page.goto(PROJECT_URL);
-    await expect(
-      activePage(page).getByRole('tab', { name: 'Boards' }),
-    ).toBeVisible({ timeout: 20_000 });
+    await expect(projectOverviewButton(page, 'Boards')).toBeVisible({
+      timeout: 20_000,
+    });
     await page
       .locator('sneat-datatug-project-menu-top ion-item', {
         hasText: 'Entities',
@@ -242,20 +247,10 @@ test.describe('GitHub-store project — every side-menu page loads without error
 
     // --- Project page ---------------------------------------------------
     await page.goto(PROJECT_URL);
-    // NOT asserting the project *title* text here: `ProjectPageComponent`
-    // (`pages/signed-in/project/project-page.component.ts`, owned by a
-    // different lane — out of this task's own edit scope) never injects
-    // `ChangeDetectorRef`/calls `markForCheck()` anywhere, so on a fresh
-    // zoneless load its title `ion-input` reliably stays stuck on its
-    // "Loading..." placeholder even once `onProjectSummaryChanged()` has
-    // already set the real title internally (confirmed live, S136, and
-    // reproduced by this very test before this comment was added — the
-    // tablist/tabs below render fine, only the title binding doesn't
-    // repaint). Asserting on the tablist instead, which this task's own
-    // fixes do not touch and which reliably renders.
-    await expect(
-      activePage(page).getByRole('tab', { name: 'Boards' }),
-    ).toBeVisible({ timeout: 20_000 });
+    // The overview controls appear after the project context has loaded.
+    await expect(projectOverviewButton(page, 'Boards')).toBeVisible({
+      timeout: 20_000,
+    });
     await expect(page.locator('sneat-datatug-project-menu-top')).toBeVisible();
 
     // --- Boards (side-menu click) ----------------------------------------
@@ -335,15 +330,20 @@ test.describe('GitHub-store project — every side-menu page loads without error
       .click();
     for (const envId of ['local', 'dev', 'QA', 'UAT', 'prod']) {
       await expect(
-        activePage(page).locator('[data-testid="environment-list-item"]')
+        activePage(page)
+          .locator('[data-testid="environment-list-item"]')
           .filter({ hasText: new RegExp(`\\b${envId}\\b`, 'i') }),
       ).toBeVisible({
         timeout: 15_000,
       });
     }
-    await activePage(page).locator('[data-testid="environment-list-item"]')
-      .filter({ hasText: /\blocal\b/i }).click();
-    await expect(activePage(page).getByText('sqlite3')).toBeVisible({ timeout: 15_000 });
+    await activePage(page)
+      .locator('[data-testid="environment-list-item"]')
+      .filter({ hasText: /\blocal\b/i })
+      .click();
+    await expect(activePage(page).getByText('sqlite3')).toBeVisible({
+      timeout: 15_000,
+    });
     await activePage(page).getByText('chinook-local').click();
     await expect(
       activePage(page).getByText('Album', { exact: true }),
@@ -431,9 +431,9 @@ test.describe('GitHub-store project — every side-menu page loads without error
 
     // --- Project page (DatatugFolderComponent's own root-folder watch) -----
     await page.goto(PROJECT_URL);
-    await expect(
-      activePage(page).getByRole('tab', { name: 'Boards' }),
-    ).toBeVisible({ timeout: 20_000 });
+    await expect(projectOverviewButton(page, 'Boards')).toBeVisible({
+      timeout: 20_000,
+    });
 
     // --- Queries page, direct ?tab=personal navigation ----------------------
     await page.goto(`${PAGES_URL}/queries?tab=personal`);
@@ -827,9 +827,9 @@ test.describe('GitHub-store project — addresses (G-A1c)', () => {
   }) => {
     const errors = installErrorLoggerWatch(page);
     await page.goto(PROJECT_URL);
-    await expect(
-      activePage(page).getByRole('tab', { name: 'Boards' }),
-    ).toBeVisible({ timeout: 20_000 });
+    await expect(projectOverviewButton(page, 'Boards')).toBeVisible({
+      timeout: 20_000,
+    });
 
     for (const [item, page_] of [
       ['Entities', 'entities'],
@@ -851,9 +851,9 @@ test.describe('GitHub-store project — addresses (G-A1c)', () => {
   }) => {
     const errors = installErrorLoggerWatch(page);
     await page.goto(OLD_PROJECT_URL);
-    await expect(
-      activePage(page).getByRole('tab', { name: 'Boards' }),
-    ).toBeVisible({ timeout: 20_000 });
+    await expect(projectOverviewButton(page, 'Boards')).toBeVisible({
+      timeout: 20_000,
+    });
     // Opened as it was typed: no redirect (G-A1d is held).
     expect(pathOf(page)).toBe(OLD_PROJECT_URL);
 
@@ -885,7 +885,7 @@ test.describe('GitHub-store project — addresses (G-A1c)', () => {
       .toBe(PROJECT_URL);
   });
 
-  test('the published short folder link shows the 18 storage connections and any hosted editions in its catalogue', async ({
+  test('the published short folder link groups six datasets with their storage and hosted editions', async ({
     page,
   }) => {
     await page.goto(
@@ -894,37 +894,35 @@ test.describe('GitHub-store project — addresses (G-A1c)', () => {
     await expect
       .poll(() => pathOf(page), { timeout: 15_000 })
       .toBe(PROJECT_URL);
-    const connections = activePage(page)
-      .locator('sneat-datatug-demodb-connections ion-card')
-      .first();
-    await expect(connections.getByText('Database connections')).toBeVisible({
+    await projectOverviewButton(page, 'Databases').click();
+    const connections = activePage(page).locator(
+      'sneat-datatug-demodb-connections ion-card',
+      { hasText: 'Demo databases' },
+    );
+    await expect(connections.getByText('Demo databases')).toBeVisible({
       timeout: 15_000,
     });
-    await expect(connections.locator('ion-item')).toHaveCount(18);
-    await expect(connections.getByText('chinook / sqlite')).toBeVisible();
-    await expect(connections.getByText('employees / ingitdb')).toBeVisible();
+    await expect(connections.locator('ion-item')).toHaveCount(6);
+    const chinook = connections.getByTestId('dataset-chinook');
+    await expect(chinook).toContainText('SQLite');
+    await expect(chinook).toContainText('PostgreSQL');
+    await expect(chinook).toContainText('inGitDB');
+    await expect(chinook.getByTestId('explore-local-chinook')).toBeVisible();
+    const employees = connections.getByTestId('dataset-employees');
+    await expect(employees).toContainText('SQLite');
+    await expect(employees).toContainText('PostgreSQL');
+    await expect(employees).toContainText('inGitDB');
 
     // Older cached v1 catalogues have no `bigQueryEditions` field. The UI
     // keeps those working while newer catalogues add six hosted cards.
-    const hosted = activePage(page).locator(
-      'sneat-datatug-demodb-connections ion-card',
-      {
-        hasText: 'Hosted BigQuery editions',
-      },
+    const hosted = connections.locator(
+      'a[href="https://console.cloud.google.com/bigquery"]',
     );
     const hostedCount = await hosted.count();
-    expect(hostedCount).toBeLessThanOrEqual(1);
-    if (hostedCount === 1) {
-      await expect(hosted.locator('ion-item')).toHaveCount(6);
-      await expect(
-        hosted.getByText('chinook · 11 tables · 15,607 rows'),
-      ).toBeVisible();
-      await expect(
-        hosted.getByText('employees · 6 tables · 13,584 rows'),
-      ).toBeVisible();
-      await expect(
-        hosted.locator('a[href="https://console.cloud.google.com/bigquery"]'),
-      ).toHaveCount(6);
+    expect([0, 6]).toContain(hostedCount);
+    if (hostedCount === 6) {
+      await expect(chinook).toContainText('11 tables');
+      await expect(employees).toContainText('6 tables');
     }
   });
 });
