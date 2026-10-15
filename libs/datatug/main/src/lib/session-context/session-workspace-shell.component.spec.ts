@@ -220,6 +220,28 @@ describe('SessionWorkspaceShellComponent auth lifecycle', () => {
     expect(component.addBagOpen()).toBe(false);
   });
 
+  it('keeps Context in the primary action group and secondary actions independently operable', async () => {
+    await fixture.whenStable();
+    const workspace = TestBed.inject(SessionWorkspaceService);
+    const component = fixture.componentInstance;
+    workspace.capabilities.set({ ...caps, nativeDetective: true });
+    vi.spyOn(workspace, 'session').mockReturnValue({ schemaVersion: 1, id: 'session-1', databaseId: 'ops', projectId: 'shop', owner: 'actor-1', title: 'Saved session', state: 'stopped', version: 1, defaultBagId: 'bag-1', contextSetId: 'set-1', bagIds: ['bag-1'], createdAt: '', updatedAt: '' });
+    vi.spyOn(workspace, 'appliedCount').mockReturnValue(3);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const primary = fixture.nativeElement.querySelector('.session-primary-actions');
+    const secondary = fixture.nativeElement.querySelector('.session-secondary-actions');
+    expect(primary.textContent).toContain('All sessions');
+    expect(primary.textContent).toContain('Context · 3 applied');
+    expect(primary.textContent).not.toContain('Run history');
+    await vi.waitFor(() => expect(secondary.textContent).toContain('Checks'));
+    expect(secondary.textContent).toContain('Cases');
+    expect(secondary.textContent).toContain('Run history');
+    expect(secondary.textContent).toContain('Resume');
+    primary.querySelector('.session-context-button').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(component.drawerOpen()).toBe(true);
+  });
+
   it('keeps loaded sessions available after a later workspace error', async () => {
     await fixture.whenStable();
     const workspace = TestBed.inject(SessionWorkspaceService);

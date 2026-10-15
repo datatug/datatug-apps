@@ -11,16 +11,20 @@
     }
   </ion-tab-bar>
   <ion-item lines="full" class="session-summary">
-    <ion-buttons slot="start">
+    <ion-buttons class="session-primary-actions">
       <ion-button (click)="chooserOpen.set(true)">All sessions</ion-button>
       <ion-button (click)="beginCreate()" [disabled]="!canCreateSession()">New session</ion-button>
-    </ion-buttons>
-    @if (workspace.session(); as session) {
-      <ion-button fill="clear" (click)="drawerOpen.set(true)" aria-haspopup="dialog">
+      @if (workspace.session()) {
+      <ion-button class="session-context-button" fill="clear" (click)="drawerOpen.set(true)" aria-haspopup="dialog">
         Context · {{ workspace.appliedCount() }} applied
         @if (workspace.hasPendingSelection()) { <strong> · Changes not applied</strong> }
       </ion-button>
-      <ion-buttons slot="end">
+      }
+    </ion-buttons>
+  </ion-item>
+  @if (workspace.session(); as session) {
+    <ion-item lines="full" class="session-summary session-secondary-row">
+      <ion-buttons class="session-secondary-actions">
         <ion-button (click)="beginRename()" [disabled]="!workspace.canExecute()">Rename</ion-button>
         <ion-button (click)="openWorkspacePage('invoice-explorer')">Explorer</ion-button>
         <ion-button (click)="openWorkspacePage('invoice-overview')">Invoice overview</ion-button>
@@ -40,8 +44,8 @@
         }
         <ion-button color="danger" (click)="deleteOpen.set(true)" [disabled]="workspace.busy() || (session.pendingRunCount || 0) > 0" [title]="(session.pendingRunCount || 0) > 0 ? 'Accepted work is unresolved; settle its receipt before deleting.' : 'Delete session'">Delete</ion-button>
       </ion-buttons>
-    }
-  </ion-item>
+    </ion-item>
+  }
   @if (workspace.agentReconnectRequired()) {
     <ion-item color="warning" role="status"><ion-label>Reconnect to the local agent to view saved sessions.</ion-label><ion-button slot="end" (click)="chooserOpen.set(true)">Reconnect</ion-button></ion-item>
   } @else if (workspace.authRequired()) {
