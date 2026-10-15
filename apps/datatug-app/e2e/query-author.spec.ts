@@ -3171,7 +3171,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
     await executionDetails.click();
     await expect(
       receipt.locator('ion-accordion[value="execution"]'),
-    ).not.toHaveClass(/accordion-expanded/u);
+    ).toHaveClass(/accordion-collapsed/u);
     const originalViewport = page.viewportSize();
     await page.setViewportSize({ width: 1280, height: 720 });
     await activePage(page).evaluate((active) => {
