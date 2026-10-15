@@ -1,0 +1,14 @@
+.environment-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 8px;
+  padding: 4px 12px;
+}
+
+.environment-option {
+  flex: 0 1 auto;
+  min-width: 110px;
+  --min-height: 36px;
+  --padding-start: 0;
+  --inner-padding-end: 0;
+}

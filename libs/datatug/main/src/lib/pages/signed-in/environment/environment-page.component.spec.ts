@@ -1,180 +1,135 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ActivatedRoute } from '@angular/router';
-import { NavController } from '@ionic/angular';
+import { ActivatedRoute, convertToParamMap } from '@angular/router';
 import { ErrorLogger } from '@sneat/core';
-import { of } from 'rxjs';
-
+import { BehaviorSubject, Subject } from 'rxjs';
 import { EnvironmentPageComponent } from './environment-page.component';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
+import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
+import { IEnvironmentSummary } from '../../../models/definition/environments';
 
+const project = { ref: { storeId: 'github.com', projectId: 'r@o@' } };
 describe('EnvironmentPage', () => {
-  let component: EnvironmentPageComponent;
   let fixture: ComponentFixture<EnvironmentPageComponent>;
-  let navigateForward: ReturnType<typeof vi.fn>;
-  let logError: ReturnType<typeof vi.fn>;
-
+  let summary: Subject<IEnvironmentSummary>;
+  let params: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
+  let currentProject: BehaviorSubject<
+    import('../../../nav/nav-models').IProjectContext
+  >;
+  let getSummary: ReturnType<typeof vi.fn>;
+  const goCatalog = vi.fn();
   beforeEach(async () => {
-    navigateForward = vi.fn(() => Promise.resolve(true));
-    logError = vi.fn();
-    Object.defineProperty(window, 'history', {
-      value: { ...window.history, state: { projEnv: undefined } },
-      writable: true,
-      configurable: true,
-    });
+    summary = new Subject();
+    currentProject = new BehaviorSubject(project);
+    params = new BehaviorSubject(convertToParamMap({ environmentId: 'QA' }));
+    getSummary = vi.fn(() => summary);
+    goCatalog.mockClear();
     await TestBed.configureTestingModule({
       imports: [EnvironmentPageComponent],
-      schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
+        { provide: ActivatedRoute, useValue: { paramMap: params } },
         {
-          provide: ActivatedRoute,
-          useValue: {
-            queryParamMap: of({ get: () => null }),
-            paramMap: of({ get: () => null }),
-            snapshot: { paramMap: { get: () => null } },
-          },
-        },
-        { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn() } },
-        {
-          provide: NavController,
-          useValue: { navigateForward },
-        },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError,
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
+          provide: EnvironmentService,
+          useValue: { getEnvSummary: getSummary },
         },
         {
           provide: DatatugNavContextService,
-          useValue: {
-            currentProject: of(undefined),
-            currentEnv: of(undefined),
-          },
+          useValue: { currentProject },
         },
+        { provide: DatatugNavService, useValue: { goCatalog } },
+        { provide: ErrorLogger, useValue: { logError: vi.fn() } },
       ],
     })
       .overrideComponent(EnvironmentPageComponent, {
-        set: {
-          imports: [],
-          template: '',
-          schemas: [CUSTOM_ELEMENTS_SCHEMA],
-          providers: [],
-        },
+        set: { imports: [], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
       })
       .compileComponents();
-
     fixture = TestBed.createComponent(EnvironmentPageComponent);
-    component = fixture.componentInstance;
+    fixture.detectChanges();
   });
 
-  it('should create', () => {
-    expect(component).toBeTruthy();
+  it('loads a cold deep link and renders an async summary without another detectChanges', async () => {
+    expect(getSummary).toHaveBeenCalledWith(project.ref, 'QA');
+    summary.next({
+      id: 'QA',
+      title: 'QA',
+      editionConnections: ['chinook-postgresql'],
+      presentation: {
+        label: 'Acceptance',
+        tone: 'warning',
+        icon: 'flask-outline',
+      },
+    });
+    await fixture.whenStable();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.textContent).toContain('Acceptance');
+    expect(el.textContent).toContain('Use caution');
+    expect(el.textContent).toContain('chinook-postgresql');
+    expect(el.textContent).toContain('do not enable browser query execution');
+    expect(el.textContent).not.toContain('Sign in');
+    expect(
+      el.querySelectorAll('[data-testid="edition-assignment"]'),
+    ).toHaveLength(1);
   });
 
-  // G-A1c: with no history the back button goes to the store page of the project's own store (it was always the
-  // default local agent's, whatever the project), and, until the project is known, still to that one.
+  it('keeps catalog navigation in the loaded environment', async () => {
+    summary.next({
+      id: 'QA',
+      title: 'QA',
+      dbServers: [
+        {
+          id: 'sqlite',
+          driver: 'sqlite3',
+          host: '',
+          catalogs: ['chinook-local'],
+        },
+      ],
+    });
+    await fixture.whenStable();
+    (
+      fixture.nativeElement.querySelector(
+        '[data-testid="environment-catalog"]',
+      ) as HTMLElement
+    ).click();
+    expect(goCatalog).toHaveBeenCalledWith(project, 'QA', 'chinook-local');
+  });
+
+  it('cancels the old environment request when the route changes', async () => {
+    const previous = summary;
+    summary = new Subject();
+    params.next(convertToParamMap({ environmentId: 'UAT' }));
+    previous.next({ id: 'QA', title: 'Stale QA' });
+    summary.next({ id: 'UAT', title: 'UAT' });
+    await fixture.whenStable();
+    expect(fixture.componentInstance.env()?.id).toBe('UAT');
+    expect(fixture.nativeElement.textContent).not.toContain('Stale QA');
+    expect(fixture.nativeElement.textContent).toContain('No data connections');
+  });
+
   it.each([
-    ['no project yet', undefined, '/store/localhost:8989'],
-    [
-      'an agent project',
-      { storeId: 'localhost:8989', projectId: 'p1' },
-      '/store/localhost:8989',
-    ],
-    [
-      'a project of another agent',
-      { storeId: 'http-example.com', projectId: 'p1' },
-      '/store/http-example.com',
-    ],
-    [
-      'a GitHub project',
-      { storeId: 'github.com', projectId: 'chinook-demo@datatug@' },
-      '/store/github.com',
-    ],
-  ])('the back button of %s goes to %s', (_name, ref, href) => {
-    component.project = ref ? { ref } : undefined;
-    expect(component.defaultBackUrl).toBe(href);
+    { branch: 'release' },
+    { spaceID: 'space-b' },
+    { projectApi: 'cloud' as const },
+  ])('reloads when only the project ref changes: %j', async (change) => {
+    currentProject.next({ ref: { ...project.ref, ...change } });
+    expect(getSummary).toHaveBeenLastCalledWith(
+      { ...project.ref, ...change },
+      'QA',
+    );
+    expect(getSummary).toHaveBeenCalledTimes(2);
+    expect(fixture.componentInstance.project()?.ref).toEqual({
+      ...project.ref,
+      ...change,
+    });
   });
 
-  describe('opening a server of the environment', () => {
-    const server = { host: 'db1' } as Parameters<
-      EnvironmentPageComponent['goDbServer']
-    >[0];
-
-    it.each([
-      [
-        'an agent project',
-        { storeId: 'localhost:8989', projectId: 'p1' },
-        '/store/localhost:8989/project/p1/env/local/servers/dbserver/db1',
-      ],
-      [
-        'a GitHub project',
-        { storeId: 'github.com', projectId: 'chinook-demo@datatug@' },
-        '/project/github.com/datatug/chinook-demo/env/local/servers/dbserver/db1',
-      ],
-      [
-        'a GitHub project in a folder',
-        { storeId: 'github.com', projectId: 'r@o@d' },
-        '/project/github.com/o/r/tree/HEAD/d/-/env/local/servers/dbserver/db1',
-      ],
-    ])('navigates to the address of %s', (_name, ref, address) => {
-      component.project = { ref };
-      component.projEnv = { id: 'local' } as typeof component.projEnv;
-
-      component.goDbServer(server);
-
-      expect(navigateForward).toHaveBeenCalledWith(address, {
-        state: { envServer: server },
-      });
-      expect(logError).not.toHaveBeenCalled();
-    });
-
-    it('names the environment by the one the nav context is on when the page was opened without one', () => {
-      component.project = {
-        ref: { storeId: 'github.com', projectId: 'chinook-demo@datatug@' },
-      };
-      component.projEnv = undefined;
-      (component as unknown as { envId?: string }).envId = 'prod';
-
-      component.goDbServer(server);
-
-      expect(navigateForward).toHaveBeenCalledWith(
-        '/project/github.com/datatug/chinook-demo/env/prod/servers/dbserver/db1',
-        { state: { envServer: server } },
-      );
-    });
-
-    it('navigates nowhere when the environment is not known at all', () => {
-      component.project = {
-        ref: { storeId: 'github.com', projectId: 'chinook-demo@datatug@' },
-      };
-      component.projEnv = undefined;
-
-      component.goDbServer(server);
-
-      expect(navigateForward).not.toHaveBeenCalled();
-      expect(logError).toHaveBeenCalledTimes(1);
-    });
-
-    it.each([
-      ['no project', undefined],
-      [
-        'a project with no exact address',
-        { storeId: 'localhost:8989', projectId: '50%' },
-      ],
-    ])('navigates nowhere, and says so, for %s', (_name, ref) => {
-      component.project = ref ? { ref } : undefined;
-      component.projEnv = { id: 'local' } as typeof component.projEnv;
-
-      component.goDbServer(server);
-
-      expect(navigateForward).not.toHaveBeenCalled();
-      expect(logError).toHaveBeenCalledWith(
-        expect.any(Error),
-        'Failed to navigate to db page',
-      );
-    });
+  it('replaces loading with an explicit error', async () => {
+    summary.error(new Error('unavailable'));
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain(
+      'Could not load this environment',
+    );
+    expect(fixture.nativeElement.querySelector('ion-skeleton-text')).toBeNull();
   });
 });

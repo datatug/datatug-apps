@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import type { Page } from '@playwright/test';
 
 // The start page has an address of its own, `/home`. A full page load of `/`
 // on datatug.app is answered by the DataTug.app landing page, not by this app,
@@ -11,13 +12,14 @@ import { expect, test } from '@playwright/test';
 // The incidentius profile is selected with `?profile=incidentius`, which is
 // honoured only on a local-development hostname (resolve-product-profile.ts).
 
-const startPageHeading = { name: 'Your data workbench' };
+const startPageHeading = (page: Page) =>
+  page.getByTestId('home-hero').getByRole('heading', { level: 1 });
 
 test('/home opens the start page directly', async ({ page }) => {
   await page.goto('/home');
 
   await expect(page).toHaveURL('/home');
-  await expect(page.getByRole('heading', startPageHeading)).toBeVisible();
+  await expect(startPageHeading(page)).toBeVisible();
   await expect(page.locator('sneat-datatug-home')).toBeVisible();
 });
 
@@ -25,19 +27,19 @@ test('/ ends on /home under the datatug profile', async ({ page }) => {
   await page.goto('/');
 
   await expect(page).toHaveURL('/home');
-  await expect(page.getByRole('heading', startPageHeading)).toBeVisible();
+  await expect(startPageHeading(page)).toBeVisible();
 });
 
 test('a reload on /home stays on /home and shows the start page', async ({
   page,
 }) => {
   await page.goto('/home');
-  await expect(page.getByRole('heading', startPageHeading)).toBeVisible();
+  await expect(startPageHeading(page)).toBeVisible();
 
   await page.reload();
 
   await expect(page).toHaveURL('/home');
-  await expect(page.getByRole('heading', startPageHeading)).toBeVisible();
+  await expect(startPageHeading(page)).toBeVisible();
 });
 
 test('/ does not carry its query string or fragment to /home', async ({
@@ -46,7 +48,7 @@ test('/ does not carry its query string or fragment to /home', async ({
   await page.goto('/?ref=e2e#frag');
 
   await expect(page).toHaveURL('/home');
-  await expect(page.getByRole('heading', startPageHeading)).toBeVisible();
+  await expect(startPageHeading(page)).toBeVisible();
 });
 
 test('in-app navigation to / ends on /home', async ({ page }) => {
@@ -56,7 +58,7 @@ test('in-app navigation to / ends on /home', async ({ page }) => {
   await page.getByRole('link', { name: 'DataTug.app home' }).click();
 
   await expect(page).toHaveURL('/home');
-  await expect(page.getByRole('heading', startPageHeading)).toBeVisible();
+  await expect(startPageHeading(page)).toBeVisible();
 });
 
 test('under the incidentius profile / still ends on /incidents', async ({
@@ -68,7 +70,7 @@ test('under the incidentius profile / still ends on /incidents', async ({
   await expect(
     page.getByText("Houston, we've got a problem", { exact: true }),
   ).toBeVisible();
-  await expect(page.getByRole('heading', startPageHeading)).toHaveCount(0);
+  await expect(startPageHeading(page)).toHaveCount(0);
 });
 
 test('under the incidentius profile /home goes to /incidents and never shows the DataTug start page', async ({
@@ -80,6 +82,6 @@ test('under the incidentius profile /home goes to /incidents and never shows the
   await expect(
     page.getByText("Houston, we've got a problem", { exact: true }),
   ).toBeVisible();
-  await expect(page.getByRole('heading', startPageHeading)).toHaveCount(0);
+  await expect(startPageHeading(page)).toHaveCount(0);
   await expect(page.locator('sneat-datatug-home')).toHaveCount(0);
 });

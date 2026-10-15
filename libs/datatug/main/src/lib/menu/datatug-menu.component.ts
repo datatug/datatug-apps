@@ -69,6 +69,7 @@ export class DatatugMenuComponent implements OnDestroy {
   protected readonly currentProject = signal<IProjectContext | undefined>(
     undefined,
   );
+  protected readonly currentEnvId = signal<string | undefined>(undefined);
   protected readonly datatugUserState = signal<IDatatugUserState | undefined>(
     undefined,
   );
@@ -102,6 +103,7 @@ export class DatatugMenuComponent implements OnDestroy {
       if (datatugNavContextService) {
         this.trackCurrentStore();
         this.trackCurrentProject();
+        this.trackCurrentEnvironment();
         this.trackCurrentEnvDbTable();
       } else {
         console.error('datatugNavContextService is not injected');
@@ -214,6 +216,16 @@ export class DatatugMenuComponent implements OnDestroy {
   protected onProjectChanged = (project?: IProjectContext) => {
     this.currentProject.set(project);
   };
+
+  private trackCurrentEnvironment(): void {
+    this.datatugNavContextService.currentEnv
+      .pipe(takeUntil(this.destroyed))
+      .subscribe({
+        next: (environment) => this.currentEnvId.set(environment?.id),
+        error: (err) =>
+          this.errorLogger.logError(err, 'Failed to get current environment'),
+      });
+  }
 
   private trackCurrentEnvDbTable(): void {
     this.datatugNavContextService.currentEnvDbTable

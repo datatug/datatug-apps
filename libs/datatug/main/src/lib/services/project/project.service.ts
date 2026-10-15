@@ -55,6 +55,8 @@ export class ProjectService {
     DatatugStoreServiceFactory,
   );
 
+  // Full agent responses must be scoped to the store as well as the project ID.
+  // Different local agents may legitimately serve the same project ID.
   private projects: Record<string, Observable<IProjectFull>> = {};
   // One entry per project, keyed only by projectRefToString(). Only
   // watchProjectSummary() writes to it; getSummary() reads through it.
@@ -135,11 +137,16 @@ export class ProjectService {
       return throwError(
         () => new Error('Shared project full reads are unavailable'),
       );
-    console.warn('The getFull() method should not be called from UI');
     if (!projectRef) {
       throw new Error('target is a required parameter for getFull()');
     }
-    let $project = this.projects[projectRef.projectId];
+    const cacheKey = JSON.stringify([
+      projectRef.storeId,
+      projectRef.projectId,
+      projectRef.branch,
+      projectRef.projectApi,
+    ]);
+    let $project = this.projects[cacheKey];
     if ($project) {
       return $project;
     }
@@ -151,7 +158,7 @@ export class ProjectService {
         },
       )
       .pipe(shareReplay(1));
-    this.projects[projectRef.projectId] = $project;
+    this.projects[cacheKey] = $project;
     return $project;
   }
 

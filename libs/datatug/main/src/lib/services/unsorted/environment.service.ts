@@ -1,10 +1,10 @@
 import { Injectable, inject } from '@angular/core';
 import { IRecord } from '@sneat/data';
-import { Observable, of, throwError } from 'rxjs';
+import { Observable, of, throwError, forkJoin } from 'rxjs';
 
 import { SneatApiService } from '@sneat/api';
 import { STORE_ID_GITHUB_COM, STORE_TYPE_GITHUB } from '@sneat/core';
-import { map, startWith, tap } from 'rxjs/operators';
+import { switchMap, startWith, tap } from 'rxjs/operators';
 import { IProjectRef } from '../../core/project-context';
 import { CreateNamedRequest } from '../../dto/requests';
 import { IOptionallyTitled } from '../../models/core';
@@ -23,7 +23,14 @@ const isGithubStoreId = (storeId: string): boolean =>
   storeId === STORE_ID_GITHUB_COM || storeId === STORE_TYPE_GITHUB;
 
 const getEnvCacheKey = (projectRef: IProjectRef, env: string): string => {
-  return `${projectRef.projectId}@${projectRef.storeId}/${env}`;
+  return JSON.stringify([
+    projectRef.storeId,
+    projectRef.projectId,
+    projectRef.branch,
+    projectRef.spaceID,
+    projectRef.projectApi,
+    env,
+  ]);
 };
 
 const envSummaryCache: Record<string, IEnvironmentSummary> = {};
@@ -40,19 +47,21 @@ export class EnvironmentService {
   private readonly storeApiService = inject(StoreApiService);
   private readonly githubReader = inject(GithubProjectReaderService);
 
-  /**
-   * `environments/<id>/` directory names as `IEnvironmentFull[]` —
-   * `EnvironmentsPageComponent` (pages/signed-in/environments) uses this for
-   * a GitHub-store project instead of `ProjectService.getFull()` (which
-   * unconditionally calls `buildAgentUrl(storeId, ...)`, an invalid URL for
-   * `storeId="github.com"` — the exact "Failed to load project
-   * environments" console error the founder's ruling names). Titles are the
-   * folder name — no per-environment title exists in this project's files.
-   */
+  /** Load folder identities and their optional presentation metadata together. */
   public listEnvironments(projectId: string): Observable<IEnvironmentFull[]> {
     return this.githubReader
       .listEnvironmentIds(projectId)
-      .pipe(map((ids) => ids.map((id) => ({ id, title: id }))));
+      .pipe(
+        switchMap((ids) =>
+          ids.length
+            ? forkJoin(
+                ids.map((id) =>
+                  this.githubReader.getEnvironmentSummary(projectId, id),
+                ),
+              )
+            : of([]),
+        ),
+      );
   }
 
   createEnvironment = (

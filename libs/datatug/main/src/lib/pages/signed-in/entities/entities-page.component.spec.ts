@@ -201,4 +201,31 @@ describe('EntitiesPage replaces "Loading..." once entities arrive (zoneless)', (
     expect(fixture.nativeElement.innerHTML).toContain('Customer');
     expect(fixture.nativeElement.innerHTML).toContain('Order');
   });
+
+  it('filters entity titles and IDs as the visitor types, then restores the list when cleared', async () => {
+    fixture.detectChanges();
+    currentProject$.next({ ref: { projectId: 'p1', storeId: 'firestore' } });
+    getAllEntities$.next([
+      { id: 'customer', dbo: { title: 'Customers', fields: [] } as IEntity },
+      { id: 'order', dbo: { title: 'Orders', fields: [] } as IEntity },
+    ]);
+    await fixture.whenStable();
+
+    const input = fixture.nativeElement.querySelector('ion-input');
+    const type = async (value: string) => {
+      input.dispatchEvent(new CustomEvent('ionInput', { detail: { value } }));
+      await fixture.whenStable();
+    };
+
+    await type('  CUSTOMER  ');
+    expect(fixture.nativeElement.innerHTML).toContain('Customers');
+    expect(fixture.nativeElement.innerHTML).not.toContain('Orders');
+
+    await type('missing');
+    expect(fixture.nativeElement.innerHTML).toContain('No matching entities.');
+
+    await type('');
+    expect(fixture.nativeElement.innerHTML).toContain('Customers');
+    expect(fixture.nativeElement.innerHTML).toContain('Orders');
+  });
 });

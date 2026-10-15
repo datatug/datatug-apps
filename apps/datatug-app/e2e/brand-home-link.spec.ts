@@ -17,7 +17,7 @@ test('brand "DataTug.app" link in the header navigates to the home screen', asyn
   // home inside the app: `/home` under the datatug profile.
   await expect(page).toHaveURL('/home');
   await expect(
-    page.getByRole('heading', { name: 'Your data workbench' }),
+    page.getByTestId('home-hero').getByRole('heading', { level: 1 }),
   ).toBeVisible();
   await expect(page.locator('sneat-datatug-home')).toBeVisible();
 });

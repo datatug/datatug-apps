@@ -105,7 +105,48 @@ jobs:
       - name: nx test affected
         run: pnpm nx affected --target=test --parallel=4 --base=${{ env.NX_BASE }}
 
-  e2e:
+  # Independent browser suites use separate runners so their app servers,
+  # Playwright artifacts and Nx state cannot contend. Keep app and query-mobile
+  # together because both use the development app on port 4200.
+  e2e-checkout:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      actions: read
+      contents: read
+      attestations: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/pnpm
+
+      - name: Derive appropriate SHAs for base and head for nx affected commands
+        uses: nrwl/nx-set-shas@v5
+
+      - name: Install checkout browsers
+        run: pnpm exec playwright install --with-deps chromium webkit
+
+      - name: Set up Java for checkout Firestore emulator
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: nx checkout journey e2e affected
+        run: pnpm nx affected --target=e2e-checkout --parallel=1 --base=${{ env.NX_BASE }}
+
+      - name: Upload checkout journey traces
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: checkout-journey-e2e-results
+          path: coverage/apps/datatug-checkout/results
+          if-no-files-found: ignore
+
+  e2e-app:
     runs-on: ubuntu-latest
     needs: build
     permissions:
@@ -134,8 +175,6 @@ jobs:
           path: datatug-demo-project
 
       - name: Verify live canonical GitHub source
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           sha="$(git -C datatug-demo-project rev-parse HEAD)"
@@ -169,24 +208,6 @@ jobs:
           DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
         run: pnpm nx run datatug-app:e2e -- --project=chromium --grep='query context counts stay inline through two digits and unavailable drafts'
 
-      - name: Set up Java for checkout Firestore emulator
-        if: steps.affected-app.outputs.datatug_app == 'true'
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '21'
-
-      - name: nx checkout journey e2e affected
-        run: pnpm nx affected --target=e2e-checkout --parallel=1 --base=${{ env.NX_BASE }}
-
-      - name: Upload checkout journey traces
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: checkout-journey-e2e-results
-          path: coverage/apps/datatug-checkout/results
-          if-no-files-found: ignore
-
       - name: nx e2e affected
         env:
           DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
@@ -217,6 +238,27 @@ jobs:
             coverage/apps/datatug-query-mobile/results
           if-no-files-found: ignore
 
+  e2e-demo-sqlite:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      actions: read
+      contents: read
+      attestations: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/pnpm
+
+      - name: Derive appropriate SHAs for base and head for nx affected commands
+        uses: nrwl/nx-set-shas@v5
+
+      - name: Install demo SQLite browsers
+        run: pnpm exec playwright install --with-deps chromium firefox webkit
+
       # /demo/sqlite (apps/datatug-app/e2e/demo-sqlite.spec.ts): a DemoDB SQLite file opened as an editable copy
       # in the browser. Runs the built app in Chromium, Firefox and WebKit against the real demodb.dev files
       # (WebKit's default context has no OPFS, so it asserts the in-memory behaviour). The 126.8 MB AdventureWorks
@@ -237,11 +279,32 @@ jobs:
             coverage/apps/datatug-app-demo-sqlite-e2e/results
           if-no-files-found: ignore
 
+  e2e-demo-handoff:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      actions: read
+      contents: read
+      attestations: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/pnpm
+
+      - name: Derive appropriate SHAs for base and head for nx affected commands
+        uses: nrwl/nx-set-shas@v5
+
+      - name: Install demo handoff browser
+        run: pnpm exec playwright install --with-deps chromium
+
       # G-0 hand-off suite (apps/datatug-app/e2e/demo-handoff.spec.ts): the holding page for /demo and the
       # project chat, and proof that the visitor's question reaches no analytics or error report. It needs the
       # PRODUCTION build (real Sentry DSN and analytics: playwright.demo-handoff.config.ts serves
       # `serve:production`), so it is its own target rather than part of "e2e" above, which serves the
-      # development build. Same Playwright install, same job, so no extra runner start-up.
+      # development build.
       - name: nx e2e-demo-handoff affected
         run: pnpm nx affected --target=e2e-demo-handoff --parallel=1 --base=${{ env.NX_BASE }}
 
@@ -252,6 +315,29 @@ jobs:
           name: demo-handoff-e2e-playwright-report
           path: coverage/apps/datatug-app-demo-handoff-e2e/report
           if-no-files-found: ignore
+
+  # Keep the existing required check name. `always()` makes the gate run even
+  # when build fails and GitHub skips its dependent lanes; every lane must
+  # actually succeed, so a skipped or cancelled lane cannot pass this check.
+  e2e:
+    if: always()
+    runs-on: ubuntu-latest
+    needs: [build, e2e-checkout, e2e-app, e2e-demo-sqlite, e2e-demo-handoff]
+    steps:
+      - name: Require every E2E lane
+        env:
+          BUILD_RESULT: ${{ needs.build.result }}
+          CHECKOUT_RESULT: ${{ needs.e2e-checkout.result }}
+          APP_RESULT: ${{ needs.e2e-app.result }}
+          SQLITE_RESULT: ${{ needs.e2e-demo-sqlite.result }}
+          HANDOFF_RESULT: ${{ needs.e2e-demo-handoff.result }}
+        run: |
+          for result in "$BUILD_RESULT" "$CHECKOUT_RESULT" "$APP_RESULT" "$SQLITE_RESULT" "$HANDOFF_RESULT"; do
+            if [[ "$result" != success ]]; then
+              echo "Required E2E dependency ended with: $result" >&2
+              exit 1
+            fi
+          done
 
   # Walks user journeys J1-J4 (apps/datatug-app/e2e/journey/**, project
   # "journey" in playwright.config.ts) against a REAL `datatug serve` agent
