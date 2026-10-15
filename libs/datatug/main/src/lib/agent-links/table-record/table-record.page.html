@@ -1,0 +1,56 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-menu-button />
+      <ion-back-button defaultHref="datatug" />
+    </ion-buttons>
+    <ion-title>{{ title() }}</ion-title>
+  </ion-toolbar>
+</ion-header>
+<ion-content>
+  @let s = state();
+  @if (s.kind === 'loading') {
+    <ion-card>
+      <ion-card-content><ion-text color="medium">Loading record…</ion-text></ion-card-content>
+    </ion-card>
+  } @else if (s.kind === 'problem') {
+    <ion-card>
+      <ion-card-content data-testid="link-problem">
+        <ion-text color="danger">The record cannot be shown: {{ s.problem }}</ion-text>
+      </ion-card-content>
+    </ion-card>
+  } @else {
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>Fields</ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        <table class="link-grid" data-testid="record-fields">
+          <tbody>
+            @for (field of s.fields; track field.name) {
+              <tr>
+                <th>
+                  {{ field.name }}
+                  @if (field.key) {
+                    <ion-text color="primary"> (key)</ion-text>
+                  }
+                </th>
+                <td data-testid="record-field-value">{{ field.value }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </ion-card-content>
+    </ion-card>
+    @if (s.schema.referencedBy.length) {
+      <ion-card>
+        <ion-card-header>
+          <ion-card-title>Referenced by</ion-card-title>
+        </ion-card-header>
+        <ion-card-content data-testid="record-referenced-by">
+          {{ s.schema.referencedBy.join(', ') }}
+        </ion-card-content>
+      </ion-card>
+    }
+  }
+</ion-content>

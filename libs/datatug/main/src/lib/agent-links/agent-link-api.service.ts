@@ -1,8 +1,9 @@
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable, catchError, map, throwError } from 'rxjs';
 import { buildAgentUrl } from '../services/repo/agent-url';
-import { TableIdentity } from './table-identity';
+import { KeyValue } from './record-key';
+import { TableIdentity, qualifiedTableName } from './table-identity';
 
 /**
  * The one client of the read-only agent routes the pages a card's link opens use (Feature claude-mod-web-links;
@@ -35,6 +36,19 @@ export interface AgentTableSchema {
   readonly primaryKey: readonly string[];
   /** Names of the tables whose foreign keys reference this table. */
   readonly referencedBy: readonly string[];
+}
+
+/** Rows read through the agent, every value as display text (a typed integer keeps all its digits). */
+export interface AgentRows {
+  readonly columns: readonly string[];
+  readonly rows: readonly (readonly string[])[];
+}
+
+/** A cell as display text: null and undefined are empty, objects are JSON. */
+function displayText(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
 }
 
 /**
@@ -142,11 +156,92 @@ export class AgentLinkApiService {
             referencedBy: stringList(r['referencedBy']),
           };
         }),
-        catchError((err: unknown) =>
-          throwError(() => new LinkProblemError(classifyAgentError(err))),
-        ),
+        catchError(rethrowClassified),
       );
   }
+
+  /**
+   * `POST /datatug/records/lookup`: the one record of the table whose declared primary key is `key` (values bound as
+   * parameters by the agent; see `lookupKey()` for how they are typed). No key ever goes in an address.
+   */
+  lookupRecord(
+    ref: AgentTableRef,
+    key: Readonly<Record<string, KeyValue>>,
+  ): Observable<AgentRows> {
+    return this.http
+      .post<unknown>(buildAgentUrl(ref.storeId, '/records/lookup'), {
+        ...tableBody(ref),
+        key,
+      })
+      .pipe(
+        map((response) => {
+          const rows = contractRows(response);
+          if (rows.rows.length !== 1) {
+            throw new LinkProblemError('record-not-found');
+          }
+          return rows;
+        }),
+        catchError(rethrowClassified),
+      );
+  }
+
+  /**
+   * `GET /datatug/exec/select` with `from` and `limit` only: the first `limit` rows of the table, read-only. No
+   * `where`, `sql` or other filter is ever sent.
+   */
+  selectRows(ref: AgentTableRef, limit: number): Observable<AgentRows> {
+    const params = new HttpParams()
+      .set('proj', ref.project)
+      .set('env', ref.env)
+      .set('db', ref.source)
+      .set('from', qualifiedTableName(ref.table))
+      .set('limit', String(limit));
+    return this.http
+      .get<unknown>(buildAgentUrl(ref.storeId, '/exec/select'), { params })
+      .pipe(
+        map((response) => {
+          const r = (response ?? {}) as Record<string, unknown>;
+          const columns = stringList(r['columns']);
+          const rows = Array.isArray(r['rows'])
+            ? (r['rows'] as unknown[])
+                .slice(0, limit)
+                .map((row) =>
+                  columns.map((c) =>
+                    displayText((row as Record<string, unknown> | null)?.[c]),
+                  ),
+                )
+            : [];
+          return { columns, rows };
+        }),
+        catchError(rethrowClassified),
+      );
+  }
+}
+
+function rethrowClassified(err: unknown): Observable<never> {
+  return throwError(() => new LinkProblemError(classifyAgentError(err)));
+}
+
+/** `records/lookup` answers the contract Result: `recordset.columns[{name}]`, `rows[[{type, value}]]`. */
+function contractRows(response: unknown): AgentRows {
+  const recordset = ((response ?? {}) as Record<string, unknown>)['recordset'] as
+    | Record<string, unknown>
+    | undefined;
+  const columns = Array.isArray(recordset?.['columns'])
+    ? (recordset['columns'] as unknown[]).map((c) =>
+        displayText((c as Record<string, unknown> | null)?.['name']),
+      )
+    : [];
+  const rows = Array.isArray(recordset?.['rows'])
+    ? (recordset['rows'] as unknown[]).map((row) =>
+        Array.isArray(row)
+          ? row.map((cell) =>
+              displayText((cell as Record<string, unknown> | null)?.['value']),
+            )
+          : [],
+      )
+    : [];
+  return { columns, rows };
 }
 
 /** The JSON body naming the table: `{project, env, source, schema, table}`. */
