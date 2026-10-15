@@ -309,6 +309,11 @@ test.describe('GitHub-store project — every side-menu page loads without error
     await expect(activePage(page).getByText('Title')).toBeVisible({
       timeout: 15_000,
     });
+    await expect(
+      activePage(page).getByText(
+        'No preview source is configured for this entity.',
+      ),
+    ).toBeVisible();
 
     // --- Environments (side-menu click) ------------------------------------
     await page
@@ -393,6 +398,56 @@ test.describe('GitHub-store project — every side-menu page loads without error
     expect(new Set(raw).size).toBe(raw.length);
     expect(new Set(raw.map((u) => u.split('/')[5])).size).toBe(1);
 
+    expect(errors).toEqual([]);
+  });
+
+  test('public demo Boards opens two saved-query cards and keeps the project context', async ({
+    page,
+  }) => {
+    const errors = installErrorLoggerWatch(page);
+    await page.goto(PROJECT_URL);
+    await page
+      .locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Boards' })
+      .click();
+
+    const boardsPage = page.locator(
+      'ion-router-outlet > sneat-datatug-boards.ion-page:not(.ion-page-hidden)',
+    );
+    await boardsPage
+      .getByText('Chinook customer insights', { exact: true })
+      .click();
+    await expect
+      .poll(() => new URL(page.url()).pathname)
+      .toBe(`${PAGES_URL}/board/board1`);
+
+    const boardPage = page.locator('sneat-datatug-board-page');
+    await expect(
+      boardPage.getByRole('heading', { name: 'Chinook customer insights' }),
+    ).toBeVisible();
+    const board = boardPage.locator('sneat-datatug-board');
+    await expect(
+      board.getByText('Top customer spend', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      board.getByText('Playlist composition', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      board.getByRole('link', { name: 'Open saved query' }),
+    ).toHaveCount(2);
+
+    await board
+      .locator('ion-card', { hasText: 'Top customer spend' })
+      .getByRole('link', { name: 'Open saved query' })
+      .click();
+    await expect
+      .poll(() => new URL(page.url()).pathname)
+      .toBe(`${PAGES_URL}/query/demodb%2Fchinook-top-customer-spend`);
+    expect(new URL(page.url()).searchParams.get('id')).toBe(
+      'demodb/chinook-top-customer-spend',
+    );
+    await expect(
+      page.locator('sneat-datatug-sql-editor .query-page-title'),
+    ).toContainText('Top Customer Spend', { timeout: 20_000 });
     expect(errors).toEqual([]);
   });
 

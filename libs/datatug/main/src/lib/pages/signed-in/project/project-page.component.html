@@ -60,12 +60,24 @@
         />
       </ion-item>
     }
+    @if (summaryUnsupported()) {
+      <ion-item>
+        <ion-label color="medium" role="status">
+          Project metadata is unavailable for this connection or branch.
+        </ion-label>
+      </ion-item>
+    }
   </ion-card>
 
   @if (!project()?.ref?.spaceID) {
     <section class="overview-environments" aria-label="Project environments">
       <h2>Environments</h2>
-      @if (environmentError()) {
+      @if (projectItemsUnsupported()) {
+        <p role="status">
+          Environment shortcuts are unavailable for this project connection or
+          branch.
+        </p>
+      } @else if (environmentError()) {
         <p role="status">
           Environments could not be loaded. Refresh to try again.
         </p>
@@ -163,15 +175,30 @@
       }
     </ion-card>
   } @else if (activeTab() === 'boards') {
-    <sneat-datatug-folder
-      [path]="'~'"
-      [projectRef]="project()?.ref"
-      [hideTabs]="true"
-    />
+    @if (projectItemsUnsupported()) {
+      <ion-card>
+        <ion-card-content role="status">
+          Boards are unavailable for this project connection or branch.
+        </ion-card-content>
+      </ion-card>
+    } @else {
+      <sneat-datatug-folder
+        [path]="'~'"
+        [projectRef]="project()?.ref"
+        [hideTabs]="true"
+      />
+    }
   } @else if (activeTab() === 'queries') {
     <sneat-datatug-project-queries-preview [projectRef]="project()?.ref" />
   } @else if (activeTab() === 'databases') {
-    @if (sandboxHref()) {
+    @if (projectItemsUnsupported()) {
+      <ion-card
+        ><ion-card-content role="status"
+          >Databases are unavailable for this project connection or
+          branch.</ion-card-content
+        ></ion-card
+      >
+    } @else if (sandboxHref()) {
       <sneat-datatug-demodb-connections [projectRef]="project()?.ref" />
     } @else {
       <sneat-datatug-project-database-servers-preview
@@ -179,86 +206,105 @@
       />
     }
   } @else if (activeTab() === 'environments') {
-    <ion-card>
-      <ion-list>
-        @if (environmentError()) {
-          <ion-item
-            ><ion-label color="danger"
-              >Environments could not be loaded. Refresh to try
-              again.</ion-label
-            ></ion-item
-          >
-        } @else if (environments(); as items) {
-          @for (environment of items; track environment.id) {
+    @if (projectItemsUnsupported()) {
+      <ion-card
+        ><ion-card-content role="status"
+          >Environments are unavailable for this project connection or
+          branch.</ion-card-content
+        ></ion-card
+      >
+    } @else {
+      <ion-card>
+        <ion-list>
+          @if (environmentError()) {
             <ion-item
-              button
-              detail
-              (click)="goEnvironment(environment)"
-              data-testid="overview-environment-item"
-            >
-              <ion-icon
-                slot="start"
-                [icon]="environmentPresentation(environment).icon"
-                aria-hidden="true"
-              />
-              <ion-label
-                ><h3>{{ environmentPresentation(environment).label }}</h3>
-                @if (
-                  environmentPresentation(environment).label !== environment.id
-                ) {
-                  <p>Environment ID: {{ environment.id }}</p>
-                }
-                @if (
-                  environmentPresentation(environment).safetyLabel;
-                  as safety
-                ) {
-                  <p>{{ safety }}</p>
-                }
-              </ion-label>
-            </ion-item>
-          } @empty {
-            <ion-item
-              ><ion-label
-                >No environments have been configured yet.</ion-label
+              ><ion-label color="danger"
+                >Environments could not be loaded. Refresh to try
+                again.</ion-label
               ></ion-item
             >
+          } @else if (environments(); as items) {
+            @for (environment of items; track environment.id) {
+              <ion-item
+                button
+                detail
+                (click)="goEnvironment(environment)"
+                data-testid="overview-environment-item"
+              >
+                <ion-icon
+                  slot="start"
+                  [icon]="environmentPresentation(environment).icon"
+                  aria-hidden="true"
+                />
+                <ion-label
+                  ><h3>{{ environmentPresentation(environment).label }}</h3>
+                  @if (
+                    environmentPresentation(environment).label !==
+                    environment.id
+                  ) {
+                    <p>Environment ID: {{ environment.id }}</p>
+                  }
+                  @if (
+                    environmentPresentation(environment).safetyLabel;
+                    as safety
+                  ) {
+                    <p>{{ safety }}</p>
+                  }
+                </ion-label>
+              </ion-item>
+            } @empty {
+              <ion-item
+                ><ion-label
+                  >No environments have been configured yet.</ion-label
+                ></ion-item
+              >
+            }
+          } @else {
+            <ion-item><ion-label>Loading environments…</ion-label></ion-item>
           }
-        } @else {
-          <ion-item><ion-label>Loading environments…</ion-label></ion-item>
-        }
-      </ion-list>
-    </ion-card>
+        </ion-list>
+      </ion-card>
+    }
   } @else {
-    <ion-card>
-      <ion-list>
-        @if (entityError()) {
-          <ion-item
-            ><ion-label color="danger"
-              >Entities could not be loaded. Refresh to try again.</ion-label
-            ></ion-item
-          >
-        } @else if (entities(); as items) {
-          @for (entity of items; track entity.id) {
+    @if (projectItemsUnsupported()) {
+      <ion-card
+        ><ion-card-content role="status"
+          >Entities are unavailable for this project connection or
+          branch.</ion-card-content
+        ></ion-card
+      >
+    } @else {
+      <ion-card>
+        <ion-list>
+          @if (entityError()) {
             <ion-item
-              button
-              detail
-              (click)="goEntity(entity)"
-              data-testid="overview-entity-item"
-            >
-              <ion-label>{{ entity.dbo?.title || entity.id }}</ion-label>
-            </ion-item>
-          } @empty {
-            <ion-item
-              ><ion-label
-                >No entities have been created yet.</ion-label
+              ><ion-label color="danger"
+                >Entities could not be loaded. Refresh to try again.</ion-label
               ></ion-item
             >
+          } @else if (entities(); as items) {
+            @for (entity of items; track entity.id) {
+              <ion-item
+                button
+                detail
+                (click)="goEntity(entity)"
+                data-testid="overview-entity-item"
+              >
+                <ion-label>{{ entity.dbo?.title || entity.id }}</ion-label>
+              </ion-item>
+            } @empty {
+              <ion-item
+                ><ion-label
+                  >No entities have been created yet.</ion-label
+                ></ion-item
+              >
+            }
+          } @else {
+            <ion-item><ion-label>Loading entities…</ion-label></ion-item>
           }
-        } @else {
-          <ion-item><ion-label>Loading entities…</ion-label></ion-item>
-        }
-      </ion-list>
-    </ion-card>
+        </ion-list>
+      </ion-card>
+    }
   }
   @if (sandboxHref(); as href) {
     <ion-card class="sandbox-summary" data-testid="overview-sandbox-summary">

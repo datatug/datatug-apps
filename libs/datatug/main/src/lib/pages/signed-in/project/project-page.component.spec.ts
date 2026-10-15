@@ -346,6 +346,82 @@ describe('ProjectPage rendering a local-agent store project', () => {
     expect(boardsCard.isLoading).toBe(false);
     expect(boardsCard.items).toEqual([]);
   });
+
+  it('does not show an unqualified Boards folder after selecting a branch', async () => {
+    const fixture = await createPage('localhost:8989');
+    fixture.detectChanges();
+    expect(
+      fixture.nativeElement.querySelector('sneat-datatug-folder'),
+    ).not.toBeNull();
+    const getFull = TestBed.inject(ProjectService).getFull as ReturnType<
+      typeof vi.fn
+    >;
+    const getAllEntities = TestBed.inject(EntityService)
+      .getAllEntities as ReturnType<typeof vi.fn>;
+    const fullReads = getFull.mock.calls.length;
+    const entityReads = getAllEntities.mock.calls.length;
+    const summaryReads = doubles.watchProjectSummary.mock.calls.length;
+
+    const page = fixture.componentInstance as unknown as {
+      setProjRef(ref: {
+        storeId: string;
+        projectId: string;
+        projectApi: 'local';
+        branch: string;
+      }): void;
+    };
+    page.setProjRef({
+      storeId: 'localhost:8989',
+      projectId: summary.id,
+      projectApi: 'local',
+      branch: 'feature',
+    });
+    await fixture.whenStable();
+    expect(getFull).toHaveBeenCalledTimes(fullReads);
+    expect(getAllEntities).toHaveBeenCalledTimes(entityReads);
+    expect(doubles.watchProjectSummary).toHaveBeenCalledTimes(summaryReads);
+    expect(
+      (
+        fixture.nativeElement.querySelector('ion-input') as HTMLElement & {
+          value?: string;
+        }
+      ).value,
+    ).toBe('Project unavailable');
+    expect(fixture.nativeElement.textContent).toContain(
+      'Project metadata is unavailable for this connection or branch.',
+    );
+    expect(
+      fixture.nativeElement.querySelector(
+        '[aria-label="Loading environments"]',
+      ),
+    ).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain(
+      'Environment shortcuts are unavailable',
+    );
+
+    expect(
+      fixture.nativeElement.querySelector('sneat-datatug-folder'),
+    ).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain(
+      'Boards are unavailable',
+    );
+
+    for (const [tab, label] of [
+      [2, 'Environments'],
+      [3, 'Entities'],
+      [4, 'Databases'],
+    ] as const) {
+      (
+        fixture.nativeElement.querySelectorAll('.overview-tabs button')[
+          tab
+        ] as HTMLButtonElement
+      ).click();
+      await fixture.whenStable();
+      expect(fixture.nativeElement.textContent).toContain(
+        `${label} are unavailable`,
+      );
+    }
+  });
 });
 
 /**

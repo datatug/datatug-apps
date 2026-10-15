@@ -109,6 +109,22 @@
 .muted {
   color: var(--ion-color-medium, #68737d);
 }
+.scenario-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+.scenario-link h3 {
+  color: var(--ion-color-primary, #2763a5);
+}
+.scenario-link:hover h3,
+.scenario-link:focus-visible h3 {
+  text-decoration: underline;
+}
+.scenario-link:focus-visible {
+  outline: 2px solid var(--ion-color-primary, #2763a5);
+  outline-offset: 2px;
+}
 .actions {
   display: flex;
   justify-content: flex-end;

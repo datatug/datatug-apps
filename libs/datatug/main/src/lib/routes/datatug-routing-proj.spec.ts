@@ -4,6 +4,24 @@ import { provideRouter, type Route, type Routes } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { datatugProjectRoutes } from './datatug-routing-proj';
 
+describe('Detective Scenario routes', () => {
+  it('loads a Scenario detail before treating the URL as a Case ID', async () => {
+    const scenarioIndex = datatugProjectRoutes.findIndex(
+      (route) => route.path === 'detective/scenario/:scenarioId',
+    );
+    const caseIndex = datatugProjectRoutes.findIndex(
+      (route) => route.path === 'detective/:caseId',
+    );
+    expect(scenarioIndex).toBeGreaterThanOrEqual(0);
+    expect(caseIndex).toBeGreaterThan(scenarioIndex);
+    const component =
+      await datatugProjectRoutes[scenarioIndex].loadComponent?.();
+    expect((component as { name?: string })?.name).toBe(
+      'ScenarioDetailPageComponent',
+    );
+  });
+});
+
 describe('datatugProjectRoutes', () => {
   it('resolves the "variables" route to InvestigationContextPageComponent, unconditionally (not gated behind ENABLE_EMPTY_SHELL_PAGES)', async () => {
     const route = datatugProjectRoutes.find((r) => r.path === 'variables');
