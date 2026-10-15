@@ -147,9 +147,13 @@ describe('public Scenario catalog', () => {
       getRawJson: vi
         .fn()
         .mockReturnValueOnce(of(null))
+        .mockReturnValueOnce(of(undefined))
         .mockReturnValueOnce(of({ ...scenario, version: 0 })),
     };
     const service = createService(github);
+    await expect(
+      firstValueFrom(service.get(DEMO_PROJECT_REF, scenario.id)),
+    ).rejects.toBeInstanceOf(PublicScenarioNotFoundError);
     await expect(
       firstValueFrom(service.get(DEMO_PROJECT_REF, scenario.id)),
     ).rejects.toBeInstanceOf(PublicScenarioNotFoundError);
