@@ -25,7 +25,7 @@ const ELEMENT_TEXT_PROPERTIES = ['$elements', '$elements_chain', '$el_text'];
 export function scrubPosthogEvent<T extends PosthogEvent | null>(event: T): T | null {
   if (!event) return event;
   const dropQuery = onLinkRoute();
-  if (dropQuery && event.event === '$autocapture') return null;
+  if (dropQuery && (event.event === '$autocapture' || event.event === '$snapshot')) return null;
   const scrubbed = scrubDeep(event, dropQuery);
   if (dropQuery && scrubbed.properties) {
     for (const key of ELEMENT_TEXT_PROPERTIES) delete scrubbed.properties[key];
