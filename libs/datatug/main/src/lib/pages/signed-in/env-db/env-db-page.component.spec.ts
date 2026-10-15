@@ -107,7 +107,7 @@ describe('EnvDbPage', () => {
       };
       const cell = {
         getData: () => data,
-      } as import('tabulator-tables').CellComponent;
+      } as unknown as import('tabulator-tables').CellComponent;
       const expected = {
         cols: 'COLUMNS:\n<b>Title</b>: text',
         fks: 'FOREIGN KEYS:\nauthor_fk (AuthorId)',
@@ -130,7 +130,7 @@ describe('EnvDbPage', () => {
           new MouseEvent('mousemove'),
           {
             getData: () => ({ t: {} }),
-          } as import('tabulator-tables').CellComponent,
+          } as unknown as import('tabulator-tables').CellComponent,
           () => undefined,
         ) as HTMLElement;
         expect(empty.textContent).toMatch(/:\nNone$/);
