@@ -85,6 +85,12 @@ export class SessionWorkspaceShellComponent {
   readonly visibleSessions = computed(() => this.workspace.sessions().filter((session) =>
     (this.sessionFilter() === 'all' || session.state === this.sessionFilter()) &&
     session.title.toLowerCase().includes(this.sessionSearch().toLowerCase())));
+  readonly canCreateSession = computed(() => {
+    const capabilities = this.workspace.capabilities();
+    return !!capabilities && capabilities.actions.includes('createSession') &&
+      capabilities.environments.length > 0 && !this.workspace.busy();
+  });
+  readonly showInitialLoadError = computed(() => !!this.workspace.error() && !this.workspace.capabilities());
   readonly availableSubjects = computed(() => {
     const scope = this.workspace.selectedBag()?.scope;
     return scope ? this.workspace.capabilities()?.subjects?.filter((item) => contextScopeKey(item.scope) === contextScopeKey(scope)) ?? [] : [];
@@ -258,6 +264,7 @@ export class SessionWorkspaceShellComponent {
     if (next) { this.focusTabId.set(next.id); document.getElementById(`session-tab-${next.id}`)?.focus(); }
   }
   beginCreate(bag = false): void {
+    if (!bag && !this.canCreateSession()) return;
     this.renameTarget.set(undefined);
     this.titleDraft.set(''); this.formError.set('');
     const firstEnvironment = this.workspace.capabilities()?.environments[0];
@@ -328,6 +335,7 @@ export class SessionWorkspaceShellComponent {
       if (!this.workspace.error()) this.renameTarget.set(undefined);
       return;
     }
+    if (!bag && !this.canCreateSession()) return;
     const scope = this.workspace.capabilities()?.environments.find((item) => contextScopeKey(item) === this.scopeDraft());
     if (!this.titleDraft().trim() || !scope) { this.formError.set('Enter a title and choose an admitted environment.'); return; }
     if (bag) {
