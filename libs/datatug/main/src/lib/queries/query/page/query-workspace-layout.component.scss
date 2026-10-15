@@ -7,17 +7,14 @@
   padding: 0 var(--ion-padding, 16px) var(--ion-padding, 16px);
 }
 // The workspace owns the outer gutter; cards must not add another one.
-:host ::ng-deep [query-workspace-editor] > ion-card,
-:host ::ng-deep .author-results > ion-card {
+:host ::ng-deep :is([query-workspace-editor], .author-results) > ion-card {
   margin-inline: 0;
 }
 :host ::ng-deep .author-card .author-code-header {
   --padding-start: var(--ion-padding, 16px);
   --inner-padding-end: var(--ion-padding, 16px);
 }
-:host ::ng-deep .author-card .author-sql-preview,
-:host ::ng-deep .author-card .author-preview-empty,
-:host ::ng-deep .author-card .query-sql-editor .cm-content {
+:host ::ng-deep .author-card :is(.author-sql-preview, .author-preview-empty, .query-sql-editor .cm-content) {
   padding: var(--ion-padding, 16px);
 }
 :host ::ng-deep [data-testid='author-parameters-panel'] > p {
