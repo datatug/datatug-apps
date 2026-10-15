@@ -1,24 +1,25 @@
 <ion-item class="ion-no-padding">
   <ion-buttons slot="start" class="ion-no-margin">
-    <ion-button routerLink="/" slot="start">
+    <ion-button routerLink="/" slot="start" aria-label="Go to home">
       <ion-icon name="storefront-outline" />
     </ion-button>
   </ion-buttons>
   <ion-label color="medium"> Store </ion-label>
-  @if (currentStoreId && !stores?.length) {
-    <ion-select disabled [value]="currentStoreId">
-      <ion-select-option [value]="currentStoreId">{{
+  @if (currentStoreId() && !stores()?.length) {
+    <ion-select disabled [value]="currentStoreId()">
+      <ion-select-option [value]="currentStoreId()">{{
         currentStoreDisplayLabel
       }}</ion-select-option>
     </ion-select>
   }
-  @if (stores) {
+  @if (stores()) {
     <ion-select
+      aria-label="Store"
       interface="popover"
-      [value]="currentStoreId"
+      [value]="currentStoreId()"
       (ionChange)="switchStore($event)"
     >
-      @for (store of stores; track trackById($index, store)) {
+      @for (store of stores(); track trackById($index, store)) {
         <ion-select-option [value]="store.id">
           {{ store.title || store.id }}
         </ion-select-option>

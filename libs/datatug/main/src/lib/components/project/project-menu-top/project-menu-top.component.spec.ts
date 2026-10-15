@@ -111,26 +111,15 @@ describe('ProjectContextMenuComponent', () => {
     });
   });
 
-  it('offers the sandbox entry only in the canonical DemoDB project', () => {
-    const setProject = (
-      component as unknown as {
-        setProject(project?: {
-          ref: { storeId: string; projectId: string };
-        }): void;
-      }
-    ).setProject;
-    setProject({
-      ref: {
-        storeId: 'github.com',
-        projectId: 'datatug-demo-project@datatug@demo-project-1',
-      },
-    });
-    expect(component.isDemoDbProject()).toBe(true);
-
-    setProject({
-      ref: { storeId: 'github.com', projectId: 'another-project' },
-    });
-    expect(component.isDemoDbProject()).toBe(false);
+  it('keeps the Sandbox route for deep links without duplicating it in the project menu', () => {
+    expect(
+      component.projTopLevelPages.some(
+        (page) => page.path === 'demo-db-sandbox',
+      ),
+    ).toBe(false);
+    expect(
+      datatugProjectRoutes.some((route) => route.path === 'demo-db-sandbox'),
+    ).toBe(true);
   });
 
   // Regression coverage for the founder-reported NG04002 ("Overview" 404):
@@ -208,7 +197,9 @@ describe('ProjectMenuTopComponent — Incidents link (UX brief §13)', () => {
         { provide: DatatugNavService, useValue: { goProjPage: vi.fn() } },
         {
           provide: DatatugUserService,
-          useValue: { datatugUserState: of({ status: undefined, record: null }) },
+          useValue: {
+            datatugUserState: of({ status: undefined, record: null }),
+          },
         },
       ],
     }).compileComponents();

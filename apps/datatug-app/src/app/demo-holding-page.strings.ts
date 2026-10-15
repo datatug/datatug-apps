@@ -51,7 +51,7 @@ export const DEMO_HOLDING_STRINGS: Readonly<
   },
 };
 
-/** The demo project exactly as the home page's "DataTug Demo Project @ GitHub" entry opens it: its short address. */
+/** The demo project exactly as the home page's "DataTug public demo" entry opens it: its short address. */
 export const DEMO_PROJECT_PATH: string = projectUrl(DEMO_PROJECT_REF);
 
 export const SITE_URL = 'https://datatug.io/';

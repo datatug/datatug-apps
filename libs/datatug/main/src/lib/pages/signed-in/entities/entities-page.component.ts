@@ -1,4 +1,4 @@
-import { Component, OnDestroy, inject, signal } from '@angular/core';
+import { Component, OnDestroy, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
   IonBackButton,
@@ -6,6 +6,7 @@ import {
   IonButton,
   IonButtons,
   IonCard,
+  IonCardContent,
   IonContent,
   IonHeader,
   IonIcon,
@@ -16,7 +17,7 @@ import {
   IonMenuButton,
   IonToolbar,
 } from '@ionic/angular';
-import { Subject } from 'rxjs';
+import { Subject, Subscription } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import {
   NavController,
@@ -30,7 +31,7 @@ import { IRecord } from '@sneat/data';
 import { DatatugCoreModule } from '../../../core/datatug-core.module';
 import { IEntity } from '../../../models/definition/metapedia/entity';
 import { IProjEntity } from '../../../models/definition/project';
-import { IProjectContext } from '../../../nav/nav-models';
+import { IProjectContext, isAgentStoreId } from '../../../nav/nav-models';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
 import { DatatugServicesNavModule } from '../../../services/nav/datatug-services-nav.module';
@@ -81,6 +82,7 @@ type Entities = IRecord<IEntity>[];
     IonItem,
     IonBadge,
     IonCard,
+    IonCardContent,
     IonInput,
   ],
 })
@@ -103,8 +105,36 @@ export class EntitiesPageComponent
   // pages/signed-in/project/project-page.component.ts (PR #95) for the
   // established pattern.
   readonly entities = signal<Entities | undefined>(undefined);
+  readonly filterText = signal('');
+  readonly filteredEntities = computed(() => {
+    const entities = this.entities();
+    if (!entities) {
+      return undefined;
+    }
+    const query = this.filterText().trim().toLocaleLowerCase();
+    return query
+      ? entities.filter((entity) =>
+          [entity.dbo?.title, entity.dbo?.id, entity.id].some((value) =>
+            value?.toLocaleLowerCase().includes(query),
+          ),
+        )
+      : entities;
+  });
   readonly project = signal<IProjectContext | undefined>(undefined);
+  readonly unsupportedProject = computed(() => {
+    const ref = this.project()?.ref;
+    return !!(ref?.projectApi || ref?.branch);
+  });
+  readonly canMutateEntities = computed(() => {
+    const ref = this.project()?.ref;
+    return (
+      !!ref && !ref.projectApi && !ref.branch && isAgentStoreId(ref.storeId)
+    );
+  });
   private readonly destroyed = new Subject<void>();
+  private readonly entitiesRequest = signal<Subscription | undefined>(
+    undefined,
+  );
 
   constructor() {
     const navContextService = this.navContextService;
@@ -143,6 +173,7 @@ export class EntitiesPageComponent
   }
 
   ngOnDestroy(): void {
+    this.entitiesRequest()?.unsubscribe();
     this.destroyed.next();
     this.destroyed.complete();
   }
@@ -162,6 +193,9 @@ export class EntitiesPageComponent
   goNewEntity(event: Event): void {
     event.preventDefault();
     event.stopPropagation();
+    if (!this.canMutateEntities()) {
+      return;
+    }
     this.datatugNavService.goProjPage('new-entity', this.project());
   }
 
@@ -177,15 +211,13 @@ export class EntitiesPageComponent
     event?.stopPropagation();
     event?.preventDefault();
     const project = this.project();
-    if (!project?.ref) {
+    if (!project?.ref || !this.canMutateEntities()) {
       return;
     }
     this.entityService.deleteEntity(project.ref, entity.id).subscribe({
       next: async () => {
         this.entities.set(
-          (this.entities() as IProjEntity[]).filter(
-            (v) => v.id !== entity.id,
-          ),
+          (this.entities() as IProjEntity[]).filter((v) => v.id !== entity.id),
         );
         const toast = await this.toastCtrl.create({
           position: 'top',
@@ -201,18 +233,22 @@ export class EntitiesPageComponent
   }
 
   private loadEntities(): void {
+    this.entitiesRequest()?.unsubscribe();
+    this.entities.set(undefined);
     const project = this.project();
-    if (!project) {
+    if (!project || this.unsupportedProject()) {
       return;
     }
-    this.entityService
-      .getAllEntities(project.ref)
-      .pipe(takeUntil(this.destroyed))
-      .subscribe({
-        next: (entities) => this.setEntities(entities),
-        error: (err) =>
-          this.errorLogger.logError(err, 'Failed to load project entities'),
-      });
+    this.entitiesRequest.set(
+      this.entityService
+        .getAllEntities(project.ref)
+        .pipe(takeUntil(this.destroyed))
+        .subscribe({
+          next: (entities) => this.setEntities(entities),
+          error: (err) =>
+            this.errorLogger.logError(err, 'Failed to load project entities'),
+        }),
+    );
   }
 
   private setEntities(entities: Entities): void {

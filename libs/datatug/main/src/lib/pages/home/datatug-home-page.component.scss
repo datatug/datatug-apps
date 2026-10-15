@@ -34,6 +34,102 @@
   padding: 4px 4px 16px;
 }
 
+.home-hero {
+  overflow: hidden;
+  background:
+    radial-gradient(
+      ellipse at 86% 18%,
+      rgb(var(--ion-color-primary-rgb) / 10%),
+      transparent 42%
+    ),
+    var(--ion-card-background, var(--ion-background-color));
+
+  h1 {
+    margin: 0;
+    font-size: clamp(1.35rem, 2.7vw, 1.8rem);
+    line-height: 1.18;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+  }
+
+  .hero-eyebrow {
+    margin: 0 0 4px;
+    color: var(--ion-color-primary);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .hero-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(160px, 0.55fr);
+    align-items: center;
+    gap: 24px;
+  }
+
+  .hero-copy {
+    max-width: 48rem;
+    margin: 0;
+    color: var(--ion-color-step-700, #4b5563);
+    font-size: 1rem;
+    line-height: 1.6;
+  }
+
+  .hero-visual {
+    min-height: 112px;
+    display: grid;
+    grid-template-columns: 1fr 20px 1fr 1fr;
+    align-items: center;
+    gap: 5px;
+    padding: 12px;
+    border: 1px solid var(--ion-color-step-150, #d7d8da);
+    border-radius: 14px;
+    background: color-mix(
+      in srgb,
+      var(--ion-background-color) 92%,
+      var(--ion-color-primary)
+    );
+  }
+
+  .visual-source,
+  .visual-query,
+  .visual-result {
+    display: grid;
+    align-content: center;
+    gap: 7px;
+    min-height: 58px;
+    padding: 9px;
+    border: 1px solid var(--ion-color-step-200, #c7c9cc);
+    border-radius: 9px;
+    background: var(--ion-card-background, #fff);
+  }
+
+  .visual-source span,
+  .visual-query i,
+  .visual-result b {
+    display: block;
+    height: 5px;
+    border-radius: 5px;
+    background: var(--ion-color-step-300, #afb3b8);
+  }
+
+  .visual-source span:nth-child(2),
+  .visual-query i:nth-child(2) {
+    width: 72%;
+    background: var(--ion-color-primary-tint, #7c9cf2);
+  }
+
+  .visual-result b {
+    background: var(--ion-color-success, #2dd36f);
+  }
+
+  .visual-link {
+    height: 2px;
+    background: var(--ion-color-primary);
+  }
+}
+
 // "Powered by DALgo" as a standalone attribution line (not inside a card):
 // muted, but a real link (focusable, underlined on hover/focus). Same recipe
 // as the sidebar variant in datatug-menu.component.scss.
@@ -78,4 +174,17 @@
 // ::ng-deep. Scoped to .home-cards-col so it can't affect cards elsewhere.
 .home-cards-col ::ng-deep ion-card {
   height: 100%;
+}
+
+@media (max-width: 575.98px) {
+  .home-hero .hero-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .home-hero .hero-visual {
+    max-width: 300px;
+    justify-self: end;
+    width: 100%;
+  }
 }

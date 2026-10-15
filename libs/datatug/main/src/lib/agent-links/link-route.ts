@@ -1,0 +1,59 @@
+import { ActivatedRouteSnapshot } from '@angular/router';
+import {
+  routingParamDbCatalogId,
+  routingParamEnvironmentId,
+  routingParamProjectId,
+  routingParamStoreId,
+  routingParamTableType,
+} from '../core/datatug-routing-params';
+import { AgentTableRef } from './agent-link-api.service';
+import { SCHEMA_QUERY_PARAM, tableIdentity } from './table-identity';
+
+/**
+ * The table a table, view, records or record page is for, read from the whole route (the store, project,
+ * environment and database are parameters of ancestor routes) and the `schema` query parameter. Undefined when a
+ * part is missing.
+ */
+export function linkTableRef(
+  route: ActivatedRouteSnapshot,
+): AgentTableRef | undefined {
+  const params: Record<string, string> = {};
+  for (const r of route.pathFromRoot ?? [route]) {
+    for (const key of r.paramMap?.keys ?? []) {
+      params[key] = r.paramMap.get(key) ?? '';
+    }
+  }
+  const storeId = params[routingParamStoreId];
+  const project = params[routingParamProjectId];
+  const env = params[routingParamEnvironmentId];
+  const source = params[routingParamDbCatalogId];
+  const tableSegment = params[routingParamTableType];
+  if (!storeId || !project || !env || !source || !tableSegment) {
+    return undefined;
+  }
+  return {
+    storeId,
+    project,
+    env,
+    source,
+    table: tableIdentity(
+      tableSegment,
+      route.queryParamMap?.get(SCHEMA_QUERY_PARAM),
+    ),
+  };
+}
+
+/** The `limit` query parameter of a records page. */
+export const LIMIT_QUERY_PARAM = 'limit';
+/** The `daemon url` bounds of `limit` (REQ:ui-routes): default 50, at most 1000. */
+export const DEFAULT_RECORDS_LIMIT = 50;
+export const MAX_RECORDS_LIMIT = 1000;
+
+/** How many rows a records page reads: the `limit` query parameter when it is a whole number from 1, at most
+ * {@link MAX_RECORDS_LIMIT}; {@link DEFAULT_RECORDS_LIMIT} for anything else. */
+export function recordsLimit(param: string | null | undefined): number {
+  if (!param || !/^\d+$/.test(param)) return DEFAULT_RECORDS_LIMIT;
+  const n = Number(param);
+  if (n < 1) return DEFAULT_RECORDS_LIMIT;
+  return Math.min(n, MAX_RECORDS_LIMIT);
+}

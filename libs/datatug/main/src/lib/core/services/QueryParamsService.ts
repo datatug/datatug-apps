@@ -1,8 +1,9 @@
+import { DOCUMENT } from '@angular/common';
 import { Injectable, inject } from '@angular/core';
 
 @Injectable()
 export class QueryParamsService {
-  private readonly location = inject(Location);
+  private readonly location = inject(DOCUMENT).location;
 
   public setQueryParameter(
     name: string,

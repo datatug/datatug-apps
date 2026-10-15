@@ -1,98 +1,125 @@
 <ion-header>
   <ion-toolbar>
-    <ion-buttons slot="start">
-      <ion-menu-button />
-      <ion-back-button [defaultHref]="defaultBackUrl" />
-    </ion-buttons>
+    <ion-buttons slot="start"
+      ><ion-menu-button /><ion-back-button [defaultHref]="defaultBackUrl"
+    /></ion-buttons>
     <sneat-datatug-page-title
-      [pageTitle]="'Environment: ' + (projEnv?.title || projEnv?.id || '')"
+      [pageTitle]="'Environment: ' + presentation().label"
     />
   </ion-toolbar>
 </ion-header>
-
-<ion-content>
+<ion-content color="light">
   <ion-card>
-    <ion-card-header>
-      <ion-card-title> Servers </ion-card-title>
-    </ion-card-header>
-    @if (env?.dbServers) {
-      <ion-list>
-        @for (server of env.dbServers || []; track server) {
-          <ion-item tappable (click)="goDbServer(server)">
-            @if (server) {
-              <ion-label
-                >{{ server.driver }}: <b>{{ server.host }}</b></ion-label
-              >
-            }
-            <ion-buttons slot="end">
-              <ion-button>Sign in</ion-button>
-            </ion-buttons>
+    <ion-list lines="full">
+      <ion-item
+        [color]="presentation().tone"
+        data-testid="environment-identity"
+      >
+        <ion-icon
+          slot="start"
+          [icon]="presentation().icon"
+          aria-hidden="true"
+        />
+        <ion-label
+          ><h2>{{ presentation().label }}</h2>
+          @if (env(); as summary) {
+            <p>Environment ID: {{ summary.id }}</p>
+          }
+          @if (presentation().safetyLabel; as safety) {
+            <p>{{ safety }}</p>
+          }
+        </ion-label>
+      </ion-item>
+      <ion-item color="light"
+        ><ion-label><h2>Data connections</h2></ion-label></ion-item
+      >
+      @if (error()) {
+        <ion-item
+          ><ion-label color="danger"
+            >Could not load this environment. Refresh to try again.</ion-label
+          ></ion-item
+        >
+      } @else if (env(); as summary) {
+        @for (server of summary.dbServers || []; track $index) {
+          <ion-item>
+            <ion-label
+              ><h3 class="connection-heading">
+                {{ server.title || server.driver }}
+              </h3>
+              @if (server.host) {
+                <p>
+                  {{ server.host }}
+                  @if (server.port) {
+                    :{{ server.port }}
+                  }
+                </p>
+              }
+              <p>
+                {{ server.catalogs?.length || 0 }}
+                {{ server.catalogs?.length === 1 ? 'catalog' : 'catalogs' }}
+              </p>
+            </ion-label>
           </ion-item>
-        }
-      </ion-list>
-    }
-    @if (!env) {
-      <ion-list>
-        <ion-item>
-          <ion-skeleton-text style="width: 50%" />
-        </ion-item>
-      </ion-list>
-    }
-  </ion-card>
-
-  <ion-card>
-    <ion-card-header>
-      <ion-card-title> Databases </ion-card-title>
-    </ion-card-header>
-    @if (env?.dbServers) {
-      <ion-list>
-        @for (dbServer of env.dbServers || []; track dbServer) {
-          @for (catalog of dbServer.catalogs || []; track catalog) {
-            <ion-item tappable (click)="goDb(catalog)">
-              <ion-label>{{ catalog }}</ion-label>
-            </ion-item>
+          @for (catalog of server.catalogs || []; track catalog) {
+            <ion-item
+              button
+              detail
+              (click)="goDb(catalog)"
+              data-testid="environment-catalog"
+              ><ion-label>{{ catalog }}</ion-label></ion-item
+            >
           }
         }
-      </ion-list>
-    }
-    @if (!env) {
-      <ion-list>
-        <ion-item>
-          <ion-skeleton-text style="width: 50%" />
-        </ion-item>
-      </ion-list>
-    }
-  </ion-card>
-
-  <ion-card>
-    <ion-card-header>
-      <ion-card-title> DB servers </ion-card-title>
-    </ion-card-header>
-    @if (env?.dbServers) {
-      <ion-list>
-        @for (dbServer of env.dbServers || []; track dbServer) {
-          <ion-item tappable (click)="goDbServer(dbServer)">
-            @if (dbServer) {
-              <ion-label
-                >{{ dbServer?.host }}
-                @if (dbServer.port) {
-                  <span>:{{ dbServer.port }}</span>
+        @for (entry of connections(); track entry[0]) {
+          <ion-item data-testid="environment-connection"
+            ><ion-label>
+              <h3>{{ entry[0] }} · {{ entry[1].kind }}</h3>
+              <p>
+                {{ entry[1].host }}
+                @if (entry[1].port) {
+                  :{{ entry[1].port }}
                 }
-              </ion-label>
-            }
-            @if (!dbServer) {
-              <ion-label>!dbServer</ion-label>
-            }
-          </ion-item>
+              </p>
+              @if (entry[1].database) {
+                <p>{{ entry[1].database }}</p>
+              }
+            </ion-label></ion-item
+          >
         }
-      </ion-list>
-    }
-    @if (!env) {
-      <ion-list>
-        <ion-item>
-          <ion-skeleton-text style="width: 50%" />
-        </ion-item>
-      </ion-list>
-    }
+        @if (summary.editionConnections?.length) {
+          <ion-item color="light"
+            ><ion-label
+              ><h3>Edition assignments</h3>
+              <p>
+                References configured in this environment. These assignments do
+                not enable browser query execution; use a configured DataTug
+                client to connect.
+              </p>
+            </ion-label></ion-item
+          >
+          @for (connection of summary.editionConnections; track connection) {
+            <ion-item data-testid="edition-assignment"
+              ><ion-label>{{ connection }}</ion-label></ion-item
+            >
+          }
+        }
+        @if (
+          !summary.dbServers?.length &&
+          !summary.editionConnections?.length &&
+          !connections().length
+        ) {
+          <ion-item
+            ><ion-label
+              >No data connections are assigned to this environment
+              yet.</ion-label
+            ></ion-item
+          >
+        }
+      } @else {
+        <ion-item aria-label="Loading environment"
+          ><ion-skeleton-text animated style="width: 60%"
+        /></ion-item>
+      }
+    </ion-list>
   </ion-card>
 </ion-content>

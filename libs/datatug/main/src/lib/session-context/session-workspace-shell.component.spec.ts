@@ -7,7 +7,7 @@ import { SneatAuthStateService } from '@sneat/auth-core';
 import { AuthPanelComponent } from '@sneat/auth-ui';
 import { BehaviorSubject, Subject } from 'rxjs';
 import { SessionContextApiService } from './session-context-api.service';
-import { ContextCapabilities } from './session-context-contract';
+import { ContextCapabilities, ContextSession, contextScopeKey } from './session-context-contract';
 import { LegacyContextImportService } from './legacy-context-import.service';
 import { SessionWorkspaceShellComponent } from './session-workspace-shell.component';
 import { SESSION_DEVICE_DRAFTS, SessionWorkspaceService } from './session-workspace.service';
@@ -22,13 +22,14 @@ class AuthPanelStubComponent {
 describe('SessionWorkspaceShellComponent auth lifecycle', () => {
   let fixture: ComponentFixture<SessionWorkspaceShellComponent>;
   let authState: BehaviorSubject<{ status: string; user?: { uid: string } }>;
-  let api: { capabilities: ReturnType<typeof vi.fn>; list: ReturnType<typeof vi.fn> };
+  let api: { capabilities: ReturnType<typeof vi.fn>; list: ReturnType<typeof vi.fn>; command: ReturnType<typeof vi.fn> };
+  const environment = { environmentId: 'uat', identityDomain: 'workspace' };
   const caps: ContextCapabilities = {
     schemaVersion: 1,
     actorId: 'actor-1',
     databaseId: 'ops',
     projectId: 'shop',
-    environments: [],
+    environments: [environment],
     actions: ['createSession'],
   };
   const projectUrl = '/project/http-localhost:8989/shop/tree/HEAD/demo/-/sessions';
@@ -40,6 +41,7 @@ describe('SessionWorkspaceShellComponent auth lifecycle', () => {
         .mockRejectedValueOnce(SneatApiNotAuthenticatedError)
         .mockResolvedValue(caps),
       list: vi.fn(async () => ({ items: [], hasMore: false })),
+      command: vi.fn(),
     };
     const params = new BehaviorSubject(convertToParamMap({ storeId: 'http-localhost:8989', projectId: 'shop' }));
     const query = new BehaviorSubject(convertToParamMap({}));
@@ -61,7 +63,7 @@ describe('SessionWorkspaceShellComponent auth lifecycle', () => {
       imports: [SessionWorkspaceShellComponent],
       providers: [
         SessionWorkspaceService,
-        { provide: SessionContextApiService, useValue: { ...api, read: vi.fn(), command: vi.fn(), operation: vi.fn(), run: vi.fn() } },
+        { provide: SessionContextApiService, useValue: { ...api, read: vi.fn(), operation: vi.fn(), run: vi.fn() } },
         { provide: SESSION_DEVICE_DRAFTS, useValue: { read: vi.fn(), write: vi.fn(), readPending: vi.fn(), writePending: vi.fn(), removePending: vi.fn() } },
         { provide: LegacyContextImportService, useValue: {} },
         { provide: SneatAuthStateService, useValue: { authState: authState.asObservable() } },
@@ -100,5 +102,58 @@ describe('SessionWorkspaceShellComponent auth lifecycle', () => {
     expect(workspace.authRequired()).toBe(false);
     expect(workspace.capabilities()).toEqual(caps);
     expect(workspace.sessions()).toEqual([]);
+  });
+
+  it.each([
+    ['createSession is unsupported', { ...caps, actions: [] }],
+    ['no environment is admitted', { ...caps, environments: [] }],
+  ])('does not offer session creation when %s', async (_reason, capabilities) => {
+    const workspace = TestBed.inject(SessionWorkspaceService);
+    const component = fixture.componentInstance;
+    workspace.capabilities.set(capabilities);
+    component.chooserOpen.set(true);
+    fixture.detectChanges();
+
+    const newSessionButtons = [...fixture.nativeElement.querySelectorAll('ion-button')]
+      .filter((button: HTMLElement) => button.textContent?.trim() === 'New session') as Array<HTMLIonButtonElement>;
+    expect(newSessionButtons.length).toBeGreaterThan(0);
+    expect(newSessionButtons.every((button) => button.disabled)).toBe(true);
+
+    component.beginCreate();
+    expect(component.createOpen()).toBe(false);
+    component.titleDraft.set('Must not be created');
+    component.scopeDraft.set(contextScopeKey(environment));
+    await component.saveCreate();
+    expect(component.createOpen()).toBe(false);
+    expect(api.command).not.toHaveBeenCalled();
+  });
+
+  it('allows creation when the capability and an admitted environment are available', () => {
+    const workspace = TestBed.inject(SessionWorkspaceService);
+    const component = fixture.componentInstance;
+    workspace.capabilities.set(caps);
+
+    expect(component.canCreateSession()).toBe(true);
+    component.beginCreate();
+    expect(component.createOpen()).toBe(true);
+  });
+
+  it('keeps loaded sessions available after a later workspace error', async () => {
+    await fixture.whenStable();
+    const workspace = TestBed.inject(SessionWorkspaceService);
+    const session: ContextSession = {
+      schemaVersion: 1, id: 'session-1', databaseId: 'ops', projectId: 'shop', owner: 'actor-1',
+      title: 'Saved session', state: 'stopped', version: 1, defaultBagId: 'bag-1', contextSetId: 'set-1',
+      bagIds: ['bag-1'], createdAt: '2026-10-15T00:00:00.000Z', updatedAt: '2026-10-15T00:00:00.000Z',
+    };
+    workspace.capabilities.set(caps);
+    workspace.sessions.set([session]);
+    workspace.loading.set(true);
+    workspace.error.set('The next page could not be loaded.');
+    workspace.authRequired.set(false);
+
+    expect(fixture.componentInstance.visibleSessions()).toEqual([session]);
+    expect(fixture.componentInstance.showInitialLoading()).toBe(false);
+    expect(fixture.componentInstance.showInitialLoadError()).toBe(false);
   });
 });

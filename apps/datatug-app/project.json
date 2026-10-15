@@ -182,6 +182,16 @@
         "command": "playwright test -c apps/datatug-app/playwright.config.ts"
       }
     },
+    "e2e-agent-links": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "outputs": [
+        "{workspaceRoot}/coverage/apps/datatug-app-agent-links-e2e"
+      ],
+      "options": {
+        "command": "playwright test -c apps/datatug-app/playwright.agent-links.config.ts --forbid-only"
+      }
+    },
     "e2e-query-mobile": {
       "executor": "nx:run-commands",
       "outputs": [

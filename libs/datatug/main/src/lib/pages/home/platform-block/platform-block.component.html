@@ -1,49 +1,41 @@
 <ion-card data-testid="platform-block">
-  <ion-item color="light" lines="full" id="platform-block-title">
-    <ion-label>
-      <h2>{{ title }}</h2>
-    </ion-label>
-  </ion-item>
+  <ion-list lines="full">
+    <ion-item color="light" id="platform-block-title">
+      <ion-label>
+        <h2>{{ title }}</h2>
+      </ion-label>
+    </ion-item>
+  </ion-list>
   <ion-card-content>
     <section aria-labelledby="platform-block-title">
       <p class="lede">{{ lede }}</p>
-      <ul class="parts" aria-label="The parts of DataTug">
+      <ul class="parts" aria-label="Other ways to use DataTug">
         @for (part of parts; track part.id) {
-          <li
-            class="part"
-            [class.multi]="part.chips.length > 1"
-            [attr.data-part]="part.id"
-          >
+          <li class="part" [attr.data-part]="part.id">
             <h3 class="name">
               <ion-icon [name]="part.icon" aria-hidden="true" />
-              @if (part.href) {
-                <a
-                  [href]="part.href"
-                  target="_blank"
-                  rel="noopener"
-                  data-part-link
-                  >{{ part.name }}<span aria-hidden="true"> ↗</span
-                  ><span class="sr-only"> (opens in a new tab)</span></a
-                >
-              } @else {
-                <span aria-current="page">{{ part.name }}</span>
-                <span class="here">You are here</span>
-              }
+              {{ part.name }}
             </h3>
             <p class="line">{{ part.line }}</p>
-            <ul class="chips" aria-label="Status">
-              @for (chip of part.chips; track chip.feature) {
-                <li [attr.data-status]="chip.status">
-                  @if (chip.label) {
-                    <span class="chip-name">{{ chip.label }}</span>
-                  }
-                  <span class="chip"
-                    ><i class="dot" aria-hidden="true"></i
-                    >{{ statusLabel[chip.status] }}</span
-                  >
+            <ul class="mechanisms" aria-label="Availability">
+              @for (mechanism of part.mechanisms; track mechanism.id) {
+                <li [attr.data-status]="mechanism.status">
+                  <span>{{ mechanism.label }}</span>
+                  <span class="status">
+                    <i class="dot" aria-hidden="true"></i>
+                    {{ statusLabel[mechanism.status] }}
+                  </span>
                 </li>
               }
             </ul>
+            <a
+              class="part-link"
+              [href]="part.href"
+              target="_blank"
+              rel="noopener"
+              >{{ part.linkLabel }}<span aria-hidden="true"> ↗</span>
+              <span class="sr-only"> (opens in a new tab)</span></a
+            >
           </li>
         }
       </ul>

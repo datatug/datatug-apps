@@ -77,3 +77,63 @@ describe('EnvironmentsPage', () => {
     expect(component).toBeTruthy();
   });
 });
+
+describe('EnvironmentsPage metadata', () => {
+  it('renders late metadata, retains IDs in navigation, and cancels a replaced project', async () => {
+    const { BehaviorSubject, Subject } = await import('rxjs');
+    const project = { ref: { storeId: 'github.com', projectId: 'r@o@' } };
+    const currentProject = new BehaviorSubject<
+      import('../../../nav/nav-models').IProjectContext
+    >(project);
+    const first = new Subject<
+      import('../../../models/definition/environments').IEnvironmentFull[]
+    >();
+    const next = new Subject<
+      import('../../../models/definition/environments').IEnvironmentFull[]
+    >();
+    const goEnvironment = vi.fn();
+    const navToken = (await import('../../../services/nav/datatug-nav.service'))
+      .DatatugNavService;
+    const listEnvironments = vi
+      .fn()
+      .mockReturnValueOnce(first)
+      .mockReturnValueOnce(next);
+    await TestBed.configureTestingModule({
+      imports: [EnvironmentsPageComponent],
+      providers: [
+        { provide: DatatugNavContextService, useValue: { currentProject } },
+        { provide: ProjectService, useValue: {} },
+        { provide: EnvironmentService, useValue: { listEnvironments } },
+        { provide: ErrorLogger, useValue: { logError: vi.fn() } },
+        { provide: navToken, useValue: { goEnvironment } },
+      ],
+    })
+      .overrideComponent(EnvironmentsPageComponent, {
+        set: { imports: [], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+      })
+      .compileComponents();
+    const fixture = TestBed.createComponent(EnvironmentsPageComponent);
+    fixture.detectChanges();
+    const env = {
+      id: 'live-a',
+      title: 'live-a',
+      presentation: { label: 'Production', tone: 'danger' as const },
+    };
+    first.next([env]);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Production');
+    expect(fixture.nativeElement.textContent).toContain('High caution');
+    fixture.nativeElement
+      .querySelector('[data-testid="environment-list-item"]')
+      .click();
+    expect(goEnvironment).toHaveBeenCalledWith(project, env);
+    currentProject.next({
+      ref: { storeId: 'github.com', projectId: 'r@o@', branch: 'release' },
+    });
+    first.next([env]);
+    next.next([{ id: 'qa', title: 'Quality assurance' }]);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Quality assurance');
+    expect(fixture.nativeElement.textContent).not.toContain('Production');
+  });
+});

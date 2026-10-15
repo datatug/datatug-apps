@@ -2,6 +2,7 @@ import {
   Component,
   OnDestroy,
   OnInit,
+  computed,
   inject,
   signal,
 } from '@angular/core';
@@ -11,17 +12,22 @@ import {
   IonButtons,
   IonContent,
   IonHeader,
-  IonIcon,
-  IonLabel,
   IonMenuButton,
   IonToolbar,
-  AlertController,
 } from '@ionic/angular';
 import { SneatCardListComponent } from '@sneat/components';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
-import { Subject } from 'rxjs';
-import { takeUntil } from 'rxjs/operators';
+import { BehaviorSubject, combineLatest, EMPTY, of, Subject } from 'rxjs';
+import {
+  catchError,
+  distinctUntilChanged,
+  map,
+  switchMap,
+  takeUntil,
+  tap,
+} from 'rxjs/operators';
 import { DatatugCoreModule } from '../../../../core/datatug-core.module';
+import { equalProjectRef } from '../../../../core/project-context';
 import { DatatugFoldersService } from '../../../../folders/core/datatug-folders.service';
 import {
   folderItemsAsList,
@@ -38,7 +44,6 @@ import { DatatugServicesNavModule } from '../../../../services/nav/datatug-servi
 import { DatatugServicesProjectModule } from '../../../../services/project/datatug-services-project.module';
 import { DatatugServicesStoreModule } from '../../../../services/repo/datatug-services-store.module';
 import { DatatugServicesUnsortedModule } from '../../../../services/unsorted/datatug-services-unsorted.module';
-import { DatatugBoardService } from '../../../core/datatug-board.service';
 import { SneatDatatugPageTitleComponent } from '../../../../components/page-title/sneat-datatug-page-title.component';
 
 @Component({
@@ -69,11 +74,9 @@ import { SneatDatatugPageTitleComponent } from '../../../../components/page-titl
     IonHeader,
     IonButtons,
     IonBackButton,
+    IonButton,
     IonMenuButton,
     IonToolbar,
-    IonButton,
-    IonIcon,
-    IonLabel,
     IonContent,
   ],
 })
@@ -81,12 +84,7 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
   private readonly datatugNavContextService = inject(DatatugNavContextService);
   private readonly datatugNavService = inject(DatatugNavService);
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
-  private readonly boardService = inject(DatatugBoardService);
-  private readonly alertCtrl = inject(AlertController);
   private readonly foldersService = inject(DatatugFoldersService);
-
-  tab = 'shared';
-  noItemsText?: string;
 
   // Signals, not plain fields: this app is zoneless
   // (provideZonelessChangeDetection(), main.ts). Both are written from
@@ -98,28 +96,63 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
   // pages/signed-in/project/project-page.component.ts (PR #95) for the
   // established pattern.
   readonly boards = signal<IProjBoard[] | undefined>(undefined);
+  readonly loadError = signal<string | undefined>(undefined);
   defaultHref?: string;
   readonly project = signal<IProjectContext | undefined>(undefined);
+  readonly unsupportedProject = computed(() => {
+    const ref = this.project()?.ref;
+    return !!(ref?.projectApi || ref?.branch);
+  });
 
   folderPath = '~';
 
   private readonly destroyed = new Subject<void>();
+  private readonly refresh = new BehaviorSubject(0);
 
   constructor() {
-    this.tabChanged(this.tab);
-    this.datatugNavContextService.currentProject
-      .pipe(takeUntil(this.destroyed))
+    combineLatest([this.datatugNavContextService.currentProject, this.refresh])
+      .pipe(
+        tap(([currentProject]) => {
+          if (!equalProjectRef(currentProject?.ref, this.project()?.ref)) {
+            this.boards.set(undefined);
+            this.loadError.set(undefined);
+          }
+          this.project.set(currentProject);
+        }),
+        map(([currentProject, refresh]) => ({
+          ref: currentProject?.ref,
+          refresh,
+        })),
+        distinctUntilChanged(
+          (a, b) => a.refresh === b.refresh && equalProjectRef(a.ref, b.ref),
+        ),
+        switchMap(({ ref }) => {
+          this.boards.set(undefined);
+          this.loadError.set(undefined);
+          // The folder store drops projectApi and branch. Reading here would
+          // silently show an unqualified project's boards under another ref.
+          if (ref?.projectApi || ref?.branch) return EMPTY;
+          return ref
+            ? this.foldersService
+                .watchFolder({ ...ref, id: this.folderPath })
+                .pipe(
+                  map((folder) => ({ status: 'success' as const, folder })),
+                  catchError((err: unknown) => {
+                    this.errorLogger.logError(err, 'Failed to load boards');
+                    return of({ status: 'error' as const });
+                  }),
+                )
+            : of({ status: 'success' as const, folder: null });
+        }),
+        takeUntil(this.destroyed),
+      )
       .subscribe({
-        next: (currentProject) => {
-          try {
-            this.setProject(currentProject);
-            // this.project = currentProject;
-            // this.boards = currentProject?.summary?.boards || [];
-          } catch (e) {
-            this.errorLogger.logError(
-              e,
-              'Failed to process current project in Boards page',
-            );
+        next: (result) => {
+          if (result.status === 'error') {
+            this.boards.set(undefined);
+            this.loadError.set('Boards could not be loaded. Please try again.');
+          } else {
+            this.onFolderReceived(this.folderPath, result.folder);
           }
         },
         error: (err) =>
@@ -133,20 +166,12 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.destroyed.next();
     this.destroyed.complete();
+    this.refresh.complete();
   }
 
-  private setProject(project?: IProjectContext): void {
-    const path = this.folderPath;
-    if (
-      project?.ref?.projectId &&
-      project.ref.projectId !== this.project()?.ref?.projectId
-    ) {
-      this.foldersService
-        .watchFolder({ ...project.ref, id: path })
-        .pipe(takeUntil(this.destroyed))
-        .subscribe((folder) => this.onFolderReceived(path, folder));
-    }
-    this.project.set(project);
+  retryLoad(): void {
+    if (this.project()?.ref && !this.unsupportedProject())
+      this.refresh.next(this.refresh.value + 1);
   }
 
   private onFolderReceived = (path: string, folder?: IFolder | null): void => {
@@ -160,7 +185,7 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
     // list this page's own template feeds `[items]="boards()"` into) reads
     // `.title`, not `.name`, and silently falls back to showing the board's
     // own `.id` when `.title` is `undefined` (confirmed live, S136: GitHub's
-    // `board1` — title "1st board" per its own `board.json`/the parent
+    // `board1` — title "Chinook customer insights" in the demo project
     // `datatug-project.json` summary — rendered as the id "board1" in the
     // list). Pre-existing and not GitHub-specific: any store's board list
     // goes through this same `IFolder`/`folderItemsAsList()` path
@@ -201,80 +226,4 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
       this.datatugNavService.goBoard(project, <IProjItemBrief>item);
     }
   }
-
-  async newBoard(): Promise<void> {
-    const modal = await this.alertCtrl.create({
-      message: 'New board',
-      inputs: [
-        {
-          name: 'title',
-          type: 'text',
-          // handler: v => {
-          // 	console.log('input handler:', v);
-          // },
-          placeholder: 'Name, should be unique',
-        },
-      ],
-      buttons: [
-        {
-          role: 'cancel',
-          text: 'Cancel',
-          cssClass: 'ion-color-medium',
-        },
-        {
-          text: 'Create',
-          handler: (value) => {
-            // const store: IProjStoreRef = {
-            // 	type: 'firestore',
-            // };
-            const project = this.project();
-            if (!project) {
-              return;
-            }
-            this.boardService
-              .createNewBoard({
-                projectRef: project.ref,
-                name: value.title as string,
-              })
-              .subscribe({
-                next: (board) => {
-                  // Matches the pre-signal behaviour: if the list hasn't
-                  // loaded yet, this silently no-ops (same as the old
-                  // `this.boards?.push()`).
-                  const boards = this.boards();
-                  if (boards) {
-                    this.boards.set([...boards, board]);
-                  }
-                },
-                error: this.logError(
-                  () =>
-                    `Failed to create a new board with title [${value.title}]`,
-                ),
-              });
-          },
-        },
-      ],
-    });
-    await modal.present();
-  }
-
-  public tabChanged(tab: string): void {
-    this.tab = tab;
-    switch (tab) {
-      case 'favorite':
-        this.noItemsText = 'No favorite boards';
-        break;
-      case 'personal':
-        this.noItemsText = 'No personal boards';
-        break;
-      case 'shared':
-        this.noItemsText = 'No shared boards';
-        break;
-      default:
-        this.noItemsText = 'No boards';
-    }
-  }
-
-  private logError = (message: () => string) => (err: unknown) =>
-    this.errorLogger.logError(err, message());
 }

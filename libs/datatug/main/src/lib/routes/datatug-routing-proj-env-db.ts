@@ -10,6 +10,28 @@ export const datatugProjEnvDbRoutes: Routes = [
         (m) => m.EnvDbPageComponent,
       ),
   },
+  // The Table records and Record cards' links (Feature claude-mod-web-links): before the table route, which
+  // would otherwise match the first two segments.
+  {
+    path: 'table/:' + routingParamTableType + '/records',
+    loadComponent: () =>
+      import('../agent-links/table-records/table-records.page').then((m) => m.TableRecordsPageComponent),
+  },
+  {
+    path: 'table/:' + routingParamTableType + '/record',
+    loadComponent: () =>
+      import('../agent-links/table-record/table-record.page').then((m) => m.TableRecordPageComponent),
+  },
+  {
+    path: 'view/:' + routingParamTableType + '/records',
+    loadComponent: () =>
+      import('../agent-links/table-records/table-records.page').then((m) => m.TableRecordsPageComponent),
+  },
+  {
+    path: 'view/:' + routingParamTableType + '/record',
+    loadComponent: () =>
+      import('../agent-links/table-record/table-record.page').then((m) => m.TableRecordPageComponent),
+  },
   {
     path: 'table/:' + routingParamTableType,
     loadComponent: () =>

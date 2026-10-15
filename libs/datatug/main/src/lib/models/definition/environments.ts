@@ -1,7 +1,22 @@
 import { ITagged } from '../tags';
 import { IDbServer } from './apis/database';
 
+export type EnvironmentTone =
+  | 'neutral'
+  | 'primary'
+  | 'success'
+  | 'warning'
+  | 'danger';
+
+/** Optional display metadata; route IDs retain their original meaning. */
+export interface IEnvironmentPresentation {
+  label?: string;
+  icon?: string;
+  tone?: EnvironmentTone;
+}
+
 export interface IEnvironmentBase {
+  presentation?: IEnvironmentPresentation;
   id: string;
   title: string;
 }
@@ -14,6 +29,7 @@ export interface IEnvironmentSummary extends IEnvironmentBase {
   vars?: Record<string, string>;
   connections?: Record<string, IConnection>;
   dbServers?: IEnvDbServer[];
+  editionConnections?: string[];
 }
 
 export interface IEnvDbServer extends IDbServer {
