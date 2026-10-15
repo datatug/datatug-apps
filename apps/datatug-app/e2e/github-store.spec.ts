@@ -432,12 +432,12 @@ test.describe('GitHub-store project — every side-menu page loads without error
       board.getByText('Playlist composition', { exact: true }),
     ).toBeVisible();
     await expect(
-      board.getByRole('button', { name: 'Open saved query' }),
+      board.getByRole('link', { name: 'Open saved query' }),
     ).toHaveCount(2);
 
     await board
       .locator('ion-card', { hasText: 'Top customer spend' })
-      .getByRole('button', { name: 'Open saved query' })
+      .getByRole('link', { name: 'Open saved query' })
       .click();
     await expect
       .poll(() => new URL(page.url()).pathname)
@@ -446,7 +446,7 @@ test.describe('GitHub-store project — every side-menu page loads without error
       'demodb/chinook-top-customer-spend',
     );
     await expect(
-      activePage(page).locator('sneat-datatug-page-title'),
+      page.locator('sneat-datatug-sql-editor .query-page-title'),
     ).toContainText('Top Customer Spend', { timeout: 20_000 });
     expect(errors).toEqual([]);
   });
