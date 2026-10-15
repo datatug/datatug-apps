@@ -1,3 +1,4 @@
+import { IEnvironmentPresentation } from '../../../models/definition/environments';
 import { Injectable, InjectionToken, inject } from '@angular/core';
 import { Observable, defer, forkJoin, from, of, throwError } from 'rxjs';
 import { map, switchMap } from 'rxjs/operators';
@@ -196,6 +197,8 @@ export interface IGithubEnvDbServer {
 }
 
 export interface IGithubEnvironmentSummary {
+  presentation?: IEnvironmentPresentation;
+  editionConnections?: string[];
   id: string;
   title: string;
   dbServers?: IGithubEnvDbServer[];
@@ -208,6 +211,8 @@ interface IGithubEnvDbServerFile {
 }
 
 interface IGithubEnvFile {
+  presentation?: IEnvironmentPresentation;
+  editionConnections?: string[];
   id?: string;
   title?: string;
   dbServers?: IGithubEnvDbServerFile[];
@@ -1083,12 +1088,7 @@ export class GithubProjectReaderService {
   // Environments
   // ---------------------------------------------------------------------
 
-  /** `environments/<id>/` directory names — the project's real environment
-   * list (deliberately NOT `datatug-project.json`'s own `environments`
-   * array, which demo-project-1 confirms can be stale/incomplete: it lists
-   * only `local`/`dev`/`prod`, missing the `QA`/`UAT` folders that do
-   * exist). Titles are the folder name — no `.env.json` file in this
-   * project carries its own `title`. */
+  /** Folder identities are authoritative; metadata files are optional. */
   public listEnvironmentIds(projectId: string): Observable<string[]> {
     return this.listDirectory(projectId, 'environments').pipe(
       map((entries) =>
@@ -1105,16 +1105,31 @@ export class GithubProjectReaderService {
       projectId,
       `environments/${envId}/${envId}.env.json`,
     ).pipe(
-      map((file) => ({
-        id: envId,
-        title: file?.title || envId,
-        dbServers: file?.dbServers?.map((s, i) => ({
-          id: [s.driver, ...(s.catalogs || [])].join(':') || `server-${i}`,
-          driver: s.driver,
-          host: s.host || '',
-          catalogs: s.catalogs,
-        })),
-      })),
+      switchMap((file) =>
+        file
+          ? of(file)
+          : this.listEnvironmentIds(projectId).pipe(
+              map((ids): IGithubEnvFile => {
+                if (!ids.includes(envId))
+                  throw new Error(`Environment "${envId}" was not found`);
+                return {};
+              }),
+            ),
+      ),
+      map((file) => {
+        return {
+          id: envId,
+          title: file.title || envId,
+          presentation: file.presentation,
+          editionConnections: file.editionConnections,
+          dbServers: file.dbServers?.map((s, i) => ({
+            id: [s.driver, ...(s.catalogs || [])].join(':') || `server-${i}`,
+            driver: s.driver,
+            host: s.host || '',
+            catalogs: s.catalogs,
+          })),
+        };
+      }),
     );
   }
 

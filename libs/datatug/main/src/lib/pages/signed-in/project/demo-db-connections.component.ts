@@ -1,4 +1,4 @@
-import { Component, Input, inject, signal } from '@angular/core';
+import { Component, Input, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { IonCard, IonCardHeader, IonCardTitle, IonItem, IonLabel, IonList } from '@ionic/angular';
 import { firstValueFrom } from 'rxjs';
@@ -56,6 +56,12 @@ interface ConnectionCatalog {
   }[];
 }
 
+interface DatasetGroup {
+  readonly id: Dataset;
+  readonly connections: readonly DemoDbConnection[];
+  readonly bigQuery?: BigQueryEdition;
+}
+
 function validCatalog(raw: ConnectionCatalog): boolean {
   if (raw?.format !== 'datatug-demo-connections/v1' || !Array.isArray(raw.connections) ||
       raw.connections.length !== datasets.length * 3 || !Array.isArray(raw.bigQueryPlans)) return false;
@@ -105,45 +111,42 @@ function validCatalog(raw: ConnectionCatalog): boolean {
   template: `
     @if (catalog()) {
       <ion-card>
-        <ion-card-header><ion-card-title>Database connections</ion-card-title></ion-card-header>
+        <ion-card-header><ion-card-title>Demo databases</ion-card-title></ion-card-header>
         <ion-list>
-          @for (edition of catalog()!.connections; track edition.id) {
-            <ion-item>
+          @for (group of groups(); track group.id) {
+            <ion-item [attr.data-testid]="'dataset-' + group.id">
               <ion-label>
-                <strong>{{ edition.dataset }} / {{ edition.storage }}</strong>
-                <p>{{ edition.tags.join(' · ') }} · {{ edition.environments.join(', ') }}</p>
-                <p>{{ readiness(edition) }}</p>
-                <a [href]="edition.source" target="_blank" rel="noopener noreferrer">Source</a>
-                @if (edition.id === 'chinook-postgresql' && edition.readiness === 'public-api' && chinookQueryHref()) {
-                  · <a [href]="chinookQueryHref()">Explore PostgreSQL artist track totals</a>
+                <strong>{{ title(group.id) }}</strong>
+                @for (edition of group.connections; track edition.id) {
+                  <p>
+                    <strong>{{ label(edition.storage) }}</strong> · {{ readiness(edition) }}
+                    · <a [href]="edition.source" target="_blank" rel="noopener noreferrer">Source</a>
+                    @if (edition.id === 'chinook-postgresql' && edition.readiness === 'public-api' && chinookQueryHref()) {
+                      · <a [href]="chinookQueryHref()">Explore PostgreSQL artist track totals</a>
+                    }
+                    @if (edition.storage === 'sqlite') {
+                      · <a [routerLink]="['/demo', 'sqlite', edition.dataset]" [attr.data-testid]="'explore-local-' + edition.dataset">Explore SQLite in DataTug (editable copy in this browser)</a>
+                    }
+                  </p>
                 }
-                @if (edition.storage === 'sqlite') {
-                  · <a [routerLink]="['/demo', 'sqlite', edition.dataset]" [attr.data-testid]="'explore-local-' + edition.dataset">Explore SQLite in DataTug (editable copy in this browser)</a>
+                @if (group.bigQuery; as edition) {
+                  <p>
+                    <strong>BigQuery</strong> · {{ edition.tableCount }} tables · {{ edition.rowCount.toLocaleString() }} rows.
+                    Google account and your own execution project required; charges may apply. Browser querying and copying are unavailable.
+                    <a href="https://console.cloud.google.com/bigquery" target="_blank" rel="noopener noreferrer">Open BigQuery Console</a>
+                  </p>
+                  <details>
+                    <summary>BigQuery hosting details</summary>
+                    <p>Source: {{ edition.sourceProjectId }}.{{ edition.datasetId }} · {{ edition.location }} · revision {{ edition.sourceRevision }}</p>
+                    <p>Source SQLite SHA-256: <code>{{ edition.sourceSqliteSha256 }}</code></p>
+                    <a [href]="edition.verification" target="_blank" rel="noopener noreferrer">Verified hosting manifest</a>
+                  </details>
                 }
               </ion-label>
             </ion-item>
           }
         </ion-list>
       </ion-card>
-      @if (catalog()!.bigQueryEditions?.length) {
-        <ion-card>
-          <ion-card-header><ion-card-title>Hosted BigQuery editions</ion-card-title></ion-card-header>
-          <ion-list>
-            @for (edition of catalog()!.bigQueryEditions ?? []; track edition.id) {
-              <ion-item>
-                <ion-label>
-                  <strong>{{ edition.dataset }} · {{ edition.tableCount }} tables · {{ edition.rowCount.toLocaleString() }} rows</strong>
-                  <p>Source: {{ edition.sourceProjectId }}.{{ edition.datasetId }} · {{ edition.location }} · source revision {{ edition.sourceRevision }}</p>
-                  <p>Google account required. Choose your own BigQuery execution project before querying; charges apply to that project. Browser queries and copy are not enabled.</p>
-                  <p>Source SQLite SHA-256: <code>{{ edition.sourceSqliteSha256 }}</code></p>
-                  <a href="https://console.cloud.google.com/bigquery" target="_blank" rel="noopener noreferrer">Open BigQuery Console and select your execution project</a>
-                  · <a [href]="edition.verification" target="_blank" rel="noopener noreferrer">Verified hosting manifest</a>
-                </ion-label>
-              </ion-item>
-            }
-          </ion-list>
-        </ion-card>
-      }
       <ion-card>
         <ion-card-header><ion-card-title>BigQuery discoveries (setup planned)</ion-card-title></ion-card-header>
         <ion-list>
@@ -163,6 +166,15 @@ export class DemoDbConnectionsComponent {
   private readonly reader = inject(GithubProjectReaderService);
   private loadEpoch = 0;
   protected readonly catalog = signal<ConnectionCatalog | undefined>(undefined);
+  protected readonly groups = computed<readonly DatasetGroup[]>(() => {
+    const catalog = this.catalog();
+    if (!catalog) return [];
+    return datasets.map((id) => ({
+      id,
+      connections: catalog.connections.filter((entry) => entry.dataset === id),
+      bigQuery: catalog.bigQueryEditions?.find((entry) => entry.dataset === id),
+    }));
+  });
   protected readonly error = signal<string | undefined>(undefined);
   protected readonly chinookQueryHref = signal<string | undefined>(undefined);
 
@@ -195,5 +207,13 @@ export class DemoDbConnectionsComponent {
       : 'Public read-only OVDB API';
     if (entry.readiness === 'hosted-repository') return 'Pinned inGitDB repository; local checkout required for queries';
     return 'PostgreSQL query endpoint pending';
+  }
+
+  protected title(dataset: Dataset): string {
+    return dataset === 'adventureworks' ? 'AdventureWorks' : dataset[0].toUpperCase() + dataset.slice(1);
+  }
+
+  protected label(storage: Storage): string {
+    return storage === 'sqlite' ? 'SQLite' : storage === 'ingitdb' ? 'inGitDB' : 'PostgreSQL';
   }
 }

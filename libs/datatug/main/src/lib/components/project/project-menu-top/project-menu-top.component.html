@@ -15,11 +15,10 @@
 }
 @for (page of projTopLevelPages; track page) {
   @if (
-    (page.path !== 'demo-db-sandbox' || isDemoDbProject()) &&
-    (!metadataOnly() ||
-      ['overview', 'queries', 'checks', 'detective', 'sessions'].includes(
-        page.path
-      ))
+    !metadataOnly() ||
+    ['overview', 'queries', 'checks', 'detective', 'sessions'].includes(
+      page.path
+    )
   ) {
     <ion-menu-toggle autoHide="false">
       <ion-item

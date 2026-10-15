@@ -1,0 +1,108 @@
+:host {
+  display: block;
+  min-width: 0;
+}
+
+.demo-list {
+  margin-top: 4px;
+}
+
+.demo-experiences {
+  padding-top: 8px;
+}
+
+.demo-details {
+  min-width: 0;
+  padding: 8px 0 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+
+  & + & {
+    border-top: 1px solid var(--ion-color-step-150, #d7d8da);
+  }
+
+  h3 {
+    margin: 0 0 4px;
+    font-size: 0.9rem;
+    font-weight: 650;
+  }
+
+  p {
+    margin: 0 0 8px;
+    font-size: 0.875rem;
+    line-height: 1.45;
+  }
+
+  ul {
+    margin: 0 0 12px;
+    padding-inline-start: 18px;
+    color: var(--ion-color-step-600, #666);
+    font-size: 0.8rem;
+    line-height: 1.55;
+  }
+}
+
+.demo-visual {
+  display: block;
+  width: 118px;
+  max-width: 136px;
+  height: auto;
+  justify-self: end;
+
+  .visual-board {
+    fill: color-mix(
+      in srgb,
+      var(--ion-color-primary) 7%,
+      var(--ion-background-color)
+    );
+    stroke: var(--ion-color-step-150, #d7d8da);
+  }
+
+  .visual-folder,
+  .visual-query,
+  .visual-result {
+    fill: var(--ion-card-background, #fff);
+    stroke: var(--ion-color-step-200, #c7c9cc);
+  }
+
+  .visual-folder-line,
+  .visual-query-line {
+    fill: none;
+    stroke: var(--ion-color-primary);
+    stroke-linecap: round;
+    stroke-width: 2;
+  }
+
+  .visual-flow {
+    fill: none;
+    stroke: var(--ion-color-primary);
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 2;
+  }
+
+  .visual-result-line {
+    fill: none;
+    stroke: var(--ion-color-success);
+    stroke-linecap: round;
+    stroke-width: 2;
+  }
+}
+
+ion-item-divider h3 {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+@media (min-width: 1200px) {
+  .demo-details {
+    grid-template-columns: minmax(0, 1fr) 136px;
+    gap: 16px;
+  }
+
+  .demo-visual {
+    width: 100%;
+  }
+}

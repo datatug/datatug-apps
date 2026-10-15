@@ -171,9 +171,8 @@ const DEMO_DB_CATALOG_ID = 'chinook-local'; // .../environments/local/catalogs/c
  * inside a transient `<ion-popover>` Ionic appends to the document while
  * open — scoping the click to that popover, not activePage(), is
  * deliberate: it is not part of <ion-router-outlet> at all) -> the
- * environments list (EnvironmentsPageComponent, `sneat-card-list`) -> the
- * named environment card -> that environment page's own "Databases" card
- * (EnvironmentPageComponent, Task 17 item B.1) -> the named catalog -> the
+ * environments list -> the named environment row -> the catalog row under
+ * "Data connections" on the environment page -> the
  * catalog's own table list (EnvDbPageComponent, Task 17 items A.2/B.1 —
  * Tabulator grid, `[tabulator-field="name"]`). Leaves the caller on that
  * table-list page; the caller clicks the actual table row itself (via
@@ -181,15 +180,8 @@ const DEMO_DB_CATALOG_ID = 'chinook-local'; // .../environments/local/catalogs/c
  * `page.waitForResponse()` immediately before that specific click — J4
  * needs exactly that ordering for its own `exec/select` assertion.
  *
- * Confirmed live (S121b) against a real `datatug serve` build from this
- * stream's own CLI worktree before writing this helper: every step below
- * was walked by hand first (project -> Go to... -> Environments -> local ->
- * Databases -> chinook-local -> Album), including hitting and fixing a real
- * bug this same click path exposed — `EnvironmentPageComponent` populated
- * its `env` field correctly but never repainted (this app is zoneless; the
- * component's own `loadEnvSummary()` never called `markForCheck()`), so the
- * Databases card stayed on its skeleton-loading state forever until that
- * fix landed (see that component's own `changeDetectorRef` doc comment).
+ * The row test IDs distinguish the navigation targets from the project
+ * context selector and repeated environment/catalog labels elsewhere.
  */
 async function goToCatalogTables(
   page: Page,
@@ -202,17 +194,17 @@ async function goToCatalogTables(
     .getByText('Environments', { exact: true })
     .click();
 
-  await expect(activePage(page).getByText(envId, { exact: true })).toBeVisible({
-    timeout: 15_000,
-  });
-  await activePage(page).getByText(envId, { exact: true }).click();
+  const environment = activePage(page)
+    .getByTestId('environment-list-item')
+    .filter({ hasText: new RegExp(envId, 'i') });
+  await expect(environment).toBeVisible({ timeout: 15_000 });
+  await environment.click();
 
-  await expect(
-    activePage(page).getByText(catalogId, { exact: true }),
-  ).toBeVisible({
-    timeout: 15_000,
-  });
-  await activePage(page).getByText(catalogId, { exact: true }).click();
+  const catalog = activePage(page)
+    .getByTestId('environment-catalog')
+    .filter({ hasText: catalogId });
+  await expect(catalog).toBeVisible({ timeout: 15_000 });
+  await catalog.click();
 }
 
 /**
@@ -461,7 +453,9 @@ test.describe('J2 — from a value to related knowledge', () => {
       .getByText('customer-invoices', { exact: false })
       .click();
     await activePage(page).getByTestId('workspace-parameters-tab').click();
-    await expect(customerBindingRow(page)).toContainText('from selection', { timeout: 10_000 });
+    await expect(customerBindingRow(page)).toContainText('from selection', {
+      timeout: 10_000,
+    });
     const runRequestPromise = page.waitForRequest(
       (request) =>
         request.url().includes('/datatug/exec/run_query') &&
@@ -761,7 +755,9 @@ test.describe('J3 — carrying context', () => {
     // binding to be visible, only for the query page itself to exist.
     await openSavedQuery(page, 'customers', 'Customer purchases by genre');
     await activePage(page).getByTestId('workspace-parameters-tab').click();
-    await expect(customerBindingRow(page)).toContainText('from context', { timeout: 10_000 });
+    await expect(customerBindingRow(page)).toContainText('from context', {
+      timeout: 10_000,
+    });
 
     // S96 — api-contract.md "Binding and context behavior": "The user can clear a
     // value; a cleared required value blocks Run until supplied." `CustomerId` is
@@ -797,20 +793,28 @@ test.describe('J3 — carrying context', () => {
       .locator('sneat-datatug-investigation-context-bar')
       .getByText('Customer.ID', { exact: false });
     await contextChip.click();
-    await expect(customerBindingRow(page)).toContainText('Required', { timeout: 10_000 });
+    await expect(customerBindingRow(page)).toContainText('Required', {
+      timeout: 10_000,
+    });
     await expect(runButton).toHaveAttribute('disabled', '');
 
     // Disabling is not removing (REQ:context-basket) — re-enabling the same chip
     // restores the "from context" binding.
     await contextChip.click();
-    await expect(customerBindingRow(page)).toContainText('from context', { timeout: 10_000 });
+    await expect(customerBindingRow(page)).toContainText('from context', {
+      timeout: 10_000,
+    });
     await expect(runButton).not.toHaveAttribute('disabled');
 
     // The query page's own "Clear this binding" button (REQ:parameter-auto-binding:
     // "The user MUST be able to clear or override a bound value before running") —
     // a page-local override, independent of the global context chip above.
-    await customerBindingRow(page).getByRole('button', { name: 'Clear CustomerId' }).click();
-    await expect(customerBindingRow(page)).toContainText('Required', { timeout: 10_000 });
+    await customerBindingRow(page)
+      .getByRole('button', { name: 'Clear CustomerId' })
+      .click();
+    await expect(customerBindingRow(page)).toContainText('Required', {
+      timeout: 10_000,
+    });
     await expect(runButton).toHaveAttribute('disabled', '');
   });
 });
@@ -963,7 +967,9 @@ test.describe('J4 — restricted principal', () => {
       .getByText('customer-invoices', { exact: false })
       .click();
     await activePage(page).getByTestId('workspace-parameters-tab').click();
-    await expect(customerBindingRow(page)).toContainText('from selection', { timeout: 10_000 });
+    await expect(customerBindingRow(page)).toContainText('from selection', {
+      timeout: 10_000,
+    });
     await activePage(page).getByTestId('workspace-run').click();
 
     const canadianRunBody = (await (
