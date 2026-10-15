@@ -7,7 +7,7 @@ import {
 } from '@angular/common/http/testing';
 import { Type } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ActivatedRoute, convertToParamMap } from '@angular/router';
+import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { BehaviorSubject } from 'rxjs';
 import { TableRecordPageComponent } from './table-record/table-record.page';
 import { TableRecordsPageComponent } from './table-records/table-records.page';
@@ -60,6 +60,7 @@ function mount<T>(
     providers: [
       provideHttpClient(),
       provideHttpClientTesting(),
+      provideRouter([]),
       { provide: ActivatedRoute, useValue: routeStub(table, query) },
       {
         provide: DOCUMENT,
@@ -174,6 +175,42 @@ describe('record page (AC:record-link-uses-primary-key-in-fragment, AC:record-lo
     expect(text()).toContain('AlbumId');
     expect(text()).toContain('(key)');
     expect(text()).toContain('Track');
+  });
+
+  it('offers each foreign key as a hop to the referenced record, the key only in the fragment', async () => {
+    const { fixture, ctrl } = mount(
+      TableRecordPageComponent,
+      'Album',
+      { schema: '' },
+      '#pk=' + encodeURIComponent('{"AlbumId":1}'),
+    );
+    ctrl.expectOne(SCHEMA_URL).flush({
+      ...ALBUM_SCHEMA,
+      foreignKeys: [
+        { name: 'Album_fk_0', columns: ['ArtistId'], refTable: { schema: 'main', name: 'Artist' }, refColumns: ['ArtistId'] },
+      ],
+    });
+    ctrl.expectOne(LOOKUP_URL).flush({
+      recordset: {
+        columns: [{ name: 'AlbumId' }, { name: 'ArtistId' }, { name: 'Title' }],
+        rows: [[
+          { type: 'integer', value: '1' },
+          { type: 'integer', value: '9007199254740993' },
+          { type: 'string', value: 'For Those About To Rock' },
+        ]],
+      },
+    });
+    await fixture.whenStable();
+    const hop = fixture.nativeElement.querySelector('[data-testid="record-hop"]') as HTMLAnchorElement;
+    expect(hop.textContent).toContain('Artist');
+    const href = hop.getAttribute('href') ?? '';
+    const [path, fragment] = href.split('#');
+    expect(path).toBe(
+      '/store/http-127.0.0.1:8989/project/demo/env/local/db/chinook/table/Artist/record?schema=main',
+    );
+    expect(decodeURIComponent(fragment)).toBe('pk={"ArtistId":9007199254740993}');
+    // No row text in the hop's address.
+    expect(href).not.toContain('Rock');
   });
 
   it('sends the key 9007199254740993 with every digit', async () => {

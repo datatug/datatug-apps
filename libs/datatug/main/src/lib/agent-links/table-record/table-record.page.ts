@@ -42,6 +42,8 @@ import {
 import { linkTableRef } from '../link-route';
 import { lookupKey, parseKeyObject, pkOfFragment } from '../record-key';
 import { qualifiedTableName } from '../table-identity';
+import { RecordHop, recordHops } from '../record-hops';
+import { RecordHopsComponent } from '../record-hops.component';
 
 export interface RecordField {
   readonly name: string;
@@ -55,6 +57,7 @@ type RecordState =
       readonly kind: 'record';
       readonly fields: readonly RecordField[];
       readonly schema: AgentTableSchema;
+      readonly hops: readonly RecordHop[];
     }
   | { readonly kind: 'problem'; readonly problem: LinkProblem };
 
@@ -81,6 +84,7 @@ type RecordState =
     IonCardTitle,
     IonCardContent,
     IonText,
+    RecordHopsComponent,
   ],
   templateUrl: './table-record.page.html',
   styleUrl: '../agent-link-page.scss',
@@ -146,6 +150,7 @@ export class TableRecordPageComponent {
               value: rows.rows[0][i] ?? '',
               key: schema.primaryKey.includes(name),
             })),
+            hops: recordHops(ref, schema.foreignKeys, rows.columns, rows.cells?.[0] ?? []),
           })),
         );
       }),
