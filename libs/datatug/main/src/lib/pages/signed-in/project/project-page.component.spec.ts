@@ -346,6 +346,37 @@ describe('ProjectPage rendering a local-agent store project', () => {
     expect(boardsCard.isLoading).toBe(false);
     expect(boardsCard.items).toEqual([]);
   });
+
+  it('does not show an unqualified Boards folder after selecting a branch', async () => {
+    const fixture = await createPage('localhost:8989');
+    fixture.detectChanges();
+    expect(
+      fixture.nativeElement.querySelector('sneat-datatug-folder'),
+    ).not.toBeNull();
+
+    const page = fixture.componentInstance as unknown as {
+      setProjRef(ref: {
+        storeId: string;
+        projectId: string;
+        projectApi: 'local';
+        branch: string;
+      }): void;
+    };
+    page.setProjRef({
+      storeId: 'localhost:8989',
+      projectId: summary.id,
+      projectApi: 'local',
+      branch: 'feature',
+    });
+    await fixture.whenStable();
+
+    expect(
+      fixture.nativeElement.querySelector('sneat-datatug-folder'),
+    ).toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('[role="status"]')?.textContent,
+    ).toContain('Boards are unavailable');
+  });
 });
 
 /**

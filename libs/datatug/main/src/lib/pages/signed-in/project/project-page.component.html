@@ -163,11 +163,19 @@
       }
     </ion-card>
   } @else if (activeTab() === 'boards') {
-    <sneat-datatug-folder
-      [path]="'~'"
-      [projectRef]="project()?.ref"
-      [hideTabs]="true"
-    />
+    @if (project()?.ref?.projectApi || project()?.ref?.branch) {
+      <ion-card>
+        <ion-card-content role="status">
+          Boards are unavailable for this project connection or branch.
+        </ion-card-content>
+      </ion-card>
+    } @else {
+      <sneat-datatug-folder
+        [path]="'~'"
+        [projectRef]="project()?.ref"
+        [hideTabs]="true"
+      />
+    }
   } @else if (activeTab() === 'queries') {
     <sneat-datatug-project-queries-preview [projectRef]="project()?.ref" />
   } @else if (activeTab() === 'databases') {
