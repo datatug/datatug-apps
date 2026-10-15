@@ -81,7 +81,8 @@ for (const id of demoSqliteDatasetIds) {
     baseURL,
   }) => {
     test.setTimeout(180_000);
-    await mapOrigins(context, baseURL!);
+    if (!baseURL) throw new Error('Playwright baseURL is required for this journey');
+    await mapOrigins(context, baseURL);
     const requested: string[] = [];
     context.on('request', (request) => requested.push(request.url()));
 

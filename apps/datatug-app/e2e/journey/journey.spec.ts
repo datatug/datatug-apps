@@ -232,7 +232,7 @@ function catalogTableRow(page: Page, tableName: string): Locator {
 function customerBindingRow(page: Page): Locator {
   return activePage(page)
     .getByRole('region', { name: 'Parameters' })
-    .locator('ion-item', { hasText: 'Mapped field: Customer.ID' });
+    .locator('[data-parameter-id="CustomerId"]');
 }
 
 /**

@@ -4,7 +4,24 @@
   max-width: 1600px;
   min-width: 0;
   margin-inline: auto;
-  padding: 0 24px 24px;
+  padding: 0 var(--ion-padding, 16px) var(--ion-padding, 16px);
+}
+// The workspace owns the outer gutter; cards must not add another one.
+:host ::ng-deep :is([query-workspace-editor], .author-results) > ion-card {
+  margin-inline: 0;
+}
+:host ::ng-deep .author-card .author-code-header {
+  --padding-start: var(--ion-padding, 16px);
+  --inner-padding-end: var(--ion-padding, 16px);
+}
+:host ::ng-deep .author-card :is(.author-sql-preview, .author-preview-empty, .query-sql-editor .cm-content) {
+  padding: var(--ion-padding, 16px);
+}
+:host ::ng-deep [data-testid='author-parameters-panel'] > p {
+  padding-inline: var(--ion-padding, 16px);
+}
+:host ::ng-deep .query-view-switch > ion-button:first-child {
+  --padding-start: var(--ion-padding, 16px);
 }
 .workspace-navigation:empty {
   display: none;
@@ -35,7 +52,7 @@
 }
 :host ::ng-deep .author-results {
   display: grid;
-  grid-template-columns: minmax(5rem, max-content) minmax(0, 1fr);
+  grid-template-columns: minmax(7rem, max-content) minmax(0, 1fr);
   align-items: center;
   column-gap: 0.75rem;
 }
@@ -52,8 +69,8 @@
   grid-row: 1;
   align-self: start;
   --min-height: 2.75rem;
-  --padding-start: 0;
-  --inner-padding-end: 0;
+  --padding-start: var(--ion-padding, 16px);
+  --inner-padding-end: var(--ion-padding, 16px);
   --background: transparent;
 }
 :host ::ng-deep .author-results-heading ion-label {
@@ -61,6 +78,7 @@
 }
 :host ::ng-deep .author-results-empty {
   padding-block: 0.5rem;
+  padding-inline: var(--ion-padding, 16px);
   color: var(--ion-color-medium-shade);
 }
 :host ::ng-deep .author-results-empty p {
@@ -139,9 +157,6 @@
   display: none;
 }
 @media (max-width: 700px) {
-  :host {
-    padding: 0 12px 20px;
-  }
   .workspace-mobile-navigation {
     display: block;
     margin-block: 0.35rem 0.65rem;
@@ -173,10 +188,5 @@
     grid-column: 1;
     grid-row: auto;
     min-width: 0;
-  }
-}
-@media (min-width: 701px) and (max-width: 1100px) {
-  :host {
-    padding-inline: 16px;
   }
 }

@@ -162,12 +162,14 @@ for (const id of demoSqliteDatasetIds) {
         (candidate) => candidate.localId === id,
       );
       expect(db, `${id} is in the DemoDB registry`).toBeTruthy();
-      const downloads = db!.exports.filter(
-        (file) => !file.table && file.format !== 'metadata' && file.url,
+      if (!db) throw new Error(`${id} is missing from the DemoDB registry`);
+      const downloads = db.exports.filter(
+        (file): file is CorpusExport & { url: string } =>
+          !file.table && file.format !== 'metadata' && typeof file.url === 'string' && file.url.length > 0,
       );
       expect(downloads.map((file) => file.format)).toContain('sqlite');
       for (const file of downloads) {
-        const response = await request.head(file.url!);
+        const response = await request.head(file.url);
         expect(response.status(), `${file.format}: ${file.url}`).toBe(200);
       }
     });
@@ -185,7 +187,8 @@ for (const id of demoSqliteDatasetIds) {
       const loadTimeout = large ? 600_000 : 90_000;
       const db = (await loadCorpus(request)).find(
         (candidate) => candidate.localId === id,
-      )!;
+      );
+      if (!db) throw new Error(`${id} is missing from the DemoDB registry`);
       const demodb = trackDemodbRequests(context);
       const persistent = await hasOpfs(page);
       test.skip(
@@ -237,9 +240,11 @@ for (const id of demoSqliteDatasetIds) {
           .getByTestId('ovdb-table-list')
           .locator('[data-testid^="table-"]')
           .evaluateAll((items) =>
-            items.map((item) =>
-              item.getAttribute('data-testid')!.slice('table-'.length),
-            ),
+            items.map((item) => {
+              const testId = item.getAttribute('data-testid');
+              if (testId === null) throw new Error('Table-list item is missing data-testid');
+              return testId.slice('table-'.length);
+            }),
           )
       ).sort();
       expect(listed).toEqual(
@@ -269,15 +274,19 @@ for (const id of demoSqliteDatasetIds) {
         target,
         `${id} has a table that can be edited by the smoke test`,
       ).toBeTruthy();
-      const editedColumn = target!.columns.find(
+      if (!target) throw new Error(`${id} has no editable table`);
+      const editableColumn = target.columns.find(
         (column) => !column.primaryKey && /CHAR|TEXT/i.test(column.type),
-      )!.name;
-      await page.getByTestId(`table-${target!.name}`).click();
+      );
+      if (!editableColumn) throw new Error(`${id}/${target.name} has no editable text column`);
+      const editedColumn = editableColumn.name;
+      await page.getByTestId(`table-${target.name}`).click();
       await expect(page.getByTestId('ovdb-rows')).toBeVisible({
         timeout: 60_000,
       });
       const rows = page.getByTestId('ovdb-rows').locator('tbody tr');
-      expect(await rows.count()).toBe(Math.min(target!.rowCount!, 100));
+      if (target.rowCount == null) throw new Error(`${id}/${target.name} has no row count`);
+      expect(await rows.count()).toBe(Math.min(target.rowCount, 100));
       const headers = await page
         .getByTestId('ovdb-rows')
         .locator('thead th')
