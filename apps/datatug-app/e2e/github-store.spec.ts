@@ -285,11 +285,15 @@ test.describe('GitHub-store project — every side-menu page loads without error
     // --- Environments (side-menu click) ------------------------------------
     await page.locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Environments' }).click();
     for (const envId of ['local', 'dev', 'QA', 'UAT', 'prod']) {
-      await expect(activePage(page).getByText(envId, { exact: true })).toBeVisible({
+      await expect(
+        activePage(page).locator('[data-testid="environment-list-item"]')
+          .filter({ hasText: new RegExp(`\\b${envId}\\b`, 'i') }),
+      ).toBeVisible({
         timeout: 15_000,
       });
     }
-    await activePage(page).getByText('local', { exact: true }).click();
+    await activePage(page).locator('[data-testid="environment-list-item"]')
+      .filter({ hasText: /\blocal\b/i }).click();
     await expect(activePage(page).getByText('sqlite3')).toBeVisible({ timeout: 15_000 });
     await activePage(page).getByText('chinook-local').click();
     await expect(activePage(page).getByText('Album', { exact: true })).toBeVisible({
