@@ -29,87 +29,89 @@
   @if (unsupportedProject()) {
     <ion-card>
       <ion-card-content role="status">
-        Entities are not available for this project connection or branch.
+        Entities are unavailable for this project connection or branch.
       </ion-card-content>
     </ion-card>
   } @else {
-  <ion-card>
-    <ion-item>
-      <ion-input
-        aria-label="Filter entities"
-        placeholder="Filter entities"
-        [value]="filterText()"
-        (ionInput)="filterText.set($event.detail.value || '')"
-      />
-      <!--			<ion-buttons slot="end">-->
-      <!--				<ion-button title="Many-to-many" color="medium">-->
-      <!--					<ion-icon name="code-working-outline"></ion-icon>-->
-      <!--				</ion-button>-->
-      <!--				<ion-button title="Many-to-many" color="medium">-->
-      <!--					<ion-icon name="bookmark-outline"></ion-icon>-->
-      <!--				</ion-button>-->
-      <!--			</ion-buttons>-->
-    </ion-item>
-    <!--		<ion-segment value="all">-->
-    <!--			<ion-segment-button value="all">-->
-    <!--				<ion-label>Principal</ion-label>-->
-    <!--			</ion-segment-button>-->
-    <!--			<ion-segment-button value="m2m">-->
-    <!--				<ion-label>Many-2-many</ion-label>-->
-    <!--			</ion-segment-button>-->
-    <!--			<ion-segment-button value="favorite">-->
-    <!--				<ion-label>Favorite</ion-label>-->
-    <!--			</ion-segment-button>-->
-    <!--		</ion-segment>-->
-    <ion-list class="last-child-no-border">
-      @if (filteredEntities(); as visibleEntities) {
-        @for (entity of visibleEntities; track entity.id) {
-          <ion-item
-            [routerLink]="entityUrl(entity)"
-            (click)="goEntity(entity)"
-            class="last-child-no-border"
-          >
-            <ion-label [class.deleting-list-item]="entity.state === 'deleting'">
-              {{ entity.dbo?.title || entity.dbo?.id || entity.id }}
-            </ion-label>
-            @if (entity.dbo?.fields?.length) {
-              <ion-badge color="light" class="badge-count">
-                {{ entity.dbo.fields.length }}
-                {{ entity.dbo.fields.length === 1 ? 'field' : 'fields' }}
-              </ion-badge>
-            }
-            @if (canMutateEntities()) {
-              <ion-buttons>
-                <ion-button
-                  title="Delete entity"
-                  class="delete-button"
-                  [disabled]="entity.state && entity.state !== 'changed'"
-                  color="medium"
-                  (click)="deleteEntity($event, entity)"
-                >
-                  <ion-icon name="trash" />
-                </ion-button>
-              </ion-buttons>
-            }
-          </ion-item>
-        } @empty {
-          <ion-item class="last-child-no-border">
-            <ion-label color="medium"
-              >{{
-                filterText().trim()
-                  ? 'No matching entities.'
-                  : 'No entities have been created yet.'
-              }}
-            </ion-label>
+    <ion-card>
+      <ion-item>
+        <ion-input
+          aria-label="Filter entities"
+          placeholder="Filter entities"
+          [value]="filterText()"
+          (ionInput)="filterText.set($event.detail.value || '')"
+        />
+        <!--			<ion-buttons slot="end">-->
+        <!--				<ion-button title="Many-to-many" color="medium">-->
+        <!--					<ion-icon name="code-working-outline"></ion-icon>-->
+        <!--				</ion-button>-->
+        <!--				<ion-button title="Many-to-many" color="medium">-->
+        <!--					<ion-icon name="bookmark-outline"></ion-icon>-->
+        <!--				</ion-button>-->
+        <!--			</ion-buttons>-->
+      </ion-item>
+      <!--		<ion-segment value="all">-->
+      <!--			<ion-segment-button value="all">-->
+      <!--				<ion-label>Principal</ion-label>-->
+      <!--			</ion-segment-button>-->
+      <!--			<ion-segment-button value="m2m">-->
+      <!--				<ion-label>Many-2-many</ion-label>-->
+      <!--			</ion-segment-button>-->
+      <!--			<ion-segment-button value="favorite">-->
+      <!--				<ion-label>Favorite</ion-label>-->
+      <!--			</ion-segment-button>-->
+      <!--		</ion-segment>-->
+      <ion-list class="last-child-no-border">
+        @if (filteredEntities(); as visibleEntities) {
+          @for (entity of visibleEntities; track entity.id) {
+            <ion-item
+              [routerLink]="entityUrl(entity)"
+              (click)="goEntity(entity)"
+              class="last-child-no-border"
+            >
+              <ion-label
+                [class.deleting-list-item]="entity.state === 'deleting'"
+              >
+                {{ entity.dbo?.title || entity.dbo?.id || entity.id }}
+              </ion-label>
+              @if (entity.dbo?.fields?.length) {
+                <ion-badge color="light" class="badge-count">
+                  {{ entity.dbo.fields.length }}
+                  {{ entity.dbo.fields.length === 1 ? 'field' : 'fields' }}
+                </ion-badge>
+              }
+              @if (canMutateEntities()) {
+                <ion-buttons>
+                  <ion-button
+                    title="Delete entity"
+                    class="delete-button"
+                    [disabled]="entity.state && entity.state !== 'changed'"
+                    color="medium"
+                    (click)="deleteEntity($event, entity)"
+                  >
+                    <ion-icon name="trash" />
+                  </ion-button>
+                </ion-buttons>
+              }
+            </ion-item>
+          } @empty {
+            <ion-item class="last-child-no-border">
+              <ion-label color="medium"
+                >{{
+                  filterText().trim()
+                    ? 'No matching entities.'
+                    : 'No entities have been created yet.'
+                }}
+              </ion-label>
+            </ion-item>
+          }
+        } @else {
+          <ion-item>
+            <ion-label color="medium">Loading...</ion-label>
           </ion-item>
         }
-      } @else {
-        <ion-item>
-          <ion-label color="medium">Loading...</ion-label>
-        </ion-item>
-      }
-    </ion-list>
-  </ion-card>
+      </ion-list>
+    </ion-card>
   }
 
   @if (canMutateEntities()) {

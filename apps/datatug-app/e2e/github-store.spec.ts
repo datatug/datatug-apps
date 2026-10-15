@@ -440,10 +440,9 @@ test.describe('GitHub-store project — every side-menu page loads without error
     expect(new URL(page.url()).searchParams.get('id')).toBe(
       'demodb/chinook-top-customer-spend',
     );
-    await expect(activePage(page).locator('sneat-datatug-page-title')).toContainText(
-      'Top Customer Spend',
-      { timeout: 20_000 },
-    );
+    await expect(
+      activePage(page).locator('sneat-datatug-page-title'),
+    ).toContainText('Top Customer Spend', { timeout: 20_000 });
     expect(errors).toEqual([]);
   });
 
@@ -576,7 +575,9 @@ test.describe('GitHub-store project — every side-menu page loads without error
         hasText: 'Queries',
       })
       .click();
-    await activePage(page).getByText('Albums by title', { exact: true }).click();
+    await activePage(page)
+      .getByText('Albums by title', { exact: true })
+      .click();
     await activePage(page)
       .locator('ion-item', { hasText: 'Albums by title' })
       .getByTitle('Edit')
