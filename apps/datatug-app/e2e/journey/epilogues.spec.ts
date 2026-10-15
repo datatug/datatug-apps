@@ -55,9 +55,21 @@ async function openParameters(page: Page): Promise<Locator> {
 }
 
 function customerBindingRow(panel: Locator): Locator {
-  return panel
-    .locator('ion-item', { hasText: 'Mapped field: Customer.ID' })
-    .first();
+  return panel.locator('[data-parameter-id="CustomerId"]');
+}
+
+async function inspectCustomerMapping(panel: Locator): Promise<void> {
+  await expect(panel).toBeVisible();
+  const parameter = customerBindingRow(panel);
+  await expect(parameter).toBeVisible({ timeout: 10_000 });
+  await parameter.getByRole('button', { name: /^Details for / }).click();
+  const mappingPopover = panel.page()
+    .locator('ion-popover:not(.overlay-hidden)')
+    .filter({ hasText: 'Customer.ID' });
+  await expect(mappingPopover).toBeVisible({ timeout: 10_000 });
+  await expect(mappingPopover).toContainText('Customer.ID');
+  await panel.page().keyboard.press('Escape');
+  await expect(mappingPopover).toBeHidden({ timeout: 10_000 });
 }
 
 test.describe('Epilogue A — close/reopen', () => {
@@ -188,15 +200,9 @@ test.describe('Epilogue A — close/reopen', () => {
     });
 
     await reopenedPage.goto(customerInvoicesUrl);
-    await expect(customerBindingRow(await openParameters(reopenedPage))).toContainText(
-      'Customer.ID',
-      { timeout: 10_000 },
-    );
+    await inspectCustomerMapping(await openParameters(reopenedPage));
     await reopenedPage.goto(customerPurchasesUrl);
-    await expect(customerBindingRow(await openParameters(reopenedPage))).toContainText(
-      'Customer.ID',
-      { timeout: 10_000 },
-    );
+    await inspectCustomerMapping(await openParameters(reopenedPage));
 
     // --- Open a NEW browser context (a genuinely separate browser session,
     // not just a new tab) at the same project URL ---
@@ -227,15 +233,9 @@ test.describe('Epilogue A — close/reopen', () => {
     });
 
     await freshPage.goto(customerInvoicesUrl);
-    await expect(customerBindingRow(await openParameters(freshPage))).toContainText(
-      'Customer.ID',
-      { timeout: 10_000 },
-    );
+    await inspectCustomerMapping(await openParameters(freshPage));
     await freshPage.goto(customerPurchasesUrl);
-    await expect(customerBindingRow(await openParameters(freshPage))).toContainText(
-      'Customer.ID',
-      { timeout: 10_000 },
-    );
+    await inspectCustomerMapping(await openParameters(freshPage));
 
     await freshContext.close();
   });

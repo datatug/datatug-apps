@@ -662,7 +662,8 @@
                     inputmode="numeric"
                     label="Customer ID"
                     labelPlacement="start"
-                    helperText="Required · whole number"
+                    placeholder="Not set"
+                    helperText="integer · Required"
                     [class.ion-invalid]="
                       !authorCustomerIdMissing() && !authorCustomerIdValid()
                     "
@@ -685,6 +686,7 @@
                     (ionInput)="authorCustomerIdChanged($event)"
                   />
                 </ion-item>
+                @if (authorCustomerIdOrigin() || (authorCustomerIdValid() && !authorPlan())) {
                 <ion-item lines="none">
                   <ion-label class="ion-text-wrap">
                   @if (authorCustomerIdOrigin(); as customerIdOrigin) {
@@ -710,6 +712,7 @@
                   }
                   </ion-label>
                 </ion-item>
+                }
                 }
                 @if (authorUnsupportedParameterNames().length) {
                   <ion-item lines="none">
@@ -991,48 +994,71 @@
       @if (isTextQueryWorkspace() && !isTugqlAuthorJourney()) {
         @if (queryDef()?.parameters?.length) {
           <ion-list>
-            @for (parameter of queryDef()?.parameters ?? []; track parameter.id) {
+            @for (parameter of queryDef()?.parameters ?? []; track project?.ref?.projectId + ':' + queryId + ':' + parameter.id) {
+              <div data-testid="native-parameter" [attr.data-parameter-id]="parameter.id">
               <ion-item [lines]="$last ? 'none' : 'inset'" [color]="nativeParameterError(parameter.id) || nativeParameterBinding(parameter.id)?.blocked ? 'warning' : undefined">
-                <ion-label class="ion-text-wrap">
-                  {{ parameter.title || parameter.id }}
-                  @if (nativeParameterBinding(parameter.id); as binding) {
-                    <p>Mapped field: {{ bindingFieldLabel(binding) }}</p>
-                  }
-                  <p>{{ parameter.type }} · {{ parameter.isRequired ? 'Required' : 'Optional' }}
-                    @if (nativeParameterBinding(parameter.id)?.value !== undefined && !nativeParameterError(parameter.id)) {
-                      · {{ bindingValueLabel(nativeParameterBinding(parameter.id)!) }}
-                    }
-                  </p>
-                  @if (nativeParameterError(parameter.id); as error) { <p role="alert">{{ error }}</p> }
-                  @if (nativeParameterBinding(parameter.id); as binding) {
-                    @if (binding.blocked === 'ambiguous') { <p>ambiguous — {{ ambiguousValuesLabel(binding) }}</p> }
-                    @if (binding.blocked === 'conflict-unconfirmed') { <p>conflict — {{ conflictLabel(binding) }}</p> }
-                    @if (binding.blocked === 'missing-required') { <p>required — no value supplied</p> }
-                  }
-                </ion-label>
+                <div class="native-parameter-field">
                 @if (nativeParameterSupported(parameter)) {
                   @if (parameter.type === 'boolean' || parameter.type === 'bit') {
-                    <ion-select slot="end" interface="popover" [attr.aria-label]="parameter.id + ' value'" placeholder="Unbound"
+                    <ion-select [label]="parameter.title || parameter.id" labelPlacement="start" interface="popover" [attr.aria-label]="parameter.id + ' value'" placeholder="Not set"
+                      [attr.aria-describedby]="parameterDetailsPrefix + '-hint-' + $index" [attr.aria-required]="parameter.isRequired ? 'true' : null"
                       [value]="nativeParameterValue(parameter.id)" [disabled]="running() || queryState.isSaving"
                       (ionChange)="setNativeParameterInput(parameter, $event.detail.value)">
-                      <ion-select-option value="">Unbound</ion-select-option>
+                      <ion-select-option value="">Not set</ion-select-option>
                       <ion-select-option value="true">True</ion-select-option>
                       <ion-select-option value="false">False</ion-select-option>
                     </ion-select>
                   } @else {
-                    <ion-input slot="end" [attr.aria-label]="parameter.id + ' value'"
+                    <ion-input [label]="parameter.title || parameter.id" labelPlacement="start" placeholder="Not set" [attr.aria-label]="parameter.id + ' value'"
+                      [attr.aria-describedby]="parameterDetailsPrefix + '-hint-' + $index" [required]="!!parameter.isRequired"
                       [inputmode]="nativeParameterInputKind(parameter)" [value]="nativeParameterValue(parameter.id)"
                       [disabled]="running() || queryState.isSaving"
                       (ionInput)="setNativeParameterInput(parameter, $event.detail.value)" />
                   }
-                  @if (nativeParameterBinding(parameter.id)?.value !== undefined) {
-                    <ion-button slot="end" fill="clear" title="Clear this binding" [attr.aria-label]="'Clear ' + parameter.id"
-                      (click)="clearNativeParameter(parameter.id)"><ion-icon name="close-outline" /></ion-button>
-                  }
                 } @else {
-                  <ion-note slot="end">Manual editor unavailable for this type.</ion-note>
+                  <ion-label class="ion-text-wrap">{{ parameter.title || parameter.id }}</ion-label>
+                  <ion-note>Manual editor unavailable for this type.</ion-note>
                 }
+                <ion-note [id]="parameterDetailsPrefix + '-hint-' + $index">{{ nativeParameterHint(parameter) }}</ion-note>
+                </div>
+                <ion-buttons slot="end">
+                  @if (nativeParameterValue(parameter.id) !== '') {
+                    <ion-button fill="clear" title="Clear this binding" [attr.aria-label]="'Clear ' + parameter.id"
+                      (click)="clearNativeParameter(parameter.id)"><ion-icon name="close-outline" slot="icon-only" /></ion-button>
+                  }
+                  <ion-button fill="clear" [id]="parameterDetailsPrefix + '-' + $index"
+                    [attr.aria-label]="'Details for ' + (parameter.title || parameter.id)">
+                    <ion-icon name="information-circle-outline" slot="icon-only" />
+                  </ion-button>
+                </ion-buttons>
               </ion-item>
+              <ion-popover [trigger]="parameterDetailsPrefix + '-' + $index">
+                <ng-template>
+                  <ion-list>
+                    <ion-item lines="none"><ion-label class="ion-text-wrap"><h2>{{ parameter.title || parameter.id }}</h2><p>{{ '@' + parameter.id }} · {{ nativeParameterHint(parameter) }}</p></ion-label></ion-item>
+                    @if (nativeParameterBinding(parameter.id); as binding) {
+                      <ion-item lines="none"><ion-label class="ion-text-wrap"><p>Mapped field</p>{{ bindingFieldLabel(binding) }}</ion-label></ion-item>
+                      @if (binding.value !== undefined) {
+                        <ion-item lines="none"><ion-label class="ion-text-wrap"><p>Current binding · client-reported</p>{{ bindingValueLabel(binding) }}</ion-label></ion-item>
+                      }
+                    } @else {
+                      <ion-item lines="none"><ion-label class="ion-text-wrap">No field mapping available.</ion-label></ion-item>
+                    }
+                  </ion-list>
+                </ng-template>
+              </ion-popover>
+              @if (nativeParameterError(parameter.id) || nativeParameterBinding(parameter.id)?.blocked) {
+                <ion-item lines="none" color="warning">
+                  <ion-label class="ion-text-wrap">
+                    @if (nativeParameterError(parameter.id); as error) { <p role="alert">{{ error }}</p> }
+                    @if (nativeParameterBinding(parameter.id); as binding) {
+                      @if (binding.blocked === 'ambiguous') { <p>ambiguous — {{ ambiguousValuesLabel(binding) }}</p> }
+                      @if (binding.blocked === 'conflict-unconfirmed') { <p>conflict — {{ conflictLabel(binding) }}</p> }
+                      @if (binding.blocked === 'missing-required') { <p>required — no value supplied</p> }
+                    }
+                  </ion-label>
+                </ion-item>
+              }
               @if (nativeParameterBinding(parameter.id); as binding) {
                 @if (binding.cohortOptions?.length) {
                   <ion-item lines="none">
@@ -1055,6 +1081,7 @@
                   </ion-item>
                 }
               }
+              </div>
             }
           </ion-list>
         } @else {

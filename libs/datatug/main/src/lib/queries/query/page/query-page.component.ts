@@ -63,7 +63,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Params, Router, NavigationEnd } from '@angular/router';
 import { AgGridAngular } from 'ag-grid-angular';
 import { addIcons } from 'ionicons';
-import { copyOutline, shieldCheckmarkOutline } from 'ionicons/icons';
+import { copyOutline, informationCircleOutline, shieldCheckmarkOutline } from 'ionicons/icons';
 import {
   AllCommunityModule,
   ModuleRegistry,
@@ -358,6 +358,7 @@ import {
   IonMenuButton,
   IonModal,
   IonNote,
+  IonPopover,
   IonSelect,
   IonSelectOption,
   IonSegment,
@@ -688,6 +689,8 @@ export function extractLinkedEntityNames(
   return [...names].sort();
 }
 
+let queryParameterEditorId = 0;
+
 @Component({
   selector: 'sneat-datatug-sql-editor',
   templateUrl: './query-page.component.html',
@@ -753,6 +756,7 @@ export function extractLinkedEntityNames(
     IonCardContent,
     IonItem,
     IonInput,
+    IonPopover,
     IonSelect,
     IonSelectOption,
     IonSegment,
@@ -771,6 +775,7 @@ export function extractLinkedEntityNames(
   ],
 })
 export class QueryPageComponent implements OnDestroy, ViewDidEnter {
+  public readonly parameterDetailsPrefix = `query-parameter-details-${++queryParameterEditorId}`;
   private readonly sessionWorkspace = inject(SessionWorkspaceService, { optional: true });
   private readonly route = inject(ActivatedRoute);
   private readonly contextSessionId = toSignal(this.route.paramMap.pipe(map((params) => params.get('sessionId') ?? '')), {
@@ -4928,7 +4933,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         if (generation === this.semanticBasisGeneration) this.semanticBasis.set({ queryHash, resultIndex: resultSet === 'affiliations' ? 0 : 1 + (this.runResult()?.relatedRecordsets?.findIndex(item => item.id === resultSet) ?? 0), columns: recordset.columns.map(column => ({ name: column.name, dataType: column.type ?? 'unknown' })) });
       });
     });
-    addIcons({ copyOutline, shieldCheckmarkOutline });
+    addIcons({ copyOutline, informationCircleOutline, shieldCheckmarkOutline });
     this.observedSecurityContextId = this.agentContext.securityContextId();
     this.hasObservedSecurityContext = true;
     const navigationQuery = history.state.query as IQueryDef | undefined;
@@ -6384,6 +6389,16 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public nativeParameterInputKind(parameter: IParameterDef): 'text' | 'decimal' | 'numeric' {
     return parameter.type === 'integer' ? 'numeric' :
       ['number', 'float', 'decimal', 'money'].includes(parameter.type) ? 'decimal' : 'text';
+  }
+
+  public nativeParameterHint(parameter: IParameterDef): string {
+    const parts = [parameter.type, parameter.isRequired ? 'Required' : 'Optional'];
+    const binding = this.nativeParameterBinding(parameter.id);
+    if (binding?.value !== undefined && binding.origin && binding.origin !== 'user') {
+      parts.push(`from ${binding.origin}`);
+      if (binding.origin === 'context' && binding.role) parts.push(binding.role);
+    }
+    return parts.join(' · ');
   }
 
   public nativeParameterSupported(parameter: IParameterDef): boolean {
