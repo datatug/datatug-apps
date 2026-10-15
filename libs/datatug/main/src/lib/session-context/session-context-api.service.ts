@@ -1,10 +1,11 @@
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { SneatApiService } from '@sneat/api';
-import { formatGithubProjectApiKey, readGithubProjectId } from '@datatug/project-address';
+import { formatGithubProjectApiKey, isValidGithubRef, readGithubProjectId } from '@datatug/project-address';
 import { firstValueFrom } from 'rxjs';
 import { IProjectRef, isSharedProjectRef, isValidProjectRef } from '../core/project-context';
 import { buildAgentUrl } from '../services/repo/agent-url';
+import { ProjectQueryApiService } from '../services/project/project-query-api.service';
 import { projectApiQuery } from '../nav/project-api-routing';
 import {
   ContextCapabilities, ContextCommand, ContextReceipt, ContextSessionPage,
@@ -18,7 +19,13 @@ export class SessionContextApiService {
   private readonly http = inject(HttpClient);
   private readonly api = inject(SneatApiService);
 
-  private reference(ref: IProjectRef): Record<string, string> {
+  private readonly projectQueries = inject(ProjectQueryApiService);
+  // A workspace keeps its project reference for reads and commands. Resolve a
+  // default once for that reference, so a repository default change cannot
+  // redirect an already open session's source admission.
+  private readonly branches = new WeakMap<IProjectRef, Promise<string>>();
+
+  private reference(ref: IProjectRef): Record<string, string> | Promise<Record<string, string>> {
     if (!isValidProjectRef(ref)) throw new Error('Open a valid project before using sessions.');
     if (ref.projectApi) projectApiQuery(ref);
     if (ref.spaceID !== undefined) {
@@ -28,16 +35,44 @@ export class SessionContextApiService {
     if (['github', 'github.com'].includes(ref.storeId)) {
       const address = readGithubProjectId(ref.projectId);
       if (!address.ok) throw new Error('Invalid GitHub project scope.');
-      return { storage: 'github.com', project: formatGithubProjectApiKey(address.id), ...(ref.branch ? { branch: ref.branch } : {}) };
+      const embedded = address.id.ref;
+      if (ref.branch && embedded && ref.branch !== embedded)
+        throw new Error('The project address and selected branch disagree. Open the project with one explicit branch.');
+      const selected = ref.branch || embedded;
+      const reference = { storage: 'github.com', project: formatGithubProjectApiKey(address.id) };
+      if (selected && selected !== 'HEAD') return { ...reference, branch: this.validBranch(selected) };
+      let branch = this.branches.get(ref);
+      if (!branch) {
+        branch = firstValueFrom(this.projectQueries.branches(ref)).then((result) => {
+          if (!result.defaultBranch || result.defaultBranch === 'HEAD') throw new Error();
+          return this.validBranch(result.defaultBranch);
+        }).catch((error: unknown) => {
+          this.branches.delete(ref);
+          if (error instanceof HttpErrorResponse && [401, 403, 503].includes(error.status)) throw error;
+          throw new Error('The repository default branch could not be resolved. Open this project with an explicit branch.');
+        });
+        this.branches.set(ref, branch);
+      }
+      return branch.then((resolved) => ({ ...reference, branch: resolved }));
     }
     return { storage: ref.storeId === 'firestore' ? 'firestore' : 'local', project: ref.projectId };
   }
 
+  private validBranch(branch: string): string {
+    if (!isValidGithubRef(branch))
+      throw new Error('Open the project with a valid explicit branch.');
+    return branch;
+  }
+
   private get<T>(ref: IProjectRef, path: string, extra: Record<string, string> = {}): Promise<T> {
-    const params = new HttpParams({ fromObject: { ...this.reference(ref), ...extra } });
-    return firstValueFrom(['github', 'github.com', 'firestore'].includes(ref.storeId)
-      ? this.api.get<T>(`datatug/session-context/${path}`, params)
-      : this.http.get<T>(buildAgentUrl(ref.storeId, `/session-context/${path}`), { params }));
+    const get = (reference: Record<string, string>): Promise<T> => {
+      const params = new HttpParams({ fromObject: { ...reference, ...extra } });
+      return firstValueFrom(['github', 'github.com', 'firestore'].includes(ref.storeId)
+        ? this.api.get<T>(`datatug/session-context/${path}`, params)
+        : this.http.get<T>(buildAgentUrl(ref.storeId, `/session-context/${path}`), { params }));
+    };
+    const reference = this.reference(ref);
+    return reference instanceof Promise ? reference.then(get) : get(reference);
   }
 
   async capabilities(ref: IProjectRef): Promise<ContextCapabilities> {
@@ -64,8 +99,9 @@ export class SessionContextApiService {
   }
 
   async command(ref: IProjectRef, capabilities: ContextCapabilities, command: ContextCommand): Promise<ContextReceipt> {
+    const reference = this.reference(ref);
     const params = new HttpParams({ fromObject: {
-      ...this.reference(ref), databaseId: capabilities.databaseId, projectId: capabilities.projectId,
+      ...(reference instanceof Promise ? await reference : reference), databaseId: capabilities.databaseId, projectId: capabilities.projectId,
     } });
     const commandBody = command.action === 'importLegacy'
       ? { opId: command.opId, action: command.action, legacyImport: command.legacyImport }
