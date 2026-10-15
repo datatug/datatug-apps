@@ -1,4 +1,4 @@
-import { Component, OnDestroy, inject, signal } from '@angular/core';
+import { Component, OnDestroy, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
   IonBackButton,
@@ -103,6 +103,21 @@ export class EntitiesPageComponent
   // pages/signed-in/project/project-page.component.ts (PR #95) for the
   // established pattern.
   readonly entities = signal<Entities | undefined>(undefined);
+  readonly filterText = signal('');
+  readonly filteredEntities = computed(() => {
+    const entities = this.entities();
+    if (!entities) {
+      return undefined;
+    }
+    const query = this.filterText().trim().toLocaleLowerCase();
+    return query
+      ? entities.filter((entity) =>
+          [entity.dbo?.title, entity.dbo?.id, entity.id].some((value) =>
+            value?.toLocaleLowerCase().includes(query),
+          ),
+        )
+      : entities;
+  });
   readonly project = signal<IProjectContext | undefined>(undefined);
   private readonly destroyed = new Subject<void>();
 
@@ -183,9 +198,7 @@ export class EntitiesPageComponent
     this.entityService.deleteEntity(project.ref, entity.id).subscribe({
       next: async () => {
         this.entities.set(
-          (this.entities() as IProjEntity[]).filter(
-            (v) => v.id !== entity.id,
-          ),
+          (this.entities() as IProjEntity[]).filter((v) => v.id !== entity.id),
         );
         const toast = await this.toastCtrl.create({
           position: 'top',

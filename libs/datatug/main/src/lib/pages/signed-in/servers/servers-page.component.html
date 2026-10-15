@@ -35,9 +35,16 @@
     }
   </ion-card>
   <ion-card>
-    <ion-item>
-      <ion-input placeholder="filter" />
-    </ion-item>
+    @if (tab === 'db') {
+      <ion-item>
+        <ion-input
+          aria-label="Filter database servers"
+          placeholder="Filter database servers"
+          [value]="filterText()"
+          (ionInput)="filterText.set($event.detail.value || '')"
+        />
+      </ion-item>
+    }
     <ion-card-header>
       <ion-segment [(ngModel)]="tab">
         <ion-segment-button value="db">
@@ -52,7 +59,7 @@
         <ion-segment-button value="api">API servers</ion-segment-button>
       </ion-segment>
     </ion-card-header>
-    @if (tab === "db") {
+    @if (tab === 'db') {
       <ion-list>
         @if (filteredDbServers(); as servers) {
           @for (dbServer of servers; track dbServer) {
@@ -66,7 +73,7 @@
                 class="ion-margin-start"
                 title="Number of databases/catalogs on this server"
                 >{{ dbServer.databasesCount }}
-                {{ dbServer.databasesCount === 1 ? "database" : "databases" }}
+                {{ dbServer.databasesCount === 1 ? 'database' : 'databases' }}
               </ion-badge>
               <ion-buttons slot="end">
                 <ion-button
@@ -76,6 +83,14 @@
                   <ion-icon name="trash-outline" />
                 </ion-button>
               </ion-buttons>
+            </ion-item>
+          } @empty {
+            <ion-item>
+              <ion-label color="medium">{{
+                filterText().trim()
+                  ? 'No matching database servers.'
+                  : 'No database servers in the selected environments.'
+              }}</ion-label>
             </ion-item>
           }
           <ion-item>
