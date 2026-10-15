@@ -21,6 +21,7 @@ class AuthPanelStubComponent {
 
 describe('SessionWorkspaceShellComponent auth lifecycle', () => {
   let fixture: ComponentFixture<SessionWorkspaceShellComponent>;
+  let routeParams: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
   let authState: BehaviorSubject<{ status: string; user?: { uid: string } }>;
   let api: { capabilities: ReturnType<typeof vi.fn>; list: ReturnType<typeof vi.fn>; command: ReturnType<typeof vi.fn> };
   const environment = { environmentId: 'uat', identityDomain: 'workspace' };
@@ -43,7 +44,7 @@ describe('SessionWorkspaceShellComponent auth lifecycle', () => {
       list: vi.fn(async () => ({ items: [], hasMore: false })),
       command: vi.fn(),
     };
-    const params = new BehaviorSubject(convertToParamMap({ storeId: 'http-localhost:8989', projectId: 'shop' }));
+    const params = routeParams = new BehaviorSubject(convertToParamMap({ storeId: 'github.com', projectId: 'shop' }));
     const query = new BehaviorSubject(convertToParamMap({}));
     const route = {
       paramMap: params.asObservable(),
@@ -102,6 +103,28 @@ describe('SessionWorkspaceShellComponent auth lifecycle', () => {
     expect(workspace.authRequired()).toBe(false);
     expect(workspace.capabilities()).toEqual(caps);
     expect(workspace.sessions()).toEqual([]);
+  });
+
+  it('offers fresh CLI link instructions and read-only retry for local agent 401', async () => {
+    await fixture.whenStable();
+    const workspace = TestBed.inject(SessionWorkspaceService);
+    api.capabilities.mockRejectedValueOnce({ status: 401 });
+    routeParams.next(convertToParamMap({ storeId: 'http-localhost:8989', projectId: 'shop' }));
+    await vi.waitFor(() => expect(workspace.agentReconnectRequired()).toBe(true));
+    fixture.componentInstance.chooserOpen.set(true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(workspace.agentReconnectRequired()).toBe(true);
+    expect(workspace.authRequired()).toBe(false);
+    expect(fixture.debugElement.query(By.directive(AuthPanelStubComponent))).toBeNull();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Open a fresh DataTug link from your CLI'));
+    expect(document.body.textContent).toContain('Retry loading sessions');
+    const retry = [...document.body.querySelectorAll('ion-button')].find(button => button.textContent?.includes('Retry loading sessions'));
+    if (!retry) throw new Error('Missing agent admission retry');
+    retry.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await vi.waitFor(() => expect(workspace.capabilities()).toEqual(caps));
+    expect(api.capabilities).toHaveBeenLastCalledWith({ storeId: 'http-localhost:8989', projectId: 'shop' });
+    expect(api.command).not.toHaveBeenCalled();
   });
 
   it.each([

@@ -42,7 +42,9 @@
       </ion-buttons>
     }
   </ion-item>
-  @if (workspace.authRequired()) {
+  @if (workspace.agentReconnectRequired()) {
+    <ion-item color="warning" role="status"><ion-label>Reconnect to the local agent to view saved sessions.</ion-label><ion-button slot="end" (click)="chooserOpen.set(true)">Reconnect</ion-button></ion-item>
+  } @else if (workspace.authRequired()) {
     <ion-item color="warning" role="status">
       <ion-label>Sign in to view or create sessions for this project.</ion-label>
       <ion-button slot="end" (click)="chooserOpen.set(true)">Sign in</ion-button>
@@ -145,7 +147,10 @@
   <ng-template>
     <ion-header><ion-toolbar><ion-title>Open a session</ion-title><ion-buttons slot="end"><ion-button (click)="chooserOpen.set(false)">Done</ion-button></ion-buttons></ion-toolbar></ion-header>
     <ion-content>
-      @if (workspace.authRequired()) {
+      @if (workspace.agentReconnectRequired()) {
+        <ion-item lines="full" role="alert"><ion-label><h2>Reconnect to the local agent</h2><p>The agent may have restarted or its access link expired. Open a fresh DataTug link from your CLI to reconnect to this agent, then retry loading saved sessions. Retrying only reads sessions; it does not execute a query or Check.</p></ion-label></ion-item>
+        <ion-item><ion-button (click)="retryAgentAdmission()" [disabled]="workspace.loading()">Retry loading sessions</ion-button></ion-item>
+      } @else if (workspace.authRequired()) {
         <ion-item lines="full"><ion-label><h2>Sign in required</h2><p>Your saved sessions are available after you sign in. Signing in will return you to this project.</p></ion-label></ion-item>
         <sneat-auth-panel [returnTo]="signInReturnTo()" [showIntro]="false" initialMode="sign-in" />
       } @else if (showInitialLoading()) {

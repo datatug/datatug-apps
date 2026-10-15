@@ -93,6 +93,7 @@ export class SessionWorkspaceService {
   readonly loading = signal(false);
   readonly busy = signal(false);
   readonly authRequired = signal(false);
+  readonly agentReconnectRequired = signal(false);
   readonly error = signal('');
   readonly draftError = signal('');
   readonly notice = signal('');
@@ -150,8 +151,11 @@ export class SessionWorkspaceService {
       this.openSessionIds.set(this.readOpenTabs(capabilities).filter((id) => page.items.some((session) => session.id === id)));
     } catch (error) {
       if (generation === this.generation) {
-        this.authRequired.set(needsSignIn(error));
-        this.error.set(this.authRequired() ? '' : errorMessage(error));
+        const unauthenticated = needsSignIn(error);
+        const cloud = ['github', 'github.com', 'firestore'].includes(project.storeId);
+        this.authRequired.set(unauthenticated && cloud);
+        this.agentReconnectRequired.set(unauthenticated && !cloud);
+        this.error.set(this.authRequired() || this.agentReconnectRequired() ? '' : errorMessage(error));
       }
     } finally {
       if (generation === this.generation) this.loading.set(false);
@@ -602,7 +606,7 @@ export class SessionWorkspaceService {
   }
   private saveOpenTabs(): void { try { localStorage.setItem(this.tabKey(), JSON.stringify(this.openSessionIds())); } catch { /* Tab preferences carry no authority; draft persistence has a separate error. */ } }
   private reset(): void {
-    this.generation++; this.focusGeneration++; this.capabilities.set(undefined); this.authRequired.set(false); this.sessions.set([]); this.snapshots.set({}); this.deviceDrafts.set({});
+    this.generation++; this.focusGeneration++; this.capabilities.set(undefined); this.authRequired.set(false); this.agentReconnectRequired.set(false); this.sessions.set([]); this.snapshots.set({}); this.deviceDrafts.set({});
     this.focusedSessionId.set(''); this.openSessionIds.set([]); this.pending.set(undefined); this.busy.set(false); this.loading.set(false); this.error.set(''); this.draftError.set(''); this.notice.set('');
   }
 }

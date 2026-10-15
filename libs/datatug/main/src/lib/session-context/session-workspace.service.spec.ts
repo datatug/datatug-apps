@@ -64,16 +64,30 @@ describe('SessionWorkspaceService authority and draft boundaries', () => {
   it('treats only the API unauthenticated sentinel and HTTP 401 as sign-in required', async () => {
     service.setActor('signed-in-before-test'); service.setActor('');
     api.capabilities.mockRejectedValueOnce(SneatApiNotAuthenticatedError);
-    await service.openProject(project);
+    await service.openProject({ ...project, storeId: 'github.com' });
     expect(service.authRequired()).toBe(true);
     expect(service.error()).toBe('');
     expect(api.list).toHaveBeenCalledTimes(1);
 
     service.setActor('signed-in-before-test'); service.setActor('');
     api.capabilities.mockRejectedValueOnce({ status: 401 });
-    await service.openProject(project);
+    await service.openProject({ ...project, storeId: 'github.com' });
     expect(service.authRequired()).toBe(true);
     expect(service.error()).toBe('');
+  });
+
+  it('requires agent reconnect for local 401 without cloud sign-in or dispatch', async () => {
+    service.setActor('reset-local');
+    api.capabilities.mockRejectedValueOnce({ status: 401 });
+    await service.openProject(project);
+    expect(service.agentReconnectRequired()).toBe(true);
+    expect(service.authRequired()).toBe(false);
+    expect(service.capabilities()).toBeUndefined();
+    expect(commands).toHaveLength(0);
+    await service.openProject(project);
+    expect(service.agentReconnectRequired()).toBe(false);
+    expect(service.capabilities()).toEqual(capabilities);
+    expect(commands).toHaveLength(0);
   });
 
   it('keeps forbidden, network, and unrelated string errors distinct from sign-in-required', async () => {

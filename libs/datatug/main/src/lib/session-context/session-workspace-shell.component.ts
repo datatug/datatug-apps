@@ -123,6 +123,10 @@ export class SessionWorkspaceShellComponent {
     this.router.events.pipe(filter((event) => event instanceof NavigationEnd), takeUntilDestroyed()).subscribe(() => { void this.focusRoute(); });
   }
 
+  protected async retryAgentAdmission(): Promise<void> {
+    const project = this.project();
+    if (project && this.workspace.agentReconnectRequired()) await this.openProject(project);
+  }
   private async openProject(project: IProjectRef): Promise<void> {
     await this.workspace.openProject(project);
     await this.focusRoute();
