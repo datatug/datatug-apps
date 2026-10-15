@@ -1,10 +1,6 @@
 <ion-item class="ion-no-padding">
-  <ion-buttons slot="start" class="ion-no-margin">
-    <ion-button>
-      <ion-icon name="albums-outline" />
-    </ion-button>
-  </ion-buttons>
-  <ion-label>Project</ion-label>
+  <ion-icon name="albums-outline" slot="start" aria-hidden="true" />
+  <ion-label color="medium">Project</ion-label>
   <!--		<ion-select *ngIf="projects?.length"-->
   <!--						[value]="currentProjectId"-->
   <!--						(ionChange)="switchProject($event)"-->
@@ -12,28 +8,29 @@
   <!--		>-->
   <!--			<ion-select-option *ngFor="let p of projects" [value]="p.id">{{p.title || p.id}}</ion-select-option>-->
   <!--		</ion-select>-->
-  @if (projects?.length) {
+  @if (projects()?.length) {
     <ion-select
+      aria-label="Project"
       interface="popover"
-      [value]="currentProjectId"
+      [value]="currentProjectId()"
       (ionChange)="switchProject($event)"
     >
-      @for (project of projects; track project) {
+      @for (project of projects(); track project.id) {
         <ion-select-option [value]="project.id">
           {{ project.title || project.id }}
         </ion-select-option>
       }
     </ion-select>
   }
-  @if (!projects?.length && currentProjectId) {
+  @if (!projects()?.length && currentProjectId()) {
     <ion-label>{{ projectLabel() }}</ion-label>
   }
-  @if (currentStoreId === "firestore" && !projects?.length) {
+  @if (currentStoreId() === 'firestore' && !projects()?.length) {
     <ion-buttons slot="end" class="ion-margin-end">
       <ion-button
         color="primary"
         (click)="newProject()"
-        [disabled]="!projects"
+        [disabled]="!projects()"
       >
         <ion-icon slot="start" name="add" />
         <ion-label>New project</ion-label>

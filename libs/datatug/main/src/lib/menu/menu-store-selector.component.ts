@@ -4,7 +4,8 @@ import {
   OnDestroy,
   SimpleChanges,
   inject,
-  input
+  input,
+  signal,
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
@@ -24,7 +25,7 @@ import {
   IDatatugStoreBriefWithId,
   IDatatugUser,
 } from '../models/interfaces';
-import { storeIdToDisplayLabel } from '../nav/nav-models';
+import { parseDatatugStoreRef, storeIdToDisplayLabel } from '../nav/nav-models';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import { DatatugNavService } from '../services/nav/datatug-nav.service';
 
@@ -49,7 +50,7 @@ export class MenuStoreSelectorComponent implements OnDestroy, OnChanges {
 
   readonly datatugUser = input<IDatatugUser>();
 
-  currentStoreId?: string;
+  readonly currentStoreId = signal<string | undefined>(undefined);
 
   /**
    * Shown instead of the raw `currentStoreId` in the single-store fallback
@@ -60,14 +61,12 @@ export class MenuStoreSelectorComponent implements OnDestroy, OnChanges {
    * `storeIdToDisplayLabel()` in `nav-models.ts`.
    */
   get currentStoreDisplayLabel(): string {
-    return storeIdToDisplayLabel(this.currentStoreId);
+    return storeIdToDisplayLabel(this.currentStoreId());
   }
 
-  stores?: IDatatugStoreBriefWithId[];
+  readonly stores = signal<IDatatugStoreBriefWithId[] | undefined>(undefined);
 
   private readonly destroyed = new Subject<void>();
-
-  private externalChange = false;
 
   constructor() {
     const datatugNavContextService = this.datatugNavContextService;
@@ -77,8 +76,8 @@ export class MenuStoreSelectorComponent implements OnDestroy, OnChanges {
         takeUntil(this.destroyed),
         filter(
           (id) =>
-            id !== this.currentStoreId &&
-            !(id === null && !this.currentStoreId),
+            id !== this.currentStoreId() &&
+            !(id === null && !this.currentStoreId()),
         ),
       )
       .subscribe((storeId: string | undefined) => {
@@ -86,8 +85,7 @@ export class MenuStoreSelectorComponent implements OnDestroy, OnChanges {
           'MenuStoreSelectorComponent => external store change:',
           storeId,
         );
-        this.externalChange = true;
-        this.currentStoreId = storeId;
+        this.currentStoreId.set(storeId);
       });
   }
 
@@ -98,24 +96,29 @@ export class MenuStoreSelectorComponent implements OnDestroy, OnChanges {
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['datatugUser']) {
-      this.stores = allUserStoresAsFlatList(this.datatugUser()?.datatug?.stores);
+      this.stores.set(
+        allUserStoresAsFlatList(this.datatugUser()?.datatug?.stores),
+      );
     }
   }
 
   switchStore(event: CustomEvent): void {
     console.log(
       'MenuStoreSelectorComponent.switchStore(event: CustomEvent)',
-      this.externalChange,
+      this.currentStoreId(),
       event,
     );
-    if (this.externalChange) {
-      this.externalChange = false;
-      return;
-    }
     try {
       const value: string = event.detail.value;
-      if (value) {
-        // this.nav.goStore(...);
+      if (value && value !== this.currentStoreId()) {
+        const selectedStore = this.stores()?.find(
+          (store) => store.id === value,
+        );
+        if (!selectedStore) return;
+        this.nav.goStore({
+          ref: parseDatatugStoreRef(selectedStore.id),
+          brief: selectedStore,
+        });
       }
     } catch (e: unknown) {
       this.errorLogger.logError(e, 'Failed to handle store switch');
