@@ -10,8 +10,9 @@ test.skip(
   'Set DATATUG_E2E_GITHUB_FAKE to a checkout of the demo repository',
 );
 test.beforeEach(async ({ context }) => {
+  if (!demoDir) return;
   await installFakeGithub(context, [
-    { fullName: 'datatug/datatug-demo-project', dir: demoDir! },
+    { fullName: 'datatug/datatug-demo-project', dir: demoDir },
   ]);
 });
 for (const width of [1440, 900, 390]) {
