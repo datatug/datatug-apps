@@ -18,7 +18,7 @@ async function setup(table?: string, options: {
   const fetchFn = options.wrapFetch?.(local) ?? local.fetch;
   const descriptor = await fetchOvdbDescriptor(fetchFn, local.baseUrl, 'chinook');
   const connection: OvdbConnection = { id: 'c', title: 'Chinook (local SQLite)', baseUrl: local.baseUrl, databaseId: 'chinook', fetch: fetchFn, descriptor };
-  const confirm = vi.fn(async (_request: OvdbConfirmRequest) => options.confirm ?? true);
+  const confirm = vi.fn<(request: OvdbConfirmRequest) => Promise<boolean>>(async () => options.confirm ?? true);
   await TestBed.configureTestingModule({
     imports: [OvdbDatabaseBrowserComponent],
     providers: [provideRouter([]), { provide: OvdbConfirmService, useValue: { confirm } }],
