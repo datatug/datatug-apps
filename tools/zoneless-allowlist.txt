@@ -19,7 +19,6 @@
 #   pages/signed-in/project/**, services/project/**  S126
 libs/datatug/main/src/lib/pages/signed-in/env-db/env-db-page.component.ts
 libs/datatug/main/src/lib/pages/signed-in/store/datatug-store-page.component.ts
-libs/datatug/main/src/lib/pages/home/my-stores/my-stores.component.ts
 libs/datatug/main/src/lib/pages/signed-in/environment/environment-page.component.ts
 libs/datatug/main/src/lib/queries/queries/queries-tab.component.ts
 libs/datatug/main/src/lib/pages/home/my-projects/my-datatug-projects.component.ts

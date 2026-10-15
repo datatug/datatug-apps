@@ -1,74 +1,77 @@
 import { expect, test } from '@playwright/test';
 
-// Founder, 2026-10-03: "I want user to be explained scope of project early. So I see that at all 3 DataTug sites."
-// The home page's "One platform, four ways in." block (libs/datatug/main/src/lib/pages/home/platform-block) shows
-// the four parts with the statuses datatug.io and datatug.ai show; the home footer credits DALgo next to the build info (UX brief §14 moved it out of the sidebar card)
-// (founder: "The dalgo credit can be given on DataTug.app as well").
-
-test('the home page shows the four parts of the platform, with their statuses and links', async ({
+test('home composition introduces DataTug, the public demo, and two other entry points', async ({
   page,
 }) => {
   await page.goto('/');
-  const block = page.getByTestId('platform-block');
-  await expect(block).toBeVisible();
+
+  const hero = page.getByTestId('home-hero');
+  await expect(hero).toBeVisible();
   await expect(
-    block.getByRole('heading', { name: 'One platform, four ways in.' }),
+    hero.getByRole('heading', { name: 'Ask better questions of your data.' }),
   ).toBeVisible();
-
-  const parts = block.locator('.part');
-  await expect(parts).toHaveCount(4);
-
-  const app = block.locator('[data-part="app"]');
-  await expect(app).toContainText('DataTug.app');
-  await expect(app).toContainText('You are here');
-  await expect(app.locator('a')).toHaveCount(0);
-  await expect(app.locator('[data-status="available"]')).toHaveCount(1);
-
-  const link = (id: string) =>
-    block.locator(`[data-part="${id}"] a[data-part-link]`);
-  await expect(link('terminal')).toHaveAttribute(
-    'href',
-    'https://datatug.io/apps/cli/',
+  await expect(hero.locator('.hero-visual')).toHaveAttribute(
+    'aria-hidden',
+    'true',
   );
-  await expect(link('skills')).toHaveAttribute(
-    'href',
-    'https://datatug.ai/skills/',
+  await expect(hero.locator('ion-list ion-item[color="light"]')).toHaveCount(1);
+
+  const demo = page.locator('[data-demo-slot="GitHub"]');
+  await expect(demo.locator('.demo-visual')).toHaveAttribute(
+    'aria-hidden',
+    'true',
   );
-  await expect(link('mcp-app')).toHaveAttribute(
-    'href',
-    'https://datatug.ai/#way-agent',
+  await expect(demo).toContainText('project structure');
+  await expect(demo).toContainText('three saved Chinook SQL examples');
+  await expect(
+    demo.getByRole('button', { name: 'Open public demo' }),
+  ).toBeVisible();
+  await expect(page.locator('[data-demo-slot="Cloud"]')).toHaveCount(0);
+
+  const stores = page.locator('sneat-datatug-my-stores');
+  await expect(stores).toContainText('Fastest setup');
+  await expect(stores).toContainText('version history and branches');
+  await expect(stores).toContainText('offline use where supported');
+
+  const block = page.getByTestId('platform-block');
+  await expect(
+    block.getByRole('heading', { name: 'Other ways to use DataTug' }),
+  ).toBeVisible();
+  await expect(block.locator('.part')).toHaveCount(2);
+  await expect(block.locator('[data-part="terminal"]')).toContainText('TugQL');
+  await expect(block.locator('[data-part="terminal"]')).toContainText(
+    'datatug CLI',
   );
-
-  const terminal = block.locator('[data-part="terminal"]');
-  await expect(terminal.locator('[data-status="available"]')).toHaveCount(1);
-
-  const skills = block.locator('[data-part="skills"]');
-  await expect(skills).toContainText('Skills plugin');
-  await expect(skills).toContainText('MCP server');
-  await expect(skills.locator('[data-status="available"]')).toHaveCount(1);
-  await expect(skills.locator('[data-status="planned"]')).toHaveCount(1);
-
-  const mcpApp = block.locator('[data-part="mcp-app"]');
-  await expect(mcpApp).toContainText('MCP web app');
-  await expect(mcpApp.locator('[data-status="planned"]')).toHaveCount(1);
+  await expect(block.locator('[data-part="agent"]')).toContainText(
+    'CLI skills',
+  );
+  await expect(block.locator('[data-part="agent"]')).toContainText(
+    'Claude Code',
+  );
+  await expect(
+    block.locator('[data-part="agent"] [data-status="available"]'),
+  ).toHaveCount(1);
+  await expect(
+    block.locator('[data-part="agent"] [data-status="planned"]'),
+  ).toHaveCount(2);
 });
 
-test('the platform block sits after the lead card and before the project cards', async ({
+test('the home sections keep the landing, other ways, and project cards in order', async ({
   page,
 }) => {
   await page.goto('/');
   const content = page.locator('sneat-datatug-home ion-content');
-  const lead = content.getByRole('heading', { name: 'Your data workbench' });
+  const hero = content.getByTestId('home-hero');
   const platform = content.getByTestId('platform-block');
   const detective = content.getByRole('heading', {
-    name: 'Try Detective with real checks',
+    name: 'Start a private Detective demo',
   });
   const projects = content.locator('.home-cards-grid');
-  for (const section of [lead, platform, detective, projects]) {
+  for (const section of [hero, projects, platform, detective]) {
     await expect(section).toBeVisible();
   }
   const order = await content.evaluate((element) => {
-    const lead = element.querySelector('ion-card');
+    const hero = element.querySelector('[data-testid="home-hero"]');
     const platform = element.querySelector('sneat-datatug-platform-block');
     const detective = element
       .querySelector('sneat-datatug-detective-demo-starter')
@@ -84,26 +87,25 @@ test('the platform block sits after the lead card and before the project cards',
         before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING
       );
     return {
-      leadBeforePlatform: precedes(lead, platform),
+      heroBeforeProjects: precedes(hero, projects),
+      projectsBeforePlatform: precedes(projects, platform),
       platformBeforeDetective: precedes(platform, detective),
-      detectiveBeforeProjects: precedes(detective, projects),
     };
   });
   expect(order).toEqual({
-    leadBeforePlatform: true,
+    heroBeforeProjects: true,
+    projectsBeforePlatform: true,
     platformBeforeDetective: true,
-    detectiveBeforeProjects: true,
   });
 });
 
 for (const width of [360, 390, 768, 1280]) {
-  test(`the platform block does not overflow horizontally at ${width}px`, async ({
+  test(`home composition does not overflow horizontally at ${width}px`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/');
-    const block = page.getByTestId('platform-block');
-    await expect(block).toBeVisible();
+    await expect(page.getByTestId('home-hero')).toBeVisible();
     const overflow = await page.evaluate(() => {
       const scroller = document
         .querySelector('sneat-datatug-home ion-content')
@@ -114,21 +116,21 @@ for (const width of [360, 390, 768, 1280]) {
       return {
         page: document.documentElement.scrollWidth - window.innerWidth,
         scroller: scroller ? scroller.scrollWidth - scroller.clientWidth : -1,
-        parts: parts.map((p) => {
-          const r = p.getBoundingClientRect();
+        parts: parts.map((part) => {
+          const rect = part.getBoundingClientRect();
           return Math.max(
-            p.scrollWidth - p.clientWidth,
-            r.right - window.innerWidth,
-            -r.left,
+            part.scrollWidth - part.clientWidth,
+            rect.right - window.innerWidth,
+            -rect.left,
           );
         }),
       };
     });
     expect(overflow.page).toBeLessThanOrEqual(0);
-    expect(overflow.scroller).not.toBe(-1); // the scroller was found, so the check below is not vacuous
+    expect(overflow.scroller).not.toBe(-1);
     expect(overflow.scroller).toBeLessThanOrEqual(0);
-    expect(overflow.parts).toHaveLength(4);
-    for (const o of overflow.parts) expect(o).toBeLessThanOrEqual(0);
+    expect(overflow.parts).toHaveLength(2);
+    for (const amount of overflow.parts) expect(amount).toBeLessThanOrEqual(0);
   });
 }
 

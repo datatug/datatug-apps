@@ -1,19 +1,19 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NavController } from '@ionic/angular';
 import { ErrorLogger } from '@sneat/core';
-import { of } from 'rxjs';
+import { Subject } from 'rxjs';
 
 import { MyStoresComponent } from './my-stores.component';
-import { AgentStateService } from '../../../services/repo/agent-state.service';
 import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
 import { DatatugUserService } from '../../../services/base/datatug-user-service';
 
 describe('MyStoresComponent', () => {
   let component: MyStoresComponent;
   let fixture: ComponentFixture<MyStoresComponent>;
+  let userStates$: Subject<unknown>;
 
   beforeEach(async () => {
+    userStates$ = new Subject();
     await TestBed.configureTestingModule({
       imports: [MyStoresComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -25,22 +25,11 @@ describe('MyStoresComponent', () => {
             logErrorHandler: vi.fn(() => vi.fn()),
           },
         },
-        {
-          provide: NavController,
-          useValue: { navigateForward: vi.fn(() => Promise.resolve(true)) },
-        },
-        {
-          provide: AgentStateService,
-          useValue: {
-            getAgentInfo: vi.fn(() => of()),
-            watchAgentInfo: vi.fn(() => of()),
-          },
-        },
         { provide: DatatugNavService, useValue: { goStore: vi.fn() } },
         {
           provide: DatatugUserService,
           useValue: {
-            datatugUserState: of({ status: undefined, record: null }),
+            datatugUserState: userStates$.asObservable(),
           },
         },
       ],
@@ -48,7 +37,8 @@ describe('MyStoresComponent', () => {
       .overrideComponent(MyStoresComponent, {
         set: {
           imports: [],
-          template: '',
+          template:
+            '<span data-testid="store-state">{{ authStatus() }}:{{ userRecordLoaded() }}:{{ stores()?.length ?? "unknown" }}</span>',
           schemas: [CUSTOM_ELEMENTS_SCHEMA],
           providers: [],
         },
@@ -57,9 +47,25 @@ describe('MyStoresComponent', () => {
 
     fixture = TestBed.createComponent(MyStoresComponent);
     component = fixture.componentInstance;
+    fixture.detectChanges();
   });
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('renders a user-store update emitted after the first render in zoneless mode', async () => {
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="store-state"]')
+        .textContent,
+    ).toContain(':false:unknown');
+
+    userStates$.next({ status: 'authenticated', record: null });
+    await fixture.whenStable();
+
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="store-state"]')
+        .textContent,
+    ).toMatch(/authenticated:true:\d+/);
   });
 });

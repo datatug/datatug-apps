@@ -28,6 +28,15 @@
         "tsConfig": "libs/datatug/main/tsconfig.spec.json"
       }
     },
+    "test-focused": {
+      "executor": "@nx/vitest:test",
+      "cache": false,
+      "outputs": [],
+      "options": {
+        "tsConfig": "libs/datatug/main/tsconfig.spec.json",
+        "configFile": "libs/datatug/main/vite.focused.config.mts"
+      }
+    },
     "typecheck-spec": {
       "executor": "nx:run-commands",
       "options": {
