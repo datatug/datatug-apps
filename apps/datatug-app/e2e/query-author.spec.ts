@@ -3448,9 +3448,19 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
     .toBe(workersBeforeSecondEmailApply + 1);
   const secondRows = page.getByRole('grid').getByRole('row');
   await expect(secondRows).toHaveCount(8);
+  const secondInvoiceIds = page.getByRole('grid')
+    .locator('[role="gridcell"][col-id="result_0"]');
+  const expectedSecondInvoiceIds = ['98', '121', '143', '195', '316', '327', '382'];
+  // InvoiceId uses a custom cell renderer. Its cells may exist before their
+  // values render, so capture the preservation baseline only once all are ready.
+  await expect(secondInvoiceIds).toHaveText(expectedSecondInvoiceIds);
   await expect(secondRows.nth(1)).toContainText('2022-03-11 00:00:00');
   await expect(secondRows.nth(1)).toContainText('luisg@embraer.com.br');
   const secondReceipt = page.getByTestId('author-execution-receipt');
+  const secondExecutionId = (await secondReceipt.textContent())?.match(
+    /execution ID ([0-9a-f-]{36})/iu,
+  )?.[1];
+  expect(secondExecutionId).toBeTruthy();
   const secondRowsBeforeRemoval = await secondRows.allTextContents();
   const secondEditor = secondAuthor.getByTestId('query-body-text').locator('.cm-content');
   const emailSource = await copyEditorSource(page, secondEditor);
@@ -3481,11 +3491,14 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   expect(unjoinedEmailSource).not.toContain('c.Email');
   expect(unjoinedEmailSource).toContain('@CustomerId integer required');
   await expect(secondReceipt).toContainText('7 rows');
+  await expect(secondReceipt).toContainText(`execution ID ${secondExecutionId}`);
+  await expect(secondInvoiceIds).toHaveText(expectedSecondInvoiceIds);
   expect(await secondRows.allTextContents()).toEqual(secondRowsBeforeRemoval);
   expect(workersStarted).toBe(3);
   await clickEditorAction(page, secondAuthor, 'Undo');
   await expectEditorSource(page, secondEditor, emailSource);
   await expect(secondReceipt).toContainText('7 rows');
+  await expect(secondReceipt).toContainText(`execution ID ${secondExecutionId}`);
   expect(workersStarted).toBe(3);
   expect(errors).toEqual([]);
 });
