@@ -1,4 +1,11 @@
-import { Component, OnDestroy, ViewChild, inject, signal } from '@angular/core';
+import {
+  Component,
+  OnDestroy,
+  ViewChild,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { race, Subject, of } from 'rxjs';
 import { catchError, map, skip, takeUntil } from 'rxjs/operators';
@@ -9,11 +16,15 @@ import {
   STORE_TYPE_GITHUB,
 } from '@sneat/core';
 import { IRecord } from '@sneat/data';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import {
   IonBackButton,
+  IonButton,
   IonButtons,
   IonCard,
+  IonCardContent,
+  IonCardHeader,
+  IonCardTitle,
   IonContent,
   IonHeader,
   IonInput,
@@ -34,6 +45,7 @@ import {
 import { DatatugCoreModule } from '../../../core/datatug-core.module';
 import { ENABLE_EMPTY_SHELL_PAGES } from '../../../core/feature-flags';
 import { IProjectRef, equalProjectRef } from '../../../core/project-context';
+import { isCanonicalDemoDbProject } from '../../../core/demo-db-project';
 import { IEnvironmentFull } from '../../../models/definition/environments';
 import { environmentPresentation } from '../../../models/definition/environment-presentation';
 import { IEntity } from '../../../models/definition/metapedia/entity';
@@ -68,6 +80,7 @@ import { EntityService } from '../../../services/unsorted/entity.service';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
 import { SchemaService } from '../../../services/unsorted/schema.service';
 import { DemoDbConnectionsComponent } from './demo-db-connections.component';
+import { projectPageHref } from '../../../nav/project-page-href';
 
 @Component({
   selector: 'sneat-datatug-project',
@@ -75,6 +88,7 @@ import { DemoDbConnectionsComponent } from './demo-db-connections.component';
   styleUrls: ['./project-page.component.scss'],
   imports: [
     FormsModule,
+    RouterLink,
     DatatugCoreModule,
     DatatugServicesNavModule,
     DatatugServicesProjectModule,
@@ -90,6 +104,10 @@ import { DemoDbConnectionsComponent } from './demo-db-connections.component';
     IonTitle,
     IonContent,
     IonCard,
+    IonCardContent,
+    IonCardHeader,
+    IonCardTitle,
+    IonButton,
     IonItem,
     IonLabel,
     IonInput,
@@ -161,6 +179,12 @@ export class ProjectPageComponent
   );
   protected readonly entityError = signal(false);
   protected readonly environmentPresentation = environmentPresentation;
+  protected readonly sandboxHref = computed(() => {
+    const ref = this.project()?.ref;
+    return isCanonicalDemoDbProject(ref)
+      ? projectPageHref(ref, 'demo-db-sandbox')
+      : undefined;
+  });
   private readonly scopeChanged = new Subject<void>();
 
   protected destroyed = new Subject<boolean>();

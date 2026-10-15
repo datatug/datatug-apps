@@ -124,6 +124,35 @@ describe('ProjectPage', () => {
     expect(component).toBeTruthy();
   });
 
+  it('offers the private sandbox route only for the canonical DemoDB project', () => {
+    const page = component as unknown as {
+      setProjRef(ref: {
+        storeId: string;
+        projectId: string;
+        spaceID?: string;
+      }): void;
+      sandboxHref(): string | undefined;
+    };
+    page.setProjRef({
+      storeId: 'github.com',
+      projectId: 'datatug-demo-project@datatug@demo-project-1',
+    });
+    expect(page.sandboxHref()).toBe(
+      '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/demo-db-sandbox',
+    );
+    page.setProjRef({
+      storeId: 'github.com',
+      projectId: 'datatug-demo-project@datatug@other',
+    });
+    expect(page.sandboxHref()).toBeUndefined();
+    page.setProjRef({
+      storeId: 'firestore',
+      projectId: 'datatug-demo-project@datatug@demo-project-1',
+      spaceID: 'space-1',
+    });
+    expect(page.sandboxHref()).toBeUndefined();
+  });
+
   // G-A1c: the page of a project's items folder is at the address `projectUrl()` writes (this method has no caller
   // yet; its old path, `project/<id>/<items>`, matched no route).
   describe('goProjFolder', () => {

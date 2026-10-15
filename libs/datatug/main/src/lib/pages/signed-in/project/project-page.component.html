@@ -135,6 +135,23 @@
   }
 
   @if (!project()?.ref?.spaceID && activeTab() === 'overview') {
+    @if (sandboxHref(); as href) {
+      <ion-card class="sandbox-summary" data-testid="overview-sandbox-summary">
+        <ion-card-header>
+          <ion-card-title>Private DemoDB sandbox</ion-card-title>
+        </ion-card-header>
+        <ion-card-content>
+          <p>
+            Registered accounts can create a private, writable clone of six
+            sample databases when the sandbox service is available. Once your
+            clone is ready, its page lets you run SQL or delete it.
+          </p>
+          <ion-button [routerLink]="href"
+            >Check sandbox availability</ion-button
+          >
+        </ion-card-content>
+      </ion-card>
+    }
     <sneat-datatug-demodb-connections [projectRef]="project()?.ref" />
   }
 
