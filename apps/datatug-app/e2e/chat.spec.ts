@@ -272,7 +272,7 @@ test('existing three-table Chinook database upgrades in place to all eleven tabl
   });
 
   await page.goto('/store/localhost:8989/project/datatug-demo-project/chat');
-  await expect(page.locator('ion-footer').getByLabel('AI provider')).toBeVisible();
+  await expect(page.locator('ion-footer ion-select')).toBeVisible();
   await expect(page.getByText('Loading local Chinook data…')).toBeHidden({ timeout: 45_000 });
   const upgraded = await page.evaluate(async () => {
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
