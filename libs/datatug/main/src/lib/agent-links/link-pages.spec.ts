@@ -227,3 +227,51 @@ describe('record page (AC:record-link-uses-primary-key-in-fragment, AC:record-lo
     expect(text()).toContain('record-not-found');
   });
 });
+
+describe('named states on the link pages (AC:unresolvable-link-names-the-problem)', () => {
+  it.each([
+    ['project', 'project-not-found'],
+    ['source', 'database-not-found'],
+    ['table', 'table-not-found'],
+  ])('a 404 on %s shows %s and reads no rows', async (field, problem) => {
+    const { fixture, ctrl } = mount(TableRecordsPageComponent, 'Album', { schema: '' });
+    notFound(ctrl.expectOne(SCHEMA_URL), field);
+    await fixture.whenStable();
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="link-problem"]')?.getAttribute('data-problem'),
+    ).toBe(problem);
+    ctrl.expectNone((r) => r.url === SELECT_URL);
+  });
+
+  it('shows agent-unreachable when the agent does not answer, and Check again reads again', async () => {
+    const { fixture, ctrl } = mount(
+      TableRecordPageComponent,
+      'Album',
+      { schema: '' },
+      '#pk=' + encodeURIComponent('{"AlbumId":1}'),
+    );
+    ctrl.expectOne(SCHEMA_URL).error(new ProgressEvent('error'), { status: 0 });
+    await fixture.whenStable();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('[data-testid="link-problem"]')?.getAttribute('data-problem')).toBe(
+      'agent-unreachable',
+    );
+    expect(el.textContent).toContain('datatug daemon start');
+    (el.querySelector('[data-testid="link-check-again"]') as HTMLElement).click();
+    ctrl.expectOne(SCHEMA_URL).flush(ALBUM_SCHEMA);
+    ctrl.expectOne(LOOKUP_URL).flush({
+      recordset: { columns: [{ name: 'AlbumId' }], rows: [[{ type: 'integer', value: '1' }]] },
+    });
+    await fixture.whenStable();
+    expect(el.querySelector('[data-testid="record-fields"]')).not.toBeNull();
+  });
+
+  it('shows link-expired on a 401', async () => {
+    const { fixture, ctrl } = mount(TableRecordsPageComponent, 'Album', { schema: '' });
+    ctrl.expectOne(SCHEMA_URL).flush({}, { status: 401, statusText: 'Unauthorized' });
+    await fixture.whenStable();
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="link-problem"]')?.getAttribute('data-problem'),
+    ).toBe('link-expired');
+  });
+});

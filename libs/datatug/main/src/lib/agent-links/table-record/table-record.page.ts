@@ -40,6 +40,7 @@ import {
   classifyAgentError,
 } from '../agent-link-api.service';
 import { linkTableRef } from '../link-route';
+import { LinkProblemComponent } from '../link-problem/link-problem.component';
 import { lookupKey, parseKeyObject, pkOfFragment } from '../record-key';
 import { qualifiedTableName } from '../table-identity';
 
@@ -81,6 +82,7 @@ type RecordState =
     IonCardTitle,
     IonCardContent,
     IonText,
+    LinkProblemComponent,
   ],
   templateUrl: './table-record.page.html',
   styleUrl: '../agent-link-page.scss',
