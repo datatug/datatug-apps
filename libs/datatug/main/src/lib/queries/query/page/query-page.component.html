@@ -653,7 +653,7 @@
                     run again.
                   </p>
                 }
-                <ion-item class="author-parameter-row">
+                <ion-item class="author-parameter-row" lines="none">
                   <ion-input
                     class="author-customer-input"
                     #authorCustomerInput
@@ -992,7 +992,7 @@
         @if (queryDef()?.parameters?.length) {
           <ion-list>
             @for (parameter of queryDef()?.parameters ?? []; track parameter.id) {
-              <ion-item [color]="nativeParameterError(parameter.id) || nativeParameterBinding(parameter.id)?.blocked ? 'warning' : undefined">
+              <ion-item [lines]="$last ? 'none' : 'inset'" [color]="nativeParameterError(parameter.id) || nativeParameterBinding(parameter.id)?.blocked ? 'warning' : undefined">
                 <ion-label class="ion-text-wrap">
                   {{ parameter.title || parameter.id }}
                   @if (nativeParameterBinding(parameter.id); as binding) {
