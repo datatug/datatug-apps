@@ -31,7 +31,9 @@ const COMPLETION_INTERACTION_DELAY_MS = 75;
 // Playwright resolves ControlOrMeta from the host OS, but CodeMirror treats
 // iPhone/iPad/iPod UAs as Mac and binds Mod to Meta.
 const generateAuthorPreview = async (author: Locator): Promise<void> => {
-  await author.getByTestId('author-preview-tab').click();
+  const previewTab = author.getByTestId('author-preview-tab');
+  await previewTab.click();
+  await expect(previewTab).toHaveClass(/segment-button-checked/u);
   const nativeButton = author.getByTestId('author-preview').locator('button');
   await expect(nativeButton).toBeVisible();
   await nativeButton.scrollIntoViewIfNeeded();
@@ -1339,7 +1341,33 @@ test('TugQL suggestions are explicit, source-safe, and touch reachable', async (
 
   const customerId = await openCustomerId(author);
   await customerId.fill('1');
+  // Ionic relocates the focused input while scroll assist moves content above
+  // the keyboard. Wait until that move finishes before tapping the Preview tab.
+  if (isMobile) {
+    await expect
+      .poll(() =>
+        author.getByTestId('author-customer-id').evaluate(async (host) => {
+          const tab = document.querySelector('[data-testid="author-preview-tab"]');
+          const content = document.querySelector('sneat-datatug-sql-editor ion-content');
+          const scroller = content?.shadowRoot?.querySelector('[part="scroll"]');
+          const input = host.querySelector<HTMLInputElement>('input:not(.cloned-input)') ??
+            host.shadowRoot?.querySelector<HTMLInputElement>('input:not(.cloned-input)');
+          if (!tab || !scroller || !input ||
+            (host as HTMLElement).style.pointerEvents === 'none' || input.style.transform) return false;
+          const beforeTop = tab.getBoundingClientRect().top;
+          const beforeScroll = scroller.scrollTop;
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+          return (host as HTMLElement).style.pointerEvents !== 'none' &&
+            !input.style.transform &&
+            Math.abs(tab.getBoundingClientRect().top - beforeTop) < 1 &&
+            Math.abs(scroller.scrollTop - beforeScroll) < 1;
+        }),
+      )
+      .toBe(true);
+  }
   await generateAuthorPreview(author);
+  await expect(author.getByTestId('author-preview-pane')).toContainText('CustomerId');
   await expectIonicButtonDisabled(runButton, false);
   await author.getByTestId('author-run').click();
   if (isMobile) await page.locator('#workspace-jump-to-results').click();
@@ -3143,7 +3171,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
     await executionDetails.click();
     await expect(
       receipt.locator('ion-accordion[value="execution"]'),
-    ).not.toHaveClass(/accordion-expanded/u);
+    ).toHaveClass(/accordion-collapsed/u);
     const originalViewport = page.viewportSize();
     await page.setViewportSize({ width: 1280, height: 720 });
     await activePage(page).evaluate((active) => {
@@ -3420,9 +3448,19 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
     .toBe(workersBeforeSecondEmailApply + 1);
   const secondRows = page.getByRole('grid').getByRole('row');
   await expect(secondRows).toHaveCount(8);
+  const secondInvoiceIds = page.getByRole('grid')
+    .locator('[role="gridcell"][col-id="result_0"]');
+  const expectedSecondInvoiceIds = ['98', '121', '143', '195', '316', '327', '382'];
+  // InvoiceId uses a custom cell renderer. Its cells may exist before their
+  // values render, so capture the preservation baseline only once all are ready.
+  await expect(secondInvoiceIds).toHaveText(expectedSecondInvoiceIds);
   await expect(secondRows.nth(1)).toContainText('2022-03-11 00:00:00');
   await expect(secondRows.nth(1)).toContainText('luisg@embraer.com.br');
   const secondReceipt = page.getByTestId('author-execution-receipt');
+  const secondExecutionId = (await secondReceipt.textContent())?.match(
+    /execution ID ([0-9a-f-]{36})/iu,
+  )?.[1];
+  expect(secondExecutionId).toBeTruthy();
   const secondRowsBeforeRemoval = await secondRows.allTextContents();
   const secondEditor = secondAuthor.getByTestId('query-body-text').locator('.cm-content');
   const emailSource = await copyEditorSource(page, secondEditor);
@@ -3453,11 +3491,14 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   expect(unjoinedEmailSource).not.toContain('c.Email');
   expect(unjoinedEmailSource).toContain('@CustomerId integer required');
   await expect(secondReceipt).toContainText('7 rows');
+  await expect(secondReceipt).toContainText(`execution ID ${secondExecutionId}`);
+  await expect(secondInvoiceIds).toHaveText(expectedSecondInvoiceIds);
   expect(await secondRows.allTextContents()).toEqual(secondRowsBeforeRemoval);
   expect(workersStarted).toBe(3);
   await clickEditorAction(page, secondAuthor, 'Undo');
   await expectEditorSource(page, secondEditor, emailSource);
   await expect(secondReceipt).toContainText('7 rows');
+  await expect(secondReceipt).toContainText(`execution ID ${secondExecutionId}`);
   expect(workersStarted).toBe(3);
   expect(errors).toEqual([]);
 });
