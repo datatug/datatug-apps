@@ -3,6 +3,7 @@
     <sneat-datatug-board-row
       [boardRowDef]="boardRowDef"
       [boardContext]="boardContext()"
+      [projectRef]="projectRef()"
     />
   }
 } @else {
@@ -14,15 +15,5 @@
         </ion-text>
       </ion-col>
     </ion-row>
-    @if (boardContext()?.mode === "edit") {
-      <ion-row>
-        <ion-col>
-          <ion-button fill="outline" (click)="newCard()">
-            <ion-icon slot="start" name="add" />
-            <ion-label>New card</ion-label>
-          </ion-button>
-        </ion-col>
-      </ion-row>
-    }
   </ion-grid>
 }

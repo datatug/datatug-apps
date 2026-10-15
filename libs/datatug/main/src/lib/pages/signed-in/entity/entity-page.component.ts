@@ -5,14 +5,11 @@ import { ActivatedRoute } from '@angular/router';
 import {
   IonBackButton,
   IonBadge,
-  IonButton,
   IonButtons,
   IonCard,
   IonCardContent,
   IonContent,
   IonHeader,
-  IonIcon,
-  IonInput,
   IonItem,
   IonItemGroup,
   IonLabel,
@@ -23,8 +20,8 @@ import {
   IonToolbar,
 } from '@ionic/angular';
 import { DataGridComponent } from '@sneat/datagrid';
-import { Subject } from 'rxjs';
-import { takeUntil, takeWhile } from 'rxjs/operators';
+import { combineLatest, Subject, Subscription } from 'rxjs';
+import { takeUntil } from 'rxjs/operators';
 import { HttpClient } from '@angular/common/http';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { IGridColumn } from '@sneat/grid';
@@ -33,7 +30,6 @@ import {
   routingParamProjectId,
   routingParamStoreId,
 } from '../../../core/datatug-routing-params';
-import { RecordsetValue } from '../../../dto/execute';
 import {
   EntityContentType,
   IEntity,
@@ -59,8 +55,8 @@ import { SneatDatatugPageTitleComponent } from '../../../components/page-title/s
     // comment.
     DatatugServicesStoreModule,
     DatatugServicesUnsortedModule,
-    FormsModule,
     DataGridComponent,
+    FormsModule,
     SneatDatatugPageTitleComponent,
     IonHeader,
     IonToolbar,
@@ -69,9 +65,6 @@ import { SneatDatatugPageTitleComponent } from '../../../components/page-title/s
     IonCard,
     IonItem,
     IonLabel,
-    IonInput,
-    IonButton,
-    IonIcon,
     IonList,
     IonItemGroup,
     IonBadge,
@@ -101,81 +94,161 @@ export class EntityPageComponent implements OnDestroy {
   readonly entityId = signal<string | undefined>(undefined);
   readonly projEntity = signal<IProjEntity>(history.state.entity);
   readonly entity = signal<IEntity | undefined>(undefined);
+  readonly entityLoadState = signal<
+    'loading' | 'ready' | 'error' | 'unsupported'
+  >('loading');
   public readonly sourceIndex = signal<number | undefined>(undefined);
-  readonly sourceData = signal<RecordsetValue[][] | undefined>(undefined);
+  readonly sourceState = signal<
+    'missing' | 'loading' | 'ready' | 'error' | 'unsupported'
+  >('missing');
+  readonly sourceData = signal<Record<string, unknown>[]>([]);
   readonly sourceCols = signal<IGridColumn[] | undefined>(undefined);
   private destroyed = new Subject<void>();
+  private readonly entityRequest = signal<Subscription | undefined>(undefined);
+  private readonly sourceRequest = signal<Subscription | undefined>(undefined);
 
   constructor() {
     const route = this.route;
 
-    route.paramMap.pipe(takeUntil(this.destroyed)).subscribe((params) => {
-      const storeId = params.get(routingParamStoreId) || undefined;
-      const projectId = params.get(routingParamProjectId) || undefined;
-      const entityId = params.get(routingParamEntityId) || undefined;
-      this.storeId.set(storeId);
-      this.projectId.set(projectId);
-      this.entityId.set(entityId);
-      if (!storeId || !projectId || !entityId) {
-        return;
-      }
-      this.entityService
-        .getEntity(storeId, projectId, entityId)
-        .pipe(
-          takeUntil(this.destroyed),
-          takeWhile(() => this.entityId() === entityId),
-        )
-        .subscribe({
-          next: (entity) => {
-            this.projEntity.set(entity);
-            this.entity.set(entity.dbo); // TODO: workaround cast
-            const sourcesLen = entity.dbo?.options?.sources?.length;
-            const sourceIndex = this.sourceIndex();
-            if (!sourcesLen) {
-              this.sourceIndex.set(undefined);
-            } else if (
-              (sourcesLen && sourceIndex === undefined) ||
-              (sourceIndex !== undefined && sourceIndex + 1 > sourcesLen)
-            ) {
-              const newSourceIndex = 0;
-              this.sourceIndex.set(newSourceIndex);
-              const source =
-                entity.dbo.options?.sources &&
-                entity.dbo.options?.sources[newSourceIndex];
-              if (!source) {
-                return;
+    combineLatest([route.paramMap, route.queryParamMap])
+      .pipe(takeUntil(this.destroyed))
+      .subscribe(([params, queryParams]) => {
+        const storeId = params.get(routingParamStoreId) || undefined;
+        const projectId = params.get(routingParamProjectId) || undefined;
+        const entityId = params.get(routingParamEntityId) || undefined;
+        this.storeId.set(storeId);
+        this.projectId.set(projectId);
+        this.entityId.set(entityId);
+        this.entityRequest()?.unsubscribe();
+        this.sourceRequest()?.unsubscribe();
+        this.entity.set(undefined);
+        this.sourceIndex.set(undefined);
+        this.sourceData.set([]);
+        this.sourceCols.set(undefined);
+        this.sourceState.set('missing');
+        this.entityLoadState.set('loading');
+        if (!storeId || !projectId || !entityId) {
+          this.entityLoadState.set('error');
+          return;
+        }
+        // The legacy EntityService only accepts store/project IDs. It cannot
+        // identify a selected branch or common-API transport, so showing its
+        // result in that context would misrepresent which entity was read.
+        if (
+          queryParams.get('projectApi') !== null ||
+          queryParams.get('branch') !== null
+        ) {
+          this.entityLoadState.set('unsupported');
+          return;
+        }
+        this.entityRequest.set(
+          this.entityService.getEntity(storeId, projectId, entityId).subscribe({
+            next: (entity) => {
+              this.projEntity.set(entity);
+              this.entity.set(entity.dbo); // TODO: workaround cast
+              this.entityLoadState.set('ready');
+              if (entity.dbo?.options?.sources?.length) {
+                this.selectSource(0);
               }
-              this.http
-                .get<RecordsetValue[][]>(source.url)
-                .pipe(takeUntil(this.destroyed))
-                .subscribe({
-                  next: (rows) => {
-                    this.sourceData.set(rows);
-                    this.sourceCols.set([
-                      { field: 'region', dbType: 'NVARCHAR', title: 'region' },
-                      {
-                        field: 'alpha-2',
-                        dbType: 'NVARCHAR',
-                        title: 'alpha-2',
-                      },
-                      {
-                        field: 'alpha-3',
-                        dbType: 'NVARCHAR',
-                        title: 'alpha-3',
-                      },
-                      { field: 'name', dbType: 'NVARCHAR', title: 'name' },
-                    ]);
-                  },
-                  error: this.errorLogger.logErrorHandler(
-                    'Failed to get source data',
-                  ),
-                });
-            }
-          },
-          error: (err) =>
-            this.errorLogger.logError(err, 'Failed to get entity by id'),
-        });
-    });
+            },
+            error: (err) => {
+              this.entityLoadState.set('error');
+              this.errorLogger.logError(err, 'Failed to get entity by id');
+            },
+          }),
+        );
+      });
+  }
+
+  selectSource(index: number): void {
+    this.sourceRequest()?.unsubscribe();
+    this.sourceData.set([]);
+    this.sourceCols.set(undefined);
+    const source = this.entity()?.options?.sources?.[index];
+    this.sourceIndex.set(source ? index : undefined);
+    if (!source) {
+      this.sourceState.set('missing');
+      return;
+    }
+    if (source.contentType !== 'json') {
+      this.sourceState.set('unsupported');
+      return;
+    }
+    this.sourceState.set('loading');
+    this.sourceRequest.set(
+      this.http.get<unknown>(source.url).subscribe({
+        next: (value) => {
+          try {
+            const { rows, columns } = this.parseSourcePreview(value);
+            this.sourceData.set(rows);
+            this.sourceCols.set(columns);
+            this.sourceState.set('ready');
+          } catch (error) {
+            this.sourceState.set('error');
+            this.errorLogger.logError(error, 'Invalid entity source preview');
+          }
+        },
+        error: (error) => {
+          this.sourceState.set('error');
+          this.errorLogger.logError(error, 'Failed to get source data');
+        },
+      }),
+    );
+  }
+
+  private parseSourcePreview(value: unknown): {
+    rows: Record<string, unknown>[];
+    columns: IGridColumn[];
+  } {
+    if (!Array.isArray(value)) {
+      throw new Error('Source preview must be an array of rows');
+    }
+    if (!value.length) {
+      return { rows: [], columns: [] };
+    }
+    const first: unknown = value[0];
+    if (Array.isArray(first) && value.every(Array.isArray)) {
+      const width = Math.max(...value.map((row: unknown[]) => row.length));
+      const columns = Array.from(
+        { length: width },
+        (_, i): IGridColumn => ({
+          field: `column_${i + 1}`,
+          title: `Column ${i + 1}`,
+          dbType: 'NVARCHAR',
+        }),
+      );
+      return {
+        rows: value.map((row: unknown[]) =>
+          Object.fromEntries(row.map((cell, i) => [`column_${i + 1}`, cell])),
+        ),
+        columns,
+      };
+    }
+    if (
+      first &&
+      typeof first === 'object' &&
+      !Array.isArray(first) &&
+      value.every(
+        (row) => !!row && typeof row === 'object' && !Array.isArray(row),
+      )
+    ) {
+      const keys = [
+        ...new Set(
+          value.flatMap((row: Record<string, unknown>) => Object.keys(row)),
+        ),
+      ];
+      return {
+        rows: value as Record<string, unknown>[],
+        columns: keys.map(
+          (key): IGridColumn => ({
+            field: key,
+            title: key,
+            dbType: 'NVARCHAR',
+          }),
+        ),
+      };
+    }
+    throw new Error('Source preview rows have an unsupported shape');
   }
 
   protected getEntityContentType(): EntityContentType | undefined {
@@ -188,6 +261,8 @@ export class EntityPageComponent implements OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.entityRequest()?.unsubscribe();
+    this.sourceRequest()?.unsubscribe();
     this.destroyed.next();
     this.destroyed.complete();
   }
