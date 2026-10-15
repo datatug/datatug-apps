@@ -17,7 +17,11 @@
     </ion-row>
   </ion-grid>
 
-  @if (loading()) {
+  @if (unsupportedProject()) {
+    <p class="ion-padding" role="status">
+      Board details are unavailable for this project connection or branch.
+    </p>
+  } @else if (loading()) {
     <p class="ion-padding" role="status">Loading board…</p>
   } @else if (loadError()) {
     <p class="ion-padding" role="alert">{{ loadError() }}</p>

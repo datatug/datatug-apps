@@ -189,6 +189,32 @@ describe('BoardsPage renders boards once the project/folder arrive asynchronousl
     // a creation action that strands the user on the next step.
     expect(fixture.nativeElement.textContent).not.toContain('New board');
   });
+
+  it('clears a visible board when the project changes to a qualified ref', async () => {
+    fixture.detectChanges();
+    const watchFolder = TestBed.inject(DatatugFoldersService).watchFolder;
+    currentProject$.next({
+      ref: { projectId: 'demo', storeId: 'github.com' },
+    });
+    watchFolder$.next({ id: '~', boards: { b1: { name: 'Demo board' } } });
+    await fixture.whenStable();
+    expect(boardsCard().items).toEqual([{ id: 'b1', title: 'Demo board' }]);
+
+    currentProject$.next({
+      ref: {
+        projectId: 'demo',
+        storeId: 'github.com',
+        projectApi: 'cloud',
+        branch: 'feature',
+      },
+    });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('sneat-card-list')).toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('[role="status"]')?.textContent,
+    ).toContain('Boards are unavailable');
+    expect(watchFolder).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('BoardsPage project switching', () => {
@@ -241,8 +267,6 @@ describe('BoardsPage project switching', () => {
       ref: {
         storeId: 'http-localhost:8989',
         projectId: 'shared-id',
-        projectApi: 'local',
-        branch: 'main',
       },
     });
     expect(page.boards()).toBeUndefined();
@@ -257,31 +281,24 @@ describe('BoardsPage project switching', () => {
     expect(watchFolder).toHaveBeenNthCalledWith(2, {
       storeId: 'http-localhost:8989',
       projectId: 'shared-id',
-      projectApi: 'local',
-      branch: 'main',
       id: '~',
     });
 
     projects.next({
       ref: {
-        storeId: 'http-localhost:8989',
+        storeId: 'github.com',
         projectId: 'shared-id',
-        projectApi: 'local',
+        projectApi: 'cloud',
         branch: 'feature',
       },
     });
     expect(page.boards()).toBeUndefined();
+    expect(page.unsupportedProject()).toBe(true);
     secondFolder.next({ id: '~', boards: { stale: { name: 'Stale branch' } } });
     expect(page.boards()).toBeUndefined();
     thirdFolder.next({ id: '~', boards: { third: { name: 'Feature board' } } });
-    expect(page.boards()).toEqual([{ id: 'third', title: 'Feature board' }]);
-    expect(watchFolder).toHaveBeenNthCalledWith(3, {
-      storeId: 'http-localhost:8989',
-      projectId: 'shared-id',
-      projectApi: 'local',
-      branch: 'feature',
-      id: '~',
-    });
+    expect(page.boards()).toBeUndefined();
+    expect(watchFolder).toHaveBeenCalledTimes(2);
     fixture.destroy();
   });
 });

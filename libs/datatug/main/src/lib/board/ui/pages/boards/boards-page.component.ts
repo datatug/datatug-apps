@@ -1,4 +1,11 @@
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import {
+  Component,
+  OnDestroy,
+  OnInit,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
 import {
   IonBackButton,
   IonButton,
@@ -10,7 +17,7 @@ import {
 } from '@ionic/angular';
 import { SneatCardListComponent } from '@sneat/components';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
-import { BehaviorSubject, combineLatest, of, Subject } from 'rxjs';
+import { BehaviorSubject, combineLatest, EMPTY, of, Subject } from 'rxjs';
 import {
   catchError,
   distinctUntilChanged,
@@ -92,6 +99,10 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
   readonly loadError = signal<string | undefined>(undefined);
   defaultHref?: string;
   readonly project = signal<IProjectContext | undefined>(undefined);
+  readonly unsupportedProject = computed(() => {
+    const ref = this.project()?.ref;
+    return !!(ref?.projectApi || ref?.branch);
+  });
 
   folderPath = '~';
 
@@ -118,6 +129,9 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
         switchMap(({ ref }) => {
           this.boards.set(undefined);
           this.loadError.set(undefined);
+          // The folder store drops projectApi and branch. Reading here would
+          // silently show an unqualified project's boards under another ref.
+          if (ref?.projectApi || ref?.branch) return EMPTY;
           return ref
             ? this.foldersService
                 .watchFolder({ ...ref, id: this.folderPath })
@@ -156,7 +170,8 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
   }
 
   retryLoad(): void {
-    if (this.project()?.ref) this.refresh.next(this.refresh.value + 1);
+    if (this.project()?.ref && !this.unsupportedProject())
+      this.refresh.next(this.refresh.value + 1);
   }
 
   private onFolderReceived = (path: string, folder?: IFolder | null): void => {

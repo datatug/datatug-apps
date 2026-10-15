@@ -11,6 +11,7 @@ import { routingParamBoard } from '../../../../core/datatug-routing-params';
 import { DatatugNavContextService } from '../../../../services/nav/datatug-nav-context.service';
 import { QueryParamsService } from '../../../../core/services/QueryParamsService';
 import { Board } from '@datatug/board-models';
+import { IProjectContext } from '../../../../nav/nav-models';
 
 describe('BoardPage', () => {
   let component: BoardPageComponent;
@@ -246,9 +247,7 @@ describe('BoardPage switches board reads with the full project context', () => {
  */
 describe('BoardPage renders the board once it arrives asynchronously (zoneless)', () => {
   let fixture: ComponentFixture<BoardPageComponent>;
-  let currentProject$: Subject<
-    { ref: { storeId: string; projectId: string } } | undefined
-  >;
+  let currentProject$: Subject<IProjectContext | undefined>;
   let getBoard$: Subject<Board>;
 
   beforeEach(async () => {
@@ -310,7 +309,9 @@ describe('BoardPage renders the board once it arrives asynchronously (zoneless)'
 
   it('replaces the board title placeholder once the board arrives, with no explicit detectChanges()', async () => {
     fixture.detectChanges(); // initial render — nothing has arrived yet
-    expect(fixture.nativeElement.querySelector('h1')?.textContent).toContain('Board');
+    expect(fixture.nativeElement.querySelector('h1')?.textContent).toContain(
+      'Board',
+    );
 
     const board: Board = {
       id: 'board-1',
@@ -331,8 +332,39 @@ describe('BoardPage renders the board once it arrives asynchronously (zoneless)'
     getBoard$.next(board);
     await fixture.whenStable();
 
-    expect(fixture.nativeElement.querySelector('h1')?.textContent).not.toBe('Board');
+    expect(fixture.nativeElement.querySelector('h1')?.textContent).not.toBe(
+      'Board',
+    );
     expect(fixture.nativeElement.innerHTML).toContain('My Real Board');
     expect(fixture.nativeElement.innerHTML).toContain('Param 1');
+  });
+
+  it('removes a visible board when a qualified branch is selected', async () => {
+    fixture.detectChanges();
+    const getBoard = TestBed.inject(DatatugBoardService).getBoard;
+    currentProject$.next({
+      ref: { storeId: 'github.com', projectId: 'demo' },
+    });
+    getBoard$.next({ id: 'board-1', title: 'Demo board' });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Demo board');
+
+    currentProject$.next({
+      ref: {
+        storeId: 'github.com',
+        projectId: 'demo',
+        projectApi: 'cloud',
+        branch: 'feature',
+      },
+    });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).not.toContain('Demo board');
+    expect(
+      fixture.nativeElement.querySelector('sneat-datatug-board'),
+    ).toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('[role="status"]')?.textContent,
+    ).toContain('Board details are unavailable');
+    expect(getBoard).toHaveBeenCalledTimes(1);
   });
 });

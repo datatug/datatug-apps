@@ -1,4 +1,11 @@
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import {
+  Component,
+  OnDestroy,
+  OnInit,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import {
@@ -117,6 +124,10 @@ export class BoardPageComponent implements OnInit, OnDestroy {
 
   readonly boardDef = signal<Board | undefined>(undefined);
   readonly projectRef = signal<IProjectRef | undefined>(undefined);
+  readonly unsupportedProject = computed(() => {
+    const ref = this.projectRef();
+    return !!(ref?.projectApi || ref?.branch);
+  });
   readonly loading = signal(true);
   readonly loadError = signal<string | undefined>(undefined);
 
@@ -174,6 +185,12 @@ export class BoardPageComponent implements OnInit, OnDestroy {
           this.loadError.set(undefined);
           this.loading.set(true);
           if (!ref) return EMPTY;
+          // The Board reader accepts only store and project IDs, so a
+          // qualified ref would display a different branch or connection.
+          if (ref.projectApi || ref.branch) {
+            this.loading.set(false);
+            return EMPTY;
+          }
           if (!id) {
             this.loading.set(false);
             this.loadError.set('Board ID is missing.');
