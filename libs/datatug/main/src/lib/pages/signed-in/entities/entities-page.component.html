@@ -26,6 +26,13 @@
   <!--			</ion-label>-->
   <!--		</ion-segment-button>-->
   <!--	</ion-segment>-->
+  @if (unsupportedProject()) {
+    <ion-card>
+      <ion-card-content role="status">
+        Entities are not available for this project connection or branch.
+      </ion-card-content>
+    </ion-card>
+  } @else {
   <ion-card>
     <ion-item>
       <ion-input
@@ -103,6 +110,7 @@
       }
     </ion-list>
   </ion-card>
+  }
 
   @if (canMutateEntities()) {
     <ion-button class="ion-margin" (click)="goNewEntity($event)">

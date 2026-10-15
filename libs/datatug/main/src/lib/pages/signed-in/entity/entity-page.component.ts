@@ -20,7 +20,7 @@ import {
   IonToolbar,
 } from '@ionic/angular';
 import { DataGridComponent } from '@sneat/datagrid';
-import { Subject, Subscription } from 'rxjs';
+import { combineLatest, Subject, Subscription } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { HttpClient } from '@angular/common/http';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
@@ -94,11 +94,13 @@ export class EntityPageComponent implements OnDestroy {
   readonly entityId = signal<string | undefined>(undefined);
   readonly projEntity = signal<IProjEntity>(history.state.entity);
   readonly entity = signal<IEntity | undefined>(undefined);
-  readonly entityLoadState = signal<'loading' | 'ready' | 'error'>('loading');
+  readonly entityLoadState = signal<
+    'loading' | 'ready' | 'error' | 'unsupported'
+  >('loading');
   public readonly sourceIndex = signal<number | undefined>(undefined);
-  readonly sourceState = signal<'missing' | 'loading' | 'ready' | 'error'>(
-    'missing',
-  );
+  readonly sourceState = signal<
+    'missing' | 'loading' | 'ready' | 'error' | 'unsupported'
+  >('missing');
   readonly sourceData = signal<Record<string, unknown>[]>([]);
   readonly sourceCols = signal<IGridColumn[] | undefined>(undefined);
   private destroyed = new Subject<void>();
@@ -108,42 +110,54 @@ export class EntityPageComponent implements OnDestroy {
   constructor() {
     const route = this.route;
 
-    route.paramMap.pipe(takeUntil(this.destroyed)).subscribe((params) => {
-      const storeId = params.get(routingParamStoreId) || undefined;
-      const projectId = params.get(routingParamProjectId) || undefined;
-      const entityId = params.get(routingParamEntityId) || undefined;
-      this.storeId.set(storeId);
-      this.projectId.set(projectId);
-      this.entityId.set(entityId);
-      this.entityRequest()?.unsubscribe();
-      this.sourceRequest()?.unsubscribe();
-      this.entity.set(undefined);
-      this.sourceIndex.set(undefined);
-      this.sourceData.set([]);
-      this.sourceCols.set(undefined);
-      this.sourceState.set('missing');
-      this.entityLoadState.set('loading');
-      if (!storeId || !projectId || !entityId) {
-        this.entityLoadState.set('error');
-        return;
-      }
-      this.entityRequest.set(
-        this.entityService.getEntity(storeId, projectId, entityId).subscribe({
-          next: (entity) => {
-            this.projEntity.set(entity);
-            this.entity.set(entity.dbo); // TODO: workaround cast
-            this.entityLoadState.set('ready');
-            if (entity.dbo?.options?.sources?.length) {
-              this.selectSource(0);
-            }
-          },
-          error: (err) => {
-            this.entityLoadState.set('error');
-            this.errorLogger.logError(err, 'Failed to get entity by id');
-          },
-        }),
-      );
-    });
+    combineLatest([route.paramMap, route.queryParamMap])
+      .pipe(takeUntil(this.destroyed))
+      .subscribe(([params, queryParams]) => {
+        const storeId = params.get(routingParamStoreId) || undefined;
+        const projectId = params.get(routingParamProjectId) || undefined;
+        const entityId = params.get(routingParamEntityId) || undefined;
+        this.storeId.set(storeId);
+        this.projectId.set(projectId);
+        this.entityId.set(entityId);
+        this.entityRequest()?.unsubscribe();
+        this.sourceRequest()?.unsubscribe();
+        this.entity.set(undefined);
+        this.sourceIndex.set(undefined);
+        this.sourceData.set([]);
+        this.sourceCols.set(undefined);
+        this.sourceState.set('missing');
+        this.entityLoadState.set('loading');
+        if (!storeId || !projectId || !entityId) {
+          this.entityLoadState.set('error');
+          return;
+        }
+        // The legacy EntityService only accepts store/project IDs. It cannot
+        // identify a selected branch or common-API transport, so showing its
+        // result in that context would misrepresent which entity was read.
+        if (
+          queryParams.get('projectApi') !== null ||
+          queryParams.get('branch') !== null
+        ) {
+          this.entityLoadState.set('unsupported');
+          return;
+        }
+        this.entityRequest.set(
+          this.entityService.getEntity(storeId, projectId, entityId).subscribe({
+            next: (entity) => {
+              this.projEntity.set(entity);
+              this.entity.set(entity.dbo); // TODO: workaround cast
+              this.entityLoadState.set('ready');
+              if (entity.dbo?.options?.sources?.length) {
+                this.selectSource(0);
+              }
+            },
+            error: (err) => {
+              this.entityLoadState.set('error');
+              this.errorLogger.logError(err, 'Failed to get entity by id');
+            },
+          }),
+        );
+      });
   }
 
   selectSource(index: number): void {
@@ -154,6 +168,10 @@ export class EntityPageComponent implements OnDestroy {
     this.sourceIndex.set(source ? index : undefined);
     if (!source) {
       this.sourceState.set('missing');
+      return;
+    }
+    if (source.contentType !== 'json') {
+      this.sourceState.set('unsupported');
       return;
     }
     this.sourceState.set('loading');

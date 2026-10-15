@@ -1,14 +1,17 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { ActivatedRoute } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { ErrorLogger } from '@sneat/core';
 import { IRecord } from '@sneat/data';
-import { of, Subject } from 'rxjs';
+import { DataGridComponent } from '@sneat/datagrid';
+import { BehaviorSubject, of, Subject } from 'rxjs';
 
 import { EntityPageComponent } from './entity-page.component';
 import { EntityService } from '../../../services/unsorted/entity.service';
 import { IEntity } from '../../../models/definition/metapedia/entity';
+import { parseProjectUrl } from '../../../nav/nav-models';
 
 describe('EntityPage', () => {
   let component: EntityPageComponent;
@@ -65,6 +68,109 @@ describe('EntityPage', () => {
   });
 });
 
+describe('EntityPage renders the real source grid', () => {
+  it('passes JSON rows and source switches into DataGridComponent', async () => {
+    const route = {
+      get: (key: string) =>
+        key === 'storeId'
+          ? 'http-localhost:8989'
+          : key === 'projectId'
+            ? 'demo'
+            : 'Country',
+    };
+    const source = {
+      contentType: 'json' as const,
+      url: '/countries.json',
+      source: 'json',
+      mapping: {},
+    };
+    await TestBed.configureTestingModule({
+      imports: [EntityPageComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            paramMap: of(route),
+            queryParamMap: of({ get: () => null }),
+          },
+        },
+        {
+          provide: ErrorLogger,
+          useValue: {
+            logError: vi.fn(),
+            logErrorHandler: vi.fn(() => vi.fn()),
+          },
+        },
+        {
+          provide: EntityService,
+          useValue: {
+            getEntity: vi.fn(() =>
+              of({
+                id: 'Country',
+                dbo: {
+                  id: 'Country',
+                  fields: [],
+                  options: {
+                    sources: [source, { ...source, url: '/cities.json' }],
+                  },
+                },
+              }),
+            ),
+          },
+        },
+        {
+          provide: HttpClient,
+          useValue: {
+            get: vi.fn((url: string) =>
+              of(
+                url === '/cities.json'
+                  ? [{ city: 'Dublin' }]
+                  : [{ name: 'Ireland' }, { name: 'France' }],
+              ),
+            ),
+          },
+        },
+      ],
+    })
+      .overrideComponent(EntityPageComponent, {
+        set: {
+          imports: [DataGridComponent],
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+        },
+      })
+      .compileComponents();
+
+    const fixture = TestBed.createComponent(EntityPageComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const grid = fixture.debugElement.query(By.directive(DataGridComponent));
+    expect(grid).not.toBeNull();
+    expect(grid.componentInstance.data).toEqual([
+      { name: 'Ireland' },
+      { name: 'France' },
+    ]);
+    expect(grid.componentInstance.columns).toEqual([
+      { field: 'name', title: 'name', dbType: 'NVARCHAR' },
+    ]);
+    expect(fixture.nativeElement.innerHTML).toContain('2 rows in source');
+    expect(fixture.nativeElement.innerHTML).toContain('Rows: 2');
+
+    fixture.componentInstance.selectSource(1);
+    await fixture.whenStable();
+    const switchedGrid = fixture.debugElement.query(
+      By.directive(DataGridComponent),
+    );
+    expect(switchedGrid).not.toBe(grid);
+    expect(switchedGrid.componentInstance.data).toEqual([{ city: 'Dublin' }]);
+    expect(switchedGrid.componentInstance.columns).toEqual([
+      { field: 'city', title: 'city', dbType: 'NVARCHAR' },
+    ]);
+    expect(fixture.nativeElement.innerHTML).toContain('1 row in source');
+  });
+});
+
 /**
  * Regression for the same "Loading..." bug class the founder reported
  * (2026-09-10) — same fix already established in
@@ -88,6 +194,7 @@ describe('EntityPage source preview states (zoneless)', () => {
   let fixture: ComponentFixture<EntityPageComponent>;
   let component: EntityPageComponent;
   let paramMap$: Subject<{ get: (key: string) => string | null }>;
+  let queryParamMap$: BehaviorSubject<{ get: (key: string) => string | null }>;
   let getEntity$: Subject<IRecord<IEntity>>;
   let httpGet$: Subject<unknown[][]>;
 
@@ -99,6 +206,9 @@ describe('EntityPage source preview states (zoneless)', () => {
     });
 
     paramMap$ = new Subject();
+    queryParamMap$ = new BehaviorSubject<{
+      get: (key: string) => string | null;
+    }>({ get: () => null });
     getEntity$ = new Subject<IRecord<IEntity>>();
     httpGet$ = new Subject<unknown[][]>();
 
@@ -109,7 +219,7 @@ describe('EntityPage source preview states (zoneless)', () => {
         {
           provide: ActivatedRoute,
           useValue: {
-            queryParamMap: of({ get: () => null }),
+            queryParamMap: queryParamMap$.asObservable(),
             paramMap: paramMap$.asObservable(),
             snapshot: { paramMap: { get: () => null } },
           },
@@ -168,9 +278,9 @@ describe('EntityPage source preview states (zoneless)', () => {
         options: {
           sources: [
             {
-              contentType: 'csv',
-              url: '/assets/customer.csv',
-              source: 'csv',
+              contentType: 'json',
+              url: '/assets/customer.json',
+              source: 'json',
               mapping: {},
             },
           ],
@@ -190,9 +300,61 @@ describe('EntityPage source preview states (zoneless)', () => {
     await fixture.whenStable();
 
     expect(fixture.nativeElement.innerHTML).toContain('1 row in source');
+    expect(
+      fixture.nativeElement.querySelector('sneat-datagrid'),
+    ).not.toBeNull();
     expect(fixture.nativeElement.innerHTML).not.toContain(
       'Loading source preview',
     );
+  });
+
+  it('explains CSV and XML preview limits without trying to JSON-fetch either source', async () => {
+    const get = TestBed.inject(HttpClient).get as unknown as ReturnType<
+      typeof vi.fn
+    >;
+    fixture.detectChanges();
+    paramMap$.next({
+      get: (key) =>
+        key === 'storeId' ? 'agent' : key === 'projectId' ? 'demo' : 'Country',
+    });
+    getEntity$.next({
+      id: 'Country',
+      dbo: {
+        id: 'Country',
+        fields: [],
+        options: {
+          sources: [
+            {
+              contentType: 'csv',
+              url: '/countries.csv',
+              source: 'csv',
+              mapping: {},
+            },
+            {
+              contentType: 'xml',
+              url: '/countries.xml',
+              source: 'xml',
+              mapping: {},
+            },
+          ],
+        },
+      },
+    });
+    await fixture.whenStable();
+
+    expect(component.sourceState()).toBe('unsupported');
+    expect(fixture.nativeElement.innerHTML).toContain(
+      'Preview is not available for CSV or XML sources.',
+    );
+    expect(fixture.nativeElement.innerHTML).not.toContain(
+      'Could not load the source preview.',
+    );
+    expect(get).not.toHaveBeenCalled();
+
+    component.selectSource(1);
+    await fixture.whenStable();
+    expect(component.sourceState()).toBe('unsupported');
+    expect(get).not.toHaveBeenCalled();
   });
 
   it('shows a stable read-only name and a clear missing-preview state for a demo entity', async () => {
@@ -217,6 +379,37 @@ describe('EntityPage source preview states (zoneless)', () => {
     expect(html).not.toContain('Loading source preview');
     expect(fixture.nativeElement.querySelector('ion-input')).toBeNull();
     expect(fixture.nativeElement.querySelector('ion-button')).toBeNull();
+  });
+
+  it('admits the public HEAD demo route without mistaking HEAD for an explicit branch qualifier', async () => {
+    const parsed = parseProjectUrl(
+      '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/entity/Album',
+    );
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) throw new Error('Public demo route must parse');
+    const getEntity = TestBed.inject(EntityService)
+      .getEntity as unknown as ReturnType<typeof vi.fn>;
+    fixture.detectChanges();
+    paramMap$.next({
+      get: (key) =>
+        key === 'storeId'
+          ? parsed.storeId
+          : key === 'projectId'
+            ? parsed.projectId
+            : 'Album',
+    });
+    getEntity$.next({ id: 'Album', dbo: { id: 'Album', fields: [] } });
+    await fixture.whenStable();
+
+    expect(getEntity).toHaveBeenCalledWith(
+      parsed.storeId,
+      parsed.projectId,
+      'Album',
+    );
+    expect(component.entityLoadState()).toBe('ready');
+    expect(fixture.nativeElement.innerHTML).toContain(
+      'No preview source is configured for this entity.',
+    );
   });
 
   it('cancels the old preview on source and entity changes', async () => {
@@ -270,6 +463,59 @@ describe('EntityPage source preview states (zoneless)', () => {
     expect(fixture.nativeElement.innerHTML).toContain(
       'No preview source is configured',
     );
+  });
+
+  it('fences branch-qualified entity reads and clears data when query context changes', async () => {
+    const getEntity = TestBed.inject(EntityService)
+      .getEntity as unknown as ReturnType<typeof vi.fn>;
+    fixture.detectChanges();
+    paramMap$.next({
+      get: (key) =>
+        key === 'storeId'
+          ? 'http-localhost:8989'
+          : key === 'projectId'
+            ? 'demo'
+            : 'Country',
+    });
+    getEntity$.next({
+      id: 'Country',
+      dbo: {
+        id: 'Country',
+        fields: [],
+        options: {
+          sources: [
+            {
+              contentType: 'json',
+              url: '/countries.json',
+              source: 'json',
+              mapping: {},
+            },
+          ],
+        },
+      },
+    });
+    expect(component.sourceState()).toBe('loading');
+    expect(getEntity).toHaveBeenCalledTimes(1);
+
+    queryParamMap$.next({
+      get: (key) =>
+        key === 'projectApi' ? 'local' : key === 'branch' ? 'work' : null,
+    });
+    httpGet$.next([['stale']]);
+    await fixture.whenStable();
+    expect(component.entityLoadState()).toBe('unsupported');
+    expect(component.sourceData()).toEqual([]);
+    expect(getEntity).toHaveBeenCalledTimes(1);
+    expect(fixture.nativeElement.innerHTML).toContain(
+      'Entity details are not available for this branch project.',
+    );
+    expect(fixture.nativeElement.innerHTML).not.toContain('Loading entity');
+
+    queryParamMap$.next({ get: () => null });
+    getEntity$.next({ id: 'Country', dbo: { id: 'Country', fields: [] } });
+    await fixture.whenStable();
+    expect(getEntity).toHaveBeenCalledTimes(2);
+    expect(component.entityLoadState()).toBe('ready');
   });
 
   it('distinguishes an empty source from a failed source', async () => {

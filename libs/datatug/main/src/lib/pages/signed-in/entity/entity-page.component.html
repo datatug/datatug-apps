@@ -9,14 +9,33 @@
 </ion-header>
 
 <ion-content color="light">
-  <ion-card>
-    <ion-item>
-      <ion-label>
-        <p>Name</p>
-        <h2>{{ entity()?.title || entityId() }}</h2>
-      </ion-label>
-    </ion-item>
-  </ion-card>
+  @if (entityLoadState() === 'loading') {
+    <ion-card
+      ><ion-card-content role="status"
+        >Loading entity…</ion-card-content
+      ></ion-card
+    >
+  }
+
+  @if (entityLoadState() === 'unsupported') {
+    <ion-card
+      ><ion-card-content role="status"
+        >Entity details are not available for this branch
+        project.</ion-card-content
+      ></ion-card
+    >
+  }
+
+  @if (entityLoadState() === 'ready') {
+    <ion-card>
+      <ion-item>
+        <ion-label>
+          <p>Name</p>
+          <h2>{{ entity()?.title || entityId() }}</h2>
+        </ion-label>
+      </ion-item>
+    </ion-card>
+  }
 
   @if (entityLoadState() === 'error') {
     <ion-card
@@ -52,7 +71,7 @@
 
     <ion-card>
       <ion-item>
-        <ion-label color="medium">Source</ion-label>
+        <ion-label color="medium">Raw source preview</ion-label>
         @if (sourceIndex() !== undefined) {
           <ion-badge>{{ getEntityContentType() }}</ion-badge>
         }
@@ -86,6 +105,10 @@
         <ion-card-content role="alert"
           >Could not load the source preview.</ion-card-content
         >
+      } @else if (sourceState() === 'unsupported') {
+        <ion-card-content role="status"
+          >Preview is not available for CSV or XML sources.</ion-card-content
+        >
       } @else {
         <ion-card-content role="status"
           >{{ sourceData().length }}
@@ -93,12 +116,18 @@
           source</ion-card-content
         >
         @if (sourceData().length) {
-          <sneat-datagrid
-            layout="fitData"
-            maxHeight="600px"
-            [columns]="sourceCols()"
-            [data]="sourceData()"
-          />
+          <!-- Recreate Tabulator per source: replacing columns before tableBuilt can fail. -->
+          @for (
+            previewSourceIndex of [sourceIndex()];
+            track previewSourceIndex
+          ) {
+            <sneat-datagrid
+              layout="fitData"
+              maxHeight="600px"
+              [columns]="sourceCols()"
+              [data]="sourceData()"
+            />
+          }
         } @else {
           <ion-card-content>No rows in this source.</ion-card-content>
         }

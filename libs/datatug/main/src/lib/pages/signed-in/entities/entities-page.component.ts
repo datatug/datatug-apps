@@ -6,6 +6,7 @@ import {
   IonButton,
   IonButtons,
   IonCard,
+  IonCardContent,
   IonContent,
   IonHeader,
   IonIcon,
@@ -25,17 +26,12 @@ import {
   ViewDidLeave,
 } from '@ionic/angular';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import {
-  ErrorLogger,
-  IErrorLogger,
-  STORE_ID_GITHUB_COM,
-  STORE_TYPE_GITHUB,
-} from '@sneat/core';
+import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { IRecord } from '@sneat/data';
 import { DatatugCoreModule } from '../../../core/datatug-core.module';
 import { IEntity } from '../../../models/definition/metapedia/entity';
 import { IProjEntity } from '../../../models/definition/project';
-import { IProjectContext } from '../../../nav/nav-models';
+import { IProjectContext, isAgentStoreId } from '../../../nav/nav-models';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
 import { DatatugServicesNavModule } from '../../../services/nav/datatug-services-nav.module';
@@ -86,6 +82,7 @@ type Entities = IRecord<IEntity>[];
     IonItem,
     IonBadge,
     IonCard,
+    IonCardContent,
     IonInput,
   ],
 })
@@ -124,13 +121,13 @@ export class EntitiesPageComponent
       : entities;
   });
   readonly project = signal<IProjectContext | undefined>(undefined);
+  readonly unsupportedProject = computed(() => {
+    const ref = this.project()?.ref;
+    return !!(ref?.projectApi || ref?.branch);
+  });
   readonly canMutateEntities = computed(() => {
-    const storeId = this.project()?.ref.storeId;
-    return (
-      !!storeId &&
-      storeId !== STORE_ID_GITHUB_COM &&
-      storeId !== STORE_TYPE_GITHUB
-    );
+    const ref = this.project()?.ref;
+    return !!ref && !ref.projectApi && isAgentStoreId(ref.storeId);
   });
   private readonly destroyed = new Subject<void>();
 
@@ -231,7 +228,8 @@ export class EntitiesPageComponent
 
   private loadEntities(): void {
     const project = this.project();
-    if (!project) {
+    if (!project || this.unsupportedProject()) {
+      this.entities.set(undefined);
       return;
     }
     this.entityService
