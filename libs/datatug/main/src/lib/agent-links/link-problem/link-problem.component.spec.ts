@@ -45,17 +45,11 @@ describe('LinkProblemComponent (AC:unresolvable-link-names-the-problem)', () => 
     expect(checks).toBe(1);
   });
 
-  it('names nothing but the identifiers of the link', () => {
-    const allowed = new Set(['127.0.0.1:8989', 'demo', 'local', 'chinook', 'Album']);
-    for (const [problem] of STATES) {
-      const { title, hints } = linkProblemText(problem, REF, true);
-      for (const text of [title, ...hints]) {
-        // Every quoted-looking identifier in the text is one of the link's own.
-        for (const word of text.match(/\b(?:demo|local|chinook|Album|127\.0\.0\.1:8989)\b/g) ?? []) {
-          expect(allowed.has(word)).toBe(true);
-        }
-      }
-    }
+  it('falls back to plain wording when the address names no whole table', () => {
+    expect(linkProblemText('table-not-found', undefined, false).title).toBe(
+      'Database the database of this link has no table the table of this link.',
+    );
+    expect(linkProblemText('agent-unreachable', undefined, false).title).toContain('this computer');
   });
 
   it('advises Chrome only where the browser may block loopback', () => {

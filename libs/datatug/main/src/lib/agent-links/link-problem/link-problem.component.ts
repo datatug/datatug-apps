@@ -49,19 +49,19 @@ export function linkProblemText(
   ref: AgentTableRef | undefined,
   blockingBrowser: boolean,
 ): LinkProblemText {
-  const table = ref ? qualifiedTableName(ref.table) : 'this table';
-  const db = ref?.source ?? 'this database';
-  const project = ref?.project ?? 'this project';
-  const env = ref?.env ?? 'this environment';
+  const table = ref ? qualifiedTableName(ref.table) : 'the table of this link';
+  const db = ref?.source ?? 'the database of this link';
+  const project = ref?.project ?? 'of this link';
+  const env = ref?.env ?? 'of this link';
   switch (problem) {
     case 'agent-unreachable':
       return {
         title: `The DataTug agent at ${agentAddress(ref?.storeId)} cannot be reached.`,
         hints: [
-          'Start it with: datatug daemon start, then press Check again.',
+          'Start it with: datatug daemon start, then press Check again. A started agent may not accept this link any more; then press Check again on the card in Claude Code for a fresh link.',
           ...(blockingBrowser
             ? [
-                'This browser may block datatug.app from reaching the agent on your computer. Open the link in Chrome.',
+                'This browser may block datatug.app from reaching the agent. Open the link in Chrome on the computer that runs the agent.',
               ]
             : []),
         ],
